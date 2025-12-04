@@ -1,0 +1,30 @@
+snowflake_metrics:
+  # Complex calculation patterns
+  - name: profit_margin
+    expr: |
+      (SUM({{ column('transactions', 'revenue') }}) - SUM({{ column('transactions', 'cost') }})) 
+      / NULLIF(SUM({{ column('transactions', 'revenue') }}), 0) * 100
+    entity_attribute: profit_margin_pct
+    table_name: "{{ table('transactions') }}"
+    description: Profit margin percentage with null safety
+    
+  - name: weighted_average_price
+    expr: |
+      SUM({{ column('orders', 'price') }} * {{ column('orders', 'quantity') }}) 
+      / NULLIF(SUM({{ column('orders', 'quantity') }}), 0)
+    entity_attribute: weighted_avg_price
+    table_name: "{{ table('orders') }}"
+    description: Quantity-weighted average price
+    
+  - name: customer_lifetime_value
+    expr: |
+      SUM(CASE 
+        WHEN {{ column('users', 'status') }} = 'active' 
+        THEN {{ column('transactions', 'amount') }} * 1.2
+        WHEN {{ column('users', 'status') }} = 'churned'
+        THEN {{ column('transactions', 'amount') }} * 0.8
+        ELSE {{ column('transactions', 'amount') }}
+      END)
+    entity_attribute: clv
+    table_name: "{{ table('users') }}"
+    description: CLV with status-based multipliers

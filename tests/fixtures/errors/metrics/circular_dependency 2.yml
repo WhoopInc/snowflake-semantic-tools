@@ -1,0 +1,18 @@
+snowflake_metrics:
+  - name: metric_a
+    description: "First metric in circular dependency"
+    expr: "{{ metric('metric_b') }} * 2"
+    tables:
+      - "{{ table('users') }}"
+    
+  - name: metric_b
+    description: "Second metric in circular dependency"
+    expr: "{{ metric('metric_c') }} + 100"
+    tables:
+      - "{{ table('users') }}"
+    
+  - name: metric_c
+    description: "Third metric completing the circle"
+    expr: "{{ metric('metric_a') }} / 10"
+    tables:
+      - "{{ table('users') }}"

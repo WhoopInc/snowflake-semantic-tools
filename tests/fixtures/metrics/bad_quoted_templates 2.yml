@@ -1,0 +1,41 @@
+# Fixture: BAD - Contains quoted template expressions
+# This file should FAIL validation with quoted_template_expressions errors
+
+snowflake_metrics:
+  - name: bad_metric_quoted_column
+    tables:
+      - {{ table('orders') }}
+    description: Metric with quoted column template (WILL FAIL)
+    expr: |
+      SUM(CASE
+        WHEN "{{ column('orders', 'status') }}" = 'Active'
+          THEN "{{ column('orders', 'quantity') }}"
+        ELSE 0
+      END)
+
+  - name: bad_metric_quoted_table
+    tables:
+      - "{{ table('orders') }}"
+    description: Metric with quoted table template (WILL FAIL)
+    expr: SUM({{ column('orders', 'total') }})
+
+  - name: bad_metric_multiple_quotes
+    tables:
+      - {{ table('orders') }}
+      - {{ table('customers') }}
+    description: Metric with multiple quoted templates (WILL FAIL)
+    expr: |
+      SUM(CASE
+        WHEN "{{ column('orders', 'order_type') }}" IN ('New', 'Upgrade')
+          AND "{{ column('customers', 'status') }}" = 'Active'
+          THEN "{{ column('orders', 'amount') }}"
+        ELSE 0
+      END)
+
+snowflake_relationships:
+  - name: bad_relationship_quoted_columns
+    left_table: {{ table('orders') }}
+    right_table: {{ table('customers') }}
+    relationship_conditions:
+      - '"{{ column(''orders'', ''customer_id'') }}" = "{{ column(''customers'', ''id'') }}"'
+

@@ -1,0 +1,13 @@
+snowflake_metrics:
+  # This metric uses hardcoded values instead of templates
+  - name: hardcoded_metric
+    expr: SUM(amount)
+    entity_attribute: revenue
+    table_name: TRANSACTIONS  # WARNING: Should use {{ table('transactions') }}
+    description: Uses hardcoded table name
+    
+  - name: mixed_metric
+    expr: "USERS.age > 18"  # WARNING: Hardcoded table.column
+    entity_attribute: adults
+    table_name: "{{ table('users') }}"  # This part is correct
+    description: Mixed hardcoded and template usage

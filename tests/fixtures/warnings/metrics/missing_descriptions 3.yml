@@ -1,0 +1,12 @@
+snowflake_metrics:
+  - name: metric_without_description
+    # Missing description - should trigger warning
+    expr: "COUNT(*)"
+    tables:
+      - "{{ table('users') }}"
+  
+  - name: metric_with_short_description
+    description: "Too short"  # Description too brief
+    expr: "SUM({{ column('orders', 'amount') }})"
+    tables:
+      - "{{ table('orders') }}"

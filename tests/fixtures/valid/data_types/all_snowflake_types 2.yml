@@ -1,0 +1,290 @@
+# Comprehensive Snowflake Data Type Coverage
+# Tests mapping of ALL Snowflake data types to SST semantic types
+
+version: 2
+
+models:
+  - name: all_data_types_test
+    description: Table with every Snowflake data type
+    meta:
+      sst:
+        database: ANALYTICS
+        schema: test
+        table: ALL_TYPES
+        primary_key:
+          - id
+    columns:
+      # Numeric Types - Should map to NUMBER or FLOAT
+      - name: col_number
+        meta:
+          sst:
+            column_type: fact
+            data_type: NUMBER
+            is_enum: false
+      
+      - name: col_number_precision
+        meta:
+          sst:
+            column_type: fact
+            data_type: NUMBER
+            is_enum: false
+      
+      - name: col_int
+        meta:
+          sst:
+            column_type: fact
+            data_type: NUMBER
+            is_enum: false
+      
+      - name: col_integer
+        meta:
+          sst:
+            column_type: fact
+            data_type: NUMBER
+            is_enum: false
+      
+      - name: col_bigint
+        meta:
+          sst:
+            column_type: fact
+            data_type: NUMBER
+            is_enum: false
+      
+      - name: col_smallint
+        meta:
+          sst:
+            column_type: fact
+            data_type: NUMBER
+            is_enum: false
+      
+      - name: col_tinyint
+        meta:
+          sst:
+            column_type: fact
+            data_type: NUMBER
+            is_enum: false
+      
+      - name: col_byteint
+        meta:
+          sst:
+            column_type: fact
+            data_type: NUMBER
+            is_enum: false
+      
+      - name: col_decimal
+        meta:
+          sst:
+            column_type: fact
+            data_type: NUMBER
+            is_enum: false
+      
+      - name: col_numeric
+        meta:
+          sst:
+            column_type: fact
+            data_type: NUMBER
+            is_enum: false
+      
+      - name: col_float
+        meta:
+          sst:
+            column_type: fact
+            data_type: FLOAT
+            is_enum: false
+      
+      - name: col_float4
+        meta:
+          sst:
+            column_type: fact
+            data_type: FLOAT
+            is_enum: false
+      
+      - name: col_float8
+        meta:
+          sst:
+            column_type: fact
+            data_type: FLOAT
+            is_enum: false
+      
+      - name: col_double
+        meta:
+          sst:
+            column_type: fact
+            data_type: FLOAT
+            is_enum: false
+      
+      - name: col_double_precision
+        meta:
+          sst:
+            column_type: fact
+            data_type: FLOAT
+            is_enum: false
+      
+      - name: col_real
+        meta:
+          sst:
+            column_type: fact
+            data_type: FLOAT
+            is_enum: false
+      
+      # String Types - Should map to TEXT
+      - name: col_varchar
+        meta:
+          sst:
+            column_type: dimension
+            data_type: TEXT
+            is_enum: false
+      
+      - name: col_char
+        meta:
+          sst:
+            column_type: dimension
+            data_type: TEXT
+            is_enum: false
+      
+      - name: col_character
+        meta:
+          sst:
+            column_type: dimension
+            data_type: TEXT
+            is_enum: false
+      
+      - name: col_string
+        meta:
+          sst:
+            column_type: dimension
+            data_type: TEXT
+            is_enum: false
+      
+      - name: col_text
+        meta:
+          sst:
+            column_type: dimension
+            data_type: TEXT
+            is_enum: false
+      
+      # Boolean - Should map to BOOLEAN
+      - name: col_boolean
+        meta:
+          sst:
+            column_type: dimension
+            data_type: BOOLEAN
+            is_enum: false
+      
+      - name: col_bool
+        meta:
+          sst:
+            column_type: dimension
+            data_type: BOOLEAN
+            is_enum: false
+      
+      # Date/Time Types - Should map to DATE, TIME, TIMESTAMP_*
+      - name: col_date
+        meta:
+          sst:
+            column_type: time_dimension
+            data_type: DATE
+            is_enum: false
+      
+      - name: col_time
+        meta:
+          sst:
+            column_type: time_dimension
+            data_type: TIME
+            is_enum: false
+      
+      - name: col_timestamp
+        meta:
+          sst:
+            column_type: time_dimension
+            data_type: TIMESTAMP_NTZ
+            is_enum: false
+      
+      - name: col_timestamp_ntz
+        meta:
+          sst:
+            column_type: time_dimension
+            data_type: TIMESTAMP_NTZ
+            is_enum: false
+      
+      - name: col_timestamp_ltz
+        meta:
+          sst:
+            column_type: time_dimension
+            data_type: TIMESTAMP_LTZ
+            is_enum: false
+      
+      - name: col_timestamp_tz
+        meta:
+          sst:
+            column_type: time_dimension
+            data_type: TIMESTAMP_TZ
+            is_enum: false
+      
+      - name: col_datetime
+        meta:
+          sst:
+            column_type: time_dimension
+            data_type: TIMESTAMP_NTZ
+            is_enum: false
+      
+      # Semi-Structured Types
+      - name: col_variant
+        meta:
+          sst:
+            column_type: dimension
+            data_type: VARIANT
+            is_enum: false
+      
+      - name: col_object
+        meta:
+          sst:
+            column_type: dimension
+            data_type: OBJECT
+            is_enum: false
+      
+      - name: col_array
+        meta:
+          sst:
+            column_type: dimension
+            data_type: ARRAY
+            is_enum: false
+      
+      # Binary Types - Should map to TEXT
+      - name: col_binary
+        meta:
+          sst:
+            column_type: dimension
+            data_type: TEXT
+            is_enum: false
+      
+      - name: col_varbinary
+        meta:
+          sst:
+            column_type: dimension
+            data_type: TEXT
+            is_enum: false
+      
+      # Geospatial Types
+      - name: col_geography
+        meta:
+          sst:
+            column_type: dimension
+            data_type: GEOGRAPHY
+            is_enum: false
+      
+      - name: col_geometry
+        meta:
+          sst:
+            column_type: dimension
+            data_type: GEOMETRY
+            is_enum: false
+      
+      # Vector Type (for ML)
+      - name: col_vector
+        meta:
+          sst:
+            column_type: dimension
+            data_type: ARRAY
+            is_enum: false
+

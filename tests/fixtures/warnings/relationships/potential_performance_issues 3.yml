@@ -1,0 +1,9 @@
+snowflake_relationships:
+  - name: many_to_many_without_junction
+    description: "Many-to-many relationship without proper junction table"
+    left_table: "{{ table('users') }}"
+    left_column: id
+    right_table: "{{ table('products') }}"
+    right_column: id
+    relationship_type: many_to_many
+    # Warning: Should specify join_tables for many_to_many

@@ -1,0 +1,75 @@
+[build-system]
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.poetry]
+name = "snowflake-semantic-tools"
+version = "0.1.0"
+description = "Custom semantic data modeling for Snowflake - transforming dbt models into a semantic layer for BI tools and AI-powered analytics"
+authors = ["Matt Luizzi <matthew.luizzi@whoop.com>"]
+license = "Apache-2.0"
+repository = "https://github.com/WhoopInc/snowflake-semantic-tools"
+homepage = "https://github.com/WhoopInc/snowflake-semantic-tools"
+keywords = ["snowflake", "dbt", "semantic-layer"]
+
+[tool.poetry.scripts]
+# Main CLI entry points
+snowflake-semantic-tools = "snowflake_semantic_tools.interfaces.cli.main:cli"
+sst = "snowflake_semantic_tools.interfaces.cli.main:cli"  # Short alias for convenience
+
+[tool.poetry.dependencies]
+python = ">=3.9,<4.0"
+numpy = "1.24.0"
+pyyaml = "6.0.2"
+ruamel-yaml = "0.18.6"
+snowflake-connector-python = {extras = ["pandas", "secure-local-storage"], version = "3.12.3"}
+python-dotenv = "1.0.1"
+rich = "13.9.4"
+click = "8.1.7"
+tqdm = "4.67.1"
+typing-extensions = "4.12.2"
+packaging = "24.2"
+
+[tool.poetry.group.dev.dependencies]
+pre-commit = "4.0.1"
+pytest = "8.3.4"
+pytest-mock = "3.14.0"
+pytest-cov = "6.0.0"
+mypy = "1.13.0"
+isort = "5.13.2"
+black = "24.10.0"
+
+[tool.black]
+line-length = 120
+exclude = '''
+/(
+    \.git
+    | \.hg
+    | \.mypy_cache
+    | \.tox
+    | \.venv
+    | _build
+    | buck-out
+    | build
+    | dist
+)/
+'''
+
+[tool.coverage.run]
+branch = true
+omit = ["test/*"]
+
+[tool.coverage.xml]
+output = "test-coverage-results/coverage.xml"
+
+[tool.mypy]
+ignore_missing_imports = true
+namespace_packages = true
+explicit_package_bases = true
+disallow_untyped_defs = true
+exclude = [
+]
+
+[tool.isort]
+profile = "black"
+line_length = 120

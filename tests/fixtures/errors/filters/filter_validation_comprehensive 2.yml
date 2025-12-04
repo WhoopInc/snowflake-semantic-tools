@@ -1,0 +1,100 @@
+# Filter Validation - Comprehensive
+# Category 4: All filter validation edge cases
+
+snowflake_filters:
+  # Missing name
+  - expr: "status = 'active'"
+    description: Filter missing name field
+  
+  # Missing expr
+  - name: missing_expr
+    description: Filter missing expr field
+  
+  # Empty name
+  - name: ""
+    expr: "status = 'active'"
+    description: Filter with empty name
+  
+  # Empty expr
+  - name: empty_expr
+    expr: ""
+    description: Filter with empty expression
+  
+  # Whitespace-only expr
+  - name: whitespace_expr
+    expr: "   "
+    description: Filter with whitespace-only expression
+  
+  # Null expr
+  - name: null_expr
+    expr: null
+    description: Filter with null expression
+  
+  # Expression too simple (just TRUE)
+  - name: trivial_true
+    expr: "TRUE"
+    description: Filter expression is just TRUE (not useful)
+  
+  # Expression too simple (just FALSE)
+  - name: trivial_false
+    expr: "FALSE"
+    description: Filter expression is just FALSE (not useful)
+  
+  # Invalid SQL syntax
+  - name: invalid_sql_syntax
+    expr: "status = active"  # Missing quotes around 'active'
+    description: Filter with invalid SQL syntax
+  
+  # Unbalanced parentheses
+  - name: unbalanced_parens_open
+    expr: "((status = 'active') AND (deleted = false)"
+    description: Filter with unbalanced parentheses (missing closing)
+  
+  - name: unbalanced_parens_close
+    expr: "status = 'active')) AND (deleted = false)"
+    description: Filter with extra closing parenthesis
+  
+  # Missing table context (column without table)
+  - name: missing_table_context
+    expr: "column_name = 'value'"  # Which table is column_name from?
+    description: Filter references column without table context
+  
+  # SQL injection attempt in filter
+  - name: sql_injection_filter
+    expr: "status = 'active' OR 1=1 --"
+    description: SQL injection attempt in filter
+  
+  # Multiple statements
+  - name: multiple_statements
+    expr: "status = 'active'; DELETE FROM users"
+    description: Filter with multiple SQL statements
+  
+  # Comment injection
+  - name: comment_injection
+    expr: "status = 'active' /* malicious */ OR 1=1"
+    description: Filter with SQL comment injection
+  
+  # Template in filter expr
+  - name: template_in_filter
+    expr: "{{ column('users', 'status') }} = 'active'"
+    description: Filter using template syntax (should templates be allowed in filters?)
+  
+  # Reserved word as filter name
+  - name: SELECT
+    expr: "status = 'active'"
+    description: Filter named with SQL reserved word
+  
+  # Very long filter name
+  - name: "extremely_long_filter_name_that_goes_on_and_on_for_hundreds_of_characters_to_test_system_limits_and_validation"
+    expr: "status = 'active'"
+    description: Filter with very long name
+  
+  # Special characters in filter name
+  - name: "filter-with-hyphens"
+    expr: "status = 'active'"
+    description: Filter name with hyphens
+  
+  - name: "filter.with.dots"
+    expr: "status = 'active'"
+    description: Filter name with dots
+

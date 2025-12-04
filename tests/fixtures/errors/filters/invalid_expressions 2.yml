@@ -1,0 +1,12 @@
+snowflake_filters:
+  - name: invalid_sql_filter
+    description: "Filter with invalid SQL expression"
+    expr: "SELECT * FROM WHERE INVALID SYNTAX"
+    tables:
+      - "{{ table('orders') }}"
+  
+  - name: missing_table_filter
+    description: "Filter referencing non-existent table"
+    expr: "nonexistent_table.status = 'active'"
+    tables:
+      - "{{ table('nonexistent_table') }}"

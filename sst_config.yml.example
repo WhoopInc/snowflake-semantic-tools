@@ -1,0 +1,29 @@
+# Snowflake Semantic Tools Configuration
+# Place in your dbt project root as `sst_config.yml` (safe to commit)
+
+# ============================================================================
+# PROJECT PATHS (Required)
+# ============================================================================
+project:
+  semantic_models_dir: "snowflake_semantic_models"  # Where metrics, relationships, etc. live
+  dbt_models_dir: "models"                          # Where dbt models live
+
+# ============================================================================
+# VALIDATION (Optional)
+# ============================================================================
+validation:
+  strict: false                                     # If true, warnings block deployment (use in CI/CD)
+  
+  exclude_dirs:                                     # Paths to skip during validation
+    - "_intermediate"                               # Exclude any dir named "_intermediate"
+    - "staging"                                     # Exclude any dir named "staging"
+    - "models/legacy/*"                             # Exclude specific path pattern
+
+# ============================================================================
+# ENRICHMENT (Optional)
+# ============================================================================
+enrichment:
+  distinct_limit: 25                                # Distinct values to fetch from Snowflake
+  sample_values_display_limit: 10                   # Sample values to show in YAML files
+  synonym_model: 'openai-gpt-5'                     # LLM model for synonym generation (openai-gpt-5, claude-4-sonnet, etc.)
+  synonym_max_count: 4                              # Maximum synonyms per table/column

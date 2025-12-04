@@ -1,0 +1,6 @@
+snowflake_metrics:
+  - name: invalid_sql
+    description: "Metric with invalid SQL syntax"
+    expr: "SUM({{ column('orders', 'amount') }} WHERE INVALID SYNTAX"
+    tables:
+      - "{{ table('orders') }}"

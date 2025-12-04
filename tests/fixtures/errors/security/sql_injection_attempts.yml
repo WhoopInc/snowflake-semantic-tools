@@ -1,0 +1,56 @@
+# SQL Injection Attack Attempts
+# These should be detected and rejected
+
+snowflake_metrics:
+  # Attempt 1: Statement termination + DROP
+  - name: injection_drop_table
+    expr: "SUM(amount); DROP TABLE users; --"
+    tables:
+      - "{{ table('transactions') }}"
+    description: SQL injection attempt with DROP TABLE
+
+  # Attempt 2: Comment injection
+  - name: injection_comment
+    expr: "SUM(amount) /* malicious comment */ FROM other_table WHERE 1=1 --"
+    tables:
+      - "{{ table('transactions') }}"
+    description: SQL injection with comments
+
+  # Attempt 3: UNION-based injection
+  - name: injection_union
+    expr: "SUM(amount) UNION SELECT password FROM admin_users"
+    tables:
+      - "{{ table('transactions') }}"
+    description: SQL injection with UNION
+
+  # Attempt 4: Boolean-based blind injection
+  - name: injection_boolean_blind
+    expr: "SUM(CASE WHEN (SELECT 1 FROM admin WHERE username='admin' AND password LIKE 'a%') THEN amount ELSE 0 END)"
+    tables:
+      - "{{ table('transactions') }}"
+    description: Boolean-based blind SQL injection
+
+  # Attempt 5: Time-based blind injection
+  - name: injection_time_based
+    expr: "SUM(amount) + (SELECT CASE WHEN (1=1) THEN (SELECT COUNT(*) FROM large_table, large_table, large_table) ELSE 0 END)"
+    tables:
+      - "{{ table('transactions') }}"
+    description: Time-based blind injection
+
+  # Attempt 6: Stacked queries
+    expr: "SUM(amount); INSERT INTO audit_log VALUES ('hacked'); SELECT 1"
+    tables:
+      - "{{ table('transactions') }}"
+    description: Stacked query injection
+
+snowflake_filters:
+  # SQL injection in filter expression
+  - name: filter_injection
+    expr: "status = 'active' OR 1=1 --"
+    description: SQL injection in filter
+
+  # Dynamic SQL execution
+  - name: filter_dynamic_sql
+    expr: "EXECUTE IMMEDIATE 'SELECT * FROM sensitive_data'"
+    description: Dynamic SQL execution attempt
+

@@ -1,0 +1,34 @@
+version: 2
+
+models:
+  - name: test_invalid_column_type
+    description: Test model with invalid column_type value
+    meta:
+      sst:
+        cortex_searchable: true
+        database: analytics
+        schema: test
+        table: test_invalid_column_type
+        primary_key: id
+    
+    columns:
+      - name: id
+        description: Primary key
+        meta:
+          sst:
+            column_type: dimension
+            data_type: number
+      
+      - name: commitment_days
+        description: Number of days with typo in column_type
+        meta:
+          sst:
+            column_type: dimenson  # This should cause an error
+            data_type: number
+            
+      - name: valid_fact
+        description: Valid fact column
+        meta:
+          sst:
+            column_type: fact
+            data_type: number

@@ -1,0 +1,41 @@
+# Fixture: GOOD - Properly formatted template expressions
+# This file should PASS validation (no quoted templates)
+
+snowflake_metrics:
+  - name: valid_metric_unquoted
+    tables:
+      - {{ table('orders') }}
+    description: Metric with properly unquoted templates (VALID)
+    expr: |
+      SUM(CASE
+        WHEN {{ column('orders', 'status') }} = 'Active'
+          THEN {{ column('orders', 'quantity') }}
+        ELSE 0
+      END)
+
+  - name: valid_metric_with_literals
+    tables:
+      - {{ table('orders') }}
+    description: Metric with SQL string literals is fine (VALID)
+    expr: |
+      SUM(CASE
+        WHEN {{ column('orders', 'order_type') }} IN ('New Order', 'Upgrade Order')
+          AND {{ column('orders', 'status') }} != 'Closed Lost'
+          THEN {{ column('orders', 'quantity') }}
+        ELSE 0
+      END)
+
+  - name: valid_metric_composition
+    tables:
+      - {{ table('orders') }}
+    description: Metric using other metrics (VALID)
+    expr: |
+      {{ metric('total_orders') }} / NULLIF({{ metric('total_customers') }}, 0)
+
+snowflake_relationships:
+  - name: valid_relationship_unquoted
+    left_table: {{ table('orders') }}
+    right_table: {{ table('customers') }}
+    relationship_conditions:
+      - '{{ column(''orders'', ''customer_id'') }} = {{ column(''customers'', ''id'') }}'
+

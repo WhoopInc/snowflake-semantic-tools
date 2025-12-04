@@ -1,0 +1,20 @@
+semantic_views:
+  - name: large_view_with_many_tables
+    description: "View with many tables that might impact performance"
+    tables:
+      - "{{ table('orders') }}"
+      - "{{ table('users') }}"
+      - "{{ table('products') }}"
+      - "{{ table('categories') }}"
+      - "{{ table('suppliers') }}"
+      - "{{ table('inventory') }}"
+      - "{{ table('shipments') }}"
+      - "{{ table('payments') }}"
+      - "{{ table('refunds') }}"
+      - "{{ table('reviews') }}"
+      - "{{ table('wishlists') }}"
+      - "{{ table('coupons') }}"
+    metrics:
+      - total_revenue
+    dimensions:
+      - orders.created_at

@@ -1,0 +1,41 @@
+# SST Environment Variables Template
+# Copy this file to .env and fill in your actual values
+# 
+# IMPORTANT: This file contains sensitive credentials and should NEVER be committed to git
+# Ensure the .env file is in your dbt project's .gitignore
+#
+# CRITICAL: Do NOT use quotes around values - they will be included literally!
+# WRONG: SNOWFLAKE_USER='user@company.com'  (includes quotes in value)
+# RIGHT: SNOWFLAKE_USER=user@company.com    (correct format)
+
+# ============================================================================
+# Snowflake Connection Details (Required)
+# ============================================================================
+SNOWFLAKE_ACCOUNT=<YOUR_ACCOUNT>
+SNOWFLAKE_USER=<YOUR_EMAIL>
+# Note: SNOWFLAKE_USERNAME is also supported (for dbt compatibility)
+# If both are set, SNOWFLAKE_USER takes precedence
+SNOWFLAKE_WAREHOUSE=<YOUR_WAREHOUSE>
+SNOWFLAKE_ROLE=<YOUR_ROLE>
+
+# ============================================================================
+# Snowflake Authentication (Choose ONE method)
+# ============================================================================
+
+# Method 1: Browser SSO (RECOMMENDED for local development)
+# ─────────────────────────────────────────────────────────
+# Leave both SNOWFLAKE_PASSWORD and SNOWFLAKE_PRIVATE_KEY_PATH blank/commented
+# SST will automatically open your browser for SSO authentication (Okta/SAML/etc)
+#
+# No additional configuration needed - just leave the lines below commented out
+
+# Method 2: RSA Key Authentication (RECOMMENDED for CI/CD)
+# ─────────────────────────────────────────────────────────
+# Uncomment and set these for service accounts and automation:
+# SNOWFLAKE_PRIVATE_KEY_PATH=/path/to/snowflake_rsa_key.pem
+# SNOWFLAKE_PRIVATE_KEY_PASSWORD=my_key_password  # Optional, only if key is encrypted
+
+# Method 3: Password Authentication (NOT RECOMMENDED)
+# ────────────────────────────────────────────────────
+# Simple but less secure - only use for testing/development:
+# SNOWFLAKE_PASSWORD=<YOUR_PASSWORD>

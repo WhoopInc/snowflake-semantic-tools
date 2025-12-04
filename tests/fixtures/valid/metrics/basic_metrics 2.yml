@@ -1,0 +1,18 @@
+snowflake_metrics:
+  - name: total_revenue
+    expr: SUM(amount)
+    tables:
+      - "{{ table('transactions') }}"
+    description: Total revenue from all transactions
+    
+  - name: average_order_value
+    expr: AVG(order_total)
+    tables:
+      - "{{ table('orders') }}"
+    description: Average value per order
+    
+  - name: user_count
+    expr: COUNT(DISTINCT user_id)
+    tables:
+      - "{{ table('users') }}"
+    description: Count of unique users

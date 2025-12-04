@@ -1,0 +1,6 @@
+snowflake_metrics:
+  - name: revenue_missing_table
+    description: "Metric referencing non-existent table"
+    expr: "SUM({{ column('nonexistent_table', 'amount') }})"
+    tables:
+      - "{{ table('nonexistent_table') }}"

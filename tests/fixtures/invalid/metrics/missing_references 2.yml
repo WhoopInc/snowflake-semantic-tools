@@ -1,0 +1,12 @@
+snowflake_metrics:
+  # This metric references a table that doesn't exist
+  - name: phantom_metric
+    expr: SUM(amount)
+    entity_attribute: phantom
+    table_name: "{{ table('non_existent_table') }}"  # This table doesn't exist
+    
+  # This metric references a column that doesn't exist
+  - name: bad_column_metric
+    expr: "SUM({{ column('users', 'fake_column') }})"  # Column doesn't exist
+    entity_attribute: bad
+    table_name: "{{ table('users') }}"

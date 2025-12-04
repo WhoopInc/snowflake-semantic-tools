@@ -1,0 +1,12 @@
+snowflake_metrics:
+  - name: hardcoded_table_reference
+    description: "Metric with hardcoded table reference (should use template)"
+    expr: "SUM(analytics.production.orders.amount)"
+    tables:
+      - "{{ table('orders') }}"
+  
+  - name: hardcoded_column_reference
+    description: "Metric with hardcoded column reference"
+    expr: "COUNT(orders.user_id)"  # Should use {{ column('orders', 'user_id') }}
+    tables:
+      - "{{ table('orders') }}"

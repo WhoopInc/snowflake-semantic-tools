@@ -1,0 +1,266 @@
+# Comprehensive Required Field Validation
+# Tests that ALL required fields are properly validated for each component type
+
+# METRICS - Required: name, expr, tables
+snowflake_metrics:
+  # Missing name
+  - expr: "SUM(amount)"
+    tables:
+      - "{{ table('transactions') }}"
+    description: Metric missing name field
+  
+  # Missing expr
+  - name: missing_expr
+    tables:
+      - "{{ table('transactions') }}"
+    description: Metric missing expr field
+  
+  # Missing tables
+  - name: missing_tables
+    expr: "SUM(amount)"
+    description: Metric missing tables field
+  
+  # Empty name
+  - name: ""
+    expr: "SUM(amount)"
+    tables:
+      - "{{ table('transactions') }}"
+    description: Metric with empty name
+  
+  # Empty expr
+  - name: empty_expr
+    expr: ""
+    tables:
+      - "{{ table('transactions') }}"
+    description: Metric with empty expr
+  
+  # Empty tables list
+  - name: empty_tables_list
+    expr: "SUM(amount)"
+    tables: []
+    description: Metric with empty tables list
+  
+  # Tables as string instead of list
+  - name: tables_wrong_type
+    expr: "SUM(amount)"
+    tables: "{{ table('transactions') }}"
+    description: Metric with tables as string instead of list
+  
+  # Null values
+  - name: null_expr
+    expr: null
+    tables:
+      - "{{ table('transactions') }}"
+    description: Metric with null expr
+  
+  # Just whitespace
+  - name: whitespace_expr
+    expr: "   "
+    tables:
+      - "{{ table('transactions') }}"
+    description: Metric with whitespace-only expr
+
+# RELATIONSHIPS - Required: name, left_table, right_table, join_type, relationship_type, relationship_columns
+snowflake_relationships:
+  # Missing name
+  - left_table: "{{ table('orders') }}"
+    right_table: "{{ table('users') }}"
+    join_type: left_outer
+    relationship_type: many_to_one
+    relationship_columns:
+      - left_column: "{{ column('orders', 'user_id') }}"
+        right_column: "{{ column('users', 'id') }}"
+  
+  # Missing left_table
+  - name: missing_left_table
+    right_table: "{{ table('users') }}"
+    join_type: left_outer
+    relationship_type: many_to_one
+    relationship_columns:
+      - left_column: "{{ column('orders', 'user_id') }}"
+        right_column: "{{ column('users', 'id') }}"
+  
+  # Missing right_table
+  - name: missing_right_table
+    left_table: "{{ table('orders') }}"
+    join_type: left_outer
+    relationship_type: many_to_one
+    relationship_columns:
+      - left_column: "{{ column('orders', 'user_id') }}"
+        right_column: "{{ column('users', 'id') }}"
+  
+  # Missing join_type
+  - name: missing_join_type
+    left_table: "{{ table('orders') }}"
+    right_table: "{{ table('users') }}"
+    relationship_type: many_to_one
+    relationship_columns:
+      - left_column: "{{ column('orders', 'user_id') }}"
+        right_column: "{{ column('users', 'id') }}"
+  
+  # Missing relationship_type
+  - name: missing_relationship_type
+    left_table: "{{ table('orders') }}"
+    right_table: "{{ table('users') }}"
+    join_type: left_outer
+    relationship_columns:
+      - left_column: "{{ column('orders', 'user_id') }}"
+        right_column: "{{ column('users', 'id') }}"
+  
+  # Missing relationship_columns
+  - name: missing_relationship_columns
+    left_table: "{{ table('orders') }}"
+    right_table: "{{ table('users') }}"
+    join_type: left_outer
+    relationship_type: many_to_one
+  
+  # Empty relationship_columns list
+  - name: empty_relationship_columns
+    left_table: "{{ table('orders') }}"
+    right_table: "{{ table('users') }}"
+    join_type: left_outer
+    relationship_type: many_to_one
+    relationship_columns: []
+  
+  # Missing left_column in mapping
+  - name: missing_left_column
+    left_table: "{{ table('orders') }}"
+    right_table: "{{ table('users') }}"
+    join_type: left_outer
+    relationship_type: many_to_one
+    relationship_columns:
+      - right_column: "{{ column('users', 'id') }}"
+  
+  # Missing right_column in mapping
+  - name: missing_right_column
+    left_table: "{{ table('orders') }}"
+    right_table: "{{ table('users') }}"
+    join_type: left_outer
+    relationship_type: many_to_one
+    relationship_columns:
+      - left_column: "{{ column('orders', 'user_id') }}"
+  
+  # Invalid join_type
+  - name: invalid_join_type
+    left_table: "{{ table('orders') }}"
+    right_table: "{{ table('users') }}"
+    join_type: inner  # Should be one of: inner, left_outer, right_outer, full_outer
+    relationship_type: many_to_one
+    relationship_columns:
+      - left_column: "{{ column('orders', 'user_id') }}"
+        right_column: "{{ column('users', 'id') }}"
+  
+  # Invalid relationship_type
+  - name: invalid_relationship_type
+    left_table: "{{ table('orders') }}"
+    right_table: "{{ table('users') }}"
+    join_type: left_outer
+    relationship_type: one-to-many  # Should be: one_to_one, one_to_many, many_to_one, many_to_many
+    relationship_columns:
+      - left_column: "{{ column('orders', 'user_id') }}"
+        right_column: "{{ column('users', 'id') }}"
+
+# FILTERS - Required: name, expr
+snowflake_filters:
+  # Missing name
+  - expr: "status = 'active'"
+    description: Filter missing name
+  
+  # Missing expr
+  - name: missing_expr
+    description: Filter missing expr
+  
+  # Empty name
+  - name: ""
+    expr: "status = 'active'"
+    description: Filter with empty name
+  
+  # Empty expr
+  - name: empty_expr
+    expr: ""
+    description: Filter with empty expr
+  
+  # Null expr
+  - name: null_expr
+    expr: null
+    description: Filter with null expr
+
+# VERIFIED QUERIES - Required: name, sql, tables
+snowflake_verified_queries:
+  # Missing name
+  - sql: "SELECT * FROM transactions"
+    tables:
+      - "{{ table('transactions') }}"
+    description: Query missing name
+  
+  # Missing sql
+  - name: missing_sql
+    tables:
+      - "{{ table('transactions') }}"
+    description: Query missing sql
+  
+  # Missing tables
+  - name: missing_tables
+    sql: "SELECT * FROM transactions"
+    description: Query missing tables
+  
+  # Empty sql
+  - name: empty_sql
+    sql: ""
+    tables:
+      - "{{ table('transactions') }}"
+    description: Query with empty sql
+  
+  # Empty tables list
+  - name: empty_tables_list
+    sql: "SELECT * FROM transactions"
+    tables: []
+    description: Query with empty tables list
+
+# CUSTOM INSTRUCTIONS - Required: name, AND (sql_generation OR question_categorization)
+snowflake_custom_instructions:
+  # Missing name
+  - sql_generation: "Use fiscal calendar"
+    description: Instruction missing name
+  
+  # Missing both sql_generation and question_categorization
+  - name: missing_both
+    description: Instruction missing both required fields
+  
+  # Empty sql_generation
+  - name: empty_sql_generation
+    sql_generation: ""
+    description: Instruction with empty sql_generation
+  
+  # Null values
+  - name: null_sql_generation
+    sql_generation: null
+    description: Instruction with null sql_generation
+
+# SEMANTIC VIEWS - Required: name, tables
+semantic_views:
+  # Missing name
+  - tables:
+      - "{{ table('transactions') }}"
+    description: View missing name
+  
+  # Missing tables
+  - name: missing_tables
+    description: View missing tables
+  
+  # Empty name
+  - name: ""
+    tables:
+      - "{{ table('transactions') }}"
+    description: View with empty name
+  
+  # Empty tables list
+  - name: empty_tables_list
+    tables: []
+    description: View with empty tables list
+  
+  # Tables as string instead of list
+  - name: tables_wrong_type
+    tables: "{{ table('transactions') }}"
+    description: View with tables as string
+

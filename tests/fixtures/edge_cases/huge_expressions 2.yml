@@ -1,0 +1,72 @@
+snowflake_metrics:
+  # Extremely long and complex expressions
+  - name: massive_calculation
+    expr: |
+      SUM(CASE 
+        WHEN {{ column('transactions', 'type') }} = 'sale' AND {{ column('transactions', 'status') }} = 'completed' AND {{ column('transactions', 'region') }} IN ('US', 'CA', 'MX')
+          THEN {{ column('transactions', 'amount') }} * 1.1 * (1 + {{ column('transactions', 'tax_rate') }}) * COALESCE({{ column('transactions', 'discount_multiplier') }}, 1)
+        WHEN {{ column('transactions', 'type') }} = 'refund' AND {{ column('transactions', 'status') }} = 'processed'
+          THEN -1 * {{ column('transactions', 'amount') }} * 0.95
+        WHEN {{ column('transactions', 'type') }} = 'exchange' 
+          THEN ({{ column('transactions', 'amount') }} - {{ column('transactions', 'original_amount') }}) * {{ column('transactions', 'exchange_rate') }}
+        ELSE 0
+      END) OVER (
+        PARTITION BY {{ column('transactions', 'customer_id') }}, {{ column('transactions', 'product_category') }}
+        ORDER BY {{ column('transactions', 'transaction_date') }}
+        ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+      ) / NULLIF(
+        COUNT(DISTINCT {{ column('transactions', 'transaction_id') }}) OVER (
+          PARTITION BY {{ column('transactions', 'customer_id') }}
+          ORDER BY {{ column('transactions', 'transaction_date') }}
+          RANGE BETWEEN INTERVAL '30' DAY PRECEDING AND CURRENT ROW
+        ), 0
+      )
+    entity_attribute: complex_metric
+    table_name: "{{ table('transactions') }}"
+    description: Extremely complex calculation with window functions
+    
+  - name: nested_subqueries
+    expr: |
+      (
+        SELECT COUNT(*) FROM (
+          SELECT DISTINCT {{ column('t1', 'user_id') }}
+          FROM {{ table('transactions') }} t1
+          WHERE EXISTS (
+            SELECT 1 FROM {{ table('orders') }} o
+            WHERE o.user_id = t1.user_id
+            AND o.order_date > (
+              SELECT MAX(order_date) - INTERVAL '30' DAY
+              FROM {{ table('orders') }} o2
+              WHERE o2.user_id = o.user_id
+            )
+          )
+          AND {{ column('t1', 'amount') }} > (
+            SELECT AVG({{ column('t2', 'amount') }})
+            FROM {{ table('transactions') }} t2
+            WHERE {{ column('t2', 'user_id') }} = {{ column('t1', 'user_id') }}
+          )
+        )
+      )
+    entity_attribute: nested_query
+    table_name: "{{ table('transactions') }}"
+    description: Deeply nested subqueries
+
+  - name: massive_case_statement
+    expr: |
+      CASE 
+        WHEN {{ column('users', 'age') }} < 18 THEN 'minor'
+        WHEN {{ column('users', 'age') }} >= 18 AND {{ column('users', 'age') }} < 25 THEN 'young_adult'
+        WHEN {{ column('users', 'age') }} >= 25 AND {{ column('users', 'age') }} < 35 THEN 'adult'
+        WHEN {{ column('users', 'age') }} >= 35 AND {{ column('users', 'age') }} < 45 THEN 'middle_age_1'
+        WHEN {{ column('users', 'age') }} >= 45 AND {{ column('users', 'age') }} < 55 THEN 'middle_age_2'
+        WHEN {{ column('users', 'age') }} >= 55 AND {{ column('users', 'age') }} < 65 THEN 'pre_senior'
+        WHEN {{ column('users', 'age') }} >= 65 AND {{ column('users', 'age') }} < 75 THEN 'senior'
+        WHEN {{ column('users', 'age') }} >= 75 AND {{ column('users', 'age') }} < 85 THEN 'elder'
+        WHEN {{ column('users', 'age') }} >= 85 AND {{ column('users', 'age') }} < 95 THEN 'very_elder'
+        WHEN {{ column('users', 'age') }} >= 95 AND {{ column('users', 'age') }} < 100 THEN 'near_century'
+        WHEN {{ column('users', 'age') }} >= 100 THEN 'centenarian'
+        ELSE 'unknown'
+      END
+    entity_attribute: age_category
+    table_name: "{{ table('users') }}"
+    description: Massive CASE statement with many conditions
