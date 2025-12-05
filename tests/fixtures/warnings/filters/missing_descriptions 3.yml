@@ -1,6 +1,0 @@
-snowflake_filters:
-  - name: active_users_filter
-    # Missing description - should generate warning
-    expr: "{{ column('users', 'status') }} = 'active'"
-    tables:
-      - "{{ table('users') }}"
