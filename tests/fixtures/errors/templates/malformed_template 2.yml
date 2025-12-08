@@ -1,6 +1,0 @@
-snowflake_metrics:
-  - name: malformed_template
-    description: "Metric with malformed template syntax"
-    expr: "COUNT(*)"
-    tables:
-      - "{{ table('users' }}"  # Missing closing parenthesis

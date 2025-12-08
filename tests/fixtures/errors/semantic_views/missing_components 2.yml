@@ -1,8 +1,0 @@
-semantic_views:
-  - name: incomplete_view
-    description: "View missing required components"
-    # Missing tables - should cause error
-    metrics:
-      - nonexistent_metric
-    dimensions:
-      - invalid.column
