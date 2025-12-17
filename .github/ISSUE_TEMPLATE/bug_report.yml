@@ -1,0 +1,94 @@
+name: Bug Report
+description: Report a bug or unexpected behavior in SST
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report a bug! Please fill out the sections below to help us diagnose and fix the issue.
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Problem Description
+      description: A clear and concise description of what the bug is
+      placeholder: "Example: sst deploy fails with 'Table not found' error when creating semantic views"
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected Behavior
+      description: What you expected to happen
+      placeholder: "Example: SST should create semantic views successfully after dbt models are materialized"
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual Behavior
+      description: What actually happened (include error messages)
+      placeholder: |
+        Example:
+        ```
+        Error: Table 'NEW_SALES_TABLE' not found in database 'ANALYTICS'
+        Please ensure the table exists and metadata is properly extracted.
+        ```
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to Reproduce
+      description: Minimal steps to reproduce the issue
+      placeholder: |
+        1. Create new dbt model `models/new_sales_table.sql`
+        2. Add semantic view YAML with `meta.sst` block
+        3. Run `sst deploy --db ANALYTICS --schema SEMANTIC_VIEWS`
+        4. See error
+    validations:
+      required: true
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Your environment details
+      value: |
+        - SST version: [e.g., 1.4.447]
+        - Python version: [e.g., 3.11.9]
+        - dbt version: [e.g., 1.7.0]
+        - Snowflake warehouse: [e.g., Snowflake, Databricks]
+        - Operating System: [e.g., macOS 14, Ubuntu 22.04]
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant Logs
+      description: Any relevant log output (use verbose mode `--verbose` if available)
+      placeholder: "Paste relevant logs here"
+      render: shell
+
+  - type: textarea
+    id: additional
+    attributes:
+      label: Additional Context
+      description: Any other context about the problem (screenshots, related issues, workarounds tried, etc.)
+
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Pre-submission Checklist
+      options:
+        - label: I have searched existing issues to avoid duplicates
+          required: true
+        - label: I have included all required environment details
+          required: true
+        - label: I have provided minimal reproduction steps
+          required: true

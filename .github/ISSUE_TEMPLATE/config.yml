@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Ask a Question
+    url: https://github.com/WhoopInc/snowflake-semantic-tools/discussions
+    about: Ask questions or discuss ideas with the community
+  - name: Documentation
+    url: https://github.com/WhoopInc/snowflake-semantic-tools/tree/main/docs
+    about: Browse existing documentation

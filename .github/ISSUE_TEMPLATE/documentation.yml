@@ -1,0 +1,116 @@
+name: Documentation Issue
+description: Report missing, incorrect, or unclear documentation
+title: "[Docs]: "
+labels: ["documentation"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for helping improve SST documentation! Clear docs help everyone.
+
+  - type: dropdown
+    id: doc-type
+    attributes:
+      label: Documentation Type
+      description: What type of documentation needs attention?
+      options:
+        - Missing documentation
+        - Incorrect/outdated information
+        - Unclear explanation
+        - Example needed
+        - Typo/formatting issue
+    validations:
+      required: true
+
+  - type: textarea
+    id: location
+    attributes:
+      label: Documentation Location
+      description: Where is the documentation issue? (file path, URL, section name)
+      placeholder: |
+        Example:
+        - File: docs/getting-started.md, Section "Installation"
+        - README.md, Quick Start section
+        - CLI output for `sst deploy --help`
+    validations:
+      required: true
+
+  - type: textarea
+    id: issue
+    attributes:
+      label: What's Wrong or Missing?
+      description: Describe the documentation issue clearly
+      placeholder: |
+        Example:
+        The deployment guide doesn't explain that SST must run after dbt in CI/CD pipelines. 
+        Users encounter "Table not found" errors when SST runs before dbt completes.
+    validations:
+      required: true
+
+  - type: textarea
+    id: suggestion
+    attributes:
+      label: Suggested Improvement
+      description: How should the documentation be improved?
+      placeholder: |
+        Example:
+        Add a new section "CI/CD Orchestration Requirements" explaining:
+        1. SST validates physical tables exist before creating semantic views
+        2. dbt must run before SST in deployment pipelines
+        3. Example configurations for CircleCI, GitHub Actions
+        4. Common "Table not found" error troubleshooting
+
+  - type: textarea
+    id: example
+    attributes:
+      label: Proposed Content (Optional)
+      description: Draft the documentation content you'd like to see
+      placeholder: |
+        ```markdown
+        ## CI/CD Pipeline Orchestration
+        
+        SST validates that physical tables exist in Snowflake before creating semantic views.
+        If you deploy new dbt models and semantic views together, ensure dbt runs first.
+        
+        ### CircleCI Example
+        ```yaml
+        workflows:
+          data-pipeline:
+            jobs:
+              - dbt-build
+              - sst-deploy:
+                  requires:
+                    - dbt-build  # SST waits for dbt
+        ```
+        ```
+
+  - type: dropdown
+    id: audience
+    attributes:
+      label: Target Audience
+      description: Who is this documentation for?
+      options:
+        - New users (getting started)
+        - Experienced users (advanced features)
+        - Contributors (development)
+        - All users
+    validations:
+      required: true
+
+  - type: textarea
+    id: additional
+    attributes:
+      label: Additional Context
+      description: Any other relevant information
+
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Pre-submission Checklist
+      options:
+        - label: I have searched existing issues to avoid duplicates
+          required: true
+        - label: I have clearly identified what needs to be improved
+          required: true
+        - label: I have suggested a concrete improvement
+          required: true
