@@ -5,7 +5,7 @@ build-backend = "poetry.core.masonry.api"
 [tool.poetry]
 name = "snowflake-semantic-tools"
 version = "0.1.0"
-description = "Custom semantic data modeling for Snowflake - transforming dbt models into a semantic layer for BI tools and AI-powered analytics"
+description = "dbt extension for managing Snowflake Semantic Views and Cortex Analyst semantic models"
 authors = ["Matt Luizzi <matthew.luizzi@whoop.com>"]
 license = "Apache-2.0"
 repository = "https://github.com/WhoopInc/snowflake-semantic-tools"
