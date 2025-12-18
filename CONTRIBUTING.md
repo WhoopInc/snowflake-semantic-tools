@@ -12,10 +12,122 @@ This project is maintained by **Matt Luizzi** ([@mluizzi-whoop](https://github.c
 
 ### Reporting Issues
 
-- Search existing issues before creating a new one
-- Include SST version, Python version, and Snowflake details
-- Provide minimal reproduction steps
-- Share relevant error messages and logs
+We use GitHub issue templates to help structure your report. When you [create a new issue](https://github.com/WhoopInc/snowflake-semantic-tools/issues/new/choose), you'll be able to choose from:
+
+- **Bug Report** - Report unexpected behavior or errors
+- **Feature Request** - Suggest new features or enhancements
+- **Documentation Issue** - Report missing or unclear documentation
+
+#### What Makes a Great Issue?
+
+**Great issues help us help you faster.** Here's what makes an issue effective:
+
+##### 1. Clear Problem Statement
+
+Describe what's wrong or what you need. Be specific.
+
+**Good**: "SST deployment fails with 'Table not found' error when creating semantic views for newly added dbt models in CI/CD"
+
+**Poor**: "SST doesn't work"
+
+##### 2. Expected vs Actual Behavior
+
+Show what you expected versus what actually happened.
+
+**Good**:
+```
+Expected: SST should create semantic views after dbt models are materialized
+Actual: SST fails with error "Table 'NEW_TABLE' not found in database 'ANALYTICS'"
+```
+
+##### 3. Reproduction Steps
+
+Provide minimal, step-by-step instructions to reproduce the issue.
+
+**Good**:
+```
+1. Create new dbt model: models/sales/new_table.sql
+2. Add semantic view YAML with meta.sst block
+3. Run `sst deploy --db ANALYTICS --schema SEMANTIC_VIEWS`
+4. Observe error: "Table 'NEW_TABLE' not found"
+```
+
+##### 4. Environment Details
+
+Always include:
+- SST version (`sst --version`)
+- Python version (`python --version`)
+- dbt version (`dbt --version`)
+- Operating system
+- Snowflake/warehouse type
+
+##### 5. Relevant Context
+
+Include logs, error messages, code snippets, or configuration files. Use verbose mode (`--verbose`) when available.
+
+```bash
+# Get detailed output
+sst deploy --db ANALYTICS --schema SEMANTIC_VIEWS --verbose
+```
+
+#### Issue Quality Examples
+
+**Bug Report Example:**
+
+> **Title**: [Bug] SST fails when semantic views reference tables not yet materialized in CI/CD
+> 
+> **Problem**: When dbt models and semantic views are deployed together in CI/CD, SST fails if it runs before dbt completes
+> 
+> **Expected**: SST should either wait or gracefully handle missing tables
+> 
+> **Actual**: Deployment fails with "Table 'TABLE_NAME' not found"
+> 
+> **Steps to Reproduce**:
+> 1. Create PR with new dbt model and semantic view
+> 2. Merge PR (triggers CI/CD)
+> 3. SST and dbt run in parallel
+> 4. SST fails with table not found error
+> 
+> **Environment**: SST 1.4.447, Python 3.11, dbt 1.7, CircleCI
+> 
+> **Root Cause**: No job dependency between dbt and SST workflows in CircleCI config
+
+**Feature Request Example:**
+
+> **Title**: [Feature] Add graceful handling for missing tables during deployment
+> 
+> **Problem**: SST fails when tables don't exist yet, blocking CI/CD deployments
+> 
+> **Proposed Solution**: Add `--allow-missing-tables` flag to skip semantic views with missing tables instead of failing
+> 
+> **Alternatives**: Configure CI/CD orchestration (requires external changes)
+> 
+> **Impact**: Benefits all users running SST in CI/CD pipelines
+> 
+> **Example Usage**:
+> ```bash
+> sst deploy --db ANALYTICS --schema SEMANTIC_VIEWS --allow-missing-tables
+> ```
+
+**Documentation Issue Example:**
+
+> **Title**: [Docs] Missing CI/CD orchestration guidance
+> 
+> **Location**: docs/deployment-guide.md
+> 
+> **Issue**: No documentation explaining SST must run after dbt in CI/CD
+> 
+> **Suggested Improvement**: Add section on CI/CD pipeline orchestration with CircleCI and GitHub Actions examples
+> 
+> **Target Audience**: All users deploying via CI/CD
+
+#### Before Submitting
+
+- [ ] Search existing issues to avoid duplicates
+- [ ] Use the appropriate issue template
+- [ ] Include all required information
+- [ ] Provide clear, concise descriptions
+- [ ] Add relevant labels if you can
 
 ### Proposing Changes
 
