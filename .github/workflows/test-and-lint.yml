@@ -1,0 +1,55 @@
+name: Test and Lint
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    # Run on all pull requests regardless of target branch
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Run tests and linting
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Poetry
+        uses: snok/install-poetry@v1
+        with:
+          version: latest
+          virtualenvs-create: true
+          virtualenvs-in-project: true
+
+      - name: Load cached venv
+        id: cached-poetry-dependencies
+        uses: actions/cache@v4
+        with:
+          path: .venv
+          key: venv-${{ runner.os }}-3.11-${{ hashFiles('**/poetry.lock') }}
+
+      - name: Install dependencies
+        run: poetry install --no-interaction --no-root
+
+      - name: Install project
+        run: poetry install --no-interaction
+
+      - name: Run tests
+        run: poetry run pytest tests/unit/ -v
+
+      - name: Check code formatting with Black
+        run: poetry run black --check snowflake_semantic_tools/
+
+      - name: Check import sorting with isort
+        run: poetry run isort --check snowflake_semantic_tools/
+

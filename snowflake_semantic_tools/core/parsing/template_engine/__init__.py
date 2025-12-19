@@ -3,7 +3,7 @@ Template Engine for Snowflake Semantic Tools
 
 Handles resolution of template references in YAML content:
 - {{ table('name') }} - Table references
-- {{ column('table', 'column') }} - Column references  
+- {{ column('table', 'column') }} - Column references
 - {{ metric('name') }} - Metric composition
 - {{ custom_instructions('name') }} - Custom instruction references
 """

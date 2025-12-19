@@ -19,9 +19,9 @@ Before installing SST, ensure you have:
 
 ### Step 1: Install SST
 
-Choose your installation method:
+**Recommended for users:**
 
-**With Poetry (recommended for dbt projects using Poetry):**
+**With Poetry (if your dbt project uses Poetry):**
 ```bash
 cd your-dbt-project
 poetry add snowflake-semantic-tools
@@ -32,9 +32,11 @@ poetry add snowflake-semantic-tools
 pip install snowflake-semantic-tools
 ```
 
-**From source (for development):**
+**For development only (contributors):**
+
+If you're contributing to the project or need to modify the source code:
 ```bash
-git clone https://github.com/YOUR_ORG/snowflake-semantic-tools.git
+git clone https://github.com/WhoopInc/snowflake-semantic-tools.git
 cd snowflake-semantic-tools
 poetry install
 ```
@@ -450,4 +452,4 @@ Now that SST is set up:
 
 **You're ready to use Snowflake Semantic Tools!**
 
-For questions or issues, see the [GitHub repository](https://github.com/YOUR_ORG/snowflake-semantic-tools).
+For questions or issues, see the [GitHub repository](https://github.com/WhoopInc/snowflake-semantic-tools).
