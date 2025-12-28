@@ -46,6 +46,10 @@ def extract_table_info(
         primary_keys = extract_primary_key(sst_meta)
         primary_keys_upper = [pk.upper() if isinstance(pk, str) else pk for pk in primary_keys]
 
+        # Extract unique keys and apply upper case formatting
+        unique_keys = extract_unique_keys(sst_meta)
+        unique_keys_upper = [uk.upper() if isinstance(uk, str) else uk for uk in unique_keys]
+
         # Database and Schema Resolution:
         # ONLY source: manifest.json (dbt's compiled output)
         # The --database flag (target_database) is ONLY for defer mechanism (environment override)
@@ -92,6 +96,7 @@ def extract_table_info(
             "schema": schema.upper() if schema else "",
             "description": description,
             "primary_key": primary_keys_upper,
+            "unique_keys": unique_keys_upper,
             "synonyms": sst_meta.get("synonyms", []),
             "model_name": name,  # Store the original model name
             "file_path": str(file_path),  # Store the file path for validation
@@ -131,6 +136,35 @@ def extract_primary_key(sst_meta: Dict[str, Any]) -> List[str]:
         elif isinstance(pk_from_sst, list):
             # Ensure each item is stripped of whitespace
             return [str(key).strip() for key in pk_from_sst]
+    return []
+
+
+def extract_unique_keys(sst_meta: Dict[str, Any]) -> List[str]:
+    """
+    Extract unique key information from SST metadata.
+
+    Handles both list format and comma-separated string format:
+    - unique_keys: [customer_id, ordered_at]
+    - unique_keys: "customer_id, ordered_at"
+
+    Args:
+        sst_meta: SST metadata dictionary (meta.sst)
+
+    Returns:
+        List of unique key column names
+    """
+    uk_from_sst = sst_meta.get("unique_keys")
+    if uk_from_sst:
+        if isinstance(uk_from_sst, str):
+            # Check if it's a comma-separated string
+            if "," in uk_from_sst:
+                # Split on comma and strip whitespace from each key
+                return [key.strip() for key in uk_from_sst.split(",")]
+            else:
+                return [uk_from_sst.strip()]
+        elif isinstance(uk_from_sst, list):
+            # Ensure each item is stripped of whitespace
+            return [str(key).strip() for key in uk_from_sst]
     return []
 
 
