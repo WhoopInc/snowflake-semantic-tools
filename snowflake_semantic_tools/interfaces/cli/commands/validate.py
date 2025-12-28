@@ -178,8 +178,6 @@ def validate(dbt, semantic, strict, verbose, exclude, dbt_compile):
             exclude_dirs=exclude_dirs if exclude_dirs else None,
         )
 
-        import time
-
         val_start = time.time()
         result = service.execute(config, verbose=verbose)
         val_duration = time.time() - val_start

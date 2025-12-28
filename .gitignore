@@ -183,7 +183,7 @@ sample_data/
 
 # Application specific
 staging_tables_backup/
- 
- # Development files
+
+# Development files
 api_test.py
 planning/*
