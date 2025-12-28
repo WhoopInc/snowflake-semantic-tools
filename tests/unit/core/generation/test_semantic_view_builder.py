@@ -200,34 +200,24 @@ class TestSemanticViewBuilderUniqueKeys:
         )
         return SemanticViewBuilder(config)
     
-    @pytest.fixture
-    def mock_metadata_manager(self, monkeypatch):
-        """Mock metadata manager to return test data."""
-        class MockMetadataManager:
-            def get_tables_by_names(self, semantic_view_name, table_names):
-                """Return test table data with unique_keys."""
-                if 'orders' in table_names:
-                    return [
-                        {
-                            'TABLE_NAME': 'ORDERS',
-                            'DATABASE': 'TEST_DB',
-                            'SCHEMA': 'TEST_SCHEMA',
-                            'PRIMARY_KEY': '["order_id"]',
-                            'UNIQUE_KEYS': '["customer_id", "ordered_at"]',
-                            'DESCRIPTION': 'Orders table with ASOF join support',
-                            'SYNONYMS': None
-                        }
-                    ]
-                return []
-        
-        return MockMetadataManager()
-    
-    def test_unique_keys_sql_generation(self, builder, mock_metadata_manager, monkeypatch):
+    def test_unique_keys_sql_generation(self, builder, monkeypatch):
         """Test that UNIQUE constraint is generated correctly in SQL."""
-        monkeypatch.setattr(builder, 'metadata_manager', mock_metadata_manager)
+        # Mock _get_table_info to return test data with unique_keys
+        def mock_get_table_info(conn, table_name):
+            return {
+                'TABLE_NAME': 'ORDERS',
+                'DATABASE': 'TEST_DB',
+                'SCHEMA': 'TEST_SCHEMA',
+                'PRIMARY_KEY': '["order_id"]',
+                'UNIQUE_KEYS': '["customer_id", "ordered_at"]',
+                'DESCRIPTION': 'Orders table with ASOF join support',
+                'SYNONYMS': None
+            }
         
-        # Generate table definitions
-        table_definitions = builder._generate_table_definitions('test_view', ['orders'])
+        monkeypatch.setattr(builder, '_get_table_info', mock_get_table_info)
+        
+        # Generate table definitions (conn=None since we're mocking _get_table_info)
+        table_definitions = builder._build_tables_clause(None, ['orders'])
         
         # Verify output contains both PRIMARY KEY and UNIQUE
         assert 'PRIMARY KEY (ORDER_ID)' in table_definitions
@@ -240,23 +230,20 @@ class TestSemanticViewBuilderUniqueKeys:
     
     def test_unique_keys_without_primary_key(self, builder, monkeypatch):
         """Test UNIQUE constraint works even without PRIMARY KEY."""
-        class MockMetadataManager:
-            def get_tables_by_names(self, semantic_view_name, table_names):
-                return [
-                    {
-                        'TABLE_NAME': 'CUSTOMERS',
-                        'DATABASE': 'TEST_DB',
-                        'SCHEMA': 'TEST_SCHEMA',
-                        'PRIMARY_KEY': None,
-                        'UNIQUE_KEYS': '["email", "phone"]',
-                        'DESCRIPTION': 'Customers table',
-                        'SYNONYMS': None
-                    }
-                ]
+        def mock_get_table_info(conn, table_name):
+            return {
+                'TABLE_NAME': 'CUSTOMERS',
+                'DATABASE': 'TEST_DB',
+                'SCHEMA': 'TEST_SCHEMA',
+                'PRIMARY_KEY': None,
+                'UNIQUE_KEYS': '["email", "phone"]',
+                'DESCRIPTION': 'Customers table',
+                'SYNONYMS': None
+            }
         
-        monkeypatch.setattr(builder, 'metadata_manager', MockMetadataManager())
+        monkeypatch.setattr(builder, '_get_table_info', mock_get_table_info)
         
-        table_definitions = builder._generate_table_definitions('test_view', ['customers'])
+        table_definitions = builder._build_tables_clause(None, ['customers'])
         
         # Should have UNIQUE but not PRIMARY KEY
         assert 'UNIQUE (EMAIL, PHONE)' in table_definitions
@@ -264,23 +251,20 @@ class TestSemanticViewBuilderUniqueKeys:
     
     def test_unique_keys_none_or_empty(self, builder, monkeypatch):
         """Test that missing or empty unique_keys doesn't break generation."""
-        class MockMetadataManager:
-            def get_tables_by_names(self, semantic_view_name, table_names):
-                return [
-                    {
-                        'TABLE_NAME': 'PRODUCTS',
-                        'DATABASE': 'TEST_DB',
-                        'SCHEMA': 'TEST_SCHEMA',
-                        'PRIMARY_KEY': '["product_id"]',
-                        'UNIQUE_KEYS': None,  # No unique keys
-                        'DESCRIPTION': 'Products table',
-                        'SYNONYMS': None
-                    }
-                ]
+        def mock_get_table_info(conn, table_name):
+            return {
+                'TABLE_NAME': 'PRODUCTS',
+                'DATABASE': 'TEST_DB',
+                'SCHEMA': 'TEST_SCHEMA',
+                'PRIMARY_KEY': '["product_id"]',
+                'UNIQUE_KEYS': None,  # No unique keys
+                'DESCRIPTION': 'Products table',
+                'SYNONYMS': None
+            }
         
-        monkeypatch.setattr(builder, 'metadata_manager', MockMetadataManager())
+        monkeypatch.setattr(builder, '_get_table_info', mock_get_table_info)
         
-        table_definitions = builder._generate_table_definitions('test_view', ['products'])
+        table_definitions = builder._build_tables_clause(None, ['products'])
         
         # Should have PRIMARY KEY but not UNIQUE
         assert 'PRIMARY KEY (PRODUCT_ID)' in table_definitions

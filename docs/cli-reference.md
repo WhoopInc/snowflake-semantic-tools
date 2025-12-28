@@ -351,7 +351,7 @@ The format command applies the following transformations:
 **List Formatting:**
 - Empty lists → `[]` (inline format, clean placeholder)
 - Lists with items → Multi-line format (one item per line)
-- Applies to: `synonyms`, `sample_values`, `primary_key`
+- Applies to: `synonyms`, `sample_values`, `primary_key`, `unique_keys`
 
 **Character Sanitization (with `--sanitize` flag):**
 - **Synonyms:** Removes apostrophes, quotes (SQL-safe for `WITH SYNONYMS` clause)

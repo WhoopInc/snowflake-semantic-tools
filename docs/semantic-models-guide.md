@@ -53,6 +53,82 @@ snowflake_semantic_models/
 
 Files are discovered recursively - organize however makes sense for your domain.
 
+## dbt Model Configuration
+
+Your dbt model YAML files need SST metadata in the `meta.sst` section.
+
+### Table-Level Metadata
+
+```yaml
+models:
+  - name: orders
+    description: Order fact table with one row per order
+    meta:
+      sst:
+        primary_key: order_id                      # Required: unique identifier
+        unique_keys: [customer_id, ordered_at]     # Optional: for ASOF relationships
+        cortex_searchable: true                    # Optional: include in Dynamic SV Generation (future feature)
+        synonyms:                                  # Optional: alternative names
+          - purchases
+          - transactions
+```
+
+### Table Metadata Fields
+
+| Field | Required | Purpose |
+|-------|----------|---------|
+| `primary_key` | Yes | Column(s) that uniquely identify each row. Used in semantic view `PRIMARY KEY` clause. |
+| `unique_keys` | No | Column(s) forming a unique constraint. **Required for ASOF relationships** - Snowflake needs this to validate temporal joins. |
+| `cortex_searchable` | No | If `true`, table is included in Cortex Search for dynamic SV generation. Default: `false` |
+| `synonyms` | No | Alternative names users might use to refer to this table |
+
+### Column-Level Metadata
+
+```yaml
+    columns:
+      - name: order_id
+        description: Unique order identifier
+        meta:
+          sst:
+            column_type: dimension    # Required: dimension, fact, or time_dimension
+            data_type: TEXT           # Required: Snowflake data type
+            synonyms: []              # Optional: alternative column names
+            sample_values:            # Optional: example values for AI context
+              - "ORD-001"
+              - "ORD-002"
+            is_enum: false            # Optional: true if sample_values is exhaustive
+```
+
+### UNIQUE Keys for ASOF Relationships
+
+When defining ASOF (temporal) relationships, Snowflake requires a `UNIQUE` constraint on the columns involved in the join:
+
+```yaml
+# In your dbt model YAML
+models:
+  - name: orders
+    meta:
+      sst:
+        primary_key: order_id
+        unique_keys: [customer_id, ordered_at]  # Columns used in ASOF join
+
+# In your relationship definition
+snowflake_relationships:
+  - name: orders_to_prior_orders
+    left_table: {{ table('orders') }}
+    right_table: {{ table('orders') }}
+    relationship_conditions:
+      - "{{ column('orders', 'customer_id') }} = {{ column('orders', 'customer_id') }}"
+      - "{{ column('orders', 'ordered_at') }} >= {{ column('orders', 'ordered_at') }}"
+```
+
+This generates:
+```sql
+ORDERS AS SCHEMA.ORDERS
+  PRIMARY KEY (ORDER_ID)
+  UNIQUE (CUSTOMER_ID, ORDERED_AT)
+```
+
 ## Metrics
 
 Metrics define aggregated business calculations.
