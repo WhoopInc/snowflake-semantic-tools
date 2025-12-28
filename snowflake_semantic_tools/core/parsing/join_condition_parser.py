@@ -41,8 +41,7 @@ class ParsedCondition:
     left_column: str  # Extracted column name from left
     right_table: str  # Extracted table name from right
     right_column: str  # Extracted column name from right
-    operator: str  # =, >=, <=, BETWEEN, etc.
-    match_condition: Optional[str] = None  # For ASOF: the SQL MATCH CONDITION clause
+    operator: str  # = (equality) or >= (ASOF). Note: BETWEEN, <=, >, < are rejected
 
 
 class JoinConditionParser:
@@ -97,12 +96,6 @@ class JoinConditionParser:
             left_table, left_column = cls._extract_table_column_from_resolved(left_expr)
             right_table, right_column = cls._extract_table_column_from_resolved(right_expr)
 
-        # Generate match condition for ASOF joins
-        match_condition = None
-        if condition_type == JoinType.ASOF:
-            # Use raw column names (without table prefix) in MATCH CONDITION
-            match_condition = f"{left_column} {operator} {right_column}"
-
         return ParsedCondition(
             join_condition=condition,
             condition_type=condition_type,
@@ -113,7 +106,6 @@ class JoinConditionParser:
             right_table=right_table,
             right_column=right_column,
             operator=operator,
-            match_condition=match_condition,
         )
 
     @classmethod
@@ -137,10 +129,16 @@ class JoinConditionParser:
 
     @classmethod
     def _detect_join_type(cls, operator: str) -> JoinType:
-        """Detect join type based on operator."""
+        """Detect join type based on operator.
+        
+        Note: Only = and >= operators are valid in Snowflake semantic views.
+        - = : Equality join (standard FK relationship)
+        - >= : ASOF join (temporal relationship)
+        - BETWEEN, <=, >, < : Not supported, will be rejected in validation
+        """
         if operator == "=":
             return JoinType.EQUALITY
-        elif operator in [">=", "<=", ">", "<"]:
+        elif operator == ">=":
             return JoinType.ASOF
         elif operator == "BETWEEN":
             return JoinType.RANGE
@@ -169,11 +167,13 @@ class JoinConditionParser:
         """
         Extract table and column from template format.
 
-        Example: "{{ column('orders', 'customer_id') }}" → ('orders', 'customer_id')
+        Example: "{{ column('orders', 'customer_id') }}" → ('ORDERS', 'CUSTOMER_ID')
+        
+        Note: Uppercases table and column names to match Snowflake's identifier behavior.
         """
         match = cls.COLUMN_TEMPLATE_PATTERN.search(expression)
         if match:
-            return match.group(1), match.group(2)
+            return match.group(1).upper(), match.group(2).upper()
         return "", ""
 
     @classmethod
@@ -207,6 +207,22 @@ class JoinConditionParser:
             if parsed.operator == "UNKNOWN":
                 return False, f"Unknown or unsupported operator in condition: {condition}"
 
+            # Reject unsupported temporal operators FIRST (before checking join type)
+            if parsed.operator in ["<=", ">", "<"]:
+                return False, (
+                    f"Operator '{parsed.operator}' is not supported for temporal relationships in Snowflake semantic views. "
+                    f"Only '>=' operator is supported for ASOF joins. "
+                    f"See: https://docs.snowflake.com/en/user-guide/views-semantic/sql"
+                )
+            
+            # Reject BETWEEN operator - not supported in semantic view relationships
+            if parsed.operator == "BETWEEN":
+                return False, (
+                    f"BETWEEN operator is not supported in Snowflake semantic view relationships. "
+                    f"Only equality (=) and ASOF (>=) joins are supported. "
+                    f"See: https://docs.snowflake.com/en/user-guide/views-semantic/sql"
+                )
+
             # Check for unknown join type
             if parsed.condition_type == JoinType.UNKNOWN:
                 return False, f"Unknown join type for operator '{parsed.operator}'"
@@ -220,8 +236,8 @@ class JoinConditionParser:
 
             # Specific validations for ASOF joins
             if parsed.condition_type == JoinType.ASOF:
-                if parsed.operator not in [">=", "<=", ">", "<"]:
-                    return False, f"ASOF joins require >=, <=, >, or < operators, got: {parsed.operator}"
+                if parsed.operator != ">=":
+                    return False, f"ASOF joins require >= operator, got: {parsed.operator}"
 
             return True, ""
 
@@ -234,37 +250,42 @@ class JoinConditionParser:
     ) -> str:
         """
         Generate SQL REFERENCES clause from parsed conditions.
-
+        
+        For semantic views:
+        - Equality: table(col1, col2) REFERENCES table(col1, col2)
+        - ASOF: table(col1, time_col) REFERENCES table(col1, ASOF time_col)
+        - Mixed: table(join_col, time_col) REFERENCES table(join_col, ASOF time_col)
+        
         Args:
             parsed_conditions: List of parsed conditions
             left_table_alias: Alias for left table
             right_table_alias: Alias for right table
-
+        
         Returns:
-            SQL REFERENCES clause
+            SQL REFERENCES clause with correct ASOF syntax
         """
         if not parsed_conditions:
             return ""
-
-        # Check if any condition is ASOF type
-        has_asof = any(c.condition_type == JoinType.ASOF for c in parsed_conditions)
-
-        # Extract column lists
+        
+        # Separate equality conditions from ASOF conditions
+        equality_conditions = [c for c in parsed_conditions if c.condition_type == JoinType.EQUALITY]
+        asof_conditions = [c for c in parsed_conditions if c.condition_type == JoinType.ASOF]
+        
+        # Build left column list (all conditions)
         left_cols = [c.left_column for c in parsed_conditions]
-        right_cols = [c.right_column for c in parsed_conditions]
-
-        # Build basic REFERENCES clause
+        
+        # Build right column list
+        right_cols = []
+        
+        # Add equality columns (no modification)
+        for c in equality_conditions:
+            right_cols.append(c.right_column)
+        
+        # Add ASOF columns with ASOF prefix
+        for c in asof_conditions:
+            right_cols.append(f"ASOF {c.right_column}")
+        
+        # Generate SQL
         sql = f"{left_table_alias} ({', '.join(left_cols)}) REFERENCES {right_table_alias} ({', '.join(right_cols)})"
-
-        # Add MATCH CONDITION for ASOF joins
-        if has_asof:
-            match_conditions = []
-            for c in parsed_conditions:
-                if c.condition_type == JoinType.ASOF:
-                    # Use the match_condition which has raw column names
-                    match_conditions.append(c.match_condition)
-
-            if match_conditions:
-                sql += f"\n      MATCH CONDITION ({' AND '.join(match_conditions)})"
-
+        
         return sql
