@@ -167,6 +167,26 @@ class TestGenerateSqlReferencesEdgeCases:
         assert sql.count("CUSTOMER_ID") == 2, "CUSTOMER_ID should appear exactly twice (left and right)"
         assert sql.count("ORDERED_AT") == 2, "ORDERED_AT should appear exactly twice (left and right)"
 
+    def test_column_ordering_preserved(self):
+        """Test that column ordering is preserved when ASOF comes before equality.
+        
+        Regression test for Greptile issue: if conditions are given in order 
+        (ASOF, equality), left and right columns must maintain same order.
+        """
+        # ASOF condition BEFORE equality condition (unusual but valid)
+        conditions = [
+            "{{ column('orders', 'ordered_at') }} >= {{ column('orders', 'ordered_at') }}",
+            "{{ column('orders', 'customer_id') }} = {{ column('orders', 'customer_id') }}"
+        ]
+        parsed_list = [JoinConditionParser.parse(c) for c in conditions]
+        
+        sql = JoinConditionParser.generate_sql_references(parsed_list, "ORDERS", "ORDERS")
+        
+        # Left side should be: (ORDERED_AT, CUSTOMER_ID) - original order
+        # Right side should be: (ASOF ORDERED_AT, CUSTOMER_ID) - same order with ASOF prefix
+        expected = "ORDERS (ORDERED_AT, CUSTOMER_ID) REFERENCES ORDERS (ASOF ORDERED_AT, CUSTOMER_ID)"
+        assert sql == expected, f"Expected: {expected}, Got: {sql}"
+
 
 class TestParsedConditionDataclass:
     """Test that ParsedCondition no longer has match_condition field."""

@@ -267,23 +267,17 @@ class JoinConditionParser:
         if not parsed_conditions:
             return ""
         
-        # Separate equality conditions from ASOF conditions
-        equality_conditions = [c for c in parsed_conditions if c.condition_type == JoinType.EQUALITY]
-        asof_conditions = [c for c in parsed_conditions if c.condition_type == JoinType.ASOF]
-        
-        # Build left column list (all conditions)
+        # Build left column list (all conditions in original order)
         left_cols = [c.left_column for c in parsed_conditions]
         
-        # Build right column list
+        # Build right column list maintaining same order as left
+        # ASOF columns get the ASOF prefix, equality columns are unchanged
         right_cols = []
-        
-        # Add equality columns (no modification)
-        for c in equality_conditions:
-            right_cols.append(c.right_column)
-        
-        # Add ASOF columns with ASOF prefix
-        for c in asof_conditions:
-            right_cols.append(f"ASOF {c.right_column}")
+        for c in parsed_conditions:
+            if c.condition_type == JoinType.ASOF:
+                right_cols.append(f"ASOF {c.right_column}")
+            else:
+                right_cols.append(c.right_column)
         
         # Generate SQL
         sql = f"{left_table_alias} ({', '.join(left_cols)}) REFERENCES {right_table_alias} ({', '.join(right_cols)})"
