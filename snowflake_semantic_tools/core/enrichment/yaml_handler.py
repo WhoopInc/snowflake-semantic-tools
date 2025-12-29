@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from ruamel.yaml import YAML
+from ruamel.yaml import YAMLError
 
 from snowflake_semantic_tools.shared.utils import get_logger
 
@@ -47,8 +48,9 @@ class YAMLHandler:
             with open(file_path, "r", encoding="utf-8") as f:
                 content = self.yaml.load(f)
                 return content if content else {}
-        except Exception as e:
+        except (YAMLError, IOError, OSError) as e:
             # Make YAML errors visible to users (Issue #20)
+            # Catch specific exceptions: YAMLError for parsing, IOError/OSError for file access
             logger.error(f"Failed to parse YAML file: {file_path}")
             logger.error(f"Error: {e}")
             raise ValueError(f"YAML parsing error in {file_path}: {e}") from e
@@ -76,8 +78,9 @@ class YAMLHandler:
             self._add_column_spacing(file_path)
 
             return True
-        except Exception as e:
+        except (YAMLError, IOError, OSError) as e:
             # Make YAML errors visible to users (Issue #20)
+            # Catch specific exceptions: YAMLError for serialization, IOError/OSError for file access
             logger.error(f"Failed to write YAML file: {file_path}")
             logger.error(f"Error: {e}")
             raise IOError(f"YAML write error for {file_path}: {e}") from e

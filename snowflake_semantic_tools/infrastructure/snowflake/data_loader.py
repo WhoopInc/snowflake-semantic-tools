@@ -246,7 +246,8 @@ class DataLoader:
                 self.config.role
             )
             logger.error(friendly_error)
-            raise Exception(friendly_error) from e
+            # Preserve original exception type for programmatic handling
+            raise type(e)(friendly_error) from e
 
     def load_dataframe_to_staging(
         self, df: pd.DataFrame, table_key: str, conn=None  # Allow passing existing connection
