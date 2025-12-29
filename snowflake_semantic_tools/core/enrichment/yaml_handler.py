@@ -48,8 +48,10 @@ class YAMLHandler:
                 content = self.yaml.load(f)
                 return content if content else {}
         except Exception as e:
-            print(f"Error reading YAML file {file_path}: {e}")
-            return None
+            # Make YAML errors visible to users (Issue #20)
+            logger.error(f"Failed to parse YAML file: {file_path}")
+            logger.error(f"Error: {e}")
+            raise ValueError(f"YAML parsing error in {file_path}: {e}") from e
 
     def write_yaml(self, content: Dict[str, Any], file_path: str) -> bool:
         """
@@ -75,8 +77,10 @@ class YAMLHandler:
 
             return True
         except Exception as e:
-            print(f"Error writing YAML file {file_path}: {e}")
-            return False
+            # Make YAML errors visible to users (Issue #20)
+            logger.error(f"Failed to write YAML file: {file_path}")
+            logger.error(f"Error: {e}")
+            raise IOError(f"YAML write error for {file_path}: {e}") from e
 
     def _add_column_spacing(self, file_path: str):
         """

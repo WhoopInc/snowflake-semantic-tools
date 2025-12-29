@@ -200,6 +200,19 @@ class CortexSearchManager:
             elapsed_time = time.time() - start_time
             error_msg = str(e)
             logger.error(f"Failed to create Cortex Search service after {elapsed_time:.1f}s: {error_msg}")
+            
+            # Issue #43: Provide helpful error context
+            error_lower = error_msg.lower()
+            if "insufficient privileges" in error_lower or "not authorized" in error_lower:
+                logger.error("This appears to be a permission issue. Your role may need:")
+                logger.error("  • CREATE CORTEX SEARCH SERVICE privilege")
+                logger.error("  • USAGE on the target warehouse")
+                logger.error("  • SELECT on the source table")
+            elif "does not exist" in error_lower:
+                logger.error("The source table may not exist. Run 'sst extract' first to create it.")
+            elif "warehouse" in error_lower:
+                logger.error("Check that your configured warehouse exists and is accessible.")
+            
             # Also log the SQL for debugging if it was created
             if create_sql:
                 logger.debug(f"Failed SQL: {create_sql}")
@@ -277,6 +290,11 @@ class CortexSearchManager:
         """
         Setup or update the Cortex Search service for table summaries.
 
+        NOTE: This feature is currently EXPERIMENTAL and may not work in all environments.
+        Cortex Search Services have specific requirements that may not be met in all 
+        Snowflake accounts. If setup fails, the extraction will still succeed - 
+        Cortex Search is an optional enhancement.
+
         This method will:
         1. Check if the service already exists
         2. If tables were swapped, recreate the service (table object IDs changed)
@@ -289,6 +307,9 @@ class CortexSearchManager:
         Returns:
             Dictionary with operation results and timing information
         """
+        # Issue #43: Add clear warning about experimental status
+        logger.warning("NOTE: Cortex Search Service is EXPERIMENTAL and may not work in all environments.")
+        logger.warning("If setup fails, extraction will still succeed. See Issue #43 for status.")
         logger.info("Setting up Cortex Search service for table summaries...")
 
         start_time = time.time()
