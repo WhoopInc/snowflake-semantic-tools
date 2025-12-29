@@ -409,6 +409,31 @@ ls models/
 ls snowflake_semantic_models/
 ```
 
+### "OCSP certificate validation error" (Error 254007)
+
+**Problem:** Certificate validation fails when connecting to Snowflake S3 staging:
+```
+ERROR: 254007: The certificate is revoked or could not be validated
+```
+
+**Cause:** A known issue with recent `certifi` package versions (2025.4.26+) affecting the Snowflake Python connector's OCSP validation.
+
+**Solution (temporary):** Downgrade certifi to a stable version:
+```bash
+pip install certifi==2025.1.31
+```
+
+**Alternative solutions:**
+```python
+# For Python connector 3.14.0+
+con = snowflake.connector.connect(disable_ocsp_checks=True)
+
+# For Python connector 3.13.2 or lower
+con = snowflake.connector.connect(insecure_mode=True)
+```
+
+**Note:** Snowflake is actively working on a permanent fix. Monitor [status.snowflake.com](https://status.snowflake.com/) for updates.
+
 ---
 
 ## Next Steps
