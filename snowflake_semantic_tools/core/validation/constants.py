@@ -218,18 +218,3 @@ VALID_ASOF_COLUMN_TYPES: Set[str] = {
 # Lowercase version for case-insensitive matching
 VALID_ASOF_COLUMN_TYPES_LOWER: Set[str] = {ct.lower() for ct in VALID_ASOF_COLUMN_TYPES}
 
-# =============================================================================
-# AGGREGATION CONSTANTS
-# =============================================================================
-
-# Valid aggregation types for metrics
-VALID_AGGREGATION_TYPES: Set[str] = {
-    "sum",
-    "avg",
-    "count",
-    "count_distinct",
-    "min",
-    "max",
-    "median",
-}
-
