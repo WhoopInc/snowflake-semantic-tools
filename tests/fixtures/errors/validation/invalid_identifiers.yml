@@ -1,0 +1,87 @@
+# Invalid Identifier Validation Fixtures
+# Tests that identifiers with invalid characters, wrong starting characters,
+# and length violations are properly caught.
+#
+# Related Issues: #22 (length), #25 (characters)
+
+# METRICS with invalid identifiers
+snowflake_metrics:
+  # Identifier with dashes (invalid)
+  - name: "metric-with-dashes"
+    description: "Metric name contains invalid dash characters"
+    expr: "SUM(amount)"
+    tables:
+      - "{{ table('orders') }}"
+
+  # Identifier with spaces (invalid)
+  - name: "metric with spaces"
+    description: "Metric name contains invalid space characters"
+    expr: "COUNT(*)"
+    tables:
+      - "{{ table('orders') }}"
+
+  # Identifier with dots (invalid)
+  - name: "metric.with.dots"
+    description: "Metric name contains invalid dot characters"
+    expr: "AVG(amount)"
+    tables:
+      - "{{ table('orders') }}"
+
+  # Identifier starting with digit (invalid)
+  - name: "2024_yearly_metric"
+    description: "Metric name starts with a digit"
+    expr: "SUM(revenue)"
+    tables:
+      - "{{ table('orders') }}"
+
+  # Identifier with special characters (invalid)
+  - name: "metric@revenue!"
+    description: "Metric name contains special characters @ and !"
+    expr: "SUM(revenue)"
+    tables:
+      - "{{ table('orders') }}"
+
+  # Identifier exceeding 255 character limit (invalid)
+  - name: "this_is_an_extremely_long_metric_name_that_exceeds_the_snowflake_maximum_identifier_length_limit_of_two_hundred_and_fifty_five_characters_which_will_cause_deployment_failures_in_snowflake_when_trying_to_create_the_semantic_view_because_it_is_simply_too_long_to_be_valid"
+    description: "Metric name exceeds 255 character limit"
+    expr: "SUM(amount)"
+    tables:
+      - "{{ table('orders') }}"
+
+# FILTERS with invalid identifiers
+snowflake_filters:
+  # Filter with dashes
+  - name: "active-users-filter"
+    description: "Filter name contains dashes"
+    expr: "status = 'active'"
+
+  # Filter starting with digit
+  - name: "1st_quarter_filter"
+    description: "Filter name starts with digit"
+    expr: "quarter = 1"
+
+# RELATIONSHIPS with invalid identifiers
+snowflake_relationships:
+  # Relationship with special characters
+  - name: "orders->customers"
+    description: "Relationship name contains arrow characters"
+    left_table: "{{ table('orders') }}"
+    right_table: "{{ table('customers') }}"
+    relationship_conditions:
+      - "{{ column('orders', 'customer_id') }} = {{ column('customers', 'id') }}"
+
+# SEMANTIC VIEWS with invalid identifiers
+semantic_views:
+  # View with parentheses
+  - name: "orders_view(main)"
+    description: "View name contains parentheses"
+    tables:
+      - "{{ table('orders') }}"
+
+  # View with ampersand
+  - name: "orders&customers_view"
+    description: "View name contains ampersand"
+    tables:
+      - "{{ table('orders') }}"
+      - "{{ table('customers') }}"
+

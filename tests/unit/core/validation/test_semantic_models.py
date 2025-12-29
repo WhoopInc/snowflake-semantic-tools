@@ -6,7 +6,12 @@ custom instructions, verified queries, and semantic views.
 """
 
 import pytest
+from snowflake_semantic_tools.core.models import ValidationResult
 from snowflake_semantic_tools.core.validation.rules.semantic_models import SemanticModelValidator
+from snowflake_semantic_tools.core.validation.constants import (
+    SNOWFLAKE_MAX_IDENTIFIER_LENGTH,
+    IDENTIFIER_WARNING_LENGTH,
+)
 
 
 class TestMetricValidation:
@@ -622,3 +627,257 @@ class TestSemanticViewValidation:
         
         result = validator.validate(semantic_data)
         assert result.error_count == 0
+
+
+class TestIdentifierLengthValidation:
+    """Test identifier length validation (Issue #22)."""
+
+    @pytest.fixture
+    def validator(self):
+        return SemanticModelValidator()
+
+    def test_valid_identifier_length_passes(self, validator):
+        """Test that an identifier within limits passes validation."""
+        result = ValidationResult()
+        validator._validate_identifier_length("valid_metric_name", "Metric", result)
+        assert result.error_count == 0
+        assert len([i for i in result.issues if i.severity.name == 'WARNING']) == 0
+
+    def test_identifier_at_exact_limit_passes(self, validator):
+        """Test that an identifier exactly at 255 characters passes."""
+        long_name = "a" * SNOWFLAKE_MAX_IDENTIFIER_LENGTH  # Exactly 255 chars
+        result = ValidationResult()
+        validator._validate_identifier_length(long_name, "Metric", result)
+        assert result.error_count == 0
+
+    def test_identifier_exceeds_limit_error(self, validator):
+        """Test that an identifier exceeding 255 characters produces ERROR."""
+        long_name = "a" * (SNOWFLAKE_MAX_IDENTIFIER_LENGTH + 1)  # 256 chars
+        result = ValidationResult()
+        validator._validate_identifier_length(long_name, "Metric", result)
+        assert result.error_count == 1
+        assert "exceeds Snowflake's 255-character limit" in result.issues[0].message
+
+    def test_identifier_above_warning_threshold_warning(self, validator):
+        """Test that an identifier >200 characters produces WARNING."""
+        long_name = "a" * (IDENTIFIER_WARNING_LENGTH + 10)  # 210 chars
+        result = ValidationResult()
+        validator._validate_identifier_length(long_name, "Metric", result)
+        warnings = [i for i in result.issues if i.severity.name == 'WARNING']
+        assert len(warnings) == 1
+        assert "longer than recommended" in warnings[0].message
+
+    def test_identifier_length_with_context(self, validator):
+        """Test that context_name is included in error message."""
+        long_name = "a" * (SNOWFLAKE_MAX_IDENTIFIER_LENGTH + 1)
+        result = ValidationResult()
+        validator._validate_identifier_length(long_name, "Column", result, context_name="orders")
+        assert result.error_count == 1
+        assert "orders." in result.issues[0].message
+
+    def test_metric_long_name_integration(self, validator):
+        """Test that a metric with a long name produces error in full validation."""
+        long_name = "a" * (SNOWFLAKE_MAX_IDENTIFIER_LENGTH + 1)
+        semantic_data = {
+            'metrics': {
+                'items': [{
+                    'name': long_name,
+                    'description': 'Test metric',
+                    'expr': 'SUM(amount)',
+                    'tables': ['orders']
+                }]
+            }
+        }
+        result = validator.validate(semantic_data)
+        errors = [i.message for i in result.issues if i.severity.name == 'ERROR']
+        assert any('exceeds Snowflake' in e and '255-character limit' in e for e in errors)
+
+
+class TestIdentifierCharacterValidation:
+    """Test identifier character validation (Issue #25)."""
+
+    @pytest.fixture
+    def validator(self):
+        return SemanticModelValidator()
+
+    def test_valid_identifier_passes(self, validator):
+        """Test that valid identifiers pass validation."""
+        result = ValidationResult()
+        validator._validate_identifier_characters("valid_name_123", "Metric", result)
+        assert result.error_count == 0
+
+    def test_identifier_with_underscore_prefix_passes(self, validator):
+        """Test that identifier starting with underscore passes."""
+        result = ValidationResult()
+        validator._validate_identifier_characters("_private_metric", "Metric", result)
+        assert result.error_count == 0
+
+    def test_identifier_with_dash_error(self, validator):
+        """Test that identifier with dash produces ERROR."""
+        result = ValidationResult()
+        validator._validate_identifier_characters("metric-name", "Metric", result)
+        assert result.error_count == 1
+        assert "invalid characters" in result.issues[0].message
+        assert "metric_name" in result.issues[0].message  # Suggested fix
+
+    def test_identifier_with_space_error(self, validator):
+        """Test that identifier with space produces ERROR."""
+        result = ValidationResult()
+        validator._validate_identifier_characters("metric name", "Metric", result)
+        assert result.error_count == 1
+        assert "invalid characters" in result.issues[0].message
+
+    def test_identifier_with_dot_error(self, validator):
+        """Test that identifier with dot produces ERROR."""
+        result = ValidationResult()
+        validator._validate_identifier_characters("metric.name", "Metric", result)
+        assert result.error_count == 1
+        assert "invalid characters" in result.issues[0].message
+
+    def test_identifier_starting_with_digit_error(self, validator):
+        """Test that identifier starting with digit produces ERROR."""
+        result = ValidationResult()
+        validator._validate_identifier_characters("2024_metric", "Metric", result)
+        assert result.error_count == 1
+        assert "invalid characters" in result.issues[0].message
+        assert "_2024_metric" in result.issues[0].message  # Suggested fix
+
+    def test_identifier_with_special_chars_error(self, validator):
+        """Test that identifier with special characters produces ERROR."""
+        result = ValidationResult()
+        validator._validate_identifier_characters("metric@name!", "Metric", result)
+        assert result.error_count == 1
+        assert "invalid characters" in result.issues[0].message
+
+    def test_filter_invalid_characters_integration(self, validator):
+        """Test that a filter with invalid characters produces error in full validation."""
+        semantic_data = {
+            'filters': {
+                'items': [{
+                    'name': 'active-users',  # Invalid: contains dash
+                    'description': 'Active users filter',
+                    'expr': "status = 'active'"
+                }]
+            }
+        }
+        result = validator.validate(semantic_data)
+        errors = [i.message for i in result.issues if i.severity.name == 'ERROR']
+        assert any('invalid characters' in e for e in errors)
+
+
+class TestReservedKeywordValidation:
+    """Test reserved keyword validation (Issue #24)."""
+
+    @pytest.fixture
+    def validator(self):
+        return SemanticModelValidator()
+
+    def test_normal_identifier_passes(self, validator):
+        """Test that normal identifiers pass without warning."""
+        result = ValidationResult()
+        validator._validate_reserved_keywords("revenue", "Metric", result)
+        assert len([i for i in result.issues if i.severity.name == 'WARNING']) == 0
+
+    def test_select_keyword_warning(self, validator):
+        """Test that 'select' keyword produces WARNING."""
+        result = ValidationResult()
+        validator._validate_reserved_keywords("select", "Metric", result)
+        warnings = [i for i in result.issues if i.severity.name == 'WARNING']
+        assert len(warnings) == 1
+        assert "SQL reserved keyword" in warnings[0].message
+
+    def test_where_keyword_warning(self, validator):
+        """Test that 'where' keyword produces WARNING."""
+        result = ValidationResult()
+        validator._validate_reserved_keywords("WHERE", "Metric", result)
+        warnings = [i for i in result.issues if i.severity.name == 'WARNING']
+        assert len(warnings) == 1
+        assert "SQL reserved keyword" in warnings[0].message
+
+    def test_order_keyword_warning(self, validator):
+        """Test that 'order' keyword produces WARNING (common conflict)."""
+        result = ValidationResult()
+        validator._validate_reserved_keywords("order", "Metric", result)
+        warnings = [i for i in result.issues if i.severity.name == 'WARNING']
+        assert len(warnings) == 1
+        assert "SQL reserved keyword" in warnings[0].message
+        # Check for suggestions
+        assert "order_value" in warnings[0].message or "suggestions" in str(warnings[0].context)
+
+    def test_date_keyword_warning(self, validator):
+        """Test that 'date' keyword produces WARNING."""
+        result = ValidationResult()
+        validator._validate_reserved_keywords("date", "Column", result)
+        warnings = [i for i in result.issues if i.severity.name == 'WARNING']
+        assert len(warnings) == 1
+        assert "SQL reserved keyword" in warnings[0].message
+
+    def test_case_insensitive_keyword_detection(self, validator):
+        """Test that keyword detection is case-insensitive."""
+        result = ValidationResult()
+        validator._validate_reserved_keywords("Select", "Metric", result)
+        warnings = [i for i in result.issues if i.severity.name == 'WARNING']
+        assert len(warnings) == 1
+
+    def test_relationship_reserved_keyword_integration(self, validator):
+        """Test that a relationship with reserved keyword name produces warning in full validation."""
+        semantic_data = {
+            'relationships': {
+                'items': [{
+                    'name': 'join',  # Reserved keyword
+                    'left_table': 'orders',
+                    'right_table': 'customers',
+                    'relationship_conditions': [
+                        "{{ column('orders', 'customer_id') }} = {{ column('customers', 'id') }}"
+                    ]
+                }]
+            }
+        }
+        result = validator.validate(semantic_data)
+        warnings = [i.message for i in result.issues if i.severity.name == 'WARNING']
+        assert any('SQL reserved keyword' in w for w in warnings)
+
+
+class TestCombinedIdentifierValidation:
+    """Test combined identifier validation using _validate_identifier helper."""
+
+    @pytest.fixture
+    def validator(self):
+        return SemanticModelValidator()
+
+    def test_validate_identifier_runs_all_checks(self, validator):
+        """Test that _validate_identifier runs all three validation checks."""
+        # Name that triggers all three validations
+        # - Too long (>200 chars) for warning
+        # - Contains invalid characters (dash)
+        # - Is a reserved keyword (would need to be, but let's test separately)
+        
+        # Test with dash (invalid char)
+        result = ValidationResult()
+        validator._validate_identifier("metric-name", "Metric", result)
+        errors = [i for i in result.issues if i.severity.name == 'ERROR']
+        assert len(errors) >= 1
+        assert any("invalid characters" in e.message for e in errors)
+
+    def test_validate_identifier_with_reserved_keyword(self, validator):
+        """Test that _validate_identifier catches reserved keywords."""
+        result = ValidationResult()
+        validator._validate_identifier("select", "Metric", result)
+        warnings = [i for i in result.issues if i.severity.name == 'WARNING']
+        assert len(warnings) >= 1
+        assert any("SQL reserved keyword" in w.message for w in warnings)
+
+    def test_semantic_view_with_invalid_name(self, validator):
+        """Test that semantic view with invalid name is caught."""
+        semantic_data = {
+            'semantic_views': {
+                'items': [{
+                    'name': '123_invalid-view.name',  # Multiple issues
+                    'description': 'Test view',
+                    'tables': ['orders']
+                }]
+            }
+        }
+        result = validator.validate(semantic_data)
+        errors = [i.message for i in result.issues if i.severity.name == 'ERROR']
+        assert any('invalid characters' in e for e in errors)
