@@ -183,6 +183,94 @@ class TestMetricValidationScenarios:
         assert len(missing) == 3
 
 
+class TestSemanticViewBuilderUniqueKeys:
+    """Test cases for UNIQUE key constraint generation in semantic views."""
+    
+    @pytest.fixture
+    def builder(self):
+        """Create a SemanticViewBuilder instance for testing."""
+        config = SnowflakeConfig(
+            account="test",
+            user="test",
+            password="test",
+            role="test",
+            warehouse="test",
+            database="test_db",
+            schema="test_schema"
+        )
+        return SemanticViewBuilder(config)
+    
+    def test_unique_keys_sql_generation(self, builder, monkeypatch):
+        """Test that UNIQUE constraint is generated correctly in SQL."""
+        # Mock _get_table_info to return test data with unique_keys
+        def mock_get_table_info(conn, table_name):
+            return {
+                'TABLE_NAME': 'ORDERS',
+                'DATABASE': 'TEST_DB',
+                'SCHEMA': 'TEST_SCHEMA',
+                'PRIMARY_KEY': '["order_id"]',
+                'UNIQUE_KEYS': '["customer_id", "ordered_at"]',
+                'DESCRIPTION': 'Orders table with ASOF join support',
+                'SYNONYMS': None
+            }
+        
+        monkeypatch.setattr(builder, '_get_table_info', mock_get_table_info)
+        
+        # Generate table definitions (conn=None since we're mocking _get_table_info)
+        table_definitions = builder._build_tables_clause(None, ['orders'])
+        
+        # Verify output contains both PRIMARY KEY and UNIQUE
+        assert 'PRIMARY KEY (ORDER_ID)' in table_definitions
+        assert 'UNIQUE (CUSTOMER_ID, ORDERED_AT)' in table_definitions
+        
+        # Verify UNIQUE comes after PRIMARY KEY
+        pk_pos = table_definitions.find('PRIMARY KEY')
+        uk_pos = table_definitions.find('UNIQUE')
+        assert pk_pos < uk_pos, "UNIQUE constraint should come after PRIMARY KEY"
+    
+    def test_unique_keys_without_primary_key(self, builder, monkeypatch):
+        """Test UNIQUE constraint works even without PRIMARY KEY."""
+        def mock_get_table_info(conn, table_name):
+            return {
+                'TABLE_NAME': 'CUSTOMERS',
+                'DATABASE': 'TEST_DB',
+                'SCHEMA': 'TEST_SCHEMA',
+                'PRIMARY_KEY': None,
+                'UNIQUE_KEYS': '["email", "phone"]',
+                'DESCRIPTION': 'Customers table',
+                'SYNONYMS': None
+            }
+        
+        monkeypatch.setattr(builder, '_get_table_info', mock_get_table_info)
+        
+        table_definitions = builder._build_tables_clause(None, ['customers'])
+        
+        # Should have UNIQUE but not PRIMARY KEY
+        assert 'UNIQUE (EMAIL, PHONE)' in table_definitions
+        assert 'PRIMARY KEY' not in table_definitions
+    
+    def test_unique_keys_none_or_empty(self, builder, monkeypatch):
+        """Test that missing or empty unique_keys doesn't break generation."""
+        def mock_get_table_info(conn, table_name):
+            return {
+                'TABLE_NAME': 'PRODUCTS',
+                'DATABASE': 'TEST_DB',
+                'SCHEMA': 'TEST_SCHEMA',
+                'PRIMARY_KEY': '["product_id"]',
+                'UNIQUE_KEYS': None,  # No unique keys
+                'DESCRIPTION': 'Products table',
+                'SYNONYMS': None
+            }
+        
+        monkeypatch.setattr(builder, '_get_table_info', mock_get_table_info)
+        
+        table_definitions = builder._build_tables_clause(None, ['products'])
+        
+        # Should have PRIMARY KEY but not UNIQUE
+        assert 'PRIMARY KEY (PRODUCT_ID)' in table_definitions
+        assert 'UNIQUE' not in table_definitions
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
 

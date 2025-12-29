@@ -108,6 +108,11 @@ class SemanticTableSchemas:
                     description="List of columns that uniquely identify each row (required for relationships)",
                 ),
                 Column(
+                    "unique_keys",
+                    ColumnType.ARRAY,
+                    description="List of columns that form a UNIQUE constraint (required for ASOF relationships)",
+                ),
+                Column(
                     "synonyms",
                     ColumnType.ARRAY,
                     description="Alternative business terms users might use to refer to this table",

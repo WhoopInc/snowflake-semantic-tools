@@ -131,6 +131,7 @@ Enrichment NEVER overwrites:
 - Existing descriptions
 - Existing synonyms
 - Existing primary_key
+- Existing unique_keys
 - Existing column_type
 
 Enrichment ALWAYS updates:

@@ -631,6 +631,13 @@ class SemanticViewBuilder:
                     pk_cols = ", ".join([col.upper() for col in primary_key_cols])
                     table_def += f"\n      PRIMARY KEY ({pk_cols})"
 
+            # Add unique keys if available
+            if table_info.get("UNIQUE_KEYS"):
+                unique_key_cols = self._parse_json_field(table_info["UNIQUE_KEYS"], "unique_keys")
+                if unique_key_cols and isinstance(unique_key_cols, list):
+                    uk_cols = ", ".join([col.upper() for col in unique_key_cols])
+                    table_def += f"\n      UNIQUE ({uk_cols})"
+
             # Add synonyms if available
             if table_info.get("SYNONYMS"):
                 synonyms = self._parse_json_field(table_info["SYNONYMS"], "synonyms")

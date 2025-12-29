@@ -10,6 +10,7 @@ methods required in different environments:
 - CI/CD: Environment variable configuration
 """
 
+import os
 from dataclasses import dataclass
 from typing import Optional
 
@@ -59,6 +60,10 @@ class SnowflakeConfig:
             "database": self.database,
             "schema": self.schema,
         }
+        
+        # Support insecure mode for environments with certificate issues
+        if os.getenv("SNOWFLAKE_INSECURE_MODE", "").lower() in ("true", "1", "yes"):
+            params["insecure_mode"] = True
 
         # Add authentication
         if self.password:

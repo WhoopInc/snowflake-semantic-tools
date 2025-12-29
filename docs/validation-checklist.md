@@ -146,7 +146,8 @@ sst validate --exclude _intermediate,staging
 ## Key Notes
 
 - **Database/Schema**: Auto-detected from `manifest.json`. Do NOT specify in `meta.sst`.
-- **Only Required in `meta.sst`**: `primary_key` (table level), `column_type` and `data_type` (column level)
+- **Required in `meta.sst`**: `primary_key` (table level), `column_type` and `data_type` (column level)
+- **Optional in `meta.sst`**: `unique_keys` (table level) - required only for ASOF relationships
 - **Total Checks**: 98
 
 ---
