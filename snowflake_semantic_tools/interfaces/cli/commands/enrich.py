@@ -100,15 +100,16 @@ def _determine_components(
 )
 @click.option("--allow-non-prod", is_flag=True, help="Allow enrichment from non-production manifest")
 @click.option("--pk-candidates", type=click.Path(exists=True), help="JSON file with primary key candidates")
-@click.option("--column-types", is_flag=True, help="Enrich column types (dimension/fact/time_dimension)")
-@click.option("--data-types", is_flag=True, help="Enrich data types (map Snowflake types)")
-@click.option("--sample-values", is_flag=True, help="Enrich sample values (queries data - SLOW)")
-@click.option("--detect-enums", is_flag=True, help="Detect enum columns (low cardinality)")
-@click.option("--primary-keys", is_flag=True, help="Validate primary key candidates")
-@click.option("--table-synonyms", is_flag=True, help="Generate table-level synonyms via Cortex LLM")
-@click.option("--column-synonyms", is_flag=True, help="Generate column-level synonyms via Cortex LLM")
+@click.option("--column-types", "-ct", is_flag=True, help="Enrich column types (dimension/fact/time_dimension)")
+@click.option("--data-types", "-dt", is_flag=True, help="Enrich data types (map Snowflake types)")
+@click.option("--sample-values", "-sv", is_flag=True, help="Enrich sample values (queries data - SLOW)")
+@click.option("--detect-enums", "-de", is_flag=True, help="Detect enum columns (low cardinality)")
+@click.option("--primary-keys", "-pk", is_flag=True, help="Validate primary key candidates")
+@click.option("--table-synonyms", "-ts", is_flag=True, help="Generate table-level synonyms via Cortex LLM")
+@click.option("--column-synonyms", "-cs", is_flag=True, help="Generate column-level synonyms via Cortex LLM")
 @click.option(
     "--synonyms",
+    "-syn",
     is_flag=True,
     help="Generate both table and column synonyms (shorthand for --table-synonyms --column-synonyms)",
 )

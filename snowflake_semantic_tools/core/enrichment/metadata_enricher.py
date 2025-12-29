@@ -212,10 +212,17 @@ class MetadataEnricher:
                 existing_yaml = self.yaml_handler.create_base_yaml_structure(model_name)
                 logger.info(f"  Status:     Creating new YAML")
 
-            # Determine if we need Snowflake data
-            needs_schema_query = not components or any(
-                c in components for c in ["column-types", "data-types", "sample-values", "detect-enums", "primary-keys"]
+            # Determine what data we need from Snowflake (decoupled checks)
+            # Schema metadata: column names, data types (for type mapping)
+            needs_schema_metadata = not components or any(
+                c in components for c in ["column-types", "data-types", "primary-keys"]
             )
+            # Sample data: actual data queries (expensive)
+            needs_sample_data = not components or any(
+                c in components for c in ["sample-values", "detect-enums"]
+            )
+            # Combined: need schema query if either is true
+            needs_schema_query = needs_schema_metadata or needs_sample_data
 
             # Also need schema query if column-synonyms requested but no existing columns
             existing_columns = existing_model.get("columns", []) if existing_model else []
@@ -492,6 +499,7 @@ class MetadataEnricher:
                 database_name,
                 idx,
                 len(table_columns),
+                components=components,
             )
             updated_columns.append(column)
 
@@ -511,7 +519,10 @@ class MetadataEnricher:
         components: Optional[List[str]],
     ) -> Dict[str, List[Any]]:
         """Batch-fetch sample values for all non-PII columns."""
-        needs_samples = not components or "sample-values" in components
+        # Need samples for sample-values OR detect-enums (enum detection uses sample data)
+        needs_samples = not components or any(
+            c in components for c in ["sample-values", "detect-enums"]
+        )
         if not needs_samples:
             return {}
 
@@ -548,6 +559,7 @@ class MetadataEnricher:
         database_name: str,
         idx: int,
         total: int,
+        components: Optional[List[str]] = None,
     ) -> Dict[str, Any]:
         """Process metadata for a single column."""
         col_name = table_col["name"]
@@ -569,37 +581,61 @@ class MetadataEnricher:
         column = self.yaml_handler.ensure_column_sst_structure(column)
         column_sst = column["meta"]["sst"]
 
-        # Map and set data types (preserve existing)
+        # Map and set data types (only if requested via components)
         snowflake_type = table_col["type"]
-        self._enrich_column_types(column_sst, col_name, snowflake_type)
+        self._enrich_column_types(column_sst, col_name, snowflake_type, components)
 
-        # Handle sample values and enum detection
-        if self._is_pii_protected_column(column):
-            column_sst["sample_values"] = []
-            column_sst["is_enum"] = False
-            logger.debug(f"      - PII protected (no samples)")
-        else:
-            self._enrich_sample_values(column_sst, col_name, batch_samples, model_name, schema_name, database_name)
+        # Handle sample values and enum detection (only if requested via components)
+        needs_sample_enrichment = not components or any(
+            c in components for c in ["sample-values", "detect-enums"]
+        )
+        if needs_sample_enrichment:
+            if self._is_pii_protected_column(column):
+                # Only set fields if their corresponding components are requested
+                if not components or "sample-values" in components:
+                    column_sst["sample_values"] = []
+                if not components or "detect-enums" in components:
+                    column_sst["is_enum"] = False
+                logger.debug(f"      - PII protected (no samples)")
+            else:
+                self._enrich_sample_values(column_sst, col_name, batch_samples, model_name, schema_name, database_name, components)
 
         # Ensure proper key ordering
         return self.yaml_handler._order_column_sst_keys(column)
 
-    def _enrich_column_types(self, column_sst: Dict[str, Any], col_name: str, snowflake_type: str):
-        """Enrich column with data_type and column_type (preserves existing)."""
+    def _enrich_column_types(
+        self,
+        column_sst: Dict[str, Any],
+        col_name: str,
+        snowflake_type: str,
+        components: Optional[List[str]] = None,
+    ):
+        """Enrich column with data_type and column_type (preserves existing).
+        
+        Only enriches if the corresponding component is requested:
+        - data-types: Sets data_type from Snowflake type mapping
+        - column-types: Sets column_type (dimension/fact/time_dimension)
+        """
         sst_data_type = map_snowflake_to_sst_datatype(snowflake_type)
 
-        if "data_type" not in column_sst or not column_sst["data_type"]:
-            column_sst["data_type"] = sst_data_type
-            logger.debug(f"      - Set data_type: {sst_data_type}")
-        else:
-            logger.debug(f"      - Preserved data_type: {column_sst['data_type']}")
+        # Only enrich data_type if requested (or no components = all)
+        enrich_data_types = not components or "data-types" in components
+        if enrich_data_types:
+            if "data_type" not in column_sst or not column_sst["data_type"]:
+                column_sst["data_type"] = sst_data_type
+                logger.debug(f"      - Set data_type: {sst_data_type}")
+            else:
+                logger.debug(f"      - Preserved data_type: {column_sst['data_type']}")
 
-        if "column_type" not in column_sst or not column_sst["column_type"]:
-            column_type = determine_column_type(col_name, snowflake_type)
-            column_sst["column_type"] = column_type
-            logger.debug(f"      - Set column_type: {column_type}")
-        else:
-            logger.debug(f"      - Preserved column_type: {column_sst['column_type']}")
+        # Only enrich column_type if requested (or no components = all)
+        enrich_column_types = not components or "column-types" in components
+        if enrich_column_types:
+            if "column_type" not in column_sst or not column_sst["column_type"]:
+                column_type = determine_column_type(col_name, snowflake_type)
+                column_sst["column_type"] = column_type
+                logger.debug(f"      - Set column_type: {column_type}")
+            else:
+                logger.debug(f"      - Preserved column_type: {column_sst['column_type']}")
 
         if "synonyms" not in column_sst or column_sst["synonyms"] is None:
             column_sst["synonyms"] = []
@@ -612,8 +648,14 @@ class MetadataEnricher:
         model_name: str,
         schema_name: str,
         database_name: str,
+        components: Optional[List[str]] = None,
     ):
-        """Fetch and apply sample values with enum detection."""
+        """Fetch and apply sample values with enum detection.
+        
+        Only enriches if the corresponding component is requested:
+        - sample-values: Sets sample_values from Snowflake data
+        - detect-enums: Sets is_enum based on cardinality analysis
+        """
         # Get samples (from batch or individual query)
         col_upper = col_name.upper()
         if col_upper in batch_samples:
@@ -644,8 +686,15 @@ class MetadataEnricher:
         # Determine enum status and apply samples
         final_samples, is_enum = self._determine_enum_status(sample_values, column_sst.get("column_type", ""))
 
-        column_sst["sample_values"] = final_samples
-        column_sst["is_enum"] = is_enum
+        # Only set sample_values if requested (or no components = all)
+        enrich_sample_values = not components or "sample-values" in components
+        if enrich_sample_values:
+            column_sst["sample_values"] = final_samples
+
+        # Only set is_enum if requested (or no components = all)
+        enrich_detect_enums = not components or "detect-enums" in components
+        if enrich_detect_enums:
+            column_sst["is_enum"] = is_enum
 
     def _determine_enum_status(self, sample_values: List[Any], column_type: str) -> tuple[List[Any], bool]:
         """
