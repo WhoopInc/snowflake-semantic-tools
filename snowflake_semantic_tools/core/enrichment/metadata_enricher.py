@@ -591,8 +591,11 @@ class MetadataEnricher:
         )
         if needs_sample_enrichment:
             if self._is_pii_protected_column(column):
-                column_sst["sample_values"] = []
-                column_sst["is_enum"] = False
+                # Only set fields if their corresponding components are requested
+                if not components or "sample-values" in components:
+                    column_sst["sample_values"] = []
+                if not components or "detect-enums" in components:
+                    column_sst["is_enum"] = False
                 logger.debug(f"      - PII protected (no samples)")
             else:
                 self._enrich_sample_values(column_sst, col_name, batch_samples, model_name, schema_name, database_name, components)
