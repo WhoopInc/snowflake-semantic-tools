@@ -148,9 +148,45 @@ class YAMLHandler:
         except Exception as e:
             print(f"Warning: Could not add column spacing to {file_path}: {e}")
 
+    def _get_models_list(self, yaml_content: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """
+        Get models list, handling both 'models' and 'semantic_models' keys.
+        
+        For semantic_models-only files (dbt MetricFlow format), uses that list.
+        This allows enrichment to work with MetricFlow YAML files that only have
+        semantic_models defined.
+        
+        Args:
+            yaml_content: Parsed YAML content
+            
+        Returns:
+            List of model dictionaries
+        """
+        # Standard dbt YAML
+        if "models" in yaml_content:
+            models = yaml_content.get("models", [])
+            return models if isinstance(models, list) else []
+        
+        # dbt MetricFlow format - semantic_models without models
+        if "semantic_models" in yaml_content:
+            logger.debug("Found semantic_models key without models - using semantic_models as models")
+            semantic_models = yaml_content.get("semantic_models", [])
+            return semantic_models if isinstance(semantic_models, list) else []
+        
+        return []
+
+    def _has_models(self, yaml_content: Dict[str, Any]) -> bool:
+        """Check if YAML has models (either 'models' or 'semantic_models' key)."""
+        return "models" in yaml_content or "semantic_models" in yaml_content
+
     def get_existing_model_metadata(self, yaml_content: Dict[str, Any], model_name: str) -> Optional[Dict[str, Any]]:
         """Extract existing metadata for a specific model."""
-        return self._find_item_by_name(yaml_content, "models", model_name)
+        # Use helper that handles both 'models' and 'semantic_models'
+        models = self._get_models_list(yaml_content)
+        for model in models:
+            if isinstance(model, dict) and model.get("name") == model_name:
+                return model
+        return None
 
     def get_existing_column_metadata(
         self, model_metadata: Dict[str, Any], column_name: str
@@ -400,13 +436,10 @@ class YAMLHandler:
         """
         try:
             content = self.read_yaml(str(yaml_path))
-            if not content or "models" not in content:
+            if not content or not self._has_models(content):
                 return False
 
-            models = content.get("models", [])
-            if not isinstance(models, list):
-                return False
-
+            models = self._get_models_list(content)
             for model in models:
                 if isinstance(model, dict) and model.get("name") == model_name:
                     return True

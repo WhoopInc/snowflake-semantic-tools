@@ -262,3 +262,93 @@ class TestCortexSynonymGenerator:
         assert len(result['col1']) == 2
         assert len(result['col2']) == 2
         assert 'synonym 1' in result['col1']
+
+
+class TestCortexVerification:
+    """Test Cortex access verification and error handling."""
+    
+    @pytest.fixture
+    def mock_snowflake_client(self):
+        """Create a mock Snowflake client."""
+        client = Mock()
+        return client
+    
+    def test_verify_cortex_access_success(self, mock_snowflake_client):
+        """Test successful Cortex verification."""
+        mock_df = pd.DataFrame({'RESPONSE': ['Hello!']})
+        mock_snowflake_client.execute_query.return_value = mock_df
+        
+        generator = CortexSynonymGenerator(mock_snowflake_client)
+        assert generator._cortex_verified is False
+        
+        # Trigger verification via _execute_cortex
+        generator._execute_cortex("test prompt")
+        
+        assert generator._cortex_verified is True
+    
+    def test_verify_cortex_access_permission_error(self, mock_snowflake_client):
+        """Test Cortex permission error provides helpful message."""
+        mock_snowflake_client.execute_query.side_effect = Exception("access denied to function")
+        
+        generator = CortexSynonymGenerator(mock_snowflake_client)
+        
+        with pytest.raises(RuntimeError) as exc_info:
+            generator._verify_cortex_access()
+        
+        error_msg = str(exc_info.value)
+        assert "permission error" in error_msg.lower()
+        assert "CORTEX_USER" in error_msg
+    
+    def test_verify_cortex_access_model_not_found(self, mock_snowflake_client):
+        """Test Cortex model not found error provides helpful message."""
+        mock_snowflake_client.execute_query.side_effect = Exception("model not found")
+        
+        generator = CortexSynonymGenerator(mock_snowflake_client)
+        
+        with pytest.raises(RuntimeError) as exc_info:
+            generator._verify_cortex_access()
+        
+        error_msg = str(exc_info.value)
+        assert "not available" in error_msg.lower()
+        assert "openai-gpt-4.1" in error_msg  # Default model
+    
+    def test_verify_cortex_access_generic_error(self, mock_snowflake_client):
+        """Test Cortex generic error provides connection guidance."""
+        mock_snowflake_client.execute_query.side_effect = Exception("some other error")
+        
+        generator = CortexSynonymGenerator(mock_snowflake_client)
+        
+        with pytest.raises(RuntimeError) as exc_info:
+            generator._verify_cortex_access()
+        
+        error_msg = str(exc_info.value)
+        assert "connection failed" in error_msg.lower()
+    
+    def test_verify_cortex_access_only_called_once(self, mock_snowflake_client):
+        """Test Cortex verification is only performed once."""
+        mock_df = pd.DataFrame({'RESPONSE': ['Hello!']})
+        mock_snowflake_client.execute_query.return_value = mock_df
+        
+        generator = CortexSynonymGenerator(mock_snowflake_client)
+        generator._verify_cortex_access()
+        generator._verify_cortex_access()
+        generator._verify_cortex_access()
+        
+        # Should only have called execute_query once for verification
+        # (subsequent calls skip because _cortex_verified is True)
+        assert mock_snowflake_client.execute_query.call_count == 1
+    
+    def test_generate_synonyms_returns_empty_on_cortex_error(self, mock_snowflake_client):
+        """Test that synonym generation gracefully returns empty on Cortex error."""
+        mock_snowflake_client.execute_query.side_effect = Exception("access denied")
+        
+        generator = CortexSynonymGenerator(mock_snowflake_client)
+        
+        # Should return empty list, not raise
+        result = generator.generate_table_synonyms(
+            table_name='test',
+            description='Test table',
+            column_info=[]
+        )
+        
+        assert result == []

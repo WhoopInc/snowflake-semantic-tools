@@ -9,7 +9,8 @@ This manager provides the intelligence layer for automatic metadata enrichment,
 querying Snowflake to gather structural information and statistics about tables.
 """
 
-from typing import Any, Dict, List
+import re
+from typing import Any, Dict, List, Set
 
 import pandas as pd
 
@@ -17,6 +18,10 @@ from snowflake_semantic_tools.shared.utils import get_logger
 from snowflake_semantic_tools.shared.utils.character_sanitizer import CharacterSanitizer
 
 logger = get_logger("infrastructure.snowflake.metadata_manager")
+
+# Snowflake unquoted identifier rules: starts with letter/underscore, contains only
+# alphanumeric, underscore, or dollar sign ($ is allowed but rare)
+UNQUOTED_IDENTIFIER_PATTERN = re.compile(r'^[A-Za-z_][A-Za-z0-9_$]*$')
 
 
 class MetadataManager:
@@ -40,6 +45,73 @@ class MetadataManager:
         """
         self.connection_manager = connection_manager
         self.config = config
+        self._warned_tables: Set[str] = set()  # Track tables we've warned about
+
+    def _requires_quoting(self, identifier: str) -> bool:
+        """
+        Check if an identifier requires quoting for Snowflake SQL.
+        
+        Snowflake unquoted identifiers must:
+        - Start with a letter (A-Z, a-z) or underscore (_)
+        - Contain only letters, digits (0-9), underscores (_), or dollar signs ($)
+        
+        Args:
+            identifier: The identifier to check
+            
+        Returns:
+            True if the identifier needs to be double-quoted
+        """
+        return not bool(UNQUOTED_IDENTIFIER_PATTERN.match(identifier))
+
+    def _quote_identifier(self, identifier: str) -> str:
+        """
+        Quote an identifier if it requires quoting, preserving case.
+        
+        For identifiers with special characters (spaces, dashes, dots, etc.),
+        wraps in double quotes so Snowflake treats them literally.
+        
+        Args:
+            identifier: The identifier to potentially quote
+            
+        Returns:
+            Quoted identifier if needed, otherwise uppercased identifier
+        """
+        if self._requires_quoting(identifier):
+            # Escape any existing double quotes and wrap
+            escaped = identifier.replace('"', '""')
+            return f'"{escaped}"'
+        else:
+            # Standard Snowflake behavior: unquoted identifiers are uppercased
+            return identifier.upper()
+
+    def _log_quoted_identifier_warning(self, table_name: str, quoted_columns: List[str]) -> None:
+        """
+        Log a warning about columns that require quoted identifiers.
+        
+        Only logs once per table to avoid spam. Suggests using underscores
+        for simpler SQL.
+        
+        Args:
+            table_name: The table containing the columns
+            quoted_columns: List of column names that required quoting
+        """
+        if not quoted_columns:
+            return
+            
+        # Only warn once per table
+        if table_name in self._warned_tables:
+            return
+        self._warned_tables.add(table_name)
+        
+        cols_display = ", ".join([f"'{c}'" for c in quoted_columns[:5]])
+        if len(quoted_columns) > 5:
+            cols_display += f", ... ({len(quoted_columns) - 5} more)"
+            
+        logger.warning(
+            f"Table '{table_name}' has columns with special characters: {cols_display}. "
+            f"These require quoted identifiers in Snowflake SQL. "
+            f"Consider using underscores instead of dashes/dots/spaces for simpler SQL."
+        )
 
     def get_table_schema(self, table_name: str, schema_name: str, database_name: str) -> List[Dict[str, Any]]:
         """
@@ -140,22 +212,29 @@ class MetadataManager:
         if not column_names:
             return {}
 
-        # Uppercase all identifiers
+        # Uppercase identifiers for database/schema/table
         database_upper = database_name.upper()
         schema_upper = schema_name.upper()
         table_upper = table_name.upper()
 
+        # Track columns that need quoting for warning
+        quoted_columns = [c for c in column_names if self._requires_quoting(c)]
+        if quoted_columns:
+            self._log_quoted_identifier_warning(table_name, quoted_columns)
+
         # Build UNION ALL query for all columns
         union_queries = []
         for col_name in column_names:
-            col_upper = col_name.upper()
+            # Use intelligent quoting - quotes if special chars, otherwise uppercases
+            col_sql = self._quote_identifier(col_name)
+            col_key = col_name.upper() if not self._requires_quoting(col_name) else col_name
             # Each subquery selects column name and values
             union_queries.append(
                 f"""
-                SELECT '{col_upper}' as COLUMN_NAME, {col_upper} as VALUE
+                SELECT '{col_key}' as COLUMN_NAME, {col_sql} as VALUE
                 FROM {database_upper}.{schema_upper}.{table_upper}
-                WHERE {col_upper} IS NOT NULL
-                QUALIFY ROW_NUMBER() OVER (PARTITION BY {col_upper} ORDER BY NULL) = 1
+                WHERE {col_sql} IS NOT NULL
+                QUALIFY ROW_NUMBER() OVER (PARTITION BY {col_sql} ORDER BY NULL) = 1
                 LIMIT {limit + 1}
             """
             )
@@ -167,16 +246,21 @@ class MetadataManager:
             df = self._execute_query(full_query)
 
             if df.empty:
-                return {col.upper(): [] for col in column_names}
+                # Return uppercase keys for standard cols, original case for quoted cols
+                return {
+                    (col.upper() if not self._requires_quoting(col) else col): []
+                    for col in column_names
+                }
 
             # Group results by column name
             results = {}
             for col_name in column_names:
-                col_upper = col_name.upper()
-                col_df = df[df["COLUMN_NAME"] == col_upper]
+                # Key matches what we used in the SELECT clause
+                col_key = col_name.upper() if not self._requires_quoting(col_name) else col_name
+                col_df = df[df["COLUMN_NAME"] == col_key]
 
                 if col_df.empty:
-                    results[col_upper] = []
+                    results[col_key] = []
                     continue
 
                 # Extract values and sanitize
@@ -190,7 +274,7 @@ class MetadataManager:
                     val_str = CharacterSanitizer.sanitize_for_yaml_value(str(val), MAX_SAMPLE_VALUE_LENGTH)
                     sanitized_values.append(val_str)
 
-                results[col_upper] = sanitized_values
+                results[col_key] = sanitized_values
 
             return results
 
@@ -204,64 +288,6 @@ class MetadataManager:
                 )
             return results
 
-    def get_sample_values(
-        self, table_name: str, schema_name: str, column_name: str, database_name: str, limit: int = 25
-    ) -> List[Any]:
-        """
-        Get distinct sample values for a column with better diversity.
-
-        Performance optimizations:
-        - No ORDER BY for faster query execution and more diverse samples
-        - No WHERE IS NOT NULL to avoid full table scan
-        - Filters nulls in Python after retrieval
-        - Fetches limit+1 to account for potential null value
-        - Truncates individual values to 1000 characters to prevent Snowflake load errors
-        - Sanitizes Jinja template characters to prevent dbt compilation errors
-        - Sanitizes YAML-breaking characters to prevent YAML parsing errors
-
-        Args:
-            table_name: Name of the table (case-insensitive, will be uppercased)
-            schema_name: Schema containing the table (case-insensitive, will be uppercased)
-            column_name: Name of the column (case-insensitive, will be uppercased)
-            database_name: Database containing the table (case-insensitive, will be uppercased)
-            limit: Maximum number of distinct non-null values to return
-
-        Returns:
-            List of sample values as strings (nulls filtered out, max 1000 chars each,
-            Jinja and YAML-breaking characters sanitized)
-
-        Example:
-            >>> metadata_mgr.get_sample_values('users', 'public', 'status', 'analytics')
-            ['active', 'inactive', 'pending']
-        """
-        # Uppercase all identifiers for Snowflake case-insensitive matching
-        database_upper = database_name.upper()
-        schema_upper = schema_name.upper()
-        table_upper = table_name.upper()
-        column_upper = column_name.upper()
-
-        # Fetch limit+1 to account for potential null value
-        query = f"""
-        SELECT DISTINCT {column_upper}
-        FROM {database_upper}.{schema_upper}.{table_upper}
-        LIMIT {limit + 1}
-        """
-        df = self._execute_query(query)
-
-        if df.empty:
-            return []
-
-        # Convert to list and filter out nulls/None values in Python
-        values = df.iloc[:, 0].tolist()
-        non_null_values = [val for val in values if val is not None and str(val).strip()]
-
-        # Sanitize values using CharacterSanitizer
-        result = []
-        for val in non_null_values[:limit]:
-            val_str = CharacterSanitizer.sanitize_for_yaml_value(str(val), max_length=500)
-            result.append(val_str)
-        return result
-
     def validate_primary_key(
         self, table_name: str, schema_name: str, primary_key_columns: List[str], database_name: str
     ) -> bool:
@@ -269,10 +295,10 @@ class MetadataManager:
         Validate if columns form a unique primary key.
 
         Args:
-            table_name: Name of the table (case-insensitive, will be uppercased)
-            schema_name: Schema containing the table (case-insensitive, will be uppercased)
-            primary_key_columns: List of column names to test (case-insensitive, will be uppercased)
-            database_name: Database containing the table (case-insensitive, will be uppercased)
+            table_name: Name of the table (handles special characters with quoting)
+            schema_name: Schema containing the table
+            primary_key_columns: List of column names to test (handles special chars)
+            database_name: Database containing the table
 
         Returns:
             True if columns form a unique key, False otherwise
@@ -283,14 +309,21 @@ class MetadataManager:
             ... )
             True
         """
-        # Uppercase all identifiers for Snowflake case-insensitive matching
+        # Uppercase database/schema/table identifiers
         database_upper = database_name.upper()
         schema_upper = schema_name.upper()
         table_upper = table_name.upper()
-        columns_upper = [col.upper() for col in primary_key_columns]
+        
+        # Check for columns needing quoting and warn
+        quoted_columns = [c for c in primary_key_columns if self._requires_quoting(c)]
+        if quoted_columns:
+            self._log_quoted_identifier_warning(table_name, quoted_columns)
+        
+        # Use intelligent quoting for column names
+        columns_sql = [self._quote_identifier(col) for col in primary_key_columns]
 
-        column_list = ", ".join(columns_upper)
-        where_clause = " AND ".join([f"{col} IS NOT NULL" for col in columns_upper])
+        column_list = ", ".join(columns_sql)
+        where_clause = " AND ".join([f"{col} IS NOT NULL" for col in columns_sql])
 
         query = f"""
         SELECT
@@ -362,24 +395,28 @@ class MetadataManager:
         For better performance when sampling multiple columns, use get_sample_values_batch().
 
         Args:
-            table_name: Name of the table (case-insensitive, will be uppercased)
-            schema_name: Schema containing the table (case-insensitive, will be uppercased)
-            column_name: Name of the column (case-insensitive, will be uppercased)
-            database_name: Database containing the table (case-insensitive, will be uppercased)
+            table_name: Name of the table (handles special characters with quoting)
+            schema_name: Schema containing the table
+            column_name: Name of the column (handles special characters with quoting)
+            database_name: Database containing the table
             limit: Maximum number of distinct non-null values to return
 
         Returns:
             List of sample values as strings (sanitized for YAML/Jinja compatibility)
         """
-        # Uppercase all identifiers for Snowflake case-insensitive matching
+        # Uppercase database/schema/table identifiers
         database_upper = database_name.upper()
         schema_upper = schema_name.upper()
         table_upper = table_name.upper()
-        column_upper = column_name.upper()
+        
+        # Use intelligent quoting for column name
+        if self._requires_quoting(column_name):
+            self._log_quoted_identifier_warning(table_name, [column_name])
+        col_sql = self._quote_identifier(column_name)
 
         # Fetch limit+1 to account for potential null value
         query = f"""
-        SELECT DISTINCT {column_upper}
+        SELECT DISTINCT {col_sql}
         FROM {database_upper}.{schema_upper}.{table_upper}
         LIMIT {limit + 1}
         """

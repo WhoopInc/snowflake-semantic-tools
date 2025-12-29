@@ -209,3 +209,99 @@ def test_get_sample_values_combined_sanitization():
     assert result[1] == ' >{ { variable } }'                       # Space + Jinja sanitized
     assert result[2] == ' @user { {name} }'                        # Space + Jinja sanitized
     assert result[3] == 'normal value'
+
+
+class TestIdentifierQuoting:
+    """Test intelligent SQL identifier quoting for special characters."""
+    
+    def test_requires_quoting_simple_identifier(self):
+        """Test that simple identifiers don't require quoting."""
+        manager = MetadataManager.__new__(MetadataManager)
+        manager._warned_tables = set()
+        
+        assert manager._requires_quoting("user_id") is False
+        assert manager._requires_quoting("ORDER_DATE") is False
+        assert manager._requires_quoting("_private_col") is False
+        assert manager._requires_quoting("col123") is False
+        assert manager._requires_quoting("a") is False
+    
+    def test_requires_quoting_special_characters(self):
+        """Test that identifiers with special characters require quoting."""
+        manager = MetadataManager.__new__(MetadataManager)
+        manager._warned_tables = set()
+        
+        assert manager._requires_quoting("user-id") is True  # dash
+        assert manager._requires_quoting("order date") is True  # space
+        assert manager._requires_quoting("user.name") is True  # dot
+        assert manager._requires_quoting("123column") is True  # starts with digit
+        assert manager._requires_quoting("column@value") is True  # @ symbol
+        assert manager._requires_quoting("") is True  # empty
+    
+    def test_quote_identifier_simple(self):
+        """Test quote_identifier uppercases simple identifiers."""
+        manager = MetadataManager.__new__(MetadataManager)
+        manager._warned_tables = set()
+        
+        assert manager._quote_identifier("user_id") == "USER_ID"
+        assert manager._quote_identifier("order_date") == "ORDER_DATE"
+    
+    def test_quote_identifier_special_chars(self):
+        """Test quote_identifier wraps special char identifiers in quotes."""
+        manager = MetadataManager.__new__(MetadataManager)
+        manager._warned_tables = set()
+        
+        assert manager._quote_identifier("user-id") == '"user-id"'
+        assert manager._quote_identifier("order date") == '"order date"'
+        assert manager._quote_identifier("user.name") == '"user.name"'
+    
+    def test_quote_identifier_escapes_quotes(self):
+        """Test quote_identifier escapes existing double quotes."""
+        manager = MetadataManager.__new__(MetadataManager)
+        manager._warned_tables = set()
+        
+        # Identifier with quote in it (rare but possible)
+        result = manager._quote_identifier('col"name')
+        assert result == '"col""name"'
+    
+    def test_log_quoted_identifier_warning_once_per_table(self):
+        """Test warning is only logged once per table."""
+        manager = MetadataManager.__new__(MetadataManager)
+        manager._warned_tables = set()
+        
+        # First call should add to warned set
+        manager._log_quoted_identifier_warning("my_table", ["col-1", "col-2"])
+        assert "my_table" in manager._warned_tables
+        
+        # Second call should not duplicate (set behavior)
+        manager._log_quoted_identifier_warning("my_table", ["col-3"])
+        assert len(manager._warned_tables) == 1
+        
+        # Different table should be added
+        manager._log_quoted_identifier_warning("other_table", ["col-4"])
+        assert "other_table" in manager._warned_tables
+        assert len(manager._warned_tables) == 2
+    
+    def test_log_quoted_identifier_warning_empty_list(self):
+        """Test warning is not logged for empty list."""
+        manager = MetadataManager.__new__(MetadataManager)
+        manager._warned_tables = set()
+        
+        manager._log_quoted_identifier_warning("my_table", [])
+        assert "my_table" not in manager._warned_tables
+    
+    def test_get_sample_values_with_special_char_column(self):
+        """Test get_sample_values handles columns with special characters."""
+        manager = MetadataManager.__new__(MetadataManager)
+        manager._warned_tables = set()
+        
+        mock_df = pd.DataFrame({'user-id': ['user1', 'user2']})
+        
+        with patch.object(manager, '_execute_query', return_value=mock_df) as mock_query:
+            result = manager.get_sample_values('users', 'public', 'user-id', 'analytics', limit=10)
+            
+            # Check the query used quoted identifier
+            call_args = mock_query.call_args[0][0]
+            assert '"user-id"' in call_args
+            
+            # Warning should have been logged
+            assert 'users' in manager._warned_tables

@@ -298,3 +298,86 @@ models:
         result = yaml_handler.read_yaml(temp_yaml_file)
         assert result['models'][0]['columns'] == []
         assert result['models'][0]['meta']['sst']['sample_values'] == []
+
+
+class TestSemanticModelsSupport:
+    """Test support for semantic_models key (dbt MetricFlow format)."""
+    
+    @pytest.fixture
+    def yaml_handler(self):
+        """Create YAMLHandler instance."""
+        return YAMLHandler()
+    
+    def test_get_models_list_with_models_key(self, yaml_handler):
+        """Test _get_models_list returns models from 'models' key."""
+        yaml_content = {
+            'models': [
+                {'name': 'model1'},
+                {'name': 'model2'}
+            ]
+        }
+        result = yaml_handler._get_models_list(yaml_content)
+        assert len(result) == 2
+        assert result[0]['name'] == 'model1'
+        assert result[1]['name'] == 'model2'
+    
+    def test_get_models_list_with_semantic_models_key(self, yaml_handler):
+        """Test _get_models_list returns models from 'semantic_models' key when 'models' missing."""
+        yaml_content = {
+            'semantic_models': [
+                {'name': 'semantic_model1'},
+                {'name': 'semantic_model2'}
+            ]
+        }
+        result = yaml_handler._get_models_list(yaml_content)
+        assert len(result) == 2
+        assert result[0]['name'] == 'semantic_model1'
+        assert result[1]['name'] == 'semantic_model2'
+    
+    def test_get_models_list_prefers_models_over_semantic_models(self, yaml_handler):
+        """Test _get_models_list prefers 'models' when both keys present."""
+        yaml_content = {
+            'models': [{'name': 'from_models'}],
+            'semantic_models': [{'name': 'from_semantic'}]
+        }
+        result = yaml_handler._get_models_list(yaml_content)
+        assert len(result) == 1
+        assert result[0]['name'] == 'from_models'
+    
+    def test_get_models_list_empty_content(self, yaml_handler):
+        """Test _get_models_list returns empty list for empty content."""
+        result = yaml_handler._get_models_list({})
+        assert result == []
+    
+    def test_get_models_list_invalid_type(self, yaml_handler):
+        """Test _get_models_list handles non-list models gracefully."""
+        yaml_content = {'models': 'not_a_list'}
+        result = yaml_handler._get_models_list(yaml_content)
+        assert result == []
+    
+    def test_has_models_with_models_key(self, yaml_handler):
+        """Test _has_models returns True when 'models' key exists."""
+        yaml_content = {'models': []}
+        assert yaml_handler._has_models(yaml_content) is True
+    
+    def test_has_models_with_semantic_models_key(self, yaml_handler):
+        """Test _has_models returns True when 'semantic_models' key exists."""
+        yaml_content = {'semantic_models': []}
+        assert yaml_handler._has_models(yaml_content) is True
+    
+    def test_has_models_with_neither_key(self, yaml_handler):
+        """Test _has_models returns False when neither key exists."""
+        yaml_content = {'version': 2}
+        assert yaml_handler._has_models(yaml_content) is False
+    
+    def test_get_existing_model_metadata_from_semantic_models(self, yaml_handler):
+        """Test get_existing_model_metadata works with semantic_models key."""
+        yaml_content = {
+            'semantic_models': [
+                {'name': 'target_model', 'description': 'Found me!'}
+            ]
+        }
+        result = yaml_handler.get_existing_model_metadata(yaml_content, 'target_model')
+        assert result is not None
+        assert result['name'] == 'target_model'
+        assert result['description'] == 'Found me!'
