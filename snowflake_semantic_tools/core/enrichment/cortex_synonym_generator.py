@@ -31,6 +31,7 @@ class CortexSynonymGenerator:
         self.snowflake_client = snowflake_client
         self.model = model
         self.max_synonyms = max_synonyms
+        self._cortex_verified = False  # Track if Cortex has been verified
 
         logger.info(f"Initialized Cortex synonym generator with model: {model}")
 
@@ -73,6 +74,11 @@ class CortexSynonymGenerator:
             response = self._execute_cortex(prompt)
             synonyms = self._parse_response_as_list(response, f"table {table_name}")
             return CharacterSanitizer.sanitize_synonym_list(synonyms)
+        except RuntimeError as e:
+            # Cortex access/permission error - surface prominently
+            logger.warning(f"   Cortex unavailable for table '{table_name}': {e}")
+            logger.warning("   Synonym generation will be skipped. Run with --synonyms later once Cortex access is configured.")
+            return []
         except Exception as e:
             logger.error(f"Failed to generate table synonyms for {table_name}: {e}")
             return []
@@ -106,52 +112,56 @@ class CortexSynonymGenerator:
 
             # Sanitize all synonym lists
             return {col: CharacterSanitizer.sanitize_synonym_list(syns) for col, syns in result.items()}
+        except RuntimeError as e:
+            # Cortex access/permission error - surface prominently
+            logger.warning(f"   Cortex unavailable for column synonyms in '{table_name}': {e}")
+            return {}
         except Exception as e:
             logger.error(f"Batch column synonyms failed for {table_name}: {e}")
             return {}
 
-    def generate_column_synonyms(
-        self,
-        table_name: str,
-        column_name: str,
-        column_description: str,
-        data_type: str,
-        sample_values: Optional[List[Any]] = None,
-        existing_synonyms: Optional[List[str]] = None,
-        table_description: Optional[str] = None,
-        full_yaml_context: Optional[str] = None,
-        force: bool = False,
-    ) -> List[str]:
-        """
-        Generate synonyms for a single column (fallback method).
-
-        Note: Use generate_column_synonyms_batch() for better performance.
-        This exists as a fallback for edge cases.
-        """
-        if existing_synonyms and len(existing_synonyms) > 0 and not force:
-            return existing_synonyms
-
-        readable_name = column_name.lower().replace("_", " ")
-        samples_str = ""
-        if sample_values:
-            samples_str = ", ".join([str(v) for v in sample_values[:3] if v])
-
-        prompt = f"""Generate up to {self.max_synonyms} natural language synonyms for column '{column_name}'.
-Description: {column_description[:200] if column_description else 'No description'}
-Type: {data_type}
-Samples: {samples_str}
-
-Return JSON array: ["synonym 1", "synonym 2", ...]"""
-
-        try:
-            response = self._execute_cortex(prompt)
-            synonyms = self._parse_response_as_list(response, f"column {column_name}")
-            return CharacterSanitizer.sanitize_synonym_list(synonyms)
-        except Exception as e:
-            logger.error(f"Failed to generate column synonyms for {column_name}: {e}")
-            return []
-
     # Core Cortex interaction methods
+
+    def _verify_cortex_access(self) -> None:
+        """
+        Verify Cortex access on first call with a simple test.
+        
+        Raises clear error message if Cortex is unavailable.
+        """
+        if self._cortex_verified:
+            return
+            
+        test_query = f"""
+        SELECT SNOWFLAKE.CORTEX.COMPLETE(
+            '{self.model}',
+            'Say hello'
+        ) as RESPONSE
+        """
+        
+        try:
+            result = self.snowflake_client.execute_query(test_query)
+            if result.empty:
+                raise RuntimeError("Cortex returned empty response")
+            self._cortex_verified = True
+            logger.debug(f"Cortex access verified with model: {self.model}")
+        except Exception as e:
+            error_msg = str(e).lower()
+            if "access" in error_msg or "permission" in error_msg or "privilege" in error_msg:
+                raise RuntimeError(
+                    f"Cortex permission error: {e}\n"
+                    f"Ensure your role has access to SNOWFLAKE.CORTEX.COMPLETE function.\n"
+                    f"Try: GRANT DATABASE ROLE SNOWFLAKE.CORTEX_USER TO ROLE <your_role>;"
+                ) from e
+            elif "model" in error_msg or "not found" in error_msg:
+                raise RuntimeError(
+                    f"Cortex model '{self.model}' not available: {e}\n"
+                    f"Available models: llama3.2-3b, mistral-large2, openai-gpt-4.1"
+                ) from e
+            else:
+                raise RuntimeError(
+                    f"Cortex connection failed: {e}\n"
+                    f"Check your Snowflake connection and Cortex availability."
+                ) from e
 
     def _execute_cortex(self, prompt: str) -> str:
         """
@@ -164,8 +174,11 @@ Return JSON array: ["synonym 1", "synonym 2", ...]"""
             Raw response text from Cortex
 
         Raises:
-            Exception: If Cortex call fails or returns empty
+            RuntimeError: If Cortex call fails with descriptive error
         """
+        # Verify Cortex access on first call
+        self._verify_cortex_access()
+        
         escaped_prompt = prompt.replace("'", "''")
         query = f"""
         SELECT SNOWFLAKE.CORTEX.COMPLETE(
@@ -174,10 +187,13 @@ Return JSON array: ["synonym 1", "synonym 2", ...]"""
         ) as RESPONSE
         """
 
-        result = self.snowflake_client.execute_query(query)
+        try:
+            result = self.snowflake_client.execute_query(query)
+        except Exception as e:
+            raise RuntimeError(f"Cortex query failed: {e}") from e
 
         if result.empty:
-            raise ValueError("Empty response from Cortex")
+            raise RuntimeError("Cortex returned empty response - check model availability")
 
         return result.iloc[0]["RESPONSE"]
 
@@ -192,8 +208,11 @@ Return JSON array: ["synonym 1", "synonym 2", ...]"""
         Returns:
             List of synonym strings
         """
+        # Use robust JSON extraction (handles markdown fences, preamble, etc.)
+        cleaned_text = self._extract_json_from_response(response_text)
+
         try:
-            response_obj = json.loads(response_text)
+            response_obj = json.loads(cleaned_text)
 
             # Try different JSON structures
             if isinstance(response_obj, list):
@@ -219,8 +238,10 @@ Return JSON array: ["synonym 1", "synonym 2", ...]"""
         Returns:
             Dict mapping column names to synonym lists
         """
+        cleaned_text = self._extract_json_from_response(response_text)
+
         try:
-            response_obj = json.loads(response_text)
+            response_obj = json.loads(cleaned_text)
 
             # Try different JSON structures
             if isinstance(response_obj, dict) and "columns" in response_obj:
@@ -234,6 +255,45 @@ Return JSON array: ["synonym 1", "synonym 2", ...]"""
         except json.JSONDecodeError:
             logger.warning(f"Invalid JSON for {context}")
             return {}
+
+    def _extract_json_from_response(self, response_text: str) -> str:
+        """
+        Extract JSON from LLM response, handling various formats.
+
+        Handles:
+        - Raw JSON
+        - Markdown code fences (```json ... ```, ``` ... ```)
+        - Preamble/trailing text around JSON
+        - Uppercase/lowercase fence labels
+
+        Args:
+            response_text: Raw LLM response
+
+        Returns:
+            Cleaned JSON string ready for parsing
+        """
+        if not response_text:
+            return ""
+
+        text = response_text.strip()
+
+        # Strategy 1: Find JSON by locating outermost braces
+        # This handles preamble text, markdown fences, and trailing explanations
+        first_brace = text.find("{")
+        last_brace = text.rfind("}")
+
+        if first_brace != -1 and last_brace != -1 and last_brace > first_brace:
+            return text[first_brace : last_brace + 1]
+
+        # Strategy 2: Handle array responses (e.g., ["synonym1", "synonym2"])
+        first_bracket = text.find("[")
+        last_bracket = text.rfind("]")
+
+        if first_bracket != -1 and last_bracket != -1 and last_bracket > first_bracket:
+            return text[first_bracket : last_bracket + 1]
+
+        # Fallback: return as-is and let JSON parser handle it
+        return text
 
     def _extract_synonyms_from_text(self, text: str, max_results: int, context_name: str) -> List[str]:
         """

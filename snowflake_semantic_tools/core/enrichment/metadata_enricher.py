@@ -197,10 +197,16 @@ class MetadataEnricher:
             yaml_path = self.yaml_handler.find_yaml_file_for_model(model_sql_path)
             existing_yaml = self.yaml_handler.read_yaml(yaml_path)
 
-            # Get existing model metadata or create new
+            # Get existing model metadata from 'models' section only (not semantic_models)
+            # Enrichment columns ALWAYS go under 'models:', never touch 'semantic_models:'
             if existing_yaml:
-                existing_model = self.yaml_handler.get_existing_model_metadata(existing_yaml, model_name)
-                logger.info(f"  Status:     Found existing YAML")
+                existing_model = None
+                if "models" in existing_yaml:
+                    for model in existing_yaml["models"]:
+                        if isinstance(model, dict) and model.get("name") == model_name:
+                            existing_model = model
+                            break
+                logger.info(f"  Status:     Found existing YAML" + (" (with models section)" if existing_model else " (semantic_models only)"))
             else:
                 existing_model = None
                 existing_yaml = self.yaml_handler.create_base_yaml_structure(model_name)
@@ -210,6 +216,11 @@ class MetadataEnricher:
             needs_schema_query = not components or any(
                 c in components for c in ["column-types", "data-types", "sample-values", "detect-enums", "primary-keys"]
             )
+
+            # Also need schema query if column-synonyms requested but no existing columns
+            existing_columns = existing_model.get("columns", []) if existing_model else []
+            if "column-synonyms" in components and not existing_columns:
+                needs_schema_query = True
 
             # Get table schema from Snowflake ONLY if needed
             table_columns = None
@@ -236,8 +247,11 @@ class MetadataEnricher:
             # Process model-level metadata (only if we have schema)
             if needs_schema_query:
                 pk_candidates = primary_key_candidates.get(model_name, []) if primary_key_candidates else []
+                # Use existing model from 'models' section, or create fresh base
+                # NEVER use semantic_models as base - they have different structure
+                base_model = existing_model or {"name": model_name}
                 updated_model = self._process_model_metadata(
-                    existing_model or existing_yaml["models"][0], model_info, table_columns, pk_candidates
+                    base_model, model_info, table_columns, pk_candidates
                 )
 
                 # Process column-level metadata
@@ -250,8 +264,8 @@ class MetadataEnricher:
                     components=components,  # Pass components to control behavior
                 )
             else:
-                # Synonym-only: use existing data
-                updated_model = existing_model or existing_yaml["models"][0]
+                # Synonym-only: use existing data from 'models' section only
+                updated_model = existing_model or {"name": model_name}
                 updated_columns = updated_model.get("columns", [])
 
             # Update model with processed columns
@@ -280,14 +294,21 @@ class MetadataEnricher:
                     updated_model["columns"] = updated_columns
 
             # Update YAML structure
-            if existing_yaml and existing_model:
-                # Update existing model in place
+            # CRITICAL: Enrichment columns ALWAYS go under 'models:' key, never under 'semantic_models:'
+            # semantic_models uses dimensions/measures/entities, models uses columns
+            if "models" in existing_yaml:
+                # Update existing model in the models section
+                model_found = False
                 for i, model in enumerate(existing_yaml["models"]):
                     if model.get("name") == model_name:
                         existing_yaml["models"][i] = updated_model
+                        model_found = True
                         break
+                if not model_found:
+                    # Model not in models list, add it
+                    existing_yaml["models"].append(updated_model)
             else:
-                # Create new YAML structure
+                # Create new 'models' section (even if semantic_models exists)
                 existing_yaml["models"] = [updated_model]
 
             # Write updated YAML
@@ -534,7 +555,14 @@ class MetadataEnricher:
 
         # Get existing or create new
         existing_col = existing_lookup.get(col_name.upper())
-        column = copy.deepcopy(existing_col) if existing_col else {"name": col_name.lower()}
+        if existing_col:
+            column = copy.deepcopy(existing_col)
+        else:
+            # Create new column with description placeholder so validation passes
+            column = {
+                "name": col_name.lower(),
+                "description": "",  # Required field - placeholder for user to fill in
+            }
         column["name"] = col_name.lower()
 
         # Ensure SST structure

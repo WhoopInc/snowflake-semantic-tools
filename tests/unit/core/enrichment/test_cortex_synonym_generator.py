@@ -89,41 +89,6 @@ class TestCortexSynonymGenerator:
         assert 'subscription data' in result
         assert 'user metrics' in result
     
-    def test_generate_column_synonyms_skips_existing(self, synonym_generator):
-        """Test that existing column synonyms are preserved."""
-        existing = ['user id', 'member identifier']
-        
-        result = synonym_generator.generate_column_synonyms(
-            table_name='users',
-            column_name='user_id',
-            column_description='Unique user identifier',
-            data_type='number',
-            sample_values=[1, 2, 3],
-            existing_synonyms=existing
-        )
-        
-        assert result == existing
-    
-    def test_generate_column_synonyms_success(self, synonym_generator, mock_snowflake_client):
-        """Test successful column synonym generation with structured output."""
-        # Mock Cortex structured response
-        mock_df = pd.DataFrame({
-            'RESPONSE': ['{"synonyms": ["user identifier", "member id"]}']
-        })
-        mock_snowflake_client.execute_query.return_value = mock_df
-        
-        result = synonym_generator.generate_column_synonyms(
-            table_name='users',
-            column_name='user_id',
-            column_description='Unique identifier',
-            data_type='number',
-            sample_values=[1, 2, 3, 4, 5]
-        )
-        
-        assert len(result) <= 3  # Max for columns
-        assert 'user identifier' in result
-        assert 'member id' in result
-    
     def test_cortex_invalid_json_returns_empty(self, synonym_generator, mock_snowflake_client):
         """Test that invalid JSON returns empty list (no fallback)."""
         # Mock invalid JSON response (shouldn't happen with structured outputs)
@@ -262,3 +227,140 @@ class TestCortexSynonymGenerator:
         assert len(result['col1']) == 2
         assert len(result['col2']) == 2
         assert 'synonym 1' in result['col1']
+
+    def test_batch_column_synonyms_markdown_fence(self, synonym_generator, mock_snowflake_client):
+        """Test that markdown code fences are stripped from Cortex response."""
+        # Mock response with markdown code fence (common Cortex behavior)
+        mock_df = pd.DataFrame({
+            'RESPONSE': ['```json\n{"col1": ["synonym 1"], "col2": ["synonym 2"]}\n```']
+        })
+        mock_snowflake_client.execute_query.return_value = mock_df
+        
+        columns = [
+            {'name': 'col1', 'description': 'Column 1', 'meta': {'sst': {'data_type': 'VARCHAR'}}},
+            {'name': 'col2', 'description': 'Column 2', 'meta': {'sst': {'data_type': 'NUMBER'}}}
+        ]
+        
+        result = synonym_generator.generate_column_synonyms_batch(
+            table_name='test_table',
+            columns=columns
+        )
+        
+        # Should successfully parse despite markdown fence
+        assert 'col1' in result
+        assert 'col2' in result
+        assert result['col1'] == ['synonym 1']
+        assert result['col2'] == ['synonym 2']
+
+    def test_extract_json_with_preamble_text(self, synonym_generator):
+        """Test JSON extraction when LLM adds preamble text."""
+        response = 'Here is the JSON you requested:\n\n{"col1": ["syn1"]}'
+        result = synonym_generator._extract_json_from_response(response)
+        assert result == '{"col1": ["syn1"]}'
+
+    def test_extract_json_with_trailing_text(self, synonym_generator):
+        """Test JSON extraction when LLM adds trailing explanation."""
+        response = '{"col1": ["syn1"]}\n\nI hope this helps!'
+        result = synonym_generator._extract_json_from_response(response)
+        assert result == '{"col1": ["syn1"]}'
+
+    def test_extract_json_handles_array_response(self, synonym_generator):
+        """Test JSON extraction for array responses."""
+        response = '["synonym1", "synonym2", "synonym3"]'
+        result = synonym_generator._extract_json_from_response(response)
+        assert result == '["synonym1", "synonym2", "synonym3"]'
+
+    def test_extract_json_empty_response(self, synonym_generator):
+        """Test JSON extraction handles empty response."""
+        assert synonym_generator._extract_json_from_response("") == ""
+        assert synonym_generator._extract_json_from_response(None) == ""
+
+
+class TestCortexVerification:
+    """Test Cortex access verification and error handling."""
+    
+    @pytest.fixture
+    def mock_snowflake_client(self):
+        """Create a mock Snowflake client."""
+        client = Mock()
+        return client
+    
+    def test_verify_cortex_access_success(self, mock_snowflake_client):
+        """Test successful Cortex verification."""
+        mock_df = pd.DataFrame({'RESPONSE': ['Hello!']})
+        mock_snowflake_client.execute_query.return_value = mock_df
+        
+        generator = CortexSynonymGenerator(mock_snowflake_client)
+        assert generator._cortex_verified is False
+        
+        # Trigger verification via _execute_cortex
+        generator._execute_cortex("test prompt")
+        
+        assert generator._cortex_verified is True
+    
+    def test_verify_cortex_access_permission_error(self, mock_snowflake_client):
+        """Test Cortex permission error provides helpful message."""
+        mock_snowflake_client.execute_query.side_effect = Exception("access denied to function")
+        
+        generator = CortexSynonymGenerator(mock_snowflake_client)
+        
+        with pytest.raises(RuntimeError) as exc_info:
+            generator._verify_cortex_access()
+        
+        error_msg = str(exc_info.value)
+        assert "permission error" in error_msg.lower()
+        assert "CORTEX_USER" in error_msg
+    
+    def test_verify_cortex_access_model_not_found(self, mock_snowflake_client):
+        """Test Cortex model not found error provides helpful message."""
+        mock_snowflake_client.execute_query.side_effect = Exception("model not found")
+        
+        generator = CortexSynonymGenerator(mock_snowflake_client)
+        
+        with pytest.raises(RuntimeError) as exc_info:
+            generator._verify_cortex_access()
+        
+        error_msg = str(exc_info.value)
+        assert "not available" in error_msg.lower()
+        assert "openai-gpt-4.1" in error_msg  # Default model
+    
+    def test_verify_cortex_access_generic_error(self, mock_snowflake_client):
+        """Test Cortex generic error provides connection guidance."""
+        mock_snowflake_client.execute_query.side_effect = Exception("some other error")
+        
+        generator = CortexSynonymGenerator(mock_snowflake_client)
+        
+        with pytest.raises(RuntimeError) as exc_info:
+            generator._verify_cortex_access()
+        
+        error_msg = str(exc_info.value)
+        assert "connection failed" in error_msg.lower()
+    
+    def test_verify_cortex_access_only_called_once(self, mock_snowflake_client):
+        """Test Cortex verification is only performed once."""
+        mock_df = pd.DataFrame({'RESPONSE': ['Hello!']})
+        mock_snowflake_client.execute_query.return_value = mock_df
+        
+        generator = CortexSynonymGenerator(mock_snowflake_client)
+        generator._verify_cortex_access()
+        generator._verify_cortex_access()
+        generator._verify_cortex_access()
+        
+        # Should only have called execute_query once for verification
+        # (subsequent calls skip because _cortex_verified is True)
+        assert mock_snowflake_client.execute_query.call_count == 1
+    
+    def test_generate_synonyms_returns_empty_on_cortex_error(self, mock_snowflake_client):
+        """Test that synonym generation gracefully returns empty on Cortex error."""
+        mock_snowflake_client.execute_query.side_effect = Exception("access denied")
+        
+        generator = CortexSynonymGenerator(mock_snowflake_client)
+        
+        # Should return empty list, not raise
+        result = generator.generate_table_synonyms(
+            table_name='test',
+            description='Test table',
+            column_info=[]
+        )
+        
+        assert result == []
