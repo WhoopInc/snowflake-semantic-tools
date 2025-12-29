@@ -16,6 +16,7 @@ component type maps to a specific table in the semantic model schema:
 - semantic_views → SM_SEMANTIC_VIEWS (domain-specific views)
 """
 
+import re
 from pathlib import Path
 from typing import Any, Dict, List
 
@@ -205,18 +206,23 @@ def parse_snowflake_filters(filters: List[Dict[str, Any]], file_path: Path) -> L
 
     for filter_item in filters:
         try:
-            # Handle tables field properly - it's a list but we want the first table
+            expr = filter_item.get("expr", "")
+
+            # Try explicit tables field first (backward compatibility)
             tables = filter_item.get("tables", [])
             if isinstance(tables, list) and tables:
-                table_name = tables[0]
+                # Handle {{ table('name') }} template syntax
+                table_name = _extract_table_name_from_template(tables[0])
             else:
-                table_name = str(tables)
+                # Extract table names from {{ column('table', 'col') }} expressions in expr
+                table_names = _extract_table_names_from_jinja(expr)
+                table_name = table_names[0] if table_names else ""
 
             filter_record = {
                 "name": filter_item.get("name", "").upper(),
                 "table_name": table_name.upper() if table_name else "",
                 "description": filter_item.get("description", ""),
-                "expr": filter_item.get("expr", ""),
+                "expr": expr,
                 "synonyms": filter_item.get("synonyms", []),
             }
             filter_records.append(filter_record)
@@ -226,6 +232,57 @@ def parse_snowflake_filters(filters: List[Dict[str, Any]], file_path: Path) -> L
             continue
 
     return filter_records
+
+
+def _extract_table_names_from_jinja(expr: str) -> List[str]:
+    """
+    Extract table names from {{ column('table', 'col') }} expressions.
+
+    Args:
+        expr: Expression string potentially containing Jinja2 column references
+
+    Returns:
+        List of unique table names found in the expression
+
+    Examples:
+        >>> _extract_table_names_from_jinja("{{ column('orders', 'total') }} > 0")
+        ['orders']
+        >>> _extract_table_names_from_jinja("{{ column('orders', 'a') }} AND {{ column('users', 'b') }}")
+        ['orders', 'users']
+    """
+    # Pattern: {{ column('table_name', 'column_name') }} - handles both single and double quotes
+    pattern = r"{{\s*column\s*\(\s*['\"]([^'\"]+)['\"]"
+    matches = re.findall(pattern, expr)
+    # Return unique table names while preserving first occurrence order
+    seen = set()
+    unique_tables = []
+    for match in matches:
+        table = match.strip()
+        if table and table not in seen:
+            seen.add(table)
+            unique_tables.append(table)
+    return unique_tables
+
+
+def _extract_table_name_from_template(template: str) -> str:
+    """
+    Extract table name from {{ table('name') }} template.
+
+    Args:
+        template: Template string like "{{ table('orders') }}"
+
+    Returns:
+        Extracted table name or original string if not a template
+
+    Examples:
+        >>> _extract_table_name_from_template("{{ table('orders') }}")
+        'orders'
+        >>> _extract_table_name_from_template("orders")
+        'orders'
+    """
+    pattern = r"{{\s*table\s*\(\s*['\"]([^'\"]+)['\"]\s*\)\s*}}"
+    match = re.search(pattern, template)
+    return match.group(1) if match else template
 
 
 def parse_snowflake_custom_instructions(instructions: List[Dict[str, Any]], file_path: Path) -> List[Dict[str, Any]]:

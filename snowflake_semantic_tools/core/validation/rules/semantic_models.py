@@ -49,20 +49,6 @@ class SemanticModelValidator:
     generation and prevent SQL generation errors.
     """
 
-    # Valid aggregation types for metrics
-    VALID_AGGREGATIONS = {
-        "sum",
-        "avg",
-        "count",
-        "count_distinct",
-        "min",
-        "max",
-        "median",
-        "percentile",
-        "stddev",
-        "variance",
-    }
-
     def validate(self, semantic_data: Dict[str, Any]) -> ValidationResult:
         """
         Validate all semantic models in the parsed data.
@@ -138,16 +124,11 @@ class SemanticModelValidator:
                 else:
                     # Validate SQL syntax in expression
                     self._validate_sql_expression(metric_name, metric["expr"], "metric", result)
+                    # Validate expression syntax (balanced delimiters)
+                    self._validate_expression_syntax(metric["expr"], metric_name, "Metric", result)
 
-            # Validate default_aggregation if present
-            if "default_aggregation" in metric:
-                agg = metric["default_aggregation"]
-                if agg and agg.lower() not in self.VALID_AGGREGATIONS:
-                    result.add_warning(
-                        f"Metric '{metric_name}' has unrecognized default_aggregation: '{agg}'. "
-                        f"Valid values: {', '.join(sorted(self.VALID_AGGREGATIONS))}",
-                        context={"metric": metric_name, "field": "default_aggregation", "value": agg, "type": "metric"},
-                    )
+            # Note: default_aggregation is NOT validated - it's not part of Snowflake's
+            # semantic view spec. Aggregation is embedded in the expr field (e.g., SUM(amount)).
 
             # Validate synonyms if present
             if "synonyms" in metric:
@@ -263,14 +244,14 @@ class SemanticModelValidator:
                             left_table_name = self._extract_table_name(left_table)
                             right_table_name = self._extract_table_name(right_table)
 
-                            # Validate table references match
-                            if parsed.left_table and left_table_name and parsed.left_table != left_table_name:
+                            # Validate table references match (case-insensitive comparison)
+                            if parsed.left_table and left_table_name and parsed.left_table.upper() != left_table_name.upper():
                                 result.add_error(
                                     f"Relationship '{rel_name}' condition references table '{parsed.left_table}' but left_table is '{left_table_name}'",
                                     context={"relationship": rel_name, "condition": condition, "type": "relationship"},
                                 )
 
-                            if parsed.right_table and right_table_name and parsed.right_table != right_table_name:
+                            if parsed.right_table and right_table_name and parsed.right_table.upper() != right_table_name.upper():
                                 result.add_error(
                                     f"Relationship '{rel_name}' condition references table '{parsed.right_table}' but right_table is '{right_table_name}'",
                                     context={"relationship": rel_name, "condition": condition, "type": "relationship"},
@@ -320,6 +301,11 @@ class SemanticModelValidator:
                         f"Filter '{filter_name}' field 'expr' cannot be empty",
                         context={"filter": filter_name, "field": "expr", "type": "filter"},
                     )
+                else:
+                    # Validate SQL syntax in expression
+                    self._validate_sql_expression(filter_name, filter_def["expr"], "filter", result)
+                    # Validate expression syntax (balanced delimiters)
+                    self._validate_expression_syntax(filter_def["expr"], filter_name, "Filter", result)
 
             # Validate synonyms if present
             if "synonyms" in filter_def:
@@ -797,3 +783,61 @@ class SemanticModelValidator:
         self._validate_identifier_length(name, identifier_type, result, context_name)
         self._validate_identifier_characters(name, identifier_type, result, context_name)
         self._validate_reserved_keywords(name, identifier_type, result, context_name)
+
+    # =========================================================================
+    # EXPRESSION VALIDATION METHODS
+    # =========================================================================
+
+    def _validate_expression_syntax(
+        self, expression: str, name: str, expr_type: str, result: ValidationResult, table_name: str = None
+    ):
+        """
+        Basic SQL syntax validation - checks for balanced delimiters.
+
+        This catches common mistakes like unbalanced parentheses, brackets, or braces
+        before deployment fails with cryptic Snowflake errors.
+
+        Args:
+            expression: The expression string to validate
+            name: Name of the entity (metric, filter, etc.)
+            expr_type: Type of expression (e.g., "Metric", "Filter")
+            result: ValidationResult to add errors to
+            table_name: Optional table name for context
+        """
+        if not expression:
+            return
+
+        errors = []
+
+        # Check balanced parentheses
+        open_parens = expression.count("(")
+        close_parens = expression.count(")")
+        if open_parens != close_parens:
+            errors.append(f"unbalanced parentheses ({open_parens} opening, {close_parens} closing)")
+
+        # Check balanced brackets
+        open_brackets = expression.count("[")
+        close_brackets = expression.count("]")
+        if open_brackets != close_brackets:
+            errors.append(f"unbalanced brackets ({open_brackets} opening, {close_brackets} closing)")
+
+        # Check balanced braces (for Jinja2 templates)
+        open_braces = expression.count("{")
+        close_braces = expression.count("}")
+        if open_braces != close_braces:
+            errors.append(f"unbalanced braces ({open_braces} opening, {close_braces} closing)")
+
+        if errors:
+            context_prefix = f"{table_name}." if table_name else ""
+            # Truncate long expressions for readability
+            expr_preview = expression[:100] + "..." if len(expression) > 100 else expression
+            result.add_error(
+                f"{expr_type} '{context_prefix}{name}' has syntax errors:\n"
+                f"Expression: {expr_preview}\n"
+                f"Issues: {', '.join(errors)}",
+                context={
+                    "table": table_name,
+                    expr_type.lower(): name,
+                    "issues": errors,
+                },
+            )

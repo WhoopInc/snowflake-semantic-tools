@@ -154,22 +154,29 @@ class TestMetricValidation:
         errors = [i.message for i in result.issues if i.severity.name == 'ERROR']
         assert any('expr' in e and 'cannot be empty' in e for e in errors)
     
-    def test_metric_invalid_aggregation_warning(self, validator):
-        """Test that metric with invalid aggregation produces WARNING."""
+    def test_metric_with_default_aggregation_ignored(self, validator):
+        """Test that default_aggregation field is ignored (not part of Snowflake spec).
+        
+        Note: default_aggregation is NOT validated because it's not used by Snowflake
+        semantic views. Aggregation is embedded in the expr field (e.g., SUM(amount)).
+        """
         semantic_data = {
             'metrics': {
                 'items': [{
                     'name': 'total_revenue',
+                    'description': 'Total revenue',
                     'expr': 'SUM(amount)',
                     'tables': ['orders'],
-                    'default_aggregation': 'invalid_agg'
+                    'default_aggregation': 'anything_here_is_fine'  # Ignored field
                 }]
             }
         }
         
         result = validator.validate(semantic_data)
+        # Should not produce any errors or warnings about default_aggregation
+        assert result.error_count == 0
         warnings = [i.message for i in result.issues if i.severity.name == 'WARNING']
-        assert any('unrecognized default_aggregation' in w for w in warnings)
+        assert not any('aggregation' in w.lower() for w in warnings)
     
     def test_metric_missing_description_warning(self, validator):
         """Test that metric without description produces WARNING."""
@@ -881,3 +888,119 @@ class TestCombinedIdentifierValidation:
         result = validator.validate(semantic_data)
         errors = [i.message for i in result.issues if i.severity.name == 'ERROR']
         assert any('invalid characters' in e for e in errors)
+
+
+class TestExpressionValidation:
+    """Test expression validation (Issue #26 - syntax validation).
+    
+    Note: Data type and column type validation is handled by DbtModelValidator
+    in dbt_models.py (Issues #28, #29). Empty expression validation (Issue #27)
+    is done inline in _validate_metrics and _validate_filters.
+    """
+
+    @pytest.fixture
+    def validator(self):
+        return SemanticModelValidator()
+
+    # Expression syntax tests (Issue #26)
+    def test_balanced_parentheses_passes(self, validator):
+        """Test that balanced parentheses pass."""
+        result = ValidationResult()
+        validator._validate_expression_syntax("SUM(order_total)", "test_metric", "Metric", result)
+        assert result.error_count == 0
+
+    def test_unbalanced_parentheses_extra_close(self, validator):
+        """Test that extra closing parenthesis produces error."""
+        result = ValidationResult()
+        validator._validate_expression_syntax("SUM(x))", "test_metric", "Metric", result)
+        assert result.error_count == 1
+        assert "unbalanced parentheses" in result.issues[0].message
+
+    def test_unbalanced_parentheses_extra_open(self, validator):
+        """Test that extra opening parenthesis produces error."""
+        result = ValidationResult()
+        validator._validate_expression_syntax("SUM((x)", "test_metric", "Metric", result)
+        assert result.error_count == 1
+        assert "unbalanced parentheses" in result.issues[0].message
+
+    def test_unbalanced_brackets(self, validator):
+        """Test that unbalanced brackets produce error."""
+        result = ValidationResult()
+        validator._validate_expression_syntax("arr[1", "test_metric", "Metric", result)
+        assert result.error_count == 1
+        assert "unbalanced brackets" in result.issues[0].message
+
+    def test_unbalanced_braces(self, validator):
+        """Test that unbalanced braces produce error."""
+        result = ValidationResult()
+        validator._validate_expression_syntax("{{ column('t', 'c') }", "test_metric", "Metric", result)
+        assert result.error_count == 1
+        assert "unbalanced braces" in result.issues[0].message
+
+    def test_complex_valid_expression(self, validator):
+        """Test that complex but valid expression passes."""
+        result = ValidationResult()
+        expr = "CASE WHEN {{ column('orders', 'status') }} = 'complete' THEN SUM({{ column('orders', 'amount') }}) ELSE 0 END"
+        validator._validate_expression_syntax(expr, "test_metric", "Metric", result)
+        assert result.error_count == 0
+
+    def test_empty_expression_passes_syntax_check(self, validator):
+        """Test that empty expression passes syntax check (separate validation)."""
+        result = ValidationResult()
+        validator._validate_expression_syntax("", "test_metric", "Metric", result)
+        assert result.error_count == 0  # Empty is handled by _validate_expression_not_empty
+
+
+class TestFilterParsingHelpers:
+    """Test filter parsing helper functions."""
+
+    def test_extract_table_names_from_jinja_single(self):
+        """Test extracting single table name from Jinja2 expression."""
+        from snowflake_semantic_tools.core.parsing.parsers.semantic_parser import _extract_table_names_from_jinja
+        
+        result = _extract_table_names_from_jinja("{{ column('orders', 'total') }} > 0")
+        assert result == ['orders']
+
+    def test_extract_table_names_from_jinja_multiple_same(self):
+        """Test extracting multiple references to same table."""
+        from snowflake_semantic_tools.core.parsing.parsers.semantic_parser import _extract_table_names_from_jinja
+        
+        result = _extract_table_names_from_jinja("{{ column('orders', 'a') }} AND {{ column('orders', 'b') }}")
+        assert result == ['orders']  # Should deduplicate
+
+    def test_extract_table_names_from_jinja_multiple_different(self):
+        """Test extracting multiple different table names."""
+        from snowflake_semantic_tools.core.parsing.parsers.semantic_parser import _extract_table_names_from_jinja
+        
+        result = _extract_table_names_from_jinja("{{ column('orders', 'a') }} AND {{ column('users', 'b') }}")
+        assert 'orders' in result
+        assert 'users' in result
+        assert len(result) == 2
+
+    def test_extract_table_names_from_jinja_no_match(self):
+        """Test that expression without Jinja2 returns empty list."""
+        from snowflake_semantic_tools.core.parsing.parsers.semantic_parser import _extract_table_names_from_jinja
+        
+        result = _extract_table_names_from_jinja("total > 0")
+        assert result == []
+
+    def test_extract_table_names_from_jinja_double_quotes(self):
+        """Test extracting with double quotes."""
+        from snowflake_semantic_tools.core.parsing.parsers.semantic_parser import _extract_table_names_from_jinja
+        
+        result = _extract_table_names_from_jinja('{{ column("orders", "total") }} > 0')
+        assert result == ['orders']
+
+    def test_extract_table_name_from_template(self):
+        """Test extracting table name from table() template."""
+        from snowflake_semantic_tools.core.parsing.parsers.semantic_parser import _extract_table_name_from_template
+        
+        result = _extract_table_name_from_template("{{ table('orders') }}")
+        assert result == 'orders'
+
+    def test_extract_table_name_from_template_not_template(self):
+        """Test that non-template string is returned as-is."""
+        from snowflake_semantic_tools.core.parsing.parsers.semantic_parser import _extract_table_name_from_template
+        
+        result = _extract_table_name_from_template("orders")
+        assert result == 'orders'

@@ -1,0 +1,67 @@
+# Invalid Data Types and Expressions Fixtures
+# Tests that invalid data types, column types, and malformed expressions are caught.
+#
+# Related Issues: #26 (syntax), #27 (empty), #28 (column type), #29 (data type)
+
+# Note: These fixtures test the validation methods directly.
+# The dbt model files would contain data_type and column_type fields.
+
+# Example dbt model YAML that would produce errors:
+# models:
+#   - name: orders
+#     columns:
+#       - name: order_id
+#         data_type: INTGER  # Typo - should be INTEGER
+#         meta:
+#           sst:
+#             column_type: measure  # Invalid - should be dimension/fact/time_dimension
+
+# METRICS with expression issues
+snowflake_metrics:
+  # Empty expression (Issue #27)
+  - name: empty_expr_metric
+    description: "Metric with empty expression"
+    expr: ""
+    tables:
+      - "{{ table('orders') }}"
+
+  # Whitespace-only expression (Issue #27)
+  - name: whitespace_expr_metric
+    description: "Metric with whitespace-only expression"
+    expr: "   "
+    tables:
+      - "{{ table('orders') }}"
+
+  # Unbalanced parentheses (Issue #26)
+  - name: unbalanced_parens_metric
+    description: "Metric with unbalanced parentheses"
+    expr: "SUM({{ column('orders', 'amount') }})))"
+    tables:
+      - "{{ table('orders') }}"
+
+  # Unbalanced brackets (Issue #26)
+  - name: unbalanced_brackets_metric
+    description: "Metric with unbalanced brackets"
+    expr: "{{ column('orders', 'items') }}[0"
+    tables:
+      - "{{ table('orders') }}"
+
+  # Unbalanced braces - broken Jinja2 (Issue #26)
+  - name: broken_jinja_metric
+    description: "Metric with broken Jinja2 template"
+    expr: "SUM({{ column('orders', 'amount') }"
+    tables:
+      - "{{ table('orders') }}"
+
+# FILTERS with expression issues
+snowflake_filters:
+  # Empty expression
+  - name: empty_filter
+    description: "Filter with empty expression"
+    expr: ""
+
+  # Unbalanced expression
+  - name: unbalanced_filter
+    description: "Filter with unbalanced parentheses"
+    expr: "((status = 'active')"
+
