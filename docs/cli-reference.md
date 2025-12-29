@@ -57,17 +57,17 @@ sst enrich TARGET_PATH [OPTIONS]
 
 Control which metadata components to enrich:
 
-| Option | Type | Description |
-|--------|------|-------------|
-| `--column-types` | FLAG | Enrich column types (dimension/fact/time_dimension) |
-| `--data-types` | FLAG | Enrich data types (map Snowflake types) |
-| `--sample-values` | FLAG | Enrich sample values (queries data - SLOW) |
-| `--detect-enums` | FLAG | Detect enum columns (low cardinality) |
-| `--primary-keys` | FLAG | Validate primary key candidates |
-| `--table-synonyms` | FLAG | Generate table-level synonyms via Cortex LLM |
-| `--column-synonyms` | FLAG | Generate column-level synonyms via Cortex LLM |
-| `--synonyms` | FLAG | Generate both table and column synonyms (shorthand) |
-| `--all` | FLAG | Enrich ALL components including synonyms |
+| Option | Short | Type | Description |
+|--------|-------|------|-------------|
+| `--column-types` | `-ct` | FLAG | Enrich column types (dimension/fact/time_dimension) |
+| `--data-types` | `-dt` | FLAG | Enrich data types (map Snowflake types) |
+| `--sample-values` | `-sv` | FLAG | Enrich sample values (queries data - SLOW) |
+| `--detect-enums` | `-de` | FLAG | Detect enum columns (low cardinality) |
+| `--primary-keys` | `-pk` | FLAG | Validate primary key candidates |
+| `--table-synonyms` | `-ts` | FLAG | Generate table-level synonyms via Cortex LLM |
+| `--column-synonyms` | `-cs` | FLAG | Generate column-level synonyms via Cortex LLM |
+| `--synonyms` | `-syn` | FLAG | Generate both table and column synonyms (shorthand) |
+| `--all` | | FLAG | Enrich ALL components including synonyms |
 
 **Note:** If no component flags are specified, defaults to: `--column-types --data-types --sample-values --detect-enums`
 
@@ -118,31 +118,29 @@ sst enrich models/domain/ --database PROD_DB --schema domain
 # Enrich single model (via SQL file)
 sst enrich models/users/users.sql --database PROD_DB --schema users
 
-# Enrich with LLM-generated synonyms
-sst enrich models/domain/ \
-  --column-types --data-types --sample-values \
-  --synonyms \
-  --database PROD_DB --schema domain
+# Fast enrichment: only data types (skips expensive sample queries)
+sst enrich models/domain/ -dt --database PROD_DB --schema domain
+
+# Fast enrichment: only column types  
+sst enrich models/domain/ -ct --database PROD_DB --schema domain
+
+# Refresh sample values only (slower - queries Snowflake data)
+sst enrich models/domain/ -sv --database PROD_DB --schema domain
+
+# Enrich with LLM-generated synonyms (using short flags)
+sst enrich models/domain/ -ct -dt -sv -syn --database PROD_DB --schema domain
 
 # Generate only table-level synonyms (faster)
-sst enrich models/domain/ \
-  --column-types --data-types --sample-values \
-  --table-synonyms \
-  --database PROD_DB --schema domain
+sst enrich models/domain/ -ts --database PROD_DB --schema domain
 
 # Enrich everything including synonyms
 sst enrich models/domain/ --all --database PROD_DB --schema domain
 
 # Re-generate synonyms even if they already exist
-sst enrich models/domain/ \
-  --synonyms --force-synonyms \
-  --database PROD_DB --schema domain
+sst enrich models/domain/ -syn --force-synonyms --database PROD_DB --schema domain
 
 # With primary key candidates
-sst enrich models/domain/ \
-  --pk-candidates pk_candidates.json \
-  --database PROD_DB \
-  --schema domain
+sst enrich models/domain/ -pk --pk-candidates pk_candidates.json --database PROD_DB --schema domain
 
 # Dry run to preview changes
 sst enrich models/ --dry-run --verbose
