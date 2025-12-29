@@ -120,51 +120,6 @@ class CortexSynonymGenerator:
             logger.error(f"Batch column synonyms failed for {table_name}: {e}")
             return {}
 
-    def generate_column_synonyms(
-        self,
-        table_name: str,
-        column_name: str,
-        column_description: str,
-        data_type: str,
-        sample_values: Optional[List[Any]] = None,
-        existing_synonyms: Optional[List[str]] = None,
-        table_description: Optional[str] = None,
-        full_yaml_context: Optional[str] = None,
-        force: bool = False,
-    ) -> List[str]:
-        """
-        Generate synonyms for a single column (fallback method).
-
-        Note: Use generate_column_synonyms_batch() for better performance.
-        This exists as a fallback for edge cases.
-        """
-        if existing_synonyms and len(existing_synonyms) > 0 and not force:
-            return existing_synonyms
-
-        readable_name = column_name.lower().replace("_", " ")
-        samples_str = ""
-        if sample_values:
-            samples_str = ", ".join([str(v) for v in sample_values[:3] if v])
-
-        prompt = f"""Generate up to {self.max_synonyms} natural language synonyms for column '{column_name}'.
-Description: {column_description[:200] if column_description else 'No description'}
-Type: {data_type}
-Samples: {samples_str}
-
-Return JSON array: ["synonym 1", "synonym 2", ...]"""
-
-        try:
-            response = self._execute_cortex(prompt)
-            synonyms = self._parse_response_as_list(response, f"column {column_name}")
-            return CharacterSanitizer.sanitize_synonym_list(synonyms)
-        except RuntimeError as e:
-            # Cortex access/permission error - surface prominently
-            logger.warning(f"   Cortex unavailable for column '{column_name}': {e}")
-            return []
-        except Exception as e:
-            logger.error(f"Failed to generate column synonyms for {column_name}: {e}")
-            return []
-
     # Core Cortex interaction methods
 
     def _verify_cortex_access(self) -> None:
@@ -253,8 +208,11 @@ Return JSON array: ["synonym 1", "synonym 2", ...]"""
         Returns:
             List of synonym strings
         """
+        # Use robust JSON extraction (handles markdown fences, preamble, etc.)
+        cleaned_text = self._extract_json_from_response(response_text)
+
         try:
-            response_obj = json.loads(response_text)
+            response_obj = json.loads(cleaned_text)
 
             # Try different JSON structures
             if isinstance(response_obj, list):
@@ -280,8 +238,10 @@ Return JSON array: ["synonym 1", "synonym 2", ...]"""
         Returns:
             Dict mapping column names to synonym lists
         """
+        cleaned_text = self._extract_json_from_response(response_text)
+
         try:
-            response_obj = json.loads(response_text)
+            response_obj = json.loads(cleaned_text)
 
             # Try different JSON structures
             if isinstance(response_obj, dict) and "columns" in response_obj:
@@ -295,6 +255,45 @@ Return JSON array: ["synonym 1", "synonym 2", ...]"""
         except json.JSONDecodeError:
             logger.warning(f"Invalid JSON for {context}")
             return {}
+
+    def _extract_json_from_response(self, response_text: str) -> str:
+        """
+        Extract JSON from LLM response, handling various formats.
+
+        Handles:
+        - Raw JSON
+        - Markdown code fences (```json ... ```, ``` ... ```)
+        - Preamble/trailing text around JSON
+        - Uppercase/lowercase fence labels
+
+        Args:
+            response_text: Raw LLM response
+
+        Returns:
+            Cleaned JSON string ready for parsing
+        """
+        if not response_text:
+            return ""
+
+        text = response_text.strip()
+
+        # Strategy 1: Find JSON by locating outermost braces
+        # This handles preamble text, markdown fences, and trailing explanations
+        first_brace = text.find("{")
+        last_brace = text.rfind("}")
+
+        if first_brace != -1 and last_brace != -1 and last_brace > first_brace:
+            return text[first_brace : last_brace + 1]
+
+        # Strategy 2: Handle array responses (e.g., ["synonym1", "synonym2"])
+        first_bracket = text.find("[")
+        last_bracket = text.rfind("]")
+
+        if first_bracket != -1 and last_bracket != -1 and last_bracket > first_bracket:
+            return text[first_bracket : last_bracket + 1]
+
+        # Fallback: return as-is and let JSON parser handle it
+        return text
 
     def _extract_synonyms_from_text(self, text: str, max_results: int, context_name: str) -> List[str]:
         """

@@ -89,41 +89,6 @@ class TestCortexSynonymGenerator:
         assert 'subscription data' in result
         assert 'user metrics' in result
     
-    def test_generate_column_synonyms_skips_existing(self, synonym_generator):
-        """Test that existing column synonyms are preserved."""
-        existing = ['user id', 'member identifier']
-        
-        result = synonym_generator.generate_column_synonyms(
-            table_name='users',
-            column_name='user_id',
-            column_description='Unique user identifier',
-            data_type='number',
-            sample_values=[1, 2, 3],
-            existing_synonyms=existing
-        )
-        
-        assert result == existing
-    
-    def test_generate_column_synonyms_success(self, synonym_generator, mock_snowflake_client):
-        """Test successful column synonym generation with structured output."""
-        # Mock Cortex structured response
-        mock_df = pd.DataFrame({
-            'RESPONSE': ['{"synonyms": ["user identifier", "member id"]}']
-        })
-        mock_snowflake_client.execute_query.return_value = mock_df
-        
-        result = synonym_generator.generate_column_synonyms(
-            table_name='users',
-            column_name='user_id',
-            column_description='Unique identifier',
-            data_type='number',
-            sample_values=[1, 2, 3, 4, 5]
-        )
-        
-        assert len(result) <= 3  # Max for columns
-        assert 'user identifier' in result
-        assert 'member id' in result
-    
     def test_cortex_invalid_json_returns_empty(self, synonym_generator, mock_snowflake_client):
         """Test that invalid JSON returns empty list (no fallback)."""
         # Mock invalid JSON response (shouldn't happen with structured outputs)
@@ -262,6 +227,53 @@ class TestCortexSynonymGenerator:
         assert len(result['col1']) == 2
         assert len(result['col2']) == 2
         assert 'synonym 1' in result['col1']
+
+    def test_batch_column_synonyms_markdown_fence(self, synonym_generator, mock_snowflake_client):
+        """Test that markdown code fences are stripped from Cortex response."""
+        # Mock response with markdown code fence (common Cortex behavior)
+        mock_df = pd.DataFrame({
+            'RESPONSE': ['```json\n{"col1": ["synonym 1"], "col2": ["synonym 2"]}\n```']
+        })
+        mock_snowflake_client.execute_query.return_value = mock_df
+        
+        columns = [
+            {'name': 'col1', 'description': 'Column 1', 'meta': {'sst': {'data_type': 'VARCHAR'}}},
+            {'name': 'col2', 'description': 'Column 2', 'meta': {'sst': {'data_type': 'NUMBER'}}}
+        ]
+        
+        result = synonym_generator.generate_column_synonyms_batch(
+            table_name='test_table',
+            columns=columns
+        )
+        
+        # Should successfully parse despite markdown fence
+        assert 'col1' in result
+        assert 'col2' in result
+        assert result['col1'] == ['synonym 1']
+        assert result['col2'] == ['synonym 2']
+
+    def test_extract_json_with_preamble_text(self, synonym_generator):
+        """Test JSON extraction when LLM adds preamble text."""
+        response = 'Here is the JSON you requested:\n\n{"col1": ["syn1"]}'
+        result = synonym_generator._extract_json_from_response(response)
+        assert result == '{"col1": ["syn1"]}'
+
+    def test_extract_json_with_trailing_text(self, synonym_generator):
+        """Test JSON extraction when LLM adds trailing explanation."""
+        response = '{"col1": ["syn1"]}\n\nI hope this helps!'
+        result = synonym_generator._extract_json_from_response(response)
+        assert result == '{"col1": ["syn1"]}'
+
+    def test_extract_json_handles_array_response(self, synonym_generator):
+        """Test JSON extraction for array responses."""
+        response = '["synonym1", "synonym2", "synonym3"]'
+        result = synonym_generator._extract_json_from_response(response)
+        assert result == '["synonym1", "synonym2", "synonym3"]'
+
+    def test_extract_json_empty_response(self, synonym_generator):
+        """Test JSON extraction handles empty response."""
+        assert synonym_generator._extract_json_from_response("") == ""
+        assert synonym_generator._extract_json_from_response(None) == ""
 
 
 class TestCortexVerification:
