@@ -36,7 +36,7 @@ def _load_env():
     # Only load from current working directory to respect user's environment
     # This ensures that when running SST from a dbt repo, we use that repo's credentials
     from dotenv import load_dotenv
-    
+
     cwd_env = os.path.join(os.getcwd(), ".env")
     if os.path.exists(cwd_env):
         load_dotenv(cwd_env, override=True)
@@ -46,32 +46,33 @@ def _load_env():
 # Commands are imported only when actually invoked, not at module load time
 class LazyCommand(click.Command):
     """Lazily load command module only when the command is invoked."""
-    
+
     def __init__(self, name, import_path, command_name):
         super().__init__(name, callback=None)
         self._import_path = import_path
         self._command_name = command_name
         self._loaded_command = None
-    
+
     def _load_command(self):
         if self._loaded_command is None:
             import importlib
+
             module = importlib.import_module(self._import_path)
             self._loaded_command = getattr(module, self._command_name)
         return self._loaded_command
-    
+
     def invoke(self, ctx):
         return self._load_command().invoke(ctx)
-    
+
     def get_help(self, ctx):
         return self._load_command().get_help(ctx)
-    
+
     def get_short_help_str(self, limit=150):
         return self._load_command().get_short_help_str(limit)
-    
+
     def get_params(self, ctx):
         return self._load_command().get_params(ctx)
-    
+
     @property
     def params(self):
         return self._load_command().params
@@ -79,18 +80,19 @@ class LazyCommand(click.Command):
 
 class LazyGroup(click.Group):
     """Click group with lazy command loading."""
-    
+
     def __init__(self, *args, lazy_commands=None, **kwargs):
         super().__init__(*args, **kwargs)
         self._lazy_commands = lazy_commands or {}
-    
+
     def list_commands(self, ctx):
         return sorted(self._lazy_commands.keys())
-    
+
     def get_command(self, ctx, name):
         if name in self._lazy_commands:
             import_path, command_name = self._lazy_commands[name]
             import importlib
+
             module = importlib.import_module(import_path)
             return getattr(module, command_name)
         return None
@@ -132,10 +134,10 @@ def cli():
     # This allows users to explore CLI without needing valid config
     if _is_help_or_version_request():
         return
-    
+
     # Load .env only when actually running commands
     _load_env()
-    
+
     # Setup events early so config validation messages appear correctly
     from snowflake_semantic_tools.shared.events import setup_events
     from snowflake_semantic_tools.shared.utils.logger import get_logger
@@ -148,7 +150,7 @@ def cli():
     try:
         from snowflake_semantic_tools.shared.config import get_config
         from snowflake_semantic_tools.shared.config_validator import validate_and_report_config
-        
+
         config = get_config()
         config_path = config._find_config_file() if hasattr(config, "_find_config_file") else None
         validate_and_report_config(

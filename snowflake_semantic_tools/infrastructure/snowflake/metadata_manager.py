@@ -21,7 +21,7 @@ logger = get_logger("infrastructure.snowflake.metadata_manager")
 
 # Snowflake unquoted identifier rules: starts with letter/underscore, contains only
 # alphanumeric, underscore, or dollar sign ($ is allowed but rare)
-UNQUOTED_IDENTIFIER_PATTERN = re.compile(r'^[A-Za-z_][A-Za-z0-9_$]*$')
+UNQUOTED_IDENTIFIER_PATTERN = re.compile(r"^[A-Za-z_][A-Za-z0-9_$]*$")
 
 
 class MetadataManager:
@@ -50,14 +50,14 @@ class MetadataManager:
     def _requires_quoting(self, identifier: str) -> bool:
         """
         Check if an identifier requires quoting for Snowflake SQL.
-        
+
         Snowflake unquoted identifiers must:
         - Start with a letter (A-Z, a-z) or underscore (_)
         - Contain only letters, digits (0-9), underscores (_), or dollar signs ($)
-        
+
         Args:
             identifier: The identifier to check
-            
+
         Returns:
             True if the identifier needs to be double-quoted
         """
@@ -66,13 +66,13 @@ class MetadataManager:
     def _quote_identifier(self, identifier: str) -> str:
         """
         Quote an identifier if it requires quoting, preserving case.
-        
+
         For identifiers with special characters (spaces, dashes, dots, etc.),
         wraps in double quotes so Snowflake treats them literally.
-        
+
         Args:
             identifier: The identifier to potentially quote
-            
+
         Returns:
             Quoted identifier if needed, otherwise uppercased identifier
         """
@@ -87,26 +87,26 @@ class MetadataManager:
     def _log_quoted_identifier_warning(self, table_name: str, quoted_columns: List[str]) -> None:
         """
         Log a warning about columns that require quoted identifiers.
-        
+
         Only logs once per table to avoid spam. Suggests using underscores
         for simpler SQL.
-        
+
         Args:
             table_name: The table containing the columns
             quoted_columns: List of column names that required quoting
         """
         if not quoted_columns:
             return
-            
+
         # Only warn once per table
         if table_name in self._warned_tables:
             return
         self._warned_tables.add(table_name)
-        
+
         cols_display = ", ".join([f"'{c}'" for c in quoted_columns[:5]])
         if len(quoted_columns) > 5:
             cols_display += f", ... ({len(quoted_columns) - 5} more)"
-            
+
         logger.warning(
             f"Table '{table_name}' has columns with special characters: {cols_display}. "
             f"These require quoted identifiers in Snowflake SQL. "
@@ -247,10 +247,7 @@ class MetadataManager:
 
             if df.empty:
                 # Return uppercase keys for standard cols, original case for quoted cols
-                return {
-                    (col.upper() if not self._requires_quoting(col) else col): []
-                    for col in column_names
-                }
+                return {(col.upper() if not self._requires_quoting(col) else col): [] for col in column_names}
 
             # Group results by column name
             results = {}
@@ -313,12 +310,12 @@ class MetadataManager:
         database_upper = database_name.upper()
         schema_upper = schema_name.upper()
         table_upper = table_name.upper()
-        
+
         # Check for columns needing quoting and warn
         quoted_columns = [c for c in primary_key_columns if self._requires_quoting(c)]
         if quoted_columns:
             self._log_quoted_identifier_warning(table_name, quoted_columns)
-        
+
         # Use intelligent quoting for column names
         columns_sql = [self._quote_identifier(col) for col in primary_key_columns]
 
@@ -408,7 +405,7 @@ class MetadataManager:
         database_upper = database_name.upper()
         schema_upper = schema_name.upper()
         table_upper = table_name.upper()
-        
+
         # Use intelligent quoting for column name
         if self._requires_quoting(column_name):
             self._log_quoted_identifier_warning(table_name, [column_name])

@@ -200,7 +200,7 @@ class CortexSearchManager:
             elapsed_time = time.time() - start_time
             error_msg = str(e)
             logger.error(f"Failed to create Cortex Search service after {elapsed_time:.1f}s: {error_msg}")
-            
+
             # Issue #43: Provide helpful error context
             error_lower = error_msg.lower()
             if "insufficient privileges" in error_lower or "not authorized" in error_lower:
@@ -212,7 +212,7 @@ class CortexSearchManager:
                 logger.error("The source table may not exist. Run 'sst extract' first to create it.")
             elif "warehouse" in error_lower:
                 logger.error("Check that your configured warehouse exists and is accessible.")
-            
+
             # Also log the SQL for debugging if it was created
             if create_sql:
                 logger.debug(f"Failed SQL: {create_sql}")
@@ -291,8 +291,8 @@ class CortexSearchManager:
         Setup or update the Cortex Search service for table summaries.
 
         NOTE: This feature is currently EXPERIMENTAL and may not work in all environments.
-        Cortex Search Services have specific requirements that may not be met in all 
-        Snowflake accounts. If setup fails, the extraction will still succeed - 
+        Cortex Search Services have specific requirements that may not be met in all
+        Snowflake accounts. If setup fails, the extraction will still succeed -
         Cortex Search is an optional enhancement.
 
         This method will:

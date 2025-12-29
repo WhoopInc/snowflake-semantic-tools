@@ -217,4 +217,3 @@ VALID_ASOF_COLUMN_TYPES: Set[str] = {
 
 # Lowercase version for case-insensitive matching
 VALID_ASOF_COLUMN_TYPES_LOWER: Set[str] = {ct.lower() for ct in VALID_ASOF_COLUMN_TYPES}
-

@@ -258,13 +258,21 @@ class SemanticModelValidator:
                             right_table_name = self._extract_table_name(right_table)
 
                             # Validate table references match (case-insensitive comparison)
-                            if parsed.left_table and left_table_name and parsed.left_table.upper() != left_table_name.upper():
+                            if (
+                                parsed.left_table
+                                and left_table_name
+                                and parsed.left_table.upper() != left_table_name.upper()
+                            ):
                                 result.add_error(
                                     f"Relationship '{rel_name}' condition references table '{parsed.left_table}' but left_table is '{left_table_name}'",
                                     context={"relationship": rel_name, "condition": condition, "type": "relationship"},
                                 )
 
-                            if parsed.right_table and right_table_name and parsed.right_table.upper() != right_table_name.upper():
+                            if (
+                                parsed.right_table
+                                and right_table_name
+                                and parsed.right_table.upper() != right_table_name.upper()
+                            ):
                                 result.add_error(
                                     f"Relationship '{rel_name}' condition references table '{parsed.right_table}' but right_table is '{right_table_name}'",
                                     context={"relationship": rel_name, "condition": condition, "type": "relationship"},
@@ -788,9 +796,7 @@ class SemanticModelValidator:
             },
         )
 
-    def _validate_identifier(
-        self, name: str, identifier_type: str, result: ValidationResult, context_name: str = None
-    ):
+    def _validate_identifier(self, name: str, identifier_type: str, result: ValidationResult, context_name: str = None):
         """
         Perform all identifier validations (length, characters, reserved keywords).
 
@@ -868,9 +874,7 @@ class SemanticModelValidator:
     # STRUCTURAL VALIDATION METHODS
     # =========================================================================
 
-    def _detect_metric_cycles(
-        self, metrics: List[Dict], result: ValidationResult, table_name: str = None
-    ):
+    def _detect_metric_cycles(self, metrics: List[Dict], result: ValidationResult, table_name: str = None):
         """
         Detect circular metric dependencies using DFS.
 
@@ -963,9 +967,7 @@ class SemanticModelValidator:
         matches = re.findall(pattern, expression)
         return matches
 
-    def _check_duplicate_names(
-        self, items: List[Dict], entity_type: str, result: ValidationResult
-    ):
+    def _check_duplicate_names(self, items: List[Dict], entity_type: str, result: ValidationResult):
         """
         Check for duplicate names within an entity type.
 
@@ -983,8 +985,7 @@ class SemanticModelValidator:
             name_upper = name.upper()
             if name_upper in seen:
                 result.add_error(
-                    f"Duplicate {entity_type} name '{name}'. "
-                    f"Each {entity_type} must have a unique name.",
+                    f"Duplicate {entity_type} name '{name}'. " f"Each {entity_type} must have a unique name.",
                     context={
                         "entity_type": entity_type,
                         "name": name,
@@ -994,9 +995,7 @@ class SemanticModelValidator:
             else:
                 seen[name_upper] = name
 
-    def _validate_relationship_structure(
-        self, relationship: Dict, result: ValidationResult
-    ):
+    def _validate_relationship_structure(self, relationship: Dict, result: ValidationResult):
         """
         Validate relationship has required structure and valid fields.
 

@@ -99,7 +99,6 @@ class HardcodedValueDetector:
                         and not table_entry.startswith("#")
                         and not table_entry.startswith("name:")
                     ):
-
                         # Check if this looks like a table name
                         if "_" in table_entry or table_entry.lower() in [t.lower() for t in self.dbt_tables]:
                             warnings.append(

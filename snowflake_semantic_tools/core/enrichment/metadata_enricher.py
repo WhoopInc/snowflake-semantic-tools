@@ -206,7 +206,10 @@ class MetadataEnricher:
                         if isinstance(model, dict) and model.get("name") == model_name:
                             existing_model = model
                             break
-                logger.info(f"  Status:     Found existing YAML" + (" (with models section)" if existing_model else " (semantic_models only)"))
+                logger.info(
+                    f"  Status:     Found existing YAML"
+                    + (" (with models section)" if existing_model else " (semantic_models only)")
+                )
             else:
                 existing_model = None
                 existing_yaml = self.yaml_handler.create_base_yaml_structure(model_name)
@@ -218,9 +221,7 @@ class MetadataEnricher:
                 c in components for c in ["column-types", "data-types", "primary-keys"]
             )
             # Sample data: actual data queries (expensive)
-            needs_sample_data = not components or any(
-                c in components for c in ["sample-values", "detect-enums"]
-            )
+            needs_sample_data = not components or any(c in components for c in ["sample-values", "detect-enums"])
             # Combined: need schema query if either is true
             needs_schema_query = needs_schema_metadata or needs_sample_data
 
@@ -257,9 +258,7 @@ class MetadataEnricher:
                 # Use existing model from 'models' section, or create fresh base
                 # NEVER use semantic_models as base - they have different structure
                 base_model = existing_model or {"name": model_name}
-                updated_model = self._process_model_metadata(
-                    base_model, model_info, table_columns, pk_candidates
-                )
+                updated_model = self._process_model_metadata(base_model, model_info, table_columns, pk_candidates)
 
                 # Process column-level metadata
                 updated_columns = self._process_columns_metadata(
@@ -520,9 +519,7 @@ class MetadataEnricher:
     ) -> Dict[str, List[Any]]:
         """Batch-fetch sample values for all non-PII columns."""
         # Need samples for sample-values OR detect-enums (enum detection uses sample data)
-        needs_samples = not components or any(
-            c in components for c in ["sample-values", "detect-enums"]
-        )
+        needs_samples = not components or any(c in components for c in ["sample-values", "detect-enums"])
         if not needs_samples:
             return {}
 
@@ -586,9 +583,7 @@ class MetadataEnricher:
         self._enrich_column_types(column_sst, col_name, snowflake_type, components)
 
         # Handle sample values and enum detection (only if requested via components)
-        needs_sample_enrichment = not components or any(
-            c in components for c in ["sample-values", "detect-enums"]
-        )
+        needs_sample_enrichment = not components or any(c in components for c in ["sample-values", "detect-enums"])
         if needs_sample_enrichment:
             if self._is_pii_protected_column(column):
                 # Only set fields if their corresponding components are requested
@@ -598,7 +593,9 @@ class MetadataEnricher:
                     column_sst["is_enum"] = False
                 logger.debug(f"      - PII protected (no samples)")
             else:
-                self._enrich_sample_values(column_sst, col_name, batch_samples, model_name, schema_name, database_name, components)
+                self._enrich_sample_values(
+                    column_sst, col_name, batch_samples, model_name, schema_name, database_name, components
+                )
 
         # Ensure proper key ordering
         return self.yaml_handler._order_column_sst_keys(column)
@@ -611,7 +608,7 @@ class MetadataEnricher:
         components: Optional[List[str]] = None,
     ):
         """Enrich column with data_type and column_type (preserves existing).
-        
+
         Only enriches if the corresponding component is requested:
         - data-types: Sets data_type from Snowflake type mapping
         - column-types: Sets column_type (dimension/fact/time_dimension)
@@ -651,7 +648,7 @@ class MetadataEnricher:
         components: Optional[List[str]] = None,
     ):
         """Fetch and apply sample values with enum detection.
-        
+
         Only enriches if the corresponding component is requested:
         - sample-values: Sets sample_values from Snowflake data
         - detect-enums: Sets is_enum based on cardinality analysis

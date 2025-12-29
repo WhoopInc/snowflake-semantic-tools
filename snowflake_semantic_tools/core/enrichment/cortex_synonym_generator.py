@@ -77,7 +77,9 @@ class CortexSynonymGenerator:
         except RuntimeError as e:
             # Cortex access/permission error - surface prominently
             logger.warning(f"   Cortex unavailable for table '{table_name}': {e}")
-            logger.warning("   Synonym generation will be skipped. Run with --synonyms later once Cortex access is configured.")
+            logger.warning(
+                "   Synonym generation will be skipped. Run with --synonyms later once Cortex access is configured."
+            )
             return []
         except Exception as e:
             logger.error(f"Failed to generate table synonyms for {table_name}: {e}")
@@ -125,19 +127,19 @@ class CortexSynonymGenerator:
     def _verify_cortex_access(self) -> None:
         """
         Verify Cortex access on first call with a simple test.
-        
+
         Raises clear error message if Cortex is unavailable.
         """
         if self._cortex_verified:
             return
-            
+
         test_query = f"""
         SELECT SNOWFLAKE.CORTEX.COMPLETE(
             '{self.model}',
             'Say hello'
         ) as RESPONSE
         """
-        
+
         try:
             result = self.snowflake_client.execute_query(test_query)
             if result.empty:
@@ -159,8 +161,7 @@ class CortexSynonymGenerator:
                 ) from e
             else:
                 raise RuntimeError(
-                    f"Cortex connection failed: {e}\n"
-                    f"Check your Snowflake connection and Cortex availability."
+                    f"Cortex connection failed: {e}\n" f"Check your Snowflake connection and Cortex availability."
                 ) from e
 
     def _execute_cortex(self, prompt: str) -> str:
@@ -178,7 +179,7 @@ class CortexSynonymGenerator:
         """
         # Verify Cortex access on first call
         self._verify_cortex_access()
-        
+
         escaped_prompt = prompt.replace("'", "''")
         query = f"""
         SELECT SNOWFLAKE.CORTEX.COMPLETE(

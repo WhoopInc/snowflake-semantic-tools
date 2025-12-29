@@ -129,9 +129,9 @@ class GenerateConfig:
     metadata_schema: Optional[str] = None
 
     # Table reference override (like dbt defer)
-    defer_database: Optional[str] = (
-        None  # If set, table references use this database instead of metadata tables' database
-    )
+    defer_database: Optional[
+        str
+    ] = None  # If set, table references use this database instead of metadata tables' database
 
     # Execution mode
     execute: bool = True  # If True, executes SQL in Snowflake. If False, returns SQL only.
@@ -419,7 +419,6 @@ class SemanticViewGenerationService:
             List of view configurations
         """
         try:
-
             with self.connection_manager.get_connection() as conn:
                 cursor = conn.cursor()
 
