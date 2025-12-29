@@ -60,105 +60,36 @@ snowflake_metrics:
       - "{{ table('transactions') }}"
     description: Metric with whitespace-only expr
 
-# RELATIONSHIPS - Required: name, left_table, right_table, join_type, relationship_type, relationship_columns
+# RELATIONSHIPS - Required: name, left_table, right_table, relationship_conditions
 snowflake_relationships:
   # Missing name
   - left_table: "{{ table('orders') }}"
     right_table: "{{ table('users') }}"
-    join_type: left_outer
-    relationship_type: many_to_one
-    relationship_columns:
-      - left_column: "{{ column('orders', 'user_id') }}"
-        right_column: "{{ column('users', 'id') }}"
+    relationship_conditions:
+      - "{{ column('orders', 'user_id') }} = {{ column('users', 'id') }}"
   
   # Missing left_table
   - name: missing_left_table
     right_table: "{{ table('users') }}"
-    join_type: left_outer
-    relationship_type: many_to_one
-    relationship_columns:
-      - left_column: "{{ column('orders', 'user_id') }}"
-        right_column: "{{ column('users', 'id') }}"
+    relationship_conditions:
+      - "{{ column('orders', 'user_id') }} = {{ column('users', 'id') }}"
   
   # Missing right_table
   - name: missing_right_table
     left_table: "{{ table('orders') }}"
-    join_type: left_outer
-    relationship_type: many_to_one
-    relationship_columns:
-      - left_column: "{{ column('orders', 'user_id') }}"
-        right_column: "{{ column('users', 'id') }}"
+    relationship_conditions:
+      - "{{ column('orders', 'user_id') }} = {{ column('users', 'id') }}"
   
-  # Missing join_type
-  - name: missing_join_type
+  # Missing relationship_conditions
+  - name: missing_relationship_conditions
     left_table: "{{ table('orders') }}"
     right_table: "{{ table('users') }}"
-    relationship_type: many_to_one
-    relationship_columns:
-      - left_column: "{{ column('orders', 'user_id') }}"
-        right_column: "{{ column('users', 'id') }}"
   
-  # Missing relationship_type
-  - name: missing_relationship_type
+  # Empty relationship_conditions list
+  - name: empty_relationship_conditions
     left_table: "{{ table('orders') }}"
     right_table: "{{ table('users') }}"
-    join_type: left_outer
-    relationship_columns:
-      - left_column: "{{ column('orders', 'user_id') }}"
-        right_column: "{{ column('users', 'id') }}"
-  
-  # Missing relationship_columns
-  - name: missing_relationship_columns
-    left_table: "{{ table('orders') }}"
-    right_table: "{{ table('users') }}"
-    join_type: left_outer
-    relationship_type: many_to_one
-  
-  # Empty relationship_columns list
-  - name: empty_relationship_columns
-    left_table: "{{ table('orders') }}"
-    right_table: "{{ table('users') }}"
-    join_type: left_outer
-    relationship_type: many_to_one
-    relationship_columns: []
-  
-  # Missing left_column in mapping
-  - name: missing_left_column
-    left_table: "{{ table('orders') }}"
-    right_table: "{{ table('users') }}"
-    join_type: left_outer
-    relationship_type: many_to_one
-    relationship_columns:
-      - right_column: "{{ column('users', 'id') }}"
-  
-  # Missing right_column in mapping
-  - name: missing_right_column
-    left_table: "{{ table('orders') }}"
-    right_table: "{{ table('users') }}"
-    join_type: left_outer
-    relationship_type: many_to_one
-    relationship_columns:
-      - left_column: "{{ column('orders', 'user_id') }}"
-  
-  # Invalid join_type
-  - name: invalid_join_type
-    left_table: "{{ table('orders') }}"
-    right_table: "{{ table('users') }}"
-    join_type: inner  # Should be one of: inner, left_outer, right_outer, full_outer
-    relationship_type: many_to_one
-    relationship_columns:
-      - left_column: "{{ column('orders', 'user_id') }}"
-        right_column: "{{ column('users', 'id') }}"
-  
-  # Invalid relationship_type
-  - name: invalid_relationship_type
-    left_table: "{{ table('orders') }}"
-    right_table: "{{ table('users') }}"
-    join_type: left_outer
-    relationship_type: one-to-many  # Should be: one_to_one, one_to_many, many_to_one, many_to_many
-    relationship_columns:
-      - left_column: "{{ column('orders', 'user_id') }}"
-        right_column: "{{ column('users', 'id') }}"
+    relationship_conditions: []
 
 # FILTERS - Required: name, expr
 snowflake_filters:

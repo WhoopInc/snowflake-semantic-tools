@@ -61,33 +61,17 @@ snowflake_filters:
     description: Filter incorrectly has tables field
 
 snowflake_relationships:
-  # Relationship_columns as string
-  - name: rel_columns_as_string
+  # Relationship_conditions as string instead of list
+  - name: rel_conditions_as_string
     left_table: "{{ table('orders') }}"
     right_table: "{{ table('users') }}"
-    join_type: left_outer
-    relationship_type: many_to_one
-    relationship_columns: "user_id"  # Should be a list of mappings
+    relationship_conditions: "{{ column('orders', 'user_id') }} = {{ column('users', 'id') }}"  # Should be a list
   
-  # Relationship_columns with invalid structure
-  - name: rel_columns_invalid_structure
+  # Relationship_conditions with invalid structure (number)
+  - name: rel_conditions_as_number
     left_table: "{{ table('orders') }}"
     right_table: "{{ table('users') }}"
-    join_type: left_outer
-    relationship_type: many_to_one
-    relationship_columns:
-      - "user_id"  # Should be dict with left_column/right_column
-  
-  # Join_type as list
-  - name: join_type_as_list
-    left_table: "{{ table('orders') }}"
-    right_table: "{{ table('users') }}"
-    join_type:
-      - left_outer
-    relationship_type: many_to_one
-    relationship_columns:
-      - left_column: "{{ column('orders', 'user_id') }}"
-        right_column: "{{ column('users', 'id') }}"
+    relationship_conditions: 123
 
 snowflake_verified_queries:
   # SQL as list
@@ -116,4 +100,3 @@ semantic_views:
     tables:
       test: "{{ table('test') }}"
     description: Semantic view with tables as dict
-

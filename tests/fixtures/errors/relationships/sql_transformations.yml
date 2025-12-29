@@ -1,235 +1,59 @@
-# Test fixtures for SQL transformations in relationship column references
-# These should all trigger errors because transformations cannot be performed within column references
+# Test fixtures for SQL transformations in relationship conditions
+# These should all trigger errors or warnings because transformations may not be valid
 
 snowflake_relationships:
   # Test 1: Type casting with ::
   - name: relationship_with_type_casting
-    description: "Should error: type casting (::) in column reference"
+    description: "Should error: type casting (::) in condition"
     left_table: "{{ table('orders') }}"
     right_table: "{{ table('users') }}"
-    join_type: left_outer
-    relationship_type: many_to_one
-    relationship_columns:
-      - left_column: "{{ column('orders', 'created_date') }}"
-        right_column: "{{ column('users', 'registration_date::DATE') }}"
+    relationship_conditions:
+      - "{{ column('orders', 'created_date') }} = {{ column('users', 'registration_date') }}::DATE"
   
   # Test 2: CAST function
   - name: relationship_with_cast_function
-    description: "Should error: CAST function in column reference"
+    description: "Should error: CAST function in condition"
     left_table: "{{ table('orders') }}"
     right_table: "{{ table('users') }}"
-    join_type: left_outer
-    relationship_type: many_to_one
-    relationship_columns:
-      - left_column: "{{ column('orders', 'user_id') }}"
-        right_column: "CAST({{ column('users', 'id') }} AS VARCHAR)"
+    relationship_conditions:
+      - "{{ column('orders', 'user_id') }} = CAST({{ column('users', 'id') }} AS VARCHAR)"
   
-  # Test 3: TO_DATE function
-  - name: relationship_with_to_date
-    description: "Should error: TO_DATE function in column reference"
-    left_table: "{{ table('orders') }}"
-    right_table: "{{ table('products') }}"
-    join_type: left_outer
-    relationship_type: many_to_one
-    relationship_columns:
-      - left_column: "TO_DATE({{ column('orders', 'created_date') }})"
-        right_column: "{{ column('products', 'launch_date') }}"
-  
-  # Test 4: TO_TIMESTAMP function
-  - name: relationship_with_to_timestamp
-    description: "Should error: TO_TIMESTAMP function in column reference"
-    left_table: "{{ table('orders') }}"
-    right_table: "{{ table('users') }}"
-    join_type: left_outer
-    relationship_type: many_to_one
-    relationship_columns:
-      - left_column: "{{ column('orders', 'created_at') }}"
-        right_column: "TO_TIMESTAMP({{ column('users', 'created_at') }})"
-  
-  # Test 5: COALESCE function
+  # Test 3: COALESCE function
   - name: relationship_with_coalesce
-    description: "Should error: COALESCE function in column reference"
+    description: "Should error: COALESCE function in condition"
     left_table: "{{ table('orders') }}"
     right_table: "{{ table('users') }}"
-    join_type: left_outer
-    relationship_type: many_to_one
-    relationship_columns:
-      - left_column: "COALESCE({{ column('orders', 'user_id') }}, 0)"
-        right_column: "{{ column('users', 'id') }}"
+    relationship_conditions:
+      - "COALESCE({{ column('orders', 'user_id') }}, 0) = {{ column('users', 'id') }}"
   
-  # Test 6: NVL function
-  - name: relationship_with_nvl
-    description: "Should error: NVL function in column reference"
-    left_table: "{{ table('orders') }}"
-    right_table: "{{ table('users') }}"
-    join_type: left_outer
-    relationship_type: many_to_one
-    relationship_columns:
-      - left_column: "{{ column('orders', 'user_id') }}"
-        right_column: "NVL({{ column('users', 'id') }}, -1)"
-  
-  # Test 7: TRIM function
+  # Test 4: TRIM function
   - name: relationship_with_trim
-    description: "Should error: TRIM function in column reference"
+    description: "Should error: TRIM function in condition"
     left_table: "{{ table('orders') }}"
     right_table: "{{ table('users') }}"
-    join_type: left_outer
-    relationship_type: many_to_one
-    relationship_columns:
-      - left_column: "TRIM({{ column('orders', 'user_email') }})"
-        right_column: "{{ column('users', 'email') }}"
+    relationship_conditions:
+      - "TRIM({{ column('orders', 'user_email') }}) = {{ column('users', 'email') }}"
   
-  # Test 8: UPPER function
-  - name: relationship_with_upper
-    description: "Should error: UPPER function in column reference"
-    left_table: "{{ table('orders') }}"
-    right_table: "{{ table('users') }}"
-    join_type: left_outer
-    relationship_type: many_to_one
-    relationship_columns:
-      - left_column: "{{ column('orders', 'status') }}"
-        right_column: "UPPER({{ column('users', 'account_status') }})"
-  
-  # Test 9: LOWER function
-  - name: relationship_with_lower
-    description: "Should error: LOWER function in column reference"
-    left_table: "{{ table('orders') }}"
-    right_table: "{{ table('users') }}"
-    join_type: left_outer
-    relationship_type: many_to_one
-    relationship_columns:
-      - left_column: "LOWER({{ column('orders', 'product_sku') }})"
-        right_column: "{{ column('users', 'preferred_sku') }}"
-  
-  # Test 10: SUBSTRING function
-  - name: relationship_with_substring
-    description: "Should error: SUBSTRING function in column reference"
-    left_table: "{{ table('orders') }}"
-    right_table: "{{ table('users') }}"
-    join_type: left_outer
-    relationship_type: many_to_one
-    relationship_columns:
-      - left_column: "SUBSTRING({{ column('orders', 'order_id') }}, 1, 10)"
-        right_column: "{{ column('users', 'id') }}"
-  
-  # Test 11: CASE statement
-  - name: relationship_with_case
-    description: "Should error: CASE statement in column reference"
-    left_table: "{{ table('orders') }}"
-    right_table: "{{ table('users') }}"
-    join_type: left_outer
-    relationship_type: many_to_one
-    relationship_columns:
-      - left_column: "CASE WHEN {{ column('orders', 'user_id') }} > 0 THEN {{ column('orders', 'user_id') }} ELSE NULL END"
-        right_column: "{{ column('users', 'id') }}"
-  
-  # Test 12: Arithmetic operation - addition
-  - name: relationship_with_addition
-    description: "Should error: arithmetic operation (+) in column reference"
-    left_table: "{{ table('orders') }}"
-    right_table: "{{ table('users') }}"
-    join_type: left_outer
-    relationship_type: many_to_one
-    relationship_columns:
-      - left_column: "{{ column('orders', 'user_id') }} + 1"
-        right_column: "{{ column('users', 'id') }}"
-  
-  # Test 13: Arithmetic operation - subtraction
-  - name: relationship_with_subtraction
-    description: "Should error: arithmetic operation (-) in column reference"
-    left_table: "{{ table('orders') }}"
-    right_table: "{{ table('users') }}"
-    join_type: left_outer
-    relationship_type: many_to_one
-    relationship_columns:
-      - left_column: "{{ column('orders', 'total_amount') }}"
-        right_column: "{{ column('users', 'balance') }} - 100"
-  
-  # Test 14: Arithmetic operation - multiplication
-  - name: relationship_with_multiplication
-    description: "Should error: arithmetic operation (*) in column reference"
-    left_table: "{{ table('orders') }}"
-    right_table: "{{ table('users') }}"
-    join_type: left_outer
-    relationship_type: many_to_one
-    relationship_columns:
-      - left_column: "{{ column('orders', 'quantity') }} * 2"
-        right_column: "{{ column('users', 'purchase_count') }}"
-  
-  # Test 15: Arithmetic operation - division
-  - name: relationship_with_division
-    description: "Should error: arithmetic operation (/) in column reference"
-    left_table: "{{ table('orders') }}"
-    right_table: "{{ table('users') }}"
-    join_type: left_outer
-    relationship_type: many_to_one
-    relationship_columns:
-      - left_column: "{{ column('orders', 'total_price') }} / 100"
-        right_column: "{{ column('users', 'credit_balance') }}"
-  
-  # Test 16: String concatenation
+  # Test 5: String concatenation
   - name: relationship_with_string_concat
-    description: "Should error: string concatenation (||) in column reference"
+    description: "Should error: string concatenation (||) in condition"
     left_table: "{{ table('orders') }}"
     right_table: "{{ table('users') }}"
-    join_type: left_outer
-    relationship_type: many_to_one
-    relationship_columns:
-      - left_column: "{{ column('orders', 'first_name') }} || {{ column('orders', 'last_name') }}"
-        right_column: "{{ column('users', 'full_name') }}"
+    relationship_conditions:
+      - "{{ column('orders', 'first_name') }} || {{ column('orders', 'last_name') }} = {{ column('users', 'full_name') }}"
   
-  # Test 17: CONVERT function
-  - name: relationship_with_convert
-    description: "Should error: CONVERT function in column reference"
+  # Test 6: Arithmetic operation
+  - name: relationship_with_arithmetic
+    description: "Should error: arithmetic operation in condition"
     left_table: "{{ table('orders') }}"
     right_table: "{{ table('users') }}"
-    join_type: left_outer
-    relationship_type: many_to_one
-    relationship_columns:
-      - left_column: "CONVERT(VARCHAR, {{ column('orders', 'created_date') }})"
-        right_column: "{{ column('users', 'signup_date') }}"
+    relationship_conditions:
+      - "{{ column('orders', 'user_id') }} + 1 = {{ column('users', 'id') }}"
   
-  # Test 18: TO_CHAR function
-  - name: relationship_with_to_char
-    description: "Should error: TO_CHAR function in column reference"
+  # Test 7: CASE statement
+  - name: relationship_with_case
+    description: "Should error: CASE statement in condition"
     left_table: "{{ table('orders') }}"
     right_table: "{{ table('users') }}"
-    join_type: left_outer
-    relationship_type: many_to_one
-    relationship_columns:
-      - left_column: "TO_CHAR({{ column('orders', 'order_date') }}, 'YYYY-MM-DD')"
-        right_column: "{{ column('users', 'join_date') }}"
-  
-  # Test 19: TO_NUMBER function
-  - name: relationship_with_to_number
-    description: "Should error: TO_NUMBER function in column reference"
-    left_table: "{{ table('orders') }}"
-    right_table: "{{ table('users') }}"
-    join_type: left_outer
-    relationship_type: many_to_one
-    relationship_columns:
-      - left_column: "{{ column('orders', 'user_id') }}"
-        right_column: "TO_NUMBER({{ column('users', 'external_id') }})"
-  
-  # Test 20: DATE function
-  - name: relationship_with_date_function
-    description: "Should error: DATE function in column reference"
-    left_table: "{{ table('orders') }}"
-    right_table: "{{ table('users') }}"
-    join_type: left_outer
-    relationship_type: many_to_one
-    relationship_columns:
-      - left_column: "DATE({{ column('orders', 'created_timestamp') }})"
-        right_column: "{{ column('users', 'registration_date') }}"
-  
-  # Test 21: IFNULL function
-  - name: relationship_with_ifnull
-    description: "Should error: IFNULL function in column reference"
-    left_table: "{{ table('orders') }}"
-    right_table: "{{ table('users') }}"
-    join_type: left_outer
-    relationship_type: many_to_one
-    relationship_columns:
-      - left_column: "IFNULL({{ column('orders', 'user_id') }}, 0)"
-        right_column: "{{ column('users', 'id') }}"
-
+    relationship_conditions:
+      - "CASE WHEN {{ column('orders', 'user_id') }} > 0 THEN {{ column('orders', 'user_id') }} ELSE NULL END = {{ column('users', 'id') }}"

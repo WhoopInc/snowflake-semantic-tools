@@ -1,28 +1,24 @@
+# Valid relationship fixtures using SST format
+# All should pass validation
+
 snowflake_relationships:
   - name: orders_to_users
     description: "Each order belongs to one user"
     left_table: "{{ table('orders') }}"
-    left_column: user_id
     right_table: "{{ table('users') }}"
-    right_column: id
-    relationship_type: many_to_one
+    relationship_conditions:
+      - "{{ column('orders', 'user_id') }} = {{ column('users', 'id') }}"
   
   - name: users_to_orders
     description: "Each user can have multiple orders"
     left_table: "{{ table('users') }}"
-    left_column: id
     right_table: "{{ table('orders') }}"
-    right_column: user_id
-    relationship_type: one_to_many
+    relationship_conditions:
+      - "{{ column('users', 'id') }} = {{ column('orders', 'user_id') }}"
   
-  - name: orders_to_products_via_line_items
-    description: "Orders connect to products through line items"
+  - name: orders_to_products
+    description: "Orders connect to products"
     left_table: "{{ table('orders') }}"
-    left_column: id
     right_table: "{{ table('products') }}"
-    right_column: id
-    join_tables:
-      - join_table: "{{ table('order_line_items') }}"
-        left_column: order_id
-        right_column: product_id
-    relationship_type: many_to_many
+    relationship_conditions:
+      - "{{ column('orders', 'product_id') }} = {{ column('products', 'id') }}"

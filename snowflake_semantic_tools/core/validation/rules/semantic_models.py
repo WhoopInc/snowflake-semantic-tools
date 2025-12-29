@@ -86,6 +86,12 @@ class SemanticModelValidator:
         """Validate metric definitions."""
         items = metrics_data.get("items", [])
 
+        # Check for duplicate metric names
+        self._check_duplicate_names(items, "metric", result)
+
+        # Check for circular dependencies between metrics
+        self._detect_metric_cycles(items, result)
+
         for metric in items:
             metric_name = metric.get("name", "<unnamed>")
 
@@ -155,6 +161,9 @@ class SemanticModelValidator:
         """Validate relationship definitions."""
         items = relationships_data.get("items", [])
 
+        # Check for duplicate relationship names
+        self._check_duplicate_names(items, "relationship", result)
+
         for relationship in items:
             # Handle both raw YAML format and parsed format
             # Raw YAML: name, left_table, right_table
@@ -166,6 +175,10 @@ class SemanticModelValidator:
 
             # Determine which format we're validating
             is_parsed_format = "relationship_name" in relationship
+
+            # Check for unknown fields (typos) in relationship definition (only for raw YAML format)
+            if not is_parsed_format:
+                self._validate_relationship_structure(relationship, result)
 
             # Required fields - adjust based on format
             if is_parsed_format:
@@ -279,6 +292,9 @@ class SemanticModelValidator:
         """Validate filter definitions."""
         items = filters_data.get("items", [])
 
+        # Check for duplicate filter names
+        self._check_duplicate_names(items, "filter", result)
+
         for filter_def in items:
             filter_name = filter_def.get("name", "<unnamed>")
 
@@ -379,6 +395,9 @@ class SemanticModelValidator:
         """Validate verified query definitions."""
         items = queries_data.get("items", [])
 
+        # Check for duplicate verified query names
+        self._check_duplicate_names(items, "verified query", result)
+
         for query in items:
             query_name = query.get("name", "<unnamed>")
 
@@ -461,6 +480,9 @@ class SemanticModelValidator:
         import json
 
         items = views_data.get("items", [])
+
+        # Check for duplicate semantic view names
+        self._check_duplicate_names(items, "semantic view", result)
 
         for view in items:
             view_name = view.get("name", "<unnamed>")
@@ -841,3 +863,174 @@ class SemanticModelValidator:
                     "issues": errors,
                 },
             )
+
+    # =========================================================================
+    # STRUCTURAL VALIDATION METHODS
+    # =========================================================================
+
+    def _detect_metric_cycles(
+        self, metrics: List[Dict], result: ValidationResult, table_name: str = None
+    ):
+        """
+        Detect circular metric dependencies using DFS.
+
+        Circular dependencies (A -> B -> A) cause infinite recursion at query time.
+        This detects both self-references and multi-hop cycles.
+
+        Args:
+            metrics: List of metric definitions
+            result: ValidationResult to add errors to
+            table_name: Optional table name for context
+        """
+        if not metrics:
+            return
+
+        # Build dependency graph: metric_name -> [referenced_metrics]
+        graph = {}
+        for metric in metrics:
+            metric_name = metric.get("name", "")
+            if not metric_name:
+                continue
+            metric_expr = metric.get("expression", "") or metric.get("expr", "")
+            deps = self._extract_metric_references(metric_expr)
+            graph[metric_name] = deps
+
+        # DFS cycle detection
+        visited = set()
+        rec_stack = set()
+
+        def find_cycle(node: str, path: List[str]) -> Optional[List[str]]:
+            """DFS to find cycles. Returns cycle path if found."""
+            if node in rec_stack:
+                cycle_start = path.index(node)
+                return path[cycle_start:] + [node]
+
+            if node in visited:
+                return None
+
+            visited.add(node)
+            rec_stack.add(node)
+            path.append(node)
+
+            for neighbor in graph.get(node, []):
+                if neighbor in graph:  # Only follow if metric exists
+                    cycle = find_cycle(neighbor, path.copy())
+                    if cycle:
+                        return cycle
+
+            rec_stack.remove(node)
+            return None
+
+        # Check each metric for cycles
+        for metric_name in graph:
+            if metric_name not in visited:
+                cycle_path = find_cycle(metric_name, [])
+                if cycle_path:
+                    context_prefix = f"{table_name}." if table_name else ""
+                    result.add_error(
+                        f"Circular dependency detected in metric '{context_prefix}{metric_name}'. "
+                        f"Cycle: {' -> '.join(cycle_path)}. "
+                        f"Circular dependencies cause infinite recursion at query time.",
+                        context={
+                            "table": table_name,
+                            "metric": metric_name,
+                            "cycle": cycle_path,
+                        },
+                    )
+                    # Only report first cycle found to avoid noise
+                    break
+
+    def _extract_metric_references(self, expression: str) -> List[str]:
+        """
+        Extract metric references from expression.
+
+        Patterns detected:
+        - {{ metric('metric_name') }}
+        - {{ Metric('metric_name') }}
+        - {{ metric("metric_name") }}
+
+        Args:
+            expression: The expression string to search
+
+        Returns:
+            List of referenced metric names
+        """
+        if not expression or not isinstance(expression, str):
+            return []
+
+        # Pattern: {{ metric('name') }} or {{ Metric("name") }}
+        pattern = r"{{\s*[Mm]etric\s*\(\s*['\"]([^'\"]+)['\"]\s*\)\s*}}"
+        matches = re.findall(pattern, expression)
+        return matches
+
+    def _check_duplicate_names(
+        self, items: List[Dict], entity_type: str, result: ValidationResult
+    ):
+        """
+        Check for duplicate names within an entity type.
+
+        Args:
+            items: List of entity definitions
+            entity_type: Type of entity (e.g., "semantic view", "filter", "relationship")
+            result: ValidationResult to add errors to
+        """
+        seen = {}
+        for item in items:
+            name = item.get("name", "")
+            if not name:
+                continue
+
+            name_upper = name.upper()
+            if name_upper in seen:
+                result.add_error(
+                    f"Duplicate {entity_type} name '{name}'. "
+                    f"Each {entity_type} must have a unique name.",
+                    context={
+                        "entity_type": entity_type,
+                        "name": name,
+                        "first_occurrence": seen[name_upper],
+                    },
+                )
+            else:
+                seen[name_upper] = name
+
+    def _validate_relationship_structure(
+        self, relationship: Dict, result: ValidationResult
+    ):
+        """
+        Validate relationship has required structure and valid fields.
+
+        Checks:
+        1. relationship_conditions field exists
+        2. relationship_conditions is non-empty
+        3. Warns about unknown fields (typos)
+
+        Args:
+            relationship: Relationship definition dict
+            result: ValidationResult to add issues to
+        """
+        rel_name = relationship.get("name", "<unnamed>")
+
+        # Known valid fields for SST relationships
+        # Note: join_type/relationship_type are NOT part of SST format
+        # The join type is inferred from relationship_conditions (ASOF vs equality)
+        valid_fields = {
+            "name",
+            "left_table",
+            "right_table",
+            "relationship_conditions",
+            "description",  # Optional, for documentation
+        }
+
+        # Check for unknown fields (likely typos)
+        for field in relationship.keys():
+            if field not in valid_fields:
+                result.add_warning(
+                    f"Relationship '{rel_name}' has unknown field '{field}' which will be ignored. "
+                    f"Valid fields: {', '.join(sorted(valid_fields))}",
+                    context={
+                        "relationship": rel_name,
+                        "unknown_field": field,
+                        "valid_fields": list(valid_fields),
+                    },
+                )

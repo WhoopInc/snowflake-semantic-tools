@@ -1004,3 +1004,221 @@ class TestFilterParsingHelpers:
         
         result = _extract_table_name_from_template("orders")
         assert result == 'orders'
+
+
+class TestCircularDependencyDetection:
+    """Test circular dependency detection for metrics (Issue #33)."""
+
+    @pytest.fixture
+    def validator(self):
+        return SemanticModelValidator()
+
+    def test_no_circular_dependency(self, validator):
+        """Test that metrics without circular dependencies pass."""
+        metrics = [
+            {'name': 'metric_a', 'expr': 'SUM(amount)'},
+            {'name': 'metric_b', 'expr': "{{ metric('metric_a') }} * 2"},
+            {'name': 'metric_c', 'expr': "{{ metric('metric_b') }} + 10"},
+        ]
+        result = ValidationResult()
+        validator._detect_metric_cycles(metrics, result)
+        assert result.error_count == 0
+
+    def test_self_reference_detected(self, validator):
+        """Test that self-referencing metric is detected."""
+        metrics = [
+            {'name': 'self_ref', 'expr': "{{ metric('self_ref') }} + 1"},
+        ]
+        result = ValidationResult()
+        validator._detect_metric_cycles(metrics, result)
+        assert result.error_count == 1
+        assert 'Circular dependency' in result.issues[0].message
+        assert 'self_ref' in result.issues[0].message
+
+    def test_simple_cycle_detected(self, validator):
+        """Test that A -> B -> A cycle is detected."""
+        metrics = [
+            {'name': 'metric_a', 'expr': "{{ metric('metric_b') }}"},
+            {'name': 'metric_b', 'expr': "{{ metric('metric_a') }}"},
+        ]
+        result = ValidationResult()
+        validator._detect_metric_cycles(metrics, result)
+        assert result.error_count == 1
+        assert 'Circular dependency' in result.issues[0].message
+
+    def test_complex_cycle_detected(self, validator):
+        """Test that A -> B -> C -> A cycle is detected."""
+        metrics = [
+            {'name': 'metric_a', 'expr': "{{ metric('metric_b') }}"},
+            {'name': 'metric_b', 'expr': "{{ metric('metric_c') }}"},
+            {'name': 'metric_c', 'expr': "{{ metric('metric_a') }}"},
+        ]
+        result = ValidationResult()
+        validator._detect_metric_cycles(metrics, result)
+        assert result.error_count == 1
+        assert 'Circular dependency' in result.issues[0].message
+
+    def test_no_metric_references(self, validator):
+        """Test that metrics without references pass."""
+        metrics = [
+            {'name': 'metric_a', 'expr': 'SUM(amount)'},
+            {'name': 'metric_b', 'expr': 'COUNT(*)'},
+        ]
+        result = ValidationResult()
+        validator._detect_metric_cycles(metrics, result)
+        assert result.error_count == 0
+
+    def test_reference_to_nonexistent_metric(self, validator):
+        """Test that reference to non-existent metric doesn't crash."""
+        metrics = [
+            {'name': 'metric_a', 'expr': "{{ metric('does_not_exist') }}"},
+        ]
+        result = ValidationResult()
+        validator._detect_metric_cycles(metrics, result)
+        # Should not error - reference to non-existent metric is different validation
+        assert result.error_count == 0
+
+
+class TestExtractMetricReferences:
+    """Test metric reference extraction helper."""
+
+    @pytest.fixture
+    def validator(self):
+        return SemanticModelValidator()
+
+    def test_single_reference(self, validator):
+        """Test extracting single metric reference."""
+        result = validator._extract_metric_references("{{ metric('base_metric') }} * 2")
+        assert result == ['base_metric']
+
+    def test_multiple_references(self, validator):
+        """Test extracting multiple metric references."""
+        result = validator._extract_metric_references(
+            "{{ metric('metric_a') }} + {{ metric('metric_b') }}"
+        )
+        assert 'metric_a' in result
+        assert 'metric_b' in result
+
+    def test_uppercase_metric(self, validator):
+        """Test that Metric (capitalized) is also detected."""
+        result = validator._extract_metric_references("{{ Metric('base_metric') }}")
+        assert result == ['base_metric']
+
+    def test_double_quotes(self, validator):
+        """Test that double quotes work."""
+        result = validator._extract_metric_references('{{ metric("base_metric") }}')
+        assert result == ['base_metric']
+
+    def test_no_references(self, validator):
+        """Test expression without metric references."""
+        result = validator._extract_metric_references("SUM(amount)")
+        assert result == []
+
+    def test_empty_expression(self, validator):
+        """Test empty expression."""
+        result = validator._extract_metric_references("")
+        assert result == []
+
+
+class TestDuplicateNameDetection:
+    """Test duplicate name detection for views/filters/relationships (Issue #34)."""
+
+    @pytest.fixture
+    def validator(self):
+        return SemanticModelValidator()
+
+    def test_no_duplicates(self, validator):
+        """Test that unique names pass."""
+        items = [
+            {'name': 'view_a'},
+            {'name': 'view_b'},
+            {'name': 'view_c'},
+        ]
+        result = ValidationResult()
+        validator._check_duplicate_names(items, "semantic view", result)
+        assert result.error_count == 0
+
+    def test_duplicate_detected(self, validator):
+        """Test that duplicate names are detected."""
+        items = [
+            {'name': 'my_view'},
+            {'name': 'my_view'},
+        ]
+        result = ValidationResult()
+        validator._check_duplicate_names(items, "semantic view", result)
+        assert result.error_count == 1
+        assert 'Duplicate semantic view' in result.issues[0].message
+
+    def test_case_insensitive(self, validator):
+        """Test that duplicate detection is case-insensitive."""
+        items = [
+            {'name': 'MyView'},
+            {'name': 'MYVIEW'},
+        ]
+        result = ValidationResult()
+        validator._check_duplicate_names(items, "filter", result)
+        assert result.error_count == 1
+
+    def test_empty_names_skipped(self, validator):
+        """Test that empty names are skipped."""
+        items = [
+            {'name': ''},
+            {'name': ''},
+        ]
+        result = ValidationResult()
+        validator._check_duplicate_names(items, "relationship", result)
+        assert result.error_count == 0
+
+
+class TestRelationshipStructureValidation:
+    """Test relationship structure validation (Issues #37, #38, #39)."""
+
+    @pytest.fixture
+    def validator(self):
+        return SemanticModelValidator()
+
+    def test_valid_relationship(self, validator):
+        """Test that valid relationship passes."""
+        relationship = {
+            'name': 'orders_to_customers',
+            'left_table': 'orders',
+            'right_table': 'customers',
+            'relationship_conditions': ["col1 = col2"],
+        }
+        result = ValidationResult()
+        validator._validate_relationship_structure(relationship, result)
+        assert result.error_count == 0
+        assert len([i for i in result.issues if i.severity.name == 'WARNING']) == 0
+
+    def test_unknown_field_warning(self, validator):
+        """Test that unknown field produces warning."""
+        relationship = {
+            'name': 'orders_to_customers',
+            'left_table': 'orders',
+            'right_table': 'customers',
+            'relationship_conditions': ["col1 = col2"],
+            'join_typ': 'left',  # Typo: should be join_type
+        }
+        result = ValidationResult()
+        validator._validate_relationship_structure(relationship, result)
+        warnings = [i for i in result.issues if i.severity.name == 'WARNING']
+        assert len(warnings) == 1
+        assert 'unknown field' in warnings[0].message
+        assert 'join_typ' in warnings[0].message
+
+    def test_multiple_unknown_fields(self, validator):
+        """Test that multiple unknown fields each produce warning."""
+        relationship = {
+            'name': 'rel',
+            'left_table': 'a',
+            'right_table': 'b',
+            'relationship_conditions': ["x = y"],
+            'unknown1': 'value',
+            'unknown2': 'value',
+        }
+        result = ValidationResult()
+        validator._validate_relationship_structure(relationship, result)
+        warnings = [i for i in result.issues if i.severity.name == 'WARNING']
+        assert len(warnings) == 2
+
+

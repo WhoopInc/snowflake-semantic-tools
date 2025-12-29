@@ -1,9 +1,10 @@
+# Test fixtures for potential performance issues in relationships
+# These should trigger warnings but not errors
+
 snowflake_relationships:
-  - name: many_to_many_without_junction
-    description: "Many-to-many relationship without proper junction table"
+  # Warning: Cross join potential (no conditions)
+  - name: potential_cross_join
+    description: "Warning: no relationship conditions specified"
     left_table: "{{ table('users') }}"
-    left_column: id
     right_table: "{{ table('products') }}"
-    right_column: id
-    relationship_type: many_to_many
-    # Warning: Should specify join_tables for many_to_many
+    relationship_conditions: []

@@ -1,23 +1,15 @@
-# Minimal relationship definition for SQL views only
-# This should pass with --output views (warnings only)
-# This should fail with --output models (errors - missing required fields)
+# Minimal relationship definition for SST
+# Uses the current SST format with relationship_conditions
 
 snowflake_relationships:
   - name: orders_to_customers_minimal
     left_table: "{{ table('orders') }}"
     right_table: "{{ table('customers') }}"
-    # join_type OMITTED - not needed for SQL views
-    # relationship_type OMITTED - not needed for SQL views
-    relationship_columns:
-      - left_column: "{{ column('orders', 'customer_id') }}"
-        right_column: "{{ column('customers', 'id') }}"
+    relationship_conditions:
+      - "{{ column('orders', 'customer_id') }} = {{ column('customers', 'id') }}"
   
   - name: users_to_orders_minimal
     left_table: "{{ table('users') }}"
     right_table: "{{ table('orders') }}"
-    # join_type OMITTED
-    # relationship_type OMITTED
-    relationship_columns:
-      - left_column: "{{ column('users', 'id') }}"
-        right_column: "{{ column('orders', 'user_id') }}"
-
+    relationship_conditions:
+      - "{{ column('users', 'id') }} = {{ column('orders', 'user_id') }}"

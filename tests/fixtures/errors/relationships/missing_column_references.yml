@@ -7,79 +7,55 @@ snowflake_relationships:
     description: "Should error: left column doesn't exist in left table"
     left_table: "{{ table('orders') }}"
     right_table: "{{ table('users') }}"
-    join_type: left_outer
-    relationship_type: many_to_one
-    relationship_columns:
-      - left_column: "{{ column('orders', 'nonexistent_user_id') }}"
-        right_column: "{{ column('users', 'id') }}"
+    relationship_conditions:
+      - "{{ column('orders', 'nonexistent_user_id') }} = {{ column('users', 'id') }}"
   
   # Test 2: Missing right column
   - name: relationship_missing_right_column
     description: "Should error: right column doesn't exist in right table"
     left_table: "{{ table('orders') }}"
     right_table: "{{ table('users') }}"
-    join_type: left_outer
-    relationship_type: many_to_one
-    relationship_columns:
-      - left_column: "{{ column('orders', 'user_id') }}"
-        right_column: "{{ column('users', 'nonexistent_id') }}"
+    relationship_conditions:
+      - "{{ column('orders', 'user_id') }} = {{ column('users', 'nonexistent_id') }}"
   
   # Test 3: Missing both columns
   - name: relationship_missing_both_columns
     description: "Should error: both columns don't exist"
     left_table: "{{ table('orders') }}"
     right_table: "{{ table('users') }}"
-    join_type: left_outer
-    relationship_type: many_to_one
-    relationship_columns:
-      - left_column: "{{ column('orders', 'fake_column') }}"
-        right_column: "{{ column('users', 'another_fake_column') }}"
+    relationship_conditions:
+      - "{{ column('orders', 'fake_column') }} = {{ column('users', 'another_fake_column') }}"
   
-  # Test 4: Multiple column mappings with one missing
-  - name: relationship_multiple_columns_one_missing
-    description: "Should error: one of multiple column mappings has missing column"
+  # Test 4: Multiple conditions with one missing column
+  - name: relationship_multiple_conditions_one_missing
+    description: "Should error: one of multiple conditions has missing column"
     left_table: "{{ table('orders') }}"
     right_table: "{{ table('products') }}"
-    join_type: left_outer
-    relationship_type: many_to_one
-    relationship_columns:
-      - left_column: "{{ column('orders', 'product_id') }}"
-        right_column: "{{ column('products', 'id') }}"
-      - left_column: "{{ column('orders', 'created_date') }}"
-        right_column: "{{ column('products', 'nonexistent_launch_date') }}"
+    relationship_conditions:
+      - "{{ column('orders', 'product_id') }} = {{ column('products', 'id') }}"
+      - "{{ column('orders', 'created_date') }} = {{ column('products', 'nonexistent_launch_date') }}"
   
   # Test 5: Case sensitivity - column exists but wrong case
   - name: relationship_wrong_case_column
     description: "Should error or warn: column name with wrong case"
     left_table: "{{ table('orders') }}"
     right_table: "{{ table('users') }}"
-    join_type: left_outer
-    relationship_type: many_to_one
-    relationship_columns:
-      - left_column: "{{ column('orders', 'USER_ID') }}"  # Should be user_id
-        right_column: "{{ column('users', 'id') }}"
+    relationship_conditions:
+      - "{{ column('orders', 'USER_ID') }} = {{ column('users', 'id') }}"
   
   # Test 6: Typo in column name
   - name: relationship_typo_in_column
     description: "Should error: common typo in column name"
     left_table: "{{ table('orders') }}"
     right_table: "{{ table('users') }}"
-    join_type: left_outer
-    relationship_type: many_to_one
-    relationship_columns:
-      - left_column: "{{ column('orders', 'user_id') }}"
-        right_column: "{{ column('users', 'id') }}"  # Typo: should be user_id
+    relationship_conditions:
+      - "{{ column('orders', 'user_id') }} = {{ column('users', 'idd') }}"
   
   # Test 7: Missing column in composite key
   - name: relationship_missing_composite_key_column
     description: "Should error: one column of composite key is missing"
     left_table: "{{ table('order_line_items') }}"
     right_table: "{{ table('products') }}"
-    join_type: left_outer
-    relationship_type: many_to_one
-    relationship_columns:
-      - left_column: "{{ column('order_line_items', 'order_id') }}"
-        right_column: "{{ column('products', 'id') }}"
-      - left_column: "{{ column('order_line_items', 'missing_line_number') }}"
-        right_column: "{{ column('products', 'sku') }}"
-
+    relationship_conditions:
+      - "{{ column('order_line_items', 'order_id') }} = {{ column('products', 'id') }}"
+      - "{{ column('order_line_items', 'missing_line_number') }} = {{ column('products', 'sku') }}"
