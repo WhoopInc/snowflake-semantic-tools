@@ -1,0 +1,87 @@
+# Valid Identifier Fixtures
+# Tests that properly formatted identifiers pass validation without errors.
+#
+# Valid identifiers:
+# - Start with letter (A-Z, a-z) or underscore (_)
+# - Contain only letters, digits (0-9), and underscores
+# - Are 255 characters or fewer
+# - Avoid SQL reserved keywords (best practice)
+
+snowflake_metrics:
+  # Standard snake_case identifier
+  - name: "total_revenue"
+    description: "Sum of all revenue"
+    expr: "SUM({{ column('orders', 'amount') }})"
+    tables:
+      - "{{ table('orders') }}"
+
+  # Identifier starting with underscore (valid)
+  - name: "_private_metric"
+    description: "Internal metric starting with underscore"
+    expr: "COUNT(*)"
+    tables:
+      - "{{ table('orders') }}"
+
+  # Identifier with numbers (not at start)
+  - name: "revenue_2024_q1"
+    description: "Q1 2024 revenue metric"
+    expr: "SUM(amount)"
+    tables:
+      - "{{ table('orders') }}"
+
+  # camelCase identifier (valid but not recommended)
+  - name: "totalRevenueAmount"
+    description: "CamelCase metric name"
+    expr: "SUM(amount)"
+    tables:
+      - "{{ table('orders') }}"
+
+  # Identifier exactly at recommended length (200 chars)
+  - name: "metric_name_that_is_exactly_at_the_recommended_maximum_length_of_two_hundred_characters_which_should_pass_validation_without_any_warnings_because_it_is_within_the_safe_zone_for_snowflake_identifiers_ok"
+    description: "Metric at exactly 200 character limit"
+    expr: "SUM(amount)"
+    tables:
+      - "{{ table('orders') }}"
+
+snowflake_filters:
+  # Standard filter name
+  - name: "active_users_only"
+    description: "Filters for active users"
+    expr: "status = 'active'"
+
+  # Filter with numbers
+  - name: "last_30_days"
+    description: "Filters for last 30 days"
+    expr: "created_at >= DATEADD(day, -30, CURRENT_DATE())"
+
+snowflake_relationships:
+  # Standard relationship name
+  - name: "orders_to_customers"
+    description: "Links orders to their customers"
+    left_table: "{{ table('orders') }}"
+    right_table: "{{ table('customers') }}"
+    relationship_conditions:
+      - "{{ column('orders', 'customer_id') }} = {{ column('customers', 'id') }}"
+
+  # Relationship with underscores
+  - name: "order_items_to_products_lookup"
+    description: "Links order items to product catalog"
+    left_table: "{{ table('order_items') }}"
+    right_table: "{{ table('products') }}"
+    relationship_conditions:
+      - "{{ column('order_items', 'product_id') }} = {{ column('products', 'id') }}"
+
+semantic_views:
+  # Standard view name
+  - name: "customer_analytics"
+    description: "Customer analytics semantic view"
+    tables:
+      - "{{ table('customers') }}"
+      - "{{ table('orders') }}"
+
+  # View name with numbers
+  - name: "sales_dashboard_v2"
+    description: "Version 2 of sales dashboard view"
+    tables:
+      - "{{ table('orders') }}"
+

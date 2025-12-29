@@ -1,0 +1,73 @@
+# Identifier Warning Fixtures
+# Tests that reserved keywords and very long identifiers (but still valid)
+# produce appropriate warnings.
+#
+# Related Issues: #22 (length warning at 200+), #24 (reserved keywords)
+
+# METRICS with reserved keyword names (warning, not error)
+snowflake_metrics:
+  # Reserved keyword: SELECT
+  - name: "select"
+    description: "Metric named after SQL reserved keyword SELECT"
+    expr: "COUNT(*)"
+    tables:
+      - "{{ table('orders') }}"
+
+  # Reserved keyword: ORDER (common conflict with 'orders' tables)
+  - name: "order"
+    description: "Metric named after SQL reserved keyword ORDER"
+    expr: "SUM(amount)"
+    tables:
+      - "{{ table('orders') }}"
+
+  # Reserved keyword: DATE
+  - name: "date"
+    description: "Metric named after SQL reserved keyword DATE"
+    expr: "MAX(created_at)"
+    tables:
+      - "{{ table('orders') }}"
+
+  # Reserved keyword: USER
+  - name: "user"
+    description: "Metric named after SQL reserved keyword USER"
+    expr: "COUNT(DISTINCT user_id)"
+    tables:
+      - "{{ table('orders') }}"
+
+  # Long identifier (210 chars - above 200 warning threshold but below 255 limit)
+  - name: "this_is_a_very_long_metric_name_that_exceeds_the_recommended_two_hundred_character_threshold_for_identifier_length_but_is_still_within_the_snowflake_maximum_limit_of_two_hundred_fifty_five_characters_ok"
+    description: "Metric with very long name (warning threshold)"
+    expr: "SUM(amount)"
+    tables:
+      - "{{ table('orders') }}"
+
+# FILTERS with reserved keyword names
+snowflake_filters:
+  # Reserved keyword: WHERE
+  - name: "where"
+    description: "Filter named after SQL reserved keyword WHERE"
+    expr: "status = 'active'"
+
+  # Reserved keyword: JOIN
+  - name: "join"
+    description: "Filter named after SQL reserved keyword JOIN"
+    expr: "type = 'joined'"
+
+# RELATIONSHIPS with reserved keyword names
+snowflake_relationships:
+  # Reserved keyword: CROSS
+  - name: "cross"
+    description: "Relationship named after SQL reserved keyword CROSS"
+    left_table: "{{ table('orders') }}"
+    right_table: "{{ table('customers') }}"
+    relationship_conditions:
+      - "{{ column('orders', 'customer_id') }} = {{ column('customers', 'id') }}"
+
+# SEMANTIC VIEWS with reserved keyword names
+semantic_views:
+  # Reserved keyword: TABLE
+  - name: "table"
+    description: "View named after SQL reserved keyword TABLE"
+    tables:
+      - "{{ table('orders') }}"
+

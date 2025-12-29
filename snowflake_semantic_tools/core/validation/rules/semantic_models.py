@@ -13,11 +13,18 @@ Ensures semantic models have proper structure before they're used in generation,
 preventing runtime errors and ensuring high-quality semantic layer definitions.
 """
 
+import re
 from typing import Any, Dict, List, Optional, Set
 
 from snowflake_semantic_tools.core.models import ValidationResult
 from snowflake_semantic_tools.core.models.validation import ValidationSeverity
 from snowflake_semantic_tools.core.parsing.join_condition_parser import JoinConditionParser, JoinType
+from snowflake_semantic_tools.core.validation.constants import (
+    IDENTIFIER_PATTERN,
+    IDENTIFIER_WARNING_LENGTH,
+    SNOWFLAKE_MAX_IDENTIFIER_LENGTH,
+    SQL_RESERVED_KEYWORDS_LOWER,
+)
 from snowflake_semantic_tools.shared.utils import get_logger
 
 logger = get_logger("semantic_model_validator")
@@ -101,8 +108,8 @@ class SemanticModelValidator:
             self._check_required_field(metric, "expr", metric_name, "metric", result)
             self._check_required_field(metric, "tables", metric_name, "metric", result)
 
-            # Validate metric name format
-            self._validate_metric_name(metric_name, result)
+            # Validate identifier (length, characters, reserved keywords)
+            self._validate_identifier(metric_name, "Metric", result)
 
             # Field types
             if "tables" in metric:
@@ -172,6 +179,9 @@ class SemanticModelValidator:
             # Raw YAML: name, left_table, right_table
             # Parsed format: relationship_name, left_table_name, right_table_name
             rel_name = relationship.get("name") or relationship.get("relationship_name", "<unnamed>")
+
+            # Validate identifier (length, characters, reserved keywords)
+            self._validate_identifier(rel_name, "Relationship", result)
 
             # Determine which format we're validating
             is_parsed_format = "relationship_name" in relationship
@@ -295,6 +305,9 @@ class SemanticModelValidator:
             self._check_required_field(filter_def, "name", filter_name, "filter", result)
             self._check_required_field(filter_def, "expr", filter_name, "filter", result)
 
+            # Validate identifier (length, characters, reserved keywords)
+            self._validate_identifier(filter_name, "Filter", result)
+
             # Field types
             if "expr" in filter_def:
                 if not isinstance(filter_def["expr"], str):
@@ -340,6 +353,9 @@ class SemanticModelValidator:
             self._check_required_field(instruction, "name", instruction_name, "custom_instruction", result)
             self._check_required_field(instruction, "instruction", instruction_name, "custom_instruction", result)
 
+            # Validate identifier (length, characters, reserved keywords)
+            self._validate_identifier(instruction_name, "Custom instruction", result)
+
             # Field types
             if "instruction" in instruction:
                 if not isinstance(instruction["instruction"], str):
@@ -384,6 +400,9 @@ class SemanticModelValidator:
             self._check_required_field(query, "name", query_name, "verified_query", result)
             self._check_required_field(query, "question", query_name, "verified_query", result)
             self._check_required_field(query, "sql", query_name, "verified_query", result)
+
+            # Validate identifier (length, characters, reserved keywords)
+            self._validate_identifier(query_name, "Verified query", result)
 
             # Field types
             if "question" in query:
@@ -464,6 +483,9 @@ class SemanticModelValidator:
             self._check_required_field(view, "name", view_name, "semantic_view", result)
             self._check_required_field(view, "tables", view_name, "semantic_view", result)
 
+            # Validate identifier (length, characters, reserved keywords)
+            self._validate_identifier(view_name, "Semantic view", result)
+
             # Field types - handle both list (raw YAML) and JSON string (parsed for storage)
             if "tables" in view:
                 tables_raw = view["tables"]
@@ -530,27 +552,6 @@ class SemanticModelValidator:
             result.add_error(
                 f"{obj_type.replace('_', ' ').title()} '{obj_name}' field '{field_name}' cannot be empty",
                 context={obj_type: obj_name, "field": field_name, "type": obj_type},
-            )
-
-    def _validate_metric_name(self, metric_name: str, result: ValidationResult):
-        """Validate metric name format and syntax."""
-        if not metric_name or metric_name == "<unnamed>":
-            return
-
-        # Check for spaces in metric names
-        if " " in metric_name:
-            result.add_error(
-                f"Metric name '{metric_name}' contains spaces. Metric names must use underscores or camelCase.",
-                context={"metric": metric_name, "issue": "spaces_in_name", "type": "metric"},
-            )
-
-        # Check for invalid characters
-        import re
-
-        if not re.match(r"^[a-zA-Z_][a-zA-Z0-9_]*$", metric_name):
-            result.add_error(
-                f"Metric name '{metric_name}' contains invalid characters. Only letters, numbers, and underscores are allowed, and it must start with a letter or underscore.",
-                context={"metric": metric_name, "issue": "invalid_characters", "type": "metric"},
             )
 
     def _validate_sql_expression(self, entity_name: str, expression: str, entity_type: str, result: ValidationResult):
@@ -633,3 +634,166 @@ class SemanticModelValidator:
                     "type": "relationship",
                 },
             )
+
+    # =========================================================================
+    # IDENTIFIER VALIDATION METHODS
+    # =========================================================================
+
+    def _validate_identifier_length(
+        self, name: str, identifier_type: str, result: ValidationResult, context_name: str = None
+    ):
+        """
+        Validate identifier does not exceed Snowflake's 255-character limit.
+
+        Args:
+            name: The identifier name to validate
+            identifier_type: Type of identifier (e.g., "Metric", "Table", "Column")
+            result: ValidationResult to add errors/warnings to
+            context_name: Optional parent context (e.g., table name for columns)
+        """
+        if not name or name == "<unnamed>":
+            return
+
+        name_len = len(name)
+        context_prefix = f"{context_name}." if context_name else ""
+
+        if name_len > SNOWFLAKE_MAX_IDENTIFIER_LENGTH:
+            result.add_error(
+                f"{identifier_type} name '{context_prefix}{name}' ({name_len} characters) "
+                f"exceeds Snowflake's {SNOWFLAKE_MAX_IDENTIFIER_LENGTH}-character limit. "
+                f"Please use a shorter name.",
+                context={
+                    "identifier": name,
+                    "identifier_type": identifier_type,
+                    "length": name_len,
+                    "max_length": SNOWFLAKE_MAX_IDENTIFIER_LENGTH,
+                    "parent": context_name,
+                },
+            )
+        elif name_len > IDENTIFIER_WARNING_LENGTH:
+            result.add_warning(
+                f"{identifier_type} name '{context_prefix}{name}' ({name_len} characters) "
+                f"is longer than recommended ({IDENTIFIER_WARNING_LENGTH}+ characters). "
+                f"Consider using a shorter name for better readability.",
+                context={
+                    "identifier": name,
+                    "identifier_type": identifier_type,
+                    "length": name_len,
+                    "warning_threshold": IDENTIFIER_WARNING_LENGTH,
+                    "parent": context_name,
+                },
+            )
+
+    def _validate_identifier_characters(
+        self, name: str, identifier_type: str, result: ValidationResult, context_name: str = None
+    ):
+        """
+        Validate identifier uses valid Snowflake characters.
+
+        Snowflake identifiers must:
+        - Start with a letter (A-Z, a-z) or underscore (_)
+        - Contain only letters, digits (0-9), and underscores
+
+        Args:
+            name: The identifier name to validate
+            identifier_type: Type of identifier (e.g., "Metric", "Table", "Column")
+            result: ValidationResult to add errors to
+            context_name: Optional parent context (e.g., table name for columns)
+        """
+        if not name or name == "<unnamed>":
+            return
+
+        if IDENTIFIER_PATTERN.match(name):
+            return  # Valid identifier
+
+        # Collect invalid characters for the error message
+        invalid_chars = set()
+        if name[0].isdigit():
+            invalid_chars.add(f"starts with digit '{name[0]}'")
+        elif not name[0].isalpha() and name[0] != "_":
+            invalid_chars.add(f"starts with '{name[0]}'")
+
+        for char in name:
+            if not (char.isalnum() or char == "_"):
+                invalid_chars.add(repr(char))
+
+        # Generate suggestion
+        suggested = re.sub(r"[^A-Za-z0-9_]", "_", name)
+        if suggested and suggested[0].isdigit():
+            suggested = "_" + suggested
+
+        context_prefix = f"{context_name}." if context_name else ""
+        result.add_error(
+            f"{identifier_type} name '{context_prefix}{name}' contains invalid characters: "
+            f"{', '.join(sorted(invalid_chars))}. "
+            f"Snowflake identifiers must start with a letter or underscore, "
+            f"and contain only letters, digits, and underscores. "
+            f"Suggested: '{suggested}'",
+            context={
+                "identifier": name,
+                "identifier_type": identifier_type,
+                "invalid_chars": list(invalid_chars),
+                "suggestion": suggested,
+                "parent": context_name,
+            },
+        )
+
+    def _validate_reserved_keywords(
+        self, name: str, identifier_type: str, result: ValidationResult, context_name: str = None
+    ):
+        """
+        Check if identifier uses a SQL reserved keyword.
+
+        Using reserved keywords as identifiers can cause SQL errors or require
+        awkward double-quoting in queries.
+
+        Args:
+            name: The identifier name to validate
+            identifier_type: Type of identifier (e.g., "Metric", "Table", "Column")
+            result: ValidationResult to add warnings to
+            context_name: Optional parent context (e.g., table name for columns)
+        """
+        if not name or name == "<unnamed>":
+            return
+
+        if name.lower() not in SQL_RESERVED_KEYWORDS_LOWER:
+            return  # Not a reserved keyword
+
+        # Generate alternative name suggestions
+        suggestions = [
+            f"{name}_value",
+            f"{name}_col",
+            f"total_{name}",
+        ]
+
+        context_prefix = f"{context_name}." if context_name else ""
+        result.add_warning(
+            f"{identifier_type} name '{context_prefix}{name}' is a SQL reserved keyword. "
+            f"This may cause SQL errors or require quoting in queries. "
+            f"Suggested alternatives: {', '.join(suggestions)}",
+            context={
+                "identifier": name,
+                "identifier_type": identifier_type,
+                "keyword": name.upper(),
+                "suggestions": suggestions,
+                "parent": context_name,
+            },
+        )
+
+    def _validate_identifier(
+        self, name: str, identifier_type: str, result: ValidationResult, context_name: str = None
+    ):
+        """
+        Perform all identifier validations (length, characters, reserved keywords).
+
+        This is a convenience method that runs all three identifier checks.
+
+        Args:
+            name: The identifier name to validate
+            identifier_type: Type of identifier (e.g., "Metric", "Table", "Column")
+            result: ValidationResult to add issues to
+            context_name: Optional parent context (e.g., table name for columns)
+        """
+        self._validate_identifier_length(name, identifier_type, result, context_name)
+        self._validate_identifier_characters(name, identifier_type, result, context_name)
+        self._validate_reserved_keywords(name, identifier_type, result, context_name)
