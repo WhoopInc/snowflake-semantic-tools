@@ -89,36 +89,32 @@ See the `docs/` directory for comprehensive documentation:
 
 ---
 
-## Installation & Build
+## Installation
 
-### From PyPI (Recommended)
+**For users (recommended):**
 
 ```bash
 pip install snowflake-semantic-tools
 ```
 
-### From Source
+**For developers/contributors:**
+
+If you want to contribute or modify the code, see the [Development Setup](#development-setup) section below or [CONTRIBUTING.md](CONTRIBUTING.md) for detailed instructions.
+
+## Development Setup
+
+**Only needed if you're contributing code or developing locally.**
 
 ```bash
 # Clone the repository
-git clone https://github.com/YOUR_ORG/snowflake-semantic-tools.git
+git clone https://github.com/WhoopInc/snowflake-semantic-tools.git
 cd snowflake-semantic-tools
 
-# Install with Poetry
-poetry install
-
-# Or install with pip in development mode
-pip install -e .
+# Install with Poetry (includes dev dependencies)
+poetry install --with dev
 
 # Verify installation
 sst --version
-```
-
-### Development Setup
-
-```bash
-# Install with dev dependencies
-poetry install --with dev
 
 # Run tests
 pytest tests/unit/
@@ -150,7 +146,7 @@ We welcome contributions! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for:
 ## Support
 
 - **Documentation**: See the [docs/](docs/) directory
-- **Issues**: [GitHub Issues](https://github.com/YOUR_ORG/snowflake-semantic-tools/issues)
+- **Issues**: [GitHub Issues](https://github.com/WhoopInc/snowflake-semantic-tools/issues)
 
 ---
 

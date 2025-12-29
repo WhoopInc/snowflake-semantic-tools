@@ -47,7 +47,7 @@ def validate(dbt, semantic, strict, verbose, exclude, dbt_compile):
       # Auto-compile dbt if manifest missing/stale (uses 'prod' target by default)
       sst validate --dbt-compile
 
-      # Use custom target (e.g., 'ci' for CircleCI with private key auth)
+      # Use custom target (e.g., 'ci' for CI/CD environments with private key auth)
       export DBT_TARGET=ci
       sst validate --dbt-compile
 

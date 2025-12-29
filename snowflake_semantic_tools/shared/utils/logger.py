@@ -13,7 +13,7 @@ Usage:
     # For internal debugging/technical logs
     logger = get_logger(__name__)
     logger.debug("Technical detail")  # → logs/sst.log
-    
+
     # For user-facing output
     from snowflake_semantic_tools.shared.events import fire_event, ModelEnriched
     fire_event(ModelEnriched(...))  # → CLI + logs/sst_events.log

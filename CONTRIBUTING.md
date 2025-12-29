@@ -88,9 +88,9 @@ sst deploy --db ANALYTICS --schema SEMANTIC_VIEWS --verbose
 > 3. SST and dbt run in parallel
 > 4. SST fails with table not found error
 > 
-> **Environment**: SST 1.4.447, Python 3.11, dbt 1.7, CircleCI
+> **Environment**: SST 0.1.0, Python 3.11, dbt 1.7, GitHub Actions
 > 
-> **Root Cause**: No job dependency between dbt and SST workflows in CircleCI config
+> **Root Cause**: No job dependency between dbt and SST workflows in GitHub Actions config
 
 **Feature Request Example:**
 
@@ -117,7 +117,7 @@ sst deploy --db ANALYTICS --schema SEMANTIC_VIEWS --verbose
 > 
 > **Issue**: No documentation explaining SST must run after dbt in CI/CD
 > 
-> **Suggested Improvement**: Add section on CI/CD pipeline orchestration with CircleCI and GitHub Actions examples
+> **Suggested Improvement**: Add section on CI/CD pipeline orchestration with GitHub Actions examples
 > 
 > **Target Audience**: All users deploying via CI/CD
 
@@ -165,7 +165,7 @@ sst deploy --db ANALYTICS --schema SEMANTIC_VIEWS --verbose
 
 ```bash
 # Clone the repository
-git clone https://github.com/YOUR_ORG/snowflake-semantic-tools.git
+git clone https://github.com/WhoopInc/snowflake-semantic-tools.git
 cd snowflake-semantic-tools
 
 # Install dependencies

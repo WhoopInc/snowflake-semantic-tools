@@ -1,0 +1,130 @@
+name: Publish to PyPI
+
+on:
+  push:
+    tags:
+      # Only run this workflow when a tag like v0.1.0 is pushed.
+      # Normal pushes and merges to main do NOT trigger this.
+      - "v*.*.*"
+
+permissions:
+  # Required to read repository contents.
+  contents: read
+  # Required for GitHub Actions to authenticate to PyPI via OIDC
+  # when using Trusted Publishing (no long-lived API tokens).
+  id-token: write
+
+jobs:
+  build-and-publish:
+    name: Build and publish to PyPI
+    runs-on: ubuntu-latest
+
+    # This environment name must match the one you configure
+    # in PyPI's "Trusted Publishers" settings for this repository.
+    environment:
+      name: pypi
+      url: https://pypi.org/p/snowflake-semantic-tools
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          # Full history is not strictly required here, but it is
+          # a sensible default and avoids surprises if you later
+          # add tools that rely on git history.
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install build and test tooling
+        # "build" uses pyproject.toml to create source and wheel distributions.
+        # "twine" validates the distributions' metadata before upload.
+        # Install the package and pytest for basic tests.
+        #
+        # Note: Poetry CLI is not required here. The project uses poetry-core
+        # as the build backend (PEP 517/518 compliant), which is automatically
+        # installed as a build dependency. Both "pip install ." and "python -m build"
+        # use the PEP 517 interface to call poetry-core directly, so the full
+        # Poetry CLI tool is not needed for building or installing.
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install build
+          python -m pip install twine
+          python -m pip install .
+          python -m pip install pytest
+
+      - name: Verify tag and pyproject.toml version match
+        # Extract version from tag, stripping the leading "v".
+        # Example: refs/tags/v0.1.0 -> 0.1.0
+
+        # Extract version from pyproject.toml.
+        # Assumes a line like: version = "0.1.0"
+        run: |
+          TAG_REF="${GITHUB_REF}"
+          TAG_VERSION="${TAG_REF#refs/tags/v}"
+
+          PYPROJECT_VERSION=$(grep -E '^[[:space:]]*version[[:space:]]*=' pyproject.toml | sed 's/.*version[[:space:]]*=[[:space:]]*"\(.*\)".*/\1/')
+
+          echo "Tag version: ${TAG_VERSION}"
+          echo "pyproject.toml version: ${PYPROJECT_VERSION}"
+
+          if [ -z "$PYPROJECT_VERSION" ]; then
+            echo "pyproject.toml version could not be determined. Failing."
+            exit 1
+          fi
+
+          if [ "$TAG_VERSION" != "$PYPROJECT_VERSION" ]; then
+            echo "Version mismatch between tag and pyproject.toml. Failing."
+            exit 1
+          fi
+
+          echo "Tag and pyproject.toml versions match."
+
+      - name: Run basic tests
+        # Run unit tests only (matching CircleCI behavior).
+        # Integration tests require external services and are excluded from CI.
+        # PYTHONPATH is set so tests can import from tests.fixtures.
+        # Otherwise, at least verify that the package can be imported.
+        run: |
+          if [ -d "tests/unit" ]; then
+            PYTHONPATH=. pytest tests/unit/
+          elif [ -d "tests" ]; then
+            PYTHONPATH=. pytest -m "not snowflake"
+          else
+            python -c "import snowflake_semantic_tools"
+          fi
+
+      - name: Clean previous build artifacts if any
+        # Ensure we are starting from a clean state.
+        run: |
+          rm -rf dist
+          mkdir -p dist
+
+      - name: Build source and wheel distributions
+        # This will create dist/*.tar.gz and dist/*.whl
+        run: |
+          python -m build
+
+      - name: Verify build artifacts exist
+        # Basic sanity check: fail if directory is empty.
+        run: |
+          echo "Built artifacts in dist/:"
+          ls -lh dist
+          if [ -z "$(ls -A dist)" ]; then
+            echo "No build artifacts were produced. Failing."
+            exit 1
+          fi
+
+      - name: Check distribution metadata with twine
+        # Ensures the built artifacts have valid metadata and are suitable
+        # for upload to PyPI. Catches common packaging issues early.
+        run: |
+          python -m twine check dist/*
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        # No "with: password" needed; PyPI uses the OIDC token (id-token permission)
+        # and the Trusted Publisher configuration you set up on the PyPI side.

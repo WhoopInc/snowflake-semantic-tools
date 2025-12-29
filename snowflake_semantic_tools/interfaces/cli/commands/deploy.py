@@ -3,7 +3,7 @@ Deploy Command
 
 One-step deployment: validate → extract → generate semantic models and views.
 
-Combines the three-step workflow (validate, extract, generate) into a single 
+Combines the three-step workflow (validate, extract, generate) into a single
 atomic operation for simplified deployment and CI/CD integration.
 """
 

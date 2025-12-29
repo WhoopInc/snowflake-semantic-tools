@@ -19,7 +19,7 @@ Event system for unified logging and CLI output.
 Usage:
     from snowflake_semantic_tools.shared import get_logger, get_config
     from snowflake_semantic_tools.shared.utils import find_dbt_model_files, CharacterSanitizer
-    
+
     logger = get_logger("my_module")
     config = get_config()
 """

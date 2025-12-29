@@ -6,7 +6,7 @@ Specialized validators for specific aspects of semantic model integrity.
 Each validator focuses on a specific validation concern:
 
 - **DbtModelValidator**: Physical layer requirements and best practices
-- **ReferenceValidator**: Table/column existence in dbt catalog  
+- **ReferenceValidator**: Table/column existence in dbt catalog
 - **DuplicateValidator**: Unique naming across all components
 - **DependencyValidator**: Acyclic relationship graphs
 - **TemplateResolutionValidator**: Complete template expansion

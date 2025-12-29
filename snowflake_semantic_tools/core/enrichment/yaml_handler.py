@@ -9,8 +9,7 @@ import os
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from ruamel.yaml import YAML
-from ruamel.yaml import YAMLError
+from ruamel.yaml import YAML, YAMLError
 
 from snowflake_semantic_tools.shared.utils import get_logger
 
@@ -158,14 +157,14 @@ class YAMLHandler:
     def _get_models_list(self, yaml_content: Dict[str, Any]) -> List[Dict[str, Any]]:
         """
         Get models list, handling both 'models' and 'semantic_models' keys.
-        
+
         For semantic_models-only files (dbt MetricFlow format), uses that list.
         This allows enrichment to work with MetricFlow YAML files that only have
         semantic_models defined.
-        
+
         Args:
             yaml_content: Parsed YAML content
-            
+
         Returns:
             List of model dictionaries
         """
@@ -173,13 +172,13 @@ class YAMLHandler:
         if "models" in yaml_content:
             models = yaml_content.get("models", [])
             return models if isinstance(models, list) else []
-        
+
         # dbt MetricFlow format - semantic_models without models
         if "semantic_models" in yaml_content:
             logger.debug("Found semantic_models key without models - using semantic_models as models")
             semantic_models = yaml_content.get("semantic_models", [])
             return semantic_models if isinstance(semantic_models, list) else []
-        
+
         return []
 
     def _has_models(self, yaml_content: Dict[str, Any]) -> bool:

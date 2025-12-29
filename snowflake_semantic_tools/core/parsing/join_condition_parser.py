@@ -130,7 +130,7 @@ class JoinConditionParser:
     @classmethod
     def _detect_join_type(cls, operator: str) -> JoinType:
         """Detect join type based on operator.
-        
+
         Note: Only = and >= operators are valid in Snowflake semantic views.
         - = : Equality join (standard FK relationship)
         - >= : ASOF join (temporal relationship)
@@ -168,7 +168,7 @@ class JoinConditionParser:
         Extract table and column from template format.
 
         Example: "{{ column('orders', 'customer_id') }}" → ('ORDERS', 'CUSTOMER_ID')
-        
+
         Note: Uppercases table and column names to match Snowflake's identifier behavior.
         """
         match = cls.COLUMN_TEMPLATE_PATTERN.search(expression)
@@ -214,7 +214,7 @@ class JoinConditionParser:
                     f"Only '>=' operator is supported for ASOF joins. "
                     f"See: https://docs.snowflake.com/en/user-guide/views-semantic/sql"
                 )
-            
+
             # Reject BETWEEN operator - not supported in semantic view relationships
             if parsed.operator == "BETWEEN":
                 return False, (
@@ -250,26 +250,26 @@ class JoinConditionParser:
     ) -> str:
         """
         Generate SQL REFERENCES clause from parsed conditions.
-        
+
         For semantic views:
         - Equality: table(col1, col2) REFERENCES table(col1, col2)
         - ASOF: table(col1, time_col) REFERENCES table(col1, ASOF time_col)
         - Mixed: table(join_col, time_col) REFERENCES table(join_col, ASOF time_col)
-        
+
         Args:
             parsed_conditions: List of parsed conditions
             left_table_alias: Alias for left table
             right_table_alias: Alias for right table
-        
+
         Returns:
             SQL REFERENCES clause with correct ASOF syntax
         """
         if not parsed_conditions:
             return ""
-        
+
         # Build left column list (all conditions in original order)
         left_cols = [c.left_column for c in parsed_conditions]
-        
+
         # Build right column list maintaining same order as left
         # ASOF columns get the ASOF prefix, equality columns are unchanged
         right_cols = []
@@ -278,8 +278,8 @@ class JoinConditionParser:
                 right_cols.append(f"ASOF {c.right_column}")
             else:
                 right_cols.append(c.right_column)
-        
+
         # Generate SQL
         sql = f"{left_table_alias} ({', '.join(left_cols)}) REFERENCES {right_table_alias} ({', '.join(right_cols)})"
-        
+
         return sql

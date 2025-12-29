@@ -419,7 +419,6 @@ class SemanticViewGenerationService:
             List of view configurations
         """
         try:
-
             with self.connection_manager.get_connection() as conn:
                 cursor = conn.cursor()
 
