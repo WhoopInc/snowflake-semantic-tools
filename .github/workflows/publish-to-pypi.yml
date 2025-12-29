@@ -55,10 +55,6 @@ jobs:
           python -m pip install twine
           python -m pip install .
           python -m pip install pytest
-          
-          if [ -f "requirements-dev.txt" ]; then
-            python -m pip install -r requirements-dev.txt
-          fi
 
       - name: Verify tag and pyproject.toml version match
         # Extract version from tag, stripping the leading "v".
