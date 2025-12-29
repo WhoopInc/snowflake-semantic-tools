@@ -4,7 +4,6 @@ Enrich Command
 CLI command for enriching dbt YAML metadata with semantic information.
 """
 
-import json
 import time
 import traceback
 from pathlib import Path
@@ -99,7 +98,8 @@ def _determine_components(
     "--manifest", type=click.Path(exists=True), help="Path to manifest.json (default: ./target/manifest.json)"
 )
 @click.option("--allow-non-prod", is_flag=True, help="Allow enrichment from non-production manifest")
-@click.option("--pk-candidates", type=click.Path(exists=True), help="JSON file with primary key candidates")
+# Issue #44: Removed --pk-candidates flag (undocumented, adds complexity)
+# Primary key detection now happens automatically via --primary-keys flag
 @click.option("--column-types", "-ct", is_flag=True, help="Enrich column types (dimension/fact/time_dimension)")
 @click.option("--data-types", "-dt", is_flag=True, help="Enrich data types (map Snowflake types)")
 @click.option("--sample-values", "-sv", is_flag=True, help="Enrich sample values (queries data - SLOW)")
@@ -137,7 +137,6 @@ def enrich(
     schema,
     manifest,
     allow_non_prod,
-    pk_candidates,
     exclude,
     dry_run,
     fail_fast,
@@ -182,9 +181,6 @@ def enrich(
         # Explicit database/schema (backward compatible, no manifest needed)
         sst enrich models/analytics/memberships/ --database ANALYTICS --schema memberships
 
-        # With primary key candidates
-        sst enrich models/analytics/memberships/ -d ANALYTICS -s memberships --pk-candidates pk.json
-
         # Use specific manifest file
         sst enrich models/ --manifest target_prod/manifest.json
 
@@ -204,16 +200,6 @@ def enrich(
     # Common CLI setup
     output.debug("Loading environment...")
     setup_command(verbose=verbose, validate_config=True)
-
-    # Load primary key candidates if provided
-    primary_key_candidates = None
-    if pk_candidates:
-        try:
-            with open(pk_candidates, "r") as f:
-                primary_key_candidates = json.load(f)
-            output.debug(f"Loaded primary key candidates for {len(primary_key_candidates)} models")
-        except Exception as e:
-            raise click.ClickException(f"Failed to load primary key candidates: {e}")
 
     # Parse excluded directories
     excluded_dirs = None
@@ -235,11 +221,11 @@ def enrich(
     )
 
     # Create configuration
+    # Issue #44: primary_key_candidates removed from CLI (use --primary-keys for auto-detection)
     config = EnrichmentConfig(
         target_path=target_path,
         database=database,
         schema=schema,
-        primary_key_candidates=primary_key_candidates,
         excluded_dirs=excluded_dirs,
         dry_run=dry_run,
         fail_fast=fail_fast,
