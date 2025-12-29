@@ -137,8 +137,6 @@ def validate(dbt, semantic, strict, verbose, exclude, dbt_compile):
                 click.echo("    - Model SQL errors: Run 'dbt debug' to check", err=True)
                 click.echo("    - Missing packages: Run 'dbt deps'", err=True)
 
-                import sys
-
                 sys.exit(1)
 
             # Successful compile
