@@ -35,6 +35,66 @@ from snowflake_semantic_tools.shared.utils import get_logger
 logger = get_logger("snowflake.data_loader")
 
 
+def format_permission_error(error: Exception, database: str, schema: str, role: Optional[str]) -> str:
+    """
+    Format Snowflake permission errors with helpful context and remediation.
+    
+    Args:
+        error: Original Snowflake exception
+        database: Target database name
+        schema: Target schema name
+        role: Current Snowflake role (if known)
+    
+    Returns:
+        User-friendly error message with remediation steps
+    """
+    error_str = str(error).lower()
+    
+    # Detect permission-related errors
+    is_permission_error = any([
+        "not authorized" in error_str,
+        "insufficient privileges" in error_str,
+        "access denied" in error_str,
+        "does not exist or not authorized" in error_str,
+    ])
+    
+    if not is_permission_error:
+        # Not a permission error - return original
+        return str(error)
+    
+    # Build friendly error message
+    role_info = f"Current role: {role}" if role else "Current role: Unknown"
+    role_name = role.upper() if role else "YOUR_ROLE"
+    
+    message = f"""
+ERROR: Cannot access database '{database}'
+
+{role_info}
+Database: {database}
+Schema: {schema}
+
+This usually means:
+  • Role '{role or 'your current role'}' doesn't have access to database '{database}'
+  • The database exists but requires different permissions
+  • You're using the wrong role for this operation
+
+Solutions:
+  1. Set SNOWFLAKE_ROLE env var to a role with access:
+     export SNOWFLAKE_ROLE=ACCOUNTADMIN
+     
+  2. Grant your role access (requires ACCOUNTADMIN or SECURITYADMIN):
+     GRANT USAGE ON DATABASE {database.upper()} TO ROLE {role_name};
+     GRANT USAGE ON SCHEMA {database.upper()}.{schema.upper()} TO ROLE {role_name};
+     
+  3. Contact your Snowflake admin for permissions
+
+For more help, see: https://docs.snowflake.com/en/user-guide/security-access-control
+
+Original error: {error}
+"""
+    return message.strip()
+
+
 def build_column_definitions(columns: List) -> str:
     """
     Build SQL column definitions from schema columns.
@@ -178,8 +238,16 @@ class DataLoader:
                 return len(created_staging_tables) > 0
 
         except Exception as e:
-            logger.error(f"Failed to create staging tables: {e}")
-            return False
+            # Check if it's a permission error and format nicely (Issue #30)
+            friendly_error = format_permission_error(
+                e, 
+                self.config.database, 
+                self.config.schema, 
+                self.config.role
+            )
+            logger.error(friendly_error)
+            # Preserve original exception type for programmatic handling
+            raise type(e)(friendly_error) from e
 
     def load_dataframe_to_staging(
         self, df: pd.DataFrame, table_key: str, conn=None  # Allow passing existing connection

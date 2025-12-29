@@ -52,12 +52,16 @@ models:
         assert result is None
     
     def test_read_yaml_invalid_yaml(self, yaml_handler, temp_yaml_file):
-        """Test reading invalid YAML returns None."""
+        """Test reading invalid YAML raises ValueError with helpful message (Issue #20)."""
         with open(temp_yaml_file, 'w') as f:
             f.write("invalid: yaml: content: [")
         
-        result = yaml_handler.read_yaml(temp_yaml_file)
-        assert result is None
+        # Issue #20: YAML errors should now raise ValueError with helpful message
+        with pytest.raises(ValueError) as exc_info:
+            yaml_handler.read_yaml(temp_yaml_file)
+        
+        # Check that the error message contains the file path
+        assert temp_yaml_file in str(exc_info.value)
     
     def test_write_yaml_basic(self, yaml_handler, temp_yaml_file):
         """Test writing basic YAML content."""
