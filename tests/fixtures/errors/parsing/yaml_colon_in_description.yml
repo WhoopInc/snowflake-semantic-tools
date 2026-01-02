@@ -1,0 +1,13 @@
+# Test fixture for Issue #8: Metrics with unquoted colons in descriptions
+# This YAML is intentionally invalid - the colon in the description breaks YAML parsing
+# Expected: Parser should fail loudly with helpful error message
+
+snowflake_metrics:
+  - name: test_metric_with_colon
+    tables:
+      - customers
+    description: Use this metric like this: SUM(amount) for totals. Filter by date: use WHERE clause.
+    expr: SUM(amount)
+    synonyms:
+      - test metric
+
