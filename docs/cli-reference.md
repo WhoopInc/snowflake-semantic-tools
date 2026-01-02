@@ -160,8 +160,8 @@ Control LLM behavior in `sst_config.yaml`:
 
 ```yaml
 enrichment:
-  # LLM model for synonym generation
-  synonym_model: 'openai-gpt-4.1'  # Options: openai-gpt-4.1, mistral-large, etc.
+  # LLM model for synonym generation (mistral-large2 is universally available)
+  synonym_model: 'mistral-large2'  # Options: mistral-large2, llama3.1-70b, etc.
   
   # Maximum synonyms per table/column
   synonym_max_count: 4

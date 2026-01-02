@@ -76,7 +76,7 @@ def validate_config(
         ("validation.exclude_dirs", "Recommended: List of directories to exclude from validation", []),
         ("enrichment.distinct_limit", "Optional: Number of distinct values to fetch during enrichment", 25),
         ("enrichment.sample_values_display_limit", "Optional: Number of sample values to show in YAML files", 10),
-        ("enrichment.synonym_model", "Optional: LLM model for synonym generation", "openai-gpt-5"),
+        ("enrichment.synonym_model", "Optional: LLM model for synonym generation", "mistral-large2"),
         ("enrichment.synonym_max_count", "Optional: Maximum synonyms per table/column", 4),
     ]
 

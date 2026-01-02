@@ -25,5 +25,9 @@ validation:
 enrichment:
   distinct_limit: 25                                # Distinct values to fetch from Snowflake
   sample_values_display_limit: 10                   # Sample values to show in YAML files
-  synonym_model: 'openai-gpt-5'                     # LLM model for synonym generation (openai-gpt-5, claude-4-sonnet, etc.)
   synonym_max_count: 4                              # Maximum synonyms per table/column
+  synonym_model: 'mistral-large2'                   # Snowflake Cortex LLM model for synonym generation      
+  # Default: mistral-large2 (universally available on AWS, Azure, GCP)
+  #
+  # Check model availability for your region:
+  #   https://docs.snowflake.com/en/user-guide/snowflake-cortex/llm-functions#availability

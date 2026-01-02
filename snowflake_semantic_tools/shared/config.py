@@ -94,7 +94,7 @@ class Config:
                 "distinct_limit": 25,  # Number of distinct values to fetch (accounts for null)
                 "sample_values_display_limit": 10,  # Number of sample values to display in YAML
                 "generate_synonyms": False,  # Auto-generate synonyms using Cortex LLM
-                "synonym_model": "mistral-large",  # LLM model for synonym generation
+                "synonym_model": "mistral-large2",  # LLM model (universally available on AWS/Azure/GCP)
                 "synonym_max_count": 4,  # Maximum synonyms per table/column
                 "generate_column_synonyms": True,  # Also generate column-level synonyms
             },
@@ -220,8 +220,8 @@ class Config:
         return self.get("enrichment.sample_values_display_limit", 10)
 
     def get_synonym_model(self) -> str:
-        """Get LLM model for synonym generation (default: openai-gpt-4.1)."""
-        return self.get("enrichment.synonym_model", "openai-gpt-4.1")
+        """Get LLM model for synonym generation (default: mistral-large2)."""
+        return self.get("enrichment.synonym_model", "mistral-large2")
 
     def get_synonym_max_count(self) -> int:
         """Get maximum number of synonyms to generate (default: 4)."""

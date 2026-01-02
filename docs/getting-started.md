@@ -106,8 +106,11 @@ validation:
 enrichment:
   distinct_limit: 25                    # Distinct values to fetch
   sample_values_display_limit: 10       # Sample values to show
-  synonym_model: 'openai-gpt-4.1'       # LLM for synonyms
+  synonym_model: 'mistral-large2'       # LLM for synonyms (universally available)
   synonym_max_count: 4                  # Max synonyms per field
+  
+  # Alternative models: llama3.1-70b, mixtral-8x7b, claude-3-5-sonnet
+  # OpenAI models require Azure or cross-region inference enabled
 ```
 
 **Required fields:**
@@ -435,6 +438,32 @@ con = snowflake.connector.connect(insecure_mode=True)
 ```
 
 **Note:** Snowflake is actively working on a permanent fix. Monitor [status.snowflake.com](https://status.snowflake.com/) for updates.
+
+### "Model unavailable" during synonym generation
+
+**Problem:** Cortex model not available error when running `sst enrich --synonyms`:
+```
+Model "openai-gpt-4.1" is unavailable
+```
+
+**Cause:** OpenAI models (gpt-4.1, gpt-5, etc.) are only available on Snowflake accounts hosted on Azure, or require cross-region inference to be enabled.
+
+**Solution 1 (Recommended):** Use a universally available model in `sst_config.yml`:
+```yaml
+enrichment:
+  synonym_model: 'mistral-large2'  # Works on AWS, Azure, GCP
+```
+
+Other universally available models:
+- `llama3.1-70b`, `llama3.1-8b` (Meta open models)
+- `mixtral-8x7b`, `mistral-7b` (fast, lower cost)
+
+**Solution 2:** Enable cross-region inference (requires ACCOUNTADMIN):
+```sql
+ALTER ACCOUNT SET CORTEX_ENABLED_CROSS_REGION = 'AZURE_US';
+```
+
+**See:** [Snowflake Cortex Model Availability](https://docs.snowflake.com/en/user-guide/snowflake-cortex/llm-functions#availability) for models available in your region.
 
 ---
 
