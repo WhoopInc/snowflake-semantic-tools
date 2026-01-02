@@ -398,6 +398,36 @@ semantic_views:
       - {{ custom_instructions('instruction_name') }}
 ```
 
+### Cortex Analyst Integration
+
+When SST generates semantic views, it automatically includes a `WITH EXTENSION (CA='...')` clause containing `sample_values` metadata from your dbt models. This helps Cortex Analyst:
+
+- **Understand valid values**: Know what categorical values exist (e.g., `["new", "returning"]` for customer_type)
+- **Recognize enums**: When `is_enum: true`, Cortex knows the sample_values are exhaustive
+- **Generate better queries**: More accurate SQL generation with proper value references
+
+The CA extension JSON structure:
+```json
+{
+  "tables": [{
+    "name": "CUSTOMERS",
+    "dimensions": [
+      {"name": "CUSTOMER_TYPE", "sample_values": ["new", "returning"], "is_enum": true}
+    ],
+    "time_dimensions": [
+      {"name": "CREATED_AT", "sample_values": ["2025-01-15", "2025-02-20"]}
+    ],
+    "facts": [
+      {"name": "LIFETIME_SPEND", "sample_values": ["100.50", "250.00"]}
+    ]
+  }]
+}
+```
+
+**Notes:**
+- Only columns with non-empty `sample_values` are included. If no sample_values exist, the CA extension is omitted.
+- The CA extension is a temporary solution recommended by Snowflake Engineering until native `sample_values` support is added to the `CREATE SEMANTIC VIEW` DDL syntax. Once Snowflake releases official support, SST will be updated to use the native syntax.
+
 ### Real Examples
 
 ```yaml
