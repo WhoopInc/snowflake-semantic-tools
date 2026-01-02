@@ -99,7 +99,7 @@ def get_synonym_config() -> Dict[str, Any]:
     Get synonym generation configuration from config.
 
     Returns dictionary with:
-    - model: LLM model to use (e.g., 'openai-gpt-4.1', 'claude-4-sonnet')
+    - model: LLM model to use (e.g., 'mistral-large2', 'llama3.1-70b')
     - max_count: Maximum synonyms per table/column
 
     Uses config values with sensible defaults.
@@ -110,7 +110,7 @@ def get_synonym_config() -> Dict[str, Any]:
     Example:
         >>> config = get_synonym_config()
         >>> config['model']
-        'openai-gpt-4.1'
+        'mistral-large2'
         >>> config['max_count']
         4
     """
@@ -118,7 +118,7 @@ def get_synonym_config() -> Dict[str, Any]:
     enrichment_config = config.get("enrichment", {})
 
     return {
-        "model": enrichment_config.get("synonym_model", "openai-gpt-4.1"),
+        "model": enrichment_config.get("synonym_model", "mistral-large2"),
         "max_count": enrichment_config.get("synonym_max_count", 4),
     }
 

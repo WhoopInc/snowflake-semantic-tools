@@ -19,13 +19,14 @@ logger = get_logger(__name__)
 class CortexSynonymGenerator:
     """Generate synonyms using Snowflake Cortex Complete LLM."""
 
-    def __init__(self, snowflake_client, model: str = "openai-gpt-4.1", max_synonyms: int = 4):
+    def __init__(self, snowflake_client, model: str = "mistral-large2", max_synonyms: int = 4):
         """
         Initialize synonym generator.
 
         Args:
             snowflake_client: SnowflakeClient instance for Cortex access
-            model: Cortex model to use (default: openai-gpt-4.1)
+            model: Cortex model to use (default: mistral-large2, universally available)
+                   For OpenAI models, see cross-region inference docs.
             max_synonyms: Maximum synonyms to generate per item (default: 4)
         """
         self.snowflake_client = snowflake_client
@@ -74,16 +75,13 @@ class CortexSynonymGenerator:
             response = self._execute_cortex(prompt)
             synonyms = self._parse_response_as_list(response, f"table {table_name}")
             return CharacterSanitizer.sanitize_synonym_list(synonyms)
-        except RuntimeError as e:
-            # Cortex access/permission error - surface prominently
-            logger.warning(f"   Cortex unavailable for table '{table_name}': {e}")
-            logger.warning(
-                "   Synonym generation will be skipped. Run with --synonyms later once Cortex access is configured."
-            )
-            return []
+        except RuntimeError:
+            # Cortex access/permission/model error - re-raise to fail loudly
+            # User needs to fix their config before synonym generation can work
+            raise
         except Exception as e:
             logger.error(f"Failed to generate table synonyms for {table_name}: {e}")
-            return []
+            raise RuntimeError(f"Synonym generation failed for table '{table_name}': {e}") from e
 
     def generate_column_synonyms_batch(
         self,
@@ -114,13 +112,13 @@ class CortexSynonymGenerator:
 
             # Sanitize all synonym lists
             return {col: CharacterSanitizer.sanitize_synonym_list(syns) for col, syns in result.items()}
-        except RuntimeError as e:
-            # Cortex access/permission error - surface prominently
-            logger.warning(f"   Cortex unavailable for column synonyms in '{table_name}': {e}")
-            return {}
+        except RuntimeError:
+            # Cortex access/permission/model error - re-raise to fail loudly
+            # User needs to fix their config before synonym generation can work
+            raise
         except Exception as e:
             logger.error(f"Batch column synonyms failed for {table_name}: {e}")
-            return {}
+            raise RuntimeError(f"Column synonym generation failed for '{table_name}': {e}") from e
 
     # Core Cortex interaction methods
 
@@ -128,7 +126,8 @@ class CortexSynonymGenerator:
         """
         Verify Cortex access on first call with a simple test.
 
-        Raises clear error message if Cortex is unavailable.
+        Raises clear error message if Cortex is unavailable, with actionable
+        guidance for common issues like model unavailability.
         """
         if self._cortex_verified:
             return
@@ -154,15 +153,66 @@ class CortexSynonymGenerator:
                     f"Ensure your role has access to SNOWFLAKE.CORTEX.COMPLETE function.\n"
                     f"Try: GRANT DATABASE ROLE SNOWFLAKE.CORTEX_USER TO ROLE <your_role>;"
                 ) from e
-            elif "model" in error_msg or "not found" in error_msg:
-                raise RuntimeError(
-                    f"Cortex model '{self.model}' not available: {e}\n"
-                    f"Available models: llama3.2-3b, mistral-large2, openai-gpt-4.1"
-                ) from e
+            elif "unavailable" in error_msg or "model" in error_msg or "not found" in error_msg:
+                raise RuntimeError(self._build_model_unavailable_error(str(e))) from e
             else:
                 raise RuntimeError(
                     f"Cortex connection failed: {e}\n" f"Check your Snowflake connection and Cortex availability."
                 ) from e
+
+    def _build_model_unavailable_error(self, original_error: str) -> str:
+        """
+        Build a helpful error message when a Cortex model is unavailable.
+
+        Provides actionable guidance including:
+        - List of universally available models
+        - Cross-region inference instructions for OpenAI models
+        - SQL command to list available models
+        - Link to Snowflake documentation
+
+        Args:
+            original_error: The original error message from Snowflake
+
+        Returns:
+            Formatted error message with guidance
+        """
+        is_openai_model = "openai" in self.model.lower() or "gpt" in self.model.lower()
+
+        error_parts = [
+            f"Cortex model '{self.model}' is not available in your Snowflake account.",
+            f"",
+            f"Original error: {original_error}",
+            f"",
+        ]
+
+        if is_openai_model:
+            error_parts.extend(
+                [
+                    "OpenAI models (gpt-4.1, gpt-5, etc.) are only available on Azure",
+                    "or require cross-region inference to be enabled.",
+                    "",
+                    "To enable cross-region inference (requires ACCOUNTADMIN):",
+                    "  ALTER ACCOUNT SET CORTEX_ENABLED_CROSS_REGION = 'AZURE_US';",
+                    "",
+                ]
+            )
+
+        error_parts.extend(
+            [
+                "Solutions:",
+                "",
+                "1. Use a universally available model in sst_config.yml:",
+                "   enrichment:",
+                "     synonym_model: 'mistral-large2'  # Recommended (128K context)",
+                "",
+                "   Other options: llama3.1-70b, llama3.1-8b, mixtral-8x7b, mistral-7b",
+                "",
+                "2. Check model availability for your region:",
+                "   https://docs.snowflake.com/en/user-guide/snowflake-cortex/llm-functions#availability",
+            ]
+        )
+
+        return "\n".join(error_parts)
 
     def _execute_cortex(self, prompt: str) -> str:
         """
