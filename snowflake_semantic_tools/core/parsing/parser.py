@@ -485,7 +485,16 @@ class Parser:
                     return None
                 return semantic_parser.parse_semantic_views(views_list, Path(file_path))
 
+        except yaml.YAMLError as e:
+            # Log at ERROR level and track the error so it surfaces to users
+            error_msg = format_yaml_error(e, Path(file_path))
+            logger.error(error_msg)
+            self.error_tracker.add_error(f"[{semantic_type}] {error_msg}")
+
         except Exception as e:
-            logger.error(f"Error parsing {semantic_type} content from {file_path}: {e}")
+            # Log at ERROR level and track the error
+            error_msg = f"Error parsing {semantic_type} content from {file_path}: {e}"
+            logger.error(error_msg)
+            self.error_tracker.add_error(f"[{semantic_type}] {error_msg}")
 
         return None

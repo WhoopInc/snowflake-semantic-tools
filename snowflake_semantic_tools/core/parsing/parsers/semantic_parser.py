@@ -89,13 +89,13 @@ def parse_semantic_model_file(file_path: Path, error_tracker: ErrorTracker) -> D
 
     except yaml.YAMLError as e:
         error_msg = format_yaml_error(e, file_path)
-        logger.debug(error_msg)
+        logger.error(error_msg)
         error_tracker.add_error(error_msg)
         return get_empty_result()
 
     except Exception as e:
         error_msg = f"Unexpected error parsing {file_path}: {e}"
-        logger.debug(error_msg)
+        logger.error(error_msg)
         error_tracker.add_error(error_msg)
         return get_empty_result()
 
