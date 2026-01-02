@@ -465,6 +465,46 @@ ALTER ACCOUNT SET CORTEX_ENABLED_CROSS_REGION = 'AZURE_US';
 
 **See:** [Snowflake Cortex Model Availability](https://docs.snowflake.com/en/user-guide/snowflake-cortex/llm-functions#availability) for models available in your region.
 
+### YAML Parsing Errors
+
+**Problem:** Metrics or other semantic models are silently skipped or fail with YAML errors:
+```
+YAML error in metrics.yml at line 6: Invalid mapping values
+```
+
+**Cause:** YAML has strict syntax rules. Common issues include:
+- Unquoted colons (`:`) in descriptions
+- Template syntax (`{{ }}`) on the same line as other content
+
+**Solution:** Use proper YAML syntax for strings with special characters:
+
+```yaml
+# ❌ WRONG - colon breaks YAML parsing
+description: Use this metric like this: SUM(amount)
+
+# ✅ CORRECT - use multiline syntax
+description: |-
+  Use this metric like this: SUM(amount)
+
+# ✅ CORRECT - or quote the string
+description: "Use this metric like this: SUM(amount)"
+```
+
+**For template syntax:**
+```yaml
+# ✅ CORRECT - templates on their own line
+tables:
+  - {{ table('customers') }}
+
+expr: |
+  SUM({{ column('orders', 'amount') }})
+```
+
+**Best practices for descriptions:**
+1. Use `|-` multiline syntax for any description with special characters
+2. Keep templates on their own lines in list items
+3. Use quotes if the description starts with special YAML characters (`[`, `{`, `*`, etc.)
+
 ---
 
 ## Next Steps

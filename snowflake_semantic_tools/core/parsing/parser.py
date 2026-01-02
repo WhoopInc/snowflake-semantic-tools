@@ -15,7 +15,7 @@ from typing import Any, Dict, List, Optional, Tuple
 import yaml
 
 from snowflake_semantic_tools.core.parsing.file_detector import FileTypeDetector
-from snowflake_semantic_tools.core.parsing.parsers import ErrorTracker, dbt_parser, semantic_parser
+from snowflake_semantic_tools.core.parsing.parsers import ErrorTracker, dbt_parser, format_yaml_error, semantic_parser
 from snowflake_semantic_tools.core.parsing.template_engine import HardcodedValueDetector, TemplateResolver
 from snowflake_semantic_tools.shared.utils import get_logger
 
@@ -163,8 +163,17 @@ class Parser:
                         if model_name:
                             self.dbt_catalog[model_name] = model
 
+            except yaml.YAMLError as e:
+                # Log at ERROR level and track the error so it surfaces to users
+                error_msg = format_yaml_error(e, file_path)
+                logger.error(error_msg)
+                self.error_tracker.add_error(f"[dbt_models] {error_msg}")
+
             except Exception as e:
-                logger.debug(f"Error building dbt catalog from {file_path}: {e}")
+                # Log at ERROR level and track the error
+                error_msg = f"Error building dbt catalog from {file_path}: {e}"
+                logger.error(error_msg)
+                self.error_tracker.add_error(f"[dbt_models] {error_msg}")
 
     def _collect_semantic_metadata(self, semantic_files: List[Path]):
         """Collect metrics and custom instructions for template resolution."""
@@ -230,8 +239,17 @@ class Parser:
                     self.metrics_catalog.extend(metrics)
                     logger.debug(f"Collected {len(metrics)} metrics from {file_path}")
 
+        except yaml.YAMLError as e:
+            # Log at ERROR level and track the error so it surfaces to users
+            error_msg = format_yaml_error(e, file_path)
+            logger.error(error_msg)
+            self.error_tracker.add_error(f"[metrics] {error_msg}")
+
         except Exception as e:
-            logger.debug(f"Error collecting metrics from {file_path}: {e}")
+            # Log at ERROR level and track the error
+            error_msg = f"Error collecting metrics from {file_path}: {e}"
+            logger.error(error_msg)
+            self.error_tracker.add_error(f"[metrics] {error_msg}")
 
     def _collect_custom_instructions(self, file_path: Path):
         """Collect custom instructions from a file."""
@@ -267,8 +285,17 @@ class Parser:
                         }
                         self.custom_instructions_catalog.append(parsed_instruction)
 
+        except yaml.YAMLError as e:
+            # Log at ERROR level and track the error so it surfaces to users
+            error_msg = format_yaml_error(e, file_path)
+            logger.error(error_msg)
+            self.error_tracker.add_error(f"[custom_instructions] {error_msg}")
+
         except Exception as e:
-            logger.debug(f"Error collecting custom instructions from {file_path}: {e}")
+            # Log at ERROR level and track the error
+            error_msg = f"Error collecting custom instructions from {file_path}: {e}"
+            logger.error(error_msg)
+            self.error_tracker.add_error(f"[custom_instructions] {error_msg}")
 
     def _replace_templates_for_collection(self, content: str) -> str:
         """Temporarily replace templates to allow YAML parsing."""
@@ -458,7 +485,16 @@ class Parser:
                     return None
                 return semantic_parser.parse_semantic_views(views_list, Path(file_path))
 
+        except yaml.YAMLError as e:
+            # Log at ERROR level and track the error so it surfaces to users
+            error_msg = format_yaml_error(e, Path(file_path))
+            logger.error(error_msg)
+            self.error_tracker.add_error(f"[{semantic_type}] {error_msg}")
+
         except Exception as e:
-            logger.error(f"Error parsing {semantic_type} content from {file_path}: {e}")
+            # Log at ERROR level and track the error
+            error_msg = f"Error parsing {semantic_type} content from {file_path}: {e}"
+            logger.error(error_msg)
+            self.error_tracker.add_error(f"[{semantic_type}] {error_msg}")
 
         return None

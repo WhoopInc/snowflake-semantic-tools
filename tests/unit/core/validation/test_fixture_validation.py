@@ -374,7 +374,12 @@ class TestFixtureBasedValidation:
             assert len(metrics_fixtures) > 0, f"No metrics fixtures found for severity: {severity}"
     
     def test_fixture_yaml_validity(self):
-        """Test that all fixture files are valid YAML."""
+        """Test that all fixture files are valid YAML.
+        
+        Note: Excludes fixtures in 'parsing/' directories, as those are specifically
+        designed to test YAML parsing error handling and may contain intentionally
+        invalid YAML.
+        """
         all_fixtures = []
         for severity in ['errors', 'warnings', 'info', 'success', 'valid', 'invalid']:
             all_fixtures.extend(get_fixtures_by_severity(severity))
@@ -382,6 +387,11 @@ class TestFixtureBasedValidation:
         assert len(all_fixtures) > 0, "No fixtures found at all"
         
         for fixture_path in all_fixtures:
+            # Skip parsing fixtures - they may contain intentionally invalid YAML
+            # to test error handling in the parser
+            if 'parsing' in str(fixture_path):
+                continue
+                
             try:
                 with open(fixture_path, 'r') as f:
                     import yaml

@@ -84,11 +84,51 @@ def format_yaml_error(yaml_error: yaml.YAMLError, file_path: Path) -> str:
         else:
             error_type = "YAML syntax error"
 
-        return f"YAML error in {filename} at line {line_num}: {error_type}"
+        # Add helpful suggestion based on error type
+        suggestion = _get_yaml_error_suggestion(error_str)
+
+        return f"YAML error in {filename} at line {line_num}: {error_type}{suggestion}"
 
     except Exception:
         # Fallback if error parsing fails
         return f"YAML parsing error in {file_path.name}: {str(yaml_error)[:100]}..."
+
+
+def _get_yaml_error_suggestion(error_str: str) -> str:
+    """
+    Generate helpful suggestion based on YAML error type.
+
+    Args:
+        error_str: The original YAML error string
+
+    Returns:
+        Suggestion string to append to error message, or empty string if no specific suggestion
+    """
+    error_lower = error_str.lower()
+
+    if "mapping values are not allowed" in error_lower:
+        return (
+            "\n\n  Suggestion: Your string contains an unquoted colon (:)."
+            "\n  Use multiline syntax for descriptions with special characters:"
+            "\n"
+            "\n    description: |-"
+            "\n      Your description with colons: like this"
+            "\n"
+            "\n  Or quote the string:"
+            "\n"
+            '\n    description: "Your description with colons: like this"'
+        )
+
+    if "unhashable key" in error_lower or "found undefined" in error_lower:
+        return (
+            "\n\n  Suggestion: Template syntax {{ }} may be breaking YAML parsing."
+            "\n  Ensure templates are on their own line in list items:"
+            "\n"
+            "\n    tables:"
+            "\n      - {{ table('my_table') }}"
+        )
+
+    return ""
 
 
 def parse_error_message(error_msg: str) -> Dict[str, str]:
