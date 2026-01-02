@@ -926,10 +926,7 @@ class SemanticViewBuilder:
                     # Filter out None/null values and ensure all are strings
                     filtered_values = [str(v) for v in sample_values if v is not None]
                     if filtered_values:
-                        entry = {
-                            "name": dim["NAME"].upper(),
-                            "sample_values": filtered_values
-                        }
+                        entry = {"name": dim["NAME"].upper(), "sample_values": filtered_values}
                         # Add is_enum if true (indicates sample_values is exhaustive)
                         is_enum = dim.get("IS_ENUM")
                         if is_enum is True or (isinstance(is_enum, str) and is_enum.lower() == "true"):
@@ -948,10 +945,7 @@ class SemanticViewBuilder:
                 if sample_values and isinstance(sample_values, list) and len(sample_values) > 0:
                     filtered_values = [str(v) for v in sample_values if v is not None]
                     if filtered_values:
-                        time_dim_entries.append({
-                            "name": time_dim["NAME"].upper(),
-                            "sample_values": filtered_values
-                        })
+                        time_dim_entries.append({"name": time_dim["NAME"].upper(), "sample_values": filtered_values})
                         has_any_sample_values = True
 
             if time_dim_entries:
@@ -965,10 +959,7 @@ class SemanticViewBuilder:
                 if sample_values and isinstance(sample_values, list) and len(sample_values) > 0:
                     filtered_values = [str(v) for v in sample_values if v is not None]
                     if filtered_values:
-                        fact_entries.append({
-                            "name": fact["NAME"].upper(),
-                            "sample_values": filtered_values
-                        })
+                        fact_entries.append({"name": fact["NAME"].upper(), "sample_values": filtered_values})
                         has_any_sample_values = True
 
             if fact_entries:
@@ -987,7 +978,7 @@ class SemanticViewBuilder:
         ca_json = {"tables": ca_tables}
 
         # Convert to JSON string and escape single quotes for SQL
-        ca_json_str = json.dumps(ca_json, separators=(',', ':'))  # Compact JSON
+        ca_json_str = json.dumps(ca_json, separators=(",", ":"))  # Compact JSON
         ca_json_escaped = ca_json_str.replace("'", "''")  # Escape single quotes for SQL
 
         logger.info(f"CA extension built with {len(ca_tables)} table(s) containing sample_values")
