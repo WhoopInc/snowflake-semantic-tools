@@ -271,6 +271,318 @@ class TestSemanticViewBuilderUniqueKeys:
         assert 'UNIQUE' not in table_definitions
 
 
+class TestCAExtension:
+    """Test cases for CA extension generation with sample_values for Cortex Analyst."""
+    
+    @pytest.fixture
+    def builder(self):
+        """Create a SemanticViewBuilder instance for testing."""
+        config = SnowflakeConfig(
+            account="test",
+            user="test",
+            password="test",
+            role="test",
+            warehouse="test",
+            database="test_db",
+            schema="test_schema"
+        )
+        builder = SemanticViewBuilder(config)
+        builder.metadata_database = "META_DB"
+        builder.metadata_schema = "META_SCHEMA"
+        return builder
+    
+    def test_build_ca_extension_with_sample_values(self, builder, monkeypatch):
+        """Test CA extension generation with sample_values from all column types."""
+        # Mock _get_dimensions to return dimensions with sample_values
+        def mock_get_dimensions(conn, table_name):
+            return [
+                {
+                    'NAME': 'customer_type',
+                    'EXPR': 'CUSTOMER_TYPE',
+                    'SAMPLE_VALUES': ['new', 'returning'],
+                    'DESCRIPTION': 'Type of customer'
+                },
+                {
+                    'NAME': 'region',
+                    'EXPR': 'REGION',
+                    'SAMPLE_VALUES': ['North', 'South', 'East', 'West'],
+                    'DESCRIPTION': 'Sales region'
+                }
+            ]
+        
+        # Mock _get_time_dimensions
+        def mock_get_time_dimensions(conn, table_name):
+            return [
+                {
+                    'NAME': 'order_date',
+                    'EXPR': 'ORDER_DATE',
+                    'SAMPLE_VALUES': ['2025-01-15', '2025-02-20', '2025-03-25'],
+                    'DESCRIPTION': 'Order date'
+                }
+            ]
+        
+        # Mock _get_facts
+        def mock_get_facts(conn, table_name):
+            return [
+                {
+                    'NAME': 'amount',
+                    'EXPR': 'AMOUNT',
+                    'SAMPLE_VALUES': ['100', '250', '500'],
+                    'DESCRIPTION': 'Order amount'
+                }
+            ]
+        
+        monkeypatch.setattr(builder, '_get_dimensions', mock_get_dimensions)
+        monkeypatch.setattr(builder, '_get_time_dimensions', mock_get_time_dimensions)
+        monkeypatch.setattr(builder, '_get_facts', mock_get_facts)
+        
+        result = builder._build_ca_extension(None, ['orders'])
+        
+        # Verify structure
+        assert result.startswith("WITH EXTENSION (CA='")
+        assert result.endswith("')")
+        assert '"tables"' in result
+        assert '"ORDERS"' in result
+        assert '"dimensions"' in result
+        assert '"time_dimensions"' in result
+        assert '"facts"' in result
+        assert '"CUSTOMER_TYPE"' in result
+        assert '"ORDER_DATE"' in result
+        assert '"AMOUNT"' in result
+        assert '"new"' in result
+        assert '"returning"' in result
+    
+    def test_build_ca_extension_empty_sample_values(self, builder, monkeypatch):
+        """Test that CA extension is empty when no sample_values exist."""
+        # Mock methods to return empty sample_values
+        def mock_get_dimensions(conn, table_name):
+            return [
+                {
+                    'NAME': 'customer_type',
+                    'EXPR': 'CUSTOMER_TYPE',
+                    'SAMPLE_VALUES': [],  # Empty
+                    'DESCRIPTION': 'Type of customer'
+                }
+            ]
+        
+        def mock_get_time_dimensions(conn, table_name):
+            return []
+        
+        def mock_get_facts(conn, table_name):
+            return [
+                {
+                    'NAME': 'amount',
+                    'EXPR': 'AMOUNT',
+                    'SAMPLE_VALUES': None,  # None
+                    'DESCRIPTION': 'Order amount'
+                }
+            ]
+        
+        monkeypatch.setattr(builder, '_get_dimensions', mock_get_dimensions)
+        monkeypatch.setattr(builder, '_get_time_dimensions', mock_get_time_dimensions)
+        monkeypatch.setattr(builder, '_get_facts', mock_get_facts)
+        
+        result = builder._build_ca_extension(None, ['orders'])
+        
+        # Should return empty string when no sample_values
+        assert result == ""
+    
+    def test_build_ca_extension_escapes_single_quotes(self, builder, monkeypatch):
+        """Test that single quotes in sample_values are properly escaped for SQL."""
+        def mock_get_dimensions(conn, table_name):
+            return [
+                {
+                    'NAME': 'product_name',
+                    'EXPR': 'PRODUCT_NAME',
+                    'SAMPLE_VALUES': ["John's Widget", "O'Brien's Tool", "Normal Product"],
+                    'DESCRIPTION': 'Product name'
+                }
+            ]
+        
+        def mock_get_time_dimensions(conn, table_name):
+            return []
+        
+        def mock_get_facts(conn, table_name):
+            return []
+        
+        monkeypatch.setattr(builder, '_get_dimensions', mock_get_dimensions)
+        monkeypatch.setattr(builder, '_get_time_dimensions', mock_get_time_dimensions)
+        monkeypatch.setattr(builder, '_get_facts', mock_get_facts)
+        
+        result = builder._build_ca_extension(None, ['products'])
+        
+        # Single quotes should be doubled for SQL
+        assert "''" in result  # Escaped quotes
+        assert result.startswith("WITH EXTENSION (CA='")
+    
+    def test_build_ca_extension_mixed_scenario(self, builder, monkeypatch):
+        """Test that only columns with sample_values are included."""
+        def mock_get_dimensions(conn, table_name):
+            return [
+                {
+                    'NAME': 'customer_type',
+                    'EXPR': 'CUSTOMER_TYPE',
+                    'SAMPLE_VALUES': ['new', 'returning'],  # Has values
+                    'DESCRIPTION': 'Type of customer'
+                },
+                {
+                    'NAME': 'customer_id',
+                    'EXPR': 'CUSTOMER_ID',
+                    'SAMPLE_VALUES': [],  # Empty - should be excluded
+                    'DESCRIPTION': 'Customer ID'
+                }
+            ]
+        
+        def mock_get_time_dimensions(conn, table_name):
+            return [
+                {
+                    'NAME': 'order_date',
+                    'EXPR': 'ORDER_DATE',
+                    'SAMPLE_VALUES': None,  # None - should be excluded
+                    'DESCRIPTION': 'Order date'
+                }
+            ]
+        
+        def mock_get_facts(conn, table_name):
+            return [
+                {
+                    'NAME': 'amount',
+                    'EXPR': 'AMOUNT',
+                    'SAMPLE_VALUES': ['100', '200'],  # Has values
+                    'DESCRIPTION': 'Amount'
+                }
+            ]
+        
+        monkeypatch.setattr(builder, '_get_dimensions', mock_get_dimensions)
+        monkeypatch.setattr(builder, '_get_time_dimensions', mock_get_time_dimensions)
+        monkeypatch.setattr(builder, '_get_facts', mock_get_facts)
+        
+        result = builder._build_ca_extension(None, ['orders'])
+        
+        # Should include customer_type and amount, exclude customer_id and order_date
+        assert '"CUSTOMER_TYPE"' in result
+        assert '"AMOUNT"' in result
+        assert '"CUSTOMER_ID"' not in result
+        # time_dimensions array should not be present since no time_dims have sample_values
+        assert '"time_dimensions"' not in result
+    
+    def test_build_ca_extension_multiple_tables(self, builder, monkeypatch):
+        """Test CA extension with multiple tables."""
+        def mock_get_dimensions(conn, table_name):
+            if table_name.lower() == 'orders':
+                return [{'NAME': 'order_status', 'EXPR': 'STATUS', 'SAMPLE_VALUES': ['pending', 'shipped']}]
+            elif table_name.lower() == 'customers':
+                return [{'NAME': 'customer_tier', 'EXPR': 'TIER', 'SAMPLE_VALUES': ['gold', 'silver', 'bronze']}]
+            return []
+        
+        def mock_get_time_dimensions(conn, table_name):
+            return []
+        
+        def mock_get_facts(conn, table_name):
+            return []
+        
+        monkeypatch.setattr(builder, '_get_dimensions', mock_get_dimensions)
+        monkeypatch.setattr(builder, '_get_time_dimensions', mock_get_time_dimensions)
+        monkeypatch.setattr(builder, '_get_facts', mock_get_facts)
+        
+        result = builder._build_ca_extension(None, ['orders', 'customers'])
+        
+        # Both tables should be present
+        assert '"ORDERS"' in result
+        assert '"CUSTOMERS"' in result
+        assert '"ORDER_STATUS"' in result
+        assert '"CUSTOMER_TIER"' in result
+    
+    def test_build_ca_extension_filters_null_values(self, builder, monkeypatch):
+        """Test that None values in sample_values are filtered out."""
+        def mock_get_dimensions(conn, table_name):
+            return [
+                {
+                    'NAME': 'status',
+                    'EXPR': 'STATUS',
+                    'SAMPLE_VALUES': ['active', None, 'inactive', None],  # Contains None
+                    'DESCRIPTION': 'Status'
+                }
+            ]
+        
+        def mock_get_time_dimensions(conn, table_name):
+            return []
+        
+        def mock_get_facts(conn, table_name):
+            return []
+        
+        monkeypatch.setattr(builder, '_get_dimensions', mock_get_dimensions)
+        monkeypatch.setattr(builder, '_get_time_dimensions', mock_get_time_dimensions)
+        monkeypatch.setattr(builder, '_get_facts', mock_get_facts)
+        
+        result = builder._build_ca_extension(None, ['orders'])
+        
+        # Should include the extension (has non-null values)
+        assert result.startswith("WITH EXTENSION (CA='")
+        # Null should not appear in the result
+        assert 'null' not in result.lower() or '"sample_values":["active","inactive"]' in result
+    
+    def test_build_ca_extension_includes_is_enum(self, builder, monkeypatch):
+        """Test that is_enum=true is included for enum dimensions."""
+        def mock_get_dimensions(conn, table_name):
+            return [
+                {
+                    'NAME': 'customer_type',
+                    'EXPR': 'CUSTOMER_TYPE',
+                    'SAMPLE_VALUES': ['new', 'returning'],
+                    'IS_ENUM': True,  # This is an enum
+                    'DESCRIPTION': 'Type of customer'
+                },
+                {
+                    'NAME': 'customer_name',
+                    'EXPR': 'CUSTOMER_NAME',
+                    'SAMPLE_VALUES': ['Alice', 'Bob', 'Charlie'],
+                    'IS_ENUM': False,  # Not an enum
+                    'DESCRIPTION': 'Customer name'
+                },
+                {
+                    'NAME': 'region',
+                    'EXPR': 'REGION',
+                    'SAMPLE_VALUES': ['North', 'South'],
+                    'IS_ENUM': 'true',  # String 'true' should also work
+                    'DESCRIPTION': 'Region'
+                }
+            ]
+        
+        def mock_get_time_dimensions(conn, table_name):
+            return []
+        
+        def mock_get_facts(conn, table_name):
+            return []
+        
+        monkeypatch.setattr(builder, '_get_dimensions', mock_get_dimensions)
+        monkeypatch.setattr(builder, '_get_time_dimensions', mock_get_time_dimensions)
+        monkeypatch.setattr(builder, '_get_facts', mock_get_facts)
+        
+        result = builder._build_ca_extension(None, ['customers'])
+        
+        # Parse the JSON to verify is_enum
+        import json
+        start = result.find("WITH EXTENSION (CA='") + len("WITH EXTENSION (CA='")
+        end = result.find("')", start)
+        ca_json = result[start:end].replace("''", "'")
+        parsed = json.loads(ca_json)
+        
+        dims = parsed['tables'][0]['dimensions']
+        
+        # Find each dimension and check is_enum
+        customer_type = next(d for d in dims if d['name'] == 'CUSTOMER_TYPE')
+        customer_name = next(d for d in dims if d['name'] == 'CUSTOMER_NAME')
+        region = next(d for d in dims if d['name'] == 'REGION')
+        
+        # customer_type should have is_enum=true
+        assert customer_type.get('is_enum') == True
+        # customer_name should NOT have is_enum (it's false, so omitted)
+        assert 'is_enum' not in customer_name
+        # region should have is_enum=true (string 'true' converted)
+        assert region.get('is_enum') == True
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
 

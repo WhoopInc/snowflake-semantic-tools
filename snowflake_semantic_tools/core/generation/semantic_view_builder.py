@@ -769,9 +769,6 @@ class SemanticViewBuilder:
                             synonyms_str = ", ".join([f"'{syn}'" for syn in synonyms_cleaned])
                             dim_def += f"\n      WITH SYNONYMS = ({synonyms_str})"
 
-            # Note: Sample values are stored in metadata tables for future use
-            # They will be included automatically when Snowflake releases SAMPLE VALUES support
-
             # Add comment if available
             if dim.get("DESCRIPTION"):
                 description = self._sanitize_description(dim["DESCRIPTION"])
@@ -887,6 +884,108 @@ class SemanticViewBuilder:
 
         return ",\n".join(metric_definitions)
 
+    def _build_ca_extension(self, conn, table_names: List[str]) -> str:
+        """
+        Build the WITH EXTENSION (CA='...') clause for Cortex Analyst sample_values.
+
+        Generates a JSON structure containing sample_values for dimensions, time_dimensions,
+        and facts. This metadata helps Cortex Analyst understand valid categorical values
+        and improves query generation accuracy.
+
+        NOTE: The CA extension is a temporary solution until Snowflake adds native support
+        for sample_values directly in the CREATE SEMANTIC VIEW DDL syntax. Once Snowflake
+        releases official sample_values support, this method should be updated to use
+        the native syntax instead.
+
+        Per Snowflake Engineering guidance:
+        - dimensions and time_dimensions must be separate arrays in the JSON
+        - Structure: {"name": "...", "sample_values": [...], "is_enum": true/false}
+        - is_enum indicates whether sample_values is exhaustive (all possible values)
+
+        Args:
+            conn: Database connection
+            table_names: List of table names to include
+
+        Returns:
+            WITH EXTENSION (CA='...') clause string, or empty string if no sample_values exist
+        """
+        logger.info("Building CA extension for sample_values...")
+
+        ca_tables = []
+        has_any_sample_values = False
+
+        for table_name in table_names:
+            table_entry = {"name": table_name.upper()}
+
+            # Get dimensions with sample_values
+            dimensions = self._get_dimensions(conn, table_name)
+            dim_entries = []
+            for dim in dimensions:
+                sample_values = self._parse_json_field(dim.get("SAMPLE_VALUES"), "sample_values")
+                if sample_values and isinstance(sample_values, list) and len(sample_values) > 0:
+                    # Filter out None/null values and ensure all are strings
+                    filtered_values = [str(v) for v in sample_values if v is not None]
+                    if filtered_values:
+                        entry = {"name": dim["NAME"].upper(), "sample_values": filtered_values}
+                        # Add is_enum if true (indicates sample_values is exhaustive)
+                        is_enum = dim.get("IS_ENUM")
+                        if is_enum is True or (isinstance(is_enum, str) and is_enum.lower() == "true"):
+                            entry["is_enum"] = True
+                        dim_entries.append(entry)
+                        has_any_sample_values = True
+
+            if dim_entries:
+                table_entry["dimensions"] = dim_entries
+
+            # Get time_dimensions with sample_values (separate array per Snowflake Engineering)
+            time_dimensions = self._get_time_dimensions(conn, table_name)
+            time_dim_entries = []
+            for time_dim in time_dimensions:
+                sample_values = self._parse_json_field(time_dim.get("SAMPLE_VALUES"), "sample_values")
+                if sample_values and isinstance(sample_values, list) and len(sample_values) > 0:
+                    filtered_values = [str(v) for v in sample_values if v is not None]
+                    if filtered_values:
+                        time_dim_entries.append({"name": time_dim["NAME"].upper(), "sample_values": filtered_values})
+                        has_any_sample_values = True
+
+            if time_dim_entries:
+                table_entry["time_dimensions"] = time_dim_entries
+
+            # Get facts with sample_values
+            facts = self._get_facts(conn, table_name)
+            fact_entries = []
+            for fact in facts:
+                sample_values = self._parse_json_field(fact.get("SAMPLE_VALUES"), "sample_values")
+                if sample_values and isinstance(sample_values, list) and len(sample_values) > 0:
+                    filtered_values = [str(v) for v in sample_values if v is not None]
+                    if filtered_values:
+                        fact_entries.append({"name": fact["NAME"].upper(), "sample_values": filtered_values})
+                        has_any_sample_values = True
+
+            if fact_entries:
+                table_entry["facts"] = fact_entries
+
+            # Only add table entry if it has any sample_values
+            if "dimensions" in table_entry or "time_dimensions" in table_entry or "facts" in table_entry:
+                ca_tables.append(table_entry)
+
+        # Return empty string if no sample_values exist (backward compatible)
+        if not has_any_sample_values:
+            logger.info("No sample_values found, skipping CA extension")
+            return ""
+
+        # Build the CA JSON structure
+        ca_json = {"tables": ca_tables}
+
+        # Convert to JSON string and escape single quotes for SQL
+        ca_json_str = json.dumps(ca_json, separators=(",", ":"))  # Compact JSON
+        ca_json_escaped = ca_json_str.replace("'", "''")  # Escape single quotes for SQL
+
+        logger.info(f"CA extension built with {len(ca_tables)} table(s) containing sample_values")
+        logger.debug(f"CA extension JSON: {ca_json_str[:200]}...")
+
+        return f"WITH EXTENSION (CA='{ca_json_escaped}')"
+
     def _generate_sql(
         self, conn, table_names: List[str], view_name: str, description: str = "", defer_database: Optional[str] = None
     ) -> str:
@@ -938,9 +1037,15 @@ class SemanticViewBuilder:
             comment = f"Semantic view generated for tables: {', '.join(table_names)}"
         sql_parts.append(f"  COMMENT = '{comment}'")
 
-        # Join all parts
+        # Build CA extension for sample_values (Cortex Analyst metadata)
+        ca_extension = self._build_ca_extension(conn, table_names)
+
+        # Join all parts and add CA extension if present
         logger.info("Finalizing SQL statement...")
-        full_sql = "\n".join(sql_parts) + ";"
+        if ca_extension:
+            full_sql = "\n".join(sql_parts) + "\n" + ca_extension + ";"
+        else:
+            full_sql = "\n".join(sql_parts) + ";"
 
         # Log SQL in structured format
         logger.debug(

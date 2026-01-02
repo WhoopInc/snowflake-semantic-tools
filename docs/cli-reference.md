@@ -630,6 +630,15 @@ sst generate \
 - `models`: Generates YAML files with sample values (for Cortex Analyst/AI)
 - `both`: Creates both formats (recommended for production)
 
+**Cortex Analyst Metadata:**
+When generating semantic views, SST automatically includes a `WITH EXTENSION (CA='...')` clause containing:
+- `sample_values` for dimensions, time_dimensions, and facts
+- `is_enum: true` for columns where sample_values is exhaustive
+
+This metadata helps Cortex Analyst understand valid categorical values and generate more accurate queries.
+
+*Note: The CA extension is a temporary solution recommended by Snowflake Engineering until native `sample_values` support is added to the DDL syntax.*
+
 ---
 
 ### deploy
