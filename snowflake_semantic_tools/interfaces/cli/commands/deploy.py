@@ -14,16 +14,8 @@ from pathlib import Path
 import click
 
 from snowflake_semantic_tools._version import __version__
-from snowflake_semantic_tools.interfaces.cli.defer import (
-    DeferConfig,
-    display_defer_info,
-    resolve_defer_config,
-)
-from snowflake_semantic_tools.interfaces.cli.options import (
-    database_schema_options,
-    defer_options,
-    target_option,
-)
+from snowflake_semantic_tools.interfaces.cli.defer import DeferConfig, display_defer_info, resolve_defer_config
+from snowflake_semantic_tools.interfaces.cli.options import database_schema_options, defer_options, target_option
 from snowflake_semantic_tools.interfaces.cli.output import CLIOutput
 from snowflake_semantic_tools.interfaces.cli.utils import (
     build_snowflake_config,

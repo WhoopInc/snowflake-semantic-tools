@@ -17,11 +17,7 @@ from snowflake_semantic_tools.interfaces.cli.defer import (
     get_modified_views_filter,
     resolve_defer_config,
 )
-from snowflake_semantic_tools.interfaces.cli.options import (
-    database_schema_options,
-    defer_options,
-    target_option,
-)
+from snowflake_semantic_tools.interfaces.cli.options import database_schema_options, defer_options, target_option
 from snowflake_semantic_tools.interfaces.cli.output import CLIOutput
 from snowflake_semantic_tools.interfaces.cli.utils import (
     build_snowflake_config,

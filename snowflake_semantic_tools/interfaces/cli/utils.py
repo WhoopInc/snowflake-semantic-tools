@@ -13,12 +13,7 @@ from typing import Optional, Tuple
 
 import click
 
-from snowflake_semantic_tools.infrastructure.dbt import (
-    DbtClient,
-    DbtProfileNotFoundError,
-    DbtProfileParser,
-    DbtType,
-)
+from snowflake_semantic_tools.infrastructure.dbt import DbtClient, DbtProfileNotFoundError, DbtProfileParser, DbtType
 from snowflake_semantic_tools.infrastructure.snowflake import SnowflakeConfig
 from snowflake_semantic_tools.shared.config_validator import validate_cli_config
 from snowflake_semantic_tools.shared.events import setup_events
