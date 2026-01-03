@@ -92,6 +92,7 @@ def _determine_components(
 
 @click.command()
 @click.argument("target_path", type=click.Path(exists=True))
+@click.option("--target", "-t", "dbt_target", help="dbt target from profiles.yml (default: uses profile's default)")
 @click.option("--database", "-d", required=False, help="Target database (optional if manifest.json exists)")
 @click.option("--schema", "-s", required=False, help="Target schema (optional if manifest.json exists)")
 @click.option(
@@ -133,6 +134,7 @@ def _determine_components(
 @click.option("--verbose", "-v", is_flag=True, help="Enable verbose logging")
 def enrich(
     target_path,
+    dbt_target,
     database,
     schema,
     manifest,
@@ -226,6 +228,7 @@ def enrich(
         target_path=target_path,
         database=database,
         schema=schema,
+        dbt_target=dbt_target,
         excluded_dirs=excluded_dirs,
         dry_run=dry_run,
         fail_fast=fail_fast,

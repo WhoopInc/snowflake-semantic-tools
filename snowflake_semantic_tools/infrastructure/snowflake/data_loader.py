@@ -81,8 +81,8 @@ This usually means:
   • You're using the wrong role for this operation
 
 Solutions:
-  1. Set SNOWFLAKE_ROLE env var to a role with access:
-     export SNOWFLAKE_ROLE=ACCOUNTADMIN
+  1. Update 'role:' in ~/.dbt/profiles.yml to a role with access:
+     role: ACCOUNTADMIN
      
   2. Grant your role access (requires ACCOUNTADMIN or SECURITYADMIN):
      GRANT USAGE ON DATABASE {database.upper()} TO ROLE {role_name};
@@ -597,9 +597,8 @@ class DataLoader:
                     if not warehouse:
                         raise ValueError(
                             "Snowflake warehouse not configured. Set via:\n"
-                            "  1. Environment: export SNOWFLAKE_WAREHOUSE='YOUR_WH'\n"
-                            "  2. Config file: Add to sst_config.yaml under snowflake.warehouse\n"
-                            "  3. Connection string: Include warehouse in connection params\n"
+                            "  1. dbt profile: Add 'warehouse:' to ~/.dbt/profiles.yml\n"
+                            "  2. Connection string: Include warehouse in connection params\n"
                             "\n"
                             "Example warehouse names: ANALYTICS_WH, COMPUTE_WH, TRANSFORM_WH"
                         )
@@ -708,7 +707,7 @@ class DataLoader:
                 import click
 
                 click.echo("\nERROR: Snowflake SSO authentication mismatch", err=True)
-                click.echo("The user authenticated in browser doesn't match SNOWFLAKE_USER in .env", err=True)
+                click.echo("The user authenticated in browser doesn't match the user in profiles.yml", err=True)
                 click.echo("\nTo fix:", err=True)
                 click.echo("  1. Log out of Okta in your browser", err=True)
                 click.echo("  2. Run the command again", err=True)

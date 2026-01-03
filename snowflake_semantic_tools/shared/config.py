@@ -2,25 +2,16 @@
 """
 Configuration Management
 
-Loads and manages SST configuration from multiple sources with clear precedence:
-1. Environment variables (.env file) - highest priority
-2. Config file (sst_config.yaml) - organizational defaults
-3. Code defaults - minimal fallbacks
+Loads and manages SST configuration from sst_config.yaml files.
 
-This enables:
-- Organizations to commit shared defaults
-- Developers to override locally with .env
-- Secrets to stay out of version control
+Configuration sources (in order of precedence):
+1. Config file (sst_config.yaml) - organizational defaults
+2. Code defaults - minimal fallbacks
 
-Note: This module automatically loads .env files when Config is instantiated.
-However, when running dbt commands directly (e.g., `dbt compile`), dbt does not
-automatically load .env files. To make environment variables available to dbt:
-- Use `direnv` (recommended) to auto-load .env files in your shell
-- Or export variables manually: `export SNOWFLAKE_ACCOUNT=... && dbt compile`
-- Or use poetry-dotenv plugin if using Poetry
+Note: Snowflake authentication is handled separately via dbt's profiles.yml.
+See snowflake_semantic_tools.infrastructure.dbt.profile_parser for details.
 """
 
-import os
 from pathlib import Path
 from typing import Any, Dict, Optional
 
@@ -31,8 +22,11 @@ class Config:
     """
     SST Configuration Manager
 
-    Loads configuration from multiple sources with clear precedence.
+    Loads configuration from sst_config.yaml files.
     Singleton pattern ensures consistent config across application.
+
+    Note: This class handles SST project configuration only.
+    Snowflake authentication is managed via dbt profiles.yml.
     """
 
     _instance: Optional["Config"] = None
@@ -46,10 +40,7 @@ class Config:
         return cls._instance
 
     def _load_config(self):
-        """Load configuration from file and environment variables."""
-        # Load .env file first (if available)
-        self._load_dotenv()
-
+        """Load configuration from sst_config.yaml file."""
         # Start with defaults
         self._config = self._get_defaults()
 
@@ -58,24 +49,6 @@ class Config:
         if config_file and config_file.exists():
             file_config = self._load_yaml_config(config_file)
             self._merge_config(self._config, file_config)
-
-        # Override with environment variables (highest priority)
-        self._load_env_overrides()
-
-    def _load_dotenv(self):
-        """Load .env file from current directory if it exists."""
-        try:
-            from dotenv import load_dotenv
-
-            env_path = Path.cwd() / ".env"
-            if env_path.exists():
-                load_dotenv(env_path, override=True)
-        except ImportError:
-            # python-dotenv not available - environment vars must be set manually
-            pass
-        except Exception:
-            # Silent fail - .env loading is optional
-            pass
 
     def _get_defaults(self) -> Dict[str, Any]:
         """Get minimal code defaults as fallback."""
@@ -153,23 +126,6 @@ class Config:
             else:
                 base[key] = value
 
-    def _load_env_overrides(self):
-        """
-        Load overrides from environment variables.
-
-        Note: Only credentials and per-developer settings should be in .env
-        Project configuration (repository, validation rules) should be in sst_config.yml
-        """
-        # Snowflake config (if needed)
-        if os.getenv("SNOWFLAKE_ACCOUNT"):
-            if "snowflake" not in self._config:
-                self._config["snowflake"] = {}
-            self._config["snowflake"]["account"] = os.getenv("SNOWFLAKE_ACCOUNT")
-
-        # Logging config
-        if os.getenv("LOG_LEVEL"):
-            self._config["logging"]["level"] = os.getenv("LOG_LEVEL")
-
     def get(self, key_path: str, default: Any = None) -> Any:
         """
         Get config value using dot notation.
@@ -242,6 +198,6 @@ def get_config() -> Config:
     Examples:
         >>> from snowflake_semantic_tools.shared.config import get_config
         >>> config = get_config()
-        >>> repo_url = config.get_repository_url()
+        >>> semantic_dir = config.get('project.semantic_models_dir')
     """
     return Config()

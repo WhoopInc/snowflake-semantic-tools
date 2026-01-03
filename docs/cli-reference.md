@@ -4,6 +4,7 @@
 - [Prerequisites](#prerequisites)
 - [Commands Overview](#commands-overview)
 - [Command Reference](#command-reference)
+  - [debug](#debug)
   - [validate](#validate)
   - [enrich](#enrich)
   - [format](#format)
@@ -26,6 +27,7 @@ This reference focuses on command syntax and options.
 
 | Command | Description | Snowflake Connection Required |
 |---------|-------------|-------------------------------|
+| `debug` | Show configuration and test Snowflake connection | Optional (for `--test-connection`) |
 | `validate` | Validate semantic models against dbt definitions | No |
 | `enrich` | Enrich dbt YAML metadata with semantic information | Yes |
 | `format` | **YAML Linter** - Ensure project-wide formatting consistency | No |
@@ -36,6 +38,85 @@ This reference focuses on command syntax and options.
 **For production deployments, use the `deploy` command (see below) which orchestrates validate → extract → generate automatically.**
 
 ## Command Reference
+
+### debug
+
+Show configuration and optionally test Snowflake connection. Use this command to verify your dbt profile is configured correctly before running other SST commands.
+
+```bash
+sst debug [OPTIONS]
+```
+
+#### Options
+
+| Option | Short | Type | Description |
+|--------|-------|------|-------------|
+| `--target` | `-t` | TEXT | dbt target from profiles.yml (default: uses profile's default) |
+| `--test-connection` | | FLAG | Test Snowflake connection |
+| `--verbose` | `-v` | FLAG | Show additional details |
+
+#### What It Does
+
+1. Reads `dbt_project.yml` to find the profile name
+2. Locates `profiles.yml` (in project directory or `~/.dbt/`)
+3. Parses the profile for the specified target
+4. Displays all connection parameters
+5. Optionally tests the Snowflake connection
+
+#### Examples
+
+```bash
+# Show current configuration
+sst debug
+
+# Test Snowflake connection
+sst debug --test-connection
+
+# Use a specific target
+sst debug --target prod
+
+# Test production connection
+sst debug --target prod --test-connection
+```
+
+#### Output Format
+
+```
+SST Debug (v0.1.1)
+
+  ──────────────────────────────────────────────────
+  Profile Configuration
+  ──────────────────────────────────────────────────
+  Profile:        my_project
+  Target:         dev
+  ──────────────────────────────────────────────────
+  Account:        abc12345.us-east-1
+  User:           your.email@company.com
+  Role:           DATA_ENGINEER
+  Warehouse:      MY_WAREHOUSE
+  Database:       ANALYTICS
+  Schema:         DEV
+  Auth Method:    sso_browser
+  ──────────────────────────────────────────────────
+  profiles.yml:   ~/.dbt/profiles.yml
+  dbt_project:    ./dbt_project.yml
+  ──────────────────────────────────────────────────
+
+  ✓ Configuration valid
+```
+
+With `--test-connection`:
+
+```
+  Testing Snowflake connection...
+
+  ✓ Connection successful!
+    Connected as: YOUR_USER
+    Current role: DATA_ENGINEER
+    Warehouse: MY_WAREHOUSE
+```
+
+---
 
 ### enrich
 
@@ -735,6 +816,10 @@ Deployment completed successfully in 45.2s
 ## Command Quick Reference
 
 ```bash
+# Show configuration and test connection
+sst debug
+sst debug --test-connection
+
 # Validate semantic models (run from dbt project root)
 sst validate
 

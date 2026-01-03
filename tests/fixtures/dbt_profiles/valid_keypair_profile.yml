@@ -1,0 +1,15 @@
+# Valid profile with key pair authentication
+test_project:
+  target: dev
+  outputs:
+    dev:
+      type: snowflake
+      account: test_account
+      user: test_user
+      private_key_path: ~/.ssh/snowflake_key.p8
+      private_key_passphrase: test_passphrase
+      role: TEST_ROLE
+      warehouse: TEST_WH
+      database: TEST_DB
+      schema: TEST_SCHEMA
+

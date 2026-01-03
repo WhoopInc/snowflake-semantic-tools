@@ -5,17 +5,18 @@ Tests the reusable config helper functions that provide clean,
 testable access to SST configuration.
 """
 
-import pytest
-from unittest.mock import Mock, patch, MagicMock
 from pathlib import Path
+from unittest.mock import MagicMock, Mock, patch
+
+import pytest
 
 from snowflake_semantic_tools.shared.config_utils import (
-    get_exclusion_patterns,
     get_enrichment_limits,
-    get_synonym_config,
-    get_project_paths,
-    is_strict_mode,
+    get_exclusion_patterns,
     get_exclusion_summary,
+    get_project_paths,
+    get_synonym_config,
+    is_strict_mode,
 )
 
 

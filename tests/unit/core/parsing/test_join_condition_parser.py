@@ -5,11 +5,8 @@ Tests for Issue #40: Fix ASOF JOIN support in semantic views.
 """
 
 import pytest
-from snowflake_semantic_tools.core.parsing.join_condition_parser import (
-    JoinConditionParser,
-    JoinType,
-    ParsedCondition,
-)
+
+from snowflake_semantic_tools.core.parsing.join_condition_parser import JoinConditionParser, JoinType, ParsedCondition
 
 
 class TestGenerateSqlReferencesAsof:
@@ -19,9 +16,9 @@ class TestGenerateSqlReferencesAsof:
         """Test ASOF relationship with only time condition."""
         condition = "{{ column('orders', 'ordered_at') }} >= {{ column('orders', 'ordered_at') }}"
         parsed = JoinConditionParser.parse(condition)
-        
+
         sql = JoinConditionParser.generate_sql_references([parsed], "ORDERS", "ORDERS")
-        
+
         expected = "ORDERS (ORDERED_AT) REFERENCES ORDERS (ASOF ORDERED_AT)"
         assert sql == expected, f"Expected: {expected}, Got: {sql}"
         assert "MATCH CONDITION" not in sql, "MATCH CONDITION should not appear in output"
@@ -30,12 +27,12 @@ class TestGenerateSqlReferencesAsof:
         """Test ASOF relationship with equality + temporal conditions."""
         conditions = [
             "{{ column('orders', 'customer_id') }} = {{ column('orders', 'customer_id') }}",
-            "{{ column('orders', 'ordered_at') }} >= {{ column('orders', 'ordered_at') }}"
+            "{{ column('orders', 'ordered_at') }} >= {{ column('orders', 'ordered_at') }}",
         ]
         parsed_list = [JoinConditionParser.parse(c) for c in conditions]
-        
+
         sql = JoinConditionParser.generate_sql_references(parsed_list, "ORDERS", "ORDERS")
-        
+
         expected = "ORDERS (CUSTOMER_ID, ORDERED_AT) REFERENCES ORDERS (CUSTOMER_ID, ASOF ORDERED_AT)"
         assert sql == expected, f"Expected: {expected}, Got: {sql}"
         assert "MATCH CONDITION" not in sql, "MATCH CONDITION should not appear in output"
@@ -44,12 +41,12 @@ class TestGenerateSqlReferencesAsof:
         """Test ASOF relationship between different tables."""
         conditions = [
             "{{ column('events', 'user_id') }} = {{ column('sessions', 'user_id') }}",
-            "{{ column('events', 'timestamp') }} >= {{ column('sessions', 'start_time') }}"
+            "{{ column('events', 'timestamp') }} >= {{ column('sessions', 'start_time') }}",
         ]
         parsed_list = [JoinConditionParser.parse(c) for c in conditions]
-        
+
         sql = JoinConditionParser.generate_sql_references(parsed_list, "EVENTS", "SESSIONS")
-        
+
         expected = "EVENTS (USER_ID, TIMESTAMP) REFERENCES SESSIONS (USER_ID, ASOF START_TIME)"
         assert sql == expected, f"Expected: {expected}, Got: {sql}"
 
@@ -58,22 +55,24 @@ class TestGenerateSqlReferencesAsof:
         conditions = [
             "{{ column('orders', 'customer_id') }} = {{ column('orders', 'customer_id') }}",
             "{{ column('orders', 'product_id') }} = {{ column('orders', 'product_id') }}",
-            "{{ column('orders', 'ordered_at') }} >= {{ column('orders', 'ordered_at') }}"
+            "{{ column('orders', 'ordered_at') }} >= {{ column('orders', 'ordered_at') }}",
         ]
         parsed_list = [JoinConditionParser.parse(c) for c in conditions]
-        
+
         sql = JoinConditionParser.generate_sql_references(parsed_list, "ORDERS", "ORDERS")
-        
-        expected = "ORDERS (CUSTOMER_ID, PRODUCT_ID, ORDERED_AT) REFERENCES ORDERS (CUSTOMER_ID, PRODUCT_ID, ASOF ORDERED_AT)"
+
+        expected = (
+            "ORDERS (CUSTOMER_ID, PRODUCT_ID, ORDERED_AT) REFERENCES ORDERS (CUSTOMER_ID, PRODUCT_ID, ASOF ORDERED_AT)"
+        )
         assert sql == expected, f"Expected: {expected}, Got: {sql}"
 
     def test_asof_with_greater_than_equal_operator(self):
         """Test ASOF with >= operator (the only supported operator)."""
         condition = "{{ column('orders', 'ordered_at') }} >= {{ column('orders', 'ordered_at') }}"
         parsed = JoinConditionParser.parse(condition)
-        
+
         assert parsed.condition_type == JoinType.ASOF
-        
+
         sql = JoinConditionParser.generate_sql_references([parsed], "ORDERS", "ORDERS")
         expected = "ORDERS (ORDERED_AT) REFERENCES ORDERS (ASOF ORDERED_AT)"
         assert sql == expected, f"Expected: {expected}, Got: {sql}"
@@ -86,9 +85,9 @@ class TestGenerateSqlReferencesEquality:
         """Test equality relationship with single condition."""
         condition = "{{ column('orders', 'customer_id') }} = {{ column('customers', 'id') }}"
         parsed = JoinConditionParser.parse(condition)
-        
+
         sql = JoinConditionParser.generate_sql_references([parsed], "ORDERS", "CUSTOMERS")
-        
+
         expected = "ORDERS (CUSTOMER_ID) REFERENCES CUSTOMERS (ID)"
         assert sql == expected, f"Expected: {expected}, Got: {sql}"
         assert "ASOF" not in sql, "ASOF should not appear in equality-only relationships"
@@ -97,12 +96,12 @@ class TestGenerateSqlReferencesEquality:
         """Test equality relationship with multiple conditions."""
         conditions = [
             "{{ column('orders', 'customer_id') }} = {{ column('customers', 'id') }}",
-            "{{ column('orders', 'region') }} = {{ column('customers', 'region') }}"
+            "{{ column('orders', 'region') }} = {{ column('customers', 'region') }}",
         ]
         parsed_list = [JoinConditionParser.parse(c) for c in conditions]
-        
+
         sql = JoinConditionParser.generate_sql_references(parsed_list, "ORDERS", "CUSTOMERS")
-        
+
         expected = "ORDERS (CUSTOMER_ID, REGION) REFERENCES CUSTOMERS (ID, REGION)"
         assert sql == expected, f"Expected: {expected}, Got: {sql}"
         assert "ASOF" not in sql, "ASOF should not appear in equality-only relationships"
@@ -115,9 +114,9 @@ class TestGenerateSqlReferencesResolvedFormat:
         """Test equality with resolved format."""
         condition = "ORDERS.CUSTOMER_ID = CUSTOMERS.ID"
         parsed = JoinConditionParser.parse(condition)
-        
+
         sql = JoinConditionParser.generate_sql_references([parsed], "ORDERS", "CUSTOMERS")
-        
+
         expected = "ORDERS (CUSTOMER_ID) REFERENCES CUSTOMERS (ID)"
         assert sql == expected, f"Expected: {expected}, Got: {sql}"
 
@@ -125,22 +124,19 @@ class TestGenerateSqlReferencesResolvedFormat:
         """Test ASOF with resolved format."""
         condition = "ORDERS.ORDERED_AT >= ORDERS.ORDERED_AT"
         parsed = JoinConditionParser.parse(condition)
-        
+
         sql = JoinConditionParser.generate_sql_references([parsed], "ORDERS", "ORDERS")
-        
+
         expected = "ORDERS (ORDERED_AT) REFERENCES ORDERS (ASOF ORDERED_AT)"
         assert sql == expected, f"Expected: {expected}, Got: {sql}"
 
     def test_resolved_format_mixed(self):
         """Test mixed equality + ASOF with resolved format."""
-        conditions = [
-            "ORDERS.CUSTOMER_ID = ORDERS.CUSTOMER_ID",
-            "ORDERS.ORDERED_AT >= ORDERS.ORDERED_AT"
-        ]
+        conditions = ["ORDERS.CUSTOMER_ID = ORDERS.CUSTOMER_ID", "ORDERS.ORDERED_AT >= ORDERS.ORDERED_AT"]
         parsed_list = [JoinConditionParser.parse(c) for c in conditions]
-        
+
         sql = JoinConditionParser.generate_sql_references(parsed_list, "ORDERS", "ORDERS")
-        
+
         expected = "ORDERS (CUSTOMER_ID, ORDERED_AT) REFERENCES ORDERS (CUSTOMER_ID, ASOF ORDERED_AT)"
         assert sql == expected, f"Expected: {expected}, Got: {sql}"
 
@@ -157,31 +153,31 @@ class TestGenerateSqlReferencesEdgeCases:
         """Test that columns are not duplicated in output."""
         conditions = [
             "{{ column('orders', 'customer_id') }} = {{ column('orders', 'customer_id') }}",
-            "{{ column('orders', 'ordered_at') }} >= {{ column('orders', 'ordered_at') }}"
+            "{{ column('orders', 'ordered_at') }} >= {{ column('orders', 'ordered_at') }}",
         ]
         parsed_list = [JoinConditionParser.parse(c) for c in conditions]
-        
+
         sql = JoinConditionParser.generate_sql_references(parsed_list, "ORDERS", "ORDERS")
-        
+
         # Check no duplication
         assert sql.count("CUSTOMER_ID") == 2, "CUSTOMER_ID should appear exactly twice (left and right)"
         assert sql.count("ORDERED_AT") == 2, "ORDERED_AT should appear exactly twice (left and right)"
 
     def test_column_ordering_preserved(self):
         """Test that column ordering is preserved when ASOF comes before equality.
-        
-        Regression test for Greptile issue: if conditions are given in order 
+
+        Regression test for Greptile issue: if conditions are given in order
         (ASOF, equality), left and right columns must maintain same order.
         """
         # ASOF condition BEFORE equality condition (unusual but valid)
         conditions = [
             "{{ column('orders', 'ordered_at') }} >= {{ column('orders', 'ordered_at') }}",
-            "{{ column('orders', 'customer_id') }} = {{ column('orders', 'customer_id') }}"
+            "{{ column('orders', 'customer_id') }} = {{ column('orders', 'customer_id') }}",
         ]
         parsed_list = [JoinConditionParser.parse(c) for c in conditions]
-        
+
         sql = JoinConditionParser.generate_sql_references(parsed_list, "ORDERS", "ORDERS")
-        
+
         # Left side should be: (ORDERED_AT, CUSTOMER_ID) - original order
         # Right side should be: (ASOF ORDERED_AT, CUSTOMER_ID) - same order with ASOF prefix
         expected = "ORDERS (ORDERED_AT, CUSTOMER_ID) REFERENCES ORDERS (ASOF ORDERED_AT, CUSTOMER_ID)"
@@ -195,25 +191,26 @@ class TestParsedConditionDataclass:
         """Verify match_condition field was removed from ParsedCondition."""
         condition = "{{ column('orders', 'ordered_at') }} >= {{ column('orders', 'ordered_at') }}"
         parsed = JoinConditionParser.parse(condition)
-        
-        assert not hasattr(parsed, 'match_condition'), \
-            "ParsedCondition should not have match_condition field (removed in Issue #40 fix)"
+
+        assert not hasattr(
+            parsed, "match_condition"
+        ), "ParsedCondition should not have match_condition field (removed in Issue #40 fix)"
 
     def test_parsed_condition_has_required_fields(self):
         """Verify ParsedCondition has all required fields."""
         condition = "{{ column('orders', 'customer_id') }} = {{ column('customers', 'id') }}"
         parsed = JoinConditionParser.parse(condition)
-        
+
         # Check all required fields exist
-        assert hasattr(parsed, 'join_condition')
-        assert hasattr(parsed, 'condition_type')
-        assert hasattr(parsed, 'left_expression')
-        assert hasattr(parsed, 'right_expression')
-        assert hasattr(parsed, 'left_table')
-        assert hasattr(parsed, 'left_column')
-        assert hasattr(parsed, 'right_table')
-        assert hasattr(parsed, 'right_column')
-        assert hasattr(parsed, 'operator')
+        assert hasattr(parsed, "join_condition")
+        assert hasattr(parsed, "condition_type")
+        assert hasattr(parsed, "left_expression")
+        assert hasattr(parsed, "right_expression")
+        assert hasattr(parsed, "left_table")
+        assert hasattr(parsed, "left_column")
+        assert hasattr(parsed, "right_table")
+        assert hasattr(parsed, "right_column")
+        assert hasattr(parsed, "operator")
 
 
 class TestJoinTypeDetection:
@@ -257,34 +254,34 @@ class TestValidationUnsupportedOperators:
         """Test that <= operator is rejected with helpful error message."""
         condition = "{{ column('orders', 'ordered_at') }} <= {{ column('orders', 'ordered_at') }}"
         is_valid, error_msg = JoinConditionParser.validate_condition(condition)
-        
+
         assert is_valid is False
         assert "not supported" in error_msg
         assert "<=" in error_msg
-    
+
     def test_validate_less_than_operator_rejected(self):
         """Test that < operator is rejected with helpful error message."""
         condition = "{{ column('orders', 'ordered_at') }} < {{ column('orders', 'ordered_at') }}"
         is_valid, error_msg = JoinConditionParser.validate_condition(condition)
-        
+
         assert is_valid is False
         assert "not supported" in error_msg
         assert "<" in error_msg
-    
+
     def test_validate_greater_than_operator_rejected(self):
         """Test that > operator is rejected with helpful error message."""
         condition = "{{ column('orders', 'ordered_at') }} > {{ column('orders', 'ordered_at') }}"
         is_valid, error_msg = JoinConditionParser.validate_condition(condition)
-        
+
         assert is_valid is False
         assert "not supported" in error_msg
         assert ">" in error_msg
-    
+
     def test_validate_between_operator_rejected(self):
         """Test that BETWEEN operator is rejected with helpful error message."""
         condition = "{{ column('orders', 'ordered_at') }} BETWEEN {{ column('orders', 'start_date') }} AND {{ column('orders', 'end_date') }}"
         is_valid, error_msg = JoinConditionParser.validate_condition(condition)
-        
+
         assert is_valid is False
         assert "BETWEEN" in error_msg
         assert "not supported" in error_msg
@@ -293,7 +290,7 @@ class TestValidationUnsupportedOperators:
         """Test that < operator is rejected with helpful error message."""
         condition = "{{ column('orders', 'ordered_at') }} < {{ column('orders', 'ordered_at') }}"
         is_valid, error_msg = JoinConditionParser.validate_condition(condition)
-        
+
         assert not is_valid, "< operator should be rejected"
         assert "<" in error_msg
         assert "not supported" in error_msg.lower()
@@ -302,7 +299,7 @@ class TestValidationUnsupportedOperators:
         """Test that > operator is rejected with helpful error message."""
         condition = "{{ column('orders', 'ordered_at') }} > {{ column('orders', 'ordered_at') }}"
         is_valid, error_msg = JoinConditionParser.validate_condition(condition)
-        
+
         assert not is_valid, "> operator should be rejected"
         assert ">" in error_msg
         assert "not supported" in error_msg.lower()
@@ -311,6 +308,6 @@ class TestValidationUnsupportedOperators:
         """Test that >= operator is accepted (the only valid ASOF operator)."""
         condition = "{{ column('orders', 'ordered_at') }} >= {{ column('orders', 'ordered_at') }}"
         is_valid, error_msg = JoinConditionParser.validate_condition(condition)
-        
+
         assert is_valid, f">= operator should be accepted. Error: {error_msg}"
         assert error_msg == "", "No error message should be returned for valid condition"

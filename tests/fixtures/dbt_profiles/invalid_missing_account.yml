@@ -1,0 +1,13 @@
+# Invalid profile - missing required account field
+test_project:
+  target: dev
+  outputs:
+    dev:
+      type: snowflake
+      user: test_user
+      password: test_password
+      role: TEST_ROLE
+      warehouse: TEST_WH
+      database: TEST_DB
+      schema: TEST_SCHEMA
+

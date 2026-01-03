@@ -4,20 +4,17 @@ Main CLI Module
 Central command-line interface orchestrator for Snowflake Semantic Tools.
 
 Provides the main `sst` command group that organizes all subcommands and
-handles global configuration like environment variable loading and version
-management. Uses Click framework for robust command-line parsing and help
-generation.
+handles global configuration and version management. Uses Click framework
+for robust command-line parsing and help generation.
 
-The CLI automatically loads .env files for configuration, making it easy
-to manage different environments without exposing credentials in scripts
-or command history.
+Authentication is handled via dbt's ~/.dbt/profiles.yml file, aligning
+SST with dbt conventions for a single source of truth.
 
 Performance Notes:
 - Issue #10: Commands are lazily loaded to keep `sst --version` fast (<100ms)
 - Issue #31: Config validation is skipped for --help to avoid errors when exploring CLI
 """
 
-import os
 import sys
 
 import click
@@ -29,17 +26,6 @@ from snowflake_semantic_tools._version import __version__
 def _is_help_or_version_request() -> bool:
     """Check if user is requesting help or version (no config validation needed)."""
     return "--help" in sys.argv or "-h" in sys.argv or "--version" in sys.argv
-
-
-def _load_env():
-    """Load environment variables from .env file in current directory."""
-    # Only load from current working directory to respect user's environment
-    # This ensures that when running SST from a dbt repo, we use that repo's credentials
-    from dotenv import load_dotenv
-
-    cwd_env = os.path.join(os.getcwd(), ".env")
-    if os.path.exists(cwd_env):
-        load_dotenv(cwd_env, override=True)
 
 
 # Issue #10: Lazy command loading for fast --version
@@ -100,6 +86,7 @@ class LazyGroup(click.Group):
 
 # Define lazy command mappings (module path, command function name)
 LAZY_COMMANDS = {
+    "debug": ("snowflake_semantic_tools.interfaces.cli.commands.debug", "debug"),
     "enrich": ("snowflake_semantic_tools.interfaces.cli.commands.enrich", "enrich"),
     "format": ("snowflake_semantic_tools.interfaces.cli.commands.format", "format_cmd"),
     "extract": ("snowflake_semantic_tools.interfaces.cli.commands.extract", "extract"),
@@ -118,6 +105,7 @@ def cli():
     This toolkit provides comprehensive semantic modeling capabilities:
 
     \b
+    - DEBUG: Show configuration and test Snowflake connection
     - ENRICH: Automatically populate dbt YAML metadata with semantic information
     - FORMAT: Standardize YAML file structure and formatting
     - VALIDATE: Check semantic models against dbt definitions
@@ -134,9 +122,6 @@ def cli():
     # This allows users to explore CLI without needing valid config
     if _is_help_or_version_request():
         return
-
-    # Load .env only when actually running commands
-    _load_env()
 
     # Setup events early so config validation messages appear correctly
     from snowflake_semantic_tools.shared.events import setup_events

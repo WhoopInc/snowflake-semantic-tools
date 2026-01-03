@@ -44,11 +44,11 @@ def validate(dbt, semantic, strict, verbose, exclude, dbt_compile):
       # Standard validation
       sst validate
 
-      # Auto-compile dbt if manifest missing/stale (uses 'prod' target by default)
+      # Auto-compile dbt if manifest missing/stale (uses profile's default target)
       sst validate --dbt-compile
 
-      # Use custom target (e.g., 'ci' for CI/CD environments with private key auth)
-      export DBT_TARGET=ci
+      # Use custom target (e.g., 'prod' for production)
+      export DBT_TARGET=prod
       sst validate --dbt-compile
 
       # Validate with verbose output
@@ -76,21 +76,27 @@ def validate(dbt, semantic, strict, verbose, exclude, dbt_compile):
     # Run dbt compile if requested
     if dbt_compile:
         output.blank_line()
-        output.info("Compiling dbt project...")
 
-        # Use DBT_TARGET env var to allow customization (defaults to 'prod')
-        # Note: Only used for dbt Core; Cloud CLI uses cloud environment
-        dbt_target = os.getenv("DBT_TARGET", "prod")
+        # Use DBT_TARGET env var, or get default from profiles.yml
+        dbt_target = os.getenv("DBT_TARGET")
+        if not dbt_target:
+            try:
+                from snowflake_semantic_tools.infrastructure.dbt.profile_parser import DbtProfileParser
+
+                parser = DbtProfileParser()
+                profile_name = parser.get_profile_name()
+                profiles = parser._load_profiles()
+                profile = profiles.get(profile_name, {})
+                dbt_target = profile.get("target", "dev")
+            except Exception:
+                # Fallback to 'dev' if we can't read profile
+                dbt_target = "dev"
+
+        output.info(f"Compiling dbt project (target: {dbt_target})...")
 
         try:
             # Initialize dbt client (auto-detects Core vs Cloud CLI)
             dbt_client = DbtClient(project_dir=Path.cwd(), verbose=verbose)
-
-            dbt_type_str = dbt_client.dbt_type.value
-            if dbt_client.dbt_type.value == "core":
-                output.debug(f"Detected dbt Core, using target: {dbt_target}")
-            else:
-                output.debug(f"Detected dbt Cloud CLI, using cloud environment")
 
             # Run dbt compile
             compile_start = time.time()
@@ -126,12 +132,11 @@ def validate(dbt, semantic, strict, verbose, exclude, dbt_compile):
                 else:
                     # Core-specific guidance
                     click.echo("  dbt Core requires proper profiles.yml and credentials:", err=True)
-                    click.echo("    1. Check profiles.yml exists in ~/.dbt/ or project root", err=True)
-                    click.echo("    2. Verify Snowflake credentials in .env:", err=True)
-                    click.echo(
-                        "       SNOWFLAKE_ACCOUNT, SNOWFLAKE_USER, SNOWFLAKE_ROLE, SNOWFLAKE_WAREHOUSE", err=True
-                    )
-                    click.echo("    3. Test manually: dbt compile --target {}", err=True)
+                    click.echo("    1. Check ~/.dbt/profiles.yml exists and is configured", err=True)
+                    click.echo("    2. Verify profile name in dbt_project.yml matches profiles.yml", err=True)
+                    click.echo("    3. Verify Snowflake credentials in profiles.yml:", err=True)
+                    click.echo("       (account, user, role, warehouse)", err=True)
+                    click.echo("    4. Test manually: dbt compile", err=True)
 
                 click.echo("\n  Common to both:", err=True)
                 click.echo("    - Model SQL errors: Run 'dbt debug' to check", err=True)
