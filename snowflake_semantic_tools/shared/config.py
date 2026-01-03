@@ -71,6 +71,11 @@ class Config:
                 "synonym_max_count": 4,  # Maximum synonyms per table/column
                 "generate_column_synonyms": True,  # Also generate column-level synonyms
             },
+            "defer": {
+                "target": None,  # Default defer target (e.g., 'prod')
+                "state_path": None,  # Path to state artifacts directory
+                "auto_compile": False,  # Auto-compile manifest if not found (dbt Core only)
+            },
             "logging": {"level": "INFO", "format": "%(asctime)s - %(name)s - %(levelname)s - %(message)s"},
         }
 

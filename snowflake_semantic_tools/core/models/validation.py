@@ -438,6 +438,7 @@ class ValidationResult:
             print("  - Warnings don't block deployment - ready for 'sst extract'")
         else:
             print("\nReady for deployment:")
-            print("  sst extract --db YOUR_DB --schema YOUR_SCHEMA")
+            print("  sst extract                    # Uses database/schema from dbt profile")
+            print("  sst extract --target prod      # Use a specific profile target")
 
         print()
