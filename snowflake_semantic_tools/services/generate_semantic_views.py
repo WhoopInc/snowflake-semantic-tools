@@ -526,6 +526,27 @@ class SemanticViewGenerationService:
         config = GenerateConfig(execute=True)
         return self.execute(config)
 
+    def get_available_views(self, database: str, schema: str) -> List[Dict[str, Any]]:
+        """
+        Get list of available semantic views from metadata.
+
+        This method is useful for pre-filtering views before calling generate().
+
+        Args:
+            database: Metadata database
+            schema: Metadata schema
+
+        Returns:
+            List of view dictionaries with 'NAME' and 'TABLES' keys
+        """
+        try:
+            snowflake_client = SnowflakeClient(self.config)
+            metadata_client = MetadataClient(snowflake_client, database, schema)
+            return metadata_client.get_available_views()
+        except Exception as e:
+            logger.error(f"Failed to get available views: {e}")
+            return []
+
     def generate(
         self, config: UnifiedGenerationConfig, progress_callback: Optional[ProgressCallback] = None
     ) -> UnifiedGenerationResult:

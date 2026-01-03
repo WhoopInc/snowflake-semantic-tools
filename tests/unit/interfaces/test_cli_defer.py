@@ -109,13 +109,14 @@ class TestResolveDeferManifest:
         with patch("snowflake_semantic_tools.interfaces.cli.defer.DbtClient") as mock_client:
             mock_client.return_value.dbt_type = DbtType.CORE
 
-            result = resolve_defer_manifest(
+            result_path, result_warning = resolve_defer_manifest(
                 defer_target="prod",
                 state_path=state_dir,
                 project_dir=tmp_path,
             )
 
-        assert result == manifest_file
+        assert result_path == manifest_file
+        assert result_warning is None  # No warning for explicit path
 
     def test_explicit_state_path_not_found(self, tmp_path):
         """Test that missing manifest in --state raises error."""
@@ -145,12 +146,13 @@ class TestResolveDeferManifest:
         with patch("snowflake_semantic_tools.interfaces.cli.defer.DbtClient") as mock_client:
             mock_client.return_value.dbt_type = DbtType.CORE
 
-            result = resolve_defer_manifest(
+            result_path, result_warning = resolve_defer_manifest(
                 defer_target="prod",
                 project_dir=tmp_path,
             )
 
-        assert result == manifest_file
+        assert result_path == manifest_file
+        assert result_warning is None  # No warning for target-specific path
 
     def test_dbt_core_no_manifest_suggests_compile(self, tmp_path):
         """Test that dbt Core suggests compile when manifest not found."""

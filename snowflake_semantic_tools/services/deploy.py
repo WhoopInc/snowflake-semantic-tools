@@ -71,6 +71,10 @@ class DeployResult:
     generation_time: float = 0.0
     total_time: float = 0.0
 
+    # Defer info for summary
+    defer_target: Optional[str] = None
+    defer_manifest: Optional[str] = None
+
     def __post_init__(self):
         if self.errors is None:
             self.errors = []
@@ -91,6 +95,15 @@ class DeployResult:
         # Status
         status_icon = "SUCCESS" if self.success else "FAILED"
         print(f"Status: {status_icon}")
+
+        # Defer info (if enabled)
+        if self.defer_target:
+            print()
+            print("Defer Configuration:")
+            print(f"  Target: {self.defer_target}")
+            if self.defer_manifest:
+                print(f"  Manifest: {self.defer_manifest}")
+
         print()
 
         # Step results (clean format without redundant PASS/FAIL icons)
@@ -178,6 +191,8 @@ class DeployService:
             extraction_completed=False,
             generation_completed=False,
             skip_validation=config.skip_validation,
+            defer_target=config.defer_database,
+            defer_manifest=config.defer_manifest_path,
         )
 
         try:

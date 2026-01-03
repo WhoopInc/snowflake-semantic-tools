@@ -51,6 +51,9 @@ class DeferConfig:
     # Source of the configuration for informational display
     source: str = "none"  # "cli", "config", or "none"
 
+    # Warning if manifest may not match defer target
+    manifest_target_warning: Optional[str] = None
+
     def __post_init__(self):
         """Validate configuration after initialization."""
         if self.only_modified and not self.enabled:
@@ -140,7 +143,7 @@ def resolve_defer_config(
     )
 
     # Resolve manifest path
-    manifest_path = resolve_defer_manifest(
+    manifest_path, manifest_warning = resolve_defer_manifest(
         defer_target=effective_target,
         state_path=effective_state_path,
         project_dir=project_dir,
@@ -154,6 +157,7 @@ def resolve_defer_config(
         manifest_path=manifest_path,
         only_modified=only_modified,
         source=source,
+        manifest_target_warning=manifest_warning,
     )
 
 
@@ -167,7 +171,7 @@ def resolve_defer_manifest(
     state_path: Optional[Path] = None,
     project_dir: Optional[Path] = None,
     dbt_client: Optional[DbtClient] = None,
-) -> Path:
+) -> tuple:
     """
     Resolve path to defer manifest.
 
@@ -184,7 +188,7 @@ def resolve_defer_manifest(
         dbt_client: Optional DbtClient for type detection
 
     Returns:
-        Path to manifest.json
+        Tuple of (Path to manifest.json, Optional warning message)
 
     Raises:
         click.ClickException: If manifest cannot be found
@@ -201,24 +205,38 @@ def resolve_defer_manifest(
         manifest = state_path / "manifest.json"
         if manifest.exists():
             logger.info(f"Using defer manifest from --state: {manifest}")
-            return manifest
+            return (manifest, None)
         raise click.ClickException(
             f"Manifest not found at: {manifest}\n\n" f"Make sure the state directory contains a manifest.json file."
         )
 
     # Priority 2: Auto-detect common paths
-    search_paths = [
+    # Prefer target-specific paths first, then fall back to default target/
+    target_specific_paths = [
         project_dir / f"target_{defer_target}" / "manifest.json",
         project_dir / f"{defer_target}_run_artifacts" / "manifest.json",
         project_dir / "prod_run_artifacts" / "manifest.json",
         project_dir / "artifacts" / defer_target / "manifest.json",
-        project_dir / "target" / "manifest.json",  # Default target location
     ]
 
-    for path in search_paths:
+    # Check target-specific paths first
+    for path in target_specific_paths:
         if path.exists():
             logger.info(f"Auto-detected defer manifest: {path}")
-            return path
+            return (path, None)
+
+    # Fall back to default target/ - but warn that it may not match defer target
+    default_manifest = project_dir / "target" / "manifest.json"
+    if default_manifest.exists():
+        warning_msg = (
+            f"Using manifest from ./target/ for defer target '{defer_target}'. "
+            f"This manifest may have been compiled with a different target. "
+            f"For accurate defer, run: dbt compile --target {defer_target}"
+        )
+        logger.warning(warning_msg)
+        return (default_manifest, warning_msg)
+
+    search_paths = target_specific_paths + [default_manifest]
 
     # Format search paths for error message
     searched_str = "\n".join(f"  - {p}" for p in search_paths)
@@ -337,6 +355,10 @@ def display_defer_info(output: CLIOutput, defer_config: DeferConfig) -> None:
     if defer_config.only_modified:
         output.info("  Selective generation: only modified models", indent=1)
 
+    # Show warning if manifest may not match defer target
+    if defer_config.manifest_target_warning:
+        output.warning(defer_config.manifest_target_warning)
+
 
 def get_defer_summary(defer_config: DeferConfig) -> Dict[str, Any]:
     """
@@ -356,3 +378,113 @@ def get_defer_summary(defer_config: DeferConfig) -> Dict[str, Any]:
         "only_modified": defer_config.only_modified,
         "source": defer_config.source,
     }
+
+
+# =============================================================================
+# Modified View Detection
+# =============================================================================
+
+
+def get_modified_views_filter(
+    defer_config: DeferConfig,
+    available_views: list,
+    output: Optional[CLIOutput] = None,
+) -> Optional[list]:
+    """
+    Get list of view names that should be regenerated based on model changes.
+
+    This function compares the current manifest with the defer manifest to identify
+    which models have changed, then filters the available views to only those
+    that reference changed models.
+
+    Args:
+        defer_config: Resolved defer configuration (must have only_modified=True)
+        available_views: List of dicts with 'name' and 'tables' keys from metadata
+        output: Optional CLIOutput for user feedback
+
+    Returns:
+        List of view names to regenerate, or None if all should be regenerated
+        Empty list means no views need regeneration (all up to date)
+    """
+    if not defer_config.only_modified:
+        return None
+
+    if not defer_config.manifest_path:
+        if output:
+            output.warning("Cannot determine modified models: no defer manifest available")
+        return None
+
+    try:
+        from snowflake_semantic_tools.core.parsing.parsers.manifest_parser import ManifestParser
+
+        # Load current manifest (from ./target/)
+        current_manifest = ManifestParser()
+        if not current_manifest.load():
+            if output:
+                output.warning("Could not load current manifest for comparison")
+            return None
+
+        # Load defer manifest
+        defer_manifest = ManifestParser(defer_config.manifest_path)
+        if not defer_manifest.load():
+            if output:
+                output.warning("Could not load defer manifest for comparison")
+            return None
+
+        # Compare manifests
+        diff = current_manifest.compare_to(defer_manifest)
+
+        if diff.total_changes == 0:
+            if output:
+                output.info("No model changes detected - all views up to date")
+            return []
+
+        changed_models = set(m.lower() for m in diff.changed)
+        if output:
+            output.info(f"Detected {len(changed_models)} changed model(s): {', '.join(sorted(changed_models))}")
+
+        # Filter views to only those referencing changed models
+        views_to_regenerate = []
+        for view in available_views:
+            view_name = view.get("name") or view.get("NAME")
+            tables_data = view.get("tables") or view.get("TABLES") or ""
+
+            # Parse tables - could be JSON array string, list, or comma-separated
+            tables = []
+            if isinstance(tables_data, str):
+                # Try JSON first
+                try:
+                    import json
+
+                    parsed = json.loads(tables_data)
+                    if isinstance(parsed, list):
+                        tables = [str(t).lower() for t in parsed]
+                    else:
+                        tables = [tables_data.lower()]
+                except (json.JSONDecodeError, TypeError):
+                    # Fall back to comma-separated
+                    tables = [t.strip().lower() for t in tables_data.split(",")]
+            elif isinstance(tables_data, list):
+                tables = [str(t).lower() for t in tables_data]
+
+            # Check if any table in this view matches a changed model
+            for table in tables:
+                # Handle fully qualified names (DATABASE.SCHEMA.TABLE)
+                simple_name = table.split(".")[-1].lower()
+                if simple_name in changed_models:
+                    views_to_regenerate.append(view_name)
+                    break
+
+        if output:
+            if views_to_regenerate:
+                output.info(f"Will regenerate {len(views_to_regenerate)} view(s) referencing changed models")
+            else:
+                output.info("No views reference the changed models")
+
+        return views_to_regenerate
+
+    except Exception as e:
+        logger.warning(f"Error determining modified views: {e}")
+        if output:
+            output.warning(f"Could not filter views by modification: {e}")
+        return None

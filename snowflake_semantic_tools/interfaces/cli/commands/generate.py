@@ -14,6 +14,7 @@ from snowflake_semantic_tools.core.parsing.parsers.manifest_parser import Manife
 from snowflake_semantic_tools.interfaces.cli.defer import (
     DeferConfig,
     display_defer_info,
+    get_modified_views_filter,
     resolve_defer_config,
 )
 from snowflake_semantic_tools.interfaces.cli.options import (
@@ -167,6 +168,23 @@ def generate(
         output.info("Connecting to Snowflake...")
 
         service = SemanticViewGenerationService(snowflake_config)
+
+        # If --only-modified, filter views based on manifest comparison
+        if defer_config.only_modified and defer_config.enabled:
+            # Need to get available views first to filter them
+            output.info("Validating metadata access...")
+            available_views = service.get_available_views(target_db, target_schema)
+
+            if available_views:
+                output.info(f"Found {len(available_views)} available views", indent=1)
+                filtered_views = get_modified_views_filter(defer_config, available_views, output)
+
+                if filtered_views is not None:
+                    if len(filtered_views) == 0:
+                        output.success("All views are up to date - nothing to regenerate")
+                        return
+                    config.views_to_generate = filtered_views
+                    output.info(f"Filtering to {len(filtered_views)} view(s): {', '.join(filtered_views)}")
 
         # Create progress callback from CLIOutput
         progress_callback = CLIProgressCallback(output)
