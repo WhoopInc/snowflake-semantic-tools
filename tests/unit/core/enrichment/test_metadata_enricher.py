@@ -4,8 +4,9 @@ Unit tests for MetadataEnricher component decoupling.
 Tests that enrichment flags only enrich their specific components.
 """
 
+from unittest.mock import MagicMock, Mock
+
 import pytest
-from unittest.mock import Mock, MagicMock
 
 from snowflake_semantic_tools.core.enrichment.metadata_enricher import MetadataEnricher
 
@@ -19,10 +20,10 @@ class TestBatchFetchSamples:
         mock_client = Mock()
         mock_client.metadata_manager = Mock()
         mock_client.metadata_manager.get_sample_values_batch.return_value = {"ID": [1, 2]}
-        
+
         mock_yaml_handler = Mock()
         mock_pk_validator = Mock()
-        
+
         enricher = MetadataEnricher(
             snowflake_client=mock_client,
             yaml_handler=mock_yaml_handler,
@@ -96,7 +97,7 @@ class TestEnrichColumnTypes:
         mock_client = Mock()
         mock_yaml_handler = Mock()
         mock_pk_validator = Mock()
-        
+
         return MetadataEnricher(
             snowflake_client=mock_client,
             yaml_handler=mock_yaml_handler,
@@ -108,9 +109,7 @@ class TestEnrichColumnTypes:
     def test_enrich_column_types_only_data_types(self, enricher):
         """Only data_type is set when only data-types component requested."""
         column_sst = {}
-        enricher._enrich_column_types(
-            column_sst, "test_col", "VARCHAR(100)", components=["data-types"]
-        )
+        enricher._enrich_column_types(column_sst, "test_col", "VARCHAR(100)", components=["data-types"])
         assert "data_type" in column_sst
         assert column_sst["data_type"] == "TEXT"  # Snowflake type mapping
         # column_type should not be set
@@ -119,9 +118,7 @@ class TestEnrichColumnTypes:
     def test_enrich_column_types_only_column_types(self, enricher):
         """Only column_type is set when only column-types component requested."""
         column_sst = {}
-        enricher._enrich_column_types(
-            column_sst, "test_col", "VARCHAR(100)", components=["column-types"]
-        )
+        enricher._enrich_column_types(column_sst, "test_col", "VARCHAR(100)", components=["column-types"])
         assert "column_type" in column_sst
         assert column_sst["column_type"] == "dimension"
         # data_type should not be set
@@ -130,27 +127,21 @@ class TestEnrichColumnTypes:
     def test_enrich_column_types_both(self, enricher):
         """Both types set when both components requested."""
         column_sst = {}
-        enricher._enrich_column_types(
-            column_sst, "test_col", "VARCHAR(100)", components=["data-types", "column-types"]
-        )
+        enricher._enrich_column_types(column_sst, "test_col", "VARCHAR(100)", components=["data-types", "column-types"])
         assert column_sst["data_type"] == "TEXT"  # Snowflake type mapping
         assert column_sst["column_type"] == "dimension"
 
     def test_enrich_column_types_no_components_enriches_all(self, enricher):
         """No components (None) means enrich all (backward compatible)."""
         column_sst = {}
-        enricher._enrich_column_types(
-            column_sst, "test_col", "VARCHAR(100)", components=None
-        )
+        enricher._enrich_column_types(column_sst, "test_col", "VARCHAR(100)", components=None)
         assert column_sst["data_type"] == "TEXT"  # Snowflake type mapping
         assert column_sst["column_type"] == "dimension"
 
     def test_enrich_column_types_preserves_existing(self, enricher):
         """Existing values are preserved even when component is requested."""
         column_sst = {"data_type": "text", "column_type": "fact"}
-        enricher._enrich_column_types(
-            column_sst, "test_col", "VARCHAR(100)", components=["data-types", "column-types"]
-        )
+        enricher._enrich_column_types(column_sst, "test_col", "VARCHAR(100)", components=["data-types", "column-types"])
         # Should preserve existing values
         assert column_sst["data_type"] == "text"
         assert column_sst["column_type"] == "fact"
@@ -165,7 +156,7 @@ class TestEnrichSampleValues:
         mock_client = Mock()
         mock_yaml_handler = Mock()
         mock_pk_validator = Mock()
-        
+
         enricher = MetadataEnricher(
             snowflake_client=mock_client,
             yaml_handler=mock_yaml_handler,
@@ -180,8 +171,7 @@ class TestEnrichSampleValues:
         """Only sample_values set when only sample-values component requested."""
         column_sst = {}
         enricher._enrich_sample_values(
-            column_sst, "test_col", {"TEST_COL": ["a", "b"]},
-            "model", "schema", "db", components=["sample-values"]
+            column_sst, "test_col", {"TEST_COL": ["a", "b"]}, "model", "schema", "db", components=["sample-values"]
         )
         assert "sample_values" in column_sst
         assert column_sst["sample_values"] == ["a", "b"]
@@ -192,8 +182,7 @@ class TestEnrichSampleValues:
         """Only is_enum set when only detect-enums component requested."""
         column_sst = {}
         enricher._enrich_sample_values(
-            column_sst, "test_col", {"TEST_COL": ["a", "b"]},
-            "model", "schema", "db", components=["detect-enums"]
+            column_sst, "test_col", {"TEST_COL": ["a", "b"]}, "model", "schema", "db", components=["detect-enums"]
         )
         assert "is_enum" in column_sst
         assert column_sst["is_enum"] is True
@@ -204,8 +193,13 @@ class TestEnrichSampleValues:
         """Both set when both components requested."""
         column_sst = {}
         enricher._enrich_sample_values(
-            column_sst, "test_col", {"TEST_COL": ["a", "b"]},
-            "model", "schema", "db", components=["sample-values", "detect-enums"]
+            column_sst,
+            "test_col",
+            {"TEST_COL": ["a", "b"]},
+            "model",
+            "schema",
+            "db",
+            components=["sample-values", "detect-enums"],
         )
         assert column_sst["sample_values"] == ["a", "b"]
         assert column_sst["is_enum"] is True
@@ -214,8 +208,7 @@ class TestEnrichSampleValues:
         """No components (None) means enrich all (backward compatible)."""
         column_sst = {}
         enricher._enrich_sample_values(
-            column_sst, "test_col", {"TEST_COL": ["a", "b"]},
-            "model", "schema", "db", components=None
+            column_sst, "test_col", {"TEST_COL": ["a", "b"]}, "model", "schema", "db", components=None
         )
         assert column_sst["sample_values"] == ["a", "b"]
         assert column_sst["is_enum"] is True
@@ -231,11 +224,11 @@ class TestProcessSingleColumn:
         mock_yaml_handler = Mock()
         mock_yaml_handler.ensure_column_sst_structure.side_effect = lambda x: {
             **x,
-            "meta": {"sst": x.get("meta", {}).get("sst", {})}
+            "meta": {"sst": x.get("meta", {}).get("sst", {})},
         }
         mock_yaml_handler._order_column_sst_keys.side_effect = lambda x: x
         mock_pk_validator = Mock()
-        
+
         enricher = MetadataEnricher(
             snowflake_client=mock_client,
             yaml_handler=mock_yaml_handler,
@@ -261,10 +254,10 @@ class TestProcessSingleColumn:
             total=1,
             components=["column-types"],
         )
-        
+
         # Column types should be called with components
         enricher._enrich_column_types.assert_called_once()
-        
+
         # Sample values should NOT be called (no sample-values or detect-enums)
         enricher._enrich_sample_values.assert_not_called()
 
@@ -281,10 +274,10 @@ class TestProcessSingleColumn:
             total=1,
             components=["data-types"],
         )
-        
+
         # Column types should be called
         enricher._enrich_column_types.assert_called_once()
-        
+
         # Sample values should NOT be called
         enricher._enrich_sample_values.assert_not_called()
 
@@ -301,7 +294,7 @@ class TestProcessSingleColumn:
             total=1,
             components=["sample-values"],
         )
-        
+
         # Sample values SHOULD be called
         enricher._enrich_sample_values.assert_called_once()
 
@@ -318,7 +311,7 @@ class TestProcessSingleColumn:
             total=1,
             components=["detect-enums"],
         )
-        
+
         # Sample values SHOULD be called (detect-enums needs sample data)
         enricher._enrich_sample_values.assert_called_once()
 
@@ -335,7 +328,7 @@ class TestProcessSingleColumn:
             total=1,
             components=None,
         )
-        
+
         # Both should be called
         enricher._enrich_column_types.assert_called_once()
         enricher._enrich_sample_values.assert_called_once()

@@ -1,62 +1,348 @@
 # Authentication Guide
 
-Configure secure authentication for Snowflake Semantic Tools.
+Configure Snowflake authentication for Snowflake Semantic Tools (SST).
+
+## Overview
+
+**SST uses dbt's `~/.dbt/profiles.yml` for all Snowflake authentication.** This provides:
+
+- **Single source of truth** - Same credentials used by dbt and SST
+- **Multiple auth methods** - Password, SSO, RSA keys, OAuth
+- **Environment variable support** - Secure credential management via `{{ env_var() }}`
+- **Target management** - Easy switching between dev/prod environments
 
 ## Authentication Methods
 
-The tools support multiple authentication methods, automatically selected based on your configuration:
-
-| Method | Use Case | Security | Setup Complexity |
-|--------|----------|----------|------------------|
+| Method | Use Case | Security | Setup |
+|--------|----------|----------|-------|
 | **SSO/Browser** | Interactive development | High | Easy |
 | **Password** | Simple automation | Medium | Easy |
-| **RSA Key Pair** | Production | Very High | Medium |
+| **RSA Key Pair** | Production/CI/CD | Very High | Medium |
 | **OAuth** | Enterprise integration | Very High | Complex |
 
 ## Quick Setup
 
-### Method 1: SSO/Browser Authentication (Recommended for Development)
+### Step 1: Create profiles.yml
 
-Perfect for local development with corporate SSO:
+Create `~/.dbt/profiles.yml` if it doesn't exist:
 
-```env
-# .env file - No password needed!
-SNOWFLAKE_ACCOUNT=abc12345
-SNOWFLAKE_USER=your.email@company.com
-SNOWFLAKE_WAREHOUSE=MY_WAREHOUSE
-SNOWFLAKE_ROLE=DATA_ENGINEER
-# Leave SNOWFLAKE_PASSWORD empty for SSO
-```
-
-When you run any command, your browser will open for authentication:
 ```bash
-sst validate  # Browser opens automatically
+mkdir -p ~/.dbt
+touch ~/.dbt/profiles.yml
 ```
 
-### Method 2: Password Authentication
+### Step 2: Configure your profile
 
-Simple setup for automation and scripts:
+Add your Snowflake connection details. The profile name must match the `profile:` field in your `dbt_project.yml`.
 
-```env
-# .env file
-SNOWFLAKE_ACCOUNT=abc12345
-SNOWFLAKE_USER=service_account
-SNOWFLAKE_PASSWORD=your_secure_password
-SNOWFLAKE_WAREHOUSE=MY_WAREHOUSE
-SNOWFLAKE_ROLE=SERVICE_ROLE
+#### SSO/Browser Authentication (Recommended for Development)
+
+```yaml
+# ~/.dbt/profiles.yml
+my_project:  # Must match 'profile:' in dbt_project.yml
+  target: dev
+  outputs:
+    dev:
+      type: snowflake
+      account: abc12345.us-east-1  # Your Snowflake account
+      user: your.email@company.com
+      authenticator: externalbrowser
+      role: DATA_ENGINEER
+      warehouse: MY_WAREHOUSE
+      database: ANALYTICS
+      schema: DEV
 ```
 
-**Security Tips:**
-- Never commit passwords to Git
-- Use environment variables in automation
-- Rotate passwords regularly
-- Consider RSA keys for production
+When you run any SST command, your browser will open for authentication.
 
-### Method 3: RSA Key Pair (Recommended for Production)
+#### Password Authentication
 
-Most secure method for service accounts and CI/CD:
+```yaml
+# ~/.dbt/profiles.yml  
+my_project:
+  target: dev
+  outputs:
+    dev:
+      type: snowflake
+      account: abc12345.us-east-1
+      user: service_account
+      password: "{{ env_var('SNOWFLAKE_PASSWORD') }}"  # Use env var for security
+      role: SERVICE_ROLE
+      warehouse: MY_WAREHOUSE
+      database: ANALYTICS
+      schema: DEV
+```
 
-#### Step 1: Generate Keys
+#### RSA Key Pair (Recommended for Production)
+
+```yaml
+# ~/.dbt/profiles.yml
+my_project:
+  target: prod
+  outputs:
+    prod:
+      type: snowflake
+      account: abc12345.us-east-1
+      user: service_account
+      private_key_path: ~/.ssh/snowflake_key.p8
+      private_key_passphrase: "{{ env_var('SNOWFLAKE_KEY_PASSPHRASE') }}"  # Optional
+      role: PROD_ROLE
+      warehouse: PROD_WH
+      database: ANALYTICS
+      schema: PROD
+```
+
+#### OAuth
+
+```yaml
+# ~/.dbt/profiles.yml
+my_project:
+  target: dev
+  outputs:
+    dev:
+      type: snowflake
+      account: abc12345.us-east-1
+      user: oauth_user
+      authenticator: oauth
+      token: "{{ env_var('SNOWFLAKE_OAUTH_TOKEN') }}"
+      role: OAUTH_ROLE
+      warehouse: MY_WAREHOUSE
+      database: ANALYTICS
+      schema: DEV
+```
+
+### Step 3: Match profile name
+
+Ensure `dbt_project.yml` references your profile:
+
+```yaml
+# dbt_project.yml
+name: 'my_project'
+profile: 'my_project'  # Must match profile name in profiles.yml
+```
+
+### Step 4: Test your setup
+
+```bash
+# Show configuration (no Snowflake connection needed)
+sst debug
+
+# Test Snowflake connection
+sst debug --test-connection
+
+# Test with specific target
+sst debug --target prod --test-connection
+```
+
+**Example output:**
+```
+SST Debug (v0.1.1)
+
+  ──────────────────────────────────────────────────
+  Profile Configuration
+  ──────────────────────────────────────────────────
+  Profile:        my_project
+  Target:         dev
+  ──────────────────────────────────────────────────
+  Account:        abc12345.us-east-1
+  User:           your.email@company.com
+  Role:           DATA_ENGINEER
+  Warehouse:      MY_WAREHOUSE
+  Database:       ANALYTICS
+  Schema:         DEV
+  Auth Method:    sso_browser
+  ──────────────────────────────────────────────────
+  profiles.yml:   ~/.dbt/profiles.yml
+  dbt_project:    ./dbt_project.yml
+  ──────────────────────────────────────────────────
+
+  ✓ Configuration valid
+```
+
+## Using Targets
+
+SST supports dbt's target system for managing multiple environments:
+
+```yaml
+# ~/.dbt/profiles.yml
+my_project:
+  target: dev  # Default target
+  outputs:
+    dev:
+      type: snowflake
+      account: abc12345.us-east-1
+      user: dev_user
+      authenticator: externalbrowser
+      role: DEV_ROLE
+      warehouse: DEV_WH
+      database: DEV_DB
+      schema: ANALYTICS
+      
+    prod:
+      type: snowflake
+      account: abc12345.us-east-1
+      user: prod_user
+      private_key_path: ~/.ssh/prod_key.p8
+      role: PROD_ROLE
+      warehouse: PROD_WH
+      database: PROD_DB
+      schema: ANALYTICS
+```
+
+Switch targets with the `--target` flag:
+
+```bash
+# Use default target (dev)
+sst enrich models/analytics/
+
+# Use production target
+sst enrich models/analytics/ --target prod
+
+# Deploy to production
+sst deploy --target prod --db PROD_DB --schema SEMANTIC
+```
+
+## Environment Variables with env_var()
+
+Use dbt's `env_var()` function to keep sensitive values out of profiles.yml:
+
+```yaml
+# ~/.dbt/profiles.yml
+my_project:
+  target: dev
+  outputs:
+    dev:
+      type: snowflake
+      account: "{{ env_var('SNOWFLAKE_ACCOUNT') }}"
+      user: "{{ env_var('SNOWFLAKE_USER') }}"
+      password: "{{ env_var('SNOWFLAKE_PASSWORD') }}"
+      role: "{{ env_var('SNOWFLAKE_ROLE', 'PUBLIC') }}"  # With default
+      warehouse: MY_WAREHOUSE
+      database: ANALYTICS
+      schema: DEV
+```
+
+Set environment variables using one of these methods:
+
+**Option 1: Shell profile (persists across sessions)**
+
+Add exports to your shell configuration file:
+
+```bash
+# For macOS/Linux with zsh (default on modern macOS):
+echo 'export SNOWFLAKE_PASSWORD="your_password"' >> ~/.zshrc
+source ~/.zshrc
+
+# For bash:
+echo 'export SNOWFLAKE_PASSWORD="your_password"' >> ~/.bashrc
+source ~/.bashrc
+```
+
+**Option 2: Export in current session (temporary)**
+
+```bash
+export SNOWFLAKE_ACCOUNT=abc12345.us-east-1
+export SNOWFLAKE_USER=my_user
+export SNOWFLAKE_PASSWORD=my_password
+```
+
+**Option 3: direnv with .envrc (recommended for projects)**
+
+[direnv](https://direnv.net/) automatically loads environment variables when you enter a directory:
+
+```bash
+# Install direnv
+brew install direnv  # macOS
+# Add to ~/.zshrc: eval "$(direnv hook zsh)"
+
+# Create .envrc in your project
+echo 'export SNOWFLAKE_PASSWORD="your_password"' >> .envrc
+direnv allow
+```
+
+**Security note:** Never commit files containing passwords to Git. Add `.envrc` to `.gitignore`.
+
+## For dbt Cloud Users
+
+If you use dbt Cloud exclusively, you'll need to create a local `profiles.yml` for SST. This is because:
+
+- **SST connects directly to Snowflake** for operations like `enrich`, `extract`, and `generate`
+- **dbt Cloud doesn't expose credentials locally** - connections are managed in the cloud
+- **Many dbt Cloud users already have local profiles** for local development
+
+### Setting Up profiles.yml for dbt Cloud
+
+#### Step 1: Create the profiles directory
+
+```bash
+mkdir -p ~/.dbt
+```
+
+#### Step 2: Create profiles.yml
+
+Create `~/.dbt/profiles.yml` with your Snowflake credentials:
+
+```yaml
+# ~/.dbt/profiles.yml
+your_project_name:  # Must match 'profile:' in dbt_project.yml
+  target: dev
+  outputs:
+    dev:
+      type: snowflake
+      account: your_account_identifier  # e.g., abc12345.us-east-1
+      user: your_username
+      
+      # Choose ONE authentication method:
+      
+      # Option A: SSO/Browser (recommended for interactive use)
+      authenticator: externalbrowser
+      
+      # Option B: Password
+      # password: "{{ env_var('SNOWFLAKE_PASSWORD') }}"
+      
+      # Option C: Key Pair (recommended for automation)
+      # private_key_path: ~/.ssh/snowflake_key.p8
+      
+      role: YOUR_ROLE
+      warehouse: YOUR_WAREHOUSE
+      database: YOUR_DATABASE
+      schema: YOUR_SCHEMA
+```
+
+#### Step 3: Find your profile name
+
+Check your `dbt_project.yml` for the profile name:
+
+```yaml
+# dbt_project.yml
+name: 'my_project'
+profile: 'your_project_name'  # <-- Use this in profiles.yml
+```
+
+#### Step 4: Verify setup
+
+```bash
+# Show your configuration
+sst debug
+
+# Test the Snowflake connection
+sst debug --test-connection
+```
+
+### Keeping credentials secure
+
+- **Never commit profiles.yml to Git** - it's in dbt's default `.gitignore`
+- **Use environment variables** for sensitive values:
+  ```yaml
+  password: "{{ env_var('SNOWFLAKE_PASSWORD') }}"
+  ```
+- **Consider key pair auth** for shared/CI environments
+
+## RSA Key Pair Setup
+
+For production deployments and CI/CD:
+
+### Generate Keys
 
 ```bash
 # Generate private key (unencrypted for automation)
@@ -65,151 +351,137 @@ openssl genrsa 2048 | openssl pkcs8 -topk8 -inform PEM -out rsa_key.p8 -nocrypt
 # Generate public key
 openssl rsa -in rsa_key.p8 -pubout -out rsa_key.pub
 
-# For encrypted keys (more secure, requires password)
+# For encrypted keys (more secure, requires passphrase)
 openssl genrsa 2048 | openssl pkcs8 -topk8 -inform PEM -out rsa_key.p8
-# Enter password when prompted
 ```
 
-#### Step 2: Configure Snowflake
+### Configure Snowflake
 
 ```sql
--- Get public key content (between BEGIN/END markers)
--- Copy the content from rsa_key.pub
-
--- Set public key for user
+-- Copy content from rsa_key.pub (between BEGIN/END markers)
 ALTER USER service_account SET RSA_PUBLIC_KEY='MIIBIjANBgkqh...';
 
 -- Verify setup
 DESC USER service_account;
 ```
 
-#### Step 3: Configure Environment
+### Configure profiles.yml
 
-```env
-# .env file
-SNOWFLAKE_ACCOUNT=abc12345
-SNOWFLAKE_USER=service_account
-SNOWFLAKE_WAREHOUSE=MY_WAREHOUSE
-SNOWFLAKE_ROLE=SERVICE_ROLE
-
-# RSA key authentication
-SNOWFLAKE_PRIVATE_KEY_PATH=/secure/path/rsa_key.p8
-# For encrypted keys only:
-SNOWFLAKE_PRIVATE_KEY_PASSWORD=key_password
-```
-
-### Method 4: OAuth (Enterprise)
-
-For enterprise SSO integration:
-
-```env
-# .env file
-SNOWFLAKE_ACCOUNT=abc12345
-SNOWFLAKE_USER=oauth_user
-SNOWFLAKE_AUTHENTICATOR=oauth
-SNOWFLAKE_TOKEN=your_oauth_token
-SNOWFLAKE_WAREHOUSE=MY_WAREHOUSE
-SNOWFLAKE_ROLE=OAUTH_ROLE
-```
-
-## Environment Variables Reference
-
-| Variable | Required | Description | Example |
-|----------|----------|-------------|---------|
-| `SNOWFLAKE_ACCOUNT` | Yes | Snowflake account identifier | `abc12345` |
-| `SNOWFLAKE_USER` | Yes* | Snowflake username | `service_account` |
-| `SNOWFLAKE_USERNAME` | Yes* | Alternative to SNOWFLAKE_USER (dbt compatibility) | `service_account` |
-| `SNOWFLAKE_PASSWORD` | Conditional | Password (if not using SSO/RSA) | `secure_password` |
-| `SNOWFLAKE_WAREHOUSE` | No | Compute warehouse | `MY_WAREHOUSE` |
-| `SNOWFLAKE_ROLE` | No | User role | `DATA_ENGINEER` |
-| `SNOWFLAKE_DATABASE` | No | Default database | `PROD_DB` |
-| `SNOWFLAKE_SCHEMA` | No | Default schema | `PUBLIC` |
-| `SNOWFLAKE_PRIVATE_KEY_PATH` | Conditional | Path to RSA private key | `/path/to/rsa_key.p8` |
-| `SNOWFLAKE_PRIVATE_KEY_PASSWORD` | Conditional | Password for encrypted RSA key | `key_password` |
-| `SNOWFLAKE_AUTHENTICATOR` | No | Authentication method | `oauth` or `externalbrowser` |
-| `SNOWFLAKE_TOKEN` | Conditional | OAuth token | `token_value` |
-
-**Note:** Either `SNOWFLAKE_USER` or `SNOWFLAKE_USERNAME` is required. If both are set, `SNOWFLAKE_USER` takes precedence. `SNOWFLAKE_USERNAME` is supported for compatibility with dbt profiles.
-
-## Testing Authentication
-
-Verify your authentication setup:
-
-```bash
-# Test with validate (no Snowflake connection needed)
-sst validate
-
-# Test Snowflake connection with extract
-sst extract \
-  --db TEST_DB \
-  --schema TEST_SCHEMA \
-  --verbose
-```
-
-If authentication fails, you'll see:
-```
-ERROR: Failed to connect to Snowflake: 
-  Incorrect username or password was specified
+```yaml
+my_project:
+  target: prod
+  outputs:
+    prod:
+      type: snowflake
+      account: abc12345.us-east-1
+      user: service_account
+      private_key_path: /secure/path/rsa_key.p8
+      private_key_passphrase: "{{ env_var('SNOWFLAKE_KEY_PASSPHRASE') }}"  # If encrypted
+      role: PROD_ROLE
+      warehouse: PROD_WH
+      database: ANALYTICS
+      schema: PROD
 ```
 
 ## Security Best Practices
 
-### 1. Use .gitignore
+### 1. Protect profiles.yml
 
-Always exclude sensitive files:
+```bash
+# Set restrictive permissions
+chmod 600 ~/.dbt/profiles.yml
+```
+
+### 2. Use .gitignore
+
+Ensure sensitive files are never committed:
+
 ```gitignore
-# Add to .gitignore
-.env
+# dbt profile (contains credentials)
+profiles.yml
+
+# RSA keys
 *.p8
 *.key
 *_rsa_key*
 ```
 
-### 2. Rotate Credentials
+### 3. Rotate Credentials
 
 - Rotate passwords quarterly
 - Update RSA keys annually
 - Audit service account usage
 
-### 3. Principle of Least Privilege
+### 4. Principle of Least Privilege
 
 Grant only necessary permissions:
+
 ```sql
--- Minimal permissions for extraction
-GRANT USAGE ON WAREHOUSE compute_wh TO ROLE service_role;
-GRANT CREATE SCHEMA ON DATABASE metadata_db TO ROLE service_role;
-GRANT CREATE TABLE ON SCHEMA metadata_schema TO ROLE service_role;
+-- Minimal permissions for SST
+GRANT USAGE ON WAREHOUSE compute_wh TO ROLE sst_role;
+GRANT CREATE SCHEMA ON DATABASE metadata_db TO ROLE sst_role;
+GRANT CREATE TABLE ON SCHEMA metadata_schema TO ROLE sst_role;
 ```
-
-## CI/CD Configuration
-
-For complete automation setup including authentication configuration, see the [Deployment Guide](cli-reference.md).
 
 ## Troubleshooting
 
-### Connection Timeout
+### "No dbt profiles.yml found"
 
-If SSO/browser authentication times out:
-1. Check firewall allows browser redirect
-2. Try password authentication instead
-3. Verify account URL is correct
+1. Run `sst debug` to see which paths are being searched
+2. Create `~/.dbt/profiles.yml`
+3. Verify file permissions: `chmod 600 ~/.dbt/profiles.yml`
+4. Check profile name matches `dbt_project.yml`
+
+### SSO Browser Doesn't Open
+
+1. Check `authenticator: externalbrowser` in profile
+2. Verify network allows browser redirects
+3. Try password authentication as fallback
+
+### "Profile not found"
+
+```bash
+# Use sst debug to see what SST is looking for
+sst debug
+
+# Or manually check your profile name
+grep "profile:" dbt_project.yml
+
+# Verify it exists in profiles.yml
+cat ~/.dbt/profiles.yml
+```
 
 ### Invalid RSA Key
 
-If RSA authentication fails:
 1. Verify public key in Snowflake matches your key
-2. Check private key file permissions (should be 600)
+2. Check private key file permissions: `chmod 600 rsa_key.p8`
 3. Ensure key format is PKCS8
 
 ### Permission Denied
 
-If you get permission errors:
 1. Verify role has necessary grants
 2. Check warehouse is running
 3. Confirm database/schema exist
 
+## profiles.yml Reference
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| `type` | Yes | Must be `snowflake` |
+| `account` | Yes | Snowflake account identifier |
+| `user` | Yes | Snowflake username |
+| `role` | No | Snowflake role |
+| `warehouse` | No | Compute warehouse |
+| `database` | No | Default database |
+| `schema` | No | Default schema |
+| `password` | Conditional | For password auth |
+| `private_key_path` | Conditional | For key pair auth |
+| `private_key_passphrase` | No | For encrypted keys |
+| `authenticator` | Conditional | `externalbrowser` or `oauth` |
+| `token` | Conditional | OAuth token |
+
 ## Next Steps
 
 - [CLI Reference](cli-reference.md) - Command documentation
-- [Deployment Guide](cli-reference.md) - automation setup
 - [Getting Started](getting-started.md) - Quick start guide
+- [dbt Profile Setup](https://docs.getdbt.com/docs/core/connect-data-platform/snowflake-setup) - Official dbt docs

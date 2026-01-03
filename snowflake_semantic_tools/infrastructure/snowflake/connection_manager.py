@@ -86,8 +86,8 @@ class ConnectionManager:
                     logger.error(f"This appears to be a PERMISSION issue.")
                     logger.error(f"Your role '{self.config.role}' may not have access to the requested resource.")
                     logger.error(f"")
-                    logger.error(f"Try setting SNOWFLAKE_ROLE to a role with broader permissions:")
-                    logger.error(f"  export SNOWFLAKE_ROLE=ACCOUNTADMIN")
+                    logger.error(f"Try updating 'role:' in your dbt profiles.yml to a role with broader permissions:")
+                    logger.error(f"  role: ACCOUNTADMIN")
                     logger.error(f"")
             else:
                 logger.error(f"Failed to connect to Snowflake: {e}")

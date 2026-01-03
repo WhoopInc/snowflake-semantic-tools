@@ -4,16 +4,13 @@ Comprehensive tests for config_validator module.
 Tests all config fields with fixtures for each possible configuration state.
 """
 
-import pytest
 from pathlib import Path
-from typing import Dict, Any
+from typing import Any, Dict
 
-from snowflake_semantic_tools.shared.config_validator import (
-    validate_config,
-    validate_and_report_config,
-)
+import pytest
+
+from snowflake_semantic_tools.shared.config_validator import validate_and_report_config, validate_config
 from snowflake_semantic_tools.shared.events import setup_events
-
 
 # ============================================================================
 # Fixtures: Complete Configurations

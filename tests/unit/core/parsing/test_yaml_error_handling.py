@@ -5,16 +5,14 @@ Tests that YAML parsing errors fail loudly with helpful error messages
 instead of being silently ignored.
 """
 
-import pytest
 import tempfile
 from pathlib import Path
 
-from snowflake_semantic_tools.core.parsing.parser import Parser, ParsingCriticalError
-from snowflake_semantic_tools.core.parsing.parsers.error_handler import (
-    format_yaml_error,
-    _get_yaml_error_suggestion,
-)
+import pytest
 import yaml
+
+from snowflake_semantic_tools.core.parsing.parser import Parser, ParsingCriticalError
+from snowflake_semantic_tools.core.parsing.parsers.error_handler import _get_yaml_error_suggestion, format_yaml_error
 
 
 class TestYAMLErrorHandling:

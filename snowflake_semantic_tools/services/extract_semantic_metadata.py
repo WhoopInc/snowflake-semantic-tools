@@ -291,7 +291,7 @@ class SemanticMetadataExtractionService:
                     error_msg = str(load_error)
                     if "differs from the user currently logged in" in error_msg:
                         errors.append(
-                            "Snowflake SSO authentication mismatch - the user authenticated in browser doesn't match SNOWFLAKE_USER in .env. Either update .env or log out of Okta and try again."
+                            "Snowflake SSO authentication mismatch - the user authenticated in browser doesn't match the user in profiles.yml. Either update profiles.yml or log out of Okta and try again."
                         )
                     elif "250001" in error_msg or "Failed to connect" in error_msg:
                         errors.append(f"Failed to connect to Snowflake: {error_msg.split(':', 1)[-1].strip()}")

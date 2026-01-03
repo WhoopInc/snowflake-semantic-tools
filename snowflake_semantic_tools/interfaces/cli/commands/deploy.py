@@ -14,27 +14,22 @@ from pathlib import Path
 import click
 
 from snowflake_semantic_tools._version import __version__
-from snowflake_semantic_tools.infrastructure.snowflake import SnowflakeConfig
 from snowflake_semantic_tools.interfaces.cli.output import CLIOutput
 from snowflake_semantic_tools.interfaces.cli.utils import build_snowflake_config, setup_command
 from snowflake_semantic_tools.services.deploy import DeployConfig, DeployService
-from snowflake_semantic_tools.shared.events import setup_events
 from snowflake_semantic_tools.shared.progress import CLIProgressCallback
 
 
 @click.command()
+@click.option("--target", "-t", "dbt_target", help="dbt target from profiles.yml (default: uses profile's default)")
 @click.option("--db", required=True, help="Target database (used for both extraction and generation)")
 @click.option("--schema", "-s", required=True, help="Target schema (used for both extraction and generation)")
 @click.option(
     "--skip-validation", is_flag=True, help="Skip validation step (use when validation already run separately)"
 )
-@click.option("--account", envvar="SNOWFLAKE_ACCOUNT", help="Snowflake account")
-@click.option("--user", "-u", envvar="SNOWFLAKE_USER", help="Snowflake user")
-@click.option("--role", envvar="SNOWFLAKE_ROLE", help="Snowflake role")
-@click.option("--warehouse", "-w", envvar="SNOWFLAKE_WAREHOUSE", help="Snowflake warehouse")
 @click.option("--verbose", "-v", is_flag=True, help="Show detailed progress (default: errors and warnings only)")
 @click.option("--quiet", "-q", is_flag=True, help="Suppress all output except errors")
-def deploy(db, schema, skip_validation, account, user, role, warehouse, verbose, quiet):
+def deploy(dbt_target, db, schema, skip_validation, verbose, quiet):
     """
     Deploy semantic models: validate → extract → generate in one step.
 
@@ -42,10 +37,15 @@ def deploy(db, schema, skip_validation, account, user, role, warehouse, verbose,
     and consistency. Uses the same database and schema for both extraction
     (metadata tables) and generation (semantic views).
 
+    Uses credentials from ~/.dbt/profiles.yml (profile name from dbt_project.yml).
+
     \b
     Examples:
-        # Full deployment to QA
+        # Full deployment to QA (uses default target)
         sst deploy --db ANALYTICS_QA --schema SEMANTIC
+
+        # Use specific dbt target
+        sst deploy --target prod --db ANALYTICS --schema SEMANTIC
 
         # Production deployment (validation already run)
         sst deploy --db ANALYTICS --schema SEMANTIC --skip-validation
@@ -71,14 +71,17 @@ def deploy(db, schema, skip_validation, account, user, role, warehouse, verbose,
     output = CLIOutput(verbose=verbose, quiet=quiet)
     output.info(f"Running with sst={__version__}")
 
-    # Common CLI setup and Snowflake configuration
-    output.debug("Loading environment...")
+    # Common CLI setup
+    output.debug("Setting up...")
     setup_command(verbose=verbose, quiet=quiet, validate_config=True)
 
     try:
         output.debug("Building Snowflake configuration...")
         snowflake_config = build_snowflake_config(
-            account=account, user=user, role=role, warehouse=warehouse, database=db, schema=schema, verbose=verbose
+            target=dbt_target,
+            database=db,
+            schema=schema,
+            verbose=verbose,
         )
     except Exception as e:
         output.blank_line()
@@ -96,7 +99,8 @@ def deploy(db, schema, skip_validation, account, user, role, warehouse, verbose,
         output.header("DEPLOYING SEMANTIC VIEWS TO SNOWFLAKE")
         output.info(f"Source: {Path.cwd()}")
         output.info(f"Target: {db}.{schema}")
-        output.info(f"Snowflake: {snowflake_config.account}")
+        profile_info = f"{snowflake_config.profile_name}.{snowflake_config.target_name}"
+        output.info(f"Profile: {profile_info}")
 
         output.blank_line()
         output.info("Starting deployment workflow...")

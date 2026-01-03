@@ -49,6 +49,9 @@ class EnrichmentConfig:
     require_prod_target: bool = True  # Warn if not prod target
     allow_non_prod: bool = False  # Allow non-prod manifest
 
+    # dbt profile target (e.g., 'dev', 'prod')
+    dbt_target: Optional[str] = None
+
     # NEW: Component flags for modular enrichment
     components: Optional[List[str]] = None  # Which components to enrich
     enrich_all: bool = False  # Shorthand for all components
@@ -104,7 +107,7 @@ class MetadataEnrichmentService:
 
     def connect(self, session=None):
         """
-        Establish Snowflake connection.
+        Establish Snowflake connection using dbt profiles.yml.
 
         Args:
             session: Optional existing Snowflake session
@@ -114,42 +117,16 @@ class MetadataEnrichmentService:
         else:
             from snowflake_semantic_tools.infrastructure.snowflake.config import SnowflakeConfig
 
-            try:
-                config = SnowflakeConfig.from_env()
-            except ValueError:
-                # If SNOWFLAKE_DATABASE/SCHEMA not in env, that's OK for enrichment
-                # We'll use the ones from the enrichment config
-                import os
+            # Load config from dbt profiles.yml
+            # Use INFORMATION_SCHEMA as default database/schema for enrichment
+            # since we use fully qualified names in all queries
+            config = SnowflakeConfig.from_dbt_profile(
+                target=self.config.dbt_target,
+                database_override="INFORMATION_SCHEMA",
+                schema_override="TABLES",
+            )
 
-                # Detect authentication method (centralized logic)
-                password, private_key_path, authenticator = SnowflakeConfig.detect_auth_method()
-
-                config = SnowflakeConfig(
-                    account=os.getenv("SNOWFLAKE_ACCOUNT"),
-                    user=os.getenv("SNOWFLAKE_USER"),
-                    role=os.getenv("SNOWFLAKE_ROLE"),
-                    warehouse=os.getenv("SNOWFLAKE_WAREHOUSE"),
-                    # Use generic PUBLIC database/schema for connection context
-                    # We'll use fully qualified names in queries anyway
-                    database="INFORMATION_SCHEMA",
-                    schema="TABLES",
-                    password=password,
-                    private_key_path=private_key_path,
-                    authenticator=authenticator,
-                )
-
-            # Don't override database/schema in connection - use generic context
-            # This avoids permission errors when connecting with a specific database
-            # We use fully qualified names in all queries anyway
-            if config.database not in ["INFORMATION_SCHEMA", "SNOWFLAKE"]:
-                logger.info(
-                    f"Overriding connection database from '{config.database}' to 'INFORMATION_SCHEMA' for compatibility"
-                )
-                config.database = "INFORMATION_SCHEMA"
-                config.schema = "TABLES"
-            else:
-                logger.info(f"Using connection database: {config.database}.{config.schema}")
-
+            logger.info(f"Using dbt profile: {config.profile_name} (target: {config.target_name})")
             self.snowflake_client = SnowflakeClient(config)
 
         # Show configuration to user
@@ -161,9 +138,10 @@ class MetadataEnrichmentService:
         else:
             target_info = "auto-detect from manifest"
 
-        # config might be None if using generic connection
-        account_info = config.account if config else "unknown"
-        click.echo(f"Configured for Snowflake: {account_info} (target: {target_info})")
+        # Show profile info
+        profile_info = f"{config.profile_name}.{config.target_name}" if config.profile_name else "unknown"
+        click.echo(f"Configured for Snowflake: {config.account} (profile: {profile_info})")
+        click.echo(f"Target database/schema: {target_info}")
         click.echo("Connecting to Snowflake...")
 
         # Test connection immediately to catch auth errors early
@@ -177,7 +155,7 @@ class MetadataEnrichmentService:
             error_msg = str(conn_error)
             if "differs from the user currently logged in" in error_msg:
                 click.echo("\nERROR: SSO authentication mismatch", err=True)
-                click.echo("The user in your browser session doesn't match SNOWFLAKE_USER in .env", err=True)
+                click.echo("The user in your browser session doesn't match the user in profiles.yml", err=True)
                 click.echo(f"Expected: {config.user}", err=True)
                 click.echo("\nTry: Log out of Okta, then run this command again", err=True)
             raise

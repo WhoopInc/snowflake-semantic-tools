@@ -84,43 +84,40 @@ class SnowflakeClient:
         Returns:
             SnowflakeClient instance configured to use the provided session
         """
-        # Create a minimal config - we'll override connection behavior
+        # Try to create config from dbt profile first
         try:
-            # Try to create from environment first
-            config = SnowflakeConfig.from_env()
-            if database:
-                config.database = database
-            if schema:
-                config.schema = schema
-        except ValueError:
-            # Fallback to minimal config if env vars not available
-            # Extract session properties or require environment variables
+            config = SnowflakeConfig.from_dbt_profile(
+                database_override=database,
+                schema_override=schema,
+            )
+        except Exception:
+            # Fallback to extracting info from the session
             session_account = getattr(session, "account", None)
             session_user = getattr(session, "user", None)
+            session_role = getattr(session, "role", None)
+            session_warehouse = getattr(session, "warehouse", None)
+            session_database = getattr(session, "database", None) or database
+            session_schema = getattr(session, "schema", None) or schema
 
             if not session_account or not session_user:
                 raise ValueError(
-                    "Session missing account/user info and environment variables not set. "
-                    "Either provide SNOWFLAKE_* environment variables or ensure session has account/user attributes."
+                    "Session missing account/user info and no dbt profiles.yml found. "
+                    "Either provide a session with account/user attributes or set up ~/.dbt/profiles.yml."
                 )
 
-            # When using external session, still require explicit configuration
-            role = os.getenv("SNOWFLAKE_ROLE")
-            warehouse = os.getenv("SNOWFLAKE_WAREHOUSE")
-            db = database or os.getenv("SNOWFLAKE_DATABASE")
-            sch = schema or os.getenv("SNOWFLAKE_SCHEMA")
-
-            if not role:
-                raise ValueError("SNOWFLAKE_ROLE environment variable required when using external session")
-            if not warehouse:
-                raise ValueError("SNOWFLAKE_WAREHOUSE environment variable required when using external session")
-            if not db:
-                raise ValueError("SNOWFLAKE_DATABASE environment variable or database parameter required")
-            if not sch:
-                raise ValueError("SNOWFLAKE_SCHEMA environment variable or schema parameter required")
+            if not session_database or not session_schema:
+                raise ValueError(
+                    "Database and schema are required. Either set up profiles.yml "
+                    "or pass database/schema parameters."
+                )
 
             config = SnowflakeConfig(
-                account=session_account, user=session_user, role=role, warehouse=warehouse, database=db, schema=sch
+                account=session_account,
+                user=session_user,
+                role=session_role,
+                warehouse=session_warehouse,
+                database=session_database,
+                schema=session_schema,
             )
 
         # Create the client

@@ -1,0 +1,14 @@
+# Profile using env_var() for sensitive values
+test_project:
+  target: dev
+  outputs:
+    dev:
+      type: snowflake
+      account: "{{ env_var('TEST_SF_ACCOUNT') }}"
+      user: "{{ env_var('TEST_SF_USER') }}"
+      password: "{{ env_var('TEST_SF_PASSWORD') }}"
+      role: "{{ env_var('TEST_SF_ROLE', 'DEFAULT_ROLE') }}"
+      warehouse: TEST_WH
+      database: TEST_DB
+      schema: TEST_SCHEMA
+

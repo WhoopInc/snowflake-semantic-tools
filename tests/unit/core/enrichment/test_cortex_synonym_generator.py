@@ -5,9 +5,11 @@ Unit Tests for CortexSynonymGenerator
 Tests the Cortex-powered synonym generation functionality.
 """
 
-import pytest
+from unittest.mock import MagicMock, Mock, patch
+
 import pandas as pd
-from unittest.mock import Mock, patch, MagicMock
+import pytest
+
 from snowflake_semantic_tools.core.enrichment.cortex_synonym_generator import CortexSynonymGenerator
 
 

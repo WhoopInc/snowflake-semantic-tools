@@ -171,7 +171,9 @@ class MetadataManager:
                         logger.error(f"  • The database exists but requires different permissions")
                         logger.error(f"")
                         logger.error(f"Solutions:")
-                        logger.error(f"  1. Set SNOWFLAKE_ROLE env var to a role with access (e.g., ACCOUNTADMIN)")
+                        logger.error(
+                            f"  1. Update 'role:' in ~/.dbt/profiles.yml to a role with access (e.g., ACCOUNTADMIN)"
+                        )
                         logger.error(
                             f"  2. Grant your role access: GRANT USAGE ON DATABASE {database_upper} TO ROLE {current_role};"
                         )
