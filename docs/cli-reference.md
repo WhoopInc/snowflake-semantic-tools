@@ -621,14 +621,24 @@ sst generate --all --defer-target prod --state ./prod_run_artifacts
 
 #### Selective Generation
 
-Use `--only-modified` to regenerate only the views whose underlying models have changed:
+Use `--only-modified` to regenerate only views affected by **dbt model changes**:
 
 ```bash
 # Compare current manifest to prod manifest and regenerate changed views only
 sst generate --all --defer-target prod --only-modified
 ```
 
-This compares model checksums between your current manifest and the defer manifest, significantly speeding up development iteration on large projects.
+This compares **dbt model checksums** between your current `manifest.json` and the defer manifest, then regenerates only semantic views that reference the changed models.
+
+**Important:** This flag only detects changes to dbt models (`.sql` files), not changes to SST YAML files (metrics, relationships, filters, etc.). If you modify SST YAML files, run a full `sst extract` and `sst generate --all` to update metadata and regenerate views.
+
+| Change Type | Detected by `--only-modified`? | Action Required |
+|-------------|-------------------------------|-----------------|
+| dbt model (`.sql`) | ✅ Yes | Automatic |
+| Metrics YAML | ❌ No | Run `sst extract` + `sst generate --all` |
+| Relationships YAML | ❌ No | Run `sst extract` + `sst generate --all` |
+| Filters YAML | ❌ No | Run `sst extract` + `sst generate --all` |
+| Semantic view definition | ❌ No | Run `sst generate --all` |
 
 #### Configuration in sst_config.yaml
 
