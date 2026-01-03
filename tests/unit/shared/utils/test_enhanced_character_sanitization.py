@@ -21,11 +21,11 @@ class TestEnhancedCharacterSanitization(unittest.TestCase):
             ("test\x02value", "testvalue"),  # STX
             ("test\x07value", "testvalue"),  # BEL
             ("test\x08value", "testvalue"),  # BS
-            ("test\x0Bvalue", "testvalue"),  # VT
-            ("test\x0Cvalue", "testvalue"),  # FF
-            ("test\x0Evalue", "testvalue"),  # SO
-            ("test\x1Fvalue", "testvalue"),  # US
-            ("test\x1F\x00\x01value", "testvalue"),  # Multiple control chars
+            ("test\x0bvalue", "testvalue"),  # VT
+            ("test\x0cvalue", "testvalue"),  # FF
+            ("test\x0evalue", "testvalue"),  # SO
+            ("test\x1fvalue", "testvalue"),  # US
+            ("test\x1f\x00\x01value", "testvalue"),  # Multiple control chars
         ]
 
         for input_val, expected in test_cases:

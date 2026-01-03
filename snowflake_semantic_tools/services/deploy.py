@@ -13,6 +13,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import List, Optional
 
+from snowflake_semantic_tools.core.parsing.parsers.manifest_parser import ManifestParser
 from snowflake_semantic_tools.infrastructure.snowflake import SnowflakeConfig
 from snowflake_semantic_tools.services.extract_semantic_metadata import ExtractConfig, SemanticMetadataExtractionService
 from snowflake_semantic_tools.services.generate_semantic_views import (
@@ -39,6 +40,11 @@ class DeployConfig:
     skip_validation: bool = False
     verbose: bool = False
     quiet: bool = False
+
+    # Defer options
+    defer_database: Optional[str] = None  # Override table database references
+    only_modified: bool = False  # Only process changed models
+    defer_manifest_path: Optional[str] = None  # Path to defer manifest for selective generation
 
 
 @dataclass
@@ -304,6 +310,58 @@ class DeployService:
             target_database=config.database,  # Same as metadata
             target_schema=config.schema,  # Same as metadata
             views_to_generate=None,  # Generate all views
+            defer_database=config.defer_database,
         )
 
+        # If selective generation is enabled, determine which views to generate
+        if config.only_modified and config.defer_manifest_path:
+            views_to_generate = self._get_modified_views(config)
+            if views_to_generate is not None:
+                gen_config.views_to_generate = views_to_generate
+                if not config.quiet:
+                    logger.info(f"Selective generation: {len(views_to_generate)} modified views")
+
         return service.generate(gen_config, progress_callback=progress)
+
+    def _get_modified_views(self, config: DeployConfig) -> Optional[List[str]]:
+        """
+        Determine which views need regeneration based on manifest comparison.
+
+        Args:
+            config: Deployment configuration with defer manifest path
+
+        Returns:
+            List of view names to regenerate, or None to generate all
+        """
+        if not config.defer_manifest_path:
+            return None
+
+        try:
+            # Load current manifest
+            current_manifest = ManifestParser()
+            if not current_manifest.load():
+                logger.warning("Could not load current manifest for comparison")
+                return None
+
+            # Load defer manifest
+            defer_manifest = ManifestParser(Path(config.defer_manifest_path))
+            if not defer_manifest.load():
+                logger.warning("Could not load defer manifest for comparison")
+                return None
+
+            # Compare manifests
+            diff = current_manifest.compare_to(defer_manifest)
+
+            if diff.total_changes == 0:
+                logger.info("No model changes detected - all views up to date")
+                return []
+
+            logger.info(f"Model changes detected: {diff.summary()}")
+
+            # Return the changed model names - these will be matched to views
+            # that reference those models
+            return diff.changed
+
+        except Exception as e:
+            logger.warning(f"Could not determine modified views: {e}")
+            return None

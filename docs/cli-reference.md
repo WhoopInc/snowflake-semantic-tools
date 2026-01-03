@@ -504,18 +504,17 @@ sst extract [OPTIONS]
 
 | Option | Short | Type | Required | Default | Description |
 |--------|-------|------|----------|---------|-------------|
-| `--db` | | TEXT | **Yes** | | Target database for metadata tables |
-| `--schema` | `-s` | TEXT | **Yes** | | Target schema for metadata tables |
+| `--target` | `-t` | TEXT | No | Profile default | dbt target from profiles.yml |
+| `--db` | | TEXT | No | From profile | Target database for metadata tables |
+| `--schema` | `-s` | TEXT | No | From profile | Target schema for metadata tables |
 | `--dbt` | | PATH | No | Auto-detect | Path to dbt models directory |
 | `--semantic` | | PATH | No | Auto-detect | Path to semantic models directory |
-| `--account` | | TEXT | No | $SNOWFLAKE_ACCOUNT | Snowflake account |
-| `--user` | `-u` | TEXT | No | $SNOWFLAKE_USER | Snowflake user |
-| `--role` | | TEXT | No | $SNOWFLAKE_ROLE | Snowflake role |
-| `--warehouse` | `-w` | TEXT | No | $SNOWFLAKE_WAREHOUSE | Snowflake warehouse |
 | `--verbose` | `-v` | FLAG | No | False | Show detailed extraction progress |
 
-**Important Notes:**
+**Notes:**
+- Database and schema now default to values from your dbt profiles.yml
 - Run from your dbt project root directory (where `dbt_project.yml` exists)
+- Uses credentials from `~/.dbt/profiles.yml` (profile name from `dbt_project.yml`)
 - Creates or updates the following tables in the target schema:
   - `SM_METRICS` - Metric definitions
   - `SM_RELATIONSHIPS` - Table relationships
@@ -527,7 +526,6 @@ sst extract [OPTIONS]
   - `SM_CUSTOM_INSTRUCTIONS` - Custom AI instructions
   - `SM_SEMANTIC_VIEWS` - Semantic view definitions
   - `SM_TABLE_SUMMARIES` - Table metadata summaries
-- Extracts files as they exist in your working directory (committed or uncommitted changes)
 
 #### Cortex Search Service
 
@@ -536,21 +534,20 @@ The extract command automatically creates or updates a Cortex Search Service nam
 #### Examples
 
 ```bash
-# Most common: extract from current directory
+# Simplest: use profile defaults for database/schema
+sst extract
+
+# Use specific dbt target
+sst extract --target prod
+
+# Override database/schema from profile
 sst extract --db PROD_DB --schema SEMANTIC_METADATA
 
 # With verbose output
-sst extract --db DEV_DB --schema TEST_SCHEMA --verbose
+sst extract --target dev --verbose
 
 # Custom paths (override config)
-sst extract --db PROD_DB --schema METADATA \
-  --dbt models/ --semantic semantic_models/
-
-# With explicit Snowflake credentials
-sst extract --db PROD_DB --schema SEMANTIC_VIEWS \
-  --account my_account.us-east-1 \
-  --user analytics_user \
-  --warehouse MY_WAREHOUSE
+sst extract --dbt models/ --semantic semantic_models/
 ```
 
 #### Output Format
@@ -571,9 +568,7 @@ Tables populated:
 
 ### generate
 
-Generate Semantic Views and/or YAML Models from metadata.
-
-This unified command can generate both native Snowflake Semantic Views and YAML semantic models from the same metadata source.
+Generate Semantic Views from metadata tables.
 
 ```bash
 sst generate [OPTIONS]
@@ -583,142 +578,106 @@ sst generate [OPTIONS]
 
 | Option | Short | Type | Required | Default | Description |
 |--------|-------|------|----------|---------|-------------|
-| `--metadata-db` | | TEXT | **Yes** | | Database containing metadata tables |
-| `--metadata-schema` | | TEXT | **Yes** | | Schema containing metadata tables |
-| `--target-db` | | TEXT | **Yes** | | Target database for semantic views |
-| `--target-schema` | | TEXT | **Yes** | | Target schema for semantic views |
+| `--target` | `-t` | TEXT | No | Profile default | dbt target from profiles.yml |
+| `--db` | | TEXT | No | From profile | Target database for metadata and views |
+| `--schema` | `-s` | TEXT | No | From profile | Target schema for metadata and views |
 | `--views` | `-v` | TEXT | No* | | Specific views to generate (repeatable) |
 | `--all` | `-a` | FLAG | No* | False | Generate all available views |
-| `--defer-database` | | TEXT | No | | Override table database (like dbt defer) - reference prod tables from dev |
-| `--account` | | TEXT | No | $SNOWFLAKE_ACCOUNT | Snowflake account |
-| `--user` | `-u` | TEXT | No | $SNOWFLAKE_USER | Snowflake user |
-| `--role` | | TEXT | No | $SNOWFLAKE_ROLE | Snowflake role |
-| `--warehouse` | `-w` | TEXT | No | $SNOWFLAKE_WAREHOUSE | Snowflake warehouse |
+| `--defer-target` | | TEXT | No | | dbt target for table references (e.g., 'prod') |
+| `--state` | | PATH | No | | Path to defer state artifacts directory |
+| `--only-modified` | | FLAG | No | False | Only generate changed views (requires defer) |
+| `--no-defer` | | FLAG | No | False | Disable defer (overrides config) |
 | `--dry-run` | | FLAG | No | False | Preview without executing |
 | `--verbose` | | FLAG | No | False | Show detailed progress |
 
 *Note: Either `--views` or `--all` must be provided
 
-#### Defer Database (Local Development)
+#### Defer Mode (Manifest-Based)
 
-The `--defer-database` parameter enables local development similar to dbt's defer feature. Use this when you want to:
-- Generate semantic views in your development database (SCRATCH, DEV)
-- But have those views reference tables from production database (ANALYTICS, PROD)
-- Test metadata changes locally without rebuilding all dbt models
+The defer feature allows you to generate semantic views that reference tables from a different environment (e.g., production) while working in development. This is similar to dbt's `--defer` flag.
 
 **How it works:**
-- Metadata is read from `--metadata-db.--metadata-schema` (your dev database)
-- Views are created in `--target-db.--target-schema` (your dev database)
-- But table references in the generated SQL use `--defer-database` instead (prod database)
+1. SST reads table locations from a "defer manifest" (compiled for prod target)
+2. Generated views reference tables at the locations specified in that manifest
+3. Your development environment doesn't need the actual tables
 
-**Example:**
+**dbt Core users:**
 ```bash
-# Extract metadata to SCRATCH
-sst extract --db SCRATCH --schema my_test
+# First, compile the production manifest
+dbt compile --target prod
 
-# Generate views that reference ANALYTICS tables
-sst generate \
-  --metadata-db SCRATCH \
-  --metadata-schema my_test \
-  --target-db SCRATCH \
-  --target-schema my_test \
-  --defer-database ANALYTICS \
-  --all
+# Then generate views with defer
+sst generate --all --defer-target prod
 ```
 
-Generated view will contain:
-```sql
-CREATE SEMANTIC VIEW scratch.my_test.my_view AS
-  SELECT ... FROM analytics.memberships.users  -- Uses ANALYTICS (prod)
+**dbt Cloud CLI users:**
+```bash
+# Download manifest.json from dbt Cloud job artifacts
+# Place it in ./prod_run_artifacts/manifest.json
+
+# Generate with explicit state path
+sst generate --all --defer-target prod --state ./prod_run_artifacts
 ```
 
-Instead of:
-```sql
-CREATE SEMANTIC VIEW scratch.my_test.my_view AS
-  SELECT ... FROM scratch.memberships.users  -- Would fail - doesn't exist
+#### Selective Generation
+
+Use `--only-modified` to regenerate only the views whose underlying models have changed:
+
+```bash
+# Compare current manifest to prod manifest and regenerate changed views only
+sst generate --all --defer-target prod --only-modified
 ```
+
+This compares model checksums between your current manifest and the defer manifest, significantly speeding up development iteration on large projects.
+
+#### Configuration in sst_config.yaml
+
+Set defer defaults to avoid repeating flags:
+
+```yaml
+defer:
+  target: prod
+  state_path: ./prod_run_artifacts  # Required for dbt Cloud CLI
+  auto_compile: false  # dbt Core only
+```
+
+With this config, `sst generate --all` automatically uses prod defer.
 
 #### Examples
 
 ```bash
-# Generate both views and YAML models (default)
-sst generate \
-  --metadata-db PROD_DB \
-  --metadata-schema SM_METADATA \
-  --target-db PROD_DB \
-  --target-schema SEMANTIC_VIEWS \
-  --all
+# Simplest: use profile defaults
+sst generate --all
 
-# Generate only Semantic Views for BI tools
-sst generate \
-  --metadata-db PROD_DB \
-  --metadata-schema SM_METADATA \
-  --target-db PROD_DB \
-  --target-schema SEMANTIC_VIEWS \
-  --output views \
-  --all
+# Use specific dbt target
+sst generate --target prod --all
 
-# Generate only YAML models for AI/LLM tools
-sst generate \
-  --metadata-db PROD_DB \
-  --metadata-schema SM_METADATA \
-  --output models \
-  --stage @AI_MODELS \
-  --target-db DEV_DB \
-  --target-schema AI \
-  --all
+# Override database/schema
+sst generate --db ANALYTICS --schema SEMANTIC --all
 
-# Local development: Generate views in SCRATCH that reference ANALYTICS tables (like dbt defer)
-sst generate \
-  --metadata-db SCRATCH \
-  --metadata-schema luizzi_semantic_test \
-  --target-db SCRATCH \
-  --target-schema luizzi_semantic_test \
-  --defer-database ANALYTICS \
-  --output views \
-  --all
+# With defer to production
+sst generate --all --defer-target prod
 
-# Generate specific views/models
-sst generate \
-  --metadata-db PROD_DB \
-  --metadata-schema SM_METADATA \
-  --target-db PROD \
-  --target-schema SEMANTIC \
-  -v customer_360 \
-  -v all_orders
+# Selective generation (fast iteration)
+sst generate --all --defer-target prod --only-modified
 
-# Save YAML models locally for version control
-sst generate \
-  --metadata-db PROD_DB \
-  --metadata-schema SM_METADATA \
-  --output models \
-  --save-locally \
-  --output-dir ./semantic_models \
-  --all
+# dbt Cloud CLI with explicit state
+sst generate --all --defer-target prod --state ./prod_artifacts
 
-# Dry run to preview
-sst generate \
-  --metadata-db DEV \
-  --metadata-schema METADATA \
-  --target-db TEST \
-  --target-schema TEMP \
-  --all \
-  --dry-run
+# Specific views only
+sst generate -v customer_360 -v sales_summary
+
+# Dry run to preview SQL
+sst generate --all --dry-run
 ```
 
-**Output Types:**
-- `views`: Creates SQL SEMANTIC VIEWs in Snowflake (for BI tools)
-- `models`: Generates YAML files with sample values (for Cortex Analyst/AI)
-- `both`: Creates both formats (recommended for production)
+#### Cortex Analyst Metadata
 
-**Cortex Analyst Metadata:**
 When generating semantic views, SST automatically includes a `WITH EXTENSION (CA='...')` clause containing:
 - `sample_values` for dimensions, time_dimensions, and facts
 - `is_enum: true` for columns where sample_values is exhaustive
 
 This metadata helps Cortex Analyst understand valid categorical values and generate more accurate queries.
-
-*Note: The CA extension is a temporary solution recommended by Snowflake Engineering until native `sample_values` support is added to the DDL syntax.*
 
 ---
 
@@ -734,16 +693,14 @@ sst deploy [OPTIONS]
 
 | Option | Short | Type | Required | Default | Description |
 |--------|-------|------|----------|---------|-------------|
-| `--db` | | TEXT | **Yes** | | Target database (used for both extraction and generation) |
-| `--schema` | `-s` | TEXT | **Yes** | | Target schema (used for both extraction and generation) |
-| `--output` | | CHOICE | No | all | What to generate: `views`, `models`, or `all` |
-| `--skip-validation` | | FLAG | No | False | Skip validation step (use when validation already run separately) |
-| `--save-models-locally` | | FLAG | No | False | Save generated YAML models to local directory |
-| `--models-dir` | | PATH | No | | Local directory for YAML models (requires --save-models-locally) |
-| `--account` | | TEXT | No | $SNOWFLAKE_ACCOUNT | Snowflake account |
-| `--user` | `-u` | TEXT | No | $SNOWFLAKE_USER | Snowflake user |
-| `--role` | | TEXT | No | $SNOWFLAKE_ROLE | Snowflake role |
-| `--warehouse` | `-w` | TEXT | No | $SNOWFLAKE_WAREHOUSE | Snowflake warehouse |
+| `--target` | `-t` | TEXT | No | Profile default | dbt target from profiles.yml |
+| `--db` | | TEXT | No | From profile | Target database (used for both extraction and generation) |
+| `--schema` | `-s` | TEXT | No | From profile | Target schema (used for both extraction and generation) |
+| `--defer-target` | | TEXT | No | | dbt target for table references (e.g., 'prod') |
+| `--state` | | PATH | No | | Path to defer state artifacts directory |
+| `--only-modified` | | FLAG | No | False | Only generate changed views (requires defer) |
+| `--no-defer` | | FLAG | No | False | Disable defer (overrides config) |
+| `--skip-validation` | | FLAG | No | False | Skip validation step |
 | `--verbose` | `-v` | FLAG | No | False | Show detailed progress |
 | `--quiet` | `-q` | FLAG | No | False | Show errors and warnings only |
 
@@ -753,27 +710,60 @@ The deploy command executes three steps in sequence:
 
 1. **Validate** - Checks semantic models for errors (unless `--skip-validation`)
 2. **Extract** - Parses YAML and loads metadata to Snowflake
-3. **Generate** - Creates semantic views and/or YAML models
+3. **Generate** - Creates semantic views
 
 **Stops at first failure** - If validation fails, extraction is skipped. If extraction fails, generation is skipped.
+
+#### Defer Mode
+
+Use defer to generate views that reference production tables while deploying to a development environment:
+
+```bash
+# Deploy to dev, but views reference prod tables
+sst deploy --defer-target prod
+
+# With selective generation (fast iteration)
+sst deploy --defer-target prod --only-modified
+
+# dbt Cloud CLI with explicit state
+sst deploy --defer-target prod --state ./prod_artifacts
+```
+
+#### Configuration in sst_config.yaml
+
+Set defer defaults:
+
+```yaml
+defer:
+  target: prod
+  state_path: ./prod_run_artifacts  # Required for dbt Cloud CLI
+```
+
+With this config, `sst deploy` automatically uses prod defer.
 
 #### Examples
 
 ```bash
-# Most common: full deployment from current directory
+# Simplest: use profile defaults
+sst deploy
+
+# Use specific dbt target
+sst deploy --target prod
+
+# Override database/schema
 sst deploy --db QA_DB --schema SEMANTIC_VIEWS
 
-# Production deployment (validation already run separately)
-sst deploy --db PROD_DB --schema SEMANTIC_VIEWS --skip-validation
+# With defer to production
+sst deploy --defer-target prod
 
-# Deploy only semantic views (no YAML models)
-sst deploy --db PROD_DB --schema VIEWS --output views
+# Selective deployment (fast iteration)
+sst deploy --defer-target prod --only-modified
 
-# Deploy with local YAML model save
-sst deploy --db PROD_DB --schema SEMANTIC --save-models-locally --models-dir ./output
+# Production deployment (skip validation)
+sst deploy --skip-validation
 
 # Quiet mode (errors only)
-sst deploy --db PROD_DB --schema SEMANTIC --quiet
+sst deploy --quiet
 ```
 
 #### Output Format
@@ -805,7 +795,7 @@ Deployment completed successfully in 45.2s
          │
          ▼
 ┌─────────────────┐
-│    GENERATE     │  Creates semantic views/models
+│    GENERATE     │  Creates semantic views
 └─────────────────┘
 ```
 
@@ -829,15 +819,22 @@ sst enrich models/ --database PROD_DB --schema my_schema
 # Format YAML files
 sst format models/
 
-# Extract metadata to Snowflake (run from dbt project root)
-sst extract --db PROD_DB --schema SEMANTIC_METADATA
+# Extract metadata (uses profile defaults for db/schema)
+sst extract
+sst extract --target prod
 
-# Generate semantic views
-sst generate --metadata-db PROD_DB --metadata-schema SEMANTIC_METADATA \
-             --target-db PROD_DB --target-schema SEMANTIC_VIEWS --all
+# Generate semantic views (uses profile defaults)
+sst generate --all
+sst generate --target prod --all
+
+# Generate with defer (reference prod tables from dev)
+sst generate --all --defer-target prod
+sst generate --all --defer-target prod --only-modified
 
 # One-step deployment (validate → extract → generate)
-sst deploy --db PROD_DB --schema SEMANTIC_VIEWS
+sst deploy
+sst deploy --target prod
+sst deploy --defer-target prod --only-modified
 ```
 
 ## Next Steps
