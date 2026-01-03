@@ -228,11 +228,19 @@ def resolve_defer_manifest(
     # Fall back to default target/ - but warn that it may not match defer target
     default_manifest = project_dir / "target" / "manifest.json"
     if default_manifest.exists():
-        warning_msg = (
-            f"Using manifest from ./target/ for defer target '{defer_target}'. "
-            f"This manifest may have been compiled with a different target. "
-            f"For accurate defer, run: dbt compile --target {defer_target}"
-        )
+        if is_cloud_cli:
+            warning_msg = (
+                f"Using manifest from ./target/ for defer target '{defer_target}'. "
+                f"This manifest may have been compiled with a different target. "
+                f"For accurate defer with dbt Cloud CLI, download prod artifacts from dbt Cloud "
+                f"and use --state flag."
+            )
+        else:
+            warning_msg = (
+                f"Using manifest from ./target/ for defer target '{defer_target}'. "
+                f"This manifest may have been compiled with a different target. "
+                f"For accurate defer, run: dbt compile --target {defer_target}"
+            )
         logger.warning(warning_msg)
         return (default_manifest, warning_msg)
 
