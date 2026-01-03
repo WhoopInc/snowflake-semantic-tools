@@ -352,6 +352,8 @@ class DeployService:
             return None
 
         try:
+            import json
+
             # Load current manifest
             current_manifest = ManifestParser()
             if not current_manifest.load():
@@ -371,11 +373,52 @@ class DeployService:
                 logger.info("No model changes detected - all views up to date")
                 return []
 
-            logger.info(f"Model changes detected: {diff.summary()}")
+            changed_models = set(m.lower() for m in diff.changed)
+            logger.info(f"Model changes detected: {', '.join(sorted(changed_models))}")
 
-            # Return the changed model names - these will be matched to views
-            # that reference those models
-            return diff.changed
+            # Get available views from metadata to filter
+            from snowflake_semantic_tools.infrastructure.snowflake import SnowflakeClient
+
+            client = SnowflakeClient(self.snowflake_config)
+            query = f"""
+            SELECT DISTINCT name, tables
+            FROM {config.database}.{config.schema}.SM_SEMANTIC_VIEWS
+            ORDER BY name
+            """
+            df_result = client.execute_query(query)
+
+            if df_result.empty:
+                logger.warning("No semantic views found in metadata")
+                return []
+
+            # Filter views to only those referencing changed models
+            views_to_regenerate = []
+            for _, row in df_result.iterrows():
+                view_name = row.get("NAME") or row.get("name")
+                tables_data = row.get("TABLES") or row.get("tables") or ""
+
+                # Parse tables - could be JSON array string
+                tables = []
+                if isinstance(tables_data, str):
+                    try:
+                        parsed = json.loads(tables_data)
+                        if isinstance(parsed, list):
+                            tables = [str(t).lower() for t in parsed]
+                    except (json.JSONDecodeError, TypeError):
+                        tables = [t.strip().lower() for t in tables_data.split(",")]
+
+                # Check if any table in this view matches a changed model
+                for table in tables:
+                    simple_name = table.split(".")[-1].lower()
+                    if simple_name in changed_models:
+                        views_to_regenerate.append(view_name)
+                        break
+
+            logger.info(f"Views to regenerate: {len(views_to_regenerate)} of {len(df_result)}")
+            if views_to_regenerate:
+                logger.info(f"  {', '.join(views_to_regenerate)}")
+
+            return views_to_regenerate
 
         except Exception as e:
             logger.warning(f"Could not determine modified views: {e}")
