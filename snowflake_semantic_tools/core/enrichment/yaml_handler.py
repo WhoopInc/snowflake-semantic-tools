@@ -371,26 +371,35 @@ class YAMLHandler:
         """
         Order SST metadata keys in the preferred order.
 
+        Detects whether this is model-level or column-level SST and orders accordingly.
+
         Args:
             sst: SST metadata dictionary
 
         Returns:
             Dict with properly ordered keys
         """
-        # Desired order for sst metadata keys (includes both model and column level)
-        key_order = [
-            # Model-level keys
-            "cortex_searchable",
-            "synonyms",
-            "primary_key",
-            "unique_keys",
-            # Column-level keys
-            "column_type",
-            "data_type",
-            "sample_values",
-            "is_enum",
-            "privacy_category",
-        ]
+        # Detect if this is column-level (has column_type or data_type) or model-level
+        is_column_level = "column_type" in sst or "data_type" in sst
+
+        if is_column_level:
+            # Column-level key order
+            key_order = [
+                "column_type",
+                "data_type",
+                "synonyms",
+                "sample_values",
+                "is_enum",
+                "privacy_category",
+            ]
+        else:
+            # Model-level key order
+            key_order = [
+                "cortex_searchable",
+                "synonyms",
+                "primary_key",
+                "unique_keys",
+            ]
 
         # Create ordered dictionary
         ordered_sst = {}
