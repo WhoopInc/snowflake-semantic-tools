@@ -307,6 +307,7 @@ sst validate [OPTIONS]
 | `--exclude` | | TEXT | No | | Comma-separated list of directories to exclude |
 | `--dbt-compile` | | FLAG | No | False | Auto-run `dbt compile` to generate/refresh manifest.json before validation |
 | `--verify-schema` | | FLAG | No | False | Connect to Snowflake to verify YAML columns exist in actual tables |
+| `--target` | `-t` | TEXT | No | | Override database for schema verification (e.g., PROD, DEV) |
 
 **Important Notes:**
 - Validates files as they exist in your working directory (committed or uncommitted changes)
@@ -330,6 +331,9 @@ sst validate --dbt-compile
 
 # Verify columns exist in Snowflake (requires connection)
 sst validate --verify-schema
+
+# Verify against a specific database (e.g., PROD tables when manifest points to DEV)
+sst validate --verify-schema --target PROD
 
 # Validate with verbose output
 sst validate --verbose

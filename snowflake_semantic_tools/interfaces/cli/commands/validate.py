@@ -41,7 +41,12 @@ logger = get_logger("cli.validate")
     is_flag=True,
     help="Connect to Snowflake to verify YAML columns exist in actual tables (requires credentials)",
 )
-def validate(dbt, semantic, strict, verbose, exclude, dbt_compile, verify_schema):
+@click.option(
+    "--target",
+    "-t",
+    help="Override database for schema verification (e.g., PROD, DEV). Uses manifest database if not specified.",
+)
+def validate(dbt, semantic, strict, verbose, exclude, dbt_compile, verify_schema, target):
     """
     Validate semantic models against dbt definitions.
 
@@ -55,6 +60,9 @@ def validate(dbt, semantic, strict, verbose, exclude, dbt_compile, verify_schema
 
       # Verify columns exist in Snowflake (requires connection)
       sst validate --verify-schema
+
+      # Verify against a specific database (e.g., PROD tables)
+      sst validate --verify-schema --target PROD
 
       # Auto-compile dbt if manifest missing/stale (uses profile's default target)
       sst validate --dbt-compile
@@ -200,7 +208,7 @@ def validate(dbt, semantic, strict, verbose, exclude, dbt_compile, verify_schema
         if verify_schema:
             output.blank_line()
             output.info("Verifying columns against Snowflake schema...")
-            schema_result = _run_schema_verification(service, output, verbose)
+            schema_result = _run_schema_verification(service, output, verbose, target)
             if schema_result:
                 result.merge(schema_result)
 
@@ -239,6 +247,7 @@ def _run_schema_verification(
     service: SemanticMetadataCollectionValidationService,
     output: CLIOutput,
     verbose: bool,
+    target_database: str = None,
 ) -> ValidationResult:
     """
     Run Snowflake schema verification.
@@ -259,46 +268,23 @@ def _run_schema_verification(
     try:
         # Import Snowflake components
         from snowflake_semantic_tools.core.validation.rules import SchemaValidator
-        from snowflake_semantic_tools.infrastructure.dbt.profile_parser import DbtProfileParser
         from snowflake_semantic_tools.infrastructure.snowflake import SnowflakeClient
         from snowflake_semantic_tools.infrastructure.snowflake.config import SnowflakeConfig
 
         # Get Snowflake config from dbt profile
         output.debug("Loading Snowflake credentials from dbt profile...")
-        parser = DbtProfileParser()
-        profile_name = parser.get_profile_name()
         target = os.getenv("DBT_TARGET")
 
-        if not target:
-            profiles = parser._load_profiles()
-            profile = profiles.get(profile_name, {})
-            target = profile.get("target", "dev")
-
-        creds = parser.get_snowflake_credentials(profile_name, target)
-
-        if not creds:
-            output.warning("Could not load Snowflake credentials from dbt profile")
+        try:
+            config = SnowflakeConfig.from_dbt_profile(target=target)
+        except Exception as e:
+            output.warning(f"Could not load Snowflake credentials: {e}")
             result = ValidationResult()
             result.add_warning(
-                "Schema verification skipped: Could not load Snowflake credentials. "
-                "Ensure your dbt profile is configured correctly.",
+                f"Schema verification skipped: Could not load Snowflake credentials. {e}",
                 context={"issue": "missing_credentials"},
             )
             return result
-
-        # Create Snowflake config
-        config = SnowflakeConfig(
-            account=creds.get("account", ""),
-            user=creds.get("user", ""),
-            password=creds.get("password"),
-            role=creds.get("role"),
-            warehouse=creds.get("warehouse"),
-            database=creds.get("database"),
-            schema=creds.get("schema"),
-            authenticator=creds.get("authenticator"),
-            private_key_path=creds.get("private_key_path"),
-            private_key_passphrase=creds.get("private_key_passphrase"),
-        )
 
         # Create Snowflake client
         output.debug(f"Connecting to Snowflake (account: {config.account})...")
@@ -316,7 +302,9 @@ def _run_schema_verification(
             return result
 
         # Build dbt catalog from parsed data
-        dbt_catalog = _build_dbt_catalog_for_schema_check(service._last_parse_result)
+        dbt_catalog = _build_dbt_catalog_for_schema_check(
+            service._last_parse_result, target_database
+        )
 
         if not dbt_catalog:
             output.warning("No tables found for schema verification")
@@ -327,7 +315,8 @@ def _run_schema_verification(
             )
             return result
 
-        output.debug(f"Verifying {len(dbt_catalog)} tables against Snowflake...")
+        db_info = f" (database override: {target_database})" if target_database else ""
+        output.debug(f"Verifying {len(dbt_catalog)} tables against Snowflake...{db_info}")
 
         # Run schema validation
         schema_validator = SchemaValidator(client.metadata_manager)
@@ -359,12 +348,15 @@ def _run_schema_verification(
         return result
 
 
-def _build_dbt_catalog_for_schema_check(parse_result: dict) -> dict:
+def _build_dbt_catalog_for_schema_check(
+    parse_result: dict, target_database: str = None
+) -> dict:
     """
     Build a dbt catalog structure for schema verification.
 
     Args:
         parse_result: The parsed data from the validation service
+        target_database: Optional database override (e.g., "PROD" to verify against prod)
 
     Returns:
         Dictionary mapping table names to their info including columns
@@ -379,9 +371,15 @@ def _build_dbt_catalog_for_schema_check(parse_result: dict) -> dict:
         if isinstance(table, dict):
             table_name = table.get("table_name", "").lower()
             if table_name:
+                # Use target_database override if provided, otherwise use manifest database
+                database = (
+                    target_database.upper()
+                    if target_database
+                    else table.get("database")
+                )
                 catalog[table_name] = {
                     "name": table_name,
-                    "database": table.get("database"),
+                    "database": database,
                     "schema": table.get("schema"),
                     "columns": {},
                 }
