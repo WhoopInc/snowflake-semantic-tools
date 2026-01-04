@@ -121,56 +121,71 @@ models:
         assert result["models"][0]["columns"][0]["meta"]["sst"]["column_type"] == "dimension"
 
     def test_ensure_sst_structure_empty_model(self, yaml_handler):
-        """Test ensuring SST structure on empty model."""
+        """Test ensuring SST structure on empty model (dbt Fusion compatible)."""
         model = {}
 
         result = yaml_handler.ensure_sst_structure(model)
 
-        assert "meta" in result
-        assert "sst" in result["meta"]
-        assert isinstance(result["meta"]["sst"], dict)
+        # Now uses config.meta.sst (dbt Fusion compatible)
+        assert "config" in result
+        assert "meta" in result["config"]
+        assert "sst" in result["config"]["meta"]
+        assert isinstance(result["config"]["meta"]["sst"], dict)
 
     def test_ensure_sst_structure_existing_meta(self, yaml_handler):
-        """Test ensuring SST structure with existing meta."""
-        model = {"name": "test_model", "meta": {"custom_field": "value"}}
+        """Test ensuring SST structure migrates legacy meta.sst to config.meta.sst."""
+        model = {"name": "test_model", "meta": {"custom_field": "value", "sst": {"primary_key": "id"}}}
 
         result = yaml_handler.ensure_sst_structure(model)
 
+        # Legacy meta.sst should be migrated to config.meta.sst
+        assert "config" in result
+        assert "sst" in result["config"]["meta"]
+        assert result["config"]["meta"]["sst"]["primary_key"] == "id"
+        # Legacy meta should remain for non-sst fields but sst should be removed
         assert "meta" in result
-        assert "sst" in result["meta"]
         assert "custom_field" in result["meta"]
         assert result["meta"]["custom_field"] == "value"
+        assert "sst" not in result["meta"]  # sst should be removed from legacy location
 
     def test_ensure_sst_structure_creates_sst(self, yaml_handler):
-        """Test ensure_sst_structure creates sst section."""
+        """Test ensure_sst_structure creates config.meta.sst section."""
         model = {"name": "test_model", "meta": {"sst": {"primary_key": ["id"]}}}
 
         result = yaml_handler.ensure_sst_structure(model)
 
-        # Should have sst section
-        assert "sst" in result["meta"]
-        assert result["meta"]["sst"]["primary_key"] == ["id"]
+        # Should have config.meta.sst section (migrated from meta.sst)
+        assert "config" in result
+        assert "sst" in result["config"]["meta"]
+        assert result["config"]["meta"]["sst"]["primary_key"] == ["id"]
 
     def test_ensure_column_sst_structure_empty_column(self, yaml_handler):
-        """Test ensuring sst structure on empty column."""
+        """Test ensuring sst structure on empty column (dbt Fusion compatible)."""
         column = {}
 
         result = yaml_handler.ensure_column_sst_structure(column)
 
-        assert "meta" in result
-        assert "sst" in result["meta"]
-        assert isinstance(result["meta"]["sst"], dict)
+        # Now uses config.meta.sst (dbt Fusion compatible)
+        assert "config" in result
+        assert "meta" in result["config"]
+        assert "sst" in result["config"]["meta"]
+        assert isinstance(result["config"]["meta"]["sst"], dict)
 
     def test_ensure_column_sst_structure_existing_meta(self, yaml_handler):
-        """Test ensuring column sst structure with existing meta."""
-        column = {"name": "user_id", "meta": {"custom_field": "value"}}
+        """Test ensuring column sst structure migrates legacy meta.sst to config.meta.sst."""
+        column = {"name": "user_id", "meta": {"custom_field": "value", "sst": {"column_type": "dimension"}}}
 
         result = yaml_handler.ensure_column_sst_structure(column)
 
+        # Legacy meta.sst should be migrated to config.meta.sst
+        assert "config" in result
+        assert "sst" in result["config"]["meta"]
+        assert result["config"]["meta"]["sst"]["column_type"] == "dimension"
+        # Legacy meta should remain for non-sst fields but sst should be removed
         assert "meta" in result
-        assert "sst" in result["meta"]
         assert "custom_field" in result["meta"]
         assert result["meta"]["custom_field"] == "value"
+        assert "sst" not in result["meta"]  # sst should be removed from legacy location
 
     def test_find_yaml_file_for_model_same_directory(self, yaml_handler):
         """Test finding YAML file in same directory as SQL."""
