@@ -302,9 +302,7 @@ def _run_schema_verification(
             return result
 
         # Build dbt catalog from parsed data
-        dbt_catalog = _build_dbt_catalog_for_schema_check(
-            service._last_parse_result, target_database
-        )
+        dbt_catalog = _build_dbt_catalog_for_schema_check(service._last_parse_result, target_database)
 
         if not dbt_catalog:
             output.warning("No tables found for schema verification")
@@ -348,9 +346,7 @@ def _run_schema_verification(
         return result
 
 
-def _build_dbt_catalog_for_schema_check(
-    parse_result: dict, target_database: str = None
-) -> dict:
+def _build_dbt_catalog_for_schema_check(parse_result: dict, target_database: str = None) -> dict:
     """
     Build a dbt catalog structure for schema verification.
 
@@ -372,11 +368,7 @@ def _build_dbt_catalog_for_schema_check(
             table_name = table.get("table_name", "").lower()
             if table_name:
                 # Use target_database override if provided, otherwise use manifest database
-                database = (
-                    target_database.upper()
-                    if target_database
-                    else table.get("database")
-                )
+                database = target_database.upper() if target_database else table.get("database")
                 catalog[table_name] = {
                     "name": table_name,
                     "database": database,
