@@ -14,10 +14,12 @@ Key Benefits:
 - Works with custom generate_database_name/generate_schema_name macros
 - Environment-aware (respects dbt targets)
 - Universal compatibility (all dbt projects)
+- Manifest comparison for selective generation
 """
 
 import json
 import os
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
@@ -25,6 +27,56 @@ from typing import Dict, List, Optional, Tuple
 from snowflake_semantic_tools.shared.utils import get_logger
 
 logger = get_logger(__name__)
+
+
+# =============================================================================
+# Data Classes
+# =============================================================================
+
+
+@dataclass
+class ManifestDiff:
+    """
+    Result of comparing two dbt manifests.
+
+    Used for selective generation to identify which models have changed
+    between the current state and a reference (defer) manifest.
+
+    Attributes:
+        added: Models in current manifest but not in reference
+        removed: Models in reference but not in current manifest
+        modified: Models with different checksums between manifests
+        unchanged: Models with identical checksums
+    """
+
+    added: List[str] = field(default_factory=list)
+    removed: List[str] = field(default_factory=list)
+    modified: List[str] = field(default_factory=list)
+    unchanged: List[str] = field(default_factory=list)
+
+    @property
+    def changed(self) -> List[str]:
+        """Models that need regeneration (added + modified)."""
+        return self.added + self.modified
+
+    @property
+    def total_changes(self) -> int:
+        """Total number of changed models."""
+        return len(self.added) + len(self.modified)
+
+    def summary(self) -> str:
+        """Return a human-readable summary of changes."""
+        parts = []
+        if self.added:
+            parts.append(f"{len(self.added)} added")
+        if self.modified:
+            parts.append(f"{len(self.modified)} modified")
+        if self.removed:
+            parts.append(f"{len(self.removed)} removed")
+        if self.unchanged:
+            parts.append(f"{len(self.unchanged)} unchanged")
+
+        return ", ".join(parts) if parts else "no changes"
 
 
 class ManifestParser:
@@ -514,3 +566,129 @@ class ManifestParser:
         except Exception as e:
             logger.warning(f"Could not check manifest staleness: {e}")
             return (False, None)  # Assume fresh if we can't check
+
+    def compare_to(self, other: "ManifestParser") -> ManifestDiff:
+        """
+        Compare this manifest to another manifest for change detection.
+
+        Uses dbt's checksum field to detect model changes. The checksum
+        is computed by dbt from the model's SQL content and configuration.
+
+        This method is used for selective generation to identify which
+        models have changed between the current state and a reference
+        (defer) manifest.
+
+        Args:
+            other: Another ManifestParser instance to compare against
+                   (typically a production/defer manifest)
+
+        Returns:
+            ManifestDiff with categorized model lists
+
+        Example:
+            >>> current = ManifestParser(Path("target/manifest.json"))
+            >>> current.load()
+            >>> defer = ManifestParser(Path("prod_artifacts/manifest.json"))
+            >>> defer.load()
+            >>> diff = current.compare_to(defer)
+            >>> print(f"Changed models: {diff.changed}")
+            >>> print(f"Summary: {diff.summary()}")
+        """
+        diff = ManifestDiff()
+
+        if not self.manifest or not other.manifest:
+            logger.warning("Cannot compare manifests: one or both not loaded")
+            return diff
+
+        # Get all model names from both manifests
+        current_models = set(self.model_locations.keys())
+        other_models = set(other.model_locations.keys())
+
+        # Find added models (in current but not in reference)
+        diff.added = list(current_models - other_models)
+
+        # Find removed models (in reference but not in current)
+        diff.removed = list(other_models - current_models)
+
+        # For models in both, compare checksums
+        common_models = current_models & other_models
+
+        for model_name in common_models:
+            current_checksum = self._get_model_checksum(model_name)
+            other_checksum = other._get_model_checksum(model_name)
+
+            if current_checksum != other_checksum:
+                diff.modified.append(model_name)
+            else:
+                diff.unchanged.append(model_name)
+
+        # Sort all lists for consistent output
+        diff.added.sort()
+        diff.removed.sort()
+        diff.modified.sort()
+        diff.unchanged.sort()
+
+        logger.info(f"Manifest comparison: {diff.summary()}")
+
+        return diff
+
+    def _get_model_checksum(self, model_name: str) -> Optional[str]:
+        """
+        Get the checksum for a model from the manifest.
+
+        The checksum is stored in manifest.nodes[node_id].checksum.checksum
+
+        Args:
+            model_name: Name of the model
+
+        Returns:
+            Checksum string or None if not found
+        """
+        if not self.manifest:
+            return None
+
+        # Find the node for this model
+        for node_id, node in self.manifest.get("nodes", {}).items():
+            if node.get("resource_type") != "model":
+                continue
+            if node.get("name") == model_name:
+                checksum_info = node.get("checksum", {})
+                return checksum_info.get("checksum")
+
+        return None
+
+    def get_models_for_tables(self, table_names: List[str]) -> List[str]:
+        """
+        Get model names that correspond to a list of table names.
+
+        This is useful when filtering models for selective generation
+        based on which tables are referenced by semantic views.
+
+        Args:
+            table_names: List of table names (may include database.schema.table format)
+
+        Returns:
+            List of model names found in the manifest
+
+        Example:
+            >>> parser.get_models_for_tables(["customers", "orders"])
+            ["customers", "orders"]
+        """
+        matched_models = []
+
+        for table_name in table_names:
+            # Handle fully qualified names (DATABASE.SCHEMA.TABLE)
+            parts = table_name.split(".")
+            simple_name = parts[-1].lower()  # Get just the table name
+
+            # Look for matching model
+            if simple_name in self.model_locations:
+                matched_models.append(simple_name)
+            else:
+                # Try case-insensitive match
+                for model_name in self.model_locations.keys():
+                    if model_name.lower() == simple_name:
+                        matched_models.append(model_name)
+                        break
+
+        return matched_models

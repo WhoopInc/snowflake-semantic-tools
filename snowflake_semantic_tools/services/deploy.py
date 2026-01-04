@@ -13,6 +13,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import List, Optional
 
+from snowflake_semantic_tools.core.parsing.parsers.manifest_parser import ManifestParser
 from snowflake_semantic_tools.infrastructure.snowflake import SnowflakeConfig
 from snowflake_semantic_tools.services.extract_semantic_metadata import ExtractConfig, SemanticMetadataExtractionService
 from snowflake_semantic_tools.services.generate_semantic_views import (
@@ -40,6 +41,11 @@ class DeployConfig:
     verbose: bool = False
     quiet: bool = False
 
+    # Defer options
+    defer_database: Optional[str] = None  # Override table database references
+    only_modified: bool = False  # Only process changed models
+    defer_manifest_path: Optional[str] = None  # Path to defer manifest for selective generation
+
 
 @dataclass
 class DeployResult:
@@ -65,6 +71,10 @@ class DeployResult:
     generation_time: float = 0.0
     total_time: float = 0.0
 
+    # Defer info for summary
+    defer_target: Optional[str] = None
+    defer_manifest: Optional[str] = None
+
     def __post_init__(self):
         if self.errors is None:
             self.errors = []
@@ -85,6 +95,15 @@ class DeployResult:
         # Status
         status_icon = "SUCCESS" if self.success else "FAILED"
         print(f"Status: {status_icon}")
+
+        # Defer info (if enabled)
+        if self.defer_target:
+            print()
+            print("Defer Configuration:")
+            print(f"  Target: {self.defer_target}")
+            if self.defer_manifest:
+                print(f"  Manifest: {self.defer_manifest}")
+
         print()
 
         # Step results (clean format without redundant PASS/FAIL icons)
@@ -172,6 +191,8 @@ class DeployService:
             extraction_completed=False,
             generation_completed=False,
             skip_validation=config.skip_validation,
+            defer_target=config.defer_database,
+            defer_manifest=config.defer_manifest_path,
         )
 
         try:
@@ -304,6 +325,101 @@ class DeployService:
             target_database=config.database,  # Same as metadata
             target_schema=config.schema,  # Same as metadata
             views_to_generate=None,  # Generate all views
+            defer_database=config.defer_database,
         )
 
+        # If selective generation is enabled, determine which views to generate
+        if config.only_modified and config.defer_manifest_path:
+            views_to_generate = self._get_modified_views(config)
+            if views_to_generate is not None:
+                gen_config.views_to_generate = views_to_generate
+                if not config.quiet:
+                    logger.info(f"Selective generation: {len(views_to_generate)} modified views")
+
         return service.generate(gen_config, progress_callback=progress)
+
+    def _get_modified_views(self, config: DeployConfig) -> Optional[List[str]]:
+        """
+        Determine which views need regeneration based on manifest comparison.
+
+        Args:
+            config: Deployment configuration with defer manifest path
+
+        Returns:
+            List of view names to regenerate, or None to generate all
+        """
+        if not config.defer_manifest_path:
+            return None
+
+        try:
+            import json
+
+            # Load current manifest
+            current_manifest = ManifestParser()
+            if not current_manifest.load():
+                logger.warning("Could not load current manifest for comparison")
+                return None
+
+            # Load defer manifest
+            defer_manifest = ManifestParser(Path(config.defer_manifest_path))
+            if not defer_manifest.load():
+                logger.warning("Could not load defer manifest for comparison")
+                return None
+
+            # Compare manifests
+            diff = current_manifest.compare_to(defer_manifest)
+
+            if diff.total_changes == 0:
+                logger.info("No model changes detected - all views up to date")
+                return []
+
+            changed_models = set(m.lower() for m in diff.changed)
+            logger.info(f"Model changes detected: {', '.join(sorted(changed_models))}")
+
+            # Get available views from metadata to filter
+            from snowflake_semantic_tools.infrastructure.snowflake import SnowflakeClient
+
+            client = SnowflakeClient(self.snowflake_config)
+            query = f"""
+            SELECT DISTINCT name, tables
+            FROM {config.database}.{config.schema}.SM_SEMANTIC_VIEWS
+            ORDER BY name
+            """
+            df_result = client.execute_query(query)
+
+            if df_result.empty:
+                logger.warning("No semantic views found in metadata")
+                return []
+
+            # Filter views to only those referencing changed models
+            views_to_regenerate = []
+            for _, row in df_result.iterrows():
+                view_name = row.get("NAME") or row.get("name")
+                tables_data = row.get("TABLES") or row.get("tables") or ""
+
+                # Parse tables - could be JSON array string
+                tables = []
+                if isinstance(tables_data, str):
+                    try:
+                        parsed = json.loads(tables_data)
+                        if isinstance(parsed, list):
+                            tables = [str(t).lower() for t in parsed]
+                    except (json.JSONDecodeError, TypeError):
+                        tables = [t.strip().lower() for t in tables_data.split(",")]
+
+                # Check if any table in this view matches a changed model
+                for table in tables:
+                    simple_name = table.split(".")[-1].lower()
+                    if simple_name in changed_models:
+                        views_to_regenerate.append(view_name)
+                        break
+
+            logger.info(f"Views to regenerate: {len(views_to_regenerate)} of {len(df_result)}")
+            if views_to_regenerate:
+                logger.info(f"  {', '.join(views_to_regenerate)}")
+
+            return views_to_regenerate
+
+        except Exception as e:
+            logger.warning(f"Could not determine modified views: {e}")
+            return None

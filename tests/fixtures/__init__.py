@@ -8,7 +8,7 @@ Comprehensive test fixtures organized by validation severity and component type.
 ```
 fixtures/
 ├── errors/          # ValidationError scenarios
-├── warnings/        # ValidationWarning scenarios  
+├── warnings/        # ValidationWarning scenarios
 ├── info/           # ValidationInfo scenarios
 ├── success/        # ValidationSuccess scenarios
 └── edge_cases/     # Edge cases and stress tests

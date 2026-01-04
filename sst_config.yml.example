@@ -31,3 +31,25 @@ enrichment:
   #
   # Check model availability for your region:
   #   https://docs.snowflake.com/en/user-guide/snowflake-cortex/llm-functions#availability
+
+# ============================================================================
+# DEFER (Optional)
+# ============================================================================
+# Configure default defer behavior for generate and deploy commands.
+# Defer allows views to reference tables from a different target (e.g., prod)
+# while deploying to dev - useful for development without rebuilding all tables.
+#
+# defer:
+#   target: prod                                    # Default defer target (e.g., 'prod')
+#   state_path: null                                # Path to state artifacts (for dbt Cloud CLI users)
+#   auto_compile: false                             # For dbt Core: auto-compile manifest if not found
+#
+# Usage examples:
+#   sst generate --all --defer-target prod          # Reference prod tables
+#   sst generate --all --defer-target prod --only-modified  # Only changed models
+#   sst deploy --defer-target prod                  # Full deploy with prod references
+#
+# For dbt Cloud CLI users: Set state_path to your downloaded artifacts directory
+#   defer:
+#     target: prod
+#     state_path: ./prod_run_artifacts              # Downloaded from dbt Cloud

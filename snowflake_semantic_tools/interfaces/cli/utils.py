@@ -9,11 +9,11 @@ Authentication is handled via dbt's ~/.dbt/profiles.yml file.
 
 import logging
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Tuple
 
 import click
 
-from snowflake_semantic_tools.infrastructure.dbt import DbtClient, DbtProfileNotFoundError, DbtType
+from snowflake_semantic_tools.infrastructure.dbt import DbtClient, DbtProfileNotFoundError, DbtProfileParser, DbtType
 from snowflake_semantic_tools.infrastructure.snowflake import SnowflakeConfig
 from snowflake_semantic_tools.shared.config_validator import validate_cli_config
 from snowflake_semantic_tools.shared.events import setup_events
@@ -106,3 +106,77 @@ def build_snowflake_config(
     except Exception as e:
         # Re-raise profile parse errors with their messages
         raise click.ClickException(str(e))
+
+
+def get_target_database_schema(
+    dbt_target: Optional[str] = None,
+    db_override: Optional[str] = None,
+    schema_override: Optional[str] = None,
+    project_dir: Optional[Path] = None,
+) -> Tuple[str, str]:
+    """
+    Resolve database and schema from dbt profile or explicit overrides.
+
+    This function follows a clear priority order:
+    1. Explicit CLI overrides (--db, --schema flags)
+    2. Profile target values from profiles.yml
+
+    Used by: extract, generate, deploy commands
+
+    Args:
+        dbt_target: dbt target name (e.g., 'dev', 'prod'). Uses default if not specified.
+        db_override: Explicit database override (from --db flag)
+        schema_override: Explicit schema override (from --schema flag)
+        project_dir: Path to dbt project directory. Defaults to current dir.
+
+    Returns:
+        Tuple of (database, schema) in uppercase (Snowflake convention)
+
+    Raises:
+        click.ClickException: If database/schema cannot be resolved
+
+    Example:
+        # Use profile defaults
+        db, schema = get_target_database_schema(dbt_target="dev")
+
+        # Override with explicit values
+        db, schema = get_target_database_schema(
+            dbt_target="dev",
+            db_override="ANALYTICS_DEV",
+            schema_override="SEMANTIC"
+        )
+    """
+    try:
+        parser = DbtProfileParser(project_dir=project_dir)
+        profile_config = parser.parse_profile(target=dbt_target)
+
+        # Priority: CLI overrides > profile values
+        database = db_override or profile_config.database
+        schema = schema_override or profile_config.schema
+
+        # Validate we have both
+        if not database:
+            profile_name = profile_config.profile_name
+            target_name = profile_config.target_name
+            raise click.ClickException(
+                f"No database specified in profile '{profile_name}' target '{target_name}'.\n\n"
+                "Either add 'database:' to your profile or use --db flag."
+            )
+
+        if not schema:
+            profile_name = profile_config.profile_name
+            target_name = profile_config.target_name
+            raise click.ClickException(
+                f"No schema specified in profile '{profile_name}' target '{target_name}'.\n\n"
+                "Either add 'schema:' to your profile or use --schema flag."
+            )
+
+        # Return uppercase (Snowflake convention)
+        return database.upper(), schema.upper()
+
+    except click.ClickException:
+        raise  # Re-raise click exceptions as-is
+    except DbtProfileNotFoundError as e:
+        raise click.ClickException(str(e))
+    except Exception as e:
+        raise click.ClickException(f"Error resolving database/schema: {e}")
