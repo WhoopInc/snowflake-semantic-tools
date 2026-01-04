@@ -417,28 +417,18 @@ class SemanticModelValidator:
             # Validate identifier (length, characters, reserved keywords)
             self._validate_identifier(query_name, "Verified query", result)
 
-            # Field types
-            if "question" in query:
+            # Field types - Note: empty/null checks are handled by _check_required_field above
+            if "question" in query and query["question"]:
                 if not isinstance(query["question"], str):
                     result.add_error(
                         f"Verified query '{query_name}' field 'question' must be a string, got {type(query['question']).__name__}",
                         context={"verified_query": query_name, "field": "question", "type": "verified_query"},
                     )
-                elif not query["question"].strip():
-                    result.add_error(
-                        f"Verified query '{query_name}' field 'question' cannot be empty",
-                        context={"verified_query": query_name, "field": "question", "type": "verified_query"},
-                    )
 
-            if "sql" in query:
+            if "sql" in query and query["sql"]:
                 if not isinstance(query["sql"], str):
                     result.add_error(
                         f"Verified query '{query_name}' field 'sql' must be a string, got {type(query['sql']).__name__}",
-                        context={"verified_query": query_name, "field": "sql", "type": "verified_query"},
-                    )
-                elif not query["sql"].strip():
-                    result.add_error(
-                        f"Verified query '{query_name}' field 'sql' cannot be empty",
                         context={"verified_query": query_name, "field": "sql", "type": "verified_query"},
                     )
                 else:
@@ -477,20 +467,22 @@ class SemanticModelValidator:
 
             # Note: description is not required by Snowflake spec, so we don't warn about it
 
-            # Validate use_as_onboarding if present - must be boolean
-            if "use_as_onboarding" in query:
-                use_as_onboarding = query["use_as_onboarding"]
-                if not isinstance(use_as_onboarding, bool):
-                    result.add_error(
-                        f"Verified query '{query_name}' field 'use_as_onboarding' must be a boolean (true/false), "
-                        f"got {type(use_as_onboarding).__name__}: '{use_as_onboarding}'",
-                        context={
-                            "verified_query": query_name,
-                            "field": "use_as_onboarding",
-                            "value": use_as_onboarding,
-                            "type": "verified_query",
-                        },
-                    )
+            # Validate use_as_onboarding / use_as_onboarding_question if present - must be boolean
+            # Note: Both field names are accepted for compatibility
+            for onboarding_field in ["use_as_onboarding", "use_as_onboarding_question"]:
+                if onboarding_field in query:
+                    onboarding_value = query[onboarding_field]
+                    if not isinstance(onboarding_value, bool):
+                        result.add_error(
+                            f"Verified query '{query_name}' field '{onboarding_field}' must be a boolean (true/false), "
+                            f"got {type(onboarding_value).__name__}: '{onboarding_value}'",
+                            context={
+                                "verified_query": query_name,
+                                "field": onboarding_field,
+                                "value": onboarding_value,
+                                "type": "verified_query",
+                            },
+                        )
 
             # Validate SQL/tables consistency - check if SQL references tables not in tables list
             if "sql" in query and "tables" in query:
@@ -998,6 +990,10 @@ class SemanticModelValidator:
         Extracts table references from SQL using {{ table('name') }} pattern
         and compares against the declared tables list.
 
+        Note: This check only works when templates are NOT resolved (i.e., before
+        template resolution). If templates have been resolved, this check will
+        silently skip as there are no {{ table() }} patterns to find.
+
         Args:
             query_name: Name of the verified query
             sql: The SQL string to check
@@ -1005,11 +1001,12 @@ class SemanticModelValidator:
             result: ValidationResult to add warnings to
         """
         # Extract table names from {{ table('name') }} patterns in SQL
+        # Note: After template resolution, these patterns won't exist
         table_pattern = r"{{\s*table\s*\(\s*['\"]([^'\"]+)['\"]\s*\)\s*}}"
         sql_table_refs = re.findall(table_pattern, sql, re.IGNORECASE)
 
         if not sql_table_refs:
-            return  # No table references found in SQL
+            return  # No table references found in SQL (may be post-resolution)
 
         # Extract table names from the tables list (which may also use templates)
         declared_tables = set()
