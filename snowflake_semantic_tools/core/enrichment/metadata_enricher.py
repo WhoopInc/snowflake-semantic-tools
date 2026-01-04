@@ -453,7 +453,9 @@ class MetadataEnricher:
             logger.info(f"  PK Status:    Preserved existing key: {sst['primary_key']}")
 
         # Handle unique keys (preserve existing - required for ASOF relationships)
-        if "unique_keys" in sst and sst["unique_keys"]:
+        if "unique_keys" not in sst or sst["unique_keys"] is None:
+            sst["unique_keys"] = []
+        elif sst["unique_keys"]:
             logger.info(f"  UK Status:    Preserved existing keys: {sst['unique_keys']}")
 
         # Ensure proper model structure order: name, description, meta, config, columns
