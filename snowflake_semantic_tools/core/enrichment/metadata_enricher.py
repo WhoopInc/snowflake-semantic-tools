@@ -399,9 +399,9 @@ class MetadataEnricher:
         Returns:
             Dict with updated model metadata
         """
-        # Ensure SST structure exists
+        # Ensure SST structure exists (config.meta.sst for dbt Fusion compatibility)
         model = self.yaml_handler.ensure_sst_structure(existing_model)
-        sst = model["meta"]["sst"]
+        sst = model["config"]["meta"]["sst"]
 
         # Set required fields (using NEW v1.2+ names)
         sst["cortex_searchable"] = sst.get("cortex_searchable", False)
@@ -576,9 +576,9 @@ class MetadataEnricher:
             }
         column["name"] = col_name.lower()
 
-        # Ensure SST structure
+        # Ensure SST structure (config.meta.sst for dbt Fusion compatibility)
         column = self.yaml_handler.ensure_column_sst_structure(column)
-        column_sst = column["meta"]["sst"]
+        column_sst = column["config"]["meta"]["sst"]
 
         # Map and set data types (only if requested via components)
         snowflake_type = table_col["type"]
@@ -805,13 +805,15 @@ class MetadataEnricher:
             force=force,
         )
 
-        # Update model data
-        if "meta" not in model_data:
-            model_data["meta"] = {}
-        if "sst" not in model_data["meta"]:
-            model_data["meta"]["sst"] = {}
+        # Update model data (config.meta.sst for dbt Fusion compatibility)
+        if "config" not in model_data:
+            model_data["config"] = {}
+        if "meta" not in model_data["config"]:
+            model_data["config"]["meta"] = {}
+        if "sst" not in model_data["config"]["meta"]:
+            model_data["config"]["meta"]["sst"] = {}
 
-        model_data["meta"]["sst"]["synonyms"] = synonyms
+        model_data["config"]["meta"]["sst"]["synonyms"] = synonyms
         logger.info(f"  Generated {len(synonyms)} table synonyms")
 
         return model_data
@@ -857,12 +859,15 @@ class MetadataEnricher:
             col_name = col["name"]
 
             if col_name in batch_synonyms and batch_synonyms[col_name]:
-                if "meta" not in col:
-                    col["meta"] = {}
-                if "sst" not in col["meta"]:
-                    col["meta"]["sst"] = {}
+                # Ensure config.meta.sst structure (dbt Fusion compatibility)
+                if "config" not in col:
+                    col["config"] = {}
+                if "meta" not in col["config"]:
+                    col["config"]["meta"] = {}
+                if "sst" not in col["config"]["meta"]:
+                    col["config"]["meta"]["sst"] = {}
 
-                col["meta"]["sst"]["synonyms"] = batch_synonyms[col_name]
+                col["config"]["meta"]["sst"]["synonyms"] = batch_synonyms[col_name]
                 columns_with_synonyms += 1
 
         if columns_with_synonyms > 0:
