@@ -120,6 +120,11 @@ class SemanticMetadataExtractionService:
 
     The service ensures data consistency through comprehensive validation
     and atomic operations, making it safe for production deployments.
+
+    Supports context manager usage for guaranteed cleanup:
+        with SemanticMetadataExtractionService.create_from_config(config) as service:
+            result = service.execute(extract_config)
+        # Snowflake connection automatically closed
     """
 
     def __init__(self, parser: Parser, snowflake_client: SnowflakeClient):
@@ -132,6 +137,20 @@ class SemanticMetadataExtractionService:
         """
         self.parser = parser
         self.snowflake = snowflake_client
+
+    def close(self) -> None:
+        """Close Snowflake connection. Safe to call multiple times."""
+        if self.snowflake:
+            self.snowflake.close()
+
+    def __enter__(self) -> "SemanticMetadataExtractionService":
+        """Support context manager usage."""
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb) -> bool:
+        """Ensure cleanup on context exit."""
+        self.close()
+        return False  # Don't suppress exceptions
 
     @classmethod
     def create_from_config(cls, snowflake_config: SnowflakeConfig):

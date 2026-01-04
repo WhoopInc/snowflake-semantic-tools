@@ -259,36 +259,19 @@ def _run_schema_verification(
         service: The validation service with parsed data
         output: CLI output handler
         verbose: Whether to show verbose output
+        target_database: Optional database override for schema verification
 
     Returns:
         ValidationResult with schema verification issues, or None on connection failure
     """
-    from typing import Optional
-
     try:
         # Import Snowflake components
         from snowflake_semantic_tools.core.validation.rules import SchemaValidator
-        from snowflake_semantic_tools.infrastructure.snowflake import SnowflakeClient
-        from snowflake_semantic_tools.infrastructure.snowflake.config import SnowflakeConfig
+        from snowflake_semantic_tools.interfaces.cli.utils import snowflake_session
 
-        # Get Snowflake config from dbt profile
+        # Get target from environment
         output.debug("Loading Snowflake credentials from dbt profile...")
         target = os.getenv("DBT_TARGET")
-
-        try:
-            config = SnowflakeConfig.from_dbt_profile(target=target)
-        except Exception as e:
-            output.warning(f"Could not load Snowflake credentials: {e}")
-            result = ValidationResult()
-            result.add_warning(
-                f"Schema verification skipped: Could not load Snowflake credentials. {e}",
-                context={"issue": "missing_credentials"},
-            )
-            return result
-
-        # Create Snowflake client
-        output.debug(f"Connecting to Snowflake (account: {config.account})...")
-        client = SnowflakeClient(config)
 
         # Get the dbt catalog from the service's last parse result
         # We need to build it from the parsed data
@@ -316,18 +299,30 @@ def _run_schema_verification(
         db_info = f" (database override: {target_database})" if target_database else ""
         output.debug(f"Verifying {len(dbt_catalog)} tables against Snowflake...{db_info}")
 
-        # Run schema validation
-        schema_validator = SchemaValidator(client.metadata_manager)
-        schema_result = schema_validator.validate(dbt_catalog)
+        # Use snowflake_session for guaranteed cleanup
+        with snowflake_session(target=target) as client:
+            output.debug(f"Connecting to Snowflake (account: {client.connection_manager.config.account})...")
 
-        # Log summary
-        if schema_result.error_count > 0:
-            output.warning(f"Schema verification found {schema_result.error_count} column mismatches")
-        else:
-            output.success("All columns verified against Snowflake schema")
+            # Run schema validation
+            schema_validator = SchemaValidator(client.metadata_manager)
+            schema_result = schema_validator.validate(dbt_catalog)
 
-        return schema_result
+            # Log summary
+            if schema_result.error_count > 0:
+                output.warning(f"Schema verification found {schema_result.error_count} column mismatches")
+            else:
+                output.success("All columns verified against Snowflake schema")
 
+            return schema_result
+
+    except click.ClickException as e:
+        # Handle credential loading failures from snowflake_session
+        result = ValidationResult()
+        result.add_warning(
+            f"Schema verification skipped: {e.message}",
+            context={"issue": "missing_credentials"},
+        )
+        return result
     except ImportError as e:
         logger.warning(f"Could not import required modules for schema verification: {e}")
         result = ValidationResult()

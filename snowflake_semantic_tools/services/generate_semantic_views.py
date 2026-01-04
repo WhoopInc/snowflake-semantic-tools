@@ -237,6 +237,11 @@ class SemanticViewGenerationService:
 
     This service queries metadata tables (populated by extract command)
     and generates Snowflake CREATE SEMANTIC VIEW statements.
+
+    Supports context manager usage for guaranteed cleanup:
+        with SemanticViewGenerationService(config) as service:
+            result = service.generate(gen_config)
+        # Snowflake connection automatically closed
     """
 
     def __init__(self, config: SnowflakeConfig):
@@ -251,6 +256,20 @@ class SemanticViewGenerationService:
 
         # Create builder - pass the connection manager directly
         self.builder = SemanticViewBuilder(config=self.config, snowflake_loader=self.connection_manager)
+
+    def close(self) -> None:
+        """Close Snowflake connection. Safe to call multiple times."""
+        if self.connection_manager:
+            self.connection_manager.close()
+
+    def __enter__(self) -> "SemanticViewGenerationService":
+        """Support context manager usage."""
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb) -> bool:
+        """Ensure cleanup on context exit."""
+        self.close()
+        return False  # Don't suppress exceptions
 
     def execute(
         self, generate_config: GenerateConfig, progress_callback: Optional[ProgressCallback] = None

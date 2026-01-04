@@ -86,35 +86,35 @@ def extract(dbt_target, db, schema, dbt, semantic, verbose):
         output.info(f"Using dbt profile: {profile_info}")
         output.info(f"Target: {target_db}.{target_schema}", indent=1)
 
-        service = SemanticMetadataExtractionService.create_from_config(snowflake_config)
+        # Use context manager for guaranteed Snowflake connection cleanup
+        with SemanticMetadataExtractionService.create_from_config(snowflake_config) as service:
+            config = ExtractConfig(
+                database=target_db,
+                schema=target_schema,
+                dbt_path=Path(dbt) if dbt else None,
+                semantic_path=Path(semantic) if semantic else None,
+            )
 
-        config = ExtractConfig(
-            database=target_db,
-            schema=target_schema,
-            dbt_path=Path(dbt) if dbt else None,
-            semantic_path=Path(semantic) if semantic else None,
-        )
+            # Create progress callback from CLIOutput
+            progress_callback = CLIProgressCallback(output)
 
-        # Create progress callback from CLIOutput
-        progress_callback = CLIProgressCallback(output)
+            extract_start = time.time()
+            result = service.execute(config, progress_callback=progress_callback)
+            extract_duration = time.time() - extract_start
 
-        extract_start = time.time()
-        result = service.execute(config, progress_callback=progress_callback)
-        extract_duration = time.time() - extract_start
+            # Display results with improved formatting
+            output.blank_line()
+            if result.success:
+                output.success(f"Extraction completed in {extract_duration:.1f}s")
+            else:
+                output.error(f"Extraction failed in {extract_duration:.1f}s")
 
-        # Display results with improved formatting
-        output.blank_line()
-        if result.success:
-            output.success(f"Extraction completed in {extract_duration:.1f}s")
-        else:
-            output.error(f"Extraction failed in {extract_duration:.1f}s")
+            # Display results (summary already shows everything needed)
+            result.print_summary()
 
-        # Display results (summary already shows everything needed)
-        result.print_summary()
-
-        # No need for done line - summary box is comprehensive
-        if not result.success:
-            raise click.ClickException("Extraction failed")
+            # No need for done line - summary box is comprehensive
+            if not result.success:
+                raise click.ClickException("Extraction failed")
 
     except click.ClickException:
         raise  # Re-raise click exceptions as-is

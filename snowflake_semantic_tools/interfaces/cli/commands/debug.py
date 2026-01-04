@@ -118,34 +118,30 @@ def debug(dbt_target, test_connection, verbose):
             click.echo("  Testing Snowflake connection...")
 
             try:
-                from snowflake_semantic_tools.infrastructure.snowflake.config import SnowflakeConfig
+                from snowflake_semantic_tools.interfaces.cli.utils import snowflake_session
 
-                # Create config (use INFORMATION_SCHEMA to avoid permission issues)
-                config = SnowflakeConfig.from_dbt_profile(
+                # Use snowflake_session for guaranteed cleanup
+                # Use INFORMATION_SCHEMA to avoid permission issues
+                with snowflake_session(
                     target=dbt_target,
                     database_override="INFORMATION_SCHEMA",
                     schema_override="TABLES",
-                )
+                ) as client:
+                    # Test query
+                    result = client.execute_query("SELECT CURRENT_USER(), CURRENT_ROLE(), CURRENT_WAREHOUSE()")
 
-                from snowflake_semantic_tools.infrastructure.snowflake import SnowflakeClient
+                    if not result.empty:
+                        current_user = result.iloc[0, 0]
+                        current_role = result.iloc[0, 1]
+                        current_wh = result.iloc[0, 2]
 
-                client = SnowflakeClient(config)
-
-                # Test query
-                result = client.execute_query("SELECT CURRENT_USER(), CURRENT_ROLE(), CURRENT_WAREHOUSE()")
-
-                if not result.empty:
-                    current_user = result.iloc[0, 0]
-                    current_role = result.iloc[0, 1]
-                    current_wh = result.iloc[0, 2]
-
-                    click.echo()
-                    click.echo(click.style("  ✓ Connection successful!", fg="green", bold=True))
-                    click.echo(f"    Connected as: {current_user}")
-                    click.echo(f"    Current role: {current_role}")
-                    click.echo(f"    Warehouse: {current_wh or '(none)'}")
-                else:
-                    click.echo(click.style("  ✓ Connection successful!", fg="green", bold=True))
+                        click.echo()
+                        click.echo(click.style("  ✓ Connection successful!", fg="green", bold=True))
+                        click.echo(f"    Connected as: {current_user}")
+                        click.echo(f"    Current role: {current_role}")
+                        click.echo(f"    Warehouse: {current_wh or '(none)'}")
+                    else:
+                        click.echo(click.style("  ✓ Connection successful!", fg="green", bold=True))
 
             except Exception as e:
                 click.echo()

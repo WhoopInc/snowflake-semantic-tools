@@ -51,6 +51,11 @@ class SnowflakeClient:
     Access managers directly: `client.connection_manager.get_connection()`, `client.schema_manager.ensure_database_and_schema_exist()`, etc.
 
     The `execute_query()` method provides smart query execution with session handling.
+
+    Supports context manager usage for guaranteed cleanup:
+        with SnowflakeClient(config) as client:
+            client.data_loader.load_dataframe(df, 'my_table')
+        # Connection automatically closed on exit
     """
 
     def __init__(self, config: SnowflakeConfig):
@@ -67,6 +72,25 @@ class SnowflakeClient:
         self.metadata_manager = MetadataManager(self.connection_manager, config)
         self.table_manager = TableManager(self.connection_manager, config)
         self.cortex_search_manager = CortexSearchManager(self.connection_manager, config)
+
+    def close(self) -> None:
+        """
+        Close all managed connections.
+
+        Should be called when done with all Snowflake operations.
+        Also called automatically when using the client as a context manager.
+        Safe to call multiple times.
+        """
+        self.connection_manager.close()
+
+    def __enter__(self) -> "SnowflakeClient":
+        """Support context manager usage."""
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb) -> bool:
+        """Ensure cleanup on context exit."""
+        self.close()
+        return False  # Don't suppress exceptions
 
     @classmethod
     def from_session(cls, session, database: str = None, schema: str = None):

@@ -5,18 +5,30 @@ Shared utilities for CLI commands to ensure consistency.
 Reduces boilerplate and ensures all commands follow the same patterns.
 
 Authentication is handled via dbt's ~/.dbt/profiles.yml file.
+
+Key utilities:
+- setup_command(): Standard initialization for all commands
+- build_snowflake_config(): Create SnowflakeConfig from dbt profile
+- snowflake_session(): Enterprise-grade context manager for Snowflake operations
 """
 
 import logging
+from contextlib import contextmanager
 from pathlib import Path
-from typing import Optional, Tuple
+from typing import TYPE_CHECKING, Generator, Optional, Tuple
 
 import click
 
 from snowflake_semantic_tools.infrastructure.dbt import DbtClient, DbtProfileNotFoundError, DbtProfileParser, DbtType
-from snowflake_semantic_tools.infrastructure.snowflake import SnowflakeConfig
+from snowflake_semantic_tools.infrastructure.snowflake import SnowflakeClient, SnowflakeConfig
 from snowflake_semantic_tools.shared.config_validator import validate_cli_config
 from snowflake_semantic_tools.shared.events import setup_events
+from snowflake_semantic_tools.shared.utils import get_logger
+
+if TYPE_CHECKING:
+    from snowflake_semantic_tools.infrastructure.snowflake import SnowflakeClient
+
+logger = get_logger("cli.utils")
 
 
 def setup_command(verbose: bool = False, quiet: bool = False, validate_config: bool = True) -> None:
@@ -180,3 +192,67 @@ def get_target_database_schema(
         raise click.ClickException(str(e))
     except Exception as e:
         raise click.ClickException(f"Error resolving database/schema: {e}")
+
+
+@contextmanager
+def snowflake_session(
+    config: Optional[SnowflakeConfig] = None,
+    target: Optional[str] = None,
+    database_override: Optional[str] = None,
+    schema_override: Optional[str] = None,
+    project_dir: Optional[Path] = None,
+    verbose: bool = False,
+) -> Generator["SnowflakeClient", None, None]:
+    """
+    Enterprise-grade Snowflake session with guaranteed cleanup.
+
+    Provides a single point of connection management for all CLI commands.
+    The connection is reused within the session and properly cleaned up on exit,
+    even if exceptions occur.
+
+    This context manager:
+    1. Creates a SnowflakeClient with the specified config
+    2. Yields the client for database operations
+    3. Guarantees connection cleanup on exit (success or failure)
+
+    Args:
+        config: SnowflakeConfig instance. If None, loads from dbt profile.
+        target: dbt profile target (e.g., 'prod', 'dev'). Ignored if config provided.
+        database_override: Override database from profile. Ignored if config provided.
+        schema_override: Override schema from profile. Ignored if config provided.
+        project_dir: Path to dbt project directory. Defaults to current dir.
+        verbose: Enable verbose logging for config loading.
+
+    Yields:
+        SnowflakeClient: Configured client for database operations
+
+    Raises:
+        click.ClickException: If config cannot be loaded from dbt profile
+
+    Example:
+        with snowflake_session(target='prod') as client:
+            client.schema_manager.ensure_database_and_schema_exist()
+            client.data_loader.load_dataframe(df, 'my_table')
+            # Connection automatically closed on exit
+
+        # Or with explicit config:
+        config = SnowflakeConfig.from_dbt_profile(target='dev')
+        with snowflake_session(config=config) as client:
+            client.execute_query("SELECT 1")
+    """
+    # Create config if not provided
+    if config is None:
+        config = build_snowflake_config(
+            target=target,
+            database=database_override,
+            schema=schema_override,
+            project_dir=project_dir,
+            verbose=verbose,
+        )
+
+    client = SnowflakeClient(config)
+    try:
+        yield client
+    finally:
+        client.close()
+        logger.debug("Snowflake session closed")
