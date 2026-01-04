@@ -725,7 +725,7 @@ class MetadataEnricher:
 
     def _order_model_structure(self, model: Dict[str, Any]) -> Dict[str, Any]:
         """
-        Ensure proper model structure order: name, description, meta, config, columns
+        Ensure proper model structure order: name, description, config, columns
 
         Args:
             model: Model metadata dictionary
@@ -736,7 +736,7 @@ class MetadataEnricher:
         ordered_model = {}
 
         # Desired order for model keys
-        key_order = ["name", "description", "meta", "config", "columns"]
+        key_order = ["name", "description", "config", "columns"]
 
         # Add keys in the desired order
         for key in key_order:
@@ -748,7 +748,38 @@ class MetadataEnricher:
             if key not in ordered_model:
                 ordered_model[key] = value
 
+        # Order the SST keys within config.meta.sst
+        if "config" in ordered_model and "meta" in ordered_model["config"] and "sst" in ordered_model["config"]["meta"]:
+            ordered_model["config"]["meta"]["sst"] = self._order_sst_keys(ordered_model["config"]["meta"]["sst"])
+
         return ordered_model
+
+    def _order_sst_keys(self, sst: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Order SST metadata keys in the preferred order.
+
+        Args:
+            sst: SST metadata dictionary
+
+        Returns:
+            Dict with properly ordered keys
+        """
+        # Desired order for model-level SST keys
+        key_order = ["cortex_searchable", "synonyms", "primary_key", "unique_keys"]
+
+        ordered_sst = {}
+
+        # Add keys in the desired order
+        for key in key_order:
+            if key in sst:
+                ordered_sst[key] = sst[key]
+
+        # Add any remaining keys that weren't in our order
+        for key, value in sst.items():
+            if key not in ordered_sst:
+                ordered_sst[key] = value
+
+        return ordered_sst
 
     def _serialize_yaml_for_llm(self, full_yaml: Optional[Dict[str, Any]]) -> Optional[str]:
         """

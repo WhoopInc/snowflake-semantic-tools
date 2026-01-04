@@ -377,8 +377,20 @@ class YAMLHandler:
         Returns:
             Dict with properly ordered keys
         """
-        # Desired order for sst metadata keys
-        key_order = ["column_type", "data_type", "synonyms", "sample_values", "is_enum", "privacy_category"]
+        # Desired order for sst metadata keys (includes both model and column level)
+        key_order = [
+            # Model-level keys
+            "cortex_searchable",
+            "synonyms",
+            "primary_key",
+            "unique_keys",
+            # Column-level keys
+            "column_type",
+            "data_type",
+            "sample_values",
+            "is_enum",
+            "privacy_category",
+        ]
 
         # Create ordered dictionary
         ordered_sst = {}
