@@ -25,9 +25,9 @@ logger = get_logger(__name__)
 def _insert_key_after(node: CommentedMap, after_key: str, new_key: str, new_value: Any) -> None:
     """
     Insert a new key-value pair after a specific key in a CommentedMap.
-    
+
     This preserves the YAML key ordering when adding new keys.
-    
+
     Args:
         node: The CommentedMap to modify
         after_key: The key after which to insert
@@ -37,7 +37,7 @@ def _insert_key_after(node: CommentedMap, after_key: str, new_key: str, new_valu
     if not isinstance(node, CommentedMap):
         node[new_key] = new_value
         return
-    
+
     # Find the position of after_key
     keys = list(node.keys())
     if after_key in keys:
@@ -90,7 +90,7 @@ def _migrate_node_meta(node: Dict[str, Any], node_type: str, is_model: bool = Fa
         new_config = CommentedMap()
         new_config["meta"] = CommentedMap()
         new_config["meta"]["sst"] = new_config_meta_sst
-        
+
         # Insert config after 'description' for models, or after 'data_tests' for columns
         if is_model:
             _insert_key_after(node, "description", "config", new_config)
@@ -106,7 +106,7 @@ def _migrate_node_meta(node: Dict[str, Any], node_type: str, is_model: bool = Fa
             node["config"]["meta"] = {}
         if "sst" not in node["config"]["meta"]:
             node["config"]["meta"]["sst"] = {}
-        
+
         # Merge values
         for key, value in old_sst.items():
             if key not in node["config"]["meta"]["sst"]:
@@ -125,29 +125,29 @@ def _migrate_node_meta(node: Dict[str, Any], node_type: str, is_model: bool = Fa
 def _ensure_blank_lines(content: Any) -> None:
     """
     Ensure proper blank lines in the YAML structure.
-    
+
     - Blank line before 'columns:' key in each model
     - Blank line before each column entry in the columns list
-    
+
     Args:
         content: The ruamel.yaml content object
     """
     if not content:
         return
-        
+
     models = content.get("models", [])
     if not models or not hasattr(models, "ca"):
         return
-    
+
     for idx, model in enumerate(models):
         if not isinstance(model, CommentedMap):
             continue
-            
+
         # Add blank line before 'columns' key in the model
         if "columns" in model and hasattr(model, "ca"):
             # Add a blank line comment before 'columns' key
             model.yaml_set_comment_before_after_key("columns", before="\n")
-        
+
         # Add blank lines between column entries
         columns = model.get("columns", [])
         if columns and hasattr(columns, "ca"):
@@ -393,4 +393,3 @@ def migrate_meta(path: str, dry_run: bool, backup: bool, verbose: bool):
         logger.error(f"Migration failed: {e}")
         click.echo(f"\n[ERROR] {str(e)}", err=True)
         exit(1)
-

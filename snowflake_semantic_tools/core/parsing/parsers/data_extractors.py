@@ -26,17 +26,17 @@ def get_sst_meta(
 ) -> Dict[str, Any]:
     """
     Extract SST metadata from a dbt YAML node (model or column).
-    
+
     Supports both new dbt Fusion format (config.meta.sst) and legacy format (meta.sst).
-    
+
     Priority: config.meta.sst > meta.sst
-    
+
     Args:
         node: Model or column dictionary from YAML
         node_type: Type of node for warning messages ('model' or 'column')
         node_name: Name of node for warning messages
         emit_warning: Whether to emit deprecation warnings (disable for read-only checks)
-    
+
     Returns:
         SST metadata dictionary (may be empty)
     """
@@ -45,28 +45,28 @@ def get_sst_meta(
     config_meta = config.get("meta", {}) if isinstance(config, dict) else {}
     if "sst" in config_meta:
         return config_meta.get("sst", {})
-    
+
     # Fall back to old location (meta.sst)
     meta = node.get("meta", {})
     if not isinstance(meta, dict):
         return {}
-    
+
     sst_meta = meta.get("sst", {})
-    
+
     # Emit deprecation warning if using old pattern (only if found and warning enabled)
     if sst_meta and emit_warning:
         _emit_deprecation_warning(node_type, node_name)
-    
+
     return sst_meta if isinstance(sst_meta, dict) else {}
 
 
 def _emit_deprecation_warning(node_type: str, node_name: str) -> None:
     """
     Emit deprecation warning with severity based on node type.
-    
+
     Column-level is CRITICAL (will be error in dbt Fusion).
     Model-level is WARNING (recommended but less urgent).
-    
+
     Args:
         node_type: 'model' or 'column'
         node_name: Name of the model/column
@@ -76,11 +76,11 @@ def _emit_deprecation_warning(node_type: str, node_name: str) -> None:
     if warning_key in _deprecation_warnings_emitted:
         return
     _deprecation_warnings_emitted.add(warning_key)
-    
+
     # Column-level is CRITICAL (will be error in Fusion)
     # Model-level is WARNING (less urgent)
     severity = "CRITICAL" if node_type == "column" else "WARNING"
-    
+
     logger.warning(
         f"[DEPRECATED-{severity}] {node_type.capitalize()} '{node_name}' uses meta.sst pattern. "
         f"This will be an ERROR in dbt Fusion. "

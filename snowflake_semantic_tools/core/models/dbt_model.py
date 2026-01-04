@@ -125,7 +125,7 @@ class DbtModel:
             config_meta = self.config.get("meta", {})
             if isinstance(config_meta, dict) and config_meta.get("sst"):
                 return True
-        
+
         # Fall back to legacy location (meta.sst)
         if not self.meta:
             return False
