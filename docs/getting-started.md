@@ -49,7 +49,50 @@ sst --version
 
 ---
 
-## Configuration
+## Quick Start with `sst init`
+
+The easiest way to set up SST is using the interactive setup wizard:
+
+```bash
+cd your-dbt-project
+sst init
+```
+
+The wizard will:
+1. Detect your dbt project and profile configuration
+2. Help you set up Snowflake credentials (if not already configured)
+3. Create `sst_config.yaml` with sensible defaults
+4. Create the semantic models directory structure
+5. Generate example files to get you started
+
+**Example output:**
+```
+╭─────────────────────────────────────────╮
+│ Welcome to Snowflake Semantic Tools!    │
+╰─────────────────────────────────────────╯
+
+✓ Detected dbt project: jaffle_shop
+✓ Found profile: jaffle_shop (targets: dev, prod)
+
+? Where should SST store semantic models?
+  > snowflake_semantic_models (recommended)
+
+✓ Created sst_config.yaml
+✓ Created snowflake_semantic_models/
+✓ Created example files
+
+Setup Complete!
+```
+
+**Options:**
+- `sst init --skip-prompts` - Use defaults without prompting
+- `sst init --check-only` - Check current setup status
+
+If you prefer manual setup, continue with the steps below.
+
+---
+
+## Manual Configuration
 
 ### Step 2: Create Required Directories
 

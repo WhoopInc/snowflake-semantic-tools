@@ -1,0 +1,59 @@
+# ============================================================================
+# EXAMPLE CUSTOM INSTRUCTIONS - Delete this file once you've created your own
+# ============================================================================
+# These examples show proper custom instruction syntax. Uncomment and modify as needed.
+# Custom instructions guide how Cortex Analyst interprets and responds to questions.
+# Documentation: https://github.com/WhoopInc/snowflake-semantic-tools/blob/main/docs/semantic-models-guide.md
+#
+# snowflake_custom_instructions:
+#   # -------------------------------------------------------------------------
+#   # Date Interpretation Instruction
+#   # -------------------------------------------------------------------------
+#   - name: fiscal_year_definition
+#     description: Define fiscal year for the organization
+#     instruction: |
+#       Our fiscal year runs from April 1 to March 31.
+#       When users ask about "this year" or "last year", interpret it as fiscal year.
+#       Q1 = Apr-Jun, Q2 = Jul-Sep, Q3 = Oct-Dec, Q4 = Jan-Mar.
+#
+#   # -------------------------------------------------------------------------
+#   # Metric Preference Instruction
+#   # -------------------------------------------------------------------------
+#   - name: revenue_default
+#     description: Default revenue metric behavior
+#     instruction: |
+#       When users ask about "revenue" without specification, use gross revenue.
+#       If they mention "net revenue" or "after discounts", use net_revenue metric.
+#       Always exclude refunded orders unless specifically asked to include them.
+#
+#   # -------------------------------------------------------------------------
+#   # Terminology Mapping Instruction
+#   # -------------------------------------------------------------------------
+#   - name: customer_terminology
+#     description: Map business terminology to technical columns
+#     instruction: |
+#       "Customer" and "client" mean the same thing - use the customers table.
+#       "Member" refers to customers with is_member = TRUE.
+#       "Subscriber" refers to customers with subscription_status = 'active'.
+#       "Churned" means subscription_status = 'cancelled' in the last 90 days.
+#
+#   # -------------------------------------------------------------------------
+#   # Regional Context Instruction
+#   # -------------------------------------------------------------------------
+#   - name: regional_defaults
+#     description: Default regional context
+#     instruction: |
+#       Unless specified, assume the user is asking about US data only.
+#       If they mention "global" or "worldwide", include all regions.
+#       Currency is always in USD unless the user specifies otherwise.
+#
+#   # -------------------------------------------------------------------------
+#   # Data Freshness Instruction
+#   # -------------------------------------------------------------------------
+#   - name: data_freshness
+#     description: Inform users about data latency
+#     instruction: |
+#       Our data pipeline runs daily at 6 AM UTC.
+#       Today's data may be incomplete until tomorrow.
+#       When users ask about "real-time" data, inform them of this delay.
+
