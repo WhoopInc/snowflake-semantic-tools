@@ -11,6 +11,7 @@ from typing import Any, Dict, List, Tuple
 
 import click
 from ruamel.yaml import YAML, YAMLError
+from ruamel.yaml.comments import CommentedMap
 
 from snowflake_semantic_tools._version import __version__
 from snowflake_semantic_tools.interfaces.cli.output import CLIOutput
@@ -21,13 +22,46 @@ from snowflake_semantic_tools.shared.utils import get_logger
 logger = get_logger(__name__)
 
 
-def _migrate_node_meta(node: Dict[str, Any], node_type: str) -> Tuple[bool, List[str]]:
+def _insert_key_after(node: CommentedMap, after_key: str, new_key: str, new_value: Any) -> None:
+    """
+    Insert a new key-value pair after a specific key in a CommentedMap.
+    
+    This preserves the YAML key ordering when adding new keys.
+    
+    Args:
+        node: The CommentedMap to modify
+        after_key: The key after which to insert
+        new_key: The new key to insert
+        new_value: The value for the new key
+    """
+    if not isinstance(node, CommentedMap):
+        node[new_key] = new_value
+        return
+    
+    # Find the position of after_key
+    keys = list(node.keys())
+    if after_key in keys:
+        pos = keys.index(after_key) + 1
+        node.insert(pos, new_key, new_value)
+    else:
+        # If after_key not found, try to insert after 'description' or at position 2
+        if "description" in keys:
+            pos = keys.index("description") + 1
+            node.insert(pos, new_key, new_value)
+        elif len(keys) >= 2:
+            node.insert(2, new_key, new_value)
+        else:
+            node[new_key] = new_value
+
+
+def _migrate_node_meta(node: Dict[str, Any], node_type: str, is_model: bool = False) -> Tuple[bool, List[str]]:
     """
     Migrate a single node (model or column) from meta.sst to config.meta.sst.
 
     Args:
         node: The node dictionary to migrate
         node_type: 'model' or 'column' for logging
+        is_model: True if this is a model-level node (affects key positioning)
 
     Returns:
         Tuple of (was_migrated, list of migration notes)
@@ -45,18 +79,38 @@ def _migrate_node_meta(node: Dict[str, Any], node_type: str) -> Tuple[bool, List
 
     notes.append(f"Migrating {node_type} from meta.sst to config.meta.sst")
 
-    # Ensure config.meta.sst structure exists
-    if "config" not in node:
-        node["config"] = {}
-    if "meta" not in node["config"]:
-        node["config"]["meta"] = {}
-    if "sst" not in node["config"]["meta"]:
-        node["config"]["meta"]["sst"] = {}
-
-    # Merge old values into new location (preserve any existing new values)
+    # Build the new config structure
+    new_config_meta_sst = {}
     for key, value in old_sst.items():
-        if key not in node["config"]["meta"]["sst"]:
-            node["config"]["meta"]["sst"][key] = value
+        new_config_meta_sst[key] = value
+
+    # Handle config insertion with proper positioning
+    if "config" not in node:
+        # Create new config with proper structure
+        new_config = CommentedMap()
+        new_config["meta"] = CommentedMap()
+        new_config["meta"]["sst"] = new_config_meta_sst
+        
+        # Insert config after 'description' for models, or after 'data_tests' for columns
+        if is_model:
+            _insert_key_after(node, "description", "config", new_config)
+        else:
+            # For columns, insert after data_tests if present, otherwise after description
+            if "data_tests" in node:
+                _insert_key_after(node, "data_tests", "config", new_config)
+            else:
+                _insert_key_after(node, "description", "config", new_config)
+    else:
+        # config exists, just add/update meta.sst
+        if "meta" not in node["config"]:
+            node["config"]["meta"] = {}
+        if "sst" not in node["config"]["meta"]:
+            node["config"]["meta"]["sst"] = {}
+        
+        # Merge values
+        for key, value in old_sst.items():
+            if key not in node["config"]["meta"]["sst"]:
+                node["config"]["meta"]["sst"][key] = value
 
     # Remove old location
     del meta["sst"]
@@ -66,6 +120,40 @@ def _migrate_node_meta(node: Dict[str, Any], node_type: str) -> Tuple[bool, List
         del node["meta"]
 
     return True, notes
+
+
+def _ensure_blank_lines(content: Any) -> None:
+    """
+    Ensure proper blank lines in the YAML structure.
+    
+    - Blank line before 'columns:' key in each model
+    - Blank line before each column entry in the columns list
+    
+    Args:
+        content: The ruamel.yaml content object
+    """
+    if not content:
+        return
+        
+    models = content.get("models", [])
+    if not models or not hasattr(models, "ca"):
+        return
+    
+    for idx, model in enumerate(models):
+        if not isinstance(model, CommentedMap):
+            continue
+            
+        # Add blank line before 'columns' key in the model
+        if "columns" in model and hasattr(model, "ca"):
+            # Add a blank line comment before 'columns' key
+            model.yaml_set_comment_before_after_key("columns", before="\n")
+        
+        # Add blank lines between column entries
+        columns = model.get("columns", [])
+        if columns and hasattr(columns, "ca"):
+            for col_idx in range(1, len(columns)):
+                # Add blank line comment before each column (except first)
+                columns.yaml_set_comment_before_after_key(col_idx, before="\n")
 
 
 def _migrate_yaml_file(file_path: Path, dry_run: bool = False, backup: bool = False) -> Dict[str, Any]:
@@ -120,7 +208,7 @@ def _migrate_yaml_file(file_path: Path, dry_run: bool = False, backup: bool = Fa
             model_name = model.get("name", "unknown")
 
             # Migrate model-level meta
-            migrated, notes = _migrate_node_meta(model, f"model '{model_name}'")
+            migrated, notes = _migrate_node_meta(model, f"model '{model_name}'", is_model=True)
             if migrated:
                 any_changes = True
                 result["models_migrated"] += 1
@@ -133,7 +221,7 @@ def _migrate_yaml_file(file_path: Path, dry_run: bool = False, backup: bool = Fa
                     continue
 
                 col_name = column.get("name", "unknown")
-                migrated, notes = _migrate_node_meta(column, f"column '{model_name}.{col_name}'")
+                migrated, notes = _migrate_node_meta(column, f"column '{model_name}.{col_name}'", is_model=False)
                 if migrated:
                     any_changes = True
                     result["columns_migrated"] += 1
@@ -152,6 +240,9 @@ def _migrate_yaml_file(file_path: Path, dry_run: bool = False, backup: bool = Fa
                     with open(file_path, "r", encoding="utf-8") as original:
                         f.write(original.read())
                 result["notes"].append(f"Backup created: {backup_path}")
+
+            # Ensure proper blank lines formatting
+            _ensure_blank_lines(content)
 
             # Write the migrated content
             with open(file_path, "w", encoding="utf-8") as f:
