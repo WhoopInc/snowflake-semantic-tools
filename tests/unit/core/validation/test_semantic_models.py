@@ -541,6 +541,24 @@ class TestVerifiedQueryEdgeCases:
         errors = [i.message for i in result.issues if i.severity.name == "ERROR"]
         assert not any("use_as_onboarding" in e for e in errors)
 
+    def test_use_as_onboarding_question_boolean_passes(self, validator):
+        """Test that use_as_onboarding_question=true (boolean) passes."""
+        semantic_data = {
+            "verified_queries": {
+                "items": [
+                    {
+                        "name": "onboarding_query",
+                        "question": "What is the total revenue?",
+                        "sql": "SELECT SUM(amount) FROM orders",
+                        "use_as_onboarding_question": True,
+                    }
+                ]
+            }
+        }
+        result = validator.validate(semantic_data)
+        errors = [i.message for i in result.issues if i.severity.name == "ERROR"]
+        assert not any("use_as_onboarding" in e for e in errors)
+
     def test_use_as_onboarding_string_error(self, validator):
         """Test that use_as_onboarding as string produces ERROR."""
         semantic_data = {
@@ -558,6 +576,24 @@ class TestVerifiedQueryEdgeCases:
         result = validator.validate(semantic_data)
         errors = [i.message for i in result.issues if i.severity.name == "ERROR"]
         assert any("use_as_onboarding" in e and "must be a boolean" in e for e in errors)
+
+    def test_use_as_onboarding_question_string_error(self, validator):
+        """Test that use_as_onboarding_question as string produces ERROR."""
+        semantic_data = {
+            "verified_queries": {
+                "items": [
+                    {
+                        "name": "onboarding_query",
+                        "question": "What is the total revenue?",
+                        "sql": "SELECT SUM(amount) FROM orders",
+                        "use_as_onboarding_question": "maybe",  # Should be boolean
+                    }
+                ]
+            }
+        }
+        result = validator.validate(semantic_data)
+        errors = [i.message for i in result.issues if i.severity.name == "ERROR"]
+        assert any("use_as_onboarding_question" in e and "must be a boolean" in e for e in errors)
 
     def test_use_as_onboarding_integer_error(self, validator):
         """Test that use_as_onboarding as integer produces ERROR."""
