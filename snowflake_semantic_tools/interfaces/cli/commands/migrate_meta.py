@@ -39,15 +39,11 @@ def _migrate_node_meta(node: Dict[str, Any], node_type: str) -> Tuple[bool, List
         return False, notes
 
     meta = node["meta"]
-
-    # Check for sst or genie
-    old_sst = meta.get("sst", meta.get("genie", {}))
+    old_sst = meta.get("sst", {})
     if not old_sst:
         return False, notes
 
-    # Record what we're migrating from
-    source = "meta.genie" if "genie" in meta else "meta.sst"
-    notes.append(f"Migrating {node_type} from {source} to config.meta.sst")
+    notes.append(f"Migrating {node_type} from meta.sst to config.meta.sst")
 
     # Ensure config.meta.sst structure exists
     if "config" not in node:
@@ -63,10 +59,7 @@ def _migrate_node_meta(node: Dict[str, Any], node_type: str) -> Tuple[bool, List
             node["config"]["meta"]["sst"][key] = value
 
     # Remove old location
-    if "genie" in meta:
-        del meta["genie"]
-    if "sst" in meta:
-        del meta["sst"]
+    del meta["sst"]
 
     # Clean up empty meta
     if not meta:

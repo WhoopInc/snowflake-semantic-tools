@@ -311,7 +311,7 @@ class YAMLHandler:
         Ensure proper config.meta.sst structure exists for column (dbt Fusion compatible).
 
         Writes SST metadata to config.meta.sst (new format).
-        Migrates any existing meta.sst or meta.genie data to the new location.
+        Migrates any existing meta.sst data to the new location.
 
         Args:
             column_metadata: Column metadata dictionary
@@ -327,18 +327,8 @@ class YAMLHandler:
         if "sst" not in column_metadata["config"]["meta"]:
             column_metadata["config"]["meta"]["sst"] = {}
 
-        # Migrate from legacy meta.sst or meta.genie if present
+        # Migrate from legacy meta.sst if present
         if "meta" in column_metadata and isinstance(column_metadata["meta"], dict):
-            # Handle genie -> sst first (oldest format)
-            old_genie = column_metadata["meta"].get("genie", {})
-            if old_genie:
-                logger.debug("Migrating column from meta.genie to config.meta.sst")
-                for key, value in old_genie.items():
-                    if key not in column_metadata["config"]["meta"]["sst"]:
-                        column_metadata["config"]["meta"]["sst"][key] = value
-                del column_metadata["meta"]["genie"]
-
-            # Handle meta.sst -> config.meta.sst
             old_sst = column_metadata["meta"].get("sst", {})
             if old_sst:
                 logger.debug("Migrating column from meta.sst to config.meta.sst")
@@ -404,13 +394,6 @@ class YAMLHandler:
                 ordered_sst[key] = value
 
         return ordered_sst
-
-    def _order_column_genie_keys(self, column_metadata: Dict[str, Any]) -> Dict[str, Any]:
-        """
-        Deprecated: Use _order_column_sst_keys() instead.
-        Maintained for backward compatibility.
-        """
-        return self._order_column_sst_keys(column_metadata)
 
     def create_base_yaml_structure(self, model_name: str) -> Dict[str, Any]:
         """

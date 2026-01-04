@@ -57,21 +57,6 @@ class TestGetSstMeta:
         assert result["cortex_searchable"] is True
         assert result["primary_key"] == "id"
 
-    def test_legacy_format_meta_genie(self):
-        """Test fallback to oldest meta.genie location."""
-        node = {
-            "name": "test_model",
-            "meta": {
-                "genie": {
-                    "cortex_searchable": True,
-                }
-            },
-        }
-
-        result = get_sst_meta(node, node_type="model", node_name="test_model")
-
-        assert result["cortex_searchable"] is True
-
     def test_new_format_takes_priority(self):
         """Test that config.meta.sst takes priority over meta.sst."""
         node = {

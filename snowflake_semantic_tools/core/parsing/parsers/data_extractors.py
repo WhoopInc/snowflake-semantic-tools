@@ -29,7 +29,7 @@ def get_sst_meta(
     
     Supports both new dbt Fusion format (config.meta.sst) and legacy format (meta.sst).
     
-    Priority: config.meta.sst > meta.sst > meta.genie (legacy)
+    Priority: config.meta.sst > meta.sst
     
     Args:
         node: Model or column dictionary from YAML
@@ -51,8 +51,7 @@ def get_sst_meta(
     if not isinstance(meta, dict):
         return {}
     
-    # Support both 'sst' and legacy 'genie' section names
-    sst_meta = meta.get("sst", meta.get("genie", {}))
+    sst_meta = meta.get("sst", {})
     
     # Emit deprecation warning if using old pattern (only if found and warning enabled)
     if sst_meta and emit_warning:

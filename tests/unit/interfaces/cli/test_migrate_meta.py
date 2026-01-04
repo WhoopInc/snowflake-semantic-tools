@@ -43,24 +43,6 @@ class TestMigrateNodeMeta:
         # Old location should be removed
         assert "meta" not in node
 
-    def test_migrate_model_from_meta_genie(self):
-        """Test migrating model from legacy meta.genie to config.meta.sst."""
-        node = {
-            "name": "test_model",
-            "meta": {
-                "genie": {
-                    "cortex_searchable": True,
-                }
-            },
-        }
-
-        was_migrated, notes = _migrate_node_meta(node, "model 'test_model'")
-
-        assert was_migrated is True
-        assert "meta.genie" in notes[0]
-        assert node["config"]["meta"]["sst"]["cortex_searchable"] is True
-        assert "meta" not in node
-
     def test_no_migration_needed_already_new_format(self):
         """Test that node already in new format doesn't get migrated."""
         node = {
