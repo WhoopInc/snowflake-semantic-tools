@@ -15,6 +15,7 @@ from typing import Any, Dict, List, Optional, Set, Tuple
 
 from snowflake_semantic_tools.core.models import ValidationResult
 from snowflake_semantic_tools.core.models.validation import ValidationSeverity
+from snowflake_semantic_tools.core.parsing.parsers.data_extractors import get_sst_meta
 from snowflake_semantic_tools.shared.utils import get_logger
 from snowflake_semantic_tools.shared.utils.character_sanitizer import CharacterSanitizer
 
@@ -685,9 +686,8 @@ class DbtModelValidator:
 
             # Check if this model is in the extracted tables
             if model_name.upper() not in included_names:
-                # Check why it's not included
-                meta = model.get("meta", {})
-                sst_meta = meta.get("sst", {})
+                # Check why it's not included (supports both config.meta.sst and meta.sst)
+                sst_meta = get_sst_meta(model, node_type="model", node_name=model_name, emit_warning=False)
 
                 if not sst_meta:
                     result.add_info(

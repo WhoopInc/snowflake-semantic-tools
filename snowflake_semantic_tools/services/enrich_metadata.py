@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from snowflake_semantic_tools.core.enrichment import MetadataEnricher, PrimaryKeyValidator, YAMLHandler
+from snowflake_semantic_tools.core.parsing.parsers.data_extractors import get_sst_meta
 from snowflake_semantic_tools.infrastructure.snowflake import SnowflakeClient
 
 # Events: User-facing output → CLI terminal + logs/sst_events.log
@@ -286,8 +287,8 @@ class MetadataEnrichmentService:
                     # Fall back to first model if no match found (for backward compat)
                     model = matching_model if matching_model else models[0]
 
-                    meta = model.get("meta", {})
-                    sst = meta.get("sst", meta.get("genie", {}))  # Support old name too
+                    # Use get_sst_meta utility (supports config.meta.sst and meta.sst)
+                    sst = get_sst_meta(model, node_type="model", node_name=model_name)
 
                     database = sst.get("database")
                     schema = sst.get("schema")

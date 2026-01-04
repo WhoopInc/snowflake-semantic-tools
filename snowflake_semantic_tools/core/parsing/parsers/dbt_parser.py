@@ -25,6 +25,7 @@ from snowflake_semantic_tools.core.parsing.parsers.data_extractors import (
     extract_column_info,
     extract_table_info,
     get_column_type,
+    get_sst_meta,
 )
 from snowflake_semantic_tools.core.parsing.parsers.error_handler import ErrorTracker, format_yaml_error
 from snowflake_semantic_tools.shared import get_logger
@@ -126,12 +127,11 @@ def parse_single_model(
     """
     result = get_empty_result()
 
-    # Extract cortex_searchable flag
-    meta = model.get("meta", {})
-    sst_meta = meta.get("sst", {})
+    # Extract cortex_searchable flag (supports both config.meta.sst and meta.sst)
+    model_name = model.get("name", "unknown")
+    sst_meta = get_sst_meta(model, node_type="model", node_name=model_name)
     cortex_searchable = sst_meta.get("cortex_searchable", False)
 
-    model_name = model.get("name", "unknown")
     logger.debug(f"Processing model '{model_name}' - cortex_searchable={cortex_searchable}")
 
     # Always extract table info for validation purposes

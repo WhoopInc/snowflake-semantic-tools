@@ -270,50 +270,86 @@ class YAMLHandler:
 
     def ensure_sst_structure(self, model_metadata: Dict[str, Any]) -> Dict[str, Any]:
         """
-        Ensure proper meta.sst structure exists.
+        Ensure proper config.meta.sst structure exists (dbt Fusion compatible).
+
+        Writes SST metadata to config.meta.sst (new format).
+        Migrates any existing meta.sst data to the new location.
 
         Args:
             model_metadata: Model metadata dictionary
 
         Returns:
-            Dict with proper sst structure
+            Dict with proper sst structure in config.meta.sst
         """
-        if "meta" not in model_metadata:
-            model_metadata["meta"] = {}
+        # Ensure config.meta.sst structure exists
+        if "config" not in model_metadata:
+            model_metadata["config"] = {}
+        if "meta" not in model_metadata["config"]:
+            model_metadata["config"]["meta"] = {}
+        if "sst" not in model_metadata["config"]["meta"]:
+            model_metadata["config"]["meta"]["sst"] = {}
 
-        # Create sst section if it doesn't exist
-        if "sst" not in model_metadata["meta"]:
-            model_metadata["meta"]["sst"] = {}
+        # Migrate from legacy meta.sst if present
+        if "meta" in model_metadata and isinstance(model_metadata["meta"], dict):
+            old_sst = model_metadata["meta"].get("sst", {})
+            if old_sst:
+                logger.debug("Migrating model from meta.sst to config.meta.sst")
+                # Merge old values into new location (new takes precedence)
+                for key, value in old_sst.items():
+                    if key not in model_metadata["config"]["meta"]["sst"]:
+                        model_metadata["config"]["meta"]["sst"][key] = value
+                # Remove old location
+                del model_metadata["meta"]["sst"]
+                # Clean up empty meta
+                if not model_metadata["meta"]:
+                    del model_metadata["meta"]
 
         return model_metadata
 
     def ensure_column_sst_structure(self, column_metadata: Dict[str, Any]) -> Dict[str, Any]:
         """
-        Ensure proper meta.sst structure exists for column with correct key ordering.
+        Ensure proper config.meta.sst structure exists for column (dbt Fusion compatible).
 
-        IMPORTANT: Always writes 'meta.sst', not 'meta.genie'.
+        Writes SST metadata to config.meta.sst (new format).
+        Migrates any existing meta.sst or meta.genie data to the new location.
 
         Args:
             column_metadata: Column metadata dictionary
 
         Returns:
-            Dict with proper sst structure and ordered keys
+            Dict with proper sst structure in config.meta.sst and ordered keys
         """
-        if "meta" not in column_metadata:
-            column_metadata["meta"] = {}
+        # Ensure config.meta.sst structure exists
+        if "config" not in column_metadata:
+            column_metadata["config"] = {}
+        if "meta" not in column_metadata["config"]:
+            column_metadata["config"]["meta"] = {}
+        if "sst" not in column_metadata["config"]["meta"]:
+            column_metadata["config"]["meta"]["sst"] = {}
 
-        # Create sst section if it doesn't exist
-        if "sst" not in column_metadata["meta"]:
-            column_metadata["meta"]["sst"] = {}
+        # Migrate from legacy meta.sst or meta.genie if present
+        if "meta" in column_metadata and isinstance(column_metadata["meta"], dict):
+            # Handle genie -> sst first (oldest format)
+            old_genie = column_metadata["meta"].get("genie", {})
+            if old_genie:
+                logger.debug("Migrating column from meta.genie to config.meta.sst")
+                for key, value in old_genie.items():
+                    if key not in column_metadata["config"]["meta"]["sst"]:
+                        column_metadata["config"]["meta"]["sst"][key] = value
+                del column_metadata["meta"]["genie"]
 
-        # Remove old genie section if present (migration/cleanup)
-        if "genie" in column_metadata["meta"]:
-            logger.debug(f"Migrating column from meta.genie to meta.sst")
-            # Preserve any data from genie section before removing
-            for key, value in column_metadata["meta"]["genie"].items():
-                if key not in column_metadata["meta"]["sst"]:
-                    column_metadata["meta"]["sst"][key] = value
-            del column_metadata["meta"]["genie"]
+            # Handle meta.sst -> config.meta.sst
+            old_sst = column_metadata["meta"].get("sst", {})
+            if old_sst:
+                logger.debug("Migrating column from meta.sst to config.meta.sst")
+                for key, value in old_sst.items():
+                    if key not in column_metadata["config"]["meta"]["sst"]:
+                        column_metadata["config"]["meta"]["sst"][key] = value
+                del column_metadata["meta"]["sst"]
+
+            # Clean up empty meta
+            if not column_metadata["meta"]:
+                del column_metadata["meta"]
 
         # Ensure proper key ordering for sst metadata
         column_metadata = self._order_column_sst_keys(column_metadata)
@@ -323,24 +359,34 @@ class YAMLHandler:
     def _order_column_sst_keys(self, column_metadata: Dict[str, Any]) -> Dict[str, Any]:
         """
         Ensure SST metadata keys are in the correct order.
-        Also handles legacy 'genie' section for migration support.
+
+        Works with new config.meta.sst location (dbt Fusion compatible).
 
         Args:
             column_metadata: Column metadata dictionary
 
         Returns:
-            Dict with properly ordered sst/genie keys
+            Dict with properly ordered sst keys
         """
-        if "meta" not in column_metadata:
-            return column_metadata
+        # Check for config.meta.sst (new location)
+        if "config" in column_metadata and "meta" in column_metadata.get("config", {}):
+            config_meta = column_metadata["config"]["meta"]
+            if "sst" in config_meta:
+                sst = config_meta["sst"]
+                column_metadata["config"]["meta"]["sst"] = self._order_sst_dict(sst)
 
-        # Work with sst (preferred) or genie (legacy migration support)
-        section_name = "sst" if "sst" in column_metadata["meta"] else "genie"
-        if section_name not in column_metadata["meta"]:
-            return column_metadata
+        return column_metadata
 
-        sst = column_metadata["meta"][section_name]
+    def _order_sst_dict(self, sst: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Order SST metadata keys in the preferred order.
 
+        Args:
+            sst: SST metadata dictionary
+
+        Returns:
+            Dict with properly ordered keys
+        """
         # Desired order for sst metadata keys
         key_order = ["column_type", "data_type", "synonyms", "sample_values", "is_enum", "privacy_category"]
 
@@ -357,10 +403,7 @@ class YAMLHandler:
             if key not in ordered_sst:
                 ordered_sst[key] = value
 
-        # Replace the section with ordered version
-        column_metadata["meta"][section_name] = ordered_sst
-
-        return column_metadata
+        return ordered_sst
 
     def _order_column_genie_keys(self, column_metadata: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -371,7 +414,9 @@ class YAMLHandler:
 
     def create_base_yaml_structure(self, model_name: str) -> Dict[str, Any]:
         """
-        Create base YAML structure for a new model.
+        Create base YAML structure for a new model (dbt Fusion compatible).
+
+        Uses config.meta.sst format for SST metadata.
 
         Args:
             model_name: Name of the model
@@ -385,17 +430,16 @@ class YAMLHandler:
                 {
                     "name": model_name,
                     "description": f"Model description for {model_name}.",
-                    "meta": {
-                        "sst": {
-                            "cortex_searchable": False,
-                            "database": "analytics",
-                            "schema": "",  # Will be filled in by processor
-                            "table": model_name,
-                            "primary_key": "",  # Will be detected
-                            "synonyms": [],
-                        }
+                    "config": {
+                        "tags": [],
+                        "meta": {
+                            "sst": {
+                                "cortex_searchable": False,
+                                "primary_key": "",  # Will be detected
+                                "synonyms": [],
+                            }
+                        },
                     },
-                    "config": {"tags": []},
                     "columns": [],
                 }
             ],

@@ -67,6 +67,7 @@ class DbtModel:
     materialized: str = "table"
     tags: List[str] = field(default_factory=list)
     meta: Dict[str, Any] = field(default_factory=dict)
+    config: Dict[str, Any] = field(default_factory=dict)  # For dbt Fusion config.meta.sst support
 
     @property
     def fully_qualified_name(self) -> str:
@@ -109,13 +110,23 @@ class DbtModel:
         """
         Check if this model has SST (Snowflake Semantic Tools) metadata configured.
 
-        Models with 'sst' metadata in their meta field are candidates for inclusion
-        in the semantic model. This metadata defines metrics, dimensions, and other
-        semantic layer properties.
+        Models with 'sst' metadata are candidates for inclusion in the semantic model.
+        This metadata defines metrics, dimensions, and other semantic layer properties.
+
+        Supports both:
+        - New format: config.meta.sst (dbt Fusion compatible)
+        - Legacy format: meta.sst
 
         Returns:
-            True if model has 'sst' key in meta field
+            True if model has 'sst' key in either meta or config.meta
         """
+        # Check new location first (config.meta.sst)
+        if self.config:
+            config_meta = self.config.get("meta", {})
+            if isinstance(config_meta, dict) and config_meta.get("sst"):
+                return True
+        
+        # Fall back to legacy location (meta.sst)
         if not self.meta:
             return False
         return bool(self.meta.get("sst"))
@@ -137,6 +148,8 @@ class DbtModel:
             result["tags"] = self.tags
         if self.meta:
             result["meta"] = self.meta
+        if self.config:
+            result["config"] = self.config
 
         return result
 
@@ -175,4 +188,5 @@ class DbtModel:
             materialized=data.get("materialized", "table"),
             tags=data.get("tags", []),
             meta=data.get("meta", {}),
+            config=data.get("config", {}),
         )

@@ -1,0 +1,74 @@
+# Test fixture: Legacy meta.sst format (deprecated but still supported)
+# This format will trigger deprecation warnings when read
+# It should be migrated to config.meta.sst format for dbt Fusion compatibility
+version: 2
+
+models:
+  - name: legacy_orders
+    description: "Legacy orders table with deprecated meta.sst format"
+    meta:
+      sst:
+        cortex_searchable: true
+        primary_key: id
+        synonyms:
+          - purchases
+          - transactions
+    columns:
+      - name: id
+        description: "Unique order identifier"
+        meta:
+          sst:
+            column_type: dimension
+            data_type: text
+            synonyms:
+              - order_id
+            sample_values:
+              - "ORD-001"
+            is_enum: false
+
+      - name: user_id
+        description: "User who placed the order"
+        meta:
+          sst:
+            column_type: dimension
+            data_type: text
+            synonyms:
+              - customer_id
+            sample_values: []
+            is_enum: false
+
+      - name: amount
+        description: "Order total amount"
+        meta:
+          sst:
+            column_type: fact
+            data_type: number
+            synonyms:
+              - total
+            sample_values:
+              - "99.99"
+            is_enum: false
+
+      - name: status
+        description: "Order status"
+        meta:
+          sst:
+            column_type: dimension
+            data_type: text
+            synonyms:
+              - order_status
+            sample_values:
+              - pending
+              - shipped
+            is_enum: true
+
+      - name: created_at
+        description: "Order creation timestamp"
+        meta:
+          sst:
+            column_type: time
+            data_type: timestamp
+            synonyms: []
+            sample_values: []
+            is_enum: false
+

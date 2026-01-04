@@ -14,6 +14,88 @@ from snowflake_semantic_tools.shared import get_logger
 logger = get_logger("yaml_parser.data_extractors")
 
 
+# Track which deprecation warnings have been emitted to avoid duplicates
+_deprecation_warnings_emitted: set = set()
+
+
+def get_sst_meta(
+    node: Dict[str, Any],
+    node_type: str = "node",
+    node_name: str = "",
+    emit_warning: bool = True,
+) -> Dict[str, Any]:
+    """
+    Extract SST metadata from a dbt YAML node (model or column).
+    
+    Supports both new dbt Fusion format (config.meta.sst) and legacy format (meta.sst).
+    
+    Priority: config.meta.sst > meta.sst > meta.genie (legacy)
+    
+    Args:
+        node: Model or column dictionary from YAML
+        node_type: Type of node for warning messages ('model' or 'column')
+        node_name: Name of node for warning messages
+        emit_warning: Whether to emit deprecation warnings (disable for read-only checks)
+    
+    Returns:
+        SST metadata dictionary (may be empty)
+    """
+    # Try new location first (config.meta.sst) - dbt Fusion compatible
+    config = node.get("config", {})
+    config_meta = config.get("meta", {}) if isinstance(config, dict) else {}
+    if "sst" in config_meta:
+        return config_meta.get("sst", {})
+    
+    # Fall back to old location (meta.sst)
+    meta = node.get("meta", {})
+    if not isinstance(meta, dict):
+        return {}
+    
+    # Support both 'sst' and legacy 'genie' section names
+    sst_meta = meta.get("sst", meta.get("genie", {}))
+    
+    # Emit deprecation warning if using old pattern (only if found and warning enabled)
+    if sst_meta and emit_warning:
+        _emit_deprecation_warning(node_type, node_name)
+    
+    return sst_meta if isinstance(sst_meta, dict) else {}
+
+
+def _emit_deprecation_warning(node_type: str, node_name: str) -> None:
+    """
+    Emit deprecation warning with severity based on node type.
+    
+    Column-level is CRITICAL (will be error in dbt Fusion).
+    Model-level is WARNING (recommended but less urgent).
+    
+    Args:
+        node_type: 'model' or 'column'
+        node_name: Name of the model/column
+    """
+    # Create unique key to avoid duplicate warnings
+    warning_key = f"{node_type}:{node_name}"
+    if warning_key in _deprecation_warnings_emitted:
+        return
+    _deprecation_warnings_emitted.add(warning_key)
+    
+    # Column-level is CRITICAL (will be error in Fusion)
+    # Model-level is WARNING (less urgent)
+    severity = "CRITICAL" if node_type == "column" else "WARNING"
+    
+    logger.warning(
+        f"[DEPRECATED-{severity}] {node_type.capitalize()} '{node_name}' uses meta.sst pattern. "
+        f"This will be an ERROR in dbt Fusion. "
+        f"Migrate to config.meta.sst pattern. "
+        f"Run 'sst migrate-meta' to auto-fix."
+    )
+
+
+def clear_deprecation_warnings() -> None:
+    """Clear the set of emitted deprecation warnings (for testing)."""
+    global _deprecation_warnings_emitted
+    _deprecation_warnings_emitted = set()
+
+
 def extract_table_info(
     model: Dict[str, Any], file_path: Path, target_database: Optional[str] = None, manifest_parser=None
 ) -> Optional[Dict[str, Any]]:
@@ -38,9 +120,8 @@ def extract_table_info(
 
         description = model.get("description", "")
 
-        # Extract SST metadata if present
-        meta = model.get("meta", {})
-        sst_meta = meta.get("sst", {})
+        # Extract SST metadata if present (supports both config.meta.sst and meta.sst)
+        sst_meta = get_sst_meta(model, node_type="model", node_name=name)
 
         # Extract primary keys and apply upper case formatting
         primary_keys = extract_primary_key(sst_meta)
@@ -184,9 +265,8 @@ def extract_column_info(column: Dict[str, Any], table_name: str, file_path: Path
         name = column.get("name", "")
         description = column.get("description", "")
 
-        # Extract SST metadata
-        meta = column.get("meta", {})
-        sst_meta = meta.get("sst", {})
+        # Extract SST metadata (supports both config.meta.sst and meta.sst)
+        sst_meta = get_sst_meta(column, node_type="column", node_name=f"{table_name}.{name}")
 
         # Build column record
         # Note: Column names uppercased to match Snowflake identifier behavior
@@ -209,7 +289,7 @@ def extract_column_info(column: Dict[str, Any], table_name: str, file_path: Path
         return {}
 
 
-def get_column_type(column: Dict[str, Any]) -> str:
+def get_column_type(column: Dict[str, Any], table_name: str = "") -> str:
     """
     Get the column type (dimension, time, fact) from metadata.
 
@@ -217,13 +297,15 @@ def get_column_type(column: Dict[str, Any]) -> str:
 
     Args:
         column: Column dictionary from YAML
+        table_name: Optional table name for deprecation warnings
 
     Returns:
         Column type string ('dimension', 'time', or 'fact'), or empty string if missing
     """
-    # Extract SST metadata
-    meta = column.get("meta", {})
-    sst_meta = meta.get("sst", {})
+    # Extract SST metadata (supports both config.meta.sst and meta.sst)
+    column_name = column.get("name", "")
+    node_name = f"{table_name}.{column_name}" if table_name else column_name
+    sst_meta = get_sst_meta(column, node_type="column", node_name=node_name)
     column_type = sst_meta.get("column_type", "")  # No default - must be explicit
 
     # Normalize the column type if provided
