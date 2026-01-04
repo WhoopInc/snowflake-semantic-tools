@@ -109,9 +109,21 @@ class ReferenceValidator:
                         if table_lower not in dbt_catalog:
                             # Check if it's a CTE or subquery
                             if not self._is_cte_or_subquery(table):
+                                # Find similar tables for suggestions
+                                suggestions = self._find_similar_tables(table, dbt_catalog)
+                                error_msg = f"Metric '{name}' references unknown table '{table}'"
+                                if suggestions:
+                                    error_msg += f". Did you mean: {', '.join(suggestions)}?"
+                                else:
+                                    error_msg += ". Check that the model has `config.meta.sst` configuration."
                                 result.add_error(
-                                    f"Metric '{name}' references unknown table '{table}'",
-                                    context={"metric": name, "table": table},
+                                    error_msg,
+                                    context={
+                                        "metric": name,
+                                        "table": table,
+                                        "suggestions": suggestions,
+                                        "available_tables": list(dbt_catalog.keys())[:10],
+                                    },
                                 )
                         elif table_lower in dbt_catalog:
                             # Check if this table was skipped due to missing metadata
@@ -207,9 +219,15 @@ class ReferenceValidator:
 
                 # Validate left table
                 if left_table and left_table_lower not in dbt_catalog:
+                    suggestions = self._find_similar_tables(left_table, dbt_catalog)
+                    error_msg = f"Relationship '{name}' references unknown left table '{left_table}'"
+                    if suggestions:
+                        error_msg += f". Did you mean: {', '.join(suggestions)}?"
+                    else:
+                        error_msg += ". Check that the model has `config.meta.sst` configuration."
                     result.add_error(
-                        f"Relationship '{name}' references unknown left table '{left_table}'",
-                        context={"relationship": name, "table": left_table},
+                        error_msg,
+                        context={"relationship": name, "table": left_table, "suggestions": suggestions},
                     )
                 elif left_table_lower in dbt_catalog:
                     # Check if this table was skipped due to missing metadata
@@ -228,9 +246,15 @@ class ReferenceValidator:
 
                 # Validate right table
                 if right_table and right_table_lower not in dbt_catalog:
+                    suggestions = self._find_similar_tables(right_table, dbt_catalog)
+                    error_msg = f"Relationship '{name}' references unknown right table '{right_table}'"
+                    if suggestions:
+                        error_msg += f". Did you mean: {', '.join(suggestions)}?"
+                    else:
+                        error_msg += ". Check that the model has `config.meta.sst` configuration."
                     result.add_error(
-                        f"Relationship '{name}' references unknown right table '{right_table}'",
-                        context={"relationship": name, "table": right_table},
+                        error_msg,
+                        context={"relationship": name, "table": right_table, "suggestions": suggestions},
                     )
                 elif right_table_lower in dbt_catalog:
                     # Check if this table was skipped due to missing metadata
@@ -451,8 +475,15 @@ class ReferenceValidator:
 
                 # Validate table
                 if table and table not in dbt_catalog:
+                    suggestions = self._find_similar_tables(table, dbt_catalog)
+                    error_msg = f"Filter '{name}' references unknown table '{table}'"
+                    if suggestions:
+                        error_msg += f". Did you mean: {', '.join(suggestions)}?"
+                    else:
+                        error_msg += ". Check that the model has `config.meta.sst` configuration."
                     result.add_error(
-                        f"Filter '{name}' references unknown table '{table}'", context={"filter": name, "table": table}
+                        error_msg,
+                        context={"filter": name, "table": table, "suggestions": suggestions},
                     )
 
                 # Validate column references in expression
@@ -595,11 +626,25 @@ class ReferenceValidator:
                         table_lower = table.lower()
                         if table_lower not in dbt_catalog:
                             if not self._is_cte_or_subquery(table):
+                                suggestions = self._find_similar_tables(table, dbt_catalog)
+                                error_msg = (
+                                    f"Semantic view '{view_name}' references table '{table}' that was not extracted"
+                                )
+                                if suggestions:
+                                    error_msg += f". Did you mean: {', '.join(suggestions)}?"
+                                else:
+                                    error_msg += (
+                                        ". Check that the table has `config.meta.sst` configuration "
+                                        "or run 'sst enrich' to populate metadata."
+                                    )
                                 result.add_error(
-                                    f"Semantic view '{view_name}' references table '{table}' that was not extracted. "
-                                    f"This usually means the table's metadata is missing or incomplete. "
-                                    f"Check that the table has proper meta.sst configuration or run 'sst enrich' to populate metadata.",
-                                    context={"view": view_name, "table": table, "type": "MISSING_TABLE_DEPENDENCY"},
+                                    error_msg,
+                                    context={
+                                        "view": view_name,
+                                        "table": table,
+                                        "type": "MISSING_TABLE_DEPENDENCY",
+                                        "suggestions": suggestions,
+                                    },
                                 )
 
                 # CRITICAL: Validate cross-table metrics have relationships
@@ -686,3 +731,100 @@ class ReferenceValidator:
 
         table_lower = table_name.lower()
         return any(pattern in table_lower for pattern in cte_patterns)
+
+    def _find_similar_tables(self, table_name: str, catalog: Dict[str, Any]) -> List[str]:
+        """
+        Find similar table names for "Did you mean?" suggestions.
+
+        Uses multiple matching strategies without external dependencies:
+        1. Prefix matching (same first 3+ characters)
+        2. Substring matching (one name contains the other)
+        3. Edit distance approximation (simple character overlap)
+
+        Args:
+            table_name: The unknown table name
+            catalog: Dictionary of known tables
+
+        Returns:
+            List of up to 3 similar table names, sorted by relevance
+        """
+        if not table_name or not catalog:
+            return []
+
+        table_lower = table_name.lower()
+        candidates = []
+
+        for known_table in catalog.keys():
+            known_lower = known_table.lower()
+            score = 0
+
+            # Strategy 1: Prefix matching (most likely for typos)
+            min_prefix_len = min(3, len(table_lower), len(known_lower))
+            if min_prefix_len > 0 and table_lower[:min_prefix_len] == known_lower[:min_prefix_len]:
+                score += 3
+
+            # Strategy 2: Substring matching
+            if table_lower in known_lower or known_lower in table_lower:
+                score += 2
+
+            # Strategy 3: Character overlap (simple edit distance approximation)
+            common_chars = set(table_lower) & set(known_lower)
+            all_chars = set(table_lower) | set(known_lower)
+            if all_chars:
+                overlap_ratio = len(common_chars) / len(all_chars)
+                if overlap_ratio > 0.5:
+                    score += 1
+
+            # Strategy 4: Same suffix (catches pluralization, etc.)
+            min_suffix_len = min(3, len(table_lower), len(known_lower))
+            if min_suffix_len > 0 and table_lower[-min_suffix_len:] == known_lower[-min_suffix_len:]:
+                score += 1
+
+            if score > 0:
+                candidates.append((known_table, score))
+
+        # Sort by score (descending) and return top 3
+        candidates.sort(key=lambda x: x[1], reverse=True)
+        return [name for name, _ in candidates[:3]]
+
+    def _find_similar_columns(self, column_name: str, columns: Set[str]) -> List[str]:
+        """
+        Find similar column names for "Did you mean?" suggestions.
+
+        Args:
+            column_name: The unknown column name
+            columns: Set of known column names
+
+        Returns:
+            List of up to 3 similar column names
+        """
+        if not column_name or not columns:
+            return []
+
+        col_lower = column_name.lower()
+        candidates = []
+
+        for known_col in columns:
+            known_lower = known_col.lower()
+            score = 0
+
+            # Prefix matching
+            min_prefix_len = min(3, len(col_lower), len(known_lower))
+            if min_prefix_len > 0 and col_lower[:min_prefix_len] == known_lower[:min_prefix_len]:
+                score += 3
+
+            # Substring matching
+            if col_lower in known_lower or known_lower in col_lower:
+                score += 2
+
+            # Character overlap
+            common_chars = set(col_lower) & set(known_lower)
+            all_chars = set(col_lower) | set(known_lower)
+            if all_chars and len(common_chars) / len(all_chars) > 0.5:
+                score += 1
+
+            if score > 0:
+                candidates.append((known_col, score))
+
+        candidates.sort(key=lambda x: x[1], reverse=True)
+        return [name for name, _ in candidates[:3]]

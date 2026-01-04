@@ -8,10 +8,7 @@ Tests the get_sst_meta utility function that reads SST metadata from both:
 
 import pytest
 
-from snowflake_semantic_tools.core.parsing.parsers.data_extractors import (
-    clear_deprecation_warnings,
-    get_sst_meta,
-)
+from snowflake_semantic_tools.core.parsing.parsers.data_extractors import clear_deprecation_warnings, get_sst_meta
 
 
 class TestGetSstMeta:
@@ -189,4 +186,3 @@ class TestGetSstMeta:
         result = get_sst_meta(node, node_type="model", node_name="test_model")
 
         assert result == {}
-
