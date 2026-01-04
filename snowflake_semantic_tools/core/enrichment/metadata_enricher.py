@@ -816,7 +816,7 @@ class MetadataEnricher:
         Returns:
             Updated model_data with synonyms
         """
-        meta_sst = model_data.get("meta", {}).get("sst", {})
+        meta_sst = model_data.get("config", {}).get("meta", {}).get("sst", {})
         existing_synonyms = meta_sst.get("synonyms", [])
 
         if existing_synonyms and not force:
@@ -867,7 +867,7 @@ class MetadataEnricher:
 
         # Filter columns needing synonyms
         columns_needing_synonyms = [
-            col for col in columns if force or not col.get("meta", {}).get("sst", {}).get("synonyms")
+            col for col in columns if force or not col.get("config", {}).get("meta", {}).get("sst", {}).get("synonyms")
         ]
 
         if not columns_needing_synonyms:
