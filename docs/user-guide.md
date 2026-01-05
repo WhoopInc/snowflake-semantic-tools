@@ -14,28 +14,29 @@ Enrichment queries your Snowflake tables and populates dbt YAML files with:
 - **Data types** - TEXT, NUMBER, DATE, etc.
 - **Sample values** - Up to 25 examples per column
 - **Enum detection** - Identifies categorical columns
-- **Primary key validation** - Tests provided candidates
 
 ### Manifest Auto-Detection
 
-**Database and schema can be auto-detected from manifest.json:**
+**Database and schema are auto-detected from manifest.json:**
 
 ```bash
-# With explicit database/schema
-sst enrich models/memberships/ --database ANALYTICS --schema memberships
+# Compile to generate manifest.json
+dbt compile --target prod
 
-# With auto-detection from manifest
-dbt compile --target prod  # Generates manifest.json
-sst enrich models/memberships/  # Auto-detects database and schema
+# Enrich specific models (database/schema from manifest)
+sst enrich --models customers,orders
+
+# Or enrich all models in a directory
+sst enrich --directory models/marts/
 ```
 
 **Benefits:**
-- No need to specify `--database`/`--schema` each time
+- No need to specify `--database`/`--schema` manually
 - Zero drift risk (manifest is dbt's source of truth)
 - Auto-handles complex routing (intermediate models, etc.)
 - Works with any dbt configuration
 
-**See:** [Getting Started Guide](getting-started.md#1-compile-your-dbt-project) for when to run `dbt compile`
+**See:** [Getting Started Guide](getting-started.md) for the full workflow
 
 ### How It Works
 
@@ -106,24 +107,12 @@ validation:
 ```bash
 # Temporary exclusions (adds to config for this run only)
 sst validate --exclude temp,backup
-sst enrich models/ --exclude experimental --database DB --schema SCHEMA
+sst enrich --models customers --exclude experimental
 ```
 
 **Validation:**
 - Run `sst validate --verbose` to see which patterns are being used
 - Warns about patterns that match no files (typos/outdated config)
-
-**5. Primary Keys**
-
-Provide candidates via JSON file:
-```json
-{
-  "customers": [["customer_id"]],
-  "orders": [["order_id"]]
-}
-```
-
-SST validates each with uniqueness queries and picks the best.
 
 ### What Gets Preserved
 
@@ -156,8 +145,14 @@ Validation checks semantic models against dbt definitions:
 - Templates resolve correctly
 - No circular dependencies
 - No duplicate names
+- SQL syntax validation (optional, requires Snowflake connection)
 
-**No Snowflake connection needed.**
+**Basic validation requires no Snowflake connection.** Optional Snowflake syntax validation can be enabled in `sst_config.yaml`:
+
+```yaml
+validation:
+  snowflake_syntax_check: true  # Validates SQL expressions against Snowflake
+```
 
 **For complete list of all validation checks:** See [Validation Checklist](validation-checklist.md)
 
@@ -166,7 +161,7 @@ Validation checks semantic models against dbt definitions:
 **1. Table References**
 - Table exists in dbt catalog
 - Table has SST metadata
-- Table has primary_key
+- Table has primary_key defined
 
 **2. Column References**
 - Column exists in table
@@ -187,11 +182,18 @@ Validation checks semantic models against dbt definitions:
 - No duplicate relationship names
 - Names are normalized for comparison (e.g., `Total_Revenue` and `total_revenue` are duplicates)
 
+**6. SQL Syntax (optional)**
+- Metric expressions are valid Snowflake SQL
+- Filter expressions are valid Snowflake SQL
+- Verified queries execute successfully
+- Catches typos in function names with "Did you mean?" suggestions
+
 ### Common Issues
 
 **Table not found:**
-- Check spelling
-- Verify `cortex_searchable: true` in YAML
+- Check spelling in your template reference
+- Ensure the dbt model exists and has been compiled
+- Look for "Did you mean?" suggestions in validation output
 
 **Circular dependency:**
 - Break the cycle
@@ -211,37 +213,43 @@ Validation checks semantic models against dbt definitions:
 
 ### Understanding Environment Control
 
-**Key concept:** The `--db` flag on `sst extract` controls WHERE metadata is deployed (environment selection).
+SST uses **dbt targets** to control which environment you're working with. This leverages your existing dbt profile configuration.
 
 ```bash
-# Development
-sst extract --db SCRATCH --schema dbt_yourname
-
-# QA
-sst extract --db ANALYTICS_QA --schema SEMANTIC
+# Development (uses dev target from profiles.yml)
+sst extract --target dev
+sst generate --target dev
+sst deploy --target dev
 
 # Production
-sst extract --db ANALYTICS --schema SEMANTIC
+sst extract --target prod
+sst generate --target prod
+sst deploy --target prod
 ```
 
-**How manifest works with extract:**
-- Manifest provides source location (where tables live: database and schema)
-- `--db` flag on `extract` ONLY overrides the database in deployed metadata (defer mechanism)
-- Schema always comes from manifest (not overridden by `--db` flag)
-- **Result:** Same YAMLs work in all environments
+**How it works:**
+- Database and schema come from your dbt profile's target configuration
+- Same semantic model YAMLs work in all environments
+- No need to specify `--database` or `--schema` manually
 
-**Example:**
-```bash
-# Model in YAML has no database/schema (uses manifest)
-# Manifest says: ANALYTICS.MEMBERSHIPS
-# Extract with: --db SCRATCH
-# Result: Metadata written with database=SCRATCH, schema=MEMBERSHIPS
-# (schema from manifest, database overridden)
+**Example profiles.yml:**
+```yaml
+jaffle_shop:
+  target: dev
+  outputs:
+    dev:
+      type: snowflake
+      database: DEV
+      schema: DBT_YOURNAME
+      # ... other settings
+    prod:
+      type: snowflake
+      database: ANALYTICS
+      schema: SEMANTIC
+      # ... other settings
 ```
 
-**Note:** The `extract` command's `--schema` flag controls WHERE metadata is stored, not what schema value is written to the metadata itself. The schema value in the metadata always comes from the manifest.
-
-**See:** [CLI Reference](cli-reference.md#extract) for full details on the extract command
+**See:** [CLI Reference](cli-reference.md#extract) for full details
 
 ---
 
@@ -249,7 +257,7 @@ sst extract --db ANALYTICS --schema SEMANTIC
 
 ### Enrichment
 1. Run after creating new models
-2. Provide primary key candidates for important tables
+2. Manually specify `primary_key` in your model YAML
 3. Exclude unnecessary directories
 4. Format YAML after enrichment
 

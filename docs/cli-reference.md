@@ -4,6 +4,7 @@
 - [Prerequisites](#prerequisites)
 - [Commands Overview](#commands-overview)
 - [Command Reference](#command-reference)
+  - [init](#init)
   - [debug](#debug)
   - [validate](#validate)
   - [enrich](#enrich)
@@ -28,6 +29,7 @@ This reference focuses on command syntax and options.
 
 | Command | Description | Snowflake Connection Required |
 |---------|-------------|-------------------------------|
+| `init` | **Setup Wizard** - Interactive project configuration | Optional (for connection test) |
 | `debug` | Show configuration and test Snowflake connection | Optional (for `--test-connection`) |
 | `validate` | Validate semantic models against dbt definitions | No |
 | `enrich` | Enrich dbt YAML metadata with semantic information | Yes |
@@ -37,9 +39,72 @@ This reference focuses on command syntax and options.
 | `generate` | Generate Snowflake SEMANTIC VIEWs and/or YAML models | Yes |
 | `deploy` | **One-step:** validate → extract → generate | Yes |
 
+**For new projects, start with `sst init` to configure your project.**
+
 **For production deployments, use the `deploy` command (see below) which orchestrates validate → extract → generate automatically.**
 
 ## Command Reference
+
+### init
+
+Interactive setup wizard for configuring SST in a dbt project. Creates configuration files and directory structure.
+
+```bash
+sst init [OPTIONS]
+```
+
+#### Options
+
+| Option | Type | Description |
+|--------|------|-------------|
+| `--skip-prompts` | FLAG | Use defaults without prompting |
+| `--check-only` | FLAG | Check current setup status without making changes |
+
+#### What It Does
+
+1. Detects your dbt project (`dbt_project.yml`)
+2. Reads existing profile from `~/.dbt/profiles.yml` (or helps create one)
+3. Creates `sst_config.yaml` with project settings
+4. Creates semantic models directory structure
+5. Generates example files for metrics, relationships, filters, etc.
+6. Optionally tests Snowflake connection
+
+#### Examples
+
+```bash
+# Interactive setup (recommended for first time)
+sst init
+
+# Non-interactive with defaults
+sst init --skip-prompts
+
+# Check current setup status
+sst init --check-only
+```
+
+#### Output
+
+```
+╭─────────────────────────────────────────╮
+│ Welcome to Snowflake Semantic Tools!    │
+╰─────────────────────────────────────────╯
+
+✓ Detected dbt project: jaffle_shop
+✓ Found profile: jaffle_shop (targets: dev, prod)
+
+? Where should SST store semantic models?
+  > snowflake_semantic_models (recommended)
+
+? Create example semantic models? Yes
+
+✓ Created sst_config.yaml
+✓ Created snowflake_semantic_models/
+✓ Created example files
+
+Setup Complete!
+```
+
+---
 
 ### debug
 
@@ -84,7 +149,7 @@ sst debug --target prod --test-connection
 #### Output Format
 
 ```
-SST Debug (v0.1.1)
+SST Debug (v0.2.0)
 
   ──────────────────────────────────────────────────
   Profile Configuration
@@ -122,7 +187,7 @@ With `--test-connection`:
 
 ### enrich
 
-Enrich dbt YAML metadata with semantic information from Snowflake. Automatically populates meta.sst blocks with column types, data types, sample values, primary keys, and enum detection.
+Enrich dbt YAML metadata with semantic information from Snowflake. Automatically populates meta.sst blocks with column types, data types, sample values, and enum detection.
 
 ```bash
 sst enrich [TARGET_PATH] [OPTIONS]
@@ -159,7 +224,6 @@ Control which metadata components to enrich:
 | `--data-types` | `-dt` | FLAG | Enrich data types (map Snowflake types) |
 | `--sample-values` | `-sv` | FLAG | Enrich sample values (queries data - SLOW) |
 | `--detect-enums` | `-de` | FLAG | Detect enum columns (low cardinality) |
-| `--primary-keys` | `-pk` | FLAG | Validate primary key candidates |
 | `--table-synonyms` | `-ts` | FLAG | Generate table-level synonyms via Cortex LLM |
 | `--column-synonyms` | `-cs` | FLAG | Generate column-level synonyms via Cortex LLM |
 | `--synonyms` | `-syn` | FLAG | Generate both table and column synonyms (shorthand) |
@@ -176,18 +240,16 @@ Overwrite existing metadata (normally preserved):
 | `--force-synonyms` | Overwrite existing synonyms (re-generate even if synonyms exist) |
 | `--force-column-types` | Overwrite existing column types (re-infer even if types exist) |
 | `--force-data-types` | Overwrite existing data types (re-map even if data types exist) |
-| `--force-primary-keys` | Overwrite existing primary keys (re-validate even if primary key exists) |
 | `--force-all` | Overwrite ALL existing values (force refresh everything) |
 
 ##### General Options
 
-| Option | Type | Description |
-|--------|------|-------------|
-| `--database` | TEXT | Override database name detection |
+| Option | Short | Type | Description |
+|--------|-------|------|-------------|
+| `--database` | `-d` | TEXT | Override database name detection |
 | `--schema` | TEXT | Override schema name detection |
 | `--manifest` | PATH | Path to manifest.json (default: ./target/manifest.json) |
 | `--allow-non-prod` | FLAG | Allow enrichment from non-production manifest |
-| `--pk-candidates` | PATH | JSON file with primary key candidates |
 | `--exclude` | TEXT | Comma-separated list of directories to exclude (adds to sst_config.yaml exclusions) |
 | `--dry-run` | FLAG | Preview changes without writing files |
 | `--fail-fast` | FLAG | Stop on first error |
@@ -198,7 +260,6 @@ Overwrite existing metadata (normally preserved):
 - **Column Type Classification**: Automatically determines `dimension`, `fact`, or `time_dimension`
 - **Data Type Mapping**: Maps Snowflake types to SST semantic types
 - **Sample Values**: Extracts up to 25 distinct sample values per column
-- **Primary Key Validation**: Validates user-provided primary key candidates
 - **Enum Detection**: Identifies low-cardinality columns suitable for enums
 - **LLM-Based Synonym Generation**: Uses Snowflake Cortex to generate natural language synonyms for tables and columns
 - **PII Protection**: Respects `privacy_category: direct_identifier` columns
@@ -208,50 +269,32 @@ Overwrite existing metadata (normally preserved):
 #### Examples
 
 ```bash
-# NEW: Enrich by model name (requires 'dbt compile' first)
+# Enrich by model name (requires dbt manifest - run 'dbt compile' first)
 sst enrich --models customers,orders
 
-# NEW: Enrich multiple models by name with synonyms
-sst enrich -m customers,orders,products --synonyms
+# Enrich with specific components
+sst enrich -m customers,orders --synonyms --sample-values
 
-# Enrich entire directory with default components
-sst enrich models/domain/ --database PROD_DB --schema domain
-
-# Enrich single model (via SQL file)
-sst enrich models/users/users.sql --database PROD_DB --schema users
-
-# Fast enrichment: only data types (skips expensive sample queries)
-sst enrich models/domain/ -dt --database PROD_DB --schema domain
-
-# Fast enrichment: only column types  
-sst enrich models/domain/ -ct --database PROD_DB --schema domain
-
-# Refresh sample values only (slower - queries Snowflake data)
-sst enrich models/domain/ -sv --database PROD_DB --schema domain
-
-# Enrich with LLM-generated synonyms (using short flags)
-sst enrich models/domain/ -ct -dt -sv -syn --database PROD_DB --schema domain
-
-# Generate only table-level synonyms (faster)
-sst enrich models/domain/ -ts --database PROD_DB --schema domain
+# Fast enrichment: only column and data types (skips expensive sample queries)
+sst enrich -m customers,orders -ct -dt
 
 # Enrich everything including synonyms
-sst enrich models/domain/ --all --database PROD_DB --schema domain
+sst enrich -m customers,orders --all
 
 # Re-generate synonyms even if they already exist
-sst enrich models/domain/ -syn --force-synonyms --database PROD_DB --schema domain
-
-# With primary key candidates
-sst enrich models/domain/ -pk --pk-candidates pk_candidates.json --database PROD_DB --schema domain
+sst enrich -m customers,orders --synonyms --force-synonyms
 
 # Dry run to preview changes
-sst enrich models/ --dry-run --verbose
+sst enrich -m customers,orders --dry-run --verbose
+
+# Alternative: Enrich by directory path
+sst enrich models/domain/
+
+# Alternative: Enrich single model by SQL file path
+sst enrich models/users/users.sql
 
 # Exclude directories (adds to sst_config.yaml exclusions for this run only)
-sst enrich models/ \
-  --exclude _intermediate,temp_models \
-  --database PROD_DB \
-  --schema public
+sst enrich models/ --exclude _intermediate,temp_models
   
 # Note: Configure permanent exclusions in sst_config.yaml instead of using --exclude repeatedly
 ```
@@ -269,27 +312,7 @@ enrichment:
   synonym_max_count: 4
 ```
 
-#### Primary Key Candidates Format
-
-Create a JSON file with primary key candidates:
-
-```json
-{
-  "customers": [
-    ["customer_id"]
-  ],
-  "orders": [
-    ["order_id"]
-  ],
-  "order_items": [
-    ["order_id", "line_item_id"],
-    ["order_item_id"]
-  ],
-  "daily_metrics": [
-    ["date", "metric_id"]
-  ]
-}
-```
+**Available models vary by region.** Check [Snowflake's Cortex LLM documentation](https://docs.snowflake.com/en/user-guide/snowflake-cortex/llm-functions#availability) for model availability in your region. `mistral-large2` is available across all regions.
 
 #### Output Format
 
@@ -442,6 +465,7 @@ sst format PATH [OPTIONS]
 | `--dry-run` | | FLAG | No | False | Preview changes without modifying files |
 | `--check` | | FLAG | No | False | Check if files need formatting (exit code 1 if changes needed) |
 | `--force` | | FLAG | No | False | Always write files, even if content appears unchanged (useful for IDE cache issues) |
+| `--sanitize` | | FLAG | No | False | Sanitize problematic characters in synonyms, sample values, and descriptions |
 
 ### What It Does
 
@@ -609,7 +633,7 @@ sst migrate-meta models/ --verbose
 ### Output Format
 
 ```
-Running with sst=0.1.1
+Running with sst=0.2.0
 
 Migrating 15 YAML file(s)...
 

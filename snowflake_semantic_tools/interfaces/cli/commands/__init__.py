@@ -7,7 +7,7 @@ Individual command implementations for semantic model operations.
 
 ### Enrich (`sst enrich`)
 Automatically enriches dbt YAML metadata with semantic information from Snowflake.
-Populates column types, data types, sample values, and detects primary keys.
+Populates column types, data types, sample values, and detects enum columns.
 
 ### Format (`sst format`)
 Standardizes YAML file structure and formatting for consistency.

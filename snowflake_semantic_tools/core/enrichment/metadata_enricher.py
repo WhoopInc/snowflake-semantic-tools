@@ -161,7 +161,6 @@ class MetadataEnricher:
         - data-types: Map Snowflake types to SST types
         - sample-values: Query data for sample values (SLOW)
         - detect-enums: Mark low-cardinality columns
-        - primary-keys: Validate primary key candidates
         - table-synonyms: Generate table synonyms via Cortex LLM
         - column-synonyms: Generate column synonyms via Cortex LLM
 
@@ -217,9 +216,7 @@ class MetadataEnricher:
 
             # Determine what data we need from Snowflake (decoupled checks)
             # Schema metadata: column names, data types (for type mapping)
-            needs_schema_metadata = not components or any(
-                c in components for c in ["column-types", "data-types", "primary-keys"]
-            )
+            needs_schema_metadata = not components or any(c in components for c in ["column-types", "data-types"])
             # Sample data: actual data queries (expensive)
             needs_sample_data = not components or any(c in components for c in ["sample-values", "detect-enums"])
             # Combined: need schema query if either is true

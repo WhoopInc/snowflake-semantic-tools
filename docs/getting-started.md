@@ -1,6 +1,13 @@
 # Getting Started with Snowflake Semantic Tools
 
-Complete guide to installing and configuring SST in your dbt project.
+This guide walks you through **setting up SST in an existing dbt project** to build and deploy Snowflake Semantic Views.
+
+**Already have a project using SST?** Just install SST and you're ready to go:
+
+```bash
+pip install snowflake-semantic-tools
+sst debug --test-connection  # Verify your setup
+```
 
 ---
 
@@ -8,50 +15,31 @@ Complete guide to installing and configuring SST in your dbt project.
 
 Before installing SST, ensure you have:
 
-- **Python 3.9 or higher** (SST supports Python 3.9-3.13)
+- **Python 3.10 or 3.11** (required)
 - **Access to a Snowflake account** with appropriate permissions
 - **A dbt project** with models defined
-- **dbt installed** (dbt Core 1.10+ or dbt Cloud CLI)
+- **dbt installed** (dbt Core or dbt Cloud CLI)
 
 ---
 
 ## Installation
 
-### Step 1: Install SST
-
-**Recommended for users:**
-
-**With Poetry (if your dbt project uses Poetry):**
-```bash
-cd your-dbt-project
-poetry add snowflake-semantic-tools
-```
-
-**With pip:**
 ```bash
 pip install snowflake-semantic-tools
 ```
 
-**For development only (contributors):**
-
-If you're contributing to the project or need to modify the source code:
-```bash
-git clone https://github.com/WhoopInc/snowflake-semantic-tools.git
-cd snowflake-semantic-tools
-poetry install
-```
-
 **Verify installation:**
+
 ```bash
 sst --version
-# Should show: snowflake-semantic-tools, version 0.1.0
+# Should show: snowflake-semantic-tools, version 0.2.0
 ```
 
 ---
 
 ## Quick Start with `sst init`
 
-The easiest way to set up SST is using the interactive setup wizard:
+The easiest way to set up SST in your dbt project:
 
 ```bash
 cd your-dbt-project
@@ -141,19 +129,15 @@ project:
   dbt_models_dir: "models"                          # Required - typically "models"
 
 validation:
-  exclude_dirs:
-    - "_intermediate"        # Exclude intermediate models
-    - "staging"              # Exclude staging models
-  strict: false              # Warnings don't block deployment
+  exclude_dirs: []             # Paths to skip during validation
+  strict: false                # Warnings don't block deployment
+  snowflake_syntax_check: true # Validate SQL against Snowflake
 
 enrichment:
   distinct_limit: 25                    # Distinct values to fetch
   sample_values_display_limit: 10       # Sample values to show
   synonym_model: 'mistral-large2'       # LLM for synonyms (universally available)
   synonym_max_count: 4                  # Max synonyms per field
-  
-  # Alternative models: llama3.1-70b, mixtral-8x7b, claude-3-5-sonnet
-  # OpenAI models require Azure or cross-region inference enabled
 ```
 
 **Required fields:**
@@ -161,11 +145,6 @@ enrichment:
 - `project.dbt_models_dir` - Your existing dbt models directory (typically "models")
 
 **Important:** These paths are relative to your project root (where `dbt_project.yml` and `sst_config.yaml` live).
-
-**Optional fields:**
-- `validation.exclude_dirs` - Paths to skip during validation
-- `validation.strict` - Treat warnings as errors (for CI/CD)
-- `enrichment.*` - Control enrichment behavior
 
 ### Step 4: Set Up Snowflake Authentication
 
@@ -239,7 +218,7 @@ sst --version
 
 **Example `sst debug` output:**
 ```
-SST Debug (v0.1.1)
+SST Debug (v0.2.0)
 
   ──────────────────────────────────────────────────
   Profile Configuration
@@ -270,14 +249,14 @@ If `sst debug` shows your configuration and `sst validate` passes, you're ready 
 Add semantic metadata to your existing dbt models:
 
 ```bash
-# Enrich a specific domain
-sst enrich models/analytics/customers/ \
-  --database ANALYTICS \
-  --schema customers
-
-# Or let SST auto-detect from manifest
+# Compile dbt to generate manifest (required for --models)
 dbt compile --target prod
-sst enrich models/analytics/customers/
+
+# Enrich specific models by name
+sst enrich --models customers,orders
+
+# Or enrich an entire directory
+sst enrich models/analytics/
 ```
 
 **What this does:**
@@ -291,18 +270,15 @@ sst enrich models/analytics/customers/
 
 **Output:**
 ```
-09:15:00  Running with sst=0.1.0
+09:15:00  Running with sst=0.2.0
+09:15:00  Resolving 2 model name(s)...
+09:15:00  Resolved 2 model(s) [OK]
 09:15:00  Connecting to Snowflake...
 09:15:02  Connected to Snowflake [OK in 2.1s]
 
-09:15:02  Enriching metadata from Snowflake
-09:15:02  Discovering models in models/analytics/customers/...
-09:15:02    Found 5 model(s) to enrich
-
-09:15:02  Enriching 5 model(s)...
-09:15:03   1 of  5  customer_status_daily .......... [RUN]
-09:15:05   1 of  5  customer_status_daily .......... [OK in 2.3s]
-...
+09:15:02  Enriching 2 model(s)...
+09:15:03   1 of  2  customers .......... [OK in 2.3s]
+09:15:05   2 of  2  orders ............. [OK in 1.8s]
 ```
 
 ### 2. Create Semantic Models
@@ -325,11 +301,8 @@ snowflake_relationships:
   - name: orders_to_customers
     left_table: {{ table('orders') }}
     right_table: {{ table('customers') }}
-    join_type: left_outer
-    relationship_type: many_to_one
-    relationship_columns:
-      - left_column: {{ column('orders', 'customer_id') }}
-        right_column: {{ column('customers', 'id') }}
+    relationship_conditions:
+      - "{{ column('orders', 'customer_id') }} = {{ column('customers', 'customer_id') }}"
 ```
 
 **Semantic Views** (`semantic_views.yml`):
@@ -361,13 +334,12 @@ Deploy metadata and generate semantic views:
 
 ```bash
 # Option A: One-step deployment (recommended)
-sst deploy --db ANALYTICS --schema SEMANTIC_VIEWS --verbose
+sst deploy --target prod
 
 # Option B: Step-by-step (for debugging)
 sst validate
-sst extract --db ANALYTICS --schema SEMANTIC_VIEWS
-sst generate --metadata-db ANALYTICS --metadata-schema SEMANTIC_VIEWS \
-  --target-db ANALYTICS --target-schema SEMANTIC_VIEWS --all
+sst extract --target prod
+sst generate --target prod --all
 ```
 
 **What deployment does:**
@@ -399,11 +371,11 @@ sst format models/ --dry-run
 Re-enrich when your Snowflake schema changes:
 
 ```bash
-# Refresh sample values
-sst enrich models/domain/ --sample-values
+# Refresh sample values for specific models
+sst enrich --models customers,orders --sample-values
 
 # Re-generate synonyms
-sst enrich models/domain/ --synonyms --force-synonyms
+sst enrich --models customers --synonyms --force-synonyms
 ```
 
 ---
@@ -495,31 +467,6 @@ ls models/
 ls snowflake_semantic_models/
 ```
 
-### "OCSP certificate validation error" (Error 254007)
-
-**Problem:** Certificate validation fails when connecting to Snowflake S3 staging:
-```
-ERROR: 254007: The certificate is revoked or could not be validated
-```
-
-**Cause:** A known issue with recent `certifi` package versions (2025.4.26+) affecting the Snowflake Python connector's OCSP validation.
-
-**Solution (temporary):** Downgrade certifi to a stable version:
-```bash
-pip install certifi==2025.1.31
-```
-
-**Alternative solutions:**
-```python
-# For Python connector 3.14.0+
-con = snowflake.connector.connect(disable_ocsp_checks=True)
-
-# For Python connector 3.13.2 or lower
-con = snowflake.connector.connect(insecure_mode=True)
-```
-
-**Note:** Snowflake is actively working on a permanent fix. Monitor [status.snowflake.com](https://status.snowflake.com/) for updates.
-
 ### "Model unavailable" during synonym generation
 
 **Problem:** Cortex model not available error when running `sst enrich --synonyms`:
@@ -529,7 +476,7 @@ Model "openai-gpt-4.1" is unavailable
 
 **Cause:** OpenAI models (gpt-4.1, gpt-5, etc.) are only available on Snowflake accounts hosted on Azure, or require cross-region inference to be enabled.
 
-**Solution 1 (Recommended):** Use a universally available model in `sst_config.yml`:
+**Solution:** Use a universally available model in `sst_config.yaml`:
 ```yaml
 enrichment:
   synonym_model: 'mistral-large2'  # Works on AWS, Azure, GCP
@@ -538,11 +485,6 @@ enrichment:
 Other universally available models:
 - `llama3.1-70b`, `llama3.1-8b` (Meta open models)
 - `mixtral-8x7b`, `mistral-7b` (fast, lower cost)
-
-**Solution 2:** Enable cross-region inference (requires ACCOUNTADMIN):
-```sql
-ALTER ACCOUNT SET CORTEX_ENABLED_CROSS_REGION = 'AZURE_US';
-```
 
 **See:** [Snowflake Cortex Model Availability](https://docs.snowflake.com/en/user-guide/snowflake-cortex/llm-functions#availability) for models available in your region.
 
@@ -580,11 +522,6 @@ tables:
 expr: |
   SUM({{ column('orders', 'amount') }})
 ```
-
-**Best practices for descriptions:**
-1. Use `|-` multiline syntax for any description with special characters
-2. Keep templates on their own lines in list items
-3. Use quotes if the description starts with special YAML characters (`[`, `{`, `*`, etc.)
 
 ---
 

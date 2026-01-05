@@ -4,7 +4,7 @@ build-backend = "poetry.core.masonry.api"
 
 [tool.poetry]
 name = "snowflake-semantic-tools"
-version = "0.1.1"
+version = "0.2.0"
 description = "dbt extension for managing Snowflake Semantic Views and Cortex Analyst semantic models"
 readme = "README.md"
 authors = ["Matt Luizzi <matthew.luizzi@whoop.com>"]
@@ -83,3 +83,32 @@ exclude = [
 [tool.isort]
 profile = "black"
 line_length = 120
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = "-v --tb=short --strict-markers --color=yes --durations=10 --maxfail=5"
+markers = [
+    "unit: Unit tests (fast, no external dependencies)",
+    "integration: Integration tests (may require external services)",
+    "slow: Slow running tests",
+    "snowflake: Tests requiring Snowflake connection",
+    "ci: Tests suitable for CI/CD pipeline",
+    "smoke: Quick smoke tests for basic functionality",
+    "core_models: Tests for core data models and validation",
+    "parsing: Tests for YAML parsing and template resolution",
+    "cli: Tests for command-line interface",
+    "api: Tests for Python API interface",
+]
+log_cli = true
+log_cli_level = "WARNING"
+log_cli_format = "%(asctime)s [%(levelname)s] %(message)s"
+log_cli_date_format = "%Y-%m-%d %H:%M:%S"
+filterwarnings = [
+    "error",
+    "ignore::UserWarning",
+    "ignore::DeprecationWarning",
+    "ignore::PendingDeprecationWarning",
+]

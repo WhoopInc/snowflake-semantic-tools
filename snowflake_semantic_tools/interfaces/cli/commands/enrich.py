@@ -88,7 +88,6 @@ def _determine_components(
     data_types,
     sample_values,
     detect_enums,
-    primary_keys,
     table_synonyms,
     column_synonyms,
 ):
@@ -111,15 +110,12 @@ def _determine_components(
             "data-types",
             "sample-values",
             "detect-enums",
-            "primary-keys",
             "table-synonyms",
             "column-synonyms",
         ]
 
     # If ANY individual flags set, use only those
-    if any(
-        [column_types, data_types, sample_values, detect_enums, primary_keys, table_synonyms, column_synonyms, synonyms]
-    ):
+    if any([column_types, data_types, sample_values, detect_enums, table_synonyms, column_synonyms, synonyms]):
         components = []
 
         if column_types:
@@ -130,8 +126,6 @@ def _determine_components(
             components.append("sample-values")
         if detect_enums:
             components.append("detect-enums")
-        if primary_keys:
-            components.append("primary-keys")
 
         # --synonyms is shorthand for both
         if synonyms:
@@ -147,7 +141,7 @@ def _determine_components(
 
     # No flags: Default (all standard components, NO synonyms)
     # This is backward compatible behavior
-    return ["column-types", "data-types", "sample-values", "detect-enums", "primary-keys"]
+    return ["column-types", "data-types", "sample-values", "detect-enums"]
 
 
 @click.command()
@@ -160,13 +154,11 @@ def _determine_components(
     "--manifest", type=click.Path(exists=True), help="Path to manifest.json (default: ./target/manifest.json)"
 )
 @click.option("--allow-non-prod", is_flag=True, help="Allow enrichment from non-production manifest")
-# Issue #44: Removed --pk-candidates flag (undocumented, adds complexity)
-# Primary key detection now happens automatically via --primary-keys flag
+# Note: Primary key validation was deprecated - users should define primary_key manually in YAML
 @click.option("--column-types", "-ct", is_flag=True, help="Enrich column types (dimension/fact/time_dimension)")
 @click.option("--data-types", "-dt", is_flag=True, help="Enrich data types (map Snowflake types)")
 @click.option("--sample-values", "-sv", is_flag=True, help="Enrich sample values (queries data - SLOW)")
 @click.option("--detect-enums", "-de", is_flag=True, help="Detect enum columns (low cardinality)")
-@click.option("--primary-keys", "-pk", is_flag=True, help="Validate primary key candidates")
 @click.option("--table-synonyms", "-ts", is_flag=True, help="Generate table-level synonyms via Cortex LLM")
 @click.option("--column-synonyms", "-cs", is_flag=True, help="Generate column-level synonyms via Cortex LLM")
 @click.option(
@@ -182,11 +174,6 @@ def _determine_components(
 )
 @click.option(
     "--force-data-types", is_flag=True, help="Overwrite existing data types (re-map even if data types exist)"
-)
-@click.option(
-    "--force-primary-keys",
-    is_flag=True,
-    help="Overwrite existing primary keys (re-validate even if primary key exists)",
 )
 @click.option("--force-all", is_flag=True, help="Overwrite ALL existing values (force refresh everything)")
 @click.option("--exclude", help="Comma-separated list of directories to exclude")
@@ -209,7 +196,6 @@ def enrich(
     data_types,
     sample_values,
     detect_enums,
-    primary_keys,
     table_synonyms,
     column_synonyms,
     synonyms,
@@ -217,7 +203,6 @@ def enrich(
     force_synonyms,
     force_column_types,
     force_data_types,
-    force_primary_keys,
     force_all,
 ):
     """
@@ -229,7 +214,6 @@ def enrich(
     - Column types (dimension, fact, time_dimension)
     - Data types (mapped from Snowflake)
     - Sample values (fresh from Snowflake)
-    - Primary keys (intelligently detected)
     - Enum detection (based on cardinality)
 
     Database and schema can now be auto-detected from dbt manifest.json:
@@ -305,13 +289,11 @@ def enrich(
         data_types,
         sample_values,
         detect_enums,
-        primary_keys,
         table_synonyms,
         column_synonyms,
     )
 
     # Create configuration
-    # Issue #44: primary_key_candidates removed from CLI (use --primary-keys for auto-detection)
     config = EnrichmentConfig(
         target_path=target_path,
         model_files=model_files,
@@ -330,7 +312,6 @@ def enrich(
         force_synonyms=force_synonyms or force_all,
         force_column_types=force_column_types or force_all,
         force_data_types=force_data_types or force_all,
-        force_primary_keys=force_primary_keys or force_all,
         force_all=force_all,
     )
 
