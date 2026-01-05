@@ -205,6 +205,7 @@ class SnowflakeSyntaxValidator:
             entity_type = expr_info.get("type", "expression")
             entity_name = expr_info.get("name", "unknown")
             expression = expr_info.get("expression", "")
+            source_file = expr_info.get("source_file")
 
             error_text = (
                 f"{entity_type.title()} '{entity_name}' has invalid SQL syntax\n"
@@ -217,6 +218,7 @@ class SnowflakeSyntaxValidator:
 
             result.add_error(
                 error_text,
+                file_path=source_file,
                 context={
                     "type": entity_type,
                     "name": entity_name,
@@ -231,6 +233,7 @@ class SnowflakeSyntaxValidator:
         for expr_info, error_msg in env_issues:
             entity_type = expr_info.get("type", "expression")
             entity_name = expr_info.get("name", "unknown")
+            source_file = expr_info.get("source_file")
 
             warning_text = (
                 f"{entity_type.title()} '{entity_name}' could not be fully validated: "
@@ -240,6 +243,7 @@ class SnowflakeSyntaxValidator:
 
             result.add_warning(
                 warning_text,
+                file_path=source_file,
                 context={
                     "type": entity_type,
                     "name": entity_name,
@@ -292,6 +296,7 @@ class SnowflakeSyntaxValidator:
                             "type": "metric",
                             "name": metric.get("metric_name") or metric.get("name", "unknown"),
                             "expression": expr,
+                            "source_file": metric.get("source_file"),
                         }
                     )
 
@@ -313,6 +318,7 @@ class SnowflakeSyntaxValidator:
                             "type": "filter",
                             "name": filter_def.get("filter_name") or filter_def.get("name", "unknown"),
                             "expression": expr,
+                            "source_file": filter_def.get("source_file"),
                         }
                     )
 
@@ -334,6 +340,7 @@ class SnowflakeSyntaxValidator:
                             "type": "verified_query",
                             "name": query.get("query_name") or query.get("name", "unknown"),
                             "expression": sql,
+                            "source_file": query.get("source_file"),
                         }
                     )
 

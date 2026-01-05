@@ -133,6 +133,7 @@ def parse_snowflake_metrics(metrics: List[Dict[str, Any]], file_path: Path) -> L
                 "expr": metric.get("expr", ""),
                 "synonyms": metric.get("synonyms", []),
                 "sample_values": metric.get("sample_values", []),
+                "source_file": str(file_path),  # Store the file path for validation errors
             }
             metric_records.append(metric_record)
 
@@ -162,6 +163,7 @@ def parse_snowflake_relationships(
                 "relationship_name": relationship.get("name", "").upper(),
                 "left_table_name": relationship.get("left_table", "").upper(),
                 "right_table_name": relationship.get("right_table", "").upper(),
+                "source_file": str(file_path),  # Store the file path for validation errors
             }
             relationship_records.append(rel_record)
 
@@ -190,6 +192,7 @@ def parse_snowflake_relationships(
                     "left_column": left_col_qualified,  # For backward compatibility with validation
                     "right_column": right_col_qualified,  # For backward compatibility with validation
                     "operator": parsed.operator,
+                    "source_file": str(file_path),  # Store the file path for validation errors
                 }
                 relationship_column_records.append(rel_col_record)
 
@@ -224,6 +227,7 @@ def parse_snowflake_filters(filters: List[Dict[str, Any]], file_path: Path) -> L
                 "description": filter_item.get("description", ""),
                 "expr": expr,
                 "synonyms": filter_item.get("synonyms", []),
+                "source_file": str(file_path),  # Store the file path for validation errors
             }
             filter_records.append(filter_record)
 
@@ -308,6 +312,7 @@ def parse_snowflake_custom_instructions(instructions: List[Dict[str, Any]], file
             instruction_record = {
                 "name": instruction.get("name", "").upper(),
                 "instruction": combined_instruction,
+                "source_file": str(file_path),  # Store the file path for validation errors
             }
             instruction_records.append(instruction_record)
 
@@ -332,6 +337,7 @@ def parse_snowflake_verified_queries(queries: List[Dict[str, Any]], file_path: P
                 "verified_at": query.get("verified_at", ""),
                 "verified_by": query.get("verified_by", ""),
                 "sql": query.get("sql", ""),
+                "source_file": str(file_path),  # Store the file path for validation errors
             }
             # Only include onboarding fields if they are present in the source
             if "use_as_onboarding_question" in query:
@@ -400,6 +406,7 @@ def parse_semantic_views(semantic_views: List[Dict[str, Any]], file_path: Path) 
                 "description": str(description),
                 "tables": tables_json,
                 "custom_instructions": custom_instructions_json,
+                "source_file": str(file_path),  # Store the file path for validation errors
             }
 
             view_records.append(view_record)
