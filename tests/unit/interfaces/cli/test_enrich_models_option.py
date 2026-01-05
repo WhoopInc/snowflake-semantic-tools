@@ -4,14 +4,14 @@ Unit tests for the --models option in sst enrich command.
 Tests Issue #72: Simplify sst enrich with --models option
 """
 
-import pytest
 from pathlib import Path
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import MagicMock, Mock, patch
+
+import pytest
 from click.testing import CliRunner
 
-from snowflake_semantic_tools.interfaces.cli.commands.enrich import enrich, _resolve_model_names
+from snowflake_semantic_tools.interfaces.cli.commands.enrich import _resolve_model_names, enrich
 from snowflake_semantic_tools.services.enrich_metadata import EnrichmentConfig
-
 
 MANIFEST_PARSER_PATH = "snowflake_semantic_tools.core.parsing.parsers.manifest_parser.ManifestParser"
 
@@ -73,6 +73,7 @@ class TestResolveModelNames:
             mock_parser_class.return_value = mock_parser
 
             import click
+
             with pytest.raises(click.ClickException) as exc_info:
                 _resolve_model_names(["nonexistent"], None, output)
 
@@ -90,6 +91,7 @@ class TestResolveModelNames:
             mock_parser_class.return_value = mock_parser
 
             import click
+
             with pytest.raises(click.ClickException) as exc_info:
                 _resolve_model_names(["customers"], None, output)
 
@@ -104,9 +106,7 @@ class TestResolveModelNames:
         with patch(MANIFEST_PARSER_PATH) as mock_parser_class:
             mock_parser = Mock()
             mock_parser.load.return_value = True
-            mock_parser.get_location.return_value = {
-                "original_file_path": "models/customers.sql"
-            }
+            mock_parser.get_location.return_value = {"original_file_path": "models/customers.sql"}
             mock_parser_class.return_value = mock_parser
 
             _resolve_model_names(["customers"], manifest_path, output)
@@ -125,9 +125,7 @@ class TestEnrichmentConfigWithModelFiles:
 
     def test_config_with_model_files(self):
         """Test config creation with model_files."""
-        config = EnrichmentConfig(
-            model_files=["models/customers.sql", "models/orders.sql"]
-        )
+        config = EnrichmentConfig(model_files=["models/customers.sql", "models/orders.sql"])
         assert config.target_path is None
         assert config.model_files == ["models/customers.sql", "models/orders.sql"]
 
@@ -147,9 +145,7 @@ class TestEnrichCLIModelsOption:
 
         with patch(
             "snowflake_semantic_tools.interfaces.cli.commands.enrich._resolve_model_names"
-        ) as mock_resolve, patch(
-            "snowflake_semantic_tools.interfaces.cli.commands.enrich.setup_command"
-        ), patch(
+        ) as mock_resolve, patch("snowflake_semantic_tools.interfaces.cli.commands.enrich.setup_command"), patch(
             "snowflake_semantic_tools.interfaces.cli.commands.enrich.MetadataEnrichmentService"
         ) as mock_service:
             mock_resolve.return_value = ["models/customers.sql"]
@@ -183,9 +179,7 @@ class TestEnrichCLIModelsOption:
         models_dir = tmp_path / "models"
         models_dir.mkdir()
 
-        result = runner.invoke(
-            enrich, [str(models_dir), "--models", "customers"]
-        )
+        result = runner.invoke(enrich, [str(models_dir), "--models", "customers"])
 
         assert result.exit_code != 0
         assert "Specify either TARGET_PATH or --models, not both" in result.output
@@ -194,9 +188,7 @@ class TestEnrichCLIModelsOption:
         """Test error when neither TARGET_PATH nor --models is provided."""
         runner = CliRunner()
 
-        with patch(
-            "snowflake_semantic_tools.interfaces.cli.commands.enrich.setup_command"
-        ):
+        with patch("snowflake_semantic_tools.interfaces.cli.commands.enrich.setup_command"):
             result = runner.invoke(enrich, [])
 
             assert result.exit_code != 0
@@ -208,9 +200,7 @@ class TestEnrichCLIModelsOption:
 
         with patch(
             "snowflake_semantic_tools.interfaces.cli.commands.enrich._resolve_model_names"
-        ) as mock_resolve, patch(
-            "snowflake_semantic_tools.interfaces.cli.commands.enrich.setup_command"
-        ), patch(
+        ) as mock_resolve, patch("snowflake_semantic_tools.interfaces.cli.commands.enrich.setup_command"), patch(
             "snowflake_semantic_tools.interfaces.cli.commands.enrich.MetadataEnrichmentService"
         ) as mock_service:
             mock_resolve.return_value = [
@@ -242,9 +232,7 @@ class TestEnrichCLIModelsOption:
 
         with patch(
             "snowflake_semantic_tools.interfaces.cli.commands.enrich._resolve_model_names"
-        ) as mock_resolve, patch(
-            "snowflake_semantic_tools.interfaces.cli.commands.enrich.setup_command"
-        ), patch(
+        ) as mock_resolve, patch("snowflake_semantic_tools.interfaces.cli.commands.enrich.setup_command"), patch(
             "snowflake_semantic_tools.interfaces.cli.commands.enrich.MetadataEnrichmentService"
         ) as mock_service:
             mock_resolve.return_value = ["models/customers.sql"]
@@ -274,9 +262,7 @@ class TestEnrichServiceWithModelFiles:
         """Test that _discover_models returns explicit files when provided."""
         from snowflake_semantic_tools.services.enrich_metadata import MetadataEnrichmentService
 
-        config = EnrichmentConfig(
-            model_files=["models/customers.sql", "models/orders.sql"]
-        )
+        config = EnrichmentConfig(model_files=["models/customers.sql", "models/orders.sql"])
         service = MetadataEnrichmentService(config)
 
         result = service._discover_models()
@@ -302,4 +288,3 @@ class TestEnrichServiceWithModelFiles:
         assert len(result) == 2
         assert any("customers.sql" in f for f in result)
         assert any("orders.sql" in f for f in result)
-

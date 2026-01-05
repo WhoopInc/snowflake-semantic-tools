@@ -185,6 +185,7 @@ Validation checks semantic models against dbt definitions:
 **5. Duplicates**
 - No duplicate metric names
 - No duplicate relationship names
+- Names are normalized for comparison (e.g., `Total_Revenue` and `total_revenue` are duplicates)
 
 ### Common Issues
 
@@ -199,6 +200,7 @@ Validation checks semantic models against dbt definitions:
 **Duplicate names:**
 - Rename one
 - Use prefixes (finance_revenue vs sales_revenue)
+- Note: Names like `Total_Revenue`, `total_revenue`, and `TotalRevenue` are considered duplicates
 
 **For CLI syntax:** See [CLI Reference](cli-reference.md#validate)  
 **For Python API:** See [API Reference](api-reference.md)

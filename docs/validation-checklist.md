@@ -46,7 +46,7 @@ Complete list of all validation checks performed by `sst validate`.
 | **Metric** | `synonyms` is a list if present (not string) | ERROR|
 | **Metric** | All referenced tables exist in dbt catalog | ERROR|
 | **Metric** | All referenced columns exist in their tables | ERROR|
-| **Metric** | No duplicate metric names | ERROR|
+| **Metric** | No duplicate metric names (normalized¹) | ERROR|
 | **Metric** | Metric has `description` | WARNING|
 | **Metric** | `default_aggregation` is valid if present | WARNING|
 | **Relationship** | Relationship has `name` | ERROR|
@@ -66,7 +66,7 @@ Complete list of all validation checks performed by `sst validate`.
 | **Relationship** | Right join columns reference primary key or unique columns | ERROR|
 | **Relationship** | Composite primary keys are fully referenced (not partial) | ERROR|
 | **Relationship** | No SQL transformations in column references (no `::`, `CAST`, functions) | ERROR|
-| **Relationship** | No duplicate relationship names | ERROR|
+| **Relationship** | No duplicate relationship names (normalized¹) | ERROR|
 | **Relationship** | No circular dependencies in relationship chains | ERROR|
 | **Filter** | Filter has `name` | ERROR|
 | **Filter** | Filter has `expr` | ERROR|
@@ -75,13 +75,13 @@ Complete list of all validation checks performed by `sst validate`.
 | **Filter** | `expr` is not empty or whitespace-only | ERROR|
 | **Filter** | All referenced tables exist in dbt catalog | ERROR|
 | **Filter** | All referenced columns exist in their tables | ERROR|
-| **Filter** | No duplicate filter names | ERROR|
+| **Filter** | No duplicate filter names (normalized¹) | ERROR|
 | **Filter** | Filter has `description` | WARNING|
 | **Custom Instruction** | Instruction has `name` | ERROR|
 | **Custom Instruction** | Instruction has `instruction` field | ERROR|
 | **Custom Instruction** | `name` is not empty string | ERROR|
 | **Custom Instruction** | `instruction` is not empty or whitespace-only | ERROR|
-| **Custom Instruction** | No duplicate instruction names | ERROR|
+| **Custom Instruction** | No duplicate instruction names (normalized¹) | ERROR|
 | **Custom Instruction** | `instruction` text is at least 10 characters | WARNING|
 | **Verified Query** | Query has `name` | ERROR|
 | **Verified Query** | Query has `question` | ERROR|
@@ -90,7 +90,7 @@ Complete list of all validation checks performed by `sst validate`.
 | **Verified Query** | `use_as_onboarding` is boolean if present (not string/int) | ERROR|
 | **Verified Query** | `verified_at` is in YYYY-MM-DD format if present | ERROR|
 | **Verified Query** | All referenced tables exist in dbt catalog | ERROR|
-| **Verified Query** | No duplicate query names | ERROR|
+| **Verified Query** | No duplicate query names (normalized¹) | ERROR|
 | **Verified Query** | SQL starts with SELECT or WITH | WARNING|
 | **Verified Query** | SQL table references match declared `tables` list | WARNING|
 | **Semantic View** | View has `name` | ERROR|
@@ -102,7 +102,7 @@ Complete list of all validation checks performed by `sst validate`.
 | **Semantic View** | Referenced metrics exist | ERROR|
 | **Semantic View** | Referenced relationships exist | ERROR|
 | **Semantic View** | Referenced custom instructions exist | ERROR|
-| **Semantic View** | No duplicate view names | ERROR|
+| **Semantic View** | No duplicate view names (normalized¹) | ERROR|
 | **Semantic View** | View has `description` | WARNING|
 | **Semantic View** | No identical table lists across multiple views | WARNING|
 | **Template** | All `{{ table('name') }}` templates resolve to existing tables | ERROR|
@@ -173,6 +173,12 @@ sst validate --exclude _intermediate,staging
 - **Environment vs Syntax Errors**: Table/object "not found" errors in verified queries are treated as warnings (environment issues) rather than syntax errors - useful when running validation against a different database context
 - **Fuzzy Matching**: Error messages include "Did you mean?" suggestions for typos
 - **File Path Tracking**: All validation errors now display the source file path, making it easy to locate and fix issues. Errors are grouped by file in the summary output.
+
+---
+
+### Notes
+
+¹ **Name Normalization**: Duplicate detection normalizes names by converting to uppercase and removing all non-alphanumeric characters (underscores, etc.). This means names like `Total_Revenue`, `total_revenue`, and `TotalRevenue` are all considered duplicates because they normalize to `TOTALREVENUE`. This prevents issues where Snowflake would treat these as the same identifier and ensures consistent naming.
 
 ---
 
