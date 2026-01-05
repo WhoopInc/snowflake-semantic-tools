@@ -98,9 +98,11 @@ class ConnectionManager:
             return False
         try:
             cursor = self._connection.cursor()
-            cursor.execute("SELECT 1")
-            cursor.fetchone()
-            cursor.close()
+            try:
+                cursor.execute("SELECT 1")
+                cursor.fetchone()
+            finally:
+                cursor.close()
             return True
         except Exception:
             logger.debug("Connection health check failed, will reconnect")
