@@ -1166,6 +1166,10 @@ class SemanticModelValidator:
             # This catches duplicates like: total_revenue, total-revenue, TotalRevenue
             name_normalized = re.sub(r"[^A-Z0-9]", "", name.upper())
 
+            # Skip names that normalize to empty string (e.g., "___", "---")
+            if not name_normalized:
+                continue
+
             if name_normalized in seen:
                 result.add_error(
                     f"Duplicate {entity_type} name '{name}'. "

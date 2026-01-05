@@ -1379,6 +1379,18 @@ class TestDuplicateNameDetection:
         assert error.context["first_occurrence"] == "FirstName"
         assert error.context["normalized_name"] == "FIRSTNAME"
 
+    def test_empty_normalized_names_skipped(self, validator):
+        """Test that names normalizing to empty string are skipped (not false duplicates)."""
+        items = [
+            {"name": "___"},  # Normalizes to ""
+            {"name": "---"},  # Normalizes to ""
+            {"name": "..."},  # Normalizes to ""
+        ]
+        result = ValidationResult()
+        validator._check_duplicate_names(items, "metric", result)
+        # Should NOT report duplicates - empty normalized names are skipped
+        assert result.error_count == 0
+
 
 class TestRelationshipStructureValidation:
     """Test relationship structure validation (Issues #37, #38, #39)."""
