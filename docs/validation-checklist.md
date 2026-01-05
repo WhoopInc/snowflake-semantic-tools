@@ -114,6 +114,10 @@ Complete list of all validation checks performed by `sst validate`.
 | **References** | Unknown table references include "Did you mean?" suggestions | ERROR|
 | **Schema** | YAML columns exist in Snowflake tables (with `--verify-schema`) | ERROR|
 | **Schema** | YAML columns include "Did you mean?" suggestions for typos | ERROR|
+| **SQL Syntax** | Metric `expr` is valid Snowflake SQL (with `--snowflake-syntax-check`) | ERROR|
+| **SQL Syntax** | Filter `expr` is valid Snowflake SQL (with `--snowflake-syntax-check`) | ERROR|
+| **SQL Syntax** | Verified query `sql` is valid Snowflake SQL (with `--snowflake-syntax-check`) | ERROR|
+| **SQL Syntax** | Unknown functions include "Did you mean?" suggestions (CUONT → COUNT) | ERROR|
 
 ---
 
@@ -140,6 +144,13 @@ sst validate --dbt-compile
 # Verify columns exist in Snowflake (requires connection)
 sst validate --verify-schema
 
+# Validate SQL syntax against Snowflake (catches typos like CUONT → COUNT)
+sst validate --snowflake-syntax-check
+
+# Enable syntax check permanently in sst_config.yaml:
+# validation:
+#   snowflake_syntax_check: true
+
 # Strict mode (warnings block deployment)
 sst validate --strict
 
@@ -158,10 +169,12 @@ sst validate --exclude _intermediate,staging
 - **Required in `meta.sst`**: `primary_key` (table level), `column_type` and `data_type` (column level)
 - **Optional in `meta.sst`**: `unique_keys` (table level) - required only for ASOF relationships
 - **Schema Verification**: Use `--verify-schema` to validate YAML columns against Snowflake (requires credentials)
+- **SQL Syntax Validation**: Use `--snowflake-syntax-check` to validate SQL expressions in metrics, filters, and verified queries (catches typos like `CUONT` → `COUNT`)
+- **Environment vs Syntax Errors**: Table/object "not found" errors in verified queries are treated as warnings (environment issues) rather than syntax errors - useful when running validation against a different database context
 - **Fuzzy Matching**: Error messages include "Did you mean?" suggestions for typos
 
 ---
 
-**Last Updated**: January 4, 2026  
+**Last Updated**: January 5, 2026  
 **SST Version**: 0.1.2
 

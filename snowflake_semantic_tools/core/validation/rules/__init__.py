@@ -12,6 +12,7 @@ Each validator focuses on a specific validation concern:
 - **TemplateResolutionValidator**: Complete template expansion
 - **SemanticModelValidator**: Semantic model structure and required fields
 - **SchemaValidator**: YAML columns against actual Snowflake schema (optional)
+- **SnowflakeSyntaxValidator**: SQL syntax validation against Snowflake (optional)
 
 Rules are designed to be independent and composable, allowing
 selective validation based on use case requirements.
@@ -24,6 +25,7 @@ from snowflake_semantic_tools.core.validation.rules.quoted_templates import Quot
 from snowflake_semantic_tools.core.validation.rules.references import ReferenceValidator
 from snowflake_semantic_tools.core.validation.rules.schema_validator import SchemaValidator
 from snowflake_semantic_tools.core.validation.rules.semantic_models import SemanticModelValidator
+from snowflake_semantic_tools.core.validation.rules.snowflake_syntax_validator import SnowflakeSyntaxValidator
 from snowflake_semantic_tools.core.validation.rules.template_resolution import TemplateResolutionValidator
 
 __all__ = [
@@ -35,4 +37,5 @@ __all__ = [
     "SemanticModelValidator",
     "QuotedTemplateValidator",
     "SchemaValidator",
+    "SnowflakeSyntaxValidator",
 ]

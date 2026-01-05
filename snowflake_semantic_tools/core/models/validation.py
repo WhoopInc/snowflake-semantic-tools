@@ -248,10 +248,11 @@ class ValidationResult:
                     r"Relationship '([^']+)'",
                     r"Metric '([^']+)'",
                     r"Filter '([^']+)'",
+                    r"Verified.query '([^']+)'",  # Verified_query or Verified query (case insensitive)
                     r"Column '([^']+)' in table '([^']+)'",  # Extract table name
                 ]
                 for pattern in patterns:
-                    match = re.search(pattern, message)
+                    match = re.search(pattern, message, re.IGNORECASE)
                     if match:
                         # For column errors, use table name (group 2)
                         model_name = match.group(2) if match.lastindex == 2 else match.group(1)
@@ -281,10 +282,11 @@ class ValidationResult:
                     r"Relationship '([^']+)'",
                     r"Metric '([^']+)'",
                     r"Filter '([^']+)'",
+                    r"Verified.query '([^']+)'",  # Verified_query or Verified query (case insensitive)
                     r"Column '([^']+)' in table '([^']+)'",  # Extract table name
                 ]
                 for pattern in patterns:
-                    match = re.search(pattern, message)
+                    match = re.search(pattern, message, re.IGNORECASE)
                     if match:
                         # For column errors, use table name (group 2)
                         model_name = match.group(2) if match.lastindex == 2 else match.group(1)

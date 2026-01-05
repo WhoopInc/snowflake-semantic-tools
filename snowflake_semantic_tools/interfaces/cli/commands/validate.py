@@ -46,7 +46,13 @@ logger = get_logger("cli.validate")
     "-t",
     help="Override database for schema verification (e.g., PROD, DEV). Uses manifest database if not specified.",
 )
-def validate(dbt, semantic, strict, verbose, exclude, dbt_compile, verify_schema, target):
+@click.option(
+    "--snowflake-syntax-check/--no-snowflake-check",
+    default=None,
+    help="Validate SQL expressions against Snowflake. Catches typos like CUONT instead of COUNT. "
+    "Default: uses validation.snowflake_syntax_check from sst_config.yaml if set.",
+)
+def validate(dbt, semantic, strict, verbose, exclude, dbt_compile, verify_schema, target, snowflake_syntax_check):
     """
     Validate semantic models against dbt definitions.
 
@@ -63,6 +69,12 @@ def validate(dbt, semantic, strict, verbose, exclude, dbt_compile, verify_schema
 
       # Verify against a specific database (e.g., PROD tables)
       sst validate --verify-schema --target PROD
+
+      # Validate SQL syntax against Snowflake (catches typos like CUONT)
+      sst validate --snowflake-syntax-check
+
+      # Skip syntax check even if enabled in config
+      sst validate --no-snowflake-check
 
       # Auto-compile dbt if manifest missing/stale (uses profile's default target)
       sst validate --dbt-compile
@@ -211,6 +223,15 @@ def validate(dbt, semantic, strict, verbose, exclude, dbt_compile, verify_schema
             schema_result = _run_schema_verification(service, output, verbose, target)
             if schema_result:
                 result.merge(schema_result)
+
+        # Run Snowflake SQL syntax validation if enabled
+        should_run_syntax_check = _should_run_syntax_check(snowflake_syntax_check)
+        if should_run_syntax_check:
+            output.blank_line()
+            output.info("Validating SQL expressions against Snowflake...")
+            syntax_result = _run_syntax_verification(service, output, verbose)
+            if syntax_result:
+                result.merge(syntax_result)
 
         val_duration = time.time() - val_start
 
@@ -383,3 +404,114 @@ def _build_dbt_catalog_for_schema_check(parse_result: dict, target_database: str
                     catalog[table_name]["columns"][col_name] = col
 
     return catalog
+
+
+def _should_run_syntax_check(cli_flag: bool = None) -> bool:
+    """
+    Determine if Snowflake syntax check should run.
+
+    Priority:
+    1. CLI flag (--snowflake-syntax-check or --no-snowflake-check)
+    2. Config file (validation.snowflake_syntax_check)
+    3. Default: False
+
+    Args:
+        cli_flag: Explicit CLI flag value, or None if not specified
+
+    Returns:
+        True if syntax check should run
+    """
+    # CLI flag takes precedence
+    if cli_flag is not None:
+        return cli_flag
+
+    # Check config file
+    try:
+        config = get_config()
+        if config:
+            validation_config = config.get("validation", {})
+            return validation_config.get("snowflake_syntax_check", False)
+    except Exception:
+        pass
+
+    # Default: disabled (opt-in feature)
+    return False
+
+
+def _run_syntax_verification(
+    service: SemanticMetadataCollectionValidationService,
+    output: CLIOutput,
+    verbose: bool,
+) -> ValidationResult:
+    """
+    Run Snowflake SQL syntax verification.
+
+    Validates SQL expressions in metrics, filters, and verified queries
+    by compiling them against Snowflake. Catches typos and Snowflake-specific
+    syntax errors before deployment.
+
+    Args:
+        service: The validation service with parsed data
+        output: CLI output handler
+        verbose: Whether to show verbose output
+
+    Returns:
+        ValidationResult with syntax verification issues, or None on connection failure
+    """
+    try:
+        # Import components
+        from snowflake_semantic_tools.core.validation.rules import SnowflakeSyntaxValidator
+        from snowflake_semantic_tools.interfaces.cli.utils import snowflake_session
+
+        # Get the parse result from the service
+        if not hasattr(service, "_last_parse_result") or not service._last_parse_result:
+            output.warning("No parsed data available for syntax verification")
+            result = ValidationResult()
+            result.add_warning(
+                "Syntax verification skipped: No parsed data available. Run validation first.",
+                context={"issue": "no_parse_result"},
+            )
+            return result
+
+        # Use snowflake_session for guaranteed cleanup
+        target = os.getenv("DBT_TARGET")
+
+        with snowflake_session(target=target) as client:
+            output.debug(f"Connecting to Snowflake (account: {client.connection_manager.config.account})...")
+
+            # Run syntax validation
+            syntax_validator = SnowflakeSyntaxValidator(client)
+            syntax_result = syntax_validator.validate(service._last_parse_result)
+
+            # Log summary
+            if syntax_result.error_count > 0:
+                output.warning(f"SQL syntax check found {syntax_result.error_count} error(s)")
+            else:
+                output.success("All SQL expressions validated successfully")
+
+            return syntax_result
+
+    except click.ClickException as e:
+        # Handle credential loading failures from snowflake_session
+        result = ValidationResult()
+        result.add_warning(
+            f"Syntax verification skipped: {e.message}",
+            context={"issue": "missing_credentials"},
+        )
+        return result
+    except ImportError as e:
+        logger.warning(f"Could not import required modules for syntax verification: {e}")
+        result = ValidationResult()
+        result.add_warning(
+            f"Syntax verification skipped: Missing required module: {e}",
+            context={"issue": "import_error"},
+        )
+        return result
+    except Exception as e:
+        logger.error(f"Syntax verification failed: {e}")
+        result = ValidationResult()
+        result.add_warning(
+            f"Syntax verification failed: {e}. Check your Snowflake credentials and connectivity.",
+            context={"issue": "connection_error", "error": str(e)},
+        )
+        return result
