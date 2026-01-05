@@ -9,7 +9,7 @@ filters actually exists in the underlying dbt catalog.
 """
 
 import re
-from typing import Any, Dict, List, Set
+from typing import Any, Dict, List, Optional, Set
 
 from snowflake_semantic_tools.core.models import ValidationResult
 
@@ -94,11 +94,13 @@ class ReferenceValidator:
                 name = metric.get("name", "")
                 tables = metric.get("tables", [])
                 expr = metric.get("expr", "")
+                source_file = metric.get("source_file")
 
                 # Defensive check: warn if tables field is missing
                 if "tables" not in metric:
                     result.add_warning(
                         f"Metric '{name}' is missing 'tables' field - validation may be incomplete",
+                        file_path=source_file,
                         context={"metric": name},
                     )
 
@@ -118,6 +120,7 @@ class ReferenceValidator:
                                     error_msg += ". Check that the model has `config.meta.sst` configuration."
                                 result.add_error(
                                     error_msg,
+                                    file_path=source_file,
                                     context={
                                         "metric": name,
                                         "table": table,
@@ -139,12 +142,15 @@ class ReferenceValidator:
                                 if missing_fields:
                                     result.add_error(
                                         f"Metric '{name}' references table '{table}' which is missing critical metadata ({'/'.join(missing_fields)}) and won't be available in the semantic model",
+                                        file_path=source_file,
                                         context={"metric": name, "table": table, "missing_metadata": missing_fields},
                                     )
 
                 # Validate column references in expression
                 if expr:
-                    self._validate_column_references_in_expr(name, expr, tables, dbt_catalog, result, "Metric")
+                    self._validate_column_references_in_expr(
+                        name, expr, tables, dbt_catalog, result, "Metric", source_file
+                    )
 
     def _validate_relationship_references(self, relationships_data: Dict, dbt_catalog: Dict, result: ValidationResult):
         """Validate table and column references in relationships."""
@@ -165,6 +171,7 @@ class ReferenceValidator:
                 name = rel.get("relationship_name", "") or rel.get("name", "")
                 left_table = rel.get("left_table_name", "") or rel.get("left_table", "")
                 right_table = rel.get("right_table_name", "") or rel.get("right_table", "")
+                source_file = rel.get("source_file")
 
                 # Get columns for this relationship
                 columns = columns_by_relationship.get(name, [])
@@ -191,6 +198,7 @@ class ReferenceValidator:
                         result.add_error(
                             f"Relationship '{name}' has duplicate columns in foreign key (left side): {left_duplicates}. "
                             f"Each column can only appear once in a relationship join condition.",
+                            file_path=source_file,
                             context={
                                 "relationship": name,
                                 "duplicate_columns": left_duplicates,
@@ -205,6 +213,7 @@ class ReferenceValidator:
                         result.add_error(
                             f"Relationship '{name}' has duplicate columns in foreign key (right side): {right_duplicates}. "
                             f"Each column can only appear once in a relationship join condition.",
+                            file_path=source_file,
                             context={
                                 "relationship": name,
                                 "duplicate_columns": right_duplicates,
@@ -227,6 +236,7 @@ class ReferenceValidator:
                         error_msg += ". Check that the model has `config.meta.sst` configuration."
                     result.add_error(
                         error_msg,
+                        file_path=source_file,
                         context={"relationship": name, "table": left_table, "suggestions": suggestions},
                     )
                 elif left_table_lower in dbt_catalog:
@@ -241,6 +251,7 @@ class ReferenceValidator:
                         if missing_fields:
                             result.add_error(
                                 f"Relationship '{name}' references left table '{left_table}' which is missing critical metadata ({'/'.join(missing_fields)}) and won't be available in the semantic model",
+                                file_path=source_file,
                                 context={"relationship": name, "table": left_table, "missing_metadata": missing_fields},
                             )
 
@@ -254,6 +265,7 @@ class ReferenceValidator:
                         error_msg += ". Check that the model has `config.meta.sst` configuration."
                     result.add_error(
                         error_msg,
+                        file_path=source_file,
                         context={"relationship": name, "table": right_table, "suggestions": suggestions},
                     )
                 elif right_table_lower in dbt_catalog:
@@ -268,6 +280,7 @@ class ReferenceValidator:
                         if missing_fields:
                             result.add_error(
                                 f"Relationship '{name}' references right table '{right_table}' which is missing critical metadata ({'/'.join(missing_fields)}) and won't be available in the semantic model",
+                                file_path=source_file,
                                 context={
                                     "relationship": name,
                                     "table": right_table,
@@ -313,6 +326,7 @@ class ReferenceValidator:
                                         f"Missing: [{', '.join(missing_pk_cols)}]. "
                                         f"Snowflake documentation states relationships MUST reference PRIMARY KEY or UNIQUE columns. "
                                         f"To fix: (1) add the missing columns to complete the primary key reference, (2) reverse the relationship direction if '{right_table}' has a UNIQUE constraint on [{', '.join(right_columns_used)}], or (3) update the primary_key in the YAML if [{', '.join(right_columns_used)}] is the actual composite primary key.",
+                                        file_path=source_file,
                                         context={
                                             "relationship": name,
                                             "right_table": right_table,
@@ -331,6 +345,7 @@ class ReferenceValidator:
                                         f"Snowflake documentation states relationships MUST reference PRIMARY KEY or UNIQUE columns. "
                                         f"If '{right_columns_used[0] if right_columns_used else 'N/A'}' has a UNIQUE constraint, this is valid. "
                                         f"Otherwise, consider reversing the relationship direction.",
+                                        file_path=source_file,
                                         context={
                                             "relationship": name,
                                             "right_table": right_table,
@@ -346,6 +361,7 @@ class ReferenceValidator:
                             f"This usually means the table was not properly extracted or enriched. "
                             f"Run 'sst enrich' on the table's YAML file to populate primary key information, "
                             f"or check that the table has proper meta.sst configuration.",
+                            file_path=source_file,
                             context={
                                 "relationship": name,
                                 "right_table": right_table,
@@ -358,6 +374,7 @@ class ReferenceValidator:
                         f"Relationship '{name}' references table '{right_table}' that was not extracted. "
                         f"This usually means the table's metadata is missing or incomplete. "
                         f"Check that the table has proper meta.sst configuration or run 'sst enrich' to populate metadata.",
+                        file_path=source_file,
                         context={"relationship": name, "right_table": right_table, "issue": "missing_table_dependency"},
                     )
 
@@ -415,6 +432,7 @@ class ReferenceValidator:
                                 f"Relationship '{name}' contains SQL transformation ({transform_type}) in column reference '{left_col}'. "
                                 f"Transformations cannot be performed within column references. "
                                 f"Use template syntax {{ column('table_name', 'column_name') }} for the base column only.",
+                                file_path=source_file,
                                 context={
                                     "relationship": name,
                                     "column": left_col,
@@ -431,6 +449,7 @@ class ReferenceValidator:
                                 f"Relationship '{name}' contains SQL transformation ({transform_type}) in column reference '{right_col}'. "
                                 f"Transformations cannot be performed within column references. "
                                 f"Use template syntax {{ column('table_name', 'column_name') }} for the base column only.",
+                                file_path=source_file,
                                 context={
                                     "relationship": name,
                                     "column": right_col,
@@ -452,6 +471,7 @@ class ReferenceValidator:
                                 result.add_error(
                                     f"Relationship '{name}' references unknown column "
                                     f"'{left_col}' in table '{left_table}'",
+                                    file_path=source_file,
                                     context={"relationship": name, "column": left_col, "table": left_table},
                                 )
 
@@ -460,6 +480,7 @@ class ReferenceValidator:
                                 result.add_error(
                                     f"Relationship '{name}' references unknown column "
                                     f"'{right_col}' in table '{right_table}'",
+                                    file_path=source_file,
                                     context={"relationship": name, "column": right_col, "table": right_table},
                                 )
 
@@ -472,6 +493,7 @@ class ReferenceValidator:
                 name = filter_item.get("name", "")
                 table = filter_item.get("table_name", "").lower()
                 expr = filter_item.get("expression", "")
+                source_file = filter_item.get("source_file")
 
                 # Validate table
                 if table and table not in dbt_catalog:
@@ -483,12 +505,15 @@ class ReferenceValidator:
                         error_msg += ". Check that the model has `config.meta.sst` configuration."
                     result.add_error(
                         error_msg,
+                        file_path=source_file,
                         context={"filter": name, "table": table, "suggestions": suggestions},
                     )
 
                 # Validate column references in expression
                 if expr and table:
-                    self._validate_column_references_in_expr(name, expr, [table], dbt_catalog, result, "Filter")
+                    self._validate_column_references_in_expr(
+                        name, expr, [table], dbt_catalog, result, "Filter", source_file
+                    )
 
     def _validate_instruction_references(self, instructions_data: Dict, dbt_catalog: Dict, result: ValidationResult):
         """Validate custom instructions exist and have unique names."""
@@ -533,6 +558,7 @@ class ReferenceValidator:
         dbt_catalog: Dict,
         result: ValidationResult,
         entity_type: str = "Entity",
+        source_file: Optional[str] = None,
     ):
         """Validate column references in an expression."""
         # Find column references (TABLE.COLUMN pattern)
@@ -557,6 +583,7 @@ class ReferenceValidator:
                     result.add_error(
                         f"{entity_type} '{entity_name}' references unknown column "
                         f"'{column_ref}' in table '{table_ref}'",
+                        file_path=source_file,
                         context={
                             "entity": entity_name,
                             "column": column_ref,

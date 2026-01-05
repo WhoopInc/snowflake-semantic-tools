@@ -64,6 +64,7 @@ class SchemaValidator:
         for table_name, table_info in dbt_catalog.items():
             database = table_info.get("database")
             schema = table_info.get("schema")
+            source_file = table_info.get("source_file")
 
             # Skip tables without location info
             if not database or not schema:
@@ -82,6 +83,7 @@ class SchemaValidator:
                     result.add_error(
                         f"Table '{table_name}' does not exist in Snowflake at "
                         f"{database}.{schema}.{table_name.upper()}",
+                        file_path=source_file,
                         context={
                             "table": table_name,
                             "database": database,
@@ -93,6 +95,7 @@ class SchemaValidator:
                     result.add_warning(
                         f"Cannot verify schema for '{table_name}': permission denied. "
                         f"Check that your role has access to {database}.{schema}",
+                        file_path=source_file,
                         context={
                             "table": table_name,
                             "database": database,
@@ -103,6 +106,7 @@ class SchemaValidator:
                 else:
                     result.add_warning(
                         f"Could not verify schema for '{table_name}': {e}",
+                        file_path=source_file,
                         context={
                             "table": table_name,
                             "issue": "connection_error",
@@ -123,6 +127,7 @@ class SchemaValidator:
                     error_msg += f". Did you mean: {', '.join(suggestions)}?"
                 result.add_error(
                     error_msg,
+                    file_path=source_file,
                     context={
                         "table": table_name,
                         "column": col_name,
@@ -143,6 +148,7 @@ class SchemaValidator:
                             else f"Table '{table_name}' has columns in Snowflake not defined in YAML: "
                             f"{', '.join(sorted(missing_in_yaml))}"
                         ),
+                        file_path=source_file,
                         context={
                             "table": table_name,
                             "missing_columns": sorted(list(missing_in_yaml)),

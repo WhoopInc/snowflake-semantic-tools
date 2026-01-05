@@ -179,7 +179,7 @@ def extract_table_info(
             "unique_keys": unique_keys_upper,
             "synonyms": sst_meta.get("synonyms", []),
             "model_name": name,  # Store the original model name
-            "file_path": str(file_path),  # Store the file path for validation
+            "source_file": str(file_path),  # Store the file path for validation errors
             "cortex_searchable": sst_meta.get("cortex_searchable", False),
         }
 
@@ -279,6 +279,7 @@ def extract_column_info(column: Dict[str, Any], table_name: str, file_path: Path
             "synonyms": sst_meta.get("synonyms", []),
             "sample_values": sst_meta.get("sample_values", []),
             "is_enum": sst_meta.get("is_enum", False),
+            "source_file": str(file_path),  # Store the file path for validation errors
         }
 
         return column_record

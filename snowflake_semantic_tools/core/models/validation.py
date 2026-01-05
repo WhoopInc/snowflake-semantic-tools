@@ -9,6 +9,7 @@ suggest improvements.
 """
 
 import logging
+import os
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Dict, List, Optional
@@ -226,9 +227,22 @@ class ValidationResult:
         """Get all success messages."""
         return [i for i in self.issues if i.severity == ValidationSeverity.SUCCESS]
 
-    def add_error(self, message: str, **kwargs):
-        """Add an error to the result with real-time logging and event firing."""
-        self.issues.append(ValidationError(message, **kwargs))
+    def add_error(
+        self,
+        message: str,
+        file_path: Optional[str] = None,
+        line_number: Optional[int] = None,
+        **kwargs,
+    ):
+        """Add an error to the result with real-time logging and event firing.
+
+        Args:
+            message: Error message describing the issue
+            file_path: Optional path to the source file where the error was found
+            line_number: Optional line number in the source file
+            **kwargs: Additional context (e.g., context dict)
+        """
+        self.issues.append(ValidationError(message, file_path=file_path, line_number=line_number, **kwargs))
 
         # Log immediately to file (real-time debugging)
         _logger.error(message)
@@ -260,9 +274,22 @@ class ValidationResult:
 
             fire_event(ValidationErrorEvent(model_name=model_name, error_message=message))
 
-    def add_warning(self, message: str, **kwargs):
-        """Add a warning to the result with real-time logging and event firing."""
-        self.issues.append(ValidationWarning(message, **kwargs))
+    def add_warning(
+        self,
+        message: str,
+        file_path: Optional[str] = None,
+        line_number: Optional[int] = None,
+        **kwargs,
+    ):
+        """Add a warning to the result with real-time logging and event firing.
+
+        Args:
+            message: Warning message describing the issue
+            file_path: Optional path to the source file where the warning was found
+            line_number: Optional line number in the source file
+            **kwargs: Additional context (e.g., context dict)
+        """
+        self.issues.append(ValidationWarning(message, file_path=file_path, line_number=line_number, **kwargs))
 
         # Log immediately to file (real-time debugging)
         _logger.warning(message)
@@ -294,13 +321,39 @@ class ValidationResult:
 
             fire_event(ValidationWarningEvent(model_name=model_name, warning_message=message))
 
-    def add_info(self, message: str, **kwargs):
-        """Add an info message to the result."""
-        self.issues.append(ValidationInfo(message, **kwargs))
+    def add_info(
+        self,
+        message: str,
+        file_path: Optional[str] = None,
+        line_number: Optional[int] = None,
+        **kwargs,
+    ):
+        """Add an info message to the result.
 
-    def add_success(self, message: str, **kwargs):
-        """Add a success message to the result."""
-        self.issues.append(ValidationSuccess(message, **kwargs))
+        Args:
+            message: Info message
+            file_path: Optional path to the source file
+            line_number: Optional line number in the source file
+            **kwargs: Additional context
+        """
+        self.issues.append(ValidationInfo(message, file_path=file_path, line_number=line_number, **kwargs))
+
+    def add_success(
+        self,
+        message: str,
+        file_path: Optional[str] = None,
+        line_number: Optional[int] = None,
+        **kwargs,
+    ):
+        """Add a success message to the result.
+
+        Args:
+            message: Success message
+            file_path: Optional path to the source file
+            line_number: Optional line number in the source file
+            **kwargs: Additional context
+        """
+        self.issues.append(ValidationSuccess(message, file_path=file_path, line_number=line_number, **kwargs))
 
     def merge(self, other: "ValidationResult"):
         """
@@ -350,10 +403,37 @@ class ValidationResult:
         # Show breakdown if there are issues
         if error_count > 0:
             print(f"\n{error_count} Error(s) - Must be fixed:")
-            for i, error in enumerate(self.get_errors()[:10], 1):
-                print(f"  {i}. {error}")
-            if error_count > 10:
-                print(f"  ... and {error_count - 10} more errors (run with --verbose for full list)")
+            errors = self.get_errors()
+
+            # Group errors by file path for cleaner output
+            errors_by_file: Dict[str, List[ValidationIssue]] = {}
+            for error in errors[:20]:  # Limit to first 20
+                file_key = error.file_path or "unknown"
+                if file_key not in errors_by_file:
+                    errors_by_file[file_key] = []
+                errors_by_file[file_key].append(error)
+
+            # Print grouped by file
+            error_num = 1
+            for file_path, file_errors in errors_by_file.items():
+                if file_path != "unknown":
+                    # Convert to relative path for cleaner display
+                    try:
+                        display_path = os.path.relpath(file_path)
+                    except ValueError:
+                        # On Windows, relpath fails if paths are on different drives
+                        display_path = file_path
+                    print(f"\n  📁 {display_path}")
+                    for error in file_errors:
+                        print(f"     {error_num}. [ERROR] {error.message}")
+                        error_num += 1
+                else:
+                    for error in file_errors:
+                        print(f"  {error_num}. {error}")
+                        error_num += 1
+
+            if error_count > 20:
+                print(f"\n  ... and {error_count - 20} more errors (run with --verbose for full list)")
 
         if warning_count > 0:
             # Dynamically categorize ALL warnings by pattern matching

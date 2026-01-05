@@ -1039,34 +1039,34 @@ class TestExpressionValidation:
     def test_balanced_parentheses_passes(self, validator):
         """Test that balanced parentheses pass."""
         result = ValidationResult()
-        validator._validate_expression_syntax("SUM(order_total)", "test_metric", "Metric", result)
+        validator._validate_expression_syntax("SUM(order_total)", "test_metric", "Metric", None, result)
         assert result.error_count == 0
 
     def test_unbalanced_parentheses_extra_close(self, validator):
         """Test that extra closing parenthesis produces error."""
         result = ValidationResult()
-        validator._validate_expression_syntax("SUM(x))", "test_metric", "Metric", result)
+        validator._validate_expression_syntax("SUM(x))", "test_metric", "Metric", None, result)
         assert result.error_count == 1
         assert "unbalanced parentheses" in result.issues[0].message
 
     def test_unbalanced_parentheses_extra_open(self, validator):
         """Test that extra opening parenthesis produces error."""
         result = ValidationResult()
-        validator._validate_expression_syntax("SUM((x)", "test_metric", "Metric", result)
+        validator._validate_expression_syntax("SUM((x)", "test_metric", "Metric", None, result)
         assert result.error_count == 1
         assert "unbalanced parentheses" in result.issues[0].message
 
     def test_unbalanced_brackets(self, validator):
         """Test that unbalanced brackets produce error."""
         result = ValidationResult()
-        validator._validate_expression_syntax("arr[1", "test_metric", "Metric", result)
+        validator._validate_expression_syntax("arr[1", "test_metric", "Metric", None, result)
         assert result.error_count == 1
         assert "unbalanced brackets" in result.issues[0].message
 
     def test_unbalanced_braces(self, validator):
         """Test that unbalanced braces produce error."""
         result = ValidationResult()
-        validator._validate_expression_syntax("{{ column('t', 'c') }", "test_metric", "Metric", result)
+        validator._validate_expression_syntax("{{ column('t', 'c') }", "test_metric", "Metric", None, result)
         assert result.error_count == 1
         assert "unbalanced braces" in result.issues[0].message
 
@@ -1074,13 +1074,13 @@ class TestExpressionValidation:
         """Test that complex but valid expression passes."""
         result = ValidationResult()
         expr = "CASE WHEN {{ column('orders', 'status') }} = 'complete' THEN SUM({{ column('orders', 'amount') }}) ELSE 0 END"
-        validator._validate_expression_syntax(expr, "test_metric", "Metric", result)
+        validator._validate_expression_syntax(expr, "test_metric", "Metric", None, result)
         assert result.error_count == 0
 
     def test_empty_expression_passes_syntax_check(self, validator):
         """Test that empty expression passes syntax check (separate validation)."""
         result = ValidationResult()
-        validator._validate_expression_syntax("", "test_metric", "Metric", result)
+        validator._validate_expression_syntax("", "test_metric", "Metric", None, result)
         assert result.error_count == 0  # Empty is handled by _validate_expression_not_empty
 
 

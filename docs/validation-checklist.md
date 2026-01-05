@@ -172,6 +172,7 @@ sst validate --exclude _intermediate,staging
 - **SQL Syntax Validation**: Use `--snowflake-syntax-check` to validate SQL expressions in metrics, filters, and verified queries (catches typos like `CUONT` → `COUNT`)
 - **Environment vs Syntax Errors**: Table/object "not found" errors in verified queries are treated as warnings (environment issues) rather than syntax errors - useful when running validation against a different database context
 - **Fuzzy Matching**: Error messages include "Did you mean?" suggestions for typos
+- **File Path Tracking**: All validation errors now display the source file path, making it easy to locate and fix issues. Errors are grouped by file in the summary output.
 
 ---
 

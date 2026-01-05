@@ -141,7 +141,7 @@ class DbtModelValidator:
             # Check if table has critical missing metadata
             should_skip, missing_fields = self._should_skip_table(table, table_name)
             if should_skip:
-                skipped_tables.append((table_name, missing_fields))
+                skipped_tables.append((table_name, missing_fields, table.get("source_file")))
                 continue
 
             self._validate_table(table, result, dimensions, facts, time_dimensions)
@@ -151,10 +151,11 @@ class DbtModelValidator:
 
         # Report each skipped table as an individual warning
         if skipped_tables:
-            for table_name, missing_fields in sorted(skipped_tables):
+            for table_name, missing_fields, source_file in sorted(skipped_tables):
                 missing_fields_str = ", ".join(missing_fields)
                 result.add_warning(
                     f"Table '{table_name}' skipped due to missing critical metadata ({missing_fields_str})",
+                    file_path=source_file,
                     context={"table": table_name, "reason": "missing_metadata", "missing_fields": missing_fields},
                 )
             logger.warning(f"Skipped validation for {len(skipped_tables)} tables with missing metadata")
@@ -259,11 +260,14 @@ class DbtModelValidator:
         Note: Database and schema are read exclusively from manifest.json.
         Only primary_key and description are required in YAML.
         """
+        source_file = table.get("source_file")
+
         # Check description (always required in YAML)
         description = table.get("description")
         if not description or (isinstance(description, str) and not description.strip()):
             result.add_error(
                 f"Table '{table_name}' is missing required field: description at the table-level",
+                file_path=source_file,
                 context={"table": table_name, "field": "description", "level": "table"},
             )
 
@@ -272,11 +276,13 @@ class DbtModelValidator:
         if not primary_key:
             result.add_error(
                 f"Table '{table_name}' is missing required field: meta.sst.primary_key at the table-level",
+                file_path=source_file,
                 context={"table": table_name, "field": "meta.sst.primary_key", "level": "table"},
             )
         elif primary_key == []:
             result.add_error(
                 f"Table '{table_name}' has empty primary key list at the table-level",
+                file_path=source_file,
                 context={"table": table_name, "field": "meta.sst.primary_key", "level": "table"},
             )
 
@@ -290,6 +296,7 @@ class DbtModelValidator:
         result: ValidationResult,
     ):
         """Check that primary key columns actually exist."""
+        source_file = table.get("source_file")
         primary_keys = table.get("primary_key", [])
 
         # Validate that primary_key is a list
@@ -303,11 +310,13 @@ class DbtModelValidator:
                     primary_keys = [primary_keys]
                 result.add_warning(
                     f"Table '{table_name}' has primary_key as string instead of list at the table-level",
+                    file_path=source_file,
                     context={"table": table_name, "field": "primary_key", "level": "table"},
                 )
             else:
                 result.add_error(
                     f"Table '{table_name}' has primary_key as {type(primary_keys).__name__} instead of list at the table-level",
+                    file_path=source_file,
                     context={
                         "table": table_name,
                         "field": "primary_key",
@@ -334,11 +343,13 @@ class DbtModelValidator:
             if pk_normalized not in table_columns:
                 result.add_error(
                     f"Table '{table_name}' has primary key '{pk}' that doesn't exist as a column at the table-level",
+                    file_path=source_file,
                     context={"table": table_name, "primary_key": pk, "level": "table"},
                 )
 
     def _check_table_synonym_content(self, table: Dict[str, Any], table_name: str, result: ValidationResult):
         """Check that table synonyms don't contain characters that break SQL generation."""
+        source_file = table.get("source_file")
         synonyms = table.get("synonyms")
         if synonyms and isinstance(synonyms, list):
             # Use the same sanitization logic as generation (DRY principle)
@@ -357,11 +368,13 @@ class DbtModelValidator:
                 result.add_warning(
                     f"Table '{table_name}' has synonyms with problematic characters. "
                     f"These will be automatically sanitized during generation{example_text}.",
+                    file_path=source_file,
                     context={"table": table_name, "level": "table"},
                 )
 
     def _check_table_best_practices(self, table: Dict[str, Any], table_name: str, result: ValidationResult):
         """Check for best practices at the table level."""
+        source_file = table.get("source_file")
         # Description is required, checked in _check_required_table_fields
 
         # Validate synonyms is a list if present
@@ -369,6 +382,7 @@ class DbtModelValidator:
         if synonyms is not None and not isinstance(synonyms, list):
             result.add_error(
                 f"Table '{table_name}' has synonyms as {type(synonyms).__name__} instead of list at the table-level",
+                file_path=source_file,
                 context={"table": table_name, "field": "synonyms", "type": type(synonyms).__name__, "level": "table"},
             )
 
@@ -376,11 +390,13 @@ class DbtModelValidator:
         if not synonyms:
             result.add_warning(
                 f"Table '{table_name}' has no synonyms defined at the table-level (helpful for natural language queries)",
+                file_path=source_file,
                 context={"table": table_name, "best_practice": "synonyms", "level": "table"},
             )
 
     def _check_naming_conventions(self, table: Dict[str, Any], table_name: str, result: ValidationResult):
         """Check naming conventions for table name."""
+        source_file = table.get("source_file")
         # Get model name if available
         model_name = table.get("model_name", "")
 
@@ -388,30 +404,37 @@ class DbtModelValidator:
         if model_name and table_name.upper() != model_name.upper():
             result.add_error(
                 f"Table name '{table_name}' doesn't match model name '{model_name}'. They should be the same.",
+                file_path=source_file,
                 context={"table": table_name, "model_name": model_name, "level": "table"},
             )
 
     def _validate_column(self, column: Dict[str, Any], table_name: str, result: ValidationResult):
         """Validate a single column."""
         column_name = column.get("name", "unknown")
+        source_file = column.get("source_file")
 
         # Check required column fields
-        self._check_required_column_fields(column, table_name, column_name, result)
+        self._check_required_column_fields(column, table_name, column_name, source_file, result)
 
         # Check valid values
-        self._check_column_valid_values(column, table_name, column_name, result)
+        self._check_column_valid_values(column, table_name, column_name, source_file, result)
 
         # Check logical consistency
-        self._check_column_consistency(column, table_name, column_name, result)
+        self._check_column_consistency(column, table_name, column_name, source_file, result)
 
         # Check synonym content (apostrophes cause SQL errors)
-        self._check_synonym_content(column, table_name, column_name, result)
+        self._check_synonym_content(column, table_name, column_name, source_file, result)
 
         # Check best practices
-        self._check_column_best_practices(column, table_name, column_name, result)
+        self._check_column_best_practices(column, table_name, column_name, source_file, result)
 
     def _check_required_column_fields(
-        self, column: Dict[str, Any], table_name: str, column_name: str, result: ValidationResult
+        self,
+        column: Dict[str, Any],
+        table_name: str,
+        column_name: str,
+        source_file: Optional[str],
+        result: ValidationResult,
     ):
         """Check required column fields."""
         # column_type is REQUIRED and must be valid
@@ -419,11 +442,13 @@ class DbtModelValidator:
         if not column_type:
             result.add_error(
                 f"Column '{column_name}' in table '{table_name}' is missing required field: meta.sst.column_type at the column-level",
+                file_path=source_file,
                 context={"table": table_name, "column": column_name, "field": "column_type", "level": "column"},
             )
         elif column_type not in self.VALID_COLUMN_TYPES:
             result.add_error(
                 f"Column '{column_name}' in table '{table_name}' has invalid column_type: '{column_type}'. Must be one of: {', '.join(sorted(self.VALID_COLUMN_TYPES))}",
+                file_path=source_file,
                 context={
                     "table": table_name,
                     "column": column_name,
@@ -438,6 +463,7 @@ class DbtModelValidator:
         if not column.get("data_type"):
             result.add_error(
                 f"Column '{column_name}' in table '{table_name}' is missing required field: meta.sst.data_type at the column-level",
+                file_path=source_file,
                 context={"table": table_name, "column": column_name, "field": "data_type", "level": "column"},
             )
 
@@ -445,6 +471,7 @@ class DbtModelValidator:
         if not column.get("description"):
             result.add_error(
                 f"Column '{column_name}' in table '{table_name}' is missing required field: description at the column-level",
+                file_path=source_file,
                 context={"table": table_name, "column": column_name, "field": "description", "level": "column"},
             )
 
@@ -455,7 +482,12 @@ class DbtModelValidator:
         return column.get("column_type", "")
 
     def _check_column_valid_values(
-        self, column: Dict[str, Any], table_name: str, column_name: str, result: ValidationResult
+        self,
+        column: Dict[str, Any],
+        table_name: str,
+        column_name: str,
+        source_file: Optional[str],
+        result: ValidationResult,
     ):
         """Check that column fields have valid values."""
         # Check data_type is valid - must be recognized Snowflake type
@@ -464,13 +496,19 @@ class DbtModelValidator:
             result.add_error(
                 f"Column '{column_name}' in table '{table_name}' has unrecognized data_type: '{data_type}' at the column-level. "
                 f"Must be a valid Snowflake data type.",
+                file_path=source_file,
                 context={"table": table_name, "column": column_name, "data_type": data_type, "level": "column"},
             )
 
         # Note: column_type validation is handled in _check_required_column_fields
 
     def _check_column_consistency(
-        self, column: Dict[str, Any], table_name: str, column_name: str, result: ValidationResult
+        self,
+        column: Dict[str, Any],
+        table_name: str,
+        column_name: str,
+        source_file: Optional[str],
+        result: ValidationResult,
     ):
         """Check logical consistency of column configuration."""
         column_type = self._determine_column_type(column)
@@ -493,6 +531,7 @@ class DbtModelValidator:
             if data_type and data_type not in numeric_types:
                 result.add_error(
                     f"Fact column '{column_name}' in table '{table_name}' has non-numeric data_type: '{data_type}' at the column-level",
+                    file_path=source_file,
                     context={
                         "table": table_name,
                         "column": column_name,
@@ -508,6 +547,7 @@ class DbtModelValidator:
             if data_type and data_type not in time_types:
                 result.add_error(
                     f"Time dimension '{column_name}' in table '{table_name}' has non-temporal data_type: '{data_type}' at the column-level",
+                    file_path=source_file,
                     context={
                         "table": table_name,
                         "column": column_name,
@@ -522,6 +562,7 @@ class DbtModelValidator:
         if synonyms is not None and not isinstance(synonyms, list):
             result.add_error(
                 f"Column '{column_name}' in table '{table_name}' has synonyms as {type(synonyms).__name__} instead of list at the column-level",
+                file_path=source_file,
                 context={
                     "table": table_name,
                     "column": column_name,
@@ -535,6 +576,7 @@ class DbtModelValidator:
         if sample_values is not None and not isinstance(sample_values, list):
             result.add_error(
                 f"Column '{column_name}' in table '{table_name}' has sample_values as {type(sample_values).__name__} instead of list at the column-level",
+                file_path=source_file,
                 context={
                     "table": table_name,
                     "column": column_name,
@@ -553,6 +595,7 @@ class DbtModelValidator:
             result.add_error(
                 f"Column '{column_name}' in table '{table_name}' has privacy_category='direct_identifier' "
                 f"but contains sample_values. PII columns must not expose sample data at the column-level",
+                file_path=source_file,
                 context={
                     "table": table_name,
                     "column": column_name,
@@ -576,6 +619,7 @@ class DbtModelValidator:
                 result.add_error(
                     f"Column '{column_name}' in table '{table_name}' contains sample_values with Jinja template "
                     f"characters that will break dbt compilation. Run 'sst enrich' to sanitize these values at the column-level",
+                    file_path=source_file,
                     context={
                         "table": table_name,
                         "column": column_name,
@@ -596,6 +640,7 @@ class DbtModelValidator:
             result.add_error(
                 f"Column '{column_name}' in table '{table_name}' has is_enum=true but column_type='{column_type}'. "
                 f"Fact and time_dimension columns should never be enums at the column-level",
+                file_path=source_file,
                 context={
                     "table": table_name,
                     "column": column_name,
@@ -608,11 +653,17 @@ class DbtModelValidator:
         if is_enum and not sample_values:
             result.add_warning(
                 f"Column '{column_name}' in table '{table_name}' has is_enum=true but no sample_values at the column-level",
+                file_path=source_file,
                 context={"table": table_name, "column": column_name, "level": "column"},
             )
 
     def _check_synonym_content(
-        self, column: Dict[str, Any], table_name: str, column_name: str, result: ValidationResult
+        self,
+        column: Dict[str, Any],
+        table_name: str,
+        column_name: str,
+        source_file: Optional[str],
+        result: ValidationResult,
     ):
         """Check that synonyms don't contain characters that break SQL generation."""
         synonyms = column.get("synonyms")
@@ -633,11 +684,17 @@ class DbtModelValidator:
                 result.add_warning(
                     f"Column '{column_name}' in table '{table_name}' has synonyms with problematic characters. "
                     f"These will be automatically sanitized during generation{example_text}.",
+                    file_path=source_file,
                     context={"table": table_name, "column": column_name, "level": "column"},
                 )
 
     def _check_column_best_practices(
-        self, column: Dict[str, Any], table_name: str, column_name: str, result: ValidationResult
+        self,
+        column: Dict[str, Any],
+        table_name: str,
+        column_name: str,
+        source_file: Optional[str],
+        result: ValidationResult,
     ):
         """Check column best practices."""
         # Sample values are helpful for AI/BI tools
@@ -647,6 +704,7 @@ class DbtModelValidator:
             if column_type == "dimension":
                 result.add_info(
                     f"Consider adding sample_values for dimension '{column_name}' in table '{table_name}' at the column-level",
+                    file_path=source_file,
                     context={
                         "table": table_name,
                         "column": column_name,
@@ -662,6 +720,7 @@ class DbtModelValidator:
             if column_name.lower() not in common_columns:
                 result.add_info(
                     f"Consider adding synonyms for column '{column_name}' in table '{table_name}' at the column-level",
+                    file_path=source_file,
                     context={
                         "table": table_name,
                         "column": column_name,
@@ -680,6 +739,7 @@ class DbtModelValidator:
 
         for model in all_models:
             model_name = model.get("name", "unknown")
+            source_file = model.get("source_file")
 
             # Process all models - no hardcoded exclusions
             model_path = model.get("path", "")
@@ -692,6 +752,7 @@ class DbtModelValidator:
                 if not sst_meta:
                     result.add_info(
                         f"Model '{model_name}' has no meta.sst configuration (not included in semantic layer)",
+                        file_path=source_file,
                         context={"model": model_name, "reason": "no_sst_meta"},
                     )
                 else:
@@ -702,11 +763,13 @@ class DbtModelValidator:
                         # This is intentional, just log as info
                         result.add_info(
                             f"Model '{model_name}' has cortex_searchable=false (intentionally excluded)",
+                            file_path=source_file,
                             context={"model": model_name, "reason": "excluded"},
                         )
                     else:
                         # This shouldn't happen, but if it does, it's an error
                         result.add_error(
                             f"Model '{model_name}' has cortex_searchable=true but wasn't extracted",
+                            file_path=source_file,
                             context={"model": model_name, "reason": "extraction_failure"},
                         )

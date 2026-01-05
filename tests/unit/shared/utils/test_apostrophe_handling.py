@@ -71,7 +71,7 @@ class TestApostropheValidation:
             "synonyms": ["member's id", "user identifier", "customer's key"],
         }
 
-        validator._check_synonym_content(column_with_bad_synonym, "TEST_TABLE", "user_id", result)
+        validator._check_synonym_content(column_with_bad_synonym, "TEST_TABLE", "user_id", None, result)
 
         # Should have 1 warning (synonyms with apostrophes will be auto-sanitized)
         assert result.warning_count == 1
@@ -107,7 +107,7 @@ class TestApostropheValidation:
             "synonyms": ["user's data", "member's info"],  # Smart quotes
         }
 
-        validator._check_synonym_content(column, "TEST_TABLE", "data_col", result)
+        validator._check_synonym_content(column, "TEST_TABLE", "data_col", None, result)
 
         # Should warn (not error) about smart quotes - they'll be auto-sanitized
         assert result.warning_count > 0
@@ -125,7 +125,7 @@ class TestApostropheValidation:
             "synonyms": ["member identifier", "user key", "customer id"],
         }
 
-        validator._check_synonym_content(column, "TEST_TABLE", "user_id", result)
+        validator._check_synonym_content(column, "TEST_TABLE", "user_id", None, result)
 
         # Should have no errors
         assert result.error_count == 0
