@@ -1,0 +1,87 @@
+# ============================================================================
+# EXAMPLE VERIFIED QUERIES - Delete this file once you've created your own
+# ============================================================================
+# These examples show proper verified query syntax. Uncomment and modify as needed.
+# Verified queries help train Cortex Analyst to answer questions correctly.
+# Documentation: https://github.com/WhoopInc/snowflake-semantic-tools/blob/main/docs/semantic-models-guide.md
+#
+# snowflake_verified_queries:
+#   # -------------------------------------------------------------------------
+#   # Simple Aggregation Query
+#   # -------------------------------------------------------------------------
+#   - name: total_revenue_query
+#     question: What is the total revenue?
+#     description: Shows total revenue across all orders
+#     tables:
+#       - {{ table('orders') }}
+#     sql: |
+#       SELECT SUM({{ column('orders', 'amount') }}) as total_revenue
+#       FROM {{ table('orders') }}
+#     verified_at: '2026-01-15'
+#     verified_by: data_team
+#     use_as_onboarding_question: true
+#
+#   # -------------------------------------------------------------------------
+#   # Time-Based Query
+#   # -------------------------------------------------------------------------
+#   - name: monthly_revenue_query
+#     question: What is the revenue by month?
+#     description: Shows revenue broken down by month
+#     tables:
+#       - {{ table('orders') }}
+#     sql: |
+#       SELECT
+#         DATE_TRUNC('month', {{ column('orders', 'order_date') }}) as month,
+#         SUM({{ column('orders', 'amount') }}) as revenue
+#       FROM {{ table('orders') }}
+#       GROUP BY 1
+#       ORDER BY 1
+#     verified_at: '2026-01-15'
+#     verified_by: data_team
+#     use_as_onboarding_question: false
+#
+#   # -------------------------------------------------------------------------
+#   # Multi-Table Join Query
+#   # -------------------------------------------------------------------------
+#   - name: revenue_by_customer_segment
+#     question: What is the revenue by customer segment?
+#     description: Shows revenue grouped by customer tier
+#     tables:
+#       - {{ table('orders') }}
+#       - {{ table('customers') }}
+#     sql: |
+#       SELECT
+#         {{ column('customers', 'tier') }} as segment,
+#         SUM({{ column('orders', 'amount') }}) as revenue
+#       FROM {{ table('orders') }}
+#       JOIN {{ table('customers') }}
+#         ON {{ column('orders', 'customer_id') }} = {{ column('customers', 'id') }}
+#       GROUP BY 1
+#       ORDER BY 2 DESC
+#     verified_at: '2026-01-15'
+#     verified_by: data_team
+#     use_as_onboarding_question: true
+#
+#   # -------------------------------------------------------------------------
+#   # Top-N Query
+#   # -------------------------------------------------------------------------
+#   - name: top_customers_query
+#     question: Who are our top 10 customers by revenue?
+#     description: Lists the highest spending customers
+#     tables:
+#       - {{ table('orders') }}
+#       - {{ table('customers') }}
+#     sql: |
+#       SELECT
+#         {{ column('customers', 'name') }} as customer_name,
+#         SUM({{ column('orders', 'amount') }}) as total_spent
+#       FROM {{ table('orders') }}
+#       JOIN {{ table('customers') }}
+#         ON {{ column('orders', 'customer_id') }} = {{ column('customers', 'id') }}
+#       GROUP BY 1
+#       ORDER BY 2 DESC
+#       LIMIT 10
+#     verified_at: '2026-01-15'
+#     verified_by: data_team
+#     use_as_onboarding_question: false
+

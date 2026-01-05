@@ -1118,6 +1118,20 @@ pyyaml = ">=5.1"
 virtualenv = ">=20.10.0"
 
 [[package]]
+name = "prompt-toolkit"
+version = "3.0.52"
+description = "Library for building powerful interactive command lines in Python"
+optional = false
+python-versions = ">=3.8"
+files = [
+    {file = "prompt_toolkit-3.0.52-py3-none-any.whl", hash = "sha256:9aac639a3bbd33284347de5ad8d68ecc044b91a762dc39b7c21095fcd6a19955"},
+    {file = "prompt_toolkit-3.0.52.tar.gz", hash = "sha256:28cde192929c8e7321de85de1ddbe736f1375148b02f2e17edd840042b1be855"},
+]
+
+[package.dependencies]
+wcwidth = "*"
+
+[[package]]
 name = "pyarrow"
 version = "22.0.0"
 description = "Python library for Apache Arrow"
@@ -1425,6 +1439,20 @@ files = [
     {file = "pyyaml-6.0.3-cp39-cp39-win_amd64.whl", hash = "sha256:2e71d11abed7344e42a8849600193d15b6def118602c4c176f748e4583246007"},
     {file = "pyyaml-6.0.3.tar.gz", hash = "sha256:d76623373421df22fb4cf8817020cbb7ef15c725b9d5e45f17e189bfc384190f"},
 ]
+
+[[package]]
+name = "questionary"
+version = "2.1.1"
+description = "Python library to build pretty command line user prompts ⭐️"
+optional = false
+python-versions = ">=3.9"
+files = [
+    {file = "questionary-2.1.1-py3-none-any.whl", hash = "sha256:a51af13f345f1cdea62347589fbb6df3b290306ab8930713bfae4d475a7d4a59"},
+    {file = "questionary-2.1.1.tar.gz", hash = "sha256:3d7e980292bb0107abaa79c68dd3eee3c561b83a0f89ae482860b181c8bd412d"},
+]
+
+[package.dependencies]
+prompt_toolkit = ">=2.0,<4.0"
 
 [[package]]
 name = "requests"
@@ -1815,6 +1843,17 @@ docs = ["furo (>=2023.7.26)", "proselint (>=0.13)", "sphinx (>=7.1.2,!=7.3)", "s
 test = ["covdefaults (>=2.3)", "coverage (>=7.2.7)", "coverage-enable-subprocess (>=1)", "flaky (>=3.7)", "packaging (>=23.1)", "pytest (>=7.4)", "pytest-env (>=0.8.2)", "pytest-freezer (>=0.4.8)", "pytest-mock (>=3.11.1)", "pytest-randomly (>=3.12)", "pytest-timeout (>=2.1)", "setuptools (>=68)", "time-machine (>=2.10)"]
 
 [[package]]
+name = "wcwidth"
+version = "0.2.14"
+description = "Measures the displayed width of unicode strings in a terminal"
+optional = false
+python-versions = ">=3.6"
+files = [
+    {file = "wcwidth-0.2.14-py2.py3-none-any.whl", hash = "sha256:a7bb560c8aee30f9957e5f9895805edd20602f2d7f720186dfd906e82b4982e1"},
+    {file = "wcwidth-0.2.14.tar.gz", hash = "sha256:4d478375d31bc5395a3c55c40ccdf3354688364cd61c4f6adacaa9215d0b3605"},
+]
+
+[[package]]
 name = "zipp"
 version = "3.23.0"
 description = "Backport of pathlib-compatible object wrapper for zip files"
@@ -1839,4 +1878,4 @@ dbt = []
 [metadata]
 lock-version = "2.0"
 python-versions = ">=3.10,<3.12"
-content-hash = "ebeb62ffa903805a548c92936169fac9ed99348b7e7ba58b61626763618df6e8"
+content-hash = "dbdc68034a22009bfc982bcccde2ce5f9447bffc9483b1aa7d3282061a5798b7"

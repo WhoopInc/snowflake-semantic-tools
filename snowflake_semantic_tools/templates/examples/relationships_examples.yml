@@ -1,0 +1,52 @@
+# ============================================================================
+# EXAMPLE RELATIONSHIPS - Delete this file once you've created your own
+# ============================================================================
+# These examples show proper relationship syntax. Uncomment and modify as needed.
+# Documentation: https://github.com/WhoopInc/snowflake-semantic-tools/blob/main/docs/semantic-models-guide.md
+#
+# snowflake_relationships:
+#   # -------------------------------------------------------------------------
+#   # Standard Equality Join (most common)
+#   # -------------------------------------------------------------------------
+#   - name: orders_to_customers
+#     left_table: {{ table('orders') }}
+#     right_table: {{ table('customers') }}
+#     relationship_conditions:
+#       - "{{ column('orders', 'customer_id') }} = {{ column('customers', 'customer_id') }}"
+#
+#   # -------------------------------------------------------------------------
+#   # Multi-Column Join (composite keys)
+#   # -------------------------------------------------------------------------
+#   - name: daily_metrics_to_dimensions
+#     left_table: {{ table('daily_metrics') }}
+#     right_table: {{ table('date_dim') }}
+#     relationship_conditions:
+#       - "{{ column('daily_metrics', 'date_key') }} = {{ column('date_dim', 'date_key') }}"
+#       - "{{ column('daily_metrics', 'region_id') }} = {{ column('date_dim', 'region_id') }}"
+#
+#   # -------------------------------------------------------------------------
+#   # ASOF Join (time-series / point-in-time lookups)
+#   # -------------------------------------------------------------------------
+#   # ASOF joins find the closest match when exact matches don't exist.
+#   # Commonly used for: currency rates, stock prices, versioned data.
+#   # Requires unique_keys on the right table for the join columns.
+#   #
+#   - name: trades_to_quotes
+#     left_table: {{ table('trades') }}
+#     right_table: {{ table('quotes') }}
+#     relationship_conditions:
+#       - "{{ column('trades', 'symbol') }} = {{ column('quotes', 'symbol') }}"
+#       - "{{ column('trades', 'trade_time') }} >= {{ column('quotes', 'quote_time') }}"
+#
+#   # -------------------------------------------------------------------------
+#   # Range Join (between conditions)
+#   # -------------------------------------------------------------------------
+#   # Range joins match rows where a value falls within a range.
+#   # Commonly used for: bucketing, tier lookups, date ranges.
+#   #
+#   - name: orders_to_discount_tiers
+#     left_table: {{ table('orders') }}
+#     right_table: {{ table('discount_tiers') }}
+#     relationship_conditions:
+#       - "{{ column('orders', 'order_total') }} >= {{ column('discount_tiers', 'min_amount') }}"
+#       - "{{ column('orders', 'order_total') }} < {{ column('discount_tiers', 'max_amount') }}"

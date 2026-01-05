@@ -31,6 +31,7 @@ tqdm = ">=4.67.1,<4.68.0"
 typing-extensions = ">=4.12.2,<5.0"
 packaging = ">=24.2,<25.0"
 certifi = ">=2017.4.17,<2025.4.26"
+questionary = ">=2.0.0,<3.0"
 
 [tool.poetry.extras]
 # Optional extra for dbt Core users: pip install snowflake-semantic-tools[dbt]

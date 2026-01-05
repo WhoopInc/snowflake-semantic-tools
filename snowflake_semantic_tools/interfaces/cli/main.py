@@ -28,6 +28,11 @@ def _is_help_or_version_request() -> bool:
     return "--help" in sys.argv or "-h" in sys.argv or "--version" in sys.argv
 
 
+def _is_init_command() -> bool:
+    """Check if user is running init command (no config validation needed)."""
+    return len(sys.argv) > 1 and sys.argv[1] == "init"
+
+
 # Issue #10: Lazy command loading for fast --version
 # Commands are imported only when actually invoked, not at module load time
 class LazyCommand(click.Command):
@@ -86,6 +91,7 @@ class LazyGroup(click.Group):
 
 # Define lazy command mappings (module path, command function name)
 LAZY_COMMANDS = {
+    "init": ("snowflake_semantic_tools.interfaces.cli.commands.init", "init"),
     "debug": ("snowflake_semantic_tools.interfaces.cli.commands.debug", "debug"),
     "enrich": ("snowflake_semantic_tools.interfaces.cli.commands.enrich", "enrich"),
     "format": ("snowflake_semantic_tools.interfaces.cli.commands.format", "format_cmd"),
@@ -106,6 +112,7 @@ def cli():
     This toolkit provides comprehensive semantic modeling capabilities:
 
     \b
+    - INIT: Interactive setup wizard for new projects
     - DEBUG: Show configuration and test Snowflake connection
     - ENRICH: Automatically populate dbt YAML metadata with semantic information
     - FORMAT: Standardize YAML file structure and formatting
@@ -117,12 +124,13 @@ def cli():
 
     Use --help with any command for detailed options.
 
-    Note: All commands validate configuration automatically using sst_config.yml.
-    Missing required fields will cause commands to exit with an error.
+    Getting Started:
+        Run 'sst init' in your dbt project to set up SST interactively.
     """
     # Issue #31: Skip config validation for --help and --version requests
     # This allows users to explore CLI without needing valid config
-    if _is_help_or_version_request():
+    # Also skip for 'init' command which creates the config
+    if _is_help_or_version_request() or _is_init_command():
         return
 
     # Setup events early so config validation messages appear correctly
