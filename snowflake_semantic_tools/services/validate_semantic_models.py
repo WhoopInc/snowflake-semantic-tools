@@ -70,6 +70,7 @@ class SemanticMetadataCollectionValidationService:
         """
         self.parser = parser
         self.validator = validator
+        self._last_parse_result = None  # Store last parse result for schema verification
 
     def execute(self, config: ValidateConfig, verbose: bool = False) -> ValidationResult:
         """
@@ -203,6 +204,9 @@ class SemanticMetadataCollectionValidationService:
             # Step 3: Parse files
             try:
                 parse_result = self.parser.parse_all_files(dbt_files, semantic_files)
+
+                # Store parse result for schema verification
+                self._last_parse_result = parse_result
 
                 # Log parsed entities for debugging
                 if "dbt" in parse_result:

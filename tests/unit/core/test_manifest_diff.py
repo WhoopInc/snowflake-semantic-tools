@@ -7,10 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from snowflake_semantic_tools.core.parsing.parsers.manifest_parser import (
-    ManifestDiff,
-    ManifestParser,
-)
+from snowflake_semantic_tools.core.parsing.parsers.manifest_parser import ManifestDiff, ManifestParser
 
 
 class TestManifestDiff:

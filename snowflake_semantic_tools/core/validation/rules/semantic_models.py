@@ -417,28 +417,18 @@ class SemanticModelValidator:
             # Validate identifier (length, characters, reserved keywords)
             self._validate_identifier(query_name, "Verified query", result)
 
-            # Field types
-            if "question" in query:
+            # Field types - Note: empty/null checks are handled by _check_required_field above
+            if "question" in query and query["question"]:
                 if not isinstance(query["question"], str):
                     result.add_error(
                         f"Verified query '{query_name}' field 'question' must be a string, got {type(query['question']).__name__}",
                         context={"verified_query": query_name, "field": "question", "type": "verified_query"},
                     )
-                elif not query["question"].strip():
-                    result.add_error(
-                        f"Verified query '{query_name}' field 'question' cannot be empty",
-                        context={"verified_query": query_name, "field": "question", "type": "verified_query"},
-                    )
 
-            if "sql" in query:
+            if "sql" in query and query["sql"]:
                 if not isinstance(query["sql"], str):
                     result.add_error(
                         f"Verified query '{query_name}' field 'sql' must be a string, got {type(query['sql']).__name__}",
-                        context={"verified_query": query_name, "field": "sql", "type": "verified_query"},
-                    )
-                elif not query["sql"].strip():
-                    result.add_error(
-                        f"Verified query '{query_name}' field 'sql' cannot be empty",
                         context={"verified_query": query_name, "field": "sql", "type": "verified_query"},
                     )
                 else:
@@ -476,6 +466,30 @@ class SemanticModelValidator:
                         )
 
             # Note: description is not required by Snowflake spec, so we don't warn about it
+
+            # Validate use_as_onboarding / use_as_onboarding_question if present - must be boolean
+            # Note: Both field names are accepted for compatibility
+            for onboarding_field in ["use_as_onboarding", "use_as_onboarding_question"]:
+                if onboarding_field in query:
+                    onboarding_value = query[onboarding_field]
+                    if not isinstance(onboarding_value, bool):
+                        result.add_error(
+                            f"Verified query '{query_name}' field '{onboarding_field}' must be a boolean (true/false), "
+                            f"got {type(onboarding_value).__name__}: '{onboarding_value}'",
+                            context={
+                                "verified_query": query_name,
+                                "field": onboarding_field,
+                                "value": onboarding_value,
+                                "type": "verified_query",
+                            },
+                        )
+
+            # Validate SQL/tables consistency - check if SQL references tables not in tables list
+            if "sql" in query and "tables" in query:
+                sql = query.get("sql", "")
+                tables_list = query.get("tables", [])
+                if isinstance(sql, str) and isinstance(tables_list, list):
+                    self._validate_sql_tables_consistency(query_name, sql, tables_list, result)
 
             if not query.get("verified_at"):
                 result.add_info(
@@ -966,6 +980,63 @@ class SemanticModelValidator:
         pattern = r"{{\s*[Mm]etric\s*\(\s*['\"]([^'\"]+)['\"]\s*\)\s*}}"
         matches = re.findall(pattern, expression)
         return matches
+
+    def _validate_sql_tables_consistency(
+        self, query_name: str, sql: str, tables_list: List[str], result: ValidationResult
+    ):
+        """
+        Check if SQL references tables that are not in the tables list.
+
+        Extracts table references from SQL using {{ table('name') }} pattern
+        and compares against the declared tables list.
+
+        Note: This check only works when templates are NOT resolved (i.e., before
+        template resolution). If templates have been resolved, this check will
+        silently skip as there are no {{ table() }} patterns to find.
+
+        Args:
+            query_name: Name of the verified query
+            sql: The SQL string to check
+            tables_list: Declared tables list
+            result: ValidationResult to add warnings to
+        """
+        # Extract table names from {{ table('name') }} patterns in SQL
+        # Note: After template resolution, these patterns won't exist
+        table_pattern = r"{{\s*table\s*\(\s*['\"]([^'\"]+)['\"]\s*\)\s*}}"
+        sql_table_refs = re.findall(table_pattern, sql, re.IGNORECASE)
+
+        if not sql_table_refs:
+            return  # No table references found in SQL (may be post-resolution)
+
+        # Extract table names from the tables list (which may also use templates)
+        declared_tables = set()
+        for table_entry in tables_list:
+            if isinstance(table_entry, str):
+                # Check if it's a template like {{ table('name') }}
+                match = re.search(table_pattern, table_entry, re.IGNORECASE)
+                if match:
+                    declared_tables.add(match.group(1).lower())
+                else:
+                    # Raw table name
+                    declared_tables.add(table_entry.lower())
+
+        # Find tables referenced in SQL but not declared
+        undeclared_tables = []
+        for table_ref in sql_table_refs:
+            if table_ref.lower() not in declared_tables:
+                undeclared_tables.append(table_ref)
+
+        if undeclared_tables:
+            result.add_warning(
+                f"Verified query '{query_name}' SQL references tables not in 'tables' list: "
+                f"{', '.join(undeclared_tables)}. Consider adding them to the tables list.",
+                context={
+                    "verified_query": query_name,
+                    "undeclared_tables": undeclared_tables,
+                    "declared_tables": list(declared_tables),
+                    "type": "verified_query",
+                },
+            )
 
     def _check_duplicate_names(self, items: List[Dict], entity_type: str, result: ValidationResult):
         """

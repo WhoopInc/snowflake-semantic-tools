@@ -498,6 +498,176 @@ class TestVerifiedQueryValidation:
         assert any("YYYY-MM-DD format" in e for e in errors)
 
 
+class TestVerifiedQueryEdgeCases:
+    """Test verified query edge case validation (Issue #32)."""
+
+    @pytest.fixture
+    def validator(self):
+        return SemanticModelValidator()
+
+    def test_use_as_onboarding_boolean_true_passes(self, validator):
+        """Test that use_as_onboarding=true (boolean) passes."""
+        semantic_data = {
+            "verified_queries": {
+                "items": [
+                    {
+                        "name": "onboarding_query",
+                        "question": "What is the total revenue?",
+                        "sql": "SELECT SUM(amount) FROM orders",
+                        "use_as_onboarding": True,
+                    }
+                ]
+            }
+        }
+        result = validator.validate(semantic_data)
+        errors = [i.message for i in result.issues if i.severity.name == "ERROR"]
+        assert not any("use_as_onboarding" in e for e in errors)
+
+    def test_use_as_onboarding_boolean_false_passes(self, validator):
+        """Test that use_as_onboarding=false (boolean) passes."""
+        semantic_data = {
+            "verified_queries": {
+                "items": [
+                    {
+                        "name": "onboarding_query",
+                        "question": "What is the total revenue?",
+                        "sql": "SELECT SUM(amount) FROM orders",
+                        "use_as_onboarding": False,
+                    }
+                ]
+            }
+        }
+        result = validator.validate(semantic_data)
+        errors = [i.message for i in result.issues if i.severity.name == "ERROR"]
+        assert not any("use_as_onboarding" in e for e in errors)
+
+    def test_use_as_onboarding_question_boolean_passes(self, validator):
+        """Test that use_as_onboarding_question=true (boolean) passes."""
+        semantic_data = {
+            "verified_queries": {
+                "items": [
+                    {
+                        "name": "onboarding_query",
+                        "question": "What is the total revenue?",
+                        "sql": "SELECT SUM(amount) FROM orders",
+                        "use_as_onboarding_question": True,
+                    }
+                ]
+            }
+        }
+        result = validator.validate(semantic_data)
+        errors = [i.message for i in result.issues if i.severity.name == "ERROR"]
+        assert not any("use_as_onboarding" in e for e in errors)
+
+    def test_use_as_onboarding_string_error(self, validator):
+        """Test that use_as_onboarding as string produces ERROR."""
+        semantic_data = {
+            "verified_queries": {
+                "items": [
+                    {
+                        "name": "onboarding_query",
+                        "question": "What is the total revenue?",
+                        "sql": "SELECT SUM(amount) FROM orders",
+                        "use_as_onboarding": "yes",  # Should be boolean
+                    }
+                ]
+            }
+        }
+        result = validator.validate(semantic_data)
+        errors = [i.message for i in result.issues if i.severity.name == "ERROR"]
+        assert any("use_as_onboarding" in e and "must be a boolean" in e for e in errors)
+
+    def test_use_as_onboarding_question_string_error(self, validator):
+        """Test that use_as_onboarding_question as string produces ERROR."""
+        semantic_data = {
+            "verified_queries": {
+                "items": [
+                    {
+                        "name": "onboarding_query",
+                        "question": "What is the total revenue?",
+                        "sql": "SELECT SUM(amount) FROM orders",
+                        "use_as_onboarding_question": "maybe",  # Should be boolean
+                    }
+                ]
+            }
+        }
+        result = validator.validate(semantic_data)
+        errors = [i.message for i in result.issues if i.severity.name == "ERROR"]
+        assert any("use_as_onboarding_question" in e and "must be a boolean" in e for e in errors)
+
+    def test_use_as_onboarding_integer_error(self, validator):
+        """Test that use_as_onboarding as integer produces ERROR."""
+        semantic_data = {
+            "verified_queries": {
+                "items": [
+                    {
+                        "name": "onboarding_query",
+                        "question": "What is the total revenue?",
+                        "sql": "SELECT SUM(amount) FROM orders",
+                        "use_as_onboarding": 1,  # Should be boolean
+                    }
+                ]
+            }
+        }
+        result = validator.validate(semantic_data)
+        errors = [i.message for i in result.issues if i.severity.name == "ERROR"]
+        assert any("use_as_onboarding" in e and "must be a boolean" in e for e in errors)
+
+    def test_sql_tables_consistency_warning(self, validator):
+        """Test that SQL referencing undeclared tables produces WARNING."""
+        semantic_data = {
+            "verified_queries": {
+                "items": [
+                    {
+                        "name": "query_with_undeclared_table",
+                        "question": "What is the total?",
+                        "sql": "SELECT * FROM {{ table('orders') }} JOIN {{ table('customers') }}",
+                        "tables": ["{{ table('orders') }}"],  # Missing customers
+                    }
+                ]
+            }
+        }
+        result = validator.validate(semantic_data)
+        warnings = [i.message for i in result.issues if i.severity.name == "WARNING"]
+        assert any("customers" in w and "not in 'tables' list" in w for w in warnings)
+
+    def test_sql_tables_consistency_all_declared_passes(self, validator):
+        """Test that SQL with all tables declared passes."""
+        semantic_data = {
+            "verified_queries": {
+                "items": [
+                    {
+                        "name": "query_with_all_tables",
+                        "question": "What is the total?",
+                        "sql": "SELECT * FROM {{ table('orders') }} JOIN {{ table('customers') }}",
+                        "tables": ["{{ table('orders') }}", "{{ table('customers') }}"],
+                    }
+                ]
+            }
+        }
+        result = validator.validate(semantic_data)
+        warnings = [i.message for i in result.issues if i.severity.name == "WARNING"]
+        assert not any("not in 'tables' list" in w for w in warnings)
+
+    def test_sql_without_table_templates_no_warning(self, validator):
+        """Test that SQL without {{ table() }} templates doesn't produce consistency warning."""
+        semantic_data = {
+            "verified_queries": {
+                "items": [
+                    {
+                        "name": "simple_query",
+                        "question": "What is the count?",
+                        "sql": "SELECT COUNT(*) FROM orders",  # No template syntax
+                        "tables": ["orders"],
+                    }
+                ]
+            }
+        }
+        result = validator.validate(semantic_data)
+        warnings = [i.message for i in result.issues if i.severity.name == "WARNING"]
+        assert not any("not in 'tables' list" in w for w in warnings)
+
+
 class TestSemanticViewValidation:
     """Test semantic view validation rules."""
 

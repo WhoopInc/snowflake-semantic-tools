@@ -10,10 +10,7 @@ from pathlib import Path
 import pytest
 from ruamel.yaml import YAML
 
-from snowflake_semantic_tools.interfaces.cli.commands.migrate_meta import (
-    _migrate_node_meta,
-    _migrate_yaml_file,
-)
+from snowflake_semantic_tools.interfaces.cli.commands.migrate_meta import _migrate_node_meta, _migrate_yaml_file
 
 
 class TestMigrateNodeMeta:
@@ -252,4 +249,3 @@ version: 2
 
         assert result["status"] == "error"
         assert result["error"] is not None
-

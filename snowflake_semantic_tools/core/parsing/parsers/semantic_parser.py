@@ -331,9 +331,13 @@ def parse_snowflake_verified_queries(queries: List[Dict[str, Any]], file_path: P
                 "tables": query.get("tables", []),
                 "verified_at": query.get("verified_at", ""),
                 "verified_by": query.get("verified_by", ""),
-                "use_as_onboarding_question": query.get("use_as_onboarding_question", ""),
                 "sql": query.get("sql", ""),
             }
+            # Only include onboarding fields if they are present in the source
+            if "use_as_onboarding_question" in query:
+                query_record["use_as_onboarding_question"] = query["use_as_onboarding_question"]
+            if "use_as_onboarding" in query:
+                query_record["use_as_onboarding"] = query["use_as_onboarding"]
             query_records.append(query_record)
 
         except Exception as e:

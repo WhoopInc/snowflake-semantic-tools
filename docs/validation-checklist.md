@@ -1,6 +1,6 @@
 # SST Validation Checklist
 
-Complete list of all 106 validation checks performed by `sst validate`.
+Complete list of all validation checks performed by `sst validate`.
 
 ---
 
@@ -86,10 +86,13 @@ Complete list of all 106 validation checks performed by `sst validate`.
 | **Verified Query** | Query has `name` | ERROR|
 | **Verified Query** | Query has `question` | ERROR|
 | **Verified Query** | Query has `sql` | ERROR|
+| **Verified Query** | `question` is not empty or whitespace-only | ERROR|
+| **Verified Query** | `use_as_onboarding` is boolean if present (not string/int) | ERROR|
 | **Verified Query** | `verified_at` is in YYYY-MM-DD format if present | ERROR|
 | **Verified Query** | All referenced tables exist in dbt catalog | ERROR|
 | **Verified Query** | No duplicate query names | ERROR|
 | **Verified Query** | SQL starts with SELECT or WITH | WARNING|
+| **Verified Query** | SQL table references match declared `tables` list | WARNING|
 | **Semantic View** | View has `name` | ERROR|
 | **Semantic View** | View has `tables` | ERROR|
 | **Semantic View** | `name` is not empty string | ERROR|
@@ -108,6 +111,9 @@ Complete list of all 106 validation checks performed by `sst validate`.
 | **Template** | All `{{ custom_instructions('name') }}` templates resolve to existing instructions | ERROR|
 | **Template** | No circular dependencies in metric references | ERROR|
 | **Template** | No malformed template syntax | ERROR|
+| **References** | Unknown table references include "Did you mean?" suggestions | ERROR|
+| **Schema** | YAML columns exist in Snowflake tables (with `--verify-schema`) | ERROR|
+| **Schema** | YAML columns include "Did you mean?" suggestions for typos | ERROR|
 
 ---
 
@@ -125,11 +131,14 @@ Complete list of all 106 validation checks performed by `sst validate`.
 ## Running Validation
 
 ```bash
-# Standard validation
+# Standard validation (offline - no Snowflake connection)
 sst validate
 
 # Auto-compile manifest if missing/stale
 sst validate --dbt-compile
+
+# Verify columns exist in Snowflake (requires connection)
+sst validate --verify-schema
 
 # Strict mode (warnings block deployment)
 sst validate --strict
@@ -148,10 +157,11 @@ sst validate --exclude _intermediate,staging
 - **Database/Schema**: Auto-detected from `manifest.json`. Do NOT specify in `meta.sst`.
 - **Required in `meta.sst`**: `primary_key` (table level), `column_type` and `data_type` (column level)
 - **Optional in `meta.sst`**: `unique_keys` (table level) - required only for ASOF relationships
-- **Total Checks**: 98
+- **Schema Verification**: Use `--verify-schema` to validate YAML columns against Snowflake (requires credentials)
+- **Fuzzy Matching**: Error messages include "Did you mean?" suggestions for typos
 
 ---
 
-**Last Updated**: October 30, 2025  
-**SST Version**: 0.1.0
+**Last Updated**: January 4, 2026  
+**SST Version**: 0.1.2
 

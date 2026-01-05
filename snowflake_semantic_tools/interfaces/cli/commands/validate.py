@@ -13,6 +13,7 @@ from pathlib import Path
 import click
 
 from snowflake_semantic_tools._version import __version__
+from snowflake_semantic_tools.core.models import ValidationResult
 from snowflake_semantic_tools.infrastructure.dbt import DbtClient, DbtCompileError, DbtNotFoundError
 from snowflake_semantic_tools.interfaces.cli.output import CLIOutput
 from snowflake_semantic_tools.interfaces.cli.utils import setup_command
@@ -21,6 +22,9 @@ from snowflake_semantic_tools.services.validate_semantic_models import ValidateC
 from snowflake_semantic_tools.shared.config import get_config
 from snowflake_semantic_tools.shared.config_utils import get_exclusion_patterns, get_exclusion_summary
 from snowflake_semantic_tools.shared.events import setup_events
+from snowflake_semantic_tools.shared.utils import get_logger
+
+logger = get_logger("cli.validate")
 
 
 @click.command()
@@ -32,17 +36,33 @@ from snowflake_semantic_tools.shared.events import setup_events
 @click.option(
     "--dbt-compile", is_flag=True, help="Auto-run dbt compile to generate/refresh manifest.json before validation"
 )
-def validate(dbt, semantic, strict, verbose, exclude, dbt_compile):
+@click.option(
+    "--verify-schema",
+    is_flag=True,
+    help="Connect to Snowflake to verify YAML columns exist in actual tables (requires credentials)",
+)
+@click.option(
+    "--target",
+    "-t",
+    help="Override database for schema verification (e.g., PROD, DEV). Uses manifest database if not specified.",
+)
+def validate(dbt, semantic, strict, verbose, exclude, dbt_compile, verify_schema, target):
     """
     Validate semantic models against dbt definitions.
 
     Checks for missing references, circular dependencies, duplicates,
-    and performance issues. No Snowflake connection required.
+    and performance issues. No Snowflake connection required by default.
 
     \b
     Examples:
-      # Standard validation
+      # Standard validation (offline)
       sst validate
+
+      # Verify columns exist in Snowflake (requires connection)
+      sst validate --verify-schema
+
+      # Verify against a specific database (e.g., PROD tables)
+      sst validate --verify-schema --target PROD
 
       # Auto-compile dbt if manifest missing/stale (uses profile's default target)
       sst validate --dbt-compile
@@ -183,6 +203,15 @@ def validate(dbt, semantic, strict, verbose, exclude, dbt_compile):
 
         val_start = time.time()
         result = service.execute(config, verbose=verbose)
+
+        # Run Snowflake schema verification if requested
+        if verify_schema:
+            output.blank_line()
+            output.info("Verifying columns against Snowflake schema...")
+            schema_result = _run_schema_verification(service, output, verbose, target)
+            if schema_result:
+                result.merge(schema_result)
+
         val_duration = time.time() - val_start
 
         # Display results with improved formatting
@@ -212,3 +241,150 @@ def validate(dbt, semantic, strict, verbose, exclude, dbt_compile):
         if verbose:
             traceback.print_exc()
         raise click.ClickException(str(e))
+
+
+def _run_schema_verification(
+    service: SemanticMetadataCollectionValidationService,
+    output: CLIOutput,
+    verbose: bool,
+    target_database: str = None,
+) -> ValidationResult:
+    """
+    Run Snowflake schema verification.
+
+    Connects to Snowflake and verifies that columns defined in YAML
+    actually exist in the physical tables.
+
+    Args:
+        service: The validation service with parsed data
+        output: CLI output handler
+        verbose: Whether to show verbose output
+
+    Returns:
+        ValidationResult with schema verification issues, or None on connection failure
+    """
+    from typing import Optional
+
+    try:
+        # Import Snowflake components
+        from snowflake_semantic_tools.core.validation.rules import SchemaValidator
+        from snowflake_semantic_tools.infrastructure.snowflake import SnowflakeClient
+        from snowflake_semantic_tools.infrastructure.snowflake.config import SnowflakeConfig
+
+        # Get Snowflake config from dbt profile
+        output.debug("Loading Snowflake credentials from dbt profile...")
+        target = os.getenv("DBT_TARGET")
+
+        try:
+            config = SnowflakeConfig.from_dbt_profile(target=target)
+        except Exception as e:
+            output.warning(f"Could not load Snowflake credentials: {e}")
+            result = ValidationResult()
+            result.add_warning(
+                f"Schema verification skipped: Could not load Snowflake credentials. {e}",
+                context={"issue": "missing_credentials"},
+            )
+            return result
+
+        # Create Snowflake client
+        output.debug(f"Connecting to Snowflake (account: {config.account})...")
+        client = SnowflakeClient(config)
+
+        # Get the dbt catalog from the service's last parse result
+        # We need to build it from the parsed data
+        if not hasattr(service, "_last_parse_result") or not service._last_parse_result:
+            output.warning("No parsed data available for schema verification")
+            result = ValidationResult()
+            result.add_warning(
+                "Schema verification skipped: No parsed data available. " "Run validation first.",
+                context={"issue": "no_parse_result"},
+            )
+            return result
+
+        # Build dbt catalog from parsed data
+        dbt_catalog = _build_dbt_catalog_for_schema_check(service._last_parse_result, target_database)
+
+        if not dbt_catalog:
+            output.warning("No tables found for schema verification")
+            result = ValidationResult()
+            result.add_warning(
+                "Schema verification skipped: No tables with columns found in parsed data.",
+                context={"issue": "no_tables"},
+            )
+            return result
+
+        db_info = f" (database override: {target_database})" if target_database else ""
+        output.debug(f"Verifying {len(dbt_catalog)} tables against Snowflake...{db_info}")
+
+        # Run schema validation
+        schema_validator = SchemaValidator(client.metadata_manager)
+        schema_result = schema_validator.validate(dbt_catalog)
+
+        # Log summary
+        if schema_result.error_count > 0:
+            output.warning(f"Schema verification found {schema_result.error_count} column mismatches")
+        else:
+            output.success("All columns verified against Snowflake schema")
+
+        return schema_result
+
+    except ImportError as e:
+        logger.warning(f"Could not import required modules for schema verification: {e}")
+        result = ValidationResult()
+        result.add_warning(
+            f"Schema verification skipped: Missing required module: {e}",
+            context={"issue": "import_error"},
+        )
+        return result
+    except Exception as e:
+        logger.error(f"Schema verification failed: {e}")
+        result = ValidationResult()
+        result.add_warning(
+            f"Schema verification failed: {e}. Check your Snowflake credentials and connectivity.",
+            context={"issue": "connection_error", "error": str(e)},
+        )
+        return result
+
+
+def _build_dbt_catalog_for_schema_check(parse_result: dict, target_database: str = None) -> dict:
+    """
+    Build a dbt catalog structure for schema verification.
+
+    Args:
+        parse_result: The parsed data from the validation service
+        target_database: Optional database override (e.g., "PROD" to verify against prod)
+
+    Returns:
+        Dictionary mapping table names to their info including columns
+    """
+    catalog = {}
+
+    dbt_data = parse_result.get("dbt", {})
+
+    # Get tables
+    tables = dbt_data.get("sm_tables", [])
+    for table in tables:
+        if isinstance(table, dict):
+            table_name = table.get("table_name", "").lower()
+            if table_name:
+                # Use target_database override if provided, otherwise use manifest database
+                database = target_database.upper() if target_database else table.get("database")
+                catalog[table_name] = {
+                    "name": table_name,
+                    "database": database,
+                    "schema": table.get("schema"),
+                    "columns": {},
+                }
+
+    # Add columns from dimensions, facts, and time_dimensions
+    for col_type in ["sm_dimensions", "sm_facts", "sm_time_dimensions"]:
+        columns = dbt_data.get(col_type, [])
+        for col in columns:
+            if isinstance(col, dict):
+                table_name = col.get("table_name", "").lower()
+                col_name = col.get("name", "").lower()
+
+                if table_name in catalog and col_name:
+                    catalog[table_name]["columns"][col_name] = col
+
+    return catalog

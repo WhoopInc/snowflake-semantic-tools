@@ -306,11 +306,14 @@ sst validate [OPTIONS]
 | `--verbose` | `-v` | FLAG | No | False | Show detailed validation output |
 | `--exclude` | | TEXT | No | | Comma-separated list of directories to exclude |
 | `--dbt-compile` | | FLAG | No | False | Auto-run `dbt compile` to generate/refresh manifest.json before validation |
+| `--verify-schema` | | FLAG | No | False | Connect to Snowflake to verify YAML columns exist in actual tables |
+| `--target` | `-t` | TEXT | No | | Override database for schema verification (e.g., PROD, DEV) |
 
 **Important Notes:**
 - Validates files as they exist in your working directory (committed or uncommitted changes)
 - Uses `sst_config.yml` to locate model directories unless overridden with `--dbt` or `--semantic`
 - `--dbt-compile` automatically generates manifest.json using `DBT_TARGET` env var (defaults to `prod`)
+- `--verify-schema` requires Snowflake credentials from your dbt profile (adds extra validation time)
 - See [Validation Checklist](validation-checklist.md) for complete list of all 98 checks
 
 #### Examples
@@ -325,6 +328,12 @@ sst validate --dbt-compile
 # Use custom dbt target with auto-compile
 export DBT_TARGET=ci
 sst validate --dbt-compile
+
+# Verify columns exist in Snowflake (requires connection)
+sst validate --verify-schema
+
+# Verify against a specific database (e.g., PROD tables when manifest points to DEV)
+sst validate --verify-schema --target PROD
 
 # Validate with verbose output
 sst validate --verbose
