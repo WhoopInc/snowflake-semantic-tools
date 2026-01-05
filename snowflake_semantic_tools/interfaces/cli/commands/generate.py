@@ -163,64 +163,64 @@ def generate(
         output.blank_line()
         output.info("Connecting to Snowflake...")
 
-        service = SemanticViewGenerationService(snowflake_config)
+        # Use context manager for guaranteed Snowflake connection cleanup
+        with SemanticViewGenerationService(snowflake_config) as service:
+            # If --only-modified, filter views based on manifest comparison
+            if defer_config.only_modified and defer_config.enabled:
+                # Need to get available views first to filter them
+                output.info("Validating metadata access...")
+                available_views = service.get_available_views(target_db, target_schema)
 
-        # If --only-modified, filter views based on manifest comparison
-        if defer_config.only_modified and defer_config.enabled:
-            # Need to get available views first to filter them
-            output.info("Validating metadata access...")
-            available_views = service.get_available_views(target_db, target_schema)
+                if available_views:
+                    output.info(f"Found {len(available_views)} available views", indent=1)
+                    filtered_views = get_modified_views_filter(defer_config, available_views, output)
 
-            if available_views:
-                output.info(f"Found {len(available_views)} available views", indent=1)
-                filtered_views = get_modified_views_filter(defer_config, available_views, output)
+                    if filtered_views is not None:
+                        if len(filtered_views) == 0:
+                            output.success("All views are up to date - nothing to regenerate")
+                            return
+                        config.views_to_generate = filtered_views
+                        output.info(f"Filtering to {len(filtered_views)} view(s): {', '.join(filtered_views)}")
 
-                if filtered_views is not None:
-                    if len(filtered_views) == 0:
-                        output.success("All views are up to date - nothing to regenerate")
-                        return
-                    config.views_to_generate = filtered_views
-                    output.info(f"Filtering to {len(filtered_views)} view(s): {', '.join(filtered_views)}")
+            # Create progress callback from CLIOutput
+            progress_callback = CLIProgressCallback(output)
 
-        # Create progress callback from CLIOutput
-        progress_callback = CLIProgressCallback(output)
+            gen_start = time.time()
+            result = service.generate(config, progress_callback=progress_callback)
+            gen_duration = time.time() - gen_start
 
-        gen_start = time.time()
-        result = service.generate(config, progress_callback=progress_callback)
-        gen_duration = time.time() - gen_start
-
-        # Display results with improved formatting
-        output.blank_line()
-        if result.success:
-            output.success(f"Generation completed in {gen_duration:.1f}s")
-        else:
-            output.error(f"Generation failed in {gen_duration:.1f}s")
-
-        # Show detailed summary
-        result.print_summary()
-
-        # If dry-run, show SQL sample
-        if dry_run and result.sql_statements:
+            # Display results with improved formatting
             output.blank_line()
-            output.rule("=", width=60)
-            output.info("SAMPLE SQL (DRY RUN - First View)")
-            output.rule("=", width=60)
-            first_view = list(result.sql_statements.keys())[0]
-            click.echo(f"\n-- View: {first_view}")
-            click.echo(result.sql_statements[first_view][:2000])
-            if len(result.sql_statements[first_view]) > 2000:
-                click.echo("... [truncated]")
+            if result.success:
+                output.success(f"Generation completed in {gen_duration:.1f}s")
+            else:
+                output.error(f"Generation failed in {gen_duration:.1f}s")
 
-        # Show dbt-style done line with view counts
-        output.blank_line()
-        success_count = result.views_created if hasattr(result, "views_created") else 0
-        failed_count = len(result.errors) if hasattr(result, "errors") else 0
-        total_count = success_count + failed_count
+            # Show detailed summary
+            result.print_summary()
 
-        output.done_line(passed=success_count, errored=failed_count, total=total_count)
+            # If dry-run, show SQL sample
+            if dry_run and result.sql_statements:
+                output.blank_line()
+                output.rule("=", width=60)
+                output.info("SAMPLE SQL (DRY RUN - First View)")
+                output.rule("=", width=60)
+                first_view = list(result.sql_statements.keys())[0]
+                click.echo(f"\n-- View: {first_view}")
+                click.echo(result.sql_statements[first_view][:2000])
+                if len(result.sql_statements[first_view]) > 2000:
+                    click.echo("... [truncated]")
 
-        if not result.success:
-            raise click.ClickException("Generation failed - see errors above")
+            # Show dbt-style done line with view counts
+            output.blank_line()
+            success_count = result.views_created if hasattr(result, "views_created") else 0
+            failed_count = len(result.errors) if hasattr(result, "errors") else 0
+            total_count = success_count + failed_count
+
+            output.done_line(passed=success_count, errored=failed_count, total=total_count)
+
+            if not result.success:
+                raise click.ClickException("Generation failed - see errors above")
 
     except Exception as e:
         output.blank_line()
