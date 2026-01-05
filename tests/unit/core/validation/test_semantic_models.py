@@ -1300,6 +1300,97 @@ class TestDuplicateNameDetection:
         validator._check_duplicate_names(items, "relationship", result)
         assert result.error_count == 0
 
+    def test_underscore_hyphen_normalized(self, validator):
+        """Test that underscores and hyphens are treated as equivalent (Issue #54)."""
+        items = [
+            {"name": "total_revenue"},
+            {"name": "total-revenue"},
+        ]
+        result = ValidationResult()
+        validator._check_duplicate_names(items, "metric", result)
+        assert result.error_count == 1
+        assert "total_revenue" in result.issues[0].message
+        assert "total-revenue" in result.issues[0].message
+
+    def test_camel_case_snake_case_normalized(self, validator):
+        """Test that CamelCase and snake_case are treated as equivalent (Issue #54)."""
+        items = [
+            {"name": "TotalRevenue"},
+            {"name": "total_revenue"},
+        ]
+        result = ValidationResult()
+        validator._check_duplicate_names(items, "metric", result)
+        assert result.error_count == 1
+
+    def test_multiple_separators_normalized(self, validator):
+        """Test that multiple separators are normalized."""
+        items = [
+            {"name": "total__revenue"},
+            {"name": "total--revenue"},
+        ]
+        result = ValidationResult()
+        validator._check_duplicate_names(items, "metric", result)
+        assert result.error_count == 1
+
+    def test_numbers_preserved(self, validator):
+        """Test that numbers in names are preserved in normalization."""
+        items = [
+            {"name": "revenue_2023"},
+            {"name": "revenue_2024"},
+        ]
+        result = ValidationResult()
+        validator._check_duplicate_names(items, "metric", result)
+        assert result.error_count == 0  # Different numbers = different names
+
+    def test_special_characters_removed(self, validator):
+        """Test that special characters are removed for comparison."""
+        items = [
+            {"name": "total.revenue"},
+            {"name": "total@revenue"},
+        ]
+        result = ValidationResult()
+        validator._check_duplicate_names(items, "metric", result)
+        assert result.error_count == 1
+
+    def test_normalization_error_message_includes_context(self, validator):
+        """Test that error message includes both conflicting names."""
+        items = [
+            {"name": "my_metric", "source_file": "metrics.yml"},
+            {"name": "my-metric", "source_file": "other.yml"},
+        ]
+        result = ValidationResult()
+        validator._check_duplicate_names(items, "metric", result)
+        assert result.error_count == 1
+        error = result.issues[0]
+        assert "my_metric" in error.message
+        assert "my-metric" in error.message
+        assert "underscores, hyphens, or case" in error.message
+
+    def test_normalization_preserves_first_occurrence(self, validator):
+        """Test that first occurrence name is preserved in error context."""
+        items = [
+            {"name": "FirstName"},
+            {"name": "first_name"},
+        ]
+        result = ValidationResult()
+        validator._check_duplicate_names(items, "metric", result)
+        assert result.error_count == 1
+        error = result.issues[0]
+        assert error.context["first_occurrence"] == "FirstName"
+        assert error.context["normalized_name"] == "FIRSTNAME"
+
+    def test_empty_normalized_names_skipped(self, validator):
+        """Test that names normalizing to empty string are skipped (not false duplicates)."""
+        items = [
+            {"name": "___"},  # Normalizes to ""
+            {"name": "---"},  # Normalizes to ""
+            {"name": "..."},  # Normalizes to ""
+        ]
+        result = ValidationResult()
+        validator._check_duplicate_names(items, "metric", result)
+        # Should NOT report duplicates - empty normalized names are skipped
+        assert result.error_count == 0
+
 
 class TestRelationshipStructureValidation:
     """Test relationship structure validation (Issues #37, #38, #39)."""

@@ -1145,7 +1145,11 @@ class SemanticModelValidator:
 
     def _check_duplicate_names(self, items: List[Dict], entity_type: str, result: ValidationResult):
         """
-        Check for duplicate names within an entity type.
+        Check for duplicate names within an entity type, normalizing for comparison.
+
+        Names are normalized by converting to uppercase and removing all non-alphanumeric
+        characters. This means names like 'total_revenue', 'total-revenue', and 'TotalRevenue'
+        are all considered duplicates (they all normalize to 'TOTALREVENUE').
 
         Args:
             items: List of entity definitions
@@ -1158,18 +1162,29 @@ class SemanticModelValidator:
             if not name:
                 continue
 
-            name_upper = name.upper()
-            if name_upper in seen:
+            # Normalize: uppercase + remove all non-alphanumeric characters
+            # This catches duplicates like: total_revenue, total-revenue, TotalRevenue
+            name_normalized = re.sub(r"[^A-Z0-9]", "", name.upper())
+
+            # Skip names that normalize to empty string (e.g., "___", "---")
+            if not name_normalized:
+                continue
+
+            if name_normalized in seen:
                 result.add_error(
-                    f"Duplicate {entity_type} name '{name}'. " f"Each {entity_type} must have a unique name.",
+                    f"Duplicate {entity_type} name '{name}'. "
+                    f"Conflicts with '{seen[name_normalized]}'. "
+                    f"Names that differ only by underscores, hyphens, or case are considered duplicates.",
+                    file_path=item.get("source_file"),
                     context={
                         "entity_type": entity_type,
                         "name": name,
-                        "first_occurrence": seen[name_upper],
+                        "normalized_name": name_normalized,
+                        "first_occurrence": seen[name_normalized],
                     },
                 )
             else:
-                seen[name_upper] = name
+                seen[name_normalized] = name
 
     def _validate_relationship_structure(self, relationship: Dict, result: ValidationResult):
         """
