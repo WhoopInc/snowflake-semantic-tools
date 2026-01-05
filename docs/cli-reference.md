@@ -125,16 +125,29 @@ With `--test-connection`:
 Enrich dbt YAML metadata with semantic information from Snowflake. Automatically populates meta.sst blocks with column types, data types, sample values, primary keys, and enum detection.
 
 ```bash
-sst enrich TARGET_PATH [OPTIONS]
+sst enrich [TARGET_PATH] [OPTIONS]
+sst enrich --models MODEL_NAMES [OPTIONS]
 ```
 
 #### Arguments
 
 | Argument | Type | Required | Description |
 |----------|------|----------|-------------|
-| `TARGET_PATH` | PATH | **Yes** | Path to: directory, .sql file, or .yml/.yaml file |
+| `TARGET_PATH` | PATH | No* | Path to: directory, .sql file, or .yml/.yaml file |
+
+*Either `TARGET_PATH` or `--models` must be provided (mutually exclusive).
 
 #### Options
+
+##### Model Selection (New in 0.2.0)
+
+Select models by name instead of path:
+
+| Option | Short | Type | Description |
+|--------|-------|------|-------------|
+| `--models` | `-m` | TEXT | Comma-separated list of model names to enrich (requires manifest) |
+
+**Note:** `--models` requires a dbt manifest. Run `dbt compile` first.
 
 ##### Component Selection
 
@@ -195,6 +208,12 @@ Overwrite existing metadata (normally preserved):
 #### Examples
 
 ```bash
+# NEW: Enrich by model name (requires 'dbt compile' first)
+sst enrich --models customers,orders
+
+# NEW: Enrich multiple models by name with synonyms
+sst enrich -m customers,orders,products --synonyms
+
 # Enrich entire directory with default components
 sst enrich models/domain/ --database PROD_DB --schema domain
 

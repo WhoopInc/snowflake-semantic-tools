@@ -7,6 +7,7 @@ CLI command for enriching dbt YAML metadata with semantic information.
 import time
 import traceback
 from pathlib import Path
+from typing import List, Optional
 
 import click
 
@@ -19,6 +20,65 @@ from snowflake_semantic_tools.shared.progress import CLIProgressCallback
 from snowflake_semantic_tools.shared.utils import get_logger
 
 logger = get_logger(__name__)
+
+
+def _resolve_model_names(model_names: List[str], manifest_path: Optional[Path], output: CLIOutput) -> List[str]:
+    """
+    Resolve model names to SQL file paths using dbt manifest.
+
+    Args:
+        model_names: List of model names to resolve
+        manifest_path: Optional explicit manifest path
+        output: CLI output handler for messages
+
+    Returns:
+        List of SQL file paths
+
+    Raises:
+        click.ClickException: If manifest not found or model not found
+    """
+    from snowflake_semantic_tools.core.parsing.parsers.manifest_parser import ManifestParser
+
+    parser = ManifestParser(manifest_path)
+    if not parser.load():
+        raise click.ClickException(
+            "Cannot use --models without a dbt manifest.\n\n"
+            "Generate a manifest first:\n"
+            "  dbt compile --target prod\n\n"
+            "Or specify a manifest path:\n"
+            "  sst enrich --models customers --manifest target/manifest.json"
+        )
+
+    resolved_paths = []
+    not_found = []
+
+    for name in model_names:
+        location = parser.get_location(name)
+        if location:
+            # Get the original file path from manifest
+            original_path = location.get("original_file_path", "")
+            if original_path:
+                resolved_paths.append(original_path)
+                output.debug(f"Resolved '{name}' -> {original_path}")
+            else:
+                not_found.append(name)
+        else:
+            not_found.append(name)
+
+    if not_found:
+        # Get available models for suggestions
+        available = list(parser.model_locations.keys())[:10]
+        suggestion = f"Available models include: {', '.join(available)}"
+        if len(parser.model_locations) > 10:
+            suggestion += f" (and {len(parser.model_locations) - 10} more)"
+
+        raise click.ClickException(
+            f"Model(s) not found in manifest: {', '.join(not_found)}\n\n"
+            f"{suggestion}\n\n"
+            "Make sure you've run 'dbt compile' and the model names are correct."
+        )
+
+    return resolved_paths
 
 
 def _determine_components(
@@ -91,7 +151,8 @@ def _determine_components(
 
 
 @click.command()
-@click.argument("target_path", type=click.Path(exists=True))
+@click.argument("target_path", type=click.Path(exists=True), required=False)
+@click.option("--models", "-m", "model_names", help="Comma-separated list of model names to enrich (requires manifest)")
 @click.option("--target", "-t", "dbt_target", help="dbt target from profiles.yml (default: uses profile's default)")
 @click.option("--database", "-d", required=False, help="Target database (optional if manifest.json exists)")
 @click.option("--schema", "-s", required=False, help="Target schema (optional if manifest.json exists)")
@@ -134,6 +195,7 @@ def _determine_components(
 @click.option("--verbose", "-v", is_flag=True, help="Enable verbose logging")
 def enrich(
     target_path,
+    model_names,
     dbt_target,
     database,
     schema,
@@ -176,8 +238,10 @@ def enrich(
     Examples:
 
     \b
-        # NEW: Auto-detect from manifest (requires 'dbt compile' first)
-        dbt compile --target prod
+        # Enrich by model name (requires 'dbt compile' first)
+        sst enrich --models customers,orders
+
+        # Enrich a directory
         sst enrich models/analytics/memberships/
 
         # Explicit database/schema (backward compatible, no manifest needed)
@@ -199,9 +263,33 @@ def enrich(
     output = CLIOutput(verbose=verbose, quiet=False)
     output.info(f"Running with sst={__version__}")
 
+    # Validate mutual exclusivity: either target_path OR --models, not both
+    if target_path and model_names:
+        raise click.UsageError("Specify either TARGET_PATH or --models, not both")
+
+    if not target_path and not model_names:
+        raise click.UsageError(
+            "Missing required argument.\n\n"
+            "Usage:\n"
+            "  sst enrich TARGET_PATH       # Enrich a directory or file\n"
+            "  sst enrich --models NAME     # Enrich specific models by name"
+        )
+
     # Common CLI setup
     output.debug("Loading environment...")
     setup_command(verbose=verbose, validate_config=True)
+
+    # Resolve model names to file paths if using --models
+    model_files = None
+    if model_names:
+        # Parse comma-separated model names
+        names_list = [n.strip() for n in model_names.split(",") if n.strip()]
+        if not names_list:
+            raise click.UsageError("--models requires at least one model name")
+
+        output.info(f"Resolving {len(names_list)} model name(s)...")
+        model_files = _resolve_model_names(names_list, Path(manifest) if manifest else None, output)
+        output.success(f"Resolved {len(model_files)} model(s)")
 
     # Parse excluded directories
     excluded_dirs = None
@@ -226,6 +314,7 @@ def enrich(
     # Issue #44: primary_key_candidates removed from CLI (use --primary-keys for auto-detection)
     config = EnrichmentConfig(
         target_path=target_path,
+        model_files=model_files,
         database=database,
         schema=schema,
         dbt_target=dbt_target,
