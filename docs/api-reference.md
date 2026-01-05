@@ -118,7 +118,6 @@ EnrichmentConfig(
     target_path: str,
     database: str,
     schema: str,
-    primary_key_candidates: Optional[Dict] = None,
     excluded_dirs: Optional[List[str]] = None,
     dry_run: bool = False,
     fail_fast: bool = False

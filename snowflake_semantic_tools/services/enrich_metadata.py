@@ -63,7 +63,6 @@ class EnrichmentConfig:
     force_synonyms: bool = False  # Overwrite existing synonyms
     force_column_types: bool = False  # Overwrite existing column types
     force_data_types: bool = False  # Overwrite existing data types
-    force_primary_keys: bool = False  # Overwrite existing primary keys
     force_all: bool = False  # Overwrite everything
 
     def __post_init__(self):
@@ -236,7 +235,6 @@ class MetadataEnrichmentService:
         self.enricher.force_synonyms = self.config.force_synonyms
         self.enricher.force_column_types = self.config.force_column_types
         self.enricher.force_data_types = self.config.force_data_types
-        self.enricher.force_primary_keys = self.config.force_primary_keys
 
         logger.info("Connected to Snowflake for metadata enrichment")
         if self.config.database and self.config.schema:

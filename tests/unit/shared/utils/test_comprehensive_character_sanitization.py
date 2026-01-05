@@ -140,12 +140,6 @@ class TestYAMLValueSanitization:
             result = CharacterSanitizer.sanitize_for_yaml_value(input_val)
             assert result == expected
 
-    @pytest.mark.skip(reason="Conservative sanitization preserves OR patterns as they may be legitimate data")
-    def test_removes_sql_injection_patterns(self):
-        """SQL injection patterns should be removed."""
-        result = CharacterSanitizer.sanitize_for_yaml_value("value OR 1=1")
-        assert result == "value "
-
     def test_truncates_long_values(self):
         """Values should be truncated if too long."""
         long_value = "A" * 1500

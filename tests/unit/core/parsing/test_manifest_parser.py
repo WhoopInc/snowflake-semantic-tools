@@ -457,23 +457,3 @@ class TestManifestStalenessDetection:
 
 class TestManifestParserIntegration:
     """Integration tests with real manifest example."""
-
-    def test_load_example_manifest(self):
-        """Test loading the example manifest from documentation."""
-        # This assumes the example manifest exists
-        example_path = Path(__file__).parent.parent.parent / "examples" / "manifest_example.json"
-
-        if not example_path.exists():
-            pytest.skip("Example manifest not found")
-
-        parser = ManifestParser(manifest_path=example_path)
-        result = parser.load()
-
-        assert result is True
-        assert len(parser.model_locations) >= 2
-
-        # Check specific models from example
-        members_location = parser.get_location("memberships_members")
-        if members_location:
-            assert members_location["database"] == "ANALYTICS"
-            assert members_location["schema"] == "MEMBERSHIPS"

@@ -1,23 +1,29 @@
 # Snowflake Semantic Tools
 
-dbt extension for managing Snowflake Semantic Views and Cortex Analyst semantic models
+Build and deploy Snowflake Semantic Views from your dbt project
 
-[![Python](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
+[![Python](https://img.shields.io/badge/python-3.10--3.11-blue.svg)](https://www.python.org/downloads/)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 
 ---
 
 ## What is SST?
 
-SST integrates Snowflake's semantic layer into your dbt workflow. Define semantic views, metrics, and relationships in YAML alongside your dbt models, then deploy them as native Snowflake SEMANTIC VIEW objects.
+SST helps you build **Snowflake Semantic Views**—a standardized semantic layer that lives in Snowflake and powers AI and BI tools—all from within your dbt projects.
 
-**What you can do:**
+**Why Semantic Views matter:**
 
-- **Define semantics in dbt** - Metrics, relationships, filters as YAML in your dbt project
-- **Deploy to Snowflake** - Create SEMANTIC VIEW objects for Cortex Analyst and BI tools
-- **Enrich metadata** - Auto-populate YAML from Snowflake table schemas
-- **Validate before deploy** - Catch errors without Snowflake connection
-- **Maintain as code** - Version control your semantic layer with dbt
+- **Cortex Analyst & Agents** - Semantic views give Snowflake's AI the context it needs to accurately answer natural language questions about your data
+- **BI Tools** - Sigma, Tableau, and other tools can consume semantic views for consistent metrics and definitions across your organization
+- **Single source of truth** - Define metrics, relationships, and business logic once in Snowflake, use everywhere
+
+**What SST does:**
+
+- **Define semantics as code** - Metrics, relationships, filters, verified queries as YAML in your dbt project
+- **Deploy to Snowflake** - Generate native SEMANTIC VIEW objects from your definitions
+- **Enrich automatically** - Pull column types, samples, and metadata from Snowflake schemas
+- **Validate before deploy** - 100+ validation rules catch errors before they reach Snowflake
+- **Version control everything** - Your semantic layer lives in git alongside your dbt models
 
 ---
 
@@ -29,29 +35,42 @@ SST integrates Snowflake's semantic layer into your dbt workflow. Define semanti
 pip install snowflake-semantic-tools
 ```
 
+### Setup
+
+```bash
+cd your-dbt-project
+sst init  # Interactive setup wizard
+```
+
+The wizard will:
+- Detect your dbt project and profile
+- Create `sst_config.yaml` with defaults
+- Set up the semantic models directory
+- Generate example files
+
 ### Basic Usage
 
 ```bash
 # Validate your semantic models
 sst validate
 
-# Enrich dbt models with metadata from Snowflake
-sst enrich models/ --database PROD_DB --schema my_schema
+# Enrich specific models with metadata from Snowflake
+sst enrich --models customers,orders
 
 # Deploy to Snowflake (validate → extract → generate)
-sst deploy --db PROD_DB --schema SEMANTIC_VIEWS
+sst deploy
 ```
 
 ---
 
 ## Key Features
 
-- **Metadata Enrichment** - Auto-populate YAML with column types, samples, and enums
-- **Validation** - Catch errors before deployment (no Snowflake connection needed)
+- **Interactive Setup** - `sst init` wizard configures your project in seconds
+- **Metadata Enrichment** - Auto-populate YAML with column & data types, sample values, synonyms, and enums
+- **Validation** - Catch errors before deployment with comprehensive validation rules
+- **SQL Syntax Validation** - Validate metrics and filters against Snowflake
+- **Schema Verification** - Verify YAML columns exist in Snowflake with fuzzy matching
 - **Semantic Views** - Generate native Snowflake SEMANTIC VIEWs
-- **Defer Database** - Generate dev views that reference prod tables (like dbt defer)
-- **YAML Linter** - Consistent formatting across your project
-- **Python API** - Full programmatic access to all features
 
 ---
 
@@ -60,7 +79,7 @@ sst deploy --db PROD_DB --schema SEMANTIC_VIEWS
 See the `docs/` directory for comprehensive documentation:
 
 - [**Getting Started**](docs/getting-started.md) - Installation and first steps
-- [**Validation Checklist**](docs/validation-checklist.md) - Complete list of all 98 validation checks
+- [**Validation Checklist**](docs/validation-checklist.md) - Complete list of all validation checks
 - [**CLI Reference**](docs/cli-reference.md) - All commands and options
 - [**User Guide**](docs/user-guide.md) - Enrichment and validation deep dives
 - [**Semantic Models Guide**](docs/semantic-models-guide.md) - Writing metrics and relationships
@@ -70,9 +89,9 @@ See the `docs/` directory for comprehensive documentation:
 
 ## Requirements
 
-- Python 3.9+
+- Python 3.10-3.11
 - Snowflake account
-- dbt project with YAML definitions
+- dbt project (dbt Core or dbt Cloud CLI)
 
 ---
 
@@ -80,26 +99,17 @@ See the `docs/` directory for comprehensive documentation:
 
 | Command | Purpose |
 |---------|---------|
+| `sst init` | Interactive setup wizard |
 | `sst validate` | Check for errors (no Snowflake needed) |
 | `sst enrich` | Add metadata to YAML from Snowflake |
 | `sst format` | YAML linter for consistency |
 | `sst extract` | Load metadata to Snowflake tables |
 | `sst generate` | Create semantic views |
 | `sst deploy` | One-step: validate → extract → generate |
+| `sst debug` | Show config and test connection |
+| `sst migrate-meta` | Migrate meta.sst to config.meta.sst (dbt Fusion) |
 
 ---
-
-## Installation
-
-**For users (recommended):**
-
-```bash
-pip install snowflake-semantic-tools
-```
-
-**For developers/contributors:**
-
-If you want to contribute or modify the code, see the [Development Setup](#development-setup) section below or [CONTRIBUTING.md](CONTRIBUTING.md) for detailed instructions.
 
 ## Development Setup
 

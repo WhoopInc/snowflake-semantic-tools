@@ -40,7 +40,7 @@ Generates SQL semantic views for Snowflake with automatic view discovery.
 Enriches dbt YAML metadata with semantic information:
 1. Discovers dbt models to process
 2. Queries Snowflake for table schemas and sample values
-3. Detects primary keys intelligently
+3. Detects enum columns (low cardinality)
 4. Updates YAML files with complete metadata
 5. Handles connection retries and error recovery
 

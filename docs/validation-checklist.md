@@ -48,7 +48,6 @@ Complete list of all validation checks performed by `sst validate`.
 | **Metric** | All referenced columns exist in their tables | ERROR|
 | **Metric** | No duplicate metric names (normalized¹) | ERROR|
 | **Metric** | Metric has `description` | WARNING|
-| **Metric** | `default_aggregation` is valid if present | WARNING|
 | **Relationship** | Relationship has `name` | ERROR|
 | **Relationship** | Relationship has `left_table` | ERROR|
 | **Relationship** | Relationship has `right_table` | ERROR|
@@ -179,9 +178,3 @@ sst validate --exclude _intermediate,staging
 ### Notes
 
 ¹ **Name Normalization**: Duplicate detection normalizes names by converting to uppercase and removing all non-alphanumeric characters (underscores, etc.). This means names like `Total_Revenue`, `total_revenue`, and `TotalRevenue` are all considered duplicates because they normalize to `TOTALREVENUE`. This prevents issues where Snowflake would treat these as the same identifier and ensures consistent naming.
-
----
-
-**Last Updated**: January 5, 2026  
-**SST Version**: 0.1.2
-

@@ -7,7 +7,7 @@ Configure Snowflake authentication for Snowflake Semantic Tools (SST).
 **SST uses dbt's `~/.dbt/profiles.yml` for all Snowflake authentication.** This provides:
 
 - **Single source of truth** - Same credentials used by dbt and SST
-- **Multiple auth methods** - Password, SSO, RSA keys, OAuth
+- **Multiple auth methods** - SSO, Personal Access Tokens (PAT), RSA keys, OAuth, Password (deprecated)
 - **Environment variable support** - Secure credential management via `{{ env_var() }}`
 - **Target management** - Easy switching between dev/prod environments
 
@@ -16,8 +16,9 @@ Configure Snowflake authentication for Snowflake Semantic Tools (SST).
 | Method | Use Case | Security | Setup |
 |--------|----------|----------|-------|
 | **SSO/Browser** | Interactive development | High | Easy |
-| **Password** | Simple automation | Medium | Easy |
-| **RSA Key Pair** | Production/CI/CD | Very High | Medium |
+| **Personal Access Token (PAT)** | Personal automation/scripts | High | Easy |
+| **RSA Key Pair** | CI/CD and production automation | Very High | Medium |
+| **Password** | Legacy automation (deprecated) | Medium | Easy |
 | **OAuth** | Enterprise integration | Very High | Complex |
 
 ## Quick Setup
@@ -57,6 +58,8 @@ When you run any SST command, your browser will open for authentication.
 
 #### Password Authentication
 
+> **Note on Password Authentication:** Username/password authentication is being phased out by Snowflake in favor of more secure methods like Personal Access Tokens (PATs), SSO, and RSA key pairs. Consider migrating to one of these alternatives.
+
 ```yaml
 # ~/.dbt/profiles.yml  
 my_project:
@@ -72,6 +75,74 @@ my_project:
       database: ANALYTICS
       schema: DEV
 ```
+
+#### Personal Access Token (PAT) Authentication
+
+Snowflake Personal Access Tokens provide a more secure alternative to username/password authentication for **personal automation and scripts**. 
+
+> **Not for CI/CD:** PATs are tied to individual user accounts and should not be used for shared CI/CD pipelines. Use RSA key pairs with service accounts for production automation instead.
+
+**Step 1: Generate a PAT in Snowflake**
+
+**Option A: Using Snowsight UI (Recommended)**
+
+1. Log in to Snowsight
+2. Click on your profile (bottom left corner)
+3. Select **Settings**
+4. Navigate to **Authentication**
+5. Click **Generate new token**
+6. Set a name and expiration date (default: 90 days)
+7. Copy the token secret - **you can only view it once!**
+
+**Option B: Using SQL**
+
+```sql
+ALTER USER my_username ADD PROGRAMMATIC ACCESS TOKEN my_token VALIDITY_DAYS 90;
+```
+
+This will return a secret token - save it securely as you can only view it once.
+
+**Step 2: Configure dbt profile**
+
+Use the PAT as a direct password replacement:
+
+```yaml
+# ~/.dbt/profiles.yml
+my_project:
+  target: dev
+  outputs:
+    dev:
+      type: snowflake
+      account: abc12345.us-east-1
+      user: my_username
+      password: "{{ env_var('SNOWFLAKE_PAT') }}"  # Your PAT secret goes here
+      role: MY_ROLE
+      warehouse: MY_WAREHOUSE
+      database: ANALYTICS
+      schema: DEV
+```
+
+**Step 3: Set environment variable**
+```bash
+export SNOWFLAKE_PAT='your_personal_access_token_secret_here'
+```
+
+**Benefits:**
+- More secure than username/password for personal scripts
+- No password rotation needed
+- Can be scoped to specific roles/warehouses
+- Easier to revoke than passwords
+- Better audit trail in Snowflake
+
+**Use Cases:**
+- Personal automation scripts
+- Local development tools
+- One-off data processing jobs
+
+**Not suitable for:**
+- Shared CI/CD pipelines (use RSA keys instead)
+- Team/service accounts (use RSA keys instead)
+- Production deployments (use RSA keys instead)
 
 #### RSA Key Pair (Recommended for Production)
 
@@ -136,7 +207,7 @@ sst debug --target prod --test-connection
 
 **Example output:**
 ```
-SST Debug (v0.1.1)
+SST Debug (v0.2.0)
 
   ──────────────────────────────────────────────────
   Profile Configuration
@@ -193,13 +264,13 @@ Switch targets with the `--target` flag:
 
 ```bash
 # Use default target (dev)
-sst enrich models/analytics/
+sst enrich --models customers,orders
 
 # Use production target
-sst enrich models/analytics/ --target prod
+sst enrich --models customers,orders --target prod
 
 # Deploy to production
-sst deploy --target prod --db PROD_DB --schema SEMANTIC
+sst deploy --target prod
 ```
 
 ## Environment Variables with env_var()
