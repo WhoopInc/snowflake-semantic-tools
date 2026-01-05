@@ -399,9 +399,9 @@ class MetadataEnricher:
         Returns:
             Dict with updated model metadata
         """
-        # Ensure SST structure exists
+        # Ensure SST structure exists (config.meta.sst for dbt Fusion compatibility)
         model = self.yaml_handler.ensure_sst_structure(existing_model)
-        sst = model["meta"]["sst"]
+        sst = model["config"]["meta"]["sst"]
 
         # Set required fields (using NEW v1.2+ names)
         sst["cortex_searchable"] = sst.get("cortex_searchable", False)
@@ -453,7 +453,9 @@ class MetadataEnricher:
             logger.info(f"  PK Status:    Preserved existing key: {sst['primary_key']}")
 
         # Handle unique keys (preserve existing - required for ASOF relationships)
-        if "unique_keys" in sst and sst["unique_keys"]:
+        if "unique_keys" not in sst or sst["unique_keys"] is None:
+            sst["unique_keys"] = []
+        elif sst["unique_keys"]:
             logger.info(f"  UK Status:    Preserved existing keys: {sst['unique_keys']}")
 
         # Ensure proper model structure order: name, description, meta, config, columns
@@ -574,9 +576,9 @@ class MetadataEnricher:
             }
         column["name"] = col_name.lower()
 
-        # Ensure SST structure
+        # Ensure SST structure (config.meta.sst for dbt Fusion compatibility)
         column = self.yaml_handler.ensure_column_sst_structure(column)
-        column_sst = column["meta"]["sst"]
+        column_sst = column["config"]["meta"]["sst"]
 
         # Map and set data types (only if requested via components)
         snowflake_type = table_col["type"]
@@ -723,7 +725,7 @@ class MetadataEnricher:
 
     def _order_model_structure(self, model: Dict[str, Any]) -> Dict[str, Any]:
         """
-        Ensure proper model structure order: name, description, meta, config, columns
+        Ensure proper model structure order: name, description, config, columns
 
         Args:
             model: Model metadata dictionary
@@ -734,7 +736,7 @@ class MetadataEnricher:
         ordered_model = {}
 
         # Desired order for model keys
-        key_order = ["name", "description", "meta", "config", "columns"]
+        key_order = ["name", "description", "config", "columns"]
 
         # Add keys in the desired order
         for key in key_order:
@@ -746,7 +748,38 @@ class MetadataEnricher:
             if key not in ordered_model:
                 ordered_model[key] = value
 
+        # Order the SST keys within config.meta.sst
+        if "config" in ordered_model and "meta" in ordered_model["config"] and "sst" in ordered_model["config"]["meta"]:
+            ordered_model["config"]["meta"]["sst"] = self._order_sst_keys(ordered_model["config"]["meta"]["sst"])
+
         return ordered_model
+
+    def _order_sst_keys(self, sst: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Order SST metadata keys in the preferred order.
+
+        Args:
+            sst: SST metadata dictionary
+
+        Returns:
+            Dict with properly ordered keys
+        """
+        # Desired order for model-level SST keys
+        key_order = ["cortex_searchable", "synonyms", "primary_key", "unique_keys"]
+
+        ordered_sst = {}
+
+        # Add keys in the desired order
+        for key in key_order:
+            if key in sst:
+                ordered_sst[key] = sst[key]
+
+        # Add any remaining keys that weren't in our order
+        for key, value in sst.items():
+            if key not in ordered_sst:
+                ordered_sst[key] = value
+
+        return ordered_sst
 
     def _serialize_yaml_for_llm(self, full_yaml: Optional[Dict[str, Any]]) -> Optional[str]:
         """
@@ -783,7 +816,7 @@ class MetadataEnricher:
         Returns:
             Updated model_data with synonyms
         """
-        meta_sst = model_data.get("meta", {}).get("sst", {})
+        meta_sst = model_data.get("config", {}).get("meta", {}).get("sst", {})
         existing_synonyms = meta_sst.get("synonyms", [])
 
         if existing_synonyms and not force:
@@ -803,13 +836,15 @@ class MetadataEnricher:
             force=force,
         )
 
-        # Update model data
-        if "meta" not in model_data:
-            model_data["meta"] = {}
-        if "sst" not in model_data["meta"]:
-            model_data["meta"]["sst"] = {}
+        # Update model data (config.meta.sst for dbt Fusion compatibility)
+        if "config" not in model_data:
+            model_data["config"] = {}
+        if "meta" not in model_data["config"]:
+            model_data["config"]["meta"] = {}
+        if "sst" not in model_data["config"]["meta"]:
+            model_data["config"]["meta"]["sst"] = {}
 
-        model_data["meta"]["sst"]["synonyms"] = synonyms
+        model_data["config"]["meta"]["sst"]["synonyms"] = synonyms
         logger.info(f"  Generated {len(synonyms)} table synonyms")
 
         return model_data
@@ -832,7 +867,7 @@ class MetadataEnricher:
 
         # Filter columns needing synonyms
         columns_needing_synonyms = [
-            col for col in columns if force or not col.get("meta", {}).get("sst", {}).get("synonyms")
+            col for col in columns if force or not col.get("config", {}).get("meta", {}).get("sst", {}).get("synonyms")
         ]
 
         if not columns_needing_synonyms:
@@ -855,12 +890,15 @@ class MetadataEnricher:
             col_name = col["name"]
 
             if col_name in batch_synonyms and batch_synonyms[col_name]:
-                if "meta" not in col:
-                    col["meta"] = {}
-                if "sst" not in col["meta"]:
-                    col["meta"]["sst"] = {}
+                # Ensure config.meta.sst structure (dbt Fusion compatibility)
+                if "config" not in col:
+                    col["config"] = {}
+                if "meta" not in col["config"]:
+                    col["config"]["meta"] = {}
+                if "sst" not in col["config"]["meta"]:
+                    col["config"]["meta"]["sst"] = {}
 
-                col["meta"]["sst"]["synonyms"] = batch_synonyms[col_name]
+                col["config"]["meta"]["sst"]["synonyms"] = batch_synonyms[col_name]
                 columns_with_synonyms += 1
 
         if columns_with_synonyms > 0:

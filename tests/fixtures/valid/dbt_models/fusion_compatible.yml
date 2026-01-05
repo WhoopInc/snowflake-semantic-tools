@@ -1,0 +1,87 @@
+# Test fixture: dbt Fusion compatible format (config.meta.sst)
+# This is the new format required by dbt Fusion
+version: 2
+
+models:
+  - name: orders
+    description: "Customer orders table with dbt Fusion compatible metadata"
+    config:
+      tags:
+        - semantic
+      meta:
+        sst:
+          cortex_searchable: true
+          primary_key: id
+          synonyms:
+            - purchases
+            - transactions
+    columns:
+      - name: id
+        description: "Unique order identifier"
+        config:
+          meta:
+            sst:
+              column_type: dimension
+              data_type: text
+              synonyms:
+                - order_id
+                - order_identifier
+              sample_values:
+                - "ORD-001"
+                - "ORD-002"
+              is_enum: false
+
+      - name: user_id
+        description: "User who placed the order"
+        config:
+          meta:
+            sst:
+              column_type: dimension
+              data_type: text
+              synonyms:
+                - customer_id
+              sample_values: []
+              is_enum: false
+
+      - name: amount
+        description: "Order total amount in USD"
+        config:
+          meta:
+            sst:
+              column_type: fact
+              data_type: number
+              synonyms:
+                - total
+                - order_total
+              sample_values:
+                - "99.99"
+                - "149.50"
+              is_enum: false
+
+      - name: status
+        description: "Order fulfillment status"
+        config:
+          meta:
+            sst:
+              column_type: dimension
+              data_type: text
+              synonyms:
+                - order_status
+              sample_values:
+                - pending
+                - shipped
+                - delivered
+              is_enum: true
+
+      - name: created_at
+        description: "Order creation timestamp"
+        config:
+          meta:
+            sst:
+              column_type: time
+              data_type: timestamp
+              synonyms:
+                - order_date
+              sample_values: []
+              is_enum: false
+

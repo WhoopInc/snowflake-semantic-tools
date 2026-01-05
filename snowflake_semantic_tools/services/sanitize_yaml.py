@@ -178,18 +178,22 @@ class YAMLSanitizationService:
                 result.add_change("table_description", f"table: {model_name}", original, sanitized)
                 model["description"] = sanitized
 
-        # Sanitize table-level synonyms (in meta.sst or meta.genie)
-        for section_name in ["sst", "genie"]:
-            if "meta" in model and section_name in model["meta"]:
-                section = model["meta"][section_name]
-                if "synonyms" in section and isinstance(section["synonyms"], list):
-                    original_synonyms = section["synonyms"]
-                    sanitized_synonyms = CharacterSanitizer.sanitize_synonym_list(original_synonyms)
-                    if sanitized_synonyms != original_synonyms:
-                        for orig, clean in zip(original_synonyms, sanitized_synonyms):
-                            if orig != clean:
-                                result.add_change("table_synonym", f"table: {model_name}", orig, clean)
-                        section["synonyms"] = sanitized_synonyms
+        # Sanitize table-level synonyms (in config.meta.sst or legacy meta.sst)
+        sst_sections = []
+        if "config" in model and "meta" in model.get("config", {}) and "sst" in model["config"]["meta"]:
+            sst_sections.append(model["config"]["meta"]["sst"])
+        if "meta" in model and "sst" in model.get("meta", {}):
+            sst_sections.append(model["meta"]["sst"])
+
+        for section in sst_sections:
+            if "synonyms" in section and isinstance(section["synonyms"], list):
+                original_synonyms = section["synonyms"]
+                sanitized_synonyms = CharacterSanitizer.sanitize_synonym_list(original_synonyms)
+                if sanitized_synonyms != original_synonyms:
+                    for orig, clean in zip(original_synonyms, sanitized_synonyms):
+                        if orig != clean:
+                            result.add_change("table_synonym", f"table: {model_name}", orig, clean)
+                    section["synonyms"] = sanitized_synonyms
 
         # Sanitize column-level fields
         if "columns" in model:
@@ -224,13 +228,14 @@ class YAMLSanitizationService:
                 result.add_change("column_description", location, original, sanitized)
                 column["description"] = sanitized
 
-        # Sanitize column-level synonyms (in meta.sst or meta.genie)
-        for section_name in ["sst", "genie"]:
-            if "meta" not in column or section_name not in column["meta"]:
-                continue
+        # Sanitize column-level synonyms and sample_values (in config.meta.sst or legacy meta.sst)
+        sst_sections = []
+        if "config" in column and "meta" in column.get("config", {}) and "sst" in column["config"]["meta"]:
+            sst_sections.append(column["config"]["meta"]["sst"])
+        if "meta" in column and "sst" in column.get("meta", {}):
+            sst_sections.append(column["meta"]["sst"])
 
-            section = column["meta"][section_name]
-
+        for section in sst_sections:
             # Synonyms
             if "synonyms" in section and isinstance(section["synonyms"], list):
                 original_synonyms = section["synonyms"]

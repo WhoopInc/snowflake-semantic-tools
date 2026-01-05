@@ -239,10 +239,12 @@ sst enrich models/analytics/customers/
 
 **What this does:**
 - Queries Snowflake schema
-- Populates `meta.sst` blocks
+- Populates `config.meta.sst` blocks (dbt Fusion compatible)
 - Adds column types (dimension/fact/time_dimension)
 - Adds sample values
 - Detects enums
+
+> **Note:** SST writes metadata in the new `config.meta.sst` format required by dbt Fusion. If you have existing `meta.sst` blocks, run `sst migrate-meta` to migrate them. See [dbt Fusion Migration Guide](migration-guide-dbt-fusion.md).
 
 **Output:**
 ```
@@ -375,7 +377,7 @@ your-dbt-project/
 │   └── analytics/
 │       ├── customers/
 │       │   ├── customers.sql
-│       │   └── customers.yml    # Contains meta.sst blocks
+│       │   └── customers.yml    # Contains config.meta.sst blocks
 │       └── orders/
 │           ├── orders.sql
 │           └── orders.yml

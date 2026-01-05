@@ -8,6 +8,7 @@
   - [validate](#validate)
   - [enrich](#enrich)
   - [format](#format)
+  - [migrate-meta](#migrate-meta)
   - [extract](#extract)
   - [generate](#generate)
   - [deploy](#deploy)
@@ -31,6 +32,7 @@ This reference focuses on command syntax and options.
 | `validate` | Validate semantic models against dbt definitions | No |
 | `enrich` | Enrich dbt YAML metadata with semantic information | Yes |
 | `format` | **YAML Linter** - Ensure project-wide formatting consistency | No |
+| `migrate-meta` | Migrate meta.sst to config.meta.sst (dbt Fusion) | No |
 | `extract` | Extract metadata from dbt/semantic models to Snowflake | Yes |
 | `generate` | Generate Snowflake SEMANTIC VIEWs and/or YAML models | Yes |
 | `deploy` | **One-step:** validate → extract → generate | Yes |
@@ -489,6 +491,104 @@ sst format .
 3. **Safe operation:** Format preserves all content - only structure and spacing change
 
 ---
+
+## migrate-meta
+
+Migrate dbt YAML files from legacy `meta.sst` format to the new `config.meta.sst` format required by dbt Fusion.
+
+**Purpose:** dbt Fusion (dbt's next-gen Rust engine) requires that all `meta` configurations be placed under `config:`. This command automatically migrates your existing YAML files to the new format.
+
+**Snowflake Connection:** Not required
+
+### Syntax
+
+```bash
+sst migrate-meta PATH [OPTIONS]
+```
+
+### Options
+
+| Option | Short | Type | Required | Default | Description |
+|--------|-------|------|----------|---------|-------------|
+| `PATH` | | PATH | Yes | - | File or directory to migrate |
+| `--dry-run` | | FLAG | No | False | Preview changes without modifying files |
+| `--backup` | | FLAG | No | False | Create .bak backup files before modifying |
+| `--verbose` | `-v` | FLAG | No | False | Show detailed migration notes |
+
+### What It Does
+
+The migrate-meta command transforms SST metadata locations:
+
+**Before (Legacy):**
+```yaml
+models:
+  - name: orders
+    meta:
+      sst:
+        cortex_searchable: true
+    columns:
+      - name: id
+        meta:
+          sst:
+            column_type: dimension
+```
+
+**After (dbt Fusion Compatible):**
+```yaml
+models:
+  - name: orders
+    config:
+      meta:
+        sst:
+          cortex_searchable: true
+    columns:
+      - name: id
+        config:
+          meta:
+            sst:
+              column_type: dimension
+```
+
+### Examples
+
+```bash
+# Preview migration for a directory
+sst migrate-meta models/ --dry-run
+
+# Migrate all YAML files in a directory
+sst migrate-meta models/
+
+# Migrate with backups (creates .yml.bak files)
+sst migrate-meta models/ --backup
+
+# Migrate a single file
+sst migrate-meta models/analytics/users/users.yml
+
+# Verbose output showing each field migrated
+sst migrate-meta models/ --verbose
+```
+
+### Output Format
+
+```
+Running with sst=0.1.1
+
+Migrating 15 YAML file(s)...
+
+  [MIGRATED] models/orders/orders.yml (1 model(s), 5 column(s))
+  [MIGRATED] models/users/users.yml (1 model(s), 8 column(s))
+  
+[SUCCESS] Migrated 2 file(s): 2 model(s), 13 column(s)
+```
+
+### Best Practices
+
+1. **Run with --dry-run first:** Preview changes before modifying files
+2. **Create backups for important files:** Use `--backup` flag
+3. **Migrate before upgrading to dbt Fusion:** Column-level meta MUST be migrated
+4. **Verify after migration:** Run `sst validate` to ensure no issues
+
+**See:** [dbt Fusion Migration Guide](migration-guide-dbt-fusion.md) for detailed migration information.
 
 ---
 

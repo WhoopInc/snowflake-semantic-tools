@@ -224,7 +224,7 @@ class TestProcessSingleColumn:
         mock_yaml_handler = Mock()
         mock_yaml_handler.ensure_column_sst_structure.side_effect = lambda x: {
             **x,
-            "meta": {"sst": x.get("meta", {}).get("sst", {})},
+            "config": {"meta": {"sst": x.get("config", {}).get("meta", {}).get("sst", {})}},
         }
         mock_yaml_handler._order_column_sst_keys.side_effect = lambda x: x
         mock_pk_validator = Mock()

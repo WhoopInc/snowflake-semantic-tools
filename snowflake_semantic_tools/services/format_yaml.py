@@ -35,7 +35,7 @@ class YAMLFormattingService:
     # Standard field ordering for columns
     COLUMN_FIELD_ORDER = ["name", "description", "data_tests", "meta"]
 
-    # Standard field ordering for SST metadata (also used for legacy genie migration)
+    # Standard field ordering for SST metadata
     SST_FIELD_ORDER = ["column_type", "data_type", "synonyms", "sample_values", "is_enum", "privacy_category"]
 
     def __init__(self, config: FormattingConfig):
@@ -137,13 +137,15 @@ class YAMLFormattingService:
         if "description" in model:
             model["description"] = self._format_description(model["description"])
 
-        # Format list fields (synonyms, etc.) in both sst and legacy genie sections
-        if "meta" in model:
-            for section_name in ["sst", "genie"]:  # Handle both for migration
-                if section_name in model["meta"]:
-                    section = model["meta"][section_name]
-                    if "synonyms" in section:
-                        section["synonyms"] = self._format_list(section["synonyms"])
+        # Format list fields (synonyms, etc.) in config.meta.sst and legacy meta.sst
+        if "config" in model and "meta" in model.get("config", {}) and "sst" in model["config"]["meta"]:
+            section = model["config"]["meta"]["sst"]
+            if "synonyms" in section:
+                section["synonyms"] = self._format_list(section["synonyms"])
+        if "meta" in model and "sst" in model.get("meta", {}):
+            section = model["meta"]["sst"]
+            if "synonyms" in section:
+                section["synonyms"] = self._format_list(section["synonyms"])
 
         # Reorder model fields AFTER formatting description
         self._reorder_dict(model, self.MODEL_FIELD_ORDER)
@@ -159,24 +161,25 @@ class YAMLFormattingService:
         if "description" in column:
             column["description"] = self._format_description(column["description"])
 
-        # Format list fields in SST metadata (and legacy genie for migration)
-        if "meta" in column:
-            for section_name in ["sst", "genie"]:  # Handle both for migration
-                if section_name in column["meta"]:
-                    section = column["meta"][section_name]
-                    if "synonyms" in section:
-                        section["synonyms"] = self._format_list(section["synonyms"])
-                    if "sample_values" in section:
-                        section["sample_values"] = self._format_list(section["sample_values"])
+        # Format list fields in SST metadata (config.meta.sst and legacy meta.sst)
+        sst_sections = []
+        if "config" in column and "meta" in column.get("config", {}) and "sst" in column["config"]["meta"]:
+            sst_sections.append(column["config"]["meta"]["sst"])
+        if "meta" in column and "sst" in column.get("meta", {}):
+            sst_sections.append(column["meta"]["sst"])
+
+        for section in sst_sections:
+            if "synonyms" in section:
+                section["synonyms"] = self._format_list(section["synonyms"])
+            if "sample_values" in section:
+                section["sample_values"] = self._format_list(section["sample_values"])
 
         # Reorder column fields AFTER formatting description
         self._reorder_dict(column, self.COLUMN_FIELD_ORDER)
 
-        # Format SST/genie metadata with proper field ordering
-        if "meta" in column:
-            for section_name in ["sst", "genie"]:  # Handle both for migration
-                if section_name in column["meta"]:
-                    self._reorder_dict(column["meta"][section_name], self.SST_FIELD_ORDER)
+        # Format SST metadata with proper field ordering
+        for section in sst_sections:
+            self._reorder_dict(section, self.SST_FIELD_ORDER)
 
     def _format_list(self, list_value: Any) -> Any:
         """

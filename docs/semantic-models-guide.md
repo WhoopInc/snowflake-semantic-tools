@@ -63,14 +63,15 @@ Your dbt model YAML files need SST metadata in the `meta.sst` section.
 models:
   - name: orders
     description: Order fact table with one row per order
-    meta:
-      sst:
-        primary_key: order_id                      # Required: unique identifier
-        unique_keys: [customer_id, ordered_at]     # Optional: for ASOF relationships
-        cortex_searchable: true                    # Optional: include in Dynamic SV Generation (future feature)
-        synonyms:                                  # Optional: alternative names
-          - purchases
-          - transactions
+    config:
+      meta:
+        sst:
+          primary_key: order_id                      # Required: unique identifier
+          unique_keys: [customer_id, ordered_at]     # Optional: for ASOF relationships
+          cortex_searchable: true                    # Optional: include in Dynamic SV Generation (future feature)
+          synonyms:                                  # Optional: alternative names
+            - purchases
+            - transactions
 ```
 
 ### Table Metadata Fields
@@ -88,15 +89,16 @@ models:
     columns:
       - name: order_id
         description: Unique order identifier
-        meta:
-          sst:
-            column_type: dimension    # Required: dimension, fact, or time_dimension
-            data_type: TEXT           # Required: Snowflake data type
-            synonyms: []              # Optional: alternative column names
-            sample_values:            # Optional: example values for AI context
-              - "ORD-001"
-              - "ORD-002"
-            is_enum: false            # Optional: true if sample_values is exhaustive
+        config:
+          meta:
+            sst:
+              column_type: dimension    # Required: dimension, fact, or time_dimension
+              data_type: TEXT           # Required: Snowflake data type
+              synonyms: []              # Optional: alternative column names
+              sample_values:            # Optional: example values for AI context
+                - "ORD-001"
+                - "ORD-002"
+              is_enum: false            # Optional: true if sample_values is exhaustive
 ```
 
 ### UNIQUE Keys for ASOF Relationships
@@ -107,10 +109,11 @@ When defining ASOF (temporal) relationships, Snowflake requires a `UNIQUE` const
 # In your dbt model YAML
 models:
   - name: orders
-    meta:
-      sst:
-        primary_key: order_id
-        unique_keys: [customer_id, ordered_at]  # Columns used in ASOF join
+    config:
+      meta:
+        sst:
+          primary_key: order_id
+          unique_keys: [customer_id, ordered_at]  # Columns used in ASOF join
 
 # In your relationship definition
 snowflake_relationships:

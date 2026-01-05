@@ -426,7 +426,7 @@ Return ONLY a JSON array of strings: ["synonym 1", "synonym 2", "synonym 3"]"""
             col_name = col.get("name", "")
             col_desc = col.get("description", "No description")[:200]
 
-            meta_sst = col.get("meta", {}).get("sst", {})
+            meta_sst = col.get("config", {}).get("meta", {}).get("sst", {})
             data_type = meta_sst.get("data_type", "unknown")
             samples = meta_sst.get("sample_values", [])
             sample_str = ", ".join([str(s) for s in samples[:3]]) if samples else ""
@@ -492,7 +492,7 @@ Return ONLY the JSON object with all column synonyms."""
             col_name = col.get("name", "unknown")
             col_desc = col.get("description", "No description")
 
-            meta_sst = col.get("meta", {}).get("sst", {})
+            meta_sst = col.get("config", {}).get("meta", {}).get("sst", {})
             samples = meta_sst.get("sample_values", [])
             sample_str = ""
             if samples:

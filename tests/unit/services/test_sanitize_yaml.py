@@ -236,19 +236,19 @@ class TestYAMLSanitizationService:
         assert not result.has_changes
         assert result.change_count == 0
 
-    def test_sanitize_model_handles_genie_section(self):
-        """Test sanitizing legacy genie section."""
+    def test_sanitize_model_handles_config_meta_sst(self):
+        """Test sanitizing new config.meta.sst section (dbt Fusion compatible)."""
         service = YAMLSanitizationService()
 
         model = {
             "name": "customers",
-            "columns": [{"name": "user_id", "meta": {"genie": {"synonyms": ["user's ID"]}}}],  # Legacy section
+            "columns": [{"name": "user_id", "config": {"meta": {"sst": {"synonyms": ["user's ID"]}}}}],
         }
 
         result = service.sanitize_model(model)
 
         assert result.has_changes
-        assert model["columns"][0]["meta"]["genie"]["synonyms"] == ["users ID"]
+        assert model["columns"][0]["config"]["meta"]["sst"]["synonyms"] == ["users ID"]
 
     @pytest.mark.skip(reason="Test expectations don't match conservative sanitization behavior for sample values")
     def test_get_changes_by_type_comprehensive(self):
