@@ -39,7 +39,8 @@ logger = get_logger(__name__)
 class EnrichmentConfig:
     """Configuration for metadata enrichment."""
 
-    target_path: str
+    target_path: Optional[str] = None  # Directory or file path (optional if model_files provided)
+    model_files: Optional[List[str]] = None  # Explicit list of model file paths (from --models)
     database: Optional[str] = None  # Optional: Can be auto-detected from manifest
     schema: Optional[str] = None  # Optional: Can be auto-detected from manifest
     primary_key_candidates: Optional[Dict[str, List[List[str]]]] = None
@@ -64,6 +65,11 @@ class EnrichmentConfig:
     force_data_types: bool = False  # Overwrite existing data types
     force_primary_keys: bool = False  # Overwrite existing primary keys
     force_all: bool = False  # Overwrite everything
+
+    def __post_init__(self):
+        """Validate that either target_path or model_files is provided."""
+        if not self.target_path and not self.model_files:
+            raise ValueError("Either target_path or model_files must be provided")
 
 
 @dataclass
@@ -364,7 +370,8 @@ class MetadataEnrichmentService:
 
         # Log enrichment configuration (technical details for debugging)
         # Note: User-facing progress shown via events below (EnrichmentStarted, ModelEnriched, etc.)
-        logger.info(f"Starting metadata enrichment for {self.config.target_path}")
+        target_desc = self.config.target_path or f"{len(self.config.model_files or [])} model(s)"
+        logger.info(f"Starting metadata enrichment for {target_desc}")
         progress.stage("Enriching metadata from Snowflake")
 
         if self.config.database and self.config.schema:
@@ -379,19 +386,24 @@ class MetadataEnrichmentService:
             logger.info("DRY RUN mode: no files will be modified")
 
         # Discover models
-        progress.info(f"Discovering models in {self.config.target_path}...")
+        if self.config.model_files:
+            progress.info(f"Using {len(self.config.model_files)} specified model(s)...")
+        else:
+            progress.info(f"Discovering models in {self.config.target_path}...")
         logger.debug("Discovering models...")
         model_files = self._discover_models()
 
         if not model_files:
-            logger.warning(f"No models found at {self.config.target_path}")
-            progress.warning(f"No models found at {self.config.target_path}")
+            target_desc = self.config.target_path or "specified models"
+            logger.warning(f"No models found at {target_desc}")
+            progress.warning(f"No models found at {target_desc}")
             return EnrichmentResult(status="complete", processed=0, total=0, results=[], errors=[])
 
         progress.info(f"Found {len(model_files)} model(s) to enrich", indent=1)
 
         # Fire event: User-facing operation start (shown in CLI)
-        fire_event(EnrichmentStarted(path=self.config.target_path, model_count=len(model_files)))
+        event_path = self.config.target_path or "specified models"
+        fire_event(EnrichmentStarted(path=event_path, model_count=len(model_files)))
 
         # Show enrichment details
         progress.blank_line()
@@ -551,6 +563,7 @@ class MetadataEnrichmentService:
         Discover SQL model files to process.
 
         Supports multiple input formats:
+        - Explicit model files list (from --models option)
         - Direct SQL file path: models/model.sql
         - Direct YAML file path: models/model.yml (finds corresponding .sql)
         - Directory: models/subdirectory/ (finds all .sql files)
@@ -564,6 +577,16 @@ class MetadataEnrichmentService:
         Returns:
             List of SQL model file paths
         """
+        # If explicit model files provided (from --models), use them directly
+        if self.config.model_files:
+            logger.debug(f"Using explicit model files: {self.config.model_files}")
+            return self.config.model_files
+
+        # Otherwise, discover from target_path
+        if not self.config.target_path:
+            logger.warning("No target_path or model_files provided")
+            return []
+
         target_path = self.config.target_path.rstrip("/")
         excluded_patterns = self.config.excluded_dirs or []
 
