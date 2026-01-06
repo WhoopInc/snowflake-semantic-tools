@@ -156,8 +156,9 @@ class TestEnrichCLIModelsOption:
             mock_instance.enrich = Mock(
                 return_value=Mock(
                     status="complete",  # Service returns "complete", not "success"
-                    models_enriched=1,
-                    failed_models=[],
+                    processed=1,
+                    errors=[],
+                    total=1,
                     print_summary=Mock(),
                 )
             )
@@ -213,8 +214,9 @@ class TestEnrichCLIModelsOption:
             mock_instance.enrich = Mock(
                 return_value=Mock(
                     status="complete",  # Service returns "complete", not "success"
-                    models_enriched=2,
-                    failed_models=[],
+                    processed=2,
+                    errors=[],
+                    total=2,
                     print_summary=Mock(),
                 )
             )
@@ -242,8 +244,9 @@ class TestEnrichCLIModelsOption:
             mock_instance.enrich = Mock(
                 return_value=Mock(
                     status="complete",  # Service returns "complete", not "success"
-                    models_enriched=1,
-                    failed_models=[],
+                    processed=1,
+                    errors=[],
+                    total=1,
                     print_summary=Mock(),
                 )
             )

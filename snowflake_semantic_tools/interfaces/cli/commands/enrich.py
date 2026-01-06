@@ -353,9 +353,9 @@ def enrich(
 
         # Show dbt-style done line
         output.blank_line()
-        success_count = result.models_enriched if hasattr(result, "models_enriched") else 0
-        failed_count = len(result.failed_models) if hasattr(result, "failed_models") else 0
-        total_count = success_count + failed_count
+        success_count = result.processed
+        failed_count = len(result.errors)
+        total_count = result.total
 
         output.done_line(passed=success_count, errored=failed_count, total=total_count)
 

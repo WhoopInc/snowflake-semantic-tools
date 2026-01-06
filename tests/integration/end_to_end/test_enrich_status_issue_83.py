@@ -134,8 +134,9 @@ models:
             # Create a result with "complete" status (what service actually returns)
             mock_result = Mock()
             mock_result.status = "complete"  # This is the key - service returns "complete"
-            mock_result.models_enriched = 1
-            mock_result.failed_models = []
+            mock_result.processed = 1
+            mock_result.errors = []
+            mock_result.total = 1
             mock_result.print_summary = Mock()
 
             mock_instance.enrich = Mock(return_value=mock_result)
@@ -184,8 +185,9 @@ models:
             # Create a result with "partial" status (some succeeded, some failed)
             mock_result = Mock()
             mock_result.status = "partial"
-            mock_result.models_enriched = 1
-            mock_result.failed_models = ["models/orders.yml"]
+            mock_result.processed = 1
+            mock_result.errors = [{"model": "models/orders.yml"}]
+            mock_result.total = 2
             mock_result.print_summary = Mock()
 
             mock_instance.enrich = Mock(return_value=mock_result)
@@ -236,8 +238,9 @@ models:
             # Create a result with "failed" status (all failed)
             mock_result = Mock()
             mock_result.status = "failed"
-            mock_result.models_enriched = 0
-            mock_result.failed_models = ["models/customers.yml"]
+            mock_result.processed = 0
+            mock_result.errors = [{"model": "models/customers.yml"}]
+            mock_result.total = 1
             mock_result.print_summary = Mock()
 
             mock_instance.enrich = Mock(return_value=mock_result)
