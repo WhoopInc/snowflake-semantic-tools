@@ -341,7 +341,7 @@ def enrich(
 
         # Display results with improved formatting
         output.blank_line()
-        if result.status == "success":
+        if result.status == "complete":
             output.success(f"Enrichment completed in {enrich_duration:.1f}s")
         elif result.status == "partial":
             output.warning(f"Enrichment completed with errors in {enrich_duration:.1f}s")
@@ -353,9 +353,9 @@ def enrich(
 
         # Show dbt-style done line
         output.blank_line()
-        success_count = result.models_enriched if hasattr(result, "models_enriched") else 0
-        failed_count = len(result.failed_models) if hasattr(result, "failed_models") else 0
-        total_count = success_count + failed_count
+        success_count = result.processed
+        failed_count = len(result.errors)
+        total_count = result.total
 
         output.done_line(passed=success_count, errored=failed_count, total=total_count)
 
