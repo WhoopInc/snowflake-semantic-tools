@@ -149,7 +149,7 @@ sst debug --target prod --test-connection
 #### Output Format
 
 ```
-SST Debug (v0.2.0)
+SST Debug (v0.2.1)
 
   ──────────────────────────────────────────────────
   Profile Configuration
@@ -633,7 +633,7 @@ sst migrate-meta models/ --verbose
 ### Output Format
 
 ```
-Running with sst=0.2.0
+Running with sst=0.2.1
 
 Migrating 15 YAML file(s)...
 

@@ -4,7 +4,7 @@ build-backend = "poetry.core.masonry.api"
 
 [tool.poetry]
 name = "snowflake-semantic-tools"
-version = "0.2.0"
+version = "0.2.1"
 description = "dbt extension for managing Snowflake Semantic Views and Cortex Analyst semantic models"
 readme = "README.md"
 authors = ["Matt Luizzi <matthew.luizzi@whoop.com>"]
