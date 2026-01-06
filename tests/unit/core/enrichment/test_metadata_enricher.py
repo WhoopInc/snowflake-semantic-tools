@@ -332,3 +332,186 @@ class TestProcessSingleColumn:
         # Both should be called
         enricher._enrich_column_types.assert_called_once()
         enricher._enrich_sample_values.assert_called_once()
+
+
+class TestProcessModelMetadataDescription:
+    """Tests for _process_model_metadata description handling (Issue #85)."""
+
+    @pytest.fixture
+    def enricher(self):
+        """Create an enricher instance with mocked dependencies."""
+        mock_client = Mock()
+        mock_yaml_handler = Mock()
+        # Simulate ensure_sst_structure adding config.meta.sst structure
+        mock_yaml_handler.ensure_sst_structure.side_effect = lambda x: {
+            **x,
+            "config": {"meta": {"sst": x.get("config", {}).get("meta", {}).get("sst", {})}},
+        }
+        mock_pk_validator = Mock()
+
+        return MetadataEnricher(
+            snowflake_client=mock_client,
+            yaml_handler=mock_yaml_handler,
+            primary_key_validator=mock_pk_validator,
+            default_database="TEST_DB",
+            default_schema="test_schema",
+        )
+
+    def test_adds_description_when_missing(self, enricher):
+        """Description is added as empty string when not present in model."""
+        existing_model = {"name": "test_model"}
+        model_info = {"name": "test_model", "schema": "public", "database": "db"}
+        table_columns = [{"name": "id", "type": "NUMBER"}]
+
+        result = enricher._process_model_metadata(
+            existing_model=existing_model,
+            model_info=model_info,
+            table_columns=table_columns,
+            primary_key_candidates=[],
+        )
+
+        assert "description" in result
+        assert result["description"] == ""
+
+    def test_preserves_description_when_none(self, enricher):
+        """Description None is preserved (not overwritten) - user may have intentionally set it."""
+        existing_model = {"name": "test_model", "description": None}
+        model_info = {"name": "test_model", "schema": "public", "database": "db"}
+        table_columns = [{"name": "id", "type": "NUMBER"}]
+
+        result = enricher._process_model_metadata(
+            existing_model=existing_model,
+            model_info=model_info,
+            table_columns=table_columns,
+            primary_key_candidates=[],
+        )
+
+        assert "description" in result
+        assert result["description"] is None  # Preserved, not overwritten
+
+    def test_preserves_existing_description(self, enricher):
+        """Existing description is preserved and not overwritten."""
+        existing_model = {"name": "test_model", "description": "My custom description"}
+        model_info = {"name": "test_model", "schema": "public", "database": "db"}
+        table_columns = [{"name": "id", "type": "NUMBER"}]
+
+        result = enricher._process_model_metadata(
+            existing_model=existing_model,
+            model_info=model_info,
+            table_columns=table_columns,
+            primary_key_candidates=[],
+        )
+
+        assert result["description"] == "My custom description"
+
+    def test_preserves_empty_string_description(self, enricher):
+        """Empty string description is preserved (not treated as missing)."""
+        existing_model = {"name": "test_model", "description": ""}
+        model_info = {"name": "test_model", "schema": "public", "database": "db"}
+        table_columns = [{"name": "id", "type": "NUMBER"}]
+
+        result = enricher._process_model_metadata(
+            existing_model=existing_model,
+            model_info=model_info,
+            table_columns=table_columns,
+            primary_key_candidates=[],
+        )
+
+        assert result["description"] == ""
+
+
+class TestProcessSingleColumnDescription:
+    """Tests for _process_single_column description handling (Issue #85)."""
+
+    @pytest.fixture
+    def enricher(self):
+        """Create an enricher instance with mocked dependencies."""
+        mock_client = Mock()
+        mock_yaml_handler = Mock()
+        mock_yaml_handler.ensure_column_sst_structure.side_effect = lambda x: {
+            **x,
+            "config": {"meta": {"sst": x.get("config", {}).get("meta", {}).get("sst", {})}},
+        }
+        mock_yaml_handler._order_column_sst_keys.side_effect = lambda x: x
+        mock_pk_validator = Mock()
+
+        enricher = MetadataEnricher(
+            snowflake_client=mock_client,
+            yaml_handler=mock_yaml_handler,
+            primary_key_validator=mock_pk_validator,
+            default_database="TEST_DB",
+            default_schema="test_schema",
+        )
+        enricher._is_pii_protected_column = Mock(return_value=False)
+        enricher._enrich_column_types = Mock()
+        enricher._enrich_sample_values = Mock()
+        return enricher
+
+    def test_adds_description_for_new_column(self, enricher):
+        """Description is added as empty string for new columns."""
+        result = enricher._process_single_column(
+            table_col={"name": "NEW_COL", "type": "VARCHAR"},
+            existing_lookup={},  # No existing columns
+            batch_samples={},
+            model_name="test",
+            schema_name="public",
+            database_name="db",
+            idx=1,
+            total=1,
+            components=["column-types"],
+        )
+
+        assert "description" in result
+        assert result["description"] == ""
+
+    def test_preserves_existing_column_description(self, enricher):
+        """Existing column description is preserved."""
+        existing_col = {"name": "id", "description": "Primary identifier"}
+        result = enricher._process_single_column(
+            table_col={"name": "ID", "type": "NUMBER"},
+            existing_lookup={"ID": existing_col},
+            batch_samples={},
+            model_name="test",
+            schema_name="public",
+            database_name="db",
+            idx=1,
+            total=1,
+            components=["column-types"],
+        )
+
+        assert result["description"] == "Primary identifier"
+
+    def test_preserves_column_description_when_none(self, enricher):
+        """Column description None is preserved (not overwritten)."""
+        existing_col = {"name": "id", "description": None}
+        result = enricher._process_single_column(
+            table_col={"name": "ID", "type": "NUMBER"},
+            existing_lookup={"ID": existing_col},
+            batch_samples={},
+            model_name="test",
+            schema_name="public",
+            database_name="db",
+            idx=1,
+            total=1,
+            components=["column-types"],
+        )
+
+        assert result["description"] is None
+
+    def test_adds_description_for_existing_column_missing_key(self, enricher):
+        """Description placeholder added if existing column lacks description key."""
+        existing_col = {"name": "id"}  # No description key
+        result = enricher._process_single_column(
+            table_col={"name": "ID", "type": "NUMBER"},
+            existing_lookup={"ID": existing_col},
+            batch_samples={},
+            model_name="test",
+            schema_name="public",
+            database_name="db",
+            idx=1,
+            total=1,
+            components=["column-types"],
+        )
+
+        assert "description" in result
+        assert result["description"] == ""
