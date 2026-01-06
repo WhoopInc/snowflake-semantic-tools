@@ -105,7 +105,7 @@ class TestEnrichmentStatusHandling:
 
     def test_status_values_match_service_contract(self):
         """Test that CLI handles all status values returned by service.
-        
+
         Service returns: "complete", "partial", "failed"
         CLI must handle all three correctly.
         """
@@ -114,12 +114,12 @@ class TestEnrichmentStatusHandling:
         # This test documents the service contract
         # If service changes status values, this test should fail
         expected_statuses = ["complete", "partial", "failed"]
-        
+
         # The service returns these status values:
         # - "complete": all models enriched successfully (line 532 in enrich_metadata.py)
         # - "partial": some models enriched, some failed (line 534)
         # - "failed": no models enriched successfully (line 539)
-        
+
         # Verify that CLI code handles all expected statuses
         # This is a documentation test to ensure contract is maintained
         assert expected_statuses == ["complete", "partial", "failed"]
@@ -131,10 +131,10 @@ class TestEnrichmentStatusRegression:
     def test_successful_enrichment_does_not_show_error(self):
         """
         Regression test for Issue #83.
-        
+
         Before fix: CLI checked for status == "success" but service returned "complete"
         After fix: CLI checks for status == "complete" matching service
-        
+
         This test ensures enrichment success is properly displayed.
         """
         runner = CliRunner()
@@ -150,7 +150,7 @@ class TestEnrichmentStatusRegression:
             mock_result.models_enriched = 1
             mock_result.failed_models = []
             mock_result.print_summary = Mock()
-            
+
             mock_instance.enrich = Mock(return_value=mock_result)
             mock_instance.close = Mock()
             mock_service.return_value = mock_instance
@@ -161,10 +161,9 @@ class TestEnrichmentStatusRegression:
 
             # Before fix: Would show "Enrichment failed [ERROR]"
             # After fix: Should show "Enrichment completed"
-            assert "Enrichment completed" in result.output, \
-                f"Expected success message but got: {result.output}"
-            
-            # Should NOT show error message when enrichment succeeds
-            assert "Enrichment failed" not in result.output, \
-                f"Should not show 'failed' for successful enrichment. Output: {result.output}"
+            assert "Enrichment completed" in result.output, f"Expected success message but got: {result.output}"
 
+            # Should NOT show error message when enrichment succeeds
+            assert (
+                "Enrichment failed" not in result.output
+            ), f"Should not show 'failed' for successful enrichment. Output: {result.output}"
