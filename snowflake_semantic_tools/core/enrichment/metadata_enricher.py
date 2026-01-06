@@ -14,12 +14,13 @@ preserving existing manual work.
 ## Preservation Rules
 
 **Never Overwritten:**
-- Descriptions, synonyms, existing column_type/data_type
+- Descriptions (including empty strings and null values), synonyms, existing column_type/data_type
 
 **Always Refreshed:**
 - sample_values, is_enum (from current Snowflake data)
 
-**Set If Missing:**
+**Added If Key Missing:**
+- description (empty placeholder for new models/columns)
 - column_type, data_type, synonyms, primary_key (if candidates provided)
 
 """
@@ -400,6 +401,12 @@ class MetadataEnricher:
         model = self.yaml_handler.ensure_sst_structure(existing_model)
         sst = model["config"]["meta"]["sst"]
 
+        # Ensure description exists (empty placeholder if missing)
+        # NOTE: Only adds if key is completely missing - never overwrites existing
+        # (even if existing value is None or empty string)
+        if "description" not in model:
+            model["description"] = ""
+
         # Set required fields (using NEW v1.2+ names)
         sst["cortex_searchable"] = sst.get("cortex_searchable", False)
 
@@ -566,12 +573,14 @@ class MetadataEnricher:
         if existing_col:
             column = copy.deepcopy(existing_col)
         else:
-            # Create new column with description placeholder so validation passes
-            column = {
-                "name": col_name.lower(),
-                "description": "",  # Required field - placeholder for user to fill in
-            }
+            # Create new column (description added below if missing)
+            column = {"name": col_name.lower()}
         column["name"] = col_name.lower()
+
+        # Ensure description exists (empty placeholder if missing)
+        # NOTE: Only adds if key is completely missing - never overwrites existing
+        if "description" not in column:
+            column["description"] = ""
 
         # Ensure SST structure (config.meta.sst for dbt Fusion compatibility)
         column = self.yaml_handler.ensure_column_sst_structure(column)

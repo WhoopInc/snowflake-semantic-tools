@@ -117,7 +117,7 @@ sst enrich --models customers --exclude experimental
 ### What Gets Preserved
 
 Enrichment NEVER overwrites:
-- Existing descriptions
+- Existing descriptions (including empty strings and null values)
 - Existing synonyms
 - Existing primary_key
 - Existing unique_keys
@@ -126,6 +126,9 @@ Enrichment NEVER overwrites:
 Enrichment ALWAYS updates:
 - sample_values (fresh data)
 - is_enum (current cardinality)
+
+Enrichment ADDS if missing:
+- `description: ''` placeholder (model and column level) for new items only
 
 **Safe to run multiple times.**
 
