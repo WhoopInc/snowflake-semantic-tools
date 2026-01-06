@@ -341,7 +341,7 @@ def enrich(
 
         # Display results with improved formatting
         output.blank_line()
-        if result.status == "success":
+        if result.status == "complete":
             output.success(f"Enrichment completed in {enrich_duration:.1f}s")
         elif result.status == "partial":
             output.warning(f"Enrichment completed with errors in {enrich_duration:.1f}s")
