@@ -407,7 +407,13 @@ class DuplicateValidator:
                     # Build detailed error message listing ALL conflicting tables
                     table_lines = []
                     for table_name, original_synonym, source_file in occurrences:
-                        table_lines.append(f"    - Table '{table_name}' ({source_file})")
+                        # Convert to relative path (find models/ or similar common root)
+                        rel_path = source_file
+                        for marker in ["models/", "staging/", "marts/", "intermediate/"]:
+                            if marker in source_file:
+                                rel_path = source_file[source_file.find(marker) :]
+                                break
+                        table_lines.append(f"    - Table '{table_name}' ({rel_path})")
 
                     tables_list = "\n".join(table_lines)
                     result.add_error(
