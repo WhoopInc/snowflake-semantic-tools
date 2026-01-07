@@ -236,6 +236,9 @@ class MetadataEnrichmentService:
         self.enricher.force_column_types = self.config.force_column_types
         self.enricher.force_data_types = self.config.force_data_types
 
+        # Pass project path for table synonym deduplication
+        self.enricher.project_path = self.config.target_path
+
         logger.info("Connected to Snowflake for metadata enrichment")
         if self.config.database and self.config.schema:
             logger.info(f"Target Database: {self.config.database}")

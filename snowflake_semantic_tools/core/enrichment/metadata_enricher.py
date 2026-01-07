@@ -26,11 +26,12 @@ preserving existing manual work.
 """
 
 import copy
+import glob
 import json
 import os
 import time
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Set
 
 import yaml
 
@@ -281,8 +282,24 @@ class MetadataEnricher:
                 if "table-synonyms" in components:
                     # Check if force_synonyms is set in service config (passed from CLI)
                     force = getattr(self, "force_synonyms", False)
+
+                    # Collect existing table synonyms from the project to avoid duplicates
+                    project_path = getattr(self, "project_path", None)
+                    avoid_synonyms = None
+                    if project_path:
+                        avoid_synonyms = self.collect_existing_table_synonyms(
+                            project_path=project_path,
+                            exclude_model=model_name,
+                        )
+                        if avoid_synonyms:
+                            logger.debug(f"  Avoiding {len(avoid_synonyms)} existing synonyms from project")
+
                     updated_model = self._enrich_table_synonyms(
-                        updated_model, updated_columns, full_yaml=existing_yaml, force=force
+                        updated_model,
+                        updated_columns,
+                        full_yaml=existing_yaml,
+                        force=force,
+                        avoid_synonyms=avoid_synonyms,
                     )
 
                 # Column-level synonyms (with full YAML context)
@@ -803,12 +820,91 @@ class MetadataEnricher:
         # Serialize to YAML
         return yaml.dump(clean_yaml, default_flow_style=False, sort_keys=False)
 
+    def collect_existing_table_synonyms(
+        self,
+        project_path: Optional[str] = None,
+        exclude_model: Optional[str] = None,
+    ) -> List[str]:
+        """
+        Collect existing table-level synonyms from all YAML files in the project.
+
+        Used to build an "avoid list" for synonym generation to prevent duplicates
+        across tables within semantic views.
+
+        Args:
+            project_path: Path to project directory (scans recursively for YAML files)
+            exclude_model: Optional model name to exclude from collection
+                          (useful when regenerating synonyms for a specific model)
+
+        Returns:
+            List of existing table-level synonyms (lowercased for comparison)
+        """
+        if not project_path:
+            return []
+
+        synonyms: Set[str] = set()
+        project_dir = Path(project_path)
+
+        if not project_dir.exists():
+            logger.warning(f"Project path does not exist: {project_path}")
+            return []
+
+        # Find all YAML files recursively
+        yaml_files = list(project_dir.glob("**/*.yml")) + list(project_dir.glob("**/*.yaml"))
+
+        for yaml_file in yaml_files:
+            try:
+                content = self.yaml_handler.read_yaml(str(yaml_file))
+                if not content:
+                    continue
+
+                # Check both 'models' and 'semantic_models' sections
+                models_list = content.get("models", [])
+                if not isinstance(models_list, list):
+                    models_list = []
+
+                for model in models_list:
+                    if not isinstance(model, dict):
+                        continue
+
+                    model_name = model.get("name", "")
+
+                    # Skip the model we're regenerating synonyms for
+                    if exclude_model and model_name.lower() == exclude_model.lower():
+                        continue
+
+                    # Get table-level synonyms from config.meta.sst.synonyms
+                    sst = model.get("config", {}).get("meta", {}).get("sst", {})
+                    table_synonyms = sst.get("synonyms", [])
+
+                    if isinstance(table_synonyms, list):
+                        for syn in table_synonyms:
+                            if isinstance(syn, str) and syn.strip():
+                                synonyms.add(syn.lower().strip())
+
+                    # Also check legacy location: meta.sst.synonyms
+                    legacy_sst = model.get("meta", {}).get("sst", {})
+                    legacy_synonyms = legacy_sst.get("synonyms", [])
+
+                    if isinstance(legacy_synonyms, list):
+                        for syn in legacy_synonyms:
+                            if isinstance(syn, str) and syn.strip():
+                                synonyms.add(syn.lower().strip())
+
+            except Exception as e:
+                logger.debug(f"Error reading YAML file {yaml_file}: {e}")
+                continue
+
+        logger.debug(f"Collected {len(synonyms)} existing table synonyms from project")
+        return list(synonyms)
+
     def _enrich_table_synonyms(
         self,
         model_data: Dict[str, Any],
         column_data: List[Dict[str, Any]],
         full_yaml: Optional[Dict[str, Any]] = None,
         force: bool = False,
+        avoid_synonyms: Optional[List[str]] = None,
     ) -> Dict[str, Any]:
         """
         Enrich table-level synonyms using Cortex with full YAML context.
@@ -818,6 +914,7 @@ class MetadataEnricher:
             column_data: List of column dicts
             full_yaml: Complete YAML dict for LLM context
             force: Force regeneration
+            avoid_synonyms: List of synonyms already used by other tables (to prevent duplicates)
 
         Returns:
             Updated model_data with synonyms
@@ -832,7 +929,7 @@ class MetadataEnricher:
         # Serialize YAML for LLM context
         yaml_context = self._serialize_yaml_for_llm(full_yaml)
 
-        # Generate synonyms
+        # Generate synonyms with avoid list to prevent duplicates
         synonyms = self.synonym_generator.generate_table_synonyms(
             table_name=model_data["name"],
             description=model_data.get("description", ""),
@@ -840,6 +937,7 @@ class MetadataEnricher:
             existing_synonyms=existing_synonyms,
             full_yaml_context=yaml_context,
             force=force,
+            avoid_synonyms=avoid_synonyms,
         )
 
         # Update model data (config.meta.sst for dbt Fusion compatibility)

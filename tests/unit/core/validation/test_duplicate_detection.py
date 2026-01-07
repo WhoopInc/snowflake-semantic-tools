@@ -4,6 +4,9 @@ Tests for duplicate detection in semantic models.
 This test file specifically addresses the bug where semantic views with
 tables stored as JSON strings were incorrectly flagged as having identical
 table lists due to character-level comparison instead of proper parsing.
+
+Also tests detection of duplicate TABLE-LEVEL synonyms within semantic views,
+which is a Snowflake constraint (GitHub issue #84).
 """
 
 import json
@@ -174,3 +177,266 @@ class TestSemanticViewDuplicateDetection:
         assert "duplicate_view_2" in identical_warnings[0].message
         assert "unique_view" not in identical_warnings[0].message
         assert "another_unique_view" not in identical_warnings[0].message
+
+
+class TestTableSynonymDuplicateDetection:
+    """
+    Test detection of duplicate TABLE-LEVEL synonyms within semantic views.
+
+    Snowflake requires that table synonyms are unique within a semantic view.
+    This tests the validation that catches such duplicates before deployment.
+
+    Note: Column synonyms are intentionally NOT checked - they can duplicate
+    across tables because the same column concept may exist in multiple tables.
+    """
+
+    @pytest.fixture
+    def detector(self):
+        """Create a duplicate detector instance."""
+        return DuplicateValidator()
+
+    def test_duplicate_table_synonyms_in_same_view_detected(self, detector):
+        """
+        Test that duplicate table synonyms within a semantic view are detected.
+
+        This is the primary issue from GitHub #84: when 'orders' and 'order_items'
+        both have synonym 'order details', the semantic view generation fails.
+        """
+        semantic_data = {
+            "semantic_views": {
+                "items": [
+                    {
+                        "name": "sales_analytics",
+                        "tables": ["ORDERS", "ORDER_ITEMS"],
+                    },
+                ]
+            }
+        }
+
+        dbt_data = {
+            "sm_tables": [
+                {
+                    "table_name": "ORDERS",
+                    "synonyms": ["order details", "purchase transactions"],
+                    "source_file": "models/orders.yml",
+                },
+                {
+                    "table_name": "ORDER_ITEMS",
+                    "synonyms": ["order details", "line items"],  # Duplicate!
+                    "source_file": "models/order_items.yml",
+                },
+            ]
+        }
+
+        result = detector.validate(semantic_data, dbt_data)
+
+        # Should have error for duplicate synonym
+        errors = result.get_errors()
+        duplicate_errors = [e for e in errors if "duplicate table synonym" in e.message.lower()]
+
+        assert len(duplicate_errors) == 1, f"Expected 1 duplicate synonym error, got {len(duplicate_errors)}"
+        assert "order details" in duplicate_errors[0].message.lower()
+        assert "sales_analytics" in duplicate_errors[0].message
+
+    def test_same_synonym_in_different_views_ok(self, detector):
+        """
+        Test that the same synonym in different semantic views is OK.
+
+        Synonyms only need to be unique within a single view.
+        """
+        semantic_data = {
+            "semantic_views": {
+                "items": [
+                    {"name": "view_a", "tables": ["ORDERS"]},
+                    {"name": "view_b", "tables": ["ORDER_ITEMS"]},
+                ]
+            }
+        }
+
+        dbt_data = {
+            "sm_tables": [
+                {
+                    "table_name": "ORDERS",
+                    "synonyms": ["order details"],
+                    "source_file": "models/orders.yml",
+                },
+                {
+                    "table_name": "ORDER_ITEMS",
+                    "synonyms": ["order details"],  # Same synonym but different view
+                    "source_file": "models/order_items.yml",
+                },
+            ]
+        }
+
+        result = detector.validate(semantic_data, dbt_data)
+
+        # Should NOT have error - different views
+        errors = result.get_errors()
+        duplicate_errors = [e for e in errors if "duplicate table synonym" in e.message.lower()]
+
+        assert len(duplicate_errors) == 0, f"Expected no duplicate errors, got: {duplicate_errors}"
+
+    def test_unique_table_synonyms_no_error(self, detector):
+        """Test that unique table synonyms produce no errors."""
+        semantic_data = {
+            "semantic_views": {
+                "items": [
+                    {"name": "analytics", "tables": ["CUSTOMERS", "ORDERS"]},
+                ]
+            }
+        }
+
+        dbt_data = {
+            "sm_tables": [
+                {
+                    "table_name": "CUSTOMERS",
+                    "synonyms": ["customer master data", "client information"],
+                    "source_file": "models/customers.yml",
+                },
+                {
+                    "table_name": "ORDERS",
+                    "synonyms": ["purchase history", "transaction records"],
+                    "source_file": "models/orders.yml",
+                },
+            ]
+        }
+
+        result = detector.validate(semantic_data, dbt_data)
+
+        errors = result.get_errors()
+        duplicate_errors = [e for e in errors if "duplicate table synonym" in e.message.lower()]
+
+        assert len(duplicate_errors) == 0
+
+    def test_case_insensitive_duplicate_detection(self, detector):
+        """Test that synonym comparison is case-insensitive."""
+        semantic_data = {
+            "semantic_views": {
+                "items": [
+                    {"name": "view", "tables": ["TABLE_A", "TABLE_B"]},
+                ]
+            }
+        }
+
+        dbt_data = {
+            "sm_tables": [
+                {
+                    "table_name": "TABLE_A",
+                    "synonyms": ["Order Details"],  # Title case
+                    "source_file": "a.yml",
+                },
+                {
+                    "table_name": "TABLE_B",
+                    "synonyms": ["order details"],  # Lowercase - should be duplicate
+                    "source_file": "b.yml",
+                },
+            ]
+        }
+
+        result = detector.validate(semantic_data, dbt_data)
+
+        errors = result.get_errors()
+        duplicate_errors = [e for e in errors if "duplicate table synonym" in e.message.lower()]
+
+        assert len(duplicate_errors) == 1, "Case-insensitive duplicates should be detected"
+
+    def test_tables_as_json_string(self, detector):
+        """Test that tables stored as JSON strings are handled correctly."""
+        semantic_data = {
+            "semantic_views": {
+                "items": [
+                    {
+                        "name": "view",
+                        "tables": json.dumps(["ORDERS", "ORDER_ITEMS"]),  # JSON string
+                    },
+                ]
+            }
+        }
+
+        dbt_data = {
+            "sm_tables": [
+                {
+                    "table_name": "ORDERS",
+                    "synonyms": ["sales data"],
+                    "source_file": "orders.yml",
+                },
+                {
+                    "table_name": "ORDER_ITEMS",
+                    "synonyms": ["sales data"],  # Duplicate
+                    "source_file": "order_items.yml",
+                },
+            ]
+        }
+
+        result = detector.validate(semantic_data, dbt_data)
+
+        errors = result.get_errors()
+        duplicate_errors = [e for e in errors if "duplicate table synonym" in e.message.lower()]
+
+        assert len(duplicate_errors) == 1
+
+    def test_empty_synonyms_no_error(self, detector):
+        """Test that tables with no synonyms don't cause errors."""
+        semantic_data = {
+            "semantic_views": {
+                "items": [
+                    {"name": "view", "tables": ["TABLE_A", "TABLE_B"]},
+                ]
+            }
+        }
+
+        dbt_data = {
+            "sm_tables": [
+                {"table_name": "TABLE_A", "synonyms": [], "source_file": "a.yml"},
+                {"table_name": "TABLE_B", "synonyms": [], "source_file": "b.yml"},
+            ]
+        }
+
+        result = detector.validate(semantic_data, dbt_data)
+
+        errors = result.get_errors()
+        duplicate_errors = [e for e in errors if "duplicate table synonym" in e.message.lower()]
+
+        assert len(duplicate_errors) == 0
+
+    def test_no_dbt_data_no_error(self, detector):
+        """Test that missing dbt_data doesn't cause errors."""
+        semantic_data = {
+            "semantic_views": {
+                "items": [
+                    {"name": "view", "tables": ["TABLE_A"]},
+                ]
+            }
+        }
+
+        # No dbt_data provided
+        result = detector.validate(semantic_data, None)
+
+        # Should complete without error
+        assert result is not None
+
+    def test_multiple_duplicate_synonyms_all_reported(self, detector):
+        """Test that multiple different duplicate synonyms are all reported."""
+        semantic_data = {
+            "semantic_views": {
+                "items": [
+                    {"name": "view", "tables": ["A", "B", "C"]},
+                ]
+            }
+        }
+
+        dbt_data = {
+            "sm_tables": [
+                {"table_name": "A", "synonyms": ["dup1", "dup2"], "source_file": "a.yml"},
+                {"table_name": "B", "synonyms": ["dup1", "unique"], "source_file": "b.yml"},
+                {"table_name": "C", "synonyms": ["dup2", "another"], "source_file": "c.yml"},
+            ]
+        }
+
+        result = detector.validate(semantic_data, dbt_data)
+
+        errors = result.get_errors()
+        duplicate_errors = [e for e in errors if "duplicate table synonym" in e.message.lower()]
+
+        # Should have 2 errors: one for "dup1" and one for "dup2"
+        assert len(duplicate_errors) == 2

@@ -392,3 +392,103 @@ class TestCortexVerification:
         assert "CORTEX_ENABLED_CROSS_REGION" not in error_msg
         # But should still suggest alternatives
         assert "mistral-large2" in error_msg
+
+
+class TestAvoidSynonyms:
+    """Test avoid_synonyms parameter for duplicate prevention."""
+
+    @pytest.fixture
+    def mock_snowflake_client(self):
+        """Create a mock Snowflake client."""
+        client = Mock()
+        return client
+
+    @pytest.fixture
+    def synonym_generator(self, mock_snowflake_client):
+        """Create a CortexSynonymGenerator instance."""
+        return CortexSynonymGenerator(snowflake_client=mock_snowflake_client, model="mistral-large2", max_synonyms=4)
+
+    def test_avoid_synonyms_included_in_prompt(self, synonym_generator, mock_snowflake_client):
+        """Test that avoid_synonyms list is included in the prompt."""
+        mock_df = pd.DataFrame({"RESPONSE": ['["new synonym 1", "new synonym 2"]']})
+        mock_snowflake_client.execute_query.return_value = mock_df
+
+        synonym_generator.generate_table_synonyms(
+            table_name="test_table",
+            description="Test description",
+            column_info=[],
+            avoid_synonyms=["order details", "purchase records"],
+        )
+
+        # Check that the query was called with a prompt containing the avoid list
+        called_query = mock_snowflake_client.execute_query.call_args[0][0]
+        assert "AVOID THESE SYNONYMS" in called_query
+        assert "order details" in called_query
+        assert "purchase records" in called_query
+
+    def test_avoid_synonyms_empty_list_no_section(self, synonym_generator, mock_snowflake_client):
+        """Test that empty avoid_synonyms doesn't add AVOID section to prompt."""
+        mock_df = pd.DataFrame({"RESPONSE": ['["synonym 1"]']})
+        mock_snowflake_client.execute_query.return_value = mock_df
+
+        synonym_generator.generate_table_synonyms(
+            table_name="test_table",
+            description="Test description",
+            column_info=[],
+            avoid_synonyms=[],
+        )
+
+        # Check that the query was called without AVOID section
+        called_query = mock_snowflake_client.execute_query.call_args[0][0]
+        assert "AVOID THESE SYNONYMS" not in called_query
+
+    def test_post_generation_filter_removes_duplicates(self, synonym_generator, mock_snowflake_client):
+        """Test that post-generation filter removes synonyms from avoid list."""
+        # Simulate LLM returning a synonym that's in the avoid list
+        mock_df = pd.DataFrame({"RESPONSE": ['["order details", "new unique synonym", "purchase records"]']})
+        mock_snowflake_client.execute_query.return_value = mock_df
+
+        result = synonym_generator.generate_table_synonyms(
+            table_name="test_table",
+            description="Test description",
+            column_info=[],
+            avoid_synonyms=["order details", "purchase records"],  # These should be filtered
+        )
+
+        # Only "new unique synonym" should remain
+        assert "new unique synonym" in result
+        assert "order details" not in result
+        assert "purchase records" not in result
+        assert len(result) == 1
+
+    def test_post_generation_filter_case_insensitive(self, synonym_generator, mock_snowflake_client):
+        """Test that post-generation filter is case-insensitive."""
+        mock_df = pd.DataFrame({"RESPONSE": ['["Order Details", "new synonym"]']})
+        mock_snowflake_client.execute_query.return_value = mock_df
+
+        result = synonym_generator.generate_table_synonyms(
+            table_name="test_table",
+            description="Test description",
+            column_info=[],
+            avoid_synonyms=["order details"],  # Lowercase
+        )
+
+        # "Order Details" should be filtered despite case difference
+        assert "new synonym" in result
+        assert len(result) == 1
+
+    def test_none_avoid_synonyms_works(self, synonym_generator, mock_snowflake_client):
+        """Test that None avoid_synonyms doesn't cause errors."""
+        mock_df = pd.DataFrame({"RESPONSE": ['["synonym 1", "synonym 2"]']})
+        mock_snowflake_client.execute_query.return_value = mock_df
+
+        result = synonym_generator.generate_table_synonyms(
+            table_name="test_table",
+            description="Test description",
+            column_info=[],
+            avoid_synonyms=None,  # Explicitly None
+        )
+
+        assert len(result) == 2
+        assert "synonym 1" in result
+        assert "synonym 2" in result

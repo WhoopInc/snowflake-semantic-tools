@@ -140,10 +140,10 @@ class SemanticValidator:
         ref_result = self.reference_validator.validate(semantic_data, dbt_catalog)
         result.merge(ref_result)
 
-        # Duplicate detection
+        # Duplicate detection (including table synonym duplicates per semantic view)
         if check_duplicates:
             logger.debug("Checking for duplicates...")
-            dup_result = self.duplicate_validator.validate(semantic_data)
+            dup_result = self.duplicate_validator.validate(semantic_data, dbt_data)
             result.merge(dup_result)
 
         # Dependency validation
