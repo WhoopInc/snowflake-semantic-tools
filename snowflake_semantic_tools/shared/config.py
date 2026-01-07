@@ -60,7 +60,7 @@ class Config:
             },
             "project": {
                 "semantic_models_dir": None,  # Required - must be in sst_config.yml
-                "dbt_models_dir": None,  # Required - must be in sst_config.yml
+                # Note: dbt_models_dir removed - now auto-detected from dbt_project.yml
             },
             "validation": {"exclude_dirs": [], "strict": False, "verbose": False},
             "enrichment": {

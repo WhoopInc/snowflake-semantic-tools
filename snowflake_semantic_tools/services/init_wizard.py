@@ -55,7 +55,6 @@ class WizardConfig:
     """Configuration gathered during the wizard."""
 
     semantic_models_dir: str = "snowflake_semantic_models"
-    dbt_models_dir: str = "models"
     create_examples: bool = True
     test_connection: bool = False
 
@@ -417,9 +416,7 @@ class InitWizard:
         config = WizardConfig()
 
         if self.skip_prompts:
-            # Use defaults, detect models dir from dbt_project.yml
-            if self.dbt_project and self.dbt_project.model_paths:
-                config.dbt_models_dir = self.dbt_project.model_paths[0]
+            # Use defaults
             return config
 
         console.print()
@@ -445,11 +442,10 @@ class InitWizard:
 
         config.semantic_models_dir = semantic_dir
 
-        # dbt models directory (auto-detect from dbt_project.yml)
-        default_models_dir = "models"
+        # Note: dbt model paths are auto-detected from dbt_project.yml (no config needed)
         if self.dbt_project and self.dbt_project.model_paths:
-            default_models_dir = self.dbt_project.model_paths[0]
-        config.dbt_models_dir = default_models_dir
+            model_paths_str = ", ".join(self.dbt_project.model_paths)
+            console.print(f"[dim]  dbt model paths (from dbt_project.yml): {model_paths_str}[/dim]")
 
         # Create examples?
         create_examples = questionary.select(
@@ -571,16 +567,15 @@ class InitWizard:
                 template = f.read()
 
             content = template.replace("{{ semantic_models_dir }}", config.semantic_models_dir)
-            content = content.replace("{{ dbt_models_dir }}", config.dbt_models_dir)
 
             with open(output_path, "w", encoding="utf-8") as f:
                 f.write(content)
         else:
             # Fallback: create basic config
+            # Note: dbt_models_dir is no longer needed - auto-detected from dbt_project.yml
             config_content = {
                 "project": {
                     "semantic_models_dir": config.semantic_models_dir,
-                    "dbt_models_dir": config.dbt_models_dir,
                 },
                 "validation": {"strict": False, "exclude_dirs": ["_intermediate", "staging"]},
                 "enrichment": {

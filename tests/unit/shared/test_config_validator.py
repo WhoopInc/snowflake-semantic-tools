@@ -21,7 +21,7 @@ from snowflake_semantic_tools.shared.events import setup_events
 def valid_complete_config() -> Dict[str, Any]:
     """Complete valid configuration with all fields."""
     return {
-        "project": {"semantic_models_dir": "snowflake_semantic_models", "dbt_models_dir": "models"},
+        "project": {"semantic_models_dir": "snowflake_semantic_models"},
         "validation": {"strict": False, "exclude_dirs": ["_intermediate", "staging"]},
         "enrichment": {
             "distinct_limit": 25,
@@ -35,7 +35,8 @@ def valid_complete_config() -> Dict[str, Any]:
 @pytest.fixture
 def valid_minimal_config() -> Dict[str, Any]:
     """Minimal valid configuration with only required fields."""
-    return {"project": {"semantic_models_dir": "semantic_models", "dbt_models_dir": "models"}}
+    # Note: dbt_models_dir is no longer required - it's auto-detected from dbt_project.yml
+    return {"project": {"semantic_models_dir": "semantic_models"}}
 
 
 # ============================================================================
@@ -46,13 +47,8 @@ def valid_minimal_config() -> Dict[str, Any]:
 @pytest.fixture
 def config_missing_semantic_models_dir() -> Dict[str, Any]:
     """Config missing project.semantic_models_dir."""
-    return {"project": {"dbt_models_dir": "models"}}
-
-
-@pytest.fixture
-def config_missing_dbt_models_dir() -> Dict[str, Any]:
-    """Config missing project.dbt_models_dir."""
-    return {"project": {"semantic_models_dir": "semantic_models"}}
+    # Note: dbt_models_dir is no longer required - auto-detected from dbt_project.yml
+    return {"project": {}}
 
 
 @pytest.fixture
@@ -76,7 +72,7 @@ def config_empty_project_section() -> Dict[str, Any]:
 def config_missing_validation_strict() -> Dict[str, Any]:
     """Config missing validation.strict."""
     return {
-        "project": {"semantic_models_dir": "semantic_models", "dbt_models_dir": "models"},
+        "project": {"semantic_models_dir": "semantic_models"},
         "validation": {"exclude_dirs": ["_intermediate"]},
     }
 
@@ -85,7 +81,7 @@ def config_missing_validation_strict() -> Dict[str, Any]:
 def config_missing_validation_exclude_dirs() -> Dict[str, Any]:
     """Config missing validation.exclude_dirs."""
     return {
-        "project": {"semantic_models_dir": "semantic_models", "dbt_models_dir": "models"},
+        "project": {"semantic_models_dir": "semantic_models"},
         "validation": {"strict": False},
     }
 
@@ -94,7 +90,7 @@ def config_missing_validation_exclude_dirs() -> Dict[str, Any]:
 def config_missing_enrichment_distinct_limit() -> Dict[str, Any]:
     """Config missing enrichment.distinct_limit."""
     return {
-        "project": {"semantic_models_dir": "semantic_models", "dbt_models_dir": "models"},
+        "project": {"semantic_models_dir": "semantic_models"},
         "enrichment": {"sample_values_display_limit": 10, "synonym_model": "mistral-large2", "synonym_max_count": 4},
     }
 
@@ -103,7 +99,7 @@ def config_missing_enrichment_distinct_limit() -> Dict[str, Any]:
 def config_missing_enrichment_sample_values_display_limit() -> Dict[str, Any]:
     """Config missing enrichment.sample_values_display_limit."""
     return {
-        "project": {"semantic_models_dir": "semantic_models", "dbt_models_dir": "models"},
+        "project": {"semantic_models_dir": "semantic_models"},
         "enrichment": {"distinct_limit": 25, "synonym_model": "mistral-large2", "synonym_max_count": 4},
     }
 
@@ -112,7 +108,7 @@ def config_missing_enrichment_sample_values_display_limit() -> Dict[str, Any]:
 def config_missing_enrichment_synonym_model() -> Dict[str, Any]:
     """Config missing enrichment.synonym_model."""
     return {
-        "project": {"semantic_models_dir": "semantic_models", "dbt_models_dir": "models"},
+        "project": {"semantic_models_dir": "semantic_models"},
         "enrichment": {"distinct_limit": 25, "sample_values_display_limit": 10, "synonym_max_count": 4},
     }
 
@@ -121,7 +117,7 @@ def config_missing_enrichment_synonym_model() -> Dict[str, Any]:
 def config_missing_enrichment_synonym_max_count() -> Dict[str, Any]:
     """Config missing enrichment.synonym_max_count."""
     return {
-        "project": {"semantic_models_dir": "semantic_models", "dbt_models_dir": "models"},
+        "project": {"semantic_models_dir": "semantic_models"},
         "enrichment": {"distinct_limit": 25, "sample_values_display_limit": 10, "synonym_model": "mistral-large2"},
     }
 
@@ -129,7 +125,7 @@ def config_missing_enrichment_synonym_max_count() -> Dict[str, Any]:
 @pytest.fixture
 def config_missing_all_optional_fields() -> Dict[str, Any]:
     """Config missing all optional fields."""
-    return {"project": {"semantic_models_dir": "semantic_models", "dbt_models_dir": "models"}}
+    return {"project": {"semantic_models_dir": "semantic_models"}}
 
 
 # ============================================================================
@@ -162,35 +158,30 @@ class TestValidateConfigRequiredFields:
         assert "project.semantic_models_dir" in missing_required
         assert len(missing_required) == 1
 
-    def test_missing_dbt_models_dir(self, config_missing_dbt_models_dir):
-        """Missing project.dbt_models_dir should fail validation."""
-        is_valid, missing_required, _ = validate_config(config_missing_dbt_models_dir)
-        assert is_valid is False
-        assert "project.dbt_models_dir" in missing_required
-        assert len(missing_required) == 1
-
-    def test_missing_both_required_fields(self):
-        """Missing both required fields should fail validation."""
+    def test_missing_required_field(self):
+        """Missing required semantic_models_dir should fail validation."""
+        # Note: dbt_models_dir is no longer required - auto-detected from dbt_project.yml
         config = {"project": {}}
         is_valid, missing_required, _ = validate_config(config)
         assert is_valid is False
         assert "project.semantic_models_dir" in missing_required
-        assert "project.dbt_models_dir" in missing_required
-        assert len(missing_required) == 2
+        assert len(missing_required) == 1
 
     def test_missing_project_section(self, config_missing_project_section):
         """Missing project section entirely should fail validation."""
         is_valid, missing_required, _ = validate_config(config_missing_project_section)
         assert is_valid is False
         assert "project.semantic_models_dir" in missing_required
-        assert "project.dbt_models_dir" in missing_required
+        # Note: dbt_models_dir is no longer required
+        assert len(missing_required) == 1
 
     def test_empty_project_section(self, config_empty_project_section):
         """Empty project section should fail validation."""
         is_valid, missing_required, _ = validate_config(config_empty_project_section)
         assert is_valid is False
         assert "project.semantic_models_dir" in missing_required
-        assert "project.dbt_models_dir" in missing_required
+        # Note: dbt_models_dir is no longer required
+        assert len(missing_required) == 1
 
 
 # ============================================================================
@@ -305,7 +296,7 @@ class TestValidateAndReportConfig:
         """Test that nested field paths are handled correctly."""
         # Config with deeply nested structure (future-proofing)
         config = {
-            "project": {"semantic_models_dir": "semantic_models", "dbt_models_dir": "models"},
+            "project": {"semantic_models_dir": "semantic_models"},
             "nested": {"deep": {"value": "test"}},  # Not validated, but shouldn't break
         }
         is_valid, missing_required, _ = validate_config(config)
@@ -326,21 +317,21 @@ class TestConfigValidatorEdgeCases:
         config = {}
         is_valid, missing_required, _ = validate_config(config)
         assert is_valid is False
-        assert len(missing_required) == 2  # Both required fields missing
+        # Only semantic_models_dir is required now (dbt_models_dir auto-detected from dbt_project.yml)
+        assert len(missing_required) == 1
 
     def test_none_values(self):
         """Config with None values should fail validation."""
-        config = {"project": {"semantic_models_dir": None, "dbt_models_dir": None}}
+        config = {"project": {"semantic_models_dir": None}}
         is_valid, missing_required, _ = validate_config(config)
         assert is_valid is False
         assert "project.semantic_models_dir" in missing_required
-        assert "project.dbt_models_dir" in missing_required
 
     def test_empty_string_values(self):
         """Config with empty string values should be considered present."""
         # Note: Empty strings are technically present, so validation passes
         # The code checks for key existence, not value truthiness
-        config = {"project": {"semantic_models_dir": "", "dbt_models_dir": ""}}
+        config = {"project": {"semantic_models_dir": ""}}
         # Empty strings are present (validation only checks existence, not value)
         is_valid, missing_required, _ = validate_config(config)
         assert is_valid is True  # Keys exist, even if values are empty
@@ -356,7 +347,8 @@ class TestConfigValidatorEdgeCases:
         config = {"project": "not_a_dict"}
         is_valid, missing_required, _ = validate_config(config)
         assert is_valid is False
-        assert len(missing_required) == 2  # Can't navigate into non-dict
+        # Only semantic_models_dir is required now (dbt_models_dir auto-detected)
+        assert len(missing_required) == 1  # Can't navigate into non-dict
 
     def test_extra_unrecognized_fields(self, valid_complete_config):
         """Config with extra unrecognized fields should still validate."""
