@@ -404,14 +404,16 @@ class DuplicateValidator:
             # Report duplicates
             for synonym_lower, occurrences in synonym_occurrences.items():
                 if len(occurrences) > 1:
-                    # Build detailed error message
-                    table_details = []
+                    # Build detailed error message listing ALL conflicting tables
+                    table_lines = []
                     for table_name, original_synonym, source_file in occurrences:
-                        table_details.append(f"Table '{table_name}' ({source_file})")
+                        table_lines.append(f"    - Table '{table_name}' ({source_file})")
 
+                    tables_list = "\n".join(table_lines)
                     result.add_error(
                         f"Duplicate table synonym '{occurrences[0][1]}' in semantic view '{view_name}'\n"
-                        f"  - {chr(10).join('  - ' + d for d in table_details[1:])}\n"
+                        f"  Found in {len(occurrences)} tables:\n"
+                        f"{tables_list}\n"
                         f"  Table synonyms must be unique within a semantic view.",
                         context={
                             "type": "DUPLICATE_TABLE_SYNONYM",
