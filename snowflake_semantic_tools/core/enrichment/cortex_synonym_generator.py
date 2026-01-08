@@ -10,6 +10,7 @@ import json
 import re
 from typing import Any, Dict, List, Optional, Union
 
+from snowflake_semantic_tools.core.enrichment.prompt_loader import render_prompt
 from snowflake_semantic_tools.shared.utils import get_logger
 from snowflake_semantic_tools.shared.utils.character_sanitizer import CharacterSanitizer
 
@@ -44,6 +45,7 @@ class CortexSynonymGenerator:
         existing_synonyms: Optional[List[str]] = None,
         full_yaml_context: Optional[str] = None,
         force: bool = False,
+        avoid_synonyms: Optional[List[str]] = None,
     ) -> List[str]:
         """
         Generate table-level synonyms.
@@ -55,6 +57,7 @@ class CortexSynonymGenerator:
             existing_synonyms: Existing synonyms (preserved unless force=True)
             full_yaml_context: Complete YAML for better context
             force: Regenerate even if synonyms exist
+            avoid_synonyms: List of synonyms already used by other tables (to prevent duplicates)
 
         Returns:
             List of synonym strings
@@ -69,12 +72,24 @@ class CortexSynonymGenerator:
         else:
             context = self._build_column_context(column_info[:10])
 
-        prompt = self._build_table_synonym_prompt(table_name, description, context)
+        prompt = self._build_table_synonym_prompt(table_name, description, context, avoid_synonyms)
 
         try:
             response = self._execute_cortex(prompt)
             synonyms = self._parse_response_as_list(response, f"table {table_name}")
-            return CharacterSanitizer.sanitize_synonym_list(synonyms)
+            synonyms = CharacterSanitizer.sanitize_synonym_list(synonyms)
+
+            # Post-generation safeguard: filter out any duplicates the LLM produced
+            if avoid_synonyms:
+                avoid_set = {s.lower() for s in avoid_synonyms}
+                original_count = len(synonyms)
+                synonyms = [s for s in synonyms if s.lower() not in avoid_set]
+                if len(synonyms) < original_count:
+                    logger.warning(
+                        f"Filtered {original_count - len(synonyms)} duplicate synonym(s) " f"for table '{table_name}'"
+                    )
+
+            return synonyms
         except RuntimeError:
             # Cortex access/permission/model error - re-raise to fail loudly
             # User needs to fix their config before synonym generation can work
@@ -372,44 +387,34 @@ class CortexSynonymGenerator:
 
     # Prompt building methods
 
-    def _build_table_synonym_prompt(self, table_name: str, description: str, full_context: str) -> str:
-        """Build prompt for table synonym generation."""
+    def _build_table_synonym_prompt(
+        self,
+        table_name: str,
+        description: str,
+        full_context: str,
+        avoid_synonyms: Optional[List[str]] = None,
+    ) -> str:
+        """Build prompt for table synonym generation using external template."""
         readable_name = table_name.lower().replace("int_", "").replace("_", " ")
 
-        return f"""You are analyzing a database table to generate natural language synonyms that will help analysts discover this data through conversational queries.
+        # Build avoid synonyms section if provided
+        avoid_synonyms_section = ""
+        if avoid_synonyms and len(avoid_synonyms) > 0:
+            avoid_list = "\n".join([f'- "{s}"' for s in avoid_synonyms[:50]])  # Limit to prevent token overflow
+            avoid_synonyms_section = f"""AVOID THESE SYNONYMS (already used by other tables in this project):
+{avoid_list}
 
-TABLE INFORMATION:
-Name: {table_name}
-Readable: {readable_name}
-Description: {description[:800] if description else "No description provided"}
+Generate synonyms that are DIFFERENT from the above list."""
 
-COMPLETE TABLE DEFINITION:
-{full_context[:1500]}
-
-TASK:
-Generate up to {self.max_synonyms} natural language synonyms that describe what this table contains or what questions it helps answer. These will be used for semantic search and natural language queries.
-
-GOOD EXAMPLES (generic, descriptive):
-- "customer transaction history"
-- "daily sales performance metrics"
-- "product inventory status tracking"
-- "employee performance reviews"
-- "web session clickstream data"
-
-BAD EXAMPLES:
-- "{readable_name}" (just repeating table name in plain English)
-- "{table_name}" (technical table name format)
-- "data table" (too generic/vague)
-- "database information" (not specific enough)
-
-REQUIREMENTS:
-- Natural, conversational language (as if describing the table to a colleague)
-- Brief but descriptive (typically 3-6 words, can be longer if needed for clarity)
-- Focus on what the data represents or what business questions it answers
-- NO technical formatting (snake_case, prefixes like int_, etc.)
-- Think: "If someone asked 'where's the data on X?', what would they say?"
-
-Return ONLY a JSON array of strings: ["synonym 1", "synonym 2", "synonym 3"]"""
+        return render_prompt(
+            "table_synonyms",
+            table_name=table_name,
+            readable_name=readable_name,
+            description=description[:800] if description else "No description provided",
+            full_context=full_context[:1500],
+            max_synonyms=self.max_synonyms,
+            avoid_synonyms_section=avoid_synonyms_section,
+        )
 
     def _build_batch_column_synonym_prompt(
         self,
@@ -418,7 +423,7 @@ Return ONLY a JSON array of strings: ["synonym 1", "synonym 2", "synonym 3"]"""
         table_description: Optional[str] = None,
         yaml_context: Optional[str] = None,
     ) -> str:
-        """Build batch prompt for ALL columns at once."""
+        """Build batch prompt for ALL columns at once using external template."""
 
         # Build column list
         column_lines = []
@@ -435,46 +440,14 @@ Return ONLY a JSON array of strings: ["synonym 1", "synonym 2", "synonym 3"]"""
 
         columns_text = "\n".join(column_lines)
 
-        return f"""You are analyzing database columns to generate natural language synonyms for ALL columns at once.
-
-TABLE: {table_name}
-Description: {table_description[:300] if table_description else 'No description'}
-
-COLUMNS TO PROCESS:
-{columns_text}
-
-FULL CONTEXT (first 800 chars):
-{yaml_context[:800] if yaml_context else 'Not available'}
-
-TASK:
-Generate up to {self.max_synonyms} natural language synonyms for EACH column listed above.
-
-IMPORTANT - Return as a single JSON object:
-{{
-  "column_name_1": ["synonym 1", "synonym 2", ...],
-  "column_name_2": ["synonym 1", "synonym 2", ...],
-  ...
-}}
-
-GOOD SYNONYM EXAMPLES:
-- "transaction timestamp"
-- "customer unique identifier"
-- "total purchase amount"
-- "primary contact email"
-
-BAD EXAMPLES:
-- "table_name.column_name" (NO table prefix)
-- "column_name" (just repeating name)
-- "varchar" (just data type)
-
-REQUIREMENTS:
-- Natural, conversational language
-- 2-4 words typically
-- NO table name prefix
-- NO snake_case
-- Focus on what data the column contains
-
-Return ONLY the JSON object with all column synonyms."""
+        return render_prompt(
+            "column_synonyms",
+            table_name=table_name,
+            table_description=table_description[:300] if table_description else "No description",
+            columns_text=columns_text,
+            yaml_context=yaml_context[:800] if yaml_context else "Not available",
+            max_synonyms=self.max_synonyms,
+        )
 
     def _build_column_context(self, columns: List[Dict[str, Any]]) -> str:
         """

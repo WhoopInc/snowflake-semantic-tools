@@ -515,3 +515,232 @@ class TestProcessSingleColumnDescription:
 
         assert "description" in result
         assert result["description"] == ""
+
+
+class TestCollectExistingTableSynonyms:
+    """Tests for collect_existing_table_synonyms method (duplicate prevention)."""
+
+    @pytest.fixture
+    def enricher(self, tmp_path):
+        """Create an enricher instance with mocked dependencies."""
+        mock_client = Mock()
+        mock_yaml_handler = MagicMock()
+
+        # Make yaml_handler.read_yaml actually read files
+        from snowflake_semantic_tools.core.enrichment.yaml_handler import YAMLHandler
+
+        real_handler = YAMLHandler()
+        mock_yaml_handler.read_yaml = real_handler.read_yaml
+
+        mock_pk_validator = Mock()
+
+        enricher = MetadataEnricher(
+            snowflake_client=mock_client,
+            yaml_handler=mock_yaml_handler,
+            primary_key_validator=mock_pk_validator,
+            default_database="TEST_DB",
+            default_schema="test_schema",
+        )
+        return enricher
+
+    def test_collects_synonyms_from_config_meta_sst(self, enricher, tmp_path):
+        """Collects synonyms from config.meta.sst.synonyms (new format)."""
+        # Create test YAML file
+        yaml_content = """
+models:
+  - name: orders
+    config:
+      meta:
+        sst:
+          synonyms:
+            - "order history"
+            - "purchase records"
+"""
+        yaml_file = tmp_path / "orders.yml"
+        yaml_file.write_text(yaml_content)
+
+        result = enricher.collect_existing_table_synonyms(str(tmp_path))
+
+        assert "order history" in result
+        assert "purchase records" in result
+        assert len(result) == 2
+
+    def test_collects_synonyms_from_legacy_meta_sst(self, enricher, tmp_path):
+        """Collects synonyms from meta.sst.synonyms (legacy format)."""
+        yaml_content = """
+models:
+  - name: orders
+    meta:
+      sst:
+        synonyms:
+          - "legacy synonym"
+"""
+        yaml_file = tmp_path / "orders.yml"
+        yaml_file.write_text(yaml_content)
+
+        result = enricher.collect_existing_table_synonyms(str(tmp_path))
+
+        assert "legacy synonym" in result
+
+    def test_excludes_specified_model(self, enricher, tmp_path):
+        """Excludes synonyms from the specified model."""
+        yaml_content = """
+models:
+  - name: orders
+    config:
+      meta:
+        sst:
+          synonyms:
+            - "from orders"
+  - name: customers
+    config:
+      meta:
+        sst:
+          synonyms:
+            - "from customers"
+"""
+        yaml_file = tmp_path / "models.yml"
+        yaml_file.write_text(yaml_content)
+
+        # Exclude orders model
+        result = enricher.collect_existing_table_synonyms(str(tmp_path), exclude_model="orders")
+
+        assert "from customers" in result
+        assert "from orders" not in result
+
+    def test_handles_multiple_yaml_files(self, enricher, tmp_path):
+        """Collects synonyms from multiple YAML files."""
+        # Create subdirectory
+        subdir = tmp_path / "subdir"
+        subdir.mkdir()
+
+        yaml1 = tmp_path / "orders.yml"
+        yaml1.write_text("""
+models:
+  - name: orders
+    config:
+      meta:
+        sst:
+          synonyms:
+            - "order data"
+""")
+
+        yaml2 = subdir / "customers.yaml"
+        yaml2.write_text("""
+models:
+  - name: customers
+    config:
+      meta:
+        sst:
+          synonyms:
+            - "customer info"
+""")
+
+        result = enricher.collect_existing_table_synonyms(str(tmp_path))
+
+        assert "order data" in result
+        assert "customer info" in result
+        assert len(result) == 2
+
+    def test_handles_empty_synonyms_list(self, enricher, tmp_path):
+        """Handles models with empty synonyms list."""
+        yaml_content = """
+models:
+  - name: orders
+    config:
+      meta:
+        sst:
+          synonyms: []
+"""
+        yaml_file = tmp_path / "orders.yml"
+        yaml_file.write_text(yaml_content)
+
+        result = enricher.collect_existing_table_synonyms(str(tmp_path))
+
+        assert result == []
+
+    def test_handles_missing_synonyms_key(self, enricher, tmp_path):
+        """Handles models without synonyms key."""
+        yaml_content = """
+models:
+  - name: orders
+    config:
+      meta:
+        sst:
+          primary_key: order_id
+"""
+        yaml_file = tmp_path / "orders.yml"
+        yaml_file.write_text(yaml_content)
+
+        result = enricher.collect_existing_table_synonyms(str(tmp_path))
+
+        assert result == []
+
+    def test_returns_lowercased_synonyms(self, enricher, tmp_path):
+        """Returns synonyms in lowercase for comparison."""
+        yaml_content = """
+models:
+  - name: orders
+    config:
+      meta:
+        sst:
+          synonyms:
+            - "Order History"
+            - "PURCHASE RECORDS"
+"""
+        yaml_file = tmp_path / "orders.yml"
+        yaml_file.write_text(yaml_content)
+
+        result = enricher.collect_existing_table_synonyms(str(tmp_path))
+
+        assert "order history" in result
+        assert "purchase records" in result
+        # Original case should not be present
+        assert "Order History" not in result
+
+    def test_deduplicates_synonyms(self, enricher, tmp_path):
+        """Deduplicates synonyms from multiple models."""
+        yaml_content = """
+models:
+  - name: orders
+    config:
+      meta:
+        sst:
+          synonyms:
+            - "shared synonym"
+  - name: customers
+    config:
+      meta:
+        sst:
+          synonyms:
+            - "shared synonym"
+"""
+        yaml_file = tmp_path / "models.yml"
+        yaml_file.write_text(yaml_content)
+
+        result = enricher.collect_existing_table_synonyms(str(tmp_path))
+
+        # Should only appear once
+        assert result.count("shared synonym") == 1
+
+    def test_handles_nonexistent_path(self, enricher, tmp_path):
+        """Returns empty list for nonexistent path."""
+        result = enricher.collect_existing_table_synonyms("/nonexistent/path")
+
+        assert result == []
+
+    def test_handles_none_path(self, enricher):
+        """Returns empty list when path is None."""
+        result = enricher.collect_existing_table_synonyms(None)
+
+        assert result == []
+
+    def test_handles_malformed_yaml(self, enricher, tmp_path):
+        """Gracefully handles malformed YAML files."""
+        yaml_file = tmp_path / "bad.yml"
+        yaml_file.write_text("not: [valid: yaml: content")
+
+        # Should not raise, just skip the bad file
+        result = enricher.collect_existing_table_synonyms(str(tmp_path))
+
+        assert result == []

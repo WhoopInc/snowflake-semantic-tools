@@ -6,10 +6,13 @@ Identifies naming conflicts and duplicate definitions across semantic models.
 Prevents confusion and errors by ensuring unique names for all components,
 which is critical for Cortex Analyst to correctly identify and use the
 intended metrics, relationships, and filters.
+
+Also validates that table-level synonyms are unique within each semantic view,
+as Snowflake requires unique synonyms for semantic view generation.
 """
 
 from collections import defaultdict
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from snowflake_semantic_tools.core.models import ValidationResult
 
@@ -34,12 +37,13 @@ class DuplicateValidator:
     resolve references and generate correct queries.
     """
 
-    def validate(self, semantic_data: Dict[str, Any]) -> ValidationResult:
+    def validate(self, semantic_data: Dict[str, Any], dbt_data: Optional[Dict[str, Any]] = None) -> ValidationResult:
         """
         Detect duplicates in semantic data.
 
         Args:
             semantic_data: Parsed semantic model data
+            dbt_data: Optional parsed dbt model data (for table synonym validation)
 
         Returns:
             ValidationResult with duplicate issues
@@ -80,6 +84,10 @@ class DuplicateValidator:
         tables_data = semantic_data.get("tables", {})
         if tables_data:
             self._check_table_duplicates(tables_data, result)
+
+        # Check table-level synonym duplicates per semantic view
+        if views_data and dbt_data:
+            self._check_table_synonym_duplicates_per_semantic_view(views_data, dbt_data, result)
 
         return result
 
@@ -311,3 +319,108 @@ class DuplicateValidator:
         normalized = re.sub(r"/\*.*?\*/", "", normalized, flags=re.DOTALL)
 
         return normalized.strip()
+
+    def _check_table_synonym_duplicates_per_semantic_view(
+        self,
+        views_data: Dict[str, Any],
+        dbt_data: Dict[str, Any],
+        result: ValidationResult,
+    ) -> None:
+        """
+        Check for duplicate TABLE-LEVEL synonyms within each semantic view.
+
+        Snowflake requires that table synonyms are unique within a semantic view.
+        This validates that no two tables in the same view share the same synonym.
+
+        Note: Column synonyms are NOT checked here - they can duplicate across tables
+        because the same column concept (e.g., "customer name") may exist in multiple
+        tables and should share synonyms.
+
+        Args:
+            views_data: Semantic views data from parser
+            dbt_data: dbt model data containing table-level synonyms
+            result: ValidationResult to add errors/warnings to
+        """
+        import json
+
+        # Build table synonym lookup from dbt data (sm_tables)
+        # Format: table_name -> {synonyms: [...], source_file: ...}
+        table_synonyms_lookup: Dict[str, Dict[str, Any]] = {}
+        sm_tables = dbt_data.get("sm_tables", [])
+
+        for table in sm_tables:
+            if isinstance(table, dict):
+                table_name = table.get("table_name", "").upper()
+                synonyms = table.get("synonyms", [])
+                source_file = table.get("source_file", "unknown")
+
+                if table_name and synonyms:
+                    table_synonyms_lookup[table_name] = {
+                        "synonyms": synonyms,
+                        "source_file": source_file,
+                    }
+
+        # Check each semantic view for duplicate table synonyms
+        items = views_data.get("items", [])
+
+        for view in items:
+            if not isinstance(view, dict):
+                continue
+
+            view_name = view.get("name", "unknown")
+            tables = view.get("tables", [])
+
+            # Handle tables stored as JSON string
+            if isinstance(tables, str):
+                try:
+                    tables = json.loads(tables)
+                except (json.JSONDecodeError, TypeError):
+                    tables = []
+
+            if not tables:
+                continue
+
+            # Collect all synonyms for tables in this view
+            # synonym_lower -> [(table_name, original_synonym, source_file), ...]
+            synonym_occurrences: Dict[str, List[tuple]] = defaultdict(list)
+
+            for table_name in tables:
+                if not isinstance(table_name, str):
+                    continue
+
+                table_upper = table_name.upper()
+                table_info = table_synonyms_lookup.get(table_upper)
+
+                if table_info:
+                    for synonym in table_info["synonyms"]:
+                        if isinstance(synonym, str) and synonym.strip():
+                            synonym_lower = synonym.lower().strip()
+                            synonym_occurrences[synonym_lower].append((table_name, synonym, table_info["source_file"]))
+
+            # Report duplicates
+            for synonym_lower, occurrences in synonym_occurrences.items():
+                if len(occurrences) > 1:
+                    # Build detailed error message listing ALL conflicting tables
+                    table_lines = []
+                    for table_name, original_synonym, source_file in occurrences:
+                        # Convert to relative path (find models/ or similar common root)
+                        rel_path = source_file
+                        for marker in ["models/", "staging/", "marts/", "intermediate/"]:
+                            if marker in source_file:
+                                rel_path = source_file[source_file.find(marker) :]
+                                break
+                        table_lines.append(f"    - Table '{table_name}' ({rel_path})")
+
+                    tables_list = "\n".join(table_lines)
+                    result.add_error(
+                        f"Duplicate table synonym '{occurrences[0][1]}' in semantic view '{view_name}'\n"
+                        f"  Found in {len(occurrences)} tables:\n"
+                        f"{tables_list}\n"
+                        f"  Table synonyms must be unique within a semantic view.",
+                        context={
+                            "type": "DUPLICATE_TABLE_SYNONYM",
+                            "semantic_view": view_name,
+                            "synonym": occurrences[0][1],
+                            "tables": [t for t, _, _ in occurrences],
+                        },
+                    )
