@@ -102,6 +102,7 @@ Complete list of all validation checks performed by `sst validate`.
 | **Semantic View** | Referenced relationships exist | ERROR|
 | **Semantic View** | Referenced custom instructions exist | ERROR|
 | **Semantic View** | No duplicate view names (normalized¹) | ERROR|
+| **Semantic View** | No duplicate table synonyms within a view² | ERROR|
 | **Semantic View** | View has `description` | WARNING|
 | **Semantic View** | No identical table lists across multiple views | WARNING|
 | **Template** | All `{{ table('name') }}` templates resolve to existing tables | ERROR|
@@ -178,3 +179,5 @@ sst validate --exclude _intermediate,staging
 ### Notes
 
 ¹ **Name Normalization**: Duplicate detection normalizes names by converting to uppercase and removing all non-alphanumeric characters (underscores, etc.). This means names like `Total_Revenue`, `total_revenue`, and `TotalRevenue` are all considered duplicates because they normalize to `TOTALREVENUE`. This prevents issues where Snowflake would treat these as the same identifier and ensures consistent naming.
+
+² **Duplicate Table Synonyms**: When multiple tables in a semantic view share the same synonym (e.g., both `orders` and `order_items` have synonym "order details"), Snowflake rejects the semantic view creation. This validation catches such duplicates before deployment. Note: Only table-level synonyms are checked—column synonyms can duplicate across tables since the same concept (e.g., "customer name") may exist in multiple tables.
