@@ -513,6 +513,15 @@ class SemanticViewBuilder:
             Schema name where the table exists, or None if not found
         """
         try:
+            # Validate inputs to prevent SQL injection
+            # Note: Values come from metadata, but we validate format for safety
+            if not all(c.isalnum() or c in ("_", "-", ".") for c in database):
+                logger.warning(f"Invalid database name format: {database}")
+                return None
+            if not all(c.isalnum() or c in ("_", "-") for c in table_name):
+                logger.warning(f"Invalid table name format: {table_name}")
+                return None
+
             # Query information schema to find the table
             sql = f"""
             SELECT table_schema
@@ -585,6 +594,30 @@ class SemanticViewBuilder:
             expected_schema = table_info.get("SCHEMA")
 
             # Check if table exists using information_schema
+            # Note: Values come from metadata tables (controlled by system), but ideally should use
+            # parameterized queries. However, Snowflake connector parameterization for identifiers
+            # (database/table names) requires different syntax. For now, we validate inputs are
+            # alphanumeric/underscore to prevent injection while maintaining compatibility with
+            # existing codebase patterns.
+            if not all(c.isalnum() or c in ("_", "-", ".") for c in database):
+                logger.warning(f"Invalid database name format: {database}")
+                missing_tables.append(
+                    {
+                        "table": table_name,
+                        "reason": f"Invalid database name format: {database}",
+                    }
+                )
+                continue
+            if not all(c.isalnum() or c in ("_", "-") for c in table_name):
+                logger.warning(f"Invalid table name format: {table_name}")
+                missing_tables.append(
+                    {
+                        "table": table_name,
+                        "reason": f"Invalid table name format: {table_name}",
+                    }
+                )
+                continue
+
             sql = f"""
             SELECT table_schema, table_type
             FROM information_schema.tables 
@@ -640,10 +673,20 @@ class SemanticViewBuilder:
             if missing_tables:
                 error_parts.append("The following tables do not exist in Snowflake:\n")
                 for missing in missing_tables:
-                    table_path = (
-                        f"{missing.get('database', '?')}.{missing.get('expected_schema', '?')}.{missing['table']}"
-                    )
-                    error_parts.append(f"  - Table '{table_path}'\n")
+                    # Build table path with clear messaging when schema info is missing
+                    database = missing.get("database", "?")
+                    expected_schema = missing.get("expected_schema")
+                    table_name = missing["table"]
+
+                    if expected_schema is None:
+                        # No schema info in metadata - clarify this in the message
+                        table_path = f"{database}.<schema unknown>.{table_name}"
+                        error_parts.append(f"  - Table '{table_path}'\n")
+                        error_parts.append(f"    Note: No schema information found in metadata for this table.\n")
+                    else:
+                        table_path = f"{database}.{expected_schema}.{table_name}"
+                        error_parts.append(f"  - Table '{table_path}'\n")
+
                     if "reason" in missing:
                         error_parts.append(f"    Reason: {missing['reason']}\n")
 
