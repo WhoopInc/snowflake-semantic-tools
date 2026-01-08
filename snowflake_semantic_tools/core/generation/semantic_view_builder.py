@@ -118,19 +118,25 @@ class SemanticViewBuilder:
 
             except Exception as e:
                 error_msg = str(e)
+                
+                # Check for schema errors
                 if "does not exist or not authorized" in error_msg and "Schema" in error_msg:
                     logger.error(f"Target schema '{self.target_database}.{self.target_schema}' does not exist")
                     logger.error(
                         f"Please ask your admin to create schema: CREATE SCHEMA IF NOT EXISTS {self.target_database}.{self.target_schema}"
                     )
+                    formatted_error = error_msg
                 else:
+                    # All table existence validation is done proactively via information_schema
+                    # If we get here, it's an unexpected error (e.g., permission issue, syntax error, etc.)
+                    formatted_error = error_msg
                     logger.error(f"Error building semantic view '{view_name}': {e}")
 
                 return {
                     "view_name": view_name,
                     "sql_statement": None,
                     "success": False,
-                    "message": f"Error building semantic view '{view_name}': {error_msg}",
+                    "message": f"Error building semantic view '{view_name}': {formatted_error}",
                     "target_location": f"{self.target_database}.{self.target_schema}.{view_name.upper()}",
                 }
 
@@ -530,6 +536,128 @@ class SemanticViewBuilder:
         except Exception as e:
             logger.error(f"Error querying information_schema for table '{table_name}': {e}")
             return None
+
+    def _validate_tables_exist(
+        self, conn, table_names: List[str], defer_database: Optional[str] = None
+    ) -> Optional[str]:
+        """
+        Validate that all referenced tables exist in Snowflake using information_schema introspection.
+
+        This proactive check prevents errors during semantic view creation by validating
+        table existence before attempting to build the view. Uses Snowflake's information_schema
+        for reliable table discovery.
+
+        Args:
+            conn: Database connection
+            table_names: List of table names to validate
+            defer_database: Optional database override (for defer mode)
+
+        Returns:
+            None if all tables exist, or an error message string if any tables are missing
+        """
+        missing_tables = []
+        tables_with_wrong_schema = []
+
+        for table_name in table_names:
+            table_info = self._get_table_info(conn, table_name)
+
+            # Determine which database to check
+            database = table_info.get("DATABASE")
+            if not database:
+                database = self.target_database
+            if defer_database:
+                database = defer_database
+
+            if not database:
+                missing_tables.append(
+                    {
+                        "table": table_name,
+                        "reason": "No database reference found in metadata and no target_database configured",
+                    }
+                )
+                continue
+
+            # Get expected schema from metadata
+            expected_schema = table_info.get("SCHEMA")
+
+            # Check if table exists using information_schema
+            sql = f"""
+            SELECT table_schema, table_type
+            FROM information_schema.tables 
+            WHERE UPPER(table_catalog) = UPPER('{database}')
+            AND UPPER(table_name) = UPPER('{table_name}')
+            AND table_type IN ('BASE TABLE', 'VIEW')
+            ORDER BY table_schema
+            LIMIT 1
+            """
+
+            try:
+                rows = self._execute_query(conn, sql)
+                if not rows:
+                    # Table doesn't exist - check if it exists in any schema
+                    found_schema = self._find_table_schema(conn, table_name, database)
+                    if found_schema:
+                        tables_with_wrong_schema.append(
+                            {
+                                "table": table_name,
+                                "expected_schema": expected_schema or "unknown",
+                                "found_schema": found_schema,
+                                "database": database,
+                            }
+                        )
+                    else:
+                        missing_tables.append(
+                            {
+                                "table": table_name,
+                                "database": database,
+                                "expected_schema": expected_schema,
+                            }
+                        )
+                elif expected_schema:
+                    # Table exists - verify it's in the expected schema
+                    actual_schema = rows[0]["TABLE_SCHEMA"]
+                    if actual_schema.upper() != expected_schema.upper():
+                        tables_with_wrong_schema.append(
+                            {
+                                "table": table_name,
+                                "expected_schema": expected_schema,
+                                "found_schema": actual_schema,
+                                "database": database,
+                            }
+                        )
+            except Exception as e:
+                logger.warning(f"Error checking table existence for '{table_name}': {e}")
+                # Continue checking other tables even if one fails
+
+        # Build error message if any issues found
+        if missing_tables or tables_with_wrong_schema:
+            error_parts = []
+
+            if missing_tables:
+                error_parts.append("The following tables do not exist in Snowflake:\n")
+                for missing in missing_tables:
+                    table_path = f"{missing.get('database', '?')}.{missing.get('expected_schema', '?')}.{missing['table']}"
+                    error_parts.append(f"  - Table '{table_path}'\n")
+                    if "reason" in missing:
+                        error_parts.append(f"    Reason: {missing['reason']}\n")
+
+            if tables_with_wrong_schema:
+                error_parts.append("\nThe following tables exist but in different schemas:\n")
+                for wrong in tables_with_wrong_schema:
+                    error_parts.append(
+                        f"  - Table '{wrong['table']}' found in schema '{wrong['found_schema']}' "
+                        f"(expected '{wrong['expected_schema']}') in database '{wrong['database']}'\n"
+                    )
+
+            error_parts.append(
+                "\nThis usually means dbt models haven't been materialized yet.\n"
+            )
+            error_parts.append("Run 'dbt run' to create the tables, then retry 'sst generate'.")
+
+            return "".join(error_parts)
+
+        return None
+
 
     def _get_metrics_for_selected_tables(self, conn, table_names: List[str]) -> List[Dict]:
         """Get metrics for a list of selected tables."""
@@ -997,6 +1125,13 @@ class SemanticViewBuilder:
                 f"Using defer mode: table references will use database '{defer_database}' instead of metadata database"
             )
 
+        # Proactively validate table existence using Snowflake introspection
+        # This prevents errors during view creation and provides better error messages
+        logger.info("Validating table existence using Snowflake information_schema...")
+        validation_error = self._validate_tables_exist(conn, table_names, defer_database=defer_database)
+        if validation_error:
+            raise ValueError(validation_error)
+
         # Always use CREATE OR REPLACE for atomic operation
         sql_parts = [f"CREATE OR REPLACE SEMANTIC VIEW {self.target_database}.{self.target_schema}.{view_name.upper()}"]
 
@@ -1098,18 +1233,24 @@ class SemanticViewBuilder:
 
         except Exception as e:
             error_msg = str(e)
+            
+            # Check for schema errors
             if "does not exist or not authorized" in error_msg and "Schema" in error_msg:
                 logger.error(f"Target schema '{self.target_database}.{self.target_schema}' does not exist")
                 logger.error(
                     f"Please ask your admin to create schema: CREATE SCHEMA IF NOT EXISTS {self.target_database}.{self.target_schema}"
                 )
+                formatted_error = error_msg
             else:
+                # All table existence validation is done proactively via information_schema
+                # If we get here, it's an unexpected error (e.g., permission issue, syntax error, etc.)
+                formatted_error = error_msg
                 logger.error(f"Error building semantic view '{view_name}': {e}")
 
             return {
                 "view_name": view_name,
                 "sql_statement": None,
                 "success": False,
-                "message": f"Error building semantic view '{view_name}': {error_msg}",
+                "message": f"Error building semantic view '{view_name}': {formatted_error}",
                 "target_location": f"{self.target_database}.{self.target_schema}.{view_name.upper()}",
             }
