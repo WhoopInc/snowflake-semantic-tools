@@ -118,7 +118,7 @@ class SemanticViewBuilder:
 
             except Exception as e:
                 error_msg = str(e)
-                
+
                 # Check for schema errors
                 if "does not exist or not authorized" in error_msg and "Schema" in error_msg:
                     logger.error(f"Target schema '{self.target_database}.{self.target_schema}' does not exist")
@@ -562,9 +562,13 @@ class SemanticViewBuilder:
             table_info = self._get_table_info(conn, table_name)
 
             # Determine which database to check
+            # Each table can have its own database from metadata
             database = table_info.get("DATABASE")
             if not database:
                 database = self.target_database
+            # DEFER MODE: Override database if defer_database is set (like dbt defer)
+            # This applies to ALL tables in the semantic view, which is intentional
+            # for environment-based deployments where all tables should point to the same database
             if defer_database:
                 database = defer_database
 
@@ -636,7 +640,9 @@ class SemanticViewBuilder:
             if missing_tables:
                 error_parts.append("The following tables do not exist in Snowflake:\n")
                 for missing in missing_tables:
-                    table_path = f"{missing.get('database', '?')}.{missing.get('expected_schema', '?')}.{missing['table']}"
+                    table_path = (
+                        f"{missing.get('database', '?')}.{missing.get('expected_schema', '?')}.{missing['table']}"
+                    )
                     error_parts.append(f"  - Table '{table_path}'\n")
                     if "reason" in missing:
                         error_parts.append(f"    Reason: {missing['reason']}\n")
@@ -649,15 +655,12 @@ class SemanticViewBuilder:
                         f"(expected '{wrong['expected_schema']}') in database '{wrong['database']}'\n"
                     )
 
-            error_parts.append(
-                "\nThis usually means dbt models haven't been materialized yet.\n"
-            )
+            error_parts.append("\nThis usually means dbt models haven't been materialized yet.\n")
             error_parts.append("Run 'dbt run' to create the tables, then retry 'sst generate'.")
 
             return "".join(error_parts)
 
         return None
-
 
     def _get_metrics_for_selected_tables(self, conn, table_names: List[str]) -> List[Dict]:
         """Get metrics for a list of selected tables."""
@@ -1233,7 +1236,7 @@ class SemanticViewBuilder:
 
         except Exception as e:
             error_msg = str(e)
-            
+
             # Check for schema errors
             if "does not exist or not authorized" in error_msg and "Schema" in error_msg:
                 logger.error(f"Target schema '{self.target_database}.{self.target_schema}' does not exist")
