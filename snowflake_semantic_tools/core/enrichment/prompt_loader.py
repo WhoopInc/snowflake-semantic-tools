@@ -57,4 +57,3 @@ def render_prompt(name: str, **variables) -> str:
 def clear_cache() -> None:
     """Clear the prompt template cache."""
     load_prompt.cache_clear()
-

@@ -37,9 +37,7 @@ class DuplicateValidator:
     resolve references and generate correct queries.
     """
 
-    def validate(
-        self, semantic_data: Dict[str, Any], dbt_data: Optional[Dict[str, Any]] = None
-    ) -> ValidationResult:
+    def validate(self, semantic_data: Dict[str, Any], dbt_data: Optional[Dict[str, Any]] = None) -> ValidationResult:
         """
         Detect duplicates in semantic data.
 
@@ -397,9 +395,7 @@ class DuplicateValidator:
                     for synonym in table_info["synonyms"]:
                         if isinstance(synonym, str) and synonym.strip():
                             synonym_lower = synonym.lower().strip()
-                            synonym_occurrences[synonym_lower].append(
-                                (table_name, synonym, table_info["source_file"])
-                            )
+                            synonym_occurrences[synonym_lower].append((table_name, synonym, table_info["source_file"]))
 
             # Report duplicates
             for synonym_lower, occurrences in synonym_occurrences.items():

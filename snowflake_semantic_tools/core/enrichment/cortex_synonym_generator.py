@@ -86,8 +86,7 @@ class CortexSynonymGenerator:
                 synonyms = [s for s in synonyms if s.lower() not in avoid_set]
                 if len(synonyms) < original_count:
                     logger.warning(
-                        f"Filtered {original_count - len(synonyms)} duplicate synonym(s) "
-                        f"for table '{table_name}'"
+                        f"Filtered {original_count - len(synonyms)} duplicate synonym(s) " f"for table '{table_name}'"
                     )
 
             return synonyms
