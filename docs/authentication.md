@@ -207,7 +207,7 @@ sst debug --target prod --test-connection
 
 **Example output:**
 ```
-SST Debug (v0.2.1)
+SST Debug (v0.2.2)
 
   ──────────────────────────────────────────────────
   Profile Configuration
