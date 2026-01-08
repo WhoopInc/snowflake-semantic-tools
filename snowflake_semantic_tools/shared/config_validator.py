@@ -58,12 +58,12 @@ def validate_config(
     missing_optional = []
 
     # Required fields (error if missing)
+    # Note: dbt_models_dir is no longer required - it's auto-detected from dbt_project.yml
     required_checks = [
         (
             "project.semantic_models_dir",
             "Required: Directory containing semantic model YAML files (metrics, relationships)",
         ),
-        ("project.dbt_models_dir", "Required: Directory containing dbt model YAML files"),
     ]
 
     for field_path, message in required_checks:
@@ -219,7 +219,6 @@ def _get_field_message(field_path: str) -> str:
     """
     messages = {
         "project.semantic_models_dir": "Directory containing semantic model YAML files (metrics, relationships)",
-        "project.dbt_models_dir": "Directory containing dbt model YAML files",
         "validation.strict": "Set to true in CI/CD to block deployments on warnings",
         "validation.exclude_dirs": "List of directories to exclude from validation",
         "enrichment.distinct_limit": "Number of distinct values to fetch during enrichment",
@@ -256,8 +255,6 @@ def _build_helpful_error_message(missing_fields: List[str], config_path: Optiona
         message += "project:\n"
         if "project.semantic_models_dir" in project_fields:
             message += '  semantic_models_dir: "snowflake_semantic_models"  # Required\n'
-        if "project.dbt_models_dir" in project_fields:
-            message += '  dbt_models_dir: "models"  # Required\n'
         message += "\n"
 
     return message

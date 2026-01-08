@@ -48,20 +48,20 @@ class TestConfigFileEdgeCases:
         config_dict = {
             "validation": {"strict": False}  # Python boolean, not YAML
             # Missing project.semantic_models_dir
-            # Missing project.dbt_models_dir
+            # Note: dbt_models_dir is no longer required - auto-detected from dbt_project.yml
         }
 
         is_valid, missing, _ = validate_config(config_dict)
         assert not is_valid
         assert "project.semantic_models_dir" in missing
-        assert "project.dbt_models_dir" in missing
+        assert len(missing) == 1  # Only semantic_models_dir is required now
 
     def test_invalid_path_references(self):
         """Test config with non-existent directory paths."""
+        # Note: dbt_models_dir removed - now auto-detected from dbt_project.yml
         config_dict = {
             "project": {
                 "semantic_models_dir": "/nonexistent/path/to/semantic_models",
-                "dbt_models_dir": "/nonexistent/path/to/models",
             }
         }
 
@@ -74,7 +74,6 @@ class TestConfigFileEdgeCases:
         config_dict = {
             "project": {
                 "semantic_models_dir": "snowflake_semantic_models",  # Relative
-                "dbt_models_dir": "/abs/path/to/models",  # Absolute
             }
         }
 
@@ -86,7 +85,6 @@ class TestConfigFileEdgeCases:
         config_dict = {
             "project": {
                 "semantic_models_dir": "snowflake_semantic_models/",  # Trailing slash
-                "dbt_models_dir": "models",  # No trailing slash
             }
         }
 
@@ -95,9 +93,7 @@ class TestConfigFileEdgeCases:
 
     def test_special_chars_in_paths(self):
         """Test paths with spaces and unicode."""
-        config_dict = {
-            "project": {"semantic_models_dir": "semantic models", "dbt_models_dir": "modèles"}  # Space  # Unicode
-        }
+        config_dict = {"project": {"semantic_models_dir": "semantic models"}}  # Space
 
         is_valid, missing, _ = validate_config(config_dict)
         assert is_valid
@@ -206,12 +202,12 @@ class TestEnrichmentConfigDefaults:
     def test_default_enrichment_config(self, tmp_path):
         """Test that default enrichment config values are correct."""
         # Create a minimal config to avoid relying on existing files
+        # Note: dbt_models_dir is no longer needed - auto-detected from dbt_project.yml
         config_file = tmp_path / "sst_config.yml"
         config_file.write_text(
             """
 project:
   semantic_models_dir: "snowflake_semantic_models"
-  dbt_models_dir: "models"
 """
         )
 
@@ -236,7 +232,6 @@ project:
             """
 project:
   semantic_models_dir: "snowflake_semantic_models"
-  dbt_models_dir: "models"
 
 enrichment:
   distinct_limit: 50
@@ -264,7 +259,6 @@ enrichment:
             """
 project:
   semantic_models_dir: "snowflake_semantic_models"
-  dbt_models_dir: "models"
 
 enrichment:
   distinct_limit: 100
@@ -291,7 +285,6 @@ enrichment:
             """
 project:
   semantic_models_dir: "snowflake_semantic_models"
-  dbt_models_dir: "models"
 
 enrichment:
   distinct_limit: 30
@@ -319,7 +312,6 @@ enrichment:
             """
 project:
   semantic_models_dir: "snowflake_semantic_models"
-  dbt_models_dir: "models"
 # enrichment section omitted - should use defaults
 """
         )

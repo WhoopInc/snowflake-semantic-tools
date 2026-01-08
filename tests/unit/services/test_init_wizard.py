@@ -10,6 +10,9 @@ import yaml
 
 from snowflake_semantic_tools.services.init_wizard import DbtProjectInfo, InitWizard, ProfileInfo, WizardConfig
 
+# Note: WizardConfig no longer has dbt_models_dir field - dbt model paths
+# are now auto-detected from dbt_project.yml
+
 # =============================================================================
 # Fixtures
 # =============================================================================
@@ -176,7 +179,6 @@ class TestCreateSstConfig:
         wizard = InitWizard(project_dir=temp_dbt_project, skip_prompts=True)
         config = WizardConfig(
             semantic_models_dir="snowflake_semantic_models",
-            dbt_models_dir="models",
         )
 
         wizard._create_sst_config(config)
@@ -187,7 +189,8 @@ class TestCreateSstConfig:
         with open(config_path) as f:
             content = f.read()
         assert "snowflake_semantic_models" in content
-        assert "models" in content
+        # dbt_models_dir should NOT be in the config anymore
+        assert "dbt_models_dir" not in content or "# Note:" in content
 
     def test_create_sst_config_overwrite(self, temp_dbt_project):
         """Test overwriting existing sst_config.yaml."""
@@ -198,7 +201,6 @@ class TestCreateSstConfig:
         wizard = InitWizard(project_dir=temp_dbt_project, skip_prompts=True)
         config = WizardConfig(
             semantic_models_dir="semantic_models",
-            dbt_models_dir="models",
         )
 
         wizard._create_sst_config(config)

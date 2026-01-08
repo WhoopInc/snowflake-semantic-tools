@@ -149,37 +149,64 @@ class TestGetSynonymConfig:
 class TestGetProjectPaths:
     """Test project path resolution."""
 
+    @patch("snowflake_semantic_tools.shared.config_utils.get_dbt_model_paths")
     @patch("snowflake_semantic_tools.shared.config_utils.get_config")
     @patch("snowflake_semantic_tools.shared.config_utils.Path.cwd")
-    def test_default_paths(self, mock_cwd, mock_get_config):
+    def test_default_paths(self, mock_cwd, mock_get_config, mock_get_dbt_model_paths):
         """Test default project paths."""
         mock_cwd.return_value = Path("/project")
         mock_config = Mock()
         mock_config.get.return_value = {}
         mock_get_config.return_value = mock_config
+        mock_get_dbt_model_paths.return_value = [Path("/project/models")]
 
         result = get_project_paths()
-        assert result["dbt_models_dir"] == Path("/project/models")
+        # dbt_models_dirs is now a list from dbt_project.yml
+        assert result["dbt_models_dirs"] == [Path("/project/models")]
         assert result["semantic_models_dir"] == Path("/project/snowflake_semantic_models")
         assert result["manifest_path"] == Path("/project/target/manifest.json")
 
+    @patch("snowflake_semantic_tools.shared.config_utils.get_dbt_model_paths")
     @patch("snowflake_semantic_tools.shared.config_utils.get_config")
     @patch("snowflake_semantic_tools.shared.config_utils.Path.cwd")
-    def test_custom_paths(self, mock_cwd, mock_get_config):
+    def test_custom_paths(self, mock_cwd, mock_get_config, mock_get_dbt_model_paths):
         """Test custom project paths from config."""
         mock_cwd.return_value = Path("/project")
         mock_config = Mock()
         mock_config.get.return_value = {
-            "dbt_models_dir": "my_models",
             "semantic_models_dir": "my_semantics",
             "manifest_path": "custom/manifest.json",
         }
         mock_get_config.return_value = mock_config
+        mock_get_dbt_model_paths.return_value = [Path("/project/my_models")]
 
         result = get_project_paths()
-        assert result["dbt_models_dir"] == Path("/project/my_models")
+        # dbt_models_dirs comes from dbt_project.yml via get_dbt_model_paths
+        assert result["dbt_models_dirs"] == [Path("/project/my_models")]
         assert result["semantic_models_dir"] == Path("/project/my_semantics")
         assert result["manifest_path"] == Path("/project/custom/manifest.json")
+
+    @patch("snowflake_semantic_tools.shared.config_utils.get_dbt_model_paths")
+    @patch("snowflake_semantic_tools.shared.config_utils.get_config")
+    @patch("snowflake_semantic_tools.shared.config_utils.Path.cwd")
+    def test_multiple_dbt_model_paths(self, mock_cwd, mock_get_config, mock_get_dbt_model_paths):
+        """Test with multiple dbt model paths from dbt_project.yml."""
+        mock_cwd.return_value = Path("/project")
+        mock_config = Mock()
+        mock_config.get.return_value = {}
+        mock_get_config.return_value = mock_config
+        # Simulate dbt_project.yml with model-paths: ["models", "marts", "staging"]
+        mock_get_dbt_model_paths.return_value = [
+            Path("/project/models"),
+            Path("/project/marts"),
+            Path("/project/staging"),
+        ]
+
+        result = get_project_paths()
+        assert len(result["dbt_models_dirs"]) == 3
+        assert Path("/project/models") in result["dbt_models_dirs"]
+        assert Path("/project/marts") in result["dbt_models_dirs"]
+        assert Path("/project/staging") in result["dbt_models_dirs"]
 
 
 class TestIsStrictMode:

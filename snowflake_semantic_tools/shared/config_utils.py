@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from snowflake_semantic_tools.shared.config import get_config
+from snowflake_semantic_tools.shared.utils.file_utils import get_dbt_model_paths
 
 
 def get_exclusion_patterns(cli_exclude: Optional[str] = None) -> Optional[List[str]]:
@@ -123,12 +124,12 @@ def get_synonym_config() -> Dict[str, Any]:
     }
 
 
-def get_project_paths() -> Dict[str, Path]:
+def get_project_paths() -> Dict[str, Any]:
     """
-    Get project directory paths from config.
+    Get project directory paths from config and dbt_project.yml.
 
     Returns dictionary with:
-    - dbt_models_dir: Path to dbt models directory
+    - dbt_models_dirs: List of paths to dbt models directories (from dbt_project.yml)
     - semantic_models_dir: Path to semantic models directory
     - manifest_path: Path to manifest.json (optional)
 
@@ -139,8 +140,8 @@ def get_project_paths() -> Dict[str, Path]:
 
     Example:
         >>> paths = get_project_paths()
-        >>> paths['dbt_models_dir']
-        PosixPath('/Users/.../analytics-dbt/models')
+        >>> paths['dbt_models_dirs']
+        [PosixPath('/Users/.../analytics-dbt/models')]
         >>> paths['semantic_models_dir']
         PosixPath('/Users/.../analytics-dbt/snowflake_semantic_models')
     """
@@ -149,8 +150,8 @@ def get_project_paths() -> Dict[str, Path]:
 
     cwd = Path.cwd()
 
-    paths = {
-        "dbt_models_dir": cwd / project_config.get("dbt_models_dir", "models"),
+    paths: Dict[str, Any] = {
+        "dbt_models_dirs": get_dbt_model_paths(),  # Now a list from dbt_project.yml
         "semantic_models_dir": cwd / project_config.get("semantic_models_dir", "snowflake_semantic_models"),
     }
 

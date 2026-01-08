@@ -10,10 +10,46 @@ from typing import List
 
 import yaml
 
+from snowflake_semantic_tools.shared.utils.logger import get_logger
+
+logger = get_logger(__name__)
+
+
+def get_dbt_model_paths() -> List[Path]:
+    """
+    Get dbt model paths from dbt_project.yml.
+
+    Resolution order:
+    1. dbt_project.yml model-paths (primary source)
+    2. Default: ["models"] (dbt default)
+
+    Returns:
+        List of absolute paths to model directories
+    """
+    cwd = Path.cwd()
+    dbt_project_file = cwd / "dbt_project.yml"
+
+    if dbt_project_file.exists():
+        try:
+            with open(dbt_project_file, "r", encoding="utf-8") as f:
+                dbt_config = yaml.safe_load(f) or {}
+                model_paths = dbt_config.get("model-paths", ["models"])
+                logger.debug(f"Found model-paths in dbt_project.yml: {model_paths}")
+                return [cwd / p for p in model_paths]
+        except yaml.YAMLError as e:
+            logger.warning(f"Error parsing dbt_project.yml: {e}. Using default model path.")
+        except Exception as e:
+            logger.warning(f"Error reading dbt_project.yml: {e}. Using default model path.")
+
+    logger.debug("No dbt_project.yml found or no model-paths specified. Using default: models/")
+    return [cwd / "models"]
+
 
 def find_dbt_model_files(exclude_dirs: List[str] = None) -> List[Path]:
     """
     Find all dbt model YAML files in the project.
+
+    Reads model paths from dbt_project.yml (or defaults to "models").
 
     Args:
         exclude_dirs: Directory names or glob patterns to exclude
@@ -25,32 +61,27 @@ def find_dbt_model_files(exclude_dirs: List[str] = None) -> List[Path]:
     """
     import fnmatch
 
-    from snowflake_semantic_tools.shared.config import get_config
+    model_paths = get_dbt_model_paths()
 
-    config = get_config()
-    models_dir_name = config.get("project", {}).get("dbt_models_dir")
+    # Collect all YAML files from all model directories
+    all_files = []
+    for models_dir in model_paths:
+        if not models_dir.exists():
+            logger.warning(f"Model directory not found: {models_dir}")
+            continue
+        all_files.extend(list(models_dir.rglob("*.yml")) + list(models_dir.rglob("*.yaml")))
 
-    if not models_dir_name:
-        raise ValueError("dbt_models_dir not configured in sst_config.yml")
-
-    models_dir = Path.cwd() / models_dir_name
-
-    if not models_dir.exists():
-        raise FileNotFoundError(f"dbt models directory not found: {models_dir}")
-
-    # Find all YAML files
-    all_files = list(models_dir.rglob("*.yml")) + list(models_dir.rglob("*.yaml"))
+    if not all_files:
+        # No files found in any model directory
+        return []
 
     # Filter out excluded directories and patterns
     exclude_patterns = exclude_dirs or []
     filtered_files = []
 
     for file_path in all_files:
-        # Get relative path from models directory
-        try:
-            rel_path = file_path.relative_to(models_dir)
-        except ValueError:
-            rel_path = file_path
+        # Get relative path from the file's parent model directory
+        rel_path = file_path
 
         should_exclude = False
 
