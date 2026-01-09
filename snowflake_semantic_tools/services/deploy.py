@@ -319,13 +319,38 @@ class DeployService:
         """Run generation step with progress reporting."""
         service = SemanticViewGenerationService(self.snowflake_config)
 
+        # Load defer manifest if path is provided - this is used to look up
+        # actual database/schema for each table (supports multi-database projects)
+        defer_manifest = None
+        if config.defer_manifest_path:
+            defer_manifest = ManifestParser(Path(config.defer_manifest_path))
+            if defer_manifest.load():
+                logger.info(f"Loaded defer manifest from {config.defer_manifest_path}")
+                
+                # Validate manifest target matches expected defer target (if target_name is available)
+                manifest_target = defer_manifest.get_target_name()
+                defer_target = config.defer_database  # Contains the defer target name
+                
+                if manifest_target and defer_target:
+                    if manifest_target.lower() != defer_target.lower():
+                        # Manifest has explicit target that doesn't match - this is an error
+                        raise ValueError(
+                            f"Manifest target mismatch: manifest was compiled with '{manifest_target}' "
+                            f"but you specified --defer-target {defer_target}. "
+                            f"Please run: dbt compile --target {defer_target}"
+                        )
+                    logger.info(f"Manifest target '{manifest_target}' matches defer target")
+            else:
+                logger.warning(f"Failed to load defer manifest from {config.defer_manifest_path}")
+                defer_manifest = None
+
         gen_config = UnifiedGenerationConfig(
             metadata_database=config.database,
             metadata_schema=config.schema,
             target_database=config.database,  # Same as metadata
             target_schema=config.schema,  # Same as metadata
             views_to_generate=None,  # Generate all views
-            defer_database=config.defer_database,
+            defer_manifest=defer_manifest,  # Use manifest for multi-database support
         )
 
         # If selective generation is enabled, determine which views to generate

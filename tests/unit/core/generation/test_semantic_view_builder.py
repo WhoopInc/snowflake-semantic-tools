@@ -576,5 +576,254 @@ class TestCAExtension:
         assert region.get("is_enum") == True
 
 
+class TestDeferManifestIntegration:
+    """Test defer manifest integration in SemanticViewBuilder."""
+
+    @pytest.fixture
+    def builder(self):
+        """Create a SemanticViewBuilder instance for testing."""
+        config = SnowflakeConfig(
+            account="test", user="test", password="test", role="test", warehouse="test", database="SCRATCH", schema="DEV"
+        )
+        return SemanticViewBuilder(config)
+
+    @pytest.fixture
+    def mock_manifest_parser(self, mocker):
+        """Create a mock ManifestParser with sample data."""
+        from unittest.mock import MagicMock
+        
+        mock = MagicMock()
+        mock.get_location.side_effect = lambda name: {
+            "orders": {"database": "ANALYTICS", "schema": "SALES", "alias": "ORDERS"},
+            "customers": {"database": "ANALYTICS", "schema": "CRM", "alias": "CUSTOMERS"},
+            "products": {"database": "ANALYTICS_MART", "schema": "PRODUCT", "alias": "PRODUCTS"},
+        }.get(name.lower())
+        mock.get_target_name.return_value = "prod"
+        mock.get_summary.return_value = {
+            "loaded": True,
+            "total_models": 3,
+            "models_by_database": {"ANALYTICS": 2, "ANALYTICS_MART": 1},
+        }
+        return mock
+
+    def test_build_tables_clause_uses_manifest_locations(self, builder, mock_manifest_parser, mocker):
+        """Test that _build_tables_clause uses manifest for database/schema lookup."""
+        # Mock _get_table_info to return minimal metadata
+        mocker.patch.object(
+            builder,
+            "_get_table_info",
+            side_effect=lambda conn, name: {
+                "TABLE_NAME": name.upper(),
+                "DATABASE": "SCRATCH",  # This should be overridden by manifest
+                "SCHEMA": "DEV",        # This should be overridden by manifest
+                "PRIMARY_KEY": '["ID"]',
+                "SYNONYMS": "[]",
+                "DESCRIPTION": "Test table",
+            },
+        )
+
+        # Call _build_tables_clause with defer_manifest
+        result = builder._build_tables_clause(
+            conn=None,
+            table_names=["orders"],
+            defer_manifest=mock_manifest_parser,
+        )
+
+        # Should use ANALYTICS.SALES from manifest, not SCRATCH.DEV from metadata
+        assert "ANALYTICS.SALES.ORDERS" in result
+        assert "SCRATCH.DEV" not in result
+
+    def test_build_tables_clause_different_databases(self, builder, mock_manifest_parser, mocker):
+        """Test that tables from different databases are handled correctly."""
+        mocker.patch.object(
+            builder,
+            "_get_table_info",
+            side_effect=lambda conn, name: {
+                "TABLE_NAME": name.upper(),
+                "DATABASE": "SCRATCH",
+                "SCHEMA": "DEV",
+                "PRIMARY_KEY": '["ID"]',
+                "SYNONYMS": "[]",
+                "DESCRIPTION": "Test table",
+            },
+        )
+
+        # Build for products (should be ANALYTICS_MART.PRODUCT)
+        result = builder._build_tables_clause(
+            conn=None,
+            table_names=["products"],
+            defer_manifest=mock_manifest_parser,
+        )
+
+        assert "ANALYTICS_MART.PRODUCT.PRODUCTS" in result
+
+    def test_build_tables_clause_fallback_when_not_in_manifest(self, builder, mock_manifest_parser, mocker):
+        """Test fallback to metadata when table not found in manifest."""
+        mocker.patch.object(
+            builder,
+            "_get_table_info",
+            return_value={
+                "TABLE_NAME": "UNKNOWN_TABLE",
+                "DATABASE": "MY_DATABASE",
+                "SCHEMA": "MY_SCHEMA",
+                "PRIMARY_KEY": '["ID"]',
+                "SYNONYMS": "[]",
+                "DESCRIPTION": "Unknown table",
+            },
+        )
+
+        # Call with table not in manifest
+        result = builder._build_tables_clause(
+            conn=None,
+            table_names=["unknown_table"],
+            defer_manifest=mock_manifest_parser,
+        )
+
+        # Should fall back to metadata values
+        assert "MY_DATABASE.MY_SCHEMA.UNKNOWN_TABLE" in result
+
+    def test_build_tables_clause_without_manifest_uses_metadata(self, builder, mocker):
+        """Test that without a manifest, metadata values are used."""
+        mocker.patch.object(
+            builder,
+            "_get_table_info",
+            return_value={
+                "TABLE_NAME": "ORDERS",
+                "DATABASE": "PRODUCTION",
+                "SCHEMA": "SALES",
+                "PRIMARY_KEY": '["ID"]',
+                "SYNONYMS": "[]",
+                "DESCRIPTION": "Orders table",
+            },
+        )
+
+        result = builder._build_tables_clause(
+            conn=None,
+            table_names=["orders"],
+            defer_manifest=None,
+        )
+
+        assert "PRODUCTION.SALES.ORDERS" in result
+
+
+class TestManifestTargetValidation:
+    """Test manifest target validation logic."""
+
+    def test_target_name_available_and_matches(self, tmp_path):
+        """Test when manifest has target_name that matches defer target."""
+        import json
+        from snowflake_semantic_tools.core.parsing.parsers.manifest_parser import ManifestParser
+
+        manifest = {
+            "metadata": {"target_name": "prod", "dbt_version": "1.7.0"},
+            "nodes": {
+                "model.test.orders": {
+                    "resource_type": "model",
+                    "database": "ANALYTICS",
+                    "schema": "SALES",
+                    "name": "orders",
+                }
+            },
+        }
+
+        manifest_path = tmp_path / "manifest.json"
+        manifest_path.write_text(json.dumps(manifest))
+
+        parser = ManifestParser(manifest_path)
+        parser.load()
+
+        # Target name matches
+        assert parser.get_target_name() == "prod"
+
+    def test_target_name_available_and_mismatches(self, tmp_path):
+        """Test when manifest has target_name that doesn't match defer target."""
+        import json
+        from snowflake_semantic_tools.core.parsing.parsers.manifest_parser import ManifestParser
+
+        manifest = {
+            "metadata": {"target_name": "dev", "dbt_version": "1.7.0"},
+            "nodes": {},
+        }
+
+        manifest_path = tmp_path / "manifest.json"
+        manifest_path.write_text(json.dumps(manifest))
+
+        parser = ManifestParser(manifest_path)
+        parser.load()
+
+        # Target name is "dev", not "prod"
+        assert parser.get_target_name() == "dev"
+        assert parser.get_target_name() != "prod"
+
+    def test_target_name_not_available(self, tmp_path):
+        """Test when manifest doesn't have target_name in metadata."""
+        import json
+        from snowflake_semantic_tools.core.parsing.parsers.manifest_parser import ManifestParser
+
+        manifest = {
+            "metadata": {"dbt_version": "1.7.0"},  # No target_name
+            "nodes": {
+                "model.test.orders": {
+                    "resource_type": "model",
+                    "database": "SCRATCH",
+                    "schema": "DEV",
+                    "name": "orders",
+                }
+            },
+        }
+
+        manifest_path = tmp_path / "manifest.json"
+        manifest_path.write_text(json.dumps(manifest))
+
+        parser = ManifestParser(manifest_path)
+        parser.load()
+
+        # Should return None when target_name not available
+        assert parser.get_target_name() is None
+
+    def test_manifest_summary_includes_databases(self, tmp_path):
+        """Test that manifest summary correctly lists databases."""
+        import json
+        from snowflake_semantic_tools.core.parsing.parsers.manifest_parser import ManifestParser
+
+        manifest = {
+            "metadata": {"dbt_version": "1.7.0"},
+            "nodes": {
+                "model.test.orders": {
+                    "resource_type": "model",
+                    "database": "ANALYTICS",
+                    "schema": "SALES",
+                    "name": "orders",
+                },
+                "model.test.users": {
+                    "resource_type": "model",
+                    "database": "ANALYTICS",
+                    "schema": "CRM",
+                    "name": "users",
+                },
+                "model.test.products": {
+                    "resource_type": "model",
+                    "database": "ANALYTICS_MART",
+                    "schema": "PRODUCTS",
+                    "name": "products",
+                },
+            },
+        }
+
+        manifest_path = tmp_path / "manifest.json"
+        manifest_path.write_text(json.dumps(manifest))
+
+        parser = ManifestParser(manifest_path)
+        parser.load()
+
+        summary = parser.get_summary()
+        assert summary["loaded"] is True
+        assert summary["total_models"] == 3
+        assert "ANALYTICS" in summary["models_by_database"]
+        assert "ANALYTICS_MART" in summary["models_by_database"]
+        assert summary["models_by_database"]["ANALYTICS"] == 2
+        assert summary["models_by_database"]["ANALYTICS_MART"] == 1
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

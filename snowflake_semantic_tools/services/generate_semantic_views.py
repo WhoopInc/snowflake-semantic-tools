@@ -10,7 +10,7 @@ interfaces for flexibility.
 import json
 import time
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 from snowflake_semantic_tools.core.generation import SemanticViewBuilder
 from snowflake_semantic_tools.infrastructure.snowflake import SnowflakeClient, SnowflakeConfig
@@ -24,6 +24,9 @@ from snowflake_semantic_tools.shared.events import (
 )
 from snowflake_semantic_tools.shared.progress import NoOpProgressCallback, ProgressCallback
 from snowflake_semantic_tools.shared.utils import get_logger
+
+if TYPE_CHECKING:
+    from snowflake_semantic_tools.core.parsing.parsers.manifest_parser import ManifestParser
 
 logger = get_logger("generate_semantic_views_service")
 
@@ -129,9 +132,11 @@ class GenerateConfig:
     metadata_schema: Optional[str] = None
 
     # Table reference override (like dbt defer)
-    defer_database: Optional[str] = (
-        None  # If set, table references use this database instead of metadata tables' database
-    )
+    # DEPRECATED: Use defer_manifest instead for proper multi-database support
+    defer_database: Optional[str] = None
+
+    # Defer manifest for looking up actual table locations (database + schema per table)
+    defer_manifest: Optional["ManifestParser"] = None
 
     # Execution mode
     execute: bool = True  # If True, executes SQL in Snowflake. If False, returns SQL only.
@@ -169,7 +174,10 @@ class UnifiedGenerationConfig:
     target_schema: str
     views_to_generate: Optional[List[str]] = None  # List of view names (None = all)
     dry_run: bool = False
+    # DEPRECATED: Use defer_manifest instead for proper multi-database support
     defer_database: Optional[str] = None
+    # Defer manifest for looking up actual table locations (database + schema per table)
+    defer_manifest: Optional["ManifestParser"] = None
 
 
 class UnifiedGenerationResult:
@@ -345,6 +353,7 @@ class SemanticViewGenerationService:
                         description=description,
                         execute=generate_config.execute,
                         defer_database=generate_config.defer_database,
+                        defer_manifest=generate_config.defer_manifest,
                     )
 
                     view_duration = time.time() - view_start
@@ -648,6 +657,7 @@ class SemanticViewGenerationService:
                 metadata_database=config.metadata_database,
                 metadata_schema=config.metadata_schema,
                 defer_database=config.defer_database,
+                defer_manifest=config.defer_manifest,
                 execute=not config.dry_run,
             )
 

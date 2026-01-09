@@ -127,15 +127,39 @@ def generate(
         verbose=verbose,
     )
 
-    # Determine the defer database from the defer manifest if enabled
-    defer_database = None
+    # Load the defer manifest if enabled - the manifest contains the actual
+    # database/schema for each table, which is needed for multi-database projects
+    defer_manifest = None
     if defer_config.enabled and defer_config.manifest_path:
         defer_manifest = ManifestParser(defer_config.manifest_path)
         if defer_manifest.load():
-            # Get the database from the defer manifest's first model as a reference
-            # The actual table references will be resolved per-model in the builder
-            defer_database = defer_config.target
             output.debug(f"Defer manifest loaded: {defer_config.manifest_path}")
+            
+            # Validate that manifest was compiled with the correct target (if target_name is available)
+            manifest_target = defer_manifest.get_target_name()
+            if manifest_target and defer_config.target:
+                if manifest_target.lower() != defer_config.target.lower():
+                    # Manifest has explicit target that doesn't match - this is an error
+                    output.error(
+                        f"Manifest target mismatch: manifest was compiled with '{manifest_target}' "
+                        f"but you specified --defer-target {defer_config.target}"
+                    )
+                    output.blank_line()
+                    output.info("To fix this, compile the manifest with the correct target:")
+                    output.info(f"  dbt compile --target {defer_config.target}", indent=1)
+                    output.blank_line()
+                    output.info("Then re-run this command.")
+                    raise click.Abort()
+                else:
+                    output.debug(f"Manifest target '{manifest_target}' matches defer target")
+            
+            # Log summary of what's in the manifest
+            summary = defer_manifest.get_summary()
+            if summary.get("loaded"):
+                output.debug(f"Manifest contains {summary.get('total_models', 0)} models across databases: {summary.get('models_by_database', {})}")
+        else:
+            output.warning(f"Failed to load defer manifest from {defer_config.manifest_path}")
+            defer_manifest = None
 
     # Create configuration
     config = UnifiedGenerationConfig(
@@ -145,7 +169,7 @@ def generate(
         target_schema=target_schema,
         views_to_generate=list(views) if views else None,
         dry_run=dry_run,
-        defer_database=defer_database,
+        defer_manifest=defer_manifest,
     )
 
     # Create and execute service
