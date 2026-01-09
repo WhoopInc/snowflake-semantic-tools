@@ -101,7 +101,12 @@ class SemanticViewBuilder:
             try:
                 # Generate SQL statement using the shared connection
                 sql_statement = self._generate_sql(
-                    conn, table_names, view_name, description, defer_database=defer_database, defer_manifest=defer_manifest
+                    conn,
+                    table_names,
+                    view_name,
+                    description,
+                    defer_database=defer_database,
+                    defer_manifest=defer_manifest,
                 )
 
                 result = {
@@ -582,7 +587,13 @@ class SemanticViewBuilder:
         sql = f"SELECT JOIN_CONDITION, CONDITION_TYPE, LEFT_EXPRESSION, RIGHT_EXPRESSION, OPERATOR FROM {self.metadata_database}.{self.metadata_schema}.{relationship_column_table} WHERE LOWER(RELATIONSHIP_NAME) = '{rel_name.lower()}'"
         return self._execute_query(conn, sql)
 
-    def _build_tables_clause(self, conn, table_names: List[str], defer_database: Optional[str] = None, defer_manifest: Optional["ManifestParser"] = None) -> str:
+    def _build_tables_clause(
+        self,
+        conn,
+        table_names: List[str],
+        defer_database: Optional[str] = None,
+        defer_manifest: Optional["ManifestParser"] = None,
+    ) -> str:
         """
         Build the TABLES clause of the CREATE SEMANTIC VIEW statement.
 
@@ -600,7 +611,7 @@ class SemanticViewBuilder:
             # Get physical table reference - start with metadata values
             database = table_info.get("DATABASE")
             schema = table_info.get("SCHEMA")
-            
+
             # DEFER MODE (NEW): Look up from manifest for proper multi-database support
             if defer_manifest:
                 location = defer_manifest.get_location(table_name.lower())
@@ -608,18 +619,24 @@ class SemanticViewBuilder:
                     manifest_database = location.get("database")
                     manifest_schema = location.get("schema")
                     if manifest_database and manifest_schema:
-                        logger.debug(f"Defer mode (manifest): Using {manifest_database}.{manifest_schema} for table {table_name}")
+                        logger.debug(
+                            f"Defer mode (manifest): Using {manifest_database}.{manifest_schema} for table {table_name}"
+                        )
                         database = manifest_database
                         schema = manifest_schema
                     else:
-                        logger.warning(f"Defer manifest has incomplete location for '{table_name}': db={manifest_database}, schema={manifest_schema}")
+                        logger.warning(
+                            f"Defer manifest has incomplete location for '{table_name}': db={manifest_database}, schema={manifest_schema}"
+                        )
                 else:
                     logger.warning(f"Table '{table_name}' not found in defer manifest, using metadata values")
             # DEFER MODE (LEGACY): Single database override - deprecated but kept for backwards compatibility
             elif defer_database:
-                logger.debug(f"Defer mode (legacy): Using {defer_database} instead of {database} for table {table_name}")
+                logger.debug(
+                    f"Defer mode (legacy): Using {defer_database} instead of {database} for table {table_name}"
+                )
                 database = defer_database
-            
+
             # Fallback if still no database
             if not database:
                 if not self.target_database:
@@ -1011,15 +1028,19 @@ class SemanticViewBuilder:
         return f"WITH EXTENSION (CA='{ca_json_escaped}')"
 
     def _generate_sql(
-        self, conn, table_names: List[str], view_name: str, description: str = "", defer_database: Optional[str] = None, defer_manifest: Optional["ManifestParser"] = None
+        self,
+        conn,
+        table_names: List[str],
+        view_name: str,
+        description: str = "",
+        defer_database: Optional[str] = None,
+        defer_manifest: Optional["ManifestParser"] = None,
     ) -> str:
         """Generate the CREATE OR REPLACE SEMANTIC VIEW SQL statement ."""
         logger.info(f"Generating SQL for semantic view '{view_name}'")
 
         if defer_manifest:
-            logger.info(
-                f"Using defer mode with manifest: table references will use locations from manifest"
-            )
+            logger.info(f"Using defer mode with manifest: table references will use locations from manifest")
         elif defer_database:
             logger.info(
                 f"Using defer mode (legacy): table references will use database '{defer_database}' instead of metadata database"
@@ -1030,7 +1051,9 @@ class SemanticViewBuilder:
 
         # Build TABLES clause
         logger.info("Building TABLES clause...")
-        tables_clause = self._build_tables_clause(conn, table_names, defer_database=defer_database, defer_manifest=defer_manifest)
+        tables_clause = self._build_tables_clause(
+            conn, table_names, defer_database=defer_database, defer_manifest=defer_manifest
+        )
         sql_parts.append(f"  TABLES (\n{tables_clause}\n  )")
 
         # Build RELATIONSHIPS clause

@@ -583,7 +583,13 @@ class TestDeferManifestIntegration:
     def builder(self):
         """Create a SemanticViewBuilder instance for testing."""
         config = SnowflakeConfig(
-            account="test", user="test", password="test", role="test", warehouse="test", database="SCRATCH", schema="DEV"
+            account="test",
+            user="test",
+            password="test",
+            role="test",
+            warehouse="test",
+            database="SCRATCH",
+            schema="DEV",
         )
         return SemanticViewBuilder(config)
 
@@ -591,7 +597,7 @@ class TestDeferManifestIntegration:
     def mock_manifest_parser(self, mocker):
         """Create a mock ManifestParser with sample data."""
         from unittest.mock import MagicMock
-        
+
         mock = MagicMock()
         mock.get_location.side_effect = lambda name: {
             "orders": {"database": "ANALYTICS", "schema": "SALES", "alias": "ORDERS"},
@@ -615,7 +621,7 @@ class TestDeferManifestIntegration:
             side_effect=lambda conn, name: {
                 "TABLE_NAME": name.upper(),
                 "DATABASE": "SCRATCH",  # This should be overridden by manifest
-                "SCHEMA": "DEV",        # This should be overridden by manifest
+                "SCHEMA": "DEV",  # This should be overridden by manifest
                 "PRIMARY_KEY": '["ID"]',
                 "SYNONYMS": "[]",
                 "DESCRIPTION": "Test table",
@@ -712,6 +718,7 @@ class TestManifestTargetValidation:
     def test_target_name_available_and_matches(self, tmp_path):
         """Test when manifest has target_name that matches defer target."""
         import json
+
         from snowflake_semantic_tools.core.parsing.parsers.manifest_parser import ManifestParser
 
         manifest = {
@@ -738,6 +745,7 @@ class TestManifestTargetValidation:
     def test_target_name_available_and_mismatches(self, tmp_path):
         """Test when manifest has target_name that doesn't match defer target."""
         import json
+
         from snowflake_semantic_tools.core.parsing.parsers.manifest_parser import ManifestParser
 
         manifest = {
@@ -758,6 +766,7 @@ class TestManifestTargetValidation:
     def test_target_name_not_available(self, tmp_path):
         """Test when manifest doesn't have target_name in metadata."""
         import json
+
         from snowflake_semantic_tools.core.parsing.parsers.manifest_parser import ManifestParser
 
         manifest = {
@@ -784,6 +793,7 @@ class TestManifestTargetValidation:
     def test_manifest_summary_includes_databases(self, tmp_path):
         """Test that manifest summary correctly lists databases."""
         import json
+
         from snowflake_semantic_tools.core.parsing.parsers.manifest_parser import ManifestParser
 
         manifest = {

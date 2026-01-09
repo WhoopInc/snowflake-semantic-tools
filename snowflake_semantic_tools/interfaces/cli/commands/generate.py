@@ -134,7 +134,7 @@ def generate(
         defer_manifest = ManifestParser(defer_config.manifest_path)
         if defer_manifest.load():
             output.debug(f"Defer manifest loaded: {defer_config.manifest_path}")
-            
+
             # Validate that manifest was compiled with the correct target (if target_name is available)
             manifest_target = defer_manifest.get_target_name()
             if manifest_target and defer_config.target:
@@ -152,11 +152,13 @@ def generate(
                     raise click.Abort()
                 else:
                     output.debug(f"Manifest target '{manifest_target}' matches defer target")
-            
+
             # Log summary of what's in the manifest
             summary = defer_manifest.get_summary()
             if summary.get("loaded"):
-                output.debug(f"Manifest contains {summary.get('total_models', 0)} models across databases: {summary.get('models_by_database', {})}")
+                output.debug(
+                    f"Manifest contains {summary.get('total_models', 0)} models across databases: {summary.get('models_by_database', {})}"
+                )
         else:
             output.warning(f"Failed to load defer manifest from {defer_config.manifest_path}")
             defer_manifest = None

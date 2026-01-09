@@ -326,11 +326,11 @@ class DeployService:
             defer_manifest = ManifestParser(Path(config.defer_manifest_path))
             if defer_manifest.load():
                 logger.info(f"Loaded defer manifest from {config.defer_manifest_path}")
-                
+
                 # Validate manifest target matches expected defer target (if target_name is available)
                 manifest_target = defer_manifest.get_target_name()
                 defer_target = config.defer_database  # Contains the defer target name
-                
+
                 if manifest_target and defer_target:
                     if manifest_target.lower() != defer_target.lower():
                         # Manifest has explicit target that doesn't match - this is an error
