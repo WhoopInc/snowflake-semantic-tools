@@ -52,6 +52,10 @@ sst extract [OPTIONS]
 
 The extract command creates or updates these tables in your target schema:
 
+### Used in Semantic View Generation
+
+These tables are actively used by `sst generate` to create Snowflake semantic views:
+
 | Table | Contents |
 |-------|----------|
 | `SM_TABLES` | Logical table definitions (business entities) |
@@ -61,11 +65,20 @@ The extract command creates or updates these tables in your target schema:
 | `SM_METRICS` | Metric definitions (aggregated KPIs) |
 | `SM_RELATIONSHIPS` | Table relationships (join definitions) |
 | `SM_RELATIONSHIP_COLUMNS` | Relationship column mappings |
-| `SM_FILTERS` | Filter definitions (reusable WHERE clauses) |
-| `SM_VERIFIED_QUERIES` | Verified query examples |
-| `SM_CUSTOM_INSTRUCTIONS` | Custom AI instructions |
 | `SM_SEMANTIC_VIEWS` | Semantic view definitions |
 | `SM_TABLE_SUMMARIES` | Table metadata summaries (for Cortex Search) |
+
+### Future-Ready (Not Yet Supported by Snowflake)
+
+These tables store metadata for features that Snowflake's `CREATE SEMANTIC VIEW` DDL does not yet support. Your definitions are validated and extracted, preparing your semantic layer for when Snowflake adds support:
+
+| Table | Contents | Status |
+|-------|----------|--------|
+| `SM_FILTERS` | Filter definitions (reusable WHERE clauses) | Awaiting Snowflake support |
+| `SM_VERIFIED_QUERIES` | Verified query examples | Awaiting Snowflake support |
+| `SM_CUSTOM_INSTRUCTIONS` | Custom AI instructions | Awaiting Snowflake support |
+
+> **Note:** Including these definitions won't cause errors—they're simply not included in the generated semantic views until Snowflake adds native support.
 
 ---
 
@@ -182,7 +195,6 @@ Check that `sst_config.yaml` paths are correct:
 ```yaml
 project:
   semantic_models_dir: "snowflake_semantic_models"
-  dbt_models_dir: "models"
 ```
 
 ### Tables not updating

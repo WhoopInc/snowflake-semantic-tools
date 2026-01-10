@@ -300,6 +300,8 @@ snowflake_relationships:
 
 Reusable WHERE clause conditions.
 
+> **Future Feature:** Filters are extracted to metadata tables and validated, but Snowflake's `CREATE SEMANTIC VIEW` DDL does not yet support filters. Defining them now prepares your semantic layer for when Snowflake adds support. Including filters won't cause errors—they're simply not included in the generated view.
+
 ### Structure
 
 ```yaml
@@ -333,6 +335,8 @@ snowflake_filters:
 
 Guide Cortex Analyst's behavior with business-specific rules.
 
+> **Future Feature:** Custom instructions are extracted to metadata tables and validated, but Snowflake's `CREATE SEMANTIC VIEW` DDL does not yet support custom instructions. Defining them now prepares your semantic layer for when Snowflake adds support. Including custom instructions won't cause errors—they're simply not included in the generated view.
+
 ### Structure
 
 ```yaml
@@ -357,6 +361,8 @@ snowflake_custom_instructions:
 ## Verified Queries
 
 Validated example queries that train AI models and provide templates.
+
+> **Future Feature:** Verified queries are extracted to metadata tables and validated, but Snowflake's `CREATE SEMANTIC VIEW` DDL does not yet support verified queries. Defining them now prepares your semantic layer for when Snowflake adds support. Including verified queries won't cause errors—they're simply not included in the generated view.
 
 ### Structure
 
@@ -398,7 +404,7 @@ snowflake_verified_queries:
 
 ## Semantic Views
 
-Combine metrics, relationships, and filters into queryable views.
+Combine tables, metrics, and relationships into queryable Snowflake semantic views.
 
 ### Structure
 
@@ -409,8 +415,12 @@ semantic_views:
     tables:
       - {{ table('table1') }}
       - {{ table('table2') }}
+```
+
+**Optional (future-ready):**
+```yaml
     custom_instructions:
-      - {{ custom_instructions('instruction_name') }}
+      - {{ custom_instructions('instruction_name') }}  # Not yet supported by Snowflake
 ```
 
 ### Cortex Analyst Integration
@@ -458,8 +468,6 @@ semantic_views:
     tables:
       - {{ table('products') }}
       - {{ table('order_items') }}
-    custom_instructions:
-      - {{ custom_instructions('customer_privacy_rules') }}
 ```
 
 ## Validation
