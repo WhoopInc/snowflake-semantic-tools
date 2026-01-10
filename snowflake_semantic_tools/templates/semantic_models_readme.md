@@ -28,9 +28,9 @@ snowflake_semantic_models/
 
 ## Documentation
 
-- [Semantic Models Guide](https://github.com/WhoopInc/snowflake-semantic-tools/blob/main/docs/semantic-models-guide.md)
-- [CLI Reference](https://github.com/WhoopInc/snowflake-semantic-tools/blob/main/docs/cli-reference.md)
-- [Validation Checklist](https://github.com/WhoopInc/snowflake-semantic-tools/blob/main/docs/validation-checklist.md)
+- [Semantic Models Guide](https://github.com/WhoopInc/snowflake-semantic-tools/blob/main/docs/concepts/semantic-models.md)
+- [CLI Reference](https://github.com/WhoopInc/snowflake-semantic-tools/blob/main/docs/cli/index.md)
+- [Validation Rules](https://github.com/WhoopInc/snowflake-semantic-tools/blob/main/docs/concepts/validation-rules.md)
 
 ## Quick Reference
 
