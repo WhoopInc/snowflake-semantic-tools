@@ -55,7 +55,7 @@ Complete list of all validation checks performed by `sst validate`.
 | **Relationship** | `relationship_conditions` is a list (not string or dict) | ERROR|
 | **Relationship** | `relationship_conditions` is not empty | ERROR|
 | **Relationship** | Each condition is a string | ERROR|
-| **Relationship** | Each condition has valid operator (=, >=, <=, BETWEEN) | ERROR|
+| **Relationship** | Each condition has valid operator (= or >=) | ERROR|
 | **Relationship** | Each condition references valid tables | ERROR|
 | **Relationship** | Conditions with templates must be quoted (YAML requirement) | PARSE ERROR|
 | **Relationship** | `left_table` exists in dbt catalog | ERROR|

@@ -267,7 +267,7 @@ snowflake_relationships:
 
 ### ASOF Joins (Time-Series)
 
-For time-series data, use >= or <= operators:
+For time-series data, use the `>=` operator for ASOF joins:
 
 ```yaml
 snowflake_relationships:
@@ -277,8 +277,13 @@ snowflake_relationships:
     relationship_conditions:
       - "{{ column('user_events', 'session_id') }} = {{ column('user_sessions', 'session_id') }}"
       - "{{ column('user_events', 'event_time') }} >= {{ column('user_sessions', 'start_time') }}"
-      - "{{ column('user_events', 'event_time') }} <= {{ column('user_sessions', 'end_time') }}"
 ```
+
+**Supported operators:**
+- `=` - Equality joins
+- `>=` - ASOF (temporal) joins
+
+**Not supported:** `<=`, `>`, `<`, `BETWEEN` (Snowflake semantic views only support `=` and `>=`)
 
 ### Real Example
 

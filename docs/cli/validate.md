@@ -155,7 +155,7 @@ sst validate --exclude temp_models,experimental
 ### Relationship Validation
 
 - Relationship has `name`, `left_table`, `right_table`, `relationship_conditions`
-- Conditions use valid operators (=, >=, <=, BETWEEN)
+- Conditions use valid operators (= or >=)
 - Left and right tables exist in dbt catalog
 - Join columns exist in their respective tables
 - Right join columns reference primary key or unique columns
