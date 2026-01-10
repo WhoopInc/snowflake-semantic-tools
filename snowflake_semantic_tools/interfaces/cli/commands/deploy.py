@@ -151,6 +151,7 @@ def deploy(dbt_target, db, schema, defer_target, state, only_modified, no_defer,
         verbose=verbose,
         quiet=quiet,
         only_modified=defer_config.only_modified,
+        defer_database=defer_config.target,  # Defer target name for validation and summary
         defer_manifest_path=str(defer_config.manifest_path) if defer_config.manifest_path else None,
     )
 
