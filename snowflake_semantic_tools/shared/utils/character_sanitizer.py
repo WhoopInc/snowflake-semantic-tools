@@ -114,6 +114,38 @@ class CharacterSanitizer:
         return sanitized.strip()
 
     @classmethod
+    def escape_json_for_sql_string(cls, json_str: str) -> str:
+        """
+        Escape a JSON string for embedding in a SQL string literal.
+
+        When JSON is embedded in a SQL string literal like CA='{"key":"value"}',
+        backslash escape sequences in the JSON (like \\") can be consumed by
+        SQL parsing. This method double-escapes backslashes to preserve them.
+
+        For example:
+        - JSON: {"sample_values":["3\\"","5\\""]}  (values with inch marks)
+        - Without escaping: Snowflake interprets \\" as escaped quote, stores ["3"","5""]
+        - With escaping: ["3\\\\"","5\\\\""] → Snowflake stores ["3\\"","5\\""] (valid JSON)
+
+        Args:
+            json_str: A valid JSON string to escape for SQL embedding
+
+        Returns:
+            JSON string with backslashes escaped for SQL string literal embedding
+        """
+        if not json_str:
+            return ""
+
+        # Double-escape backslashes so they survive SQL string literal parsing
+        # This must happen BEFORE single-quote escaping
+        escaped = json_str.replace("\\", "\\\\")
+
+        # Escape single quotes for SQL string literals (standard SQL: ' -> '')
+        escaped = escaped.replace("'", "''")
+
+        return escaped
+
+    @classmethod
     def sanitize_for_yaml_value(cls, value: str, max_length: int = 500) -> str:
         """
         Sanitize value for use in YAML files (sample_values, descriptions).
@@ -255,3 +287,8 @@ def sanitize_synonym_list(synonyms: List[str]) -> List[str]:
 def validate_synonyms(synonyms: List[str], context_name: str = "synonyms") -> List[str]:
     """Validate synonyms and return error messages."""
     return CharacterSanitizer.validate_synonyms(synonyms, context_name)
+
+
+def escape_json_for_sql_string(json_str: str) -> str:
+    """Escape JSON string for embedding in SQL string literals."""
+    return CharacterSanitizer.escape_json_for_sql_string(json_str)

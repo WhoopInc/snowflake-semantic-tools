@@ -1018,9 +1018,14 @@ class SemanticViewBuilder:
         # Build the CA JSON structure
         ca_json = {"tables": ca_tables}
 
-        # Convert to JSON string and escape single quotes for SQL
-        ca_json_str = json.dumps(ca_json, separators=(",", ":"))  # Compact JSON
-        ca_json_escaped = ca_json_str.replace("'", "''")  # Escape single quotes for SQL
+        # Convert to JSON string (compact format)
+        ca_json_str = json.dumps(ca_json, separators=(",", ":"))
+
+        # Escape for embedding in SQL string literal
+        # CRITICAL: This double-escapes backslashes so JSON escape sequences survive
+        # SQL string parsing. Without this, values like '3"' (3 inches) produce
+        # invalid JSON because Snowflake interprets \" as escaped quote.
+        ca_json_escaped = CharacterSanitizer.escape_json_for_sql_string(ca_json_str)
 
         logger.info(f"CA extension built with {len(ca_tables)} table(s) containing sample_values")
         logger.debug(f"CA extension JSON: {ca_json_str[:200]}...")

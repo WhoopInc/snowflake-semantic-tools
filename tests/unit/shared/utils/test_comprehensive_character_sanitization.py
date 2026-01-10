@@ -220,6 +220,94 @@ class TestRealWorldExamples:
         assert result == "users data"  # Apostrophe removed, OR 1=1 removed, trimmed
 
 
+class TestJSONEscapingForSQL:
+    """Test escaping JSON for embedding in SQL string literals.
+
+    This is critical for the CA extension in semantic views, where JSON
+    containing sample values with special characters (like inch marks)
+    must be properly escaped to survive Snowflake's SQL string parsing.
+
+    See: RCA_SEMANTIC_VIEW_INVALID_YAML_ERROR.md
+    """
+
+    def test_escapes_backslashes_for_sql(self):
+        """Backslashes in JSON must be double-escaped for SQL embedding."""
+        # JSON with escaped quote (e.g., value "3 inches" represented as 3")
+        json_str = '{"sample_values":["3\\"","5\\"","7\\""]}'
+        result = CharacterSanitizer.escape_json_for_sql_string(json_str)
+        # Backslashes should be doubled
+        assert result == '{"sample_values":["3\\\\"","5\\\\"","7\\\\""]}'
+
+    def test_escapes_single_quotes_for_sql(self):
+        """Single quotes in JSON must be escaped for SQL string literals."""
+        json_str = '{"name":"user\'s data"}'
+        result = CharacterSanitizer.escape_json_for_sql_string(json_str)
+        # Single quotes doubled, backslash also doubled
+        assert result == '{"name":"user\'\'s data"}'
+
+    def test_inch_symbol_roundtrip(self):
+        """Test that inch symbols (double quotes) in values survive SQL embedding.
+
+        This is the exact bug from RCA_SEMANTIC_VIEW_INVALID_YAML_ERROR.md:
+        - Original value: 3" (3 inches)
+        - json.dumps produces: "3\""
+        - Without proper escaping, Snowflake stores: "3"" (invalid JSON)
+        - With proper escaping, Snowflake stores: "3\"" (valid JSON)
+        """
+        import json
+
+        # Simulate the original sample values
+        sample_values = ['3"', '5"', '7"']  # Inch measurements
+
+        # json.dumps properly escapes the quotes
+        json_str = json.dumps({"sample_values": sample_values})
+        assert json_str == '{"sample_values": ["3\\"", "5\\"", "7\\""]}'
+
+        # Now escape for SQL embedding
+        escaped = CharacterSanitizer.escape_json_for_sql_string(json_str)
+        # Backslashes should be doubled
+        assert '\\\\"' in escaped
+        assert escaped == '{"sample_values": ["3\\\\"", "5\\\\"", "7\\\\""]}'
+
+    def test_complex_product_name_with_inches(self):
+        """Test product names containing inch measurements."""
+        import json
+
+        product = '4.0 Any-Wear Athletic Boxer (Single) 3" Inseam Black L'
+        json_str = json.dumps({"name": product})
+
+        result = CharacterSanitizer.escape_json_for_sql_string(json_str)
+        # The quote after 3 should be escaped
+        assert '3\\\\"' in result
+
+    def test_empty_string_returns_empty(self):
+        """Empty string should return empty string."""
+        assert CharacterSanitizer.escape_json_for_sql_string("") == ""
+
+    def test_none_returns_empty(self):
+        """None should return empty string."""
+        assert CharacterSanitizer.escape_json_for_sql_string(None) == ""
+
+    def test_no_special_chars_unchanged(self):
+        """JSON without special chars should only have basic escaping."""
+        json_str = '{"name":"simple value"}'
+        result = CharacterSanitizer.escape_json_for_sql_string(json_str)
+        # No backslashes to escape, no single quotes
+        assert result == json_str
+
+    def test_both_backslash_and_single_quote(self):
+        """Test value with both backslash escapes and single quotes."""
+        import json
+
+        value = "user's 3\" item"  # Has apostrophe and inch mark
+        json_str = json.dumps({"name": value})
+
+        result = CharacterSanitizer.escape_json_for_sql_string(json_str)
+        # Single quote escaped for SQL, backslash escaped for JSON survival
+        assert "''" in result
+        assert '\\\\"' in result
+
+
 class TestEdgeCases:
     """Test edge cases and boundary conditions."""
 
