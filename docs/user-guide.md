@@ -132,8 +132,8 @@ Enrichment ADDS if missing:
 
 **Safe to run multiple times.**
 
-**For CLI syntax:** See [CLI Reference](cli-reference.md#enrich)  
-**For Python API:** See [API Reference](api-reference.md)
+**For CLI syntax:** See [sst enrich](cli/enrich.md)  
+**For Python API:** See [API Reference](reference/api.md)
 
 ---
 
@@ -157,7 +157,7 @@ validation:
   snowflake_syntax_check: true  # Validates SQL expressions against Snowflake
 ```
 
-**For complete list of all validation checks:** See [Validation Checklist](validation-checklist.md)
+**For complete list of all validation checks:** See [Validation Rules](concepts/validation-rules.md)
 
 ### What Gets Checked
 
@@ -207,8 +207,8 @@ validation:
 - Use prefixes (finance_revenue vs sales_revenue)
 - Note: Names like `Total_Revenue`, `total_revenue`, and `TotalRevenue` are considered duplicates
 
-**For CLI syntax:** See [CLI Reference](cli-reference.md#validate)  
-**For Python API:** See [API Reference](api-reference.md)
+**For CLI syntax:** See [sst validate](cli/validate.md)  
+**For Python API:** See [API Reference](reference/api.md)
 
 ---
 
@@ -252,7 +252,7 @@ jaffle_shop:
       # ... other settings
 ```
 
-**See:** [CLI Reference](cli-reference.md#extract) for full details
+**See:** [sst extract](cli/extract.md) for full details
 
 ---
 
@@ -274,7 +274,7 @@ jaffle_shop:
 
 ## Next Steps
 
-- **CLI Commands:** [CLI Reference](cli-reference.md)
-- **Python API:** [API Reference](api-reference.md)
-- **Write Models:** [Semantic Models Guide](semantic-models-guide.md)
+- **CLI Commands:** [CLI Reference](cli/index.md)
+- **Python API:** [API Reference](reference/api.md)
+- **Write Models:** [Semantic Models Guide](concepts/semantic-models.md)
 

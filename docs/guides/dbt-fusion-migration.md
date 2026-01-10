@@ -151,7 +151,7 @@ If both `meta.sst` and `config.meta.sst` exist in a file:
 
 ## Related Documentation
 
-- [Getting Started Guide](getting-started.md)
-- [User Guide](user-guide.md)
-- [CLI Reference](cli-reference.md)
+- [Getting Started Guide](../getting-started.md)
+- [User Guide](../user-guide.md)
+- [CLI Reference](../cli/index.md)
 

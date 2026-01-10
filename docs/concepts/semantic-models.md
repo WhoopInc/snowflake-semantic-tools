@@ -59,7 +59,7 @@ Files are discovered recursively - organize however makes sense for your domain.
 
 Your dbt model YAML files need SST metadata in the `config.meta.sst` section. This is the dbt Fusion-compatible format.
 
-> **Note:** If you have existing models using the legacy `meta.sst` format, run `sst migrate-meta` to convert them. See the [dbt Fusion Migration Guide](migration-guide-dbt-fusion.md).
+> **Note:** If you have existing models using the legacy `meta.sst` format, run `sst migrate-meta` to convert them. See the [dbt Fusion Migration Guide](../guides/dbt-fusion-migration.md).
 
 ### Table-Level Metadata
 
@@ -574,6 +574,6 @@ snowflake_metrics:
 
 ## Next Steps
 
-- [CLI Reference](cli-reference.md) - Complete command documentation
-- [CI/CD Guide](ci-cd-guide.md) - CI/CD integration
-- [Validation Checklist](validation-checklist.md) - All validation rules
+- [CLI Reference](../cli/index.md) - Complete command documentation
+- [CI/CD Guide](../guides/ci-cd.md) - CI/CD integration
+- [Validation Rules](validation-rules.md) - All validation rules

@@ -179,7 +179,7 @@ your_project:  # Must match 'profile:' in dbt_project.yml
 - **Password**: Add `password: your_password` or use `{{ env_var('SNOWFLAKE_PASSWORD') }}`
 - **RSA Key Pair** (production): Add `private_key_path: ~/.ssh/snowflake_key.p8`
 
-**See:** [Authentication Guide](authentication.md) for detailed setup of each auth method.
+**See:** [Authentication Guide](guides/authentication.md) for detailed setup of each auth method.
 
 ### Step 5: Generate manifest.json
 
@@ -266,7 +266,7 @@ sst enrich models/analytics/
 - Adds sample values
 - Detects enums
 
-> **Note:** SST writes metadata in the new `config.meta.sst` format required by dbt Fusion. If you have existing `meta.sst` blocks, run `sst migrate-meta` to migrate them. See [dbt Fusion Migration Guide](migration-guide-dbt-fusion.md).
+> **Note:** SST writes metadata in the new `config.meta.sst` format required by dbt Fusion. If you have existing `meta.sst` blocks, run `sst migrate-meta` to migrate them. See [dbt Fusion Migration Guide](guides/dbt-fusion-migration.md).
 
 **Output:**
 ```
@@ -451,7 +451,7 @@ sst validate --dbt-compile
 3. Check `~/.dbt/profiles.yml` exists and is correctly configured
 4. Verify profile name in `dbt_project.yml` matches profiles.yml
 5. Verify Snowflake account URL is correct
-6. See [Authentication Guide](authentication.md)
+6. See [Authentication Guide](guides/authentication.md)
 
 ### "No models found"
 
@@ -529,11 +529,11 @@ expr: |
 
 Now that SST is set up:
 
-1. **Enrich your models:** [User Guide - Enrichment](user-guide.md#metadata-enrichment)
-2. **Learn CLI commands:** [CLI Reference](cli-reference.md)
-3. **Write semantic models:** [Semantic Models Guide](semantic-models-guide.md)
-4. **Configure authentication:** [Authentication Guide](authentication.md)
-5. **Understand validation:** [Validation Checklist](validation-checklist.md)
+1. **Enrich your models:** [sst enrich](cli/enrich.md)
+2. **Learn CLI commands:** [CLI Reference](cli/index.md)
+3. **Write semantic models:** [Semantic Models Guide](concepts/semantic-models.md)
+4. **Configure authentication:** [Authentication Guide](guides/authentication.md)
+5. **Understand validation:** [Validation Rules](concepts/validation-rules.md)
 
 ---
 

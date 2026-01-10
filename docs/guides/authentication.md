@@ -553,6 +553,6 @@ cat ~/.dbt/profiles.yml
 
 ## Next Steps
 
-- [CLI Reference](cli-reference.md) - Command documentation
-- [Getting Started](getting-started.md) - Quick start guide
+- [CLI Reference](../cli/index.md) - Command documentation
+- [Getting Started](../getting-started.md) - Quick start guide
 - [dbt Profile Setup](https://docs.getdbt.com/docs/core/connect-data-platform/snowflake-setup) - Official dbt docs

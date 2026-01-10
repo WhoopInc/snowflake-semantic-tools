@@ -328,5 +328,5 @@ Then add CircleCI's IP ranges to your Snowflake network policy.
 ## Next Steps
 
 - [Authentication Guide](authentication.md) - RSA key pair setup
-- [CLI Reference](cli-reference.md) - All SST commands
-- [Validation Checklist](validation-checklist.md) - What SST validates
+- [CLI Reference](../cli/index.md) - All SST commands
+- [Validation Rules](../concepts/validation-rules.md) - What SST validates
