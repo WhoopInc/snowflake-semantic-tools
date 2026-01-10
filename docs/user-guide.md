@@ -12,7 +12,7 @@ Enrichment queries your Snowflake tables and populates dbt YAML files with:
 
 - **Column types** - dimension, fact, or time_dimension
 - **Data types** - TEXT, NUMBER, DATE, etc.
-- **Sample values** - Up to 25 examples per column
+- **Sample values** - Example values per column (default: 25, configurable via `distinct_limit`)
 - **Enum detection** - Identifies categorical columns
 
 ### Manifest Auto-Detection
