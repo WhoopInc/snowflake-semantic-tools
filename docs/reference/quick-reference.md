@@ -217,7 +217,6 @@ sst deploy --target prod
 ```yaml
 project:
   semantic_models_dir: "snowflake_semantic_models"
-  dbt_models_dir: "models"
 
 validation:
   exclude_dirs: ["_intermediate"]
@@ -230,6 +229,8 @@ enrichment:
 defer:
   target: prod
 ```
+
+**Note:** The dbt models directory is auto-detected from `dbt_project.yml`.
 
 ---
 

@@ -79,18 +79,24 @@ Overwrite existing metadata (normally preserved):
 | `--force-data-types` | Overwrite existing data types |
 | `--force-all` | Overwrite ALL existing values |
 
-### General Options
+### Connection Options
 
 | Option | Short | Type | Description |
 |--------|-------|------|-------------|
-| `--database` | `-d` | TEXT | Override database name detection |
-| `--schema` | | TEXT | Override schema name detection |
+| `--target` | `-t` | TEXT | dbt target from profiles.yml (default: profile's default) |
+| `--database` | `-d` | TEXT | Override database name (default: from manifest or profile) |
+| `--schema` | `-s` | TEXT | Override schema name (default: from manifest or profile) |
 | `--manifest` | | PATH | Path to manifest.json (default: ./target/manifest.json) |
 | `--allow-non-prod` | | FLAG | Allow enrichment from non-production manifest |
+
+### Execution Options
+
+| Option | Short | Type | Description |
+|--------|-------|------|-------------|
 | `--exclude` | | TEXT | Comma-separated directories to exclude |
 | `--dry-run` | | FLAG | Preview changes without writing files |
 | `--fail-fast` | | FLAG | Stop on first error |
-| `--verbose` | | FLAG | Enable verbose logging |
+| `--verbose` | `-v` | FLAG | Enable verbose logging |
 
 ---
 

@@ -51,7 +51,7 @@ snowflake_semantic_models/
 └── semantic_views.yml
 ```
 
-> **Note:** The directory path is configurable via `semantic_models_path` in `sst_config.yaml`.
+> **Note:** The directory path is configurable via `project.semantic_models_dir` in `sst_config.yaml`.
 
 Files are discovered recursively - organize however makes sense for your domain.
 

@@ -54,16 +54,18 @@ The extract command creates or updates these tables in your target schema:
 
 | Table | Contents |
 |-------|----------|
-| `SM_METRICS` | Metric definitions |
-| `SM_RELATIONSHIPS` | Table relationships |
+| `SM_TABLES` | Logical table definitions (business entities) |
+| `SM_DIMENSIONS` | Dimension columns (categorical attributes) |
+| `SM_TIME_DIMENSIONS` | Time dimension columns (temporal attributes) |
+| `SM_FACTS` | Fact columns (numeric measures) |
+| `SM_METRICS` | Metric definitions (aggregated KPIs) |
+| `SM_RELATIONSHIPS` | Table relationships (join definitions) |
 | `SM_RELATIONSHIP_COLUMNS` | Relationship column mappings |
-| `SM_DIMENSIONS` | Dimension columns |
-| `SM_FACTS` | Fact columns |
-| `SM_FILTERS` | Filter definitions |
+| `SM_FILTERS` | Filter definitions (reusable WHERE clauses) |
 | `SM_VERIFIED_QUERIES` | Verified query examples |
 | `SM_CUSTOM_INSTRUCTIONS` | Custom AI instructions |
 | `SM_SEMANTIC_VIEWS` | Semantic view definitions |
-| `SM_TABLE_SUMMARIES` | Table metadata summaries |
+| `SM_TABLE_SUMMARIES` | Table metadata summaries (for Cortex Search) |
 
 ---
 

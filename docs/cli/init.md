@@ -102,7 +102,6 @@ Setup Complete!
 ```yaml
 project:
   semantic_models_dir: "snowflake_semantic_models"
-  dbt_models_dir: "models"
 
 validation:
   exclude_dirs: []
@@ -115,6 +114,8 @@ enrichment:
   synonym_model: 'mistral-large2'
   synonym_max_count: 4
 ```
+
+**Note:** The dbt models directory is auto-detected from `dbt_project.yml`.
 
 ### Directory Structure
 

@@ -124,9 +124,6 @@ Create this file in your dbt project root (same directory as `dbt_project.yml`):
 project:
   # Directory you created in Step 2
   semantic_models_dir: "snowflake_semantic_models"  # Required - must match directory name
-  
-  # Your existing dbt models directory
-  dbt_models_dir: "models"                          # Required - typically "models"
 
 validation:
   exclude_dirs: []             # Paths to skip during validation
@@ -142,9 +139,10 @@ enrichment:
 
 **Required fields:**
 - `project.semantic_models_dir` - Directory you created in Step 2 (e.g., "snowflake_semantic_models")
-- `project.dbt_models_dir` - Your existing dbt models directory (typically "models")
 
-**Important:** These paths are relative to your project root (where `dbt_project.yml` and `sst_config.yaml` live).
+**Note:** The dbt models directory is **auto-detected** from your `dbt_project.yml` file.
+
+**Important:** Paths are relative to your project root (where `dbt_project.yml` and `sst_config.yaml` live).
 
 ### Step 4: Set Up Snowflake Authentication
 
@@ -423,9 +421,8 @@ your-dbt-project/
 # Ensure file exists in dbt project root
 ls sst_config.yaml
 
-# Check required fields are present:
+# Check required field is present:
 # - project.semantic_models_dir
-# - project.dbt_models_dir
 ```
 
 ### "manifest.json not found"

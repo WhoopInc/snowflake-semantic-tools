@@ -27,7 +27,7 @@ dbt compile --target prod
 sst enrich --models customers,orders
 
 # Or enrich all models in a directory
-sst enrich --directory models/marts/
+sst enrich models/marts/
 ```
 
 **Benefits:**

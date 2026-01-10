@@ -163,7 +163,6 @@ SST is configured via `sst_config.yaml` in your dbt project root:
 ```yaml
 project:
   semantic_models_dir: "snowflake_semantic_models"
-  dbt_models_dir: "models"
 
 validation:
   exclude_dirs: []
@@ -175,6 +174,8 @@ enrichment:
   sample_values_display_limit: 10
   synonym_model: 'mistral-large2'
 ```
+
+**Note:** The dbt models directory is auto-detected from `dbt_project.yml`.
 
 Full reference: [Configuration Reference](reference/config.md)
 

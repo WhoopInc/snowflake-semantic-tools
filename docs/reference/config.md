@@ -17,7 +17,6 @@ Minimal configuration:
 ```yaml
 project:
   semantic_models_dir: "snowflake_semantic_models"
-  dbt_models_dir: "models"
 ```
 
 Full configuration with all options:
@@ -25,7 +24,6 @@ Full configuration with all options:
 ```yaml
 project:
   semantic_models_dir: "snowflake_semantic_models"
-  dbt_models_dir: "models"
 
 validation:
   exclude_dirs:
@@ -57,20 +55,18 @@ Project paths and directory configuration.
 | Option | Type | Required | Default | Description |
 |--------|------|----------|---------|-------------|
 | `semantic_models_dir` | string | Yes | - | Directory for semantic model definitions |
-| `dbt_models_dir` | string | Yes | - | Directory for dbt models |
 
 **Example:**
 
 ```yaml
 project:
   semantic_models_dir: "snowflake_semantic_models"
-  dbt_models_dir: "models"
 ```
 
 **Notes:**
 - Paths are relative to project root (where `sst_config.yaml` lives)
 - `semantic_models_dir` is where SST looks for metrics, relationships, filters, etc.
-- `dbt_models_dir` is your standard dbt models directory
+- The dbt models directory is **auto-detected** from `dbt_project.yml` (typically `models/`)
 
 ---
 
@@ -234,7 +230,6 @@ validation:
 # Correct - include project section
 project:
   semantic_models_dir: "snowflake_semantic_models"
-  dbt_models_dir: "models"
 validation:
   strict: true
 ```
@@ -269,7 +264,6 @@ enrichment:
 ```yaml
 project:
   semantic_models_dir: "snowflake_semantic_models"
-  dbt_models_dir: "models"
 ```
 
 ### Development Configuration
@@ -277,7 +271,6 @@ project:
 ```yaml
 project:
   semantic_models_dir: "snowflake_semantic_models"
-  dbt_models_dir: "models"
 
 validation:
   exclude_dirs:
@@ -297,7 +290,6 @@ defer:
 ```yaml
 project:
   semantic_models_dir: "snowflake_semantic_models"
-  dbt_models_dir: "models"
 
 validation:
   exclude_dirs:
@@ -318,7 +310,6 @@ enrichment:
 ```yaml
 project:
   semantic_models_dir: "snowflake_semantic_models"
-  dbt_models_dir: "models"
 
 defer:
   target: prod

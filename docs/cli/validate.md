@@ -37,18 +37,34 @@ sst validate [OPTIONS]
 
 ## Options
 
+### Validation Options
+
 | Option | Short | Type | Default | Description |
 |--------|-------|------|---------|-------------|
 | `--dbt` | | PATH | Auto-detect | Path to dbt models directory |
 | `--semantic` | | PATH | Auto-detect | Path to semantic models directory |
 | `--strict` | | FLAG | False | Fail on warnings (not just errors) |
-| `--verbose` | `-v` | FLAG | False | Show detailed validation output |
 | `--exclude` | | TEXT | | Comma-separated directories to exclude |
+| `--verbose` | `-v` | FLAG | False | Show detailed validation output |
+
+### dbt Integration
+
+| Option | Short | Type | Default | Description |
+|--------|-------|------|---------|-------------|
 | `--dbt-compile` | | FLAG | False | Auto-run `dbt compile` before validation |
+
+### Snowflake Verification (Optional)
+
+These options require a Snowflake connection:
+
+| Option | Short | Type | Default | Description |
+|--------|-------|------|---------|-------------|
 | `--verify-schema` | | FLAG | False | Verify YAML columns exist in Snowflake tables |
-| `--target` | `-t` | TEXT | | Override database for schema verification |
-| `--snowflake-syntax-check` | | FLAG | False | Validate SQL expressions against Snowflake |
-| `--no-snowflake-check` | | FLAG | False | Skip Snowflake syntax validation |
+| `--target` | `-t` | TEXT | | Database override for `--verify-schema` (e.g., PROD) |
+| `--snowflake-syntax-check` | | FLAG | Config | Validate SQL expressions against Snowflake |
+| `--no-snowflake-check` | | FLAG | | Disable Snowflake syntax validation (overrides config) |
+
+**Note:** The `--target` option here is used to override which database to verify columns against when using `--verify-schema`. It is NOT the same as `--target` in other commands (like `deploy` or `extract`) which specifies the dbt profile target.
 
 ---
 
