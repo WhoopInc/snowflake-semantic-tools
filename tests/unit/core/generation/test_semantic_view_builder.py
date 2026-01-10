@@ -575,6 +575,65 @@ class TestCAExtension:
         # region should have is_enum=true (string 'true' converted)
         assert region.get("is_enum") == True
 
+    def test_build_ca_extension_escapes_double_quotes_in_values(self, builder, monkeypatch):
+        """Test that double quotes in sample values are properly escaped for SQL.
+
+        This is the critical fix for RCA_SEMANTIC_VIEW_INVALID_YAML_ERROR.md:
+        Values like '3"' (3 inches) must be properly escaped so the JSON remains
+        valid after Snowflake's SQL string parsing.
+        """
+
+        def mock_get_dimensions(conn, table_name):
+            return [
+                {
+                    "NAME": "inseam",
+                    "EXPR": "INSEAM",
+                    # Values with inch marks (double quotes) - the exact issue from the RCA
+                    "SAMPLE_VALUES": ['3"', '5"', '7"'],
+                    "IS_ENUM": True,
+                    "DESCRIPTION": "Inseam size in inches",
+                },
+                {
+                    "NAME": "product_name",
+                    "EXPR": "PRODUCT_NAME",
+                    # Product name containing inch measurement
+                    "SAMPLE_VALUES": ['4.0 Any-Wear Athletic Boxer (Single) 3" Inseam Black L'],
+                    "DESCRIPTION": "Product name",
+                },
+            ]
+
+        def mock_get_time_dimensions(conn, table_name):
+            return []
+
+        def mock_get_facts(conn, table_name):
+            return []
+
+        monkeypatch.setattr(builder, "_get_dimensions", mock_get_dimensions)
+        monkeypatch.setattr(builder, "_get_time_dimensions", mock_get_time_dimensions)
+        monkeypatch.setattr(builder, "_get_facts", mock_get_facts)
+
+        result = builder._build_ca_extension(None, ["accessory_sales"])
+
+        # Verify the extension was generated
+        assert result.startswith("WITH EXTENSION (CA='")
+        assert result.endswith("')")
+
+        # The key fix: backslashes in JSON escape sequences must be doubled
+        # so they survive SQL string literal parsing. When Snowflake stores
+        # the CA extension, it will interpret \\ as \ and preserve the \"
+        # which keeps the JSON valid.
+        #
+        # Without the fix, json.dumps produces: ["3\"","5\"","7\""]
+        # which in SQL becomes: CA='..["3\"","5\"","7\""]..'
+        # Snowflake interprets \" and stores: ["3"","5"","7""] (INVALID JSON!)
+        #
+        # With the fix, we produce: ["3\\\"","5\\\"","7\\\""]
+        # which in SQL becomes: CA='..["3\\\"","5\\\"","7\\\""]..'
+        # Snowflake interprets \\ as \ and stores: ["3\"","5\"","7\""] (VALID JSON!)
+
+        # The result should contain double-escaped backslashes
+        assert '\\\\"' in result or "3\\\\" in result  # The backslashes are doubled
+
 
 class TestDeferManifestIntegration:
     """Test defer manifest integration in SemanticViewBuilder."""
