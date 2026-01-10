@@ -70,22 +70,26 @@ class TestSemanticViewSynonymConstraints(unittest.TestCase):
             cursor = conn.cursor()
 
             # Create test tables
-            cursor.execute(f"""
+            cursor.execute(
+                f"""
                 CREATE OR REPLACE TABLE {self.test_database}.{self.test_schema}.SST_TEST_ORDERS (
                     order_id INT,
                     customer_id INT,
                     amount DECIMAL(10,2)
                 )
-            """)
+            """
+            )
 
-            cursor.execute(f"""
+            cursor.execute(
+                f"""
                 CREATE OR REPLACE TABLE {self.test_database}.{self.test_schema}.SST_TEST_ORDER_ITEMS (
                     item_id INT,
                     order_id INT,
                     product_id INT,
                     quantity INT
                 )
-            """)
+            """
+            )
 
             # Try to create semantic view with duplicate table synonyms
             # Both tables have synonym "order details"
@@ -107,9 +111,9 @@ class TestSemanticViewSynonymConstraints(unittest.TestCase):
                 cursor.execute(create_view_sql)
 
             error_msg = str(exc_info.value).lower()
-            assert "duplicate" in error_msg or "synonym" in error_msg, (
-                f"Expected duplicate synonym error, got: {exc_info.value}"
-            )
+            assert (
+                "duplicate" in error_msg or "synonym" in error_msg
+            ), f"Expected duplicate synonym error, got: {exc_info.value}"
 
             # Clean up test tables
             cursor.execute(f"DROP TABLE IF EXISTS {self.test_database}.{self.test_schema}.SST_TEST_ORDERS")
@@ -129,20 +133,24 @@ class TestSemanticViewSynonymConstraints(unittest.TestCase):
             cursor = conn.cursor()
 
             # Create test tables with columns that share the same semantic meaning
-            cursor.execute(f"""
+            cursor.execute(
+                f"""
                 CREATE OR REPLACE TABLE {self.test_database}.{self.test_schema}.SST_TEST_CUSTOMERS (
                     customer_id INT,
                     name VARCHAR(100)
                 )
-            """)
+            """
+            )
 
-            cursor.execute(f"""
+            cursor.execute(
+                f"""
                 CREATE OR REPLACE TABLE {self.test_database}.{self.test_schema}.SST_TEST_ORDERS_2 (
                     order_id INT,
                     customer_id INT,
                     amount DECIMAL(10,2)
                 )
-            """)
+            """
+            )
 
             # Create semantic view with duplicate COLUMN synonyms but unique table synonyms
             # Both tables have a customer_id column with synonym "customer identifier"
@@ -193,4 +201,3 @@ class TestSemanticViewSynonymConstraints(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-

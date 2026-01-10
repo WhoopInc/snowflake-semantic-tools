@@ -14,6 +14,7 @@ from pathlib import Path
 import click
 
 from snowflake_semantic_tools._version import __version__
+from snowflake_semantic_tools.core.parsing.parsers.manifest_parser import ManifestParser
 from snowflake_semantic_tools.interfaces.cli.defer import DeferConfig, display_defer_info, resolve_defer_config
 from snowflake_semantic_tools.interfaces.cli.options import database_schema_options, defer_options, target_option
 from snowflake_semantic_tools.interfaces.cli.output import CLIOutput
@@ -108,6 +109,24 @@ def deploy(dbt_target, db, schema, defer_target, state, only_modified, no_defer,
         only_modified=only_modified,
     )
 
+    # Validate manifest target matches defer target (fail early with helpful message)
+    if defer_config.enabled and defer_config.manifest_path:
+        defer_manifest = ManifestParser(defer_config.manifest_path)
+        if defer_manifest.load():
+            manifest_target = defer_manifest.get_target_name()
+            if manifest_target and defer_config.target:
+                if manifest_target.lower() != defer_config.target.lower():
+                    output.error(
+                        f"Manifest target mismatch: manifest was compiled with '{manifest_target}' "
+                        f"but you specified --defer-target {defer_config.target}"
+                    )
+                    output.blank_line()
+                    output.info("To fix this, compile the manifest with the correct target:")
+                    output.info(f"  dbt compile --target {defer_config.target}", indent=1)
+                    output.blank_line()
+                    output.info("Then re-run this command.")
+                    raise click.Abort()
+
     try:
         output.debug("Building Snowflake configuration...")
         snowflake_config = build_snowflake_config(
@@ -123,20 +142,16 @@ def deploy(dbt_target, db, schema, defer_target, state, only_modified, no_defer,
             traceback.print_exc()
         raise click.Abort()
 
-    # Determine defer database from manifest if enabled
-    defer_database = None
-    if defer_config.enabled and defer_config.manifest_path:
-        defer_database = defer_config.target
-
-    # Create deployment config
+    # Create deployment config - the manifest path is passed so the service
+    # can load it and look up each table's actual database/schema
     config = DeployConfig(
         database=target_db,
         schema=target_schema,
         skip_validation=skip_validation,
         verbose=verbose,
         quiet=quiet,
-        defer_database=defer_database,
         only_modified=defer_config.only_modified,
+        defer_database=defer_config.target,  # Defer target name for validation and summary
         defer_manifest_path=str(defer_config.manifest_path) if defer_config.manifest_path else None,
     )
 
