@@ -615,7 +615,8 @@ models:
         subdir.mkdir()
 
         yaml1 = tmp_path / "orders.yml"
-        yaml1.write_text("""
+        yaml1.write_text(
+            """
 models:
   - name: orders
     config:
@@ -623,10 +624,12 @@ models:
         sst:
           synonyms:
             - "order data"
-""")
+"""
+        )
 
         yaml2 = subdir / "customers.yaml"
-        yaml2.write_text("""
+        yaml2.write_text(
+            """
 models:
   - name: customers
     config:
@@ -634,7 +637,8 @@ models:
         sst:
           synonyms:
             - "customer info"
-""")
+"""
+        )
 
         result = enricher.collect_existing_table_synonyms(str(tmp_path))
 
