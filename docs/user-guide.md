@@ -116,15 +116,18 @@ sst enrich --models customers --exclude experimental
 
 ### What Gets Preserved
 
-Enrichment NEVER overwrites:
+By default, enrichment preserves existing values:
 - Existing descriptions (including empty strings and null values)
-- Existing synonyms
+- Existing synonyms (use `--force-synonyms` to overwrite)
 - Existing primary_key
 - Existing unique_keys
-- Existing column_type
+- Existing column_type (use `--force-column-types` to overwrite)
+- Existing data_type (use `--force-data-types` to overwrite)
 
-Enrichment ALWAYS updates:
-- sample_values (fresh data)
+**Tip:** Use `--force-all` to overwrite everything and refresh all metadata.
+
+Enrichment ALWAYS updates (cannot be preserved):
+- sample_values (fresh data from Snowflake)
 - is_enum (current cardinality)
 
 Enrichment ADDS if missing:
