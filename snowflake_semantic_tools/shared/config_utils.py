@@ -23,7 +23,7 @@ def get_exclusion_patterns(cli_exclude: Optional[str] = None) -> Optional[List[s
     Get exclusion patterns from config with optional CLI overrides.
 
     Combines:
-    1. Patterns from sst_config.yaml (validation.exclude_dirs)
+    1. Patterns from sst_config.yml (validation.exclude_dirs)
     2. Optional CLI overrides (comma-separated string)
 
     Deduplicates while preserving order (config patterns first, then CLI).
@@ -188,7 +188,7 @@ def get_exclusion_summary(cli_exclude: Optional[str] = None) -> Dict[str, Any]:
     Get summary of exclusion patterns for display/debugging.
 
     Returns detailed breakdown of where patterns come from:
-    - config_patterns: From sst_config.yaml
+    - config_patterns: From sst_config.yml
     - cli_patterns: From CLI flags
     - total_patterns: Combined (deduplicated)
 

@@ -44,7 +44,7 @@ sst init  # Interactive setup wizard
 
 The wizard will:
 - Detect your dbt project and profile
-- Create `sst_config.yaml` with defaults
+- Create `sst_config.yml` with defaults
 - Set up the semantic models directory
 - Generate example files
 
@@ -84,7 +84,7 @@ See the `docs/` directory for comprehensive documentation:
 - [**Semantic Models Guide**](docs/concepts/semantic-models.md) - Writing metrics and relationships
 - [**Validation Rules**](docs/concepts/validation-rules.md) - Complete list of all validation checks
 - [**Authentication**](docs/guides/authentication.md) - Snowflake connection setup
-- [**Configuration Reference**](docs/reference/config.md) - sst_config.yaml options
+- [**Configuration Reference**](docs/reference/config.md) - sst_config.yml options
 
 ---
 

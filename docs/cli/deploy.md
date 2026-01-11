@@ -118,7 +118,7 @@ sst deploy --quiet
 
 ## Configuration
 
-Set defer defaults in `sst_config.yaml`:
+Set defer defaults in `sst_config.yml`:
 
 ```yaml
 defer:

@@ -1,12 +1,12 @@
 # Configuration Reference
 
-Complete reference for `sst_config.yaml` configuration options.
+Complete reference for `sst_config.yml` configuration options.
 
 ---
 
 ## Overview
 
-SST is configured via `sst_config.yaml` in your dbt project root (same directory as `dbt_project.yml`). This file controls project paths, validation behavior, enrichment settings, and defer configuration.
+SST is configured via `sst_config.yml` in your dbt project root (same directory as `dbt_project.yml`). This file controls project paths, validation behavior, enrichment settings, and defer configuration.
 
 ---
 
@@ -64,7 +64,7 @@ project:
 ```
 
 **Notes:**
-- Paths are relative to project root (where `sst_config.yaml` lives)
+- Paths are relative to project root (where `sst_config.yml` lives)
 - `semantic_models_dir` is where SST looks for metrics, relationships, filters, etc.
 - The dbt models directory is **auto-detected** from `dbt_project.yml` (typically `models/`)
 
@@ -190,12 +190,12 @@ sst generate --all
 
 ## File Location
 
-`sst_config.yaml` must be in your dbt project root:
+`sst_config.yml` must be in your dbt project root:
 
 ```
 your-dbt-project/
 ├── dbt_project.yml
-├── sst_config.yaml          # ← Here
+├── sst_config.yml          # ← Here
 ├── models/
 ├── snowflake_semantic_models/
 └── target/

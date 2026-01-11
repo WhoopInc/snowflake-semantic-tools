@@ -172,10 +172,10 @@ class TestDetectProfile:
 
 
 class TestCreateSstConfig:
-    """Tests for sst_config.yaml creation."""
+    """Tests for sst_config.yml creation."""
 
     def test_create_sst_config_new(self, temp_dbt_project):
-        """Test creating new sst_config.yaml."""
+        """Test creating new sst_config.yml."""
         wizard = InitWizard(project_dir=temp_dbt_project, skip_prompts=True)
         config = WizardConfig(
             semantic_models_dir="snowflake_semantic_models",
@@ -183,7 +183,7 @@ class TestCreateSstConfig:
 
         wizard._create_sst_config(config)
 
-        config_path = temp_dbt_project / "sst_config.yaml"
+        config_path = temp_dbt_project / "sst_config.yml"
         assert config_path.exists()
 
         with open(config_path) as f:
@@ -193,9 +193,9 @@ class TestCreateSstConfig:
         assert "dbt_models_dir" not in content or "# Note:" in content
 
     def test_create_sst_config_overwrite(self, temp_dbt_project):
-        """Test overwriting existing sst_config.yaml."""
+        """Test overwriting existing sst_config.yml."""
         # Create existing config
-        existing_config = temp_dbt_project / "sst_config.yaml"
+        existing_config = temp_dbt_project / "sst_config.yml"
         existing_config.write_text("old: config")
 
         wizard = InitWizard(project_dir=temp_dbt_project, skip_prompts=True)
@@ -540,7 +540,7 @@ class TestWizardRun:
         assert result is True
 
         # Verify files were created
-        assert (temp_dbt_project / "sst_config.yaml").exists()
+        assert (temp_dbt_project / "sst_config.yml").exists()
         assert (temp_dbt_project / "snowflake_semantic_models").exists()
 
     def test_run_no_dbt_project_fails(self, tmp_path):

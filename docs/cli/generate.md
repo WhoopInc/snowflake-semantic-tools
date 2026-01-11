@@ -156,7 +156,7 @@ This compares dbt model checksums between your current `manifest.json` and the d
 
 ## Configuration
 
-Set defer defaults in `sst_config.yaml`:
+Set defer defaults in `sst_config.yml`:
 
 ```yaml
 defer:

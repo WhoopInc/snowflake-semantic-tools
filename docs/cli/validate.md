@@ -194,7 +194,7 @@ When `--snowflake-syntax-check` is enabled:
 
 ## Configuration
 
-Enable syntax checking by default in `sst_config.yaml`:
+Enable syntax checking by default in `sst_config.yml`:
 
 ```yaml
 validation:

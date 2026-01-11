@@ -71,7 +71,7 @@ class InitWizard:
     Guides users through:
     - Detecting/requiring dbt project
     - Setting up Snowflake profile
-    - Creating sst_config.yaml
+    - Creating sst_config.yml
     - Creating semantic models directory structure
     - Generating example files
     """
@@ -126,7 +126,7 @@ class InitWizard:
                 if not self._create_profile_interactive(self.dbt_project.profile_name):
                     return False
 
-            # Step 3: Check for existing sst_config.yaml
+            # Step 3: Check for existing sst_config.yml
             existing_config = self.detect_existing_config()
             if existing_config and not self.skip_prompts:
                 if not self._handle_existing_config(existing_config):
@@ -271,12 +271,12 @@ class InitWizard:
 
     def detect_existing_config(self) -> Optional[Path]:
         """
-        Check if sst_config.yaml already exists.
+        Check if sst_config.yml already exists.
 
         Returns:
             Path to existing config if found, None otherwise.
         """
-        for ext in ["yaml", "yml"]:
+        for ext in ["yml", "yaml"]:
             config_path = self.project_dir / f"sst_config.{ext}"
             if config_path.exists():
                 return config_path
@@ -479,7 +479,7 @@ class InitWizard:
         return config
 
     def _handle_existing_config(self, config_path: Path) -> bool:
-        """Handle existing sst_config.yaml."""
+        """Handle existing sst_config.yml."""
         console.print(f"[yellow]![/yellow] Found existing config: [cyan]{config_path}[/cyan]")
 
         action = questionary.select(
@@ -510,11 +510,11 @@ class InitWizard:
         # Check what needs to be created
         items = []
 
-        sst_config_path = self.project_dir / "sst_config.yaml"
+        sst_config_path = self.project_dir / "sst_config.yml"
         if not sst_config_path.exists():
-            items.append(("sst_config.yaml", "new"))
+            items.append(("sst_config.yml", "new"))
         else:
-            items.append(("sst_config.yaml", "overwrite"))
+            items.append(("sst_config.yml", "overwrite"))
 
         semantic_dir = self.project_dir / config.semantic_models_dir
         if not semantic_dir.exists():
@@ -547,7 +547,7 @@ class InitWizard:
         """Create all configuration and example files."""
         console.print()
 
-        # Create sst_config.yaml
+        # Create sst_config.yml
         self._create_sst_config(config)
 
         # Create semantic models directory structure
@@ -558,9 +558,9 @@ class InitWizard:
             self._create_example_files(config)
 
     def _create_sst_config(self, config: WizardConfig) -> None:
-        """Create sst_config.yaml from template."""
-        template_path = self.TEMPLATES_DIR / "sst_config.yaml.j2"
-        output_path = self.project_dir / "sst_config.yaml"
+        """Create sst_config.yml from template."""
+        template_path = self.TEMPLATES_DIR / "sst_config.yml.j2"
+        output_path = self.project_dir / "sst_config.yml"
 
         if template_path.exists():
             with open(template_path, "r", encoding="utf-8") as f:
@@ -588,7 +588,7 @@ class InitWizard:
             with open(output_path, "w", encoding="utf-8") as f:
                 yaml.dump(config_content, f, default_flow_style=False, sort_keys=False)
 
-        console.print(f"[green]✓[/green] Created [cyan]sst_config.yaml[/cyan]")
+        console.print(f"[green]✓[/green] Created [cyan]sst_config.yml[/cyan]")
 
     def _create_directories(self, config: WizardConfig) -> None:
         """Create semantic models directory structure."""

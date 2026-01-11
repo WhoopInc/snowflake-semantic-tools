@@ -49,7 +49,7 @@ sst init [OPTIONS]
 
 1. **Detects your dbt project** - Reads `dbt_project.yml`
 2. **Reads existing profile** - Finds `~/.dbt/profiles.yml` (or helps create one)
-3. **Creates `sst_config.yaml`** - Project settings for SST
+3. **Creates `sst_config.yml`** - Project settings for SST
 4. **Creates semantic models directory** - Default: `snowflake_semantic_models/`
 5. **Generates example files** - Metrics, relationships, filters, etc.
 6. **Optionally tests connection** - Verifies Snowflake credentials
@@ -86,7 +86,7 @@ sst init --check-only
 
 ? Create example semantic models? Yes
 
-✓ Created sst_config.yaml
+✓ Created sst_config.yml
 ✓ Created snowflake_semantic_models/
 ✓ Created example files
 
@@ -97,7 +97,7 @@ Setup Complete!
 
 ## Files Created
 
-### sst_config.yaml
+### sst_config.yml
 
 ```yaml
 project:
@@ -121,7 +121,7 @@ enrichment:
 
 ```
 your-dbt-project/
-├── sst_config.yaml                    # Created
+├── sst_config.yml                    # Created
 ├── snowflake_semantic_models/         # Created
 │   ├── metrics/
 │   │   └── example_metrics.yml
@@ -194,4 +194,4 @@ Ensure the profile name in `~/.dbt/profiles.yml` matches the `profile:` field in
 - [Getting Started](../getting-started.md) - Full setup guide
 - [sst debug](debug.md) - Test your configuration
 - [Authentication Guide](../guides/authentication.md) - Snowflake connection setup
-- [Configuration Reference](../reference/config.md) - sst_config.yaml options
+- [Configuration Reference](../reference/config.md) - sst_config.yml options

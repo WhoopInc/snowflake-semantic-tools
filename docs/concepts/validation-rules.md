@@ -6,7 +6,7 @@ Complete list of all validation checks performed by `sst validate`.
 
 | Component | Check | Severity |
 |-----------|-------|----------|
-| **Prerequisites** | `sst_config.yaml` exists in project root | REQUIRED|
+| **Prerequisites** | `sst_config.yml` exists in project root | REQUIRED|
 | **Prerequisites** | `manifest.json` exists (run `dbt compile` or use `--dbt-compile`) | REQUIRED|
 | **Prerequisites** | Manifest is fresh (< 24 hours old, no .sql files modified since) | WARNING|
 | **Table** | Model has `description` | ERROR|
@@ -147,7 +147,7 @@ sst validate --verify-schema
 # Validate SQL syntax against Snowflake (catches typos like CUONT → COUNT)
 sst validate --snowflake-syntax-check
 
-# Enable syntax check permanently in sst_config.yaml:
+# Enable syntax check permanently in sst_config.yml:
 # validation:
 #   snowflake_syntax_check: true
 

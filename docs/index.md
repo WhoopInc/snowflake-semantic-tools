@@ -44,7 +44,7 @@ Snowflake Semantic Tools (SST) helps you create **Snowflake Semantic Views**—a
 | **Configure CI/CD pipelines** | [CI/CD Guide](guides/ci-cd.md) |
 | **Migrate to dbt Fusion format** | [dbt Fusion Migration](guides/dbt-fusion-migration.md) |
 | **Use the Python API** | [API Reference](reference/api.md) |
-| **Configure sst_config.yaml** | [Configuration Reference](reference/config.md) |
+| **Configure sst_config.yml** | [Configuration Reference](reference/config.md) |
 
 ---
 
@@ -158,7 +158,7 @@ Learn more: [Validation Rules](concepts/validation-rules.md)
 
 ## Configuration
 
-SST is configured via `sst_config.yaml` in your dbt project root:
+SST is configured via `sst_config.yml` in your dbt project root:
 
 ```yaml
 project:
@@ -216,6 +216,6 @@ Full reference: [Configuration Reference](reference/config.md)
 - [dbt Fusion Migration](guides/dbt-fusion-migration.md) - Meta format migration
 
 ### Reference
-- [Configuration](reference/config.md) - sst_config.yaml reference
+- [Configuration](reference/config.md) - sst_config.yml reference
 - [API](reference/api.md) - Python API reference
 - [Quick Reference](reference/quick-reference.md) - CLI cheat sheet

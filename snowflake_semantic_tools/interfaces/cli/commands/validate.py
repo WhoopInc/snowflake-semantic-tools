@@ -50,7 +50,7 @@ logger = get_logger("cli.validate")
     "--snowflake-syntax-check/--no-snowflake-check",
     default=None,
     help="Validate SQL expressions against Snowflake. Catches typos like CUONT instead of COUNT. "
-    "Default: uses validation.snowflake_syntax_check from sst_config.yaml if set.",
+    "Default: uses validation.snowflake_syntax_check from sst_config.yml if set.",
 )
 def validate(dbt, semantic, strict, verbose, exclude, dbt_compile, verify_schema, target, snowflake_syntax_check):
     """
@@ -103,7 +103,7 @@ def validate(dbt, semantic, strict, verbose, exclude, dbt_compile, verify_schema
     if verbose:
         config_file = get_config()
         if config_file:
-            output.debug("Found sst_config.yaml")
+            output.debug("Found sst_config.yml")
 
     # Run dbt compile if requested
     if dbt_compile:

@@ -49,7 +49,7 @@ sst init
 The wizard will:
 1. Detect your dbt project and profile configuration
 2. Help you set up Snowflake credentials (if not already configured)
-3. Create `sst_config.yaml` with sensible defaults
+3. Create `sst_config.yml` with sensible defaults
 4. Create the semantic models directory structure
 5. Generate example files to get you started
 
@@ -65,7 +65,7 @@ The wizard will:
 ? Where should SST store semantic models?
   > snowflake_semantic_models (recommended)
 
-✓ Created sst_config.yaml
+✓ Created sst_config.yml
 ✓ Created snowflake_semantic_models/
 ✓ Created example files
 
@@ -113,14 +113,14 @@ your-dbt-project/
 └── models/                        # Your existing dbt models (already exists)
 ```
 
-**Note:** The directory name `snowflake_semantic_models` is a convention. You can use a different name, but it must match what you specify in `sst_config.yaml` in the next step.
+**Note:** The directory name `snowflake_semantic_models` is a convention. You can use a different name, but it must match what you specify in `sst_config.yml` in the next step.
 
-### Step 3: Create sst_config.yaml
+### Step 3: Create sst_config.yml
 
 Create this file in your dbt project root (same directory as `dbt_project.yml`):
 
 ```yaml
-# sst_config.yaml
+# sst_config.yml
 project:
   # Directory you created in Step 2
   semantic_models_dir: "snowflake_semantic_models"  # Required - must match directory name
@@ -142,7 +142,7 @@ enrichment:
 
 **Note:** The dbt models directory is **auto-detected** from your `dbt_project.yml` file.
 
-**Important:** Paths are relative to your project root (where `dbt_project.yml` and `sst_config.yaml` live).
+**Important:** Paths are relative to your project root (where `dbt_project.yml` and `sst_config.yml` live).
 
 ### Step 4: Set Up Snowflake Authentication
 
@@ -385,7 +385,7 @@ After setup, your dbt project should look like:
 ```
 your-dbt-project/
 ├── dbt_project.yml
-├── sst_config.yaml              # SST configuration
+├── sst_config.yml              # SST configuration
 ├── models/                      # dbt models
 │   └── analytics/
 │       ├── customers/
@@ -414,12 +414,12 @@ your-dbt-project/
 
 ### "Config error: Missing required field"
 
-**Problem:** `sst_config.yaml` missing or incorrectly configured
+**Problem:** `sst_config.yml` missing or incorrectly configured
 
 **Solution:**
 ```bash
 # Ensure file exists in dbt project root
-ls sst_config.yaml
+ls sst_config.yml
 
 # Check required field is present:
 # - project.semantic_models_dir
@@ -456,7 +456,7 @@ sst validate --dbt-compile
 
 **Solution:**
 ```bash
-# Check sst_config.yaml paths are correct
+# Check sst_config.yml paths are correct
 # Paths should be relative to project root
 
 # Verify models exist
@@ -473,7 +473,7 @@ Model "openai-gpt-4.1" is unavailable
 
 **Cause:** OpenAI models (gpt-4.1, gpt-5, etc.) are only available on Snowflake accounts hosted on Azure, or require cross-region inference to be enabled.
 
-**Solution:** Use a universally available model in `sst_config.yaml`:
+**Solution:** Use a universally available model in `sst_config.yml`:
 ```yaml
 enrichment:
   synonym_model: 'mistral-large2'  # Works on AWS, Azure, GCP

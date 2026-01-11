@@ -137,7 +137,7 @@ These options are available across multiple commands:
 
 ## Configuration
 
-Most command behavior can be configured in `sst_config.yaml`:
+Most command behavior can be configured in `sst_config.yml`:
 
 ```yaml
 project:
@@ -167,7 +167,7 @@ Full reference: [Configuration Reference](../reference/config.md)
 Before using the CLI:
 
 1. **Installation:** `pip install snowflake-semantic-tools`
-2. **Configuration:** Create `sst_config.yaml` in your dbt project root
+2. **Configuration:** Create `sst_config.yml` in your dbt project root
 3. **Authentication:** Configure `~/.dbt/profiles.yml` for Snowflake
 
 See [Getting Started](../getting-started.md) for detailed setup instructions.
@@ -202,6 +202,6 @@ See [Getting Started](../getting-started.md) for detailed setup instructions.
 ## Related
 
 - [Getting Started](../getting-started.md) - Installation and first steps
-- [Configuration Reference](../reference/config.md) - sst_config.yaml options
+- [Configuration Reference](../reference/config.md) - sst_config.yml options
 - [Authentication Guide](../guides/authentication.md) - Snowflake connection setup
 - [Quick Reference](../reference/quick-reference.md) - CLI cheat sheet

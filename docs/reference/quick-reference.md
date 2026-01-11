@@ -212,7 +212,7 @@ sst deploy --target prod
 
 ## Configuration
 
-`sst_config.yaml`:
+`sst_config.yml`:
 
 ```yaml
 project:

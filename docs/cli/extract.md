@@ -190,7 +190,7 @@ GRANT CREATE TABLE ON SCHEMA schema_name TO ROLE role_name;
 
 ### "No models found"
 
-Check that `sst_config.yaml` paths are correct:
+Check that `sst_config.yml` paths are correct:
 
 ```yaml
 project:

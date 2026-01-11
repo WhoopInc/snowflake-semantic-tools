@@ -58,7 +58,7 @@ sst enrich models/marts/
 
 Uses batched queries for performance.
 
-To customize sample value limits, configure in `sst_config.yaml`:
+To customize sample value limits, configure in `sst_config.yml`:
 
 ```yaml
 enrichment:
@@ -74,7 +74,7 @@ enrichment:
 
 **4. Enrichment Customization**
 
-Configure sample value behavior in `sst_config.yaml`:
+Configure sample value behavior in `sst_config.yml`:
 
 ```yaml
 enrichment:
@@ -87,7 +87,7 @@ enrichment:
 
 **5. Exclusions**
 
-Configure in `sst_config.yaml` to skip directories/paths:
+Configure in `sst_config.yml` to skip directories/paths:
 
 ```yaml
 validation:
@@ -153,7 +153,7 @@ Validation checks semantic models against dbt definitions:
 - No duplicate names
 - SQL syntax validation (optional, requires Snowflake connection)
 
-**Basic validation requires no Snowflake connection.** Optional Snowflake syntax validation can be enabled in `sst_config.yaml`:
+**Basic validation requires no Snowflake connection.** Optional Snowflake syntax validation can be enabled in `sst_config.yml`:
 
 ```yaml
 validation:

@@ -185,4 +185,4 @@ The profile name in `profiles.yml` must match the `profile:` field in `dbt_proje
 
 - [sst init](init.md) - Set up SST configuration
 - [Authentication Guide](../guides/authentication.md) - Snowflake connection setup
-- [Configuration Reference](../reference/config.md) - sst_config.yaml options
+- [Configuration Reference](../reference/config.md) - sst_config.yml options

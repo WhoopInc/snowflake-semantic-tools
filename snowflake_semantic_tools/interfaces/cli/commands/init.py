@@ -32,7 +32,7 @@ def init(skip_prompts: bool, check_only: bool) -> None:
     \b
     - Detects your dbt project configuration
     - Sets up Snowflake connection (profiles.yml)
-    - Creates sst_config.yaml
+    - Creates sst_config.yml
     - Creates semantic models directory with examples
 
     \b
@@ -123,9 +123,9 @@ def _check_setup_status(console) -> None:
             console.print(f"[red]✗[/red] Profile '{profile_name}' not found in profiles.yml")
             all_good = False
 
-    # Check sst_config.yaml
+    # Check sst_config.yml
     sst_config_found = False
-    for ext in ["yaml", "yml"]:
+    for ext in ["yml", "yaml"]:
         config_path = project_dir / f"sst_config.{ext}"
         if config_path.exists():
             console.print(f"[green]✓[/green] sst_config.{ext} exists")
@@ -133,7 +133,7 @@ def _check_setup_status(console) -> None:
             break
 
     if not sst_config_found:
-        console.print("[red]✗[/red] No sst_config.yaml found")
+        console.print("[red]✗[/red] No sst_config.yml found")
         all_good = False
 
     # Check semantic models directory

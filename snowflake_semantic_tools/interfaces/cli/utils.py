@@ -37,13 +37,13 @@ def setup_command(verbose: bool = False, quiet: bool = False, validate_config: b
 
     Performs standard initialization:
     1. Setup event system
-    2. Validate sst_config.yaml (optional)
+    2. Validate sst_config.yml (optional)
     3. Set logging level
 
     Args:
         verbose: Enable verbose logging
         quiet: Suppress non-error output
-        validate_config: If True, validates sst_config.yaml exists
+        validate_config: If True, validates sst_config.yml exists
     """
     # Step 1: Setup events
     setup_events(verbose=verbose, quiet=quiet, show_timestamps=True)

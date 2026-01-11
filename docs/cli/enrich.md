@@ -185,7 +185,7 @@ Uses Snowflake Cortex LLMs to generate natural language synonyms:
 
 ## Configuration
 
-Configure enrichment behavior in `sst_config.yaml`:
+Configure enrichment behavior in `sst_config.yml`:
 
 ```yaml
 enrichment:
@@ -266,7 +266,7 @@ Cortex model not available in your region.
 **Solution:** Use a universally available model:
 
 ```yaml
-# sst_config.yaml
+# sst_config.yml
 enrichment:
   synonym_model: 'mistral-large2'
 ```
@@ -297,5 +297,5 @@ sst debug --verbose
 - [sst validate](validate.md) - Validate enriched metadata
 - [sst format](format.md) - Format enriched YAML files
 - [sst deploy](deploy.md) - Deploy to Snowflake
-- [Configuration Reference](../reference/config.md) - sst_config.yaml options
+- [Configuration Reference](../reference/config.md) - sst_config.yml options
 - [Authentication Guide](../guides/authentication.md) - Snowflake connection setup
