@@ -81,7 +81,7 @@ sst debug --verbose
 ### Configuration Display
 
 ```
-SST Debug (v0.2.2)
+SST Debug (v0.2.3)
 
   ──────────────────────────────────────────────────
   Profile Configuration
