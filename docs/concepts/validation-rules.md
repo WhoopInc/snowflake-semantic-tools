@@ -10,7 +10,7 @@ Complete list of all validation checks performed by `sst validate`.
 | **Prerequisites** | `manifest.json` exists (run `dbt compile` or use `--dbt-compile`) | REQUIRED|
 | **Prerequisites** | Manifest is fresh (< 24 hours old, no .sql files modified since) | WARNING|
 | **Table** | Model has `description` | ERROR|
-| **Table** | Model has `primary_key` in `meta.sst` | ERROR|
+| **Table** | Model has `primary_key` in `config.meta.sst` (or legacy `meta.sst`) | ERROR|
 | **Table** | `primary_key` is not empty list | ERROR|
 | **Table** | `primary_key` is a list (not dict, not other type) | ERROR|
 | **Table** | Table name matches model name | ERROR|
@@ -19,9 +19,9 @@ Complete list of all validation checks performed by `sst validate`.
 | **Table** | Table has `synonyms` defined | WARNING|
 | **Table** | Table synonyms don't contain apostrophes or special characters | WARNING|
 | **Column** | Column has `description` | ERROR|
-| **Column** | Column has `column_type` in `meta.sst` | ERROR|
+| **Column** | Column has `column_type` in `config.meta.sst` (or legacy `meta.sst`) | ERROR|
 | **Column** | `column_type` is valid (dimension, fact, or time_dimension) | ERROR|
-| **Column** | Column has `data_type` in `meta.sst` | ERROR|
+| **Column** | Column has `data_type` in `config.meta.sst` (or legacy `meta.sst`) | ERROR|
 | **Column** | `data_type` is valid Snowflake type | ERROR|
 | **Column** | Fact columns have numeric data types | ERROR|
 | **Column** | Time dimension columns have temporal data types | ERROR|
@@ -55,7 +55,7 @@ Complete list of all validation checks performed by `sst validate`.
 | **Relationship** | `relationship_conditions` is a list (not string or dict) | ERROR|
 | **Relationship** | `relationship_conditions` is not empty | ERROR|
 | **Relationship** | Each condition is a string | ERROR|
-| **Relationship** | Each condition has valid operator (=, >=, <=, BETWEEN) | ERROR|
+| **Relationship** | Each condition has valid operator (= or >=) | ERROR|
 | **Relationship** | Each condition references valid tables | ERROR|
 | **Relationship** | Conditions with templates must be quoted (YAML requirement) | PARSE ERROR|
 | **Relationship** | `left_table` exists in dbt catalog | ERROR|
@@ -147,7 +147,7 @@ sst validate --verify-schema
 # Validate SQL syntax against Snowflake (catches typos like CUONT → COUNT)
 sst validate --snowflake-syntax-check
 
-# Enable syntax check permanently in sst_config.yaml:
+# Enable syntax check permanently in sst_config.yml:
 # validation:
 #   snowflake_syntax_check: true
 

@@ -36,7 +36,7 @@ logger = get_logger(__name__)
 @dataclass
 class DeferConfig:
     """
-    Resolved defer configuration from CLI flags and sst_config.yaml.
+    Resolved defer configuration from CLI flags and sst_config.yml.
 
     This dataclass represents the fully resolved defer settings after
     considering CLI flags, config file, and defaults.
@@ -126,7 +126,7 @@ def resolve_defer_config(
     if not effective_target:
         if only_modified:
             raise click.ClickException(
-                "--only-modified requires --defer-target (or defer.target in sst_config.yaml).\n\n"
+                "--only-modified requires --defer-target (or defer.target in sst_config.yml).\n\n"
                 "Selective generation compares your current manifest to the defer manifest\n"
                 "to determine which models changed.\n\n"
                 "Usage: sst generate --all --defer-target prod --only-modified"
@@ -262,7 +262,7 @@ def resolve_defer_manifest(
             f"  2. Use CI pipeline artifacts:\n"
             f"     - If your CI saves prod artifacts, point to them:\n"
             f"       --state /path/to/ci/artifacts\n\n"
-            f"  3. Add to sst_config.yaml:\n"
+            f"  3. Add to sst_config.yml:\n"
             f"     defer:\n"
             f"       target: {defer_target}\n"
             f"       state_path: ./{defer_target}_run_artifacts"
@@ -314,7 +314,7 @@ def validate_dbt_cloud_cli_compatibility(
     if auto_compile:
         raise click.ClickException(
             "defer.auto_compile is not supported with dbt Cloud CLI.\n\n"
-            "Your sst_config.yaml has:\n"
+            "Your sst_config.yml has:\n"
             "  defer:\n"
             "    auto_compile: true\n\n"
             "But dbt Cloud CLI cannot compile with different targets locally.\n"

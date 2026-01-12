@@ -49,7 +49,7 @@ sst init
 The wizard will:
 1. Detect your dbt project and profile configuration
 2. Help you set up Snowflake credentials (if not already configured)
-3. Create `sst_config.yaml` with sensible defaults
+3. Create `sst_config.yml` with sensible defaults
 4. Create the semantic models directory structure
 5. Generate example files to get you started
 
@@ -65,7 +65,7 @@ The wizard will:
 ? Where should SST store semantic models?
   > snowflake_semantic_models (recommended)
 
-✓ Created sst_config.yaml
+✓ Created sst_config.yml
 ✓ Created snowflake_semantic_models/
 ✓ Created example files
 
@@ -113,20 +113,17 @@ your-dbt-project/
 └── models/                        # Your existing dbt models (already exists)
 ```
 
-**Note:** The directory name `snowflake_semantic_models` is a convention. You can use a different name, but it must match what you specify in `sst_config.yaml` in the next step.
+**Note:** The directory name `snowflake_semantic_models` is a convention. You can use a different name, but it must match what you specify in `sst_config.yml` in the next step.
 
-### Step 3: Create sst_config.yaml
+### Step 3: Create sst_config.yml
 
 Create this file in your dbt project root (same directory as `dbt_project.yml`):
 
 ```yaml
-# sst_config.yaml
+# sst_config.yml
 project:
   # Directory you created in Step 2
   semantic_models_dir: "snowflake_semantic_models"  # Required - must match directory name
-  
-  # Your existing dbt models directory
-  dbt_models_dir: "models"                          # Required - typically "models"
 
 validation:
   exclude_dirs: []             # Paths to skip during validation
@@ -142,9 +139,10 @@ enrichment:
 
 **Required fields:**
 - `project.semantic_models_dir` - Directory you created in Step 2 (e.g., "snowflake_semantic_models")
-- `project.dbt_models_dir` - Your existing dbt models directory (typically "models")
 
-**Important:** These paths are relative to your project root (where `dbt_project.yml` and `sst_config.yaml` live).
+**Note:** The dbt models directory is **auto-detected** from your `dbt_project.yml` file.
+
+**Important:** Paths are relative to your project root (where `dbt_project.yml` and `sst_config.yml` live).
 
 ### Step 4: Set Up Snowflake Authentication
 
@@ -179,7 +177,7 @@ your_project:  # Must match 'profile:' in dbt_project.yml
 - **Password**: Add `password: your_password` or use `{{ env_var('SNOWFLAKE_PASSWORD') }}`
 - **RSA Key Pair** (production): Add `private_key_path: ~/.ssh/snowflake_key.p8`
 
-**See:** [Authentication Guide](authentication.md) for detailed setup of each auth method.
+**See:** [Authentication Guide](guides/authentication.md) for detailed setup of each auth method.
 
 ### Step 5: Generate manifest.json
 
@@ -266,7 +264,7 @@ sst enrich models/analytics/
 - Adds sample values
 - Detects enums
 
-> **Note:** SST writes metadata in the new `config.meta.sst` format required by dbt Fusion. If you have existing `meta.sst` blocks, run `sst migrate-meta` to migrate them. See [dbt Fusion Migration Guide](migration-guide-dbt-fusion.md).
+> **Note:** SST writes metadata in the new `config.meta.sst` format required by dbt Fusion. If you have existing `meta.sst` blocks, run `sst migrate-meta` to migrate them. See [dbt Fusion Migration Guide](guides/dbt-fusion-migration.md).
 
 **Output:**
 ```
@@ -387,7 +385,7 @@ After setup, your dbt project should look like:
 ```
 your-dbt-project/
 ├── dbt_project.yml
-├── sst_config.yaml              # SST configuration
+├── sst_config.yml              # SST configuration
 ├── models/                      # dbt models
 │   └── analytics/
 │       ├── customers/
@@ -416,16 +414,15 @@ your-dbt-project/
 
 ### "Config error: Missing required field"
 
-**Problem:** `sst_config.yaml` missing or incorrectly configured
+**Problem:** `sst_config.yml` missing or incorrectly configured
 
 **Solution:**
 ```bash
 # Ensure file exists in dbt project root
-ls sst_config.yaml
+ls sst_config.yml
 
-# Check required fields are present:
+# Check required field is present:
 # - project.semantic_models_dir
-# - project.dbt_models_dir
 ```
 
 ### "manifest.json not found"
@@ -451,7 +448,7 @@ sst validate --dbt-compile
 3. Check `~/.dbt/profiles.yml` exists and is correctly configured
 4. Verify profile name in `dbt_project.yml` matches profiles.yml
 5. Verify Snowflake account URL is correct
-6. See [Authentication Guide](authentication.md)
+6. See [Authentication Guide](guides/authentication.md)
 
 ### "No models found"
 
@@ -459,7 +456,7 @@ sst validate --dbt-compile
 
 **Solution:**
 ```bash
-# Check sst_config.yaml paths are correct
+# Check sst_config.yml paths are correct
 # Paths should be relative to project root
 
 # Verify models exist
@@ -476,7 +473,7 @@ Model "openai-gpt-4.1" is unavailable
 
 **Cause:** OpenAI models (gpt-4.1, gpt-5, etc.) are only available on Snowflake accounts hosted on Azure, or require cross-region inference to be enabled.
 
-**Solution:** Use a universally available model in `sst_config.yaml`:
+**Solution:** Use a universally available model in `sst_config.yml`:
 ```yaml
 enrichment:
   synonym_model: 'mistral-large2'  # Works on AWS, Azure, GCP
@@ -529,11 +526,11 @@ expr: |
 
 Now that SST is set up:
 
-1. **Enrich your models:** [User Guide - Enrichment](user-guide.md#metadata-enrichment)
-2. **Learn CLI commands:** [CLI Reference](cli-reference.md)
-3. **Write semantic models:** [Semantic Models Guide](semantic-models-guide.md)
-4. **Configure authentication:** [Authentication Guide](authentication.md)
-5. **Understand validation:** [Validation Checklist](validation-checklist.md)
+1. **Enrich your models:** [sst enrich](cli/enrich.md)
+2. **Learn CLI commands:** [CLI Reference](cli/index.md)
+3. **Write semantic models:** [Semantic Models Guide](concepts/semantic-models.md)
+4. **Configure authentication:** [Authentication Guide](guides/authentication.md)
+5. **Understand validation:** [Validation Rules](concepts/validation-rules.md)
 
 ---
 

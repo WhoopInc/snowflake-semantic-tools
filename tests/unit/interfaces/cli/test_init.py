@@ -99,7 +99,7 @@ class TestInitCommand:
 
             assert result.exit_code == 0
             assert "Detected dbt project" in result.output
-            assert (temp_dbt_project / "sst_config.yaml").exists()
+            assert (temp_dbt_project / "sst_config.yml").exists()
         finally:
             os.chdir(original_cwd)
 
@@ -118,8 +118,8 @@ class TestInitCommand:
             assert result.exit_code == 0
             assert "SST Setup Status" in result.output
             assert "dbt project" in result.output or "test_project" in result.output
-            # Should not create sst_config.yaml
-            assert not (temp_dbt_project / "sst_config.yaml").exists()
+            # Should not create sst_config.yml
+            assert not (temp_dbt_project / "sst_config.yml").exists()
         finally:
             os.chdir(original_cwd)
 
@@ -147,9 +147,9 @@ class TestInitCommand:
 
         shutil.copy(temp_profiles_yml, temp_dbt_project / "profiles.yml")
 
-        # Create sst_config.yaml
+        # Create sst_config.yml
         sst_config = {"project": {"semantic_models_dir": "test", "dbt_models_dir": "models"}}
-        with open(temp_dbt_project / "sst_config.yaml", "w") as f:
+        with open(temp_dbt_project / "sst_config.yml", "w") as f:
             yaml.dump(sst_config, f)
 
         original_cwd = os.getcwd()
@@ -208,14 +208,14 @@ class TestInitCommandEdgeCases:
     """Edge case tests for init command."""
 
     def test_init_with_existing_sst_config(self, runner, temp_dbt_project, temp_profiles_yml):
-        """Test init with existing sst_config.yaml."""
+        """Test init with existing sst_config.yml."""
         import os
         import shutil
 
         shutil.copy(temp_profiles_yml, temp_dbt_project / "profiles.yml")
 
         # Create existing config
-        with open(temp_dbt_project / "sst_config.yaml", "w") as f:
+        with open(temp_dbt_project / "sst_config.yml", "w") as f:
             f.write("project:\n  semantic_models_dir: existing")
 
         original_cwd = os.getcwd()

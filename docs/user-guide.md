@@ -12,7 +12,7 @@ Enrichment queries your Snowflake tables and populates dbt YAML files with:
 
 - **Column types** - dimension, fact, or time_dimension
 - **Data types** - TEXT, NUMBER, DATE, etc.
-- **Sample values** - Up to 25 examples per column
+- **Sample values** - Example values per column (default: 25, configurable via `distinct_limit`)
 - **Enum detection** - Identifies categorical columns
 
 ### Manifest Auto-Detection
@@ -27,7 +27,7 @@ dbt compile --target prod
 sst enrich --models customers,orders
 
 # Or enrich all models in a directory
-sst enrich --directory models/marts/
+sst enrich models/marts/
 ```
 
 **Benefits:**
@@ -58,7 +58,7 @@ sst enrich --directory models/marts/
 
 Uses batched queries for performance.
 
-To customize sample value limits, configure in `sst_config.yaml`:
+To customize sample value limits, configure in `sst_config.yml`:
 
 ```yaml
 enrichment:
@@ -74,7 +74,7 @@ enrichment:
 
 **4. Enrichment Customization**
 
-Configure sample value behavior in `sst_config.yaml`:
+Configure sample value behavior in `sst_config.yml`:
 
 ```yaml
 enrichment:
@@ -87,7 +87,7 @@ enrichment:
 
 **5. Exclusions**
 
-Configure in `sst_config.yaml` to skip directories/paths:
+Configure in `sst_config.yml` to skip directories/paths:
 
 ```yaml
 validation:
@@ -116,15 +116,18 @@ sst enrich --models customers --exclude experimental
 
 ### What Gets Preserved
 
-Enrichment NEVER overwrites:
+By default, enrichment preserves existing values:
 - Existing descriptions (including empty strings and null values)
-- Existing synonyms
+- Existing synonyms (use `--force-synonyms` to overwrite)
 - Existing primary_key
 - Existing unique_keys
-- Existing column_type
+- Existing column_type (use `--force-column-types` to overwrite)
+- Existing data_type (use `--force-data-types` to overwrite)
 
-Enrichment ALWAYS updates:
-- sample_values (fresh data)
+**Tip:** Use `--force-all` to overwrite everything and refresh all metadata.
+
+Enrichment ALWAYS updates (cannot be preserved):
+- sample_values (fresh data from Snowflake)
 - is_enum (current cardinality)
 
 Enrichment ADDS if missing:
@@ -132,8 +135,8 @@ Enrichment ADDS if missing:
 
 **Safe to run multiple times.**
 
-**For CLI syntax:** See [CLI Reference](cli-reference.md#enrich)  
-**For Python API:** See [API Reference](api-reference.md)
+**For CLI syntax:** See [sst enrich](cli/enrich.md)  
+**For Python API:** See [API Reference](reference/api.md)
 
 ---
 
@@ -150,14 +153,14 @@ Validation checks semantic models against dbt definitions:
 - No duplicate names
 - SQL syntax validation (optional, requires Snowflake connection)
 
-**Basic validation requires no Snowflake connection.** Optional Snowflake syntax validation can be enabled in `sst_config.yaml`:
+**Basic validation requires no Snowflake connection.** Optional Snowflake syntax validation can be enabled in `sst_config.yml`:
 
 ```yaml
 validation:
   snowflake_syntax_check: true  # Validates SQL expressions against Snowflake
 ```
 
-**For complete list of all validation checks:** See [Validation Checklist](validation-checklist.md)
+**For complete list of all validation checks:** See [Validation Rules](concepts/validation-rules.md)
 
 ### What Gets Checked
 
@@ -207,8 +210,8 @@ validation:
 - Use prefixes (finance_revenue vs sales_revenue)
 - Note: Names like `Total_Revenue`, `total_revenue`, and `TotalRevenue` are considered duplicates
 
-**For CLI syntax:** See [CLI Reference](cli-reference.md#validate)  
-**For Python API:** See [API Reference](api-reference.md)
+**For CLI syntax:** See [sst validate](cli/validate.md)  
+**For Python API:** See [API Reference](reference/api.md)
 
 ---
 
@@ -252,7 +255,7 @@ jaffle_shop:
       # ... other settings
 ```
 
-**See:** [CLI Reference](cli-reference.md#extract) for full details
+**See:** [sst extract](cli/extract.md) for full details
 
 ---
 
@@ -274,7 +277,7 @@ jaffle_shop:
 
 ## Next Steps
 
-- **CLI Commands:** [CLI Reference](cli-reference.md)
-- **Python API:** [API Reference](api-reference.md)
-- **Write Models:** [Semantic Models Guide](semantic-models-guide.md)
+- **CLI Commands:** [CLI Reference](cli/index.md)
+- **Python API:** [API Reference](reference/api.md)
+- **Write Models:** [Semantic Models Guide](concepts/semantic-models.md)
 

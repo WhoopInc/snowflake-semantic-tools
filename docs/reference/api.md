@@ -213,6 +213,6 @@ print(f"Enriched {result.processed}/{result.total} models")
 
 ---
 
-For detailed examples and workflows, see [User Guide](user-guide.md).
+For detailed examples and workflows, see [User Guide](../user-guide.md).
 
 

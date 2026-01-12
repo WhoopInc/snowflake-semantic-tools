@@ -2,10 +2,10 @@
 """
 Configuration Management
 
-Loads and manages SST configuration from sst_config.yaml files.
+Loads and manages SST configuration from sst_config.yml files.
 
 Configuration sources (in order of precedence):
-1. Config file (sst_config.yaml) - organizational defaults
+1. Config file (sst_config.yml) - organizational defaults
 2. Code defaults - minimal fallbacks
 
 Note: Snowflake authentication is handled separately via dbt's profiles.yml.
@@ -22,7 +22,7 @@ class Config:
     """
     SST Configuration Manager
 
-    Loads configuration from sst_config.yaml files.
+    Loads configuration from sst_config.yml files.
     Singleton pattern ensures consistent config across application.
 
     Note: This class handles SST project configuration only.
@@ -40,7 +40,7 @@ class Config:
         return cls._instance
 
     def _load_config(self):
-        """Load configuration from sst_config.yaml file."""
+        """Load configuration from sst_config.yml file."""
         # Start with defaults
         self._config = self._get_defaults()
 
@@ -81,7 +81,7 @@ class Config:
 
     def _find_config_file(self) -> Optional[Path]:
         """
-        Find sst_config.yaml in:
+        Find sst_config.yml in:
         1. Current directory
         2. Parent directories (up to 3 levels)
         3. User home directory
@@ -89,8 +89,8 @@ class Config:
         # Check current directory and parents
         current = Path.cwd()
         for _ in range(4):  # Check up to 3 parent directories
-            # Check both .yaml and .yml extensions
-            for ext in ["yaml", "yml"]:
+            # Check both .yml and .yaml extensions
+            for ext in ["yml", "yaml"]:
                 config_path = current / f"sst_config.{ext}"
                 if config_path.exists():
                     return config_path
@@ -105,7 +105,7 @@ class Config:
             current = current.parent
 
         # Check home directory (both extensions)
-        for ext in ["yaml", "yml"]:
+        for ext in ["yml", "yaml"]:
             home_config = Path.home() / f".sst_config.{ext}"
             if home_config.exists():
                 return home_config
