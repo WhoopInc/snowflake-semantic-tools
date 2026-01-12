@@ -125,7 +125,6 @@ models:
         with patch("snowflake_semantic_tools.interfaces.cli.commands.enrich.setup_command"), patch(
             "snowflake_semantic_tools.interfaces.cli.commands.enrich.MetadataEnrichmentService"
         ) as mock_service:
-
             # Mock the enrichment service to return successful result
             mock_instance = Mock()
             mock_instance.connect = Mock()
@@ -176,7 +175,6 @@ models:
         with patch("snowflake_semantic_tools.interfaces.cli.commands.enrich.setup_command"), patch(
             "snowflake_semantic_tools.interfaces.cli.commands.enrich.MetadataEnrichmentService"
         ) as mock_service:
-
             # Mock the enrichment service to return partial status
             mock_instance = Mock()
             mock_instance.connect = Mock()
@@ -229,7 +227,6 @@ models:
         with patch("snowflake_semantic_tools.interfaces.cli.commands.enrich.setup_command"), patch(
             "snowflake_semantic_tools.interfaces.cli.commands.enrich.MetadataEnrichmentService"
         ) as mock_service:
-
             # Mock the enrichment service to return failed status
             mock_instance = Mock()
             mock_instance.connect = Mock()

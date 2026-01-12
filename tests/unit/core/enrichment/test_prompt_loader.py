@@ -7,11 +7,7 @@ Tests prompt template loading and rendering functionality.
 
 import pytest
 
-from snowflake_semantic_tools.core.enrichment.prompt_loader import (
-    clear_cache,
-    load_prompt,
-    render_prompt,
-)
+from snowflake_semantic_tools.core.enrichment.prompt_loader import clear_cache, load_prompt, render_prompt
 
 
 class TestLoadPrompt:
@@ -135,4 +131,3 @@ class TestClearCache:
         # Verify cache was cleared by checking cache_info
         info = load_prompt.cache_info()
         assert info.currsize == 0
-
