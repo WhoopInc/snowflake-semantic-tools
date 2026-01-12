@@ -54,7 +54,7 @@ jobs:
           python -m pip install build
           python -m pip install twine
           python -m pip install .
-          python -m pip install pytest
+          python -m pip install pytest pytest-mock
 
       - name: Verify tag and pyproject.toml version match
         # Extract version from tag, stripping the leading "v".
