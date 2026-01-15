@@ -129,6 +129,20 @@ class SemanticViewBuilder:
 
             except Exception as e:
                 error_msg = str(e)
+                
+                # Check for table not found error first
+                table_error = self._format_table_not_found_error(error_msg, view_name)
+                if table_error:
+                    logger.error(f"Error building semantic view '{view_name}': {table_error}")
+                    return {
+                        "view_name": view_name,
+                        "sql_statement": None,
+                        "success": False,
+                        "message": f"Error building semantic view '{view_name}': {table_error}",
+                        "target_location": f"{self.target_database}.{self.target_schema}.{view_name.upper()}",
+                    }
+                
+                # Check for schema not found error
                 if "does not exist or not authorized" in error_msg and "Schema" in error_msg:
                     logger.error(f"Target schema '{self.target_database}.{self.target_schema}' does not exist")
                     logger.error(
@@ -433,6 +447,60 @@ class SemanticViewBuilder:
     def _sanitize_description(self, description: str) -> str:
         """Sanitize description for SQL string literal."""
         return CharacterSanitizer.sanitize_for_sql_string(description)
+
+    def _format_table_not_found_error(self, error_msg: str, view_name: str) -> Optional[str]:
+        """
+        Detect and format helpful error message for missing table errors.
+        
+        Args:
+            error_msg: The raw error message from Snowflake
+            view_name: Name of the semantic view being built
+            
+        Returns:
+            Formatted error message if this is a table-not-found error, None otherwise
+        """
+        # Check if this is a table "does not exist" error (not schema)
+        # Look for patterns like:
+        # - "Table 'DB.SCHEMA.TABLE' does not exist or not authorized"
+        # - Error codes: 002003, 42S02
+        is_table_error = (
+            ("does not exist or not authorized" in error_msg or "does not exist" in error_msg)
+            and ("Table" in error_msg or "002003" in error_msg or "42S02" in error_msg)
+            and "Schema" not in error_msg  # Exclude schema errors
+        )
+        
+        if not is_table_error:
+            return None
+        
+        # Try to extract table name from error message
+        # Pattern: Table 'DATABASE.SCHEMA.TABLE_NAME' does not exist
+        table_ref = None
+        table_match = re.search(r"Table\s+'([^']+)'", error_msg, re.IGNORECASE)
+        if table_match:
+            table_ref = table_match.group(1)
+        else:
+            # Fallback: try to extract any quoted identifier (DB.SCHEMA.TABLE format)
+            quoted_match = re.search(r"'([^']+\.[^']+\.[^']+)'", error_msg)
+            if quoted_match:
+                table_ref = quoted_match.group(1)
+        
+        # Use the full table reference if found, otherwise use a generic message
+        if table_ref:
+            table_display = table_ref
+        else:
+            # Last resort: try to find any table-like identifier
+            generic_match = re.search(r"'([^']+)'", error_msg)
+            if generic_match:
+                table_display = generic_match.group(1)
+            else:
+                table_display = "referenced table"
+        
+        # Return helpful error message
+        return (
+            f"Table '{table_display}' does not exist.\n\n"
+            f"This usually means dbt models haven't been materialized yet.\n"
+            f"Run 'dbt run' to create the tables, then retry 'sst generate'."
+        )
 
     def _execute_query(self, conn, sql: str) -> List[Dict]:
         """Execute a SQL query using the provided connection and return results as list of dictionaries."""
@@ -1154,6 +1222,20 @@ class SemanticViewBuilder:
 
         except Exception as e:
             error_msg = str(e)
+            
+            # Check for table not found error first
+            table_error = self._format_table_not_found_error(error_msg, view_name)
+            if table_error:
+                logger.error(f"Error building semantic view '{view_name}': {table_error}")
+                return {
+                    "view_name": view_name,
+                    "sql_statement": None,
+                    "success": False,
+                    "message": f"Error building semantic view '{view_name}': {table_error}",
+                    "target_location": f"{self.target_database}.{self.target_schema}.{view_name.upper()}",
+                }
+            
+            # Check for schema not found error
             if "does not exist or not authorized" in error_msg and "Schema" in error_msg:
                 logger.error(f"Target schema '{self.target_database}.{self.target_schema}' does not exist")
                 logger.error(
