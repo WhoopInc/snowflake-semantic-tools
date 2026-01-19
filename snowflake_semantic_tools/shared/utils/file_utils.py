@@ -6,7 +6,7 @@ Replaces Git infrastructure - assumes running from dbt project root.
 """
 
 from pathlib import Path
-from typing import List, Optional, Tuple
+from typing import Any, List, Optional, Tuple
 
 import yaml
 
@@ -183,8 +183,8 @@ def expand_path_pattern(pattern: str) -> List[Path]:
     # Has wildcards - need to expand
     # Find the base directory (everything up to the first wildcard)
     parts = pattern.split("/")
-    base_parts = []
-    pattern_parts = []
+    base_parts: List[str] = []
+    pattern_parts: List[str] = []
 
     for part in parts:
         if "*" in part or "?" in part:
@@ -257,7 +257,7 @@ def expand_path_pattern(pattern: str) -> List[Path]:
         return []
 
 
-def _convert_to_sql_files(file_paths: List[Path], seen_stems: set, verbose: bool = False) -> List[str]:
+def _convert_to_sql_files(file_paths: List[Path], seen_stems: set[str], verbose: bool = False) -> List[str]:
     """
     Convert YAML/SQL file paths to SQL file paths, deduplicating by stem.
 
@@ -289,7 +289,7 @@ def _convert_to_sql_files(file_paths: List[Path], seen_stems: set, verbose: bool
 
 
 def resolve_wildcard_path_for_enrich(
-    pattern: str, output, verbose: bool = False
+    pattern: str, output: Any, verbose: bool = False
 ) -> Tuple[Optional[str], Optional[List[str]]]:
     """
     Resolve a wildcard pattern for the enrich command.
@@ -317,7 +317,7 @@ def resolve_wildcard_path_for_enrich(
 
     files = [p for p in expanded_paths if p.is_file()]
     dirs = [p for p in expanded_paths if p.is_dir()]
-    seen_stems = set()
+    seen_stems: set[str] = set()
 
     if len(expanded_paths) == 1:
         single_path = expanded_paths[0]
@@ -339,7 +339,7 @@ def resolve_wildcard_path_for_enrich(
         parent_dirs = {p.parent for p in files}
         return str(parent_dirs.pop() if len(parent_dirs) == 1 else expanded_paths[0]), None
     elif dirs:
-        all_files = []
+        all_files: List[Path] = []
         for dir_path in dirs:
             all_files.extend(dir_path.glob("*.yml"))
             all_files.extend(dir_path.glob("*.yaml"))
