@@ -15,10 +15,10 @@ from snowflake_semantic_tools._version import __version__
 from snowflake_semantic_tools.interfaces.cli.output import CLIOutput
 from snowflake_semantic_tools.interfaces.cli.utils import setup_command
 from snowflake_semantic_tools.services.enrich_metadata import EnrichmentConfig, MetadataEnrichmentService
-from snowflake_semantic_tools.shared.utils.file_utils import expand_path_pattern, resolve_wildcard_path_for_enrich
 from snowflake_semantic_tools.shared.events import setup_events
 from snowflake_semantic_tools.shared.progress import CLIProgressCallback
 from snowflake_semantic_tools.shared.utils import get_logger
+from snowflake_semantic_tools.shared.utils.file_utils import expand_path_pattern, resolve_wildcard_path_for_enrich
 
 logger = get_logger(__name__)
 

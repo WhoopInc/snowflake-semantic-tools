@@ -213,7 +213,7 @@ def expand_path_pattern(pattern: str) -> List[Path]:
     try:
         last_part = glob_pattern.split("/")[-1]
         has_extension = "." in last_part
-        
+
         # If pattern doesn't have extension, try to match files with common extensions first
         # This handles patterns like "profound_*" which should match profound_*.yml, profound_*.sql, etc.
         matches = []
@@ -223,11 +223,11 @@ def expand_path_pattern(pattern: str) -> List[Path]:
                 extended_pattern = glob_pattern + ext
                 extended_matches = list(base_dir.glob(extended_pattern))
                 matches.extend([m for m in extended_matches if m.is_file()])
-        
+
         # Also try the pattern as-is (might match files or directories)
         direct_matches = list(base_dir.glob(glob_pattern))
         matches.extend(direct_matches)
-        
+
         # If we still don't have file matches and pattern doesn't have extension,
         # try to find files by prefix (handles any extension)
         if not has_extension and "*" in last_part:
@@ -237,14 +237,14 @@ def expand_path_pattern(pattern: str) -> List[Path]:
                 for item in base_dir.iterdir():
                     if item.name.startswith(prefix) and item.is_file() and item not in matches:
                         matches.append(item)
-        
+
         if not matches:
             return []
 
         # Separate files and directories
         file_matches = [m for m in matches if m.is_file()]
         dir_matches = [m for m in matches if m.is_dir()]
-        
+
         # Prefer files over directories (user likely wants files when using wildcards)
         # Only use directories if no files were found
         final_matches = file_matches if file_matches else dir_matches
@@ -260,12 +260,12 @@ def expand_path_pattern(pattern: str) -> List[Path]:
 def _convert_to_sql_files(file_paths: List[Path], seen_stems: set, verbose: bool = False) -> List[str]:
     """
     Convert YAML/SQL file paths to SQL file paths, deduplicating by stem.
-    
+
     Args:
         file_paths: List of file paths (YAML or SQL)
         seen_stems: Set of already-seen file stems (modified in-place)
         verbose: Whether to show verbose output
-        
+
     Returns:
         List of SQL file paths as strings
     """
@@ -274,15 +274,15 @@ def _convert_to_sql_files(file_paths: List[Path], seen_stems: set, verbose: bool
         stem = file_path.stem
         if stem in seen_stems:
             continue
-        
-        if file_path.suffix in ['.yml', '.yaml']:
-            sql_path = file_path.with_suffix('.sql')
+
+        if file_path.suffix in [".yml", ".yaml"]:
+            sql_path = file_path.with_suffix(".sql")
             if sql_path.exists():
                 sql_files.append(str(sql_path))
                 seen_stems.add(stem)
             elif verbose:
                 logger.debug(f"No corresponding SQL file found for {file_path}")
-        elif file_path.suffix == '.sql':
+        elif file_path.suffix == ".sql":
             sql_files.append(str(file_path))
             seen_stems.add(stem)
     return sql_files
@@ -293,15 +293,15 @@ def resolve_wildcard_path_for_enrich(
 ) -> Tuple[Optional[str], Optional[List[str]]]:
     """
     Resolve a wildcard pattern for the enrich command.
-    
+
     This is a standardized function that handles wildcard expansion and converts
     the results to the appropriate format for the enrich command (target_path or model_files).
-    
+
     Args:
         pattern: Path pattern that may contain wildcards
         output: CLIOutput instance for logging
         verbose: Whether to show verbose output
-        
+
     Returns:
         Tuple of (target_path, model_files) where:
         - target_path: String path to use (if single file/dir), or None
@@ -310,13 +310,15 @@ def resolve_wildcard_path_for_enrich(
     expanded_paths = expand_path_pattern(pattern)
     if not expanded_paths:
         raise ValueError(f"No files found matching pattern '{pattern}'")
-    
-    output.info(f"Wildcard expansion found {len(expanded_paths)} match(es): {', '.join([p.name for p in expanded_paths])}")
-    
+
+    output.info(
+        f"Wildcard expansion found {len(expanded_paths)} match(es): {', '.join([p.name for p in expanded_paths])}"
+    )
+
     files = [p for p in expanded_paths if p.is_file()]
     dirs = [p for p in expanded_paths if p.is_dir()]
     seen_stems = set()
-    
+
     if len(expanded_paths) == 1:
         single_path = expanded_paths[0]
         if single_path.is_file():
@@ -344,11 +346,13 @@ def resolve_wildcard_path_for_enrich(
             all_files.extend(dir_path.glob("*.sql"))
         sql_files = _convert_to_sql_files(all_files, seen_stems, verbose)
         if sql_files:
-            output.info(f"Wildcard matched {len(dirs)} directory/directories, found {len(sql_files)} model file(s): {', '.join([Path(f).stem for f in sql_files])}")
+            output.info(
+                f"Wildcard matched {len(dirs)} directory/directories, found {len(sql_files)} model file(s): {', '.join([Path(f).stem for f in sql_files])}"
+            )
             return None, sql_files
-        output.warning(f"Wildcard matched {len(dirs)} directory/directories but no model files found, using first directory: {dirs[0].name}")
+        output.warning(
+            f"Wildcard matched {len(dirs)} directory/directories but no model files found, using first directory: {dirs[0].name}"
+        )
         return str(dirs[0]), None
     else:
         return str(expanded_paths[0]), None
-
-
