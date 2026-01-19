@@ -33,13 +33,18 @@ sst migrate-meta models/ --backup
 sst migrate-meta PATH [OPTIONS]
 ```
 
+**PATH** supports wildcard patterns (`*` and `?`) to match multiple files:
+- `"models/analytics/shared_prefix_*"` - matches all files starting with `shared_prefix_`
+- `"models/analytics/_intermediate/*"` - matches all files in `_intermediate/` subdirectory
+- **Important:** Use quotes around wildcard patterns to prevent shell expansion
+
 ---
 
 ## Options
 
 | Option | Short | Type | Default | Description |
 |--------|-------|------|---------|-------------|
-| `PATH` | | PATH | Required | File or directory to migrate |
+| `PATH` | | PATH | Required | File, directory, or wildcard pattern to migrate |
 | `--dry-run` | | FLAG | False | Preview changes without modifying files |
 | `--backup` | | FLAG | False | Create .bak backup files before modifying |
 | `--verbose` | `-v` | FLAG | False | Show detailed migration notes |
@@ -112,6 +117,10 @@ sst migrate-meta models/ --dry-run
 
 # Migrate all YAML files in a directory
 sst migrate-meta models/
+
+# Migrate multiple files matching a pattern (wildcard support)
+sst migrate-meta "models/analytics/shared_prefix_*"
+sst migrate-meta "models/analytics/_intermediate/*"
 
 # Migrate with backups (creates .yml.bak files)
 sst migrate-meta models/ --backup

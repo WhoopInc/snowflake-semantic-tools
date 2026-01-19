@@ -33,13 +33,18 @@ sst format models/ --check
 sst format PATH [OPTIONS]
 ```
 
+**PATH** supports wildcard patterns (`*` and `?`) to match multiple files:
+- `"models/analytics/shared_prefix_*"` - matches all files starting with `shared_prefix_`
+- `"models/analytics/_intermediate/*"` - matches all files in `_intermediate/` subdirectory
+- **Important:** Use quotes around wildcard patterns to prevent shell expansion
+
 ---
 
 ## Options
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
-| `PATH` | PATH | Required | File or directory to format |
+| `PATH` | PATH | Required | File, directory, or wildcard pattern to format |
 | `--dry-run` | FLAG | False | Preview changes without modifying files |
 | `--check` | FLAG | False | Check if files need formatting (exit code 1 if changes needed) |
 | `--force` | FLAG | False | Always write files, even if content appears unchanged |
@@ -98,6 +103,10 @@ sst format models/users/users.yml
 
 # Format all files in a directory
 sst format models/
+
+# Format multiple files matching a pattern (wildcard support)
+sst format "models/users/shared_prefix_*"
+sst format "models/users/_intermediate/*"
 
 # Format semantic models
 sst format snowflake_semantic_models/

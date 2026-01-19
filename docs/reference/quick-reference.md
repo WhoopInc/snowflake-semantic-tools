@@ -39,6 +39,10 @@ sst enrich -m name1,name2
 sst enrich models/directory/
 sst enrich path/to/file.yml
 
+# Enrich with wildcard patterns
+sst enrich "models/analytics/shared_prefix_*"
+sst enrich "models/analytics/_intermediate/*"
+
 # Component selection
 sst enrich -m name -ct              # Column types only
 sst enrich -m name -dt              # Data types only
@@ -80,6 +84,10 @@ sst validate --exclude temp,experimental
 # Format files
 sst format models/
 sst format path/to/file.yml
+
+# Format with wildcard patterns
+sst format "models/analytics/shared_prefix_*"
+sst format "models/analytics/_intermediate/*"
 
 # Check formatting (for CI)
 sst format models/ --check
@@ -154,6 +162,10 @@ sst deploy --skip-validation
 sst migrate-meta models/
 sst migrate-meta models/ --dry-run
 sst migrate-meta models/ --backup
+
+# Migrate with wildcard patterns
+sst migrate-meta "models/analytics/shared_prefix_*"
+sst migrate-meta "models/analytics/_intermediate/*"
 ```
 
 ---

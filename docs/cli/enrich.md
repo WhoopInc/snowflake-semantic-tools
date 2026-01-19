@@ -34,9 +34,10 @@ sst enrich [TARGET_PATH] [OPTIONS]
 sst enrich --models MODEL_NAMES [OPTIONS]
 ```
 
-**Two selection modes:**
+**Three selection modes:**
 - **By model name:** `--models name1,name2` (recommended, requires manifest)
 - **By path:** `sst enrich models/directory/` or `sst enrich path/to/file.yml`
+- **By wildcard pattern:** `sst enrich "models/directory/shared_prefix_*"` (matches multiple files)
 
 ---
 
@@ -46,10 +47,15 @@ sst enrich --models MODEL_NAMES [OPTIONS]
 
 | Option | Short | Type | Description |
 |--------|-------|------|-------------|
-| `TARGET_PATH` | | PATH | Path to directory, .sql file, or .yml file |
+| `TARGET_PATH` | | PATH | Path to directory, .sql file, .yml file, or wildcard pattern |
 | `--models` | `-m` | TEXT | Comma-separated list of model names (requires manifest) |
 
 **Note:** `--models` and `TARGET_PATH` are mutually exclusive.
+
+**Wildcard Patterns:** `TARGET_PATH` supports wildcard patterns (`*` and `?`) to match multiple files:
+- `"models/directory/shared_prefix_*"` - matches all files starting with `shared_prefix_`
+- `"models/directory/_intermediate/*"` - matches all files in `_intermediate/` subdirectory
+- **Important:** Use quotes around wildcard patterns to prevent shell expansion
 
 ### Component Selection
 
@@ -113,6 +119,10 @@ sst enrich models/analytics/
 
 # Enrich a single model by file path
 sst enrich models/users/users.sql
+
+# Enrich multiple files matching a pattern (wildcard support)
+sst enrich "models/analytics/shared_prefix_*"
+sst enrich "models/analytics/_intermediate/*"
 ```
 
 ### Component Selection
