@@ -15,6 +15,7 @@ from snowflake_semantic_tools._version import __version__
 from snowflake_semantic_tools.interfaces.cli.output import CLIOutput
 from snowflake_semantic_tools.interfaces.cli.utils import setup_command
 from snowflake_semantic_tools.services.enrich_metadata import EnrichmentConfig, MetadataEnrichmentService
+from snowflake_semantic_tools.shared.utils.file_utils import expand_path_pattern, resolve_wildcard_path_for_enrich
 from snowflake_semantic_tools.shared.events import setup_events
 from snowflake_semantic_tools.shared.progress import CLIProgressCallback
 from snowflake_semantic_tools.shared.utils import get_logger
@@ -145,7 +146,7 @@ def _determine_components(
 
 
 @click.command()
-@click.argument("target_path", type=click.Path(exists=True), required=False)
+@click.argument("target_path", type=click.Path(), required=False)
 @click.option("--models", "-m", "model_names", help="Comma-separated list of model names to enrich (requires manifest)")
 @click.option("--target", "-t", "dbt_target", help="dbt target from profiles.yml (default: uses profile's default)")
 @click.option("--database", "-d", required=False, help="Target database (optional if manifest.json exists)")
@@ -242,6 +243,10 @@ def enrich(
 
         # Exclude specific directories
         sst enrich models/analytics/ --exclude data_science,year_in_review
+
+        # Wildcard patterns (quote to prevent shell expansion)
+        sst enrich "models/analytics/marketing/shared_prefix_*"
+        sst enrich "models/analytics/marketing/_intermediate/*"
     """
     # IMMEDIATE OUTPUT - show user command is running
     output = CLIOutput(verbose=verbose, quiet=False)
@@ -263,8 +268,17 @@ def enrich(
     output.debug("Loading environment...")
     setup_command(verbose=verbose, validate_config=True)
 
-    # Resolve model names to file paths if using --models
+    # Initialize model_files (may be set by wildcard expansion or --models option)
     model_files = None
+
+    # Expand wildcards in target_path if present using standardized helper
+    if target_path:
+        try:
+            target_path, model_files = resolve_wildcard_path_for_enrich(target_path, output, verbose)
+        except ValueError as e:
+            raise click.ClickException(str(e))
+
+    # Resolve model names to file paths if using --models
     if model_names:
         # Parse comma-separated model names
         names_list = [n.strip() for n in model_names.split(",") if n.strip()]
