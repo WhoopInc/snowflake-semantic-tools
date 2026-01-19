@@ -319,6 +319,24 @@ class TestExpandPathPattern:
         # Should only return each file once
         assert len(result) == 1
 
+    def test_wildcard_no_duplicate_when_glob_matches_files(self, tmp_path):
+        """Test that prefix search doesn't duplicate files already matched by glob."""
+        # Create files that would match both glob pattern and prefix search
+        (tmp_path / "prefix_file.txt").write_text("test")
+        (tmp_path / "prefix_file.yml").write_text("test")
+        (tmp_path / "prefix_file.sql").write_text("test")
+        os.chdir(tmp_path)
+
+        # Pattern without extension - glob might match .txt, prefix search would match all
+        result = expand_path_pattern("prefix_*")
+
+        # Should not have duplicates even if both glob and prefix search match same files
+        result_names = [p.name for p in result]
+        assert len(result_names) == len(set(result_names)), "Found duplicate files in results"
+        # Should find the .yml, .yaml, and .sql files (common extensions)
+        assert "prefix_file.yml" in result_names
+        assert "prefix_file.sql" in result_names
+
 
 class TestConvertToSqlFiles:
     """Test _convert_to_sql_files function."""

@@ -230,13 +230,23 @@ def expand_path_pattern(pattern: str) -> List[Path]:
 
         # If we still don't have file matches and pattern doesn't have extension,
         # try to find files by prefix (handles any extension)
+        # Only do prefix search if we haven't found files yet to avoid duplicates
         if not has_extension and "*" in last_part:
-            prefix = last_part.replace("*", "").replace("?", "")
-            if prefix:
-                # Find all files in base_dir that start with the prefix
-                for item in base_dir.iterdir():
-                    if item.name.startswith(prefix) and item.is_file() and item not in matches:
-                        matches.append(item)
+            # Check if we already have file matches (from glob or extension matching)
+            existing_file_matches = [m for m in matches if m.is_file()]
+            if not existing_file_matches:
+                prefix = last_part.replace("*", "").replace("?", "")
+                if prefix:
+                    # Find all files in base_dir that start with the prefix
+                    # Use resolved paths to avoid duplicates from different Path objects
+                    existing_resolved = {m.resolve() for m in matches}
+                    for item in base_dir.iterdir():
+                        if (
+                            item.name.startswith(prefix)
+                            and item.is_file()
+                            and item.resolve() not in existing_resolved
+                        ):
+                            matches.append(item)
 
         if not matches:
             return []
