@@ -241,11 +241,7 @@ def expand_path_pattern(pattern: str) -> List[Path]:
                     # Use resolved paths to avoid duplicates from different Path objects
                     existing_resolved = {m.resolve() for m in matches}
                     for item in base_dir.iterdir():
-                        if (
-                            item.name.startswith(prefix)
-                            and item.is_file()
-                            and item.resolve() not in existing_resolved
-                        ):
+                        if item.name.startswith(prefix) and item.is_file() and item.resolve() not in existing_resolved:
                             matches.append(item)
 
         if not matches:
