@@ -15,12 +15,13 @@ from snowflake_semantic_tools.services.sanitize_yaml import YAMLSanitizationServ
 from snowflake_semantic_tools.shared.config_validator import validate_cli_config
 from snowflake_semantic_tools.shared.events import setup_events
 from snowflake_semantic_tools.shared.utils import get_logger
+from snowflake_semantic_tools.shared.utils.file_utils import expand_path_pattern
 
 logger = get_logger(__name__)
 
 
 @click.command()
-@click.argument("path", type=click.Path(exists=True))
+@click.argument("path", type=click.Path())
 @click.option("--dry-run", is_flag=True, help="Preview changes without modifying files")
 @click.option("--check", is_flag=True, help="Check if files need formatting (exit code 1 if changes needed)")
 @click.option(
@@ -71,13 +72,19 @@ def format_cmd(path: str, dry_run: bool, check: bool, force: bool, sanitize: boo
     validate_cli_config(fail_on_errors=True)
 
     try:
+        # Expand wildcards in path if present
+        expanded_paths = expand_path_pattern(path)
+        if not expanded_paths:
+            raise click.ClickException(f"No files found matching pattern '{path}'")
+
         # If sanitize flag provided, run sanitization first
         if sanitize:
             output.blank_line()
             output.info("Sanitizing YAML files...")
             sanitizer = YAMLSanitizationService()
-            sanitize_result = sanitizer.sanitize_directory(Path(path), dry_run=dry_run)
-            sanitizer.print_summary(sanitize_result, dry_run=dry_run)
+            for expanded_path in expanded_paths:
+                sanitize_result = sanitizer.sanitize_directory(expanded_path, dry_run=dry_run)
+                sanitizer.print_summary(sanitize_result, dry_run=dry_run)
 
             if dry_run:
                 # In dry-run, stop here (don't format)
@@ -85,15 +92,33 @@ def format_cmd(path: str, dry_run: bool, check: bool, force: bool, sanitize: boo
 
         # Continue with formatting
         config = FormattingConfig(dry_run=dry_run, check_only=check, force=force)
-
         service = YAMLFormattingService(config)
-        result = service.format_path(Path(path))
+
+        # Format each expanded path and aggregate results
+        total_files_processed = 0
+        total_files_formatted = 0
+        total_files_needing_formatting = 0
+        total_errors = 0
+
+        for expanded_path in expanded_paths:
+            result = service.format_path(expanded_path)
+            total_files_processed += result.get("files_processed", 0)
+            total_files_formatted += result.get("files_formatted", 0)
+            total_files_needing_formatting += result.get("files_needing_formatting", 0)
+            total_errors += result.get("errors", 0)
+
+        result = {
+            "files_processed": total_files_processed,
+            "files_formatted": total_files_formatted,
+            "files_needing_formatting": total_files_needing_formatting,
+            "errors": total_errors,
+        }
 
         # Show results with context
-        files_processed = result.get("files_processed", 0)
-        files_formatted = result.get("files_formatted", 0)
-        files_needing_formatting = result.get("files_needing_formatting", 0)
-        errors = result.get("errors", 0)
+        files_processed = total_files_processed
+        files_formatted = total_files_formatted
+        files_needing_formatting = total_files_needing_formatting
+        errors = total_errors
 
         if check:
             if files_needing_formatting > 0:

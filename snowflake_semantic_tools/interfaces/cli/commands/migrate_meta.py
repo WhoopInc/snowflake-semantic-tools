@@ -18,6 +18,7 @@ from snowflake_semantic_tools.interfaces.cli.output import CLIOutput
 from snowflake_semantic_tools.shared.config_validator import validate_cli_config
 from snowflake_semantic_tools.shared.events import setup_events
 from snowflake_semantic_tools.shared.utils import get_logger
+from snowflake_semantic_tools.shared.utils.file_utils import expand_path_pattern
 
 logger = get_logger(__name__)
 
@@ -284,7 +285,7 @@ def _discover_yaml_files(path: Path, recursive: bool = True) -> List[Path]:
 
 
 @click.command()
-@click.argument("path", type=click.Path(exists=True))
+@click.argument("path", type=click.Path())
 @click.option("--dry-run", is_flag=True, help="Preview changes without modifying files")
 @click.option("--backup", is_flag=True, help="Create .bak backup files before modifying")
 @click.option("--verbose", "-v", is_flag=True, help="Show detailed migration notes")
@@ -325,8 +326,15 @@ def migrate_meta(path: str, dry_run: bool, backup: bool, verbose: bool):
     validate_cli_config(fail_on_errors=True)
 
     try:
-        target_path = Path(path)
-        yaml_files = _discover_yaml_files(target_path)
+        # Expand wildcards in path if present
+        expanded_paths = expand_path_pattern(path)
+        if not expanded_paths:
+            raise click.ClickException(f"No files found matching pattern '{path}'")
+
+        # Discover YAML files from all expanded paths
+        yaml_files = []
+        for expanded_path in expanded_paths:
+            yaml_files.extend(_discover_yaml_files(expanded_path))
 
         if not yaml_files:
             output.warning(f"No YAML files found in {path}")
