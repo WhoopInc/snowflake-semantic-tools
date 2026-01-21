@@ -1,0 +1,16 @@
+# Snowflake Semantic Tools Configuration
+# Sample project for integration testing
+
+project:
+  semantic_models_dir: "snowflake_semantic_models"
+
+validation:
+  strict: false
+  exclude_dirs: []
+  snowflake_syntax_check: false
+
+enrichment:
+  distinct_limit: 25
+  sample_values_display_limit: 10
+  synonym_model: 'mistral-large2'
+  synonym_max_count: 4

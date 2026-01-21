@@ -1,0 +1,14 @@
+snowflake_relationships:
+  - name: orders_to_customers
+    description: "Each order belongs to one customer"
+    left_table: "{{ table('orders') }}"
+    right_table: "{{ table('customers') }}"
+    relationship_conditions:
+      - "{{ column('orders', 'customer_id') }} = {{ column('customers', 'customer_id') }}"
+
+  - name: orders_to_products
+    description: "Each order references one product"
+    left_table: "{{ table('orders') }}"
+    right_table: "{{ table('products') }}"
+    relationship_conditions:
+      - "{{ column('orders', 'product_id') }} = {{ column('products', 'product_id') }}"

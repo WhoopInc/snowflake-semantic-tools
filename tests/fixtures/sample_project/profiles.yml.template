@@ -1,0 +1,15 @@
+# Template profiles.yml for integration testing
+# Replace placeholders with real credentials for actual Snowflake testing
+
+sample_project:
+  target: dev
+  outputs:
+    dev:
+      type: snowflake
+      account: "{{ SNOWFLAKE_ACCOUNT }}"
+      user: "{{ SNOWFLAKE_USER }}"
+      authenticator: externalbrowser
+      role: "{{ SNOWFLAKE_ROLE }}"
+      warehouse: "{{ SNOWFLAKE_WAREHOUSE }}"
+      database: "{{ SNOWFLAKE_DATABASE }}"
+      schema: DEV

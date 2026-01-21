@@ -1,0 +1,20 @@
+version: 2
+
+models:
+  - name: stg_orders
+    description: "Staged order data from raw source"
+    columns:
+      - name: order_id
+        description: "Unique order identifier"
+      - name: customer_id
+        description: "Reference to customer who placed the order"
+      - name: product_id
+        description: "Reference to product in the order"
+      - name: quantity
+        description: "Number of units ordered"
+      - name: unit_price
+        description: "Price per unit at time of order"
+      - name: ordered_at
+        description: "Timestamp when order was placed"
+      - name: status
+        description: "Current status of the order"
