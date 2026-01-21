@@ -1,0 +1,25 @@
+snowflake_custom_instructions:
+  - name: business_context
+    description: "General business context for the sample analytics"
+    question_categorization: |
+      This is a sample e-commerce analytics dataset with the following key concepts:
+
+      - **Customers**: People who have placed orders. Customer types are:
+        - "new" - customers with only 1 order
+        - "returning" - customers with more than 1 order
+
+      - **Orders**: Individual purchase transactions. Order statuses are:
+        - "pending" - order placed but not yet processed
+        - "completed" - order successfully fulfilled
+        - "cancelled" - order was cancelled
+
+      - **Products**: Items available for purchase, categorized by product_category.
+    sql_generation: |
+      When analyzing this data:
+      - Revenue calculations should use order_total
+      - Customer lifetime value is stored in lifetime_spend
+      - Always filter by status='completed' for revenue metrics unless specifically asked about all orders
+    tables:
+      - "{{ table('customers') }}"
+      - "{{ table('orders') }}"
+      - "{{ table('products') }}"

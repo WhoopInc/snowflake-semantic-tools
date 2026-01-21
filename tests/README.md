@@ -11,6 +11,8 @@ tests/
 │   ├── warnings/               # ValidationWarning scenarios
 │   ├── info/                   # ValidationInfo scenarios
 │   ├── success/                # ValidationSuccess scenarios
+│   ├── sample_project/         # Complete dbt+SST project for integration tests
+│   ├── sample_project_factory.py  # Factory for creating test project variants
 │   └── __init__.py            # Fixture loading utilities
 ├── unit/                       # Unit tests mirroring source structure
 │   ├── core/
@@ -52,6 +54,81 @@ Each severity level contains fixtures for:
 - **semantic_views/**: Semantic view scenarios
 - **dbt_models/**: dbt model validation scenarios
 - **templates/**: Template resolution scenarios
+
+## Sample Project
+
+A minimal but complete dbt+SST project is embedded in `tests/fixtures/sample_project/`
+for integration testing. This provides a realistic, self-contained test harness.
+
+### Sample Project Structure
+
+```
+sample_project/
+├── dbt_project.yml              # dbt project configuration
+├── sst_config.yaml              # SST configuration
+├── profiles.yml.template        # Template for Snowflake credentials
+├── models/
+│   ├── staging/                 # Staging models (stg_customers, stg_orders, stg_products)
+│   └── marts/                   # Mart models with SST metadata (customers, orders, products)
+├── target/
+│   └── manifest.json            # Pre-generated dbt manifest
+└── snowflake_semantic_models/
+    ├── semantic_views.yml       # Semantic view definitions
+    ├── metrics/                 # Metric definitions
+    ├── relationships/           # Relationship definitions
+    ├── filters/                 # Filter definitions
+    ├── verified_queries/        # Verified query examples
+    └── custom_instructions/     # Custom instruction examples
+```
+
+### Using the Sample Project
+
+```python
+from tests.fixtures.sample_project_factory import SampleProjectFactory
+
+# Create a clean copy for testing
+project = SampleProjectFactory.create(tmp_path)
+
+# Create variants for specific test scenarios
+project = SampleProjectFactory.create_without_sst(tmp_path)      # For init tests
+project = SampleProjectFactory.create_unenriched(tmp_path)       # For enrich tests
+project = SampleProjectFactory.create_with_invalid_metrics(tmp_path)  # For validation error tests
+project = SampleProjectFactory.create_without_manifest(tmp_path)  # For compile-required tests
+project = SampleProjectFactory.create_with_profiles(tmp_path)    # With profiles.yml
+```
+
+### Integration Test Base Class
+
+```python
+from tests.integration.base import IntegrationTestBase
+
+class TestMyFeature(IntegrationTestBase):
+    def test_with_sample_project(self, sample_project):
+        """Use the sample_project fixture for a clean copy."""
+        assert (sample_project / "dbt_project.yml").exists()
+
+    def test_in_project_context(self, project_context):
+        """Run tests with working directory set to project."""
+        # Current working directory is the sample project
+        import os
+        assert "dbt_project.yml" in os.listdir()
+```
+
+### Sample Project Contents
+
+**Models (3 tables):**
+- `customers` - Customer dimension with aggregated order metrics
+- `orders` - Order fact table with transaction details
+- `products` - Product dimension with catalog information
+
+**Metrics (5):**
+- `total_orders`, `total_revenue`, `total_customers`, `average_order_value`, `total_products_sold`
+
+**Relationships (2):**
+- `orders_to_customers`, `orders_to_products`
+
+**Semantic View (1):**
+- `sample_analytics` - Combines all 3 tables
 
 ## Usage Examples
 

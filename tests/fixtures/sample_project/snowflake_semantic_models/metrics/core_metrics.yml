@@ -1,0 +1,30 @@
+snowflake_metrics:
+  - name: total_orders
+    description: "Total number of orders placed"
+    expr: "COUNT(DISTINCT {{ column('orders', 'order_id') }})"
+    tables:
+      - "{{ table('orders') }}"
+
+  - name: total_revenue
+    description: "Total revenue from all orders"
+    expr: "SUM({{ column('orders', 'order_total') }})"
+    tables:
+      - "{{ table('orders') }}"
+
+  - name: total_customers
+    description: "Total number of unique customers"
+    expr: "COUNT(DISTINCT {{ column('customers', 'customer_id') }})"
+    tables:
+      - "{{ table('customers') }}"
+
+  - name: average_order_value
+    description: "Average value per order"
+    expr: "{{ metric('total_revenue') }} / NULLIF({{ metric('total_orders') }}, 0)"
+    tables:
+      - "{{ table('orders') }}"
+
+  - name: total_products_sold
+    description: "Total quantity of products sold"
+    expr: "SUM({{ column('orders', 'quantity') }})"
+    tables:
+      - "{{ table('orders') }}"

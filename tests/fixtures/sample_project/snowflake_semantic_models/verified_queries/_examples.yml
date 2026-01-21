@@ -1,0 +1,37 @@
+snowflake_verified_queries:
+  - name: top_customers_by_revenue
+    description: "Find top 10 customers by total revenue"
+    question: "Who are the top 10 customers by revenue?"
+    sql: |
+      SELECT
+        {{ column('customers', 'customer_name') }},
+        SUM({{ column('orders', 'order_total') }}) as total_revenue
+      FROM {{ table('orders') }}
+      JOIN {{ table('customers') }}
+        ON {{ column('orders', 'customer_id') }} = {{ column('customers', 'customer_id') }}
+      GROUP BY {{ column('customers', 'customer_name') }}
+      ORDER BY total_revenue DESC
+      LIMIT 10
+    tables:
+      - "{{ table('orders') }}"
+      - "{{ table('customers') }}"
+    verified_by: "sample_team"
+    verified_at: "2024-01-01"
+    use_as_onboarding_question: true
+
+  - name: monthly_sales_summary
+    description: "Monthly sales summary with order count and revenue"
+    question: "What are the monthly sales totals?"
+    sql: |
+      SELECT
+        DATE_TRUNC('month', {{ column('orders', 'ordered_at') }}) as month,
+        COUNT(DISTINCT {{ column('orders', 'order_id') }}) as order_count,
+        SUM({{ column('orders', 'order_total') }}) as total_revenue
+      FROM {{ table('orders') }}
+      GROUP BY month
+      ORDER BY month DESC
+    tables:
+      - "{{ table('orders') }}"
+    verified_by: "sample_team"
+    verified_at: "2024-01-15"
+    use_as_onboarding_question: false

@@ -1,0 +1,120 @@
+version: 2
+
+models:
+  - name: customers
+    description: "Customer dimension table with aggregated order metrics"
+    config:
+      meta:
+        sst:
+          primary_key: customer_id
+          synonyms:
+            - clients
+            - users
+            - buyers
+    columns:
+      - name: customer_id
+        description: "Unique identifier for each customer"
+        config:
+          meta:
+            sst:
+              column_type: dimension
+              data_type: TEXT
+              sample_values:
+                - "CUST-001"
+                - "CUST-002"
+                - "CUST-003"
+              synonyms:
+                - client_id
+                - user_id
+
+      - name: customer_name
+        description: "Full name of the customer"
+        config:
+          meta:
+            sst:
+              column_type: dimension
+              data_type: TEXT
+              sample_values:
+                - "John Smith"
+                - "Jane Doe"
+                - "Bob Johnson"
+              synonyms:
+                - name
+                - full_name
+
+      - name: email
+        description: "Customer email address"
+        config:
+          meta:
+            sst:
+              column_type: dimension
+              data_type: TEXT
+              sample_values:
+                - "john@example.com"
+                - "jane@example.com"
+
+      - name: first_ordered_at
+        description: "Timestamp of customer's first order"
+        config:
+          meta:
+            sst:
+              column_type: time_dimension
+              data_type: TIMESTAMP_NTZ
+              synonyms:
+                - first_order_date
+                - signup_date
+
+      - name: last_ordered_at
+        description: "Timestamp of customer's most recent order"
+        config:
+          meta:
+            sst:
+              column_type: time_dimension
+              data_type: TIMESTAMP_NTZ
+              synonyms:
+                - last_order_date
+                - recent_order
+
+      - name: lifetime_spend
+        description: "Total amount spent by customer across all orders"
+        config:
+          meta:
+            sst:
+              column_type: fact
+              data_type: NUMBER
+              sample_values:
+                - 150.00
+                - 500.75
+                - 1250.50
+              synonyms:
+                - total_spend
+                - ltv
+
+      - name: order_count
+        description: "Total number of orders placed by customer"
+        config:
+          meta:
+            sst:
+              column_type: fact
+              data_type: NUMBER
+              sample_values:
+                - 1
+                - 5
+                - 12
+              synonyms:
+                - total_orders
+                - num_orders
+
+      - name: customer_type
+        description: "Customer classification based on order history"
+        config:
+          meta:
+            sst:
+              column_type: dimension
+              data_type: TEXT
+              sample_values:
+                - "new"
+                - "returning"
+              synonyms:
+                - customer_segment
+                - buyer_type
