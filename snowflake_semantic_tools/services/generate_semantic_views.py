@@ -47,7 +47,7 @@ class MetadataClient:
         """Get list of available semantic views from metadata."""
         try:
             query = f"""
-            SELECT DISTINCT name, tables
+            SELECT DISTINCT name, tables, description
             FROM {self.database}.{self.schema}.SM_SEMANTIC_VIEWS
             ORDER BY name
             """
@@ -632,7 +632,13 @@ class SemanticViewGenerationService:
                     logger.warning(f"Failed to parse tables for view {view.get('NAME')}")
                     tables = []
 
-                view_configs.append({"name": view["NAME"], "tables": tables})
+                view_configs.append(
+                    {
+                        "name": view["NAME"],
+                        "tables": tables,
+                        "description": view.get("DESCRIPTION") or "",
+                    }
+                )
 
             # Filter by requested views if specified
             if config.views_to_generate:
