@@ -353,9 +353,14 @@ class SemanticTableSchemas:
                     description="Unique identifier for this instruction set (referenced by semantic views)",
                 ),
                 Column(
-                    "instruction",
+                    "question_categorization",
                     ColumnType.VARCHAR,
-                    description="Combined text of question categorization and SQL generation instructions",
+                    description="Guidance for AI_QUESTION_CATEGORIZATION - how to categorize and handle user questions",
+                ),
+                Column(
+                    "sql_generation",
+                    ColumnType.VARCHAR,
+                    description="Guidance for AI_SQL_GENERATION - how to generate SQL queries",
                 ),
             ],
         )

@@ -235,14 +235,15 @@ class TemplateResolver:
                     f"Custom instruction '{instruction_name}' not found. " f"Available instructions: {available}"
                 )
 
-            # Get the full instruction text
-            instruction_text = instruction.get("instruction", "")
-
+            # Get the sql_generation text (new format) or fall back to instruction (old format)
+            instruction_text = instruction.get("sql_generation") or instruction.get("instruction", "")
+            
             # For YAML compatibility, we need to handle multi-line strings properly
             # Option 1: Replace newlines with spaces for a single-line format
             # Option 2: Use YAML literal block scalar (|) - but this is complex to inject
             # Going with Option 1 for simplicity and YAML validity
-            instruction_text = instruction_text.replace("\n", " ").strip()
+            if instruction_text:
+                instruction_text = instruction_text.replace("\n", " ").strip()
 
             # Return the formatted instruction text
             return instruction_text

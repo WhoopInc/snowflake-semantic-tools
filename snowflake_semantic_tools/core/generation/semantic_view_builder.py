@@ -79,6 +79,7 @@ class SemanticViewBuilder:
         execute: bool = True,
         defer_database: Optional[str] = None,
         defer_manifest: Optional["ManifestParser"] = None,
+        custom_instruction_names: Optional[List[str]] = None,
     ) -> Dict[str, Any]:
         """
         Build a semantic view for specified tables.
@@ -107,6 +108,7 @@ class SemanticViewBuilder:
                     description,
                     defer_database=defer_database,
                     defer_manifest=defer_manifest,
+                    custom_instruction_names=custom_instruction_names,
                 )
 
                 result = {
@@ -190,6 +192,7 @@ class SemanticViewBuilder:
                         view_name = config["name"]
                         tables = config["tables"]
                         description = config.get("description", "")
+                        custom_instruction_names = config.get("custom_instructions", [])
 
                         # Show progress for multiple views
                         if total_views > 1:
@@ -198,7 +201,9 @@ class SemanticViewBuilder:
                             logger.info(f"Processing semantic view: {view_name}")
 
                         # Build the semantic view using the shared connection
-                        result = self._build_semantic_view(conn, tables, view_name, description, execute)
+                        result = self._build_semantic_view(
+                            conn, tables, view_name, description, execute, custom_instruction_names
+                        )
 
                         # Add description to the result
                         result["description"] = description
@@ -248,17 +253,22 @@ class SemanticViewBuilder:
         """
         try:
             semantic_views_table = "SM_SEMANTIC_VIEWS"
-            sql = f"SELECT NAME, DESCRIPTION, TABLES FROM {self.metadata_database}.{self.metadata_schema}.{semantic_views_table}"
+            sql = f"SELECT NAME, DESCRIPTION, TABLES, CUSTOM_INSTRUCTIONS FROM {self.metadata_database}.{self.metadata_schema}.{semantic_views_table}"
 
             rows = self._execute_query(conn, sql)
 
             # Parse the configurations
             configs = []
             for row in rows:
+                # Parse custom instructions (stored as JSON string or comma-separated)
+                custom_instructions_raw = row.get("CUSTOM_INSTRUCTIONS")
+                custom_instructions = self._parse_custom_instructions_list(custom_instructions_raw)
+
                 config = {
                     "name": row["NAME"],
                     "description": row["DESCRIPTION"],
                     "tables": self._parse_semantic_views_table_list(row["TABLES"]),
+                    "custom_instructions": custom_instructions,
                 }
                 configs.append(config)
 
@@ -267,6 +277,35 @@ class SemanticViewBuilder:
         except Exception as e:
             logger.error(f"Error querying semantic views configurations: {e}")
             raise
+
+    def _parse_custom_instructions_list(self, raw: Any) -> List[str]:
+        """Parse custom instructions from sm_semantic_views table."""
+        if raw is None:
+            return []
+
+        if isinstance(raw, str):
+            # Try to parse as JSON first
+            try:
+                import json
+
+                instructions = json.loads(raw)
+                if isinstance(instructions, list):
+                    return [str(i).strip() for i in instructions if i]
+            except:
+                pass
+
+            # Try comma-separated
+            if "," in raw:
+                return [i.strip() for i in raw.split(",") if i.strip()]
+
+            # Single instruction
+            if raw.strip():
+                return [raw.strip()]
+
+        if isinstance(raw, list):
+            return [str(i).strip() for i in raw if i]
+
+        return []
 
     def _parse_semantic_views_table_list(self, raw: Any) -> List[str]:
         """Parse the tables column from sm_semantic_views table."""
@@ -1032,6 +1071,127 @@ class SemanticViewBuilder:
 
         return f"WITH EXTENSION (CA='{ca_json_escaped}')"
 
+    def _get_custom_instructions_for_view(
+        self, conn, custom_instruction_names: Optional[List[str]]
+    ) -> List[Dict[str, Any]]:
+        """
+        Retrieve custom instructions from metadata table by name.
+
+        Args:
+            conn: Database connection
+            custom_instruction_names: List of custom instruction names to retrieve
+
+        Returns:
+            List of custom instruction dictionaries with name, question_categorization, and sql_generation
+        """
+        if not custom_instruction_names:
+            return []
+
+        try:
+            cursor = conn.cursor()
+
+            # Build IN clause with quoted names
+            quoted_names = [f"'{name.upper()}'" for name in custom_instruction_names]
+            names_list = ", ".join(quoted_names)
+
+            query = f"""
+            SELECT NAME, QUESTION_CATEGORIZATION, SQL_GENERATION
+            FROM {self.metadata_database}.{self.metadata_schema}.SM_CUSTOM_INSTRUCTIONS
+            WHERE NAME IN ({names_list})
+            """
+
+            cursor.execute(query)
+            rows = cursor.fetchall()
+
+            instructions = [
+                {
+                    "name": row[0],
+                    "question_categorization": row[1] if row[1] else None,
+                    "sql_generation": row[2] if row[2] else None,
+                }
+                for row in rows
+            ]
+
+            return instructions
+
+        except Exception as e:
+            logger.warning(f"Failed to retrieve custom instructions: {e}")
+            return []
+
+    def _build_ai_guidance_clauses(
+        self, conn, custom_instruction_names: Optional[List[str]]
+    ) -> str:
+        """
+        Build AI_QUESTION_CATEGORIZATION and AI_SQL_GENERATION clauses from custom instructions.
+
+        Args:
+            conn: Database connection
+            custom_instruction_names: List of custom instruction names to aggregate
+
+        Returns:
+            String containing AI_QUESTION_CATEGORIZATION and/or AI_SQL_GENERATION clauses, or empty string
+        """
+        if not custom_instruction_names:
+            return ""
+
+        instructions = self._get_custom_instructions_for_view(conn, custom_instruction_names)
+        if not instructions:
+            return ""
+
+        # Aggregate fields from all instructions
+        question_cat_parts = []
+        sql_gen_parts = []
+        for inst in instructions:
+            if inst.get("question_categorization"):
+                question_cat_parts.append(inst["question_categorization"].strip())
+            if inst.get("sql_generation"):
+                sql_gen_parts.append(inst["sql_generation"].strip())
+
+        clauses = []
+
+        # Build AI_SQL_GENERATION clause (comes first per Snowflake syntax)
+        if sql_gen_parts:
+            try:
+                # Join multiple instructions with newlines
+                combined_sql_gen = "\n".join(sql_gen_parts)
+                # Strip trailing whitespace/newlines to ensure clean closing
+                combined_sql_gen = combined_sql_gen.rstrip()
+                # Escape single quotes for SQL (replace ' with '')
+                escaped_sql_gen = combined_sql_gen.replace("'", "''")
+                # Build the clause
+                ai_sql_clause = f"  AI_SQL_GENERATION '{escaped_sql_gen}'"
+                clauses.append(ai_sql_clause)
+            except Exception as e:
+                logger.error(f"Error building AI_SQL_GENERATION clause: {e}")
+                raise ValueError(
+                    f"Failed to build AI_SQL_GENERATION clause. "
+                    f"This may be caused by invalid special characters in the instruction text. "
+                    f"Please check your custom instruction definition."
+                ) from e
+
+        # Build AI_QUESTION_CATEGORIZATION clause (comes after AI_SQL_GENERATION per Snowflake syntax)
+        if question_cat_parts:
+            try:
+                # Join multiple instructions with newlines
+                combined_question_cat = "\n".join(question_cat_parts)
+                # Strip trailing whitespace/newlines to ensure clean closing
+                combined_question_cat = combined_question_cat.rstrip()
+                # Escape single quotes for SQL (replace ' with '')
+                escaped_question_cat = combined_question_cat.replace("'", "''")
+                clauses.append(f"  AI_QUESTION_CATEGORIZATION '{escaped_question_cat}'")
+            except Exception as e:
+                logger.error(f"Error building AI_QUESTION_CATEGORIZATION clause: {e}")
+                raise ValueError(
+                    f"Failed to build AI_QUESTION_CATEGORIZATION clause. "
+                    f"This may be caused by invalid special characters in the instruction text. "
+                    f"Please check your custom instruction definition."
+                ) from e
+
+        if clauses:
+            return "\n".join(clauses)
+
+        return ""
+
     def _generate_sql(
         self,
         conn,
@@ -1040,6 +1200,7 @@ class SemanticViewBuilder:
         description: str = "",
         defer_database: Optional[str] = None,
         defer_manifest: Optional["ManifestParser"] = None,
+        custom_instruction_names: Optional[List[str]] = None,
     ) -> str:
         """Generate the CREATE OR REPLACE SEMANTIC VIEW SQL statement ."""
         logger.info(f"Generating SQL for semantic view '{view_name}'")
@@ -1086,6 +1247,7 @@ class SemanticViewBuilder:
             sql_parts.append(f"  METRICS (\n{metrics_clause}\n  )")
 
         # Add comment - use provided description or fallback to generic message
+        # COMMENT comes before AI clauses per Snowflake syntax
         if description and description.strip():
             # Escape single quotes in description
             comment = description.replace("'", "''")
@@ -1093,11 +1255,16 @@ class SemanticViewBuilder:
             comment = f"Semantic view generated for tables: {', '.join(table_names)}"
         sql_parts.append(f"  COMMENT = '{comment}'")
 
+        # Build AI guidance clauses from custom instructions
+        # These come after COMMENT per Snowflake syntax: COMMENT, then AI_SQL_GENERATION, then AI_QUESTION_CATEGORIZATION
+        ai_guidance_clauses = self._build_ai_guidance_clauses(conn, custom_instruction_names)
+        if ai_guidance_clauses:
+            sql_parts.append(ai_guidance_clauses)
+
         # Build CA extension for sample_values (Cortex Analyst metadata)
         ca_extension = self._build_ca_extension(conn, table_names)
 
         # Join all parts and add CA extension if present
-        logger.info("Finalizing SQL statement...")
         if ca_extension:
             full_sql = "\n".join(sql_parts) + "\n" + ca_extension + ";"
         else:
@@ -1108,12 +1275,17 @@ class SemanticViewBuilder:
             f"Generated SQL for view '{view_name}' ({len(full_sql)} characters)",
             extra={"sql": full_sql, "view_name": view_name},
         )
-        logger.info(f"SQL generation completed for '{view_name}'")
 
         return full_sql
 
     def _build_semantic_view(
-        self, conn, table_names: List[str], view_name: str, description: str = "", execute: bool = True
+        self,
+        conn,
+        table_names: List[str],
+        view_name: str,
+        description: str = "",
+        execute: bool = True,
+        custom_instruction_names: Optional[List[str]] = None,
     ) -> Dict[str, Any]:
         """
         Build a semantic view .
@@ -1124,6 +1296,7 @@ class SemanticViewBuilder:
             view_name: Name of the semantic view to create
             description: Optional description for the semantic view
             execute: If True, executes SQL in Snowflake (default). If False, returns SQL only (dry run).
+            custom_instruction_names: Optional list of custom instruction names to include
 
         Returns:
             Dictionary containing SQL statement and execution results
@@ -1132,7 +1305,9 @@ class SemanticViewBuilder:
 
         try:
             # Generate SQL statement using the shared connection
-            sql_statement = self._generate_sql(conn, table_names, view_name, description)
+            sql_statement = self._generate_sql(
+                conn, table_names, view_name, description, custom_instruction_names=custom_instruction_names
+            )
 
             result = {
                 "view_name": view_name,
