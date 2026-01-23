@@ -377,7 +377,40 @@ class TestCustomInstructionValidation:
                     {
                         "name": "revenue_calculation",
                         "description": "How to calculate revenue",
-                        "instruction": "When calculating revenue, always use gross_revenue and filter for completed transactions.",
+                        "sql_generation": "When calculating revenue, always use gross_revenue and filter for completed transactions.",
+                    }
+                ]
+            }
+        }
+
+        result = validator.validate(semantic_data)
+        assert result.error_count == 0
+
+    def test_valid_custom_instruction_with_both_fields_passes(self, validator):
+        """Test that a custom instruction with both fields passes validation."""
+        semantic_data = {
+            "custom_instructions": {
+                "items": [
+                    {
+                        "name": "privacy_rules",
+                        "question_categorization": "Reject questions about individual users.",
+                        "sql_generation": "Always apply privacy filters.",
+                    }
+                ]
+            }
+        }
+
+        result = validator.validate(semantic_data)
+        assert result.error_count == 0
+
+    def test_valid_custom_instruction_with_only_question_categorization_passes(self, validator):
+        """Test that a custom instruction with only question_categorization passes validation."""
+        semantic_data = {
+            "custom_instructions": {
+                "items": [
+                    {
+                        "name": "privacy_rules",
+                        "question_categorization": "Reject questions about individual users.",
                     }
                 ]
             }
@@ -387,13 +420,13 @@ class TestCustomInstructionValidation:
         assert result.error_count == 0
 
     def test_custom_instruction_missing_fields_error(self, validator):
-        """Test that custom instruction without required fields produces ERROR."""
+        """Test that custom instruction without both fields produces ERROR."""
         semantic_data = {
             "custom_instructions": {
                 "items": [
                     {
                         "name": "revenue_calculation"
-                        # Missing instruction
+                        # Missing both question_categorization and sql_generation
                     }
                 ]
             }
@@ -402,17 +435,38 @@ class TestCustomInstructionValidation:
         result = validator.validate(semantic_data)
         assert result.error_count > 0
         errors = [i.message for i in result.issues if i.severity.name == "ERROR"]
-        assert any("missing required field: instruction" in e for e in errors)
+        assert any(
+            "missing required field: must have at least one of 'question_categorization' or 'sql_generation'" in e
+            for e in errors
+        )
 
     def test_custom_instruction_short_text_warning(self, validator):
         """Test that custom instruction with short text produces WARNING."""
         semantic_data = {
-            "custom_instructions": {"items": [{"name": "revenue_calculation", "instruction": "short"}]}  # < 10 chars
+            "custom_instructions": {"items": [{"name": "revenue_calculation", "sql_generation": "short"}]}  # < 10 chars
         }
 
         result = validator.validate(semantic_data)
         warnings = [i.message for i in result.issues if i.severity.name == "WARNING"]
-        assert any("very short instruction text" in w for w in warnings)
+        assert any("very short sql_generation text" in w for w in warnings)
+
+    def test_custom_instruction_with_none_field_passes(self, validator):
+        """Test that custom instruction with one field as None and other field present passes validation."""
+        semantic_data = {
+            "custom_instructions": {
+                "items": [
+                    {
+                        "name": "gtu_performance_data_guidance",
+                        "question_categorization": None,  # Explicitly None
+                        "sql_generation": "Provide all metrics as month-to-date totals as default. Always round metrics to 2 decimal places.",
+                    }
+                ]
+            }
+        }
+
+        result = validator.validate(semantic_data)
+        # Should pass validation - None is allowed for optional fields
+        assert result.error_count == 0
 
 
 class TestVerifiedQueryValidation:

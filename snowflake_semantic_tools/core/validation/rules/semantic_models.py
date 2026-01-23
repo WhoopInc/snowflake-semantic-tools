@@ -385,43 +385,91 @@ class SemanticModelValidator:
 
             # Required fields
             self._check_required_field(instruction, "name", instruction_name, "custom_instruction", source_file, result)
-            self._check_required_field(
-                instruction, "instruction", instruction_name, "custom_instruction", source_file, result
-            )
+
+            # At least one of question_categorization or sql_generation must be present
+            has_question_cat = "question_categorization" in instruction and instruction.get("question_categorization")
+            has_sql_gen = "sql_generation" in instruction and instruction.get("sql_generation")
+
+            if not has_question_cat and not has_sql_gen:
+                result.add_error(
+                    f"Custom instruction '{instruction_name}' is missing required field: must have at least one of 'question_categorization' or 'sql_generation'",
+                    file_path=source_file,
+                    context={
+                        "custom_instruction": instruction_name,
+                        "field": "question_categorization or sql_generation",
+                        "type": "custom_instruction",
+                    },
+                )
 
             # Validate identifier (length, characters, reserved keywords)
             self._validate_identifier(instruction_name, "Custom instruction", result, source_file=source_file)
 
-            # Field types
-            if "instruction" in instruction:
-                if not isinstance(instruction["instruction"], str):
+            # Field types and content validation for question_categorization
+            if "question_categorization" in instruction and instruction["question_categorization"] is not None:
+                if not isinstance(instruction["question_categorization"], str):
                     result.add_error(
-                        f"Custom instruction '{instruction_name}' field 'instruction' must be a string, got {type(instruction['instruction']).__name__}",
+                        f"Custom instruction '{instruction_name}' field 'question_categorization' must be a string, got {type(instruction['question_categorization']).__name__}",
                         file_path=source_file,
                         context={
                             "custom_instruction": instruction_name,
-                            "field": "instruction",
+                            "field": "question_categorization",
                             "type": "custom_instruction",
                         },
                     )
-                elif not instruction["instruction"].strip():
+                elif instruction["question_categorization"] and not instruction["question_categorization"].strip():
                     result.add_error(
-                        f"Custom instruction '{instruction_name}' field 'instruction' cannot be empty",
+                        f"Custom instruction '{instruction_name}' field 'question_categorization' cannot be empty or whitespace-only",
                         file_path=source_file,
                         context={
                             "custom_instruction": instruction_name,
-                            "field": "instruction",
+                            "field": "question_categorization",
                             "type": "custom_instruction",
                         },
                     )
-                elif len(instruction["instruction"]) < 10:
+                elif (
+                    instruction["question_categorization"] and len(instruction["question_categorization"].strip()) < 10
+                ):
                     result.add_warning(
-                        f"Custom instruction '{instruction_name}' has very short instruction text (< 10 chars). "
+                        f"Custom instruction '{instruction_name}' has very short question_categorization text (< 10 chars). "
                         f"Consider adding more detail.",
                         file_path=source_file,
                         context={
                             "custom_instruction": instruction_name,
-                            "field": "instruction",
+                            "field": "question_categorization",
+                            "type": "custom_instruction",
+                        },
+                    )
+
+            # Field types and content validation for sql_generation
+            if "sql_generation" in instruction and instruction["sql_generation"] is not None:
+                if not isinstance(instruction["sql_generation"], str):
+                    result.add_error(
+                        f"Custom instruction '{instruction_name}' field 'sql_generation' must be a string, got {type(instruction['sql_generation']).__name__}",
+                        file_path=source_file,
+                        context={
+                            "custom_instruction": instruction_name,
+                            "field": "sql_generation",
+                            "type": "custom_instruction",
+                        },
+                    )
+                elif instruction["sql_generation"] and not instruction["sql_generation"].strip():
+                    result.add_error(
+                        f"Custom instruction '{instruction_name}' field 'sql_generation' cannot be empty or whitespace-only",
+                        file_path=source_file,
+                        context={
+                            "custom_instruction": instruction_name,
+                            "field": "sql_generation",
+                            "type": "custom_instruction",
+                        },
+                    )
+                elif instruction["sql_generation"] and len(instruction["sql_generation"].strip()) < 10:
+                    result.add_warning(
+                        f"Custom instruction '{instruction_name}' has very short sql_generation text (< 10 chars). "
+                        f"Consider adding more detail.",
+                        file_path=source_file,
+                        context={
+                            "custom_instruction": instruction_name,
+                            "field": "sql_generation",
                             "type": "custom_instruction",
                         },
                     )

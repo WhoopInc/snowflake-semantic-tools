@@ -122,16 +122,26 @@ class CustomInstruction:
     business-specific terminology, calculation rules, and query patterns unique
     to your organization.
 
-    Instructions can include guidance on metric calculations, date handling,
-    business rules, and preferred query patterns.
+    At least one of question_categorization or sql_generation must be provided.
     """
 
     name: str
-    instruction: str
+    question_categorization: Optional[str] = None
+    sql_generation: Optional[str] = None
+    source_file: Optional[str] = None  # For validation error reporting
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary representation."""
-        return {"name": self.name, "instruction": self.instruction}
+        result = {"name": self.name}
+
+        if self.question_categorization:
+            result["question_categorization"] = self.question_categorization
+        if self.sql_generation:
+            result["sql_generation"] = self.sql_generation
+        if self.source_file:
+            result["source_file"] = self.source_file
+
+        return result
 
 
 @dataclass
