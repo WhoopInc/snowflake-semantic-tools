@@ -372,7 +372,7 @@ class Parser:
             parsed_data = self._parse_semantic_type(semantic_type, files)
             if parsed_data:
                 result[semantic_type] = parsed_data
-        
+
         return result
 
     def _group_files_by_type(self, files: List[Path]) -> Dict[str, List[Path]]:
@@ -415,7 +415,12 @@ class Parser:
 
                 # Parse resolved content
                 # Pass instruction_names_map for semantic_views to store instruction names
-                parsed = self._parse_semantic_content(semantic_type, content, str(file_path), instruction_names_map if semantic_type == "semantic_views" else None)
+                parsed = self._parse_semantic_content(
+                    semantic_type,
+                    content,
+                    str(file_path),
+                    instruction_names_map if semantic_type == "semantic_views" else None,
+                )
                 if parsed:
                     # Special handling for relationships which return (relationships, relationship_columns)
                     if semantic_type == "relationships" and isinstance(parsed, tuple):
@@ -460,70 +465,79 @@ class Parser:
     def _extract_custom_instruction_names_from_views(self, content: str) -> Dict[str, List[str]]:
         """
         Extract custom instruction names from semantic views before template resolution.
-        Works like metrics: extracts the name from {{ custom_instructions('name') }} templates.
-        
-        Uses regex on raw content since YAML parsing fails with Jinja templates.
-        
+
+        Uses a clean regex-based approach that mirrors the metrics collection pattern:
+        - Finds view names and their custom_instructions sections
+        - Extracts instruction names only from list items under custom_instructions
+        - Handles nested structures by tracking indentation levels
+
         Returns a map of view name -> list of instruction names.
         """
         import re
-        
-        instruction_names_map = {}
-        
-        # Pattern to match: view name, then custom_instructions with template
-        # We need to find each view block and extract its custom_instructions
-        view_pattern = r'- name:\s*([^\n]+)\s*(?:[^\n]*\n)*?(?:\s+custom_instructions:\s*\n(?:\s+-\s*\{\{\s*custom_instructions\([\'"]([^\'")]+)[\'"]\)\s*\}\}\s*\n?)+)'
-        
-        # Simpler approach: find all custom_instructions templates and their preceding view names
-        # Look for patterns like:
-        #   - name: view_name
-        #     ...
-        #     custom_instructions:
-        #       - {{ custom_instructions('name') }}
-        
-        lines = content.split('\n')
-        current_view_name = None
-        in_custom_instructions = False
+
+        instruction_names_map: Dict[str, List[str]] = {}
+
+        # Pattern to match view name (handles various indentation levels)
+        view_name_pattern = r"^(\s*)-\s+name:\s*(.+)$"
+        # Pattern to match custom_instructions key
+        custom_instr_key_pattern = r"^(\s+)custom_instructions:\s*$"
+        # Pattern to match custom_instructions template in list items
         instruction_pattern = r'\{\{\s*custom_instructions\([\'"]([^\'")]+)[\'"]\)\s*\}\}'
-        
-        for i, line in enumerate(lines):
-            # Check if this line starts a new view (handles both "  - name:" and "- name:" formats)
-            view_match = re.match(r'^(\s*)-\s+name:\s*(.+)$', line)
+
+        lines = content.split("\n")
+        current_view_name: Optional[str] = None
+        in_custom_instructions = False
+        view_indent_level = 0
+        custom_instr_indent_level = 0
+
+        for line in lines:
+            # Check if this line starts a new view
+            view_match = re.match(view_name_pattern, line)
             if view_match:
                 current_view_name = view_match.group(2).strip()
+                view_indent_level = len(view_match.group(1))
                 in_custom_instructions = False
                 continue
-            
-            # Check if we're entering custom_instructions section (must be indented under a view)
+
+            # Check if we're entering custom_instructions section
             if current_view_name:
-                custom_instr_match = re.match(r'^(\s+)custom_instructions:\s*$', line)
+                custom_instr_match = re.match(custom_instr_key_pattern, line)
                 if custom_instr_match:
+                    custom_instr_indent_level = len(custom_instr_match.group(1))
                     in_custom_instructions = True
                     continue
-                
-                # Check if we're in custom_instructions and find templates
+
+                # Extract instruction names when in custom_instructions section
                 if in_custom_instructions:
-                    match = re.search(instruction_pattern, line)
-                    if match:
-                        instruction_name = match.group(1).upper()
-                        if current_view_name not in instruction_names_map:
-                            instruction_names_map[current_view_name] = []
-                        instruction_names_map[current_view_name].append(instruction_name)
-                    # Check if we've left the custom_instructions section
-                    # (next key at same or less indentation, or empty line followed by new view)
-                    elif line.strip() and not line.strip().startswith('-') and not re.search(instruction_pattern, line):
-                        # Check if this is a new key at the same level (we've left custom_instructions)
-                        key_match = re.match(r'^(\s+)\w+:', line)
-                        if key_match:
-                            # Same or less indentation means we've left custom_instructions
+                    # Only match templates in list items (lines starting with -)
+                    # This avoids matching templates in descriptions or other nested fields
+                    if re.match(r"^\s+-\s+", line):
+                        match = re.search(instruction_pattern, line)
+                        if match:
+                            instruction_name = match.group(1).upper()
+                            # Initialize list only when we find the first instruction
+                            if current_view_name not in instruction_names_map:
+                                instruction_names_map[current_view_name] = []
+                            instruction_names_map[current_view_name].append(instruction_name)
+                    # Exit custom_instructions section if we hit a new key at same/less indentation
+                    elif line.strip():
+                        line_indent = len(line) - len(line.lstrip())
+                        # If we hit a key at same or less indentation than custom_instructions, we've left it
+                        if re.match(r"^\s+\w+:", line) and line_indent <= custom_instr_indent_level:
                             in_custom_instructions = False
-                    elif not line.strip():
-                        # Empty line - continue looking in custom_instructions
-                        pass
-        
+                        # If we hit a new view (at view indent level), reset
+                        elif re.match(r"^\s*-\s+name:", line) and line_indent <= view_indent_level:
+                            in_custom_instructions = False
+
         return instruction_names_map
 
-    def _parse_semantic_content(self, semantic_type: str, content: str, file_path: str, instruction_names_map: Optional[Dict[str, List[str]]] = None) -> Optional[List[Dict]]:
+    def _parse_semantic_content(
+        self,
+        semantic_type: str,
+        content: str,
+        file_path: str,
+        instruction_names_map: Optional[Dict[str, List[str]]] = None,
+    ) -> Optional[List[Dict]]:
         """Parse semantic content based on type."""
         try:
             data = yaml.safe_load(content)

@@ -162,18 +162,14 @@ class TestCustomInstructionsParsingEdgeCases:
 
     def test_empty_instructions_list(self):
         """Test parsing empty instructions list."""
-        from snowflake_semantic_tools.core.parsing.parsers.semantic_parser import (
-            parse_snowflake_custom_instructions,
-        )
+        from snowflake_semantic_tools.core.parsing.parsers.semantic_parser import parse_snowflake_custom_instructions
 
         result = parse_snowflake_custom_instructions([], Path("test.yml"))
         assert result == []
 
     def test_instruction_missing_name(self):
         """Test instruction without name field."""
-        from snowflake_semantic_tools.core.parsing.parsers.semantic_parser import (
-            parse_snowflake_custom_instructions,
-        )
+        from snowflake_semantic_tools.core.parsing.parsers.semantic_parser import parse_snowflake_custom_instructions
 
         instructions = [{"question_categorization": "Rule", "sql_generation": "SQL"}]
         result = parse_snowflake_custom_instructions(instructions, Path("test.yml"))
@@ -182,9 +178,7 @@ class TestCustomInstructionsParsingEdgeCases:
 
     def test_instruction_missing_all_fields(self):
         """Test instruction with no fields."""
-        from snowflake_semantic_tools.core.parsing.parsers.semantic_parser import (
-            parse_snowflake_custom_instructions,
-        )
+        from snowflake_semantic_tools.core.parsing.parsers.semantic_parser import parse_snowflake_custom_instructions
 
         instructions = [{}]
         result = parse_snowflake_custom_instructions(instructions, Path("test.yml"))
@@ -195,9 +189,7 @@ class TestCustomInstructionsParsingEdgeCases:
 
     def test_instruction_name_case_handling(self):
         """Test that instruction names are uppercased."""
-        from snowflake_semantic_tools.core.parsing.parsers.semantic_parser import (
-            parse_snowflake_custom_instructions,
-        )
+        from snowflake_semantic_tools.core.parsing.parsers.semantic_parser import parse_snowflake_custom_instructions
 
         instructions = [
             {"name": "lowercase", "question_categorization": "Rule", "sql_generation": "SQL"},
@@ -211,9 +203,7 @@ class TestCustomInstructionsParsingEdgeCases:
 
     def test_instruction_fields_trimming(self):
         """Test that instruction fields are trimmed."""
-        from snowflake_semantic_tools.core.parsing.parsers.semantic_parser import (
-            parse_snowflake_custom_instructions,
-        )
+        from snowflake_semantic_tools.core.parsing.parsers.semantic_parser import parse_snowflake_custom_instructions
 
         instructions = [
             {
@@ -232,9 +222,7 @@ class TestSemanticViewsInstructionExtractionEdgeCases:
 
     def test_view_without_custom_instructions(self):
         """Test view without custom_instructions field."""
-        from snowflake_semantic_tools.core.parsing.parsers.semantic_parser import (
-            parse_semantic_views,
-        )
+        from snowflake_semantic_tools.core.parsing.parsers.semantic_parser import parse_semantic_views
 
         views = [
             {
@@ -248,9 +236,7 @@ class TestSemanticViewsInstructionExtractionEdgeCases:
 
     def test_view_with_empty_custom_instructions(self):
         """Test view with empty custom_instructions list."""
-        from snowflake_semantic_tools.core.parsing.parsers.semantic_parser import (
-            parse_semantic_views,
-        )
+        from snowflake_semantic_tools.core.parsing.parsers.semantic_parser import parse_semantic_views
 
         views = [
             {
@@ -265,10 +251,9 @@ class TestSemanticViewsInstructionExtractionEdgeCases:
 
     def test_view_with_multiple_instruction_references(self):
         """Test view with multiple custom instruction references."""
-        from snowflake_semantic_tools.core.parsing.parsers.semantic_parser import (
-            parse_semantic_views,
-        )
         import json
+
+        from snowflake_semantic_tools.core.parsing.parsers.semantic_parser import parse_semantic_views
 
         views = [
             {

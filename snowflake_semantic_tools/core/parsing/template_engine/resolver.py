@@ -237,7 +237,7 @@ class TemplateResolver:
 
             # Get the sql_generation text (new format) or fall back to instruction (old format)
             instruction_text = instruction.get("sql_generation") or instruction.get("instruction", "")
-            
+
             # For YAML compatibility, we need to handle multi-line strings properly
             # Option 1: Replace newlines with spaces for a single-line format
             # Option 2: Use YAML literal block scalar (|) - but this is complex to inject

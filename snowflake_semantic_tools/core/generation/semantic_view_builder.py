@@ -1072,7 +1072,7 @@ class SemanticViewBuilder:
         return f"WITH EXTENSION (CA='{ca_json_escaped}')"
 
     def _get_custom_instructions_for_view(
-        self, conn, custom_instruction_names: Optional[List[str]]
+        self, conn: Any, custom_instruction_names: Optional[List[str]]
     ) -> List[Dict[str, Any]]:
         """
         Retrieve custom instructions from metadata table by name.
@@ -1118,9 +1118,7 @@ class SemanticViewBuilder:
             logger.warning(f"Failed to retrieve custom instructions: {e}")
             return []
 
-    def _build_ai_guidance_clauses(
-        self, conn, custom_instruction_names: Optional[List[str]]
-    ) -> str:
+    def _build_ai_guidance_clauses(self, conn: Any, custom_instruction_names: Optional[List[str]]) -> str:
         """
         Build AI_QUESTION_CATEGORIZATION and AI_SQL_GENERATION clauses from custom instructions.
 

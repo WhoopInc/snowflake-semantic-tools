@@ -329,7 +329,6 @@ class SemanticViewGenerationService:
                 table_names = view_config.get("tables", [])
                 description = view_config.get("description", "")
                 custom_instruction_names = view_config.get("custom_instructions", [])
-                
 
                 if not table_names:
                     error_msg = "No tables specified"
@@ -531,22 +530,22 @@ class SemanticViewGenerationService:
 
                 instructions = json.loads(raw)
                 if isinstance(instructions, list):
-                    # Normalize to uppercase (instruction names are stored uppercase)
-                    return [str(i).strip().upper() if i else "" for i in instructions if i]
+                    # Instruction names are already uppercase from extraction
+                    return [str(i).strip() if i else "" for i in instructions if i]
             except:
                 pass
 
             # Try comma-separated
             if "," in raw:
-                return [i.strip().upper() for i in raw.split(",") if i.strip()]
+                return [i.strip() for i in raw.split(",") if i.strip()]
 
             # Single instruction
             if raw.strip():
-                return [raw.strip().upper()]
+                return [raw.strip()]
 
         if isinstance(raw, list):
-            # Normalize to uppercase
-            return [str(i).strip().upper() if i else "" for i in raw if i]
+            # Instruction names are already uppercase from extraction
+            return [str(i).strip() if i else "" for i in raw if i]
 
         return []
 
@@ -641,12 +640,14 @@ class SemanticViewGenerationService:
                 # Parse CUSTOM_INSTRUCTIONS column (stored as JSON string)
                 custom_instructions = self._parse_custom_instructions(view.get("CUSTOM_INSTRUCTIONS"))
 
-                view_configs.append({
-                    "name": view["NAME"],
-                    "tables": tables,
-                    "description": view.get("DESCRIPTION", ""),
-                    "custom_instructions": custom_instructions,
-                })
+                view_configs.append(
+                    {
+                        "name": view["NAME"],
+                        "tables": tables,
+                        "description": view.get("DESCRIPTION", ""),
+                        "custom_instructions": custom_instructions,
+                    }
+                )
 
             # Filter by requested views if specified
             if config.views_to_generate:

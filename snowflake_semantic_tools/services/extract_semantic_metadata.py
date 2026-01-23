@@ -416,7 +416,7 @@ class SemanticMetadataExtractionService:
                         # Map semantic_views to sm_semantic_views for table name
                         table_key = f"sm_{model_type}" if model_type == "semantic_views" else model_type
                         models[table_key] = model_data["items"]
-                    
+
                     # Handle relationship_columns separately
                     if "relationship_columns" in model_data:
                         models["relationship_columns"] = model_data["relationship_columns"]

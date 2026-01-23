@@ -344,7 +344,9 @@ def parse_snowflake_verified_queries(queries: List[Dict[str, Any]], file_path: P
     return query_records
 
 
-def parse_semantic_views(semantic_views: List[Dict[str, Any]], file_path: Path, instruction_names_map: Optional[Dict[str, List[str]]] = None) -> List[Dict[str, Any]]:
+def parse_semantic_views(
+    semantic_views: List[Dict[str, Any]], file_path: Path, instruction_names_map: Optional[Dict[str, List[str]]] = None
+) -> List[Dict[str, Any]]:
     """Parse semantic_views from semantic model files."""
     import json
 
@@ -379,7 +381,7 @@ def parse_semantic_views(semantic_views: List[Dict[str, Any]], file_path: Path, 
             # Extract custom_instructions - get instruction NAME (not resolved text)
             # This works like metrics: we store the name and look it up during DDL generation
             instruction_names = []
-            
+
             # First try instruction_names_map (extracted before template resolution)
             if instruction_names_map:
                 name_upper = name.upper()
@@ -388,21 +390,22 @@ def parse_semantic_views(semantic_views: List[Dict[str, Any]], file_path: Path, 
                         # map_value is already a list of instruction names
                         instruction_names = map_value if isinstance(map_value, list) else [map_value]
                         break
-            
+
             # Fallback: extract from view_def if template not yet resolved
             if not instruction_names:
                 custom_instructions = view_def.get("custom_instructions", [])
                 if not isinstance(custom_instructions, list):
                     custom_instructions = [custom_instructions] if custom_instructions else []
-                
+
                 import re
+
                 pattern = r'\{\{\s*custom_instructions\([\'"]([^\'")]+)[\'"]\)\s*\}\}'
                 for inst in custom_instructions:
                     if isinstance(inst, str):
                         match = re.search(pattern, inst)
                         if match:
                             instruction_names.append(match.group(1).upper())
-            
+
             # Store instruction names as JSON array (like metrics store metric names)
             custom_instructions_json = json.dumps(instruction_names) if instruction_names else None
 

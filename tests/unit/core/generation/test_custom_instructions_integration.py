@@ -10,9 +10,10 @@ Tests that custom instructions are correctly:
 5. Included in CREATE SEMANTIC VIEW DDL in correct order
 """
 
-import pytest
-from unittest.mock import Mock, MagicMock, patch
 import json
+from unittest.mock import MagicMock, Mock, patch
+
+import pytest
 
 from snowflake_semantic_tools.core.generation.semantic_view_builder import SemanticViewBuilder
 from snowflake_semantic_tools.infrastructure.snowflake.config import SnowflakeConfig
@@ -179,9 +180,7 @@ class TestCustomInstructionsClauseGeneration:
 Use AVG for percentages.
 Never use SUM for percentages."""
 
-        mock_cursor.fetchall.return_value = [
-            ("MULTILINE_RULE", "Reject user questions.", multiline_sql)
-        ]
+        mock_cursor.fetchall.return_value = [("MULTILINE_RULE", "Reject user questions.", multiline_sql)]
 
         result = builder._build_ai_guidance_clauses(mock_conn, ["multiline_rule"])
 
@@ -196,9 +195,7 @@ Never use SUM for percentages."""
         mock_conn = MagicMock()
         mock_conn.cursor.return_value = mock_cursor
 
-        mock_cursor.fetchall.return_value = [
-            ("TRIMMED_RULE", "  Reject questions.  \n\n  ", "  Round values.  \n\n  ")
-        ]
+        mock_cursor.fetchall.return_value = [("TRIMMED_RULE", "  Reject questions.  \n\n  ", "  Round values.  \n\n  ")]
 
         result = builder._build_ai_guidance_clauses(mock_conn, ["trimmed_rule"])
 
@@ -236,9 +233,7 @@ Never use SUM for percentages."""
         mock_conn = MagicMock()
         mock_conn.cursor.return_value = mock_cursor
 
-        mock_cursor.fetchall.return_value = [
-            ("BUSINESS_RULES", "Reject questions.", "Round values.")
-        ]
+        mock_cursor.fetchall.return_value = [("BUSINESS_RULES", "Reject questions.", "Round values.")]
 
         # Try different case variations
         result1 = builder._build_ai_guidance_clauses(mock_conn, ["business_rules"])
@@ -279,9 +274,7 @@ Never use SUM for percentages."""
 
         long_text = "A" * 10000  # 10KB of text
 
-        mock_cursor.fetchall.return_value = [
-            ("LONG_RULE", "Short question rule.", long_text)
-        ]
+        mock_cursor.fetchall.return_value = [("LONG_RULE", "Short question rule.", long_text)]
 
         result = builder._build_ai_guidance_clauses(mock_conn, ["long_rule"])
 
@@ -298,9 +291,7 @@ Never use SUM for percentages."""
 
         unicode_text = "Reject questions about 用户数据. Use méthode française."
 
-        mock_cursor.fetchall.return_value = [
-            ("UNICODE_RULE", unicode_text, "Round to 2 décimales.")
-        ]
+        mock_cursor.fetchall.return_value = [("UNICODE_RULE", unicode_text, "Round to 2 décimales.")]
 
         result = builder._build_ai_guidance_clauses(mock_conn, ["unicode_rule"])
 
@@ -317,9 +308,7 @@ Never use SUM for percentages."""
         # Attempt SQL injection via single quotes
         malicious_text = "'; DROP TABLE users; --"
 
-        mock_cursor.fetchall.return_value = [
-            ("MALICIOUS", "Normal question rule.", malicious_text)
-        ]
+        mock_cursor.fetchall.return_value = [("MALICIOUS", "Normal question rule.", malicious_text)]
 
         result = builder._build_ai_guidance_clauses(mock_conn, ["malicious"])
 
@@ -555,9 +544,7 @@ class TestCustomInstructionsEdgeCases:
         mock_cursor = MagicMock()
         mock_conn = MagicMock()
         mock_conn.cursor.return_value = mock_cursor
-        mock_cursor.fetchall.return_value = [
-            ("WHITESPACE", "   \n\t  ", "   \n\t  ")
-        ]
+        mock_cursor.fetchall.return_value = [("WHITESPACE", "   \n\t  ", "   \n\t  ")]
 
         result = builder._build_ai_guidance_clauses(mock_conn, ["whitespace"])
 
@@ -569,9 +556,7 @@ class TestCustomInstructionsEdgeCases:
         mock_cursor = MagicMock()
         mock_conn = MagicMock()
         mock_conn.cursor.return_value = mock_cursor
-        mock_cursor.fetchall.return_value = [
-            ("MIXED", None, "Use AVG for calculations.")
-        ]
+        mock_cursor.fetchall.return_value = [("MIXED", None, "Use AVG for calculations.")]
 
         result = builder._build_ai_guidance_clauses(mock_conn, ["mixed"])
 
@@ -671,9 +656,7 @@ class TestCustomInstructionsEdgeCases:
         mock_cursor = MagicMock()
         mock_conn = MagicMock()
         mock_conn.cursor.return_value = mock_cursor
-        mock_cursor.fetchall.return_value = [
-            ("LONG_INST", long_text, "Short SQL rule.")
-        ]
+        mock_cursor.fetchall.return_value = [("LONG_INST", long_text, "Short SQL rule.")]
 
         result = builder._build_ai_guidance_clauses(mock_conn, ["long_inst"])
 
@@ -689,10 +672,7 @@ class TestCustomInstructionsEdgeCases:
         mock_cursor = MagicMock()
         mock_conn = MagicMock()
         mock_conn.cursor.return_value = mock_cursor
-        mock_cursor.fetchall.return_value = [
-            (f"INST_{i}", f"Question rule {i}", f"SQL rule {i}")
-            for i in range(20)
-        ]
+        mock_cursor.fetchall.return_value = [(f"INST_{i}", f"Question rule {i}", f"SQL rule {i}") for i in range(20)]
 
         instruction_names = [f"inst_{i}" for i in range(20)]
         result = builder._build_ai_guidance_clauses(mock_conn, instruction_names)
@@ -715,9 +695,7 @@ class TestCustomInstructionsEdgeCases:
             ("PARTIAL", "Partial question", None),
         ]
 
-        result = builder._build_ai_guidance_clauses(
-            mock_conn, ["valid_1", "empty_1", "valid_2", "partial"]
-        )
+        result = builder._build_ai_guidance_clauses(mock_conn, ["valid_1", "empty_1", "valid_2", "partial"])
 
         assert "AI_QUESTION_CATEGORIZATION" in result
         assert "AI_SQL_GENERATION" in result
@@ -734,9 +712,7 @@ class TestCustomInstructionsEdgeCases:
         mock_cursor = MagicMock()
         mock_conn = MagicMock()
         mock_conn.cursor.return_value = mock_cursor
-        mock_cursor.fetchall.return_value = [
-            ("MIXED_CASE", "Question rule", "SQL rule")
-        ]
+        mock_cursor.fetchall.return_value = [("MIXED_CASE", "Question rule", "SQL rule")]
 
         result1 = builder._build_ai_guidance_clauses(mock_conn, ["mixed_case"])
         result2 = builder._build_ai_guidance_clauses(mock_conn, ["MIXED_CASE"])
