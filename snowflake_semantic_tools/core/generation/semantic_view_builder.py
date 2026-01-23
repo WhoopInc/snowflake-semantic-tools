@@ -1090,17 +1090,16 @@ class SemanticViewBuilder:
         try:
             cursor = conn.cursor()
 
-            # Build IN clause with quoted names
-            quoted_names = [f"'{name.upper()}'" for name in custom_instruction_names]
-            names_list = ", ".join(quoted_names)
-
+            # Build placeholders for parameterized query to prevent SQL injection
+            placeholders = ", ".join(["%s"] * len(custom_instruction_names))
             query = f"""
             SELECT NAME, QUESTION_CATEGORIZATION, SQL_GENERATION
             FROM {self.metadata_database}.{self.metadata_schema}.SM_CUSTOM_INSTRUCTIONS
-            WHERE NAME IN ({names_list})
+            WHERE UPPER(NAME) IN ({placeholders})
             """
-
-            cursor.execute(query)
+            # Pass uppercased names as parameters
+            params = [name.upper() for name in custom_instruction_names]
+            cursor.execute(query, params)
             rows = cursor.fetchall()
 
             instructions = [

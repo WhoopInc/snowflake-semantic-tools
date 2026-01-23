@@ -317,6 +317,39 @@ Never use SUM for percentages."""
         # The malicious SQL should be treated as literal text, not executed
         assert "DROP TABLE" in result  # Should be in the string literal, not executed
 
+    def test_sql_injection_prevention_via_instruction_names(self, builder):
+        """Test that SQL injection attempts via instruction names are prevented using parameterized queries."""
+        mock_cursor = MagicMock()
+        mock_conn = MagicMock()
+        mock_conn.cursor.return_value = mock_cursor
+
+        # Attempt SQL injection via instruction name
+        malicious_name = "'; DROP TABLE users; --"
+
+        # Mock fetchall to return empty (instruction not found, which is expected)
+        mock_cursor.fetchall.return_value = []
+
+        # This should not raise an error and should use parameterized query
+        result = builder._build_ai_guidance_clauses(mock_conn, [malicious_name])
+
+        # Verify that cursor.execute was called with parameters (not string interpolation)
+        call_args = mock_cursor.execute.call_args
+        assert call_args is not None, "cursor.execute should have been called"
+
+        # cursor.execute(query, params) - params is second positional argument
+        assert len(call_args[0]) >= 1, "Query should be first positional argument"
+        query = call_args[0][0]
+
+        # Verify the query uses placeholders (%s) instead of string interpolation
+        assert "%s" in query, "Query should use parameterized placeholders (%s)"
+        assert malicious_name.upper() not in query, "Malicious name should not be in query string (should be in params)"
+
+        # Verify parameters were passed correctly as second positional argument
+        assert len(call_args[0]) >= 2, "Parameters should be passed as second positional argument"
+        params = call_args[0][1]
+        assert isinstance(params, (list, tuple)), "Parameters should be a list or tuple"
+        assert malicious_name.upper() in params, "Malicious name should be in parameters list"
+
 
 class TestCustomInstructionsInFullDDL:
     """Test custom instructions integration in full DDL generation."""
