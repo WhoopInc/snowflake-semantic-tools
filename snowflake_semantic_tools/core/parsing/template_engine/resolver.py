@@ -30,12 +30,18 @@ class TemplateResolver:
 
     Template Types and Resolution:
 
-    **{{ table('name') }}**
+    **{{ ref('name') }}** (Unified syntax - recommended)
+    - Resolves to uppercase table name from dbt catalog when one argument provided
+    - Creates fully qualified column reference when two arguments provided
+    - Example: {{ ref('orders') }} → ORDERS
+    - Example: {{ ref('orders', 'amount') }} → ORDERS.AMOUNT
+
+    **{{ table('name') }}** (Legacy - still supported)
     - Resolves to uppercase table name from dbt catalog
     - Validates existence in physical schema
     - Example: {{ table('orders') }} → ORDERS
 
-    **{{ column('table', 'column') }}**
+    **{{ column('table', 'column') }}** (Legacy - still supported)
     - Creates fully qualified column reference
     - Validates both table and column existence
     - Example: {{ column('orders', 'amount') }} → ORDERS.AMOUNT
@@ -95,8 +101,8 @@ class TemplateResolver:
         all template types in the correct order to ensure proper resolution.
 
         RESOLUTION ORDER (Critical for nested templates):
-        1. Tables first - base level, no dependencies
-        2. Columns second - depend on tables being resolved
+        1. Unified ref() first - handles both tables and columns
+        2. Legacy table() and column() - for backward compatibility
         3. Metrics third - may contain nested metrics and column/table refs
         4. Custom instructions last - standalone references
 
@@ -107,7 +113,9 @@ class TemplateResolver:
             Content with all templates resolved
         """
         # Multi-pass resolution to handle complex nesting
-        # Pass 1: Resolve all base-level templates (tables and columns)
+        # Pass 1: Resolve unified ref() syntax (handles both tables and columns)
+        content = self._resolve_ref_references(content)
+        # Pass 1b: Resolve legacy table() and column() for backward compatibility
         content = self._resolve_table_references(content)
         content = self._resolve_column_references(content)
 
@@ -116,6 +124,7 @@ class TemplateResolver:
 
         # Pass 3: Final pass to catch any remaining column/table refs that
         # might have been introduced by metric expansion
+        content = self._resolve_ref_references(content)
         content = self._resolve_table_references(content)
         content = self._resolve_column_references(content)
 
@@ -123,6 +132,49 @@ class TemplateResolver:
         content = self._resolve_custom_instructions_references(content)
 
         return content
+
+    def _resolve_ref_references(self, content: str) -> str:
+        """
+        Resolve unified {{ ref('table') }} and {{ ref('table', 'column') }} references.
+
+        This is the unified syntax that replaces both {{ table() }} and {{ column() }}.
+        - {{ ref('name') }} → resolves to table name (like {{ table('name') }})
+        - {{ ref('table', 'column') }} → resolves to TABLE.COLUMN (like {{ column('table', 'column') }})
+
+        Tables are resolved to their uppercase form and validated against
+        the dbt catalog when available.
+        """
+        # Pattern to match {{ ref('arg1') }} or {{ ref('arg1', 'arg2') }}
+        # Handles both single and double quotes, with optional whitespace
+        pattern = r'\{\{\s*ref\s*\(\s*[\'"]([^\'"]+)[\'"]\s*(?:,\s*[\'"]([^\'"]+)[\'"])?\s*\)\s*\}\}'
+
+        def replace_ref(match):
+            first_arg = match.group(1)
+            second_arg = match.group(2) if match.lastindex >= 2 else None
+
+            if second_arg is not None:
+                # Two arguments: {{ ref('table', 'column') }} → TABLE.COLUMN
+                table_name = first_arg
+                column_name = second_arg
+                return f"{table_name.upper()}.{column_name.upper()}"
+            else:
+                # One argument: {{ ref('table') }} → TABLE
+                table_name = first_arg.lower()
+
+                # Validate against dbt catalog if available
+                if table_name in self.dbt_catalog:
+                    table_info = self.dbt_catalog[table_name]
+                    # Return uppercase table name for consistency
+                    if isinstance(table_info, dict):
+                        name = table_info.get("name", table_name).upper()
+                        return name
+                    else:
+                        return table_name.upper()
+
+                # Default to uppercase even if not in catalog
+                return table_name.upper()
+
+        return re.sub(pattern, replace_ref, content)
 
     def _resolve_table_references(self, content: str) -> str:
         """
@@ -300,7 +352,8 @@ class TemplateResolver:
             # Resolve table and column references FIRST
             # This ensures base-level templates are resolved before we
             # attempt to resolve any nested metric references
-            resolved_expr = self._resolve_table_references(expr)
+            resolved_expr = self._resolve_ref_references(expr)
+            resolved_expr = self._resolve_table_references(resolved_expr)
             resolved_expr = self._resolve_column_references(resolved_expr)
 
             # Then resolve any metric references (which may trigger recursive resolution)

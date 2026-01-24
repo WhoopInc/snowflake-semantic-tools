@@ -305,9 +305,15 @@ class SemanticModelValidator:
             # Note: description is not part of the Snowflake spec, so we don't warn about it
 
     def _extract_table_name(self, table_template: str) -> str:
-        """Extract table name from {{ table('name') }} template."""
+        """Extract table name from {{ table('name') }} or {{ ref('name') }} template."""
         import re
 
+        # Try unified ref() syntax first (one argument = table)
+        match = re.search(r"{{\s*ref\s*\(\s*['\"]([^'\"]+)['\"]\s*\)\s*}}", table_template)
+        if match:
+            return match.group(1)
+        
+        # Fall back to legacy table() syntax
         match = re.search(r"{{\s*table\s*\(\s*['\"]([^'\"]+)['\"]\s*\)\s*}}", table_template)
         if match:
             return match.group(1)
@@ -698,7 +704,7 @@ class SemanticModelValidator:
         for column, type_cast in invalid_column_refs:
             result.add_error(
                 f"{entity_type.title()} '{entity_name}' contains invalid column reference syntax '{column}::{type_cast}'. "
-                f"Use template syntax {{ column('table_name', '{column}') }} instead.",
+                f"Use template syntax {{ ref('table_name', '{column}') }} or {{ column('table_name', '{column}') }} instead.",
                 file_path=source_file,
                 context={
                     "entity": entity_name,
@@ -750,7 +756,7 @@ class SemanticModelValidator:
         if "::" in column_ref:
             result.add_error(
                 f"Relationship '{relationship_name}' {field_name} contains invalid column reference syntax '{column_ref}'. "
-                f"Use template syntax {{ column('table_name', 'column_name') }} instead.",
+                f"Use template syntax {{ ref('table_name', 'column_name') }} or {{ column('table_name', 'column_name') }} instead.",
                 context={
                     "relationship": relationship_name,
                     "field": field_name,
@@ -1138,12 +1144,12 @@ class SemanticModelValidator:
         """
         Check if SQL references tables that are not in the tables list.
 
-        Extracts table references from SQL using {{ table('name') }} pattern
+        Extracts table references from SQL using {{ table('name') }} or {{ ref('name') }} pattern
         and compares against the declared tables list.
 
         Note: This check only works when templates are NOT resolved (i.e., before
         template resolution). If templates have been resolved, this check will
-        silently skip as there are no {{ table() }} patterns to find.
+        silently skip as there are no {{ table() }} or {{ ref() }} patterns to find.
 
         Args:
             query_name: Name of the verified query
@@ -1152,10 +1158,12 @@ class SemanticModelValidator:
             source_file: Optional source file path for error reporting
             result: ValidationResult to add warnings to
         """
-        # Extract table names from {{ table('name') }} patterns in SQL
+        # Extract table names from {{ table('name') }} and {{ ref('name') }} patterns in SQL
         # Note: After template resolution, these patterns won't exist
         table_pattern = r"{{\s*table\s*\(\s*['\"]([^'\"]+)['\"]\s*\)\s*}}"
+        ref_table_pattern = r"{{\s*ref\s*\(\s*['\"]([^'\"]+)['\"]\s*\)\s*}}"
         sql_table_refs = re.findall(table_pattern, sql, re.IGNORECASE)
+        sql_table_refs.extend(re.findall(ref_table_pattern, sql, re.IGNORECASE))
 
         if not sql_table_refs:
             return  # No table references found in SQL (may be post-resolution)
@@ -1164,8 +1172,10 @@ class SemanticModelValidator:
         declared_tables = set()
         for table_entry in tables_list:
             if isinstance(table_entry, str):
-                # Check if it's a template like {{ table('name') }}
+                # Check if it's a template like {{ table('name') }} or {{ ref('name') }}
                 match = re.search(table_pattern, table_entry, re.IGNORECASE)
+                if not match:
+                    match = re.search(ref_table_pattern, table_entry, re.IGNORECASE)
                 if match:
                     declared_tables.add(match.group(1).lower())
                 else:

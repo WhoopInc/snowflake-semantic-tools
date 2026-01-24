@@ -240,7 +240,7 @@ def parse_snowflake_filters(filters: List[Dict[str, Any]], file_path: Path) -> L
 
 def _extract_table_names_from_jinja(expr: str) -> List[str]:
     """
-    Extract table names from {{ column('table', 'col') }} expressions.
+    Extract table names from {{ column('table', 'col') }} and {{ ref('table', 'col') }} expressions.
 
     Args:
         expr: Expression string potentially containing Jinja2 column references
@@ -251,12 +251,22 @@ def _extract_table_names_from_jinja(expr: str) -> List[str]:
     Examples:
         >>> _extract_table_names_from_jinja("{{ column('orders', 'total') }} > 0")
         ['orders']
-        >>> _extract_table_names_from_jinja("{{ column('orders', 'a') }} AND {{ column('users', 'b') }}")
+        >>> _extract_table_names_from_jinja("{{ ref('orders', 'total') }} > 0")
+        ['orders']
+        >>> _extract_table_names_from_jinja("{{ column('orders', 'a') }} AND {{ ref('users', 'b') }}")
         ['orders', 'users']
     """
     # Pattern: {{ column('table_name', 'column_name') }} - handles both single and double quotes
-    pattern = r"{{\s*column\s*\(\s*['\"]([^'\"]+)['\"]"
-    matches = re.findall(pattern, expr)
+    column_pattern = r"{{\s*column\s*\(\s*['\"]([^'\"]+)['\"]"
+    # Pattern: {{ ref('table_name', 'column_name') }} - unified syntax
+    ref_pattern = r"{{\s*ref\s*\(\s*['\"]([^'\"]+)['\"]"
+    
+    matches = []
+    # Extract from column() syntax
+    matches.extend(re.findall(column_pattern, expr))
+    # Extract from ref() syntax (first argument is always table name)
+    matches.extend(re.findall(ref_pattern, expr))
+    
     # Return unique table names while preserving first occurrence order
     seen = set()
     unique_tables = []
@@ -270,10 +280,10 @@ def _extract_table_names_from_jinja(expr: str) -> List[str]:
 
 def _extract_table_name_from_template(template: str) -> str:
     """
-    Extract table name from {{ table('name') }} template.
+    Extract table name from {{ table('name') }} or {{ ref('name') }} template.
 
     Args:
-        template: Template string like "{{ table('orders') }}"
+        template: Template string like "{{ table('orders') }}" or "{{ ref('orders') }}"
 
     Returns:
         Extracted table name or original string if not a template
@@ -281,11 +291,20 @@ def _extract_table_name_from_template(template: str) -> str:
     Examples:
         >>> _extract_table_name_from_template("{{ table('orders') }}")
         'orders'
+        >>> _extract_table_name_from_template("{{ ref('orders') }}")
+        'orders'
         >>> _extract_table_name_from_template("orders")
         'orders'
     """
-    pattern = r"{{\s*table\s*\(\s*['\"]([^'\"]+)['\"]\s*\)\s*}}"
-    match = re.search(pattern, template)
+    # Try unified ref() syntax first (one argument = table)
+    ref_pattern = r"{{\s*ref\s*\(\s*['\"]([^'\"]+)['\"]\s*\)\s*}}"
+    match = re.search(ref_pattern, template)
+    if match:
+        return match.group(1)
+    
+    # Fall back to legacy table() syntax
+    table_pattern = r"{{\s*table\s*\(\s*['\"]([^'\"]+)['\"]\s*\)\s*}}"
+    match = re.search(table_pattern, template)
     return match.group(1) if match else template
 
 

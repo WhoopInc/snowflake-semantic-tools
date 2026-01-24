@@ -431,7 +431,7 @@ class ReferenceValidator:
                             result.add_error(
                                 f"Relationship '{name}' contains SQL transformation ({transform_type}) in column reference '{left_col}'. "
                                 f"Transformations cannot be performed within column references. "
-                                f"Use template syntax {{ column('table_name', 'column_name') }} for the base column only.",
+                                f"Use template syntax {{ ref('table_name', 'column_name') }} or {{ column('table_name', 'column_name') }} for the base column only.",
                                 file_path=source_file,
                                 context={
                                     "relationship": name,
@@ -448,7 +448,7 @@ class ReferenceValidator:
                             result.add_error(
                                 f"Relationship '{name}' contains SQL transformation ({transform_type}) in column reference '{right_col}'. "
                                 f"Transformations cannot be performed within column references. "
-                                f"Use template syntax {{ column('table_name', 'column_name') }} for the base column only.",
+                                f"Use template syntax {{ ref('table_name', 'column_name') }} or {{ column('table_name', 'column_name') }} for the base column only.",
                                 file_path=source_file,
                                 context={
                                     "relationship": name,

@@ -19,8 +19,10 @@ All semantic models use templates that reference your dbt models:
 
 | Template | Purpose | Example |
 |----------|---------|---------|
-| `{{ table('name') }}` | Reference a dbt model | `{{ table('orders') }}` |
-| `{{ column('table', 'col') }}` | Reference a specific column | `{{ column('orders', 'customer_id') }}` |
+| `{{ ref('name') }}` | Reference a dbt model (unified syntax - recommended) | `{{ ref('orders') }}` |
+| `{{ ref('table', 'col') }}` | Reference a specific column (unified syntax - recommended) | `{{ ref('orders', 'customer_id') }}` |
+| `{{ table('name') }}` | Reference a dbt model (legacy - still supported) | `{{ table('orders') }}` |
+| `{{ column('table', 'col') }}` | Reference a specific column (legacy - still supported) | `{{ column('orders', 'customer_id') }}` |
 | `{{ metric('name') }}` | Reference another metric | `{{ metric('total_revenue') }}` |
 | `{{ custom_instructions('name') }}` | Apply business rules | `{{ custom_instructions('exclude_test_users') }}` |
 
@@ -119,14 +121,14 @@ models:
           primary_key: order_id
           unique_keys: [customer_id, ordered_at]  # Columns used in ASOF join
 
-# In your relationship definition
+# In your relationship definition (using unified ref() syntax)
 snowflake_relationships:
   - name: orders_to_prior_orders
-    left_table: {{ table('orders') }}
-    right_table: {{ table('orders') }}
+    left_table: {{ ref('orders') }}
+    right_table: {{ ref('orders') }}
     relationship_conditions:
-      - "{{ column('orders', 'customer_id') }} = {{ column('orders', 'customer_id') }}"
-      - "{{ column('orders', 'ordered_at') }} >= {{ column('orders', 'ordered_at') }}"
+      - "{{ ref('orders', 'customer_id') }} = {{ ref('orders', 'customer_id') }}"
+      - "{{ ref('orders', 'ordered_at') }} >= {{ ref('orders', 'ordered_at') }}"
 ```
 
 This generates:
@@ -146,9 +148,9 @@ Metrics define aggregated business calculations.
 snowflake_metrics:
   - name: metric_name
     tables:
-      - {{ table('table_name') }}
+      - {{ ref('table_name') }}  # Unified syntax (legacy {{ table('table_name') }} also works)
     description: Clear description of what this measures
-    expr: SQL expression using aggregate functions
+    expr: SQL expression using aggregate functions (e.g., SUM({{ ref('table_name', 'column_name') }}))
     synonyms:
       - alternative_name_1
       - alternative_name_2
@@ -175,20 +177,20 @@ snowflake_metrics:
 snowflake_metrics:
   - name: total_order_count
     tables:
-      - {{ table('orders') }}
+      - {{ ref('orders') }}  # Unified syntax (legacy {{ table('orders') }} also works)
     description: Total number of orders placed
     expr: |
-      COUNT(DISTINCT {{ column('orders', 'order_id') }})
+      COUNT(DISTINCT {{ ref('orders', 'order_id') }})  # Unified syntax (legacy {{ column('orders', 'order_id') }} also works)
     synonyms:
       - total_orders
       - order_count
 
   - name: average_rating
     tables:
-      - {{ table('product_reviews') }}
+      - {{ ref('product_reviews') }}
     description: Average product rating (1-5 stars) based on customer reviews
     expr: |
-      AVG({{ column('product_reviews', 'rating') }})
+      AVG({{ ref('product_reviews', 'rating') }})
     synonyms:
       - avg_rating
       - mean_rating

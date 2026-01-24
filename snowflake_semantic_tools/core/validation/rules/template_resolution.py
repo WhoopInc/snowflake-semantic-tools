@@ -23,8 +23,8 @@ class TemplateResolutionValidator:
     Scans for unresolved placeholder patterns that indicate failed
     template resolution:
 
-    - **TEMP_COLUMN**: Unresolved {{ column() }} references
-    - **TEMP_TABLE**: Unresolved {{ table() }} references
+    - **TEMP_COLUMN**: Unresolved {{ column() }} or {{ ref() }} references
+    - **TEMP_TABLE**: Unresolved {{ table() }} or {{ ref() }} references
     - **TEMP_METRIC**: Unresolved {{ metric() }} references
     - **TEMP_INSTRUCTION**: Unresolved {{ custom_instructions() }} references
 
@@ -97,7 +97,7 @@ class TemplateResolutionValidator:
                 if pattern in str(expr):
                     self.errors.append(
                         f"CRITICAL: Metric '{metric_name}' contains unresolved template placeholder '{pattern}'. "
-                        f"This indicates a parsing bug - the template {{ column('...') }} or similar could not be resolved. "
+                        f"This indicates a parsing bug - the template {{ ref('...') }}, {{ column('...') }}, or similar could not be resolved. "
                         f"This metric MUST NOT be extracted to Snowflake."
                     )
 

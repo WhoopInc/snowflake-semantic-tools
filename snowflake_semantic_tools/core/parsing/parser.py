@@ -47,8 +47,8 @@ class Parser:
     - Custom instructions → AI guidance rules
 
     **Pass 2 - Template Resolution**: Resolves all template references
-    - Expands {{ table() }} to actual table names
-    - Resolves {{ column() }} to fully qualified references
+    - Expands {{ ref() }} (unified) or {{ table() }} (legacy) to actual table names
+    - Resolves {{ ref('table', 'col') }} (unified) or {{ column() }} (legacy) to fully qualified references
     - Composes {{ metric() }} recursively with cycle detection
     - Validates {{ custom_instructions() }} existence
 

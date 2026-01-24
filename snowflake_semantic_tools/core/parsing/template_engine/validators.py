@@ -104,7 +104,7 @@ class HardcodedValueDetector:
                             warnings.append(
                                 f"WARNING: {file_path}:{line_num + i}: "
                                 f"Hardcoded table reference '{table_entry}' "
-                                f"should use template syntax: {{{{ table('{table_entry}') }}}}"
+                                f"should use template syntax: {{{{ ref('{table_entry}') }}}} or {{{{ table('{table_entry}') }}}}"
                             )
 
         return warnings
@@ -137,14 +137,15 @@ class HardcodedValueDetector:
                 matches = re.findall(pattern, expr_content.upper())
 
                 for table, column in matches:
-                    template_form = f"{{{{ column('{table.lower()}', '{column.lower()}') }}}}"
-                    if template_form not in expr_content:
+                    ref_template_form = f"{{{{ ref('{table.lower()}', '{column.lower()}') }}}}"
+                    column_template_form = f"{{{{ column('{table.lower()}', '{column.lower()}') }}}}"
+                    if ref_template_form not in expr_content and column_template_form not in expr_content:
                         # Check if this is likely a real table reference
                         if table.lower() in [t.lower() for t in self.dbt_tables] or "_" in table:
                             warnings.append(
                                 f"WARNING: {file_path}:{expr_start}: "
                                 f"Hardcoded column reference '{table}.{column}' "
-                                f"should use template syntax: {template_form}"
+                                f"should use template syntax: {ref_template_form} or {column_template_form}"
                             )
 
         return warnings

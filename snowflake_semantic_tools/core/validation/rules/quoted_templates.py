@@ -19,8 +19,9 @@ class QuotedTemplateValidator:
     Detects template expressions wrapped in double quotes.
 
     Patterns checked:
-    - "{{ table(...) }}"
-    - "{{ column(...) }}"
+    - "{{ ref(...) }}" (unified syntax)
+    - "{{ table(...) }}" (legacy)
+    - "{{ column(...) }}" (legacy)
     - "{{ metric(...) }}"
     - "{{ custom_instructions(...) }}"
 
@@ -30,6 +31,7 @@ class QuotedTemplateValidator:
     """
 
     # Regex patterns for detection
+    QUOTED_REF_PATTERN = r'"{{[\s]*ref\([^}]+\)[\s]*}}"'
     QUOTED_TABLE_PATTERN = r'"{{[\s]*table\([^}]+\)[\s]*}}"'
     QUOTED_COLUMN_PATTERN = r'"{{[\s]*column\([^}]+\)[\s]*}}"'
     QUOTED_METRIC_PATTERN = r'"{{[\s]*metric\([^}]+\)[\s]*}}"'
@@ -38,6 +40,7 @@ class QuotedTemplateValidator:
     def __init__(self):
         """Initialize the validator."""
         self.patterns = [
+            (self.QUOTED_REF_PATTERN, "ref"),
             (self.QUOTED_TABLE_PATTERN, "table"),
             (self.QUOTED_COLUMN_PATTERN, "column"),
             (self.QUOTED_METRIC_PATTERN, "metric"),
