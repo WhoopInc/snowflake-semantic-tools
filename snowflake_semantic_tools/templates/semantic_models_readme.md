@@ -40,21 +40,21 @@ snowflake_metrics:
   - name: total_revenue
     description: Total revenue from all orders
     tables:
-      - {{ table('orders') }}
-    expr: SUM({{ column('orders', 'amount') }})
+      - {{ ref('orders') }}  (legacy {{ table('orders') }} also works)
+    expr: SUM({{ ref('orders', 'amount') }})  (legacy {{ column('orders', 'amount') }} also works)
 ```
 
 ### Relationships
 ```yaml
 snowflake_relationships:
   - name: orders_to_customers
-    left_table: {{ table('orders') }}
-    right_table: {{ table('customers') }}
+    left_table: {{ ref('orders') }} 
+    right_table: {{ ref('customers') }} 
     join_type: left_outer
     relationship_type: many_to_one
     relationship_columns:
-      - left_column: {{ column('orders', 'customer_id') }}
-        right_column: {{ column('customers', 'id') }}
+      - left_column: {{ ref('orders', 'customer_id') }} 
+        right_column: {{ ref('customers', 'id') }} 
 ```
 
 ### Semantic Views
@@ -63,7 +63,7 @@ semantic_views:
   - name: sales_analytics
     description: Sales data with customer context
     tables:
-      - {{ table('orders') }}
-      - {{ table('customers') }}
+      - {{ ref('orders') }} 
+      - {{ ref('customers') }} 
 ```
 
