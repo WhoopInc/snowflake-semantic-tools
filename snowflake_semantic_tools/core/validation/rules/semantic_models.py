@@ -312,7 +312,7 @@ class SemanticModelValidator:
         match = re.search(r"{{\s*ref\s*\(\s*['\"]([^'\"]+)['\"]\s*\)\s*}}", table_template)
         if match:
             return match.group(1)
-        
+
         # Fall back to legacy table() syntax
         match = re.search(r"{{\s*table\s*\(\s*['\"]([^'\"]+)['\"]\s*\)\s*}}", table_template)
         if match:

@@ -183,12 +183,12 @@ class JoinConditionParser:
         match = cls.REF_TEMPLATE_PATTERN.search(expression)
         if match:
             return match.group(1).upper(), match.group(2).upper()
-        
+
         # Fall back to legacy column() syntax
         match = cls.COLUMN_TEMPLATE_PATTERN.search(expression)
         if match:
             return match.group(1).upper(), match.group(2).upper()
-        
+
         return "", ""
 
     @classmethod

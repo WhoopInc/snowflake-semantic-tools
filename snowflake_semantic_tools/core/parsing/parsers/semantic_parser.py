@@ -260,13 +260,13 @@ def _extract_table_names_from_jinja(expr: str) -> List[str]:
     column_pattern = r"{{\s*column\s*\(\s*['\"]([^'\"]+)['\"]"
     # Pattern: {{ ref('table_name', 'column_name') }} - unified syntax
     ref_pattern = r"{{\s*ref\s*\(\s*['\"]([^'\"]+)['\"]"
-    
+
     matches = []
     # Extract from column() syntax
     matches.extend(re.findall(column_pattern, expr))
     # Extract from ref() syntax (first argument is always table name)
     matches.extend(re.findall(ref_pattern, expr))
-    
+
     # Return unique table names while preserving first occurrence order
     seen = set()
     unique_tables = []
@@ -301,7 +301,7 @@ def _extract_table_name_from_template(template: str) -> str:
     match = re.search(ref_pattern, template)
     if match:
         return match.group(1)
-    
+
     # Fall back to legacy table() syntax
     table_pattern = r"{{\s*table\s*\(\s*['\"]([^'\"]+)['\"]\s*\)\s*}}"
     match = re.search(table_pattern, template)
