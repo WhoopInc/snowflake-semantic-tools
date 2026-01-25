@@ -294,7 +294,7 @@ class SemanticTableSchemas:
                 Column(
                     "join_condition",
                     ColumnType.VARCHAR,
-                    description='Full join condition expression with templates (e.g., \'{{ column("orders", "customer_id") }} = {{ column("customers", "id") }}\')',
+                    description='Full join condition expression with templates (e.g., \'{{ ref("orders", "customer_id") }} = {{ ref("customers", "id") }}\' or legacy \'{{ column("orders", "customer_id") }} = {{ column("customers", "id") }}\')',
                 ),
                 Column(
                     "condition_type",

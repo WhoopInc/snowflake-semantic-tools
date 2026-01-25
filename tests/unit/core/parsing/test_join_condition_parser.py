@@ -311,3 +311,89 @@ class TestValidationUnsupportedOperators:
 
         assert is_valid, f">= operator should be accepted. Error: {error_msg}"
         assert error_msg == "", "No error message should be returned for valid condition"
+
+
+class TestUnifiedRefSyntax:
+    """Test unified {{ ref() }} syntax in join conditions (Issue #97)."""
+
+    def test_ref_equality_condition(self):
+        """Test equality condition using unified ref() syntax."""
+        condition = "{{ ref('orders', 'customer_id') }} = {{ ref('customers', 'id') }}"
+        parsed = JoinConditionParser.parse(condition)
+
+        assert parsed.left_table == "ORDERS"
+        assert parsed.left_column == "CUSTOMER_ID"
+        assert parsed.right_table == "CUSTOMERS"
+        assert parsed.right_column == "ID"
+        assert parsed.condition_type == JoinType.EQUALITY
+
+        sql = JoinConditionParser.generate_sql_references([parsed], "ORDERS", "CUSTOMERS")
+        expected = "ORDERS (CUSTOMER_ID) REFERENCES CUSTOMERS (ID)"
+        assert sql == expected
+
+    def test_ref_asof_condition(self):
+        """Test ASOF condition using unified ref() syntax."""
+        condition = "{{ ref('events', 'timestamp') }} >= {{ ref('sessions', 'start_time') }}"
+        parsed = JoinConditionParser.parse(condition)
+
+        assert parsed.left_table == "EVENTS"
+        assert parsed.left_column == "TIMESTAMP"
+        assert parsed.right_table == "SESSIONS"
+        assert parsed.right_column == "START_TIME"
+        assert parsed.condition_type == JoinType.ASOF
+
+        sql = JoinConditionParser.generate_sql_references([parsed], "EVENTS", "SESSIONS")
+        expected = "EVENTS (TIMESTAMP) REFERENCES SESSIONS (ASOF START_TIME)"
+        assert sql == expected
+
+    def test_ref_mixed_equality_and_asof(self):
+        """Test mixed equality and ASOF conditions using ref() syntax."""
+        conditions = [
+            "{{ ref('orders', 'customer_id') }} = {{ ref('customers', 'id') }}",
+            "{{ ref('orders', 'ordered_at') }} >= {{ ref('customers', 'created_at') }}",
+        ]
+        parsed_list = [JoinConditionParser.parse(c) for c in conditions]
+
+        sql = JoinConditionParser.generate_sql_references(parsed_list, "ORDERS", "CUSTOMERS")
+        expected = "ORDERS (CUSTOMER_ID, ORDERED_AT) REFERENCES CUSTOMERS (ID, ASOF CREATED_AT)"
+        assert sql == expected
+
+    def test_ref_with_double_quotes(self):
+        """Test ref() syntax with double quotes."""
+        condition = '{{ ref("orders", "customer_id") }} = {{ ref("customers", "id") }}'
+        parsed = JoinConditionParser.parse(condition)
+
+        assert parsed.left_table == "ORDERS"
+        assert parsed.left_column == "CUSTOMER_ID"
+        assert parsed.right_table == "CUSTOMERS"
+        assert parsed.right_column == "ID"
+
+    def test_ref_mixed_with_legacy_column_syntax(self):
+        """Test mixing ref() with legacy column() syntax."""
+        condition = "{{ ref('orders', 'customer_id') }} = {{ column('customers', 'id') }}"
+        parsed = JoinConditionParser.parse(condition)
+
+        assert parsed.left_table == "ORDERS"
+        assert parsed.left_column == "CUSTOMER_ID"
+        assert parsed.right_table == "CUSTOMERS"
+        assert parsed.right_column == "ID"
+
+    def test_ref_case_insensitive(self):
+        """Test ref() handles case-insensitive table/column names."""
+        condition = "{{ ref('ORDERS', 'CUSTOMER_ID') }} = {{ ref('CUSTOMERS', 'ID') }}"
+        parsed = JoinConditionParser.parse(condition)
+
+        assert parsed.left_table == "ORDERS"
+        assert parsed.left_column == "CUSTOMER_ID"
+        assert parsed.right_table == "CUSTOMERS"
+        assert parsed.right_column == "ID"
+
+    def test_ref_with_whitespace(self):
+        """Test ref() handles whitespace variations."""
+        condition = "{{  ref  (  'orders'  ,  'customer_id'  )  }} = {{  ref  (  'customers'  ,  'id'  )  }}"
+        parsed = JoinConditionParser.parse(condition)
+
+        assert parsed.left_table == "ORDERS"
+        assert parsed.left_column == "CUSTOMER_ID"
+        assert parsed.right_table == "CUSTOMERS"
+        assert parsed.right_column == "ID"

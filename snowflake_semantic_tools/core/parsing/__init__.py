@@ -10,7 +10,7 @@ The parsing module implements a multi-pass parsing strategy:
 
 1. **File Detection**: Automatically identifies file types (dbt models vs semantic models)
 2. **Catalog Building**: First pass to build reference catalogs from all files
-3. **Template Resolution**: Resolves {{ table() }}, {{ column() }}, {{ metric() }} references
+3. **Template Resolution**: Resolves {{ ref() }} (unified), {{ table() }}, {{ column() }}, {{ metric() }} references
 4. **Validation**: Detects hardcoded values and validates references
 5. **Data Extraction**: Transforms parsed content into database-ready format
 

@@ -125,7 +125,7 @@ def _get_yaml_error_suggestion(error_str: str) -> str:
             "\n  Ensure templates are on their own line in list items:"
             "\n"
             "\n    tables:"
-            "\n      - {{ table('my_table') }}"
+            "\n      - {{ ref('my_table') }}  # or {{ table('my_table') }} (legacy)"
         )
 
     return ""

@@ -53,11 +53,17 @@ class JoinConditionParser:
     - Resolved format: TABLE.COL = TABLE2.COL2
     """
 
-    # Pattern to extract {{ column('table', 'column') }} templates
+    # Pattern to extract {{ column('table', 'column') }} templates (legacy)
     COLUMN_TEMPLATE_PATTERN = re.compile(r"{{\s*column\s*\(\s*['\"]([^'\"]+)['\"]\s*,\s*['\"]([^'\"]+)['\"]\s*\)\s*}}")
 
-    # Pattern to extract {{ table('name') }} templates
+    # Pattern to extract {{ table('name') }} templates (legacy)
     TABLE_TEMPLATE_PATTERN = re.compile(r"{{\s*table\s*\(\s*['\"]([^'\"]+)['\"]\s*\)\s*}}")
+
+    # Pattern to extract {{ ref('table', 'column') }} templates (unified syntax)
+    REF_TEMPLATE_PATTERN = re.compile(r"{{\s*ref\s*\(\s*['\"]([^'\"]+)['\"]\s*,\s*['\"]([^'\"]+)['\"]\s*\)\s*}}")
+
+    # Pattern to extract {{ ref('table') }} templates (unified syntax for tables)
+    REF_TABLE_PATTERN = re.compile(r"{{\s*ref\s*\(\s*['\"]([^'\"]+)['\"]\s*\)\s*}}")
 
     # Pattern to extract resolved SQL format: TABLE.COLUMN
     RESOLVED_COLUMN_PATTERN = re.compile(r"([A-Z_][A-Z0-9_]*)\.([A-Z_][A-Z0-9_]*)", re.IGNORECASE)
@@ -167,13 +173,22 @@ class JoinConditionParser:
         """
         Extract table and column from template format.
 
-        Example: "{{ column('orders', 'customer_id') }}" → ('ORDERS', 'CUSTOMER_ID')
+        Supports both legacy and unified syntax:
+        - {{ column('orders', 'customer_id') }} → ('ORDERS', 'CUSTOMER_ID')
+        - {{ ref('orders', 'customer_id') }} → ('ORDERS', 'CUSTOMER_ID')
 
         Note: Uppercases table and column names to match Snowflake's identifier behavior.
         """
+        # Try unified ref() syntax first
+        match = cls.REF_TEMPLATE_PATTERN.search(expression)
+        if match:
+            return match.group(1).upper(), match.group(2).upper()
+
+        # Fall back to legacy column() syntax
         match = cls.COLUMN_TEMPLATE_PATTERN.search(expression)
         if match:
             return match.group(1).upper(), match.group(2).upper()
+
         return "", ""
 
     @classmethod
