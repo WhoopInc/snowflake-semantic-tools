@@ -403,12 +403,24 @@ class Parser:
                     file_warnings = self.hardcoded_detector.check_for_hardcoded_values(content, str(file_path))
                     warnings.extend(file_warnings)
 
+                # For semantic_views, extract custom instruction names BEFORE template resolution
+                # Store the raw instruction names so we can look them up during DDL generation
+                instruction_names_map = {}
+                if semantic_type == "semantic_views":
+                    instruction_names_map = self._extract_custom_instruction_names_from_views(content)
+
                 # Resolve templates if enabled
                 if self.template_resolver:
                     content = self.template_resolver.resolve_content(content)
 
                 # Parse resolved content
-                parsed = self._parse_semantic_content(semantic_type, content, str(file_path))
+                # Pass instruction_names_map for semantic_views to store instruction names
+                parsed = self._parse_semantic_content(
+                    semantic_type,
+                    content,
+                    str(file_path),
+                    instruction_names_map if semantic_type == "semantic_views" else None,
+                )
                 if parsed:
                     # Special handling for relationships which return (relationships, relationship_columns)
                     if semantic_type == "relationships" and isinstance(parsed, tuple):
@@ -446,9 +458,86 @@ class Parser:
                 else None
             )
 
-        return {"items": all_items, "warnings": warnings} if all_items else None
+        if all_items:
+            return {"items": all_items, "warnings": warnings}
+        return None
 
-    def _parse_semantic_content(self, semantic_type: str, content: str, file_path: str) -> Optional[List[Dict]]:
+    def _extract_custom_instruction_names_from_views(self, content: str) -> Dict[str, List[str]]:
+        """
+        Extract custom instruction names from semantic views before template resolution.
+
+        Uses a clean regex-based approach that mirrors the metrics collection pattern:
+        - Finds view names and their custom_instructions sections
+        - Extracts instruction names only from list items under custom_instructions
+        - Handles nested structures by tracking indentation levels
+
+        Returns a map of view name -> list of instruction names.
+        """
+        import re
+
+        instruction_names_map: Dict[str, List[str]] = {}
+
+        # Pattern to match view name (handles various indentation levels)
+        view_name_pattern = r"^(\s*)-\s+name:\s*(.+)$"
+        # Pattern to match custom_instructions key
+        custom_instr_key_pattern = r"^(\s+)custom_instructions:\s*$"
+        # Pattern to match custom_instructions template in list items
+        instruction_pattern = r'\{\{\s*custom_instructions\([\'"]([^\'")]+)[\'"]\)\s*\}\}'
+
+        lines = content.split("\n")
+        current_view_name: Optional[str] = None
+        in_custom_instructions = False
+        view_indent_level = 0
+        custom_instr_indent_level = 0
+
+        for line in lines:
+            # Check if this line starts a new view
+            view_match = re.match(view_name_pattern, line)
+            if view_match:
+                current_view_name = view_match.group(2).strip()
+                view_indent_level = len(view_match.group(1))
+                in_custom_instructions = False
+                continue
+
+            # Check if we're entering custom_instructions section
+            if current_view_name:
+                custom_instr_match = re.match(custom_instr_key_pattern, line)
+                if custom_instr_match:
+                    custom_instr_indent_level = len(custom_instr_match.group(1))
+                    in_custom_instructions = True
+                    continue
+
+                # Extract instruction names when in custom_instructions section
+                if in_custom_instructions:
+                    # Only match templates in list items (lines starting with -)
+                    # This avoids matching templates in descriptions or other nested fields
+                    if re.match(r"^\s+-\s+", line):
+                        match = re.search(instruction_pattern, line)
+                        if match:
+                            instruction_name = match.group(1).upper()
+                            # Initialize list only when we find the first instruction
+                            if current_view_name not in instruction_names_map:
+                                instruction_names_map[current_view_name] = []
+                            instruction_names_map[current_view_name].append(instruction_name)
+                    # Exit custom_instructions section if we hit a new key at same/less indentation
+                    elif line.strip():
+                        line_indent = len(line) - len(line.lstrip())
+                        # If we hit a key at same or less indentation than custom_instructions, we've left it
+                        if re.match(r"^\s+\w+:", line) and line_indent <= custom_instr_indent_level:
+                            in_custom_instructions = False
+                        # If we hit a new view (at view indent level), reset
+                        elif re.match(r"^\s*-\s+name:", line) and line_indent <= view_indent_level:
+                            in_custom_instructions = False
+
+        return instruction_names_map
+
+    def _parse_semantic_content(
+        self,
+        semantic_type: str,
+        content: str,
+        file_path: str,
+        instruction_names_map: Optional[Dict[str, List[str]]] = None,
+    ) -> Optional[List[Dict]]:
         """Parse semantic content based on type."""
         try:
             data = yaml.safe_load(content)
@@ -481,9 +570,9 @@ class Parser:
             elif semantic_type == "semantic_views":
                 views_list = data.get("semantic_views", []) if data else []
                 if not views_list:
-                    logger.warning(f"No semantic_views found in {file_path}")
                     return None
-                return semantic_parser.parse_semantic_views(views_list, Path(file_path))
+                parsed_views = semantic_parser.parse_semantic_views(views_list, Path(file_path), instruction_names_map)
+                return parsed_views
 
         except yaml.YAMLError as e:
             # Log at ERROR level and track the error so it surfaces to users

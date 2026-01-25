@@ -7,53 +7,69 @@
 #
 # snowflake_custom_instructions:
 #   # -------------------------------------------------------------------------
-#   # Date Interpretation Instruction
+#   # Date Interpretation Instruction (with both fields)
 #   # -------------------------------------------------------------------------
 #   - name: fiscal_year_definition
 #     description: Define fiscal year for the organization
-#     instruction: |
-#       Our fiscal year runs from April 1 to March 31.
+#     question_categorization: |
 #       When users ask about "this year" or "last year", interpret it as fiscal year.
+#       If the question doesn't specify fiscal vs calendar year, ask for clarification.
+#     sql_generation: |
+#       Our fiscal year runs from April 1 to March 31.
 #       Q1 = Apr-Jun, Q2 = Jul-Sep, Q3 = Oct-Dec, Q4 = Jan-Mar.
+#       Use fiscal year dates when filtering date ranges.
 #
 #   # -------------------------------------------------------------------------
-#   # Metric Preference Instruction
+#   # Metric Preference Instruction (sql_generation only)
 #   # -------------------------------------------------------------------------
 #   - name: revenue_default
 #     description: Default revenue metric behavior
-#     instruction: |
+#     sql_generation: |
 #       When users ask about "revenue" without specification, use gross revenue.
 #       If they mention "net revenue" or "after discounts", use net_revenue metric.
 #       Always exclude refunded orders unless specifically asked to include them.
+#       Always round monetary values to 2 decimal places.
 #
 #   # -------------------------------------------------------------------------
-#   # Terminology Mapping Instruction
+#   # Privacy Rules (question_categorization only)
+#   # -------------------------------------------------------------------------
+#   - name: privacy_rules
+#     description: Privacy and data access rules
+#     question_categorization: |
+#       Reject all questions asking about individual users or personal information.
+#       Ask users to contact their admin for access to user-level data.
+#       If the question asks for user data without providing a product_type, consider this question UNCLEAR and ask the user to specify product_type.
+#
+#   # -------------------------------------------------------------------------
+#   # Terminology Mapping Instruction (both fields)
 #   # -------------------------------------------------------------------------
 #   - name: customer_terminology
 #     description: Map business terminology to technical columns
-#     instruction: |
+#     question_categorization: |
+#       If users ask about "customers", "clients", "members", or "subscribers", these all refer to customer data.
+#     sql_generation: |
 #       "Customer" and "client" mean the same thing - use the customers table.
 #       "Member" refers to customers with is_member = TRUE.
 #       "Subscriber" refers to customers with subscription_status = 'active'.
 #       "Churned" means subscription_status = 'cancelled' in the last 90 days.
 #
 #   # -------------------------------------------------------------------------
-#   # Regional Context Instruction
+#   # Regional Context Instruction (sql_generation only)
 #   # -------------------------------------------------------------------------
 #   - name: regional_defaults
 #     description: Default regional context
-#     instruction: |
+#     sql_generation: |
 #       Unless specified, assume the user is asking about US data only.
 #       If they mention "global" or "worldwide", include all regions.
 #       Currency is always in USD unless the user specifies otherwise.
+#       Always filter by region = 'US' unless explicitly asked for other regions.
 #
 #   # -------------------------------------------------------------------------
-#   # Data Freshness Instruction
+#   # Data Freshness Instruction (question_categorization only)
 #   # -------------------------------------------------------------------------
 #   - name: data_freshness
 #     description: Inform users about data latency
-#     instruction: |
-#       Our data pipeline runs daily at 6 AM UTC.
-#       Today's data may be incomplete until tomorrow.
-#       When users ask about "real-time" data, inform them of this delay.
+#     question_categorization: |
+#       When users ask about "real-time" data or "current" data, inform them of the data pipeline delay.
+#       If the question asks for data from today, consider this UNCLEAR and ask if they mean the most recent complete day.
 

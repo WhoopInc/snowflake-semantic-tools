@@ -216,7 +216,11 @@ class TemplateResolver:
         Resolve {{ custom_instructions('name') }} references.
 
         Validates that referenced custom instructions exist and returns
-        the full instruction text.
+        the uppercase instruction name (not the full text).
+
+        The actual instruction text is retrieved during DDL generation from
+        the SM_CUSTOM_INSTRUCTIONS table. This keeps the YAML valid and allows
+        users to use the same unquoted syntax as {{ table() }} templates.
         """
         pattern = r'\{\{\s*custom_instructions\([\'"]([^\'")]+)[\'"]\)\s*\}\}'
 
@@ -235,17 +239,9 @@ class TemplateResolver:
                     f"Custom instruction '{instruction_name}' not found. " f"Available instructions: {available}"
                 )
 
-            # Get the full instruction text
-            instruction_text = instruction.get("instruction", "")
-
-            # For YAML compatibility, we need to handle multi-line strings properly
-            # Option 1: Replace newlines with spaces for a single-line format
-            # Option 2: Use YAML literal block scalar (|) - but this is complex to inject
-            # Going with Option 1 for simplicity and YAML validity
-            instruction_text = instruction_text.replace("\n", " ").strip()
-
-            # Return the formatted instruction text
-            return instruction_text
+            # Return the uppercase instruction name (like table() returns uppercase table name)
+            # The full instruction text is looked up during DDL generation
+            return instruction_key
 
         return re.sub(pattern, replace_custom_instructions, content)
 

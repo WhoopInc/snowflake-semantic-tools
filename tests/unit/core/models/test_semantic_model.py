@@ -156,30 +156,48 @@ class TestCustomInstruction:
         """Test basic custom instruction creation."""
         instruction = CustomInstruction(
             name="business_rules",
-            instruction="When users ask about revenue, focus on completed orders. Always exclude test data where email ends with '@test.com'.",
+            question_categorization="Reject questions about individual users.",
+            sql_generation="Always round monetary values to 2 decimal places.",
         )
 
         assert instruction.name == "business_rules"
-        assert "completed orders" in instruction.instruction
-        assert "@test.com" in instruction.instruction
+        assert "individual users" in instruction.question_categorization
+        assert "2 decimal places" in instruction.sql_generation
 
     def test_custom_instruction_with_only_sql_generation(self):
         """Test custom instruction with only SQL generation rules."""
         instruction = CustomInstruction(
-            name="formatting_rules", instruction="Round all monetary values to 2 decimal places."
+            name="formatting_rules", sql_generation="Round all monetary values to 2 decimal places."
         )
 
         assert instruction.name == "formatting_rules"
-        assert "2 decimal places" in instruction.instruction
+        assert instruction.question_categorization is None
+        assert "2 decimal places" in instruction.sql_generation
 
     def test_custom_instruction_with_only_question_categorization(self):
         """Test custom instruction with only question categorization."""
         instruction = CustomInstruction(
-            name="privacy_rules", instruction="Reject questions asking for individual user data."
+            name="privacy_rules", question_categorization="Reject questions asking for individual user data."
         )
 
         assert instruction.name == "privacy_rules"
-        assert "individual user data" in instruction.instruction
+        assert "individual user data" in instruction.question_categorization
+        assert instruction.sql_generation is None
+
+    def test_custom_instruction_to_dict(self):
+        """Test custom instruction to_dict method."""
+        instruction = CustomInstruction(
+            name="test_instruction",
+            question_categorization="Test question categorization",
+            sql_generation="Test sql generation",
+            source_file="/path/to/file.yml",
+        )
+
+        result = instruction.to_dict()
+        assert result["name"] == "test_instruction"
+        assert result["question_categorization"] == "Test question categorization"
+        assert result["sql_generation"] == "Test sql generation"
+        assert result["source_file"] == "/path/to/file.yml"
 
 
 class TestVerifiedQuery:

@@ -47,9 +47,9 @@ class MetadataClient:
         """Get list of available semantic views from metadata."""
         try:
             query = f"""
-            SELECT DISTINCT name, tables
+            SELECT DISTINCT NAME, TABLES, DESCRIPTION, CUSTOM_INSTRUCTIONS
             FROM {self.database}.{self.schema}.SM_SEMANTIC_VIEWS
-            ORDER BY name
+            ORDER BY NAME
             """
             df_result = self.client.execute_query(query)
 
@@ -328,6 +328,7 @@ class SemanticViewGenerationService:
                 view_name = view_config.get("name")
                 table_names = view_config.get("tables", [])
                 description = view_config.get("description", "")
+                custom_instruction_names = view_config.get("custom_instructions", [])
 
                 if not table_names:
                     error_msg = "No tables specified"
@@ -354,6 +355,7 @@ class SemanticViewGenerationService:
                         execute=generate_config.execute,
                         defer_database=generate_config.defer_database,
                         defer_manifest=generate_config.defer_manifest,
+                        custom_instruction_names=view_config.get("custom_instructions", []),
                     )
 
                     view_duration = time.time() - view_start
@@ -469,12 +471,13 @@ class SemanticViewGenerationService:
                     # Parse tables (stored as JSON string)
                     tables = self._parse_tables_column(row[1])
 
+                    custom_instruction_names = self._parse_custom_instructions(row[3])
                     views.append(
                         {
                             "name": row[0],
                             "tables": tables,
                             "description": row[2] or "",
-                            "custom_instructions": self._parse_custom_instructions(row[3]),
+                            "custom_instructions": custom_instruction_names,
                         }
                     )
 
@@ -527,20 +530,22 @@ class SemanticViewGenerationService:
 
                 instructions = json.loads(raw)
                 if isinstance(instructions, list):
-                    return instructions
+                    # Instruction names are already uppercase from extraction
+                    return [str(i).strip() if i else "" for i in instructions if i]
             except:
                 pass
 
             # Try comma-separated
             if "," in raw:
-                return [i.strip() for i in raw.split(",")]
+                return [i.strip() for i in raw.split(",") if i.strip()]
 
             # Single instruction
             if raw.strip():
                 return [raw.strip()]
 
         if isinstance(raw, list):
-            return raw
+            # Instruction names are already uppercase from extraction
+            return [str(i).strip() if i else "" for i in raw if i]
 
         return []
 
@@ -632,7 +637,17 @@ class SemanticViewGenerationService:
                     logger.warning(f"Failed to parse tables for view {view.get('NAME')}")
                     tables = []
 
-                view_configs.append({"name": view["NAME"], "tables": tables})
+                # Parse CUSTOM_INSTRUCTIONS column (stored as JSON string)
+                custom_instructions = self._parse_custom_instructions(view.get("CUSTOM_INSTRUCTIONS"))
+
+                view_configs.append(
+                    {
+                        "name": view["NAME"],
+                        "tables": tables,
+                        "description": view.get("DESCRIPTION", ""),
+                        "custom_instructions": custom_instructions,
+                    }
+                )
 
             # Filter by requested views if specified
             if config.views_to_generate:

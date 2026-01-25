@@ -18,7 +18,7 @@ component type maps to a specific table in the semantic model schema:
 
 import re
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 import yaml
 
@@ -295,23 +295,14 @@ def parse_snowflake_custom_instructions(instructions: List[Dict[str, Any]], file
 
     for instruction in instructions:
         try:
-            # Combine question_categorization and sql_generation into a single instruction field
+            # Keep question_categorization and sql_generation separate for GUIDANCE clause
             question_cat = instruction.get("question_categorization", "").strip()
             sql_gen = instruction.get("sql_generation", "").strip()
 
-            # Combine both parts with a newline if both exist
-            combined_instruction = ""
-            if question_cat:
-                combined_instruction = question_cat
-            if sql_gen:
-                if combined_instruction:
-                    combined_instruction += "\n" + sql_gen
-                else:
-                    combined_instruction = sql_gen
-
             instruction_record = {
                 "name": instruction.get("name", "").upper(),
-                "instruction": combined_instruction,
+                "question_categorization": question_cat if question_cat else None,
+                "sql_generation": sql_gen if sql_gen else None,
                 "source_file": str(file_path),  # Store the file path for validation errors
             }
             instruction_records.append(instruction_record)
@@ -353,7 +344,9 @@ def parse_snowflake_verified_queries(queries: List[Dict[str, Any]], file_path: P
     return query_records
 
 
-def parse_semantic_views(semantic_views: List[Dict[str, Any]], file_path: Path) -> List[Dict[str, Any]]:
+def parse_semantic_views(
+    semantic_views: List[Dict[str, Any]], file_path: Path, instruction_names_map: Optional[Dict[str, List[str]]] = None
+) -> List[Dict[str, Any]]:
     """Parse semantic_views from semantic model files."""
     import json
 
@@ -385,21 +378,36 @@ def parse_semantic_views(semantic_views: List[Dict[str, Any]], file_path: Path) 
             # Convert tables list to JSON string for storage
             tables_json = json.dumps(tables)
 
-            # Extract custom_instructions if present
-            custom_instructions = view_def.get("custom_instructions", [])
-            if not isinstance(custom_instructions, list):
-                custom_instructions = [custom_instructions] if custom_instructions else []
+            # Extract custom_instructions - get instruction NAME (not resolved text)
+            # This works like metrics: we store the name and look it up during DDL generation
+            instruction_names = []
 
-            # Process custom_instructions - join multiple instructions with newlines
-            # Note: At this point, template references should already be resolved
-            # to actual instruction text by the template resolver
-            if custom_instructions and len(custom_instructions) > 0:
-                # Join multiple instructions with double newline for readability
-                custom_instructions_text = "\n\n".join(str(inst) for inst in custom_instructions if inst)
-                # Only store if we have actual content
-                custom_instructions_json = custom_instructions_text if custom_instructions_text.strip() else None
-            else:
-                custom_instructions_json = None
+            # First try instruction_names_map (extracted before template resolution)
+            if instruction_names_map:
+                name_upper = name.upper()
+                for map_key, map_value in instruction_names_map.items():
+                    if map_key.upper() == name_upper and map_value:
+                        # map_value is already a list of instruction names
+                        instruction_names = map_value if isinstance(map_value, list) else [map_value]
+                        break
+
+            # Fallback: extract from view_def if template not yet resolved
+            if not instruction_names:
+                custom_instructions = view_def.get("custom_instructions", [])
+                if not isinstance(custom_instructions, list):
+                    custom_instructions = [custom_instructions] if custom_instructions else []
+
+                import re
+
+                pattern = r'\{\{\s*custom_instructions\([\'"]([^\'")]+)[\'"]\)\s*\}\}'
+                for inst in custom_instructions:
+                    if isinstance(inst, str):
+                        match = re.search(pattern, inst)
+                        if match:
+                            instruction_names.append(match.group(1).upper())
+
+            # Store instruction names as JSON array (like metrics store metric names)
+            custom_instructions_json = json.dumps(instruction_names) if instruction_names else None
 
             view_record = {
                 "name": str(name),

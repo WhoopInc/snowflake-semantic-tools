@@ -333,9 +333,9 @@ snowflake_filters:
 
 ## Custom Instructions
 
-Guide Cortex Analyst's behavior with business-specific rules.
+Guide Cortex Analyst's behavior with business-specific rules. Custom instructions are automatically included in the generated `CREATE SEMANTIC VIEW` DDL as `AI_SQL_GENERATION` and `AI_QUESTION_CATEGORIZATION` clauses.
 
-> **Future Feature:** Custom instructions are extracted to metadata tables and validated, but Snowflake's `CREATE SEMANTIC VIEW` DDL does not yet support custom instructions. Defining them now prepares your semantic layer for when Snowflake adds support. Including custom instructions won't cause errors—they're simply not included in the generated view.
+When you reference custom instructions in a semantic view using `{{ custom_instructions('name') }}`, the instruction's `sql_generation` field is included in the `AI_SQL_GENERATION` clause and the `question_categorization` field is included in the `AI_QUESTION_CATEGORIZATION` clause.
 
 ### Structure
 
