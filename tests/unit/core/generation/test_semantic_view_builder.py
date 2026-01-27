@@ -894,5 +894,69 @@ class TestManifestTargetValidation:
         assert summary["models_by_database"]["ANALYTICS_MART"] == 1
 
 
+class TestTableNotFoundErrorFormatting:
+    """Test error message formatting for table not found errors."""
+
+    @pytest.fixture
+    def builder(self):
+        """Create a SemanticViewBuilder instance for testing."""
+        config = SnowflakeConfig(
+            account="test", user="test", password="test", role="test", warehouse="test", database="test", schema="test"
+        )
+        return SemanticViewBuilder(config)
+
+    def test_format_table_not_found_error_single_table(self, builder):
+        """Test error formatting with a single table name."""
+        error = ValueError("Table 'test_table' not found in database 'TEST_DB'")
+        result = builder._format_table_not_found_error(error, table_names=["test_table"], view_name="test_view")
+
+        assert "Table 'test_table' does not exist" in result
+        assert "Semantic view: test_view" in result
+        assert "To fix this:" in result
+        assert "test_table" in result
+        assert "Try: dbt run --select test_table" in result
+        assert "dbt model names are case-sensitive" in result
+        assert "Verify table names in your semantic view configuration" in result
+        assert "Verify you have permissions" in result
+        assert "Original error:" in result
+
+    def test_format_table_not_found_error_multiple_tables(self, builder):
+        """Test error formatting with multiple table names."""
+        error = ValueError("Table 'table1' not found in database 'TEST_DB'")
+        result = builder._format_table_not_found_error(error, table_names=["table1", "table2"], view_name="test_view")
+
+        # When a table name appears in the error, it uses the specific table format
+        assert "Table 'table1' does not exist" in result
+        assert "Semantic view: test_view" in result
+        assert "To fix this:" in result
+        assert "table1, table2" in result
+        assert "Try running each model individually" in result
+        assert "dbt run --select table1" in result
+        assert "dbt run --select table2" in result
+        assert "dbt model names are case-sensitive" in result
+        assert "you may need to run upstream models first" in result
+        assert "Verify table names in your semantic view configuration" in result
+
+    def test_format_table_not_found_error_multiple_tables_no_match(self, builder):
+        """Test error formatting with multiple tables when error doesn't mention a specific table."""
+        error = ValueError("Table not found in database")
+        result = builder._format_table_not_found_error(error, table_names=["table1", "table2"], view_name="test_view")
+
+        # When no table name matches the error, it uses the multiple tables format
+        assert "One or more tables do not exist" in result
+        assert "table1" in result
+        assert "table2" in result
+        assert "Semantic view: test_view" in result
+
+    def test_format_table_not_found_error_no_table_names(self, builder):
+        """Test error formatting when table names are not provided."""
+        error = ValueError("Table not found in database")
+        result = builder._format_table_not_found_error(error, table_names=None, view_name="test_view")
+
+        assert "One or more dbt tables referenced" in result
+        assert "Semantic view: test_view" in result
+        assert "Original error:" in result
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
