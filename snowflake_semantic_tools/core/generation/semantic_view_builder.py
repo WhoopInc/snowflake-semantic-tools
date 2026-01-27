@@ -466,9 +466,7 @@ class SemanticViewBuilder:
         """Sanitize description for SQL string literal."""
         return CharacterSanitizer.sanitize_for_sql_string(description)
 
-    def _handle_semantic_view_error(
-        self, error: Exception, table_names: Optional[List[str]], view_name: str
-    ) -> str:
+    def _handle_semantic_view_error(self, error: Exception, table_names: Optional[List[str]], view_name: str) -> str:
         """
         Handle errors that occur during semantic view building with appropriate formatting.
 
@@ -491,17 +489,11 @@ class SemanticViewBuilder:
         is_table_error_from_code = isinstance(error, ValueError) and "not found in database" in error_msg_lower
 
         # Check if any table name appears in the error (strong indicator it's a table error)
-        table_name_in_error = False
-        if table_names:
-            for table_name in table_names:
-                if table_name.lower() in error_msg_lower:
-                    table_name_in_error = True
-                    break
+        table_name_in_error = any(table_name.lower() in error_msg_lower for table_name in (table_names or []))
 
         # Check for Snowflake errors about missing tables/objects
         is_table_error_from_snowflake = (
-            "does not exist" in error_msg_lower
-            and ("table" in error_msg_lower or "object" in error_msg_lower)
+            "does not exist" in error_msg_lower and ("table" in error_msg_lower or "object" in error_msg_lower)
         ) or (
             # If a table name appears in the error and it says "does not exist", it's likely a table error
             table_name_in_error
@@ -592,9 +584,7 @@ class SemanticViewBuilder:
                 f"Table '{table_names[0]}' does not exist in Snowflake and cannot be used in semantic view generation."
             )
         elif table_names:
-            parts.append(
-                f"One or more tables do not exist in Snowflake: {', '.join(table_names)}"
-            )
+            parts.append(f"One or more tables do not exist in Snowflake: {', '.join(table_names)}")
         else:
             parts.append("One or more dbt tables referenced in the semantic view do not exist in Snowflake.")
 
@@ -604,24 +594,32 @@ class SemanticViewBuilder:
 
         # Add actionable guidance - simplified and more direct
         parts.append("\nTo fix this:")
-        
+
         # Suggest materializing models (without assuming table names match dbt model names)
         # Note: dbt model names are case-sensitive and typically lowercase
         if table_names:
             table_list = ", ".join(table_names)
-            parts.append(f"  1. Have you materialized the models? Ensure the dbt models for these tables exist and are materialized: {table_list}")
+            parts.append(
+                f"  1. Have you materialized the models? Ensure the dbt models for these tables exist and are materialized: {table_list}"
+            )
             if len(table_names) == 1:
                 # Single table - show lowercase example
                 lowercase_example = table_names[0].lower()
-                parts.append(f"     Try: dbt run --select {lowercase_example} (dbt model names are case-sensitive and you may need to run upstream models first)")
+                parts.append(
+                    f"     Try: dbt run --select {lowercase_example} (dbt model names are case-sensitive and you may need to run upstream models first)"
+                )
             else:
                 # Multiple tables - show each separately since comma-separated doesn't work reliably
-                parts.append("     Try running each model individually (dbt model names are case-sensitive and you may need to run upstream models first):")
+                parts.append(
+                    "     Try running each model individually (dbt model names are case-sensitive and you may need to run upstream models first):"
+                )
                 for table in table_names:
                     parts.append(f"       dbt run --select {table.lower()}")
         else:
-            parts.append("  1. Have you materialized the models? Run: dbt run --select <model_name> (model names are case-sensitive. You also may need to run upstream models first.)")
-        
+            parts.append(
+                "  1. Have you materialized the models? Run: dbt run --select <model_name> (model names are case-sensitive. You also may need to run upstream models first.)"
+            )
+
         parts.append("  2. Verify table names in your semantic view configuration match the actual dbt model names")
         parts.append("  3. Verify you have permissions to access the tables/schemas")
 

@@ -923,9 +923,7 @@ class TestTableNotFoundErrorFormatting:
     def test_format_table_not_found_error_multiple_tables(self, builder):
         """Test error formatting with multiple table names."""
         error = ValueError("Table 'table1' not found in database 'TEST_DB'")
-        result = builder._format_table_not_found_error(
-            error, table_names=["table1", "table2"], view_name="test_view"
-        )
+        result = builder._format_table_not_found_error(error, table_names=["table1", "table2"], view_name="test_view")
 
         # When a table name appears in the error, it uses the specific table format
         assert "Table 'table1' does not exist" in result
@@ -942,9 +940,7 @@ class TestTableNotFoundErrorFormatting:
     def test_format_table_not_found_error_multiple_tables_no_match(self, builder):
         """Test error formatting with multiple tables when error doesn't mention a specific table."""
         error = ValueError("Table not found in database")
-        result = builder._format_table_not_found_error(
-            error, table_names=["table1", "table2"], view_name="test_view"
-        )
+        result = builder._format_table_not_found_error(error, table_names=["table1", "table2"], view_name="test_view")
 
         # When no table name matches the error, it uses the multiple tables format
         assert "One or more tables do not exist" in result
