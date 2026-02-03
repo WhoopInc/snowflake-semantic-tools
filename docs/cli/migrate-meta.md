@@ -137,7 +137,7 @@ sst migrate-meta models/ --verbose
 ## Output
 
 ```
-Running with sst=0.2.3
+Running with sst=0.2.4
 
 Migrating 15 YAML file(s)...
 
