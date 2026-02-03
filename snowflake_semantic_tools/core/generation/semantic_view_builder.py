@@ -130,20 +130,13 @@ class SemanticViewBuilder:
                 return result
 
             except Exception as e:
-                error_msg = str(e)
-                if "does not exist or not authorized" in error_msg and "Schema" in error_msg:
-                    logger.error(f"Target schema '{self.target_database}.{self.target_schema}' does not exist")
-                    logger.error(
-                        f"Please ask your admin to create schema: CREATE SCHEMA IF NOT EXISTS {self.target_database}.{self.target_schema}"
-                    )
-                else:
-                    logger.error(f"Error building semantic view '{view_name}': {e}")
+                formatted_message = self._handle_semantic_view_error(e, table_names, view_name)
 
                 return {
                     "view_name": view_name,
                     "sql_statement": None,
                     "success": False,
-                    "message": f"Error building semantic view '{view_name}': {error_msg}",
+                    "message": formatted_message,
                     "target_location": f"{self.target_database}.{self.target_schema}.{view_name.upper()}",
                 }
 
@@ -472,6 +465,168 @@ class SemanticViewBuilder:
     def _sanitize_description(self, description: str) -> str:
         """Sanitize description for SQL string literal."""
         return CharacterSanitizer.sanitize_for_sql_string(description)
+
+    def _handle_semantic_view_error(self, error: Exception, table_names: Optional[List[str]], view_name: str) -> str:
+        """
+        Handle errors that occur during semantic view building with appropriate formatting.
+
+        Args:
+            error: The exception that was raised
+            table_names: Optional list of table names being processed
+            view_name: Name of the semantic view being built
+
+        Returns:
+            Formatted error message
+        """
+        error_msg = str(error)
+        error_msg_lower = error_msg.lower()
+
+        # Log the original error for debugging
+        logger.debug(f"Original error when building semantic view '{view_name}': {error_msg}")
+
+        # PRIORITY 1: Handle table not found errors first (more specific)
+        # Check for ValueError from our code (table lookup failed)
+        is_table_error_from_code = isinstance(error, ValueError) and "not found in database" in error_msg_lower
+
+        # Check if any table name appears in the error (strong indicator it's a table error)
+        table_name_in_error = any(table_name.lower() in error_msg_lower for table_name in (table_names or []))
+
+        # Check for Snowflake errors about missing tables/objects
+        is_table_error_from_snowflake = (
+            "does not exist" in error_msg_lower and ("table" in error_msg_lower or "object" in error_msg_lower)
+        ) or (
+            # If a table name appears in the error and it says "does not exist", it's likely a table error
+            table_name_in_error
+            and "does not exist" in error_msg_lower
+        )
+
+        if is_table_error_from_code or is_table_error_from_snowflake:
+            formatted_message = self._format_table_not_found_error(error, table_names, view_name)
+            logger.error(formatted_message)
+            return formatted_message
+
+        # PRIORITY 2: Handle schema not found errors (less specific, check after table errors)
+        # IMPORTANT: Only treat as target schema error if the error mentions the target schema
+        # If it mentions a different schema, it's likely a table-not-found error (table's schema doesn't exist)
+        target_schema_pattern = f"{self.target_database}.{self.target_schema}".lower()
+        error_mentions_target_schema = target_schema_pattern in error_msg_lower
+
+        is_target_schema_error = (
+            "does not exist or not authorized" in error_msg_lower
+            and "schema" in error_msg_lower
+            and ("table" not in error_msg_lower and "object" not in error_msg_lower)
+            and error_mentions_target_schema
+        )
+
+        if is_target_schema_error:
+            logger.error(f"Target schema '{self.target_database}.{self.target_schema}' does not exist")
+            logger.error(
+                f"Please ask your admin to create schema: CREATE SCHEMA IF NOT EXISTS {self.target_database}.{self.target_schema}"
+            )
+            formatted_message = (
+                f"Target schema '{self.target_database}.{self.target_schema}' does not exist or you don't have permission to create objects in it. "
+                f"Please ask your admin to create schema: CREATE SCHEMA IF NOT EXISTS {self.target_database}.{self.target_schema}\n"
+                f"Original error: {error_msg}"
+            )
+            return formatted_message
+
+        # If schema error but NOT about target schema, it's likely a table schema issue (table-not-found)
+        if (
+            "does not exist or not authorized" in error_msg_lower
+            and "schema" in error_msg_lower
+            and not error_mentions_target_schema
+        ):
+            # This is likely a table-not-found error (the table's schema doesn't exist)
+            formatted_message = self._format_table_not_found_error(error, table_names, view_name)
+            logger.error(formatted_message)
+            return formatted_message
+
+        # Handle other errors
+        logger.error(f"Error building semantic view '{view_name}': {error}")
+        return f"Error building semantic view '{view_name}': {error_msg}"
+
+    def _format_table_not_found_error(
+        self, error: Exception, table_names: Optional[List[str]] = None, view_name: Optional[str] = None
+    ) -> str:
+        """
+        Format a clear, actionable error message when a table is not found.
+
+        Args:
+            error: The exception that was raised
+            table_names: Optional list of table names being processed
+            view_name: Optional name of the semantic view being built
+
+        Returns:
+            Formatted error message with actionable guidance
+        """
+        error_msg = str(error).lower()
+        error_msg_original = str(error)
+
+        # Extract table name from error if possible
+        table_name_in_error = None
+        if table_names:
+            # Check if any table name appears in the error message
+            for table_name in table_names:
+                if table_name.lower() in error_msg:
+                    table_name_in_error = table_name
+                    break
+
+        # Build the error message
+        parts = []
+
+        # Main error description
+        if table_name_in_error:
+            parts.append(
+                f"Table '{table_name_in_error}' does not exist in Snowflake and cannot be used in semantic view generation."
+            )
+        elif table_names and len(table_names) == 1:
+            parts.append(
+                f"Table '{table_names[0]}' does not exist in Snowflake and cannot be used in semantic view generation."
+            )
+        elif table_names:
+            parts.append(f"One or more tables do not exist in Snowflake: {', '.join(table_names)}")
+        else:
+            parts.append("One or more dbt tables referenced in the semantic view do not exist in Snowflake.")
+
+        # Add context about the semantic view if available
+        if view_name:
+            parts.append(f"\nSemantic view: {view_name}")
+
+        # Add actionable guidance - simplified and more direct
+        parts.append("\nTo fix this:")
+
+        # Suggest materializing models (without assuming table names match dbt model names)
+        # Note: dbt model names are case-sensitive and typically lowercase
+        if table_names:
+            table_list = ", ".join(table_names)
+            parts.append(
+                f"  1. Have you materialized the models? Ensure the dbt models for these tables exist and are materialized: {table_list}"
+            )
+            if len(table_names) == 1:
+                # Single table - show lowercase example
+                lowercase_example = table_names[0].lower()
+                parts.append(
+                    f"     Try: dbt run --select {lowercase_example} (dbt model names are case-sensitive and you may need to run upstream models first)"
+                )
+            else:
+                # Multiple tables - show each separately since comma-separated doesn't work reliably
+                parts.append(
+                    "     Try running each model individually (dbt model names are case-sensitive and you may need to run upstream models first):"
+                )
+                for table in table_names:
+                    parts.append(f"       dbt run --select {table.lower()}")
+        else:
+            parts.append(
+                "  1. Have you materialized the models? Run: dbt run --select <model_name> (model names are case-sensitive. You also may need to run upstream models first.)"
+            )
+
+        parts.append("  2. Verify table names in your semantic view configuration match the actual dbt model names")
+        parts.append("  3. Verify you have permissions to access the tables/schemas")
+
+        # Include original error for debugging
+        parts.append(f"\nOriginal error: {error_msg_original}")
+
+        return "\n".join(parts)
 
     def _execute_query(self, conn, sql: str) -> List[Dict]:
         """Execute a SQL query using the provided connection and return results as list of dictionaries."""
@@ -1325,19 +1480,12 @@ class SemanticViewBuilder:
             return result
 
         except Exception as e:
-            error_msg = str(e)
-            if "does not exist or not authorized" in error_msg and "Schema" in error_msg:
-                logger.error(f"Target schema '{self.target_database}.{self.target_schema}' does not exist")
-                logger.error(
-                    f"Please ask your admin to create schema: CREATE SCHEMA IF NOT EXISTS {self.target_database}.{self.target_schema}"
-                )
-            else:
-                logger.error(f"Error building semantic view '{view_name}': {e}")
+            formatted_message = self._handle_semantic_view_error(e, table_names, view_name)
 
             return {
                 "view_name": view_name,
                 "sql_statement": None,
                 "success": False,
-                "message": f"Error building semantic view '{view_name}': {error_msg}",
+                "message": formatted_message,
                 "target_location": f"{self.target_database}.{self.target_schema}.{view_name.upper()}",
             }

@@ -248,6 +248,9 @@ def generate(
             if not result.success:
                 raise click.ClickException("Generation failed - see errors above")
 
+    except click.ClickException:
+        # Re-raise ClickException without traceback (expected user-facing errors)
+        raise
     except Exception as e:
         output.blank_line()
         output.error(f"Generation error: {str(e)}")
