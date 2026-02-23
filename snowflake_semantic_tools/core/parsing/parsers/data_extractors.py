@@ -252,6 +252,10 @@ def extract_column_info(column: Dict[str, Any], table_name: str, file_path: Path
     """
     Extract column-level information from a column dictionary.
 
+    Supports data_type from both native dbt contracts and SST metadata:
+    - Native dbt location (column-level data_type) - PREFERRED for users with dbt contracts
+    - SST metadata (config.meta.sst.data_type) - FALLBACK for backward compatibility
+
     Args:
         column: Column dictionary from YAML
         table_name: Name of the parent table
@@ -267,6 +271,26 @@ def extract_column_info(column: Dict[str, Any], table_name: str, file_path: Path
         # Extract SST metadata (supports both config.meta.sst and meta.sst)
         sst_meta = get_sst_meta(column, node_type="column", node_name=f"{table_name}.{name}")
 
+        # Data type resolution: native dbt contract > SST metadata
+        # This allows users with dbt contracts to avoid duplicate definitions
+        native_data_type = column.get("data_type")
+        sst_data_type = sst_meta.get("data_type")
+
+        # Warn if both locations have conflicting values
+        if native_data_type and sst_data_type:
+            native_normalized = native_data_type.lower().strip()
+            sst_normalized = sst_data_type.lower().strip()
+            if native_normalized != sst_normalized:
+                logger.warning(
+                    f"Column '{table_name}.{name}' has data_type in both locations "
+                    f"(native: '{native_data_type}', SST: '{sst_data_type}'). "
+                    f"Using native value '{native_data_type}'. "
+                    f"Consider removing duplicate from config.meta.sst.data_type."
+                )
+
+        # Priority: native dbt > SST metadata > default
+        data_type = native_data_type or sst_data_type or "text"
+
         # Build column record
         # Note: Column names uppercased to match Snowflake identifier behavior
         column_record = {
@@ -274,7 +298,7 @@ def extract_column_info(column: Dict[str, Any], table_name: str, file_path: Path
             "name": name.upper() if name else name,
             "expr": name.upper() if name else name,  # expr is just the column name
             "column_type": sst_meta.get("column_type"),  # Extract column_type from meta.sst
-            "data_type": sst_meta.get("data_type", "text"),
+            "data_type": data_type,
             "description": description,
             "synonyms": sst_meta.get("synonyms", []),
             "sample_values": sst_meta.get("sample_values", []),

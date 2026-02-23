@@ -460,9 +460,11 @@ class DbtModelValidator:
             )
 
         # data_type is required for all column types
+        # Can be specified in native dbt contracts (column.data_type) or SST metadata (config.meta.sst.data_type)
         if not column.get("data_type"):
             result.add_error(
-                f"Column '{column_name}' in table '{table_name}' is missing required field: meta.sst.data_type at the column-level",
+                f"Column '{column_name}' in table '{table_name}' is missing required field: data_type at the column-level. "
+                f"Specify either as native dbt contract (column.data_type) or SST metadata (config.meta.sst.data_type)",
                 file_path=source_file,
                 context={"table": table_name, "column": column_name, "field": "data_type", "level": "column"},
             )
