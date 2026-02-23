@@ -425,6 +425,9 @@ class DbtModelValidator:
         # Check synonym content (apostrophes cause SQL errors)
         self._check_synonym_content(column, table_name, column_name, source_file, result)
 
+        # Check for data type conflicts between dbt and sst
+        self._check_data_type_mismatch(column, table_name, column_name, source_file, result)
+
         # Check best practices
         self._check_column_best_practices(column, table_name, column_name, source_file, result)
 
@@ -688,6 +691,38 @@ class DbtModelValidator:
                     f"These will be automatically sanitized during generation{example_text}.",
                     file_path=source_file,
                     context={"table": table_name, "column": column_name, "level": "column"},
+                )
+
+    def _check_data_type_mismatch(
+        self,
+        column: Dict[str, Any],
+        table_name: str,
+        column_name: str,
+        source_file: Optional[str],
+        result: ValidationResult,
+    ):
+        """Check for conflicting data types between dbt and sst metadata."""
+        native_data_type = column.get("_native_data_type")
+        sst_data_type = column.get("_sst_data_type")
+
+        # Only warn if both locations have conflicting values
+        if native_data_type and sst_data_type:
+            native_normalized = native_data_type.lower().strip()
+            sst_normalized = sst_data_type.lower().strip()
+            if native_normalized != sst_normalized:
+                result.add_warning(
+                    f"Column '{column_name}' in table '{table_name}' has conflicting data types: "
+                    f"dbt data_type='{native_data_type}' vs sst data_type='{sst_data_type}'. "
+                    f"Using dbt value '{native_data_type}'. "
+                    f"Consider removing duplicate from config.meta.sst.data_type.",
+                    file_path=source_file,
+                    context={
+                        "table": table_name,
+                        "column": column_name,
+                        "native_data_type": native_data_type,
+                        "sst_data_type": sst_data_type,
+                        "level": "column",
+                    },
                 )
 
     def _check_column_best_practices(

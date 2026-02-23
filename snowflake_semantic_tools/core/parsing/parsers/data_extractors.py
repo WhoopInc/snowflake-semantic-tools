@@ -299,6 +299,8 @@ def extract_column_info(column: Dict[str, Any], table_name: str, file_path: Path
             "expr": name.upper() if name else name,  # expr is just the column name
             "column_type": sst_meta.get("column_type"),  # Extract column_type from meta.sst
             "data_type": data_type,
+            "_native_data_type": native_data_type,  # Preserve original for validation
+            "_sst_data_type": sst_data_type,  # Preserve original for validation
             "description": description,
             "synonyms": sst_meta.get("synonyms", []),
             "sample_values": sst_meta.get("sample_values", []),
