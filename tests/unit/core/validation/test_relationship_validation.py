@@ -604,6 +604,35 @@ class TestRelationshipReferenceValidation:
         # Should have NO errors
         assert result.error_count == 0
 
+    def test_right_column_declared_unique_key_passes(self, validator, sample_dbt_catalog):
+        """When right table has meta.sst.unique_keys for the referenced column, no error."""
+        catalog_with_uk = dict(sample_dbt_catalog)
+        catalog_with_uk["orders"] = {
+            **catalog_with_uk["orders"],
+            "primary_key": "id",
+            "unique_keys": ["user_id"],
+        }
+        semantic_data = {
+            "relationships": {
+                "items": [
+                    {
+                        "relationship_name": "USERS_TO_ORDERS",
+                        "left_table_name": "USERS",
+                        "right_table_name": "ORDERS",
+                    }
+                ],
+                "relationship_columns": [
+                    {
+                        "relationship_name": "USERS_TO_ORDERS",
+                        "left_column": "USERS.ID",
+                        "right_column": "ORDERS.USER_ID",
+                    }
+                ],
+            }
+        }
+        result = validator.validate(semantic_data, catalog_with_uk)
+        assert result.error_count == 0
+
     def test_composite_primary_key_partial_reference_warning(self, validator):
         """Test that referencing only part of a composite primary key produces a warning."""
         catalog_with_composite = {

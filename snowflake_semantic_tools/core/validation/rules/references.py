@@ -293,6 +293,13 @@ class ReferenceValidator:
                 if right_table_lower in dbt_catalog and columns:
                     right_table_info = dbt_catalog[right_table_lower]
                     primary_key = right_table_info.get("primary_key")
+                    raw_unique_keys = right_table_info.get("unique_keys") or []
+                    unique_keys_lower = (
+                        [c.lower() for c in raw_unique_keys]
+                        if isinstance(raw_unique_keys, list)
+                        else [str(raw_unique_keys).lower()]
+                    )
+                    unique_set = set(unique_keys_lower) if unique_keys_lower else set()
 
                     if primary_key:
                         # Handle both single column and composite primary keys
@@ -314,9 +321,18 @@ class ReferenceValidator:
                                         _, right_col = right_col.rsplit(".", 1)
                                     right_columns_used.append(right_col.lower())
 
-                            # For composite keys: ALL pk columns must be used
-                            # For single keys: the right_column must BE the pk column
-                            if len(pk_columns) > 1:
+                            right_set = set(right_columns_used)
+                            pk_set = set(pk_columns)
+                            # Valid if relationship references the full primary key OR a declared unique key (meta.sst.unique_keys)
+                            references_pk = right_set == pk_set or (
+                                len(pk_columns) == 1 and pk_columns[0] in right_columns_used
+                            )
+                            references_unique = bool(unique_set and right_set == unique_set)
+
+                            if references_pk or references_unique:
+                                # No error: right side is PK or declared UNIQUE
+                                pass
+                            elif len(pk_columns) > 1:
                                 # Composite key - check if all pk columns are referenced
                                 missing_pk_cols = [col for col in pk_columns if col not in right_columns_used]
                                 if missing_pk_cols:
@@ -324,8 +340,8 @@ class ReferenceValidator:
                                         f"Relationship '{name}' does not reference the complete primary key of right table '{right_table}'. "
                                         f"The primary key is composite: [{', '.join(pk_columns)}], but relationship only references: [{', '.join(right_columns_used)}]. "
                                         f"Missing: [{', '.join(missing_pk_cols)}]. "
-                                        f"Snowflake documentation states relationships MUST reference PRIMARY KEY or UNIQUE columns. "
-                                        f"To fix: (1) add the missing columns to complete the primary key reference, (2) reverse the relationship direction if '{right_table}' has a UNIQUE constraint on [{', '.join(right_columns_used)}], or (3) update the primary_key in the YAML if [{', '.join(right_columns_used)}] is the actual composite primary key.",
+                                        f"Snowflake requires the referenced columns to be the table's PRIMARY KEY or a declared UNIQUE key. "
+                                        f"To fix: (1) add the missing columns to complete the primary key reference, (2) add meta.sst.unique_keys for [{', '.join(right_columns_used)}] on '{right_table}' if that set is unique, or (3) reverse the relationship direction.",
                                         file_path=source_file,
                                         context={
                                             "relationship": name,
@@ -337,23 +353,21 @@ class ReferenceValidator:
                                         },
                                     )
                             else:
-                                # Single column primary key - must match exactly
-                                if pk_columns[0] not in right_columns_used:
-                                    result.add_error(
-                                        f"Relationship '{name}' references column(s) [{', '.join(right_columns_used)}] in right table '{right_table}', "
-                                        f"but the primary key is '{pk_columns[0]}'. "
-                                        f"Snowflake documentation states relationships MUST reference PRIMARY KEY or UNIQUE columns. "
-                                        f"If '{right_columns_used[0] if right_columns_used else 'N/A'}' has a UNIQUE constraint, this is valid. "
-                                        f"Otherwise, consider reversing the relationship direction.",
-                                        file_path=source_file,
-                                        context={
-                                            "relationship": name,
-                                            "right_table": right_table,
-                                            "right_columns": right_columns_used,
-                                            "primary_key": pk_columns[0],
-                                            "issue": "not_primary_key",
-                                        },
-                                    )
+                                # Single column primary key - right column must be PK or in unique_keys
+                                result.add_error(
+                                    f"Relationship '{name}' references column(s) [{', '.join(right_columns_used)}] in right table '{right_table}', "
+                                    f"but the primary key is '{pk_columns[0]}'. "
+                                    f"Snowflake requires the referenced column(s) to be the table's PRIMARY KEY or a declared UNIQUE key (meta.sst.unique_keys). "
+                                    f"Add meta.sst.unique_keys for the referenced column(s) on '{right_table}' if they form a unique key, or reverse the relationship direction.",
+                                    file_path=source_file,
+                                    context={
+                                        "relationship": name,
+                                        "right_table": right_table,
+                                        "right_columns": right_columns_used,
+                                        "primary_key": pk_columns[0],
+                                        "issue": "not_primary_key",
+                                    },
+                                )
                     else:
                         # Primary key information is missing from the table metadata
                         result.add_error(
