@@ -497,7 +497,9 @@ class DbtModelValidator:
         """Check that column fields have valid values."""
         # Check data_type is valid - must be recognized Snowflake type
         data_type = column.get("data_type", "").lower()
-        if data_type and data_type not in self.VALID_DATA_TYPES:
+        # Strip precision/scale for validation (e.g., "number(38,0)" -> "number")
+        base_data_type = data_type.split("(")[0] if "(" in data_type else data_type
+        if base_data_type and base_data_type not in self.VALID_DATA_TYPES:
             result.add_error(
                 f"Column '{column_name}' in table '{table_name}' has unrecognized data_type: '{data_type}' at the column-level. "
                 f"Must be a valid Snowflake data type.",
@@ -518,6 +520,8 @@ class DbtModelValidator:
         """Check logical consistency of column configuration."""
         column_type = self._determine_column_type(column)
         data_type = column.get("data_type", "").lower()
+        # Strip precision/scale for consistency checks (e.g., "number(38,0)" -> "number")
+        base_data_type = data_type.split("(")[0] if "(" in data_type else data_type
 
         # Facts should have numeric data types
         if column_type == "fact":
@@ -533,7 +537,7 @@ class DbtModelValidator:
                 "double",
                 "real",
             }
-            if data_type and data_type not in numeric_types:
+            if base_data_type and base_data_type not in numeric_types:
                 result.add_error(
                     f"Fact column '{column_name}' in table '{table_name}' has non-numeric data_type: '{data_type}' at the column-level",
                     file_path=source_file,
@@ -549,7 +553,7 @@ class DbtModelValidator:
         # Time dimensions should have date/time data types
         if column_type == "time_dimension":
             time_types = {"date", "datetime", "time", "timestamp", "timestamp_ltz", "timestamp_ntz", "timestamp_tz"}
-            if data_type and data_type not in time_types:
+            if base_data_type and base_data_type not in time_types:
                 result.add_error(
                     f"Time dimension '{column_name}' in table '{table_name}' has non-temporal data_type: '{data_type}' at the column-level",
                     file_path=source_file,
