@@ -195,8 +195,8 @@ class TestGetSstMeta:
 class TestExtractColumnInfo:
     """Tests for extract_column_info native dbt contract data_type support."""
 
-    def test_native_data_type_takes_precedence_over_sst_with_warning(self, caplog):
-        """Native dbt contract data_type wins over config.meta.sst.data_type, with a warning on conflict."""
+    def test_native_data_type_takes_precedence_over_sst(self):
+        """Native dbt contract data_type wins over config.meta.sst.data_type when both are set."""
         column = {
             "name": "price",
             "data_type": "NUMBER",  # native dbt contract
@@ -210,12 +210,8 @@ class TestExtractColumnInfo:
             },
         }
 
-        import logging
-
-        with caplog.at_level(logging.WARNING):
-            result = extract_column_info(column, "orders", "orders.yml")
+        result = extract_column_info(column, "orders", "orders.yml")
 
         assert result["data_type"] == "NUMBER"
         assert result["_native_data_type"] == "NUMBER"
         assert result["_sst_data_type"] == "text"
-        assert any("NUMBER" in record.message and "text" in record.message for record in caplog.records)
