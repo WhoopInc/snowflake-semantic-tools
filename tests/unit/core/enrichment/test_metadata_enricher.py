@@ -146,6 +146,18 @@ class TestEnrichColumnTypes:
         assert column_sst["data_type"] == "text"
         assert column_sst["column_type"] == "fact"
 
+    def test_enrich_skips_data_type_when_native_dbt_contract_present(self, enricher):
+        """SST data_type enrichment is skipped when column has a native dbt contract data_type."""
+        column_sst = {}  # No existing SST data_type
+        column = {"data_type": "NUMBER"}  # Native dbt contract on the column
+
+        enricher._enrich_column_types(
+            column_sst, "price", "VARCHAR(100)", column, components=["data-types"]
+        )
+
+        # data_type should NOT be overwritten by Snowflake-mapped TEXT
+        assert "data_type" not in column_sst
+
 
 class TestEnrichSampleValues:
     """Tests for _enrich_sample_values component checking."""
