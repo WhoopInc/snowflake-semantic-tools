@@ -605,7 +605,7 @@ class MetadataEnricher:
 
         # Map and set data types (only if requested via components)
         snowflake_type = table_col["type"]
-        self._enrich_column_types(column_sst, col_name, snowflake_type, components)
+        self._enrich_column_types(column_sst, col_name, snowflake_type, column, components)
 
         # Handle sample values and enum detection (only if requested via components)
         needs_sample_enrichment = not components or any(c in components for c in ["sample-values", "detect-enums"])
@@ -630,6 +630,7 @@ class MetadataEnricher:
         column_sst: Dict[str, Any],
         col_name: str,
         snowflake_type: str,
+        column: Dict[str, Any],
         components: Optional[List[str]] = None,
     ):
         """Enrich column with data_type and column_type (preserves existing).
@@ -637,13 +638,22 @@ class MetadataEnricher:
         Only enriches if the corresponding component is requested:
         - data-types: Sets data_type from Snowflake type mapping
         - column-types: Sets column_type (dimension/fact/time_dimension)
+
+        Respects native dbt contract data_type (column.data_type) - if present,
+        SST data_type enrichment is skipped to avoid duplicate definitions.
         """
         sst_data_type = map_snowflake_to_sst_datatype(snowflake_type)
+
+        # Check for native dbt contract data_type (column-level, outside of config.meta.sst)
+        native_data_type = column.get("data_type")
 
         # Only enrich data_type if requested (or no components = all)
         enrich_data_types = not components or "data-types" in components
         if enrich_data_types:
-            if "data_type" not in column_sst or not column_sst["data_type"]:
+            if native_data_type:
+                # Native dbt contract data_type exists - skip SST enrichment
+                logger.debug(f"      - Skipped data_type enrichment (native dbt contract: {native_data_type})")
+            elif "data_type" not in column_sst or not column_sst["data_type"]:
                 column_sst["data_type"] = sst_data_type
                 logger.debug(f"      - Set data_type: {sst_data_type}")
             else:

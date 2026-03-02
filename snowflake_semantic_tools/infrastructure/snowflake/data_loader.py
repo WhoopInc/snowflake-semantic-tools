@@ -633,6 +633,9 @@ class DataLoader:
                         logger.warning(f"Unexpected data type for {table_key}: {type(data)}")
                         continue
 
+                    # Filter out internal columns (prefixed with _) before loading to Snowflake
+                    df = df[[col for col in df.columns if not col.startswith("_")]]
+
                     # Handle columns with mixed types (like sample_values, synonyms) by converting to JSON strings
                     import json
                     from datetime import date, datetime

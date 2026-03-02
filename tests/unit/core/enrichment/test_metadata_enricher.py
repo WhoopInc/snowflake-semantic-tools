@@ -109,7 +109,7 @@ class TestEnrichColumnTypes:
     def test_enrich_column_types_only_data_types(self, enricher):
         """Only data_type is set when only data-types component requested."""
         column_sst = {}
-        enricher._enrich_column_types(column_sst, "test_col", "VARCHAR(100)", components=["data-types"])
+        enricher._enrich_column_types(column_sst, "test_col", "VARCHAR(100)", {}, components=["data-types"])
         assert "data_type" in column_sst
         assert column_sst["data_type"] == "TEXT"  # Snowflake type mapping
         # column_type should not be set
@@ -118,7 +118,7 @@ class TestEnrichColumnTypes:
     def test_enrich_column_types_only_column_types(self, enricher):
         """Only column_type is set when only column-types component requested."""
         column_sst = {}
-        enricher._enrich_column_types(column_sst, "test_col", "VARCHAR(100)", components=["column-types"])
+        enricher._enrich_column_types(column_sst, "test_col", "VARCHAR(100)", {}, components=["column-types"])
         assert "column_type" in column_sst
         assert column_sst["column_type"] == "dimension"
         # data_type should not be set
@@ -127,24 +127,36 @@ class TestEnrichColumnTypes:
     def test_enrich_column_types_both(self, enricher):
         """Both types set when both components requested."""
         column_sst = {}
-        enricher._enrich_column_types(column_sst, "test_col", "VARCHAR(100)", components=["data-types", "column-types"])
+        enricher._enrich_column_types(column_sst, "test_col", "VARCHAR(100)", {}, components=["data-types", "column-types"])
         assert column_sst["data_type"] == "TEXT"  # Snowflake type mapping
         assert column_sst["column_type"] == "dimension"
 
     def test_enrich_column_types_no_components_enriches_all(self, enricher):
         """No components (None) means enrich all (backward compatible)."""
         column_sst = {}
-        enricher._enrich_column_types(column_sst, "test_col", "VARCHAR(100)", components=None)
+        enricher._enrich_column_types(column_sst, "test_col", "VARCHAR(100)", {}, components=None)
         assert column_sst["data_type"] == "TEXT"  # Snowflake type mapping
         assert column_sst["column_type"] == "dimension"
 
     def test_enrich_column_types_preserves_existing(self, enricher):
         """Existing values are preserved even when component is requested."""
         column_sst = {"data_type": "text", "column_type": "fact"}
-        enricher._enrich_column_types(column_sst, "test_col", "VARCHAR(100)", components=["data-types", "column-types"])
+        enricher._enrich_column_types(column_sst, "test_col", "VARCHAR(100)", {}, components=["data-types", "column-types"])
         # Should preserve existing values
         assert column_sst["data_type"] == "text"
         assert column_sst["column_type"] == "fact"
+
+    def test_enrich_skips_data_type_when_native_dbt_contract_present(self, enricher):
+        """SST data_type enrichment is skipped when column has a native dbt contract data_type."""
+        column_sst = {}  # No existing SST data_type
+        column = {"data_type": "NUMBER"}  # Native dbt contract on the column
+
+        enricher._enrich_column_types(
+            column_sst, "price", "VARCHAR(100)", column, components=["data-types"]
+        )
+
+        # data_type should NOT be overwritten by Snowflake-mapped TEXT
+        assert "data_type" not in column_sst
 
 
 class TestEnrichSampleValues:

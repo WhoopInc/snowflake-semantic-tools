@@ -425,6 +425,9 @@ class DbtModelValidator:
         # Check synonym content (apostrophes cause SQL errors)
         self._check_synonym_content(column, table_name, column_name, source_file, result)
 
+        # Check for data type conflicts between dbt and sst
+        self._check_data_type_mismatch(column, table_name, column_name, source_file, result)
+
         # Check best practices
         self._check_column_best_practices(column, table_name, column_name, source_file, result)
 
@@ -460,9 +463,11 @@ class DbtModelValidator:
             )
 
         # data_type is required for all column types
+        # Can be specified in native dbt contracts (column.data_type) or SST metadata (config.meta.sst.data_type)
         if not column.get("data_type"):
             result.add_error(
-                f"Column '{column_name}' in table '{table_name}' is missing required field: meta.sst.data_type at the column-level",
+                f"Column '{column_name}' in table '{table_name}' is missing required field: data_type at the column-level. "
+                f"Specify either as native dbt contract (column.data_type) or SST metadata (config.meta.sst.data_type)",
                 file_path=source_file,
                 context={"table": table_name, "column": column_name, "field": "data_type", "level": "column"},
             )
@@ -492,7 +497,9 @@ class DbtModelValidator:
         """Check that column fields have valid values."""
         # Check data_type is valid - must be recognized Snowflake type
         data_type = column.get("data_type", "").lower()
-        if data_type and data_type not in self.VALID_DATA_TYPES:
+        # Strip precision/scale for validation (e.g., "number(38,0)" -> "number")
+        base_data_type = data_type.split("(")[0] if "(" in data_type else data_type
+        if base_data_type and base_data_type not in self.VALID_DATA_TYPES:
             result.add_error(
                 f"Column '{column_name}' in table '{table_name}' has unrecognized data_type: '{data_type}' at the column-level. "
                 f"Must be a valid Snowflake data type.",
@@ -513,6 +520,8 @@ class DbtModelValidator:
         """Check logical consistency of column configuration."""
         column_type = self._determine_column_type(column)
         data_type = column.get("data_type", "").lower()
+        # Strip precision/scale for consistency checks (e.g., "number(38,0)" -> "number")
+        base_data_type = data_type.split("(")[0] if "(" in data_type else data_type
 
         # Facts should have numeric data types
         if column_type == "fact":
@@ -528,7 +537,7 @@ class DbtModelValidator:
                 "double",
                 "real",
             }
-            if data_type and data_type not in numeric_types:
+            if base_data_type and base_data_type not in numeric_types:
                 result.add_error(
                     f"Fact column '{column_name}' in table '{table_name}' has non-numeric data_type: '{data_type}' at the column-level",
                     file_path=source_file,
@@ -544,7 +553,7 @@ class DbtModelValidator:
         # Time dimensions should have date/time data types
         if column_type == "time_dimension":
             time_types = {"date", "datetime", "time", "timestamp", "timestamp_ltz", "timestamp_ntz", "timestamp_tz"}
-            if data_type and data_type not in time_types:
+            if base_data_type and base_data_type not in time_types:
                 result.add_error(
                     f"Time dimension '{column_name}' in table '{table_name}' has non-temporal data_type: '{data_type}' at the column-level",
                     file_path=source_file,
@@ -686,6 +695,38 @@ class DbtModelValidator:
                     f"These will be automatically sanitized during generation{example_text}.",
                     file_path=source_file,
                     context={"table": table_name, "column": column_name, "level": "column"},
+                )
+
+    def _check_data_type_mismatch(
+        self,
+        column: Dict[str, Any],
+        table_name: str,
+        column_name: str,
+        source_file: Optional[str],
+        result: ValidationResult,
+    ):
+        """Check for conflicting data types between dbt and sst metadata."""
+        native_data_type = column.get("_native_data_type")
+        sst_data_type = column.get("_sst_data_type")
+
+        # Only warn if both locations have conflicting values
+        if native_data_type and sst_data_type:
+            native_normalized = native_data_type.lower().strip()
+            sst_normalized = sst_data_type.lower().strip()
+            if native_normalized != sst_normalized:
+                result.add_warning(
+                    f"Column '{column_name}' in table '{table_name}' has conflicting data types: "
+                    f"dbt data_type='{native_data_type}' vs sst data_type='{sst_data_type}'. "
+                    f"Using dbt value '{native_data_type}'. "
+                    f"Consider removing duplicate from config.meta.sst.data_type.",
+                    file_path=source_file,
+                    context={
+                        "table": table_name,
+                        "column": column_name,
+                        "native_data_type": native_data_type,
+                        "sst_data_type": sst_data_type,
+                        "level": "column",
+                    },
                 )
 
     def _check_column_best_practices(
