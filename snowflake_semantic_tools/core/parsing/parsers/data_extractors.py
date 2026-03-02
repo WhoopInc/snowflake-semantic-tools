@@ -9,7 +9,6 @@ These functions handle the transformation from raw YAML dictionaries to our targ
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from snowflake_semantic_tools.core.enrichment.type_mappings import map_snowflake_to_sst_datatype
 from snowflake_semantic_tools.shared import get_logger
 
 logger = get_logger("yaml_parser.data_extractors")
@@ -291,9 +290,6 @@ def extract_column_info(column: Dict[str, Any], table_name: str, file_path: Path
 
         # Priority: native dbt > SST metadata > default
         data_type = native_data_type or sst_data_type or "text"
-        # Normalize data_type to match SST enrichment format (strip precision, uppercase)
-        # e.g., "NUMBER(38,0)" -> "NUMBER", "varchar(255)" -> "TEXT"
-        data_type = map_snowflake_to_sst_datatype(data_type)
 
         # Build column record
         # Note: Column names uppercased to match Snowflake identifier behavior
