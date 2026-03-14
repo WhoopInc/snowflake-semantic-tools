@@ -157,6 +157,9 @@ class ReferenceValidator:
         items = relationships_data.get("items", [])
         relationship_columns = relationships_data.get("relationship_columns", [])
 
+        # Snowflake: "You cannot define circular relationships, even through transitive paths"
+        self._check_circular_relationships(items, result)
+
         # Group relationship columns by relationship name
         columns_by_relationship = {}
         for col in relationship_columns:
@@ -223,8 +226,21 @@ class ReferenceValidator:
                         )
 
                 # Convert table names to lowercase for catalog lookup
-                left_table_lower = left_table.lower()
-                right_table_lower = right_table.lower()
+                left_table_lower = left_table.lower() if left_table else ""
+                right_table_lower = right_table.lower() if right_table else ""
+
+                # Snowflake: "Currently, a table cannot reference itself"
+                if left_table_lower and right_table_lower and left_table_lower == right_table_lower:
+                    result.add_error(
+                        f"Relationship '{name}' is a self-reference (left and right table are both '{left_table}'). "
+                        f"Snowflake does not allow a table to reference itself.",
+                        file_path=source_file,
+                        context={
+                            "relationship": name,
+                            "table": left_table,
+                            "issue": "self_reference",
+                        },
+                    )
 
                 # Validate left table
                 if left_table and left_table_lower not in dbt_catalog:
@@ -497,6 +513,56 @@ class ReferenceValidator:
                                     file_path=source_file,
                                     context={"relationship": name, "column": right_col, "table": right_table},
                                 )
+
+    def _check_circular_relationships(self, items: List[Dict], result: ValidationResult) -> None:
+        """
+        Snowflake: "You cannot define circular relationships, even through transitive paths."
+        Build directed graph (left -> right) and detect cycles.
+        """
+        graph: Dict[str, Set[str]] = {}
+        for rel in items:
+            if not isinstance(rel, dict):
+                continue
+            left = (rel.get("left_table_name") or rel.get("left_table") or "").lower()
+            right = (rel.get("right_table_name") or rel.get("right_table") or "").lower()
+            if not left or not right or left == right:
+                continue
+            graph.setdefault(left, set()).add(right)
+        visited: Set[str] = set()
+        rec_stack: Set[str] = set()
+        path: List[str] = []
+        path_set: Set[str] = set()
+
+        def find_cycle(node: str) -> Optional[List[str]]:
+            visited.add(node)
+            rec_stack.add(node)
+            path.append(node)
+            path_set.add(node)
+            for neighbor in graph.get(node, set()):
+                if neighbor not in visited:
+                    cycle = find_cycle(neighbor)
+                    if cycle is not None:
+                        return cycle
+                elif neighbor in rec_stack:
+                    cycle_start = path.index(neighbor)
+                    return path[cycle_start:] + [neighbor]
+            rec_stack.remove(node)
+            path.pop()
+            path_set.discard(node)
+            return None
+
+        for node in graph:
+            if node not in visited:
+                cycle = find_cycle(node)
+                if cycle is not None:
+                    cycle_str = " -> ".join(cycle)
+                    result.add_error(
+                        f"Circular relationship detected: {cycle_str}. "
+                        f"Snowflake does not allow circular relationships, even through transitive paths. "
+                        f"Remove one of the relationships in the cycle.",
+                        context={"cycle": cycle, "issue": "circular_relationship"},
+                    )
+                    return
 
     def _validate_filter_references(self, filters_data: Dict, dbt_catalog: Dict, result: ValidationResult):
         """Validate table references in filters."""

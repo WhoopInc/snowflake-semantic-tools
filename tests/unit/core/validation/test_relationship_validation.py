@@ -690,6 +690,66 @@ class TestRelationshipReferenceValidation:
         assert "calendar_date" in error_msg
         assert "missing" in error_msg
 
+    def test_self_reference_rejected(self, validator, sample_dbt_catalog):
+        """Snowflake: a table cannot reference itself."""
+        semantic_data = {
+            "relationships": {
+                "items": [
+                    {
+                        "relationship_name": "ORDERS_SELF",
+                        "left_table_name": "ORDERS",
+                        "right_table_name": "ORDERS",
+                    }
+                ],
+                "relationship_columns": [
+                    {
+                        "relationship_name": "ORDERS_SELF",
+                        "left_column": "ORDERS.PARENT_ORDER_ID",
+                        "right_column": "ORDERS.ID",
+                    }
+                ],
+            }
+        }
+        result = validator.validate(semantic_data, sample_dbt_catalog)
+        assert result.error_count >= 1
+        errors = result.get_errors()
+        assert any("self-reference" in str(e).lower() or "cannot reference itself" in str(e).lower() for e in errors)
+
+    def test_circular_relationship_rejected(self, validator, sample_dbt_catalog):
+        """Snowflake: you cannot define circular relationships (e.g. orders->customer and customer->orders)."""
+        semantic_data = {
+            "relationships": {
+                "items": [
+                    {
+                        "relationship_name": "ORDERS_TO_USERS",
+                        "left_table_name": "ORDERS",
+                        "right_table_name": "USERS",
+                    },
+                    {
+                        "relationship_name": "USERS_TO_ORDERS",
+                        "left_table_name": "USERS",
+                        "right_table_name": "ORDERS",
+                    },
+                ],
+                "relationship_columns": [
+                    {
+                        "relationship_name": "ORDERS_TO_USERS",
+                        "left_column": "ORDERS.USER_ID",
+                        "right_column": "USERS.ID",
+                    },
+                    {
+                        "relationship_name": "USERS_TO_ORDERS",
+                        "left_column": "USERS.ID",
+                        "right_column": "ORDERS.USER_ID",
+                    },
+                ],
+            }
+        }
+        result = validator.validate(semantic_data, sample_dbt_catalog)
+        assert result.error_count >= 1
+        errors = result.get_errors()
+        assert any("circular" in str(e).lower() for e in errors)
+
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
