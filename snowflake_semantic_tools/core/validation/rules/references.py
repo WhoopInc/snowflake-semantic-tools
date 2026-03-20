@@ -13,6 +13,16 @@ from typing import Any, Dict, List, Optional, Set
 
 from snowflake_semantic_tools.core.models import ValidationResult
 
+# Appended to relationship PK/unique errors so users know why left/right order matters.
+_RELATIONSHIP_DIRECTION_HINT = (
+    "\n\n"
+    "Relationship direction reminder:\n"
+    "  - RIGHT = referenced table: join column(s) must match that model's meta.sst.primary_key or "
+    "meta.sst.unique_keys (remember: these keys must be unique in THIS table).\n"
+    "  - LEFT = referencing table: many left rows can match one right row.\n\n"
+    "  If the uniquely keyed table is on the left, swap left_table and right_table."
+)
+
 
 class ReferenceValidator:
     """
@@ -353,11 +363,15 @@ class ReferenceValidator:
                                 missing_pk_cols = [col for col in pk_columns if col not in right_columns_used]
                                 if missing_pk_cols:
                                     result.add_error(
-                                        f"Relationship '{name}' does not reference the complete primary key of right table '{right_table}'. "
-                                        f"The primary key is composite: [{', '.join(pk_columns)}], but relationship only references: [{', '.join(right_columns_used)}]. "
-                                        f"Missing: [{', '.join(missing_pk_cols)}]. "
-                                        f"Snowflake requires the referenced columns to be the table's PRIMARY KEY or a declared UNIQUE key. "
-                                        f"To fix: (1) add the missing columns to complete the primary key reference, (2) add meta.sst.unique_keys for [{', '.join(right_columns_used)}] on '{right_table}' if that set is unique, or (3) reverse the relationship direction.",
+                                        f"Relationship '{name}' does not reference the complete primary key of right table '{right_table}'.\n\n"
+                                        f"The primary key is composite: [{', '.join(pk_columns)}], but the relationship only references: "
+                                        f"[{', '.join(right_columns_used)}]. Missing: [{', '.join(missing_pk_cols)}].\n\n"
+                                        f"Snowflake requires the referenced columns to match PRIMARY KEY or meta.sst.unique_keys on '{right_table}'.\n\n"
+                                        f"To fix:\n"
+                                        f"  (1) Add the missing columns to complete the primary key reference, or\n"
+                                        f"  (2) Add meta.sst.unique_keys for [{', '.join(right_columns_used)}] on '{right_table}' if that set is unique on that table, or\n"
+                                        f"  (3) Swap left/right so the keyed table is on the right."
+                                        f"{_RELATIONSHIP_DIRECTION_HINT}",
                                         file_path=source_file,
                                         context={
                                             "relationship": name,
@@ -371,10 +385,14 @@ class ReferenceValidator:
                             else:
                                 # Single column primary key - right column must be PK or in unique_keys
                                 result.add_error(
-                                    f"Relationship '{name}' references column(s) [{', '.join(right_columns_used)}] in right table '{right_table}', "
-                                    f"but the primary key is '{pk_columns[0]}'. "
-                                    f"Snowflake requires the referenced column(s) to be the table's PRIMARY KEY or a declared UNIQUE key (meta.sst.unique_keys). "
-                                    f"Add meta.sst.unique_keys for the referenced column(s) on '{right_table}' if they form a unique key, or reverse the relationship direction.",
+                                    f"Relationship '{name}' references column(s) [{', '.join(right_columns_used)}] in right table "
+                                    f"'{right_table}', but the primary key is '{pk_columns[0]}'.\n\n"
+                                    f"Snowflake requires the referenced column(s) in the RIGHT table to be the primary or unique key in "
+                                    f"'{right_table}'.\n\n"
+                                    f"To fix:\n"
+                                    f"  - Swap left/right so the keyed table is on the right, or\n"
+                                    f"  - Add meta.sst.unique_keys if that column set is unique on '{right_table}'.\n"
+                                    f"{_RELATIONSHIP_DIRECTION_HINT}",
                                     file_path=source_file,
                                     context={
                                         "relationship": name,
@@ -387,10 +405,11 @@ class ReferenceValidator:
                     else:
                         # Primary key information is missing from the table metadata
                         result.add_error(
-                            f"Relationship '{name}' references table '{right_table}' which has no primary key metadata. "
-                            f"This usually means the table was not properly extracted or enriched. "
-                            f"Run 'sst enrich' on the table's YAML file to populate primary key information, "
-                            f"or check that the table has proper meta.sst configuration.",
+                            f"Relationship '{name}' references table '{right_table}' which has no primary key metadata.\n\n"
+                            f"The RIGHT (referenced) table must declare meta.sst.primary_key or meta.sst.unique_keys for the join columns.\n\n"
+                            f"This usually means the table was not properly extracted or enriched. Run 'sst enrich' on the table's "
+                            f"YAML file, or check meta.sst configuration."
+                            f"{_RELATIONSHIP_DIRECTION_HINT}",
                             file_path=source_file,
                             context={
                                 "relationship": name,
