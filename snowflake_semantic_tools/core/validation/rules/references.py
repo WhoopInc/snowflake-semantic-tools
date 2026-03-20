@@ -391,7 +391,7 @@ class ReferenceValidator:
                                     f"'{right_table}'.\n\n"
                                     f"To fix:\n"
                                     f"  - Swap left/right so the keyed table is on the right, or\n"
-                                    f"  - Add meta.sst.unique_keys if that column set is unique on '{right_table}'.\n"
+                                    f"  - Add meta.sst.unique_keys if that column or column set is unique on '{right_table}'.\n"
                                     f"{_RELATIONSHIP_DIRECTION_HINT}",
                                     file_path=source_file,
                                     context={
