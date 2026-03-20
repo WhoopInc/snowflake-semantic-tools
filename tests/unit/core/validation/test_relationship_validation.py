@@ -635,6 +635,40 @@ class TestRelationshipReferenceValidation:
         result = validator.validate(semantic_data, catalog_with_uk)
         assert result.error_count == 0
 
+    def test_single_column_unique_key_extra_right_columns_passes_like_pk(self, validator, sample_dbt_catalog):
+        """Single-column meta.sst.unique_keys: key column need only appear among right join columns (PK parity)."""
+        catalog = dict(sample_dbt_catalog)
+        catalog["orders"] = {
+            **catalog["orders"],
+            "primary_key": "id",
+            "unique_keys": ["user_id"],
+        }
+        semantic_data = {
+            "relationships": {
+                "items": [
+                    {
+                        "relationship_name": "USERS_TO_ORDERS",
+                        "left_table_name": "USERS",
+                        "right_table_name": "ORDERS",
+                    }
+                ],
+                "relationship_columns": [
+                    {
+                        "relationship_name": "USERS_TO_ORDERS",
+                        "left_column": "USERS.ID",
+                        "right_column": "ORDERS.USER_ID",
+                    },
+                    {
+                        "relationship_name": "USERS_TO_ORDERS",
+                        "left_column": "USERS.EMAIL",
+                        "right_column": "ORDERS.PRODUCT_ID",
+                    },
+                ],
+            }
+        }
+        result = validator.validate(semantic_data, catalog)
+        assert result.error_count == 0
+
     def test_composite_primary_key_partial_reference_warning(self, validator):
         """Test that referencing only part of a composite primary key produces a warning."""
         catalog_with_composite = {
@@ -853,7 +887,7 @@ class TestRelationshipReferenceValidation:
         assert result.error_count == 0
 
     def test_wrong_unique_key_columns_still_errors(self, validator, sample_dbt_catalog):
-        """unique_keys on right table must match join column set exactly."""
+        """Join on right columns that are neither PK nor declared unique_keys still errors."""
         catalog_bad = dict(sample_dbt_catalog)
         catalog_bad["orders"] = {
             **catalog_bad["orders"],
@@ -978,6 +1012,86 @@ class TestRelationshipReferenceValidation:
         }
         result = validator.validate(semantic_data, catalog)
         assert any("circular" in str(e).lower() for e in result.get_errors())
+
+    def test_two_disjoint_cycles_both_reported(self, validator):
+        """Disjoint cycles (e.g. A↔B and C↔D) each get their own circular error in one run."""
+        catalog = {
+            "alpha": {
+                "database": "d",
+                "schema": "s",
+                "primary_key": "id",
+                "columns": {"id": {"data_type": "NUMBER"}, "a_ref": {"data_type": "NUMBER"}},
+            },
+            "beta": {
+                "database": "d",
+                "schema": "s",
+                "primary_key": "id",
+                "columns": {"id": {"data_type": "NUMBER"}, "b_ref": {"data_type": "NUMBER"}},
+            },
+            "gamma": {
+                "database": "d",
+                "schema": "s",
+                "primary_key": "id",
+                "columns": {"id": {"data_type": "NUMBER"}, "c_ref": {"data_type": "NUMBER"}},
+            },
+            "delta": {
+                "database": "d",
+                "schema": "s",
+                "primary_key": "id",
+                "columns": {"id": {"data_type": "NUMBER"}, "d_ref": {"data_type": "NUMBER"}},
+            },
+        }
+        semantic_data = {
+            "relationships": {
+                "items": [
+                    {
+                        "relationship_name": "A_TO_B",
+                        "left_table_name": "ALPHA",
+                        "right_table_name": "BETA",
+                    },
+                    {
+                        "relationship_name": "B_TO_A",
+                        "left_table_name": "BETA",
+                        "right_table_name": "ALPHA",
+                    },
+                    {
+                        "relationship_name": "C_TO_D",
+                        "left_table_name": "GAMMA",
+                        "right_table_name": "DELTA",
+                    },
+                    {
+                        "relationship_name": "D_TO_C",
+                        "left_table_name": "DELTA",
+                        "right_table_name": "GAMMA",
+                    },
+                ],
+                "relationship_columns": [
+                    {
+                        "relationship_name": "A_TO_B",
+                        "left_column": "ALPHA.A_REF",
+                        "right_column": "BETA.ID",
+                    },
+                    {
+                        "relationship_name": "B_TO_A",
+                        "left_column": "BETA.B_REF",
+                        "right_column": "ALPHA.ID",
+                    },
+                    {
+                        "relationship_name": "C_TO_D",
+                        "left_column": "GAMMA.C_REF",
+                        "right_column": "DELTA.ID",
+                    },
+                    {
+                        "relationship_name": "D_TO_C",
+                        "left_column": "DELTA.D_REF",
+                        "right_column": "GAMMA.ID",
+                    },
+                ],
+            }
+        }
+        result = validator.validate(semantic_data, catalog)
+        circular_errors = [e for e in result.get_errors() if "circular" in str(e).lower()]
+        assert len(circular_errors) >= 2
 
 
 if __name__ == "__main__":

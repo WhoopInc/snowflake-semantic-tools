@@ -349,11 +349,19 @@ class ReferenceValidator:
 
                             right_set = set(right_columns_used)
                             pk_set = set(pk_columns)
-                            # Valid if relationship references the full primary key OR a declared unique key (meta.sst.unique_keys)
+                            # Valid if relationship references the full primary key OR a declared unique key (meta.sst.unique_keys).
+                            # Single-column PK / unique_keys: match legacy behavior — key column need only appear among right join
+                            # columns (same "covers" rule for both). Composite keys require exact set equality.
                             references_pk = right_set == pk_set or (
                                 len(pk_columns) == 1 and pk_columns[0] in right_columns_used
                             )
-                            references_unique = bool(unique_set and right_set == unique_set)
+                            references_unique = bool(
+                                unique_set
+                                and (
+                                    right_set == unique_set
+                                    or (len(unique_set) == 1 and next(iter(unique_set)) in right_columns_used)
+                                )
+                            )
 
                             if references_pk or references_unique:
                                 # No error: right side is PK or declared UNIQUE
@@ -536,7 +544,8 @@ class ReferenceValidator:
     def _check_circular_relationships(self, items: List[Dict[str, Any]], result: ValidationResult) -> None:
         """
         Snowflake: "You cannot define circular relationships, even through transitive paths."
-        Build directed graph (left -> right) and detect cycles.
+        Build directed graph (left -> right). Report every strongly connected component (SCC)
+        with more than one node as a cycle, so multiple disjoint cycles surface in one run.
         """
         graph: Dict[str, Set[str]] = {}
         for rel in items:
@@ -547,41 +556,87 @@ class ReferenceValidator:
             if not left or not right or left == right:
                 continue
             graph.setdefault(left, set()).add(right)
-        visited: Set[str] = set()
-        rec_stack: Set[str] = set()
-        path: List[str] = []
-        path_set: Set[str] = set()
 
-        def find_cycle(node: str) -> Optional[List[str]]:
-            visited.add(node)
-            rec_stack.add(node)
-            path.append(node)
-            path_set.add(node)
-            for neighbor in graph.get(node, set()):
-                if neighbor not in visited:
-                    cycle = find_cycle(neighbor)
-                    if cycle is not None:
-                        return cycle
-                elif neighbor in rec_stack:
-                    cycle_start = path.index(neighbor)
-                    return path[cycle_start:] + [neighbor]
-            rec_stack.remove(node)
-            path.pop()
-            path_set.discard(node)
+        all_nodes: Set[str] = set(graph.keys()) | {w for outs in graph.values() for w in outs}
+        if not all_nodes:
+            return
+
+        # Tarjan's SCC algorithm
+        index_counter = [0]
+        stack: List[str] = []
+        on_stack: Set[str] = set()
+        indices: Dict[str, int] = {}
+        lowlink: Dict[str, int] = {}
+        sccs: List[List[str]] = []
+
+        def strongconnect(v: str) -> None:
+            indices[v] = index_counter[0]
+            lowlink[v] = index_counter[0]
+            index_counter[0] += 1
+            stack.append(v)
+            on_stack.add(v)
+            for w in graph.get(v, set()):
+                if w not in indices:
+                    strongconnect(w)
+                    lowlink[v] = min(lowlink[v], lowlink[w])
+                elif w in on_stack:
+                    lowlink[v] = min(lowlink[v], indices[w])
+            if lowlink[v] == indices[v]:
+                scc: List[str] = []
+                while True:
+                    w = stack.pop()
+                    on_stack.discard(w)
+                    scc.append(w)
+                    if w == v:
+                        break
+                sccs.append(scc)
+
+        for v in all_nodes:
+            if v not in indices:
+                strongconnect(v)
+
+        def find_one_cycle_in_scc(scc_nodes: Set[str]) -> Optional[List[str]]:
+            """Return vertex sequence forming one directed cycle within scc_nodes (closed path)."""
+            if len(scc_nodes) < 2:
+                return None
+            for start in scc_nodes:
+                path: List[str] = []
+                in_path: Set[str] = set()
+
+                def dfs(u: str) -> Optional[List[str]]:
+                    path.append(u)
+                    in_path.add(u)
+                    for w in graph.get(u, set()):
+                        if w not in scc_nodes:
+                            continue
+                        if w in in_path:
+                            i = path.index(w)
+                            return path[i:] + [w]
+                        cyc = dfs(w)
+                        if cyc is not None:
+                            return cyc
+                    path.pop()
+                    in_path.discard(u)
+                    return None
+
+                cycle = dfs(start)
+                if cycle is not None:
+                    return cycle
             return None
 
-        for node in graph:
-            if node not in visited:
-                cycle = find_cycle(node)
-                if cycle is not None:
-                    cycle_str = " -> ".join(cycle)
-                    result.add_error(
-                        f"Circular relationship detected: {cycle_str}. "
-                        f"Snowflake does not allow circular relationships, even through transitive paths. "
-                        f"Remove one of the relationships in the cycle.",
-                        context={"cycle": cycle, "issue": "circular_relationship"},
-                    )
-                    return
+        for scc in sccs:
+            scc_set = set(scc)
+            if len(scc_set) < 2:
+                continue
+            cycle = find_one_cycle_in_scc(scc_set)
+            if cycle is not None:
+                cycle_str = " -> ".join(cycle)
+                result.add_error(
+                    f"Circular relationship detected: {cycle_str}. "
+                    f"Snowflake does not allow circular relationships, even through transitive paths. "
+                    f"Remove one of the relationships in the cycle.",
+                    context={"cycle": cycle, "issue": "circular_relationship"},
+                )
 
     def _validate_filter_references(self, filters_data: Dict, dbt_catalog: Dict, result: ValidationResult):
         """Validate table references in filters."""
