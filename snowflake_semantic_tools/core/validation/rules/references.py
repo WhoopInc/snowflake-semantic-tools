@@ -533,7 +533,7 @@ class ReferenceValidator:
                                     context={"relationship": name, "column": right_col, "table": right_table},
                                 )
 
-    def _check_circular_relationships(self, items: List[Dict], result: ValidationResult) -> None:
+    def _check_circular_relationships(self, items: List[Dict[str, Any]], result: ValidationResult) -> None:
         """
         Snowflake: "You cannot define circular relationships, even through transitive paths."
         Build directed graph (left -> right) and detect cycles.
