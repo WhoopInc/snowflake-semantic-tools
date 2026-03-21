@@ -251,6 +251,7 @@ class ReferenceValidator:
                             "issue": "self_reference",
                         },
                     )
+                    continue
 
                 # Validate left table
                 if left_table and left_table_lower not in dbt_catalog:
@@ -327,6 +328,27 @@ class ReferenceValidator:
                     )
                     unique_set = set(unique_keys_lower) if unique_keys_lower else set()
 
+                    # Collect all right_columns used in this relationship (needed by both PK and unique-only paths)
+                    right_columns_used = []
+                    for col_mapping in columns:
+                        if isinstance(col_mapping, dict):
+                            right_col = col_mapping.get("right_column", "")
+                            # Extract column name if in TABLE.COLUMN format
+                            if "." in right_col:
+                                _, right_col = right_col.rsplit(".", 1)
+                            right_columns_used.append(right_col.lower())
+
+                    right_set = set(right_columns_used)
+
+                    # Check unique_keys match (usable with or without a primary_key)
+                    references_unique = bool(
+                        unique_set
+                        and (
+                            right_set == unique_set
+                            or (len(unique_set) == 1 and next(iter(unique_set)) in right_columns_used)
+                        )
+                    )
+
                     if primary_key:
                         # Handle both single column and composite primary keys
                         if isinstance(primary_key, str):
@@ -337,30 +359,12 @@ class ReferenceValidator:
                             pk_columns = []
 
                         if pk_columns:
-                            # Collect all right_columns used in this relationship
-                            right_columns_used = []
-                            for col_mapping in columns:
-                                if isinstance(col_mapping, dict):
-                                    right_col = col_mapping.get("right_column", "")
-                                    # Extract column name if in TABLE.COLUMN format
-                                    if "." in right_col:
-                                        _, right_col = right_col.rsplit(".", 1)
-                                    right_columns_used.append(right_col.lower())
-
-                            right_set = set(right_columns_used)
                             pk_set = set(pk_columns)
                             # Valid if relationship references the full primary key OR a declared unique key (meta.sst.unique_keys).
                             # Single-column PK / unique_keys: match legacy behavior — key column need only appear among right join
                             # columns (same "covers" rule for both). Composite keys require exact set equality.
                             references_pk = right_set == pk_set or (
                                 len(pk_columns) == 1 and pk_columns[0] in right_columns_used
-                            )
-                            references_unique = bool(
-                                unique_set
-                                and (
-                                    right_set == unique_set
-                                    or (len(unique_set) == 1 and next(iter(unique_set)) in right_columns_used)
-                                )
                             )
 
                             if references_pk or references_unique:
@@ -410,8 +414,11 @@ class ReferenceValidator:
                                         "issue": "not_primary_key",
                                     },
                                 )
+                    elif references_unique:
+                        # No primary_key but join columns match declared unique_keys — valid
+                        pass
                     else:
-                        # Primary key information is missing from the table metadata
+                        # Neither primary key nor matching unique_keys
                         result.add_error(
                             f"Relationship '{name}' references table '{right_table}' which has no primary key metadata.\n\n"
                             f"The RIGHT (referenced) table must declare meta.sst.primary_key or meta.sst.unique_keys for the join columns.\n\n"
@@ -445,8 +452,6 @@ class ReferenceValidator:
                         # This detects any SQL beyond just the column reference itself
                         def has_sql_transformation(col_ref: str) -> tuple[bool, str]:
                             """Check if column reference contains SQL transformations."""
-                            import re
-
                             # Skip if empty or just whitespace
                             if not col_ref or not col_ref.strip():
                                 return False, ""
