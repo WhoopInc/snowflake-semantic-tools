@@ -31,15 +31,21 @@ Review a pull request on WhoopInc/snowflake-semantic-tools.
    - **SQL generation** (`core/generation/`): Correct SQL syntax, proper escaping
 
 4. **Run the tests**
+   First, list the user's conda environments to find the one with SST installed:
    ```bash
-   source /opt/anaconda3/etc/profile.d/conda.sh && conda activate sst
-   cd /Users/matthew.luizzi/Documents/WHOOP/GitHub/snowflake-semantic-tools
+   source "$(conda info --base)/etc/profile.d/conda.sh" && conda env list
+   ```
+   Present the results to the user and ask which environment has SST installed. Highlight any environments whose names contain "sst" as likely matches. Then activate the chosen environment and run tests:
+   ```bash
+   source "$(conda info --base)/etc/profile.d/conda.sh" && conda activate <env-name>
+   cd "$(git rev-parse --show-toplevel)"
    python -m pytest tests/unit/ -v
    ```
 
 5. **End-to-end validation** (optional but recommended)
+   Ask the user for the path to their test dbt project, then:
    ```bash
-   cd /Users/matthew.luizzi/Documents/WHOOP/GitHub/sst-jaffle-shop
+   cd <user-provided-dbt-project-path>
    sst validate
    ```
 

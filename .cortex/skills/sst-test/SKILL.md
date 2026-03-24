@@ -10,15 +10,20 @@ Run the SST test suite using pytest.
 
 ## Prerequisites
 
-- Conda environment `sst` with SST installed via `pip install -e .`
+- Conda environment with SST installed via `pip install -e .`
 - Project uses **Poetry** for dependency management (NOT uv)
 
 ## Workflow
 
 1. **Activate environment and navigate to repo**
+   First, list the user's conda environments to find the one with SST installed:
    ```bash
-   source /opt/anaconda3/etc/profile.d/conda.sh && conda activate sst
-   cd /Users/matthew.luizzi/Documents/WHOOP/GitHub/snowflake-semantic-tools
+   source "$(conda info --base)/etc/profile.d/conda.sh" && conda env list
+   ```
+   Present the results to the user and ask which environment has SST installed. Highlight any environments whose names contain "sst" as likely matches. Then activate the chosen environment:
+   ```bash
+   source "$(conda info --base)/etc/profile.d/conda.sh" && conda activate <env-name>
+   cd "$(git rev-parse --show-toplevel)"
    ```
 
 2. **Run all unit tests**

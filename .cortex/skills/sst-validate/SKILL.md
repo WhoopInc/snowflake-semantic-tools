@@ -10,7 +10,7 @@ Run `sst validate` against a dbt project and interpret the results.
 
 ## Prerequisites
 
-- Conda environment `sst` must exist with SST installed
+- Conda environment with SST installed
 - For dev branch testing: `pip install -e .` in the SST repo (NOT `poetry install` -- that targets Poetry's own venv)
 - The target dbt project must have `sst_config.yaml` with `project.dbt_models_dir` set
 - If Snowflake account is unavailable, set `snowflake_syntax_check: false` in sst_config.yaml
@@ -18,8 +18,13 @@ Run `sst validate` against a dbt project and interpret the results.
 ## Workflow
 
 1. **Activate the environment**
+   First, list the user's conda environments to find the one with SST installed:
    ```bash
-   source /opt/anaconda3/etc/profile.d/conda.sh && conda activate sst
+   source "$(conda info --base)/etc/profile.d/conda.sh" && conda env list
+   ```
+   Present the results to the user and ask which environment has SST installed. Highlight any environments whose names contain "sst" as likely matches. Then activate the chosen environment:
+   ```bash
+   source "$(conda info --base)/etc/profile.d/conda.sh" && conda activate <env-name>
    ```
 
 2. **Verify SST version**
@@ -58,7 +63,7 @@ Run `sst validate` against a dbt project and interpret the results.
 
 ## Key Files
 
-- SST repo: `/Users/matthew.luizzi/Documents/WHOOP/GitHub/snowflake-semantic-tools`
-- Jaffle shop test project: `/Users/matthew.luizzi/Documents/WHOOP/GitHub/sst-jaffle-shop`
+- SST repo: Resolve dynamically with `SST_REPO=$(git rev-parse --show-toplevel)`
+- Target dbt project: **Ask the user** for the path to their dbt project before running validation
 - Validation rules: `snowflake_semantic_tools/core/validation/rules/`
 - Relationship validation: `snowflake_semantic_tools/core/validation/rules/references.py`
