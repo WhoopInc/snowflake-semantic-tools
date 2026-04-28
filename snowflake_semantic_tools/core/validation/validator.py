@@ -181,6 +181,7 @@ class SemanticValidator:
                         "database": table.get("database"),
                         "schema": table.get("schema"),
                         "primary_key": table.get("primary_key"),
+                        "unique_keys": table.get("unique_keys"),
                         "columns": {},
                     }
 

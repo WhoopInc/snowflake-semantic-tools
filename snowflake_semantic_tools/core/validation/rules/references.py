@@ -13,6 +13,16 @@ from typing import Any, Dict, List, Optional, Set
 
 from snowflake_semantic_tools.core.models import ValidationResult
 
+# Appended to relationship PK/unique errors so users know why left/right order matters.
+_RELATIONSHIP_DIRECTION_HINT = (
+    "\n\n"
+    "Relationship direction reminder:\n"
+    "  - RIGHT = referenced table: join column(s) must match that model's meta.sst.primary_key or "
+    "meta.sst.unique_keys (remember: these keys must be unique in THIS table).\n"
+    "  - LEFT = referencing table: many left rows can match one right row.\n\n"
+    "  If the uniquely keyed table is on the left, swap left_table and right_table."
+)
+
 
 class ReferenceValidator:
     """
@@ -157,6 +167,9 @@ class ReferenceValidator:
         items = relationships_data.get("items", [])
         relationship_columns = relationships_data.get("relationship_columns", [])
 
+        # Snowflake: "You cannot define circular relationships, even through transitive paths"
+        self._check_circular_relationships(items, result)
+
         # Group relationship columns by relationship name
         columns_by_relationship = {}
         for col in relationship_columns:
@@ -223,8 +236,22 @@ class ReferenceValidator:
                         )
 
                 # Convert table names to lowercase for catalog lookup
-                left_table_lower = left_table.lower()
-                right_table_lower = right_table.lower()
+                left_table_lower = left_table.lower() if left_table else ""
+                right_table_lower = right_table.lower() if right_table else ""
+
+                # Snowflake: "Currently, a table cannot reference itself"
+                if left_table_lower and right_table_lower and left_table_lower == right_table_lower:
+                    result.add_error(
+                        f"Relationship '{name}' is a self-reference (left and right table are both '{left_table}'). "
+                        f"Snowflake does not allow a table to reference itself.",
+                        file_path=source_file,
+                        context={
+                            "relationship": name,
+                            "table": left_table,
+                            "issue": "self_reference",
+                        },
+                    )
+                    continue
 
                 # Validate left table
                 if left_table and left_table_lower not in dbt_catalog:
@@ -293,6 +320,34 @@ class ReferenceValidator:
                 if right_table_lower in dbt_catalog and columns:
                     right_table_info = dbt_catalog[right_table_lower]
                     primary_key = right_table_info.get("primary_key")
+                    raw_unique_keys = right_table_info.get("unique_keys") or []
+                    unique_keys_lower = (
+                        [c.lower() for c in raw_unique_keys]
+                        if isinstance(raw_unique_keys, list)
+                        else [str(raw_unique_keys).lower()]
+                    )
+                    unique_set = set(unique_keys_lower) if unique_keys_lower else set()
+
+                    # Collect all right_columns used in this relationship (needed by both PK and unique-only paths)
+                    right_columns_used = []
+                    for col_mapping in columns:
+                        if isinstance(col_mapping, dict):
+                            right_col = col_mapping.get("right_column", "")
+                            # Extract column name if in TABLE.COLUMN format
+                            if "." in right_col:
+                                _, right_col = right_col.rsplit(".", 1)
+                            right_columns_used.append(right_col.lower())
+
+                    right_set = set(right_columns_used)
+
+                    # Check unique_keys match (usable with or without a primary_key)
+                    references_unique = bool(
+                        unique_set
+                        and (
+                            right_set == unique_set
+                            or (len(unique_set) == 1 and next(iter(unique_set)) in right_columns_used)
+                        )
+                    )
 
                     if primary_key:
                         # Handle both single column and composite primary keys
@@ -304,28 +359,31 @@ class ReferenceValidator:
                             pk_columns = []
 
                         if pk_columns:
-                            # Collect all right_columns used in this relationship
-                            right_columns_used = []
-                            for col_mapping in columns:
-                                if isinstance(col_mapping, dict):
-                                    right_col = col_mapping.get("right_column", "")
-                                    # Extract column name if in TABLE.COLUMN format
-                                    if "." in right_col:
-                                        _, right_col = right_col.rsplit(".", 1)
-                                    right_columns_used.append(right_col.lower())
+                            pk_set = set(pk_columns)
+                            # Valid if relationship references the full primary key OR a declared unique key (meta.sst.unique_keys).
+                            # Single-column PK / unique_keys: match legacy behavior — key column need only appear among right join
+                            # columns (same "covers" rule for both). Composite keys require exact set equality.
+                            references_pk = right_set == pk_set or (
+                                len(pk_columns) == 1 and pk_columns[0] in right_columns_used
+                            )
 
-                            # For composite keys: ALL pk columns must be used
-                            # For single keys: the right_column must BE the pk column
-                            if len(pk_columns) > 1:
+                            if references_pk or references_unique:
+                                # No error: right side is PK or declared UNIQUE
+                                pass
+                            elif len(pk_columns) > 1:
                                 # Composite key - check if all pk columns are referenced
                                 missing_pk_cols = [col for col in pk_columns if col not in right_columns_used]
                                 if missing_pk_cols:
                                     result.add_error(
-                                        f"Relationship '{name}' does not reference the complete primary key of right table '{right_table}'. "
-                                        f"The primary key is composite: [{', '.join(pk_columns)}], but relationship only references: [{', '.join(right_columns_used)}]. "
-                                        f"Missing: [{', '.join(missing_pk_cols)}]. "
-                                        f"Snowflake documentation states relationships MUST reference PRIMARY KEY or UNIQUE columns. "
-                                        f"To fix: (1) add the missing columns to complete the primary key reference, (2) reverse the relationship direction if '{right_table}' has a UNIQUE constraint on [{', '.join(right_columns_used)}], or (3) update the primary_key in the YAML if [{', '.join(right_columns_used)}] is the actual composite primary key.",
+                                        f"Relationship '{name}' does not reference the complete primary key of right table '{right_table}'.\n\n"
+                                        f"The primary key is composite: [{', '.join(pk_columns)}], but the relationship only references: "
+                                        f"[{', '.join(right_columns_used)}]. Missing: [{', '.join(missing_pk_cols)}].\n\n"
+                                        f"Snowflake requires the referenced columns to match PRIMARY KEY or meta.sst.unique_keys on '{right_table}'.\n\n"
+                                        f"To fix:\n"
+                                        f"  (1) Add the missing columns to complete the primary key reference, or\n"
+                                        f"  (2) Add meta.sst.unique_keys for [{', '.join(right_columns_used)}] on '{right_table}' if that set is unique on that table, or\n"
+                                        f"  (3) Swap left/right so the keyed table is on the right."
+                                        f"{_RELATIONSHIP_DIRECTION_HINT}",
                                         file_path=source_file,
                                         context={
                                             "relationship": name,
@@ -337,30 +395,36 @@ class ReferenceValidator:
                                         },
                                     )
                             else:
-                                # Single column primary key - must match exactly
-                                if pk_columns[0] not in right_columns_used:
-                                    result.add_error(
-                                        f"Relationship '{name}' references column(s) [{', '.join(right_columns_used)}] in right table '{right_table}', "
-                                        f"but the primary key is '{pk_columns[0]}'. "
-                                        f"Snowflake documentation states relationships MUST reference PRIMARY KEY or UNIQUE columns. "
-                                        f"If '{right_columns_used[0] if right_columns_used else 'N/A'}' has a UNIQUE constraint, this is valid. "
-                                        f"Otherwise, consider reversing the relationship direction.",
-                                        file_path=source_file,
-                                        context={
-                                            "relationship": name,
-                                            "right_table": right_table,
-                                            "right_columns": right_columns_used,
-                                            "primary_key": pk_columns[0],
-                                            "issue": "not_primary_key",
-                                        },
-                                    )
+                                # Single column primary key - right column must be PK or in unique_keys
+                                result.add_error(
+                                    f"Relationship '{name}' references column(s) [{', '.join(right_columns_used)}] in right table "
+                                    f"'{right_table}', but the primary key is '{pk_columns[0]}'.\n\n"
+                                    f"Snowflake requires the referenced column(s) in the RIGHT table to be the primary or unique key in "
+                                    f"'{right_table}'.\n\n"
+                                    f"To fix:\n"
+                                    f"  - Swap left/right so the keyed table is on the right, or\n"
+                                    f"  - Add meta.sst.unique_keys if that column or column set is unique on '{right_table}'.\n"
+                                    f"{_RELATIONSHIP_DIRECTION_HINT}",
+                                    file_path=source_file,
+                                    context={
+                                        "relationship": name,
+                                        "right_table": right_table,
+                                        "right_columns": right_columns_used,
+                                        "primary_key": pk_columns[0],
+                                        "issue": "not_primary_key",
+                                    },
+                                )
+                    elif references_unique:
+                        # No primary_key but join columns match declared unique_keys — valid
+                        pass
                     else:
-                        # Primary key information is missing from the table metadata
+                        # Neither primary key nor matching unique_keys
                         result.add_error(
-                            f"Relationship '{name}' references table '{right_table}' which has no primary key metadata. "
-                            f"This usually means the table was not properly extracted or enriched. "
-                            f"Run 'sst enrich' on the table's YAML file to populate primary key information, "
-                            f"or check that the table has proper meta.sst configuration.",
+                            f"Relationship '{name}' references table '{right_table}' which has no primary key metadata.\n\n"
+                            f"The RIGHT (referenced) table must declare meta.sst.primary_key or meta.sst.unique_keys for the join columns.\n\n"
+                            f"This usually means the table was not properly extracted or enriched. Run 'sst enrich' on the table's "
+                            f"YAML file, or check meta.sst configuration."
+                            f"{_RELATIONSHIP_DIRECTION_HINT}",
                             file_path=source_file,
                             context={
                                 "relationship": name,
@@ -388,8 +452,6 @@ class ReferenceValidator:
                         # This detects any SQL beyond just the column reference itself
                         def has_sql_transformation(col_ref: str) -> tuple[bool, str]:
                             """Check if column reference contains SQL transformations."""
-                            import re
-
                             # Skip if empty or just whitespace
                             if not col_ref or not col_ref.strip():
                                 return False, ""
@@ -483,6 +545,103 @@ class ReferenceValidator:
                                     file_path=source_file,
                                     context={"relationship": name, "column": right_col, "table": right_table},
                                 )
+
+    def _check_circular_relationships(self, items: List[Dict[str, Any]], result: ValidationResult) -> None:
+        """
+        Snowflake: "You cannot define circular relationships, even through transitive paths."
+        Build directed graph (left -> right). Report every strongly connected component (SCC)
+        with more than one node as a cycle, so multiple disjoint cycles surface in one run.
+        """
+        graph: Dict[str, Set[str]] = {}
+        for rel in items:
+            if not isinstance(rel, dict):
+                continue
+            left = (rel.get("left_table_name") or rel.get("left_table") or "").lower()
+            right = (rel.get("right_table_name") or rel.get("right_table") or "").lower()
+            if not left or not right or left == right:
+                continue
+            graph.setdefault(left, set()).add(right)
+
+        all_nodes: Set[str] = set(graph.keys()) | {w for outs in graph.values() for w in outs}
+        if not all_nodes:
+            return
+
+        # Tarjan's SCC algorithm
+        index_counter = [0]
+        stack: List[str] = []
+        on_stack: Set[str] = set()
+        indices: Dict[str, int] = {}
+        lowlink: Dict[str, int] = {}
+        sccs: List[List[str]] = []
+
+        def strongconnect(v: str) -> None:
+            indices[v] = index_counter[0]
+            lowlink[v] = index_counter[0]
+            index_counter[0] += 1
+            stack.append(v)
+            on_stack.add(v)
+            for w in graph.get(v, set()):
+                if w not in indices:
+                    strongconnect(w)
+                    lowlink[v] = min(lowlink[v], lowlink[w])
+                elif w in on_stack:
+                    lowlink[v] = min(lowlink[v], indices[w])
+            if lowlink[v] == indices[v]:
+                scc: List[str] = []
+                while True:
+                    w = stack.pop()
+                    on_stack.discard(w)
+                    scc.append(w)
+                    if w == v:
+                        break
+                sccs.append(scc)
+
+        for v in all_nodes:
+            if v not in indices:
+                strongconnect(v)
+
+        def find_one_cycle_in_scc(scc_nodes: Set[str]) -> Optional[List[str]]:
+            """Return vertex sequence forming one directed cycle within scc_nodes (closed path)."""
+            if len(scc_nodes) < 2:
+                return None
+            for start in scc_nodes:
+                path: List[str] = []
+                in_path: Set[str] = set()
+
+                def dfs(u: str) -> Optional[List[str]]:
+                    path.append(u)
+                    in_path.add(u)
+                    for w in graph.get(u, set()):
+                        if w not in scc_nodes:
+                            continue
+                        if w in in_path:
+                            i = path.index(w)
+                            return path[i:] + [w]
+                        cyc = dfs(w)
+                        if cyc is not None:
+                            return cyc
+                    path.pop()
+                    in_path.discard(u)
+                    return None
+
+                cycle = dfs(start)
+                if cycle is not None:
+                    return cycle
+            return None
+
+        for scc in sccs:
+            scc_set = set(scc)
+            if len(scc_set) < 2:
+                continue
+            cycle = find_one_cycle_in_scc(scc_set)
+            if cycle is not None:
+                cycle_str = " -> ".join(cycle)
+                result.add_error(
+                    f"Circular relationship detected: {cycle_str}. "
+                    f"Snowflake does not allow circular relationships, even through transitive paths. "
+                    f"Remove one of the relationships in the cycle.",
+                    context={"cycle": cycle, "issue": "circular_relationship"},
+                )
 
     def _validate_filter_references(self, filters_data: Dict, dbt_catalog: Dict, result: ValidationResult):
         """Validate table references in filters."""
