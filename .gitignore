@@ -151,13 +151,15 @@ logs/
 log/
 
 # IDE and editor files
-.vscode/
 .idea/
 *.swp
 *.swo
 *~
 .DS_Store
 Thumbs.db
+
+# Cortex Code local state
+.snowflake/
 
 # Temporary files
 tmp/
