@@ -30,7 +30,6 @@ from snowflake_semantic_tools.services.list_semantic_components import (
 )
 from snowflake_semantic_tools.shared.events import setup_events
 
-
 FORMAT_OPTION = click.option(
     "--format",
     "-f",
