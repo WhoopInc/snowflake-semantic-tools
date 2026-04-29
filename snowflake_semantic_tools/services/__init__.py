@@ -69,6 +69,11 @@ from snowflake_semantic_tools.services.generate_semantic_views import (
     UnifiedGenerationConfig,
     UnifiedGenerationResult,
 )
+from snowflake_semantic_tools.services.list_semantic_components import (
+    ListConfig,
+    ListResult,
+    SemanticComponentListService,
+)
 from snowflake_semantic_tools.services.validate_semantic_models import SemanticMetadataCollectionValidationService
 
 __all__ = [
@@ -85,4 +90,7 @@ __all__ = [
     "DeployService",
     "DeployConfig",
     "DeployResult",
+    "SemanticComponentListService",
+    "ListConfig",
+    "ListResult",
 ]
