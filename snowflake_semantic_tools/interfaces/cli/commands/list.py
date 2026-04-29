@@ -32,15 +32,17 @@ from snowflake_semantic_tools.shared.events import setup_events
 
 
 FORMAT_OPTION = click.option(
-    "--format", "-f", "output_format", type=click.Choice(["table", "json", "yaml", "csv"]), default="table",
-    help="Output format (default: table)"
+    "--format",
+    "-f",
+    "output_format",
+    type=click.Choice(["table", "json", "yaml", "csv"]),
+    default="table",
+    help="Output format (default: table)",
 )
 OUTPUT_OPTION = click.option("--output", "-o", "output_file", help="Write output to file instead of stdout")
 VERBOSE_OPTION = click.option("--verbose", "-v", is_flag=True, help="Show additional details")
 QUIET_OPTION = click.option("--quiet", "-q", is_flag=True, help="Suppress all output except data")
-DBT_OPTION = click.option(
-    "--dbt", "dbt_path", help="dbt models path (auto-detected from config if not specified)"
-)
+DBT_OPTION = click.option("--dbt", "dbt_path", help="dbt models path (auto-detected from config if not specified)")
 SEMANTIC_OPTION = click.option(
     "--semantic", "semantic_path", help="Semantic models path (auto-detected from config if not specified)"
 )
@@ -309,7 +311,11 @@ def relationships(output_format, output_file, verbose, quiet, dbt_path, semantic
     if output_format == "csv":
         headers = ["Name", "Left Table", "Right Table"]
         rows = [
-            [str(r.get("relationship_name") or ""), str(r.get("left_table_name") or ""), str(r.get("right_table_name") or "")]
+            [
+                str(r.get("relationship_name") or ""),
+                str(r.get("left_table_name") or ""),
+                str(r.get("right_table_name") or ""),
+            ]
             for r in items
         ]
         write_output(format_csv_output(headers, rows), output_file)
@@ -377,7 +383,12 @@ def filters(output_format, output_file, verbose, quiet, dbt_path, semantic_path,
     if output_format == "csv":
         headers = ["Name", "Table", "Description", "Expression"]
         rows = [
-            [str(f.get("name") or ""), str(f.get("table_name") or ""), str(f.get("description") or ""), str(f.get("expr") or "")]
+            [
+                str(f.get("name") or ""),
+                str(f.get("table_name") or ""),
+                str(f.get("description") or ""),
+                str(f.get("expr") or ""),
+            ]
             for f in items
         ]
         write_output(format_csv_output(headers, rows), output_file)
@@ -512,7 +523,11 @@ def custom_instructions(output_format, output_file, verbose, quiet, dbt_path, se
     if output_format == "csv":
         headers = ["Name", "Question Categorization", "SQL Generation"]
         rows = [
-            [str(ci.get("name") or ""), str(ci.get("question_categorization") or ""), str(ci.get("sql_generation") or "")]
+            [
+                str(ci.get("name") or ""),
+                str(ci.get("question_categorization") or ""),
+                str(ci.get("sql_generation") or ""),
+            ]
             for ci in items
         ]
         write_output(format_csv_output(headers, rows), output_file)
@@ -579,7 +594,12 @@ def verified_queries(output_format, output_file, verbose, quiet, dbt_path, seman
     if output_format == "csv":
         headers = ["Name", "Question", "Verified By", "Verified At"]
         rows = [
-            [str(vq.get("name") or ""), str(vq.get("question") or ""), str(vq.get("verified_by") or ""), str(vq.get("verified_at") or "")]
+            [
+                str(vq.get("name") or ""),
+                str(vq.get("question") or ""),
+                str(vq.get("verified_by") or ""),
+                str(vq.get("verified_at") or ""),
+            ]
             for vq in items
         ]
         write_output(format_csv_output(headers, rows), output_file)
@@ -646,7 +666,12 @@ def tables(output_format, output_file, verbose, quiet, dbt_path, semantic_path, 
     if output_format == "csv":
         headers = ["Name", "Database", "Schema", "Primary Key"]
         rows = [
-            [str(t.get("table_name") or ""), str(t.get("database") or ""), str(t.get("schema") or ""), str(t.get("primary_key") or "")]
+            [
+                str(t.get("table_name") or ""),
+                str(t.get("database") or ""),
+                str(t.get("schema") or ""),
+                str(t.get("primary_key") or ""),
+            ]
             for t in items
         ]
         write_output(format_csv_output(headers, rows), output_file)
@@ -662,7 +687,12 @@ def tables(output_format, output_file, verbose, quiet, dbt_path, semantic_path, 
     else:
         headers = ["Name", "Database", "Schema", "Primary Key"]
         rows = [
-            [str(t.get("table_name") or ""), str(t.get("database") or ""), str(t.get("schema") or ""), str(t.get("primary_key") or "")]
+            [
+                str(t.get("table_name") or ""),
+                str(t.get("database") or ""),
+                str(t.get("schema") or ""),
+                str(t.get("primary_key") or ""),
+            ]
             for t in items
         ]
         click.echo(format_table(headers, rows))

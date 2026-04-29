@@ -188,7 +188,8 @@ class TestListService:
     @patch("snowflake_semantic_tools.services.list_semantic_components.find_semantic_model_files")
     def test_table_filter(self, mock_semantic, mock_dbt, tmp_path):
         dbt_file = tmp_path / "models.yml"
-        dbt_file.write_text("""
+        dbt_file.write_text(
+            """
 models:
   - name: orders
     description: Order table
@@ -203,7 +204,8 @@ models:
             sst:
               column_type: dimension
               data_type: TEXT
-""")
+"""
+        )
         mock_dbt.return_value = [dbt_file]
         mock_semantic.return_value = []
         service = SemanticComponentListService()
@@ -223,8 +225,7 @@ models:
 
         service = SemanticComponentListService()
         with patch.object(
-            service.parser, "parse_all_files",
-            side_effect=ParsingCriticalError("test error", ["error1", "error2"])
+            service.parser, "parse_all_files", side_effect=ParsingCriticalError("test error", ["error1", "error2"])
         ):
             result = service.execute(ListConfig())
         assert "error1" in result.errors
@@ -289,7 +290,13 @@ class TestListCLI:
     def test_metrics_subcommand(self, mock_run):
         mock_run.return_value = ListResult(
             metrics=[
-                {"name": "REVENUE", "tables": ["ORDERS"], "table_name": "ORDERS", "description": "Total rev", "expr": "SUM(amount)"}
+                {
+                    "name": "REVENUE",
+                    "tables": ["ORDERS"],
+                    "table_name": "ORDERS",
+                    "description": "Total rev",
+                    "expr": "SUM(amount)",
+                }
             ]
         )
         runner = CliRunner()
@@ -302,7 +309,15 @@ class TestListCLI:
     @patch("snowflake_semantic_tools.interfaces.cli.commands.list._run_list")
     def test_metrics_verbose_shows_expression(self, mock_run):
         mock_run.return_value = ListResult(
-            metrics=[{"name": "REVENUE", "tables": ["ORDERS"], "table_name": "ORDERS", "description": "Rev", "expr": "SUM(amount)"}]
+            metrics=[
+                {
+                    "name": "REVENUE",
+                    "tables": ["ORDERS"],
+                    "table_name": "ORDERS",
+                    "description": "Rev",
+                    "expr": "SUM(amount)",
+                }
+            ]
         )
         runner = CliRunner()
         result = runner.invoke(list_cmd, ["metrics", "--verbose"])
@@ -313,7 +328,15 @@ class TestListCLI:
     @patch("snowflake_semantic_tools.interfaces.cli.commands.list._run_list")
     def test_metrics_with_expr(self, mock_run):
         mock_run.return_value = ListResult(
-            metrics=[{"name": "REVENUE", "tables": ["ORDERS"], "table_name": "ORDERS", "description": "Rev", "expr": "SUM(amount)"}]
+            metrics=[
+                {
+                    "name": "REVENUE",
+                    "tables": ["ORDERS"],
+                    "table_name": "ORDERS",
+                    "description": "Rev",
+                    "expr": "SUM(amount)",
+                }
+            ]
         )
         runner = CliRunner()
         result = runner.invoke(list_cmd, ["metrics", "--with-expr"])
@@ -325,7 +348,13 @@ class TestListCLI:
     def test_metrics_json(self, mock_run):
         mock_run.return_value = ListResult(
             metrics=[
-                {"name": "REVENUE", "tables": ["ORDERS"], "table_name": "ORDERS", "description": "Total rev", "expr": "SUM(amount)"}
+                {
+                    "name": "REVENUE",
+                    "tables": ["ORDERS"],
+                    "table_name": "ORDERS",
+                    "description": "Total rev",
+                    "expr": "SUM(amount)",
+                }
             ]
         )
         runner = CliRunner()
@@ -338,7 +367,15 @@ class TestListCLI:
     @patch("snowflake_semantic_tools.interfaces.cli.commands.list._run_list")
     def test_metrics_csv(self, mock_run):
         mock_run.return_value = ListResult(
-            metrics=[{"name": "REVENUE", "tables": ["ORDERS"], "table_name": "ORDERS", "description": "Rev", "expr": "SUM(a)"}]
+            metrics=[
+                {
+                    "name": "REVENUE",
+                    "tables": ["ORDERS"],
+                    "table_name": "ORDERS",
+                    "description": "Rev",
+                    "expr": "SUM(a)",
+                }
+            ]
         )
         runner = CliRunner()
         result = runner.invoke(list_cmd, ["metrics", "--format", "csv"])
@@ -358,7 +395,11 @@ class TestListCLI:
     def test_relationships_subcommand(self, mock_run):
         mock_run.return_value = ListResult(
             relationships=[
-                {"relationship_name": "ORDERS_TO_CUSTOMERS", "left_table_name": "ORDERS", "right_table_name": "CUSTOMERS"}
+                {
+                    "relationship_name": "ORDERS_TO_CUSTOMERS",
+                    "left_table_name": "ORDERS",
+                    "right_table_name": "CUSTOMERS",
+                }
             ]
         )
         runner = CliRunner()
@@ -382,7 +423,9 @@ class TestListCLI:
     @patch("snowflake_semantic_tools.interfaces.cli.commands.list._run_list")
     def test_filters_subcommand(self, mock_run):
         mock_run.return_value = ListResult(
-            filters=[{"name": "ACTIVE_ONLY", "table_name": "USERS", "description": "Active users", "expr": "status='active'"}]
+            filters=[
+                {"name": "ACTIVE_ONLY", "table_name": "USERS", "description": "Active users", "expr": "status='active'"}
+            ]
         )
         runner = CliRunner()
         result = runner.invoke(list_cmd, ["filters"])
@@ -423,7 +466,9 @@ class TestListCLI:
     @patch("snowflake_semantic_tools.interfaces.cli.commands.list._run_list")
     def test_semantic_views_subcommand(self, mock_run):
         mock_run.return_value = ListResult(
-            semantic_views=[{"name": "customer_360", "description": "Customer view", "tables": '["customers","orders"]'}]
+            semantic_views=[
+                {"name": "customer_360", "description": "Customer view", "tables": '["customers","orders"]'}
+            ]
         )
         runner = CliRunner()
         result = runner.invoke(list_cmd, ["semantic-views"])
@@ -433,7 +478,9 @@ class TestListCLI:
     @patch("snowflake_semantic_tools.interfaces.cli.commands.list._run_list")
     def test_semantic_views_verbose_shows_instructions(self, mock_run):
         mock_run.return_value = ListResult(
-            semantic_views=[{"name": "sv1", "description": "D", "tables": '["t1"]', "custom_instructions": '["CI1","CI2"]'}]
+            semantic_views=[
+                {"name": "sv1", "description": "D", "tables": '["t1"]', "custom_instructions": '["CI1","CI2"]'}
+            ]
         )
         runner = CliRunner()
         result = runner.invoke(list_cmd, ["semantic-views", "--verbose"])
@@ -444,7 +491,9 @@ class TestListCLI:
     @patch("snowflake_semantic_tools.interfaces.cli.commands.list._run_list")
     def test_semantic_views_malformed_json(self, mock_run):
         mock_run.return_value = ListResult(
-            semantic_views=[{"name": "sv1", "description": "D", "tables": "not valid json{", "custom_instructions": "bad"}]
+            semantic_views=[
+                {"name": "sv1", "description": "D", "tables": "not valid json{", "custom_instructions": "bad"}
+            ]
         )
         runner = CliRunner()
         result = runner.invoke(list_cmd, ["semantic-views", "--verbose"])
@@ -484,7 +533,15 @@ class TestListCLI:
     @patch("snowflake_semantic_tools.interfaces.cli.commands.list._run_list")
     def test_verified_queries_subcommand(self, mock_run):
         mock_run.return_value = ListResult(
-            verified_queries=[{"name": "VQ1", "question": "What is revenue?", "verified_by": "alice", "verified_at": "2025-01-01", "sql": "SELECT 1"}]
+            verified_queries=[
+                {
+                    "name": "VQ1",
+                    "question": "What is revenue?",
+                    "verified_by": "alice",
+                    "verified_at": "2025-01-01",
+                    "sql": "SELECT 1",
+                }
+            ]
         )
         runner = CliRunner()
         result = runner.invoke(list_cmd, ["verified-queries"])
@@ -525,7 +582,15 @@ class TestListCLI:
     @patch("snowflake_semantic_tools.interfaces.cli.commands.list._run_list")
     def test_quiet_mode(self, mock_run):
         mock_run.return_value = ListResult(
-            metrics=[{"name": "REVENUE", "tables": ["ORDERS"], "table_name": "ORDERS", "description": "Rev", "expr": "SUM(a)"}]
+            metrics=[
+                {
+                    "name": "REVENUE",
+                    "tables": ["ORDERS"],
+                    "table_name": "ORDERS",
+                    "description": "Rev",
+                    "expr": "SUM(a)",
+                }
+            ]
         )
         runner = CliRunner()
         result = runner.invoke(list_cmd, ["metrics", "--quiet"])
@@ -535,7 +600,15 @@ class TestListCLI:
     @patch("snowflake_semantic_tools.interfaces.cli.commands.list._run_list")
     def test_output_to_file(self, mock_run, tmp_path):
         mock_run.return_value = ListResult(
-            metrics=[{"name": "REVENUE", "tables": ["ORDERS"], "table_name": "ORDERS", "description": "Rev", "expr": "SUM(a)"}]
+            metrics=[
+                {
+                    "name": "REVENUE",
+                    "tables": ["ORDERS"],
+                    "table_name": "ORDERS",
+                    "description": "Rev",
+                    "expr": "SUM(a)",
+                }
+            ]
         )
         output_file = str(tmp_path / "out.json")
         runner = CliRunner()
@@ -676,9 +749,7 @@ class TestListCLI:
 
     @patch("snowflake_semantic_tools.interfaces.cli.commands.list._run_list")
     def test_semantic_views_json(self, mock_run):
-        mock_run.return_value = ListResult(
-            semantic_views=[{"name": "sv1", "description": "D", "tables": '["t1"]'}]
-        )
+        mock_run.return_value = ListResult(semantic_views=[{"name": "sv1", "description": "D", "tables": '["t1"]'}])
         runner = CliRunner()
         result = runner.invoke(list_cmd, ["semantic-views", "--format", "json"])
         assert result.exit_code == 0
@@ -707,7 +778,9 @@ class TestListCLI:
     @patch("snowflake_semantic_tools.interfaces.cli.commands.list._run_list")
     def test_verified_queries_json(self, mock_run):
         mock_run.return_value = ListResult(
-            verified_queries=[{"name": "VQ1", "question": "Q?", "verified_by": "bob", "verified_at": "2025-01", "sql": "S"}]
+            verified_queries=[
+                {"name": "VQ1", "question": "Q?", "verified_by": "bob", "verified_at": "2025-01", "sql": "S"}
+            ]
         )
         runner = CliRunner()
         result = runner.invoke(list_cmd, ["verified-queries", "--format", "json"])
@@ -718,7 +791,9 @@ class TestListCLI:
     @patch("snowflake_semantic_tools.interfaces.cli.commands.list._run_list")
     def test_verified_queries_csv(self, mock_run):
         mock_run.return_value = ListResult(
-            verified_queries=[{"name": "VQ1", "question": "Q?", "verified_by": "bob", "verified_at": "2025-01", "sql": "S"}]
+            verified_queries=[
+                {"name": "VQ1", "question": "Q?", "verified_by": "bob", "verified_at": "2025-01", "sql": "S"}
+            ]
         )
         runner = CliRunner()
         result = runner.invoke(list_cmd, ["verified-queries", "--format", "csv"])
@@ -728,7 +803,16 @@ class TestListCLI:
     @patch("snowflake_semantic_tools.interfaces.cli.commands.list._run_list")
     def test_metrics_with_source_file_relativized(self, mock_run):
         mock_run.return_value = ListResult(
-            metrics=[{"name": "M1", "tables": [], "table_name": "T", "description": "D", "expr": "E", "source_file": "/absolute/path/file.yml"}]
+            metrics=[
+                {
+                    "name": "M1",
+                    "tables": [],
+                    "table_name": "T",
+                    "description": "D",
+                    "expr": "E",
+                    "source_file": "/absolute/path/file.yml",
+                }
+            ]
         )
         runner = CliRunner()
         result = runner.invoke(list_cmd, ["metrics", "--format", "json"])
@@ -752,7 +836,7 @@ class TestServiceEdgeCases:
         service = SemanticComponentListService()
         parse_result = {
             "dbt": {},
-            "semantic": {"metrics": {"items": [{"name": None, "tables": None, "table_name": None}]}}
+            "semantic": {"metrics": {"items": [{"name": None, "tables": None, "table_name": None}]}},
         }
         result = ListResult()
         service._extract_metrics(parse_result, result, ListConfig(table_filter="test"))
@@ -766,7 +850,7 @@ class TestServiceEdgeCases:
         service = SemanticComponentListService()
         parse_result = {
             "dbt": {},
-            "semantic": {"relationships": {"items": [{"left_table_name": None, "right_table_name": None}]}}
+            "semantic": {"relationships": {"items": [{"left_table_name": None, "right_table_name": None}]}},
         }
         result = ListResult()
         service._extract_relationships(parse_result, result, ListConfig(table_filter="test"))
