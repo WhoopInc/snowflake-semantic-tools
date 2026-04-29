@@ -200,7 +200,7 @@ cd "$JAFFLE_SHOP_DIR"
 echo "1" | sst enrich models/ --target <TARGET>
 ```
 
-Replace `<TARGET>` with the user's chosen dbt target from Phase 0e.
+Replace `<TARGET>` with the user's chosen dbt target from the Prerequisites section.
 
 After enrichment completes, show the diff:
 ```bash
