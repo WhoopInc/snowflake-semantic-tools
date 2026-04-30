@@ -153,10 +153,20 @@ class TemplateResolver:
             second_arg = match.group(2) if match.lastindex >= 2 else None
 
             if second_arg is not None:
-                # Two arguments: {{ ref('table', 'column') }} → TABLE.COLUMN
-                table_name = first_arg
-                column_name = second_arg
-                return f"{table_name.upper()}.{column_name.upper()}"
+                if first_arg.lower() in self.dbt_catalog:
+                    # Two arguments where first is a known table: {{ ref('table', 'column') }} → TABLE.COLUMN
+                    table_name = first_arg
+                    column_name = second_arg
+                    return f"{table_name.upper()}.{column_name.upper()}"
+                else:
+                    # Two arguments where first is NOT a known table: dbt Mesh cross-project ref
+                    # {{ ref('project_name', 'model_name') }} → MODEL_NAME
+                    model_name = second_arg.lower()
+                    if model_name in self.dbt_catalog:
+                        table_info = self.dbt_catalog[model_name]
+                        if isinstance(table_info, dict):
+                            return table_info.get("name", model_name).upper()
+                    return model_name.upper()
             else:
                 # One argument: {{ ref('table') }} → TABLE
                 table_name = first_arg.lower()

@@ -223,3 +223,64 @@ class TestRefResolutionOrder:
         # This is a bit unusual but should still work
         result = resolver.resolve_content(content)
         assert "ORDERS" in result
+
+
+class TestDbtMeshCrossProjectRef:
+    """Test dbt Mesh cross-project {{ ref('project', 'model') }} support."""
+
+    def test_mesh_ref_resolves_to_model_name(self):
+        """Test {{ ref('project', 'model') }} resolves to MODEL when project is not a known table."""
+        resolver = TemplateResolver(dbt_catalog={"orders": {"name": "orders"}})
+        result = resolver.resolve_content("{{ ref('analytics_dbt', 'single_customer_view') }}")
+        assert result == "SINGLE_CUSTOMER_VIEW"
+
+    def test_mesh_ref_does_not_break_table_column_ref(self):
+        """Test {{ ref('table', 'column') }} still works when table IS in catalog."""
+        resolver = TemplateResolver(dbt_catalog={"orders": {"name": "orders"}})
+        result = resolver.resolve_content("{{ ref('orders', 'amount') }}")
+        assert result == "ORDERS.AMOUNT"
+
+    def test_mesh_ref_with_model_in_catalog(self):
+        """Test mesh ref where the upstream model is also in the local catalog."""
+        resolver = TemplateResolver(dbt_catalog={"single_customer_view": {"name": "single_customer_view"}})
+        result = resolver.resolve_content("{{ ref('analytics_dbt', 'single_customer_view') }}")
+        assert result == "SINGLE_CUSTOMER_VIEW"
+
+    def test_mesh_ref_mixed_with_local_refs(self):
+        """Test mixing cross-project refs with local table refs in same content."""
+        resolver = TemplateResolver(dbt_catalog={"orders": {"name": "orders"}})
+        content = "{{ ref('analytics_dbt', 'single_customer_view') }} and {{ ref('orders') }}"
+        result = resolver.resolve_content(content)
+        assert "SINGLE_CUSTOMER_VIEW" in result
+        assert "ORDERS" in result
+
+    def test_mesh_ref_in_tables_list(self):
+        """Test cross-project ref used in semantic view tables list."""
+        resolver = TemplateResolver(dbt_catalog={"local_model": {"name": "local_model"}})
+        content = "- {{ ref('analytics_dbt', 'single_customer_view') }}\n- {{ ref('local_model') }}"
+        result = resolver.resolve_content(content)
+        assert "SINGLE_CUSTOMER_VIEW" in result
+        assert "LOCAL_MODEL" in result
+
+    def test_mesh_ref_case_insensitive(self):
+        """Test cross-project ref is case-insensitive."""
+        resolver = TemplateResolver(dbt_catalog={})
+        result = resolver.resolve_content("{{ ref('Analytics_Dbt', 'Single_Customer_View') }}")
+        assert result == "SINGLE_CUSTOMER_VIEW"
+
+    def test_mesh_ref_with_double_quotes(self):
+        """Test cross-project ref with double quotes."""
+        resolver = TemplateResolver(dbt_catalog={})
+        result = resolver.resolve_content('{{ ref("analytics_dbt", "single_customer_view") }}')
+        assert result == "SINGLE_CUSTOMER_VIEW"
+
+    def test_mesh_ref_preserves_table_column_when_table_in_catalog(self):
+        """Regression: ensure table.column still works even with mesh support."""
+        resolver = TemplateResolver(dbt_catalog={
+            "orders": {"name": "orders"},
+            "customers": {"name": "customers"},
+        })
+        content = "{{ ref('orders', 'customer_id') }} = {{ ref('customers', 'id') }}"
+        result = resolver.resolve_content(content)
+        assert "ORDERS.CUSTOMER_ID" in result
+        assert "CUSTOMERS.ID" in result
