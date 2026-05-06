@@ -261,6 +261,11 @@ class SemanticTableSchemas:
                     description="Alternative terms users might use (e.g., 'total revenue' vs 'gross sales')",
                 ),
                 Column("sample_values", ColumnType.ARRAY, description="Example calculated values for reference"),
+                Column(
+                    "non_additive_by",
+                    ColumnType.ARRAY,
+                    description="Semi-additive dimensions: list of {dimension, order, nulls} for NON ADDITIVE BY clause",
+                ),
             ],
         )
 

@@ -133,6 +133,7 @@ def parse_snowflake_metrics(metrics: List[Dict[str, Any]], file_path: Path) -> L
                 "expr": metric.get("expr", ""),
                 "synonyms": metric.get("synonyms", []),
                 "sample_values": metric.get("sample_values", []),
+                "non_additive_by": metric.get("non_additive_by", []),
                 "source_file": str(file_path),  # Store the file path for validation errors
             }
             metric_records.append(metric_record)
