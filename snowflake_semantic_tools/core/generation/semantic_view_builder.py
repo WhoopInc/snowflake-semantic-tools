@@ -1101,7 +1101,16 @@ class SemanticViewBuilder:
             if not primary_table:
                 primary_table = table_names[0].upper()  # Fallback to first table
 
-            metric_def = f"    {primary_table}.{metric_name} AS {expression}"
+            metric_def = f"    {primary_table}.{metric_name}"
+
+            # Add USING clause for relationship path disambiguation
+            using_rels = self._parse_json_field(metric.get("USING_RELATIONSHIPS"), "using_relationships")
+            if using_rels and isinstance(using_rels, list):
+                rel_names = [str(r).upper() for r in using_rels if r]
+                if rel_names:
+                    metric_def += f"\n      USING ({', '.join(rel_names)})"
+
+            metric_def += f" AS {expression}"
 
             # Add comment if available
             if metric.get("DESCRIPTION"):

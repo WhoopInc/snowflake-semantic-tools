@@ -958,5 +958,108 @@ class TestTableNotFoundErrorFormatting:
         assert "Original error:" in result
 
 
+class TestUsingRelationships:
+    """Test cases for USING (relationship_name) on metrics."""
+
+    @pytest.fixture
+    def builder(self):
+        """Create a SemanticViewBuilder instance for testing."""
+        config = SnowflakeConfig(
+            account="test",
+            user="test",
+            password="test",
+            role="test",
+            warehouse="test",
+            database="test_db",
+            schema="test_schema",
+        )
+        return SemanticViewBuilder(config)
+
+    def test_using_single_relationship(self, builder, monkeypatch):
+        """Test USING clause with a single relationship."""
+
+        def mock_get_metrics(conn, table_names):
+            return [
+                {
+                    "NAME": "REVENUE_BY_SHIPPING",
+                    "EXPR": "SUM(ORDERS.AMOUNT)",
+                    "DESCRIPTION": "Revenue by shipping",
+                    "TABLE_NAME": '["orders"]',
+                    "SYNONYMS": None,
+                    "USING_RELATIONSHIPS": '["orders_to_shipping_address"]',
+                    "SAMPLE_VALUES": None,
+                }
+            ]
+
+        def mock_noop(conn, t):
+            return []
+
+        monkeypatch.setattr(builder, "_get_metrics_for_selected_tables", mock_get_metrics)
+        monkeypatch.setattr(builder, "_get_dimensions", mock_noop)
+        monkeypatch.setattr(builder, "_get_facts", mock_noop)
+        monkeypatch.setattr(builder, "_get_time_dimensions", mock_noop)
+
+        result = builder._build_metrics_clause(None, ["orders"])
+
+        assert "USING (ORDERS_TO_SHIPPING_ADDRESS)" in result
+        assert "AS SUM(ORDERS.AMOUNT)" in result
+
+    def test_using_multiple_relationships(self, builder, monkeypatch):
+        """Test USING clause with multiple relationships."""
+
+        def mock_get_metrics(conn, table_names):
+            return [
+                {
+                    "NAME": "COMPLEX_METRIC",
+                    "EXPR": "COUNT(*)",
+                    "DESCRIPTION": "Complex",
+                    "TABLE_NAME": '["orders"]',
+                    "SYNONYMS": None,
+                    "USING_RELATIONSHIPS": '["rel_a", "rel_b"]',
+                    "SAMPLE_VALUES": None,
+                }
+            ]
+
+        def mock_noop(conn, t):
+            return []
+
+        monkeypatch.setattr(builder, "_get_metrics_for_selected_tables", mock_get_metrics)
+        monkeypatch.setattr(builder, "_get_dimensions", mock_noop)
+        monkeypatch.setattr(builder, "_get_facts", mock_noop)
+        monkeypatch.setattr(builder, "_get_time_dimensions", mock_noop)
+
+        result = builder._build_metrics_clause(None, ["orders"])
+
+        assert "USING (REL_A, REL_B)" in result
+
+    def test_no_using_relationships(self, builder, monkeypatch):
+        """Test that metrics without using_relationships don't emit USING."""
+
+        def mock_get_metrics(conn, table_names):
+            return [
+                {
+                    "NAME": "TOTAL_REVENUE",
+                    "EXPR": "SUM(ORDERS.AMOUNT)",
+                    "DESCRIPTION": "Total revenue",
+                    "TABLE_NAME": '["orders"]',
+                    "SYNONYMS": None,
+                    "USING_RELATIONSHIPS": None,
+                    "SAMPLE_VALUES": None,
+                }
+            ]
+
+        def mock_noop(conn, t):
+            return []
+
+        monkeypatch.setattr(builder, "_get_metrics_for_selected_tables", mock_get_metrics)
+        monkeypatch.setattr(builder, "_get_dimensions", mock_noop)
+        monkeypatch.setattr(builder, "_get_facts", mock_noop)
+        monkeypatch.setattr(builder, "_get_time_dimensions", mock_noop)
+
+        result = builder._build_metrics_clause(None, ["orders"])
+
+        assert "USING" not in result
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

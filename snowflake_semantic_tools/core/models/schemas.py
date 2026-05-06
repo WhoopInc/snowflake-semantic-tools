@@ -261,6 +261,11 @@ class SemanticTableSchemas:
                     description="Alternative terms users might use (e.g., 'total revenue' vs 'gross sales')",
                 ),
                 Column("sample_values", ColumnType.ARRAY, description="Example calculated values for reference"),
+                Column(
+                    "using_relationships",
+                    ColumnType.ARRAY,
+                    description="Relationship names to use for join path disambiguation (USING clause)",
+                ),
             ],
         )
 
