@@ -212,6 +212,11 @@ class SemanticTableSchemas:
                     description="Alternative terms users might use (e.g., 'revenue' vs 'sales amount')",
                 ),
                 Column("sample_values", ColumnType.ARRAY, description="Example numeric values for reference"),
+                Column(
+                    "visibility",
+                    ColumnType.VARCHAR,
+                    description="Visibility control: 'private' hides from end users, 'public' (default) is queryable",
+                ),
             ],
         )
 
@@ -261,6 +266,11 @@ class SemanticTableSchemas:
                     description="Alternative terms users might use (e.g., 'total revenue' vs 'gross sales')",
                 ),
                 Column("sample_values", ColumnType.ARRAY, description="Example calculated values for reference"),
+                Column(
+                    "visibility",
+                    ColumnType.VARCHAR,
+                    description="Visibility control: 'private' hides from end users, 'public' (default) is queryable",
+                ),
             ],
         )
 

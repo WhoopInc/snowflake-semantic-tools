@@ -480,6 +480,22 @@ class DbtModelValidator:
                 context={"table": table_name, "column": column_name, "field": "description", "level": "column"},
             )
 
+        # Visibility validation: only facts and metrics can be private
+        visibility = column.get("visibility")
+        if visibility:
+            if visibility.lower() not in ("public", "private"):
+                result.add_error(
+                    f"Column '{column_name}' in table '{table_name}' has invalid visibility: '{visibility}'. Must be 'public' or 'private'",
+                    file_path=source_file,
+                    context={"table": table_name, "column": column_name, "field": "visibility", "level": "column"},
+                )
+            elif visibility.lower() == "private" and column_type in ("dimension", "time_dimension"):
+                result.add_error(
+                    f"Column '{column_name}' in table '{table_name}' cannot be PRIVATE: only facts and metrics support visibility control (Snowflake restriction)",
+                    file_path=source_file,
+                    context={"table": table_name, "column": column_name, "field": "visibility", "level": "column"},
+                )
+
     def _determine_column_type(self, column: Dict[str, Any]) -> str:
         """Get the column type from metadata (no longer defaults or infers)."""
         # Column type must be explicitly set now - no defaults

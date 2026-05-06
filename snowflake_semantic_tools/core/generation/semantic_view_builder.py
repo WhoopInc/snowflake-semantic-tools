@@ -952,7 +952,11 @@ class SemanticViewBuilder:
             fact_name = fact["NAME"].upper()
             expression = fact["EXPR"]
 
-            fact_def = f"    {table_name}.{fact_name} AS {expression}"
+            visibility_prefix = ""
+            if fact.get("VISIBILITY") and fact["VISIBILITY"].upper() == "PRIVATE":
+                visibility_prefix = "PRIVATE "
+
+            fact_def = f"    {visibility_prefix}{table_name}.{fact_name} AS {expression}"
 
             # Add comment if available
             if fact.get("DESCRIPTION"):
@@ -1101,7 +1105,11 @@ class SemanticViewBuilder:
             if not primary_table:
                 primary_table = table_names[0].upper()  # Fallback to first table
 
-            metric_def = f"    {primary_table}.{metric_name} AS {expression}"
+            visibility_prefix = ""
+            if metric.get("VISIBILITY") and metric["VISIBILITY"].upper() == "PRIVATE":
+                visibility_prefix = "PRIVATE "
+
+            metric_def = f"    {visibility_prefix}{primary_table}.{metric_name} AS {expression}"
 
             # Add comment if available
             if metric.get("DESCRIPTION"):

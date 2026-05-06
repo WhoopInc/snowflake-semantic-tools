@@ -958,5 +958,123 @@ class TestTableNotFoundErrorFormatting:
         assert "Original error:" in result
 
 
+class TestVisibility:
+    """Test cases for PRIVATE/PUBLIC visibility on facts and metrics."""
+
+    @pytest.fixture
+    def builder(self):
+        """Create a SemanticViewBuilder instance for testing."""
+        config = SnowflakeConfig(
+            account="test",
+            user="test",
+            password="test",
+            role="test",
+            warehouse="test",
+            database="test_db",
+            schema="test_schema",
+        )
+        return SemanticViewBuilder(config)
+
+    def test_private_fact_emits_keyword(self, builder, monkeypatch):
+        """Test that a private fact emits PRIVATE keyword in DDL."""
+
+        def mock_get_facts(conn, table_name):
+            return [
+                {
+                    "NAME": "raw_discount",
+                    "EXPR": "RAW_DISCOUNT",
+                    "DESCRIPTION": "Internal discount",
+                    "SYNONYMS": None,
+                    "VISIBILITY": "private",
+                    "SAMPLE_VALUES": None,
+                }
+            ]
+
+        monkeypatch.setattr(builder, "_get_facts", mock_get_facts)
+
+        result = builder._build_facts_clause(None, ["orders"])
+
+        assert "PRIVATE ORDERS.RAW_DISCOUNT AS RAW_DISCOUNT" in result
+
+    def test_public_fact_no_keyword(self, builder, monkeypatch):
+        """Test that a public fact does not emit visibility keyword."""
+
+        def mock_get_facts(conn, table_name):
+            return [
+                {
+                    "NAME": "amount",
+                    "EXPR": "AMOUNT",
+                    "DESCRIPTION": "Order amount",
+                    "SYNONYMS": None,
+                    "VISIBILITY": "public",
+                    "SAMPLE_VALUES": None,
+                }
+            ]
+
+        monkeypatch.setattr(builder, "_get_facts", mock_get_facts)
+
+        result = builder._build_facts_clause(None, ["orders"])
+
+        assert "PRIVATE" not in result
+        assert "PUBLIC" not in result
+        assert "ORDERS.AMOUNT AS AMOUNT" in result
+
+    def test_null_visibility_no_keyword(self, builder, monkeypatch):
+        """Test that null visibility does not emit any keyword."""
+
+        def mock_get_facts(conn, table_name):
+            return [
+                {
+                    "NAME": "quantity",
+                    "EXPR": "QUANTITY",
+                    "DESCRIPTION": "Quantity",
+                    "SYNONYMS": None,
+                    "VISIBILITY": None,
+                    "SAMPLE_VALUES": None,
+                }
+            ]
+
+        monkeypatch.setattr(builder, "_get_facts", mock_get_facts)
+
+        result = builder._build_facts_clause(None, ["orders"])
+
+        assert "PRIVATE" not in result
+        assert "ORDERS.QUANTITY AS QUANTITY" in result
+
+    def test_private_metric_emits_keyword(self, builder, monkeypatch):
+        """Test that a private metric emits PRIVATE keyword in DDL."""
+
+        def mock_get_metrics(conn, table_names):
+            return [
+                {
+                    "NAME": "INTERMEDIATE_SUM",
+                    "EXPR": "SUM(ORDERS.AMOUNT)",
+                    "DESCRIPTION": "Internal intermediate calc",
+                    "TABLE_NAME": '["orders"]',
+                    "SYNONYMS": None,
+                    "VISIBILITY": "private",
+                    "SAMPLE_VALUES": None,
+                }
+            ]
+
+        def mock_get_dims(conn, t):
+            return []
+
+        def mock_get_facts(conn, t):
+            return []
+
+        def mock_get_time_dims(conn, t):
+            return []
+
+        monkeypatch.setattr(builder, "_get_metrics_for_selected_tables", mock_get_metrics)
+        monkeypatch.setattr(builder, "_get_dimensions", mock_get_dims)
+        monkeypatch.setattr(builder, "_get_facts", mock_get_facts)
+        monkeypatch.setattr(builder, "_get_time_dimensions", mock_get_time_dims)
+
+        result = builder._build_metrics_clause(None, ["orders"])
+
+        assert "PRIVATE ORDERS.INTERMEDIATE_SUM AS SUM(ORDERS.AMOUNT)" in result
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
