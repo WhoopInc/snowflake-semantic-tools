@@ -958,5 +958,125 @@ class TestTableNotFoundErrorFormatting:
         assert "Original error:" in result
 
 
+class TestFactSynonyms:
+    """Test cases for synonym emission in the FACTS clause."""
+
+    @pytest.fixture
+    def builder(self):
+        """Create a SemanticViewBuilder instance for testing."""
+        config = SnowflakeConfig(
+            account="test",
+            user="test",
+            password="test",
+            role="test",
+            warehouse="test",
+            database="test_db",
+            schema="test_schema",
+        )
+        return SemanticViewBuilder(config)
+
+    def test_fact_synonyms_emitted_in_ddl(self, builder, monkeypatch):
+        """Test that facts with synonyms emit WITH SYNONYMS clause."""
+
+        def mock_get_facts(conn, table_name):
+            return [
+                {
+                    "NAME": "subtotal_cents",
+                    "EXPR": "SUBTOTAL_CENTS",
+                    "DESCRIPTION": "Subtotal in cents",
+                    "SYNONYMS": '["subtotal in cents", "subtotal amount"]',
+                    "SAMPLE_VALUES": None,
+                }
+            ]
+
+        monkeypatch.setattr(builder, "_get_facts", mock_get_facts)
+
+        result = builder._build_facts_clause(None, ["orders"])
+
+        assert "WITH SYNONYMS = ('subtotal in cents', 'subtotal amount')" in result
+        assert "ORDERS.SUBTOTAL_CENTS AS SUBTOTAL_CENTS" in result
+
+    def test_fact_without_synonyms_no_clause(self, builder, monkeypatch):
+        """Test that facts without synonyms don't emit WITH SYNONYMS clause."""
+
+        def mock_get_facts(conn, table_name):
+            return [
+                {
+                    "NAME": "amount",
+                    "EXPR": "AMOUNT",
+                    "DESCRIPTION": "Order amount",
+                    "SYNONYMS": None,
+                    "SAMPLE_VALUES": None,
+                }
+            ]
+
+        monkeypatch.setattr(builder, "_get_facts", mock_get_facts)
+
+        result = builder._build_facts_clause(None, ["orders"])
+
+        assert "WITH SYNONYMS" not in result
+        assert "ORDERS.AMOUNT AS AMOUNT" in result
+
+    def test_fact_synonyms_empty_list(self, builder, monkeypatch):
+        """Test that empty synonym list doesn't emit WITH SYNONYMS clause."""
+
+        def mock_get_facts(conn, table_name):
+            return [
+                {
+                    "NAME": "quantity",
+                    "EXPR": "QUANTITY",
+                    "DESCRIPTION": "Item quantity",
+                    "SYNONYMS": "[]",
+                    "SAMPLE_VALUES": None,
+                }
+            ]
+
+        monkeypatch.setattr(builder, "_get_facts", mock_get_facts)
+
+        result = builder._build_facts_clause(None, ["orders"])
+
+        assert "WITH SYNONYMS" not in result
+
+    def test_fact_synonyms_null_values_filtered(self, builder, monkeypatch):
+        """Test that None values in synonym list are filtered out."""
+
+        def mock_get_facts(conn, table_name):
+            return [
+                {
+                    "NAME": "cost",
+                    "EXPR": "COST",
+                    "DESCRIPTION": "Item cost",
+                    "SYNONYMS": '[null, null]',
+                    "SAMPLE_VALUES": None,
+                }
+            ]
+
+        monkeypatch.setattr(builder, "_get_facts", mock_get_facts)
+
+        result = builder._build_facts_clause(None, ["orders"])
+
+        assert "WITH SYNONYMS" not in result
+
+    def test_fact_synonyms_mixed_null_and_valid(self, builder, monkeypatch):
+        """Test that valid synonyms are kept when mixed with None values."""
+
+        def mock_get_facts(conn, table_name):
+            return [
+                {
+                    "NAME": "price",
+                    "EXPR": "PRICE",
+                    "DESCRIPTION": "Item price",
+                    "SYNONYMS": '[null, "unit price", null, "cost per item"]',
+                    "SAMPLE_VALUES": None,
+                }
+            ]
+
+        monkeypatch.setattr(builder, "_get_facts", mock_get_facts)
+
+        result = builder._build_facts_clause(None, ["orders"])
+
+        assert "WITH SYNONYMS = ('unit price', 'cost per item')" in result
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

@@ -954,6 +954,17 @@ class SemanticViewBuilder:
 
             fact_def = f"    {table_name}.{fact_name} AS {expression}"
 
+            # Add synonyms if available
+            if fact.get("SYNONYMS"):
+                synonyms = self._parse_json_field(fact["SYNONYMS"], "synonyms")
+                if synonyms and isinstance(synonyms, list):
+                    synonyms_filtered = [s for s in synonyms if s is not None]
+                    if synonyms_filtered:
+                        synonyms_cleaned = CharacterSanitizer.sanitize_synonym_list(synonyms_filtered)
+                        if synonyms_cleaned:
+                            synonyms_str = ", ".join([f"'{syn}'" for syn in synonyms_cleaned])
+                            fact_def += f"\n      WITH SYNONYMS = ({synonyms_str})"
+
             # Add comment if available
             if fact.get("DESCRIPTION"):
                 description = self._sanitize_description(fact["DESCRIPTION"])
