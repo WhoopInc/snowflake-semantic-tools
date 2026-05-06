@@ -1272,23 +1272,97 @@ class SemanticViewBuilder:
             logger.warning(f"Failed to retrieve custom instructions: {e}")
             return []
 
-    def _build_ai_guidance_clauses(self, conn: Any, custom_instruction_names: Optional[List[str]]) -> str:
+    def _get_filters_for_tables(self, conn: Any, table_names: List[str]) -> List[Dict[str, Any]]:
         """
-        Build AI_QUESTION_CATEGORIZATION and AI_SQL_GENERATION clauses from custom instructions.
+        Retrieve filters from SM_FILTERS for the given tables.
+
+        Args:
+            conn: Database connection
+            table_names: List of table names to get filters for
+
+        Returns:
+            List of filter dictionaries with NAME, TABLE_NAME, DESCRIPTION, EXPR
+        """
+        if not table_names:
+            return []
+
+        try:
+            tlist = ", ".join([f"'{t.upper()}'" for t in table_names])
+            sql = (
+                f"SELECT NAME, TABLE_NAME, DESCRIPTION, EXPR "
+                f"FROM {self.metadata_database}.{self.metadata_schema}.SM_FILTERS "
+                f"WHERE UPPER(TABLE_NAME) IN ({tlist})"
+            )
+            return self._execute_query(conn, sql)
+        except Exception as e:
+            logger.warning(f"Failed to retrieve filters: {e}")
+            return []
+
+    def _build_filters_as_instructions(self, conn: Any, table_names: List[str]) -> str:
+        """
+        Convert filter definitions into AI_SQL_GENERATION instruction text.
+
+        Snowflake's CREATE SEMANTIC VIEW DDL has no native FILTERS clause.
+        This method converts filters into natural language instructions that are
+        appended to the AI_SQL_GENERATION clause, making filters functional.
+
+        Args:
+            conn: Database connection
+            table_names: List of table names in the current semantic view
+
+        Returns:
+            Instruction text for filters, or empty string if no filters found
+        """
+        from snowflake_semantic_tools.shared.config import get_config
+
+        config = get_config()
+        if not config.get("generation.filters_to_instructions", True):
+            return ""
+
+        filters = self._get_filters_for_tables(conn, table_names)
+        if not filters:
+            return ""
+
+        filter_lines = []
+        for f in filters:
+            table_name = f.get("TABLE_NAME", "").upper()
+            expr = f.get("EXPR", "")
+            description = f.get("DESCRIPTION", "")
+            if expr:
+                if description:
+                    filter_lines.append(
+                        f"- When querying {table_name}, apply: {expr} ({description}) "
+                        f"unless the user explicitly requests unfiltered data."
+                    )
+                else:
+                    filter_lines.append(
+                        f"- When querying {table_name}, apply: {expr} "
+                        f"unless the user explicitly requests unfiltered data."
+                    )
+
+        if not filter_lines:
+            return ""
+
+        header = "Default Filters:"
+        return header + "\n" + "\n".join(filter_lines)
+
+    def _build_ai_guidance_clauses(
+        self, conn: Any, custom_instruction_names: Optional[List[str]], table_names: Optional[List[str]] = None
+    ) -> str:
+        """
+        Build AI_QUESTION_CATEGORIZATION and AI_SQL_GENERATION clauses from custom instructions and filters.
 
         Args:
             conn: Database connection
             custom_instruction_names: List of custom instruction names to aggregate
+            table_names: List of table names for filter-to-instruction conversion
 
         Returns:
             String containing AI_QUESTION_CATEGORIZATION and/or AI_SQL_GENERATION clauses, or empty string
         """
-        if not custom_instruction_names:
-            return ""
-
-        instructions = self._get_custom_instructions_for_view(conn, custom_instruction_names)
-        if not instructions:
-            return ""
+        instructions = []
+        if custom_instruction_names:
+            instructions = self._get_custom_instructions_for_view(conn, custom_instruction_names)
 
         # Aggregate fields from all instructions
         question_cat_parts = []
@@ -1298,6 +1372,15 @@ class SemanticViewBuilder:
                 question_cat_parts.append(inst["question_categorization"].strip())
             if inst.get("sql_generation"):
                 sql_gen_parts.append(inst["sql_generation"].strip())
+
+        # Append filter-based instructions to AI_SQL_GENERATION
+        if table_names:
+            filter_instructions = self._build_filters_as_instructions(conn, table_names)
+            if filter_instructions:
+                sql_gen_parts.append(filter_instructions)
+
+        if not sql_gen_parts and not question_cat_parts:
+            return ""
 
         clauses = []
 
@@ -1407,9 +1490,9 @@ class SemanticViewBuilder:
             comment = f"Semantic view generated for tables: {', '.join(table_names)}"
         sql_parts.append(f"  COMMENT = '{comment}'")
 
-        # Build AI guidance clauses from custom instructions
+        # Build AI guidance clauses from custom instructions and filters
         # These come after COMMENT per Snowflake syntax: COMMENT, then AI_SQL_GENERATION, then AI_QUESTION_CATEGORIZATION
-        ai_guidance_clauses = self._build_ai_guidance_clauses(conn, custom_instruction_names)
+        ai_guidance_clauses = self._build_ai_guidance_clauses(conn, custom_instruction_names, table_names=table_names)
         if ai_guidance_clauses:
             sql_parts.append(ai_guidance_clauses)
 

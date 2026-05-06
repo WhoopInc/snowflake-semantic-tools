@@ -361,6 +361,25 @@ class TestFilterValidation:
         errors = [i.message for i in result.issues if i.severity.name == "ERROR"]
         assert any("missing required field: expr" in e for e in errors)
 
+    def test_filter_deprecation_warning(self, validator):
+        """Test that filters emit a deprecation warning."""
+        semantic_data = {
+            "filters": {
+                "items": [
+                    {
+                        "name": "active_users",
+                        "description": "Active users only",
+                        "expr": "status = 'active'",
+                    }
+                ]
+            }
+        }
+
+        result = validator.validate(semantic_data)
+        warnings = [i.message for i in result.issues if i.severity.name == "WARNING"]
+        assert any("deprecated" in w.lower() for w in warnings)
+        assert any("snowflake_custom_instructions" in w for w in warnings)
+
 
 class TestCustomInstructionValidation:
     """Test custom instruction validation rules."""
