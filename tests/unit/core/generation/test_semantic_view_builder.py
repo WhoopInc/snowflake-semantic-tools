@@ -958,5 +958,67 @@ class TestTableNotFoundErrorFormatting:
         assert "Original error:" in result
 
 
+class TestConstraintDistinctRange:
+    """Test cases for CONSTRAINT DISTINCT RANGE on tables."""
+
+    @pytest.fixture
+    def builder(self):
+        """Create a SemanticViewBuilder instance for testing."""
+        config = SnowflakeConfig(
+            account="test",
+            user="test",
+            password="test",
+            role="test",
+            warehouse="test",
+            database="test_db",
+            schema="test_schema",
+        )
+        return SemanticViewBuilder(config)
+
+    def test_constraint_emitted(self, builder, monkeypatch):
+        """Test that CONSTRAINT DISTINCT RANGE is emitted in table DDL."""
+
+        def mock_get_table_info(conn, table_name):
+            return {
+                "TABLE_NAME": "RATE_PERIODS",
+                "DATABASE": "TEST_DB",
+                "SCHEMA": "TEST_SCHEMA",
+                "PRIMARY_KEY": '["rate_id"]',
+                "UNIQUE_KEYS": None,
+                "CONSTRAINTS": '[{"type": "distinct_range", "name": "rate_date_range", "start_column": "effective_start", "end_column": "effective_end"}]',
+                "DESCRIPTION": "Rate periods",
+                "SYNONYMS": None,
+            }
+
+        monkeypatch.setattr(builder, "_get_table_info", mock_get_table_info)
+
+        result = builder._build_tables_clause(None, ["rate_periods"])
+
+        assert "CONSTRAINT RATE_DATE_RANGE DISTINCT RANGE" in result
+        assert "BETWEEN EFFECTIVE_START AND EFFECTIVE_END EXCLUSIVE" in result
+
+    def test_no_constraint_when_absent(self, builder, monkeypatch):
+        """Test that no CONSTRAINT clause when constraints not defined."""
+
+        def mock_get_table_info(conn, table_name):
+            return {
+                "TABLE_NAME": "ORDERS",
+                "DATABASE": "TEST_DB",
+                "SCHEMA": "TEST_SCHEMA",
+                "PRIMARY_KEY": '["order_id"]',
+                "UNIQUE_KEYS": None,
+                "CONSTRAINTS": None,
+                "DESCRIPTION": "Orders",
+                "SYNONYMS": None,
+            }
+
+        monkeypatch.setattr(builder, "_get_table_info", mock_get_table_info)
+
+        result = builder._build_tables_clause(None, ["orders"])
+
+        assert "CONSTRAINT" not in result
+        assert "DISTINCT RANGE" not in result
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

@@ -873,6 +873,20 @@ class SemanticViewBuilder:
                     uk_cols = ", ".join([col.upper() for col in unique_key_cols])
                     table_def += f"\n      UNIQUE ({uk_cols})"
 
+            # Add CONSTRAINT DISTINCT RANGE if available (preview feature)
+            constraints = self._parse_json_field(table_info.get("CONSTRAINTS"), "constraints")
+            if constraints and isinstance(constraints, list):
+                for constraint in constraints:
+                    if isinstance(constraint, dict) and constraint.get("type") == "distinct_range":
+                        c_name = constraint.get("name", "").upper()
+                        start_col = constraint.get("start_column", "").upper()
+                        end_col = constraint.get("end_column", "").upper()
+                        if c_name and start_col and end_col:
+                            table_def += (
+                                f"\n      CONSTRAINT {c_name} DISTINCT RANGE"
+                                f"\n          BETWEEN {start_col} AND {end_col} EXCLUSIVE"
+                            )
+
             # Add synonyms if available
             if table_info.get("SYNONYMS"):
                 synonyms = self._parse_json_field(table_info["SYNONYMS"], "synonyms")

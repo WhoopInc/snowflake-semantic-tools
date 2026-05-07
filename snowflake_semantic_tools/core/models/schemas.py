@@ -122,6 +122,11 @@ class SemanticTableSchemas:
                     ColumnType.BOOLEAN,
                     description="Whether to include this table in Cortex Analyst queries",
                 ),
+                Column(
+                    "constraints",
+                    ColumnType.ARRAY,
+                    description="Table constraints (e.g., DISTINCT RANGE for range joins). Preview feature.",
+                ),
             ],
         )
 
