@@ -1266,7 +1266,10 @@ class SemanticViewBuilder:
                 continue
             vq_name = vq_name.upper()
             question = vq.get("QUESTION", "").replace("'", "''")
-            sql = vq.get("SQL", "").replace("'", "''")
+            sql = vq.get("SQL", "")
+
+            sql = self._resolve_templates_in_sql(sql)
+            sql = sql.replace("'", "''")
 
             if not question or not sql:
                 logger.warning(f"Skipping verified query '{vq_name}' - missing question or sql")
@@ -1340,6 +1343,21 @@ class SemanticViewBuilder:
         except (ValueError, TypeError):
             logger.warning(f"Could not parse date '{date_str}' to epoch")
             return None
+
+    @staticmethod
+    def _resolve_templates_in_sql(sql: str) -> str:
+        """Resolve {{ ref() }}, {{ table() }}, {{ column() }} templates in SQL strings."""
+        if not sql or "{{" not in sql:
+            return sql
+        ref2_pattern = re.compile(r"{{\s*ref\s*\(\s*['\"]([^'\"]+)['\"]\s*,\s*['\"]([^'\"]+)['\"]\s*\)\s*}}")
+        sql = ref2_pattern.sub(lambda m: f"{m.group(1).upper()}.{m.group(2).upper()}", sql)
+        ref1_pattern = re.compile(r"{{\s*ref\s*\(\s*['\"]([^'\"]+)['\"]\s*\)\s*}}")
+        sql = ref1_pattern.sub(lambda m: m.group(1).upper(), sql)
+        col_pattern = re.compile(r"{{\s*column\s*\(\s*['\"]([^'\"]+)['\"]\s*,\s*['\"]([^'\"]+)['\"]\s*\)\s*}}")
+        sql = col_pattern.sub(lambda m: f"{m.group(1).upper()}.{m.group(2).upper()}", sql)
+        table_pattern = re.compile(r"{{\s*table\s*\(\s*['\"]([^'\"]+)['\"]\s*\)\s*}}")
+        sql = table_pattern.sub(lambda m: m.group(1).upper(), sql)
+        return sql
 
     @staticmethod
     def _resolve_ref_to_column(ref_str: str) -> str:

@@ -240,6 +240,15 @@ class DbtModelValidator:
         # Check for best practices
         self._check_table_best_practices(table, table_name, result)
 
+        # Validate constraints (DISTINCT RANGE)
+        self._check_constraints(table, table_name, dimensions, facts, time_dimensions, result)
+
+        # Validate tags
+        if table.get("tags"):
+            from snowflake_semantic_tools.core.validation.rules.semantic_models import SemanticModelValidator
+            validator = SemanticModelValidator()
+            validator._validate_tags(table["tags"], f"Table '{table_name}'", table.get("source_file"), result)
+
         # Validate columns
         all_columns = dimensions + facts + time_dimensions
         table_columns = [c for c in all_columns if c.get("table_name", "").upper() == table_name.upper()]
@@ -407,6 +416,63 @@ class DbtModelValidator:
                 file_path=source_file,
                 context={"table": table_name, "model_name": model_name, "level": "table"},
             )
+
+    def _check_constraints(
+        self,
+        table: Dict[str, Any],
+        table_name: str,
+        dimensions: List[Dict[str, Any]],
+        facts: List[Dict[str, Any]],
+        time_dimensions: List[Dict[str, Any]],
+        result: ValidationResult,
+    ):
+        constraints = table.get("constraints", [])
+        if not constraints:
+            return
+        source_file = table.get("source_file")
+        all_columns = dimensions + facts + time_dimensions
+        table_col_names = {
+            c.get("column_name", "").upper()
+            for c in all_columns
+            if c.get("table_name", "").upper() == table_name.upper()
+        }
+        for constraint in constraints:
+            if not isinstance(constraint, dict):
+                continue
+            if constraint.get("type") == "distinct_range":
+                start_col = constraint.get("start_column", "").upper()
+                end_col = constraint.get("end_column", "").upper()
+                c_name = constraint.get("name", "unnamed")
+                if not start_col:
+                    result.add_error(
+                        f"Table '{table_name}' constraint '{c_name}' missing required 'start_column'",
+                        file_path=source_file,
+                        context={"table": table_name, "constraint": c_name},
+                    )
+                elif table_col_names and start_col not in table_col_names:
+                    result.add_warning(
+                        f"Table '{table_name}' constraint '{c_name}' start_column '{start_col}' not found in table columns",
+                        file_path=source_file,
+                        context={"table": table_name, "constraint": c_name, "column": start_col},
+                    )
+                if not end_col:
+                    result.add_error(
+                        f"Table '{table_name}' constraint '{c_name}' missing required 'end_column'",
+                        file_path=source_file,
+                        context={"table": table_name, "constraint": c_name},
+                    )
+                elif table_col_names and end_col not in table_col_names:
+                    result.add_warning(
+                        f"Table '{table_name}' constraint '{c_name}' end_column '{end_col}' not found in table columns",
+                        file_path=source_file,
+                        context={"table": table_name, "constraint": c_name, "column": end_col},
+                    )
+                if start_col and end_col and start_col == end_col:
+                    result.add_error(
+                        f"Table '{table_name}' constraint '{c_name}' start_column and end_column cannot be the same",
+                        file_path=source_file,
+                        context={"table": table_name, "constraint": c_name},
+                    )
 
     def _validate_column(self, column: Dict[str, Any], table_name: str, result: ValidationResult):
         """Validate a single column."""
