@@ -1061,6 +1061,65 @@ class TestWindowFunctionMetrics:
         assert builder._resolve_ref_to_column("") == ""
         assert builder._resolve_ref_to_column("ORDERS.AMOUNT") == "ORDERS.AMOUNT"
 
+    def test_invalid_direction_defaults_to_asc(self, builder, monkeypatch, caplog):
+        """Test that invalid direction values default to ASC with a warning."""
+        import logging
+
+        def mock_get_metrics(conn, table_names):
+            return [
+                {
+                    "NAME": "BAD_WINDOW",
+                    "EXPR": "SUM(ORDERS.AMOUNT)",
+                    "DESCRIPTION": "Bad",
+                    "TABLE_NAME": '["orders"]',
+                    "SYNONYMS": None,
+                    "SAMPLE_VALUES": None,
+                    "WINDOW": '{"partition_by": ["{{ ref(\'orders\', \'customer_id\') }}"], "order_by": [{"column": "{{ ref(\'orders\', \'order_date\') }}", "direction": "INVALID"}]}',
+                }
+            ]
+
+        def mock_noop(conn, t):
+            return []
+
+        monkeypatch.setattr(builder, "_get_metrics_for_selected_tables", mock_get_metrics)
+        monkeypatch.setattr(builder, "_get_dimensions", mock_noop)
+        monkeypatch.setattr(builder, "_get_facts", mock_noop)
+        monkeypatch.setattr(builder, "_get_time_dimensions", mock_noop)
+
+        with caplog.at_level(logging.WARNING):
+            result = builder._build_metrics_clause(None, ["orders"])
+
+        assert "ORDER BY ORDERS.ORDER_DATE ASC" in result
+        assert "Invalid order_by direction" in caplog.text
+
+    def test_order_by_string_format(self, builder, monkeypatch):
+        """Test order_by with plain string entries (not dict)."""
+
+        def mock_get_metrics(conn, table_names):
+            return [
+                {
+                    "NAME": "SIMPLE_WINDOW",
+                    "EXPR": "SUM(ORDERS.AMOUNT)",
+                    "DESCRIPTION": "Simple",
+                    "TABLE_NAME": '["orders"]',
+                    "SYNONYMS": None,
+                    "SAMPLE_VALUES": None,
+                    "WINDOW": '{"partition_by": ["{{ ref(\'orders\', \'customer_id\') }}"], "order_by": ["{{ ref(\'orders\', \'order_date\') }}"]}',
+                }
+            ]
+
+        def mock_noop(conn, t):
+            return []
+
+        monkeypatch.setattr(builder, "_get_metrics_for_selected_tables", mock_get_metrics)
+        monkeypatch.setattr(builder, "_get_dimensions", mock_noop)
+        monkeypatch.setattr(builder, "_get_facts", mock_noop)
+        monkeypatch.setattr(builder, "_get_time_dimensions", mock_noop)
+
+        result = builder._build_metrics_clause(None, ["orders"])
+
+        assert "ORDER BY ORDERS.ORDER_DATE ASC" in result
+
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
