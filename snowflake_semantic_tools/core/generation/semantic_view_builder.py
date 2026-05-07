@@ -1158,7 +1158,8 @@ class SemanticViewBuilder:
             # Add verified_by in contact format
             verified_by = vq.get("VERIFIED_BY")
             if verified_by:
-                parts.append(f"        VERIFIED_BY '(data_quality = {verified_by})'")
+                verified_by_escaped = str(verified_by).replace("'", "''")
+                parts.append(f"        VERIFIED_BY '(data_quality = {verified_by_escaped})'")
 
             parts.append(f"        SQL '{sql}'")
             parts.append("    )")
@@ -1180,6 +1181,8 @@ class SemanticViewBuilder:
             relevant_queries = []
             for row in rows:
                 tables = self._parse_table_list(row.get("TABLES"))
+                if not tables:
+                    continue
                 if self._all_tables_present(tables, normalized_table_names):
                     relevant_queries.append(row)
 
