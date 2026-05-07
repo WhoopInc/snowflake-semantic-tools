@@ -305,6 +305,7 @@ def extract_column_info(column: Dict[str, Any], table_name: str, file_path: Path
             "synonyms": sst_meta.get("synonyms", []),
             "sample_values": sst_meta.get("sample_values", []),
             "is_enum": sst_meta.get("is_enum", False),
+            "visibility": sst_meta.get("visibility"),
             "source_file": str(file_path),  # Store the file path for validation errors
         }
 

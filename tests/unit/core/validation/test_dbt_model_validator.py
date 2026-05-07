@@ -223,3 +223,72 @@ class TestDbtModelValidator:
         assert error.context["column"] == "my_column"
         assert error.context["column_type"] == "invalid_type"
         assert error.context["level"] == "column"
+
+    def test_private_dimension_rejected(self):
+        """Test that a dimension with visibility: private produces an error."""
+        dbt_data = {
+            "sm_tables": [
+                {
+                    "table_name": "CUSTOMERS",
+                    "database": "ANALYTICS",
+                    "schema": "PUBLIC",
+                    "primary_key": ["customer_id"],
+                }
+            ],
+            "sm_dimensions": {
+                "items": [
+                    {
+                        "table_name": "CUSTOMERS",
+                        "name": "status",
+                        "column_type": "dimension",
+                        "data_type": "TEXT",
+                        "description": "Customer status",
+                        "visibility": "private",
+                    }
+                ]
+            },
+        }
+
+        result = self.validator.validate(dbt_data)
+
+        visibility_errors = [
+            issue
+            for issue in result.issues
+            if issue.severity == ValidationSeverity.ERROR and "PRIVATE" in issue.message
+        ]
+        assert len(visibility_errors) == 1
+        assert "only facts and metrics" in visibility_errors[0].message
+
+    def test_private_fact_accepted(self):
+        """Test that a fact with visibility: private does not produce an error."""
+        dbt_data = {
+            "sm_tables": [
+                {
+                    "table_name": "ORDERS",
+                    "database": "ANALYTICS",
+                    "schema": "PUBLIC",
+                    "primary_key": ["order_id"],
+                }
+            ],
+            "sm_facts": {
+                "items": [
+                    {
+                        "table_name": "ORDERS",
+                        "name": "raw_discount",
+                        "column_type": "fact",
+                        "data_type": "NUMBER",
+                        "description": "Internal discount amount",
+                        "visibility": "private",
+                    }
+                ]
+            },
+        }
+
+        result = self.validator.validate(dbt_data)
+
+        visibility_errors = [
+            issue
+            for issue in result.issues
+            if issue.severity == ValidationSeverity.ERROR and "visibility" in issue.message.lower()
+        ]
+        assert len(visibility_errors) == 0
