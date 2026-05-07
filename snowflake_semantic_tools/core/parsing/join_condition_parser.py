@@ -254,6 +254,10 @@ class JoinConditionParser:
             if parsed.operator == "BETWEEN":
                 if not parsed.right_column_end:
                     return False, (f"BETWEEN condition must include AND <end_column> EXCLUSIVE: {condition}")
+                if not parsed.left_table or not parsed.left_column:
+                    return False, f"Could not extract left table/column from: {parsed.left_expression}"
+                if not parsed.right_table or not parsed.right_column:
+                    return False, f"Could not extract right table/column from: {parsed.right_expression}"
                 return True, ""
 
             # Check for unknown join type
@@ -307,7 +311,15 @@ class JoinConditionParser:
         has_range = any(c.condition_type == JoinType.RANGE for c in parsed_conditions)
 
         if has_range:
-            # Range join: left_table (col) REFERENCES right_table (BETWEEN start AND end EXCLUSIVE)
+            non_range = [c for c in parsed_conditions if c.condition_type != JoinType.RANGE]
+            if non_range:
+                from snowflake_semantic_tools.shared import get_logger
+
+                _logger = get_logger("core.parsing.join_condition_parser")
+                _logger.warning(
+                    f"Range join has {len(non_range)} non-range condition(s) that will be ignored. "
+                    f"Snowflake range joins only support a single BETWEEN condition per relationship."
+                )
             range_cond = next(c for c in parsed_conditions if c.condition_type == JoinType.RANGE)
             sql = (
                 f"{left_table_alias} ({range_cond.left_column}) REFERENCES "
