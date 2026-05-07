@@ -1160,8 +1160,7 @@ class SemanticViewBuilder:
             if metric.get("VISIBILITY") and metric["VISIBILITY"].upper() == "PRIVATE":
                 visibility_prefix = "PRIVATE "
 
-            metric_def = f"    {visibility_prefix}{primary_table}.{metric_name} AS {expression}"
-            metric_def = f"    {primary_table}.{metric_name}"
+            metric_def = f"    {visibility_prefix}{primary_table}.{metric_name}"
 
             # Add NON ADDITIVE BY clause for semi-additive metrics
             non_additive_by = self._parse_json_field(metric.get("NON_ADDITIVE_BY"), "non_additive_by")
@@ -1182,7 +1181,6 @@ class SemanticViewBuilder:
                         nab_parts.append(part)
                 if nab_parts:
                     metric_def += f"\n      NON ADDITIVE BY ({', '.join(nab_parts)})"
-            metric_def = f"    {primary_table}.{metric_name}"
 
             # Add USING clause for relationship path disambiguation
             using_rels = self._parse_json_field(metric.get("USING_RELATIONSHIPS"), "using_relationships")
