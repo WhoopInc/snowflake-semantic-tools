@@ -273,6 +273,9 @@ class SemanticTableSchemas:
                     "non_additive_by",
                     ColumnType.ARRAY,
                     description="Semi-additive dimensions: list of {dimension, order, nulls} for NON ADDITIVE BY clause",
+                    "using_relationships",
+                    ColumnType.ARRAY,
+                    description="Relationship names to use for join path disambiguation (USING clause)",
                 ),
             ],
         )

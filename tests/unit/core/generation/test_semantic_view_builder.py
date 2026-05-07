@@ -966,6 +966,8 @@ class TestVisibility:
     """Test cases for PRIVATE/PUBLIC visibility on facts and metrics."""
 class TestNonAdditiveBy:
     """Test cases for NON ADDITIVE BY clause on metrics."""
+class TestUsingRelationships:
+    """Test cases for USING (relationship_name) on metrics."""
 
     @pytest.fixture
     def builder(self):
@@ -1081,6 +1083,8 @@ class TestNonAdditiveBy:
         """Test that a private metric emits PRIVATE keyword in DDL."""
     def test_non_additive_by_emitted(self, builder, monkeypatch):
         """Test that NON ADDITIVE BY clause is emitted for semi-additive metrics."""
+    def test_using_single_relationship(self, builder, monkeypatch):
+        """Test USING clause with a single relationship."""
 
         def mock_get_metrics(conn, table_names):
             return [
@@ -1097,6 +1101,12 @@ class TestNonAdditiveBy:
                     "TABLE_NAME": '["accounts"]',
                     "SYNONYMS": None,
                     "NON_ADDITIVE_BY": '[{"dimension": "snapshot_date", "order": "DESC", "nulls": "LAST"}]',
+                    "NAME": "REVENUE_BY_SHIPPING",
+                    "EXPR": "SUM(ORDERS.AMOUNT)",
+                    "DESCRIPTION": "Revenue by shipping",
+                    "TABLE_NAME": '["orders"]',
+                    "SYNONYMS": None,
+                    "USING_RELATIONSHIPS": '["orders_to_shipping_address"]',
                     "SAMPLE_VALUES": None,
                 }
             ]
@@ -1306,6 +1316,24 @@ class TestNonAdditiveBy:
 
     def test_non_additive_by_without_nulls(self, builder, monkeypatch):
         """Test NON ADDITIVE BY with only dimension and order."""
+        def mock_noop(conn, t):
+            return []
+
+        monkeypatch.setattr(builder, "_get_metrics_for_selected_tables", mock_get_metrics)
+        monkeypatch.setattr(builder, "_get_dimensions", mock_noop)
+        monkeypatch.setattr(builder, "_get_facts", mock_noop)
+        monkeypatch.setattr(builder, "_get_time_dimensions", mock_noop)
+
+        result = builder._build_metrics_clause(None, ["orders"])
+
+        assert "USING (ORDERS_TO_SHIPPING_ADDRESS)" in result
+        assert "AS SUM(ORDERS.AMOUNT)" in result
+        using_pos = result.index("USING")
+        as_pos = result.index("AS SUM")
+        assert using_pos < as_pos, "USING must come before AS"
+
+    def test_using_multiple_relationships(self, builder, monkeypatch):
+        """Test USING clause with multiple relationships."""
 
         def mock_get_metrics(conn, table_names):
             return [
@@ -1316,6 +1344,12 @@ class TestNonAdditiveBy:
                     "TABLE_NAME": '["hr_snapshots"]',
                     "SYNONYMS": None,
                     "NON_ADDITIVE_BY": '[{"dimension": "snapshot_date", "order": "DESC"}]',
+                    "NAME": "COMPLEX_METRIC",
+                    "EXPR": "COUNT(*)",
+                    "DESCRIPTION": "Complex",
+                    "TABLE_NAME": '["orders"]',
+                    "SYNONYMS": None,
+                    "USING_RELATIONSHIPS": '["rel_a", "rel_b"]',
                     "SAMPLE_VALUES": None,
                 }
             ]
@@ -1335,6 +1369,12 @@ class TestNonAdditiveBy:
 
     def test_no_non_additive_by(self, builder, monkeypatch):
         """Test that metrics without non_additive_by don't emit the clause."""
+        result = builder._build_metrics_clause(None, ["orders"])
+
+        assert "USING (REL_A, REL_B)" in result
+
+    def test_no_using_relationships(self, builder, monkeypatch):
+        """Test that metrics without using_relationships don't emit USING."""
 
         def mock_get_metrics(conn, table_names):
             return [
@@ -1345,6 +1385,7 @@ class TestNonAdditiveBy:
                     "TABLE_NAME": '["orders"]',
                     "SYNONYMS": None,
                     "NON_ADDITIVE_BY": None,
+                    "USING_RELATIONSHIPS": None,
                     "SAMPLE_VALUES": None,
                 }
             ]
@@ -1364,6 +1405,10 @@ class TestNonAdditiveBy:
 
     def test_non_additive_by_empty_list(self, builder, monkeypatch):
         """Test that empty non_additive_by list doesn't emit clause."""
+        assert "USING" not in result
+
+    def test_using_relationships_empty_list(self, builder, monkeypatch):
+        """Test that empty using_relationships list doesn't emit USING."""
 
         def mock_get_metrics(conn, table_names):
             return [
@@ -1374,6 +1419,12 @@ class TestNonAdditiveBy:
                     "TABLE_NAME": '["orders"]',
                     "SYNONYMS": None,
                     "NON_ADDITIVE_BY": "[]",
+                    "NAME": "METRIC",
+                    "EXPR": "SUM(ORDERS.AMOUNT)",
+                    "DESCRIPTION": "Metric",
+                    "TABLE_NAME": '["orders"]',
+                    "SYNONYMS": None,
+                    "USING_RELATIONSHIPS": "[]",
                     "SAMPLE_VALUES": None,
                 }
             ]
@@ -1417,6 +1468,7 @@ class TestNonAdditiveBy:
         result = builder._build_metrics_clause(None, ["orders"])
 
         assert "NON ADDITIVE BY" not in result
+        assert "USING" not in result
 
 
 if __name__ == "__main__":
