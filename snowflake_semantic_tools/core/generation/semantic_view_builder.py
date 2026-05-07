@@ -1139,7 +1139,11 @@ class SemanticViewBuilder:
         parsed_tags = self._parse_json_field(tags, "tags")
         if not parsed_tags or not isinstance(parsed_tags, dict):
             return ""
-        tag_parts = [f"{k} = '{v}'" for k, v in parsed_tags.items() if k and v is not None]
+        tag_parts = []
+        for k, v in parsed_tags.items():
+            if k and v is not None:
+                sanitized_value = CharacterSanitizer.sanitize_for_sql_string(str(v))
+                tag_parts.append(f"{k} = '{sanitized_value}'")
         if not tag_parts:
             return ""
         return f"WITH TAG ({', '.join(tag_parts)})"
