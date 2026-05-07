@@ -588,6 +588,7 @@ class SemanticModelValidator:
                 sql_file_path = query["sql_file"]
                 if source_file:
                     from pathlib import Path
+
                     resolved = Path(source_file).parent / sql_file_path
                     if not resolved.exists():
                         result.add_error(
@@ -1301,6 +1302,7 @@ class SemanticModelValidator:
 
     def _validate_tags(self, tags: Any, context_name: str, source_file: Optional[str], result: ValidationResult):
         import re
+
         if not isinstance(tags, dict):
             result.add_error(
                 f"{context_name} 'tags' must be a mapping of tag_name: tag_value",
@@ -1312,6 +1314,14 @@ class SemanticModelValidator:
             if not re.match(r"^[A-Za-z_][A-Za-z0-9_.]*$", str(key)):
                 result.add_error(
                     f"{context_name} tag name '{key}' is not a valid identifier (must be alphanumeric/underscores/dots, starting with letter or underscore)",
+                    file_path=source_file,
+                    context={"type": "tags", "tag_name": str(key)},
+                )
+            elif "." not in str(key):
+                result.add_warning(
+                    f"{context_name} tag '{key}' is not fully-qualified. "
+                    f"Snowflake requires tags to reference existing tag objects "
+                    f"(e.g., 'DB.SCHEMA.TAG_NAME')",
                     file_path=source_file,
                     context={"type": "tags", "tag_name": str(key)},
                 )

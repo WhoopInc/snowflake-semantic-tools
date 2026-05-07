@@ -246,6 +246,7 @@ class DbtModelValidator:
         # Validate tags
         if table.get("tags"):
             from snowflake_semantic_tools.core.validation.rules.semantic_models import SemanticModelValidator
+
             validator = SemanticModelValidator()
             validator._validate_tags(table["tags"], f"Table '{table_name}'", table.get("source_file"), result)
 

@@ -870,8 +870,17 @@ class SemanticViewBuilder:
             if table_info.get("UNIQUE_KEYS"):
                 unique_key_cols = self._parse_json_field(table_info["UNIQUE_KEYS"], "unique_keys")
                 if unique_key_cols and isinstance(unique_key_cols, list):
-                    uk_cols = ", ".join([col.upper() for col in unique_key_cols])
-                    table_def += f"\n      UNIQUE ({uk_cols})"
+                    has_nested = any(isinstance(item, list) for item in unique_key_cols)
+                    if has_nested:
+                        for uk_entry in unique_key_cols:
+                            if isinstance(uk_entry, list):
+                                uk_cols = ", ".join([str(c).upper() for c in uk_entry])
+                            else:
+                                uk_cols = str(uk_entry).upper()
+                            table_def += f"\n      UNIQUE ({uk_cols})"
+                    else:
+                        uk_cols = ", ".join([str(col).upper() for col in unique_key_cols])
+                        table_def += f"\n      UNIQUE ({uk_cols})"
 
             # Add CONSTRAINT DISTINCT RANGE if available (preview feature)
             constraints = self._parse_json_field(table_info.get("CONSTRAINTS"), "constraints")

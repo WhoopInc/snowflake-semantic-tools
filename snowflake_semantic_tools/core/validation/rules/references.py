@@ -166,7 +166,7 @@ class ReferenceValidator:
                 using_rels = metric.get("using_relationships", [])
                 if using_rels and isinstance(using_rels, list):
                     all_relationship_names = set()
-                    rel_data = self._semantic_data.get("relationships", {}) if hasattr(self, '_semantic_data') else {}
+                    rel_data = self._semantic_data.get("relationships", {}) if hasattr(self, "_semantic_data") else {}
                     rel_items = rel_data.get("items", []) if isinstance(rel_data, dict) else []
                     for rel in rel_items:
                         if isinstance(rel, dict):
@@ -174,7 +174,11 @@ class ReferenceValidator:
                             if rn:
                                 all_relationship_names.add(rn.upper())
                     for rel_name in using_rels:
-                        if isinstance(rel_name, str) and rel_name.upper() not in all_relationship_names and all_relationship_names:
+                        if (
+                            isinstance(rel_name, str)
+                            and rel_name.upper() not in all_relationship_names
+                            and all_relationship_names
+                        ):
                             result.add_warning(
                                 f"Metric '{name}' references relationship '{rel_name}' in using_relationships which was not found in defined relationships",
                                 file_path=source_file,

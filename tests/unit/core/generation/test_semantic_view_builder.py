@@ -1046,7 +1046,7 @@ class TestFactSynonyms:
                     "NAME": "cost",
                     "EXPR": "COST",
                     "DESCRIPTION": "Item cost",
-                    "SYNONYMS": '[null, null]',
+                    "SYNONYMS": "[null, null]",
                     "SAMPLE_VALUES": None,
                 }
             ]
@@ -2027,7 +2027,7 @@ class TestWindowFunctionMetrics:
                     "TABLE_NAME": '["orders"]',
                     "SYNONYMS": None,
                     "SAMPLE_VALUES": None,
-                    "WINDOW": '{"partition_by": ["{{ ref(\'orders\', \'customer_id\') }}"], "order_by": ["{{ ref(\'orders\', \'order_date\') }}"]}',
+                    "WINDOW": "{\"partition_by\": [\"{{ ref('orders', 'customer_id') }}\"], \"order_by\": [\"{{ ref('orders', 'order_date') }}\"]}",
                 }
             ]
 

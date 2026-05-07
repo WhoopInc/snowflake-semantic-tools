@@ -128,7 +128,7 @@ def extract_table_info(
 
         # Extract unique keys and apply upper case formatting
         unique_keys = extract_unique_keys(sst_meta)
-        unique_keys_upper = [uk.upper() if isinstance(uk, str) else uk for uk in unique_keys]
+        unique_keys_upper = [[c.upper() for c in uk] if isinstance(uk, list) else uk.upper() for uk in unique_keys]
 
         # Database and Schema Resolution:
         # ONLY source: manifest.json (dbt's compiled output)
@@ -245,8 +245,13 @@ def extract_unique_keys(sst_meta: Dict[str, Any]) -> List[str]:
             else:
                 return [uk_from_sst.strip()]
         elif isinstance(uk_from_sst, list):
-            # Ensure each item is stripped of whitespace
-            return [str(key).strip() for key in uk_from_sst]
+            result = []
+            for key in uk_from_sst:
+                if isinstance(key, list):
+                    result.append([str(k).strip() for k in key])
+                else:
+                    result.append(str(key).strip())
+            return result
     return []
 
 
