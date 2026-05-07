@@ -960,6 +960,8 @@ class TestTableNotFoundErrorFormatting:
 
 class TestFactSynonyms:
     """Test cases for synonym emission in the FACTS clause."""
+class TestFiltersToInstructions:
+    """Test cases for filter-to-AI_SQL_GENERATION instruction conversion."""
 
     @pytest.fixture
     def builder(self):
@@ -1076,6 +1078,151 @@ class TestFactSynonyms:
         result = builder._build_facts_clause(None, ["orders"])
 
         assert "WITH SYNONYMS = ('unit price', 'cost per item')" in result
+        builder = SemanticViewBuilder(config)
+        builder.metadata_database = "TEST_DB"
+        builder.metadata_schema = "TEST_SCHEMA"
+        return builder
+
+    def test_filters_converted_to_instructions(self, builder, monkeypatch):
+        """Test that filters are converted to AI_SQL_GENERATION instruction text."""
+
+        def mock_get_filters(conn, table_names):
+            return [
+                {
+                    "NAME": "ACTIVE_CUSTOMERS_ONLY",
+                    "TABLE_NAME": "CUSTOMERS",
+                    "DESCRIPTION": "Only include active customers",
+                    "EXPR": "CUSTOMERS.STATUS = 'Active'",
+                }
+            ]
+
+        monkeypatch.setattr(builder, "_get_filters_for_tables", mock_get_filters)
+
+        result = builder._build_filters_as_instructions(None, ["customers"])
+
+        assert "Default Filters:" in result
+        assert "CUSTOMERS.STATUS = 'Active'" in result
+        assert "Only include active customers" in result
+        assert "unless the user explicitly requests unfiltered data" in result
+
+    def test_multiple_filters_all_included(self, builder, monkeypatch):
+        """Test that multiple filters are all included in instructions."""
+
+        def mock_get_filters(conn, table_names):
+            return [
+                {
+                    "NAME": "ACTIVE_ONLY",
+                    "TABLE_NAME": "CUSTOMERS",
+                    "DESCRIPTION": "Active customers",
+                    "EXPR": "CUSTOMERS.STATUS = 'Active'",
+                },
+                {
+                    "NAME": "LAST_90_DAYS",
+                    "TABLE_NAME": "ORDERS",
+                    "DESCRIPTION": "Recent orders",
+                    "EXPR": "ORDERS.ORDERED_AT >= DATEADD('day', -90, CURRENT_DATE())",
+                },
+            ]
+
+        monkeypatch.setattr(builder, "_get_filters_for_tables", mock_get_filters)
+
+        result = builder._build_filters_as_instructions(None, ["customers", "orders"])
+
+        assert "CUSTOMERS.STATUS = 'Active'" in result
+        assert "ORDERS.ORDERED_AT >= DATEADD" in result
+
+    def test_no_filters_returns_empty(self, builder, monkeypatch):
+        """Test that no filters returns empty string."""
+
+        def mock_get_filters(conn, table_names):
+            return []
+
+        monkeypatch.setattr(builder, "_get_filters_for_tables", mock_get_filters)
+
+        result = builder._build_filters_as_instructions(None, ["customers"])
+
+        assert result == ""
+
+    def test_filter_without_description(self, builder, monkeypatch):
+        """Test that filters without description still work."""
+
+        def mock_get_filters(conn, table_names):
+            return [
+                {
+                    "NAME": "ACTIVE_ONLY",
+                    "TABLE_NAME": "CUSTOMERS",
+                    "DESCRIPTION": "",
+                    "EXPR": "CUSTOMERS.IS_ACTIVE = TRUE",
+                }
+            ]
+
+        monkeypatch.setattr(builder, "_get_filters_for_tables", mock_get_filters)
+
+        result = builder._build_filters_as_instructions(None, ["customers"])
+
+        assert "CUSTOMERS.IS_ACTIVE = TRUE" in result
+        assert "unless the user explicitly requests unfiltered data" in result
+
+    def test_filters_disabled_via_config(self, builder, monkeypatch):
+        """Test that filters_to_instructions=false skips conversion."""
+        from snowflake_semantic_tools.shared.config import Config
+
+        def mock_get_filters(conn, table_names):
+            return [
+                {
+                    "NAME": "ACTIVE_ONLY",
+                    "TABLE_NAME": "CUSTOMERS",
+                    "DESCRIPTION": "Active only",
+                    "EXPR": "CUSTOMERS.STATUS = 'Active'",
+                }
+            ]
+
+        monkeypatch.setattr(builder, "_get_filters_for_tables", mock_get_filters)
+
+        original_get = Config.get
+
+        def mock_config_get(self, key_path, default=None):
+            if key_path == "generation.filters_to_instructions":
+                return False
+            return original_get(self, key_path, default)
+
+        monkeypatch.setattr(Config, "get", mock_config_get)
+
+        result = builder._build_filters_as_instructions(None, ["customers"])
+
+        assert result == ""
+
+    def test_filters_appended_to_ai_sql_generation(self, builder, monkeypatch):
+        """Test that filters are appended to existing AI_SQL_GENERATION content."""
+
+        def mock_get_custom_instructions(conn, names):
+            return [
+                {
+                    "name": "BUSINESS_RULES",
+                    "question_categorization": None,
+                    "sql_generation": "Always use fiscal year calendar.",
+                }
+            ]
+
+        def mock_get_filters(conn, table_names):
+            return [
+                {
+                    "NAME": "ACTIVE_ONLY",
+                    "TABLE_NAME": "CUSTOMERS",
+                    "DESCRIPTION": "Active only",
+                    "EXPR": "CUSTOMERS.STATUS = 'Active'",
+                }
+            ]
+
+        monkeypatch.setattr(builder, "_get_custom_instructions_for_view", mock_get_custom_instructions)
+        monkeypatch.setattr(builder, "_get_filters_for_tables", mock_get_filters)
+
+        result = builder._build_ai_guidance_clauses(None, ["business_rules"], table_names=["customers"])
+
+        assert "AI_SQL_GENERATION" in result
+        assert "fiscal year calendar" in result
+        assert "CUSTOMERS.STATUS" in result
+        assert "Default Filters:" in result
 
 
 if __name__ == "__main__":

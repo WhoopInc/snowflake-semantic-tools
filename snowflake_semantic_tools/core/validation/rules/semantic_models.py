@@ -70,6 +70,15 @@ class SemanticModelValidator:
 
         if "filters" in semantic_data:
             self._validate_filters(semantic_data["filters"], result)
+            filter_items = semantic_data["filters"].get("items", [])
+            if filter_items:
+                result.add_warning(
+                    "snowflake_filters is deprecated and will be removed in a future major version. "
+                    "Filters are auto-converted to AI_SQL_GENERATION instructions at generation time, "
+                    "but for full control over instruction wording, migrate to snowflake_custom_instructions "
+                    "with sql_generation text.",
+                    context={"type": "DEPRECATION"},
+                )
 
         if "custom_instructions" in semantic_data:
             self._validate_custom_instructions(semantic_data["custom_instructions"], result)

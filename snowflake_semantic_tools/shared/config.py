@@ -76,6 +76,9 @@ class Config:
                 "state_path": None,  # Path to state artifacts directory
                 "auto_compile": False,  # Auto-compile manifest if not found (dbt Core only)
             },
+            "generation": {
+                "filters_to_instructions": True,  # Convert filters to AI_SQL_GENERATION instructions
+            },
             "logging": {"level": "INFO", "format": "%(asctime)s - %(name)s - %(levelname)s - %(message)s"},
         }
 
