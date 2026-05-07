@@ -1019,6 +1019,54 @@ class TestConstraintDistinctRange:
         assert "CONSTRAINT" not in result
         assert "DISTINCT RANGE" not in result
 
+    def test_constraint_missing_fields_warns(self, builder, monkeypatch, caplog):
+        """Test that missing constraint fields log a warning and skip."""
+        import logging
+
+        def mock_get_table_info(conn, table_name):
+            return {
+                "TABLE_NAME": "RATES",
+                "DATABASE": "TEST_DB",
+                "SCHEMA": "TEST_SCHEMA",
+                "PRIMARY_KEY": '["rate_id"]',
+                "UNIQUE_KEYS": None,
+                "CONSTRAINTS": '[{"type": "distinct_range", "name": "", "start_column": "start_date", "end_column": "end_date"}]',
+                "DESCRIPTION": "Rates",
+                "SYNONYMS": None,
+            }
+
+        monkeypatch.setattr(builder, "_get_table_info", mock_get_table_info)
+
+        with caplog.at_level(logging.WARNING):
+            result = builder._build_tables_clause(None, ["rates"])
+
+        assert "CONSTRAINT" not in result
+        assert "missing fields" in caplog.text
+
+    def test_constraint_unrecognized_type_warns(self, builder, monkeypatch, caplog):
+        """Test that unrecognized constraint type logs a warning."""
+        import logging
+
+        def mock_get_table_info(conn, table_name):
+            return {
+                "TABLE_NAME": "ORDERS",
+                "DATABASE": "TEST_DB",
+                "SCHEMA": "TEST_SCHEMA",
+                "PRIMARY_KEY": '["order_id"]',
+                "UNIQUE_KEYS": None,
+                "CONSTRAINTS": '[{"type": "unknown_type", "name": "foo"}]',
+                "DESCRIPTION": "Orders",
+                "SYNONYMS": None,
+            }
+
+        monkeypatch.setattr(builder, "_get_table_info", mock_get_table_info)
+
+        with caplog.at_level(logging.WARNING):
+            result = builder._build_tables_clause(None, ["orders"])
+
+        assert "CONSTRAINT" not in result
+        assert "unrecognized constraint type" in caplog.text
+
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
