@@ -1230,8 +1230,9 @@ class SemanticViewBuilder:
 
                 if over_parts:
                     over_clause = " ".join(over_parts)
-                    metric_def = (
-                        f"    {primary_table}.{metric_name} AS {expression} OVER (\n        {over_clause}\n    )"
+                    metric_def = metric_def.replace(
+                        f"AS {expression}",
+                        f"AS {expression} OVER (\n        {over_clause}\n    )",
                     )
 
             # Add comment if available
@@ -1289,7 +1290,7 @@ class SemanticViewBuilder:
             # Add verified_by in contact format
             verified_by = vq.get("VERIFIED_BY")
             if verified_by:
-                verified_by_escaped = str(verified_by).replace("'", "''")
+                verified_by_escaped = CharacterSanitizer.sanitize_for_sql_string(str(verified_by))
                 parts.append(f"        VERIFIED_BY '(data_quality = {verified_by_escaped})'")
 
             parts.append(f"        SQL '{sql}'")
