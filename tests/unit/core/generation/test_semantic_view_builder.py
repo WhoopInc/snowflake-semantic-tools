@@ -958,5 +958,109 @@ class TestTableNotFoundErrorFormatting:
         assert "Original error:" in result
 
 
+class TestWindowFunctionMetrics:
+    """Test cases for window function metric DDL generation."""
+
+    @pytest.fixture
+    def builder(self):
+        config = SnowflakeConfig(
+            account="test", user="test", password="test", role="test", warehouse="test", database="test_db", schema="s"
+        )
+        return SemanticViewBuilder(config)
+
+    def test_standard_partition_by(self, builder, monkeypatch):
+        """Test OVER (PARTITION BY ... ORDER BY ...) emission."""
+
+        def mock_get_metrics(conn, table_names):
+            return [
+                {
+                    "NAME": "RUNNING_REVENUE",
+                    "EXPR": "SUM(ORDERS.AMOUNT)",
+                    "DESCRIPTION": "Running revenue",
+                    "TABLE_NAME": '["orders"]',
+                    "SYNONYMS": None,
+                    "SAMPLE_VALUES": None,
+                    "WINDOW": '{"partition_by": ["{{ ref(\'customers\', \'customer_id\') }}"], "order_by": [{"column": "{{ ref(\'orders\', \'order_date\') }}", "direction": "ASC"}]}',
+                }
+            ]
+
+        def mock_noop(conn, t):
+            return []
+
+        monkeypatch.setattr(builder, "_get_metrics_for_selected_tables", mock_get_metrics)
+        monkeypatch.setattr(builder, "_get_dimensions", mock_noop)
+        monkeypatch.setattr(builder, "_get_facts", mock_noop)
+        monkeypatch.setattr(builder, "_get_time_dimensions", mock_noop)
+
+        result = builder._build_metrics_clause(None, ["orders", "customers"])
+
+        assert "OVER (" in result
+        assert "PARTITION BY CUSTOMERS.CUSTOMER_ID" in result
+        assert "ORDER BY ORDERS.ORDER_DATE ASC" in result
+
+    def test_partition_by_excluding(self, builder, monkeypatch):
+        """Test PARTITION BY EXCLUDING emission."""
+
+        def mock_get_metrics(conn, table_names):
+            return [
+                {
+                    "NAME": "CUMULATIVE_REVENUE",
+                    "EXPR": "SUM(ORDERS.AMOUNT)",
+                    "DESCRIPTION": "Cumulative revenue",
+                    "TABLE_NAME": '["orders"]',
+                    "SYNONYMS": None,
+                    "SAMPLE_VALUES": None,
+                    "WINDOW": '{"partition_by_excluding": ["{{ ref(\'orders\', \'order_date\') }}"], "order_by": [{"column": "{{ ref(\'orders\', \'order_date\') }}", "direction": "ASC"}]}',
+                }
+            ]
+
+        def mock_noop(conn, t):
+            return []
+
+        monkeypatch.setattr(builder, "_get_metrics_for_selected_tables", mock_get_metrics)
+        monkeypatch.setattr(builder, "_get_dimensions", mock_noop)
+        monkeypatch.setattr(builder, "_get_facts", mock_noop)
+        monkeypatch.setattr(builder, "_get_time_dimensions", mock_noop)
+
+        result = builder._build_metrics_clause(None, ["orders"])
+
+        assert "PARTITION BY EXCLUDING ORDERS.ORDER_DATE" in result
+
+    def test_no_window_no_over(self, builder, monkeypatch):
+        """Test that metrics without window config don't emit OVER."""
+
+        def mock_get_metrics(conn, table_names):
+            return [
+                {
+                    "NAME": "TOTAL",
+                    "EXPR": "SUM(ORDERS.AMOUNT)",
+                    "DESCRIPTION": "Total",
+                    "TABLE_NAME": '["orders"]',
+                    "SYNONYMS": None,
+                    "SAMPLE_VALUES": None,
+                    "WINDOW": None,
+                }
+            ]
+
+        def mock_noop(conn, t):
+            return []
+
+        monkeypatch.setattr(builder, "_get_metrics_for_selected_tables", mock_get_metrics)
+        monkeypatch.setattr(builder, "_get_dimensions", mock_noop)
+        monkeypatch.setattr(builder, "_get_facts", mock_noop)
+        monkeypatch.setattr(builder, "_get_time_dimensions", mock_noop)
+
+        result = builder._build_metrics_clause(None, ["orders"])
+
+        assert "OVER" not in result
+
+    def test_resolve_ref_to_column(self, builder):
+        """Test _resolve_ref_to_column helper."""
+        assert builder._resolve_ref_to_column("{{ ref('orders', 'amount') }}") == "ORDERS.AMOUNT"
+        assert builder._resolve_ref_to_column("{{ column('orders', 'amount') }}") == "ORDERS.AMOUNT"
+        assert builder._resolve_ref_to_column("") == ""
+        assert builder._resolve_ref_to_column("ORDERS.AMOUNT") == "ORDERS.AMOUNT"
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
