@@ -182,6 +182,7 @@ def extract_table_info(
             "model_name": name,  # Store the original model name
             "source_file": str(file_path),  # Store the file path for validation errors
             "cortex_searchable": sst_meta.get("cortex_searchable", False),
+            "tags": sst_meta.get("tags"),
         }
 
         return table_record
@@ -307,6 +308,7 @@ def extract_column_info(column: Dict[str, Any], table_name: str, file_path: Path
             "sample_values": sst_meta.get("sample_values", []),
             "is_enum": sst_meta.get("is_enum", False),
             "visibility": sst_meta.get("visibility"),
+            "tags": sst_meta.get("tags"),
             "source_file": str(file_path),  # Store the file path for validation errors
         }
 

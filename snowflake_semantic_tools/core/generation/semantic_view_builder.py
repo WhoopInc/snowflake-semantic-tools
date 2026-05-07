@@ -912,6 +912,11 @@ class SemanticViewBuilder:
             description = self._sanitize_description(description)
             table_def += f"\n      COMMENT = '{description}'"
 
+            # Add tags if available
+            tag_clause = self._build_tag_clause(table_info.get("TAGS"))
+            if tag_clause:
+                table_def += f"\n      {tag_clause}"
+
             table_definitions.append(table_def)
 
         return ",\n".join(table_definitions)
@@ -999,6 +1004,11 @@ class SemanticViewBuilder:
                 description = self._sanitize_description(fact["DESCRIPTION"])
                 fact_def += f"\n      COMMENT = '{description}'"
 
+            # Add tags if available
+            tag_clause = self._build_tag_clause(fact.get("TAGS"))
+            if tag_clause:
+                fact_def += f"\n      {tag_clause}"
+
             fact_definitions.append(fact_def)
 
         return ",\n".join(fact_definitions)
@@ -1048,6 +1058,11 @@ class SemanticViewBuilder:
             if dim.get("DESCRIPTION"):
                 description = self._sanitize_description(dim["DESCRIPTION"])
                 dim_def += f"\n      COMMENT = '{description}'"
+
+            # Add tags if available
+            tag_clause = self._build_tag_clause(dim.get("TAGS"))
+            if tag_clause:
+                dim_def += f"\n      {tag_clause}"
 
             dim_definitions.append(dim_def)
 
@@ -1343,6 +1358,19 @@ class SemanticViewBuilder:
         if "." in cleaned:
             return cleaned
         return cleaned
+    def _build_tag_clause(self, tags: Any) -> str:
+        """Build WITH TAG (...) clause from a tags dict or JSON string."""
+        parsed_tags = self._parse_json_field(tags, "tags")
+        if not parsed_tags or not isinstance(parsed_tags, dict):
+            return ""
+        tag_parts = []
+        for k, v in parsed_tags.items():
+            if k and v is not None:
+                sanitized_value = CharacterSanitizer.sanitize_for_sql_string(str(v))
+                tag_parts.append(f"{k} = '{sanitized_value}'")
+        if not tag_parts:
+            return ""
+        return f"WITH TAG ({', '.join(tag_parts)})"
 
     def _build_ca_extension(self, conn, table_names: List[str]) -> str:
         """
