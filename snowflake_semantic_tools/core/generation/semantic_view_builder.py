@@ -1355,15 +1355,11 @@ class SemanticViewBuilder:
 
     @staticmethod
     def _resolve_templates_in_sql(sql: str) -> str:
-        """Resolve {{ ref() }}, {{ table() }}, {{ column() }} templates in SQL strings."""
+        """Resolve {{ ref('table') }} templates in VQR SQL to uppercase table names."""
         if not sql or "{{" not in sql:
             return sql
-        ref2_pattern = re.compile(r"{{\s*ref\s*\(\s*['\"]([^'\"]+)['\"]\s*,\s*['\"]([^'\"]+)['\"]\s*\)\s*}}")
-        sql = ref2_pattern.sub(lambda m: f"{m.group(1).upper()}.{m.group(2).upper()}", sql)
         ref1_pattern = re.compile(r"{{\s*ref\s*\(\s*['\"]([^'\"]+)['\"]\s*\)\s*}}")
         sql = ref1_pattern.sub(lambda m: m.group(1).upper(), sql)
-        col_pattern = re.compile(r"{{\s*column\s*\(\s*['\"]([^'\"]+)['\"]\s*,\s*['\"]([^'\"]+)['\"]\s*\)\s*}}")
-        sql = col_pattern.sub(lambda m: f"{m.group(1).upper()}.{m.group(2).upper()}", sql)
         table_pattern = re.compile(r"{{\s*table\s*\(\s*['\"]([^'\"]+)['\"]\s*\)\s*}}")
         sql = table_pattern.sub(lambda m: m.group(1).upper(), sql)
         return sql
