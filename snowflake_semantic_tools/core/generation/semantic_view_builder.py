@@ -1367,8 +1367,11 @@ class SemanticViewBuilder:
         tag_parts = []
         for k, v in parsed_tags.items():
             if k and v is not None:
+                sanitized_key = re.sub(r"[^A-Za-z0-9_.]", "", str(k))
+                if not sanitized_key:
+                    continue
                 sanitized_value = CharacterSanitizer.sanitize_for_sql_string(str(v))
-                tag_parts.append(f"{k} = '{sanitized_value}'")
+                tag_parts.append(f"{sanitized_key} = '{sanitized_value}'")
         if not tag_parts:
             return ""
         return f"WITH TAG ({', '.join(tag_parts)})"
