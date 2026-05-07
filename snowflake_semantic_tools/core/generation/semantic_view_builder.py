@@ -1110,6 +1110,8 @@ class SemanticViewBuilder:
                 for entry in non_additive_by:
                     if isinstance(entry, dict):
                         dim = entry.get("dimension", "").upper()
+                        if not dim:
+                            continue
                         order = entry.get("order", "").upper()
                         nulls = entry.get("nulls", "").upper()
                         part = dim
