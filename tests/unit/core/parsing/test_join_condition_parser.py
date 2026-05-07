@@ -277,14 +277,21 @@ class TestValidationUnsupportedOperators:
         assert "not supported" in error_msg
         assert ">" in error_msg
 
-    def test_validate_between_operator_rejected(self):
-        """Test that BETWEEN operator is rejected with helpful error message."""
-        condition = "{{ column('orders', 'ordered_at') }} BETWEEN {{ column('orders', 'start_date') }} AND {{ column('orders', 'end_date') }}"
+    def test_validate_between_operator_accepted(self):
+        """Test that BETWEEN operator is accepted for range joins (preview feature)."""
+        condition = "{{ column('orders', 'ordered_at') }} BETWEEN {{ column('rates', 'start_date') }} AND {{ column('rates', 'end_date') }} EXCLUSIVE"
+        is_valid, error_msg = JoinConditionParser.validate_condition(condition)
+
+        assert is_valid is True
+        assert error_msg == ""
+
+    def test_validate_between_without_end_rejected(self):
+        """Test that BETWEEN without proper end column is rejected."""
+        condition = "{{ column('orders', 'ordered_at') }} BETWEEN {{ column('rates', 'start_date') }}"
         is_valid, error_msg = JoinConditionParser.validate_condition(condition)
 
         assert is_valid is False
         assert "BETWEEN" in error_msg
-        assert "not supported" in error_msg
 
     def test_validate_less_than_operator_rejected(self):
         """Test that < operator is rejected with helpful error message."""
