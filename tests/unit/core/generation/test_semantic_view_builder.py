@@ -1003,6 +1003,9 @@ class TestNonAdditiveBy:
 
         assert "NON ADDITIVE BY (SNAPSHOT_DATE DESC NULLS LAST)" in result
         assert "AS BALANCE" in result
+        nab_pos = result.index("NON ADDITIVE BY")
+        as_pos = result.index("AS BALANCE")
+        assert nab_pos < as_pos, "NON ADDITIVE BY must come before AS"
 
     def test_non_additive_by_without_nulls(self, builder, monkeypatch):
         """Test NON ADDITIVE BY with only dimension and order."""
@@ -1061,6 +1064,62 @@ class TestNonAdditiveBy:
 
         assert "NON ADDITIVE BY" not in result
         assert "ORDERS.TOTAL_REVENUE AS SUM(ORDERS.AMOUNT)" in result
+
+    def test_non_additive_by_empty_list(self, builder, monkeypatch):
+        """Test that empty non_additive_by list doesn't emit clause."""
+
+        def mock_get_metrics(conn, table_names):
+            return [
+                {
+                    "NAME": "REVENUE",
+                    "EXPR": "SUM(ORDERS.AMOUNT)",
+                    "DESCRIPTION": "Revenue",
+                    "TABLE_NAME": '["orders"]',
+                    "SYNONYMS": None,
+                    "NON_ADDITIVE_BY": "[]",
+                    "SAMPLE_VALUES": None,
+                }
+            ]
+
+        def mock_noop(conn, t):
+            return []
+
+        monkeypatch.setattr(builder, "_get_metrics_for_selected_tables", mock_get_metrics)
+        monkeypatch.setattr(builder, "_get_dimensions", mock_noop)
+        monkeypatch.setattr(builder, "_get_facts", mock_noop)
+        monkeypatch.setattr(builder, "_get_time_dimensions", mock_noop)
+
+        result = builder._build_metrics_clause(None, ["orders"])
+
+        assert "NON ADDITIVE BY" not in result
+
+    def test_non_additive_by_missing_dimension(self, builder, monkeypatch):
+        """Test that entries with missing dimension field are skipped."""
+
+        def mock_get_metrics(conn, table_names):
+            return [
+                {
+                    "NAME": "BAD_METRIC",
+                    "EXPR": "SUM(ORDERS.AMOUNT)",
+                    "DESCRIPTION": "Bad",
+                    "TABLE_NAME": '["orders"]',
+                    "SYNONYMS": None,
+                    "NON_ADDITIVE_BY": '[{"order": "DESC"}]',
+                    "SAMPLE_VALUES": None,
+                }
+            ]
+
+        def mock_noop(conn, t):
+            return []
+
+        monkeypatch.setattr(builder, "_get_metrics_for_selected_tables", mock_get_metrics)
+        monkeypatch.setattr(builder, "_get_dimensions", mock_noop)
+        monkeypatch.setattr(builder, "_get_facts", mock_noop)
+        monkeypatch.setattr(builder, "_get_time_dimensions", mock_noop)
+
+        result = builder._build_metrics_clause(None, ["orders"])
+
+        assert "NON ADDITIVE BY" not in result
 
 
 if __name__ == "__main__":
