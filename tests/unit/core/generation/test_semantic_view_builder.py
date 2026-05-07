@@ -1089,6 +1089,18 @@ class TestConstraintDistinctRange:
         """Test that NON ADDITIVE BY clause is emitted for semi-additive metrics."""
     def test_using_single_relationship(self, builder, monkeypatch):
         """Test USING clause with a single relationship."""
+class TestWindowFunctionMetrics:
+    """Test cases for window function metric DDL generation."""
+
+    @pytest.fixture
+    def builder(self):
+        config = SnowflakeConfig(
+            account="test", user="test", password="test", role="test", warehouse="test", database="test_db", schema="s"
+        )
+        return SemanticViewBuilder(config)
+
+    def test_standard_partition_by(self, builder, monkeypatch):
+        """Test OVER (PARTITION BY ... ORDER BY ...) emission."""
 
         def mock_get_metrics(conn, table_names):
             return [
@@ -1355,6 +1367,13 @@ class TestConstraintDistinctRange:
                     "SYNONYMS": None,
                     "USING_RELATIONSHIPS": '["rel_a", "rel_b"]',
                     "SAMPLE_VALUES": None,
+                    "NAME": "RUNNING_REVENUE",
+                    "EXPR": "SUM(ORDERS.AMOUNT)",
+                    "DESCRIPTION": "Running revenue",
+                    "TABLE_NAME": '["orders"]',
+                    "SYNONYMS": None,
+                    "SAMPLE_VALUES": None,
+                    "WINDOW": '{"partition_by": ["{{ ref(\'customers\', \'customer_id\') }}"], "order_by": [{"column": "{{ ref(\'orders\', \'order_date\') }}", "direction": "ASC"}]}',
                 }
             ]
 
@@ -1379,6 +1398,14 @@ class TestConstraintDistinctRange:
 
     def test_no_using_relationships(self, builder, monkeypatch):
         """Test that metrics without using_relationships don't emit USING."""
+        result = builder._build_metrics_clause(None, ["orders", "customers"])
+
+        assert "OVER (" in result
+        assert "PARTITION BY CUSTOMERS.CUSTOMER_ID" in result
+        assert "ORDER BY ORDERS.ORDER_DATE ASC" in result
+
+    def test_partition_by_excluding(self, builder, monkeypatch):
+        """Test PARTITION BY EXCLUDING emission."""
 
         def mock_get_metrics(conn, table_names):
             return [
@@ -1391,6 +1418,13 @@ class TestConstraintDistinctRange:
                     "NON_ADDITIVE_BY": None,
                     "USING_RELATIONSHIPS": None,
                     "SAMPLE_VALUES": None,
+                    "NAME": "CUMULATIVE_REVENUE",
+                    "EXPR": "SUM(ORDERS.AMOUNT)",
+                    "DESCRIPTION": "Cumulative revenue",
+                    "TABLE_NAME": '["orders"]',
+                    "SYNONYMS": None,
+                    "SAMPLE_VALUES": None,
+                    "WINDOW": '{"partition_by_excluding": ["{{ ref(\'orders\', \'order_date\') }}"], "order_by": [{"column": "{{ ref(\'orders\', \'order_date\') }}", "direction": "ASC"}]}',
                 }
             ]
 
@@ -1413,6 +1447,10 @@ class TestConstraintDistinctRange:
 
     def test_using_relationships_empty_list(self, builder, monkeypatch):
         """Test that empty using_relationships list doesn't emit USING."""
+        assert "PARTITION BY EXCLUDING ORDERS.ORDER_DATE" in result
+
+    def test_no_window_no_over(self, builder, monkeypatch):
+        """Test that metrics without window config don't emit OVER."""
 
         def mock_get_metrics(conn, table_names):
             return [
@@ -1430,6 +1468,13 @@ class TestConstraintDistinctRange:
                     "SYNONYMS": None,
                     "USING_RELATIONSHIPS": "[]",
                     "SAMPLE_VALUES": None,
+                    "NAME": "TOTAL",
+                    "EXPR": "SUM(ORDERS.AMOUNT)",
+                    "DESCRIPTION": "Total",
+                    "TABLE_NAME": '["orders"]',
+                    "SYNONYMS": None,
+                    "SAMPLE_VALUES": None,
+                    "WINDOW": None,
                 }
             ]
 
@@ -1447,17 +1492,62 @@ class TestConstraintDistinctRange:
 
     def test_non_additive_by_missing_dimension(self, builder, monkeypatch):
         """Test that entries with missing dimension field are skipped."""
+        assert "OVER" not in result
+
+    def test_resolve_ref_to_column(self, builder):
+        """Test _resolve_ref_to_column helper."""
+        assert builder._resolve_ref_to_column("{{ ref('orders', 'amount') }}") == "ORDERS.AMOUNT"
+        assert builder._resolve_ref_to_column("{{ column('orders', 'amount') }}") == "ORDERS.AMOUNT"
+        assert builder._resolve_ref_to_column("") == ""
+        assert builder._resolve_ref_to_column("ORDERS.AMOUNT") == "ORDERS.AMOUNT"
+
+    def test_invalid_direction_defaults_to_asc(self, builder, monkeypatch, caplog):
+        """Test that invalid direction values default to ASC with a warning."""
+        import logging
 
         def mock_get_metrics(conn, table_names):
             return [
                 {
                     "NAME": "BAD_METRIC",
+                    "NAME": "BAD_WINDOW",
                     "EXPR": "SUM(ORDERS.AMOUNT)",
                     "DESCRIPTION": "Bad",
                     "TABLE_NAME": '["orders"]',
                     "SYNONYMS": None,
                     "NON_ADDITIVE_BY": '[{"order": "DESC"}]',
                     "SAMPLE_VALUES": None,
+                    "SAMPLE_VALUES": None,
+                    "WINDOW": '{"partition_by": ["{{ ref(\'orders\', \'customer_id\') }}"], "order_by": [{"column": "{{ ref(\'orders\', \'order_date\') }}", "direction": "INVALID"}]}',
+                }
+            ]
+
+        def mock_noop(conn, t):
+            return []
+
+        monkeypatch.setattr(builder, "_get_metrics_for_selected_tables", mock_get_metrics)
+        monkeypatch.setattr(builder, "_get_dimensions", mock_noop)
+        monkeypatch.setattr(builder, "_get_facts", mock_noop)
+        monkeypatch.setattr(builder, "_get_time_dimensions", mock_noop)
+
+        with caplog.at_level(logging.WARNING):
+            result = builder._build_metrics_clause(None, ["orders"])
+
+        assert "ORDER BY ORDERS.ORDER_DATE ASC" in result
+        assert "Invalid order_by direction" in caplog.text
+
+    def test_order_by_string_format(self, builder, monkeypatch):
+        """Test order_by with plain string entries (not dict)."""
+
+        def mock_get_metrics(conn, table_names):
+            return [
+                {
+                    "NAME": "SIMPLE_WINDOW",
+                    "EXPR": "SUM(ORDERS.AMOUNT)",
+                    "DESCRIPTION": "Simple",
+                    "TABLE_NAME": '["orders"]',
+                    "SYNONYMS": None,
+                    "SAMPLE_VALUES": None,
+                    "WINDOW": '{"partition_by": ["{{ ref(\'orders\', \'customer_id\') }}"], "order_by": ["{{ ref(\'orders\', \'order_date\') }}"]}',
                 }
             ]
 
@@ -1657,6 +1747,7 @@ class TestConstraintDistinctRange:
 
         assert "CONSTRAINT" not in result
         assert "unrecognized constraint type" in caplog.text
+        assert "ORDER BY ORDERS.ORDER_DATE ASC" in result
 
 
 if __name__ == "__main__":

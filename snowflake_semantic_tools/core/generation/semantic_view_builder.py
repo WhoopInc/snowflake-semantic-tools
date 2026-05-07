@@ -1178,6 +1178,49 @@ class SemanticViewBuilder:
 
             metric_def += f" AS {expression}"
 
+            # Add OVER clause for window function metrics
+            window_config = self._parse_json_field(metric.get("WINDOW"), "window")
+            if window_config and isinstance(window_config, dict):
+                over_parts = []
+                partition_by = window_config.get("partition_by")
+                partition_by_excluding = window_config.get("partition_by_excluding")
+                order_by = window_config.get("order_by")
+
+                if partition_by_excluding and isinstance(partition_by_excluding, list):
+                    cols = [self._resolve_ref_to_column(c) for c in partition_by_excluding]
+                    cols = [c for c in cols if c]
+                    if cols:
+                        over_parts.append(f"PARTITION BY EXCLUDING {', '.join(cols)}")
+                elif partition_by and isinstance(partition_by, list):
+                    cols = [self._resolve_ref_to_column(c) for c in partition_by]
+                    cols = [c for c in cols if c]
+                    if cols:
+                        over_parts.append(f"PARTITION BY {', '.join(cols)}")
+
+                if order_by and isinstance(order_by, list):
+                    order_cols = []
+                    for ob in order_by:
+                        if isinstance(ob, dict):
+                            col = self._resolve_ref_to_column(ob.get("column", ""))
+                            direction = ob.get("direction", "ASC").upper()
+                            if direction not in ("ASC", "DESC"):
+                                logger.warning(f"Invalid order_by direction '{direction}' — defaulting to ASC")
+                                direction = "ASC"
+                            if col:
+                                order_cols.append(f"{col} {direction}")
+                        elif isinstance(ob, str):
+                            col = self._resolve_ref_to_column(ob)
+                            if col:
+                                order_cols.append(f"{col} ASC")
+                    if order_cols:
+                        over_parts.append(f"ORDER BY {', '.join(order_cols)}")
+
+                if over_parts:
+                    over_clause = " ".join(over_parts)
+                    metric_def = (
+                        f"    {primary_table}.{metric_name} AS {expression} OVER (\n        {over_clause}\n    )"
+                    )
+
             # Add comment if available
             if metric.get("DESCRIPTION"):
                 description = metric["DESCRIPTION"].replace("'", "''")
@@ -1283,6 +1326,23 @@ class SemanticViewBuilder:
         except (ValueError, TypeError):
             logger.warning(f"Could not parse date '{date_str}' to epoch")
             return None
+    @staticmethod
+    def _resolve_ref_to_column(ref_str: str) -> str:
+        """Resolve a {{ ref('table', 'column') }} template to TABLE.COLUMN format."""
+        if not ref_str:
+            return ""
+        ref_pattern = re.compile(r"{{\s*ref\s*\(\s*['\"]([^'\"]+)['\"]\s*,\s*['\"]([^'\"]+)['\"]\s*\)\s*}}")
+        match = ref_pattern.search(str(ref_str))
+        if match:
+            return f"{match.group(1).upper()}.{match.group(2).upper()}"
+        col_pattern = re.compile(r"{{\s*column\s*\(\s*['\"]([^'\"]+)['\"]\s*,\s*['\"]([^'\"]+)['\"]\s*\)\s*}}")
+        match = col_pattern.search(str(ref_str))
+        if match:
+            return f"{match.group(1).upper()}.{match.group(2).upper()}"
+        cleaned = str(ref_str).strip().upper()
+        if "." in cleaned:
+            return cleaned
+        return cleaned
 
     def _build_ca_extension(self, conn, table_names: List[str]) -> str:
         """
