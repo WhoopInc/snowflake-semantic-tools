@@ -41,7 +41,8 @@ class ParsedCondition:
     left_column: str  # Extracted column name from left
     right_table: str  # Extracted table name from right
     right_column: str  # Extracted column name from right
-    operator: str  # = (equality) or >= (ASOF). Note: BETWEEN, <=, >, < are rejected
+    operator: str  # = (equality), >= (ASOF), or BETWEEN (range)
+    right_column_end: str = ""  # End column for BETWEEN...AND...EXCLUSIVE range joins
 
 
 class JoinConditionParser:
@@ -102,6 +103,15 @@ class JoinConditionParser:
             left_table, left_column = cls._extract_table_column_from_resolved(left_expr)
             right_table, right_column = cls._extract_table_column_from_resolved(right_expr)
 
+        # For BETWEEN range joins, extract the end column
+        right_column_end = ""
+        if operator == "BETWEEN":
+            end_expr, _ = cls._extract_range_end(condition)
+            if is_template_format:
+                _, right_column_end = cls._extract_table_column_from_template(end_expr)
+            else:
+                _, right_column_end = cls._extract_table_column_from_resolved(end_expr)
+
         return ParsedCondition(
             join_condition=condition,
             condition_type=condition_type,
@@ -112,6 +122,7 @@ class JoinConditionParser:
             right_table=right_table,
             right_column=right_column,
             operator=operator,
+            right_column_end=right_column_end,
         )
 
     @classmethod
@@ -155,7 +166,7 @@ class JoinConditionParser:
     def _split_on_operator(cls, condition: str, operator: str) -> Tuple[str, str]:
         """Split condition on operator, handling special cases."""
         if operator == "BETWEEN":
-            # Handle BETWEEN x AND y
+            # Handle BETWEEN x AND y [EXCLUSIVE]
             parts = re.split(r"\s+BETWEEN\s+|\s+AND\s+", condition, flags=re.IGNORECASE)
             if len(parts) >= 2:
                 return parts[0], parts[1]  # Return first two parts
@@ -167,6 +178,15 @@ class JoinConditionParser:
 
         # Fallback
         return condition, ""
+
+    @classmethod
+    def _extract_range_end(cls, condition: str) -> Tuple[str, str]:
+        """Extract the end column from a BETWEEN...AND...EXCLUSIVE condition."""
+        parts = re.split(r"\s+BETWEEN\s+|\s+AND\s+", condition, flags=re.IGNORECASE)
+        if len(parts) >= 3:
+            end_expr = re.sub(r"\s+EXCLUSIVE\s*$", "", parts[2], flags=re.IGNORECASE).strip()
+            return end_expr, end_expr
+        return "", ""
 
     @classmethod
     def _extract_table_column_from_template(cls, expression: str) -> Tuple[str, str]:
@@ -230,13 +250,15 @@ class JoinConditionParser:
                     f"See: https://docs.snowflake.com/en/user-guide/views-semantic/sql"
                 )
 
-            # Reject BETWEEN operator - not supported in semantic view relationships
+            # BETWEEN operator is valid for range joins (preview feature)
             if parsed.operator == "BETWEEN":
-                return False, (
-                    f"BETWEEN operator is not supported in Snowflake semantic view relationships. "
-                    f"Only equality (=) and ASOF (>=) joins are supported. "
-                    f"See: https://docs.snowflake.com/en/user-guide/views-semantic/sql"
-                )
+                if not parsed.right_column_end:
+                    return False, (f"BETWEEN condition must include AND <end_column> EXCLUSIVE: {condition}")
+                if not parsed.left_table or not parsed.left_column:
+                    return False, f"Could not extract left table/column from: {parsed.left_expression}"
+                if not parsed.right_table or not parsed.right_column:
+                    return False, f"Could not extract right table/column from: {parsed.right_expression}"
+                return True, ""
 
             # Check for unknown join type
             if parsed.condition_type == JoinType.UNKNOWN:
@@ -284,6 +306,26 @@ class JoinConditionParser:
 
         # Build left column list (all conditions in original order)
         left_cols = [c.left_column for c in parsed_conditions]
+
+        # Check if any condition is a range join
+        has_range = any(c.condition_type == JoinType.RANGE for c in parsed_conditions)
+
+        if has_range:
+            non_range = [c for c in parsed_conditions if c.condition_type != JoinType.RANGE]
+            if non_range:
+                from snowflake_semantic_tools.shared import get_logger
+
+                _logger = get_logger("core.parsing.join_condition_parser")
+                _logger.warning(
+                    f"Range join has {len(non_range)} non-range condition(s) that will be ignored. "
+                    f"Snowflake range joins only support a single BETWEEN condition per relationship."
+                )
+            range_cond = next(c for c in parsed_conditions if c.condition_type == JoinType.RANGE)
+            sql = (
+                f"{left_table_alias} ({range_cond.left_column}) REFERENCES "
+                f"{right_table_alias} (BETWEEN {range_cond.right_column} AND {range_cond.right_column_end} EXCLUSIVE)"
+            )
+            return sql
 
         # Build right column list maintaining same order as left
         # ASOF columns get the ASOF prefix, equality columns are unchanged
