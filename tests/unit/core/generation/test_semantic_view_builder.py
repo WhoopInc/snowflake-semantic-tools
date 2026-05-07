@@ -958,5 +958,85 @@ class TestTableNotFoundErrorFormatting:
         assert "Original error:" in result
 
 
+class TestTagSupport:
+    """Test cases for WITH TAG clause generation."""
+
+    @pytest.fixture
+    def builder(self):
+        config = SnowflakeConfig(
+            account="test", user="test", password="test", role="test", warehouse="test", database="test_db", schema="s"
+        )
+        return SemanticViewBuilder(config)
+
+    def test_table_tags_emitted(self, builder, monkeypatch):
+        """Test that table-level tags emit WITH TAG clause."""
+
+        def mock_get_table_info(conn, table_name):
+            return {
+                "TABLE_NAME": "ORDERS",
+                "DATABASE": "TEST_DB",
+                "SCHEMA": "TEST_SCHEMA",
+                "PRIMARY_KEY": '["order_id"]',
+                "UNIQUE_KEYS": None,
+                "DESCRIPTION": "Orders",
+                "SYNONYMS": None,
+                "TAGS": '{"data_domain": "sales", "sensitivity": "internal"}',
+            }
+
+        monkeypatch.setattr(builder, "_get_table_info", mock_get_table_info)
+
+        result = builder._build_tables_clause(None, ["orders"])
+
+        assert "WITH TAG (data_domain = 'sales', sensitivity = 'internal')" in result
+
+    def test_fact_tags_emitted(self, builder, monkeypatch):
+        """Test that fact-level tags emit WITH TAG clause."""
+
+        def mock_get_facts(conn, table_name):
+            return [
+                {
+                    "NAME": "amount",
+                    "EXPR": "AMOUNT",
+                    "DESCRIPTION": "Amount",
+                    "SYNONYMS": None,
+                    "SAMPLE_VALUES": None,
+                    "TAGS": '{"pii": "false"}',
+                }
+            ]
+
+        monkeypatch.setattr(builder, "_get_facts", mock_get_facts)
+
+        result = builder._build_facts_clause(None, ["orders"])
+
+        assert "WITH TAG (pii = 'false')" in result
+
+    def test_no_tags_no_clause(self, builder, monkeypatch):
+        """Test that absent tags don't emit WITH TAG."""
+
+        def mock_get_facts(conn, table_name):
+            return [
+                {
+                    "NAME": "amount",
+                    "EXPR": "AMOUNT",
+                    "DESCRIPTION": "Amount",
+                    "SYNONYMS": None,
+                    "SAMPLE_VALUES": None,
+                    "TAGS": None,
+                }
+            ]
+
+        monkeypatch.setattr(builder, "_get_facts", mock_get_facts)
+
+        result = builder._build_facts_clause(None, ["orders"])
+
+        assert "WITH TAG" not in result
+
+    def test_build_tag_clause_helper(self, builder):
+        """Test _build_tag_clause helper directly."""
+        assert builder._build_tag_clause(None) == ""
+        assert builder._build_tag_clause("{}") == ""
+        assert builder._build_tag_clause('{"dept": "finance"}') == "WITH TAG (dept = 'finance')"
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
