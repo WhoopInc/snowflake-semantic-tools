@@ -177,6 +177,7 @@ def extract_table_info(
             "description": description,
             "primary_key": primary_keys_upper,
             "unique_keys": unique_keys_upper,
+            "constraints": sst_meta.get("constraints", []),
             "synonyms": sst_meta.get("synonyms", []),
             "model_name": name,  # Store the original model name
             "source_file": str(file_path),  # Store the file path for validation errors

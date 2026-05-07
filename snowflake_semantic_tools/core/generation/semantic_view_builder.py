@@ -873,6 +873,31 @@ class SemanticViewBuilder:
                     uk_cols = ", ".join([col.upper() for col in unique_key_cols])
                     table_def += f"\n      UNIQUE ({uk_cols})"
 
+            # Add CONSTRAINT DISTINCT RANGE if available (preview feature)
+            constraints = self._parse_json_field(table_info.get("CONSTRAINTS"), "constraints")
+            if constraints and isinstance(constraints, list):
+                for constraint in constraints:
+                    if isinstance(constraint, dict) and constraint.get("type") == "distinct_range":
+                        c_name = constraint.get("name", "").upper()
+                        start_col = constraint.get("start_column", "").upper()
+                        end_col = constraint.get("end_column", "").upper()
+                        if c_name and start_col and end_col:
+                            table_def += (
+                                f"\n      CONSTRAINT {c_name} DISTINCT RANGE"
+                                f"\n          BETWEEN {start_col} AND {end_col} EXCLUSIVE"
+                            )
+                        else:
+                            missing = [f for f in ["name", "start_column", "end_column"] if not constraint.get(f)]
+                            logger.warning(
+                                f"Table '{table_name}' has a distinct_range constraint with missing fields: "
+                                f"{', '.join(missing)}. Constraint will be skipped."
+                            )
+                    elif isinstance(constraint, dict):
+                        logger.warning(
+                            f"Table '{table_name}' has unrecognized constraint type: "
+                            f"'{constraint.get('type', 'unknown')}'. Only 'distinct_range' is supported."
+                        )
+
             # Add synonyms if available
             if table_info.get("SYNONYMS"):
                 synonyms = self._parse_json_field(table_info["SYNONYMS"], "synonyms")
