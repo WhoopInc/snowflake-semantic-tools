@@ -1287,13 +1287,18 @@ class SemanticViewBuilder:
             return []
 
         try:
-            tlist = ", ".join([f"'{t.upper()}'" for t in table_names])
+            cursor = conn.cursor()
+            placeholders = ", ".join(["%s"] * len(table_names))
             sql = (
                 f"SELECT NAME, TABLE_NAME, DESCRIPTION, EXPR "
                 f"FROM {self.metadata_database}.{self.metadata_schema}.SM_FILTERS "
-                f"WHERE UPPER(TABLE_NAME) IN ({tlist})"
+                f"WHERE UPPER(TABLE_NAME) IN ({placeholders})"
             )
-            return self._execute_query(conn, sql)
+            params = [t.upper() for t in table_names]
+            cursor.execute(sql, params)
+            columns = [desc[0] for desc in cursor.description]
+            rows = cursor.fetchall()
+            return [dict(zip(columns, row)) for row in rows]
         except Exception as e:
             logger.warning(f"Failed to retrieve filters: {e}")
             return []
