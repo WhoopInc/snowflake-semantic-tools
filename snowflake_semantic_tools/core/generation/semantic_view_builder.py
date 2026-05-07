@@ -1339,6 +1339,7 @@ class SemanticViewBuilder:
         except (ValueError, TypeError):
             logger.warning(f"Could not parse date '{date_str}' to epoch")
             return None
+
     @staticmethod
     def _resolve_ref_to_column(ref_str: str) -> str:
         """Resolve a {{ ref('table', 'column') }} template to TABLE.COLUMN format."""
@@ -1356,6 +1357,7 @@ class SemanticViewBuilder:
         if "." in cleaned:
             return cleaned
         return cleaned
+
     def _build_tag_clause(self, tags: Any) -> str:
         """Build WITH TAG (...) clause from a tags dict or JSON string."""
         parsed_tags = self._parse_json_field(tags, "tags")
