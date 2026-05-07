@@ -958,5 +958,120 @@ class TestTableNotFoundErrorFormatting:
         assert "Original error:" in result
 
 
+class TestVerifiedQueriesDDL:
+    """Test cases for AI_VERIFIED_QUERIES clause generation."""
+
+    @pytest.fixture
+    def builder(self):
+        """Create a SemanticViewBuilder instance for testing."""
+        config = SnowflakeConfig(
+            account="test",
+            user="test",
+            password="test",
+            role="test",
+            warehouse="test",
+            database="test_db",
+            schema="test_schema",
+        )
+        builder = SemanticViewBuilder(config)
+        builder.metadata_database = "TEST_DB"
+        builder.metadata_schema = "TEST_SCHEMA"
+        return builder
+
+    def test_verified_query_emitted(self, builder, monkeypatch):
+        """Test that verified queries are emitted in DDL."""
+
+        def mock_get_vqs(conn, table_names):
+            return [
+                {
+                    "NAME": "MONTHLY_REVENUE",
+                    "QUESTION": "What is monthly revenue?",
+                    "TABLES": '["orders"]',
+                    "VERIFIED_AT": "2026-01-15",
+                    "VERIFIED_BY": "analytics-team@company.com",
+                    "USE_AS_ONBOARDING_QUESTION": True,
+                    "SQL": "SELECT DATE_TRUNC('MONTH', ordered_at), SUM(amount) FROM ANALYTICS.CORE.ORDERS GROUP BY 1",
+                }
+            ]
+
+        monkeypatch.setattr(builder, "_get_verified_queries_for_tables", mock_get_vqs)
+
+        result = builder._build_verified_queries_clause(None, ["orders"])
+
+        assert "MONTHLY_REVENUE AS (" in result
+        assert "QUESTION 'What is monthly revenue?'" in result
+        assert "VERIFIED_AT 1768435200" in result
+        assert "ONBOARDING_QUESTION TRUE" in result
+        assert "VERIFIED_BY '(data_quality = analytics-team@company.com)'" in result
+        assert "SQL 'SELECT DATE_TRUNC(" in result
+
+    def test_sql_single_quotes_escaped(self, builder, monkeypatch):
+        """Test that single quotes in SQL are properly escaped."""
+
+        def mock_get_vqs(conn, table_names):
+            return [
+                {
+                    "NAME": "STATUS_FILTER",
+                    "QUESTION": "How many active users?",
+                    "TABLES": '["users"]',
+                    "VERIFIED_AT": None,
+                    "VERIFIED_BY": None,
+                    "USE_AS_ONBOARDING_QUESTION": None,
+                    "SQL": "SELECT COUNT(*) FROM USERS WHERE status = 'active'",
+                }
+            ]
+
+        monkeypatch.setattr(builder, "_get_verified_queries_for_tables", mock_get_vqs)
+
+        result = builder._build_verified_queries_clause(None, ["users"])
+
+        assert "status = ''active''" in result
+
+    def test_no_verified_queries_returns_empty(self, builder, monkeypatch):
+        """Test that no verified queries returns empty string."""
+
+        def mock_get_vqs(conn, table_names):
+            return []
+
+        monkeypatch.setattr(builder, "_get_verified_queries_for_tables", mock_get_vqs)
+
+        result = builder._build_verified_queries_clause(None, ["orders"])
+
+        assert result == ""
+
+    def test_iso_to_epoch_conversion(self, builder):
+        """Test ISO date to epoch conversion."""
+        assert builder._iso_to_epoch("2026-01-15") == 1768435200
+        assert builder._iso_to_epoch("2026-01-15T00:00:00Z") == 1768435200
+        assert builder._iso_to_epoch(None) is None
+        assert builder._iso_to_epoch("") is None
+        assert builder._iso_to_epoch("invalid") is None
+
+    def test_optional_fields_omitted(self, builder, monkeypatch):
+        """Test that optional fields are omitted when not present."""
+
+        def mock_get_vqs(conn, table_names):
+            return [
+                {
+                    "NAME": "SIMPLE_QUERY",
+                    "QUESTION": "Total orders?",
+                    "TABLES": '["orders"]',
+                    "VERIFIED_AT": None,
+                    "VERIFIED_BY": None,
+                    "USE_AS_ONBOARDING_QUESTION": None,
+                    "SQL": "SELECT COUNT(*) FROM ORDERS",
+                }
+            ]
+
+        monkeypatch.setattr(builder, "_get_verified_queries_for_tables", mock_get_vqs)
+
+        result = builder._build_verified_queries_clause(None, ["orders"])
+
+        assert "SIMPLE_QUERY AS (" in result
+        assert "VERIFIED_AT" not in result
+        assert "ONBOARDING_QUESTION" not in result
+        assert "VERIFIED_BY" not in result
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
