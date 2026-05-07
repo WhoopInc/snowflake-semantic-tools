@@ -1003,6 +1003,9 @@ class TestUsingRelationships:
 
         assert "USING (ORDERS_TO_SHIPPING_ADDRESS)" in result
         assert "AS SUM(ORDERS.AMOUNT)" in result
+        using_pos = result.index("USING")
+        as_pos = result.index("AS SUM")
+        assert using_pos < as_pos, "USING must come before AS"
 
     def test_using_multiple_relationships(self, builder, monkeypatch):
         """Test USING clause with multiple relationships."""
@@ -1044,6 +1047,34 @@ class TestUsingRelationships:
                     "TABLE_NAME": '["orders"]',
                     "SYNONYMS": None,
                     "USING_RELATIONSHIPS": None,
+                    "SAMPLE_VALUES": None,
+                }
+            ]
+
+        def mock_noop(conn, t):
+            return []
+
+        monkeypatch.setattr(builder, "_get_metrics_for_selected_tables", mock_get_metrics)
+        monkeypatch.setattr(builder, "_get_dimensions", mock_noop)
+        monkeypatch.setattr(builder, "_get_facts", mock_noop)
+        monkeypatch.setattr(builder, "_get_time_dimensions", mock_noop)
+
+        result = builder._build_metrics_clause(None, ["orders"])
+
+        assert "USING" not in result
+
+    def test_using_relationships_empty_list(self, builder, monkeypatch):
+        """Test that empty using_relationships list doesn't emit USING."""
+
+        def mock_get_metrics(conn, table_names):
+            return [
+                {
+                    "NAME": "METRIC",
+                    "EXPR": "SUM(ORDERS.AMOUNT)",
+                    "DESCRIPTION": "Metric",
+                    "TABLE_NAME": '["orders"]',
+                    "SYNONYMS": None,
+                    "USING_RELATIONSHIPS": "[]",
                     "SAMPLE_VALUES": None,
                 }
             ]
