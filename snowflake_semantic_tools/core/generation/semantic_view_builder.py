@@ -1121,6 +1121,29 @@ class SemanticViewBuilder:
                 visibility_prefix = "PRIVATE "
 
             metric_def = f"    {visibility_prefix}{primary_table}.{metric_name} AS {expression}"
+            metric_def = f"    {primary_table}.{metric_name}"
+
+            # Add NON ADDITIVE BY clause for semi-additive metrics
+            non_additive_by = self._parse_json_field(metric.get("NON_ADDITIVE_BY"), "non_additive_by")
+            if non_additive_by and isinstance(non_additive_by, list):
+                nab_parts = []
+                for entry in non_additive_by:
+                    if isinstance(entry, dict):
+                        dim = entry.get("dimension", "").upper()
+                        if not dim:
+                            continue
+                        order = entry.get("order", "").upper()
+                        nulls = entry.get("nulls", "").upper()
+                        part = dim
+                        if order:
+                            part += f" {order}"
+                        if nulls:
+                            part += f" NULLS {nulls}"
+                        nab_parts.append(part)
+                if nab_parts:
+                    metric_def += f"\n      NON ADDITIVE BY ({', '.join(nab_parts)})"
+
+            metric_def += f" AS {expression}"
 
             # Add comment if available
             if metric.get("DESCRIPTION"):

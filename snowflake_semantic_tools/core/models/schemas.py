@@ -270,6 +270,9 @@ class SemanticTableSchemas:
                     "visibility",
                     ColumnType.VARCHAR,
                     description="Visibility control: 'private' hides from end users, 'public' (default) is queryable",
+                    "non_additive_by",
+                    ColumnType.ARRAY,
+                    description="Semi-additive dimensions: list of {dimension, order, nulls} for NON ADDITIVE BY clause",
                 ),
             ],
         )
