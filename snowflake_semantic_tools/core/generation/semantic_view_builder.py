@@ -1128,6 +1128,9 @@ class SemanticViewBuilder:
                         if isinstance(ob, dict):
                             col = self._resolve_ref_to_column(ob.get("column", ""))
                             direction = ob.get("direction", "ASC").upper()
+                            if direction not in ("ASC", "DESC"):
+                                logger.warning(f"Invalid order_by direction '{direction}' — defaulting to ASC")
+                                direction = "ASC"
                             if col:
                                 order_cols.append(f"{col} {direction}")
                         elif isinstance(ob, str):
