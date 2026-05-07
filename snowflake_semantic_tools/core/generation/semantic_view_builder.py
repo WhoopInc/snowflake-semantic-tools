@@ -1169,6 +1169,96 @@ class SemanticViewBuilder:
 
         return ",\n".join(metric_definitions)
 
+    def _build_verified_queries_clause(self, conn, table_names: List[str]) -> str:
+        """Build the AI_VERIFIED_QUERIES clause of the CREATE SEMANTIC VIEW statement."""
+        verified_queries = self._get_verified_queries_for_tables(conn, table_names)
+
+        if not verified_queries:
+            return ""
+
+        vq_definitions = []
+
+        for vq in verified_queries:
+            vq_name = vq.get("NAME", "")
+            if not vq_name:
+                continue
+            vq_name = vq_name.upper()
+            question = vq.get("QUESTION", "").replace("'", "''")
+            sql = vq.get("SQL", "").replace("'", "''")
+
+            if not question or not sql:
+                logger.warning(f"Skipping verified query '{vq_name}' - missing question or sql")
+                continue
+
+            parts = [f"    {vq_name} AS ("]
+            parts.append(f"        QUESTION '{question}'")
+
+            # Convert verified_at to epoch seconds
+            verified_at = vq.get("VERIFIED_AT")
+            if verified_at:
+                epoch = self._iso_to_epoch(verified_at)
+                if epoch is not None:
+                    parts.append(f"        VERIFIED_AT {epoch}")
+
+            # Add onboarding question flag
+            onboarding = vq.get("USE_AS_ONBOARDING_QUESTION")
+            if onboarding is True or (isinstance(onboarding, str) and onboarding.lower() == "true"):
+                parts.append("        ONBOARDING_QUESTION TRUE")
+
+            # Add verified_by in contact format
+            verified_by = vq.get("VERIFIED_BY")
+            if verified_by:
+                verified_by_escaped = str(verified_by).replace("'", "''")
+                parts.append(f"        VERIFIED_BY '(data_quality = {verified_by_escaped})'")
+
+            parts.append(f"        SQL '{sql}'")
+            parts.append("    )")
+
+            vq_definitions.append("\n".join(parts))
+
+        if not vq_definitions:
+            return ""
+
+        return ",\n".join(vq_definitions)
+
+    def _get_verified_queries_for_tables(self, conn, table_names: List[str]) -> List[Dict]:
+        """Get verified queries relevant to the given tables."""
+        try:
+            sql = f"SELECT * FROM {self.metadata_database}.{self.metadata_schema}.SM_VERIFIED_QUERIES"
+            rows = self._execute_query(conn, sql)
+
+            normalized_table_names = [t.lower() for t in table_names]
+            relevant_queries = []
+            for row in rows:
+                tables = self._parse_table_list(row.get("TABLES"))
+                if not tables:
+                    continue
+                if self._all_tables_present(tables, normalized_table_names):
+                    relevant_queries.append(row)
+
+            return relevant_queries
+        except Exception as e:
+            logger.warning(f"Failed to retrieve verified queries: {e}")
+            return []
+
+    @staticmethod
+    def _iso_to_epoch(date_str: str) -> Optional[int]:
+        """Convert an ISO date string to Unix epoch seconds."""
+        if not date_str:
+            return None
+        try:
+            from datetime import datetime, timezone
+
+            if "T" in str(date_str):
+                dt = datetime.fromisoformat(str(date_str).replace("Z", "+00:00"))
+            else:
+                dt = datetime.strptime(str(date_str).split(" ")[0], "%Y-%m-%d")
+                dt = dt.replace(tzinfo=timezone.utc)
+            return int(dt.timestamp())
+        except (ValueError, TypeError):
+            logger.warning(f"Could not parse date '{date_str}' to epoch")
+            return None
+
     def _build_ca_extension(self, conn, table_names: List[str]) -> str:
         """
         Build the WITH EXTENSION (CA='...') clause for Cortex Analyst sample_values.
@@ -1550,6 +1640,12 @@ class SemanticViewBuilder:
         ai_guidance_clauses = self._build_ai_guidance_clauses(conn, custom_instruction_names, table_names=table_names)
         if ai_guidance_clauses:
             sql_parts.append(ai_guidance_clauses)
+
+        # Build AI_VERIFIED_QUERIES clause
+        logger.info("Building AI_VERIFIED_QUERIES clause...")
+        vq_clause = self._build_verified_queries_clause(conn, table_names)
+        if vq_clause:
+            sql_parts.append(f"  AI_VERIFIED_QUERIES (\n{vq_clause}\n  )")
 
         # Build CA extension for sample_values (Cortex Analyst metadata)
         ca_extension = self._build_ca_extension(conn, table_names)
