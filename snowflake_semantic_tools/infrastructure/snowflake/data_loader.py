@@ -657,8 +657,8 @@ class DataLoader:
                             return str(obj)
 
                     for col in df.columns:
-                        if col in ["sample_values", "synonyms", "primary_key", "unique_keys", "foreign_keys"]:
-                            # Convert lists/arrays to JSON strings
+                        if col in ["sample_values", "synonyms", "primary_key", "unique_keys", "foreign_keys",
+                                   "non_additive_by", "using_relationships", "window"]:
                             df[col] = df[col].apply(safe_json_dumps)
 
                     # Add sm_ prefix if not already present

@@ -286,6 +286,11 @@ class SemanticTableSchemas:
                     ColumnType.ARRAY,
                     description="Relationship names to use for join path disambiguation (USING clause)",
                 ),
+                Column(
+                    "window",
+                    ColumnType.ARRAY,
+                    description="Window function config: {partition_by, partition_by_excluding, order_by} for OVER clause",
+                ),
             ],
         )
 
