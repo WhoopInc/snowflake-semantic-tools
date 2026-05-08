@@ -958,5 +958,1171 @@ class TestTableNotFoundErrorFormatting:
         assert "Original error:" in result
 
 
+class TestFactSynonyms:
+    """Test cases for synonym emission in the FACTS clause."""
+
+    @pytest.fixture
+    def builder(self):
+        """Create a SemanticViewBuilder instance for testing."""
+        config = SnowflakeConfig(
+            account="test",
+            user="test",
+            password="test",
+            role="test",
+            warehouse="test",
+            database="test_db",
+            schema="test_schema",
+        )
+        return SemanticViewBuilder(config)
+
+    def test_fact_synonyms_emitted_in_ddl(self, builder, monkeypatch):
+        """Test that facts with synonyms emit WITH SYNONYMS clause."""
+
+        def mock_get_facts(conn, table_name):
+            return [
+                {
+                    "NAME": "subtotal_cents",
+                    "EXPR": "SUBTOTAL_CENTS",
+                    "DESCRIPTION": "Subtotal in cents",
+                    "SYNONYMS": '["subtotal in cents", "subtotal amount"]',
+                    "SAMPLE_VALUES": None,
+                }
+            ]
+
+        monkeypatch.setattr(builder, "_get_facts", mock_get_facts)
+
+        result = builder._build_facts_clause(None, ["orders"])
+
+        assert "WITH SYNONYMS = ('subtotal in cents', 'subtotal amount')" in result
+        assert "ORDERS.SUBTOTAL_CENTS AS SUBTOTAL_CENTS" in result
+
+    def test_fact_without_synonyms_no_clause(self, builder, monkeypatch):
+        """Test that facts without synonyms don't emit WITH SYNONYMS clause."""
+
+        def mock_get_facts(conn, table_name):
+            return [
+                {
+                    "NAME": "amount",
+                    "EXPR": "AMOUNT",
+                    "DESCRIPTION": "Order amount",
+                    "SYNONYMS": None,
+                    "SAMPLE_VALUES": None,
+                }
+            ]
+
+        monkeypatch.setattr(builder, "_get_facts", mock_get_facts)
+
+        result = builder._build_facts_clause(None, ["orders"])
+
+        assert "WITH SYNONYMS" not in result
+        assert "ORDERS.AMOUNT AS AMOUNT" in result
+
+    def test_fact_synonyms_empty_list(self, builder, monkeypatch):
+        """Test that empty synonym list doesn't emit WITH SYNONYMS clause."""
+
+        def mock_get_facts(conn, table_name):
+            return [
+                {
+                    "NAME": "quantity",
+                    "EXPR": "QUANTITY",
+                    "DESCRIPTION": "Item quantity",
+                    "SYNONYMS": "[]",
+                    "SAMPLE_VALUES": None,
+                }
+            ]
+
+        monkeypatch.setattr(builder, "_get_facts", mock_get_facts)
+
+        result = builder._build_facts_clause(None, ["orders"])
+
+        assert "WITH SYNONYMS" not in result
+
+    def test_fact_synonyms_null_values_filtered(self, builder, monkeypatch):
+        """Test that None values in synonym list are filtered out."""
+
+        def mock_get_facts(conn, table_name):
+            return [
+                {
+                    "NAME": "cost",
+                    "EXPR": "COST",
+                    "DESCRIPTION": "Item cost",
+                    "SYNONYMS": "[null, null]",
+                    "SAMPLE_VALUES": None,
+                }
+            ]
+
+        monkeypatch.setattr(builder, "_get_facts", mock_get_facts)
+
+        result = builder._build_facts_clause(None, ["orders"])
+
+        assert "WITH SYNONYMS" not in result
+
+    def test_fact_synonyms_mixed_null_and_valid(self, builder, monkeypatch):
+        """Test that valid synonyms are kept when mixed with None values."""
+
+        def mock_get_facts(conn, table_name):
+            return [
+                {
+                    "NAME": "price",
+                    "EXPR": "PRICE",
+                    "DESCRIPTION": "Item price",
+                    "SYNONYMS": '[null, "unit price", null, "cost per item"]',
+                    "SAMPLE_VALUES": None,
+                }
+            ]
+
+        monkeypatch.setattr(builder, "_get_facts", mock_get_facts)
+
+        result = builder._build_facts_clause(None, ["orders"])
+
+        assert "WITH SYNONYMS = ('unit price', 'cost per item')" in result
+
+
+class TestFiltersToInstructions:
+    """Test cases for filter-to-AI_SQL_GENERATION instruction conversion."""
+
+    @pytest.fixture
+    def builder(self):
+        """Create a SemanticViewBuilder instance for testing."""
+        config = SnowflakeConfig(
+            account="test",
+            user="test",
+            password="test",
+            role="test",
+            warehouse="test",
+            database="test_db",
+            schema="test_schema",
+        )
+        builder = SemanticViewBuilder(config)
+        builder.metadata_database = "TEST_DB"
+        builder.metadata_schema = "TEST_SCHEMA"
+        return builder
+
+    def test_filters_converted_to_instructions(self, builder, monkeypatch):
+        """Test that filters are converted to AI_SQL_GENERATION instruction text."""
+
+        def mock_get_filters(conn, table_names):
+            return [
+                {
+                    "NAME": "ACTIVE_CUSTOMERS_ONLY",
+                    "TABLE_NAME": "CUSTOMERS",
+                    "DESCRIPTION": "Only include active customers",
+                    "EXPR": "CUSTOMERS.STATUS = 'Active'",
+                }
+            ]
+
+        monkeypatch.setattr(builder, "_get_filters_for_tables", mock_get_filters)
+
+        result = builder._build_filters_as_instructions(None, ["customers"])
+
+        assert "Default Filters:" in result
+        assert "CUSTOMERS.STATUS = 'Active'" in result
+        assert "Only include active customers" in result
+        assert "unless the user explicitly requests unfiltered data" in result
+
+    def test_multiple_filters_all_included(self, builder, monkeypatch):
+        """Test that multiple filters are all included in instructions."""
+
+        def mock_get_filters(conn, table_names):
+            return [
+                {
+                    "NAME": "ACTIVE_ONLY",
+                    "TABLE_NAME": "CUSTOMERS",
+                    "DESCRIPTION": "Active customers",
+                    "EXPR": "CUSTOMERS.STATUS = 'Active'",
+                },
+                {
+                    "NAME": "LAST_90_DAYS",
+                    "TABLE_NAME": "ORDERS",
+                    "DESCRIPTION": "Recent orders",
+                    "EXPR": "ORDERS.ORDERED_AT >= DATEADD('day', -90, CURRENT_DATE())",
+                },
+            ]
+
+        monkeypatch.setattr(builder, "_get_filters_for_tables", mock_get_filters)
+
+        result = builder._build_filters_as_instructions(None, ["customers", "orders"])
+
+        assert "CUSTOMERS.STATUS = 'Active'" in result
+        assert "ORDERS.ORDERED_AT >= DATEADD" in result
+
+    def test_no_filters_returns_empty(self, builder, monkeypatch):
+        """Test that no filters returns empty string."""
+
+        def mock_get_filters(conn, table_names):
+            return []
+
+        monkeypatch.setattr(builder, "_get_filters_for_tables", mock_get_filters)
+
+        result = builder._build_filters_as_instructions(None, ["customers"])
+
+        assert result == ""
+
+    def test_filter_without_description(self, builder, monkeypatch):
+        """Test that filters without description still work."""
+
+        def mock_get_filters(conn, table_names):
+            return [
+                {
+                    "NAME": "ACTIVE_ONLY",
+                    "TABLE_NAME": "CUSTOMERS",
+                    "DESCRIPTION": "",
+                    "EXPR": "CUSTOMERS.IS_ACTIVE = TRUE",
+                }
+            ]
+
+        monkeypatch.setattr(builder, "_get_filters_for_tables", mock_get_filters)
+
+        result = builder._build_filters_as_instructions(None, ["customers"])
+
+        assert "CUSTOMERS.IS_ACTIVE = TRUE" in result
+        assert "unless the user explicitly requests unfiltered data" in result
+
+    def test_filters_disabled_via_config(self, builder, monkeypatch):
+        """Test that filters_to_instructions=false skips conversion."""
+        from snowflake_semantic_tools.shared.config import Config
+
+        def mock_get_filters(conn, table_names):
+            return [
+                {
+                    "NAME": "ACTIVE_ONLY",
+                    "TABLE_NAME": "CUSTOMERS",
+                    "DESCRIPTION": "Active only",
+                    "EXPR": "CUSTOMERS.STATUS = 'Active'",
+                }
+            ]
+
+        monkeypatch.setattr(builder, "_get_filters_for_tables", mock_get_filters)
+
+        original_get = Config.get
+
+        def mock_config_get(self, key_path, default=None):
+            if key_path == "generation.filters_to_instructions":
+                return False
+            return original_get(self, key_path, default)
+
+        monkeypatch.setattr(Config, "get", mock_config_get)
+
+        result = builder._build_filters_as_instructions(None, ["customers"])
+
+        assert result == ""
+
+    def test_filters_appended_to_ai_sql_generation(self, builder, monkeypatch):
+        """Test that filters are appended to existing AI_SQL_GENERATION content."""
+
+        def mock_get_custom_instructions(conn, names):
+            return [
+                {
+                    "name": "BUSINESS_RULES",
+                    "question_categorization": None,
+                    "sql_generation": "Always use fiscal year calendar.",
+                }
+            ]
+
+        def mock_get_filters(conn, table_names):
+            return [
+                {
+                    "NAME": "ACTIVE_ONLY",
+                    "TABLE_NAME": "CUSTOMERS",
+                    "DESCRIPTION": "Active only",
+                    "EXPR": "CUSTOMERS.STATUS = 'Active'",
+                }
+            ]
+
+        monkeypatch.setattr(builder, "_get_custom_instructions_for_view", mock_get_custom_instructions)
+        monkeypatch.setattr(builder, "_get_filters_for_tables", mock_get_filters)
+
+        result = builder._build_ai_guidance_clauses(None, ["business_rules"], table_names=["customers"])
+
+        assert "AI_SQL_GENERATION" in result
+        assert "fiscal year calendar" in result
+        assert "CUSTOMERS.STATUS" in result
+        assert "Default Filters:" in result
+
+
+class TestVisibility:
+    """Test cases for PRIVATE/PUBLIC visibility on facts and metrics."""
+
+    @pytest.fixture
+    def builder(self):
+        """Create a SemanticViewBuilder instance for testing."""
+        config = SnowflakeConfig(
+            account="test",
+            user="test",
+            password="test",
+            role="test",
+            warehouse="test",
+            database="test_db",
+            schema="test_schema",
+        )
+        return SemanticViewBuilder(config)
+
+    def test_private_fact_emits_keyword(self, builder, monkeypatch):
+        """Test that a private fact emits PRIVATE keyword in DDL."""
+
+        def mock_get_facts(conn, table_name):
+            return [
+                {
+                    "NAME": "raw_discount",
+                    "EXPR": "RAW_DISCOUNT",
+                    "DESCRIPTION": "Internal discount",
+                    "SYNONYMS": None,
+                    "VISIBILITY": "private",
+                    "SAMPLE_VALUES": None,
+                }
+            ]
+
+        monkeypatch.setattr(builder, "_get_facts", mock_get_facts)
+
+        result = builder._build_facts_clause(None, ["orders"])
+
+        assert "PRIVATE ORDERS.RAW_DISCOUNT AS RAW_DISCOUNT" in result
+
+    def test_public_fact_no_keyword(self, builder, monkeypatch):
+        """Test that a public fact does not emit visibility keyword."""
+
+        def mock_get_facts(conn, table_name):
+            return [
+                {
+                    "NAME": "amount",
+                    "EXPR": "AMOUNT",
+                    "DESCRIPTION": "Order amount",
+                    "SYNONYMS": None,
+                    "VISIBILITY": "public",
+                    "SAMPLE_VALUES": None,
+                }
+            ]
+
+        monkeypatch.setattr(builder, "_get_facts", mock_get_facts)
+
+        result = builder._build_facts_clause(None, ["orders"])
+
+        assert "PRIVATE" not in result
+        assert "PUBLIC" not in result
+        assert "ORDERS.AMOUNT AS AMOUNT" in result
+
+    def test_null_visibility_no_keyword(self, builder, monkeypatch):
+        """Test that null visibility does not emit any keyword."""
+
+        def mock_get_facts(conn, table_name):
+            return [
+                {
+                    "NAME": "quantity",
+                    "EXPR": "QUANTITY",
+                    "DESCRIPTION": "Quantity",
+                    "SYNONYMS": None,
+                    "VISIBILITY": None,
+                    "SAMPLE_VALUES": None,
+                }
+            ]
+
+        monkeypatch.setattr(builder, "_get_facts", mock_get_facts)
+
+        result = builder._build_facts_clause(None, ["orders"])
+
+        assert "PRIVATE" not in result
+        assert "ORDERS.QUANTITY AS QUANTITY" in result
+
+    def test_private_metric_emits_keyword(self, builder, monkeypatch):
+        """Test that a private metric emits PRIVATE keyword in DDL."""
+
+        def mock_get_metrics(conn, table_names):
+            return [
+                {
+                    "NAME": "INTERMEDIATE_SUM",
+                    "EXPR": "SUM(ORDERS.AMOUNT)",
+                    "DESCRIPTION": "Internal intermediate calc",
+                    "TABLE_NAME": '["orders"]',
+                    "SYNONYMS": None,
+                    "VISIBILITY": "private",
+                    "SAMPLE_VALUES": None,
+                }
+            ]
+
+        def mock_get_dims(conn, t):
+            return []
+
+        def mock_get_facts(conn, t):
+            return []
+
+        def mock_get_time_dims(conn, t):
+            return []
+
+        monkeypatch.setattr(builder, "_get_metrics_for_selected_tables", mock_get_metrics)
+        monkeypatch.setattr(builder, "_get_dimensions", mock_get_dims)
+        monkeypatch.setattr(builder, "_get_facts", mock_get_facts)
+        monkeypatch.setattr(builder, "_get_time_dimensions", mock_get_time_dims)
+
+        result = builder._build_metrics_clause(None, ["orders"])
+
+        assert "PRIVATE ORDERS.INTERMEDIATE_SUM AS SUM(ORDERS.AMOUNT)" in result
+
+
+class TestNonAdditiveBy:
+    """Test cases for NON ADDITIVE BY clause on metrics."""
+
+    @pytest.fixture
+    def builder(self):
+        """Create a SemanticViewBuilder instance for testing."""
+        config = SnowflakeConfig(
+            account="test",
+            user="test",
+            password="test",
+            role="test",
+            warehouse="test",
+            database="test_db",
+            schema="test_schema",
+        )
+        return SemanticViewBuilder(config)
+
+    def test_non_additive_by_emitted(self, builder, monkeypatch):
+        """Test that NON ADDITIVE BY clause is emitted for semi-additive metrics."""
+
+        def mock_get_metrics(conn, table_names):
+            return [
+                {
+                    "NAME": "CURRENT_BALANCE",
+                    "EXPR": "BALANCE",
+                    "DESCRIPTION": "Account balance",
+                    "TABLE_NAME": '["accounts"]',
+                    "SYNONYMS": None,
+                    "NON_ADDITIVE_BY": '[{"dimension": "snapshot_date", "order": "DESC", "nulls": "LAST"}]',
+                    "SAMPLE_VALUES": None,
+                }
+            ]
+
+        def mock_noop(conn, t):
+            return []
+
+        monkeypatch.setattr(builder, "_get_metrics_for_selected_tables", mock_get_metrics)
+        monkeypatch.setattr(builder, "_get_dimensions", mock_noop)
+        monkeypatch.setattr(builder, "_get_facts", mock_noop)
+        monkeypatch.setattr(builder, "_get_time_dimensions", mock_noop)
+
+        result = builder._build_metrics_clause(None, ["accounts"])
+
+        assert "NON ADDITIVE BY (SNAPSHOT_DATE DESC NULLS LAST)" in result
+        assert "AS BALANCE" in result
+        nab_pos = result.index("NON ADDITIVE BY")
+        as_pos = result.index("AS BALANCE")
+        assert nab_pos < as_pos, "NON ADDITIVE BY must come before AS"
+
+    def test_non_additive_by_without_nulls(self, builder, monkeypatch):
+        """Test NON ADDITIVE BY with only dimension and order."""
+
+        def mock_get_metrics(conn, table_names):
+            return [
+                {
+                    "NAME": "HEADCOUNT",
+                    "EXPR": "HEAD_COUNT",
+                    "DESCRIPTION": "Headcount",
+                    "TABLE_NAME": '["hr_snapshots"]',
+                    "SYNONYMS": None,
+                    "NON_ADDITIVE_BY": '[{"dimension": "snapshot_date", "order": "DESC"}]',
+                    "SAMPLE_VALUES": None,
+                }
+            ]
+
+        def mock_noop(conn, t):
+            return []
+
+        monkeypatch.setattr(builder, "_get_metrics_for_selected_tables", mock_get_metrics)
+        monkeypatch.setattr(builder, "_get_dimensions", mock_noop)
+        monkeypatch.setattr(builder, "_get_facts", mock_noop)
+        monkeypatch.setattr(builder, "_get_time_dimensions", mock_noop)
+
+        result = builder._build_metrics_clause(None, ["hr_snapshots"])
+
+        assert "NON ADDITIVE BY (SNAPSHOT_DATE DESC)" in result
+        assert "NULLS" not in result
+
+    def test_no_non_additive_by(self, builder, monkeypatch):
+        """Test that metrics without non_additive_by don't emit the clause."""
+
+        def mock_get_metrics(conn, table_names):
+            return [
+                {
+                    "NAME": "TOTAL_REVENUE",
+                    "EXPR": "SUM(ORDERS.AMOUNT)",
+                    "DESCRIPTION": "Total revenue",
+                    "TABLE_NAME": '["orders"]',
+                    "SYNONYMS": None,
+                    "NON_ADDITIVE_BY": None,
+                    "SAMPLE_VALUES": None,
+                }
+            ]
+
+        def mock_noop(conn, t):
+            return []
+
+        monkeypatch.setattr(builder, "_get_metrics_for_selected_tables", mock_get_metrics)
+        monkeypatch.setattr(builder, "_get_dimensions", mock_noop)
+        monkeypatch.setattr(builder, "_get_facts", mock_noop)
+        monkeypatch.setattr(builder, "_get_time_dimensions", mock_noop)
+
+        result = builder._build_metrics_clause(None, ["orders"])
+
+        assert "NON ADDITIVE BY" not in result
+        assert "ORDERS.TOTAL_REVENUE AS SUM(ORDERS.AMOUNT)" in result
+
+    def test_non_additive_by_empty_list(self, builder, monkeypatch):
+        """Test that empty non_additive_by list doesn't emit clause."""
+
+        def mock_get_metrics(conn, table_names):
+            return [
+                {
+                    "NAME": "REVENUE",
+                    "EXPR": "SUM(ORDERS.AMOUNT)",
+                    "DESCRIPTION": "Revenue",
+                    "TABLE_NAME": '["orders"]',
+                    "SYNONYMS": None,
+                    "NON_ADDITIVE_BY": "[]",
+                    "SAMPLE_VALUES": None,
+                }
+            ]
+
+        def mock_noop(conn, t):
+            return []
+
+        monkeypatch.setattr(builder, "_get_metrics_for_selected_tables", mock_get_metrics)
+        monkeypatch.setattr(builder, "_get_dimensions", mock_noop)
+        monkeypatch.setattr(builder, "_get_facts", mock_noop)
+        monkeypatch.setattr(builder, "_get_time_dimensions", mock_noop)
+
+        result = builder._build_metrics_clause(None, ["orders"])
+
+        assert "NON ADDITIVE BY" not in result
+
+    def test_non_additive_by_missing_dimension(self, builder, monkeypatch):
+        """Test that entries with missing dimension field are skipped."""
+
+        def mock_get_metrics(conn, table_names):
+            return [
+                {
+                    "NAME": "BAD_METRIC",
+                    "EXPR": "SUM(ORDERS.AMOUNT)",
+                    "DESCRIPTION": "Bad",
+                    "TABLE_NAME": '["orders"]',
+                    "SYNONYMS": None,
+                    "NON_ADDITIVE_BY": '[{"order": "DESC"}]',
+                    "SAMPLE_VALUES": None,
+                }
+            ]
+
+        def mock_noop(conn, t):
+            return []
+
+        monkeypatch.setattr(builder, "_get_metrics_for_selected_tables", mock_get_metrics)
+        monkeypatch.setattr(builder, "_get_dimensions", mock_noop)
+        monkeypatch.setattr(builder, "_get_facts", mock_noop)
+        monkeypatch.setattr(builder, "_get_time_dimensions", mock_noop)
+
+        result = builder._build_metrics_clause(None, ["orders"])
+
+        assert "NON ADDITIVE BY" not in result
+
+
+class TestUsingRelationships:
+    """Test cases for USING (relationship_name) on metrics."""
+
+    @pytest.fixture
+    def builder(self):
+        """Create a SemanticViewBuilder instance for testing."""
+        config = SnowflakeConfig(
+            account="test",
+            user="test",
+            password="test",
+            role="test",
+            warehouse="test",
+            database="test_db",
+            schema="test_schema",
+        )
+        return SemanticViewBuilder(config)
+
+    def test_using_single_relationship(self, builder, monkeypatch):
+        """Test USING clause with a single relationship."""
+
+        def mock_get_metrics(conn, table_names):
+            return [
+                {
+                    "NAME": "REVENUE_BY_SHIPPING",
+                    "EXPR": "SUM(ORDERS.AMOUNT)",
+                    "DESCRIPTION": "Revenue by shipping",
+                    "TABLE_NAME": '["orders"]',
+                    "SYNONYMS": None,
+                    "USING_RELATIONSHIPS": '["orders_to_shipping_address"]',
+                    "SAMPLE_VALUES": None,
+                }
+            ]
+
+        def mock_noop(conn, t):
+            return []
+
+        monkeypatch.setattr(builder, "_get_metrics_for_selected_tables", mock_get_metrics)
+        monkeypatch.setattr(builder, "_get_dimensions", mock_noop)
+        monkeypatch.setattr(builder, "_get_facts", mock_noop)
+        monkeypatch.setattr(builder, "_get_time_dimensions", mock_noop)
+
+        result = builder._build_metrics_clause(None, ["orders"])
+
+        assert "USING (ORDERS_TO_SHIPPING_ADDRESS)" in result
+        assert "AS SUM(ORDERS.AMOUNT)" in result
+        using_pos = result.index("USING")
+        as_pos = result.index("AS SUM")
+        assert using_pos < as_pos, "USING must come before AS"
+
+    def test_using_multiple_relationships(self, builder, monkeypatch):
+        """Test USING clause with multiple relationships."""
+
+        def mock_get_metrics(conn, table_names):
+            return [
+                {
+                    "NAME": "COMPLEX_METRIC",
+                    "EXPR": "COUNT(*)",
+                    "DESCRIPTION": "Complex",
+                    "TABLE_NAME": '["orders"]',
+                    "SYNONYMS": None,
+                    "USING_RELATIONSHIPS": '["rel_a", "rel_b"]',
+                    "SAMPLE_VALUES": None,
+                }
+            ]
+
+        def mock_noop(conn, t):
+            return []
+
+        monkeypatch.setattr(builder, "_get_metrics_for_selected_tables", mock_get_metrics)
+        monkeypatch.setattr(builder, "_get_dimensions", mock_noop)
+        monkeypatch.setattr(builder, "_get_facts", mock_noop)
+        monkeypatch.setattr(builder, "_get_time_dimensions", mock_noop)
+
+        result = builder._build_metrics_clause(None, ["orders"])
+
+        assert "USING (REL_A, REL_B)" in result
+
+    def test_no_using_relationships(self, builder, monkeypatch):
+        """Test that metrics without using_relationships don't emit USING."""
+
+        def mock_get_metrics(conn, table_names):
+            return [
+                {
+                    "NAME": "TOTAL_REVENUE",
+                    "EXPR": "SUM(ORDERS.AMOUNT)",
+                    "DESCRIPTION": "Total revenue",
+                    "TABLE_NAME": '["orders"]',
+                    "SYNONYMS": None,
+                    "USING_RELATIONSHIPS": None,
+                    "SAMPLE_VALUES": None,
+                }
+            ]
+
+        def mock_noop(conn, t):
+            return []
+
+        monkeypatch.setattr(builder, "_get_metrics_for_selected_tables", mock_get_metrics)
+        monkeypatch.setattr(builder, "_get_dimensions", mock_noop)
+        monkeypatch.setattr(builder, "_get_facts", mock_noop)
+        monkeypatch.setattr(builder, "_get_time_dimensions", mock_noop)
+
+        result = builder._build_metrics_clause(None, ["orders"])
+
+        assert "USING" not in result
+
+    def test_using_relationships_empty_list(self, builder, monkeypatch):
+        """Test that empty using_relationships list doesn't emit USING."""
+
+        def mock_get_metrics(conn, table_names):
+            return [
+                {
+                    "NAME": "METRIC",
+                    "EXPR": "SUM(ORDERS.AMOUNT)",
+                    "DESCRIPTION": "Metric",
+                    "TABLE_NAME": '["orders"]',
+                    "SYNONYMS": None,
+                    "USING_RELATIONSHIPS": "[]",
+                    "SAMPLE_VALUES": None,
+                }
+            ]
+
+        def mock_noop(conn, t):
+            return []
+
+        monkeypatch.setattr(builder, "_get_metrics_for_selected_tables", mock_get_metrics)
+        monkeypatch.setattr(builder, "_get_dimensions", mock_noop)
+        monkeypatch.setattr(builder, "_get_facts", mock_noop)
+        monkeypatch.setattr(builder, "_get_time_dimensions", mock_noop)
+
+        result = builder._build_metrics_clause(None, ["orders"])
+
+        assert "USING" not in result
+
+
+class TestVerifiedQueriesDDL:
+    """Test cases for AI_VERIFIED_QUERIES clause generation."""
+
+    @pytest.fixture
+    def builder(self):
+        """Create a SemanticViewBuilder instance for testing."""
+        config = SnowflakeConfig(
+            account="test",
+            user="test",
+            password="test",
+            role="test",
+            warehouse="test",
+            database="test_db",
+            schema="test_schema",
+        )
+        builder = SemanticViewBuilder(config)
+        builder.metadata_database = "TEST_DB"
+        builder.metadata_schema = "TEST_SCHEMA"
+        return builder
+
+    def test_verified_query_emitted(self, builder, monkeypatch):
+        """Test that verified queries are emitted in DDL."""
+
+        def mock_get_vqs(conn, table_names):
+            return [
+                {
+                    "NAME": "MONTHLY_REVENUE",
+                    "QUESTION": "What is monthly revenue?",
+                    "TABLES": '["orders"]',
+                    "VERIFIED_AT": "2026-01-15",
+                    "VERIFIED_BY": "analytics-team@company.com",
+                    "USE_AS_ONBOARDING_QUESTION": True,
+                    "SQL": "SELECT DATE_TRUNC('MONTH', ordered_at), SUM(amount) FROM ANALYTICS.CORE.ORDERS GROUP BY 1",
+                }
+            ]
+
+        monkeypatch.setattr(builder, "_get_verified_queries_for_tables", mock_get_vqs)
+
+        result = builder._build_verified_queries_clause(None, ["orders"])
+
+        assert "MONTHLY_REVENUE AS (" in result
+        assert "QUESTION 'What is monthly revenue?'" in result
+        assert "VERIFIED_AT 1768435200" in result
+        assert "ONBOARDING_QUESTION TRUE" in result
+        assert "VERIFIED_BY '(data_quality = analytics-team@company.com)'" in result
+        assert "SQL 'SELECT DATE_TRUNC(" in result
+
+    def test_sql_single_quotes_escaped(self, builder, monkeypatch):
+        """Test that single quotes in SQL are properly escaped."""
+
+        def mock_get_vqs(conn, table_names):
+            return [
+                {
+                    "NAME": "STATUS_FILTER",
+                    "QUESTION": "How many active users?",
+                    "TABLES": '["users"]',
+                    "VERIFIED_AT": None,
+                    "VERIFIED_BY": None,
+                    "USE_AS_ONBOARDING_QUESTION": None,
+                    "SQL": "SELECT COUNT(*) FROM USERS WHERE status = 'active'",
+                }
+            ]
+
+        monkeypatch.setattr(builder, "_get_verified_queries_for_tables", mock_get_vqs)
+
+        result = builder._build_verified_queries_clause(None, ["users"])
+
+        assert "status = ''active''" in result
+
+    def test_no_verified_queries_returns_empty(self, builder, monkeypatch):
+        """Test that no verified queries returns empty string."""
+
+        def mock_get_vqs(conn, table_names):
+            return []
+
+        monkeypatch.setattr(builder, "_get_verified_queries_for_tables", mock_get_vqs)
+
+        result = builder._build_verified_queries_clause(None, ["orders"])
+
+        assert result == ""
+
+    def test_iso_to_epoch_conversion(self, builder):
+        """Test ISO date to epoch conversion."""
+        assert builder._iso_to_epoch("2026-01-15") == 1768435200
+        assert builder._iso_to_epoch("2026-01-15T00:00:00Z") == 1768435200
+        assert builder._iso_to_epoch(None) is None
+        assert builder._iso_to_epoch("") is None
+        assert builder._iso_to_epoch("invalid") is None
+
+    def test_optional_fields_omitted(self, builder, monkeypatch):
+        """Test that optional fields are omitted when not present."""
+
+        def mock_get_vqs(conn, table_names):
+            return [
+                {
+                    "NAME": "SIMPLE_QUERY",
+                    "QUESTION": "Total orders?",
+                    "TABLES": '["orders"]',
+                    "VERIFIED_AT": None,
+                    "VERIFIED_BY": None,
+                    "USE_AS_ONBOARDING_QUESTION": None,
+                    "SQL": "SELECT COUNT(*) FROM ORDERS",
+                }
+            ]
+
+        monkeypatch.setattr(builder, "_get_verified_queries_for_tables", mock_get_vqs)
+
+        result = builder._build_verified_queries_clause(None, ["orders"])
+
+        assert "SIMPLE_QUERY AS (" in result
+        assert "VERIFIED_AT" not in result
+        assert "ONBOARDING_QUESTION" not in result
+        assert "VERIFIED_BY" not in result
+
+
+class TestConstraintDistinctRange:
+    """Test cases for CONSTRAINT DISTINCT RANGE on tables."""
+
+    @pytest.fixture
+    def builder(self):
+        """Create a SemanticViewBuilder instance for testing."""
+        config = SnowflakeConfig(
+            account="test",
+            user="test",
+            password="test",
+            role="test",
+            warehouse="test",
+            database="test_db",
+            schema="test_schema",
+        )
+        return SemanticViewBuilder(config)
+
+    def test_constraint_emitted(self, builder, monkeypatch):
+        """Test that CONSTRAINT DISTINCT RANGE is emitted in table DDL."""
+
+        def mock_get_table_info(conn, table_name):
+            return {
+                "TABLE_NAME": "RATE_PERIODS",
+                "DATABASE": "TEST_DB",
+                "SCHEMA": "TEST_SCHEMA",
+                "PRIMARY_KEY": '["rate_id"]',
+                "UNIQUE_KEYS": None,
+                "CONSTRAINTS": '[{"type": "distinct_range", "name": "rate_date_range", "start_column": "effective_start", "end_column": "effective_end"}]',
+                "DESCRIPTION": "Rate periods",
+                "SYNONYMS": None,
+            }
+
+        monkeypatch.setattr(builder, "_get_table_info", mock_get_table_info)
+
+        result = builder._build_tables_clause(None, ["rate_periods"])
+
+        assert "CONSTRAINT RATE_DATE_RANGE DISTINCT RANGE" in result
+        assert "BETWEEN EFFECTIVE_START AND EFFECTIVE_END EXCLUSIVE" in result
+
+    def test_no_constraint_when_absent(self, builder, monkeypatch):
+        """Test that no CONSTRAINT clause when constraints not defined."""
+
+        def mock_get_table_info(conn, table_name):
+            return {
+                "TABLE_NAME": "ORDERS",
+                "DATABASE": "TEST_DB",
+                "SCHEMA": "TEST_SCHEMA",
+                "PRIMARY_KEY": '["order_id"]',
+                "UNIQUE_KEYS": None,
+                "CONSTRAINTS": None,
+                "DESCRIPTION": "Orders",
+                "SYNONYMS": None,
+            }
+
+        monkeypatch.setattr(builder, "_get_table_info", mock_get_table_info)
+
+        result = builder._build_tables_clause(None, ["orders"])
+
+        assert "CONSTRAINT" not in result
+        assert "DISTINCT RANGE" not in result
+
+    def test_constraint_missing_fields_warns(self, builder, monkeypatch, caplog):
+        """Test that missing constraint fields log a warning and skip."""
+        import logging
+
+        def mock_get_table_info(conn, table_name):
+            return {
+                "TABLE_NAME": "RATES",
+                "DATABASE": "TEST_DB",
+                "SCHEMA": "TEST_SCHEMA",
+                "PRIMARY_KEY": '["rate_id"]',
+                "UNIQUE_KEYS": None,
+                "CONSTRAINTS": '[{"type": "distinct_range", "name": "", "start_column": "start_date", "end_column": "end_date"}]',
+                "DESCRIPTION": "Rates",
+                "SYNONYMS": None,
+            }
+
+        monkeypatch.setattr(builder, "_get_table_info", mock_get_table_info)
+
+        with caplog.at_level(logging.WARNING):
+            result = builder._build_tables_clause(None, ["rates"])
+
+        assert "CONSTRAINT" not in result
+        assert "missing fields" in caplog.text
+
+    def test_constraint_unrecognized_type_warns(self, builder, monkeypatch, caplog):
+        """Test that unrecognized constraint type logs a warning."""
+        import logging
+
+        def mock_get_table_info(conn, table_name):
+            return {
+                "TABLE_NAME": "ORDERS",
+                "DATABASE": "TEST_DB",
+                "SCHEMA": "TEST_SCHEMA",
+                "PRIMARY_KEY": '["order_id"]',
+                "UNIQUE_KEYS": None,
+                "CONSTRAINTS": '[{"type": "unknown_type", "name": "foo"}]',
+                "DESCRIPTION": "Orders",
+                "SYNONYMS": None,
+            }
+
+        monkeypatch.setattr(builder, "_get_table_info", mock_get_table_info)
+
+        with caplog.at_level(logging.WARNING):
+            result = builder._build_tables_clause(None, ["orders"])
+
+        assert "CONSTRAINT" not in result
+        assert "unrecognized constraint type" in caplog.text
+
+
+class TestWindowFunctionMetrics:
+    """Test cases for window function metric DDL generation."""
+
+    @pytest.fixture
+    def builder(self):
+        config = SnowflakeConfig(
+            account="test", user="test", password="test", role="test", warehouse="test", database="test_db", schema="s"
+        )
+        return SemanticViewBuilder(config)
+
+    def test_standard_partition_by(self, builder, monkeypatch):
+        """Test OVER (PARTITION BY ... ORDER BY ...) emission."""
+
+        def mock_get_metrics(conn, table_names):
+            return [
+                {
+                    "NAME": "RUNNING_REVENUE",
+                    "EXPR": "SUM(ORDERS.AMOUNT)",
+                    "DESCRIPTION": "Running revenue",
+                    "TABLE_NAME": '["orders"]',
+                    "SYNONYMS": None,
+                    "SAMPLE_VALUES": None,
+                    "WINDOW": '{"partition_by": ["{{ ref(\'customers\', \'customer_id\') }}"], "order_by": [{"column": "{{ ref(\'orders\', \'order_date\') }}", "direction": "ASC"}]}',
+                }
+            ]
+
+        def mock_noop(conn, t):
+            return []
+
+        monkeypatch.setattr(builder, "_get_metrics_for_selected_tables", mock_get_metrics)
+        monkeypatch.setattr(builder, "_get_dimensions", mock_noop)
+        monkeypatch.setattr(builder, "_get_facts", mock_noop)
+        monkeypatch.setattr(builder, "_get_time_dimensions", mock_noop)
+
+        result = builder._build_metrics_clause(None, ["orders", "customers"])
+
+        assert "OVER (" in result
+        assert "PARTITION BY CUSTOMERS.CUSTOMER_ID" in result
+        assert "ORDER BY ORDERS.ORDER_DATE ASC" in result
+
+    def test_partition_by_excluding(self, builder, monkeypatch):
+        """Test PARTITION BY EXCLUDING emission."""
+
+        def mock_get_metrics(conn, table_names):
+            return [
+                {
+                    "NAME": "CUMULATIVE_REVENUE",
+                    "EXPR": "SUM(ORDERS.AMOUNT)",
+                    "DESCRIPTION": "Cumulative revenue",
+                    "TABLE_NAME": '["orders"]',
+                    "SYNONYMS": None,
+                    "SAMPLE_VALUES": None,
+                    "WINDOW": '{"partition_by_excluding": ["{{ ref(\'orders\', \'order_date\') }}"], "order_by": [{"column": "{{ ref(\'orders\', \'order_date\') }}", "direction": "ASC"}]}',
+                }
+            ]
+
+        def mock_noop(conn, t):
+            return []
+
+        monkeypatch.setattr(builder, "_get_metrics_for_selected_tables", mock_get_metrics)
+        monkeypatch.setattr(builder, "_get_dimensions", mock_noop)
+        monkeypatch.setattr(builder, "_get_facts", mock_noop)
+        monkeypatch.setattr(builder, "_get_time_dimensions", mock_noop)
+
+        result = builder._build_metrics_clause(None, ["orders"])
+
+        assert "PARTITION BY EXCLUDING ORDERS.ORDER_DATE" in result
+
+    def test_no_window_no_over(self, builder, monkeypatch):
+        """Test that metrics without window config don't emit OVER."""
+
+        def mock_get_metrics(conn, table_names):
+            return [
+                {
+                    "NAME": "TOTAL",
+                    "EXPR": "SUM(ORDERS.AMOUNT)",
+                    "DESCRIPTION": "Total",
+                    "TABLE_NAME": '["orders"]',
+                    "SYNONYMS": None,
+                    "SAMPLE_VALUES": None,
+                    "WINDOW": None,
+                }
+            ]
+
+        def mock_noop(conn, t):
+            return []
+
+        monkeypatch.setattr(builder, "_get_metrics_for_selected_tables", mock_get_metrics)
+        monkeypatch.setattr(builder, "_get_dimensions", mock_noop)
+        monkeypatch.setattr(builder, "_get_facts", mock_noop)
+        monkeypatch.setattr(builder, "_get_time_dimensions", mock_noop)
+
+        result = builder._build_metrics_clause(None, ["orders"])
+
+        assert "OVER" not in result
+
+    def test_resolve_ref_to_column(self, builder):
+        """Test _resolve_ref_to_column helper."""
+        assert builder._resolve_ref_to_column("{{ ref('orders', 'amount') }}") == "ORDERS.AMOUNT"
+        assert builder._resolve_ref_to_column("{{ column('orders', 'amount') }}") == "ORDERS.AMOUNT"
+        assert builder._resolve_ref_to_column("") == ""
+        assert builder._resolve_ref_to_column("ORDERS.AMOUNT") == "ORDERS.AMOUNT"
+
+    def test_invalid_direction_defaults_to_asc(self, builder, monkeypatch, caplog):
+        """Test that invalid direction values default to ASC with a warning."""
+        import logging
+
+        def mock_get_metrics(conn, table_names):
+            return [
+                {
+                    "NAME": "BAD_WINDOW",
+                    "EXPR": "SUM(ORDERS.AMOUNT)",
+                    "DESCRIPTION": "Bad",
+                    "TABLE_NAME": '["orders"]',
+                    "SYNONYMS": None,
+                    "SAMPLE_VALUES": None,
+                    "WINDOW": '{"partition_by": ["{{ ref(\'orders\', \'customer_id\') }}"], "order_by": [{"column": "{{ ref(\'orders\', \'order_date\') }}", "direction": "INVALID"}]}',
+                }
+            ]
+
+        def mock_noop(conn, t):
+            return []
+
+        monkeypatch.setattr(builder, "_get_metrics_for_selected_tables", mock_get_metrics)
+        monkeypatch.setattr(builder, "_get_dimensions", mock_noop)
+        monkeypatch.setattr(builder, "_get_facts", mock_noop)
+        monkeypatch.setattr(builder, "_get_time_dimensions", mock_noop)
+
+        with caplog.at_level(logging.WARNING):
+            result = builder._build_metrics_clause(None, ["orders"])
+
+        assert "ORDER BY ORDERS.ORDER_DATE ASC" in result
+        assert "Invalid order_by direction" in caplog.text
+
+    def test_order_by_string_format(self, builder, monkeypatch):
+        """Test order_by with plain string entries (not dict)."""
+
+        def mock_get_metrics(conn, table_names):
+            return [
+                {
+                    "NAME": "SIMPLE_WINDOW",
+                    "EXPR": "SUM(ORDERS.AMOUNT)",
+                    "DESCRIPTION": "Simple",
+                    "TABLE_NAME": '["orders"]',
+                    "SYNONYMS": None,
+                    "SAMPLE_VALUES": None,
+                    "WINDOW": "{\"partition_by\": [\"{{ ref('orders', 'customer_id') }}\"], \"order_by\": [\"{{ ref('orders', 'order_date') }}\"]}",
+                }
+            ]
+
+        def mock_noop(conn, t):
+            return []
+
+        monkeypatch.setattr(builder, "_get_metrics_for_selected_tables", mock_get_metrics)
+        monkeypatch.setattr(builder, "_get_dimensions", mock_noop)
+        monkeypatch.setattr(builder, "_get_facts", mock_noop)
+        monkeypatch.setattr(builder, "_get_time_dimensions", mock_noop)
+
+        result = builder._build_metrics_clause(None, ["orders"])
+
+        assert "ORDER BY ORDERS.ORDER_DATE ASC" in result
+
+
+class TestTagSupport:
+    """Test cases for WITH TAG clause generation."""
+
+    @pytest.fixture
+    def builder(self):
+        config = SnowflakeConfig(
+            account="test", user="test", password="test", role="test", warehouse="test", database="test_db", schema="s"
+        )
+        return SemanticViewBuilder(config)
+
+    def test_table_tags_emitted(self, builder, monkeypatch):
+        """Test that table-level tags emit WITH TAG clause."""
+
+        def mock_get_table_info(conn, table_name):
+            return {
+                "TABLE_NAME": "ORDERS",
+                "DATABASE": "TEST_DB",
+                "SCHEMA": "TEST_SCHEMA",
+                "PRIMARY_KEY": '["order_id"]',
+                "UNIQUE_KEYS": None,
+                "DESCRIPTION": "Orders",
+                "SYNONYMS": None,
+                "TAGS": '{"data_domain": "sales", "sensitivity": "internal"}',
+            }
+
+        monkeypatch.setattr(builder, "_get_table_info", mock_get_table_info)
+
+        result = builder._build_tables_clause(None, ["orders"])
+
+        assert "WITH TAG (data_domain = 'sales', sensitivity = 'internal')" in result
+
+    def test_fact_tags_emitted(self, builder, monkeypatch):
+        """Test that fact-level tags emit WITH TAG clause."""
+
+        def mock_get_facts(conn, table_name):
+            return [
+                {
+                    "NAME": "amount",
+                    "EXPR": "AMOUNT",
+                    "DESCRIPTION": "Amount",
+                    "SYNONYMS": None,
+                    "SAMPLE_VALUES": None,
+                    "TAGS": '{"pii": "false"}',
+                }
+            ]
+
+        monkeypatch.setattr(builder, "_get_facts", mock_get_facts)
+
+        result = builder._build_facts_clause(None, ["orders"])
+
+        assert "WITH TAG (pii = 'false')" in result
+
+    def test_no_tags_no_clause(self, builder, monkeypatch):
+        """Test that absent tags don't emit WITH TAG."""
+
+        def mock_get_facts(conn, table_name):
+            return [
+                {
+                    "NAME": "amount",
+                    "EXPR": "AMOUNT",
+                    "DESCRIPTION": "Amount",
+                    "SYNONYMS": None,
+                    "SAMPLE_VALUES": None,
+                    "TAGS": None,
+                }
+            ]
+
+        monkeypatch.setattr(builder, "_get_facts", mock_get_facts)
+
+        result = builder._build_facts_clause(None, ["orders"])
+
+        assert "WITH TAG" not in result
+
+    def test_build_tag_clause_helper(self, builder):
+        """Test _build_tag_clause helper directly."""
+        assert builder._build_tag_clause(None) == ""
+        assert builder._build_tag_clause("{}") == ""
+        assert builder._build_tag_clause('{"dept": "finance"}') == "WITH TAG (dept = 'finance')"
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

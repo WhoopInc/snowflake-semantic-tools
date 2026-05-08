@@ -361,6 +361,25 @@ class TestFilterValidation:
         errors = [i.message for i in result.issues if i.severity.name == "ERROR"]
         assert any("missing required field: expr" in e for e in errors)
 
+    def test_filter_deprecation_warning(self, validator):
+        """Test that filters emit a deprecation warning."""
+        semantic_data = {
+            "filters": {
+                "items": [
+                    {
+                        "name": "active_users",
+                        "description": "Active users only",
+                        "expr": "status = 'active'",
+                    }
+                ]
+            }
+        }
+
+        result = validator.validate(semantic_data)
+        warnings = [i.message for i in result.issues if i.severity.name == "WARNING"]
+        assert any("deprecated" in w.lower() for w in warnings)
+        assert any("snowflake_custom_instructions" in w for w in warnings)
+
 
 class TestCustomInstructionValidation:
     """Test custom instruction validation rules."""
@@ -1496,3 +1515,176 @@ class TestRelationshipStructureValidation:
         validator._validate_relationship_structure(relationship, result)
         warnings = [i for i in result.issues if i.severity.name == "WARNING"]
         assert len(warnings) == 2
+
+
+class TestDDLParityValidation:
+    """Tests for DDL parity validation rules (v0.3.0)."""
+
+    @pytest.fixture
+    def validator(self):
+        return SemanticModelValidator()
+
+    def test_vqr_both_sql_and_sql_file_errors(self, validator):
+        semantic_data = {
+            "verified_queries": {
+                "items": [
+                    {
+                        "name": "TEST_QUERY",
+                        "question": "test?",
+                        "sql": "SELECT 1",
+                        "sql_file": "test.sql",
+                        "source_file": "/tmp/test.yml",
+                    }
+                ]
+            }
+        }
+        result = validator.validate(semantic_data)
+        errors = [i for i in result.issues if i.severity.name == "ERROR"]
+        assert any("both" in str(e.message).lower() for e in errors)
+
+    def test_vqr_neither_sql_nor_sql_file_errors(self, validator):
+        semantic_data = {
+            "verified_queries": {
+                "items": [
+                    {
+                        "name": "TEST_QUERY",
+                        "question": "test?",
+                        "source_file": "/tmp/test.yml",
+                    }
+                ]
+            }
+        }
+        result = validator.validate(semantic_data)
+        errors = [i for i in result.issues if i.severity.name == "ERROR"]
+        assert any("sql" in str(e.message).lower() for e in errors)
+
+    def test_vqr_sql_file_not_found_errors(self, validator):
+        semantic_data = {
+            "verified_queries": {
+                "items": [
+                    {
+                        "name": "TEST_QUERY",
+                        "question": "test?",
+                        "sql_file": "nonexistent.sql",
+                        "source_file": "/tmp/test.yml",
+                    }
+                ]
+            }
+        }
+        result = validator.validate(semantic_data)
+        errors = [i for i in result.issues if i.severity.name == "ERROR"]
+        assert any("does not exist" in str(e.message) for e in errors)
+
+    def test_metric_non_additive_by_missing_dimension_errors(self, validator):
+        semantic_data = {
+            "metrics": {
+                "items": [
+                    {
+                        "name": "test_metric",
+                        "expr": "MAX(col)",
+                        "tables": ["orders"],
+                        "non_additive_by": [{"order": "DESC"}],
+                    }
+                ]
+            }
+        }
+        result = validator.validate(semantic_data)
+        errors = [i for i in result.issues if i.severity.name == "ERROR"]
+        assert any("dimension" in str(e.message).lower() for e in errors)
+
+    def test_metric_non_additive_by_invalid_order_errors(self, validator):
+        semantic_data = {
+            "metrics": {
+                "items": [
+                    {
+                        "name": "test_metric",
+                        "expr": "MAX(col)",
+                        "tables": ["orders"],
+                        "non_additive_by": [{"dimension": "date_col", "order": "INVALID"}],
+                    }
+                ]
+            }
+        }
+        result = validator.validate(semantic_data)
+        errors = [i for i in result.issues if i.severity.name == "ERROR"]
+        assert any("ASC or DESC" in str(e.message) for e in errors)
+
+    def test_metric_window_both_partition_modes_errors(self, validator):
+        semantic_data = {
+            "metrics": {
+                "items": [
+                    {
+                        "name": "test_metric",
+                        "expr": "SUM(col)",
+                        "tables": ["orders"],
+                        "window": {
+                            "partition_by": ["col1"],
+                            "partition_by_excluding": ["col2"],
+                        },
+                    }
+                ]
+            }
+        }
+        result = validator.validate(semantic_data)
+        errors = [i for i in result.issues if i.severity.name == "ERROR"]
+        assert any("partition_by" in str(e.message) for e in errors)
+
+    def test_metric_visibility_invalid_value_errors(self, validator):
+        semantic_data = {
+            "metrics": {
+                "items": [
+                    {
+                        "name": "test_metric",
+                        "expr": "SUM(col)",
+                        "tables": ["orders"],
+                        "visibility": "hidden",
+                    }
+                ]
+            }
+        }
+        result = validator.validate(semantic_data)
+        errors = [i for i in result.issues if i.severity.name == "ERROR"]
+        assert any("private" in str(e.message).lower() for e in errors)
+
+    def test_tags_invalid_identifier_errors(self, validator):
+        result = ValidationResult()
+        validator._validate_tags({"invalid name!": "value"}, "Test", "/tmp/test.yml", result)
+        errors = [i for i in result.issues if i.severity.name == "ERROR"]
+        assert len(errors) == 1
+
+    def test_tags_value_exceeds_256_chars_errors(self, validator):
+        result = ValidationResult()
+        validator._validate_tags({"valid_tag": "x" * 257}, "Test", "/tmp/test.yml", result)
+        errors = [i for i in result.issues if i.severity.name == "ERROR"]
+        assert len(errors) == 1
+        assert "256" in str(errors[0].message)
+
+    def test_tags_unqualified_name_warns(self, validator):
+        result = ValidationResult()
+        validator._validate_tags({"bare_tag": "value"}, "Test", "/tmp/test.yml", result)
+        warnings = [i for i in result.issues if i.severity.name == "WARNING"]
+        assert len(warnings) == 1
+        assert "fully-qualified" in str(warnings[0].message)
+
+    def test_tags_qualified_name_no_warning(self, validator):
+        result = ValidationResult()
+        validator._validate_tags({"db.schema.tag_name": "value"}, "Test", "/tmp/test.yml", result)
+        warnings = [i for i in result.issues if i.severity.name == "WARNING"]
+        assert len(warnings) == 0
+
+    def test_metric_using_relationships_not_list_errors(self, validator):
+        semantic_data = {
+            "metrics": {
+                "items": [
+                    {
+                        "name": "test_metric",
+                        "expr": "SUM(col)",
+                        "tables": ["orders"],
+                        "using_relationships": "not_a_list",
+                    }
+                ]
+            }
+        }
+        result = validator.validate(semantic_data)
+        errors = [i for i in result.issues if i.severity.name == "ERROR"]
+        assert any("list" in str(e.message).lower() for e in errors)

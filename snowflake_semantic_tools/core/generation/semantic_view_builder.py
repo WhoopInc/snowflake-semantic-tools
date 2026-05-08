@@ -870,8 +870,42 @@ class SemanticViewBuilder:
             if table_info.get("UNIQUE_KEYS"):
                 unique_key_cols = self._parse_json_field(table_info["UNIQUE_KEYS"], "unique_keys")
                 if unique_key_cols and isinstance(unique_key_cols, list):
-                    uk_cols = ", ".join([col.upper() for col in unique_key_cols])
-                    table_def += f"\n      UNIQUE ({uk_cols})"
+                    has_nested = any(isinstance(item, list) for item in unique_key_cols)
+                    if has_nested:
+                        for uk_entry in unique_key_cols:
+                            if isinstance(uk_entry, list):
+                                uk_cols = ", ".join([str(c).upper() for c in uk_entry])
+                            else:
+                                uk_cols = str(uk_entry).upper()
+                            table_def += f"\n      UNIQUE ({uk_cols})"
+                    else:
+                        uk_cols = ", ".join([str(col).upper() for col in unique_key_cols])
+                        table_def += f"\n      UNIQUE ({uk_cols})"
+
+            # Add CONSTRAINT DISTINCT RANGE if available (preview feature)
+            constraints = self._parse_json_field(table_info.get("CONSTRAINTS"), "constraints")
+            if constraints and isinstance(constraints, list):
+                for constraint in constraints:
+                    if isinstance(constraint, dict) and constraint.get("type") == "distinct_range":
+                        c_name = constraint.get("name", "").upper()
+                        start_col = constraint.get("start_column", "").upper()
+                        end_col = constraint.get("end_column", "").upper()
+                        if c_name and start_col and end_col:
+                            table_def += (
+                                f"\n      CONSTRAINT {c_name} DISTINCT RANGE"
+                                f"\n          BETWEEN {start_col} AND {end_col} EXCLUSIVE"
+                            )
+                        else:
+                            missing = [f for f in ["name", "start_column", "end_column"] if not constraint.get(f)]
+                            logger.warning(
+                                f"Table '{table_name}' has a distinct_range constraint with missing fields: "
+                                f"{', '.join(missing)}. Constraint will be skipped."
+                            )
+                    elif isinstance(constraint, dict):
+                        logger.warning(
+                            f"Table '{table_name}' has unrecognized constraint type: "
+                            f"'{constraint.get('type', 'unknown')}'. Only 'distinct_range' is supported."
+                        )
 
             # Add synonyms if available
             if table_info.get("SYNONYMS"):
@@ -886,6 +920,11 @@ class SemanticViewBuilder:
             description = table_info.get("DESCRIPTION", f"Table: {table_name}")
             description = self._sanitize_description(description)
             table_def += f"\n      COMMENT = '{description}'"
+
+            # Add tags if available
+            tag_clause = self._build_tag_clause(table_info.get("TAGS"))
+            if tag_clause:
+                table_def += f"\n      {tag_clause}"
 
             table_definitions.append(table_def)
 
@@ -952,12 +991,32 @@ class SemanticViewBuilder:
             fact_name = fact["NAME"].upper()
             expression = fact["EXPR"]
 
-            fact_def = f"    {table_name}.{fact_name} AS {expression}"
+            visibility_prefix = ""
+            if fact.get("VISIBILITY") and fact["VISIBILITY"].upper() == "PRIVATE":
+                visibility_prefix = "PRIVATE "
+
+            fact_def = f"    {visibility_prefix}{table_name}.{fact_name} AS {expression}"
+
+            # Add synonyms if available
+            if fact.get("SYNONYMS"):
+                synonyms = self._parse_json_field(fact["SYNONYMS"], "synonyms")
+                if synonyms and isinstance(synonyms, list):
+                    synonyms_filtered = [s for s in synonyms if s is not None]
+                    if synonyms_filtered:
+                        synonyms_cleaned = CharacterSanitizer.sanitize_synonym_list(synonyms_filtered)
+                        if synonyms_cleaned:
+                            synonyms_str = ", ".join([f"'{syn}'" for syn in synonyms_cleaned])
+                            fact_def += f"\n      WITH SYNONYMS = ({synonyms_str})"
 
             # Add comment if available
             if fact.get("DESCRIPTION"):
                 description = self._sanitize_description(fact["DESCRIPTION"])
                 fact_def += f"\n      COMMENT = '{description}'"
+
+            # Add tags if available
+            tag_clause = self._build_tag_clause(fact.get("TAGS"))
+            if tag_clause:
+                fact_def += f"\n      {tag_clause}"
 
             fact_definitions.append(fact_def)
 
@@ -1008,6 +1067,11 @@ class SemanticViewBuilder:
             if dim.get("DESCRIPTION"):
                 description = self._sanitize_description(dim["DESCRIPTION"])
                 dim_def += f"\n      COMMENT = '{description}'"
+
+            # Add tags if available
+            tag_clause = self._build_tag_clause(dim.get("TAGS"))
+            if tag_clause:
+                dim_def += f"\n      {tag_clause}"
 
             dim_definitions.append(dim_def)
 
@@ -1101,7 +1165,84 @@ class SemanticViewBuilder:
             if not primary_table:
                 primary_table = table_names[0].upper()  # Fallback to first table
 
-            metric_def = f"    {primary_table}.{metric_name} AS {expression}"
+            visibility_prefix = ""
+            if metric.get("VISIBILITY") and metric["VISIBILITY"].upper() == "PRIVATE":
+                visibility_prefix = "PRIVATE "
+
+            metric_def = f"    {visibility_prefix}{primary_table}.{metric_name}"
+
+            # Add NON ADDITIVE BY clause for semi-additive metrics
+            non_additive_by = self._parse_json_field(metric.get("NON_ADDITIVE_BY"), "non_additive_by")
+            if non_additive_by and isinstance(non_additive_by, list):
+                nab_parts = []
+                for entry in non_additive_by:
+                    if isinstance(entry, dict):
+                        dim = entry.get("dimension", "").upper()
+                        if not dim:
+                            continue
+                        order = entry.get("order", "").upper()
+                        nulls = entry.get("nulls", "").upper()
+                        part = dim
+                        if order:
+                            part += f" {order}"
+                        if nulls:
+                            part += f" NULLS {nulls}"
+                        nab_parts.append(part)
+                if nab_parts:
+                    metric_def += f"\n      NON ADDITIVE BY ({', '.join(nab_parts)})"
+
+            # Add USING clause for relationship path disambiguation
+            using_rels = self._parse_json_field(metric.get("USING_RELATIONSHIPS"), "using_relationships")
+            if using_rels and isinstance(using_rels, list):
+                rel_names = [str(r).upper() for r in using_rels if r]
+                if rel_names:
+                    metric_def += f"\n      USING ({', '.join(rel_names)})"
+
+            metric_def += f" AS {expression}"
+
+            # Add OVER clause for window function metrics
+            window_config = self._parse_json_field(metric.get("WINDOW"), "window")
+            if window_config and isinstance(window_config, dict):
+                over_parts = []
+                partition_by = window_config.get("partition_by")
+                partition_by_excluding = window_config.get("partition_by_excluding")
+                order_by = window_config.get("order_by")
+
+                if partition_by_excluding and isinstance(partition_by_excluding, list):
+                    cols = [self._resolve_ref_to_column(c) for c in partition_by_excluding]
+                    cols = [c for c in cols if c]
+                    if cols:
+                        over_parts.append(f"PARTITION BY EXCLUDING {', '.join(cols)}")
+                elif partition_by and isinstance(partition_by, list):
+                    cols = [self._resolve_ref_to_column(c) for c in partition_by]
+                    cols = [c for c in cols if c]
+                    if cols:
+                        over_parts.append(f"PARTITION BY {', '.join(cols)}")
+
+                if order_by and isinstance(order_by, list):
+                    order_cols = []
+                    for ob in order_by:
+                        if isinstance(ob, dict):
+                            col = self._resolve_ref_to_column(ob.get("column", ""))
+                            direction = ob.get("direction", "ASC").upper()
+                            if direction not in ("ASC", "DESC"):
+                                logger.warning(f"Invalid order_by direction '{direction}' — defaulting to ASC")
+                                direction = "ASC"
+                            if col:
+                                order_cols.append(f"{col} {direction}")
+                        elif isinstance(ob, str):
+                            col = self._resolve_ref_to_column(ob)
+                            if col:
+                                order_cols.append(f"{col} ASC")
+                    if order_cols:
+                        over_parts.append(f"ORDER BY {', '.join(order_cols)}")
+
+                if over_parts:
+                    over_clause = " ".join(over_parts)
+                    metric_def = metric_def.replace(
+                        f"AS {expression}",
+                        f"AS {expression} OVER (\n        {over_clause}\n    )",
+                    )
 
             # Add comment if available
             if metric.get("DESCRIPTION"):
@@ -1118,6 +1259,145 @@ class SemanticViewBuilder:
             )
 
         return ",\n".join(metric_definitions)
+
+    def _build_verified_queries_clause(self, conn, table_names: List[str]) -> str:
+        """Build the AI_VERIFIED_QUERIES clause of the CREATE SEMANTIC VIEW statement."""
+        verified_queries = self._get_verified_queries_for_tables(conn, table_names)
+
+        if not verified_queries:
+            return ""
+
+        vq_definitions = []
+
+        for vq in verified_queries:
+            vq_name = vq.get("NAME", "")
+            if not vq_name:
+                continue
+            vq_name = vq_name.upper()
+            question = vq.get("QUESTION", "").replace("'", "''")
+            sql = vq.get("SQL", "")
+
+            sql = self._resolve_templates_in_sql(sql)
+            sql = sql.replace("'", "''")
+
+            if not question or not sql:
+                logger.warning(f"Skipping verified query '{vq_name}' - missing question or sql")
+                continue
+
+            parts = [f"    {vq_name} AS ("]
+            parts.append(f"        QUESTION '{question}'")
+
+            # Convert verified_at to epoch seconds
+            verified_at = vq.get("VERIFIED_AT")
+            if verified_at:
+                epoch = self._iso_to_epoch(verified_at)
+                if epoch is not None:
+                    parts.append(f"        VERIFIED_AT {epoch}")
+
+            # Add onboarding question flag
+            onboarding = vq.get("USE_AS_ONBOARDING_QUESTION")
+            if onboarding is True or (isinstance(onboarding, str) and onboarding.lower() == "true"):
+                parts.append("        ONBOARDING_QUESTION TRUE")
+
+            # Add verified_by in contact format
+            verified_by = vq.get("VERIFIED_BY")
+            if verified_by:
+                verified_by_escaped = CharacterSanitizer.sanitize_for_sql_string(str(verified_by))
+                parts.append(f"        VERIFIED_BY '(data_quality = {verified_by_escaped})'")
+
+            parts.append(f"        SQL '{sql}'")
+            parts.append("    )")
+
+            vq_definitions.append("\n".join(parts))
+
+        if not vq_definitions:
+            return ""
+
+        return ",\n".join(vq_definitions)
+
+    def _get_verified_queries_for_tables(self, conn, table_names: List[str]) -> List[Dict]:
+        """Get verified queries relevant to the given tables."""
+        try:
+            sql = f"SELECT * FROM {self.metadata_database}.{self.metadata_schema}.SM_VERIFIED_QUERIES"
+            rows = self._execute_query(conn, sql)
+
+            normalized_table_names = [t.lower() for t in table_names]
+            relevant_queries = []
+            for row in rows:
+                tables = self._parse_table_list(row.get("TABLES"))
+                if not tables:
+                    continue
+                if self._all_tables_present(tables, normalized_table_names):
+                    relevant_queries.append(row)
+
+            return relevant_queries
+        except Exception as e:
+            logger.warning(f"Failed to retrieve verified queries: {e}")
+            return []
+
+    @staticmethod
+    def _iso_to_epoch(date_str: str) -> Optional[int]:
+        """Convert an ISO date string to Unix epoch seconds."""
+        if not date_str:
+            return None
+        try:
+            from datetime import datetime, timezone
+
+            if "T" in str(date_str):
+                dt = datetime.fromisoformat(str(date_str).replace("Z", "+00:00"))
+            else:
+                dt = datetime.strptime(str(date_str).split(" ")[0], "%Y-%m-%d")
+                dt = dt.replace(tzinfo=timezone.utc)
+            return int(dt.timestamp())
+        except (ValueError, TypeError):
+            logger.warning(f"Could not parse date '{date_str}' to epoch")
+            return None
+
+    @staticmethod
+    def _resolve_templates_in_sql(sql: str) -> str:
+        """Resolve {{ ref('table') }} templates in VQR SQL to uppercase table names."""
+        if not sql or "{{" not in sql:
+            return sql
+        ref1_pattern = re.compile(r"{{\s*ref\s*\(\s*['\"]([^'\"]+)['\"]\s*\)\s*}}")
+        sql = ref1_pattern.sub(lambda m: m.group(1).upper(), sql)
+        table_pattern = re.compile(r"{{\s*table\s*\(\s*['\"]([^'\"]+)['\"]\s*\)\s*}}")
+        sql = table_pattern.sub(lambda m: m.group(1).upper(), sql)
+        return sql
+
+    @staticmethod
+    def _resolve_ref_to_column(ref_str: str) -> str:
+        """Resolve a {{ ref('table', 'column') }} template to TABLE.COLUMN format."""
+        if not ref_str:
+            return ""
+        ref_pattern = re.compile(r"{{\s*ref\s*\(\s*['\"]([^'\"]+)['\"]\s*,\s*['\"]([^'\"]+)['\"]\s*\)\s*}}")
+        match = ref_pattern.search(str(ref_str))
+        if match:
+            return f"{match.group(1).upper()}.{match.group(2).upper()}"
+        col_pattern = re.compile(r"{{\s*column\s*\(\s*['\"]([^'\"]+)['\"]\s*,\s*['\"]([^'\"]+)['\"]\s*\)\s*}}")
+        match = col_pattern.search(str(ref_str))
+        if match:
+            return f"{match.group(1).upper()}.{match.group(2).upper()}"
+        cleaned = str(ref_str).strip().upper()
+        if "." in cleaned:
+            return cleaned
+        return cleaned
+
+    def _build_tag_clause(self, tags: Any) -> str:
+        """Build WITH TAG (...) clause from a tags dict or JSON string."""
+        parsed_tags = self._parse_json_field(tags, "tags")
+        if not parsed_tags or not isinstance(parsed_tags, dict):
+            return ""
+        tag_parts = []
+        for k, v in parsed_tags.items():
+            if k and v is not None:
+                sanitized_key = re.sub(r"[^A-Za-z0-9_.]", "", str(k))
+                if not sanitized_key:
+                    continue
+                sanitized_value = CharacterSanitizer.sanitize_for_sql_string(str(v))
+                tag_parts.append(f"{sanitized_key} = '{sanitized_value}'")
+        if not tag_parts:
+            return ""
+        return f"WITH TAG ({', '.join(tag_parts)})"
 
     def _build_ca_extension(self, conn, table_names: List[str]) -> str:
         """
@@ -1272,23 +1552,102 @@ class SemanticViewBuilder:
             logger.warning(f"Failed to retrieve custom instructions: {e}")
             return []
 
-    def _build_ai_guidance_clauses(self, conn: Any, custom_instruction_names: Optional[List[str]]) -> str:
+    def _get_filters_for_tables(self, conn: Any, table_names: List[str]) -> List[Dict[str, Any]]:
         """
-        Build AI_QUESTION_CATEGORIZATION and AI_SQL_GENERATION clauses from custom instructions.
+        Retrieve filters from SM_FILTERS for the given tables.
+
+        Args:
+            conn: Database connection
+            table_names: List of table names to get filters for
+
+        Returns:
+            List of filter dictionaries with NAME, TABLE_NAME, DESCRIPTION, EXPR
+        """
+        if not table_names:
+            return []
+
+        try:
+            cursor = conn.cursor()
+            placeholders = ", ".join(["%s"] * len(table_names))
+            sql = (
+                f"SELECT NAME, TABLE_NAME, DESCRIPTION, EXPR "
+                f"FROM {self.metadata_database}.{self.metadata_schema}.SM_FILTERS "
+                f"WHERE UPPER(TABLE_NAME) IN ({placeholders})"
+            )
+            params = [t.upper() for t in table_names]
+            cursor.execute(sql, params)
+            columns = [desc[0] for desc in cursor.description]
+            rows = cursor.fetchall()
+            return [dict(zip(columns, row)) for row in rows]
+        except Exception as e:
+            logger.warning(f"Failed to retrieve filters: {e}")
+            return []
+
+    def _build_filters_as_instructions(self, conn: Any, table_names: List[str]) -> str:
+        """
+        Convert filter definitions into AI_SQL_GENERATION instruction text.
+
+        Snowflake's CREATE SEMANTIC VIEW DDL has no native FILTERS clause.
+        This method converts filters into natural language instructions that are
+        appended to the AI_SQL_GENERATION clause, making filters functional.
+
+        Args:
+            conn: Database connection
+            table_names: List of table names in the current semantic view
+
+        Returns:
+            Instruction text for filters, or empty string if no filters found
+        """
+        from snowflake_semantic_tools.shared.config import get_config
+
+        config = get_config()
+        if not config.get("generation.filters_to_instructions", True):
+            return ""
+
+        filters = self._get_filters_for_tables(conn, table_names)
+        if not filters:
+            return ""
+
+        filter_lines = []
+        for f in filters:
+            table_name = f.get("TABLE_NAME", "").upper()
+            expr = f.get("EXPR", "")
+            description = f.get("DESCRIPTION", "")
+            if expr:
+                if description:
+                    filter_lines.append(
+                        f"- When querying {table_name}, apply: {expr} ({description}) "
+                        f"unless the user explicitly requests unfiltered data."
+                    )
+                else:
+                    filter_lines.append(
+                        f"- When querying {table_name}, apply: {expr} "
+                        f"unless the user explicitly requests unfiltered data."
+                    )
+
+        if not filter_lines:
+            return ""
+
+        header = "Default Filters:"
+        return header + "\n" + "\n".join(filter_lines)
+
+    def _build_ai_guidance_clauses(
+        self, conn: Any, custom_instruction_names: Optional[List[str]], table_names: Optional[List[str]] = None
+    ) -> str:
+        """
+        Build AI_QUESTION_CATEGORIZATION and AI_SQL_GENERATION clauses from custom instructions and filters.
 
         Args:
             conn: Database connection
             custom_instruction_names: List of custom instruction names to aggregate
+            table_names: List of table names for filter-to-instruction conversion
 
         Returns:
             String containing AI_QUESTION_CATEGORIZATION and/or AI_SQL_GENERATION clauses, or empty string
         """
-        if not custom_instruction_names:
-            return ""
-
-        instructions = self._get_custom_instructions_for_view(conn, custom_instruction_names)
-        if not instructions:
-            return ""
+        instructions = []
+        if custom_instruction_names:
+            instructions = self._get_custom_instructions_for_view(conn, custom_instruction_names)
 
         # Aggregate fields from all instructions
         question_cat_parts = []
@@ -1298,6 +1657,15 @@ class SemanticViewBuilder:
                 question_cat_parts.append(inst["question_categorization"].strip())
             if inst.get("sql_generation"):
                 sql_gen_parts.append(inst["sql_generation"].strip())
+
+        # Append filter-based instructions to AI_SQL_GENERATION
+        if table_names:
+            filter_instructions = self._build_filters_as_instructions(conn, table_names)
+            if filter_instructions:
+                sql_gen_parts.append(filter_instructions)
+
+        if not sql_gen_parts and not question_cat_parts:
+            return ""
 
         clauses = []
 
@@ -1407,11 +1775,17 @@ class SemanticViewBuilder:
             comment = f"Semantic view generated for tables: {', '.join(table_names)}"
         sql_parts.append(f"  COMMENT = '{comment}'")
 
-        # Build AI guidance clauses from custom instructions
+        # Build AI guidance clauses from custom instructions and filters
         # These come after COMMENT per Snowflake syntax: COMMENT, then AI_SQL_GENERATION, then AI_QUESTION_CATEGORIZATION
-        ai_guidance_clauses = self._build_ai_guidance_clauses(conn, custom_instruction_names)
+        ai_guidance_clauses = self._build_ai_guidance_clauses(conn, custom_instruction_names, table_names=table_names)
         if ai_guidance_clauses:
             sql_parts.append(ai_guidance_clauses)
+
+        # Build AI_VERIFIED_QUERIES clause
+        logger.info("Building AI_VERIFIED_QUERIES clause...")
+        vq_clause = self._build_verified_queries_clause(conn, table_names)
+        if vq_clause:
+            sql_parts.append(f"  AI_VERIFIED_QUERIES (\n{vq_clause}\n  )")
 
         # Build CA extension for sample_values (Cortex Analyst metadata)
         ca_extension = self._build_ca_extension(conn, table_names)

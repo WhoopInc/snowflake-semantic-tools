@@ -7,7 +7,7 @@ description: "End-to-end testing for SST against sst-jaffle-shop. Runs unit test
 
 ## Purpose
 
-This skill validates that SST (snowflake-semantic-tools) works correctly after code changes. It uses [sst-jaffle-shop](https://github.com/mluizzi-whoop/sst-jaffle-shop) — a known-good dbt project with 13 models, 38 metrics, 5 relationships, and 3 semantic views — as a reference integration test. If SST can successfully validate, enrich, extract, and generate semantic views from this project, the code is working.
+This skill validates that SST (snowflake-semantic-tools) works correctly after code changes. It uses [sst-jaffle-shop](https://github.com/WhoopInc/sst-jaffle-shop) — a known-good dbt project with 13 models, 38 metrics, 5 relationships, and 3 semantic views — as a reference integration test. If SST can successfully validate, enrich, extract, and generate semantic views from this project, the code is working.
 
 Use this skill when:
 - You've made changes to SST and want to verify nothing broke
@@ -65,7 +65,7 @@ Locate or clone the test project:
    ```
 2. If not found, clone it next to the SST repo:
    ```bash
-   git clone https://github.com/mluizzi-whoop/sst-jaffle-shop.git "$SST_REPO/../sst-jaffle-shop"
+   git clone https://github.com/WhoopInc/sst-jaffle-shop.git "$SST_REPO/../sst-jaffle-shop"
    ```
 3. Ensure the `complete-project` branch is checked out and up to date:
    ```bash

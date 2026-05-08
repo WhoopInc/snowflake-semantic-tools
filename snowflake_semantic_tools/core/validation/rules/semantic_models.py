@@ -70,6 +70,15 @@ class SemanticModelValidator:
 
         if "filters" in semantic_data:
             self._validate_filters(semantic_data["filters"], result)
+            filter_items = semantic_data["filters"].get("items", [])
+            if filter_items:
+                result.add_warning(
+                    "snowflake_filters is deprecated and will be removed in a future major version. "
+                    "Filters are auto-converted to AI_SQL_GENERATION instructions at generation time, "
+                    "but for full control over instruction wording, migrate to snowflake_custom_instructions "
+                    "with sql_generation text.",
+                    context={"type": "DEPRECATION"},
+                )
 
         if "custom_instructions" in semantic_data:
             self._validate_custom_instructions(semantic_data["custom_instructions"], result)
@@ -164,6 +173,70 @@ class SemanticModelValidator:
                     file_path=source_file,
                     context={"metric": metric_name, "field": "synonyms", "type": "metric"},
                 )
+
+            if "non_additive_by" in metric and metric["non_additive_by"]:
+                nab = metric["non_additive_by"]
+                if not isinstance(nab, list):
+                    result.add_error(
+                        f"Metric '{metric_name}' field 'non_additive_by' must be a list of dimension configs",
+                        file_path=source_file,
+                        context={"metric": metric_name, "field": "non_additive_by", "type": "metric"},
+                    )
+                else:
+                    for item in nab:
+                        if isinstance(item, dict):
+                            if not item.get("dimension"):
+                                result.add_error(
+                                    f"Metric '{metric_name}' non_additive_by entry missing required 'dimension' field",
+                                    file_path=source_file,
+                                    context={"metric": metric_name, "type": "metric"},
+                                )
+                            order = item.get("order", "ASC").upper()
+                            if order not in ("ASC", "DESC"):
+                                result.add_error(
+                                    f"Metric '{metric_name}' non_additive_by order must be ASC or DESC, got '{order}'",
+                                    file_path=source_file,
+                                    context={"metric": metric_name, "type": "metric"},
+                                )
+
+            if "using_relationships" in metric and metric["using_relationships"]:
+                using = metric["using_relationships"]
+                if not isinstance(using, list):
+                    result.add_error(
+                        f"Metric '{metric_name}' field 'using_relationships' must be a list of relationship names",
+                        file_path=source_file,
+                        context={"metric": metric_name, "field": "using_relationships", "type": "metric"},
+                    )
+
+            if "window" in metric and metric["window"]:
+                window = metric["window"]
+                if not isinstance(window, dict):
+                    result.add_error(
+                        f"Metric '{metric_name}' field 'window' must be a dict with partition_by/partition_by_excluding/order_by",
+                        file_path=source_file,
+                        context={"metric": metric_name, "field": "window", "type": "metric"},
+                    )
+                else:
+                    has_pb = bool(window.get("partition_by"))
+                    has_pbe = bool(window.get("partition_by_excluding"))
+                    if has_pb and has_pbe:
+                        result.add_error(
+                            f"Metric '{metric_name}' window config specifies both 'partition_by' and 'partition_by_excluding' — use exactly one",
+                            file_path=source_file,
+                            context={"metric": metric_name, "field": "window", "type": "metric"},
+                        )
+
+            if "visibility" in metric:
+                vis = metric["visibility"]
+                if vis and vis.lower() not in ("private", "public"):
+                    result.add_error(
+                        f"Metric '{metric_name}' visibility must be 'private' or 'public', got '{vis}'",
+                        file_path=source_file,
+                        context={"metric": metric_name, "field": "visibility", "type": "metric"},
+                    )
+
+            if "tags" in metric and metric["tags"]:
+                self._validate_tags(metric["tags"], f"Metric '{metric_name}'", source_file, result)
 
     def _validate_relationships(self, relationships_data: Dict, result: ValidationResult):
         """Validate relationship definitions."""
@@ -496,7 +569,33 @@ class SemanticModelValidator:
             # Required fields
             self._check_required_field(query, "name", query_name, "verified_query", source_file, result)
             self._check_required_field(query, "question", query_name, "verified_query", source_file, result)
-            self._check_required_field(query, "sql", query_name, "verified_query", source_file, result)
+
+            has_sql = bool(query.get("sql"))
+            has_sql_file = bool(query.get("sql_file"))
+            if has_sql and has_sql_file:
+                result.add_error(
+                    f"Verified query '{query_name}' specifies both 'sql' and 'sql_file' — use exactly one",
+                    file_path=source_file,
+                    context={"verified_query": query_name, "type": "verified_query"},
+                )
+            elif not has_sql and not has_sql_file:
+                result.add_error(
+                    f"Verified query '{query_name}' is missing required field: sql (or sql_file)",
+                    file_path=source_file,
+                    context={"verified_query": query_name, "field": "sql", "type": "verified_query"},
+                )
+            elif has_sql_file:
+                sql_file_path = query["sql_file"]
+                if source_file:
+                    from pathlib import Path
+
+                    resolved = Path(source_file).parent / sql_file_path
+                    if not resolved.exists():
+                        result.add_error(
+                            f"Verified query '{query_name}' references sql_file '{sql_file_path}' which does not exist (resolved to {resolved})",
+                            file_path=source_file,
+                            context={"verified_query": query_name, "field": "sql_file", "type": "verified_query"},
+                        )
 
             # Validate identifier (length, characters, reserved keywords)
             self._validate_identifier(query_name, "Verified query", result, source_file=source_file)
@@ -1200,6 +1299,39 @@ class SemanticModelValidator:
                     "type": "verified_query",
                 },
             )
+
+    def _validate_tags(self, tags: Any, context_name: str, source_file: Optional[str], result: ValidationResult):
+        import re
+
+        if not isinstance(tags, dict):
+            result.add_error(
+                f"{context_name} 'tags' must be a mapping of tag_name: tag_value",
+                file_path=source_file,
+                context={"type": "tags"},
+            )
+            return
+        for key, value in tags.items():
+            if not re.match(r"^[A-Za-z_][A-Za-z0-9_.]*$", str(key)):
+                result.add_error(
+                    f"{context_name} tag name '{key}' is not a valid identifier (must be alphanumeric/underscores/dots, starting with letter or underscore)",
+                    file_path=source_file,
+                    context={"type": "tags", "tag_name": str(key)},
+                )
+            elif "." not in str(key):
+                result.add_warning(
+                    f"{context_name} tag '{key}' is not fully-qualified. "
+                    f"Snowflake requires tags to reference existing tag objects "
+                    f"(e.g., 'DB.SCHEMA.TAG_NAME')",
+                    file_path=source_file,
+                    context={"type": "tags", "tag_name": str(key)},
+                )
+            value_str = str(value)
+            if len(value_str) > 256:
+                result.add_error(
+                    f"{context_name} tag '{key}' value exceeds 256 characters ({len(value_str)} chars)",
+                    file_path=source_file,
+                    context={"type": "tags", "tag_name": str(key), "value_length": len(value_str)},
+                )
 
     def _check_duplicate_names(self, items: List[Dict], entity_type: str, result: ValidationResult):
         """

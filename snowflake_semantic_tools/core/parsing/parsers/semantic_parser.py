@@ -133,7 +133,11 @@ def parse_snowflake_metrics(metrics: List[Dict[str, Any]], file_path: Path) -> L
                 "expr": metric.get("expr", ""),
                 "synonyms": metric.get("synonyms", []),
                 "sample_values": metric.get("sample_values", []),
-                "source_file": str(file_path),  # Store the file path for validation errors
+                "visibility": metric.get("visibility"),
+                "non_additive_by": metric.get("non_additive_by", []),
+                "using_relationships": metric.get("using_relationships", []),
+                "window": metric.get("window"),
+                "source_file": str(file_path),
             }
             metric_records.append(metric_record)
 
@@ -339,17 +343,24 @@ def parse_snowflake_verified_queries(queries: List[Dict[str, Any]], file_path: P
 
     for query in queries:
         try:
-            # Keep tables as list for verified queries since they might reference multiple tables
+            sql = query.get("sql", "")
+            sql_file = query.get("sql_file", "")
+            if sql_file and not sql:
+                sql_file_path = file_path.parent / sql_file
+                if sql_file_path.exists():
+                    sql = sql_file_path.read_text().strip()
+                else:
+                    logger.warning(f"sql_file '{sql_file}' not found relative to {file_path}")
+
             query_record = {
                 "name": query.get("name", "").upper(),
                 "question": query.get("question", ""),
                 "tables": query.get("tables", []),
                 "verified_at": query.get("verified_at", ""),
                 "verified_by": query.get("verified_by", ""),
-                "sql": query.get("sql", ""),
-                "source_file": str(file_path),  # Store the file path for validation errors
+                "sql": sql,
+                "source_file": str(file_path),
             }
-            # Only include onboarding fields if they are present in the source
             if "use_as_onboarding_question" in query:
                 query_record["use_as_onboarding_question"] = query["use_as_onboarding_question"]
             if "use_as_onboarding" in query:

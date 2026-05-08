@@ -122,6 +122,11 @@ class SemanticTableSchemas:
                     ColumnType.BOOLEAN,
                     description="Whether to include this table in Cortex Analyst queries",
                 ),
+                Column(
+                    "constraints",
+                    ColumnType.ARRAY,
+                    description="Table constraints (e.g., DISTINCT RANGE for range joins). Preview feature.",
+                ),
             ],
         )
 
@@ -212,6 +217,11 @@ class SemanticTableSchemas:
                     description="Alternative terms users might use (e.g., 'revenue' vs 'sales amount')",
                 ),
                 Column("sample_values", ColumnType.ARRAY, description="Example numeric values for reference"),
+                Column(
+                    "visibility",
+                    ColumnType.VARCHAR,
+                    description="Visibility control: 'private' hides from end users, 'public' (default) is queryable",
+                ),
             ],
         )
 
@@ -261,6 +271,26 @@ class SemanticTableSchemas:
                     description="Alternative terms users might use (e.g., 'total revenue' vs 'gross sales')",
                 ),
                 Column("sample_values", ColumnType.ARRAY, description="Example calculated values for reference"),
+                Column(
+                    "visibility",
+                    ColumnType.VARCHAR,
+                    description="Visibility control: 'private' hides from end users, 'public' (default) is queryable",
+                ),
+                Column(
+                    "non_additive_by",
+                    ColumnType.ARRAY,
+                    description="Semi-additive dimensions: list of {dimension, order, nulls} for NON ADDITIVE BY clause",
+                ),
+                Column(
+                    "using_relationships",
+                    ColumnType.ARRAY,
+                    description="Relationship names to use for join path disambiguation (USING clause)",
+                ),
+                Column(
+                    "window",
+                    ColumnType.ARRAY,
+                    description="Window function config: {partition_by, partition_by_excluding, order_by} for OVER clause",
+                ),
             ],
         )
 
