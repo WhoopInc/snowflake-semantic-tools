@@ -38,6 +38,9 @@ enrichment:
   synonym_model: 'mistral-large2'
   synonym_max_count: 4
 
+generation:
+  filters_to_instructions: true
+
 defer:
   target: prod
   state_path: ./prod_run_artifacts
@@ -162,6 +165,27 @@ defer:
   state_path: ./prod_run_artifacts
   auto_compile: false
 ```
+
+---
+
+### generation
+
+Controls how semantic views are generated from metadata.
+
+| Option | Type | Required | Default | Description |
+|--------|------|----------|---------|-------------|
+| `filters_to_instructions` | boolean | No | `true` | Convert filter definitions to AI_SQL_GENERATION instructions in generated DDL |
+
+**Example:**
+
+```yaml
+generation:
+  filters_to_instructions: true
+```
+
+**Notes:**
+- When `true`, filter definitions are converted to natural language instructions appended to the `AI_SQL_GENERATION` clause, guiding Cortex Analyst to apply them by default
+- Set to `false` if you prefer to manage AI_SQL_GENERATION instructions entirely via `snowflake_custom_instructions`
 
 **Notes:**
 - When `target` is set, `sst generate` and `sst deploy` automatically use defer

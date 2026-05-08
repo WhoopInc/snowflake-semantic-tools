@@ -18,6 +18,14 @@ Complete list of all validation checks performed by `sst validate`.
 | **Table** | `synonyms` is a list if present (not string or other type) | ERROR|
 | **Table** | Table has `synonyms` defined | WARNING|
 | **Table** | Table synonyms don't contain apostrophes or special characters | WARNING|
+| **Table** | `constraints` entries have required fields (`name`, `start_column`, `end_column` for `distinct_range`) | WARNING|
+| **Table** | `constraints` type is recognized (`distinct_range`) | WARNING|
+| **Table** | `constraints` start/end columns exist in the model's column list | ERROR|
+| **Table** | `constraints` start and end columns are not the same | ERROR|
+| **Table** | `tags` is a dict if present | ERROR|
+| **Table** | `tags` keys are valid identifiers (alphanumeric/underscores/dots, starting with letter or underscore) | ERROR|
+| **Table** | `tags` values are ≤256 characters | ERROR|
+| **Table** | `tags` keys are fully-qualified (`DB.SCHEMA.TAG_NAME`) | WARNING|
 | **Column** | Column has `description` | ERROR|
 | **Column** | Column has `column_type` in `config.meta.sst` (or legacy `meta.sst`) | ERROR|
 | **Column** | `column_type` is valid (dimension, fact, or time_dimension) | ERROR|
@@ -47,6 +55,17 @@ Complete list of all validation checks performed by `sst validate`.
 | **Metric** | All referenced tables exist in dbt catalog | ERROR|
 | **Metric** | All referenced columns exist in their tables | ERROR|
 | **Metric** | No duplicate metric names (normalized¹) | ERROR|
+| **Metric** | `visibility` is `"private"` or `"public"` if present | ERROR|
+| **Metric** | `visibility: private` rejected for dimensions and time_dimensions | ERROR|
+| **Metric** | `non_additive_by` entries have `dimension` field | ERROR|
+| **Metric** | `non_additive_by` `order` is `ASC` or `DESC` if present | ERROR|
+| **Metric** | `using_relationships` is a list if present | ERROR|
+| **Metric** | `using_relationships` entries reference existing relationship names | WARNING|
+| **Metric** | `window` `partition_by` and `partition_by_excluding` are mutually exclusive | ERROR|
+| **Metric** | `tags` is a dict if present | ERROR|
+| **Metric** | `tags` keys are valid identifiers | ERROR|
+| **Metric** | `tags` values are ≤256 characters | ERROR|
+| **Metric** | `tags` keys are fully-qualified | WARNING|
 | **Metric** | Metric has `description` | WARNING|
 | **Relationship** | Relationship has `name` | ERROR|
 | **Relationship** | Relationship has `left_table` | ERROR|
@@ -55,7 +74,7 @@ Complete list of all validation checks performed by `sst validate`.
 | **Relationship** | `relationship_conditions` is a list (not string or dict) | ERROR|
 | **Relationship** | `relationship_conditions` is not empty | ERROR|
 | **Relationship** | Each condition is a string | ERROR|
-| **Relationship** | Each condition has valid operator (= or >=) | ERROR|
+| **Relationship** | Each condition has valid operator (`=`, `>=`, or `BETWEEN...AND...EXCLUSIVE`) | ERROR|
 | **Relationship** | Each condition references valid tables | ERROR|
 | **Relationship** | Conditions with templates must be quoted (YAML requirement) | PARSE ERROR|
 | **Relationship** | `left_table` exists in dbt catalog | ERROR|
@@ -65,6 +84,8 @@ Complete list of all validation checks performed by `sst validate`.
 | **Relationship** | Right join columns reference primary key or unique columns | ERROR|
 | **Relationship** | Composite primary keys are fully referenced (not partial) | ERROR|
 | **Relationship** | No SQL transformations in column references (no `::`, `CAST`, functions) | ERROR|
+| **Relationship** | BETWEEN condition has valid left/right table and column references | ERROR|
+| **Relationship** | Mixed BETWEEN + equality/ASOF conditions in same relationship | WARNING|
 | **Relationship** | No duplicate relationship names (normalized¹) | ERROR|
 | **Relationship** | No circular dependencies in relationship chains | ERROR|
 | **Filter** | Filter has `name` | ERROR|
@@ -84,7 +105,8 @@ Complete list of all validation checks performed by `sst validate`.
 | **Custom Instruction** | `instruction` text is at least 10 characters | WARNING|
 | **Verified Query** | Query has `name` | ERROR|
 | **Verified Query** | Query has `question` | ERROR|
-| **Verified Query** | Query has `sql` | ERROR|
+| **Verified Query** | Exactly one of `sql` or `sql_file` is required | ERROR|
+| **Verified Query** | `sql_file` path exists (relative to YAML file) | ERROR|
 | **Verified Query** | `question` is not empty or whitespace-only | ERROR|
 | **Verified Query** | `use_as_onboarding` is boolean if present (not string/int) | ERROR|
 | **Verified Query** | `verified_at` is in YYYY-MM-DD format if present | ERROR|
