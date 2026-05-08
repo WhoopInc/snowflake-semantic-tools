@@ -80,12 +80,66 @@ models:
             - transactions
 ```
 
+### Constraints (DISTINCT RANGE)
+
+For range-based relationships (e.g., date ranges that don't overlap), declare constraints at the table level:
+
+```yaml
+models:
+  - name: exchange_rates
+    description: Exchange rate periods with non-overlapping date ranges
+    config:
+      meta:
+        sst:
+          primary_key: rate_id
+          constraints:
+            - type: distinct_range
+              name: rate_date_range
+              start_column: effective_start
+              end_column: effective_end
+```
+
+This generates:
+```sql
+CONSTRAINT RATE_DATE_RANGE DISTINCT RANGE
+    BETWEEN EFFECTIVE_START AND EFFECTIVE_END EXCLUSIVE
+```
+
+### Tags
+
+Apply Snowflake governance tags at the table or column level:
+
+```yaml
+models:
+  - name: customers
+    config:
+      meta:
+        sst:
+          primary_key: customer_id
+          tags:
+            GOVERNANCE.SCHEMA.PII_LEVEL: "high"
+            GOVERNANCE.SCHEMA.DATA_DOMAIN: "customer"
+    columns:
+      - name: email
+        config:
+          meta:
+            sst:
+              column_type: dimension
+              data_type: TEXT
+              tags:
+                GOVERNANCE.SCHEMA.PII_TYPE: "email"
+```
+
+> **Note:** Tag names should be fully-qualified Snowflake tag objects (`DB.SCHEMA.TAG_NAME`). Unqualified names produce a validation warning.
+
 ### Table Metadata Fields
 
 | Field | Required | Purpose |
 |-------|----------|---------|
 | `primary_key` | Yes | Column(s) that uniquely identify each row. Used in semantic view `PRIMARY KEY` clause. |
 | `unique_keys` | No | Column(s) forming a unique constraint. **Required for ASOF relationships** - Snowflake needs this to validate temporal joins. |
+| `constraints` | No | List of constraint objects. Currently supports `distinct_range` type for non-overlapping range declarations. |
+| `tags` | No | Dict of `tag_name: tag_value` pairs. Tag names should be fully-qualified (e.g., `DB.SCHEMA.TAG_NAME`). |
 | `cortex_searchable` | No | If `true`, table is included in Cortex Search for dynamic SV generation. Default: `false` |
 | `synonyms` | No | Alternative names users might use to refer to this table |
 
@@ -170,6 +224,113 @@ snowflake_metrics:
 
 - **`synonyms`**: Alternative names users might use
 - **`sample_values`**: Example values for AI context
+- **`visibility`**: `"private"` or `"public"` (default). Private metrics are hidden from end users in Cortex Analyst.
+- **`non_additive_by`**: Semi-additive configuration for measures that cannot be summed across time (e.g., balances, inventory, headcount). See [Semi-Additive Metrics](#semi-additive-metrics-non-additive-by).
+- **`using_relationships`**: List of relationship names for join path disambiguation when multiple relationships exist between tables. See [Join Path Disambiguation](#join-path-disambiguation-using).
+- **`window`**: Window function configuration for running totals, cumulative sums, rankings, and moving averages. See [Window Function Metrics](#window-function-metrics).
+- **`tags`**: Dict of `tag_name: tag_value` pairs. Tag names should be fully-qualified Snowflake tag objects (e.g., `DB.SCHEMA.TAG_NAME`).
+
+### Semi-Additive Metrics (NON ADDITIVE BY)
+
+For measures that cannot be summed across time dimensions (e.g., account balances, inventory levels):
+
+```yaml
+snowflake_metrics:
+  - name: current_balance
+    tables:
+      - {{ ref('account_snapshots') }}
+    description: Current account balance (semi-additive — use latest value, not sum)
+    expr: MAX({{ ref('account_snapshots', 'balance') }})
+    non_additive_by:
+      - dimension: snapshot_date
+        order: DESC
+        nulls: LAST
+```
+
+**Fields within `non_additive_by`:**
+
+| Field | Required | Values | Description |
+|-------|----------|--------|-------------|
+| `dimension` | Yes | Column name | The time dimension this metric is non-additive over |
+| `order` | No | `ASC` / `DESC` | Sort direction (default: ASC) |
+| `nulls` | No | `FIRST` / `LAST` | NULL sort position |
+
+This generates:
+```
+ACCOUNT_SNAPSHOTS.CURRENT_BALANCE
+      NON ADDITIVE BY (SNAPSHOT_DATE DESC NULLS LAST) AS MAX(ACCOUNT_SNAPSHOTS.BALANCE)
+```
+
+### Join Path Disambiguation (USING)
+
+When multiple relationships exist between the same tables, use `using_relationships` to specify which join path a metric should use:
+
+```yaml
+snowflake_metrics:
+  - name: shipping_revenue
+    tables:
+      - {{ ref('orders') }}
+    description: Revenue attributed via shipping relationship
+    expr: SUM({{ ref('orders', 'shipping_amount') }})
+    using_relationships:
+      - orders_to_shipping_address
+```
+
+This generates:
+```
+ORDERS.SHIPPING_REVENUE
+      USING (ORDERS_TO_SHIPPING_ADDRESS) AS SUM(ORDERS.SHIPPING_AMOUNT)
+```
+
+### Window Function Metrics
+
+For running totals, cumulative sums, rankings, and moving averages:
+
+```yaml
+snowflake_metrics:
+  - name: running_total_revenue
+    tables:
+      - {{ ref('orders') }}
+    description: Cumulative revenue partitioned by region
+    expr: SUM({{ ref('orders', 'amount') }})
+    window:
+      partition_by:
+        - {{ ref('orders', 'region') }}
+      order_by:
+        - column: {{ ref('orders', 'order_date') }}
+          direction: ASC
+```
+
+**Window configuration fields:**
+
+| Field | Description |
+|-------|-------------|
+| `partition_by` | List of columns to partition by |
+| `partition_by_excluding` | List of columns to exclude from partitioning (Snowflake-specific, mutually exclusive with `partition_by`) |
+| `order_by` | List of order specifications (objects with `column` + `direction`, or bare column strings) |
+
+This generates:
+```
+ORDERS.RUNNING_TOTAL_REVENUE AS SUM(ORDERS.AMOUNT) OVER (
+        PARTITION BY ORDERS.REGION ORDER BY ORDERS.ORDER_DATE ASC
+    )
+```
+
+### Visibility (PRIVATE / PUBLIC)
+
+Mark metrics or facts as private to hide them from end users while keeping them available for metric composition:
+
+```yaml
+snowflake_metrics:
+  - name: internal_discount_rate
+    tables:
+      - {{ ref('pricing') }}
+    description: Internal discount calculation — not for external use
+    expr: SUM({{ ref('pricing', 'internal_rate') }})
+    visibility: private
+```
+
+> **Note:** Only facts and metrics support visibility. Dimensions and time dimensions cannot be marked private (Snowflake restriction).
 
 ### Real Examples
 
@@ -284,8 +445,27 @@ snowflake_relationships:
 **Supported operators:**
 - `=` - Equality joins
 - `>=` - ASOF (temporal) joins
+- `BETWEEN...AND...EXCLUSIVE` - Range joins (requires CONSTRAINT DISTINCT RANGE on the right table)
 
-**Not supported:** `<=`, `>`, `<`, `BETWEEN` (Snowflake semantic views only support `=` and `>=`)
+### Range Joins (BETWEEN...AND...EXCLUSIVE)
+
+For range-based relationships where a value falls within a non-overlapping range (e.g., mapping a transaction date to an exchange rate period):
+
+```yaml
+snowflake_relationships:
+  - name: orders_to_rates
+    left_table: {{ ref('orders') }}
+    right_table: {{ ref('exchange_rates') }}
+    relationship_conditions:
+      - "{{ ref('orders', 'ordered_at') }} BETWEEN {{ ref('exchange_rates', 'effective_start') }} AND {{ ref('exchange_rates', 'effective_end') }} EXCLUSIVE"
+```
+
+This generates:
+```sql
+ORDERS (ORDERED_AT) REFERENCES EXCHANGE_RATES (BETWEEN EFFECTIVE_START AND EFFECTIVE_END EXCLUSIVE)
+```
+
+> **Prerequisite:** The right table must have a `CONSTRAINT DISTINCT RANGE` declared (see [Constraints](#constraints-distinct-range)) to guarantee non-overlapping ranges.
 
 ### Real Example
 
@@ -300,9 +480,9 @@ snowflake_relationships:
 
 ## Filters
 
-Reusable WHERE clause conditions.
+Reusable WHERE clause conditions that are automatically converted to AI_SQL_GENERATION instructions in the generated semantic view DDL.
 
-> **Future Feature:** Filters are extracted to metadata tables and validated, but Snowflake's `CREATE SEMANTIC VIEW` DDL does not yet support filters. Defining them now prepares your semantic layer for when Snowflake adds support. Including filters won't cause errors—they're simply not included in the generated view.
+> **How it works:** Snowflake's `CREATE SEMANTIC VIEW` DDL has no native `FILTERS` clause. SST converts your filter definitions into natural language instructions appended to the `AI_SQL_GENERATION` clause, guiding Cortex Analyst to apply them by default unless the user explicitly requests unfiltered data. This behavior is controlled by the `generation.filters_to_instructions` config option (default: `true`).
 
 ### Structure
 
@@ -362,9 +542,7 @@ snowflake_custom_instructions:
 
 ## Verified Queries
 
-Validated example queries that train AI models and provide templates.
-
-> **Future Feature:** Verified queries are extracted to metadata tables and validated, but Snowflake's `CREATE SEMANTIC VIEW` DDL does not yet support verified queries. Defining them now prepares your semantic layer for when Snowflake adds support. Including verified queries won't cause errors—they're simply not included in the generated view.
+Validated example queries that train Cortex Analyst and provide onboarding templates. SST emits these as `AI_VERIFIED_QUERIES` clauses in the generated semantic view DDL.
 
 ### Structure
 
@@ -372,13 +550,33 @@ Validated example queries that train AI models and provide templates.
 snowflake_verified_queries:
   - name: query_name
     tables:
-      - {{ table('table_name') }}
+      - {{ ref('table_name') }}
     question: Natural language question this query answers
-    use_as_onboarding_question: true|false
-    sql: Complete SQL query
-    verified_by: Person Name
-    verified_at: Unix timestamp
+    use_as_onboarding_question: true  # Optional: show in onboarding UI
+    sql: |                              # Inline SQL (use this OR sql_file)
+      SELECT
+        table_name.column,
+        COUNT(*) AS total
+      FROM {{ ref('table_name') }}
+      GROUP BY 1
+    verified_by: Data Team
+    verified_at: "2025-06-15"           # ISO date (YYYY-MM-DD) — converted to epoch in DDL
 ```
+
+For longer queries, reference an external `.sql` file instead of inline SQL:
+
+```yaml
+snowflake_verified_queries:
+  - name: query_name
+    tables:
+      - {{ ref('table_name') }}
+    question: Natural language question this query answers
+    sql_file: sql/query_name.sql        # Path relative to the YAML file
+    verified_by: Data Team
+    verified_at: "2025-06-15"
+```
+
+> **Note:** Exactly one of `sql` or `sql_file` is required — specifying both is a validation error. SQL supports `{{ ref('table') }}` templates for table name resolution.
 
 ### Real Example
 
@@ -401,7 +599,7 @@ snowflake_verified_queries:
       GROUP BY 1, 2
       ORDER BY 1 DESC, 3 DESC
     verified_by: Data Team
-    verified_at: 1728000000
+    verified_at: "2024-10-04"
 ```
 
 ## Semantic Views
@@ -419,10 +617,10 @@ semantic_views:
       - {{ table('table2') }}
 ```
 
-**Optional (future-ready):**
+**Optional:**
 ```yaml
     custom_instructions:
-      - {{ custom_instructions('instruction_name') }}  # Not yet supported by Snowflake
+      - {{ custom_instructions('instruction_name') }}
 ```
 
 ### Cortex Analyst Integration

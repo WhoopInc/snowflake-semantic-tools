@@ -207,6 +207,32 @@ This metadata helps Cortex Analyst:
 
 ---
 
+## Generated DDL Features
+
+The `generate` command emits full Snowflake semantic view DDL with support for:
+
+| Feature | DDL Clause | Source |
+|---------|-----------|--------|
+| Tables with primary/unique keys | `PRIMARY KEY (...)`, `UNIQUE (...)` | dbt model `config.meta.sst` |
+| Non-overlapping ranges | `CONSTRAINT name DISTINCT RANGE BETWEEN start AND end EXCLUSIVE` | Table `constraints` config |
+| Tags (table/column level) | `WITH TAG (tag_name = 'value')` | Table/column `tags` config |
+| Synonyms (tables, facts, dimensions) | `WITH SYNONYMS = ('alias1', 'alias2')` | `synonyms` field |
+| Comments | `COMMENT = '...'` | `description` field |
+| Private facts/metrics | `PRIVATE fact_name AS ...` | `visibility: private` |
+| Semi-additive metrics | `NON ADDITIVE BY (dim ORDER NULLS)` | Metric `non_additive_by` |
+| Join path disambiguation | `USING (relationship_name)` | Metric `using_relationships` |
+| Window functions | `OVER (PARTITION BY ... ORDER BY ...)` | Metric `window` config |
+| ASOF joins | `REFERENCES table (col, ASOF time_col)` | `>=` in relationship conditions |
+| Range joins | `REFERENCES table (BETWEEN start AND end EXCLUSIVE)` | `BETWEEN` in relationship conditions |
+| Verified queries | `AI_VERIFIED_QUERIES (name AS (...))` | `snowflake_verified_queries` YAML |
+| Filters as instructions | Appended to `AI_SQL_GENERATION` clause | `snowflake_filters` YAML |
+| Custom instructions | `AI_SQL_GENERATION`, `AI_QUESTION_CATEGORIZATION` | `snowflake_custom_instructions` |
+| Cortex Analyst extension | `WITH EXTENSION (CA='...')` | Column `sample_values` + `is_enum` |
+
+> **Note:** Filter-to-instruction conversion is controlled by the `generation.filters_to_instructions` config option (default: `true`). See [Configuration Reference](../reference/config.md).
+
+---
+
 ## Output
 
 ```
