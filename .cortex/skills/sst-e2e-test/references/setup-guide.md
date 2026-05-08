@@ -31,7 +31,7 @@ If the user has a conda environment, virtualenv, or other Python environment man
 
 | Property | Value |
 |----------|-------|
-| GitHub   | https://github.com/mluizzi-whoop/sst-jaffle-shop |
+| GitHub   | https://github.com/WhoopInc/sst-jaffle-shop |
 | Branch   | `complete-project` |
 | Location | Sibling directory to SST repo, or cloned during setup |
 | Models   | 13 dbt models (6 staging + 7 marts) |
