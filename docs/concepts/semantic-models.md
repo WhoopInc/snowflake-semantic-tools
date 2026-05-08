@@ -255,7 +255,11 @@ snowflake_metrics:
 | `order` | No | `ASC` / `DESC` | Sort direction (default: ASC) |
 | `nulls` | No | `FIRST` / `LAST` | NULL sort position |
 
-This generates: `CURRENT_BALANCE NON ADDITIVE BY (SNAPSHOT_DATE DESC NULLS LAST) AS MAX(ACCOUNT_SNAPSHOTS.BALANCE)`
+This generates:
+```
+ACCOUNT_SNAPSHOTS.CURRENT_BALANCE
+      NON ADDITIVE BY (SNAPSHOT_DATE DESC NULLS LAST) AS MAX(ACCOUNT_SNAPSHOTS.BALANCE)
+```
 
 ### Join Path Disambiguation (USING)
 
@@ -272,7 +276,11 @@ snowflake_metrics:
       - orders_to_shipping_address
 ```
 
-This generates: `USING (ORDERS_TO_SHIPPING_ADDRESS) AS SUM(ORDERS.SHIPPING_AMOUNT)`
+This generates:
+```
+ORDERS.SHIPPING_REVENUE
+      USING (ORDERS_TO_SHIPPING_ADDRESS) AS SUM(ORDERS.SHIPPING_AMOUNT)
+```
 
 ### Window Function Metrics
 
@@ -301,7 +309,12 @@ snowflake_metrics:
 | `partition_by_excluding` | List of columns to exclude from partitioning (Snowflake-specific, mutually exclusive with `partition_by`) |
 | `order_by` | List of order specifications (objects with `column` + `direction`, or bare column strings) |
 
-This generates: `OVER (PARTITION BY ORDERS.REGION ORDER BY ORDERS.ORDER_DATE ASC)`
+This generates:
+```
+ORDERS.RUNNING_TOTAL_REVENUE AS SUM(ORDERS.AMOUNT) OVER (
+        PARTITION BY ORDERS.REGION ORDER BY ORDERS.ORDER_DATE ASC
+    )
+```
 
 ### Visibility (PRIVATE / PUBLIC)
 

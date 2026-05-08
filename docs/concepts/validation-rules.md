@@ -18,9 +18,9 @@ Complete list of all validation checks performed by `sst validate`.
 | **Table** | `synonyms` is a list if present (not string or other type) | ERROR|
 | **Table** | Table has `synonyms` defined | WARNING|
 | **Table** | Table synonyms don't contain apostrophes or special characters | WARNING|
-| **Table** | `constraints` entries have required fields (`name`, `start_column`, `end_column` for `distinct_range`) | WARNING|
+| **Table** | `constraints` entries have required fields (`name`, `start_column`, `end_column` for `distinct_range`) | ERROR|
 | **Table** | `constraints` type is recognized (`distinct_range`) | WARNING|
-| **Table** | `constraints` start/end columns exist in the model's column list | ERROR|
+| **Table** | `constraints` start/end columns exist in the model's column list | WARNING|
 | **Table** | `constraints` start and end columns are not the same | ERROR|
 | **Table** | `tags` is a dict if present | ERROR|
 | **Table** | `tags` keys are valid identifiers (alphanumeric/underscores/dots, starting with letter or underscore) | ERROR|
@@ -85,7 +85,6 @@ Complete list of all validation checks performed by `sst validate`.
 | **Relationship** | Composite primary keys are fully referenced (not partial) | ERROR|
 | **Relationship** | No SQL transformations in column references (no `::`, `CAST`, functions) | ERROR|
 | **Relationship** | BETWEEN condition has valid left/right table and column references | ERROR|
-| **Relationship** | Mixed BETWEEN + equality/ASOF conditions in same relationship | WARNING|
 | **Relationship** | No duplicate relationship names (normalized¹) | ERROR|
 | **Relationship** | No circular dependencies in relationship chains | ERROR|
 | **Filter** | Filter has `name` | ERROR|
