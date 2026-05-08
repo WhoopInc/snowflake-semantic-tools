@@ -240,7 +240,7 @@ snowflake_metrics:
     tables:
       - {{ ref('account_snapshots') }}
     description: Current account balance (semi-additive — use latest value, not sum)
-    expr: {{ ref('account_snapshots', 'balance') }}
+    expr: MAX({{ ref('account_snapshots', 'balance') }})
     non_additive_by:
       - dimension: snapshot_date
         order: DESC
@@ -255,7 +255,7 @@ snowflake_metrics:
 | `order` | No | `ASC` / `DESC` | Sort direction (default: ASC) |
 | `nulls` | No | `FIRST` / `LAST` | NULL sort position |
 
-This generates: `NON ADDITIVE BY (SNAPSHOT_DATE DESC NULLS LAST) AS BALANCE`
+This generates: `CURRENT_BALANCE NON ADDITIVE BY (SNAPSHOT_DATE DESC NULLS LAST) AS MAX(ACCOUNT_SNAPSHOTS.BALANCE)`
 
 ### Join Path Disambiguation (USING)
 
@@ -313,7 +313,7 @@ snowflake_metrics:
     tables:
       - {{ ref('pricing') }}
     description: Internal discount calculation — not for external use
-    expr: {{ ref('pricing', 'internal_rate') }}
+    expr: SUM({{ ref('pricing', 'internal_rate') }})
     visibility: private
 ```
 
@@ -542,7 +542,7 @@ snowflake_verified_queries:
     use_as_onboarding_question: true  # Optional: show in onboarding UI
     sql: |                              # Inline SQL (use this OR sql_file)
       SELECT
-        {{ ref('table_name', 'column') }},
+        table_name.column,
         COUNT(*) AS total
       FROM {{ ref('table_name') }}
       GROUP BY 1
@@ -563,7 +563,7 @@ snowflake_verified_queries:
     verified_at: "2025-06-15"
 ```
 
-> **Note:** Exactly one of `sql` or `sql_file` is required. If both are specified, `sql` takes precedence. SQL supports `{{ ref('table') }}` templates for table name resolution.
+> **Note:** Exactly one of `sql` or `sql_file` is required — specifying both is a validation error. SQL supports `{{ ref('table') }}` templates for table name resolution.
 
 ### Real Example
 

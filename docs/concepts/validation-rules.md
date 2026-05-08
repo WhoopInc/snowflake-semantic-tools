@@ -108,7 +108,7 @@ Complete list of all validation checks performed by `sst validate`.
 | **Verified Query** | Exactly one of `sql` or `sql_file` is required | ERROR|
 | **Verified Query** | `sql_file` path exists (relative to YAML file) | ERROR|
 | **Verified Query** | `question` is not empty or whitespace-only | ERROR|
-| **Verified Query** | `use_as_onboarding` is boolean if present (not string/int) | ERROR|
+| **Verified Query** | `use_as_onboarding` / `use_as_onboarding_question` is boolean if present (not string/int) | ERROR|
 | **Verified Query** | `verified_at` is in YYYY-MM-DD format if present | ERROR|
 | **Verified Query** | All referenced tables exist in dbt catalog | ERROR|
 | **Verified Query** | No duplicate query names (normalized¹) | ERROR|
