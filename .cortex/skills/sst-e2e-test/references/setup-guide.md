@@ -32,9 +32,9 @@ If the user has a conda environment, virtualenv, or other Python environment man
 | Property | Value |
 |----------|-------|
 | GitHub   | https://github.com/WhoopInc/sst-jaffle-shop |
-| Branch   | `complete-project` |
+| Branch   | `main` |
 | Location | Sibling directory to SST repo, or cloned during setup |
-| Models   | 13 dbt models (6 staging + 7 marts) |
+| Models   | 15 dbt models (7 staging + 8 marts) |
 
 The skill checks for the test project as a sibling directory (`../sst-jaffle-shop`). If not found, it clones from GitHub.
 
@@ -43,24 +43,30 @@ The skill checks for the test project as a sibling directory (`../sst-jaffle-sho
 The dbt target controls which Snowflake database/schema SST writes to. Targets are defined in `~/.dbt/profiles.yml` under the `sst_jaffle_shop` profile.
 
 Common targets:
-- `dev` — personal development schema
+- `dev` — personal development schema (default: SCRATCH.LUIZZI_SST)
 - `ci` — dedicated CI/CD schema (if configured)
-- `prod` — production (use with caution)
 
 The E2E skill will ask which target to use at runtime. Default: `dev`.
 
 ## Known Gotchas
 
-1. **sst_config.yaml** — The jaffle-shop project uses `sst_config.yaml` (not `.yml`). It should contain:
+1. **sst_config.yml** — The jaffle-shop project uses `sst_config.yml`. It should contain:
    ```yaml
    project:
      semantic_models_dir: "snowflake_semantic_models"
+     dbt_models_dir: "models"
    ```
 
-2. **Template syntax** — The `complete-project` branch uses `{{ ref('model_name') }}` and `{{ ref('model', 'column') }}` syntax (unified ref), not the legacy `{{ table() }}` / `{{ column() }}` syntax.
+2. **Template syntax** — The project uses both `{{ ref('model_name') }}` (recommended) and legacy `{{ table() }}` / `{{ column() }}` syntax (backward compatibility test).
 
 3. **Never read profiles.yml** — `~/.dbt/profiles.yml` contains secrets. Never cat, read, or log it. SST reads it internally via dbt's profile parser.
 
 4. **Package manager** — SST uses Poetry for dependency management. Never use `uv` or create `uv.lock`.
 
 5. **Editable install** — If `sst --version` shows an unexpected version, re-run `pip install -e .` from the SST repo root to ensure the development branch is active.
+
+6. **Error fixtures** — The project contains `_error_examples.yml` files with INTENTIONAL errors. These exercise SST's validation error codes. They are expected to fail validation — this is by design. When checking validation output, errors from these files are EXPECTED and should be ignored. Only errors from non-error files indicate real problems.
+
+7. **Defer config** — `sst_config.yml` has `defer.target: prod`. During E2E testing against dev, SST will use the `--database` flag or the manifest to resolve table locations. This is normal.
+
+8. **Snowflake syntax check** — The config has `snowflake_syntax_check: true`. For offline-only validation, use `--no-snowflake-check`. For full E2E, let it connect.

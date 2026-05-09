@@ -7,7 +7,9 @@ description: "End-to-end testing for SST against sst-jaffle-shop. Runs unit test
 
 ## Purpose
 
-This skill validates that SST (snowflake-semantic-tools) works correctly after code changes. It uses [sst-jaffle-shop](https://github.com/WhoopInc/sst-jaffle-shop) — a known-good dbt project with 13 models, 38 metrics, 5 relationships, and 3 semantic views — as a reference integration test. If SST can successfully validate, enrich, extract, and generate semantic views from this project, the code is working.
+This skill validates that SST (snowflake-semantic-tools) works correctly after code changes. It uses [sst-jaffle-shop](https://github.com/WhoopInc/sst-jaffle-shop) — a comprehensive dbt project with 15 models, 80+ metrics, 8 relationships, 6 filters, 9 verified queries, and 3 semantic views — as a reference integration test. The project also includes intentional error fixtures (`_error_examples.yml` files) that exercise every SST validation error code.
+
+If SST can successfully validate, enrich, extract, and generate semantic views from this project, the code is working.
 
 Use this skill when:
 - You've made changes to SST and want to verify nothing broke
@@ -51,7 +53,7 @@ SST requires Python 3.11+. The agent should detect the active Python environment
    ```bash
    pip install -e "$SST_REPO"
    ```
-3. Verify: `sst --version` — should return a version string (e.g., `0.2.4`)
+3. Verify: `sst --version` — should return a version string (e.g., `0.3.0`)
 
 If the user has a conda environment or virtualenv they prefer, ask them. Do NOT assume a specific conda path or environment name.
 
@@ -67,11 +69,11 @@ Locate or clone the test project:
    ```bash
    git clone https://github.com/WhoopInc/sst-jaffle-shop.git "$SST_REPO/../sst-jaffle-shop"
    ```
-3. Ensure the `complete-project` branch is checked out and up to date:
+3. Ensure the `main` branch is checked out and up to date:
    ```bash
    cd "$JAFFLE_SHOP_DIR"
-   git checkout complete-project
-   git pull origin complete-project
+   git checkout main
+   git pull origin main
    ```
 
 Store the resolved path as JAFFLE_SHOP_DIR.
@@ -81,14 +83,18 @@ Store the resolved path as JAFFLE_SHOP_DIR.
 For Snowflake-connected phases, the dbt models must be materialized in the target schema. Check if tables exist:
 
 ```sql
-SHOW TABLES IN <DB>.<SCHEMA>;
+SELECT TABLE_NAME FROM <DB>.INFORMATION_SCHEMA.TABLES
+WHERE TABLE_SCHEMA = '<SCHEMA>' AND TABLE_TYPE = 'BASE TABLE'
+ORDER BY TABLE_NAME;
 ```
+
+Expected mart tables (8): CUSTOMERS, LOCATIONS, METRICFLOW_TIME_SPINE, ORDER_ITEMS, ORDERS, PRICING_PERIODS, PRODUCTS, SUPPLIES.
 
 If the schema is empty (or doesn't exist), the dbt project needs to be built first.
 
 **⚠️ MANDATORY STOPPING POINT**: Ask the user how they want to proceed:
 
-1. **Build now** — the agent runs `dbt deps`, `dbt seed`, and `dbt build` in the jaffle-shop project against the chosen target. This creates ~6 seed tables in a `raw` sub-schema and 13 models in the target schema. It will incur Snowflake compute costs.
+1. **Build now** — the agent runs `dbt deps`, `dbt seed`, and `dbt build` in the jaffle-shop project against the chosen target. This creates seed tables in a `raw` sub-schema and 15 models in the target schema. It will incur Snowflake compute costs.
 2. **Skip Snowflake phases** — run only the offline phases (unit tests + validate) and skip enrich, extract, generate, and Snowflake verification.
 3. **Point to an existing schema** — the user already has the jaffle-shop tables in a different database/schema and wants to use that instead.
 
@@ -100,7 +106,7 @@ dbt seed --vars '{"load_source_data": true}' --full-refresh
 dbt build
 ```
 
-Verify all 13 models pass (PASS=13). If any fail, report the errors before continuing.
+Verify all 15 models pass. If any fail, report the errors before continuing.
 
 Critical notes:
 - `dbt deps` MUST run before `dbt build` — `stg_supplies` uses `dbt_utils` macros and will fail without it
@@ -108,7 +114,7 @@ Critical notes:
 - Seeds load into a `raw` sub-schema (configured in dbt_project.yml `seeds.+schema: raw`)
 - The `dbt_project.yml` profile is `sst_jaffle_shop` — this must exist in `~/.dbt/profiles.yml` with valid Snowflake credentials
 
-If the schema already has tables, verify the count matches expectations (13 models). If there are fewer, ask the user if they want to re-run `dbt build` to refresh.
+If the schema already has tables, verify 8 mart tables exist. If there are fewer, ask the user if they want to re-run `dbt build` to refresh.
 
 ### dbt Target
 
@@ -117,10 +123,10 @@ If the schema already has tables, verify the count matches expectations (13 mode
 Store the target for use in subsequent phases.
 
 ### Prerequisites Pass Criteria
-- `sst --version` succeeds
-- sst-jaffle-shop is on `complete-project` branch
+- `sst --version` succeeds and shows expected version
+- sst-jaffle-shop is on `main` branch and up to date
 - User has confirmed a dbt target
-- If running Snowflake phases: 13 tables exist in target schema (or user chose to skip)
+- If running Snowflake phases: 8 mart tables exist in target schema (or user chose to skip)
 
 ---
 
@@ -156,44 +162,58 @@ Do NOT continue to Phase 2 if there are new failures beyond the known issues abo
 
 ---
 
-## Test Phase 2: Validate (Offline)
+## Test Phase 2: Validate
 
-Run semantic model validation in the jaffle-shop project. Use `--no-snowflake-check` to skip SQL syntax checking against Snowflake — this phase is purely offline structural validation. SQL syntax checking happens implicitly during the Snowflake-connected phases (extract/generate).
-
-The `sst_config.yaml` in jaffle-shop may have `snowflake_syntax_check: true`, which would attempt a Snowflake connection. The `--no-snowflake-check` flag overrides this.
-
-Also note: `sst validate` may prompt interactively if the dbt manifest is stale. Pipe `1` to choose "continue with current manifest", or use `--dbt-compile` to refresh it (requires dbt installed).
+Run semantic model validation in the jaffle-shop project. This validates the ENTIRE project including the intentional error fixtures.
 
 ```bash
 cd "$JAFFLE_SHOP_DIR"
+echo "1" | sst validate --target <TARGET>
+```
+
+If running offline only (no Snowflake connection), use `--no-snowflake-check`:
+```bash
 echo "1" | sst validate --no-snowflake-check
 ```
 
-Parse the output for:
-- Number of models validated
-- Number of metrics found
-- Number of relationships found
-- Number of semantic views found
-- Error count
-- Warning count
+Note: `sst validate` may prompt interactively if the dbt manifest is stale. Pipe `1` to choose "continue with current manifest".
 
-Cross-reference counts against `expected-outputs.md` baselines.
+### Interpreting Results
+
+The project INTENTIONALLY contains error fixtures. The validation output will show errors — this is expected. The key distinction:
+
+- **Errors from `_error_examples.yml` or `_error_semantic_views.yml` files** → EXPECTED (pass)
+- **Errors from any other file** → UNEXPECTED (fail)
+
+To check this, grep the validation output:
+```bash
+sst validate 2>&1 | grep -A1 "^error" | grep "\-\->" | grep -v "_error_examples\|_error_semantic"
+```
+
+If this produces NO output, all real models pass cleanly.
+
+Similarly for warnings:
+```bash
+sst validate 2>&1 | grep -A1 "^warning" | grep "\-\->" | grep -v "_error_examples\|_error_semantic"
+```
 
 ### Pass Criteria
-- 0 validation errors (structural errors only — Snowflake connection errors are not relevant here)
-- Metric, relationship, and semantic view counts match expected baselines (or are higher if new ones were added)
-- Warnings are acceptable but should be listed
+- 0 errors from non-error fixture files
+- 0 warnings from non-error fixture files
+- 20+ errors from _error_examples files (intentional — proves error detection works)
+- Exit code 1 (because error fixtures exist)
 
 ### On Failure
-Report each validation error with its full message. These are likely bugs in SST's validation logic or regressions in the jaffle-shop project.
+If errors appear from non-error files, report each one. These indicate either:
+- A bug in SST's validation logic
+- A regression in the jaffle-shop positive test cases
+- A false positive in a validation rule
 
 ---
 
 ## Test Phase 3: Enrich (Requires Snowflake)
 
 Run metadata enrichment against the Snowflake target. This modifies YAML files in the jaffle-shop project.
-
-Note: `sst enrich` may also prompt interactively if the manifest is stale (same as validate). Pipe `1` to continue:
 
 ```bash
 cd "$JAFFLE_SHOP_DIR"
@@ -246,29 +266,32 @@ Extract may show: `Cortex Search setup failed: Object 'SM_TABLE_SUMMARIES' does 
 Preview the SQL that would be generated:
 
 ```bash
-sst generate --all --target <TARGET> --dry-run 2>&1 | tee /tmp/sst-dry-run-output.txt
+cd "$JAFFLE_SHOP_DIR"
+echo "1" | sst generate --all --target <TARGET> --dry-run 2>&1 | tee /tmp/sst-dry-run-output.txt
 ```
 
 Compare the dry-run output against `references/expected-outputs.md` baselines:
 - Verify all 3 expected semantic views appear in the output
-- Verify each view references the correct tables (see Relationships table in expected-outputs)
+- Verify each view references the correct tables
 - Verify metrics, dimensions, and facts are present for each view
+- Verify relationships are included
 - If the output differs significantly from expectations, flag it as a potential regression
 
 **⚠️ MANDATORY STOPPING POINT**: Do NOT proceed until user responds.
 
-Show the user the dry-run output. Ask if they want to proceed with actual generation.
+Show the user the dry-run output (or a summary). Ask if they want to proceed with actual generation.
 
 ### 4c. Generate (Execute)
 
 If approved:
 ```bash
-sst generate --all --target <TARGET>
+cd "$JAFFLE_SHOP_DIR"
+echo "1" | sst generate --all --target <TARGET>
 ```
 
 ### Pass Criteria
 - Extract exits with code 0 (warnings about Cortex Search are acceptable)
-- Generate creates all semantic views listed in `expected-outputs.md`
+- Generate creates all 3 semantic views
 - Dry-run SQL contains expected tables, relationships, and metrics per view
 - No SQL syntax errors or Snowflake errors during generation
 
@@ -287,34 +310,31 @@ Verify the generated semantic views exist and are valid in Snowflake.
 
 ### 5a. List Views
 
-Run (using the Snowflake SQL execution tool or CLI):
 ```sql
 SHOW SEMANTIC VIEWS IN <DB>.<SCHEMA>;
 ```
 
-Where `<DB>` and `<SCHEMA>` come from the dbt target's configuration.
-
 ### 5b. Describe Each View
 
-For each expected semantic view from `expected-outputs.md`:
+For each expected semantic view:
 ```sql
 DESCRIBE SEMANTIC VIEW <DB>.<SCHEMA>.<VIEW_NAME>;
 ```
 
 Expected views:
-- `jaffle_shop_sales_analytics`
-- `jaffle_shop_menu_analytics`
-- `jaffle_shop_complete`
+- `JAFFLE_SHOP_SALES_ANALYTICS`
+- `JAFFLE_SHOP_MENU_ANALYTICS`
+- `JAFFLE_SHOP_COMPLETE`
 
 ### 5c. Cross-Reference
 
 Verify:
 - All views from `semantic_views.yml` exist in Snowflake
-- No orphaned views (views in Snowflake not in YAML) — note any for cleanup
 - Each view's DESCRIBE output contains the expected tables and metrics
+- No orphaned views (views in Snowflake not in YAML) — note any for cleanup
 
 ### Pass Criteria
-- All expected semantic views exist
+- All 3 expected semantic views exist
 - All views are describable (no broken references)
 
 ---
@@ -327,10 +347,10 @@ Compile results from all test phases into a summary:
 Phase                 | Status | Details
 ----------------------------------------------
 1. Unit Tests         | ...    | X/Y passed
-2. Validate           | ...    | 0 errors, N warnings
-3. Enrich             | ...    | exit code 0, N columns enriched
-4. Extract + Generate | ...    | N semantic views created, SQL matches baseline
-5. Snowflake Verify   | ...    | N views confirmed
+2. Validate           | ...    | 0 errors on real models, N intentional errors caught
+3. Enrich             | ...    | exit code 0, N files modified
+4. Extract + Generate | ...    | 3 semantic views created
+5. Snowflake Verify   | ...    | 3 views confirmed
 ----------------------------------------------
 Overall: PASS / FAIL
 ```
@@ -347,7 +367,7 @@ If all phases passed:
 
 - All phases report PASS (or PASS with known caveats)
 - 0 new test failures beyond known issues
-- 0 validation errors
+- 0 validation errors on non-error fixture files
 - All 3 semantic views created and verified in Snowflake
 - No unhandled exceptions or tracebacks in any SST command
 
@@ -359,7 +379,7 @@ A phase-by-phase summary report (Phase 6) with PASS/FAIL status for each phase, 
 
 - ✋ Prerequisites: Before building dbt models (Snowflake compute costs)
 - ✋ Prerequisites: Before proceeding without a confirmed dbt target
-- ✋ Phase 3: After enrich, before Snowflake writes (review git diff)
+- ✋ Phase 3: After enrich, before proceeding (review git diff)
 - ✋ Phase 4b: After generate dry-run, before executing DDL
 
 ## Troubleshooting
@@ -381,3 +401,6 @@ A phase-by-phase summary report (Phase 6) with PASS/FAIL status for each phase, 
 
 **`sst --version` shows wrong version**
 - Re-run `pip install -e .` from the SST repo root to ensure the dev branch is active.
+
+**Validation shows errors but they're all from `_error_examples.yml`**
+- This is EXPECTED. The error fixtures intentionally trigger validation errors. Only worry about errors from other files.
