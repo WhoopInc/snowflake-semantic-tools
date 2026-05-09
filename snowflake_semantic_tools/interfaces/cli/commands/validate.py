@@ -262,10 +262,7 @@ def validate(ctx, dbt, semantic, strict, verbose, exclude, dbt_compile, verify_s
             elif strict and result.has_warnings:
                 exit_code = 1
 
-            filtered_issues = [
-                i for i in result.issues
-                if i.severity.value in ("error", "warning")
-            ]
+            filtered_issues = [i for i in result.issues if i.severity.value in ("error", "warning")]
 
             diagnostics = []
             for issue in filtered_issues:

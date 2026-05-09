@@ -112,7 +112,13 @@ class DependencyValidator:
                     # Found a cycle
                     cycle_start = path.index(neighbor)
                     cycle = path[cycle_start:] + [neighbor]
-                    result.add_error(f"Circular dependency detected: {' -> '.join(cycle)}", context={"cycle": cycle}, rule_id="SST-V090", suggestion="Break the circular metric reference chain", entity_name=metric)
+                    result.add_error(
+                        f"Circular dependency detected: {' -> '.join(cycle)}",
+                        context={"cycle": cycle},
+                        rule_id="SST-V090",
+                        suggestion="Break the circular metric reference chain",
+                        entity_name=metric,
+                    )
                     return True
 
             rec_stack.remove(node)

@@ -151,7 +151,7 @@ class SemanticMetadataCollectionValidationService:
             self.parser.manifest_parser = manifest_parser
 
             # Step 1: Find dbt model files
-            if not getattr(self, '_quiet', False):
+            if not getattr(self, "_quiet", False):
                 click.echo("Scanning project for dbt models...")
 
             if config.dbt_path:
@@ -169,7 +169,7 @@ class SemanticMetadataCollectionValidationService:
                 # Use default from config
                 dbt_files = find_dbt_model_files(exclude_dirs=config.exclude_dirs)
 
-            if not getattr(self, '_quiet', False):
+            if not getattr(self, "_quiet", False):
                 click.echo(f"Found {len(dbt_files)} dbt models")
 
             # Validate exclusion patterns if verbose mode

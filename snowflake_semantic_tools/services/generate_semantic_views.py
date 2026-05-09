@@ -414,7 +414,10 @@ class SemanticViewGenerationService:
 
                     fire_event(
                         ViewGenerationFailed(
-                            view_name=view_name, error_message=full_error[:200], current=idx, total=len(views_to_generate)
+                            view_name=view_name,
+                            error_message=full_error[:200],
+                            current=idx,
+                            total=len(views_to_generate),
                         )
                     )
 

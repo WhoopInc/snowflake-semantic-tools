@@ -413,7 +413,9 @@ class ValidationResult:
 
                 highlight_token = self._extract_highlight_token(issue)
                 if highlight_token:
-                    source_lines = SourceReader.get_source_lines(file_path, issue.line_number, context_before=0, context_after=5)
+                    source_lines = SourceReader.get_source_lines(
+                        file_path, issue.line_number, context_before=0, context_after=5
+                    )
                     for line_num, line_content in source_lines:
                         col = SourceReader.find_template_column(line_content, highlight_token)
                         if col is not None:

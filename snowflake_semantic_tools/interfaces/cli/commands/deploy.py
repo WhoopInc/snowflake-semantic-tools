@@ -189,7 +189,9 @@ def deploy(ctx, dbt_target, db, schema, defer_target, state, only_modified, no_d
 
             from snowflake_semantic_tools._version import __version__ as sst_version
 
-            error_count = result.validation_errors if hasattr(result, "validation_errors") else (0 if result.success else 1)
+            error_count = (
+                result.validation_errors if hasattr(result, "validation_errors") else (0 if result.success else 1)
+            )
             warning_count = result.validation_warnings if hasattr(result, "validation_warnings") else 0
 
             diagnostics = []

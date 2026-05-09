@@ -11,7 +11,6 @@ from pathlib import Path
 import click
 
 
-
 @click.command(
     "init",
     short_help="Set up SST in a dbt project (run first)",

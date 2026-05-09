@@ -26,7 +26,9 @@ class SourceReader:
             return None
 
     @classmethod
-    def get_source_lines(cls, file_path: str, line: int, context_before: int = 1, context_after: int = 1) -> List[Tuple[int, str]]:
+    def get_source_lines(
+        cls, file_path: str, line: int, context_before: int = 1, context_after: int = 1
+    ) -> List[Tuple[int, str]]:
         """
         Get source lines around a given line number.
 

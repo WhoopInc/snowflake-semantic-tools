@@ -123,7 +123,8 @@ LAZY_COMMANDS = {
 @click.group(cls=LazyGroup, lazy_commands=LAZY_COMMANDS)
 @click.version_option(version=__version__, prog_name="snowflake-semantic-tools")
 @click.option(
-    "--output", "-o",
+    "--output",
+    "-o",
     type=click.Choice(["table", "json", "plain"], case_sensitive=False),
     default="table",
     help="Output format: table (default), json (machine-readable), plain (no colors/timestamps)",

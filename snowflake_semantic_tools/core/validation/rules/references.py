@@ -51,6 +51,7 @@ def _has_sql_transformation(col_ref: str) -> Tuple[bool, str]:
 
     return False, ""
 
+
 # Appended to relationship PK/unique errors so users know why left/right order matters.
 _RELATIONSHIP_DIRECTION_HINT = (
     "\n\n"
@@ -170,7 +171,9 @@ class ReferenceValidator:
                                     suggestion_text = f"Did you mean '{suggestions[0]}'? Available: {', '.join(list(dbt_catalog.keys())[:5])}"
                                 else:
                                     error_msg += ". Check that the model has `config.meta.sst` configuration."
-                                    suggestion_text = "Ensure the model has config.meta.sst with primary_key and column metadata"
+                                    suggestion_text = (
+                                        "Ensure the model has config.meta.sst with primary_key and column metadata"
+                                    )
                                 result.add_error(
                                     error_msg,
                                     file_path=source_file,
@@ -772,7 +775,13 @@ class ReferenceValidator:
                 name = instruction.get("name", "")
                 if name:
                     if name in seen_names:
-                        result.add_error(f"Duplicate custom instruction name: '{name}'", rule_id="SST-V004", suggestion="Remove or rename duplicate instruction", entity_name=name, context={"instruction": name})
+                        result.add_error(
+                            f"Duplicate custom instruction name: '{name}'",
+                            rule_id="SST-V004",
+                            suggestion="Remove or rename duplicate instruction",
+                            entity_name=name,
+                            context={"instruction": name},
+                        )
                     seen_names.add(name)
 
         # No table validation needed since custom instructions no longer have tables
