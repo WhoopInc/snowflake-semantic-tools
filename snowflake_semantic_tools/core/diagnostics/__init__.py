@@ -18,11 +18,7 @@ Usage:
     output = renderer.render(issue)
 """
 
-from snowflake_semantic_tools.core.diagnostics.error_codes import (
-    ERRORS,
-    ErrorCategory,
-    ErrorSpec,
-)
+from snowflake_semantic_tools.core.diagnostics.error_codes import ERRORS, ErrorCategory, ErrorSpec
 from snowflake_semantic_tools.core.diagnostics.renderer import DiagnosticRenderer
 from snowflake_semantic_tools.core.diagnostics.source_reader import SourceReader
 from snowflake_semantic_tools.core.diagnostics.suggestions import (

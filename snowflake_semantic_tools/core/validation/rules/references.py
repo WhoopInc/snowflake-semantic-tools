@@ -15,7 +15,6 @@ from typing import Any, Dict, List, Optional, Set, Tuple
 from snowflake_semantic_tools.core.diagnostics.suggestions import format_available_list
 from snowflake_semantic_tools.core.models import ValidationResult
 
-
 _SQL_TRANSFORMATION_PATTERNS = [
     (r"::", "type casting (::)"),
     (r"\bCAST\s*\(", "CAST function"),
