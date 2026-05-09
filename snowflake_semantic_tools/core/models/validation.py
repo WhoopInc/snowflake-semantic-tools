@@ -197,7 +197,7 @@ class ValidationResult:
     """
 
     issues: List[ValidationIssue] = field(default_factory=list)
-    _fire_events: bool = field(default=False, init=False, repr=False)
+    _fire_events: bool = field(default=True, init=False, repr=False)
 
     def disable_events(self):
         """Disable real-time event firing (for batch operations)."""

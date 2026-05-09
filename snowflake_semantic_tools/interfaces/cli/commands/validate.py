@@ -206,17 +206,20 @@ def validate(ctx, dbt, semantic, strict, verbose, exclude, dbt_compile, verify_s
         output.info("Starting validation...")
 
         service = SemanticMetadataCollectionValidationService.create_from_config()
-        service._quiet = quiet_mode
 
         config = ValidateConfig(
             dbt_path=Path(dbt) if dbt else None,
             semantic_path=Path(semantic) if semantic else None,
             strict_mode=strict,
             exclude_dirs=exclude_dirs if exclude_dirs else None,
+            quiet=quiet_mode,
         )
 
         val_start = time.time()
         result = service.execute(config, verbose=verbose)
+
+        if quiet_mode:
+            result.disable_events()
 
         # Run Snowflake schema verification if requested
         if verify_schema:
@@ -247,8 +250,6 @@ def validate(ctx, dbt, semantic, strict, verbose, exclude, dbt_compile, verify_s
             output.success(f"Validation completed in {val_duration:.1f}s")
         else:
             output.error(f"Validation completed in {val_duration:.1f}s")
-
-        output_format = ctx.obj.get("output_format", "table") if ctx.obj else "table"
 
         if output_format == "json":
             import json as json_mod
