@@ -97,14 +97,23 @@ class DiagnosticRenderer:
             arrow = self._color("-->", self.BLUE)
             lines.append(f"  {arrow} {location}")
 
+        gutter_width = 4
+        has_snippet = False
         if issue.file_path and issue.line_number:
             snippet_lines = self._render_source_snippet(issue)
             if snippet_lines:
                 lines.extend(snippet_lines)
+                has_snippet = True
+                gutter_width = max(len(str(issue.line_number)) + 1, 4)
+        elif issue.file_path and issue.file_path.strip():
+            pipe = self._color("|", self.BLUE)
+            lines.append(f"{'':>{gutter_width}} {pipe}")
 
         if issue.suggestion:
-            lines.append(self._color("   |", self.BLUE))
-            help_prefix = self._color("   = help:", self.CYAN)
+            if not has_snippet:
+                pipe = self._color("|", self.BLUE)
+                lines.append(f"{'':>{gutter_width}} {pipe}")
+            help_prefix = self._color(f"{'':>{gutter_width}} = help:", self.CYAN)
             lines.append(f"{help_prefix} {issue.suggestion}")
 
         return "\n".join(lines)
