@@ -145,7 +145,6 @@ class ReferenceValidator:
                 expr = metric.get("expr", "")
                 source_file = metric.get("source_file")
 
-
                 # Defensive check: warn if tables field is missing
                 if "tables" not in metric:
                     result.add_warning(

@@ -466,9 +466,7 @@ class DbtModelValidator:
         source_file = table.get("source_file")
         all_columns = dimensions + facts + time_dimensions
         table_col_names = {
-            c.get("name", "").upper()
-            for c in all_columns
-            if c.get("table_name", "").upper() == table_name.upper()
+            c.get("name", "").upper() for c in all_columns if c.get("table_name", "").upper() == table_name.upper()
         }
         for constraint in constraints:
             if not isinstance(constraint, dict):
