@@ -106,19 +106,16 @@ def parse_snowflake_metrics(metrics: List[Dict[str, Any]], file_path: Path) -> L
 
     for metric in metrics:
         try:
-            # Preserve the tables field for validation
+            is_derived = metric.get("derived", False)
+
             tables = metric.get("tables", [])
 
-            # Ensure tables is a list
             if not isinstance(tables, list):
                 tables = [tables] if tables else []
 
-            # Extract primary table for backward compatibility
-            if tables:
-                # Take the first table as the primary table
+            if tables and not is_derived:
                 table_name = tables[0]
 
-                # Safety check: If it's still a string representation of a list, handle it
                 if isinstance(table_name, str) and table_name.startswith("["):
                     logger.warning(f"Metric '{metric.get('name', '')}' has unresolved table reference: {table_name}")
                     table_name = ""
@@ -128,7 +125,7 @@ def parse_snowflake_metrics(metrics: List[Dict[str, Any]], file_path: Path) -> L
             metric_record = {
                 "name": metric.get("name", "").upper(),
                 "table_name": table_name.upper() if isinstance(table_name, str) else str(table_name).upper(),
-                "tables": tables,  # PRESERVE THE FULL TABLES ARRAY
+                "tables": tables,
                 "description": metric.get("description", ""),
                 "expr": metric.get("expr", ""),
                 "synonyms": metric.get("synonyms", []),
@@ -137,6 +134,7 @@ def parse_snowflake_metrics(metrics: List[Dict[str, Any]], file_path: Path) -> L
                 "non_additive_by": metric.get("non_additive_by", []),
                 "using_relationships": metric.get("using_relationships", []),
                 "window": metric.get("window"),
+                "derived": is_derived,
                 "source_file": str(file_path),
             }
             metric_records.append(metric_record)

@@ -117,7 +117,7 @@ class SemanticModelValidator:
             self._validate_identifier(metric_name, "Metric", result, source_file=source_file)
 
             # Field types
-            if "tables" in metric:
+            if "tables" in metric and not metric.get("derived"):
                 if not isinstance(metric["tables"], list):
                     result.add_error(
                         f"Metric '{metric_name}' field 'tables' must be a list, got {type(metric['tables']).__name__}",

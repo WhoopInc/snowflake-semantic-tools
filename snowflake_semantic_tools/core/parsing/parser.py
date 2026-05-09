@@ -411,6 +411,7 @@ class Parser:
 
                 # Resolve templates if enabled
                 if self.template_resolver:
+                    raw_content = content
                     content = self.template_resolver.resolve_content(content)
 
                 # Parse resolved content
@@ -422,7 +423,6 @@ class Parser:
                     instruction_names_map if semantic_type == "semantic_views" else None,
                 )
                 if parsed:
-                    # Special handling for relationships which return (relationships, relationship_columns)
                     if semantic_type == "relationships" and isinstance(parsed, tuple):
                         relationships, relationship_columns = parsed
                         if relationships:
@@ -430,6 +430,12 @@ class Parser:
                         if relationship_columns:
                             all_relationship_columns.extend(relationship_columns)
                     else:
+                        if semantic_type == "metrics" and self.template_resolver:
+                            for metric in parsed:
+                                if metric.get("derived"):
+                                    metric["expr"] = self._resolve_derived_metric_expr(
+                                        metric.get("name", ""), raw_content
+                                    )
                         all_items.extend(parsed)
                     self.parsed_files.append(str(file_path))
 
@@ -461,6 +467,44 @@ class Parser:
         if all_items:
             return {"items": all_items, "warnings": warnings}
         return None
+
+    def _resolve_derived_metric_expr(self, metric_name: str, raw_content: str) -> str:
+        """Resolve a derived metric's expr to TABLE.METRIC_NAME format.
+
+        For derived metrics, {{ metric('X') }} should resolve to TABLE.METRIC_NAME
+        instead of inlining the full SQL expression.
+        """
+        import re as _re
+
+        metric_name_lower = metric_name.lower()
+        pattern = _re.compile(
+            r"- name:\s*" + _re.escape(metric_name_lower) + r"\s*\n" r"(?:.*?\n)*?\s*expr:\s*[\"']?(.*?)[\"']?\s*$",
+            _re.MULTILINE | _re.IGNORECASE,
+        )
+        match = pattern.search(raw_content)
+        if not match:
+            return ""
+
+        raw_expr = match.group(1).strip().strip("\"'")
+
+        metric_ref_pattern = r'\{\{\s*metric\([\'"]([^\'")]+)[\'"]\)\s*\}\}'
+
+        def replace_with_qualified_name(m):
+            ref_name = m.group(1).upper()
+            for catalog_metric in self.metrics_catalog:
+                if catalog_metric.get("name", "").upper() == ref_name:
+                    tables = catalog_metric.get("tables", [])
+                    if tables:
+                        table_ref = str(tables[0])
+                        table_match = _re.search(r"ref\(['\"](\w+)['\"]\)", table_ref)
+                        if table_match:
+                            return f"{table_match.group(1).upper()}.{ref_name}"
+                        return f"{table_ref.upper()}.{ref_name}"
+                    return ref_name
+            return ref_name
+
+        resolved = _re.sub(metric_ref_pattern, replace_with_qualified_name, raw_expr)
+        return resolved
 
     def _extract_custom_instruction_names_from_views(self, content: str) -> Dict[str, List[str]]:
         """

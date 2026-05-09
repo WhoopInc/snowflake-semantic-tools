@@ -208,14 +208,52 @@ class ReferenceValidator:
                                     )
 
                 # Validate column references in expression
-                if expr and isinstance(expr, str):
+                is_derived = metric.get("derived", False)
+
+                if expr and isinstance(expr, str) and is_derived:
+                    metric_ref_pattern = r"\{\{\s*metric\s*\(\s*['\"]"
+                    if not re.search(metric_ref_pattern, expr):
+                        col_refs = re.findall(r"(\w+)\.(\w+)", expr)
+                        has_raw_columns = any(
+                            tref.upper() in {t.upper() for t in tables if isinstance(t, str)} for tref, _ in col_refs
+                        )
+                        if has_raw_columns or not col_refs:
+                            result.add_error(
+                                f"Derived metric '{name}' must reference other metrics via "
+                                f"{{{{ metric('name') }}}} syntax, not raw column expressions.",
+                                file_path=source_file,
+                                rule_id="SST-V045",
+                                suggestion="Use: expr: \"{{ metric('metric_a') }} + {{ metric('metric_b') }}\"",
+                                entity_name=name,
+                                context={"metric": name},
+                            )
+
+                    using_rels = metric.get("using_relationships", [])
+                    non_additive = metric.get("non_additive_by", [])
+                    window = metric.get("window")
+                    if using_rels or non_additive or window:
+                        invalid_fields = []
+                        if using_rels:
+                            invalid_fields.append("using_relationships")
+                        if non_additive:
+                            invalid_fields.append("non_additive_by")
+                        if window:
+                            invalid_fields.append("window")
+                        result.add_error(
+                            f"Derived metric '{name}' cannot use {', '.join(invalid_fields)}. "
+                            f"These are only valid on table-scoped metrics.",
+                            file_path=source_file,
+                            rule_id="SST-V046",
+                            suggestion="Remove the invalid fields — derived metrics are view-scoped",
+                            entity_name=name,
+                            context={"metric": name, "invalid_fields": invalid_fields},
+                        )
+
+                elif expr and isinstance(expr, str) and not is_derived:
                     self._validate_column_references_in_expr(
                         name, expr, tables, dbt_catalog, result, "Metric", source_file
                     )
 
-                    # Validate cross-entity column references
-                    # Snowflake semantic views do NOT allow metric expressions to reference
-                    # columns from multiple entities, even with using_relationships.
                     tables_in_expr = set()
                     for pattern in [
                         r"\{\{\s*ref\s*\(\s*['\"](\w+)['\"]\s*,\s*['\"]",
@@ -235,7 +273,7 @@ class ReferenceValidator:
                             f"metric expressions to reference columns from a single entity only.",
                             file_path=source_file,
                             rule_id="SST-V039",
-                            suggestion="Split into separate single-table metrics, or use metric composition via {{ metric() }}",
+                            suggestion="Split into separate single-table metrics, use metric composition via {{ metric() }}, or mark as derived: true",
                             entity_name=name,
                             context={"metric": name, "tables_in_expr": sorted(tables_in_expr)},
                         )

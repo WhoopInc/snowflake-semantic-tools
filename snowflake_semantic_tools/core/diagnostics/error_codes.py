@@ -201,6 +201,18 @@ _register(
     ErrorCategory.VALIDATION,
     "Split into separate single-table metrics, or use metric composition via {{ metric() }}",
 )
+_register(
+    "SST-V045",
+    "Derived metric must reference other metrics",
+    ErrorCategory.VALIDATION,
+    "Use: expr: \"{{ metric('metric_a') }} + {{ metric('metric_b') }}\"",
+)
+_register(
+    "SST-V046",
+    "Invalid field on derived metric",
+    ErrorCategory.VALIDATION,
+    "Remove the invalid fields — derived metrics are view-scoped",
+)
 
 # --- Relationship validation ---
 _register(

@@ -387,7 +387,7 @@ class SemanticViewBuilder:
 
     def _parse_table_list(self, raw: Any) -> List[str]:
         """Parse a TABLE_NAME column that can be various forms of encoded JSON."""
-        if raw is None:
+        if raw is None or (isinstance(raw, str) and raw.strip() == ""):
             return []
         if isinstance(raw, list):
             return [str(x).lower() for x in raw]
@@ -1142,71 +1142,86 @@ class SemanticViewBuilder:
             metric_name = metric["NAME"].upper()
             expression = metric["EXPR"]
 
-            # Extract all table references from the metric expression
-            referenced_tables_in_expr = self._extract_table_references_from_expression(expression)
+            is_metric_derived = not metric.get("TABLE_NAME") or (
+                metric.get("DERIVED") and str(metric.get("DERIVED")).lower() == "true"
+            )
 
-            # Validate that all referenced tables are available in this semantic view
-            missing_tables = []
-            for table_ref in referenced_tables_in_expr:
-                if table_ref not in available_tables:
-                    missing_tables.append(table_ref)
+            if not is_metric_derived:
+                referenced_tables_in_expr = self._extract_table_references_from_expression(expression)
 
-            # Skip metric if it references tables not in the semantic view
-            if missing_tables:
-                skipped_metrics.append(
-                    {"metric": metric_name, "missing_tables": missing_tables, "available": list(available_tables)}
-                )
-                logger.debug(
-                    f"Skipping metric '{metric_name}' - references table(s) not in semantic view: "
-                    f"{', '.join(missing_tables)}. Available tables: {', '.join(available_tables)}"
-                )
-                continue
+                missing_tables = []
+                for table_ref in referenced_tables_in_expr:
+                    if table_ref not in available_tables:
+                        missing_tables.append(table_ref)
+
+                if missing_tables:
+                    skipped_metrics.append(
+                        {"metric": metric_name, "missing_tables": missing_tables, "available": list(available_tables)}
+                    )
+                    logger.debug(
+                        f"Skipping metric '{metric_name}' - references table(s) not in semantic view: "
+                        f"{', '.join(missing_tables)}. Available tables: {', '.join(available_tables)}"
+                    )
+                    continue
+            else:
+                referenced_tables_in_expr = self._extract_table_references_from_expression(expression)
+                missing_tables = [t for t in referenced_tables_in_expr if t not in available_tables]
+                if missing_tables:
+                    logger.debug(
+                        f"Skipping derived metric '{metric_name}' - references table(s) not in view: "
+                        f"{', '.join(missing_tables)}"
+                    )
+                    continue
 
             # Find primary table for this metric
             referenced_tables = self._parse_table_list(metric.get("TABLE_NAME"))
+            is_derived = not referenced_tables or (
+                metric.get("DERIVED") and str(metric.get("DERIVED")).lower() == "true"
+            )
             primary_table = None
-            if referenced_tables:
-                # Use first referenced table that's in our selected tables
+            if not is_derived and referenced_tables:
                 for table in referenced_tables:
                     if table in [t.lower() for t in table_names]:
                         primary_table = table.upper()
                         break
 
-            if not primary_table:
-                primary_table = table_names[0].upper()  # Fallback to first table
+            if not is_derived and not primary_table:
+                primary_table = table_names[0].upper()
 
             visibility_prefix = ""
             if metric.get("VISIBILITY") and metric["VISIBILITY"].upper() == "PRIVATE":
                 visibility_prefix = "PRIVATE "
 
-            metric_def = f"    {visibility_prefix}{primary_table}.{metric_name}"
+            if is_derived:
+                metric_def = f"    {visibility_prefix}{metric_name}"
+            else:
+                metric_def = f"    {visibility_prefix}{primary_table}.{metric_name}"
 
-            # Add NON ADDITIVE BY clause for semi-additive metrics
-            non_additive_by = self._parse_json_field(metric.get("NON_ADDITIVE_BY"), "non_additive_by")
-            if non_additive_by and isinstance(non_additive_by, list):
-                nab_parts = []
-                for entry in non_additive_by:
-                    if isinstance(entry, dict):
-                        dim = entry.get("dimension", "").upper()
-                        if not dim:
-                            continue
-                        order = entry.get("order", "").upper()
-                        nulls = entry.get("nulls", "").upper()
-                        part = dim
-                        if order:
-                            part += f" {order}"
-                        if nulls:
-                            part += f" NULLS {nulls}"
-                        nab_parts.append(part)
-                if nab_parts:
-                    metric_def += f"\n      NON ADDITIVE BY ({', '.join(nab_parts)})"
+            if not is_metric_derived:
+                non_additive_by = self._parse_json_field(metric.get("NON_ADDITIVE_BY"), "non_additive_by")
+                if non_additive_by and isinstance(non_additive_by, list):
+                    nab_parts = []
+                    for entry in non_additive_by:
+                        if isinstance(entry, dict):
+                            dim = entry.get("dimension", "").upper()
+                            if not dim:
+                                continue
+                            order = entry.get("order", "").upper()
+                            nulls = entry.get("nulls", "").upper()
+                            part = dim
+                            if order:
+                                part += f" {order}"
+                            if nulls:
+                                part += f" NULLS {nulls}"
+                            nab_parts.append(part)
+                    if nab_parts:
+                        metric_def += f"\n      NON ADDITIVE BY ({', '.join(nab_parts)})"
 
-            # Add USING clause for relationship path disambiguation
-            using_rels = self._parse_json_field(metric.get("USING_RELATIONSHIPS"), "using_relationships")
-            if using_rels and isinstance(using_rels, list):
-                rel_names = [str(r).upper() for r in using_rels if r]
-                if rel_names:
-                    metric_def += f"\n      USING ({', '.join(rel_names)})"
+                using_rels = self._parse_json_field(metric.get("USING_RELATIONSHIPS"), "using_relationships")
+                if using_rels and isinstance(using_rels, list):
+                    rel_names = [str(r).upper() for r in using_rels if r]
+                    if rel_names:
+                        metric_def += f"\n      USING ({', '.join(rel_names)})"
 
             metric_def += f" AS {expression}"
 
