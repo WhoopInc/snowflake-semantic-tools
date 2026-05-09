@@ -12,27 +12,37 @@ import click
 from snowflake_semantic_tools._version import __version__
 
 
-@click.command()
+@click.command(
+    short_help="Show config and test Snowflake connection",
+)
 @click.option("--target", "-t", "dbt_target", help="dbt target from profiles.yml (default: uses profile's default)")
 @click.option("--test-connection", is_flag=True, help="Test Snowflake connection")
 @click.option("--verbose", "-v", is_flag=True, help="Show additional details")
 def debug(dbt_target, test_connection, verbose):
-    """
-    Show configuration and optionally test Snowflake connection.
+    """Show configuration and optionally test Snowflake connection.
 
-    Displays the current dbt profile configuration that SST will use,
-    helping verify your setup is correct before running other commands.
+    Displays the dbt profile SST will use (account, database, schema, warehouse).
+    Use --test-connection to verify credentials work end-to-end.
+
+    \b
+    Prerequisites:
+      • 'sst init' completed (sst_config.yml exists)
+      • ~/.dbt/profiles.yml with Snowflake credentials
 
     \b
     Examples:
-        # Show current configuration
-        sst debug
+      sst debug                     Show current configuration
+      sst debug --test-connection   Verify Snowflake connection
+      sst debug --target prod       Show config for 'prod' target
 
-        # Test the Snowflake connection
-        sst debug --test-connection
+    \b
+    Next Step:
+      sst enrich models/      Auto-populate metadata from Snowflake
 
-        # Use a specific target
-        sst debug --target prod
+    \b
+    Related Commands:
+      sst init                Set up SST if not configured yet
+      sst validate            Check models for errors (no connection needed)
     """
     click.echo()
     click.echo(click.style(f"SST Debug", bold=True) + f" (v{__version__})")

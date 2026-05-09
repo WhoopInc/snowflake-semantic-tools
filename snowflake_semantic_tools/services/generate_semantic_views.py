@@ -31,6 +31,23 @@ if TYPE_CHECKING:
 logger = get_logger("generate_semantic_views_service")
 
 
+def _format_snowflake_error(view_name: str, error: Exception) -> str:
+    """Format a Snowflake error with actionable context."""
+    full_msg = str(error)
+    suggestion = ""
+
+    if "already exists" in full_msg.lower():
+        suggestion = "\n  [SST-G002] Fix: Rename view, drop conflicting object, or use different schema"
+    elif "does not exist or not authorized" in full_msg.lower() or "object does not exist" in full_msg.lower():
+        suggestion = "\n  [SST-G004] Fix: Verify table exists or use --defer-target"
+    elif "insufficient privileges" in full_msg.lower() or "access control" in full_msg.lower():
+        suggestion = "\n  [SST-G005] Fix: Grant CREATE SEMANTIC VIEW on schema to your role"
+    else:
+        suggestion = "\n  [SST-G001] Fix: Check the Snowflake error message for details"
+
+    return f"View '{view_name}' failed: {full_msg}{suggestion}"
+
+
 class MetadataClient:
     """
     Helper for accessing semantic metadata tables.
@@ -379,11 +396,10 @@ class SemanticViewGenerationService:
                         views_failed.append(view_name)
                         errors.append(result["message"])
 
-                        # Event system will show the [FAILED] line
                         fire_event(
                             ViewGenerationFailed(
                                 view_name=view_name,
-                                error_message=result["message"][:100],
+                                error_message=result["message"][:200],
                                 current=idx,
                                 total=len(views_to_generate),
                             )
@@ -391,15 +407,14 @@ class SemanticViewGenerationService:
 
                 except Exception as e:
                     views_failed.append(view_name)
-                    error_msg = str(e)[:100]
-                    errors.append(f"Error generating view {view_name}: {str(e)}")
-                    # Event handles user-facing error display
-                    # Logger captures detailed exception trace for debugging
-                    logger.debug(f"View generation exception: {view_name}: {str(e)}", exc_info=True)
+                    full_error = str(e)
+                    error_msg = _format_snowflake_error(view_name, e)
+                    errors.append(error_msg)
+                    logger.debug(f"View generation exception: {view_name}: {full_error}", exc_info=True)
 
                     fire_event(
                         ViewGenerationFailed(
-                            view_name=view_name, error_message=error_msg, current=idx, total=len(views_to_generate)
+                            view_name=view_name, error_message=full_error[:200], current=idx, total=len(views_to_generate)
                         )
                     )
 

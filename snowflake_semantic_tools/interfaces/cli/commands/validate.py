@@ -27,7 +27,9 @@ from snowflake_semantic_tools.shared.utils import get_logger
 logger = get_logger("cli.validate")
 
 
-@click.command()
+@click.command(
+    short_help="Check semantic models for errors (offline)",
+)
 @click.option("--dbt", help="dbt models path (auto-detected from config if not specified)")
 @click.option("--semantic", help="Semantic models path (auto-detected from config if not specified)")
 @click.option("--strict", is_flag=True, help="Fail on warnings (not just errors)")
@@ -52,53 +54,52 @@ logger = get_logger("cli.validate")
     help="Validate SQL expressions against Snowflake. Catches typos like CUONT instead of COUNT. "
     "Default: uses validation.snowflake_syntax_check from sst_config.yml if set.",
 )
-def validate(dbt, semantic, strict, verbose, exclude, dbt_compile, verify_schema, target, snowflake_syntax_check):
-    """
-    Validate semantic models against dbt definitions.
+@click.pass_context
+def validate(ctx, dbt, semantic, strict, verbose, exclude, dbt_compile, verify_schema, target, snowflake_syntax_check):
+    """Validate semantic models against dbt definitions.
 
-    Checks for missing references, circular dependencies, duplicates,
-    and performance issues. No Snowflake connection required by default.
+    Checks for missing references, circular dependencies, duplicates, naming
+    issues, and performance problems. No Snowflake connection required by default.
+
+    \b
+    Prerequisites:
+      • 'dbt compile' has been run (manifest.json must exist)
+      • Models annotated with config.meta.sst (or run 'sst enrich' first)
 
     \b
     Examples:
-      # Standard validation (offline)
-      sst validate
+      sst validate                         Standard offline validation
+      sst validate --verify-schema         Also check columns exist in Snowflake
+      sst validate --verify-schema -t PROD Check against production tables
+      sst validate --snowflake-syntax-check  Catch SQL expression typos
+      sst validate --dbt-compile           Auto-run dbt compile first
+      sst validate --strict                Fail on warnings too
+      sst validate --verbose               Show all checks as they run
 
-      # Verify columns exist in Snowflake (requires connection)
-      sst validate --verify-schema
+    \b
+    Output Modes:
+      sst validate                         Human-readable with source snippets
+      sst --output json validate           Machine-readable JSON (schema v1)
 
-      # Verify against a specific database (e.g., PROD tables)
-      sst validate --verify-schema --target PROD
+    \b
+    Next Step:
+      sst deploy              Deploy validated models to Snowflake
 
-      # Validate SQL syntax against Snowflake (catches typos like CUONT)
-      sst validate --snowflake-syntax-check
-
-      # Skip syntax check even if enabled in config
-      sst validate --no-snowflake-check
-
-      # Auto-compile dbt if manifest missing/stale (uses profile's default target)
-      sst validate --dbt-compile
-
-      # Use custom target (e.g., 'prod' for production)
-      export DBT_TARGET=prod
-      sst validate --dbt-compile
-
-      # Validate with verbose output
-      sst validate --verbose
-
-      # Strict mode (fail on warnings)
-      sst validate --strict
-
-      # Custom paths
-      sst validate --dbt models/ --semantic semantic_models/
+    \b
+    Related Commands:
+      sst deploy              Runs validate + extract + generate in one step
+      sst enrich              Fix missing metadata flagged by validate
+      sst list metrics        Explore what was parsed from your models
     """
     # IMMEDIATE OUTPUT - show user command is running
-    output = CLIOutput(verbose=verbose, quiet=False)
+    output_format = ctx.obj.get("output_format", "table") if ctx.obj else "table"
+    quiet_mode = output_format == "json"
+    output = CLIOutput(verbose=verbose, quiet=quiet_mode)
     output.info(f"Running with sst={__version__}")
 
     # Common CLI setup (loads env, events, validates config, sets logging)
     output.debug("Loading environment...")
-    setup_command(verbose=verbose, validate_config=True)
+    setup_command(verbose=verbose, quiet=True, validate_config=True)
 
     if verbose:
         config_file = get_config()
@@ -205,6 +206,7 @@ def validate(dbt, semantic, strict, verbose, exclude, dbt_compile, verify_schema
         output.info("Starting validation...")
 
         service = SemanticMetadataCollectionValidationService.create_from_config()
+        service._quiet = quiet_mode
 
         config = ValidateConfig(
             dbt_path=Path(dbt) if dbt else None,
@@ -238,15 +240,63 @@ def validate(dbt, semantic, strict, verbose, exclude, dbt_compile, verify_schema
         # Display results with improved formatting
         output.blank_line()
 
+        result.enrich_line_numbers()
+
         # Enhanced summary
         if result.is_valid:
             output.success(f"Validation completed in {val_duration:.1f}s")
         else:
             output.error(f"Validation completed in {val_duration:.1f}s")
 
-        # Show detailed summary (includes comprehensive breakdown)
-        # Note: Summary already shows all stats, so no need for redundant done line
-        result.print_summary(verbose=verbose)
+        output_format = ctx.obj.get("output_format", "table") if ctx.obj else "table"
+
+        if output_format == "json":
+            import json as json_mod
+            import os
+
+            from snowflake_semantic_tools._version import __version__ as sst_version
+
+            exit_code = 0 if result.is_valid else 1
+            if not result.is_valid:
+                exit_code = 1
+            elif strict and result.has_warnings:
+                exit_code = 1
+
+            filtered_issues = [
+                i for i in result.issues
+                if i.severity.value in ("error", "warning")
+            ]
+
+            diagnostics = []
+            for issue in filtered_issues:
+                d = issue.to_dict()
+                if "file" in d and d["file"]:
+                    try:
+                        d["file"] = os.path.relpath(d["file"])
+                    except ValueError:
+                        pass
+                if "message" in d and d["message"] and len(d["message"]) > 500:
+                    d["message"] = d["message"].split("\n")[0]
+                diagnostics.append(d)
+
+            json_output = {
+                "tool": "sst",
+                "version": sst_version,
+                "schema_version": 1,
+                "command": "validate",
+                "status": "success" if result.is_valid else "error",
+                "exit_code": exit_code,
+                "duration_s": round(val_duration, 2),
+                "diagnostics": diagnostics,
+                "summary": {
+                    "errors": result.error_count,
+                    "warnings": result.warning_count,
+                    "info": result.info_count,
+                },
+            }
+            click.echo(json_mod.dumps(json_output, indent=2))
+        else:
+            result.print_summary(verbose=verbose)
 
         # Exit with appropriate code
         if not result.is_valid:

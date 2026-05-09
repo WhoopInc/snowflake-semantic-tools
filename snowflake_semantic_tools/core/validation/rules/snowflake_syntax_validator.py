@@ -226,6 +226,9 @@ class SnowflakeSyntaxValidator:
                     "snowflake_error": error_msg,
                     "suggestion": suggestion,
                 },
+                rule_id="SST-V005",
+                suggestion="Fix the SQL expression syntax",
+                entity_name=entity_name,
             )
 
         # Add environment issues as warnings (not errors)
@@ -250,6 +253,9 @@ class SnowflakeSyntaxValidator:
                     "snowflake_error": error_msg,
                     "is_env_issue": True,
                 },
+                rule_id="SST-V005",
+                suggestion="Table may not exist yet — syntax could not be fully validated",
+                entity_name=entity_name,
             )
 
         if errors:

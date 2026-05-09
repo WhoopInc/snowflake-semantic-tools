@@ -145,7 +145,9 @@ def _determine_components(
     return ["column-types", "data-types", "sample-values", "detect-enums"]
 
 
-@click.command()
+@click.command(
+    short_help="Auto-populate dbt YAML metadata from Snowflake",
+)
 @click.argument("target_path", type=click.Path(), required=False)
 @click.option("--models", "-m", "model_names", help="Comma-separated list of model names to enrich (requires manifest)")
 @click.option("--target", "-t", "dbt_target", help="dbt target from profiles.yml (default: uses profile's default)")
@@ -206,47 +208,43 @@ def enrich(
     force_data_types,
     force_all,
 ):
-    """
-    Enrich dbt YAML metadata with semantic information.
+    """Auto-populate dbt YAML with semantic metadata from Snowflake.
 
-    Automatically populates meta.sst blocks with:
+    Connects to Snowflake to inspect your tables and automatically fills in
+    config.meta.sst blocks with column types, data types, sample values,
+    and optionally LLM-generated synonyms.
 
     \b
-    - Column types (dimension, fact, time_dimension)
-    - Data types (mapped from Snowflake)
-    - Sample values (fresh from Snowflake)
-    - Enum detection (based on cardinality)
+    Prerequisites:
+      • 'dbt compile' has been run (or specify --manifest)
+      • Snowflake credentials in ~/.dbt/profiles.yml
+      • Production manifest recommended (use --allow-non-prod to override)
 
-    Database and schema can now be auto-detected from dbt manifest.json:
+    \b
+    What it populates:
+      • Column types (dimension, fact, time_dimension)
+      • Data types (mapped from Snowflake native types)
+      • Sample values (live data queries — use -sv flag)
+      • Enum detection (low-cardinality columns — use -de flag)
+      • Synonyms (via Cortex LLM — use --synonyms or --all)
 
     \b
     Examples:
+      sst enrich --models customers,orders    Enrich specific models
+      sst enrich models/analytics/            Enrich a directory
+      sst enrich models/ --all                All components including synonyms
+      sst enrich models/ --dry-run            Preview without writing
+      sst enrich models/ --exclude staging    Skip directories
 
     \b
-        # Enrich by model name (requires 'dbt compile' first)
-        sst enrich --models customers,orders
+    Next Step:
+      sst validate            Check enriched models for errors
+      sst deploy              Deploy enriched models to Snowflake
 
-        # Enrich a directory
-        sst enrich models/analytics/memberships/
-
-        # Explicit database/schema (backward compatible, no manifest needed)
-        sst enrich models/analytics/memberships/ --database ANALYTICS --schema memberships
-
-        # Use specific manifest file
-        sst enrich models/ --manifest target_prod/manifest.json
-
-        # Allow non-production manifest
-        sst enrich models/ --allow-non-prod
-
-        # Dry run to preview changes
-        sst enrich models/analytics/ --dry-run --verbose
-
-        # Exclude specific directories
-        sst enrich models/analytics/ --exclude data_science,year_in_review
-
-        # Wildcard patterns (quote to prevent shell expansion)
-        sst enrich "models/analytics/marketing/shared_prefix_*"
-        sst enrich "models/analytics/marketing/_intermediate/*"
+    \b
+    Related Commands:
+      sst format models/      Standardize YAML formatting after enrichment
+      sst list tables         See which tables SST found in your project
     """
     # IMMEDIATE OUTPUT - show user command is running
     output = CLIOutput(verbose=verbose, quiet=False)

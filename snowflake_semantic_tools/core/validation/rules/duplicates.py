@@ -117,7 +117,8 @@ class DuplicateValidator:
         for name, indices in names_seen.items():
             if len(indices) > 1:
                 result.add_error(
-                    f"Duplicate metric name '{name}' found {len(indices)} times", context={"indices": indices}
+                    f"Duplicate metric name '{name}' found {len(indices)} times", context={"indices": indices},
+                    rule_id="SST-V004", suggestion="Rename one of the duplicate metrics", entity_name=name
                 )
 
         # Report duplicate expressions
@@ -126,7 +127,8 @@ class DuplicateValidator:
                 metric_names = [name for _, name in occurrences]
                 result.add_warning(
                     f"Metrics {metric_names} have identical expressions",
-                    context={"expression": expr[:100]},  # First 100 chars
+                    context={"expression": expr[:100]},
+                    rule_id="SST-V091", suggestion="Consider consolidating into one metric",
                 )
 
     def _check_relationship_duplicates(self, relationships_data: Dict, result: ValidationResult):
@@ -156,7 +158,8 @@ class DuplicateValidator:
         for name, indices in names_seen.items():
             if len(indices) > 1:
                 result.add_error(
-                    f"Duplicate relationship name '{name}' found {len(indices)} times", context={"indices": indices}
+                    f"Duplicate relationship name '{name}' found {len(indices)} times", context={"indices": indices},
+                    rule_id="SST-V004", suggestion="Rename one of the duplicate relationships", entity_name=name
                 )
 
         # Report duplicate table pairs
@@ -166,6 +169,7 @@ class DuplicateValidator:
                 result.add_warning(
                     f"Multiple relationships between tables {left} and {right}: {rel_names}",
                     context={"tables": [left, right]},
+                    rule_id="SST-V091", suggestion="Consider consolidating relationships",
                 )
 
     def _check_filter_duplicates(self, filters_data: Dict, result: ValidationResult):
@@ -186,7 +190,8 @@ class DuplicateValidator:
         for name, indices in names_seen.items():
             if len(indices) > 1:
                 result.add_error(
-                    f"Duplicate filter name '{name}' found {len(indices)} times", context={"indices": indices}
+                    f"Duplicate filter name '{name}' found {len(indices)} times", context={"indices": indices},
+                    rule_id="SST-V004", suggestion="Rename one of the duplicate filters", entity_name=name
                 )
 
     def _check_semantic_view_duplicates(self, views_data: Dict, result: ValidationResult):
@@ -225,7 +230,8 @@ class DuplicateValidator:
         for name, indices in names_seen.items():
             if len(indices) > 1:
                 result.add_error(
-                    f"Duplicate semantic view name '{name}' found {len(indices)} times", context={"indices": indices}
+                    f"Duplicate semantic view name '{name}' found {len(indices)} times", context={"indices": indices},
+                    rule_id="SST-V004", suggestion="Rename one of the duplicate semantic views", entity_name=name
                 )
 
         # Report identical table sets
@@ -233,7 +239,8 @@ class DuplicateValidator:
             if len(occurrences) > 1:
                 view_names = [name for _, name in occurrences]
                 result.add_warning(
-                    f"Semantic views {view_names} have identical table lists", context={"tables": list(table_set)}
+                    f"Semantic views {view_names} have identical table lists", context={"tables": list(table_set)},
+                    rule_id="SST-V091", suggestion="Consider consolidating views with identical tables",
                 )
 
     def _check_custom_instruction_duplicates(self, instructions_data: Dict, result: ValidationResult):
@@ -256,6 +263,7 @@ class DuplicateValidator:
                 result.add_error(
                     f"Duplicate custom instruction name '{name}' found {len(indices)} times",
                     context={"indices": indices},
+                    rule_id="SST-V004", suggestion="Rename one of the duplicate instructions", entity_name=name,
                 )
 
     def _check_verified_query_duplicates(self, queries_data: Dict, result: ValidationResult):
@@ -276,7 +284,8 @@ class DuplicateValidator:
         for name, indices in names_seen.items():
             if len(indices) > 1:
                 result.add_error(
-                    f"Duplicate verified query name '{name}' found {len(indices)} times", context={"indices": indices}
+                    f"Duplicate verified query name '{name}' found {len(indices)} times", context={"indices": indices},
+                    rule_id="SST-V004", suggestion="Rename one of the duplicate verified queries", entity_name=name
                 )
 
     def _check_table_duplicates(self, tables_data: Dict, result: ValidationResult):
@@ -297,7 +306,8 @@ class DuplicateValidator:
         for table_name, indices in names_seen.items():
             if len(indices) > 1:
                 result.add_error(
-                    f"Duplicate table name '{table_name}' found {len(indices)} times", context={"indices": indices}
+                    f"Duplicate table name '{table_name}' found {len(indices)} times", context={"indices": indices},
+                    rule_id="SST-V004", suggestion="Rename one of the duplicate tables", entity_name=table_name
                 )
 
     def _normalize_expression(self, expr: str) -> str:
@@ -423,4 +433,5 @@ class DuplicateValidator:
                             "synonym": occurrences[0][1],
                             "tables": [t for t, _, _ in occurrences],
                         },
+                        rule_id="SST-V004", suggestion="Remove the duplicate synonym", entity_name=occurrences[0][1],
                     )

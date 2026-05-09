@@ -11,7 +11,11 @@ from pathlib import Path
 import click
 
 
-@click.command("init")
+
+@click.command(
+    "init",
+    short_help="Set up SST in a dbt project (run first)",
+)
 @click.option(
     "--skip-prompts",
     is_flag=True,
@@ -23,28 +27,36 @@ import click
     help="Check current setup status without creating files",
 )
 def init(skip_prompts: bool, check_only: bool) -> None:
-    """
-    Initialize SST in a dbt project.
+    """Initialize SST in a dbt project.
 
-    Guides you through setting up Snowflake Semantic Tools with an interactive
-    wizard that:
+    One-time setup wizard that configures SST for your project. Run this
+    before any other SST command.
 
     \b
-    - Detects your dbt project configuration
-    - Sets up Snowflake connection (profiles.yml)
-    - Creates sst_config.yml
-    - Creates semantic models directory with examples
+    What it creates:
+      • sst_config.yml           SST configuration file
+      • semantic_models/         Directory for semantic model YAML files
+      • Validates profiles.yml   Ensures Snowflake credentials are configured
+
+    \b
+    Prerequisites:
+      • A dbt project (dbt_project.yml must exist in current directory)
+      • Snowflake credentials in ~/.dbt/profiles.yml
 
     \b
     Examples:
-        # Interactive setup
-        sst init
+      sst init                   Interactive setup (recommended)
+      sst init --skip-prompts    Non-interactive with defaults (CI/CD)
+      sst init --check-only      Show current setup status
 
-        # Non-interactive with defaults
-        sst init --skip-prompts
+    \b
+    Next Step:
+      sst enrich models/         Auto-populate metadata from Snowflake
 
-        # Check current setup status
-        sst init --check-only
+    \b
+    Related Commands:
+      sst debug                  Verify your Snowflake connection works
+      sst validate               Check models for errors after setup
     """
     from rich.console import Console
 

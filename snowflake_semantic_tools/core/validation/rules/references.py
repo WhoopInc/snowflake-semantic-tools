@@ -8,10 +8,48 @@ that every table and column referenced in metrics, relationships, and
 filters actually exists in the underlying dbt catalog.
 """
 
+import json
 import re
-from typing import Any, Dict, List, Optional, Set
+from typing import Any, Dict, List, Optional, Set, Tuple
 
+from snowflake_semantic_tools.core.diagnostics.suggestions import format_available_list
 from snowflake_semantic_tools.core.models import ValidationResult
+
+
+_SQL_TRANSFORMATION_PATTERNS = [
+    (r"::", "type casting (::)"),
+    (r"\bCAST\s*\(", "CAST function"),
+    (r"\bCONVERT\s*\(", "CONVERT function"),
+    (r"\bTO_DATE\s*\(", "TO_DATE function"),
+    (r"\bTO_TIMESTAMP\s*\(", "TO_TIMESTAMP function"),
+    (r"\bTO_CHAR\s*\(", "TO_CHAR function"),
+    (r"\bTO_NUMBER\s*\(", "TO_NUMBER function"),
+    (r"\bDATE\s*\(", "DATE function"),
+    (r"\bTRIM\s*\(", "TRIM function"),
+    (r"\bUPPER\s*\(", "UPPER function"),
+    (r"\bLOWER\s*\(", "LOWER function"),
+    (r"\bSUBSTRING\s*\(", "SUBSTRING function"),
+    (r"\bCOALESCE\s*\(", "COALESCE function"),
+    (r"\bNVL\s*\(", "NVL function"),
+    (r"\bIFNULL\s*\(", "IFNULL function"),
+    (r"\bCASE\s+WHEN", "CASE statement"),
+    (r"[\+\-\*\/]", "arithmetic operation"),
+    (r"\|\|", "string concatenation"),
+]
+
+
+def _has_sql_transformation(col_ref: str) -> Tuple[bool, str]:
+    """Check if column reference contains SQL transformations."""
+    if not col_ref or not col_ref.strip():
+        return False, ""
+
+    col_part = col_ref.split(".")[-1] if "." in col_ref else col_ref
+
+    for pattern, description in _SQL_TRANSFORMATION_PATTERNS:
+        if re.search(pattern, col_part, re.IGNORECASE):
+            return True, description
+
+    return False, ""
 
 # Appended to relationship PK/unique errors so users know why left/right order matters.
 _RELATIONSHIP_DIRECTION_HINT = (
@@ -112,6 +150,9 @@ class ReferenceValidator:
                     result.add_warning(
                         f"Metric '{name}' is missing 'tables' field - validation may be incomplete",
                         file_path=source_file,
+                        rule_id="SST-V032",
+                        suggestion="Add tables list to metric definition",
+                        entity_name=name,
                         context={"metric": name},
                     )
 
@@ -120,18 +161,22 @@ class ReferenceValidator:
                     if isinstance(table, str):
                         table_lower = table.lower()
                         if table_lower not in dbt_catalog:
-                            # Check if it's a CTE or subquery
                             if not self._is_cte_or_subquery(table):
-                                # Find similar tables for suggestions
                                 suggestions = self._find_similar_tables(table, dbt_catalog)
                                 error_msg = f"Metric '{name}' references unknown table '{table}'"
+                                suggestion_text = None
                                 if suggestions:
                                     error_msg += f". Did you mean: {', '.join(suggestions)}?"
+                                    suggestion_text = f"Did you mean '{suggestions[0]}'? Available: {', '.join(list(dbt_catalog.keys())[:5])}"
                                 else:
                                     error_msg += ". Check that the model has `config.meta.sst` configuration."
+                                    suggestion_text = "Ensure the model has config.meta.sst with primary_key and column metadata"
                                 result.add_error(
                                     error_msg,
                                     file_path=source_file,
+                                    rule_id="SST-V002",
+                                    suggestion=suggestion_text,
+                                    entity_name=name,
                                     context={
                                         "metric": name,
                                         "table": table,
@@ -154,6 +199,9 @@ class ReferenceValidator:
                                     result.add_error(
                                         f"Metric '{name}' references table '{table}' which is missing critical metadata ({'/'.join(missing_fields)}) and won't be available in the semantic model",
                                         file_path=source_file,
+                                        rule_id="SST-V002",
+                                        suggestion="Add config.meta.sst metadata to the referenced table",
+                                        entity_name=name,
                                         context={"metric": name, "table": table, "missing_metadata": missing_fields},
                                     )
 
@@ -179,9 +227,13 @@ class ReferenceValidator:
                             and rel_name.upper() not in all_relationship_names
                             and all_relationship_names
                         ):
+                            available = format_available_list(sorted(all_relationship_names), max_show=5)
                             result.add_warning(
                                 f"Metric '{name}' references relationship '{rel_name}' in using_relationships which was not found in defined relationships",
                                 file_path=source_file,
+                                rule_id="SST-V044",
+                                suggestion=f"Available relationships: {available}",
+                                entity_name=name,
                                 context={"metric": name, "relationship": rel_name},
                             )
 
@@ -235,6 +287,9 @@ class ReferenceValidator:
                             f"Relationship '{name}' has duplicate columns in foreign key (left side): {left_duplicates}. "
                             f"Each column can only appear once in a relationship join condition.",
                             file_path=source_file,
+                            rule_id="SST-V043",
+                            suggestion="Remove duplicate columns from foreign key",
+                            entity_name=name,
                             context={
                                 "relationship": name,
                                 "duplicate_columns": left_duplicates,
@@ -250,6 +305,9 @@ class ReferenceValidator:
                             f"Relationship '{name}' has duplicate columns in foreign key (right side): {right_duplicates}. "
                             f"Each column can only appear once in a relationship join condition.",
                             file_path=source_file,
+                            rule_id="SST-V043",
+                            suggestion="Remove duplicate columns from foreign key",
+                            entity_name=name,
                             context={
                                 "relationship": name,
                                 "duplicate_columns": right_duplicates,
@@ -268,6 +326,9 @@ class ReferenceValidator:
                         f"Relationship '{name}' is a self-reference (left and right table are both '{left_table}'). "
                         f"Snowflake does not allow a table to reference itself.",
                         file_path=source_file,
+                        rule_id="SST-V040",
+                        suggestion="Snowflake does not support self-referencing relationships",
+                        entity_name=name,
                         context={
                             "relationship": name,
                             "table": left_table,
@@ -287,6 +348,9 @@ class ReferenceValidator:
                     result.add_error(
                         error_msg,
                         file_path=source_file,
+                        rule_id="SST-V041",
+                        suggestion="Check left table name spelling",
+                        entity_name=name,
                         context={"relationship": name, "table": left_table, "suggestions": suggestions},
                     )
                 elif left_table_lower in dbt_catalog:
@@ -302,6 +366,9 @@ class ReferenceValidator:
                             result.add_error(
                                 f"Relationship '{name}' references left table '{left_table}' which is missing critical metadata ({'/'.join(missing_fields)}) and won't be available in the semantic model",
                                 file_path=source_file,
+                                rule_id="SST-V041",
+                                suggestion="Add config.meta.sst to the referenced table",
+                                entity_name=name,
                                 context={"relationship": name, "table": left_table, "missing_metadata": missing_fields},
                             )
 
@@ -316,6 +383,9 @@ class ReferenceValidator:
                     result.add_error(
                         error_msg,
                         file_path=source_file,
+                        rule_id="SST-V041",
+                        suggestion="Check right table name spelling",
+                        entity_name=name,
                         context={"relationship": name, "table": right_table, "suggestions": suggestions},
                     )
                 elif right_table_lower in dbt_catalog:
@@ -331,6 +401,9 @@ class ReferenceValidator:
                             result.add_error(
                                 f"Relationship '{name}' references right table '{right_table}' which is missing critical metadata ({'/'.join(missing_fields)}) and won't be available in the semantic model",
                                 file_path=source_file,
+                                rule_id="SST-V041",
+                                suggestion="Add config.meta.sst to the referenced table",
+                                entity_name=name,
                                 context={
                                     "relationship": name,
                                     "table": right_table,
@@ -408,6 +481,9 @@ class ReferenceValidator:
                                         f"  (3) Swap left/right so the keyed table is on the right."
                                         f"{_RELATIONSHIP_DIRECTION_HINT}",
                                         file_path=source_file,
+                                        rule_id="SST-V042",
+                                        suggestion="Join must reference complete primary key of right table",
+                                        entity_name=name,
                                         context={
                                             "relationship": name,
                                             "right_table": right_table,
@@ -429,6 +505,9 @@ class ReferenceValidator:
                                     f"  - Add meta.sst.unique_keys if that column or column set is unique on '{right_table}'.\n"
                                     f"{_RELATIONSHIP_DIRECTION_HINT}",
                                     file_path=source_file,
+                                    rule_id="SST-V042",
+                                    suggestion="Right join column must be in primary_key or unique_keys",
+                                    entity_name=name,
                                     context={
                                         "relationship": name,
                                         "right_table": right_table,
@@ -449,6 +528,9 @@ class ReferenceValidator:
                             f"YAML file, or check meta.sst configuration."
                             f"{_RELATIONSHIP_DIRECTION_HINT}",
                             file_path=source_file,
+                            rule_id="SST-V042",
+                            suggestion="Add primary_key to right table's config.meta.sst",
+                            entity_name=name,
                             context={
                                 "relationship": name,
                                 "right_table": right_table,
@@ -462,6 +544,9 @@ class ReferenceValidator:
                         f"This usually means the table's metadata is missing or incomplete. "
                         f"Check that the table has proper meta.sst configuration or run 'sst enrich' to populate metadata.",
                         file_path=source_file,
+                        rule_id="SST-V041",
+                        suggestion="Ensure table has config.meta.sst and was extracted",
+                        entity_name=name,
                         context={"relationship": name, "right_table": right_table, "issue": "missing_table_dependency"},
                     )
 
@@ -471,53 +556,17 @@ class ReferenceValidator:
                         left_col = col_mapping.get("left_column", "")
                         right_col = col_mapping.get("right_column", "")
 
-                        # Check for SQL transformations in column references
-                        # This detects any SQL beyond just the column reference itself
-                        def has_sql_transformation(col_ref: str) -> tuple[bool, str]:
-                            """Check if column reference contains SQL transformations."""
-                            # Skip if empty or just whitespace
-                            if not col_ref or not col_ref.strip():
-                                return False, ""
-
-                            # Extract the part after the last dot (if TABLE.COLUMN format)
-                            col_part = col_ref.split(".")[-1] if "." in col_ref else col_ref
-
-                            # Patterns that indicate SQL transformations
-                            patterns = [
-                                (r"::", "type casting (::)"),
-                                (r"\bCAST\s*\(", "CAST function"),
-                                (r"\bCONVERT\s*\(", "CONVERT function"),
-                                (r"\bTO_DATE\s*\(", "TO_DATE function"),
-                                (r"\bTO_TIMESTAMP\s*\(", "TO_TIMESTAMP function"),
-                                (r"\bTO_CHAR\s*\(", "TO_CHAR function"),
-                                (r"\bTO_NUMBER\s*\(", "TO_NUMBER function"),
-                                (r"\bDATE\s*\(", "DATE function"),
-                                (r"\bTRIM\s*\(", "TRIM function"),
-                                (r"\bUPPER\s*\(", "UPPER function"),
-                                (r"\bLOWER\s*\(", "LOWER function"),
-                                (r"\bSUBSTRING\s*\(", "SUBSTRING function"),
-                                (r"\bCOALESCE\s*\(", "COALESCE function"),
-                                (r"\bNVL\s*\(", "NVL function"),
-                                (r"\bIFNULL\s*\(", "IFNULL function"),
-                                (r"\bCASE\s+WHEN", "CASE statement"),
-                                (r"[\+\-\*\/]", "arithmetic operation"),
-                                (r"\|\|", "string concatenation"),
-                            ]
-
-                            for pattern, description in patterns:
-                                if re.search(pattern, col_part, re.IGNORECASE):
-                                    return True, description
-
-                            return False, ""
-
                         # Check left column
-                        has_transform, transform_type = has_sql_transformation(left_col)
+                        has_transform, transform_type = _has_sql_transformation(left_col)
                         if has_transform:
                             result.add_error(
                                 f"Relationship '{name}' contains SQL transformation ({transform_type}) in column reference '{left_col}'. "
                                 f"Transformations cannot be performed within column references. "
                                 f"Use template syntax {{ ref('table_name', 'column_name') }} or {{ column('table_name', 'column_name') }} for the base column only.",
                                 file_path=source_file,
+                                rule_id="SST-V043",
+                                suggestion="Use raw column name without SQL transformations",
+                                entity_name=name,
                                 context={
                                     "relationship": name,
                                     "column": left_col,
@@ -528,13 +577,16 @@ class ReferenceValidator:
                             continue
 
                         # Check right column
-                        has_transform, transform_type = has_sql_transformation(right_col)
+                        has_transform, transform_type = _has_sql_transformation(right_col)
                         if has_transform:
                             result.add_error(
                                 f"Relationship '{name}' contains SQL transformation ({transform_type}) in column reference '{right_col}'. "
                                 f"Transformations cannot be performed within column references. "
                                 f"Use template syntax {{ ref('table_name', 'column_name') }} or {{ column('table_name', 'column_name') }} for the base column only.",
                                 file_path=source_file,
+                                rule_id="SST-V043",
+                                suggestion="Use raw column name without SQL transformations",
+                                entity_name=name,
                                 context={
                                     "relationship": name,
                                     "column": right_col,
@@ -557,6 +609,9 @@ class ReferenceValidator:
                                     f"Relationship '{name}' references unknown column "
                                     f"'{left_col}' in table '{left_table}'",
                                     file_path=source_file,
+                                    rule_id="SST-V043",
+                                    suggestion="Check column exists in the table",
+                                    entity_name=name,
                                     context={"relationship": name, "column": left_col, "table": left_table},
                                 )
 
@@ -566,6 +621,9 @@ class ReferenceValidator:
                                     f"Relationship '{name}' references unknown column "
                                     f"'{right_col}' in table '{right_table}'",
                                     file_path=source_file,
+                                    rule_id="SST-V043",
+                                    suggestion="Check column exists in the table",
+                                    entity_name=name,
                                     context={"relationship": name, "column": right_col, "table": right_table},
                                 )
 
@@ -663,6 +721,9 @@ class ReferenceValidator:
                     f"Circular relationship detected: {cycle_str}. "
                     f"Snowflake does not allow circular relationships, even through transitive paths. "
                     f"Remove one of the relationships in the cycle.",
+                    rule_id="SST-V090",
+                    suggestion="Break the circular relationship chain",
+                    entity_name=cycle_str,
                     context={"cycle": cycle, "issue": "circular_relationship"},
                 )
 
@@ -688,6 +749,9 @@ class ReferenceValidator:
                     result.add_error(
                         error_msg,
                         file_path=source_file,
+                        rule_id="SST-V002",
+                        suggestion="Check table name spelling",
+                        entity_name=name,
                         context={"filter": name, "table": table, "suggestions": suggestions},
                     )
 
@@ -708,7 +772,7 @@ class ReferenceValidator:
                 name = instruction.get("name", "")
                 if name:
                     if name in seen_names:
-                        result.add_error(f"Duplicate custom instruction name: '{name}'", context={"instruction": name})
+                        result.add_error(f"Duplicate custom instruction name: '{name}'", rule_id="SST-V004", suggestion="Remove or rename duplicate instruction", entity_name=name, context={"instruction": name})
                     seen_names.add(name)
 
         # No table validation needed since custom instructions no longer have tables
@@ -729,6 +793,9 @@ class ReferenceValidator:
                         if table_lower not in dbt_catalog:
                             result.add_warning(
                                 f"Verified query '{name}' references table '{table}' " f"not found in dbt models",
+                                rule_id="SST-V002",
+                                suggestion="Check table name in verified query",
+                                entity_name=name,
                                 context={"query": name, "table": table},
                             )
 
@@ -766,6 +833,9 @@ class ReferenceValidator:
                         f"{entity_type} '{entity_name}' references unknown column "
                         f"'{column_ref}' in table '{table_ref}'",
                         file_path=source_file,
+                        rule_id="SST-V003",
+                        suggestion="Check column exists in the referenced table",
+                        entity_name=entity_name,
                         context={
                             "entity": entity_name,
                             "column": column_ref,
@@ -791,8 +861,6 @@ class ReferenceValidator:
         - Custom instruction references are valid
         - Cross-table metrics have relationships between the tables
         """
-        import json
-
         view_items = views_data.get("items", [])
         metric_items = metrics_data.get("items", [])
         relationship_items = relationships_data.get("items", [])
@@ -825,7 +893,7 @@ class ReferenceValidator:
                 tables_json = view.get("tables", "[]")
                 try:
                     tables = json.loads(tables_json) if isinstance(tables_json, str) else tables_json
-                except:
+                except (json.JSONDecodeError, TypeError, ValueError):
                     tables = []
 
                 tables_lower = [t.lower() for t in tables if isinstance(t, str)]
@@ -848,6 +916,9 @@ class ReferenceValidator:
                                     )
                                 result.add_error(
                                     error_msg,
+                                    rule_id="SST-V071",
+                                    suggestion="Ensure table has config.meta.sst and was extracted",
+                                    entity_name=view_name,
                                     context={
                                         "view": view_name,
                                         "table": table,
@@ -873,7 +944,7 @@ class ReferenceValidator:
                                     metric_tables = metric_tables_raw
                                 else:
                                     metric_tables = [metric_tables_raw] if metric_tables_raw else []
-                            except:
+                            except (json.JSONDecodeError, TypeError, ValueError):
                                 metric_tables = []
 
                             metric_tables_lower = [t.lower() for t in metric_tables if isinstance(t, str)]
@@ -897,6 +968,9 @@ class ReferenceValidator:
                                         f"multiple tables {metric_tables_in_view}, but there is no relationship defined between: {', '.join(missing_pairs)}. "
                                         f"Snowflake semantic views require relationships between tables when metrics span multiple entities. "
                                         f"Either: (1) add a relationship between these tables, (2) remove this metric from the view, or (3) remove this semantic view.",
+                                        rule_id="SST-V071",
+                                        suggestion="Multi-table metrics need explicit table in semantic view",
+                                        entity_name=view_name,
                                         context={
                                             "view": view_name,
                                             "metric": metric_name,
@@ -912,7 +986,7 @@ class ReferenceValidator:
                     custom_instructions = (
                         json.loads(instructions_json) if isinstance(instructions_json, str) else instructions_json
                     )
-                except:
+                except (json.JSONDecodeError, TypeError, ValueError):
                     custom_instructions = []
 
                 if custom_instructions:
@@ -922,6 +996,9 @@ class ReferenceValidator:
                             if instruction_upper not in available_instructions:
                                 result.add_error(
                                     f"Semantic view '{view_name}' references unknown custom instruction '{instruction_ref}'",
+                                    rule_id="SST-V071",
+                                    suggestion="Check custom instruction name spelling",
+                                    entity_name=view_name,
                                     context={
                                         "view": view_name,
                                         "instruction": instruction_ref,

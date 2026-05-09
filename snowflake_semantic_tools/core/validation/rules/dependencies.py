@@ -112,7 +112,7 @@ class DependencyValidator:
                     # Found a cycle
                     cycle_start = path.index(neighbor)
                     cycle = path[cycle_start:] + [neighbor]
-                    result.add_error(f"Circular dependency detected: {' -> '.join(cycle)}", context={"cycle": cycle})
+                    result.add_error(f"Circular dependency detected: {' -> '.join(cycle)}", context={"cycle": cycle}, rule_id="SST-V090", suggestion="Break the circular metric reference chain", entity_name=metric)
                     return True
 
             rec_stack.remove(node)
@@ -154,6 +154,9 @@ class DependencyValidator:
                     f"Metric '{metric}' has dependency depth of {depth} "
                     f"(exceeds recommended maximum of {max_depth})",
                     context={"depth": depth, "max_depth": max_depth},
+                    rule_id="SST-V090",
+                    suggestion="Simplify the metric composition (too many levels)",
+                    entity_name=metric,
                 )
 
     def _validate_metric_references(self, graph: Dict[str, Set[str]], metrics: List[Dict], result: ValidationResult):
@@ -173,4 +176,7 @@ class DependencyValidator:
                     result.add_error(
                         f"Metric '{metric}' references undefined metric '{dep}'",
                         context={"metric": metric, "reference": dep},
+                        rule_id="SST-V002",
+                        suggestion="Check metric name spelling in {{ metric('...') }}",
+                        entity_name=metric,
                     )

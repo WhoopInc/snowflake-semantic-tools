@@ -90,6 +90,9 @@ class SchemaValidator:
                             "schema": schema,
                             "issue": "table_not_found",
                         },
+                        rule_id="SST-V002",
+                        suggestion="Verify table exists in Snowflake or use --defer-target",
+                        entity_name=table_name,
                     )
                 elif "not authorized" in error_msg:
                     result.add_warning(
@@ -102,6 +105,9 @@ class SchemaValidator:
                             "schema": schema,
                             "issue": "permission_denied",
                         },
+                        rule_id="SST-E003",
+                        suggestion="Check role has SELECT privilege on the table",
+                        entity_name=table_name,
                     )
                 else:
                     result.add_warning(
@@ -111,6 +117,9 @@ class SchemaValidator:
                             "table": table_name,
                             "issue": "connection_error",
                         },
+                        rule_id="SST-E001",
+                        suggestion="Check Snowflake connectivity",
+                        entity_name=table_name,
                     )
                 continue
 
@@ -134,6 +143,9 @@ class SchemaValidator:
                         "suggestions": suggestions,
                         "available_columns": sorted(list(sf_column_names))[:20],
                     },
+                    rule_id="SST-V003",
+                    suggestion="Check column name or run: sst enrich",
+                    entity_name=col_name,
                 )
 
             # Optionally report Snowflake columns not in YAML
@@ -153,6 +165,9 @@ class SchemaValidator:
                             "table": table_name,
                             "missing_columns": sorted(list(missing_in_yaml)),
                         },
+                        rule_id="SST-V003",
+                        suggestion="Consider adding these columns to your YAML",
+                        entity_name=table_name,
                     )
 
         # Log summary

@@ -84,21 +84,41 @@ def _relativize_path(path_str: str) -> str:
         return path_str
 
 
-@click.group("list", invoke_without_command=True)
+@click.group(
+    "list",
+    invoke_without_command=True,
+    short_help="Explore semantic model components (no Snowflake needed)",
+)
 @click.pass_context
 def list_cmd(ctx):
-    """
-    List semantic model components.
+    """Explore semantic model components (offline, no Snowflake needed).
 
-    Explore metrics, relationships, filters, semantic views, tables,
-    custom instructions, and verified queries defined in your project.
+    Lists metrics, tables, relationships, filters, semantic views, and more.
+    Reads from local YAML files — does not require a Snowflake connection.
 
     \b
     Examples:
-      sst list                    # Summary of all components
-      sst list metrics            # List all metrics
-      sst list tables             # List all tables
-      sst list metrics --table orders --format json
+      sst list                               Summary of all components
+      sst list metrics                       All metrics
+      sst list metrics --table orders        Filter by table
+      sst list tables --format json          JSON output
+      sst list metrics -o metrics.csv -f csv Export to file
+
+    \b
+    Subcommands:
+      sst list summary              Overview of all components (default)
+      sst list metrics              Metrics with expressions
+      sst list tables               Tables and column counts
+      sst list relationships        Join relationships between tables
+      sst list filters              Named filters
+      sst list semantic-views       Configured semantic views
+      sst list custom-instructions  Custom LLM instructions
+      sst list verified-queries     Verified query examples
+
+    \b
+    Related Commands:
+      sst validate                  Check models for errors
+      sst enrich                    Populate metadata that 'list' inspects
     """
     if ctx.invoked_subcommand is None:
         ctx.invoke(summary)
