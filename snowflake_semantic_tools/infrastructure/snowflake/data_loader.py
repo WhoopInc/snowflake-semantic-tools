@@ -669,6 +669,12 @@ class DataLoader:
                         ]:
                             df[col] = df[col].apply(safe_json_dumps)
 
+                    for col in df.columns:
+                        if df[col].dtype == "object":
+                            df[col] = df[col].apply(
+                                lambda x: str(x) if isinstance(x, (list, dict)) else x
+                            )
+
                     # Add sm_ prefix if not already present
                     if not table_key.startswith("sm_"):
                         snowflake_table_name = f"sm_{table_key}"

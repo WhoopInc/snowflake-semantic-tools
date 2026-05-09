@@ -190,6 +190,12 @@ _register(
     ErrorCategory.VALIDATION,
     "'using_relationships' must be a list of relationship names",
 )
+_register(
+    "SST-V039",
+    "Cross-entity column reference in metric expression",
+    ErrorCategory.VALIDATION,
+    "Split into separate single-table metrics, or use metric composition via {{ metric() }}",
+)
 
 # --- Relationship validation ---
 _register(

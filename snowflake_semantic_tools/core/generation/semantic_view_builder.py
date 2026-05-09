@@ -459,7 +459,17 @@ class SemanticViewBuilder:
             except json.JSONDecodeError:
                 break
 
-        # Couldn't parse as JSON, return as string
+        # Try ast.literal_eval for Python-repr format (single quotes)
+        try:
+            import ast
+
+            result = ast.literal_eval(str(field_value))
+            if isinstance(result, (list, dict)):
+                return result
+        except (ValueError, SyntaxError):
+            pass
+
+        # Couldn't parse, return as string
         return field_value
 
     def _sanitize_description(self, description: str) -> str:
