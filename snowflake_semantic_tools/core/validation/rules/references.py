@@ -230,7 +230,7 @@ class ReferenceValidator:
                             and all_relationship_names
                         ):
                             available = format_available_list(sorted(all_relationship_names), max_show=5)
-                            result.add_warning(
+                            result.add_error(
                                 f"Metric '{name}' references relationship '{rel_name}' in using_relationships which was not found in defined relationships",
                                 file_path=source_file,
                                 rule_id="SST-V044",

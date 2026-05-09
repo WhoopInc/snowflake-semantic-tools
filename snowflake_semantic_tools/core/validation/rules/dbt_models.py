@@ -278,8 +278,8 @@ class DbtModelValidator:
         # Check description (always required in YAML)
         description = table.get("description")
         if not description or (isinstance(description, str) and not description.strip()):
-            result.add_error(
-                f"Table '{table_name}' is missing required field: description at the table-level",
+            result.add_warning(
+                f"Table '{table_name}' is missing description at the table-level (recommended for Cortex Analyst)",
                 file_path=source_file,
                 rule_id="SST-V012",
                 suggestion="Add a description to the model definition",
@@ -487,11 +487,11 @@ class DbtModelValidator:
                         context={"table": table_name, "constraint": c_name},
                     )
                 elif table_col_names and start_col not in table_col_names:
-                    result.add_warning(
+                    result.add_error(
                         f"Table '{table_name}' constraint '{c_name}' start_column '{start_col}' not found in table columns",
                         file_path=source_file,
                         rule_id="SST-V015",
-                        suggestion="Check column name spelling",
+                        suggestion="Check column name spelling — column must exist in the model",
                         entity_name=table_name,
                         context={"table": table_name, "constraint": c_name, "column": start_col},
                     )
@@ -505,11 +505,11 @@ class DbtModelValidator:
                         context={"table": table_name, "constraint": c_name},
                     )
                 elif table_col_names and end_col not in table_col_names:
-                    result.add_warning(
+                    result.add_error(
                         f"Table '{table_name}' constraint '{c_name}' end_column '{end_col}' not found in table columns",
                         file_path=source_file,
                         rule_id="SST-V015",
-                        suggestion="Check column name spelling",
+                        suggestion="Check column name spelling — column must exist in the model",
                         entity_name=table_name,
                         context={"table": table_name, "constraint": c_name, "column": end_col},
                     )
@@ -598,8 +598,8 @@ class DbtModelValidator:
 
         # Description is REQUIRED (not just technically)
         if not column.get("description"):
-            result.add_error(
-                f"Column '{column_name}' in table '{table_name}' is missing required field: description at the column-level",
+            result.add_warning(
+                f"Column '{column_name}' in table '{table_name}' is missing description at the column-level (recommended for Cortex Analyst)",
                 file_path=source_file,
                 rule_id="SST-V020",
                 suggestion="Add a description to the column",
@@ -649,9 +649,9 @@ class DbtModelValidator:
         # Strip precision/scale for validation (e.g., "number(38,0)" -> "number")
         base_data_type = data_type.split("(")[0] if "(" in data_type else data_type
         if base_data_type and base_data_type not in self.VALID_DATA_TYPES:
-            result.add_error(
+            result.add_warning(
                 f"Column '{column_name}' in table '{table_name}' has unrecognized data_type: '{data_type}' at the column-level. "
-                f"Must be a valid Snowflake data type.",
+                f"May not be a valid Snowflake data type.",
                 file_path=source_file,
                 rule_id="SST-V008",
                 suggestion=f"Valid types: TEXT, NUMBER, FLOAT, BOOLEAN, DATE, TIMESTAMP_NTZ, TIMESTAMP_LTZ, VARIANT. Run: DESCRIBE TABLE <table> to check actual column types",
