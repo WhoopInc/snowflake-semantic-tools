@@ -218,9 +218,6 @@ def validate(ctx, dbt, semantic, strict, verbose, exclude, dbt_compile, verify_s
         val_start = time.time()
         result = service.execute(config, verbose=verbose)
 
-        if quiet_mode:
-            result.disable_events()
-
         # Run Snowflake schema verification if requested
         if verify_schema:
             output.blank_line()
@@ -240,16 +237,7 @@ def validate(ctx, dbt, semantic, strict, verbose, exclude, dbt_compile, verify_s
 
         val_duration = time.time() - val_start
 
-        # Display results with improved formatting
-        output.blank_line()
-
         result.enrich_line_numbers()
-
-        # Enhanced summary
-        if result.is_valid:
-            output.success(f"Validation completed in {val_duration:.1f}s")
-        else:
-            output.error(f"Validation completed in {val_duration:.1f}s")
 
         if output_format == "json":
             import json as json_mod
@@ -294,12 +282,21 @@ def validate(ctx, dbt, semantic, strict, verbose, exclude, dbt_compile, verify_s
             }
             click.echo(json_mod.dumps(json_output, indent=2))
         else:
+            output.blank_line()
+            if result.is_valid:
+                output.success(f"Validation completed in {val_duration:.1f}s")
+            else:
+                output.error(f"Validation completed in {val_duration:.1f}s")
             result.print_summary(verbose=verbose)
 
         # Exit with appropriate code
         if not result.is_valid:
+            if output_format == "json":
+                sys.exit(1)
             raise click.ClickException("Validation failed with errors")
         elif strict and result.has_warnings:
+            if output_format == "json":
+                sys.exit(1)
             raise click.ClickException("Validation failed with warnings (strict mode)")
 
     except click.ClickException:

@@ -88,6 +88,8 @@ class SemanticMetadataCollectionValidationService:
         start_time = time.time()
 
         result = ValidationResult()
+        if not config.quiet:
+            result.enable_events()
 
         try:
             # CRITICAL: Load manifest.json (REQUIRED for validation)
