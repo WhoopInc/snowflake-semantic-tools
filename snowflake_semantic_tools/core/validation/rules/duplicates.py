@@ -334,12 +334,14 @@ class DuplicateValidator:
                     entity_name=table_name,
                 )
 
-    def _normalize_expression(self, expr: str) -> str:
+    def _normalize_expression(self, expr) -> str:
         """
         Normalize an expression for comparison.
 
         Removes whitespace, converts to lowercase, etc.
         """
+        if not isinstance(expr, str):
+            return str(expr)
         import re
 
         # Remove extra whitespace

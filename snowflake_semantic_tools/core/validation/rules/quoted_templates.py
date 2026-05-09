@@ -294,6 +294,8 @@ class QuotedTemplateValidator:
             List of (pattern_type, matched_text, line_number) tuples
         """
         violations = []
+        if not isinstance(text, str):
+            return violations
 
         lines = text.split("\n")
         for line_num, line in enumerate(lines, start=1):

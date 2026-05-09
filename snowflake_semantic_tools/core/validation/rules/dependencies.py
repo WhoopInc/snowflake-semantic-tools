@@ -86,6 +86,8 @@ class DependencyValidator:
 
                     # This is a simplified check - in reality, the template
                     # resolver would have already processed these
+                    if not isinstance(expr, str):
+                        continue
                     metric_refs = re.findall(r'{{\\s*metric\\([\'"]([^\'")]+)[\'"]\\)\\s*}}', expr)
 
                     for ref in metric_refs:

@@ -208,7 +208,7 @@ class ReferenceValidator:
                                     )
 
                 # Validate column references in expression
-                if expr:
+                if expr and isinstance(expr, str):
                     self._validate_column_references_in_expr(
                         name, expr, tables, dbt_catalog, result, "Metric", source_file
                     )
@@ -758,7 +758,7 @@ class ReferenceValidator:
                     )
 
                 # Validate column references in expression
-                if expr and table:
+                if expr and isinstance(expr, str) and table:
                     self._validate_column_references_in_expr(
                         name, expr, [table], dbt_catalog, result, "Filter", source_file
                     )
@@ -818,7 +818,8 @@ class ReferenceValidator:
         source_file: Optional[str] = None,
     ):
         """Validate column references in an expression."""
-        # Find column references (TABLE.COLUMN pattern)
+        if not isinstance(expression, str):
+            return
         column_refs = re.findall(r"(\w+)\.(\w+)", expression)
 
         for table_ref, column_ref in column_refs:
