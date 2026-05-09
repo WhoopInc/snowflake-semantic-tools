@@ -82,7 +82,7 @@ _register("SST-V006", "Empty required field", ErrorCategory.VALIDATION, "'{field
 _register(
     "SST-V007", "Invalid column_type", ErrorCategory.VALIDATION, "Must be one of: dimension, fact, time_dimension"
 )
-_register("SST-V008", "Invalid data_type", ErrorCategory.VALIDATION, "'{value}' is not a valid Snowflake data type")
+_register("SST-V008", "Invalid data_type", ErrorCategory.VALIDATION, "Valid types: TEXT, NUMBER, FLOAT, BOOLEAN, DATE, TIMESTAMP_NTZ, TIMESTAMP_LTZ, VARIANT, ARRAY, OBJECT. Or run: DESCRIBE TABLE <table> to see actual types")
 
 # --- Table validation ---
 _register(

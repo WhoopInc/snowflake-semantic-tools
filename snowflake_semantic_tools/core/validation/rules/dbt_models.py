@@ -654,7 +654,7 @@ class DbtModelValidator:
                 f"Must be a valid Snowflake data type.",
                 file_path=source_file,
                 rule_id="SST-V008",
-                suggestion="Must be a valid Snowflake data type",
+                suggestion=f"Valid types: TEXT, NUMBER, FLOAT, BOOLEAN, DATE, TIMESTAMP_NTZ, TIMESTAMP_LTZ, VARIANT. Run: DESCRIBE TABLE <table> to check actual column types",
                 entity_name=column_name,
                 context={"table": table_name, "column": column_name, "data_type": data_type, "level": "column"},
             )
