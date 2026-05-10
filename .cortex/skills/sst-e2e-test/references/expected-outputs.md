@@ -107,8 +107,8 @@ These tables should be populated in the target schema after `sst extract`:
 | Metric types | SUM, COUNT, COUNT DISTINCT, AVG, MIN, MAX, CASE WHEN, PERCENTILE_CONT, VARIANCE, DATEDIFF, compound, window, non_additive_by, using_relationships, metric composition, visibility: private |
 | Column types | dimension, time_dimension, fact |
 | Data types | TEXT, NUMBER, FLOAT, BOOLEAN, DATE, TIMESTAMP_NTZ |
-| Table features | primary_key, unique_keys (single + multi-column), constraints (DISTINCT_RANGE), tags, synonyms, cortex_searchable, visibility |
-| Column features | data_type, synonyms, sample_values, is_enum, visibility, tags, cortex_searchable |
+| Table features | primary_key, unique_keys (single + multi-column), constraints (DISTINCT_RANGE), tags, synonyms, visibility |
+| Column features | data_type, synonyms, sample_values, is_enum, visibility, tags |
 | VQR features | inline sql, sql_file, description, use_as_onboarding_question, verified_by, verified_at, multi-table |
 | Filter features | equality, date range, numeric, boolean, synonyms, legacy syntax |
 | Relationship features | standard equality, ASOF, range/BETWEEN EXCLUSIVE, composite/multi-column, description |

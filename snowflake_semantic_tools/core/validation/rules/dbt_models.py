@@ -990,20 +990,13 @@ class DbtModelValidator:
         self, all_models: List[Dict[str, Any]], included_tables: List[Dict[str, Any]], result: ValidationResult
     ):
         """Check for models that should be included but aren't in the extraction."""
-        # This would catch models that have cortex_searchable=false or are missing metadata
-
         included_names = {t.get("table_name", "").upper() for t in included_tables}
 
         for model in all_models:
             model_name = model.get("name", "unknown")
             source_file = model.get("source_file")
 
-            # Process all models - no hardcoded exclusions
-            model_path = model.get("path", "")
-
-            # Check if this model is in the extracted tables
             if model_name.upper() not in included_names:
-                # Check why it's not included (supports both config.meta.sst and meta.sst)
                 sst_meta = get_sst_meta(model, node_type="model", node_name=model_name, emit_warning=False)
 
                 if not sst_meta:
@@ -1016,26 +1009,11 @@ class DbtModelValidator:
                         context={"model": model_name, "reason": "no_sst_meta"},
                     )
                 else:
-                    # Check cortex_searchable
-                    cortex_searchable = sst_meta.get("cortex_searchable", False)
-
-                    if not cortex_searchable:
-                        # This is intentional, just log as info
-                        result.add_info(
-                            f"Model '{model_name}' has cortex_searchable=false (intentionally excluded)",
-                            file_path=source_file,
-                            rule_id="SST-V010",
-                            suggestion="Model intentionally excluded (no action needed)",
-                            entity_name=model_name,
-                            context={"model": model_name, "reason": "excluded"},
-                        )
-                    else:
-                        # This shouldn't happen, but if it does, it's an error
-                        result.add_error(
-                            f"Model '{model_name}' has cortex_searchable=true but wasn't extracted",
-                            file_path=source_file,
-                            rule_id="SST-V002",
-                            suggestion="Model with SST config not found in extracted data",
-                            entity_name=model_name,
-                            context={"model": model_name, "reason": "extraction_failure"},
-                        )
+                    result.add_error(
+                        f"Model '{model_name}' has SST config but wasn't extracted",
+                        file_path=source_file,
+                        rule_id="SST-V002",
+                        suggestion="Model with SST config not found in extracted data",
+                        entity_name=model_name,
+                        context={"model": model_name, "reason": "extraction_failure"},
+                    )

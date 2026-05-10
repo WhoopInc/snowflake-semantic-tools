@@ -8,7 +8,6 @@ models:
     description: "Legacy orders table with deprecated meta.sst format"
     meta:
       sst:
-        cortex_searchable: true
         primary_key: id
         synonyms:
           - purchases

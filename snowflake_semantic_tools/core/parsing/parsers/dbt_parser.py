@@ -46,7 +46,6 @@ def get_empty_result() -> Dict[str, List[Dict[str, Any]]]:
         "sm_relationship_columns": [],
         "sm_verified_queries": [],
         "sm_custom_instructions": [],
-        "sm_table_summaries": [],
         "sm_semantic_views": [],
     }
 
@@ -127,30 +126,15 @@ def parse_single_model(
     """
     result = get_empty_result()
 
-    # Extract cortex_searchable flag (supports both config.meta.sst and meta.sst)
     model_name = model.get("name", "unknown")
     sst_meta = get_sst_meta(model, node_type="model", node_name=model_name)
-    cortex_searchable = sst_meta.get("cortex_searchable", False)
 
-    logger.debug(f"Processing model '{model_name}' - cortex_searchable={cortex_searchable}")
+    logger.debug(f"Processing model '{model_name}'")
 
-    # Always extract table info for validation purposes
-    # Extract table-level information
     table_info = extract_table_info(model, file_path, target_database, manifest_parser)
     if table_info:
-        # Add cortex_searchable flag to table info
-        table_info["cortex_searchable"] = cortex_searchable
         result["sm_tables"].append(table_info)
 
-    # Log when processing models with cortex_searchable=False
-    if not cortex_searchable:
-        logger.debug(
-            f"Extracting all metadata for model '{model_name}' despite cortex_searchable=False (for validation)"
-        )
-
-    # ALWAYS extract column information for validation purposes
-    # The cortex_searchable flag will be used later during extraction/loading
-    # Extract column information
     columns = model.get("columns", [])
     table_name = model.get("name", "unknown")
 

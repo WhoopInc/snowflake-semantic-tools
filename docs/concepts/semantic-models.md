@@ -74,7 +74,6 @@ models:
         sst:
           primary_key: order_id                      # Required: unique identifier
           unique_keys: [customer_id, ordered_at]     # Optional: for ASOF relationships
-          cortex_searchable: true                    # Optional: include in Dynamic SV Generation (future feature)
           synonyms:                                  # Optional: alternative names
             - purchases
             - transactions
@@ -140,7 +139,6 @@ models:
 | `unique_keys` | No | Column(s) forming a unique constraint. **Required for ASOF relationships** - Snowflake needs this to validate temporal joins. |
 | `constraints` | No | List of constraint objects. Currently supports `distinct_range` type for non-overlapping range declarations. |
 | `tags` | No | Dict of `tag_name: tag_value` pairs. Tag names should be fully-qualified (e.g., `DB.SCHEMA.TAG_NAME`). |
-| `cortex_searchable` | No | If `true`, table is included in Cortex Search for dynamic SV generation. Default: `false` |
 | `synonyms` | No | Alternative names users might use to refer to this table |
 
 ### Column-Level Metadata

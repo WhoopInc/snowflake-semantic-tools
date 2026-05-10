@@ -66,7 +66,6 @@ These tables are actively used by `sst generate` to create Snowflake semantic vi
 | `SM_RELATIONSHIPS` | Table relationships (join definitions) |
 | `SM_RELATIONSHIP_COLUMNS` | Relationship column mappings |
 | `SM_SEMANTIC_VIEWS` | Semantic view definitions |
-| `SM_TABLE_SUMMARIES` | Table metadata summaries (for Cortex Search) |
 
 ### Future-Ready (Not Yet Supported by Snowflake)
 
@@ -81,12 +80,6 @@ These tables store metadata for features that Snowflake's `CREATE SEMANTIC VIEW`
 > **Note:** Including these definitions won't cause errors—they're simply not included in the generated semantic views until Snowflake adds native support.
 
 ---
-
-## Cortex Search Service
-
-The extract command automatically creates or updates a Cortex Search Service named `SEMANTIC_SEARCH_SERVICE` that indexes the `SM_TABLE_SUMMARIES` table.
-
-This service enables AI-powered table discovery for dynamic model generation, but **only includes tables where `cortex_searchable: true`** in the dbt model metadata.
 
 ---
 

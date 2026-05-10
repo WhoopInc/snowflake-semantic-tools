@@ -118,11 +118,6 @@ class SemanticTableSchemas:
                     description="Alternative business terms users might use to refer to this table",
                 ),
                 Column(
-                    "cortex_searchable",
-                    ColumnType.BOOLEAN,
-                    description="Whether to include this table in Cortex Analyst queries",
-                ),
-                Column(
                     "constraints",
                     ColumnType.ARRAY,
                     description="Table constraints (e.g., DISTINCT RANGE for range joins). Preview feature.",
@@ -396,37 +391,6 @@ class SemanticTableSchemas:
         )
 
     @staticmethod
-    def get_table_summary_schema() -> TableSchema:
-        """Schema for table summaries - AI-optimized descriptions for Cortex Search."""
-        return TableSchema(
-            name="sm_table_summaries",
-            description="AI-generated summaries of logical tables used by Cortex Search Service for improved natural language understanding",
-            columns=[
-                Column("TABLE_NAME", ColumnType.VARCHAR, description="Logical table name being summarized"),
-                Column(
-                    "DATABASE_NAME",
-                    ColumnType.VARCHAR,
-                    description="Database name where the table resides (for FQN construction)",
-                ),
-                Column(
-                    "SCHEMA_NAME",
-                    ColumnType.VARCHAR,
-                    description="Schema name where the table resides (for FQN construction)",
-                ),
-                Column(
-                    "TABLE_SUMMARY",
-                    ColumnType.VARCHAR,
-                    description="Comprehensive AI-friendly summary including table purpose, key columns, and common use cases",
-                ),
-                Column(
-                    "CORTEX_SEARCHABLE",
-                    ColumnType.BOOLEAN,
-                    description="Whether this table is included in Cortex Analyst (inherited from sm_tables)",
-                ),
-            ],
-        )
-
-    @staticmethod
     def get_semantic_views_schema() -> TableSchema:
         """Schema for semantic views - curated data models for specific business domains."""
         return TableSchema(
@@ -468,6 +432,5 @@ class SemanticTableSchemas:
             "sm_relationship_columns": cls.get_relationship_column_schema(),
             "sm_verified_queries": cls.get_verified_query_schema(),
             "sm_custom_instructions": cls.get_custom_instructions_schema(),
-            "sm_table_summaries": cls.get_table_summary_schema(),
             "sm_semantic_views": cls.get_semantic_views_schema(),
         }

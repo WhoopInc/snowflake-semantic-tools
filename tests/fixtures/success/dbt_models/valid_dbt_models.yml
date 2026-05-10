@@ -5,7 +5,6 @@ models:
     description: "Customer orders table"
     meta:
       sst:
-        cortex_searchable: true
     columns:
       - name: id
         description: "Unique order identifier"
@@ -22,7 +21,6 @@ models:
     description: "User accounts table"
     meta:
       sst:
-        cortex_searchable: true
     columns:
       - name: id
         description: "Unique user identifier"
@@ -39,7 +37,6 @@ models:
     description: "Product catalog table"
     meta:
       sst:
-        cortex_searchable: true
     columns:
       - name: id
         description: "Unique product identifier"

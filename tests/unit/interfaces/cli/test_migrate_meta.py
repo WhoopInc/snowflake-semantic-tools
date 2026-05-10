@@ -22,8 +22,8 @@ class TestMigrateNodeMeta:
             "name": "test_model",
             "meta": {
                 "sst": {
-                    "cortex_searchable": True,
                     "primary_key": "id",
+                    "synonyms": ["orders"],
                 }
             },
         }
@@ -35,8 +35,8 @@ class TestMigrateNodeMeta:
         assert "config" in node
         assert "meta" in node["config"]
         assert "sst" in node["config"]["meta"]
-        assert node["config"]["meta"]["sst"]["cortex_searchable"] is True
         assert node["config"]["meta"]["sst"]["primary_key"] == "id"
+        assert node["config"]["meta"]["sst"]["synonyms"] == ["orders"]
         # Old location should be removed
         assert "meta" not in node
 
@@ -47,7 +47,7 @@ class TestMigrateNodeMeta:
             "config": {
                 "meta": {
                     "sst": {
-                        "cortex_searchable": True,
+                        "primary_key": "id",
                     }
                 }
             },
@@ -75,7 +75,7 @@ class TestMigrateNodeMeta:
             "name": "test_model",
             "meta": {
                 "sst": {
-                    "cortex_searchable": True,
+                    "primary_key": "id",
                 },
                 "custom_field": "should_remain",
             },
@@ -128,7 +128,6 @@ models:
     description: "Orders table"
     meta:
       sst:
-        cortex_searchable: true
         primary_key: id
     columns:
       - name: id
@@ -161,7 +160,7 @@ models:
 
         model = content["models"][0]
         assert "config" in model
-        assert model["config"]["meta"]["sst"]["cortex_searchable"] is True
+        assert model["config"]["meta"]["sst"]["primary_key"] == "id"
         # Legacy meta.sst should be removed
         assert "meta" not in model or "sst" not in model.get("meta", {})
 
@@ -174,7 +173,7 @@ models:
   - name: orders
     meta:
       sst:
-        cortex_searchable: true
+        primary_key: id
 """
         yaml_file = tmp_path / "test_model.yml"
         yaml_file.write_text(yaml_content)
@@ -196,7 +195,7 @@ models:
   - name: orders
     meta:
       sst:
-        cortex_searchable: true
+        primary_key: id
 """
         yaml_file = tmp_path / "test_model.yml"
         yaml_file.write_text(yaml_content)
@@ -217,7 +216,6 @@ models:
     config:
       meta:
         sst:
-          cortex_searchable: true
 """
         yaml_file = tmp_path / "test_model.yml"
         yaml_file.write_text(yaml_content)

@@ -319,22 +319,15 @@ class Parser:
 
     def _parse_dbt_files(self, dbt_files: List[Path]) -> Dict[str, Any]:
         """Parse dbt model files."""
-        from .parsers.table_summarizer import generate_table_summaries
-
-        # For validation, we need the raw models from the catalog
-        # The dbt_catalog already has all the models loaded
         result = {"models": list(self.dbt_catalog.values()), "errors": []}
 
-        # Also parse for SST-specific semantic data
         all_parsed = {}
         for file_path in dbt_files:
             try:
-                # Note: manifest_parser can be None - parse_dbt_yaml_file handles this gracefully
                 parsed = dbt_parser.parse_dbt_yaml_file(
                     file_path, self.error_tracker, self.target_database, self.manifest_parser
                 )
                 if parsed:
-                    # Merge results
                     for key, value in parsed.items():
                         if key not in all_parsed:
                             all_parsed[key] = []
@@ -346,18 +339,7 @@ class Parser:
                 result["errors"].append(error_msg)
                 self.error_tracker.add_error(f"[dbt_parsing] {error_msg}")
 
-        # Add the parsed SST semantic data to results
         result.update(all_parsed)
-
-        # Generate table summaries from the parsed data
-        if all_parsed:
-            try:
-                table_summaries = generate_table_summaries(all_parsed)
-                if table_summaries:
-                    result["sm_table_summaries"] = table_summaries
-                    logger.debug(f"Generated {len(table_summaries)} table summaries")
-            except Exception as e:
-                logger.warning(f"Failed to generate table summaries: {e}")
 
         return result
 

@@ -87,10 +87,9 @@ class TestDbtModel:
             database="analytics",
             schema="public",
             columns=[],
-            meta={"sst": {"cortex_searchable": True, "primary_key": "id", "synonyms": ["purchases", "transactions"]}},
+            meta={"sst": {"primary_key": "id", "synonyms": ["purchases", "transactions"]}},
         )
 
-        assert model.meta["sst"]["cortex_searchable"] is True
         assert model.meta["sst"]["primary_key"] == "id"
         assert "purchases" in model.meta["sst"]["synonyms"]
 
@@ -134,7 +133,7 @@ class TestDbtModel:
     def test_dbt_model_has_sst_metadata(self):
         """Test checking for SST metadata."""
         model_with_sst = DbtModel(
-            name="orders", database="analytics", schema="public", columns=[], meta={"sst": {"cortex_searchable": True}}
+            name="orders", database="analytics", schema="public", columns=[], meta={"sst": {"primary_key": "id"}}
         )
 
         model_without_sst = DbtModel(name="temp_table", database="analytics", schema="public", columns=[], meta={})
@@ -145,23 +144,13 @@ class TestDbtModel:
     def test_dbt_model_sst_metadata_access(self):
         """Test accessing SST metadata."""
         included_model = DbtModel(
-            name="users", database="analytics", schema="public", columns=[], meta={"sst": {"cortex_searchable": True}}
-        )
-
-        excluded_model = DbtModel(
-            name="temp_users",
-            database="analytics",
-            schema="public",
-            columns=[],
-            meta={"sst": {"cortex_searchable": False}},
+            name="users", database="analytics", schema="public", columns=[], meta={"sst": {"primary_key": "user_id"}}
         )
 
         no_meta_model = DbtModel(name="other_table", database="analytics", schema="public", columns=[])
 
-        # Test through meta property access
-        assert included_model.meta.get("sst", {}).get("cortex_searchable") is True
-        assert excluded_model.meta.get("sst", {}).get("cortex_searchable") is False
-        assert no_meta_model.meta.get("sst", {}).get("cortex_searchable") is None
+        assert included_model.meta.get("sst", {}).get("primary_key") == "user_id"
+        assert no_meta_model.meta.get("sst", {}).get("primary_key") is None
 
     def test_dbt_model_primary_key_metadata(self):
         """Test accessing primary key from metadata."""

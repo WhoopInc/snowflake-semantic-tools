@@ -168,7 +168,6 @@ class DataLoader:
             "sm_filters": "sm_filters",
             "sm_verified_queries": "sm_verified_queries",
             "sm_semantic_views": "sm_semantic_views",
-            "sm_table_summaries": "sm_table_summaries",
         }
 
     @property

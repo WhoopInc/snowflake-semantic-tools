@@ -15,7 +15,6 @@ Comprehensive Snowflake database operations and connectivity layer.
 - **TableManager**: Table operations and metadata queries
 - **DataLoader**: Bulk data loading and semantic model extraction
 - **MetadataManager**: Schema inspection, sample values, and enrichment queries
-- **CortexSearchManager**: Cortex Search Service configuration
 
 ## Authentication Support
 

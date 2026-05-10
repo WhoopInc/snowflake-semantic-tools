@@ -81,7 +81,6 @@ class TestSemanticTableSchemas:
         assert "table_name" in column_names
         assert "database" in column_names
         assert "schema" in column_names
-        assert "cortex_searchable" in column_names
 
     def test_get_dimension_schema(self):
         """Test getting dimension schema definition."""
@@ -159,7 +158,6 @@ class TestSemanticTableSchemas:
             SemanticTableSchemas.get_custom_instructions_schema,
             SemanticTableSchemas.get_verified_query_schema,
             SemanticTableSchemas.get_semantic_views_schema,
-            SemanticTableSchemas.get_table_summary_schema,
         ]
 
         for schema_method in schema_methods:
