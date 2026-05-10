@@ -474,23 +474,32 @@ class Parser:
         For derived metrics, {{ metric('X') }} should resolve to TABLE.METRIC_NAME
         instead of inlining the full SQL expression.
 
-        Uses YAML parsing with Jinja neutralization to locate the metric by name,
-        then extracts the raw expr from the original content and resolves metric
-        references using the already-parsed metrics catalog.
+        Uses YAML parsing with quote-aware Jinja neutralization: unquoted Jinja
+        (like table refs) is neutralized for safe YAML parsing, while quoted Jinja
+        (like metric exprs) is preserved intact. No regex fallback needed.
         """
         import re as _re
 
         import yaml
 
-        _JINJA_PLACEHOLDER = "JINJA_PLACEHOLDER"
-        neutralized = _re.sub(r"\{\{.*?\}\}", _JINJA_PLACEHOLDER, raw_content)
+        def _neutralize_unquoted_jinja(content: str) -> str:
+            result = []
+            for line in content.split("\n"):
+                if _re.search(r""":\s*["'].*\{\{.*\}\}.*["']""", line) or _re.search(
+                    r"""-\s*["'].*\{\{.*\}\}.*["']""", line
+                ):
+                    result.append(line)
+                else:
+                    result.append(_re.sub(r"\{\{.*?\}\}", "PLACEHOLDER", line))
+            return "\n".join(result)
+
+        neutralized = _neutralize_unquoted_jinja(raw_content)
 
         try:
             data = yaml.safe_load(neutralized)
         except yaml.YAMLError:
             return ""
 
-        raw_expr = ""
         metrics_list = []
         if isinstance(data, dict):
             for key in ("metrics", "snowflake_metrics"):
@@ -500,26 +509,14 @@ class Parser:
         elif isinstance(data, list):
             metrics_list = data
 
-        found = False
+        raw_expr = ""
         for m in metrics_list:
             if isinstance(m, dict) and m.get("name", "").lower() == metric_name.lower():
                 raw_expr = m.get("expr", "")
-                found = True
                 break
 
-        if not found or not raw_expr or not isinstance(raw_expr, str):
+        if not raw_expr or not isinstance(raw_expr, str):
             return ""
-
-        if _JINJA_PLACEHOLDER in raw_expr:
-            match = _re.search(
-                r"- name:\s*" + _re.escape(metric_name) + r"\s*\n(?:.*?\n)*?\s*expr:\s*(.*?)$",
-                raw_content,
-                _re.MULTILINE | _re.IGNORECASE,
-            )
-            if match:
-                raw_expr = match.group(1).strip().strip("\"'")
-            else:
-                return ""
 
         metric_ref_pattern = r'\{\{\s*metric\([\'"]([^\'")]+)[\'"]\)\s*\}\}'
 

@@ -367,3 +367,96 @@ class TestGeneratorDerivedMetricEmission:
 
     def test_all_tables_present_with_missing(self, builder):
         assert builder._all_tables_present(["orders", "missing"], ["orders"]) is False
+
+
+class TestResolveDerivedMetricExpr:
+    """Test _resolve_derived_metric_expr with YAML-safe parsing (no regex fallback)."""
+
+    def _make_parser(self, metrics_catalog):
+        from unittest.mock import MagicMock
+
+        parser = MagicMock()
+        parser.metrics_catalog = metrics_catalog
+        from snowflake_semantic_tools.core.parsing.parser import Parser
+
+        parser._resolve_derived_metric_expr = Parser._resolve_derived_metric_expr.__get__(parser)
+        return parser
+
+    def test_resolves_metric_refs_to_table_dot_name(self):
+        raw_content = """snowflake_metrics:
+  - name: total_revenue
+    tables:
+      - "{{ ref('orders') }}"
+    expr: "SUM(order_total)"
+
+  - name: total_customers
+    tables:
+      - "{{ ref('customers') }}"
+    expr: "COUNT(DISTINCT customer_id)"
+
+  - name: revenue_ratio
+    derived: true
+    expr: "{{ metric('total_revenue') }} / NULLIF({{ metric('total_customers') }}, 0)"
+"""
+        catalog = [
+            {"name": "TOTAL_REVENUE", "tables": ["{{ ref('orders') }}"]},
+            {"name": "TOTAL_CUSTOMERS", "tables": ["{{ ref('customers') }}"]},
+        ]
+        parser = self._make_parser(catalog)
+        result = parser._resolve_derived_metric_expr("revenue_ratio", raw_content)
+        assert result == "ORDERS.TOTAL_REVENUE / NULLIF(CUSTOMERS.TOTAL_CUSTOMERS, 0)"
+
+    def test_handles_unquoted_jinja_in_tables(self):
+        raw_content = """snowflake_metrics:
+  - name: metric_a
+    tables:
+      - {{ ref('orders') }}
+    expr: "SUM(x)"
+
+  - name: derived_one
+    derived: true
+    expr: "{{ metric('metric_a') }} + 1"
+"""
+        catalog = [{"name": "METRIC_A", "tables": ["{{ ref('orders') }}"]}]
+        parser = self._make_parser(catalog)
+        result = parser._resolve_derived_metric_expr("derived_one", raw_content)
+        assert result == "ORDERS.METRIC_A + 1"
+
+    def test_returns_empty_for_missing_metric(self):
+        raw_content = """snowflake_metrics:
+  - name: other_metric
+    expr: "COUNT(*)"
+"""
+        parser = self._make_parser([])
+        result = parser._resolve_derived_metric_expr("nonexistent", raw_content)
+        assert result == ""
+
+    def test_returns_empty_for_invalid_yaml(self):
+        raw_content = "not: [valid: yaml: {{{"
+        parser = self._make_parser([])
+        result = parser._resolve_derived_metric_expr("anything", raw_content)
+        assert result == ""
+
+    def test_handles_plain_list_format(self):
+        raw_content = """- name: ratio
+  derived: true
+  expr: "{{ metric('x') }} / {{ metric('y') }}"
+"""
+        catalog = [
+            {"name": "X", "tables": ["{{ ref('a') }}"]},
+            {"name": "Y", "tables": ["{{ ref('b') }}"]},
+        ]
+        parser = self._make_parser(catalog)
+        result = parser._resolve_derived_metric_expr("ratio", raw_content)
+        assert result == "A.X / B.Y"
+
+    def test_metric_without_table_returns_name_only(self):
+        raw_content = """snowflake_metrics:
+  - name: derived_m
+    derived: true
+    expr: "{{ metric('orphan') }}"
+"""
+        catalog = [{"name": "ORPHAN", "tables": []}]
+        parser = self._make_parser(catalog)
+        result = parser._resolve_derived_metric_expr("derived_m", raw_content)
+        assert result == "ORPHAN"
