@@ -155,6 +155,11 @@ def parse_single_model(
     table_name = model.get("name", "unknown")
 
     for column in columns:
+        col_sst_meta = get_sst_meta(column, node_type="column", node_name=column.get("name", ""), emit_warning=False)
+        if col_sst_meta.get("exclude"):
+            logger.debug(f"Skipping excluded column '{column.get('name', '')}' in table '{table_name}'")
+            continue
+
         column_data = extract_column_info(column, table_name, file_path)
 
         # Get column_type for classification (preserve original in column_data for validation)

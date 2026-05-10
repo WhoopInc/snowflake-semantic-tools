@@ -213,8 +213,12 @@ _register(
     ErrorCategory.VALIDATION,
     "Remove the invalid fields — derived metrics are view-scoped",
 )
-
-# --- Relationship validation ---
+_register(
+    "SST-V047",
+    "Excluded column referenced in expression",
+    ErrorCategory.VALIDATION,
+    "Remove the reference or un-exclude the column (config.meta.sst.exclude: false)",
+)
 _register(
     "SST-V040",
     "Missing relationship field",

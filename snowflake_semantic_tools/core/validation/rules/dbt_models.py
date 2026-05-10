@@ -526,6 +526,20 @@ class DbtModelValidator:
         column_name = column.get("name", "unknown")
         source_file = column.get("source_file")
 
+        if column.get("exclude"):
+            if column.get("column_type"):
+                result.add_warning(
+                    f"Column '{column_name}' in table '{table_name}' has both 'exclude: true' and "
+                    f"'column_type: {column.get('column_type')}'. The column will be excluded from "
+                    f"the semantic view — column_type is ignored.",
+                    file_path=source_file,
+                    rule_id="SST-V047",
+                    suggestion="Remove column_type or remove exclude: true",
+                    entity_name=column_name,
+                    context={"table": table_name, "column": column_name},
+                )
+            return
+
         # Check required column fields
         self._check_required_column_fields(column, table_name, column_name, source_file, result)
 

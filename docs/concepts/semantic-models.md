@@ -159,7 +159,40 @@ models:
                 - "ORD-001"
                 - "ORD-002"
               is_enum: false            # Optional: true if sample_values is exhaustive
+              exclude: false           # Optional: true to hide column from semantic view
 ```
+
+### Column Exclusion
+
+Add `exclude: true` to any column's `config.meta.sst` to hide it from the semantic view entirely:
+
+```yaml
+columns:
+  - name: email_address
+    description: Customer email (PII)
+    config:
+      meta:
+        sst:
+          exclude: true   # Column will not appear in the semantic view
+
+  - name: customer_id
+    config:
+      meta:
+        sst:
+          column_type: dimension
+          data_type: TEXT
+```
+
+Excluded columns are:
+- **Skipped during enrichment** — no sample values, synonyms, or type detection
+- **Omitted from extraction** — not written to SM_DIMENSIONS/SM_FACTS/SM_TIME_DIMENSIONS
+- **Absent from generated DDL** — do not appear in DIMENSIONS or FACTS clauses
+- **Skipped in validation** — no `column_type` requirement
+
+Use cases:
+- PII columns on joined tables that shouldn't be queryable via Cortex Agents
+- Internal/technical columns (ETL timestamps, hash keys, debug flags)
+- Columns that exist in the warehouse but aren't relevant to the semantic layer
 
 ### UNIQUE Keys for ASOF Relationships
 
