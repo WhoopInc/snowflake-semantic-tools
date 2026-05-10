@@ -125,6 +125,9 @@ cd snowflake-semantic-tools
 # Install with Poetry (includes dev dependencies)
 poetry install --with dev
 
+# Set up pre-commit hooks (catches formatting before CI)
+pre-commit install
+
 # Verify installation
 sst --version
 
