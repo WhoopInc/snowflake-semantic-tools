@@ -5,6 +5,8 @@ CLI command for removing semantic views from Snowflake.
 Supports dropping specific views or pruning orphaned views.
 """
 
+import re
+
 import click
 
 from snowflake_semantic_tools._version import __version__
@@ -60,6 +62,9 @@ def drop(ctx, dbt_target, db, schema, view_name, prune, dry_run, yes, verbose):
     if not view_name and not prune:
         raise click.UsageError("Specify a VIEW_NAME to drop, or use --prune to remove orphaned views.")
 
+    if view_name and prune:
+        raise click.UsageError("Cannot use both VIEW_NAME and --prune. Choose one mode.")
+
     config = build_snowflake_config(dbt_target)
     database, schema_name = get_target_database_schema(dbt_target, db, schema)
 
@@ -68,34 +73,48 @@ def drop(ctx, dbt_target, db, schema, view_name, prune, dry_run, yes, verbose):
     try:
         with snowflake_session(config=config) as client:
             if view_name:
-                _drop_specific_view(client, database, schema_name, view_name, dry_run, output)
+                success = _drop_specific_view(client, database, schema_name, view_name, dry_run, output)
             elif prune:
-                _prune_orphaned_views(client, database, schema_name, dry_run, yes, verbose, output)
+                success = _prune_orphaned_views(client, database, schema_name, dry_run, yes, verbose, output)
+            else:
+                success = True
     except Exception as e:
         output.error(str(e))
         raise click.Abort()
 
+    if not success:
+        raise SystemExit(1)
 
-def _drop_specific_view(client, database: str, schema: str, view_name: str, dry_run: bool, output: CLIOutput):
+
+_VALID_IDENTIFIER = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+
+
+def _drop_specific_view(client, database: str, schema: str, view_name: str, dry_run: bool, output: CLIOutput) -> bool:
     """Drop a single named semantic view."""
+    if not _VALID_IDENTIFIER.match(view_name):
+        output.error(f"Invalid view name: '{view_name}'. Must be a valid SQL identifier.")
+        return False
+
     fqn = f"{database}.{schema}.{view_name.upper()}"
 
     if dry_run:
         output.info(f"Would drop: {fqn}")
         output.info("DRY RUN — no views were dropped.")
-        return
+        return True
 
     sql = f"DROP SEMANTIC VIEW IF EXISTS {fqn}"
     try:
         client.execute_query(sql)
         output.success(f"Dropped: {fqn}")
+        return True
     except Exception as e:
         output.error(f"Failed to drop {fqn}: {e}")
+        return False
 
 
 def _prune_orphaned_views(
     client, database: str, schema: str, dry_run: bool, yes: bool, verbose: bool, output: CLIOutput
-):
+) -> bool:
     """Find and drop orphaned semantic views (not tracked in SM_SEMANTIC_VIEWS)."""
     output.info(f"Scanning semantic views in: {database}.{schema}")
 
@@ -117,7 +136,7 @@ def _prune_orphaned_views(
 
     if not orphaned:
         output.success("No orphaned semantic views found. Schema is clean.")
-        return
+        return True
 
     output.info(f"\n{len(orphaned)} orphaned semantic view(s) detected:")
     for name in orphaned:
@@ -125,7 +144,7 @@ def _prune_orphaned_views(
 
     if dry_run:
         output.info("\nDRY RUN — no views were dropped. Re-run without --dry-run to drop.")
-        return
+        return True
 
     if not yes:
         click.confirm(f"\nDrop {len(orphaned)} orphaned view(s)?", abort=True)
@@ -141,3 +160,4 @@ def _prune_orphaned_views(
             output.error(f"Failed to drop {fqn}: {e}")
 
     output.success(f"\nDropped {dropped}/{len(orphaned)} orphaned view(s).")
+    return dropped == len(orphaned)
