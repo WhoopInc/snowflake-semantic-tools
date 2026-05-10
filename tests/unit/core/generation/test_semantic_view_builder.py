@@ -1656,6 +1656,84 @@ class TestUsingRelationships:
         assert "USING" not in result
 
 
+class TestMultipleRelationshipsSameTablePair:
+    """Test that multiple relationships between the same table pair generate valid DDL (issue #160)."""
+
+    @pytest.fixture
+    def builder(self):
+        config = SnowflakeConfig(
+            account="test",
+            user="test",
+            password="test",
+            role="test",
+            warehouse="test",
+            database="test",
+            schema="test",
+        )
+        return SemanticViewBuilder(config)
+
+    def test_two_relationships_same_pair_emits_both(self, builder, monkeypatch):
+        """Two relationships between ORDERS↔CUSTOMERS should both appear in DDL."""
+
+        def mock_get_relationships(conn, table_names):
+            return [
+                {
+                    "RELATIONSHIP_NAME": "ORDERS_TO_CUSTOMERS",
+                    "LEFT_TABLE_NAME": "ORDERS",
+                    "RIGHT_TABLE_NAME": "CUSTOMERS",
+                    "RELATIONSHIP_COLUMNS": [{"JOIN_CONDITION": "ORDERS.CUSTOMER_ID = CUSTOMERS.CUSTOMER_ID"}],
+                },
+                {
+                    "RELATIONSHIP_NAME": "ORDERS_TO_CUSTOMERS_ASOF",
+                    "LEFT_TABLE_NAME": "ORDERS",
+                    "RIGHT_TABLE_NAME": "CUSTOMERS",
+                    "RELATIONSHIP_COLUMNS": [
+                        {"JOIN_CONDITION": "ORDERS.CUSTOMER_ID = CUSTOMERS.CUSTOMER_ID"},
+                        {"JOIN_CONDITION": "ORDERS.ORDERED_AT >= CUSTOMERS.FIRST_ORDERED_AT"},
+                    ],
+                },
+            ]
+
+        monkeypatch.setattr(builder, "_get_relationships", mock_get_relationships)
+
+        result = builder._build_relationships_clause(None, ["ORDERS", "CUSTOMERS"])
+
+        assert "ORDERS_TO_CUSTOMERS" in result
+        assert "ORDERS_TO_CUSTOMERS_ASOF" in result
+        assert result.count("REFERENCES") == 2
+
+    def test_same_pair_relationships_are_separate_entries(self, builder, monkeypatch):
+        """Each relationship should be a separate comma-delimited entry."""
+
+        def mock_get_relationships(conn, table_names):
+            return [
+                {
+                    "RELATIONSHIP_NAME": "REL_A",
+                    "LEFT_TABLE_NAME": "T1",
+                    "RIGHT_TABLE_NAME": "T2",
+                    "RELATIONSHIP_COLUMNS": [{"JOIN_CONDITION": "T1.ID = T2.ID"}],
+                },
+                {
+                    "RELATIONSHIP_NAME": "REL_B",
+                    "LEFT_TABLE_NAME": "T1",
+                    "RIGHT_TABLE_NAME": "T2",
+                    "RELATIONSHIP_COLUMNS": [
+                        {"JOIN_CONDITION": "T1.ID = T2.ID"},
+                        {"JOIN_CONDITION": "T1.TS >= T2.START_TS"},
+                    ],
+                },
+            ]
+
+        monkeypatch.setattr(builder, "_get_relationships", mock_get_relationships)
+
+        result = builder._build_relationships_clause(None, ["T1", "T2"])
+
+        lines = [l.strip() for l in result.split(",\n")]
+        assert len(lines) == 2
+        assert any("REL_A" in l for l in lines)
+        assert any("REL_B" in l for l in lines)
+
+
 class TestVerifiedQueriesDDL:
     """Test cases for AI_VERIFIED_QUERIES clause generation."""
 
