@@ -487,3 +487,99 @@ class TestResolveDerivedMetricExpr:
         parser = self._make_parser(catalog)
         result = parser._resolve_derived_metric_expr("derived_m", raw_content)
         assert result == "ORPHAN"
+
+
+class TestAutoInferTablesFromExpr:
+    """Test that tables field is auto-inferred from expr when omitted (#96)."""
+
+    def test_infers_single_table_from_ref(self):
+        metrics = [
+            {
+                "name": "total_revenue",
+                "expr": "SUM({{ ref('orders', 'amount') }})",
+            }
+        ]
+        result = parse_snowflake_metrics(metrics, Path("/tmp/test.yml"))
+        assert len(result) == 1
+        assert "orders" in str(result[0]["tables"]).lower()
+
+    def test_infers_multiple_tables_from_ref(self):
+        metrics = [
+            {
+                "name": "rev_per_customer",
+                "expr": "SUM({{ ref('orders', 'amount') }}) / COUNT({{ ref('customers', 'id') }})",
+            }
+        ]
+        result = parse_snowflake_metrics(metrics, Path("/tmp/test.yml"))
+        tables_str = str(result[0]["tables"]).lower()
+        assert "orders" in tables_str
+        assert "customers" in tables_str
+
+    def test_explicit_tables_takes_precedence(self):
+        metrics = [
+            {
+                "name": "my_metric",
+                "tables": ["{{ ref('explicit_table') }}"],
+                "expr": "SUM({{ ref('orders', 'amount') }})",
+            }
+        ]
+        result = parse_snowflake_metrics(metrics, Path("/tmp/test.yml"))
+        assert "explicit_table" in str(result[0]["tables"]).lower()
+        assert "EXPLICIT_TABLE" in result[0]["table_name"].upper()
+
+    def test_no_inference_possible_leaves_empty(self):
+        metrics = [
+            {
+                "name": "simple_count",
+                "expr": "COUNT(*)",
+            }
+        ]
+        result = parse_snowflake_metrics(metrics, Path("/tmp/test.yml"))
+        assert result[0]["tables"] == []
+        assert result[0]["table_name"] == ""
+
+    def test_infers_from_column_syntax(self):
+        metrics = [
+            {
+                "name": "total",
+                "expr": "SUM({{ column('sales', 'revenue') }})",
+            }
+        ]
+        result = parse_snowflake_metrics(metrics, Path("/tmp/test.yml"))
+        assert "sales" in str(result[0]["tables"]).lower()
+
+    def test_derived_metric_infers_tables_from_referenced_metrics(self):
+        metrics = [
+            {
+                "name": "total_revenue",
+                "tables": ["{{ ref('orders') }}"],
+                "expr": "SUM({{ ref('orders', 'amount') }})",
+            },
+            {
+                "name": "total_customers",
+                "tables": ["{{ ref('customers') }}"],
+                "expr": "COUNT(DISTINCT {{ ref('customers', 'id') }})",
+            },
+            {
+                "name": "revenue_ratio",
+                "derived": True,
+                "expr": "{{ metric('total_revenue') }} / NULLIF({{ metric('total_customers') }}, 0)",
+            },
+        ]
+        result = parse_snowflake_metrics(metrics, Path("/tmp/test.yml"))
+        derived = next(r for r in result if r["name"] == "REVENUE_RATIO")
+        tables_str = str(derived["tables"]).lower()
+        assert "orders" in tables_str
+        assert "customers" in tables_str
+
+    def test_infers_from_resolved_dot_refs_ignoring_string_literals(self):
+        metrics = [
+            {
+                "name": "filtered_total",
+                "expr": "SUM(CASE WHEN ORDERS.STATUS = 'shipped.confirmed' THEN ORDERS.TOTAL ELSE 0 END)",
+            }
+        ]
+        result = parse_snowflake_metrics(metrics, Path("/tmp/test.yml"))
+        tables = result[0]["tables"]
+        assert "ORDERS" in tables
+        assert "shipped" not in str(tables)

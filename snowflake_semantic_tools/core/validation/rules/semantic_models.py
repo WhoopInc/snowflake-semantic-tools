@@ -111,7 +111,23 @@ class SemanticModelValidator:
             # Required fields
             self._check_required_field(metric, "name", metric_name, "metric", source_file, result)
             self._check_required_field(metric, "expr", metric_name, "metric", source_file, result)
-            self._check_required_field(metric, "tables", metric_name, "metric", source_file, result)
+            if not metric.get("derived"):
+                expr = metric.get("expr", "")
+                has_tables = bool(metric.get("tables"))
+                can_infer = False
+                if not has_tables and isinstance(expr, str):
+                    import re as _re
+
+                    from snowflake_semantic_tools.core.parsing.parsers.semantic_parser import (
+                        _extract_table_names_from_jinja,
+                    )
+
+                    can_infer = bool(_extract_table_names_from_jinja(expr))
+                    if not can_infer:
+                        stripped = _re.sub(r"'[^']*'", "", expr)
+                        can_infer = bool(_re.findall(r"\w+\.\w+", stripped))
+                if not has_tables and not can_infer:
+                    self._check_required_field(metric, "tables", metric_name, "metric", source_file, result)
 
             # Validate identifier (length, characters, reserved keywords)
             self._validate_identifier(metric_name, "Metric", result, source_file=source_file)
@@ -128,14 +144,23 @@ class SemanticModelValidator:
                         context={"metric": metric_name, "field": "tables", "type": "metric"},
                     )
                 elif len(metric["tables"]) == 0:
-                    result.add_error(
-                        f"Metric '{metric_name}' field 'tables' cannot be empty",
-                        file_path=source_file,
-                        rule_id="SST-V034",
-                        suggestion="Add at least one table reference: - {{ ref('table_name') }}",
-                        entity_name=metric_name,
-                        context={"metric": metric_name, "field": "tables", "type": "metric"},
-                    )
+                    expr = metric.get("expr", "")
+                    can_infer = False
+                    if isinstance(expr, str):
+                        from snowflake_semantic_tools.core.parsing.parsers.semantic_parser import (
+                            _extract_table_names_from_jinja,
+                        )
+
+                        can_infer = bool(_extract_table_names_from_jinja(expr))
+                    if not can_infer:
+                        result.add_error(
+                            f"Metric '{metric_name}' field 'tables' cannot be empty",
+                            file_path=source_file,
+                            rule_id="SST-V034",
+                            suggestion="Add at least one table reference: - {{ ref('table_name') }}",
+                            entity_name=metric_name,
+                            context={"metric": metric_name, "field": "tables", "type": "metric"},
+                        )
 
             if "expr" in metric:
                 if not isinstance(metric["expr"], str):
