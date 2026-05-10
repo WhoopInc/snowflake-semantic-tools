@@ -250,33 +250,35 @@ class ReferenceValidator:
                         )
 
                 elif expr and isinstance(expr, str) and not is_derived:
-                    self._validate_column_references_in_expr(
-                        name, expr, tables, dbt_catalog, result, "Metric", source_file
-                    )
-
-                    tables_in_expr = set()
-                    for pattern in [
-                        r"\{\{\s*ref\s*\(\s*['\"](\w+)['\"]\s*,\s*['\"]",
-                        r"\{\{\s*column\s*\(\s*['\"](\w+)['\"]\s*,\s*['\"]",
-                    ]:
-                        for match in re.findall(pattern, expr):
-                            tables_in_expr.add(match.upper())
-                    col_dot_refs = re.findall(r"(\w+)\.(\w+)", expr)
-                    for tref, _ in col_dot_refs:
-                        if tref.upper() in {t.upper() for t in tables if isinstance(t, str)}:
-                            tables_in_expr.add(tref.upper())
-
-                    if len(tables_in_expr) > 1:
-                        result.add_error(
-                            f"Metric '{name}' expression references columns from multiple entities "
-                            f"({', '.join(sorted(tables_in_expr))}). Snowflake semantic views require "
-                            f"metric expressions to reference columns from a single entity only.",
-                            file_path=source_file,
-                            rule_id="SST-V039",
-                            suggestion="Split into separate single-table metrics, use metric composition via {{ metric() }}, or mark as derived: true",
-                            entity_name=name,
-                            context={"metric": name, "tables_in_expr": sorted(tables_in_expr)},
+                    has_window = bool(metric.get("window"))
+                    if not has_window:
+                        self._validate_column_references_in_expr(
+                            name, expr, tables, dbt_catalog, result, "Metric", source_file
                         )
+
+                        tables_in_expr = set()
+                        for pattern in [
+                            r"\{\{\s*ref\s*\(\s*['\"](\w+)['\"]\s*,\s*['\"]",
+                            r"\{\{\s*column\s*\(\s*['\"](\w+)['\"]\s*,\s*['\"]",
+                        ]:
+                            for match in re.findall(pattern, expr):
+                                tables_in_expr.add(match.upper())
+                        col_dot_refs = re.findall(r"(\w+)\.(\w+)", expr)
+                        for tref, _ in col_dot_refs:
+                            if tref.upper() in {t.upper() for t in tables if isinstance(t, str)}:
+                                tables_in_expr.add(tref.upper())
+
+                        if len(tables_in_expr) > 1:
+                            result.add_error(
+                                f"Metric '{name}' expression references columns from multiple entities "
+                                f"({', '.join(sorted(tables_in_expr))}). Snowflake semantic views require "
+                                f"metric expressions to reference columns from a single entity only.",
+                                file_path=source_file,
+                                rule_id="SST-V039",
+                                suggestion="Split into separate single-table metrics, use metric composition via {{ metric() }}, or mark as derived: true",
+                                entity_name=name,
+                                context={"metric": name, "tables_in_expr": sorted(tables_in_expr)},
+                            )
 
                 using_rels = metric.get("using_relationships", [])
                 if using_rels and isinstance(using_rels, list):
@@ -480,7 +482,12 @@ class ReferenceValidator:
 
                 # CRITICAL: Validate that relationship references the primary key of the right table
                 # Must be done AFTER collecting all columns for this relationship
-                if right_table_lower in dbt_catalog and columns:
+                # Skip for range/BETWEEN relationships — they join on arbitrary columns, not PKs
+                has_range_condition = any(
+                    isinstance(c, dict) and c.get("operator", "").upper() == "BETWEEN"
+                    for c in columns
+                )
+                if right_table_lower in dbt_catalog and columns and not has_range_condition:
                     right_table_info = dbt_catalog[right_table_lower]
                     primary_key = right_table_info.get("primary_key")
                     raw_unique_keys = right_table_info.get("unique_keys") or []

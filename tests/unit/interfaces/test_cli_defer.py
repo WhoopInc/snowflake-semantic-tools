@@ -200,16 +200,20 @@ class TestResolveDeferConfig:
 
     def test_only_modified_without_defer_target_errors(self, tmp_path):
         """Test that --only-modified without defer target raises error."""
-        with pytest.raises(click.ClickException) as exc_info:
-            resolve_defer_config(
-                only_modified=True,
-                project_dir=tmp_path,
-            )
+        with patch("snowflake_semantic_tools.interfaces.cli.defer.get_config") as mock_cfg:
+            mock_cfg.return_value.get = lambda key, default=None: None
+            with pytest.raises(click.ClickException) as exc_info:
+                resolve_defer_config(
+                    only_modified=True,
+                    project_dir=tmp_path,
+                )
         assert "only-modified requires --defer-target" in str(exc_info.value)
 
     def test_no_defer_target_returns_disabled(self, tmp_path):
         """Test that no defer target returns disabled config."""
-        config = resolve_defer_config(project_dir=tmp_path)
+        with patch("snowflake_semantic_tools.interfaces.cli.defer.get_config") as mock_cfg:
+            mock_cfg.return_value.get = lambda key, default=None: default
+            config = resolve_defer_config(project_dir=tmp_path)
         assert config.enabled is False
         assert config.source == "none"
 

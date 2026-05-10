@@ -119,6 +119,8 @@ class ManifestParser:
         # If explicit path provided, use it
         if self.manifest_path and self.manifest_path.exists():
             return self.manifest_path
+        elif self.manifest_path:
+            return None
 
         # Search common locations
         search_paths = [
