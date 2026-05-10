@@ -115,6 +115,7 @@ LAZY_COMMANDS = {
     "validate": ("snowflake_semantic_tools.interfaces.cli.commands.validate", "validate"),
     "generate": ("snowflake_semantic_tools.interfaces.cli.commands.generate", "generate"),
     "deploy": ("snowflake_semantic_tools.interfaces.cli.commands.deploy", "deploy"),
+    "drop": ("snowflake_semantic_tools.interfaces.cli.commands.drop", "drop"),
     "list": ("snowflake_semantic_tools.interfaces.cli.commands.list", "list_cmd"),
     "migrate-meta": ("snowflake_semantic_tools.interfaces.cli.commands.migrate_meta", "migrate_meta"),
 }
