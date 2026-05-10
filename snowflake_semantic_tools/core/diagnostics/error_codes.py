@@ -220,6 +220,12 @@ _register(
     "Remove the reference or un-exclude the column (config.meta.sst.exclude: false)",
 )
 _register(
+    "SST-V048",
+    "Primary key and unique keys overlap",
+    ErrorCategory.VALIDATION,
+    "Remove overlapping columns from unique_keys — primary_key is already unique",
+)
+_register(
     "SST-V040",
     "Missing relationship field",
     ErrorCategory.VALIDATION,

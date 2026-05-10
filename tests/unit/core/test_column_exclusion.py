@@ -147,3 +147,47 @@ class TestExtractColumnInfoIncludesExcludeField:
         }
         record = extract_column_info(column, "my_table", Path("/tmp/test.yml"))
         assert record["exclude"] is False
+
+
+class TestV048PrimaryKeyUniqueKeysOverlap:
+    """V048: unique_keys must not overlap with primary_key."""
+
+    @pytest.fixture
+    def validator(self):
+        return DbtModelValidator()
+
+    def test_overlap_produces_error(self, validator):
+        table = {
+            "table_name": "ORDERS",
+            "primary_key": ["order_id"],
+            "unique_keys": ["order_id"],
+            "source_file": "/tmp/test.yml",
+        }
+        result = ValidationResult()
+        validator._check_primary_key(table, "ORDERS", [], [], [], result)
+        errors = [e for e in result.get_errors() if e.rule_id == "SST-V048"]
+        assert len(errors) == 1
+        assert "primary_key" in str(errors[0].message) or "unique_keys" in str(errors[0].message)
+
+    def test_no_overlap_no_error(self, validator):
+        table = {
+            "table_name": "ORDERS",
+            "primary_key": ["order_id"],
+            "unique_keys": ["customer_id", "ordered_at"],
+            "source_file": "/tmp/test.yml",
+        }
+        result = ValidationResult()
+        validator._check_primary_key(table, "ORDERS", [], [], [], result)
+        errors = [e for e in result.get_errors() if e.rule_id == "SST-V048"]
+        assert len(errors) == 0
+
+    def test_no_unique_keys_no_error(self, validator):
+        table = {
+            "table_name": "ORDERS",
+            "primary_key": ["order_id"],
+            "source_file": "/tmp/test.yml",
+        }
+        result = ValidationResult()
+        validator._check_primary_key(table, "ORDERS", [], [], [], result)
+        errors = [e for e in result.get_errors() if e.rule_id == "SST-V048"]
+        assert len(errors) == 0
