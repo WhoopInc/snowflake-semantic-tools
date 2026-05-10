@@ -421,7 +421,16 @@ class SemanticViewBuilder:
         except Exception:
             pass
 
-        # Handle single string
+        try:
+            import ast
+
+            if raw_str.startswith("[") and raw_str.endswith("]"):
+                parsed = ast.literal_eval(raw_str)
+                if isinstance(parsed, list):
+                    return [str(x).lower() for x in parsed]
+        except (ValueError, SyntaxError):
+            pass
+
         return [raw_str.lower()]
 
     def _all_tables_present(self, tables: List[str], selected: List[str]) -> bool:
