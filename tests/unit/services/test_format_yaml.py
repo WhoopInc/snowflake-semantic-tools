@@ -351,6 +351,7 @@ models:
         formatter.format_path(test_file)
 
         result = test_file.read_text()
+        assert "description: A simple one-line description\n        config:" in result
         yaml = YAML()
         parsed = yaml.load(result)
         col = parsed["models"][0]["columns"][0]

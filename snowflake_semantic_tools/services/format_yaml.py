@@ -340,7 +340,7 @@ class YAMLFormattingService:
                 continue
             if block_scalar_pattern.match(line):
                 return True
-            if re.match(r"^\s*(- name:|name:|columns:|models:)", line):
+            if re.match(r"^\s*(- name:|name:|columns:|models:|data_tests:|tests:|config:|meta:)", line):
                 return False
         return False
 
