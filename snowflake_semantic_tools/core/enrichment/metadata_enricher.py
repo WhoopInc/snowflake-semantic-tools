@@ -512,7 +512,7 @@ class MetadataEnricher:
         # Process each column
         updated_columns = []
         for idx, table_col in enumerate(table_columns, 1):
-            col_name_upper = table_col["column_name"].upper() if "column_name" in table_col else ""
+            col_name_upper = (table_col.get("name") or table_col.get("column_name") or "").upper()
             existing_col = existing_lookup.get(col_name_upper, {})
             sst_meta = existing_col.get("config", {}).get("meta", {}).get("sst", {}) or existing_col.get(
                 "meta", {}

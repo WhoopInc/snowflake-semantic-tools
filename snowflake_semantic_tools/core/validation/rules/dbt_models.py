@@ -149,6 +149,9 @@ class DbtModelValidator:
         # Check for models that should be included but aren't
         self._check_missing_models(models, tables, result)
 
+        # Check for excluded columns with conflicting column_type (V047)
+        self._check_excluded_column_conflicts(models, result)
+
         # Report each skipped table as an individual warning
         if skipped_tables:
             for table_name, missing_fields, source_file in sorted(skipped_tables):
@@ -525,20 +528,6 @@ class DbtModelValidator:
         """Validate a single column."""
         column_name = column.get("name", "unknown")
         source_file = column.get("source_file")
-
-        if column.get("exclude"):
-            if column.get("column_type"):
-                result.add_warning(
-                    f"Column '{column_name}' in table '{table_name}' has both 'exclude: true' and "
-                    f"'column_type: {column.get('column_type')}'. The column will be excluded from "
-                    f"the semantic view — column_type is ignored.",
-                    file_path=source_file,
-                    rule_id="SST-V047",
-                    suggestion="Remove column_type or remove exclude: true",
-                    entity_name=column_name,
-                    context={"table": table_name, "column": column_name},
-                )
-            return
 
         # Check required column fields
         self._check_required_column_fields(column, table_name, column_name, source_file, result)
@@ -969,6 +958,29 @@ class DbtModelValidator:
                         "level": "column",
                     },
                 )
+
+    def _check_excluded_column_conflicts(self, models: List[Dict[str, Any]], result: ValidationResult):
+        """Check for columns with both exclude: true and column_type set (V047)."""
+        for model in models:
+            model_name = model.get("name", "unknown")
+            source_file = model.get("source_file") or model.get("path")
+            sst_meta = get_sst_meta(model, node_type="model", node_name=model_name, emit_warning=False)
+            if not sst_meta:
+                continue
+            for column in model.get("columns", []):
+                col_name = column.get("name", "unknown")
+                col_sst = get_sst_meta(column, node_type="column", node_name=col_name, emit_warning=False)
+                if col_sst.get("exclude") and col_sst.get("column_type"):
+                    result.add_warning(
+                        f"Column '{col_name}' in table '{model_name}' has both 'exclude: true' and "
+                        f"'column_type: {col_sst.get('column_type')}'. The column will be excluded from "
+                        f"the semantic view — column_type is ignored.",
+                        file_path=source_file,
+                        rule_id="SST-V047",
+                        suggestion="Remove column_type or remove exclude: true",
+                        entity_name=col_name,
+                        context={"table": model_name, "column": col_name},
+                    )
 
     def _check_missing_models(
         self, all_models: List[Dict[str, Any]], included_tables: List[Dict[str, Any]], result: ValidationResult
