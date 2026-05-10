@@ -1504,10 +1504,10 @@ class SemanticModelValidator:
                     context={"type": "tags", "tag_name": str(key)},
                 )
             elif "." not in str(key):
-                result.add_warning(
+                result.add_error(
                     f"{context_name} tag '{key}' is not fully-qualified. "
-                    f"Snowflake requires tags to reference existing tag objects "
-                    f"(e.g., 'DB.SCHEMA.TAG_NAME')",
+                    f"Snowflake requires tags to be existing tag objects referenced as "
+                    f"'DB.SCHEMA.TAG_NAME'. Unqualified names will fail at DDL execution.",
                     file_path=source_file,
                     rule_id="SST-V016",
                     suggestion="Use fully-qualified: DB.SCHEMA.TAG_NAME",
