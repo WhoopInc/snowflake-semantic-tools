@@ -323,6 +323,27 @@ class YAMLFormattingService:
         for key in new_order:
             d[key] = d.pop(key)
 
+    def _is_after_block_scalar(self, lines: List[str]) -> bool:
+        """Check if the current position follows a YAML block scalar (| or |-).
+
+        Walks backward through lines to find the nearest `description:` at the
+        same or higher indent level. Returns True if that description uses a
+        block scalar style (|, |-, |+, with optional indent indicator).
+        """
+        import re
+
+        block_scalar_pattern = re.compile(r"^\s*description:\s+\|[+\-]?\d*\s*$")
+
+        for i in range(len(lines) - 1, -1, -1):
+            line = lines[i]
+            if line.strip() == "":
+                continue
+            if block_scalar_pattern.match(line):
+                return True
+            if re.match(r"^\s*(- name:|name:|columns:|models:)", line):
+                return False
+        return False
+
     def _adjust_blank_lines(self, content: str) -> str:
         """
         Adjust blank lines for readability.
@@ -332,6 +353,7 @@ class YAMLFormattingService:
         - Add blank line AFTER each column definition (before next - name:)
         - Remove blank lines between meta/config, columns:/first column
         - Remove excessive consecutive blank lines (max 1)
+        - PRESERVE blank lines that terminate block scalars (|- or |)
         """
         lines = content.split("\n")
         formatted_lines = []
@@ -339,59 +361,39 @@ class YAMLFormattingService:
         for i, line in enumerate(lines):
             stripped = line.strip()
 
-            # Skip blank lines in specific locations
             if stripped == "":
                 if formatted_lines and i + 1 < len(lines):
                     prev_line = formatted_lines[-1].strip()
                     next_line = lines[i + 1].strip()
 
-                    # Remove blank line between 'models:' and first '- name:'
                     if prev_line == "models:" and next_line.startswith("- name:"):
-                        continue  # Skip this blank line
-
-                    # Also remove if we're right after models: (ruamel adds this)
-                    if prev_line == "models:":
-                        continue  # Skip this blank line
-
-                    # Remove blank line between meta block and config
-                    # Check if we're after an SST metadata block and before config
-                    if next_line.startswith("config:"):
-                        # Skip this blank line (no blank line between meta and config)
                         continue
 
-                    # Remove blank line between columns: and first - name:
-                    if prev_line == "columns:" and next_line.startswith("- name:"):
-                        continue  # Skip this blank line
+                    if prev_line == "models:":
+                        continue
 
-                # Skip excessive blank lines (more than 1 consecutive)
+                    if next_line.startswith("config:"):
+                        if not self._is_after_block_scalar(formatted_lines):
+                            continue
+
+                    if prev_line == "columns:" and next_line.startswith("- name:"):
+                        continue
+
                 if formatted_lines and formatted_lines[-1].strip() == "":
-                    continue  # Skip this blank line
+                    continue
 
             formatted_lines.append(line)
 
-            # Add blank line AFTER each column definition ends (before next - name:)
-            # Only add if current line is not blank, not 'columns:', and next line is a new column
             if i + 1 < len(lines) and stripped != "" and stripped != "columns:":
                 next_line = lines[i + 1].strip()
-                # If next line is a new column, add blank line after current line
                 if next_line.startswith("- name:"):
                     formatted_lines.append("")
 
-        # Ensure file ends with single newline
         while formatted_lines and formatted_lines[-1].strip() == "":
             formatted_lines.pop()
 
         result = "\n".join(formatted_lines) + "\n"
 
-        # Final pass: remove unwanted blank lines that ruamel.yaml adds
         result = result.replace("models:\n\n  - name:", "models:\n  - name:")
-        # Remove blank line between description and meta
-        result = result.replace("description: |-\n          ", "description: |-\n          ").replace(
-            "\n\n        meta:", "\n        meta:"
-        )
-        # Also handle single-line descriptions
-        import re
-
-        result = re.sub(r"(description: .+)\n\n(        meta:)", r"\1\n\2", result)
 
         return result
