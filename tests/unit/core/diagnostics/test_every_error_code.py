@@ -86,9 +86,18 @@ class TestEveryErrorCode:
     def test_SST_V007_invalid_column_type(self):
         validator = DbtModelValidator()
         dbt_data = {
-            "sm_tables": [{"table_name": "orders", "primary_key": ["id"], "description": "Orders", "source_file": "/tmp/t.yml"}],
+            "sm_tables": [
+                {"table_name": "orders", "primary_key": ["id"], "description": "Orders", "source_file": "/tmp/t.yml"}
+            ],
             "sm_dimensions": [
-                {"name": "status", "table_name": "orders", "column_type": "measure", "data_type": "text", "description": "Status", "source_file": "/tmp/t.yml"}
+                {
+                    "name": "status",
+                    "table_name": "orders",
+                    "column_type": "measure",
+                    "data_type": "text",
+                    "description": "Status",
+                    "source_file": "/tmp/t.yml",
+                }
             ],
             "sm_facts": [],
             "sm_time_dimensions": [],
@@ -99,9 +108,18 @@ class TestEveryErrorCode:
     def test_SST_V008_invalid_data_type(self):
         validator = DbtModelValidator()
         dbt_data = {
-            "sm_tables": [{"table_name": "orders", "primary_key": ["id"], "description": "Orders", "source_file": "/tmp/t.yml"}],
+            "sm_tables": [
+                {"table_name": "orders", "primary_key": ["id"], "description": "Orders", "source_file": "/tmp/t.yml"}
+            ],
             "sm_dimensions": [
-                {"name": "id", "table_name": "orders", "column_type": "dimension", "data_type": "BLAH", "description": "ID", "source_file": "/tmp/t.yml"}
+                {
+                    "name": "id",
+                    "table_name": "orders",
+                    "column_type": "dimension",
+                    "data_type": "BLAH",
+                    "description": "ID",
+                    "source_file": "/tmp/t.yml",
+                }
             ],
             "sm_facts": [],
             "sm_time_dimensions": [],
@@ -112,7 +130,9 @@ class TestEveryErrorCode:
     def test_SST_V010_missing_primary_key(self):
         validator = DbtModelValidator()
         dbt_data = {
-            "sm_tables": [{"table_name": "orders", "primary_key": [], "description": "Orders", "source_file": "/tmp/t.yml"}],
+            "sm_tables": [
+                {"table_name": "orders", "primary_key": [], "description": "Orders", "source_file": "/tmp/t.yml"}
+            ],
             "sm_dimensions": [],
             "sm_facts": [],
             "sm_time_dimensions": [],
@@ -123,9 +143,23 @@ class TestEveryErrorCode:
     def test_SST_V011_pk_column_not_found(self):
         validator = DbtModelValidator()
         dbt_data = {
-            "sm_tables": [{"table_name": "orders", "primary_key": ["nonexistent"], "description": "Orders", "source_file": "/tmp/t.yml"}],
+            "sm_tables": [
+                {
+                    "table_name": "orders",
+                    "primary_key": ["nonexistent"],
+                    "description": "Orders",
+                    "source_file": "/tmp/t.yml",
+                }
+            ],
             "sm_dimensions": [
-                {"name": "id", "table_name": "orders", "column_type": "dimension", "data_type": "number", "description": "ID", "source_file": "/tmp/t.yml"}
+                {
+                    "name": "id",
+                    "table_name": "orders",
+                    "column_type": "dimension",
+                    "data_type": "number",
+                    "description": "ID",
+                    "source_file": "/tmp/t.yml",
+                }
             ],
             "sm_facts": [],
             "sm_time_dimensions": [],
@@ -136,9 +170,18 @@ class TestEveryErrorCode:
     def test_SST_V012_missing_description(self):
         validator = DbtModelValidator()
         dbt_data = {
-            "sm_tables": [{"table_name": "orders", "primary_key": ["id"], "description": "", "source_file": "/tmp/t.yml"}],
+            "sm_tables": [
+                {"table_name": "orders", "primary_key": ["id"], "description": "", "source_file": "/tmp/t.yml"}
+            ],
             "sm_dimensions": [
-                {"name": "id", "table_name": "orders", "column_type": "dimension", "data_type": "number", "description": "ID", "source_file": "/tmp/t.yml"}
+                {
+                    "name": "id",
+                    "table_name": "orders",
+                    "column_type": "dimension",
+                    "data_type": "number",
+                    "description": "ID",
+                    "source_file": "/tmp/t.yml",
+                }
             ],
             "sm_facts": [],
             "sm_time_dimensions": [],
@@ -148,16 +191,35 @@ class TestEveryErrorCode:
 
     def test_SST_V013_synonyms_wrong_type(self):
         validator = SemanticModelValidator()
-        data = {"metrics": {"items": [{"name": "revenue", "expr": "SUM(amount)", "tables": ["orders"], "synonyms": "not a list"}]}}
+        data = {
+            "metrics": {
+                "items": [{"name": "revenue", "expr": "SUM(amount)", "tables": ["orders"], "synonyms": "not a list"}]
+            }
+        }
         result = validator.validate(data)
         _assert_fires(result, "SST-V013")
 
     def test_SST_V014_problematic_chars_in_synonyms(self):
         validator = DbtModelValidator()
         dbt_data = {
-            "sm_tables": [{"table_name": "orders", "primary_key": ["id"], "description": "Orders", "synonyms": ["it's orders", "order's table"], "source_file": "/tmp/t.yml"}],
+            "sm_tables": [
+                {
+                    "table_name": "orders",
+                    "primary_key": ["id"],
+                    "description": "Orders",
+                    "synonyms": ["it's orders", "order's table"],
+                    "source_file": "/tmp/t.yml",
+                }
+            ],
             "sm_dimensions": [
-                {"name": "id", "table_name": "orders", "column_type": "dimension", "data_type": "number", "description": "ID", "source_file": "/tmp/t.yml"}
+                {
+                    "name": "id",
+                    "table_name": "orders",
+                    "column_type": "dimension",
+                    "data_type": "number",
+                    "description": "ID",
+                    "source_file": "/tmp/t.yml",
+                }
             ],
             "sm_facts": [],
             "sm_time_dimensions": [],
@@ -174,15 +236,31 @@ class TestEveryErrorCode:
                     "primary_key": ["id"],
                     "description": "Events",
                     "source_file": "/tmp/t.yml",
-                    "constraints": [{"type": "distinct_range", "name": "dr1", "start_column": "", "end_column": "end_date"}],
+                    "constraints": [
+                        {"type": "distinct_range", "name": "dr1", "start_column": "", "end_column": "end_date"}
+                    ],
                 }
             ],
             "sm_dimensions": [
-                {"name": "id", "table_name": "events", "column_type": "dimension", "data_type": "number", "description": "ID", "source_file": "/tmp/t.yml"}
+                {
+                    "name": "id",
+                    "table_name": "events",
+                    "column_type": "dimension",
+                    "data_type": "number",
+                    "description": "ID",
+                    "source_file": "/tmp/t.yml",
+                }
             ],
             "sm_facts": [],
             "sm_time_dimensions": [
-                {"name": "end_date", "table_name": "events", "column_type": "time_dimension", "data_type": "date", "description": "End", "source_file": "/tmp/t.yml"}
+                {
+                    "name": "end_date",
+                    "table_name": "events",
+                    "column_type": "time_dimension",
+                    "data_type": "date",
+                    "description": "End",
+                    "source_file": "/tmp/t.yml",
+                }
             ],
         }
         result = validator.validate(dbt_data)
@@ -190,16 +268,29 @@ class TestEveryErrorCode:
 
     def test_SST_V016_invalid_tags(self):
         validator = SemanticModelValidator()
-        data = {"metrics": {"items": [{"name": "revenue", "expr": "SUM(amount)", "tables": ["orders"], "tags": "not a dict"}]}}
+        data = {
+            "metrics": {
+                "items": [{"name": "revenue", "expr": "SUM(amount)", "tables": ["orders"], "tags": "not a dict"}]
+            }
+        }
         result = validator.validate(data)
         _assert_fires(result, "SST-V016")
 
     def test_SST_V020_column_missing_description(self):
         validator = DbtModelValidator()
         dbt_data = {
-            "sm_tables": [{"table_name": "orders", "primary_key": ["id"], "description": "Orders", "source_file": "/tmp/t.yml"}],
+            "sm_tables": [
+                {"table_name": "orders", "primary_key": ["id"], "description": "Orders", "source_file": "/tmp/t.yml"}
+            ],
             "sm_dimensions": [
-                {"name": "id", "table_name": "orders", "column_type": "dimension", "data_type": "number", "description": "", "source_file": "/tmp/t.yml"}
+                {
+                    "name": "id",
+                    "table_name": "orders",
+                    "column_type": "dimension",
+                    "data_type": "number",
+                    "description": "",
+                    "source_file": "/tmp/t.yml",
+                }
             ],
             "sm_facts": [],
             "sm_time_dimensions": [],
@@ -210,9 +301,18 @@ class TestEveryErrorCode:
     def test_SST_V021_column_missing_column_type(self):
         validator = DbtModelValidator()
         dbt_data = {
-            "sm_tables": [{"table_name": "orders", "primary_key": ["id"], "description": "Orders", "source_file": "/tmp/t.yml"}],
+            "sm_tables": [
+                {"table_name": "orders", "primary_key": ["id"], "description": "Orders", "source_file": "/tmp/t.yml"}
+            ],
             "sm_dimensions": [
-                {"name": "id", "table_name": "orders", "column_type": "", "data_type": "number", "description": "ID", "source_file": "/tmp/t.yml"}
+                {
+                    "name": "id",
+                    "table_name": "orders",
+                    "column_type": "",
+                    "data_type": "number",
+                    "description": "ID",
+                    "source_file": "/tmp/t.yml",
+                }
             ],
             "sm_facts": [],
             "sm_time_dimensions": [],
@@ -223,9 +323,18 @@ class TestEveryErrorCode:
     def test_SST_V022_column_missing_data_type(self):
         validator = DbtModelValidator()
         dbt_data = {
-            "sm_tables": [{"table_name": "orders", "primary_key": ["id"], "description": "Orders", "source_file": "/tmp/t.yml"}],
+            "sm_tables": [
+                {"table_name": "orders", "primary_key": ["id"], "description": "Orders", "source_file": "/tmp/t.yml"}
+            ],
             "sm_dimensions": [
-                {"name": "id", "table_name": "orders", "column_type": "dimension", "data_type": "", "description": "ID", "source_file": "/tmp/t.yml"}
+                {
+                    "name": "id",
+                    "table_name": "orders",
+                    "column_type": "dimension",
+                    "data_type": "",
+                    "description": "ID",
+                    "source_file": "/tmp/t.yml",
+                }
             ],
             "sm_facts": [],
             "sm_time_dimensions": [],
@@ -236,12 +345,28 @@ class TestEveryErrorCode:
     def test_SST_V023_fact_non_numeric(self):
         validator = DbtModelValidator()
         dbt_data = {
-            "sm_tables": [{"table_name": "orders", "primary_key": ["id"], "description": "Orders", "source_file": "/tmp/t.yml"}],
+            "sm_tables": [
+                {"table_name": "orders", "primary_key": ["id"], "description": "Orders", "source_file": "/tmp/t.yml"}
+            ],
             "sm_dimensions": [
-                {"name": "id", "table_name": "orders", "column_type": "dimension", "data_type": "number", "description": "ID", "source_file": "/tmp/t.yml"}
+                {
+                    "name": "id",
+                    "table_name": "orders",
+                    "column_type": "dimension",
+                    "data_type": "number",
+                    "description": "ID",
+                    "source_file": "/tmp/t.yml",
+                }
             ],
             "sm_facts": [
-                {"name": "status", "table_name": "orders", "column_type": "fact", "data_type": "text", "description": "Status", "source_file": "/tmp/t.yml"}
+                {
+                    "name": "status",
+                    "table_name": "orders",
+                    "column_type": "fact",
+                    "data_type": "text",
+                    "description": "Status",
+                    "source_file": "/tmp/t.yml",
+                }
             ],
             "sm_time_dimensions": [],
         }
@@ -251,13 +376,29 @@ class TestEveryErrorCode:
     def test_SST_V024_time_dimension_non_temporal(self):
         validator = DbtModelValidator()
         dbt_data = {
-            "sm_tables": [{"table_name": "orders", "primary_key": ["id"], "description": "Orders", "source_file": "/tmp/t.yml"}],
+            "sm_tables": [
+                {"table_name": "orders", "primary_key": ["id"], "description": "Orders", "source_file": "/tmp/t.yml"}
+            ],
             "sm_dimensions": [
-                {"name": "id", "table_name": "orders", "column_type": "dimension", "data_type": "number", "description": "ID", "source_file": "/tmp/t.yml"}
+                {
+                    "name": "id",
+                    "table_name": "orders",
+                    "column_type": "dimension",
+                    "data_type": "number",
+                    "description": "ID",
+                    "source_file": "/tmp/t.yml",
+                }
             ],
             "sm_facts": [],
             "sm_time_dimensions": [
-                {"name": "amount", "table_name": "orders", "column_type": "time_dimension", "data_type": "number", "description": "Amount", "source_file": "/tmp/t.yml"}
+                {
+                    "name": "amount",
+                    "table_name": "orders",
+                    "column_type": "time_dimension",
+                    "data_type": "number",
+                    "description": "Amount",
+                    "source_file": "/tmp/t.yml",
+                }
             ],
         }
         result = validator.validate(dbt_data)
@@ -266,10 +407,27 @@ class TestEveryErrorCode:
     def test_SST_V025_enum_without_samples(self):
         validator = DbtModelValidator()
         dbt_data = {
-            "sm_tables": [{"table_name": "orders", "primary_key": ["id"], "description": "Orders", "source_file": "/tmp/t.yml"}],
+            "sm_tables": [
+                {"table_name": "orders", "primary_key": ["id"], "description": "Orders", "source_file": "/tmp/t.yml"}
+            ],
             "sm_dimensions": [
-                {"name": "id", "table_name": "orders", "column_type": "dimension", "data_type": "number", "description": "ID", "source_file": "/tmp/t.yml"},
-                {"name": "status", "table_name": "orders", "column_type": "dimension", "data_type": "text", "description": "Status", "source_file": "/tmp/t.yml", "is_enum": True},
+                {
+                    "name": "id",
+                    "table_name": "orders",
+                    "column_type": "dimension",
+                    "data_type": "number",
+                    "description": "ID",
+                    "source_file": "/tmp/t.yml",
+                },
+                {
+                    "name": "status",
+                    "table_name": "orders",
+                    "column_type": "dimension",
+                    "data_type": "text",
+                    "description": "Status",
+                    "source_file": "/tmp/t.yml",
+                    "is_enum": True,
+                },
             ],
             "sm_facts": [],
             "sm_time_dimensions": [],
@@ -301,25 +459,55 @@ class TestEveryErrorCode:
 
     def test_SST_V035_invalid_visibility(self):
         validator = SemanticModelValidator()
-        data = {"metrics": {"items": [{"name": "revenue", "expr": "SUM(amount)", "tables": ["orders"], "visibility": "secret"}]}}
+        data = {
+            "metrics": {
+                "items": [{"name": "revenue", "expr": "SUM(amount)", "tables": ["orders"], "visibility": "secret"}]
+            }
+        }
         result = validator.validate(data)
         _assert_fires(result, "SST-V035")
 
     def test_SST_V036_invalid_non_additive_by(self):
         validator = SemanticModelValidator()
-        data = {"metrics": {"items": [{"name": "revenue", "expr": "SUM(amount)", "tables": ["orders"], "non_additive_by": [{"no_dimension": True}]}]}}
+        data = {
+            "metrics": {
+                "items": [
+                    {
+                        "name": "revenue",
+                        "expr": "SUM(amount)",
+                        "tables": ["orders"],
+                        "non_additive_by": [{"no_dimension": True}],
+                    }
+                ]
+            }
+        }
         result = validator.validate(data)
         _assert_fires(result, "SST-V036")
 
     def test_SST_V037_invalid_window_config(self):
         validator = SemanticModelValidator()
-        data = {"metrics": {"items": [{"name": "revenue", "expr": "SUM(amount)", "tables": ["orders"], "window": "not a dict"}]}}
+        data = {
+            "metrics": {
+                "items": [{"name": "revenue", "expr": "SUM(amount)", "tables": ["orders"], "window": "not a dict"}]
+            }
+        }
         result = validator.validate(data)
         _assert_fires(result, "SST-V037")
 
     def test_SST_V038_using_relationships_wrong_type(self):
         validator = SemanticModelValidator()
-        data = {"metrics": {"items": [{"name": "revenue", "expr": "SUM(amount)", "tables": ["orders"], "using_relationships": "not a list"}]}}
+        data = {
+            "metrics": {
+                "items": [
+                    {
+                        "name": "revenue",
+                        "expr": "SUM(amount)",
+                        "tables": ["orders"],
+                        "using_relationships": "not a list",
+                    }
+                ]
+            }
+        }
         result = validator.validate(data)
         _assert_fires(result, "SST-V038")
 
@@ -327,12 +515,14 @@ class TestEveryErrorCode:
         validator = SemanticModelValidator()
         data = {
             "relationships": {
-                "items": [{
-                    "name": "order_customer",
-                    "left_table": "orders",
-                    "right_table": "customers",
-                    "relationship_conditions": ["BAD CONDITION NO EQUALS"],
-                }]
+                "items": [
+                    {
+                        "name": "order_customer",
+                        "left_table": "orders",
+                        "right_table": "customers",
+                        "relationship_conditions": ["BAD CONDITION NO EQUALS"],
+                    }
+                ]
             }
         }
         result = validator.validate(data)
@@ -343,11 +533,17 @@ class TestEveryErrorCode:
         semantic_data = {
             "metrics": {"items": []},
             "relationships": {
-                "items": [{"relationship_name": "order_bad", "left_table_name": "orders", "right_table_name": "bad_table"}],
-                "relationship_columns": [{"relationship_name": "order_bad", "left_column": "id", "right_column": "order_id"}],
+                "items": [
+                    {"relationship_name": "order_bad", "left_table_name": "orders", "right_table_name": "bad_table"}
+                ],
+                "relationship_columns": [
+                    {"relationship_name": "order_bad", "left_column": "id", "right_column": "order_id"}
+                ],
             },
         }
-        dbt_catalog = {"orders": {"columns": ["id", "amount"], "database": "DB", "schema": "SCH", "primary_key": ["id"]}}
+        dbt_catalog = {
+            "orders": {"columns": ["id", "amount"], "database": "DB", "schema": "SCH", "primary_key": ["id"]}
+        }
         result = validator.validate(semantic_data, dbt_catalog)
         _assert_fires(result, "SST-V041")
 
@@ -356,12 +552,25 @@ class TestEveryErrorCode:
         semantic_data = {
             "metrics": {"items": []},
             "relationships": {
-                "items": [{"relationship_name": "order_customer", "left_table_name": "orders", "right_table_name": "customers"}],
-                "relationship_columns": [{"relationship_name": "order_customer", "left_column": "customer_id", "right_column": "email"}],
+                "items": [
+                    {
+                        "relationship_name": "order_customer",
+                        "left_table_name": "orders",
+                        "right_table_name": "customers",
+                    }
+                ],
+                "relationship_columns": [
+                    {"relationship_name": "order_customer", "left_column": "customer_id", "right_column": "email"}
+                ],
             },
         }
         dbt_catalog = {
-            "orders": {"columns": ["id", "customer_id", "amount"], "database": "DB", "schema": "SCH", "primary_key": ["id"]},
+            "orders": {
+                "columns": ["id", "customer_id", "amount"],
+                "database": "DB",
+                "schema": "SCH",
+                "primary_key": ["id"],
+            },
             "customers": {"columns": ["id", "email", "name"], "database": "DB", "schema": "SCH", "primary_key": ["id"]},
         }
         result = validator.validate(semantic_data, dbt_catalog)
@@ -372,10 +581,24 @@ class TestEveryErrorCode:
         semantic_data = {
             "metrics": {"items": []},
             "relationships": {
-                "items": [{"relationship_name": "order_customer", "left_table_name": "orders", "right_table_name": "customers"}],
+                "items": [
+                    {
+                        "relationship_name": "order_customer",
+                        "left_table_name": "orders",
+                        "right_table_name": "customers",
+                    }
+                ],
                 "relationship_columns": [
-                    {"relationship_name": "order_customer", "left_column": "customer_id", "right_column": "customer_id"},
-                    {"relationship_name": "order_customer", "left_column": "customer_id", "right_column": "customer_id"},
+                    {
+                        "relationship_name": "order_customer",
+                        "left_column": "customer_id",
+                        "right_column": "customer_id",
+                    },
+                    {
+                        "relationship_name": "order_customer",
+                        "left_column": "customer_id",
+                        "right_column": "customer_id",
+                    },
                 ],
             },
         }
@@ -389,14 +612,36 @@ class TestEveryErrorCode:
     def test_SST_V044_using_relationship_not_found(self):
         validator = ReferenceValidator()
         semantic_data = {
-            "metrics": {"items": [{"name": "revenue", "tables": ["orders"], "expr": "SUM(amount)", "using_relationships": ["nonexistent_rel"]}]},
+            "metrics": {
+                "items": [
+                    {
+                        "name": "revenue",
+                        "tables": ["orders"],
+                        "expr": "SUM(amount)",
+                        "using_relationships": ["nonexistent_rel"],
+                    }
+                ]
+            },
             "relationships": {
-                "items": [{"relationship_name": "order_customer", "left_table_name": "orders", "right_table_name": "customers"}],
-                "relationship_columns": [{"relationship_name": "order_customer", "left_column": "customer_id", "right_column": "id"}],
+                "items": [
+                    {
+                        "relationship_name": "order_customer",
+                        "left_table_name": "orders",
+                        "right_table_name": "customers",
+                    }
+                ],
+                "relationship_columns": [
+                    {"relationship_name": "order_customer", "left_column": "customer_id", "right_column": "id"}
+                ],
             },
         }
         dbt_catalog = {
-            "orders": {"columns": ["id", "customer_id", "amount"], "database": "DB", "schema": "SCH", "primary_key": ["id"]},
+            "orders": {
+                "columns": ["id", "customer_id", "amount"],
+                "database": "DB",
+                "schema": "SCH",
+                "primary_key": ["id"],
+            },
             "customers": {"columns": ["id", "name"], "database": "DB", "schema": "SCH", "primary_key": ["id"]},
         }
         result = validator.validate(semantic_data, dbt_catalog)
@@ -422,13 +667,28 @@ class TestEveryErrorCode:
 
     def test_SST_V061_vqr_sql_file_not_found(self):
         validator = SemanticModelValidator()
-        data = {"verified_queries": {"items": [{"name": "test_query", "question": "How many?", "sql_file": "nonexistent.sql", "source_file": "/tmp/vqr.yml"}]}}
+        data = {
+            "verified_queries": {
+                "items": [
+                    {
+                        "name": "test_query",
+                        "question": "How many?",
+                        "sql_file": "nonexistent.sql",
+                        "source_file": "/tmp/vqr.yml",
+                    }
+                ]
+            }
+        }
         result = validator.validate(data)
         _assert_fires(result, "SST-V061")
 
     def test_SST_V062_vqr_mutual_exclusivity(self):
         validator = SemanticModelValidator()
-        data = {"verified_queries": {"items": [{"name": "test_query", "question": "How many?", "sql": "SELECT 1", "sql_file": "query.sql"}]}}
+        data = {
+            "verified_queries": {
+                "items": [{"name": "test_query", "question": "How many?", "sql": "SELECT 1", "sql_file": "query.sql"}]
+            }
+        }
         result = validator.validate(data)
         _assert_fires(result, "SST-V062")
 
@@ -443,9 +703,7 @@ class TestEveryErrorCode:
         semantic_data = {
             "metrics": {"items": []},
             "relationships": {"items": [], "relationship_columns": []},
-            "semantic_views": {
-                "items": [{"name": "my_view", "tables": '["bad_table"]', "source_file": "/tmp/sv.yml"}]
-            },
+            "semantic_views": {"items": [{"name": "my_view", "tables": '["bad_table"]', "source_file": "/tmp/sv.yml"}]},
             "custom_instructions": {"items": []},
         }
         dbt_catalog = {"orders": {"columns": ["id"], "database": "DB", "schema": "SCH", "primary_key": ["id"]}}

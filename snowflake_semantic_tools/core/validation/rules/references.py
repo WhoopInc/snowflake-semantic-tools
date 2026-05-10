@@ -484,8 +484,7 @@ class ReferenceValidator:
                 # Must be done AFTER collecting all columns for this relationship
                 # Skip for range/BETWEEN relationships — they join on arbitrary columns, not PKs
                 has_range_condition = any(
-                    isinstance(c, dict) and c.get("operator", "").upper() == "BETWEEN"
-                    for c in columns
+                    isinstance(c, dict) and c.get("operator", "").upper() == "BETWEEN" for c in columns
                 )
                 if right_table_lower in dbt_catalog and columns and not has_range_condition:
                     right_table_info = dbt_catalog[right_table_lower]

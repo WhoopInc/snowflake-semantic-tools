@@ -38,7 +38,7 @@ class TestErrorCodeCoverage:
 
     def test_all_registered_codes_are_used(self):
         """Every validation code (SST-V*) in error_codes.py must appear in at least one rule_id= assignment.
-        
+
         Note: SST-P/E/G/C codes are for parsing, extract, generate, and config error paths
         which are handled outside the validation rules. Those are excluded from this check.
         """
@@ -74,20 +74,16 @@ class TestErrorCodeCoverage:
     def test_code_format_consistency(self):
         """All codes follow SST-{LETTER}{3DIGITS} format."""
         for code in ERRORS:
-            assert re.match(r"^SST-[VPEGC]\d{3}$", code), (
-                f"Code '{code}' doesn't match expected format SST-{{V|P|E|G|C}}XXX"
-            )
+            assert re.match(
+                r"^SST-[VPEGC]\d{3}$", code
+            ), f"Code '{code}' doesn't match expected format SST-{{V|P|E|G|C}}XXX"
 
     def test_all_codes_have_nonempty_title(self):
         """Every code must have a meaningful title."""
         for code, spec in ERRORS.items():
-            assert spec.title and len(spec.title) >= 5, (
-                f"Code {code} has missing or too-short title: '{spec.title}'"
-            )
+            assert spec.title and len(spec.title) >= 5, f"Code {code} has missing or too-short title: '{spec.title}'"
 
     def test_all_codes_have_suggestion_template(self):
         """Every code must have a suggestion template."""
         for code, spec in ERRORS.items():
-            assert spec.suggestion_template, (
-                f"Code {code} ({spec.title}) has no suggestion_template"
-            )
+            assert spec.suggestion_template, f"Code {code} ({spec.title}) has no suggestion_template"
