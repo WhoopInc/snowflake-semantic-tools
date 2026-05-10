@@ -121,7 +121,7 @@ def parse_snowflake_metrics(metrics: List[Dict[str, Any]], file_path: Path) -> L
                         tables = [f"{{{{ ref('{t}') }}}}" for t in inferred]
                     else:
                         stripped_expr = re.sub(r"'[^']*'", "", expr)
-                        dot_refs = re.findall(r"(\w+)\.\w+", stripped_expr)
+                        dot_refs = re.findall(r"([A-Za-z_]\w*)\.[A-Za-z_]\w*", stripped_expr)
                         inferred_from_dots = list(dict.fromkeys(r for r in dot_refs))
                         if inferred_from_dots:
                             tables = inferred_from_dots

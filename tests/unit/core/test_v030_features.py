@@ -538,6 +538,29 @@ class TestAutoInferTablesFromExpr:
         assert result[0]["tables"] == []
         assert result[0]["table_name"] == ""
 
+    def test_dot_notation_inference_skips_numeric_literals(self):
+        metrics = [
+            {
+                "name": "rounded_ratio",
+                "expr": "ROUND(ORDERS.AMOUNT / 1.5, 2)",
+            }
+        ]
+        result = parse_snowflake_metrics(metrics, Path("/tmp/test.yml"))
+        assert "orders" in str(result[0]["tables"]).lower()
+        assert "1" not in result[0]["tables"]
+
+    def test_dot_notation_inference_multiple_tables(self):
+        metrics = [
+            {
+                "name": "tax_weighted",
+                "expr": "SUM(ORDERS.AMOUNT * LOCATIONS.TAX_RATE)",
+            }
+        ]
+        result = parse_snowflake_metrics(metrics, Path("/tmp/test.yml"))
+        tables_lower = [t.lower() for t in result[0]["tables"]]
+        assert "orders" in tables_lower
+        assert "locations" in tables_lower
+
     def test_infers_from_column_syntax(self):
         metrics = [
             {

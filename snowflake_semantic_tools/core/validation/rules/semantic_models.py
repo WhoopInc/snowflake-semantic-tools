@@ -30,6 +30,18 @@ from snowflake_semantic_tools.shared.utils import get_logger
 logger = get_logger("semantic_model_validator")
 
 
+def _can_infer_tables(expr: str) -> bool:
+    """Check if tables can be auto-inferred from an expression."""
+    from snowflake_semantic_tools.core.parsing.parsers.semantic_parser import (
+        _extract_table_names_from_jinja,
+    )
+
+    if _extract_table_names_from_jinja(expr):
+        return True
+    stripped = re.sub(r"'[^']*'", "", expr)
+    return bool(re.findall(r"[A-Za-z_]\w*\.[A-Za-z_]\w*", stripped))
+
+
 class SemanticModelValidator:
     """
     Validates semantic model structure and required fields.
@@ -116,16 +128,7 @@ class SemanticModelValidator:
                 has_tables = bool(metric.get("tables"))
                 can_infer = False
                 if not has_tables and isinstance(expr, str):
-                    import re as _re
-
-                    from snowflake_semantic_tools.core.parsing.parsers.semantic_parser import (
-                        _extract_table_names_from_jinja,
-                    )
-
-                    can_infer = bool(_extract_table_names_from_jinja(expr))
-                    if not can_infer:
-                        stripped = _re.sub(r"'[^']*'", "", expr)
-                        can_infer = bool(_re.findall(r"\w+\.\w+", stripped))
+                    can_infer = _can_infer_tables(expr)
                 if not has_tables and not can_infer:
                     self._check_required_field(metric, "tables", metric_name, "metric", source_file, result)
 
@@ -145,13 +148,7 @@ class SemanticModelValidator:
                     )
                 elif len(metric["tables"]) == 0:
                     expr = metric.get("expr", "")
-                    can_infer = False
-                    if isinstance(expr, str):
-                        from snowflake_semantic_tools.core.parsing.parsers.semantic_parser import (
-                            _extract_table_names_from_jinja,
-                        )
-
-                        can_infer = bool(_extract_table_names_from_jinja(expr))
+                    can_infer = _can_infer_tables(expr) if isinstance(expr, str) else False
                     if not can_infer:
                         result.add_error(
                             f"Metric '{metric_name}' field 'tables' cannot be empty",
