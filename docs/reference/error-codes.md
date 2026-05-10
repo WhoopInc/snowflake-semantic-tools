@@ -36,11 +36,16 @@ Stable error codes for SST diagnostics. Each code is a permanent identifier that
 | `SST-V036` | Invalid non_additive_by configuration | non_additive_by entries must have a 'dimension' field |
 | `SST-V037` | Invalid window metric configuration | Window metrics need 'window_function' and 'order_by' fields |
 | `SST-V038` | Invalid using_relationships type | 'using_relationships' must be a list of relationship names |
+| `SST-V039` | Cross-entity column reference | Metric expression references columns from multiple entities. Split into single-table metrics or use derived: true |
 | `SST-V040` | Missing relationship field | Relationship '{name}' is missing required field: {field} |
 | `SST-V041` | Relationship table not found | Table '{table}' in relationship '{name}' not found. Did you mean '{closest_match}'? |
 | `SST-V042` | Relationship missing primary key | Right table '{table}' needs a primary_key for join. Add primary_key to config.meta.sst |
 | `SST-V043` | Relationship column not found | Column '{column}' not found in table '{table}' |
 | `SST-V044` | Using relationship not found | Relationship '{name}' referenced in using_relationships not found. Available: {available} |
+| `SST-V045` | Derived metric must use metric references | Derived metrics must use {{ metric('name') }} syntax, not raw column expressions |
+| `SST-V046` | Invalid field on derived metric | Derived metrics cannot use using_relationships, non_additive_by, or window |
+| `SST-V047` | Excluded column conflict | Column has both exclude: true and column_type set. Excluded columns are omitted from semantic views |
+| `SST-V048` | Primary key and unique keys overlap | Columns in both primary_key and unique_keys. Remove duplicates from unique_keys |
 | `SST-V050` | Deprecated filters syntax | Migrate to snowflake_custom_instructions with sql_generation text |
 | `SST-V051` | Invalid filter expression | Filter expression must be a non-empty SQL string |
 | `SST-V060` | Missing verified query field | Verified query '{name}' is missing required field: {field} |

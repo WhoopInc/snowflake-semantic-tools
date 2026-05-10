@@ -194,6 +194,42 @@ Use cases:
 - Internal/technical columns (ETL timestamps, hash keys, debug flags)
 - Columns that exist in the warehouse but aren't relevant to the semantic layer
 
+### Derived Metrics
+
+Derived metrics combine metrics from multiple entities without belonging to a specific table:
+
+```yaml
+snowflake_metrics:
+  - name: revenue_to_customer_ratio
+    derived: true
+    description: Revenue divided by customer count
+    expr: "{{ metric('total_revenue') }} / NULLIF({{ metric('total_customers') }}, 0)"
+```
+
+Derived metrics:
+- Use `{{ metric('name') }}` references (resolved to `TABLE.METRIC_NAME` in DDL)
+- Are emitted without a table prefix in the semantic view
+- Cannot use `using_relationships`, `non_additive_by`, or `window`
+- Don't require a `tables` field (inferred from referenced metrics)
+
+### Auto-Inferred Tables
+
+The `tables` field is optional. SST auto-infers table references from the expression:
+
+```yaml
+snowflake_metrics:
+  # tables auto-inferred from expr → ['orders']
+  - name: total_revenue
+    expr: "SUM({{ ref('orders', 'order_total') }})"
+```
+
+Inference strategies (in priority order):
+1. `{{ ref('table', 'col') }}` and `{{ column('table', 'col') }}` patterns
+2. `TABLE.COLUMN` dot-references (post-template-resolution)
+3. For derived metrics: resolved transitively from referenced metrics
+
+Explicit `tables` always takes precedence when provided.
+
 ### UNIQUE Keys for ASOF Relationships
 
 When defining ASOF (temporal) relationships, Snowflake requires a `UNIQUE` constraint on the columns involved in the join:
