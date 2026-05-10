@@ -218,6 +218,25 @@ class TestV046DerivedMetricInvalidFields:
         errors = [e for e in result.get_errors() if e.rule_id == "SST-V046"]
         assert len(errors) == 1
 
+    def test_v046_fires_on_non_additive_by(self, validator):
+        semantic_data = {
+            "metrics": {
+                "items": [
+                    {
+                        "name": "BAD_NON_ADDITIVE",
+                        "tables": [],
+                        "expr": "{{ metric('m1') }}",
+                        "source_file": "test.yml",
+                        "derived": True,
+                        "non_additive_by": [{"dimension": "time_col"}],
+                    }
+                ]
+            }
+        }
+        result = validator.validate(semantic_data, {})
+        errors = [e for e in result.get_errors() if e.rule_id == "SST-V046"]
+        assert len(errors) == 1
+
 
 class TestV034SkippedForDerived:
     """Test that V034 (tables cannot be empty) is skipped for derived metrics."""
@@ -346,6 +365,14 @@ class TestParseTableListEmptyString:
 
     def test_normal_table_name(self, builder):
         result = builder._parse_table_list("ORDERS")
+        assert result == ["orders"]
+
+    def test_python_repr_multi_element_list(self, builder):
+        result = builder._parse_table_list("['ORDERS', 'CUSTOMERS']")
+        assert sorted(result) == ["customers", "orders"]
+
+    def test_python_repr_single_element_list(self, builder):
+        result = builder._parse_table_list("['ORDERS']")
         assert result == ["orders"]
 
 

@@ -340,7 +340,7 @@ class SnowflakeSyntaxValidator:
         for query in verified_queries:
             if isinstance(query, dict):
                 sql = query.get("sql", "")
-                if sql and not re.search(r"\{\{.*?\}\}", sql):
+                if sql and not re.search(r"\{\{.*?\}\}", sql, re.DOTALL):
                     expressions.append(
                         {
                             "type": "verified_query",
