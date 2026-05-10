@@ -473,19 +473,53 @@ class Parser:
 
         For derived metrics, {{ metric('X') }} should resolve to TABLE.METRIC_NAME
         instead of inlining the full SQL expression.
+
+        Uses YAML parsing with Jinja neutralization to locate the metric by name,
+        then extracts the raw expr from the original content and resolves metric
+        references using the already-parsed metrics catalog.
         """
         import re as _re
 
-        metric_name_lower = metric_name.lower()
-        pattern = _re.compile(
-            r"- name:\s*" + _re.escape(metric_name_lower) + r"\s*\n" r"(?:.*?\n)*?\s*expr:\s*[\"']?(.*?)[\"']?\s*$",
-            _re.MULTILINE | _re.IGNORECASE,
-        )
-        match = pattern.search(raw_content)
-        if not match:
+        import yaml
+
+        _JINJA_PLACEHOLDER = "JINJA_PLACEHOLDER"
+        neutralized = _re.sub(r"\{\{.*?\}\}", _JINJA_PLACEHOLDER, raw_content)
+
+        try:
+            data = yaml.safe_load(neutralized)
+        except yaml.YAMLError:
             return ""
 
-        raw_expr = match.group(1).strip().strip("\"'")
+        raw_expr = ""
+        metrics_list = []
+        if isinstance(data, dict):
+            for key in ("metrics", "snowflake_metrics"):
+                if key in data:
+                    metrics_list = data[key]
+                    break
+        elif isinstance(data, list):
+            metrics_list = data
+
+        found = False
+        for m in metrics_list:
+            if isinstance(m, dict) and m.get("name", "").lower() == metric_name.lower():
+                raw_expr = m.get("expr", "")
+                found = True
+                break
+
+        if not found or not raw_expr or not isinstance(raw_expr, str):
+            return ""
+
+        if _JINJA_PLACEHOLDER in raw_expr:
+            match = _re.search(
+                r"- name:\s*" + _re.escape(metric_name) + r"\s*\n(?:.*?\n)*?\s*expr:\s*(.*?)$",
+                raw_content,
+                _re.MULTILINE | _re.IGNORECASE,
+            )
+            if match:
+                raw_expr = match.group(1).strip().strip("\"'")
+            else:
+                return ""
 
         metric_ref_pattern = r'\{\{\s*metric\([\'"]([^\'")]+)[\'"]\)\s*\}\}'
 
