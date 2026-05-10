@@ -191,3 +191,16 @@ class TestV048PrimaryKeyUniqueKeysOverlap:
         validator._check_primary_key(table, "ORDERS", [], [], [], result)
         errors = [e for e in result.get_errors() if e.rule_id == "SST-V048"]
         assert len(errors) == 0
+
+    def test_case_insensitive_overlap(self, validator):
+        table = {
+            "table_name": "ORDERS",
+            "primary_key": ["Order_ID"],
+            "unique_keys": ["order_id"],
+            "source_file": "/tmp/test.yml",
+        }
+        result = ValidationResult()
+        validator._check_primary_key(table, "ORDERS", [], [], [], result)
+        errors = [e for e in result.get_errors() if e.rule_id == "SST-V048"]
+        assert len(errors) == 1
+        assert "order_id" in str(errors[0].message)

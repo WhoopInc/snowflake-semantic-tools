@@ -380,18 +380,19 @@ class DbtModelValidator:
 
         unique_keys = table.get("unique_keys", [])
         if unique_keys and isinstance(unique_keys, list):
-            pk_set = {p.upper().strip() for p in primary_keys}
-            uk_set = {u.upper().strip() for u in unique_keys if isinstance(u, str)}
-            overlap = pk_set & uk_set
-            if overlap:
+            pk_normalized = {p.upper().strip(): p for p in primary_keys}
+            uk_normalized = {u.upper().strip(): u for u in unique_keys if isinstance(u, str)}
+            overlap_keys = set(pk_normalized.keys()) & set(uk_normalized.keys())
+            if overlap_keys:
+                overlap_original = sorted(uk_normalized[k] for k in overlap_keys)
                 result.add_error(
                     f"Table '{table_name}' has columns in both primary_key and unique_keys: "
-                    f"{sorted(overlap)}. Snowflake rejects duplicate primary/unique key declarations.",
+                    f"{overlap_original}. Snowflake rejects duplicate primary/unique key declarations.",
                     file_path=source_file,
                     rule_id="SST-V048",
                     suggestion="Remove overlapping columns from unique_keys — primary_key is already unique",
                     entity_name=table_name,
-                    context={"table": table_name, "overlap": sorted(overlap)},
+                    context={"table": table_name, "overlap": overlap_original},
                 )
 
     def _check_table_synonym_content(self, table: Dict[str, Any], table_name: str, result: ValidationResult):
