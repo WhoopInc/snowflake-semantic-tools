@@ -359,6 +359,7 @@ def parse_snowflake_verified_queries(queries: List[Dict[str, Any]], file_path: P
                 "verified_at": query.get("verified_at", ""),
                 "verified_by": query.get("verified_by", ""),
                 "sql": sql,
+                "sql_file": sql_file if sql_file else "",
                 "source_file": str(file_path),
             }
             if "use_as_onboarding_question" in query:
