@@ -59,6 +59,7 @@ def extract(dbt_target, db, schema, dbt, semantic, verbose):
     # IMMEDIATE OUTPUT
     output = CLIOutput(verbose=verbose, quiet=False)
     output.info(f"Running with sst={__version__}")
+    output.debug("Tip: Run 'sst validate' before extract to catch issues early")
 
     # Common CLI setup
     output.debug("Setting up...")
