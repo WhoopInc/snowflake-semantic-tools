@@ -676,10 +676,10 @@ class SemanticViewGenerationService:
                 found_views = {v["name"] for v in view_configs}
                 missing_views = requested_views - found_views
                 if missing_views:
-                    result.add_warning(f"Requested views not found: {', '.join(missing_views)}")
+                    result.add_error(f"Requested views not found: {', '.join(sorted(missing_views))}")
 
             if not view_configs:
-                result.add_warning("No views found to generate")
+                result.add_error("No views found to generate")
                 return result
 
             # Convert to low-level config and execute
