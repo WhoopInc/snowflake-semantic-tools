@@ -44,7 +44,8 @@ def get_sst_meta(
     config = node.get("config", {})
     config_meta = config.get("meta", {}) if isinstance(config, dict) else {}
     if "sst" in config_meta:
-        return config_meta.get("sst", {})
+        sst = config_meta.get("sst")
+        return sst if isinstance(sst, dict) else {}
 
     # Fall back to old location (meta.sst)
     meta = node.get("meta", {})
