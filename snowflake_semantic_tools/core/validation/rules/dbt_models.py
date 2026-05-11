@@ -334,6 +334,8 @@ class DbtModelValidator:
                     f"Model '{table_name}' uses removed key '{key}' in config.meta.sst. "
                     f"{self.REMOVED_SST_KEYS[key]}. This key is ignored.",
                     file_path=source_file,
+                    rule_id="SST-V010",
+                    suggestion=f"Remove '{key}' from config.meta.sst",
                     context={"table": table_name, "key": key, "level": "table"},
                 )
             elif key not in self.KNOWN_TABLE_SST_KEYS:
@@ -341,6 +343,8 @@ class DbtModelValidator:
                     f"Model '{table_name}' has unrecognized key '{key}' in config.meta.sst. "
                     f"This key will be ignored. Known keys: {', '.join(sorted(self.KNOWN_TABLE_SST_KEYS))}",
                     file_path=source_file,
+                    rule_id="SST-V010",
+                    suggestion=f"Remove '{key}' or check for typos",
                     context={"table": table_name, "key": key, "level": "table"},
                 )
 
