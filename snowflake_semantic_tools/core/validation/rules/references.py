@@ -285,16 +285,17 @@ class ReferenceValidator:
                                 tables_in_expr.add(tref.upper())
 
                         if len(tables_in_expr) > 1:
-                            result.add_error(
-                                f"Metric '{name}' expression references columns from multiple entities "
-                                f"({', '.join(sorted(tables_in_expr))}). Snowflake semantic views require "
-                                f"metric expressions to reference columns from a single entity only.",
-                                file_path=source_file,
-                                rule_id="SST-V039",
-                                suggestion="Split into separate single-table metrics, use metric composition via {{ metric() }}, or mark as derived: true",
-                                entity_name=name,
-                                context={"metric": name, "tables_in_expr": sorted(tables_in_expr)},
-                            )
+                            if not self._tables_have_relationships(tables_in_expr):
+                                result.add_warning(
+                                    f"Metric '{name}' expression references columns from multiple entities "
+                                    f"({', '.join(sorted(tables_in_expr))}). Ensure a relationship exists "
+                                    f"between these tables in any semantic view that includes this metric.",
+                                    file_path=source_file,
+                                    rule_id="SST-V039",
+                                    suggestion="Add a relationship between these tables, use metric composition via {{ metric() }}, or mark as derived: true",
+                                    entity_name=name,
+                                    context={"metric": name, "tables_in_expr": sorted(tables_in_expr)},
+                                )
 
                 using_rels = metric.get("using_relationships", [])
                 if using_rels and isinstance(using_rels, list):
@@ -896,6 +897,24 @@ class ReferenceValidator:
                                 entity_name=name,
                                 context={"query": name, "table": table},
                             )
+
+    def _tables_have_relationships(self, tables: set) -> bool:
+        """Check if all tables in the set are connected via defined relationships."""
+        relationships = self._semantic_data.get("relationships", {}).get("items", [])
+        rel_pairs = set()
+        for rel in relationships:
+            left = (rel.get("left_table_name") or rel.get("left_table", "")).upper()
+            right = (rel.get("right_table_name") or rel.get("right_table", "")).upper()
+            if left and right:
+                rel_pairs.add((left, right))
+                rel_pairs.add((right, left))
+
+        tables_list = sorted(tables)
+        for i, t1 in enumerate(tables_list):
+            for t2 in tables_list[i + 1 :]:
+                if (t1, t2) not in rel_pairs:
+                    return False
+        return True
 
     def _validate_column_references_in_expr(
         self,

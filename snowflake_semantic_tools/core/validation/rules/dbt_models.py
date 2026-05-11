@@ -437,7 +437,7 @@ class DbtModelValidator:
             uk_set = {u.upper().strip() for u in unique_keys if isinstance(u, str)}
             overlap = pk_set & uk_set
             if overlap:
-                result.add_error(
+                result.add_warning(
                     f"Table '{table_name}' has columns in both primary_key and unique_keys: "
                     f"{sorted(overlap)}. Snowflake rejects duplicate primary/unique key declarations.",
                     file_path=source_file,
