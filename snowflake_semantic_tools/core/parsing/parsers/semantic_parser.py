@@ -194,7 +194,8 @@ def parse_snowflake_relationships(
                 "relationship_name": relationship.get("name", "").upper(),
                 "left_table_name": relationship.get("left_table", "").upper(),
                 "right_table_name": relationship.get("right_table", "").upper(),
-                "source_file": str(file_path),  # Store the file path for validation errors
+                "source_file": str(file_path),
+                "_has_conditions": bool(relationship.get("relationship_conditions")),
             }
             relationship_records.append(rel_record)
 
@@ -377,10 +378,12 @@ def parse_snowflake_verified_queries(queries: List[Dict[str, Any]], file_path: P
         try:
             sql = query.get("sql", "")
             sql_file = query.get("sql_file", "")
+            sql_loaded_from_file = False
             if sql_file and not sql:
                 sql_file_path = file_path.parent / sql_file
                 if sql_file_path.exists():
                     sql = sql_file_path.read_text().strip()
+                    sql_loaded_from_file = True
                 else:
                     logger.warning(f"sql_file '{sql_file}' not found relative to {file_path}")
 
@@ -392,6 +395,7 @@ def parse_snowflake_verified_queries(queries: List[Dict[str, Any]], file_path: P
                 "verified_by": query.get("verified_by", ""),
                 "sql": sql,
                 "sql_file": sql_file if sql_file else "",
+                "_sql_loaded_from_file": sql_loaded_from_file,
                 "source_file": str(file_path),
             }
             if "use_as_onboarding_question" in query:
@@ -418,27 +422,24 @@ def parse_semantic_views(
     for view_def in semantic_views:
         try:
             if not isinstance(view_def, dict):
-                logger.error(f"Semantic view definition must be a dictionary, got {type(view_def)} in {file_path}")
+                view_records.append(
+                    {
+                        "name": "",
+                        "description": "",
+                        "tables": "[]",
+                        "custom_instructions": "[]",
+                        "source_file": str(file_path),
+                    }
+                )
                 continue
 
-            # Extract required fields
-            name = view_def.get("name")
-            if not name:
-                logger.error(f"Semantic view definition missing required 'name' field in {file_path}")
-                continue
-
+            name = view_def.get("name", "")
             description = view_def.get("description", "")
 
             tables = view_def.get("tables", [])
             if not isinstance(tables, list):
-                logger.error(f"'tables' must be a list for view '{name}' in {file_path}, got {type(tables)}")
-                continue
+                tables = []
 
-            if not tables:
-                logger.error(f"Semantic view '{name}' must have at least one table in {file_path}")
-                continue
-
-            # Convert tables list to JSON string for storage
             tables_json = json.dumps(tables)
 
             # Extract custom_instructions - get instruction NAME (not resolved text)
