@@ -278,6 +278,13 @@ class SemanticModelValidator:
                             file_path=source_file,
                             context={"relationship": rel_name, "field": display_field, "type": "relationship"},
                         )
+
+                if not relationship.get("_has_conditions", True):
+                    result.add_error(
+                        f"Relationship '{rel_name}' is missing required field: relationship_conditions",
+                        file_path=source_file,
+                        context={"relationship": rel_name, "field": "relationship_conditions", "type": "relationship"},
+                    )
             else:
                 # Raw YAML format
                 required_fields = ["name", "left_table", "right_table", "relationship_conditions"]
