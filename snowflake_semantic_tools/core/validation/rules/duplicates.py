@@ -11,6 +11,7 @@ Also validates that table-level synonyms are unique within each semantic view,
 as Snowflake requires unique synonyms for semantic view generation.
 """
 
+import json
 from collections import defaultdict
 from typing import Any, Dict, List, Optional
 
@@ -113,12 +114,12 @@ class DuplicateValidator:
                     if metric.get("using_relationships"):
                         sig_parts.append(f"using:{sorted(metric['using_relationships'])}")
                     if metric.get("window"):
-                        sig_parts.append(f"window:{metric['window']}")
+                        sig_parts.append(f"window:{json.dumps(metric['window'], sort_keys=True)}")
                     if metric.get("non_additive_by"):
-                        sig_parts.append(f"nab:{metric['non_additive_by']}")
+                        sig_parts.append(f"nab:{json.dumps(metric['non_additive_by'], sort_keys=True)}")
                     if metric.get("derived"):
                         sig_parts.append("derived")
-                    signature = "|".join(sig_parts)
+                    signature = "\x00".join(sig_parts)
                     expressions_seen[signature].append((i, name))
 
         # Report duplicate names

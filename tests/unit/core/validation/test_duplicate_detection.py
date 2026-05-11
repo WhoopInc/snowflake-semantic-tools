@@ -470,6 +470,16 @@ class TestV091MetricDuplicateDetection:
         warnings = [w for w in result.get_warnings() if w.rule_id == "SST-V091"]
         assert len(warnings) == 0
 
+    def test_same_expr_same_window_is_duplicate(self, validator):
+        window_config = {"partition_by": ["customer_id"], "order_by": [{"column": "ordered_at"}]}
+        data = self._make_metrics_data([
+            {"name": "metric_a", "expr": "SUM(ORDERS.TOTAL)", "window": window_config},
+            {"name": "metric_b", "expr": "SUM(ORDERS.TOTAL)", "window": window_config},
+        ])
+        result = validator.validate(data)
+        warnings = [w for w in result.get_warnings() if w.rule_id == "SST-V091"]
+        assert len(warnings) == 1
+
     def test_same_expr_different_using_relationships_not_duplicate(self, validator):
         data = self._make_metrics_data([
             {"name": "revenue", "expr": "SUM(orders.total)"},
