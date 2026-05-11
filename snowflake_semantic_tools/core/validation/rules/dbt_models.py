@@ -49,6 +49,20 @@ class DbtModelValidator:
     # Valid values for column_type
     VALID_COLUMN_TYPES = {"dimension", "time_dimension", "fact"}
 
+    KNOWN_TABLE_SST_KEYS = {
+        "primary_key", "unique_keys", "synonyms", "constraints", "tags",
+        "table", "database", "schema", "exclude",
+    }
+
+    KNOWN_COLUMN_SST_KEYS = {
+        "column_type", "data_type", "synonyms", "sample_values", "is_enum",
+        "visibility", "tags", "exclude",
+    }
+
+    REMOVED_SST_KEYS = {
+        "cortex_searchable": "Cortex Search Service support was removed in v0.3.0",
+    }
+
     # Valid Snowflake data types (common ones)
     VALID_DATA_TYPES = {
         # Numeric types
@@ -231,6 +245,8 @@ class DbtModelValidator:
         # Check required table-level fields
         self._check_required_table_fields(table, table_name, result)
 
+        self._check_unrecognized_sst_keys(table, table_name, result)
+
         # Check naming conventions
         self._check_naming_conventions(table, table_name, result)
 
@@ -307,6 +323,26 @@ class DbtModelValidator:
                 entity_name=table_name,
                 context={"table": table_name, "field": "meta.sst.primary_key", "level": "table"},
             )
+
+    def _check_unrecognized_sst_keys(self, table: Dict[str, Any], table_name: str, result: ValidationResult):
+        """Warn about unrecognized keys in the sst meta block."""
+        raw_keys = table.get("_raw_sst_keys", [])
+        source_file = table.get("source_file")
+        for key in raw_keys:
+            if key in self.REMOVED_SST_KEYS:
+                result.add_warning(
+                    f"Model '{table_name}' uses removed key '{key}' in config.meta.sst. "
+                    f"{self.REMOVED_SST_KEYS[key]}. This key is ignored.",
+                    file_path=source_file,
+                    context={"table": table_name, "key": key, "level": "table"},
+                )
+            elif key not in self.KNOWN_TABLE_SST_KEYS:
+                result.add_warning(
+                    f"Model '{table_name}' has unrecognized key '{key}' in config.meta.sst. "
+                    f"This key will be ignored. Known keys: {', '.join(sorted(self.KNOWN_TABLE_SST_KEYS))}",
+                    file_path=source_file,
+                    context={"table": table_name, "key": key, "level": "table"},
+                )
 
     def _check_primary_key(
         self,
