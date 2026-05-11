@@ -506,11 +506,15 @@ class ReferenceValidator:
                     right_table_info = dbt_catalog[right_table_lower]
                     primary_key = right_table_info.get("primary_key")
                     raw_unique_keys = right_table_info.get("unique_keys") or []
-                    unique_keys_lower = (
-                        [c.lower() for c in raw_unique_keys]
-                        if isinstance(raw_unique_keys, list)
-                        else [str(raw_unique_keys).lower()]
-                    )
+                    unique_keys_lower = []
+                    if isinstance(raw_unique_keys, list):
+                        for uk in raw_unique_keys:
+                            if isinstance(uk, str):
+                                unique_keys_lower.append(uk.lower())
+                            elif isinstance(uk, list):
+                                unique_keys_lower.extend(c.lower() for c in uk if isinstance(c, str))
+                    elif isinstance(raw_unique_keys, str):
+                        unique_keys_lower = [raw_unique_keys.lower()]
                     unique_set = set(unique_keys_lower) if unique_keys_lower else set()
 
                     # Collect all right_columns used in this relationship (needed by both PK and unique-only paths)
