@@ -1110,7 +1110,7 @@ class SemanticModelValidator:
                 f"Please use a shorter name.",
                 file_path=source_file,
                 rule_id="SST-V005",
-                suggestion="Shorten name to <=256 characters",
+                suggestion=f"Shorten name to {SNOWFLAKE_MAX_IDENTIFIER_LENGTH} characters or fewer",
                 entity_name=name,
                 context={
                     "identifier": name,
@@ -1556,7 +1556,7 @@ class SemanticModelValidator:
                     f"{context_name} tag '{key}' value exceeds 256 characters ({len(value_str)} chars)",
                     file_path=source_file,
                     rule_id="SST-V016",
-                    suggestion="Shorten tag value to <=256 characters",
+                    suggestion="Shorten tag value to 256 characters or fewer",
                     entity_name=context_name,
                     context={"type": "tags", "tag_name": str(key), "value_length": len(value_str)},
                 )
