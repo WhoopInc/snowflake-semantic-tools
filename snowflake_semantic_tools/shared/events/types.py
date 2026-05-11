@@ -40,8 +40,9 @@ def format_duration(seconds: float) -> str:
 
 
 def format_progress(current: int, total: int) -> str:
-    """Format progress indicator (e.g., " 1 of  5")."""
-    return f"{current:2d} of {total:2d}"
+    """Format progress indicator (e.g., "1 of 3")."""
+    width = len(str(total))
+    return f"{str(current).rjust(width)} of {total}"
 
 
 # ============================================================================
