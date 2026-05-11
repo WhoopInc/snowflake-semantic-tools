@@ -241,7 +241,6 @@ def validate(ctx, dbt, semantic, strict, verbose, exclude, dbt_compile, verify_s
 
         if output_format == "json":
             import json as json_mod
-            import os
 
             from snowflake_semantic_tools._version import __version__ as sst_version
 
