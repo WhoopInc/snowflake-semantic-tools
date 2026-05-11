@@ -50,13 +50,26 @@ class DbtModelValidator:
     VALID_COLUMN_TYPES = {"dimension", "time_dimension", "fact"}
 
     KNOWN_TABLE_SST_KEYS = {
-        "primary_key", "unique_keys", "synonyms", "constraints", "tags",
-        "table", "database", "schema", "exclude",
+        "primary_key",
+        "unique_keys",
+        "synonyms",
+        "constraints",
+        "tags",
+        "table",
+        "database",
+        "schema",
+        "exclude",
     }
 
     KNOWN_COLUMN_SST_KEYS = {
-        "column_type", "data_type", "synonyms", "sample_values", "is_enum",
-        "visibility", "tags", "exclude",
+        "column_type",
+        "data_type",
+        "synonyms",
+        "sample_values",
+        "is_enum",
+        "visibility",
+        "tags",
+        "exclude",
     }
 
     REMOVED_SST_KEYS = {
