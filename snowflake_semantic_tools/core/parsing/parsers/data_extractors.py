@@ -179,10 +179,10 @@ def extract_table_info(
             "unique_keys": unique_keys_upper,
             "constraints": sst_meta.get("constraints", []),
             "synonyms": sst_meta.get("synonyms", []),
-            "model_name": name,  # Store the original model name
-            "source_file": str(file_path),  # Store the file path for validation errors
-            "cortex_searchable": sst_meta.get("cortex_searchable", False),
+            "model_name": name,
+            "source_file": str(file_path),
             "tags": sst_meta.get("tags"),
+            "_raw_sst_keys": list(sst_meta.keys()),
         }
 
         return table_record
