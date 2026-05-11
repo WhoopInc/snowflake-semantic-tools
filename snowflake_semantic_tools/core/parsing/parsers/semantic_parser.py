@@ -348,9 +348,7 @@ def parse_snowflake_custom_instructions(instructions: List[Dict[str, Any]], file
             question_cat = (
                 instruction.get("ai_question_categorization") or instruction.get("question_categorization", "")
             ).strip()
-            sql_gen = (
-                instruction.get("ai_sql_generation") or instruction.get("sql_generation", "")
-            ).strip()
+            sql_gen = (instruction.get("ai_sql_generation") or instruction.get("sql_generation", "")).strip()
 
             instruction_record = {
                 "name": instruction.get("name", "").upper(),
@@ -359,9 +357,8 @@ def parse_snowflake_custom_instructions(instructions: List[Dict[str, Any]], file
                 "source_file": str(file_path),
                 "_used_legacy_keys": bool(
                     instruction.get("question_categorization") or instruction.get("sql_generation")
-                ) and not (
-                    instruction.get("ai_question_categorization") or instruction.get("ai_sql_generation")
-                ),
+                )
+                and not (instruction.get("ai_question_categorization") or instruction.get("ai_sql_generation")),
             }
             instruction_records.append(instruction_record)
 
