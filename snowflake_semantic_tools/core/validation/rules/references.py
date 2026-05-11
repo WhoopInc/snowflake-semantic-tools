@@ -597,8 +597,7 @@ class ReferenceValidator:
                         result.add_error(
                             f"Relationship '{name}' references table '{right_table}' which has no primary key metadata.\n\n"
                             f"The RIGHT (referenced) table must declare meta.sst.primary_key or meta.sst.unique_keys for the join columns.\n\n"
-                            f"This usually means the table was not properly extracted or enriched. Run 'sst enrich' on the table's "
-                            f"YAML file, or check meta.sst configuration."
+                            f"Add primary_key to the model's config.meta.sst block in your dbt YAML file."
                             f"{_RELATIONSHIP_DIRECTION_HINT}",
                             file_path=source_file,
                             rule_id="SST-V042",
@@ -615,7 +614,7 @@ class ReferenceValidator:
                     result.add_error(
                         f"Relationship '{name}' references table '{right_table}' that was not extracted. "
                         f"This usually means the table's metadata is missing or incomplete. "
-                        f"Check that the table has proper meta.sst configuration or run 'sst enrich' to populate metadata.",
+                        f"Check that the table has proper meta.sst configuration in its dbt YAML file.",
                         file_path=source_file,
                         rule_id="SST-V041",
                         suggestion="Ensure table has config.meta.sst and was extracted",
