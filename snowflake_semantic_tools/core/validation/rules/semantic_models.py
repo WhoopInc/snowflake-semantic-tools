@@ -1576,7 +1576,7 @@ class SemanticModelValidator:
         """
         seen = {}
         for item in items:
-            name = item.get("name", "")
+            name = item.get("name") or item.get("relationship_name", "")
             if not name:
                 continue
 
