@@ -104,14 +104,22 @@ class DuplicateValidator:
                 name = metric.get("name", "")
                 expr = metric.get("expr", "")
 
-                # Check duplicate names
                 if name:
                     names_seen[name.lower()].append(i)
 
-                # Check duplicate expressions (normalized)
                 if expr:
                     normalized_expr = self._normalize_expression(expr)
-                    expressions_seen[normalized_expr].append((i, name))
+                    sig_parts = [normalized_expr]
+                    if metric.get("using_relationships"):
+                        sig_parts.append(f"using:{sorted(metric['using_relationships'])}")
+                    if metric.get("window"):
+                        sig_parts.append(f"window:{metric['window']}")
+                    if metric.get("non_additive_by"):
+                        sig_parts.append(f"nab:{metric['non_additive_by']}")
+                    if metric.get("derived"):
+                        sig_parts.append("derived")
+                    signature = "|".join(sig_parts)
+                    expressions_seen[signature].append((i, name))
 
         # Report duplicate names
         for name, indices in names_seen.items():
