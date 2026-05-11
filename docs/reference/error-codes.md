@@ -46,8 +46,9 @@ Stable error codes for SST diagnostics. Each code is a permanent identifier that
 | `SST-V046` | Invalid field on derived metric | Derived metrics cannot use using_relationships, non_additive_by, or window |
 | `SST-V047` | Excluded column conflict | Column has both exclude: true and column_type set. Excluded columns are omitted from semantic views |
 | `SST-V048` | Primary key and unique keys overlap | Columns in both primary_key and unique_keys. Remove duplicates from unique_keys |
-| `SST-V050` | Deprecated filters syntax | Migrate to snowflake_custom_instructions with sql_generation text |
+| `SST-V050` | Deprecated filters syntax | Migrate to snowflake_custom_instructions with ai_sql_generation text |
 | `SST-V051` | Invalid filter expression | Filter expression must be a non-empty SQL string |
+| `SST-V052` | Deprecated custom instruction key names | Use 'ai_sql_generation' and 'ai_question_categorization' to align with Snowflake DDL |
 | `SST-V060` | Missing verified query field | Verified query '{name}' is missing required field: {field} |
 | `SST-V061` | VQR sql_file not found | File '{path}' does not exist. Check the path relative to the YAML file |
 | `SST-V062` | VQR mutual exclusivity violation | Specify either 'sql' or 'sql_file', not both |

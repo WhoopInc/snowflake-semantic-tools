@@ -455,7 +455,7 @@ class TestCustomInstructionValidation:
         assert result.error_count > 0
         errors = [i.message for i in result.issues if i.severity.name == "ERROR"]
         assert any(
-            "missing required field: must have at least one of 'question_categorization' or 'sql_generation'" in e
+            "missing required field: must have at least one of 'ai_sql_generation' or 'ai_question_categorization'" in e
             for e in errors
         )
 

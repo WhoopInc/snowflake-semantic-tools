@@ -584,15 +584,15 @@ snowflake_filters:
 
 Guide Cortex Analyst's behavior with business-specific rules. Custom instructions are automatically included in the generated `CREATE SEMANTIC VIEW` DDL as `AI_SQL_GENERATION` and `AI_QUESTION_CATEGORIZATION` clauses.
 
-When you reference custom instructions in a semantic view using `{{ custom_instructions('name') }}`, the instruction's `sql_generation` field is included in the `AI_SQL_GENERATION` clause and the `question_categorization` field is included in the `AI_QUESTION_CATEGORIZATION` clause.
+When you reference custom instructions in a semantic view using `{{ custom_instructions('name') }}`, the instruction's `ai_sql_generation` field is included in the `AI_SQL_GENERATION` clause and the `ai_question_categorization` field is included in the `AI_QUESTION_CATEGORIZATION` clause.
 
 ### Structure
 
 ```yaml
 snowflake_custom_instructions:
   - name: instruction_name
-    question_categorization: Instructions for categorizing questions
-    sql_generation: Instructions for generating SQL queries
+    ai_question_categorization: Instructions for categorizing questions
+    ai_sql_generation: Instructions for generating SQL queries
 ```
 
 ### Real Example
@@ -600,9 +600,9 @@ snowflake_custom_instructions:
 ```yaml
 snowflake_custom_instructions: 
   - name: customer_privacy_rules
-    question_categorization: >
+    ai_question_categorization: >
       Reject all questions asking about individual customer details. Ask users to contact their admin.
-    sql_generation: >
+    ai_sql_generation: >
       When querying customer data, always apply the active_customers_only filter.
       Always round currency metrics to 2 decimal places.
 ```

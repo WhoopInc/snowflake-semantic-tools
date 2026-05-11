@@ -345,15 +345,23 @@ def parse_snowflake_custom_instructions(instructions: List[Dict[str, Any]], file
 
     for instruction in instructions:
         try:
-            # Keep question_categorization and sql_generation separate for GUIDANCE clause
-            question_cat = instruction.get("question_categorization", "").strip()
-            sql_gen = instruction.get("sql_generation", "").strip()
+            question_cat = (
+                instruction.get("ai_question_categorization") or instruction.get("question_categorization", "")
+            ).strip()
+            sql_gen = (
+                instruction.get("ai_sql_generation") or instruction.get("sql_generation", "")
+            ).strip()
 
             instruction_record = {
                 "name": instruction.get("name", "").upper(),
                 "question_categorization": question_cat if question_cat else None,
                 "sql_generation": sql_gen if sql_gen else None,
-                "source_file": str(file_path),  # Store the file path for validation errors
+                "source_file": str(file_path),
+                "_used_legacy_keys": bool(
+                    instruction.get("question_categorization") or instruction.get("sql_generation")
+                ) and not (
+                    instruction.get("ai_question_categorization") or instruction.get("ai_sql_generation")
+                ),
             }
             instruction_records.append(instruction_record)
 

@@ -261,13 +261,19 @@ _register(
     "SST-V050",
     "Deprecated filters syntax",
     ErrorCategory.VALIDATION,
-    "Migrate to snowflake_custom_instructions with sql_generation text",
+    "Migrate to snowflake_custom_instructions with ai_sql_generation text",
 )
 _register(
     "SST-V051",
     "Invalid filter expression",
     ErrorCategory.VALIDATION,
     "Filter expression must be a non-empty SQL string",
+)
+_register(
+    "SST-V052",
+    "Deprecated custom instruction key names",
+    ErrorCategory.VALIDATION,
+    "Use 'ai_sql_generation' and 'ai_question_categorization' to align with Snowflake DDL",
 )
 
 # --- Verified query validation ---

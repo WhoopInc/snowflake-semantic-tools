@@ -76,9 +76,9 @@ class SemanticModelValidator:
                     "snowflake_filters is deprecated and will be removed in a future major version. "
                     "Filters are auto-converted to AI_SQL_GENERATION instructions at generation time, "
                     "but for full control over instruction wording, migrate to snowflake_custom_instructions "
-                    "with sql_generation text.",
+                    "with ai_sql_generation text.",
                     rule_id="SST-V050",
-                    suggestion="Migrate to snowflake_custom_instructions with sql_generation",
+                    suggestion="Migrate to snowflake_custom_instructions with ai_sql_generation",
                     entity_name="snowflake_filters",
                     context={"type": "DEPRECATION"},
                 )
@@ -562,20 +562,31 @@ class SemanticModelValidator:
             # Required fields
             self._check_required_field(instruction, "name", instruction_name, "custom_instruction", source_file, result)
 
-            # At least one of question_categorization or sql_generation must be present
+            if instruction.get("_used_legacy_keys"):
+                result.add_warning(
+                    f"Custom instruction '{instruction_name}' uses deprecated key names. "
+                    f"Rename 'sql_generation' to 'ai_sql_generation' and "
+                    f"'question_categorization' to 'ai_question_categorization' to align with Snowflake DDL.",
+                    file_path=source_file,
+                    rule_id="SST-V052",
+                    suggestion="Use 'ai_sql_generation' and 'ai_question_categorization' (matches Snowflake DDL)",
+                    entity_name=instruction_name,
+                    context={"custom_instruction": instruction_name},
+                )
+
             has_question_cat = "question_categorization" in instruction and instruction.get("question_categorization")
             has_sql_gen = "sql_generation" in instruction and instruction.get("sql_generation")
 
             if not has_question_cat and not has_sql_gen:
                 result.add_error(
-                    f"Custom instruction '{instruction_name}' is missing required field: must have at least one of 'question_categorization' or 'sql_generation'",
+                    f"Custom instruction '{instruction_name}' is missing required field: must have at least one of 'ai_sql_generation' or 'ai_question_categorization'",
                     file_path=source_file,
                     rule_id="SST-V001",
-                    suggestion="Must have at least question_categorization or sql_generation",
+                    suggestion="Must have at least ai_sql_generation or ai_question_categorization",
                     entity_name=instruction_name,
                     context={
                         "custom_instruction": instruction_name,
-                        "field": "question_categorization or sql_generation",
+                        "field": "ai_sql_generation or ai_question_categorization",
                         "type": "custom_instruction",
                     },
                 )
