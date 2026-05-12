@@ -192,19 +192,19 @@ class CLIOutput:
         current_str = str(current).rjust(num_width)
         total_str = str(total).rjust(num_width)
 
-        # Truncate long names
+        # Truncate long names to ensure fixed-width alignment
         if len(item_name) > max_name_len:
             item_name = item_name[: max_name_len - 3] + "..."
 
-        # Calculate dots for alignment (ensure at least 1 dot)
-        dots_count = max(1, max_name_len - len(item_name))
-        dots = "." * dots_count
+        # Pad name with dots to fixed width: "name ............"
+        dots_padding = "." * (max_name_len - len(item_name))
+        name_segment = f"{item_name} {dots_padding}"
 
         # Format status with optional duration
         status_str = self._format_status(status, duration)
 
         # Build the line with only the status bracket colored
-        line = f"{self.timestamp()}  {current_str} of {total_str}  {item_name} {dots} "
+        line = f"{self.timestamp()}  {current_str} of {total_str}  {name_segment} "
 
         if self.use_colors:
             status_color = {"RUN": "yellow", "OK": "green", "ERROR": "red", "WARN": "yellow", "SKIP": "cyan"}.get(
