@@ -382,6 +382,38 @@ _register(
     "SST-E005", "Stale manifest", ErrorCategory.EXTRACT, "manifest.json is older than source files. Re-run: dbt compile"
 )
 
+# --- Source enrichment errors ---
+_register(
+    "SST-E006",
+    "Source not found in manifest",
+    ErrorCategory.EXTRACT,
+    "Source '{source_name}.{table_name}' not in manifest. Run 'dbt compile' or check source name",
+)
+_register(
+    "SST-E007",
+    "Source table not found in Snowflake",
+    ErrorCategory.EXTRACT,
+    "Table '{database}.{schema}.{table}' does not exist. Check database/schema in your source definition",
+)
+_register(
+    "SST-E008",
+    "No sources found",
+    ErrorCategory.EXTRACT,
+    "No dbt source definitions found. Ensure sources.yml exists with a 'sources:' key",
+)
+_register(
+    "SST-E009",
+    "Source YAML write failed",
+    ErrorCategory.EXTRACT,
+    "Could not write enriched metadata to '{path}'. Check file permissions",
+)
+_register(
+    "SST-E010",
+    "Invalid source selector",
+    ErrorCategory.EXTRACT,
+    "Source selector must be format 'source_name.table_name'. Got: '{value}'",
+)
+
 # ===========================================================================
 # GENERATE ERRORS (SST-G0xx)
 # ===========================================================================

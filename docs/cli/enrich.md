@@ -8,6 +8,8 @@ Enrich dbt YAML metadata with semantic information from Snowflake.
 
 The `enrich` command automatically populates your dbt YAML files with semantic metadata by querying your Snowflake tables. It adds column types, data types, sample values, enum detection, and optionally generates LLM-powered synonyms.
 
+Supports both **dbt models** and **dbt sources** — enrich raw/staging tables defined in `sources.yml` with the same metadata as your models.
+
 **Snowflake Connection:** Required
 
 ---
@@ -23,6 +25,11 @@ sst enrich --models customers,orders --all
 
 # Preview changes without writing
 sst enrich --models customers,orders --dry-run
+
+# Enrich dbt sources
+sst enrich --sources-only
+sst enrich --source raw.orders
+sst enrich models/ --include-sources
 ```
 
 ---
@@ -32,12 +39,16 @@ sst enrich --models customers,orders --dry-run
 ```bash
 sst enrich [TARGET_PATH] [OPTIONS]
 sst enrich --models MODEL_NAMES [OPTIONS]
+sst enrich --sources-only [OPTIONS]
+sst enrich --source SOURCE_NAME.TABLE_NAME [OPTIONS]
 ```
 
-**Three selection modes:**
+**Five selection modes:**
 - **By model name:** `--models name1,name2` (recommended, requires manifest)
 - **By path:** `sst enrich models/directory/` or `sst enrich path/to/file.yml`
 - **By wildcard pattern:** `sst enrich "models/directory/shared_prefix_*"` (matches multiple files)
+- **All sources:** `--sources-only` (enriches all dbt sources from manifest or YAML files)
+- **Specific source:** `--source raw.orders` (enriches a single source table)
 
 ---
 
@@ -51,6 +62,20 @@ sst enrich --models MODEL_NAMES [OPTIONS]
 | `--models` | `-m` | TEXT | Comma-separated list of model names (requires manifest) |
 
 **Note:** `--models` and `TARGET_PATH` are mutually exclusive.
+
+### Source Selection
+
+| Option | Type | Description |
+|--------|------|-------------|
+| `--include-sources` | FLAG | Also enrich dbt source definitions (alongside models) |
+| `--sources-only` | FLAG | Enrich only dbt sources, skip models |
+| `--source` | TEXT | Enrich a specific source table (format: `source_name.table_name`, requires manifest) |
+
+**Mutual exclusivity rules:**
+- `--sources-only` cannot be combined with `TARGET_PATH` or `--models`
+- `--source` cannot be combined with `TARGET_PATH`, `--models`, or `--include-sources`
+- `--sources-only` and `--source` are mutually exclusive
+- `--include-sources` augments model enrichment and requires `TARGET_PATH` or `--models`
 
 **Wildcard Patterns:** `TARGET_PATH` supports wildcard patterns (`*` and `?`) to match multiple files:
 - `"models/directory/shared_prefix_*"` - matches all files starting with `shared_prefix_`
@@ -158,6 +183,50 @@ sst enrich -m customers,orders --dry-run --verbose
 sst enrich models/ --exclude _intermediate,temp_models
 ```
 
+### Source Enrichment
+
+```bash
+# Enrich all sources defined in your project
+sst enrich --sources-only
+
+# Enrich a specific source table
+sst enrich --source raw.orders
+
+# Enrich models AND sources together
+sst enrich models/ --include-sources
+
+# Enrich sources with specific components
+sst enrich --sources-only --all
+sst enrich --source stripe.payments -ct -dt
+```
+
+**Source YAML structure** — SST writes `config.meta.sst` blocks to source columns, identical to models:
+
+```yaml
+version: 2
+sources:
+  - name: raw
+    database: RAW_DB
+    schema: PUBLIC
+    tables:
+      - name: orders
+        description: "Raw order data"
+        config:
+          meta:
+            sst:
+              synonyms: []
+        columns:
+          - name: id
+            description: ""
+            config:
+              meta:
+                sst:
+                  column_type: dimension
+                  data_type: NUMBER
+                  sample_values: [1, 2, 3]
+                  is_enum: false
+```
+
 ---
 
 ## What Gets Enriched
@@ -251,11 +320,77 @@ Enrichment **always** updates:
 - sample_values (fresh data)
 - is_enum (current cardinality)
 
-**Safe to run multiple times.**
+**Safe to run multiple times.** These rules apply identically to both models and sources.
 
 ---
 
 ## Troubleshooting
+
+### "Source not found in manifest" (SST-E006)
+
+The source you specified with `--source` doesn't exist in the dbt manifest.
+
+**Solution:** Check the spelling matches your source YAML, then recompile:
+
+```bash
+# Verify your source names
+grep -r "name:" models/sources/
+
+# Recompile manifest
+dbt compile --target prod
+
+# Retry
+sst enrich --source raw.orders
+```
+
+### "Source YAML write failed" (SST-E009)
+
+SST could not write enriched metadata back to the source YAML file.
+
+**Solution:** Check file permissions and ensure the file isn't locked by another process:
+
+```bash
+ls -la models/sources/my_source.yml
+# Fix permissions if needed
+chmod 644 models/sources/my_source.yml
+```
+
+### "No sources found" (SST-E008)
+
+No dbt source definitions were found in your project.
+
+**Solution:** Ensure you have a `sources.yml` (or similar) file with a `sources:` key:
+
+```yaml
+# models/staging/_sources.yml
+version: 2
+sources:
+  - name: raw
+    database: RAW_DB
+    schema: PUBLIC
+    tables:
+      - name: orders
+```
+
+Alternatively, run `dbt compile` to ensure sources appear in the manifest.
+
+### "Source table not found in Snowflake" (SST-E007)
+
+The source table exists in your YAML but not in Snowflake.
+
+**Solution:** Check the `database` and `schema` in your source definition match the actual Snowflake location.
+
+### "Invalid source selector" (SST-E010)
+
+The `--source` value must use the format `source_name.table_name`.
+
+```bash
+# Correct
+sst enrich --source raw.orders
+
+# Incorrect
+sst enrich --source orders
+```
 
 ### "manifest.json not found"
 

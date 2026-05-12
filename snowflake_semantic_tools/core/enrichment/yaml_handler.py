@@ -131,6 +131,10 @@ class YAMLHandler:
                     if prev_line.endswith("synonyms:") and next_line.startswith("sample_values:"):
                         skip_line = True
 
+                    # Case 3: Blank line between description and config (ruamel artifact)
+                    if next_line == "config:":
+                        skip_line = True
+
                     if skip_line:
                         continue
 
@@ -500,3 +504,100 @@ class YAMLHandler:
         except Exception:
             # If we can't read/parse the file, assume it doesn't contain the model
             return False
+
+    # ===================================================================
+    # Source support
+    # ===================================================================
+
+    def has_sources(self, yaml_content: Dict[str, Any]) -> bool:
+        """Check if YAML content has a 'sources' key with valid list content."""
+        sources = yaml_content.get("sources")
+        return isinstance(sources, list) and len(sources) > 0
+
+    def _has_sources(self, yaml_content: Dict[str, Any]) -> bool:
+        """Alias for has_sources (backwards compatibility)."""
+        return self.has_sources(yaml_content)
+
+    def find_source_table_in_yaml(
+        self, yaml_content: Dict[str, Any], source_name: str, table_name: str
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Find a specific source table within parsed YAML content.
+
+        dbt source YAML structure:
+            sources:
+              - name: raw           # source_name
+                tables:
+                  - name: users     # table_name
+
+        Args:
+            yaml_content: Parsed YAML content
+            source_name: Name of the source group (e.g., 'raw')
+            table_name: Name of the table within the source (e.g., 'users')
+
+        Returns:
+            The table dict if found, or None
+        """
+        if not self._has_sources(yaml_content):
+            return None
+
+        for source in yaml_content["sources"]:
+            if not isinstance(source, dict):
+                continue
+            if source.get("name") != source_name:
+                continue
+            tables = source.get("tables", [])
+            if not isinstance(tables, list):
+                continue
+            for table in tables:
+                if isinstance(table, dict) and table.get("name") == table_name:
+                    return table
+
+        return None
+
+    def find_source_in_yaml(self, yaml_content: Dict[str, Any], source_name: str) -> Optional[Dict[str, Any]]:
+        """
+        Find a source group by name within parsed YAML content.
+
+        Args:
+            yaml_content: Parsed YAML content
+            source_name: Name of the source group
+
+        Returns:
+            The source dict if found, or None
+        """
+        if not self._has_sources(yaml_content):
+            return None
+
+        for source in yaml_content["sources"]:
+            if isinstance(source, dict) and source.get("name") == source_name:
+                return source
+
+        return None
+
+    def discover_source_yaml_files(self, search_dir: str) -> List[str]:
+        """
+        Walk a directory tree and return paths to YAML files containing a 'sources:' key.
+
+        Args:
+            search_dir: Root directory to search
+
+        Returns:
+            List of file paths to source YAML files
+        """
+        source_files = []
+        search_path = Path(search_dir)
+
+        if not search_path.is_dir():
+            return source_files
+
+        for ext in ["**/*.yml", "**/*.yaml"]:
+            for yaml_file in search_path.glob(ext):
+                try:
+                    content = self.read_yaml(str(yaml_file))
+                    if content and self._has_sources(content):
+                        source_files.append(str(yaml_file))
+                except Exception:
+                    continue
+
+        return sorted(source_files)

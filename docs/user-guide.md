@@ -28,6 +28,11 @@ sst enrich --models customers,orders
 
 # Or enrich all models in a directory
 sst enrich models/marts/
+
+# Enrich dbt sources (raw/staging tables)
+sst enrich --sources-only
+sst enrich --source raw.orders
+sst enrich models/ --include-sources
 ```
 
 **Benefits:**
