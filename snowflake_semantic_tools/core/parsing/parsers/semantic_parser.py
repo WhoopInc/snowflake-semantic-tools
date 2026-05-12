@@ -194,7 +194,8 @@ def parse_snowflake_relationships(
                 "relationship_name": relationship.get("name", "").upper(),
                 "left_table_name": relationship.get("left_table", "").upper(),
                 "right_table_name": relationship.get("right_table", "").upper(),
-                "source_file": str(file_path),  # Store the file path for validation errors
+                "source_file": str(file_path),
+                "_has_conditions": bool(relationship.get("relationship_conditions")),
             }
             relationship_records.append(rel_record)
 
@@ -417,25 +418,25 @@ def parse_semantic_views(
     for view_def in semantic_views:
         try:
             if not isinstance(view_def, dict):
-                logger.error(f"Semantic view definition must be a dictionary, got {type(view_def)} in {file_path}")
+                logger.warning(f"Semantic view definition must be a dictionary, got {type(view_def)} in {file_path}")
+                view_records.append(
+                    {
+                        "name": "",
+                        "description": "",
+                        "tables": "[]",
+                        "custom_instructions": "[]",
+                        "source_file": str(file_path),
+                    }
+                )
                 continue
 
-            # Extract required fields
-            name = view_def.get("name")
-            if not name:
-                logger.error(f"Semantic view definition missing required 'name' field in {file_path}")
-                continue
-
+            name = view_def.get("name", "")
             description = view_def.get("description", "")
 
             tables = view_def.get("tables", [])
             if not isinstance(tables, list):
-                logger.error(f"'tables' must be a list for view '{name}' in {file_path}, got {type(tables)}")
-                continue
-
-            if not tables:
-                logger.error(f"Semantic view '{name}' must have at least one table in {file_path}")
-                continue
+                logger.warning(f"'tables' must be a list for view '{name}' in {file_path}, got {type(tables)}")
+                tables = []
 
             # Convert tables list to JSON string for storage
             tables_json = json.dumps(tables)
