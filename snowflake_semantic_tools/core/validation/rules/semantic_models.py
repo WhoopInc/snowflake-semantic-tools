@@ -32,9 +32,7 @@ logger = get_logger("semantic_model_validator")
 
 def _can_infer_tables(expr: str) -> bool:
     """Check if tables can be auto-inferred from an expression."""
-    from snowflake_semantic_tools.core.parsing.parsers.semantic_parser import (
-        _extract_table_names_from_jinja,
-    )
+    from snowflake_semantic_tools.core.parsing.parsers.semantic_parser import _extract_table_names_from_jinja
 
     if _extract_table_names_from_jinja(expr):
         return True
