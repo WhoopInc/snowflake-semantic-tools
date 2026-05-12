@@ -86,6 +86,12 @@ def parse_dbt_yaml_file(
         result = get_empty_result()
 
         for model in models:
+            if not isinstance(model, dict):
+                error_tracker.add_error(
+                    f"Invalid model structure in {file_path}: expected a mapping with 'name' key, "
+                    f"got {type(model).__name__}. Ensure each model starts with '- name: <model_name>'"
+                )
+                continue
             model_data = parse_single_model(model, file_path, target_database, manifest_parser)
 
             # Merge results
