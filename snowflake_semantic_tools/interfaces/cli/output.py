@@ -82,6 +82,32 @@ class CLIOutput:
         prefix = "  " * indent
         click.echo(f"{self.timestamp()}  {prefix}{message}")
 
+    def config_table(self, items: List[tuple]) -> None:
+        """
+        Print aligned key-value configuration table with colored values.
+
+        Args:
+            items: List of (label, value) tuples to display
+
+        Example:
+            output.config_table([
+                ("Profile", "analytics_dbt.dev"),
+                ("Read from", "SCRATCH.LUIZZI_SCRATCH_SST"),
+                ("Create in", "SCRATCH.LUIZZI_SCRATCH_SST"),
+            ])
+        """
+        if self.quiet or not items:
+            return
+
+        max_label = max(len(label) for label, _ in items)
+        for label, value in items:
+            padded_label = label.ljust(max_label)
+            if self.use_colors:
+                colored_value = click.style(str(value), fg="cyan")
+                click.echo(f"{self.timestamp()}    {padded_label}  {colored_value}")
+            else:
+                click.echo(f"{self.timestamp()}    {padded_label}  {value}")
+
     def debug(self, message: str, indent: int = 0) -> None:
         """
         Print debug message (only in verbose mode).

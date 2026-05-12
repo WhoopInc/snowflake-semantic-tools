@@ -92,8 +92,12 @@ def extract(ctx, dbt_target, db, schema, dbt, semantic, verbose):
     try:
         output.blank_line()
         profile_info = f"{snowflake_config.profile_name}.{snowflake_config.target_name}"
-        output.info(f"Using dbt profile: {profile_info}")
-        output.info(f"Target: {target_db}.{target_schema}", indent=1)
+        output.config_table(
+            [
+                ("Profile", profile_info),
+                ("Target", f"{target_db}.{target_schema}"),
+            ]
+        )
 
         # Use context manager for guaranteed Snowflake connection cleanup
         with SemanticMetadataExtractionService.create_from_config(snowflake_config) as service:
