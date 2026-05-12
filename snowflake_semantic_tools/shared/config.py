@@ -78,6 +78,8 @@ class Config:
             },
             "generation": {
                 "filters_to_instructions": True,  # Convert filters to AI_SQL_GENERATION instructions
+                "threads": 1,  # Number of concurrent semantic view generations (1 = sequential)
+                "view_timeout": 300,  # Per-view timeout in seconds
             },
             "logging": {"level": "INFO", "format": "%(asctime)s - %(name)s - %(levelname)s - %(message)s"},
         }

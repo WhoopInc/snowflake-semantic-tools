@@ -82,6 +82,32 @@ class CLIOutput:
         prefix = "  " * indent
         click.echo(f"{self.timestamp()}  {prefix}{message}")
 
+    def config_table(self, items: List[tuple]) -> None:
+        """
+        Print aligned key-value configuration table with colored values.
+
+        Args:
+            items: List of (label, value) tuples to display
+
+        Example:
+            output.config_table([
+                ("Profile", "analytics_dbt.dev"),
+                ("Read from", "SCRATCH.LUIZZI_SCRATCH_SST"),
+                ("Create in", "SCRATCH.LUIZZI_SCRATCH_SST"),
+            ])
+        """
+        if self.quiet or not items:
+            return
+
+        max_label = max(len(label) for label, _ in items)
+        for label, value in items:
+            padded_label = label.ljust(max_label)
+            if self.use_colors:
+                colored_value = click.style(str(value), fg="cyan")
+                click.echo(f"{self.timestamp()}    {padded_label}  {colored_value}")
+            else:
+                click.echo(f"{self.timestamp()}    {padded_label}  {value}")
+
     def debug(self, message: str, indent: int = 0) -> None:
         """
         Print debug message (only in verbose mode).
@@ -192,19 +218,19 @@ class CLIOutput:
         current_str = str(current).rjust(num_width)
         total_str = str(total).rjust(num_width)
 
-        # Truncate long names
+        # Truncate long names to ensure fixed-width alignment
         if len(item_name) > max_name_len:
             item_name = item_name[: max_name_len - 3] + "..."
 
-        # Calculate dots for alignment (ensure at least 1 dot)
-        dots_count = max(1, max_name_len - len(item_name))
-        dots = "." * dots_count
+        # Pad name with dots to fixed width: "name ............"
+        dots_padding = "." * (max_name_len - len(item_name))
+        name_segment = f"{item_name} {dots_padding}"
 
         # Format status with optional duration
         status_str = self._format_status(status, duration)
 
         # Build the line with only the status bracket colored
-        line = f"{self.timestamp()}  {current_str} of {total_str}  {item_name} {dots} "
+        line = f"{self.timestamp()}  {current_str} of {total_str}  {name_segment} "
 
         if self.use_colors:
             status_color = {"RUN": "yellow", "OK": "green", "ERROR": "red", "WARN": "yellow", "SKIP": "cyan"}.get(

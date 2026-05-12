@@ -117,12 +117,13 @@ class ModelEnriched(BaseEvent):
         return EventLevel.INFO
 
     def message(self) -> str:
-        # Use dots for alignment to match [RUN] line format (max 40 chars for name)
         max_name_len = 40
-        name_display = self.model_name[:max_name_len] if len(self.model_name) > max_name_len else self.model_name
-        dots_count = max(1, max_name_len - len(name_display))
-        dots = "." * dots_count
-        return f"{format_progress(self.current, self.total)}  {name_display} {dots} [OK in {format_duration(self.duration_seconds)}]"
+        name_display = (
+            self.model_name[: max_name_len - 3] + "..." if len(self.model_name) > max_name_len else self.model_name
+        )
+        dots_padding = "." * (max_name_len - len(name_display))
+        name_segment = f"{name_display} {dots_padding}"
+        return f"{format_progress(self.current, self.total)}  {name_segment} [OK in {format_duration(self.duration_seconds)}]"
 
     def log_dict(self) -> Dict[str, Any]:
         return {
@@ -148,12 +149,13 @@ class ModelEnrichmentSkipped(BaseEvent):
         return EventLevel.WARNING
 
     def message(self) -> str:
-        # Use dots for alignment to match [RUN] line format
         max_name_len = 40
-        name_display = self.model_name[:max_name_len] if len(self.model_name) > max_name_len else self.model_name
-        dots_count = max(1, max_name_len - len(name_display))
-        dots = "." * dots_count
-        return f"{format_progress(self.current, self.total)}  {name_display} {dots} [SKIP - {self.reason}]"
+        name_display = (
+            self.model_name[: max_name_len - 3] + "..." if len(self.model_name) > max_name_len else self.model_name
+        )
+        dots_padding = "." * (max_name_len - len(name_display))
+        name_segment = f"{name_display} {dots_padding}"
+        return f"{format_progress(self.current, self.total)}  {name_segment} [SKIP - {self.reason}]"
 
     def log_dict(self) -> Dict[str, Any]:
         return {
@@ -359,12 +361,13 @@ class ViewGenerated(BaseEvent):
 
     def message(self) -> str:
         action = "created" if self.executed else "generated"
-        # Use dots for alignment to match [RUN] line format (max 40 chars for name)
         max_name_len = 40
-        name_display = self.view_name[:max_name_len] if len(self.view_name) > max_name_len else self.view_name
-        dots_count = max(1, max_name_len - len(name_display))
-        dots = "." * dots_count
-        return f"{format_progress(self.current, self.total)}  {name_display} {dots} [{action.upper()} in {format_duration(self.duration_seconds)}]"
+        name_display = (
+            self.view_name[: max_name_len - 3] + "..." if len(self.view_name) > max_name_len else self.view_name
+        )
+        dots_padding = "." * (max_name_len - len(name_display))
+        name_segment = f"{name_display} {dots_padding}"
+        return f"{format_progress(self.current, self.total)}  {name_segment} [{action.upper()} in {format_duration(self.duration_seconds)}]"
 
     def log_dict(self) -> Dict[str, Any]:
         return {
@@ -391,12 +394,13 @@ class ViewGenerationFailed(BaseEvent):
         return EventLevel.ERROR
 
     def message(self) -> str:
-        # Use dots for alignment to match [RUN] line format
         max_name_len = 40
-        name_display = self.view_name[:max_name_len] if len(self.view_name) > max_name_len else self.view_name
-        dots_count = max(1, max_name_len - len(name_display))
-        dots = "." * dots_count
-        return f"{format_progress(self.current, self.total)}  {name_display} {dots} [FAILED - {self.error_message}]"
+        name_display = (
+            self.view_name[: max_name_len - 3] + "..." if len(self.view_name) > max_name_len else self.view_name
+        )
+        dots_padding = "." * (max_name_len - len(name_display))
+        name_segment = f"{name_display} {dots_padding}"
+        return f"{format_progress(self.current, self.total)}  {name_segment} [FAILED - {self.error_message}]"
 
     def log_dict(self) -> Dict[str, Any]:
         return {

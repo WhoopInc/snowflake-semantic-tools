@@ -156,7 +156,7 @@ class TestV048PrimaryKeyUniqueKeysOverlap:
     def validator(self):
         return DbtModelValidator()
 
-    def test_overlap_produces_error(self, validator):
+    def test_overlap_produces_warning(self, validator):
         table = {
             "table_name": "ORDERS",
             "primary_key": ["order_id"],
@@ -165,9 +165,9 @@ class TestV048PrimaryKeyUniqueKeysOverlap:
         }
         result = ValidationResult()
         validator._check_primary_key(table, "ORDERS", [], [], [], result)
-        errors = [e for e in result.get_errors() if e.rule_id == "SST-V048"]
-        assert len(errors) == 1
-        assert "primary_key" in str(errors[0].message) or "unique_keys" in str(errors[0].message)
+        warnings = [w for w in result.get_warnings() if w.rule_id == "SST-V048"]
+        assert len(warnings) == 1
+        assert "primary_key" in str(warnings[0].message) or "unique_keys" in str(warnings[0].message)
 
     def test_no_overlap_no_error(self, validator):
         table = {
