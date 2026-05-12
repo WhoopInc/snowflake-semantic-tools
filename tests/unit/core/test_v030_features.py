@@ -85,8 +85,8 @@ class TestV039CrossEntityValidation:
         }
         dbt_catalog = {"orders": {"columns": {"order_total": {}}}, "locations": {"columns": {"tax_rate": {}}}}
         result = validator.validate(semantic_data, dbt_catalog)
-        errors = [e for e in result.get_errors() if e.rule_id == "SST-V039"]
-        assert len(errors) == 1
+        warnings = [w for w in result.get_warnings() if w.rule_id == "SST-V039"]
+        assert len(warnings) == 1
 
     def test_v039_does_not_fire_on_single_entity(self, validator):
         semantic_data = {
@@ -104,8 +104,8 @@ class TestV039CrossEntityValidation:
         }
         dbt_catalog = {"orders": {"columns": {"order_total": {}}}}
         result = validator.validate(semantic_data, dbt_catalog)
-        errors = [e for e in result.get_errors() if e.rule_id == "SST-V039"]
-        assert len(errors) == 0
+        warnings = [w for w in result.get_warnings() if w.rule_id == "SST-V039"]
+        assert len(warnings) == 0
 
     def test_v039_skipped_for_derived_metrics(self, validator):
         semantic_data = {
@@ -123,8 +123,8 @@ class TestV039CrossEntityValidation:
         }
         dbt_catalog = {"orders": {"columns": {}}, "customers": {"columns": {}}}
         result = validator.validate(semantic_data, dbt_catalog)
-        errors = [e for e in result.get_errors() if e.rule_id == "SST-V039"]
-        assert len(errors) == 0
+        warnings = [w for w in result.get_warnings() if w.rule_id == "SST-V039"]
+        assert len(warnings) == 0
 
 
 class TestV045DerivedMetricMustReferenceMetrics:

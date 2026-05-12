@@ -512,7 +512,7 @@ def _run_syntax_verification(
             output.warning("No parsed data available for syntax verification")
             result = ValidationResult()
             result.add_warning(
-                "Syntax verification skipped: No parsed data available. Run validation first.",
+                "Syntax verification skipped due to parsing errors above.",
                 context={"issue": "no_parse_result"},
             )
             return result

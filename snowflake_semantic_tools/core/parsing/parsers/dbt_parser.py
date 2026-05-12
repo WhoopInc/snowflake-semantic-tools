@@ -178,10 +178,9 @@ def parse_single_model(
             result["sm_facts"].append(fact_data)
 
         else:
-            unclassified_data = apply_uppercase_formatting(column_data, ["table_name", "name", "expr", "data_type"])
-            result["sm_dimensions"].append(unclassified_data)
+            # Skip columns with missing or invalid column_type - validation will catch this
             logger.debug(
-                f"Column '{column.get('name', 'unknown')}' with missing/invalid column_type added for validation"
+                f"Skipping column '{column.get('name', 'unknown')}' with missing/invalid column_type during extraction"
             )
 
     return result

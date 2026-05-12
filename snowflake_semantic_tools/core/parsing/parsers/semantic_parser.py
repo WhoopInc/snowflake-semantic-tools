@@ -378,10 +378,12 @@ def parse_snowflake_verified_queries(queries: List[Dict[str, Any]], file_path: P
         try:
             sql = query.get("sql", "")
             sql_file = query.get("sql_file", "")
+            sql_loaded_from_file = False
             if sql_file and not sql:
                 sql_file_path = file_path.parent / sql_file
                 if sql_file_path.exists():
                     sql = sql_file_path.read_text().strip()
+                    sql_loaded_from_file = True
                 else:
                     logger.warning(f"sql_file '{sql_file}' not found relative to {file_path}")
 
@@ -393,6 +395,7 @@ def parse_snowflake_verified_queries(queries: List[Dict[str, Any]], file_path: P
                 "verified_by": query.get("verified_by", ""),
                 "sql": sql,
                 "sql_file": sql_file if sql_file else "",
+                "_sql_loaded_from_file": sql_loaded_from_file,
                 "source_file": str(file_path),
             }
             if "use_as_onboarding_question" in query:
@@ -419,7 +422,6 @@ def parse_semantic_views(
     for view_def in semantic_views:
         try:
             if not isinstance(view_def, dict):
-                logger.warning(f"Semantic view definition must be a dictionary, got {type(view_def)} in {file_path}")
                 view_records.append(
                     {
                         "name": "",
@@ -436,10 +438,8 @@ def parse_semantic_views(
 
             tables = view_def.get("tables", [])
             if not isinstance(tables, list):
-                logger.warning(f"'tables' must be a list for view '{name}' in {file_path}, got {type(tables)}")
                 tables = []
 
-            # Convert tables list to JSON string for storage
             tables_json = json.dumps(tables)
 
             # Extract custom_instructions - get instruction NAME (not resolved text)

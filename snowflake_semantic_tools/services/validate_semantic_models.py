@@ -224,10 +224,13 @@ class SemanticMetadataCollectionValidationService:
                     )
 
             except ParsingCriticalError as e:
-                # Critical parsing errors prevent further validation
                 logger.error(f"Critical parsing errors detected: {e}")
                 for error in e.errors:
-                    result.add_error(f"CRITICAL: {error}")
+                    result.add_error(
+                        error,
+                        rule_id="SST-P003",
+                        suggestion="Check template syntax and referenced names",
+                    )
                     logger.error(f"Parsing error: {error}")
 
                 # Return early - no point in validating malformed data

@@ -345,6 +345,9 @@ class SemanticModelValidator:
                     result.add_error(
                         f"Relationship '{rel_name}' is missing required field: relationship_conditions",
                         file_path=source_file,
+                        rule_id="SST-V040",
+                        suggestion="Add relationship_conditions with at least one join condition string",
+                        entity_name=rel_name,
                         context={"relationship": rel_name, "field": "relationship_conditions", "type": "relationship"},
                     )
             else:
@@ -708,7 +711,8 @@ class SemanticModelValidator:
 
             has_sql = bool(query.get("sql"))
             has_sql_file = bool(query.get("sql_file"))
-            if has_sql and has_sql_file:
+            sql_loaded_from_file = query.get("_sql_loaded_from_file", False)
+            if has_sql and has_sql_file and not sql_loaded_from_file:
                 result.add_error(
                     f"Verified query '{query_name}' specifies both 'sql' and 'sql_file' — use exactly one",
                     file_path=source_file,
@@ -1117,7 +1121,7 @@ class SemanticModelValidator:
                 f"Please use a shorter name.",
                 file_path=source_file,
                 rule_id="SST-V005",
-                suggestion="Shorten name to <=256 characters",
+                suggestion=f"Shorten name to {SNOWFLAKE_MAX_IDENTIFIER_LENGTH} characters or fewer",
                 entity_name=name,
                 context={
                     "identifier": name,
@@ -1563,7 +1567,7 @@ class SemanticModelValidator:
                     f"{context_name} tag '{key}' value exceeds 256 characters ({len(value_str)} chars)",
                     file_path=source_file,
                     rule_id="SST-V016",
-                    suggestion="Shorten tag value to <=256 characters",
+                    suggestion="Shorten tag value to 256 characters or fewer",
                     entity_name=context_name,
                     context={"type": "tags", "tag_name": str(key), "value_length": len(value_str)},
                 )

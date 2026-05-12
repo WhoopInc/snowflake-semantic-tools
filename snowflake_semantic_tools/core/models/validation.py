@@ -464,18 +464,17 @@ class ValidationResult:
         warning_count = len(self.get_warnings())
 
         if error_count > 0:
-            errors = self.get_errors()[:20]
+            max_errors = error_count if verbose else 20
+            errors = self.get_errors()[:max_errors]
             print()
             print(renderer.render_batch(errors))
-            if error_count > 20:
-                print(f"\n  ... and {error_count - 20} more errors (run with --verbose)")
+            if error_count > max_errors:
+                print(f"\n  ... and {error_count - max_errors} more errors (run with --verbose)")
 
         if warning_count > 0 and verbose:
-            warnings = self.get_warnings()[:30]
+            warnings = self.get_warnings()
             print()
             print(renderer.render_batch(warnings))
-            if warning_count > 30:
-                print(f"\n  ... and {warning_count - 30} more warnings")
 
         print("\n" + "━" * 70)
 
