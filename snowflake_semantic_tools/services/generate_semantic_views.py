@@ -8,13 +8,16 @@ interfaces for flexibility.
 """
 
 import json
+import threading
 import time
-from dataclasses import dataclass
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 from snowflake_semantic_tools.core.generation import SemanticViewBuilder
 from snowflake_semantic_tools.infrastructure.snowflake import SnowflakeClient, SnowflakeConfig
 from snowflake_semantic_tools.infrastructure.snowflake.connection_manager import ConnectionManager
+from snowflake_semantic_tools.services.connection_pool import ConnectionPool
 from snowflake_semantic_tools.shared.events import (
     GenerationCompleted,
     GenerationStarted,
@@ -158,6 +161,10 @@ class GenerateConfig:
     # Execution mode
     execute: bool = True  # If True, executes SQL in Snowflake. If False, returns SQL only.
 
+    # Parallelism
+    threads: int = 1  # Number of concurrent view generations
+    view_timeout: int = 300  # Per-view timeout in seconds
+
 
 @dataclass
 class GenerateResult:
@@ -195,6 +202,9 @@ class UnifiedGenerationConfig:
     defer_database: Optional[str] = None
     # Defer manifest for looking up actual table locations (database + schema per table)
     defer_manifest: Optional["ManifestParser"] = None
+    # Parallelism
+    threads: int = 1
+    view_timeout: int = 300
 
 
 class UnifiedGenerationResult:
@@ -340,7 +350,11 @@ class SemanticViewGenerationService:
             # Fire event: Generation started
             fire_event(GenerationStarted(view_count=len(views_to_generate)))
 
-            # Generate each view
+            # Dispatch: parallel or sequential
+            if generate_config.threads > 1:
+                return self._execute_parallel(views_to_generate, generate_config, progress, start_time)
+
+            # Generate each view (sequential)
             for idx, view_config in enumerate(views_to_generate, 1):
                 view_name = view_config.get("name")
                 table_names = view_config.get("tables", [])
@@ -458,6 +472,251 @@ class SemanticViewGenerationService:
             return GenerateResult(
                 success=False, views_generated=views_generated, views_failed=views_failed, errors=errors
             )
+
+    # Transient Snowflake error codes that merit a retry
+    _TRANSIENT_ERRORS = {"250001", "250003"}
+
+    def _is_transient_error(self, error: Exception) -> bool:
+        """Check if a Snowflake error is transient and retryable."""
+        msg = str(error)
+        for code in self._TRANSIENT_ERRORS:
+            if code in msg:
+                return True
+        if "503" in msg or "Service Unavailable" in msg:
+            return True
+        return False
+
+    def _execute_parallel(
+        self,
+        views_to_generate: List[Dict[str, Any]],
+        generate_config: GenerateConfig,
+        progress: "ProgressCallback",
+        start_time: float,
+    ) -> GenerateResult:
+        """
+        Execute view generation in parallel using a thread pool.
+
+        Each thread gets its own ConnectionManager from a pool,
+        builds a SemanticViewBuilder, and generates one view at a time.
+        """
+        threads = min(generate_config.threads, len(views_to_generate))
+        view_timeout = generate_config.view_timeout
+        total = len(views_to_generate)
+
+        views_generated = []
+        views_failed = []
+        errors = []
+        sql_statements = {}
+        output_lock = threading.Lock()
+        cancelled = threading.Event()
+
+        logger.info(f"Parallel generation: {threads} threads, {total} views, timeout={view_timeout}s")
+
+        pool = ConnectionPool(config=self.config, size=threads)
+        try:
+            pool.warmup()
+        except RuntimeError as e:
+            logger.error(f"Connection pool warmup failed: {e}")
+            fire_event(
+                GenerationCompleted(
+                    total_views=total, successful=0, failed=total, duration_seconds=time.time() - start_time
+                )
+            )
+            return GenerateResult(success=False, views_generated=[], views_failed=[], errors=[str(e)])
+
+        def _generate_one(view_config: Dict[str, Any], idx: int) -> Dict[str, Any]:
+            """Worker: generate a single semantic view."""
+            view_name = view_config.get("name")
+            table_names = view_config.get("tables", [])
+            description = view_config.get("description", "")
+            custom_instruction_names = view_config.get("custom_instructions", [])
+
+            if cancelled.is_set():
+                return {"view_name": view_name, "success": False, "error": "Cancelled", "duration": 0}
+
+            if not table_names:
+                with output_lock:
+                    progress.item_progress(idx, total, view_name, "ERROR")
+                    fire_event(
+                        ViewGenerationFailed(
+                            view_name=view_name, error_message="No tables specified", current=idx, total=total
+                        )
+                    )
+                return {"view_name": view_name, "success": False, "error": "No tables specified", "duration": 0}
+
+            cm = pool.checkout()
+            try:
+                builder = SemanticViewBuilder(config=self.config, snowflake_loader=cm)
+                builder.target_database = generate_config.target_database
+                builder.target_schema = generate_config.target_schema
+                builder.metadata_database = generate_config.metadata_database
+                builder.metadata_schema = generate_config.metadata_schema
+
+                with output_lock:
+                    progress.item_progress(idx, total, view_name, "RUN")
+
+                view_start = time.time()
+                result = builder.build_semantic_view(
+                    table_names=table_names,
+                    view_name=view_name,
+                    description=description,
+                    execute=generate_config.execute,
+                    defer_database=generate_config.defer_database,
+                    defer_manifest=generate_config.defer_manifest,
+                    custom_instruction_names=custom_instruction_names,
+                )
+                view_duration = time.time() - view_start
+
+                if result["success"]:
+                    with output_lock:
+                        fire_event(
+                            ViewGenerated(
+                                view_name=view_name,
+                                table_count=len(table_names),
+                                duration_seconds=view_duration,
+                                current=idx,
+                                total=total,
+                                executed=generate_config.execute,
+                            )
+                        )
+                    return {
+                        "view_name": view_name,
+                        "success": True,
+                        "sql": result["sql_statement"],
+                        "duration": view_duration,
+                    }
+                else:
+                    with output_lock:
+                        fire_event(
+                            ViewGenerationFailed(
+                                view_name=view_name,
+                                error_message=result["message"][:200],
+                                current=idx,
+                                total=total,
+                            )
+                        )
+                    return {
+                        "view_name": view_name,
+                        "success": False,
+                        "error": result["message"],
+                        "duration": view_duration,
+                    }
+
+            except Exception as e:
+                # Retry once on transient errors
+                if self._is_transient_error(e):
+                    logger.debug(f"Transient error on '{view_name}', retrying in 2s...")
+                    time.sleep(2)
+                    try:
+                        view_start = time.time()
+                        result = builder.build_semantic_view(
+                            table_names=table_names,
+                            view_name=view_name,
+                            description=description,
+                            execute=generate_config.execute,
+                            defer_database=generate_config.defer_database,
+                            defer_manifest=generate_config.defer_manifest,
+                            custom_instruction_names=custom_instruction_names,
+                        )
+                        view_duration = time.time() - view_start
+                        if result["success"]:
+                            with output_lock:
+                                fire_event(
+                                    ViewGenerated(
+                                        view_name=view_name,
+                                        table_count=len(table_names),
+                                        duration_seconds=view_duration,
+                                        current=idx,
+                                        total=total,
+                                        executed=generate_config.execute,
+                                    )
+                                )
+                            return {
+                                "view_name": view_name,
+                                "success": True,
+                                "sql": result["sql_statement"],
+                                "duration": view_duration,
+                            }
+                    except Exception:
+                        pass  # Fall through to error handling
+
+                error_msg = _format_snowflake_error(view_name, e)
+                with output_lock:
+                    fire_event(
+                        ViewGenerationFailed(view_name=view_name, error_message=str(e)[:200], current=idx, total=total)
+                    )
+                return {"view_name": view_name, "success": False, "error": error_msg, "duration": 0}
+            finally:
+                pool.checkin(cm)
+
+        try:
+            with ThreadPoolExecutor(max_workers=threads) as executor:
+                futures = {
+                    executor.submit(_generate_one, view_config, idx): view_config
+                    for idx, view_config in enumerate(views_to_generate, 1)
+                }
+
+                for future in as_completed(futures):
+                    try:
+                        result = future.result(timeout=view_timeout)
+                    except TimeoutError:
+                        view_config = futures[future]
+                        view_name = view_config.get("name", "unknown")
+                        error_msg = f"View '{view_name}' timed out after {view_timeout}s"
+                        views_failed.append(view_name)
+                        errors.append(error_msg)
+                        with output_lock:
+                            fire_event(
+                                ViewGenerationFailed(
+                                    view_name=view_name, error_message=error_msg, current=0, total=total
+                                )
+                            )
+                        continue
+                    except Exception as e:
+                        view_config = futures[future]
+                        view_name = view_config.get("name", "unknown")
+                        error_msg = _format_snowflake_error(view_name, e)
+                        views_failed.append(view_name)
+                        errors.append(error_msg)
+                        continue
+
+                    if result["success"]:
+                        views_generated.append(result["view_name"])
+                        if result.get("sql"):
+                            sql_statements[result["view_name"]] = result["sql"]
+                    else:
+                        views_failed.append(result["view_name"])
+                        if result.get("error"):
+                            errors.append(result["error"])
+
+        except KeyboardInterrupt:
+            cancelled.set()
+            logger.warning("Ctrl+C received — shutting down...")
+            with output_lock:
+                progress.warning(
+                    f"Cancelled. {len(views_generated)} of {total} completed, "
+                    f"{total - len(views_generated) - len(views_failed)} aborted."
+                )
+        finally:
+            pool.close_all()
+
+        duration = time.time() - start_time
+        fire_event(
+            GenerationCompleted(
+                total_views=total,
+                successful=len(views_generated),
+                failed=len(views_failed),
+                duration_seconds=duration,
+            )
+        )
+
+        return GenerateResult(
+            success=len(views_failed) == 0 and not cancelled.is_set(),
+            views_generated=views_generated,
+            views_failed=views_failed,
+            errors=errors,
+            sql_statements=sql_statements if not generate_config.execute else None,
+        )
 
     def _query_available_views(self) -> List[Dict[str, Any]]:
         """
@@ -692,6 +951,8 @@ class SemanticViewGenerationService:
                 defer_database=config.defer_database,
                 defer_manifest=config.defer_manifest,
                 execute=not config.dry_run,
+                threads=config.threads,
+                view_timeout=config.view_timeout,
             )
 
             # Execute using low-level interface with progress callback

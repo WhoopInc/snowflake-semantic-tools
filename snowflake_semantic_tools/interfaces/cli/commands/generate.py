@@ -23,6 +23,7 @@ from snowflake_semantic_tools.services.generate_semantic_views import (
     SemanticViewGenerationService,
     UnifiedGenerationConfig,
 )
+from snowflake_semantic_tools.shared.config import get_config
 from snowflake_semantic_tools.shared.progress import CLIProgressCallback
 
 
@@ -35,6 +36,7 @@ from snowflake_semantic_tools.shared.progress import CLIProgressCallback
 @click.option("--views", "-v", multiple=True, help="Specific views to generate (can repeat)")
 @click.option("--all", "-a", is_flag=True, help="Generate all available views")
 @click.option("--dry-run", is_flag=True, help="Show what would be generated without executing")
+@click.option("--threads", type=int, default=None, help="Concurrent views (default: from sst_config.yml or 1)")
 @click.option("--verbose", is_flag=True, help="Verbose output")
 @click.pass_context
 def generate(
@@ -49,6 +51,7 @@ def generate(
     views,
     all,
     dry_run,
+    threads,
     verbose,
 ):
     """Create Snowflake SEMANTIC VIEW objects from extracted metadata.
@@ -91,6 +94,17 @@ def generate(
     # Common CLI setup
     output.debug("Setting up...")
     setup_command(verbose=verbose, quiet=quiet_mode, validate_config=True)
+
+    # Resolve threads from CLI > config > default(1)
+    config = get_config()
+    effective_threads = threads if threads is not None else config.get("generation.threads", 1)
+    if effective_threads < 1:
+        output.error("--threads must be at least 1")
+        raise click.Abort()
+    if effective_threads > 16:
+        output.error("--threads cannot exceed 16")
+        raise click.Abort()
+    view_timeout = config.get("generation.view_timeout", 300)
 
     # Validate options
     if not views and not all:
@@ -157,7 +171,7 @@ def generate(
             defer_manifest = None
 
     # Create configuration
-    config = UnifiedGenerationConfig(
+    gen_config = UnifiedGenerationConfig(
         metadata_database=target_db,
         metadata_schema=target_schema,
         target_database=target_db,
@@ -165,6 +179,8 @@ def generate(
         views_to_generate=list(views) if views else None,
         dry_run=dry_run,
         defer_manifest=defer_manifest,
+        threads=effective_threads,
+        view_timeout=view_timeout,
     )
 
     # Create and execute service
@@ -181,6 +197,10 @@ def generate(
                 config_items.append(("Defer target", defer_config.target))
             if defer_config.manifest_path:
                 config_items.append(("Defer manifest", str(defer_config.manifest_path)))
+        if effective_threads > 1:
+            config_items.append(("Threads", str(effective_threads)))
+        else:
+            config_items.append(("Threads", "1 (sequential)"))
         output.config_table(config_items)
 
         # Display defer warning if applicable
@@ -206,14 +226,14 @@ def generate(
                         if len(filtered_views) == 0:
                             output.success("All views are up to date - nothing to regenerate")
                             return
-                        config.views_to_generate = filtered_views
+                        gen_config.views_to_generate = filtered_views
                         output.info(f"Filtering to {len(filtered_views)} view(s): {', '.join(filtered_views)}")
 
             # Create progress callback from CLIOutput
             progress_callback = CLIProgressCallback(output)
 
             gen_start = time.time()
-            result = service.generate(config, progress_callback=progress_callback)
+            result = service.generate(gen_config, progress_callback=progress_callback)
             gen_duration = time.time() - gen_start
 
             # Display results with improved formatting
@@ -279,8 +299,11 @@ def generate(
             if not result.success:
                 raise click.ClickException("Generation failed - see errors above")
 
+    except KeyboardInterrupt:
+        output.blank_line()
+        output.warning("Generation interrupted by user (Ctrl+C)")
+        raise SystemExit(130)
     except click.ClickException:
-        # Re-raise ClickException without traceback (expected user-facing errors)
         raise
     except Exception as e:
         output.blank_line()
