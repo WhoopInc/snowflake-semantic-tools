@@ -67,6 +67,7 @@ def extract(ctx, dbt_target, db, schema, dbt, semantic, verbose):
     quiet_mode = output_format == "json"
     output = CLIOutput(verbose=verbose, quiet=quiet_mode)
     output.info(f"Running with sst={__version__}")
+    output.debug("Tip: Run 'sst validate' before extract to catch issues early")
 
     # Common CLI setup
     output.debug("Setting up...")
