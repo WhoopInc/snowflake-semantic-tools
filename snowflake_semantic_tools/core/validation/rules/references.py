@@ -61,6 +61,21 @@ _RELATIONSHIP_DIRECTION_HINT = (
     "  If the uniquely keyed table is on the left, swap left_table and right_table."
 )
 
+_relationship_hint_shown = False
+
+
+def _get_relationship_hint():
+    global _relationship_hint_shown
+    if not _relationship_hint_shown:
+        _relationship_hint_shown = True
+        return _RELATIONSHIP_DIRECTION_HINT
+    return ""
+
+
+def _reset_relationship_hint():
+    global _relationship_hint_shown
+    _relationship_hint_shown = False
+
 
 class ReferenceValidator:
     """
@@ -96,6 +111,7 @@ class ReferenceValidator:
         """
         result = ValidationResult()
         self._semantic_data = semantic_data
+        _reset_relationship_hint()
 
         # Validate metrics
         metrics_data = semantic_data.get("metrics", {})
@@ -552,7 +568,7 @@ class ReferenceValidator:
                                         f"  (1) Add the missing columns to complete the primary key reference, or\n"
                                         f"  (2) Add meta.sst.unique_keys for [{', '.join(right_columns_used)}] on '{right_table}' if that set is unique on that table, or\n"
                                         f"  (3) Swap left/right so the keyed table is on the right."
-                                        f"{_RELATIONSHIP_DIRECTION_HINT}",
+                                        f"{_get_relationship_hint()}",
                                         file_path=source_file,
                                         rule_id="SST-V042",
                                         suggestion="Join must reference complete primary key of right table",
@@ -576,7 +592,7 @@ class ReferenceValidator:
                                     f"To fix:\n"
                                     f"  - Swap left/right so the keyed table is on the right, or\n"
                                     f"  - Add meta.sst.unique_keys if that column or column set is unique on '{right_table}'.\n"
-                                    f"{_RELATIONSHIP_DIRECTION_HINT}",
+                                    f"{_get_relationship_hint()}",
                                     file_path=source_file,
                                     rule_id="SST-V042",
                                     suggestion="Right join column must be in primary_key or unique_keys",
@@ -599,7 +615,7 @@ class ReferenceValidator:
                             f"The RIGHT (referenced) table must declare meta.sst.primary_key or meta.sst.unique_keys for the join columns.\n\n"
                             f"This usually means the table was not properly extracted or enriched. Run 'sst enrich' on the table's "
                             f"YAML file, or check meta.sst configuration."
-                            f"{_RELATIONSHIP_DIRECTION_HINT}",
+                            f"{_get_relationship_hint()}",
                             file_path=source_file,
                             rule_id="SST-V042",
                             suggestion="Add primary_key to right table's config.meta.sst",

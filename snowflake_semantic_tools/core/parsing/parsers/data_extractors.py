@@ -182,6 +182,7 @@ def extract_table_info(
             "model_name": name,
             "source_file": str(file_path),
             "tags": sst_meta.get("tags"),
+            "_raw_sst_keys": list(sst_meta.keys()),
         }
 
         return table_record
