@@ -29,7 +29,6 @@ class TestGetSstMeta:
             "config": {
                 "meta": {
                     "sst": {
-                        "cortex_searchable": True,
                         "primary_key": "id",
                     }
                 }
@@ -38,7 +37,6 @@ class TestGetSstMeta:
 
         result = get_sst_meta(node, node_type="model", node_name="test_model")
 
-        assert result["cortex_searchable"] is True
         assert result["primary_key"] == "id"
 
     def test_legacy_format_meta_sst(self):
@@ -47,7 +45,6 @@ class TestGetSstMeta:
             "name": "test_model",
             "meta": {
                 "sst": {
-                    "cortex_searchable": True,
                     "primary_key": "id",
                 }
             },
@@ -55,7 +52,6 @@ class TestGetSstMeta:
 
         result = get_sst_meta(node, node_type="model", node_name="test_model")
 
-        assert result["cortex_searchable"] is True
         assert result["primary_key"] == "id"
 
     def test_new_format_takes_priority(self):
@@ -65,14 +61,12 @@ class TestGetSstMeta:
             "config": {
                 "meta": {
                     "sst": {
-                        "cortex_searchable": True,
                         "primary_key": "new_key",
                     }
                 }
             },
             "meta": {
                 "sst": {
-                    "cortex_searchable": False,
                     "primary_key": "old_key",
                 }
             },
@@ -81,7 +75,6 @@ class TestGetSstMeta:
         result = get_sst_meta(node, node_type="model", node_name="test_model")
 
         # New format should take priority
-        assert result["cortex_searchable"] is True
         assert result["primary_key"] == "new_key"
 
     def test_empty_node_returns_empty_dict(self):
@@ -141,7 +134,6 @@ class TestGetSstMeta:
             "name": "test_model",
             "meta": {
                 "sst": {
-                    "cortex_searchable": True,
                 }
             },
         }
@@ -149,7 +141,6 @@ class TestGetSstMeta:
         # Should not emit warning when emit_warning=False
         result = get_sst_meta(node, node_type="model", node_name="test_model", emit_warning=False)
 
-        assert result["cortex_searchable"] is True
 
     def test_invalid_meta_type_returns_empty_dict(self):
         """Test that invalid meta type (non-dict) returns empty dict."""
@@ -169,14 +160,12 @@ class TestGetSstMeta:
             "config": "not a dict",  # Invalid type
             "meta": {
                 "sst": {
-                    "cortex_searchable": True,
                 }
             },
         }
 
         result = get_sst_meta(node, node_type="model", node_name="test_model")
 
-        assert result["cortex_searchable"] is True
 
     def test_invalid_sst_type_returns_empty_dict(self):
         """Test that invalid sst type (non-dict) returns empty dict."""

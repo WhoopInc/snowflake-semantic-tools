@@ -23,46 +23,54 @@ from snowflake_semantic_tools.services.extract_semantic_metadata import ExtractC
 from snowflake_semantic_tools.shared.progress import CLIProgressCallback
 
 
-@click.command()
+@click.command(
+    short_help="Load metadata to Snowflake tables (before generate)",
+)
 @target_option
 @database_schema_options
 @click.option("--dbt", help="dbt models path (auto-detected from config if not specified)")
 @click.option("--semantic", help="Semantic models path (auto-detected from config if not specified)")
 @click.option("--verbose", "-v", is_flag=True, help="Verbose output")
-def extract(dbt_target, db, schema, dbt, semantic, verbose):
-    """
-    Extract semantic metadata from dbt models to Snowflake.
+@click.pass_context
+def extract(ctx, dbt_target, db, schema, dbt, semantic, verbose):
+    """Load semantic metadata from dbt YAML into Snowflake tables.
 
-    Parses dbt and semantic model YAML files, resolves templates,
-    and loads structured metadata to Snowflake tables.
+    Parses dbt models and semantic model YAML, resolves templates, and
+    populates SM_* metadata tables in Snowflake. These tables are read
+    by 'sst generate' to create semantic views.
 
-    Uses credentials from ~/.dbt/profiles.yml (profile name from dbt_project.yml).
-    Database and schema default to values from the dbt profile if not specified.
+    \b
+    Prerequisites:
+      • 'sst validate' passes (or use 'sst deploy' to combine steps)
+      • Snowflake credentials in ~/.dbt/profiles.yml
+      • Database/schema must exist (SST creates tables, not databases)
 
     \b
     Examples:
-        # Extract metadata using profile defaults
-        sst extract
+      sst extract                              Profile defaults
+      sst extract --target prod                Use 'prod' dbt target
+      sst extract --db MY_DB -s MY_SCHEMA      Override database/schema
+      sst extract --dbt models/ --semantic sm/ Custom paths
 
-        # Extract to specific database/schema
-        sst extract --db MY_DB -s MY_SCHEMA
+    \b
+    Next Step:
+      sst generate --all      Create semantic views from extracted metadata
 
-        # Use specific dbt target
-        sst extract --target prod
-
-        # Override profile with explicit values
-        sst extract --target dev --db ANALYTICS_DEV -s SEMANTIC
-
-        # With custom paths
-        sst extract --dbt models/ --semantic semantic_models/
+    \b
+    Related Commands:
+      sst validate            Check for errors before extracting
+      sst deploy              Run validate + extract + generate in one step
+      sst enrich              Populate metadata if models are incomplete
     """
     # IMMEDIATE OUTPUT
-    output = CLIOutput(verbose=verbose, quiet=False)
+    output_format = ctx.obj.get("output_format", "table") if ctx.obj else "table"
+    quiet_mode = output_format == "json"
+    output = CLIOutput(verbose=verbose, quiet=quiet_mode)
     output.info(f"Running with sst={__version__}")
 
     # Common CLI setup
     output.debug("Setting up...")
-    setup_command(verbose=verbose, validate_config=True)
+    setup_command(verbose=verbose, quiet=quiet_mode, validate_config=True)
 
     # Resolve database and schema from profile or CLI overrides
     target_db, target_schema = get_target_database_schema(
@@ -109,10 +117,37 @@ def extract(dbt_target, db, schema, dbt, semantic, verbose):
             else:
                 output.error(f"Extraction failed in {extract_duration:.1f}s")
 
-            # Display results (summary already shows everything needed)
-            result.print_summary()
+            if output_format == "json":
+                import json as json_mod
 
-            # No need for done line - summary box is comprehensive
+                from snowflake_semantic_tools._version import __version__ as sst_version
+
+                diagnostics = []
+                if hasattr(result, "errors") and result.errors:
+                    for err in result.errors:
+                        diagnostics.append({"severity": "error", "message": str(err), "code": "SST-E001"})
+
+                rows_loaded = result.rows_loaded if hasattr(result, "rows_loaded") else 0
+
+                json_output = {
+                    "tool": "sst",
+                    "version": sst_version,
+                    "schema_version": 1,
+                    "command": "extract",
+                    "status": "success" if result.success else "error",
+                    "exit_code": 0 if result.success else 1,
+                    "duration_s": round(extract_duration, 2),
+                    "diagnostics": diagnostics,
+                    "summary": {
+                        "errors": len(diagnostics),
+                        "warnings": 0,
+                        "rows_loaded": rows_loaded,
+                    },
+                }
+                click.echo(json_mod.dumps(json_output, indent=2))
+            else:
+                result.print_summary()
+
             if not result.success:
                 raise click.ClickException("Extraction failed")
 

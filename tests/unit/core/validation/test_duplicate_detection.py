@@ -440,3 +440,69 @@ class TestTableSynonymDuplicateDetection:
 
         # Should have 2 errors: one for "dup1" and one for "dup2"
         assert len(duplicate_errors) == 2
+
+
+class TestV091MetricDuplicateDetection:
+    """V091: metrics with same expr but different modifiers are NOT duplicates."""
+
+    @pytest.fixture
+    def validator(self):
+        return DuplicateValidator()
+
+    def _make_metrics_data(self, metrics):
+        return {"metrics": {"items": metrics}}
+
+    def test_truly_duplicate_metrics_flagged(self, validator):
+        data = self._make_metrics_data([
+            {"name": "metric_a", "expr": "SUM(orders.total)"},
+            {"name": "metric_b", "expr": "SUM(orders.total)"},
+        ])
+        result = validator.validate(data)
+        warnings = [w for w in result.get_warnings() if w.rule_id == "SST-V091"]
+        assert len(warnings) == 1
+
+    def test_same_expr_different_window_not_duplicate(self, validator):
+        data = self._make_metrics_data([
+            {"name": "cumulative", "expr": "SUM(ORDERS.TOTAL_REVENUE)", "window": {"partition_by_excluding": ["ordered_at"]}},
+            {"name": "ranked", "expr": "SUM(ORDERS.TOTAL_REVENUE)", "window": {"partition_by": ["customer_id"]}},
+        ])
+        result = validator.validate(data)
+        warnings = [w for w in result.get_warnings() if w.rule_id == "SST-V091"]
+        assert len(warnings) == 0
+
+    def test_same_expr_same_window_is_duplicate(self, validator):
+        window_config = {"partition_by": ["customer_id"], "order_by": [{"column": "ordered_at"}]}
+        data = self._make_metrics_data([
+            {"name": "metric_a", "expr": "SUM(ORDERS.TOTAL)", "window": window_config},
+            {"name": "metric_b", "expr": "SUM(ORDERS.TOTAL)", "window": window_config},
+        ])
+        result = validator.validate(data)
+        warnings = [w for w in result.get_warnings() if w.rule_id == "SST-V091"]
+        assert len(warnings) == 1
+
+    def test_same_expr_different_using_relationships_not_duplicate(self, validator):
+        data = self._make_metrics_data([
+            {"name": "revenue", "expr": "SUM(orders.total)"},
+            {"name": "revenue_by_loc", "expr": "SUM(orders.total)", "using_relationships": ["orders_to_locations"]},
+        ])
+        result = validator.validate(data)
+        warnings = [w for w in result.get_warnings() if w.rule_id == "SST-V091"]
+        assert len(warnings) == 0
+
+    def test_same_expr_different_non_additive_by_not_duplicate(self, validator):
+        data = self._make_metrics_data([
+            {"name": "max_total", "expr": "MAX(orders.total)"},
+            {"name": "latest_total", "expr": "MAX(orders.total)", "non_additive_by": [{"dimension": "ordered_at"}]},
+        ])
+        result = validator.validate(data)
+        warnings = [w for w in result.get_warnings() if w.rule_id == "SST-V091"]
+        assert len(warnings) == 0
+
+    def test_same_expr_one_derived_not_duplicate(self, validator):
+        data = self._make_metrics_data([
+            {"name": "total", "expr": "SUM(orders.total)"},
+            {"name": "total_derived", "expr": "SUM(orders.total)", "derived": True},
+        ])
+        result = validator.validate(data)
+        warnings = [w for w in result.get_warnings() if w.rule_id == "SST-V091"]
+        assert len(warnings) == 0

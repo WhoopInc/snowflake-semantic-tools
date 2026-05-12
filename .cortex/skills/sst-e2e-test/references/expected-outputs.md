@@ -1,76 +1,72 @@
-# Expected Outputs — sst-jaffle-shop (complete-project branch)
+# Expected Outputs — sst-jaffle-shop (main branch)
 
-Baseline counts for the `complete-project` branch. The E2E skill uses these to detect regressions. Update this file when the jaffle-shop project changes.
+Baseline counts for the `main` branch. The E2E skill uses these to detect regressions. Update this file when the jaffle-shop project changes.
 
 ## dbt Models
 
 | Layer   | Count | Models |
 |---------|-------|--------|
-| Staging | 6     | stg_customers, stg_locations, stg_order_items, stg_orders, stg_products, stg_supplies |
-| Marts   | 7     | customers, locations, metricflow_time_spine, order_items, orders, products, supplies |
-| Total   | 13    | |
+| Staging | 7     | stg_customers, stg_locations, stg_order_items, stg_orders, stg_pricing_periods, stg_products, stg_supplies |
+| Marts   | 8     | customers, locations, metricflow_time_spine, order_items, orders, pricing_periods, products, supplies |
+| Total   | 15    | |
 
-## Semantic Model Components
+Note: `sst validate` reports 16 models because it also counts the _error_examples.yml fixtures.
+
+## Semantic Model Components (Positive Test Cases Only)
 
 | Component            | Count | Notes |
 |----------------------|-------|-------|
-| Metrics              | 38    | Across orders, customers, order_items, products, locations, supplies |
-| Relationships        | 5     | See details below |
-| Semantic Views       | 3     | See details below |
+| Metrics              | 80+   | Across all 6 core tables + advanced (window, composition, non_additive, etc.) |
+| Relationships        | 8     | Standard (5) + ASOF (1) + Range/BETWEEN EXCLUSIVE (1) + Composite (1) |
+| Semantic Views       | 3     | Sales analytics, menu analytics, complete |
 | Custom Instructions  | 2     | business_rules, menu_analytics_guidance |
-| Filters              | 0     | Only commented examples exist |
-| Verified Queries     | 0     | Only commented examples exist |
+| Filters              | 6     | Equality, date range, numeric, boolean, multi-table, legacy syntax |
+| Verified Queries     | 9     | Inline SQL (6) + sql_file (3), with descriptions and onboarding flags |
+
+## Error Fixtures (Intentional — Expected to Fail Validation)
+
+| File | Error Codes Exercised |
+|------|----------------------|
+| `models/marts/_error_examples.yml` | V007, V008, V010, V011, V012, V013, V014, V015, V016, V020, V023, V024, V025 |
+| `snowflake_semantic_models/metrics/_error_examples.yml` | V002, V003, V004, V032, V033, V034, V035, V036, V037, V038, V044, V091 |
+| `snowflake_semantic_models/relationships/_error_examples.yml` | V040, V041, V043 |
+| `snowflake_semantic_models/filters/_error_examples.yml` | V051 |
+| `snowflake_semantic_models/verified_queries/_error_examples.yml` | V060, V061, V062 |
+| `snowflake_semantic_models/_error_semantic_views.yml` | V070, V071 |
+
+These files are EXPECTED to produce validation errors. The test passes if:
+- Errors come ONLY from `_error_examples.yml` or `_error_semantic_views.yml` files
+- Zero errors/warnings come from non-error files
 
 ## Relationships
 
-| Name                    | Left Table   | Right Table | Type        |
-|-------------------------|-------------|-------------|-------------|
-| orders_to_customers     | orders      | customers   | many_to_one |
-| orders_to_locations     | orders      | locations   | many_to_one |
-| order_items_to_orders   | order_items | orders      | many_to_one |
-| order_items_to_products | order_items | products    | many_to_one |
-| supplies_to_products    | supplies    | products    | many_to_one |
+| Name                       | Left Table   | Right Table     | Type              |
+|----------------------------|-------------|-----------------|-------------------|
+| orders_to_customers        | orders      | customers       | Standard equality |
+| orders_to_locations        | orders      | locations       | Standard equality |
+| order_items_to_orders      | order_items | orders          | Standard equality |
+| order_items_to_products    | order_items | products        | Standard equality |
+| supplies_to_products       | supplies    | products        | Standard equality |
+| orders_to_locations_asof   | orders      | locations       | ASOF (temporal)   |
+| orders_to_pricing_periods  | orders      | pricing_periods | Range/BETWEEN EXCLUSIVE |
+| order_items_composite_join | order_items | orders          | Composite (multi-column) |
 
 ## Semantic Views
 
-| Name                          | Description |
-|-------------------------------|-------------|
-| jaffle_shop_sales_analytics   | Sales performance analysis |
-| jaffle_shop_menu_analytics    | Menu and product analysis |
-| jaffle_shop_complete          | Complete view across all tables |
+| Name                          | Tables | Custom Instructions |
+|-------------------------------|--------|---------------------|
+| jaffle_shop_sales_analytics   | orders, customers, locations | jaffle_shop_business_rules |
+| jaffle_shop_menu_analytics    | order_items, products, supplies | menu_analytics_guidance |
+| jaffle_shop_complete          | orders, order_items, customers, products, locations, supplies, pricing_periods | jaffle_shop_business_rules, menu_analytics_guidance |
 
-### Expected View Structure (for dry-run SQL comparison)
-
-#### jaffle_shop_sales_analytics
-- **Tables**: ORDERS, CUSTOMERS, LOCATIONS
-- **Relationships**: ORDERS_TO_CUSTOMERS, ORDERS_TO_LOCATIONS
-- **Metrics**: TOTAL_ORDERS, TOTAL_REVENUE, AVERAGE_ORDER_VALUE, TOTAL_CUSTOMERS, and order/customer metrics
-- **Custom Instructions**: 2 (AI_SQL_GENERATION, AI_QUESTION_CATEGORIZATION)
-
-#### jaffle_shop_menu_analytics
-- **Tables**: ORDER_ITEMS, PRODUCTS, SUPPLIES
-- **Relationships**: ORDER_ITEMS_TO_PRODUCTS, SUPPLIES_TO_PRODUCTS
-- **Metrics**: TOTAL_ORDER_ITEMS, TOTAL_PRODUCT_REVENUE, FOOD_ITEMS_SOLD, DRINK_ITEMS_SOLD, and product metrics
-- **Custom Instructions**: 1 (AI_SQL_GENERATION)
-
-#### jaffle_shop_complete
-- **Tables**: ORDERS, ORDER_ITEMS, CUSTOMERS, PRODUCTS, LOCATIONS, SUPPLIES (all 6)
-- **Relationships**: All 5 relationships
-- **Metrics**: All 38+ metrics
-- **Custom Instructions**: 2 (AI_SQL_GENERATION, AI_QUESTION_CATEGORIZATION)
-
-When comparing dry-run SQL output, verify:
-1. Each view contains the expected TABLES clause with the correct table names
-2. Each view contains the expected RELATIONSHIPS clause
-3. Metrics are present and reference the correct tables
-4. No unexpected tables or relationships appear (would indicate a regression in view generation)
-
-## Validation
+## Validation (Expected)
 
 | Check              | Expected |
 |--------------------|----------|
-| Validation errors  | 0        |
-| Validation warnings| Variable (acceptable) |
+| Errors from non-error files | 0 |
+| Warnings from non-error files | 0 |
+| Errors from _error_examples files | 20+ (intentional) |
+| Warnings from _error_examples files | 10+ (intentional) |
 
 ## Unit Tests (SST Repo)
 
@@ -86,8 +82,6 @@ When comparing dry-run SQL output, verify:
 |------------|-------|-------|-----------|
 | TestDeferManifestIntegration | 4 | Collection errors (fixture/import issue) | No |
 
-These 4 tests fail to collect (not fail to run). They are pre-existing and not caused by code changes. Track but do not block the pipeline on them.
-
 ## SM_* Metadata Tables (After Extract)
 
 These tables should be populated in the target schema after `sst extract`:
@@ -98,18 +92,26 @@ These tables should be populated in the target schema after `sst extract`:
 - SM_TIME_DIMENSIONS
 - SM_METRICS
 - SM_RELATIONSHIPS
+- SM_RELATIONSHIP_COLUMNS
 - SM_SEMANTIC_VIEWS
+- SM_CUSTOM_INSTRUCTIONS
+- SM_FILTERS
+- SM_VERIFIED_QUERIES
+- SM_TABLE_SUMMARIES (optional, Cortex Search)
 
-## Semantic Model Files
+## Feature Coverage Exercised
 
-| File Path | Contents |
-|-----------|----------|
-| snowflake_semantic_models/metrics/metrics.yml | 38 metrics |
-| snowflake_semantic_models/relationships/relationships.yml | 5 relationships |
-| snowflake_semantic_models/semantic_views.yml | 3 semantic views |
-| snowflake_semantic_models/custom_instructions/jaffle_shop_instructions.yml | 2 instructions |
-| snowflake_semantic_models/filters/_examples.yml | Commented examples only |
-| snowflake_semantic_models/verified_queries/_examples.yml | Commented examples only |
+| Category | Features |
+|----------|----------|
+| Templates | `{{ ref() }}`, `{{ ref(table, col) }}`, `{{ table() }}`, `{{ column() }}`, `{{ metric() }}`, `{{ custom_instructions() }}` |
+| Metric types | SUM, COUNT, COUNT DISTINCT, AVG, MIN, MAX, CASE WHEN, PERCENTILE_CONT, VARIANCE, DATEDIFF, compound, window, non_additive_by, using_relationships, metric composition, visibility: private |
+| Column types | dimension, time_dimension, fact |
+| Data types | TEXT, NUMBER, FLOAT, BOOLEAN, DATE, TIMESTAMP_NTZ |
+| Table features | primary_key, unique_keys (single + multi-column), constraints (DISTINCT_RANGE), tags, synonyms, visibility |
+| Column features | data_type, synonyms, sample_values, is_enum, visibility, tags |
+| VQR features | inline sql, sql_file, description, use_as_onboarding_question, verified_by, verified_at, multi-table |
+| Filter features | equality, date range, numeric, boolean, synonyms, legacy syntax |
+| Relationship features | standard equality, ASOF, range/BETWEEN EXCLUSIVE, composite/multi-column, description |
 
 ## Known Warnings (Expected, Non-Blocking)
 

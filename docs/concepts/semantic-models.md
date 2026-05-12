@@ -74,7 +74,6 @@ models:
         sst:
           primary_key: order_id                      # Required: unique identifier
           unique_keys: [customer_id, ordered_at]     # Optional: for ASOF relationships
-          cortex_searchable: true                    # Optional: include in Dynamic SV Generation (future feature)
           synonyms:                                  # Optional: alternative names
             - purchases
             - transactions
@@ -140,7 +139,6 @@ models:
 | `unique_keys` | No | Column(s) forming a unique constraint. **Required for ASOF relationships** - Snowflake needs this to validate temporal joins. |
 | `constraints` | No | List of constraint objects. Currently supports `distinct_range` type for non-overlapping range declarations. |
 | `tags` | No | Dict of `tag_name: tag_value` pairs. Tag names should be fully-qualified (e.g., `DB.SCHEMA.TAG_NAME`). |
-| `cortex_searchable` | No | If `true`, table is included in Cortex Search for dynamic SV generation. Default: `false` |
 | `synonyms` | No | Alternative names users might use to refer to this table |
 
 ### Column-Level Metadata
@@ -159,7 +157,76 @@ models:
                 - "ORD-001"
                 - "ORD-002"
               is_enum: false            # Optional: true if sample_values is exhaustive
+              exclude: false           # Optional: true to hide column from semantic view
 ```
+
+### Column Exclusion
+
+Add `exclude: true` to any column's `config.meta.sst` to hide it from the semantic view entirely:
+
+```yaml
+columns:
+  - name: email_address
+    description: Customer email (PII)
+    config:
+      meta:
+        sst:
+          exclude: true   # Column will not appear in the semantic view
+
+  - name: customer_id
+    config:
+      meta:
+        sst:
+          column_type: dimension
+          data_type: TEXT
+```
+
+Excluded columns are:
+- **Skipped during enrichment** — no sample values, synonyms, or type detection
+- **Omitted from extraction** — not written to SM_DIMENSIONS/SM_FACTS/SM_TIME_DIMENSIONS
+- **Absent from generated DDL** — do not appear in DIMENSIONS or FACTS clauses
+- **Skipped in validation** — no `column_type` requirement
+
+Use cases:
+- PII columns on joined tables that shouldn't be queryable via Cortex Agents
+- Internal/technical columns (ETL timestamps, hash keys, debug flags)
+- Columns that exist in the warehouse but aren't relevant to the semantic layer
+
+### Derived Metrics
+
+Derived metrics combine metrics from multiple entities without belonging to a specific table:
+
+```yaml
+snowflake_metrics:
+  - name: revenue_to_customer_ratio
+    derived: true
+    description: Revenue divided by customer count
+    expr: "{{ metric('total_revenue') }} / NULLIF({{ metric('total_customers') }}, 0)"
+```
+
+Derived metrics:
+- Use `{{ metric('name') }}` references (resolved to `TABLE.METRIC_NAME` in DDL)
+- Are emitted without a table prefix in the semantic view
+- Cannot use `using_relationships`, `non_additive_by`, or `window`
+- Don't require a `tables` field (inferred from referenced metrics)
+
+### Auto-Inferred Tables
+
+The `tables` field is optional. SST auto-infers table references from the expression:
+
+```yaml
+snowflake_metrics:
+  # tables auto-inferred from expr → ['orders']
+  - name: total_revenue
+    expr: "SUM({{ ref('orders', 'order_total') }})"
+```
+
+Inference strategies (in priority order):
+1. `{{ ref('table', 'col') }}` and `{{ column('table', 'col') }}` patterns
+2. `TABLE.COLUMN` dot-references (post-template-resolution)
+3. For derived metrics: resolved transitively from referenced metrics
+
+Explicit `tables` always takes precedence when provided.
 
 ### UNIQUE Keys for ASOF Relationships
 
@@ -517,15 +584,15 @@ snowflake_filters:
 
 Guide Cortex Analyst's behavior with business-specific rules. Custom instructions are automatically included in the generated `CREATE SEMANTIC VIEW` DDL as `AI_SQL_GENERATION` and `AI_QUESTION_CATEGORIZATION` clauses.
 
-When you reference custom instructions in a semantic view using `{{ custom_instructions('name') }}`, the instruction's `sql_generation` field is included in the `AI_SQL_GENERATION` clause and the `question_categorization` field is included in the `AI_QUESTION_CATEGORIZATION` clause.
+When you reference custom instructions in a semantic view using `{{ custom_instructions('name') }}`, the instruction's `ai_sql_generation` field is included in the `AI_SQL_GENERATION` clause and the `ai_question_categorization` field is included in the `AI_QUESTION_CATEGORIZATION` clause.
 
 ### Structure
 
 ```yaml
 snowflake_custom_instructions:
   - name: instruction_name
-    question_categorization: Instructions for categorizing questions
-    sql_generation: Instructions for generating SQL queries
+    ai_question_categorization: Instructions for categorizing questions
+    ai_sql_generation: Instructions for generating SQL queries
 ```
 
 ### Real Example
@@ -533,9 +600,9 @@ snowflake_custom_instructions:
 ```yaml
 snowflake_custom_instructions: 
   - name: customer_privacy_rules
-    question_categorization: >
+    ai_question_categorization: >
       Reject all questions asking about individual customer details. Ask users to contact their admin.
-    sql_generation: >
+    ai_sql_generation: >
       When querying customer data, always apply the active_customers_only filter.
       Always round currency metrics to 2 decimal places.
 ```

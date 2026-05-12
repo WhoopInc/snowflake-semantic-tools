@@ -179,9 +179,8 @@ def extract_table_info(
             "unique_keys": unique_keys_upper,
             "constraints": sst_meta.get("constraints", []),
             "synonyms": sst_meta.get("synonyms", []),
-            "model_name": name,  # Store the original model name
-            "source_file": str(file_path),  # Store the file path for validation errors
-            "cortex_searchable": sst_meta.get("cortex_searchable", False),
+            "model_name": name,
+            "source_file": str(file_path),
             "tags": sst_meta.get("tags"),
         }
 
@@ -303,18 +302,19 @@ def extract_column_info(column: Dict[str, Any], table_name: str, file_path: Path
         column_record = {
             "table_name": table_name,
             "name": name.upper() if name else name,
-            "expr": name.upper() if name else name,  # expr is just the column name
-            "column_type": sst_meta.get("column_type"),  # Extract column_type from meta.sst
+            "expr": name.upper() if name else name,
+            "column_type": sst_meta.get("column_type"),
             "data_type": data_type,
-            "_native_data_type": native_data_type,  # Preserve original for validation
-            "_sst_data_type": sst_data_type,  # Preserve original for validation
+            "_native_data_type": native_data_type,
+            "_sst_data_type": sst_data_type,
             "description": description,
             "synonyms": sst_meta.get("synonyms", []),
             "sample_values": sst_meta.get("sample_values", []),
             "is_enum": sst_meta.get("is_enum", False),
             "visibility": sst_meta.get("visibility"),
             "tags": sst_meta.get("tags"),
-            "source_file": str(file_path),  # Store the file path for validation errors
+            "exclude": sst_meta.get("exclude", False),
+            "source_file": str(file_path),
         }
 
         return column_record

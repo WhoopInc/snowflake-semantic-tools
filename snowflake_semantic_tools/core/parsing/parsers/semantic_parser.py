@@ -106,19 +106,29 @@ def parse_snowflake_metrics(metrics: List[Dict[str, Any]], file_path: Path) -> L
 
     for metric in metrics:
         try:
-            # Preserve the tables field for validation
+            is_derived = metric.get("derived", False)
+
             tables = metric.get("tables", [])
 
-            # Ensure tables is a list
             if not isinstance(tables, list):
                 tables = [tables] if tables else []
 
-            # Extract primary table for backward compatibility
-            if tables:
-                # Take the first table as the primary table
+            if not tables:
+                expr = metric.get("expr", "")
+                if isinstance(expr, str) and not is_derived:
+                    inferred = _extract_table_names_from_jinja(expr)
+                    if inferred:
+                        tables = [f"{{{{ ref('{t}') }}}}" for t in inferred]
+                    else:
+                        stripped_expr = re.sub(r"'[^']*'", "", expr)
+                        dot_refs = re.findall(r"(\w+)\.\w+", stripped_expr)
+                        inferred_from_dots = list(dict.fromkeys(r for r in dot_refs))
+                        if inferred_from_dots:
+                            tables = inferred_from_dots
+
+            if tables and not is_derived:
                 table_name = tables[0]
 
-                # Safety check: If it's still a string representation of a list, handle it
                 if isinstance(table_name, str) and table_name.startswith("["):
                     logger.warning(f"Metric '{metric.get('name', '')}' has unresolved table reference: {table_name}")
                     table_name = ""
@@ -128,7 +138,7 @@ def parse_snowflake_metrics(metrics: List[Dict[str, Any]], file_path: Path) -> L
             metric_record = {
                 "name": metric.get("name", "").upper(),
                 "table_name": table_name.upper() if isinstance(table_name, str) else str(table_name).upper(),
-                "tables": tables,  # PRESERVE THE FULL TABLES ARRAY
+                "tables": tables,
                 "description": metric.get("description", ""),
                 "expr": metric.get("expr", ""),
                 "synonyms": metric.get("synonyms", []),
@@ -137,6 +147,7 @@ def parse_snowflake_metrics(metrics: List[Dict[str, Any]], file_path: Path) -> L
                 "non_additive_by": metric.get("non_additive_by", []),
                 "using_relationships": metric.get("using_relationships", []),
                 "window": metric.get("window"),
+                "derived": is_derived,
                 "source_file": str(file_path),
             }
             metric_records.append(metric_record)
@@ -144,6 +155,22 @@ def parse_snowflake_metrics(metrics: List[Dict[str, Any]], file_path: Path) -> L
         except Exception as e:
             logger.error(f"Error parsing metric in {file_path}: {e}")
             continue
+
+    metrics_by_name = {m["name"].upper(): m for m in metric_records}
+    for record in metric_records:
+        if record.get("derived") and not record["tables"]:
+            expr = record.get("expr", "")
+            if isinstance(expr, str):
+                metric_refs = re.findall(r"\{\{\s*metric\(['\"]([^'\"]+)['\"]\)\s*\}\}", expr)
+                referenced_tables = []
+                for ref_name in metric_refs:
+                    ref_metric = metrics_by_name.get(ref_name.upper(), {})
+                    ref_tables = ref_metric.get("tables", [])
+                    for t in ref_tables:
+                        if t and t not in referenced_tables:
+                            referenced_tables.append(t)
+                if referenced_tables:
+                    record["tables"] = referenced_tables
 
     return metric_records
 
@@ -318,15 +345,20 @@ def parse_snowflake_custom_instructions(instructions: List[Dict[str, Any]], file
 
     for instruction in instructions:
         try:
-            # Keep question_categorization and sql_generation separate for GUIDANCE clause
-            question_cat = instruction.get("question_categorization", "").strip()
-            sql_gen = instruction.get("sql_generation", "").strip()
+            question_cat = (
+                instruction.get("ai_question_categorization") or instruction.get("question_categorization", "")
+            ).strip()
+            sql_gen = (instruction.get("ai_sql_generation") or instruction.get("sql_generation", "")).strip()
 
             instruction_record = {
                 "name": instruction.get("name", "").upper(),
                 "question_categorization": question_cat if question_cat else None,
                 "sql_generation": sql_gen if sql_gen else None,
-                "source_file": str(file_path),  # Store the file path for validation errors
+                "source_file": str(file_path),
+                "_used_legacy_keys": bool(
+                    instruction.get("question_categorization") or instruction.get("sql_generation")
+                )
+                and not (instruction.get("ai_question_categorization") or instruction.get("ai_sql_generation")),
             }
             instruction_records.append(instruction_record)
 

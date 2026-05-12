@@ -31,7 +31,9 @@ from snowflake_semantic_tools.services.generate_semantic_views import (
 from snowflake_semantic_tools.shared.progress import CLIProgressCallback
 
 
-@click.command()
+@click.command(
+    short_help="Create Snowflake semantic views from metadata",
+)
 @target_option
 @database_schema_options
 @defer_options
@@ -39,7 +41,9 @@ from snowflake_semantic_tools.shared.progress import CLIProgressCallback
 @click.option("--all", "-a", is_flag=True, help="Generate all available views")
 @click.option("--dry-run", is_flag=True, help="Show what would be generated without executing")
 @click.option("--verbose", is_flag=True, help="Verbose output")
+@click.pass_context
 def generate(
+    ctx,
     dbt_target,
     db,
     schema,
@@ -52,52 +56,46 @@ def generate(
     dry_run,
     verbose,
 ):
-    """
-    Generate SQL Semantic Views from metadata.
+    """Create Snowflake SEMANTIC VIEW objects from extracted metadata.
 
-    Creates native Snowflake SEMANTIC VIEW objects for BI tools
-    and Cortex Analyst consumption.
-
-    Uses credentials from ~/.dbt/profiles.yml (profile name from dbt_project.yml).
-    Database and schema default to values from the dbt profile if not specified.
+    Reads the SM_* metadata tables (populated by 'sst extract') and creates
+    native Snowflake semantic views for BI tools and Cortex Analyst.
 
     \b
-    Semantic Views provide:
-    - Native Snowflake integration
-    - Query optimization
-    - BI tool compatibility (Sigma, Hex, Tableau)
-    - Cortex Analyst support
+    Prerequisites:
+      • 'sst extract' has been run (metadata tables must exist)
+      • Snowflake credentials in ~/.dbt/profiles.yml
+      • Must specify --all or --views (one is required)
 
     \b
     Examples:
-        # Generate all semantic views using profile defaults
-        sst generate --all
+      sst generate --all                          Generate all views
+      sst generate --all --target prod            Use 'prod' target
+      sst generate --all --db ANALYTICS -s SEM    Override db/schema
+      sst generate -v customer_360 -v sales       Specific views only
+      sst generate --all --defer-target prod      Use prod table refs
+      sst generate --all --only-modified          Only changed models
+      sst generate --all --dry-run                Preview SQL output
 
-        # Use specific dbt target
-        sst generate --target prod --all
+    \b
+    Next Step:
+      Query your semantic views in Snowflake or connect BI tools
 
-        # Override database/schema
-        sst generate --db ANALYTICS --schema SEMANTIC --all
-
-        # Generate specific views
-        sst generate -v customer_360 -v sales_summary
-
-        # With defer to use production table references
-        sst generate --all --defer-target prod
-
-        # Selective generation (only modified models)
-        sst generate --all --defer-target prod --only-modified
-
-        # Dry run to preview SQL
-        sst generate --all --dry-run
+    \b
+    Related Commands:
+      sst extract             Must run before generate (loads metadata tables)
+      sst deploy              Run validate + extract + generate in one step
+      sst list semantic-views See what views would be generated
     """
     # IMMEDIATE OUTPUT - show user command is running
-    output = CLIOutput(verbose=verbose, quiet=False)
+    output_format = ctx.obj.get("output_format", "table") if ctx.obj else "table"
+    quiet_mode = output_format == "json"
+    output = CLIOutput(verbose=verbose, quiet=quiet_mode)
     output.info(f"Running with sst={__version__}")
 
     # Common CLI setup
     output.debug("Setting up...")
-    setup_command(verbose=verbose, validate_config=True)
+    setup_command(verbose=verbose, quiet=quiet_mode, validate_config=True)
 
     # Validate options
     if not views and not all:
@@ -222,28 +220,58 @@ def generate(
             else:
                 output.error(f"Generation failed in {gen_duration:.1f}s")
 
-            # Show detailed summary
-            result.print_summary()
+            if output_format == "json":
+                import json as json_mod
 
-            # If dry-run, show SQL sample
-            if dry_run and result.sql_statements:
+                from snowflake_semantic_tools._version import __version__ as sst_version
+
+                success_count = result.views_created if hasattr(result, "views_created") else 0
+                failed_count = len(result.errors) if hasattr(result, "errors") else 0
+
+                diagnostics = []
+                if hasattr(result, "errors") and result.errors:
+                    for err in result.errors:
+                        diagnostics.append({"severity": "error", "message": str(err), "code": "SST-G001"})
+
+                json_output = {
+                    "tool": "sst",
+                    "version": sst_version,
+                    "schema_version": 1,
+                    "command": "generate",
+                    "status": "success" if result.success else "error",
+                    "exit_code": 0 if result.success else 1,
+                    "duration_s": round(gen_duration, 2),
+                    "diagnostics": diagnostics,
+                    "summary": {
+                        "errors": failed_count,
+                        "warnings": 0,
+                        "views_created": success_count,
+                    },
+                }
+                click.echo(json_mod.dumps(json_output, indent=2))
+            else:
+                # Show detailed summary
+                result.print_summary()
+
+                # If dry-run, show SQL sample
+                if dry_run and result.sql_statements:
+                    output.blank_line()
+                    output.rule("=", width=60)
+                    output.info("SAMPLE SQL (DRY RUN - First View)")
+                    output.rule("=", width=60)
+                    first_view = list(result.sql_statements.keys())[0]
+                    click.echo(f"\n-- View: {first_view}")
+                    click.echo(result.sql_statements[first_view][:2000])
+                    if len(result.sql_statements[first_view]) > 2000:
+                        click.echo("... [truncated]")
+
+                # Show dbt-style done line with view counts
                 output.blank_line()
-                output.rule("=", width=60)
-                output.info("SAMPLE SQL (DRY RUN - First View)")
-                output.rule("=", width=60)
-                first_view = list(result.sql_statements.keys())[0]
-                click.echo(f"\n-- View: {first_view}")
-                click.echo(result.sql_statements[first_view][:2000])
-                if len(result.sql_statements[first_view]) > 2000:
-                    click.echo("... [truncated]")
+                success_count = result.views_created if hasattr(result, "views_created") else 0
+                failed_count = len(result.errors) if hasattr(result, "errors") else 0
+                total_count = success_count + failed_count
 
-            # Show dbt-style done line with view counts
-            output.blank_line()
-            success_count = result.views_created if hasattr(result, "views_created") else 0
-            failed_count = len(result.errors) if hasattr(result, "errors") else 0
-            total_count = success_count + failed_count
-
-            output.done_line(passed=success_count, errored=failed_count, total=total_count)
+                output.done_line(passed=success_count, errored=failed_count, total=total_count)
 
             if not result.success:
                 raise click.ClickException("Generation failed - see errors above")

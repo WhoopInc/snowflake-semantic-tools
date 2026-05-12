@@ -30,7 +30,6 @@ models:
     description: "Customer orders"
     meta:
       sst:
-        cortex_searchable: true
         primary_key: id
     columns:
       - name: id
@@ -52,7 +51,6 @@ models:
     config:
       meta:
         sst:
-          cortex_searchable: true
           primary_key: id
     columns:
       - name: id

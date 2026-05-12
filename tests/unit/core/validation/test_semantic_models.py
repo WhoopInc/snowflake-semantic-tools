@@ -455,7 +455,7 @@ class TestCustomInstructionValidation:
         assert result.error_count > 0
         errors = [i.message for i in result.issues if i.severity.name == "ERROR"]
         assert any(
-            "missing required field: must have at least one of 'question_categorization' or 'sql_generation'" in e
+            "missing required field: must have at least one of 'ai_sql_generation' or 'ai_question_categorization'" in e
             for e in errors
         )
 
@@ -1654,17 +1654,17 @@ class TestDDLParityValidation:
 
     def test_tags_value_exceeds_256_chars_errors(self, validator):
         result = ValidationResult()
-        validator._validate_tags({"valid_tag": "x" * 257}, "Test", "/tmp/test.yml", result)
+        validator._validate_tags({"db.schema.valid_tag": "x" * 257}, "Test", "/tmp/test.yml", result)
         errors = [i for i in result.issues if i.severity.name == "ERROR"]
         assert len(errors) == 1
         assert "256" in str(errors[0].message)
 
-    def test_tags_unqualified_name_warns(self, validator):
+    def test_tags_unqualified_name_errors(self, validator):
         result = ValidationResult()
         validator._validate_tags({"bare_tag": "value"}, "Test", "/tmp/test.yml", result)
-        warnings = [i for i in result.issues if i.severity.name == "WARNING"]
-        assert len(warnings) == 1
-        assert "fully-qualified" in str(warnings[0].message)
+        errors = result.get_errors()
+        assert len(errors) == 1
+        assert "fully-qualified" in str(errors[0].message)
 
     def test_tags_qualified_name_no_warning(self, validator):
         result = ValidationResult()

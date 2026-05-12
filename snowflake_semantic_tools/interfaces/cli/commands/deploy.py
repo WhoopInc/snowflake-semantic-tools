@@ -27,7 +27,9 @@ from snowflake_semantic_tools.services.deploy import DeployConfig, DeployService
 from snowflake_semantic_tools.shared.progress import CLIProgressCallback
 
 
-@click.command()
+@click.command(
+    short_help="One-step: validate + extract + generate",
+)
 @target_option
 @database_schema_options
 @defer_options
@@ -36,63 +38,57 @@ from snowflake_semantic_tools.shared.progress import CLIProgressCallback
 )
 @click.option("--verbose", "-v", is_flag=True, help="Show detailed progress (default: errors and warnings only)")
 @click.option("--quiet", "-q", is_flag=True, help="Suppress all output except errors")
-def deploy(dbt_target, db, schema, defer_target, state, only_modified, no_defer, skip_validation, verbose, quiet):
-    """
-    Deploy semantic models: validate → extract → generate in one step.
+@click.pass_context
+def deploy(ctx, dbt_target, db, schema, defer_target, state, only_modified, no_defer, skip_validation, verbose, quiet):
+    """Deploy semantic models: validate + extract + generate in one step.
 
-    Combines the full deployment workflow into a single command for convenience
-    and consistency. Uses the same database and schema for both extraction
-    (metadata tables) and generation (semantic views).
+    The recommended way to deploy. Combines the full workflow into a single
+    command, stopping at the first failure for safe CI/CD integration.
 
-    Uses credentials from ~/.dbt/profiles.yml (profile name from dbt_project.yml).
-    Database and schema default to values from the dbt profile if not specified.
+    \b
+    Prerequisites:
+      • 'dbt compile' has been run (manifest.json must exist)
+      • Models annotated with config.meta.sst (use 'sst enrich' first)
+      • Snowflake credentials in ~/.dbt/profiles.yml
 
     \b
     Examples:
-        # Full deployment using profile defaults
-        sst deploy
-
-        # Full deployment to specific target
-        sst deploy --db ANALYTICS --schema SEMANTIC
-
-        # Use specific dbt target
-        sst deploy --target prod
-
-        # With defer to use production table references
-        sst deploy --defer-target prod
-
-        # Selective deployment (only modified models)
-        sst deploy --defer-target prod --only-modified
-
-        # Production deployment (validation already run)
-        sst deploy --skip-validation
-
-        # Quiet mode (errors only)
-        sst deploy --quiet
-
-    \b
-    Workflow:
-        1. Validate semantic models (unless --skip-validation)
-        2. Extract metadata to {db}.{schema} tables
-        3. Generate SQL semantic views
-        4. Report summary (errors/warnings only by default)
+      sst deploy                              Full deployment (profile defaults)
+      sst deploy --target prod                Use 'prod' dbt target
+      sst deploy --db ANALYTICS -s SEMANTIC   Override database/schema
+      sst deploy --defer-target prod          Use prod table references
+      sst deploy --only-modified              Only deploy changed models
+      sst deploy --skip-validation            Skip if already validated
+      sst deploy --quiet                      Errors only (CI/CD)
 
     \b
     Notes:
-        - Both extract and generate use the same --db and --schema
-        - Use --defer-target to reference production tables while deploying to dev
-        - Use --only-modified for faster iteration on large projects
-        - Use --verbose to see detailed progress
-        - Use --quiet to suppress all output except errors
-        - Stops at first failure (validate, extract, or generate)
+      • Both extract and generate use the same --db and --schema
+      • Use --defer-target to reference production tables while deploying to dev
+      • Use --only-modified for faster iteration on large projects
+
+    \b
+    What it does (in order):
+      1. sst validate     Check for errors
+      2. sst extract      Load metadata to Snowflake tables
+      3. sst generate     Create semantic views
+      Stops at first failure.
+
+    \b
+    Related Commands:
+      sst validate            Run validation separately (faster iteration)
+      sst generate --dry-run  Preview SQL without deploying
+      sst list                Explore what was deployed
     """
     # IMMEDIATE OUTPUT - show user command is running
-    output = CLIOutput(verbose=verbose, quiet=quiet)
+    output_format = ctx.obj.get("output_format", "table") if ctx.obj else "table"
+    quiet_mode = output_format == "json" or quiet
+    output = CLIOutput(verbose=verbose, quiet=quiet_mode)
     output.info(f"Running with sst={__version__}")
 
     # Common CLI setup
     output.debug("Setting up...")
-    setup_command(verbose=verbose, quiet=quiet, validate_config=True)
+    setup_command(verbose=verbose, quiet=quiet_mode, validate_config=True)
 
     # Resolve database and schema from profile or CLI overrides
     target_db, target_schema = get_target_database_schema(
@@ -188,18 +184,47 @@ def deploy(dbt_target, db, schema, defer_target, state, only_modified, no_defer,
         else:
             output.error(f"Deployment failed in {deploy_duration:.1f}s")
 
-        # Display summary
-        result.print_summary(quiet=quiet)
+        if output_format == "json":
+            import json as json_mod
 
-        # Show dbt-style done line with actual error/warning counts
-        output.blank_line()
-        if result.success:
-            output.done_line(passed=1, warned=0, errored=0, total=1)
-        else:
-            # Show actual validation errors and warnings if validation ran
-            error_count = result.validation_errors if hasattr(result, "validation_errors") else 1
+            from snowflake_semantic_tools._version import __version__ as sst_version
+
+            error_count = (
+                result.validation_errors if hasattr(result, "validation_errors") else (0 if result.success else 1)
+            )
             warning_count = result.validation_warnings if hasattr(result, "validation_warnings") else 0
-            output.done_line(passed=0, warned=warning_count, errored=error_count, total=1)
+
+            diagnostics = []
+            if hasattr(result, "errors") and result.errors:
+                for err in result.errors:
+                    diagnostics.append({"severity": "error", "message": str(err), "code": "SST-D001"})
+
+            json_output = {
+                "tool": "sst",
+                "version": sst_version,
+                "schema_version": 1,
+                "command": "deploy",
+                "status": "success" if result.success else "error",
+                "exit_code": 0 if result.success else 1,
+                "duration_s": round(deploy_duration, 2),
+                "diagnostics": diagnostics,
+                "summary": {
+                    "errors": error_count,
+                    "warnings": warning_count,
+                },
+            }
+            click.echo(json_mod.dumps(json_output, indent=2))
+        else:
+            result.print_summary(quiet=quiet)
+
+            # Show dbt-style done line with actual error/warning counts
+            output.blank_line()
+            if result.success:
+                output.done_line(passed=1, warned=0, errored=0, total=1)
+            else:
+                error_count = result.validation_errors if hasattr(result, "validation_errors") else 1
+                warning_count = result.validation_warnings if hasattr(result, "validation_warnings") else 0
+                output.done_line(passed=0, warned=warning_count, errored=error_count, total=1)
 
         # Exit with appropriate code
         if not result.success:

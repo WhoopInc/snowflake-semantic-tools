@@ -23,7 +23,6 @@ import pandas as pd
 
 from snowflake_semantic_tools.infrastructure.snowflake.config import SnowflakeConfig
 from snowflake_semantic_tools.infrastructure.snowflake.connection_manager import ConnectionManager
-from snowflake_semantic_tools.infrastructure.snowflake.cortex_search_manager import CortexSearchManager
 from snowflake_semantic_tools.infrastructure.snowflake.data_loader import DataLoader
 from snowflake_semantic_tools.infrastructure.snowflake.metadata_manager import MetadataManager
 from snowflake_semantic_tools.infrastructure.snowflake.schema_manager import SchemaManager
@@ -46,7 +45,6 @@ class SnowflakeClient:
     - **TableManager**: Table operations and metadata queries (use `client.table_manager`)
     - **DataLoader**: High-performance bulk data loading and semantic model extraction (use `client.data_loader`)
     - **MetadataManager**: Schema inspection, sample values, and enrichment queries (use `client.metadata_manager`)
-    - **CortexSearchManager**: Cortex Search Service management (use `client.cortex_search_manager`)
 
     Access managers directly: `client.connection_manager.get_connection()`, `client.schema_manager.ensure_database_and_schema_exist()`, etc.
 
@@ -71,7 +69,6 @@ class SnowflakeClient:
         self.data_loader = DataLoader(self.connection_manager, config)
         self.metadata_manager = MetadataManager(self.connection_manager, config)
         self.table_manager = TableManager(self.connection_manager, config)
-        self.cortex_search_manager = CortexSearchManager(self.connection_manager, config)
 
     def close(self) -> None:
         """

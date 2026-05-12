@@ -16,6 +16,7 @@ Complete reference for all Snowflake Semantic Tools commands.
 | [`sst extract`](extract.md) | Load metadata to Snowflake tables | Yes |
 | [`sst generate`](generate.md) | Create semantic views | Yes |
 | [`sst deploy`](deploy.md) | One-step: validate → extract → generate | Yes |
+| [`sst drop`](drop.md) | Remove semantic views (specific or prune orphans) | Yes |
 | [`sst migrate-meta`](migrate-meta.md) | Migrate to dbt Fusion format | No |
 
 ---

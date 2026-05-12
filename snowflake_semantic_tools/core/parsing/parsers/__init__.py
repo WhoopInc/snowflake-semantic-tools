@@ -6,7 +6,6 @@ Collection of parsers that extract and transform specific YAML structures:
 - **dbt_parser**: Extracts physical table metadata from dbt models
 - **manifest_parser**: Parses dbt manifest.json for database/schema resolution
 - **semantic_parser**: Processes semantic model definitions (metrics, relationships, etc.)
-- **table_summarizer**: Generates AI-optimized summaries for Cortex Search
 - **data_extractors**: Common extraction utilities for column/table metadata
 - **error_handler**: Centralized YAML parsing error management
 """
@@ -29,7 +28,6 @@ from snowflake_semantic_tools.core.parsing.parsers.semantic_parser import (
     parse_snowflake_relationships,
     parse_snowflake_verified_queries,
 )
-from snowflake_semantic_tools.core.parsing.parsers.table_summarizer import generate_table_summaries
 
 __all__ = [
     # dbt parser
@@ -48,8 +46,6 @@ __all__ = [
     # Error handling
     "ErrorTracker",
     "format_yaml_error",
-    # Table summarizer
-    "generate_table_summaries",
     # Data extractors
     "apply_uppercase_formatting",
     "extract_column_info",

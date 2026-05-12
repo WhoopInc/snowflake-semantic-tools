@@ -156,6 +156,9 @@ class DbtModelValidator:
                 result.add_warning(
                     f"Table '{table_name}' skipped due to missing critical metadata ({missing_fields_str})",
                     file_path=source_file,
+                    rule_id="SST-V010",
+                    suggestion="Add primary_key to config.meta.sst",
+                    entity_name=table_name,
                     context={"table": table_name, "reason": "missing_metadata", "missing_fields": missing_fields},
                 )
             logger.warning(f"Skipped validation for {len(skipped_tables)} tables with missing metadata")
@@ -275,9 +278,12 @@ class DbtModelValidator:
         # Check description (always required in YAML)
         description = table.get("description")
         if not description or (isinstance(description, str) and not description.strip()):
-            result.add_error(
-                f"Table '{table_name}' is missing required field: description at the table-level",
+            result.add_warning(
+                f"Table '{table_name}' is missing description at the table-level (recommended for Cortex Analyst)",
                 file_path=source_file,
+                rule_id="SST-V012",
+                suggestion="Add a description to the model definition",
+                entity_name=table_name,
                 context={"table": table_name, "field": "description", "level": "table"},
             )
 
@@ -287,12 +293,18 @@ class DbtModelValidator:
             result.add_error(
                 f"Table '{table_name}' is missing required field: meta.sst.primary_key at the table-level",
                 file_path=source_file,
+                rule_id="SST-V010",
+                suggestion="Add primary_key: column_name to config.meta.sst",
+                entity_name=table_name,
                 context={"table": table_name, "field": "meta.sst.primary_key", "level": "table"},
             )
         elif primary_key == []:
             result.add_error(
                 f"Table '{table_name}' has empty primary key list at the table-level",
                 file_path=source_file,
+                rule_id="SST-V010",
+                suggestion="primary_key must contain at least one column",
+                entity_name=table_name,
                 context={"table": table_name, "field": "meta.sst.primary_key", "level": "table"},
             )
 
@@ -321,12 +333,18 @@ class DbtModelValidator:
                 result.add_warning(
                     f"Table '{table_name}' has primary_key as string instead of list at the table-level",
                     file_path=source_file,
+                    rule_id="SST-V005",
+                    suggestion="Use a YAML list:\\n  primary_key:\\n    - column_name",
+                    entity_name=table_name,
                     context={"table": table_name, "field": "primary_key", "level": "table"},
                 )
             else:
                 result.add_error(
                     f"Table '{table_name}' has primary_key as {type(primary_keys).__name__} instead of list at the table-level",
                     file_path=source_file,
+                    rule_id="SST-V005",
+                    suggestion="primary_key must be a list of column names",
+                    entity_name=table_name,
                     context={
                         "table": table_name,
                         "field": "primary_key",
@@ -354,7 +372,26 @@ class DbtModelValidator:
                 result.add_error(
                     f"Table '{table_name}' has primary key '{pk}' that doesn't exist as a column at the table-level",
                     file_path=source_file,
+                    rule_id="SST-V011",
+                    suggestion="Check column name spelling — column must exist in the model",
+                    entity_name=table_name,
                     context={"table": table_name, "primary_key": pk, "level": "table"},
+                )
+
+        unique_keys = table.get("unique_keys", [])
+        if unique_keys and isinstance(unique_keys, list):
+            pk_set = {p.upper().strip() for p in primary_keys}
+            uk_set = {u.upper().strip() for u in unique_keys if isinstance(u, str)}
+            overlap = pk_set & uk_set
+            if overlap:
+                result.add_error(
+                    f"Table '{table_name}' has columns in both primary_key and unique_keys: "
+                    f"{sorted(overlap)}. Snowflake rejects duplicate primary/unique key declarations.",
+                    file_path=source_file,
+                    rule_id="SST-V048",
+                    suggestion="Remove overlapping columns from unique_keys — primary_key is already unique",
+                    entity_name=table_name,
+                    context={"table": table_name, "overlap": sorted(overlap)},
                 )
 
     def _check_table_synonym_content(self, table: Dict[str, Any], table_name: str, result: ValidationResult):
@@ -379,6 +416,9 @@ class DbtModelValidator:
                     f"Table '{table_name}' has synonyms with problematic characters. "
                     f"These will be automatically sanitized during generation{example_text}.",
                     file_path=source_file,
+                    rule_id="SST-V014",
+                    suggestion="Run: sst format --sanitize",
+                    entity_name=table_name,
                     context={"table": table_name, "level": "table"},
                 )
 
@@ -393,6 +433,9 @@ class DbtModelValidator:
             result.add_error(
                 f"Table '{table_name}' has synonyms as {type(synonyms).__name__} instead of list at the table-level",
                 file_path=source_file,
+                rule_id="SST-V013",
+                suggestion="synonyms must be a YAML list",
+                entity_name=table_name,
                 context={"table": table_name, "field": "synonyms", "type": type(synonyms).__name__, "level": "table"},
             )
 
@@ -401,6 +444,9 @@ class DbtModelValidator:
             result.add_warning(
                 f"Table '{table_name}' has no synonyms defined at the table-level (helpful for natural language queries)",
                 file_path=source_file,
+                rule_id="SST-V013",
+                suggestion="Add synonyms for better natural language queries",
+                entity_name=table_name,
                 context={"table": table_name, "best_practice": "synonyms", "level": "table"},
             )
 
@@ -415,6 +461,9 @@ class DbtModelValidator:
             result.add_error(
                 f"Table name '{table_name}' doesn't match model name '{model_name}'. They should be the same.",
                 file_path=source_file,
+                rule_id="SST-V004",
+                suggestion="Table name and dbt model name must match",
+                entity_name=table_name,
                 context={"table": table_name, "model_name": model_name, "level": "table"},
             )
 
@@ -433,9 +482,7 @@ class DbtModelValidator:
         source_file = table.get("source_file")
         all_columns = dimensions + facts + time_dimensions
         table_col_names = {
-            c.get("column_name", "").upper()
-            for c in all_columns
-            if c.get("table_name", "").upper() == table_name.upper()
+            c.get("name", "").upper() for c in all_columns if c.get("table_name", "").upper() == table_name.upper()
         }
         for constraint in constraints:
             if not isinstance(constraint, dict):
@@ -448,30 +495,45 @@ class DbtModelValidator:
                     result.add_error(
                         f"Table '{table_name}' constraint '{c_name}' missing required 'start_column'",
                         file_path=source_file,
+                        rule_id="SST-V015",
+                        suggestion="Add start_column to the constraint definition",
+                        entity_name=table_name,
                         context={"table": table_name, "constraint": c_name},
                     )
                 elif table_col_names and start_col not in table_col_names:
-                    result.add_warning(
+                    result.add_error(
                         f"Table '{table_name}' constraint '{c_name}' start_column '{start_col}' not found in table columns",
                         file_path=source_file,
+                        rule_id="SST-V015",
+                        suggestion="Check column name spelling — column must exist in the model",
+                        entity_name=table_name,
                         context={"table": table_name, "constraint": c_name, "column": start_col},
                     )
                 if not end_col:
                     result.add_error(
                         f"Table '{table_name}' constraint '{c_name}' missing required 'end_column'",
                         file_path=source_file,
+                        rule_id="SST-V015",
+                        suggestion="Add end_column to the constraint definition",
+                        entity_name=table_name,
                         context={"table": table_name, "constraint": c_name},
                     )
                 elif table_col_names and end_col not in table_col_names:
-                    result.add_warning(
+                    result.add_error(
                         f"Table '{table_name}' constraint '{c_name}' end_column '{end_col}' not found in table columns",
                         file_path=source_file,
+                        rule_id="SST-V015",
+                        suggestion="Check column name spelling — column must exist in the model",
+                        entity_name=table_name,
                         context={"table": table_name, "constraint": c_name, "column": end_col},
                     )
                 if start_col and end_col and start_col == end_col:
                     result.add_error(
                         f"Table '{table_name}' constraint '{c_name}' start_column and end_column cannot be the same",
                         file_path=source_file,
+                        rule_id="SST-V015",
+                        suggestion="start_column and end_column must be different columns",
+                        entity_name=table_name,
                         context={"table": table_name, "constraint": c_name},
                     )
 
@@ -479,6 +541,20 @@ class DbtModelValidator:
         """Validate a single column."""
         column_name = column.get("name", "unknown")
         source_file = column.get("source_file")
+
+        if column.get("exclude"):
+            if column.get("column_type"):
+                result.add_warning(
+                    f"Column '{column_name}' in table '{table_name}' has both 'exclude: true' and "
+                    f"'column_type: {column.get('column_type')}'. The column will be excluded from "
+                    f"the semantic view — column_type is ignored.",
+                    file_path=source_file,
+                    rule_id="SST-V047",
+                    suggestion="Remove column_type or remove exclude: true",
+                    entity_name=column_name,
+                    context={"table": table_name, "column": column_name},
+                )
+            return
 
         # Check required column fields
         self._check_required_column_fields(column, table_name, column_name, source_file, result)
@@ -513,12 +589,18 @@ class DbtModelValidator:
             result.add_error(
                 f"Column '{column_name}' in table '{table_name}' is missing required field: meta.sst.column_type at the column-level",
                 file_path=source_file,
+                rule_id="SST-V021",
+                suggestion="Add column_type: dimension or fact or time_dimension",
+                entity_name=column_name,
                 context={"table": table_name, "column": column_name, "field": "column_type", "level": "column"},
             )
         elif column_type not in self.VALID_COLUMN_TYPES:
             result.add_error(
                 f"Column '{column_name}' in table '{table_name}' has invalid column_type: '{column_type}'. Must be one of: {', '.join(sorted(self.VALID_COLUMN_TYPES))}",
                 file_path=source_file,
+                rule_id="SST-V007",
+                suggestion="Must be one of: dimension, fact, time_dimension",
+                entity_name=column_name,
                 context={
                     "table": table_name,
                     "column": column_name,
@@ -536,14 +618,20 @@ class DbtModelValidator:
                 f"Column '{column_name}' in table '{table_name}' is missing required field: data_type at the column-level. "
                 f"Specify either as native dbt contract (column.data_type) or SST metadata (config.meta.sst.data_type)",
                 file_path=source_file,
+                rule_id="SST-V022",
+                suggestion="Add data_type (e.g., TEXT, NUMBER, TIMESTAMP_NTZ)",
+                entity_name=column_name,
                 context={"table": table_name, "column": column_name, "field": "data_type", "level": "column"},
             )
 
         # Description is REQUIRED (not just technically)
         if not column.get("description"):
-            result.add_error(
-                f"Column '{column_name}' in table '{table_name}' is missing required field: description at the column-level",
+            result.add_warning(
+                f"Column '{column_name}' in table '{table_name}' is missing description at the column-level (recommended for Cortex Analyst)",
                 file_path=source_file,
+                rule_id="SST-V020",
+                suggestion="Add a description to the column",
+                entity_name=column_name,
                 context={"table": table_name, "column": column_name, "field": "description", "level": "column"},
             )
 
@@ -554,12 +642,18 @@ class DbtModelValidator:
                 result.add_error(
                     f"Column '{column_name}' in table '{table_name}' has invalid visibility: '{visibility}'. Must be 'public' or 'private'",
                     file_path=source_file,
+                    rule_id="SST-V035",
+                    suggestion="visibility must be 'public' or 'private'",
+                    entity_name=column_name,
                     context={"table": table_name, "column": column_name, "field": "visibility", "level": "column"},
                 )
             elif visibility.lower() == "private" and column_type in ("dimension", "time_dimension"):
                 result.add_error(
                     f"Column '{column_name}' in table '{table_name}' cannot be PRIVATE: only facts and metrics support visibility control (Snowflake restriction)",
                     file_path=source_file,
+                    rule_id="SST-V035",
+                    suggestion="Only facts support PRIVATE visibility (Snowflake restriction)",
+                    entity_name=column_name,
                     context={"table": table_name, "column": column_name, "field": "visibility", "level": "column"},
                 )
 
@@ -583,10 +677,13 @@ class DbtModelValidator:
         # Strip precision/scale for validation (e.g., "number(38,0)" -> "number")
         base_data_type = data_type.split("(")[0] if "(" in data_type else data_type
         if base_data_type and base_data_type not in self.VALID_DATA_TYPES:
-            result.add_error(
+            result.add_warning(
                 f"Column '{column_name}' in table '{table_name}' has unrecognized data_type: '{data_type}' at the column-level. "
-                f"Must be a valid Snowflake data type.",
+                f"May not be a valid Snowflake data type.",
                 file_path=source_file,
+                rule_id="SST-V008",
+                suggestion=f"Valid types: TEXT, NUMBER, FLOAT, BOOLEAN, DATE, TIMESTAMP_NTZ, TIMESTAMP_LTZ, VARIANT. Run: DESCRIBE TABLE <table> to check actual column types",
+                entity_name=column_name,
                 context={"table": table_name, "column": column_name, "data_type": data_type, "level": "column"},
             )
 
@@ -624,6 +721,9 @@ class DbtModelValidator:
                 result.add_error(
                     f"Fact column '{column_name}' in table '{table_name}' has non-numeric data_type: '{data_type}' at the column-level",
                     file_path=source_file,
+                    rule_id="SST-V023",
+                    suggestion="Fact columns require numeric data types (NUMBER, INT, FLOAT, etc.)",
+                    entity_name=column_name,
                     context={
                         "table": table_name,
                         "column": column_name,
@@ -640,6 +740,9 @@ class DbtModelValidator:
                 result.add_error(
                     f"Time dimension '{column_name}' in table '{table_name}' has non-temporal data_type: '{data_type}' at the column-level",
                     file_path=source_file,
+                    rule_id="SST-V024",
+                    suggestion="Time dimensions require temporal types (DATE, TIMESTAMP, etc.)",
+                    entity_name=column_name,
                     context={
                         "table": table_name,
                         "column": column_name,
@@ -655,6 +758,9 @@ class DbtModelValidator:
             result.add_error(
                 f"Column '{column_name}' in table '{table_name}' has synonyms as {type(synonyms).__name__} instead of list at the column-level",
                 file_path=source_file,
+                rule_id="SST-V013",
+                suggestion="synonyms must be a list",
+                entity_name=column_name,
                 context={
                     "table": table_name,
                     "column": column_name,
@@ -669,6 +775,9 @@ class DbtModelValidator:
             result.add_error(
                 f"Column '{column_name}' in table '{table_name}' has sample_values as {type(sample_values).__name__} instead of list at the column-level",
                 file_path=source_file,
+                rule_id="SST-V005",
+                suggestion="sample_values must be a list",
+                entity_name=column_name,
                 context={
                     "table": table_name,
                     "column": column_name,
@@ -688,6 +797,9 @@ class DbtModelValidator:
                 f"Column '{column_name}' in table '{table_name}' has privacy_category='direct_identifier' "
                 f"but contains sample_values. PII columns must not expose sample data at the column-level",
                 file_path=source_file,
+                rule_id="SST-V025",
+                suggestion="Remove sample_values from PII columns (security requirement)",
+                entity_name=column_name,
                 context={
                     "table": table_name,
                     "column": column_name,
@@ -712,13 +824,16 @@ class DbtModelValidator:
                     f"Column '{column_name}' in table '{table_name}' contains sample_values with Jinja template "
                     f"characters that will break dbt compilation. Run 'sst enrich' to sanitize these values at the column-level",
                     file_path=source_file,
+                    rule_id="SST-V005",
+                    suggestion="Remove {{ }} Jinja characters from sample values",
+                    entity_name=column_name,
                     context={
                         "table": table_name,
                         "column": column_name,
                         "level": "column",
                         "validation": "JINJA_CHARACTERS_IN_SAMPLES",
                         "problematic_count": len(problematic_values),
-                        "examples": problematic_values[:3],  # Show up to 3 examples
+                        "examples": problematic_values[:3],
                     },
                 )
 
@@ -733,6 +848,9 @@ class DbtModelValidator:
                 f"Column '{column_name}' in table '{table_name}' has is_enum=true but column_type='{column_type}'. "
                 f"Fact and time_dimension columns should never be enums at the column-level",
                 file_path=source_file,
+                rule_id="SST-V025",
+                suggestion="is_enum is only valid for dimension columns",
+                entity_name=column_name,
                 context={
                     "table": table_name,
                     "column": column_name,
@@ -746,6 +864,9 @@ class DbtModelValidator:
             result.add_warning(
                 f"Column '{column_name}' in table '{table_name}' has is_enum=true but no sample_values at the column-level",
                 file_path=source_file,
+                rule_id="SST-V025",
+                suggestion="Add sample_values with the allowed enum values",
+                entity_name=column_name,
                 context={"table": table_name, "column": column_name, "level": "column"},
             )
 
@@ -777,6 +898,9 @@ class DbtModelValidator:
                     f"Column '{column_name}' in table '{table_name}' has synonyms with problematic characters. "
                     f"These will be automatically sanitized during generation{example_text}.",
                     file_path=source_file,
+                    rule_id="SST-V014",
+                    suggestion="Run: sst format --sanitize",
+                    entity_name=column_name,
                     context={"table": table_name, "column": column_name, "level": "column"},
                 )
 
@@ -803,6 +927,9 @@ class DbtModelValidator:
                     f"Using dbt value '{native_data_type}'. "
                     f"Consider removing duplicate from config.meta.sst.data_type.",
                     file_path=source_file,
+                    rule_id="SST-V008",
+                    suggestion="Resolve mismatch between dbt contract data_type and sst data_type",
+                    entity_name=column_name,
                     context={
                         "table": table_name,
                         "column": column_name,
@@ -829,6 +956,9 @@ class DbtModelValidator:
                 result.add_info(
                     f"Consider adding sample_values for dimension '{column_name}' in table '{table_name}' at the column-level",
                     file_path=source_file,
+                    rule_id="SST-V025",
+                    suggestion="Run: sst enrich to auto-populate sample values",
+                    entity_name=column_name,
                     context={
                         "table": table_name,
                         "column": column_name,
@@ -845,6 +975,9 @@ class DbtModelValidator:
                 result.add_info(
                     f"Consider adding synonyms for column '{column_name}' in table '{table_name}' at the column-level",
                     file_path=source_file,
+                    rule_id="SST-V013",
+                    suggestion="Add synonyms for better AI discoverability",
+                    entity_name=column_name,
                     context={
                         "table": table_name,
                         "column": column_name,
@@ -857,43 +990,30 @@ class DbtModelValidator:
         self, all_models: List[Dict[str, Any]], included_tables: List[Dict[str, Any]], result: ValidationResult
     ):
         """Check for models that should be included but aren't in the extraction."""
-        # This would catch models that have cortex_searchable=false or are missing metadata
-
         included_names = {t.get("table_name", "").upper() for t in included_tables}
 
         for model in all_models:
             model_name = model.get("name", "unknown")
             source_file = model.get("source_file")
 
-            # Process all models - no hardcoded exclusions
-            model_path = model.get("path", "")
-
-            # Check if this model is in the extracted tables
             if model_name.upper() not in included_names:
-                # Check why it's not included (supports both config.meta.sst and meta.sst)
                 sst_meta = get_sst_meta(model, node_type="model", node_name=model_name, emit_warning=False)
 
                 if not sst_meta:
                     result.add_info(
                         f"Model '{model_name}' has no meta.sst configuration (not included in semantic layer)",
                         file_path=source_file,
+                        rule_id="SST-V010",
+                        suggestion="Add config.meta.sst block to include model in semantic layer",
+                        entity_name=model_name,
                         context={"model": model_name, "reason": "no_sst_meta"},
                     )
                 else:
-                    # Check cortex_searchable
-                    cortex_searchable = sst_meta.get("cortex_searchable", False)
-
-                    if not cortex_searchable:
-                        # This is intentional, just log as info
-                        result.add_info(
-                            f"Model '{model_name}' has cortex_searchable=false (intentionally excluded)",
-                            file_path=source_file,
-                            context={"model": model_name, "reason": "excluded"},
-                        )
-                    else:
-                        # This shouldn't happen, but if it does, it's an error
-                        result.add_error(
-                            f"Model '{model_name}' has cortex_searchable=true but wasn't extracted",
-                            file_path=source_file,
-                            context={"model": model_name, "reason": "extraction_failure"},
-                        )
+                    result.add_error(
+                        f"Model '{model_name}' has SST config but wasn't extracted",
+                        file_path=source_file,
+                        rule_id="SST-V002",
+                        suggestion="Model with SST config not found in extracted data",
+                        entity_name=model_name,
+                        context={"model": model_name, "reason": "extraction_failure"},
+                    )

@@ -152,6 +152,7 @@ log/
 
 # IDE and editor files
 .idea/
+.cursor/
 *.swp
 *.swo
 *~

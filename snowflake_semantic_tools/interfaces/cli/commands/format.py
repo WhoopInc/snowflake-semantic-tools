@@ -20,7 +20,9 @@ from snowflake_semantic_tools.shared.utils.file_utils import expand_path_pattern
 logger = get_logger(__name__)
 
 
-@click.command()
+@click.command(
+    short_help="Standardize YAML formatting (no Snowflake needed)",
+)
 @click.argument("path", type=click.Path())
 @click.option("--dry-run", is_flag=True, help="Preview changes without modifying files")
 @click.option("--check", is_flag=True, help="Check if files need formatting (exit code 1 if changes needed)")
@@ -33,33 +35,31 @@ logger = get_logger(__name__)
     help="Sanitize problematic characters (apostrophes in synonyms/sample_values, Jinja in descriptions)",
 )
 def format_cmd(path: str, dry_run: bool, check: bool, force: bool, sanitize: bool):
-    """
-    Format dbt YAML files for consistency.
+    """Format dbt YAML files for consistency.
 
-    Applies standardized formatting to dbt model YAML files:
-    - Standardizes field ordering
-    - Removes excessive blank lines
-    - Ensures consistent indentation
-    - Formats multi-line descriptions
+    Standardizes field ordering, indentation, and blank lines in dbt model
+    YAML files. No Snowflake connection required.
 
-    PATH: File or directory to format
+    \b
+    PATH: File or directory to format (required argument)
 
+    \b
     Examples:
+      sst format models/analytics/users.yml   Format one file
+      sst format models/                      Format entire directory
+      sst format models/ --dry-run            Preview without modifying
+      sst format models/ --check              CI check (exit 1 if unformatted)
+      sst format models/ --sanitize           Fix problematic characters
 
-        # Format a single file
-        sst format models/analytics/users/users.yml
+    \b
+    Next Step:
+      sst validate            Check formatted models for errors
 
-        # Format all files in a directory
-        sst format models/analytics/
-
-        # Preview changes without modifying files
-        sst format models/ --dry-run
-
-        # Check if formatting is needed (CI/CD)
-        sst format models/ --check
-
-        # Force write even if content appears unchanged
-        sst format models/ --force
+    \b
+    Related Commands:
+      sst enrich              Populate metadata (run format after enrich)
+      sst validate            Verify models are valid after formatting
+      sst migrate-meta        Migrate legacy meta.sst format
     """
     # IMMEDIATE OUTPUT
     output = CLIOutput(verbose=False, quiet=False)

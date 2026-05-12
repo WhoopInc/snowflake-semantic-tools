@@ -76,7 +76,10 @@ class SemanticModelValidator:
                     "snowflake_filters is deprecated and will be removed in a future major version. "
                     "Filters are auto-converted to AI_SQL_GENERATION instructions at generation time, "
                     "but for full control over instruction wording, migrate to snowflake_custom_instructions "
-                    "with sql_generation text.",
+                    "with ai_sql_generation text.",
+                    rule_id="SST-V050",
+                    suggestion="Migrate to snowflake_custom_instructions with ai_sql_generation",
+                    entity_name="snowflake_filters",
                     context={"type": "DEPRECATION"},
                 )
 
@@ -108,43 +111,69 @@ class SemanticModelValidator:
             # Required fields
             self._check_required_field(metric, "name", metric_name, "metric", source_file, result)
             self._check_required_field(metric, "expr", metric_name, "metric", source_file, result)
-            self._check_required_field(metric, "tables", metric_name, "metric", source_file, result)
+            if not metric.get("derived"):
+                expr = metric.get("expr", "")
+                has_tables = bool(metric.get("tables"))
+                can_infer = False
+                if not has_tables and isinstance(expr, str):
+                    import re as _re
+
+                    from snowflake_semantic_tools.core.parsing.parsers.semantic_parser import (
+                        _extract_table_names_from_jinja,
+                    )
+
+                    can_infer = bool(_extract_table_names_from_jinja(expr))
+                    if not can_infer:
+                        stripped = _re.sub(r"'[^']*'", "", expr)
+                        can_infer = bool(_re.findall(r"\w+\.\w+", stripped))
+                if not has_tables and not can_infer:
+                    self._check_required_field(metric, "tables", metric_name, "metric", source_file, result)
 
             # Validate identifier (length, characters, reserved keywords)
             self._validate_identifier(metric_name, "Metric", result, source_file=source_file)
 
             # Field types
-            if "tables" in metric:
+            if "tables" in metric and not metric.get("derived"):
                 if not isinstance(metric["tables"], list):
                     result.add_error(
                         f"Metric '{metric_name}' field 'tables' must be a list, got {type(metric['tables']).__name__}",
                         file_path=source_file,
+                        rule_id="SST-V005",
+                        suggestion="Use a YAML list:\n  tables:\n    - {{ ref('table_name') }}",
+                        entity_name=metric_name,
                         context={"metric": metric_name, "field": "tables", "type": "metric"},
                     )
                 elif len(metric["tables"]) == 0:
-                    result.add_error(
-                        f"Metric '{metric_name}' field 'tables' cannot be empty",
-                        file_path=source_file,
-                        context={"metric": metric_name, "field": "tables", "type": "metric"},
-                    )
+                    expr = metric.get("expr", "")
+                    can_infer = False
+                    if isinstance(expr, str):
+                        from snowflake_semantic_tools.core.parsing.parsers.semantic_parser import (
+                            _extract_table_names_from_jinja,
+                        )
+
+                        can_infer = bool(_extract_table_names_from_jinja(expr))
+                    if not can_infer:
+                        result.add_error(
+                            f"Metric '{metric_name}' field 'tables' cannot be empty",
+                            file_path=source_file,
+                            rule_id="SST-V034",
+                            suggestion="Add at least one table reference: - {{ ref('table_name') }}",
+                            entity_name=metric_name,
+                            context={"metric": metric_name, "field": "tables", "type": "metric"},
+                        )
 
             if "expr" in metric:
                 if not isinstance(metric["expr"], str):
                     result.add_error(
                         f"Metric '{metric_name}' field 'expr' must be a string, got {type(metric['expr']).__name__}",
                         file_path=source_file,
+                        rule_id="SST-V033",
+                        suggestion="Use a SQL expression string: expr: SUM({{ ref('orders', 'amount') }})",
+                        entity_name=metric_name,
                         context={"metric": metric_name, "field": "expr", "type": "metric"},
                     )
-                elif not metric["expr"].strip():
-                    result.add_error(
-                        f"Metric '{metric_name}' field 'expr' cannot be empty",
-                        file_path=source_file,
-                        context={"metric": metric_name, "field": "expr", "type": "metric"},
-                    )
-                else:
-                    # Validate SQL syntax in expression
+                elif metric["expr"].strip():
                     self._validate_sql_expression(metric_name, metric["expr"], "metric", source_file, result)
-                    # Validate expression syntax (balanced delimiters)
                     self._validate_expression_syntax(metric["expr"], metric_name, "Metric", source_file, result)
 
             # Note: default_aggregation is NOT validated - it's not part of Snowflake's
@@ -156,6 +185,9 @@ class SemanticModelValidator:
                     result.add_error(
                         f"Metric '{metric_name}' field 'synonyms' must be a list, got {type(metric['synonyms']).__name__}",
                         file_path=source_file,
+                        rule_id="SST-V013",
+                        suggestion="Use a YAML list:\n  synonyms:\n    - alternative_name",
+                        entity_name=metric_name,
                         context={"metric": metric_name, "field": "synonyms", "type": "metric"},
                     )
 
@@ -164,6 +196,9 @@ class SemanticModelValidator:
                 result.add_warning(
                     f"Metric '{metric_name}' is missing description (recommended for AI understanding)",
                     file_path=source_file,
+                    rule_id="SST-V001",
+                    suggestion="Add description for better AI understanding",
+                    entity_name=metric_name,
                     context={"metric": metric_name, "field": "description", "type": "metric"},
                 )
 
@@ -171,6 +206,9 @@ class SemanticModelValidator:
                 result.add_info(
                     f"Consider adding synonyms to metric '{metric_name}' for better natural language queries",
                     file_path=source_file,
+                    rule_id="SST-V013",
+                    suggestion="Add synonyms for better natural language queries",
+                    entity_name=metric_name,
                     context={"metric": metric_name, "field": "synonyms", "type": "metric"},
                 )
 
@@ -180,6 +218,9 @@ class SemanticModelValidator:
                     result.add_error(
                         f"Metric '{metric_name}' field 'non_additive_by' must be a list of dimension configs",
                         file_path=source_file,
+                        rule_id="SST-V036",
+                        suggestion="Use:\n  non_additive_by:\n    - dimension: column_name\n      order: DESC",
+                        entity_name=metric_name,
                         context={"metric": metric_name, "field": "non_additive_by", "type": "metric"},
                     )
                 else:
@@ -189,6 +230,9 @@ class SemanticModelValidator:
                                 result.add_error(
                                     f"Metric '{metric_name}' non_additive_by entry missing required 'dimension' field",
                                     file_path=source_file,
+                                    rule_id="SST-V036",
+                                    suggestion="Add 'dimension' field: - dimension: column_name",
+                                    entity_name=metric_name,
                                     context={"metric": metric_name, "type": "metric"},
                                 )
                             order = item.get("order", "ASC").upper()
@@ -196,6 +240,9 @@ class SemanticModelValidator:
                                 result.add_error(
                                     f"Metric '{metric_name}' non_additive_by order must be ASC or DESC, got '{order}'",
                                     file_path=source_file,
+                                    rule_id="SST-V036",
+                                    suggestion="order must be ASC or DESC",
+                                    entity_name=metric_name,
                                     context={"metric": metric_name, "type": "metric"},
                                 )
 
@@ -205,6 +252,9 @@ class SemanticModelValidator:
                     result.add_error(
                         f"Metric '{metric_name}' field 'using_relationships' must be a list of relationship names",
                         file_path=source_file,
+                        rule_id="SST-V038",
+                        suggestion="Use:\\n  using_relationships:\\n    - relationship_name",
+                        entity_name=metric_name,
                         context={"metric": metric_name, "field": "using_relationships", "type": "metric"},
                     )
 
@@ -214,6 +264,9 @@ class SemanticModelValidator:
                     result.add_error(
                         f"Metric '{metric_name}' field 'window' must be a dict with partition_by/partition_by_excluding/order_by",
                         file_path=source_file,
+                        rule_id="SST-V037",
+                        suggestion="Use:\\n  window:\\n    window_function: SUM\\n    order_by: [column_name]",
+                        entity_name=metric_name,
                         context={"metric": metric_name, "field": "window", "type": "metric"},
                     )
                 else:
@@ -223,6 +276,9 @@ class SemanticModelValidator:
                         result.add_error(
                             f"Metric '{metric_name}' window config specifies both 'partition_by' and 'partition_by_excluding' — use exactly one",
                             file_path=source_file,
+                            rule_id="SST-V037",
+                            suggestion="Remove either 'partition_by' or 'partition_by_excluding' — they are mutually exclusive",
+                            entity_name=metric_name,
                             context={"metric": metric_name, "field": "window", "type": "metric"},
                         )
 
@@ -232,6 +288,9 @@ class SemanticModelValidator:
                     result.add_error(
                         f"Metric '{metric_name}' visibility must be 'private' or 'public', got '{vis}'",
                         file_path=source_file,
+                        rule_id="SST-V035",
+                        suggestion="Use: visibility: private (or remove for default public)",
+                        entity_name=metric_name,
                         context={"metric": metric_name, "field": "visibility", "type": "metric"},
                     )
 
@@ -276,6 +335,9 @@ class SemanticModelValidator:
                         result.add_error(
                             f"Relationship '{rel_name}' is missing required field: {display_field}",
                             file_path=source_file,
+                            rule_id="SST-V040",
+                            suggestion="Add the missing required field",
+                            entity_name=rel_name,
                             context={"relationship": rel_name, "field": display_field, "type": "relationship"},
                         )
             else:
@@ -294,12 +356,18 @@ class SemanticModelValidator:
                     result.add_error(
                         f"Relationship '{rel_name}' field 'relationship_conditions' must be a list",
                         file_path=source_file,
+                        rule_id="SST-V005",
+                        suggestion="relationship_conditions must be a list of strings",
+                        entity_name=rel_name,
                         context={"relationship": rel_name, "field": "relationship_conditions", "type": "relationship"},
                     )
                 elif len(rel_conditions) == 0:
                     result.add_error(
                         f"Relationship '{rel_name}' field 'relationship_conditions' cannot be empty",
                         file_path=source_file,
+                        rule_id="SST-V006",
+                        suggestion="Add at least one join condition",
+                        entity_name=rel_name,
                         context={"relationship": rel_name, "field": "relationship_conditions", "type": "relationship"},
                     )
                 else:
@@ -309,6 +377,9 @@ class SemanticModelValidator:
                             result.add_error(
                                 f"Relationship '{rel_name}' relationship_conditions[{i}] must be a string",
                                 file_path=source_file,
+                                rule_id="SST-V005",
+                                suggestion="Each condition must be a quoted string",
+                                entity_name=rel_name,
                                 context={
                                     "relationship": rel_name,
                                     "field": f"relationship_conditions[{i}]",
@@ -330,6 +401,9 @@ class SemanticModelValidator:
                             result.add_error(
                                 f"Relationship '{rel_name}' has invalid join condition: {error_msg}",
                                 file_path=source_file,
+                                rule_id="SST-V040",
+                                suggestion="Fix join condition syntax (check column references)",
+                                entity_name=rel_name,
                                 context={"relationship": rel_name, "condition": condition, "type": "relationship"},
                             )
                         else:
@@ -353,6 +427,9 @@ class SemanticModelValidator:
                                 result.add_error(
                                     f"Relationship '{rel_name}' condition references table '{parsed.left_table}' but left_table is '{left_table_name}'",
                                     file_path=source_file,
+                                    rule_id="SST-V040",
+                                    suggestion="Condition must reference the declared left_table",
+                                    entity_name=rel_name,
                                     context={"relationship": rel_name, "condition": condition, "type": "relationship"},
                                 )
 
@@ -364,6 +441,9 @@ class SemanticModelValidator:
                                 result.add_error(
                                     f"Relationship '{rel_name}' condition references table '{parsed.right_table}' but right_table is '{right_table_name}'",
                                     file_path=source_file,
+                                    rule_id="SST-V040",
+                                    suggestion="Condition must reference the declared right_table",
+                                    entity_name=rel_name,
                                     context={"relationship": rel_name, "condition": condition, "type": "relationship"},
                                 )
 
@@ -372,6 +452,9 @@ class SemanticModelValidator:
                                 result.add_warning(
                                     f"Relationship '{rel_name}' has ASOF condition as first condition - consider putting equality condition first",
                                     file_path=source_file,
+                                    rule_id="SST-V040",
+                                    suggestion="Put equality conditions before ASOF conditions",
+                                    entity_name=rel_name,
                                     context={"relationship": rel_name, "condition": condition, "type": "relationship"},
                                 )
 
@@ -379,7 +462,6 @@ class SemanticModelValidator:
 
     def _extract_table_name(self, table_template: str) -> str:
         """Extract table name from {{ table('name') }} or {{ ref('name') }} template."""
-        import re
 
         # Try unified ref() syntax first (one argument = table)
         match = re.search(r"{{\s*ref\s*\(\s*['\"]([^'\"]+)['\"]\s*\)\s*}}", table_template)
@@ -416,12 +498,18 @@ class SemanticModelValidator:
                     result.add_error(
                         f"Filter '{filter_name}' field 'expr' must be a string, got {type(filter_def['expr']).__name__}",
                         file_path=source_file,
+                        rule_id="SST-V051",
+                        suggestion="expr must be a SQL expression string",
+                        entity_name=filter_name,
                         context={"filter": filter_name, "field": "expr", "type": "filter"},
                     )
                 elif not filter_def["expr"].strip():
                     result.add_error(
                         f"Filter '{filter_name}' field 'expr' cannot be empty",
                         file_path=source_file,
+                        rule_id="SST-V051",
+                        suggestion="Filter expr cannot be empty",
+                        entity_name=filter_name,
                         context={"filter": filter_name, "field": "expr", "type": "filter"},
                     )
                 else:
@@ -436,6 +524,9 @@ class SemanticModelValidator:
                     result.add_error(
                         f"Filter '{filter_name}' field 'synonyms' must be a list, got {type(filter_def['synonyms']).__name__}",
                         file_path=source_file,
+                        rule_id="SST-V013",
+                        suggestion="synonyms must be a list",
+                        entity_name=filter_name,
                         context={"filter": filter_name, "field": "synonyms", "type": "filter"},
                     )
 
@@ -444,6 +535,9 @@ class SemanticModelValidator:
                 result.add_warning(
                     f"Filter '{filter_name}' is missing description (recommended for AI understanding)",
                     file_path=source_file,
+                    rule_id="SST-V001",
+                    suggestion="Add description for AI understanding",
+                    entity_name=filter_name,
                     context={"filter": filter_name, "field": "description", "type": "filter"},
                 )
 
@@ -451,6 +545,9 @@ class SemanticModelValidator:
                 result.add_info(
                     f"Consider adding synonyms to filter '{filter_name}' for better natural language queries",
                     file_path=source_file,
+                    rule_id="SST-V013",
+                    suggestion="Add synonyms for natural language queries",
+                    entity_name=filter_name,
                     context={"filter": filter_name, "field": "synonyms", "type": "filter"},
                 )
 
@@ -465,17 +562,31 @@ class SemanticModelValidator:
             # Required fields
             self._check_required_field(instruction, "name", instruction_name, "custom_instruction", source_file, result)
 
-            # At least one of question_categorization or sql_generation must be present
+            if instruction.get("_used_legacy_keys"):
+                result.add_warning(
+                    f"Custom instruction '{instruction_name}' uses deprecated key names. "
+                    f"Rename 'sql_generation' to 'ai_sql_generation' and "
+                    f"'question_categorization' to 'ai_question_categorization' to align with Snowflake DDL.",
+                    file_path=source_file,
+                    rule_id="SST-V052",
+                    suggestion="Use 'ai_sql_generation' and 'ai_question_categorization' (matches Snowflake DDL)",
+                    entity_name=instruction_name,
+                    context={"custom_instruction": instruction_name},
+                )
+
             has_question_cat = "question_categorization" in instruction and instruction.get("question_categorization")
             has_sql_gen = "sql_generation" in instruction and instruction.get("sql_generation")
 
             if not has_question_cat and not has_sql_gen:
                 result.add_error(
-                    f"Custom instruction '{instruction_name}' is missing required field: must have at least one of 'question_categorization' or 'sql_generation'",
+                    f"Custom instruction '{instruction_name}' is missing required field: must have at least one of 'ai_sql_generation' or 'ai_question_categorization'",
                     file_path=source_file,
+                    rule_id="SST-V001",
+                    suggestion="Must have at least ai_sql_generation or ai_question_categorization",
+                    entity_name=instruction_name,
                     context={
                         "custom_instruction": instruction_name,
-                        "field": "question_categorization or sql_generation",
+                        "field": "ai_sql_generation or ai_question_categorization",
                         "type": "custom_instruction",
                     },
                 )
@@ -489,6 +600,9 @@ class SemanticModelValidator:
                     result.add_error(
                         f"Custom instruction '{instruction_name}' field 'question_categorization' must be a string, got {type(instruction['question_categorization']).__name__}",
                         file_path=source_file,
+                        rule_id="SST-V005",
+                        suggestion="question_categorization must be a string",
+                        entity_name=instruction_name,
                         context={
                             "custom_instruction": instruction_name,
                             "field": "question_categorization",
@@ -499,6 +613,9 @@ class SemanticModelValidator:
                     result.add_error(
                         f"Custom instruction '{instruction_name}' field 'question_categorization' cannot be empty or whitespace-only",
                         file_path=source_file,
+                        rule_id="SST-V006",
+                        suggestion="question_categorization cannot be empty",
+                        entity_name=instruction_name,
                         context={
                             "custom_instruction": instruction_name,
                             "field": "question_categorization",
@@ -512,6 +629,9 @@ class SemanticModelValidator:
                         f"Custom instruction '{instruction_name}' has very short question_categorization text (< 10 chars). "
                         f"Consider adding more detail.",
                         file_path=source_file,
+                        rule_id="SST-V001",
+                        suggestion="Provide more detailed instruction text (>10 chars)",
+                        entity_name=instruction_name,
                         context={
                             "custom_instruction": instruction_name,
                             "field": "question_categorization",
@@ -525,6 +645,9 @@ class SemanticModelValidator:
                     result.add_error(
                         f"Custom instruction '{instruction_name}' field 'sql_generation' must be a string, got {type(instruction['sql_generation']).__name__}",
                         file_path=source_file,
+                        rule_id="SST-V005",
+                        suggestion="sql_generation must be a string",
+                        entity_name=instruction_name,
                         context={
                             "custom_instruction": instruction_name,
                             "field": "sql_generation",
@@ -535,6 +658,9 @@ class SemanticModelValidator:
                     result.add_error(
                         f"Custom instruction '{instruction_name}' field 'sql_generation' cannot be empty or whitespace-only",
                         file_path=source_file,
+                        rule_id="SST-V006",
+                        suggestion="sql_generation cannot be empty",
+                        entity_name=instruction_name,
                         context={
                             "custom_instruction": instruction_name,
                             "field": "sql_generation",
@@ -546,6 +672,9 @@ class SemanticModelValidator:
                         f"Custom instruction '{instruction_name}' has very short sql_generation text (< 10 chars). "
                         f"Consider adding more detail.",
                         file_path=source_file,
+                        rule_id="SST-V001",
+                        suggestion="Provide more detailed instruction text (>10 chars)",
+                        entity_name=instruction_name,
                         context={
                             "custom_instruction": instruction_name,
                             "field": "sql_generation",
@@ -576,12 +705,18 @@ class SemanticModelValidator:
                 result.add_error(
                     f"Verified query '{query_name}' specifies both 'sql' and 'sql_file' — use exactly one",
                     file_path=source_file,
+                    rule_id="SST-V062",
+                    suggestion="Use exactly one: sql or sql_file, not both",
+                    entity_name=query_name,
                     context={"verified_query": query_name, "type": "verified_query"},
                 )
             elif not has_sql and not has_sql_file:
                 result.add_error(
                     f"Verified query '{query_name}' is missing required field: sql (or sql_file)",
                     file_path=source_file,
+                    rule_id="SST-V060",
+                    suggestion="Add sql field with a SELECT query, or sql_file with path",
+                    entity_name=query_name,
                     context={"verified_query": query_name, "field": "sql", "type": "verified_query"},
                 )
             elif has_sql_file:
@@ -594,6 +729,9 @@ class SemanticModelValidator:
                         result.add_error(
                             f"Verified query '{query_name}' references sql_file '{sql_file_path}' which does not exist (resolved to {resolved})",
                             file_path=source_file,
+                            rule_id="SST-V061",
+                            suggestion="Check file path relative to the YAML file",
+                            entity_name=query_name,
                             context={"verified_query": query_name, "field": "sql_file", "type": "verified_query"},
                         )
 
@@ -606,6 +744,9 @@ class SemanticModelValidator:
                     result.add_error(
                         f"Verified query '{query_name}' field 'question' must be a string, got {type(query['question']).__name__}",
                         file_path=source_file,
+                        rule_id="SST-V005",
+                        suggestion="question must be a string",
+                        entity_name=query_name,
                         context={"verified_query": query_name, "field": "question", "type": "verified_query"},
                     )
 
@@ -614,15 +755,20 @@ class SemanticModelValidator:
                     result.add_error(
                         f"Verified query '{query_name}' field 'sql' must be a string, got {type(query['sql']).__name__}",
                         file_path=source_file,
+                        rule_id="SST-V005",
+                        suggestion="sql must be a string",
+                        entity_name=query_name,
                         context={"verified_query": query_name, "field": "sql", "type": "verified_query"},
                     )
                 else:
-                    # Basic SQL validation - check for SELECT
                     sql = query["sql"].strip().upper()
                     if not sql.startswith("SELECT") and not sql.startswith("WITH"):
                         result.add_warning(
                             f"Verified query '{query_name}' SQL should start with SELECT or WITH",
                             file_path=source_file,
+                            rule_id="SST-V060",
+                            suggestion="SQL should start with SELECT or WITH",
+                            entity_name=query_name,
                             context={"verified_query": query_name, "field": "sql", "type": "verified_query"},
                         )
 
@@ -635,16 +781,20 @@ class SemanticModelValidator:
                     result.add_error(
                         f"Verified query '{query_name}' field 'verified_at' must be a string in YYYY-MM-DD format (e.g., '2024-01-15')",
                         file_path=source_file,
+                        rule_id="SST-V060",
+                        suggestion="verified_at must be a string in YYYY-MM-DD format",
+                        entity_name=query_name,
                         context={"verified_query": query_name, "field": "verified_at", "type": "verified_query"},
                     )
                 else:
-                    # Validate YYYY-MM-DD format
-                    import re
 
                     if not re.match(r"^\d{4}-\d{2}-\d{2}$", verified_at):
                         result.add_error(
                             f"Verified query '{query_name}' field 'verified_at' must be in YYYY-MM-DD format (e.g., '2024-01-15'), got '{verified_at}'",
                             file_path=source_file,
+                            rule_id="SST-V060",
+                            suggestion="Use format: 2024-01-15",
+                            entity_name=query_name,
                             context={
                                 "verified_query": query_name,
                                 "field": "verified_at",
@@ -665,6 +815,9 @@ class SemanticModelValidator:
                             f"Verified query '{query_name}' field '{onboarding_field}' must be a boolean (true/false), "
                             f"got {type(onboarding_value).__name__}: '{onboarding_value}'",
                             file_path=source_file,
+                            rule_id="SST-V005",
+                            suggestion="Must be true or false (boolean)",
+                            entity_name=query_name,
                             context={
                                 "verified_query": query_name,
                                 "field": onboarding_field,
@@ -684,6 +837,9 @@ class SemanticModelValidator:
                 result.add_info(
                     f"Consider adding 'verified_at' date to verified query '{query_name}' for tracking",
                     file_path=source_file,
+                    rule_id="SST-V060",
+                    suggestion="Add verified_at date for tracking",
+                    entity_name=query_name,
                     context={"verified_query": query_name, "field": "verified_at", "type": "verified_query"},
                 )
 
@@ -718,6 +874,9 @@ class SemanticModelValidator:
                     except (json.JSONDecodeError, TypeError):
                         result.add_error(
                             f"Semantic view '{view_name}' field 'tables' is an invalid JSON string",
+                            rule_id="SST-V070",
+                            suggestion="Fix JSON syntax in tables field",
+                            entity_name=view_name,
                             context={"semantic_view": view_name, "field": "tables", "type": "semantic_view"},
                         )
                         continue
@@ -728,11 +887,17 @@ class SemanticModelValidator:
                 if not isinstance(tables, list):
                     result.add_error(
                         f"Semantic view '{view_name}' field 'tables' must be a list, got {type(tables).__name__}",
+                        rule_id="SST-V005",
+                        suggestion="tables must be a list",
+                        entity_name=view_name,
                         context={"semantic_view": view_name, "field": "tables", "type": "semantic_view"},
                     )
                 elif len(tables) == 0:
                     result.add_error(
                         f"Semantic view '{view_name}' field 'tables' cannot be empty",
+                        rule_id="SST-V006",
+                        suggestion="tables cannot be empty — add at least one table",
+                        entity_name=view_name,
                         context={"semantic_view": view_name, "field": "tables", "type": "semantic_view"},
                     )
 
@@ -742,6 +907,9 @@ class SemanticModelValidator:
                     if not isinstance(view[list_field], list):
                         result.add_error(
                             f"Semantic view '{view_name}' field '{list_field}' must be a list, got {type(view[list_field]).__name__}",
+                            rule_id="SST-V005",
+                            suggestion="Field must be a list",
+                            entity_name=view_name,
                             context={"semantic_view": view_name, "field": list_field, "type": "semantic_view"},
                         )
 
@@ -749,6 +917,9 @@ class SemanticModelValidator:
             if not view.get("description"):
                 result.add_warning(
                     f"Semantic view '{view_name}' is missing description (recommended for documentation)",
+                    rule_id="SST-V070",
+                    suggestion="Add description for documentation",
+                    entity_name=view_name,
                     context={"semantic_view": view_name, "field": "description", "type": "semantic_view"},
                 )
 
@@ -767,22 +938,32 @@ class SemanticModelValidator:
         result: ValidationResult,
     ):
         """Check if a required field exists and is not empty."""
+        entity_type_display = obj_type.replace("_", " ").title()
         if field_name not in obj:
             result.add_error(
-                f"{obj_type.replace('_', ' ').title()} '{obj_name}' is missing required field: {field_name}",
+                f"{entity_type_display} '{obj_name}' is missing required field: {field_name}",
                 file_path=source_file,
+                rule_id="SST-V001",
+                suggestion=f"Add '{field_name}' to the {obj_type} definition",
+                entity_name=obj_name,
                 context={obj_type: obj_name, "field": field_name, "type": obj_type},
             )
         elif obj[field_name] is None:
             result.add_error(
-                f"{obj_type.replace('_', ' ').title()} '{obj_name}' field '{field_name}' cannot be null",
+                f"{entity_type_display} '{obj_name}' field '{field_name}' cannot be null",
                 file_path=source_file,
+                rule_id="SST-V006",
+                suggestion=f"Set '{field_name}' to a non-null value",
+                entity_name=obj_name,
                 context={obj_type: obj_name, "field": field_name, "type": obj_type},
             )
         elif isinstance(obj[field_name], str) and not obj[field_name].strip():
             result.add_error(
-                f"{obj_type.replace('_', ' ').title()} '{obj_name}' field '{field_name}' cannot be empty",
+                f"{entity_type_display} '{obj_name}' field '{field_name}' cannot be empty",
                 file_path=source_file,
+                rule_id="SST-V006",
+                suggestion=f"Provide a value for '{field_name}'",
+                entity_name=obj_name,
                 context={obj_type: obj_name, "field": field_name, "type": obj_type},
             )
 
@@ -795,7 +976,6 @@ class SemanticModelValidator:
         result: ValidationResult,
     ):
         """Validate SQL syntax in expressions."""
-        import re
 
         # Check for invalid column reference syntax (like start_date::DATE)
         # This pattern looks for column references with :: syntax that should use template syntax instead
@@ -803,8 +983,11 @@ class SemanticModelValidator:
         for column, type_cast in invalid_column_refs:
             result.add_error(
                 f"{entity_type.title()} '{entity_name}' contains invalid column reference syntax '{column}::{type_cast}'. "
-                f"Use template syntax {{ ref('table_name', '{column}') }} or {{ column('table_name', '{column}') }} instead.",
+                f"Use template syntax {{{{ ref('table_name', '{column}') }}}} or {{{{ column('table_name', '{column}') }}}} instead.",
                 file_path=source_file,
+                rule_id="SST-V005",
+                suggestion="Remove ::TYPE casting from column reference",
+                entity_name=entity_name,
                 context={
                     "entity": entity_name,
                     "issue": "invalid_column_syntax",
@@ -820,6 +1003,9 @@ class SemanticModelValidator:
                 f"{entity_type.title()} '{entity_name}' contains 'TOKEN RATE' which may cause SQL compilation errors. "
                 f"Check for proper spacing and syntax in metric expressions.",
                 file_path=source_file,
+                rule_id="SST-V005",
+                suggestion="'TOKEN RATE' may cause SQL compilation errors",
+                entity_name=entity_name,
                 context={"entity": entity_name, "issue": "token_rate_syntax", "type": entity_type},
             )
 
@@ -829,6 +1015,9 @@ class SemanticModelValidator:
                 f"{entity_type.title()} '{entity_name}' contains 'RATE(' which may cause SQL compilation errors. "
                 f"Check for proper function syntax and spacing.",
                 file_path=source_file,
+                rule_id="SST-V005",
+                suggestion="'RATE(' may cause SQL compilation errors",
+                entity_name=entity_name,
                 context={"entity": entity_name, "issue": "rate_function_syntax", "type": entity_type},
             )
 
@@ -842,6 +1031,9 @@ class SemanticModelValidator:
                 f"{entity_type.title()} '{entity_name}' may have missing commas in function calls. "
                 f"Check for proper comma separation between function arguments.",
                 file_path=source_file,
+                rule_id="SST-V005",
+                suggestion="Check for missing commas between function arguments",
+                entity_name=entity_name,
                 context={"entity": entity_name, "issue": "missing_commas", "type": entity_type},
             )
 
@@ -849,13 +1041,15 @@ class SemanticModelValidator:
         self, relationship_name: str, column_ref: str, field_name: str, result: ValidationResult
     ):
         """Validate column reference syntax in relationships."""
-        import re
 
         # Check for invalid column reference syntax (like start_date::DATE)
         if "::" in column_ref:
             result.add_error(
                 f"Relationship '{relationship_name}' {field_name} contains invalid column reference syntax '{column_ref}'. "
                 f"Use template syntax {{ ref('table_name', 'column_name') }} or {{ column('table_name', 'column_name') }} instead.",
+                rule_id="SST-V005",
+                suggestion="Remove ::TYPE casting from column reference",
+                entity_name=relationship_name,
                 context={
                     "relationship": relationship_name,
                     "field": field_name,
@@ -870,6 +1064,9 @@ class SemanticModelValidator:
             result.add_error(
                 f"Relationship '{relationship_name}' {field_name} contains 'TOKEN RATE' which may cause SQL compilation errors. "
                 f"Check for proper spacing and syntax in column references.",
+                rule_id="SST-V005",
+                suggestion="'TOKEN RATE' may cause SQL compilation errors",
+                entity_name=relationship_name,
                 context={
                     "relationship": relationship_name,
                     "field": field_name,
@@ -912,6 +1109,9 @@ class SemanticModelValidator:
                 f"exceeds Snowflake's {SNOWFLAKE_MAX_IDENTIFIER_LENGTH}-character limit. "
                 f"Please use a shorter name.",
                 file_path=source_file,
+                rule_id="SST-V005",
+                suggestion="Shorten name to <=256 characters",
+                entity_name=name,
                 context={
                     "identifier": name,
                     "identifier_type": identifier_type,
@@ -926,6 +1126,9 @@ class SemanticModelValidator:
                 f"is longer than recommended ({IDENTIFIER_WARNING_LENGTH}+ characters). "
                 f"Consider using a shorter name for better readability.",
                 file_path=source_file,
+                rule_id="SST-V005",
+                suggestion="Consider using a shorter name",
+                entity_name=name,
                 context={
                     "identifier": name,
                     "identifier_type": identifier_type,
@@ -987,6 +1190,9 @@ class SemanticModelValidator:
             f"and contain only letters, digits, and underscores. "
             f"Suggested: '{suggested}'",
             file_path=source_file,
+            rule_id="SST-V005",
+            suggestion="Use only alphanumeric characters and underscores",
+            entity_name=name,
             context={
                 "identifier": name,
                 "identifier_type": identifier_type,
@@ -1036,6 +1242,9 @@ class SemanticModelValidator:
             f"This may cause SQL errors or require quoting in queries. "
             f"Suggested alternatives: {', '.join(suggestions)}",
             file_path=source_file,
+            rule_id="SST-V005",
+            suggestion="Rename to avoid SQL reserved keyword",
+            entity_name=name,
             context={
                 "identifier": name,
                 "identifier_type": identifier_type,
@@ -1121,13 +1330,15 @@ class SemanticModelValidator:
 
         if errors:
             context_prefix = f"{table_name}." if table_name else ""
-            # Truncate long expressions for readability
             expr_preview = expression[:100] + "..." if len(expression) > 100 else expression
             result.add_error(
                 f"{expr_type} '{context_prefix}{name}' has syntax errors:\n"
                 f"Expression: {expr_preview}\n"
                 f"Issues: {', '.join(errors)}",
                 file_path=source_file,
+                rule_id="SST-V033",
+                suggestion="Fix unbalanced parentheses or brackets in expression",
+                entity_name=name,
                 context={
                     "table": table_name,
                     expr_type.lower(): name,
@@ -1200,6 +1411,9 @@ class SemanticModelValidator:
                         f"Circular dependency detected in metric '{context_prefix}{metric_name}'. "
                         f"Cycle: {' -> '.join(cycle_path)}. "
                         f"Circular dependencies cause infinite recursion at query time.",
+                        rule_id="SST-V090",
+                        suggestion="Break the circular metric reference",
+                        entity_name=metric_name,
                         context={
                             "table": table_name,
                             "metric": metric_name,
@@ -1292,6 +1506,9 @@ class SemanticModelValidator:
                 f"Verified query '{query_name}' SQL references tables not in 'tables' list: "
                 f"{', '.join(undeclared_tables)}. Consider adding them to the tables list.",
                 file_path=source_file,
+                rule_id="SST-V060",
+                suggestion="Add missing tables to the 'tables' list in VQR",
+                entity_name=query_name,
                 context={
                     "verified_query": query_name,
                     "undeclared_tables": undeclared_tables,
@@ -1301,12 +1518,14 @@ class SemanticModelValidator:
             )
 
     def _validate_tags(self, tags: Any, context_name: str, source_file: Optional[str], result: ValidationResult):
-        import re
 
         if not isinstance(tags, dict):
             result.add_error(
                 f"{context_name} 'tags' must be a mapping of tag_name: tag_value",
                 file_path=source_file,
+                rule_id="SST-V016",
+                suggestion="tags must be a mapping of tag_name: tag_value",
+                entity_name=context_name,
                 context={"type": "tags"},
             )
             return
@@ -1315,14 +1534,20 @@ class SemanticModelValidator:
                 result.add_error(
                     f"{context_name} tag name '{key}' is not a valid identifier (must be alphanumeric/underscores/dots, starting with letter or underscore)",
                     file_path=source_file,
+                    rule_id="SST-V016",
+                    suggestion="Tag name must use alphanumeric/underscores/dots",
+                    entity_name=context_name,
                     context={"type": "tags", "tag_name": str(key)},
                 )
             elif "." not in str(key):
-                result.add_warning(
+                result.add_error(
                     f"{context_name} tag '{key}' is not fully-qualified. "
-                    f"Snowflake requires tags to reference existing tag objects "
-                    f"(e.g., 'DB.SCHEMA.TAG_NAME')",
+                    f"Snowflake requires tags to be existing tag objects referenced as "
+                    f"'DB.SCHEMA.TAG_NAME'. Unqualified names will fail at DDL execution.",
                     file_path=source_file,
+                    rule_id="SST-V016",
+                    suggestion="Use fully-qualified: DB.SCHEMA.TAG_NAME",
+                    entity_name=context_name,
                     context={"type": "tags", "tag_name": str(key)},
                 )
             value_str = str(value)
@@ -1330,6 +1555,9 @@ class SemanticModelValidator:
                 result.add_error(
                     f"{context_name} tag '{key}' value exceeds 256 characters ({len(value_str)} chars)",
                     file_path=source_file,
+                    rule_id="SST-V016",
+                    suggestion="Shorten tag value to <=256 characters",
+                    entity_name=context_name,
                     context={"type": "tags", "tag_name": str(key), "value_length": len(value_str)},
                 )
 
@@ -1366,6 +1594,9 @@ class SemanticModelValidator:
                     f"Conflicts with '{seen[name_normalized]}'. "
                     f"Names that differ only by underscores, hyphens, or case are considered duplicates.",
                     file_path=item.get("source_file"),
+                    rule_id="SST-V004",
+                    suggestion="Rename to avoid name collision",
+                    entity_name=name,
                     context={
                         "entity_type": entity_type,
                         "name": name,
@@ -1408,6 +1639,9 @@ class SemanticModelValidator:
                 result.add_warning(
                     f"Relationship '{rel_name}' has unknown field '{field}' which will be ignored. "
                     f"Valid fields: {', '.join(sorted(valid_fields))}",
+                    rule_id="SST-V040",
+                    suggestion="Remove unrecognized field",
+                    entity_name=rel_name,
                     context={
                         "relationship": rel_name,
                         "unknown_field": field,

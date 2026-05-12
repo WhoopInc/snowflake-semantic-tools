@@ -395,7 +395,6 @@ class YAMLHandler:
         else:
             # Model-level key order
             key_order = [
-                "cortex_searchable",
                 "synonyms",
                 "primary_key",
                 "unique_keys",
@@ -438,8 +437,7 @@ class YAMLHandler:
                         "tags": [],
                         "meta": {
                             "sst": {
-                                "cortex_searchable": False,
-                                "primary_key": "",  # Will be detected
+                                "primary_key": "",
                                 "synonyms": [],
                             }
                         },

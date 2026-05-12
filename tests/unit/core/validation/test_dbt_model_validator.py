@@ -26,7 +26,6 @@ class TestDbtModelValidator:
                     "database": "ANALYTICS",
                     "schema": "TEST",
                     "primary_key": ["id"],
-                    "cortex_searchable": True,
                 }
             ],
             "sm_dimensions": {
@@ -75,7 +74,6 @@ class TestDbtModelValidator:
                     "database": "ANALYTICS",
                     "schema": "TEST",
                     "primary_key": ["id"],
-                    "cortex_searchable": True,
                 }
             ],
             "sm_dimensions": {
@@ -122,7 +120,6 @@ class TestDbtModelValidator:
                         "database": "ANALYTICS",
                         "schema": "TEST",
                         "primary_key": ["id"],
-                        "cortex_searchable": True,
                     }
                 ],
                 "sm_dimensions": {
@@ -158,7 +155,6 @@ class TestDbtModelValidator:
                     "database": "ANALYTICS",
                     "schema": "TEST",
                     "primary_key": ["id"],
-                    "cortex_searchable": True,
                 }
             ],
             "sm_dimensions": {
@@ -192,7 +188,6 @@ class TestDbtModelValidator:
                     "database": "ANALYTICS",
                     "schema": "TEST",
                     "primary_key": ["id"],
-                    "cortex_searchable": True,
                 }
             ],
             "sm_dimensions": {

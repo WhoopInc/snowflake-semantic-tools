@@ -143,29 +143,6 @@ class TestSnowflakeClientIntegration(unittest.TestCase):
             # Should call write_pandas for each table
             self.assertEqual(mock_write.call_count, 2)
 
-    def test_cortex_search_setup(self):
-        """Test Cortex Search service setup."""
-        self.client.cortex_search_manager.setup_search_service = MagicMock(
-            return_value={"service_created": True, "service_name": "TABLE_SUMMARY_SEARCH", "indexed_tables": 5}
-        )
-        self.client.cortex_search_manager.test_search_service = MagicMock(
-            return_value={
-                "search_working": True,
-                "results_count": 3,
-                "sample_results": ["result1", "result2", "result3"],
-            }
-        )
-
-        # Setup service
-        setup_result = self.client.cortex_search_manager.setup_search_service()
-        self.assertTrue(setup_result["service_created"])
-        self.assertEqual(setup_result["indexed_tables"], 5)
-
-        # Test search
-        search_result = self.client.cortex_search_manager.test_search_service("test query")
-        self.assertTrue(search_result["search_working"])
-        self.assertEqual(search_result["results_count"], 3)
-
     def test_error_handling_workflow(self):
         """Test error handling across components."""
         # Test database setup failure

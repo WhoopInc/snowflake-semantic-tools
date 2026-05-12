@@ -39,13 +39,14 @@ logger = get_logger("validate_semantic_models")
 class ValidateConfig:
     """Configuration for model validation."""
 
-    dbt_path: Optional[Path] = None  # Optional override for dbt models directory
-    semantic_path: Optional[Path] = None  # Optional override for semantic models directory
+    dbt_path: Optional[Path] = None
+    semantic_path: Optional[Path] = None
     strict_mode: bool = False
     enable_template_resolution: bool = True
     check_duplicates: bool = True
     check_hardcoded: bool = True
-    exclude_dirs: Optional[List[str]] = None  # Directories to exclude from discovery
+    exclude_dirs: Optional[List[str]] = None
+    quiet: bool = False
 
 
 class SemanticMetadataCollectionValidationService:
@@ -87,6 +88,8 @@ class SemanticMetadataCollectionValidationService:
         start_time = time.time()
 
         result = ValidationResult()
+        if not config.quiet:
+            result.enable_events()
 
         try:
             # CRITICAL: Load manifest.json (REQUIRED for validation)
@@ -151,7 +154,8 @@ class SemanticMetadataCollectionValidationService:
             self.parser.manifest_parser = manifest_parser
 
             # Step 1: Find dbt model files
-            click.echo("Scanning project for dbt models...")
+            if not config.quiet:
+                click.echo("Scanning project for dbt models...")
 
             if config.dbt_path:
                 # Custom path provided
@@ -168,7 +172,8 @@ class SemanticMetadataCollectionValidationService:
                 # Use default from config
                 dbt_files = find_dbt_model_files(exclude_dirs=config.exclude_dirs)
 
-            click.echo(f"Found {len(dbt_files)} dbt models")
+            if not config.quiet:
+                click.echo(f"Found {len(dbt_files)} dbt models")
 
             # Validate exclusion patterns if verbose mode
             if config.exclude_dirs and verbose:

@@ -94,7 +94,7 @@ models:
             "models": [
                 {
                     "name": "test_model",
-                    "meta": {"sst": {"primary_key": ["user_id"], "cortex_searchable": True}},
+                    "meta": {"sst": {"primary_key": ["user_id"]}},
                     "columns": [
                         {
                             "name": "user_id",
@@ -211,7 +211,7 @@ models:
                 {
                     "name": "test_model",
                     "description": "Test description",
-                    "meta": {"sst": {"primary_key": ["id"], "cortex_searchable": True}},
+                    "meta": {"sst": {"primary_key": ["id"]}},
                     "columns": [
                         {
                             "name": "id",

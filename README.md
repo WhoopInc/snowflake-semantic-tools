@@ -107,6 +107,7 @@ See the `docs/` directory for comprehensive documentation:
 | `sst extract` | Load metadata to Snowflake tables |
 | `sst generate` | Create semantic views |
 | `sst deploy` | One-step: validate → extract → generate |
+| `sst drop` | Remove semantic views (specific or prune orphans) |
 | `sst debug` | Show config and test connection |
 | `sst migrate-meta` | Migrate meta.sst to config.meta.sst (dbt Fusion) |
 
@@ -123,6 +124,9 @@ cd snowflake-semantic-tools
 
 # Install with Poetry (includes dev dependencies)
 poetry install --with dev
+
+# Set up pre-commit hooks (catches formatting before CI)
+pre-commit install
 
 # Verify installation
 sst --version

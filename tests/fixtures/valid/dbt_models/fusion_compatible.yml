@@ -10,7 +10,6 @@ models:
         - semantic
       meta:
         sst:
-          cortex_searchable: true
           primary_key: id
           synonyms:
             - purchases

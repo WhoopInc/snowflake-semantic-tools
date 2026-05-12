@@ -67,7 +67,7 @@ class TestComponentIntegration:
                 DbtColumn(name="amount", data_type="DECIMAL"),
                 DbtColumn(name="status", data_type="VARCHAR"),
             ],
-            meta={"sst": {"cortex_searchable": True, "primary_key": "id"}},
+            meta={"sst": {"primary_key": "id"}},
         )
 
         # Create semantic model that references the dbt model
@@ -100,7 +100,6 @@ class TestComponentIntegration:
         metric_columns = [col.name for col in metric_schema.columns]
 
         assert "table_name" in table_columns
-        assert "cortex_searchable" in table_columns
         assert "name" in metric_columns
         assert "expr" in metric_columns or "expression" in metric_columns
 

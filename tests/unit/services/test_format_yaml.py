@@ -263,3 +263,95 @@ class TestFormatPath:
 
         assert stats["files_processed"] == 3
         assert stats["errors"] == 0
+
+
+class TestBlockScalarPreservation:
+    """Test that sst format preserves blank lines after block scalar descriptions (issue #135)."""
+
+    def test_multiline_description_preserves_blank_line_before_config(self, formatter, tmp_path):
+        """Block scalar description must keep blank line before config: to avoid corruption."""
+        input_yaml = """version: 2
+models:
+  - name: test_model
+    columns:
+      - name: behavior_tracker_id
+        description: |-
+          Foreign key to behavior_trackers.id. ON DELETE CASCADE — if the tracker is
+          removed, its choices are also deleted.
+
+        config:
+          meta:
+            sst:
+              column_type: fact
+              data_type: NUMBER
+"""
+        test_file = tmp_path / "test.yml"
+        test_file.write_text(input_yaml)
+
+        formatter.format_path(test_file)
+
+        result = test_file.read_text()
+        yaml = YAML()
+        parsed = yaml.load(result)
+        col = parsed["models"][0]["columns"][0]
+        desc = str(col["description"])
+        assert "config" not in desc, f"config leaked into description: {desc}"
+        assert col["config"]["meta"]["sst"]["column_type"] == "fact"
+        assert col["config"]["meta"]["sst"]["data_type"] == "NUMBER"
+
+    def test_config_not_absorbed_into_description(self, formatter, tmp_path):
+        """Config block must not become part of the description text."""
+        input_yaml = """version: 2
+models:
+  - name: test_model
+    columns:
+      - name: my_column
+        description: |-
+          This is a multiline description that spans
+          multiple lines for clarity.
+
+        config:
+          meta:
+            sst:
+              column_type: dimension
+              data_type: TEXT
+              synonyms:
+                - my col
+"""
+        test_file = tmp_path / "test.yml"
+        test_file.write_text(input_yaml)
+
+        formatter.format_path(test_file)
+
+        result = test_file.read_text()
+        yaml = YAML()
+        parsed = yaml.load(result)
+        col = parsed["models"][0]["columns"][0]
+        desc = str(col["description"])
+        assert "column_type" not in desc, f"config content leaked into description: {desc}"
+        assert "synonyms" not in desc, f"config content leaked into description: {desc}"
+        assert col["config"]["meta"]["sst"]["column_type"] == "dimension"
+
+    def test_single_line_description_before_config_still_compact(self, formatter, tmp_path):
+        """Single-line descriptions should NOT have a blank line before config."""
+        input_yaml = """version: 2
+models:
+  - name: test_model
+    columns:
+      - name: simple_col
+        description: A simple one-line description
+        config:
+          meta:
+            sst:
+              column_type: fact
+"""
+        test_file = tmp_path / "test.yml"
+        test_file.write_text(input_yaml)
+
+        formatter.format_path(test_file)
+
+        result = test_file.read_text()
+        yaml = YAML()
+        parsed = yaml.load(result)
+        col = parsed["models"][0]["columns"][0]
+        assert col["config"]["meta"]["sst"]["column_type"] == "fact"

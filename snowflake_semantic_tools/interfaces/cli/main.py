@@ -69,6 +69,20 @@ class LazyCommand(click.Command):
         return self._load_command().params
 
 
+COMMAND_ORDER = [
+    "init",
+    "debug",
+    "enrich",
+    "format",
+    "validate",
+    "extract",
+    "generate",
+    "deploy",
+    "list",
+    "migrate-meta",
+]
+
+
 class LazyGroup(click.Group):
     """Click group with lazy command loading."""
 
@@ -77,7 +91,9 @@ class LazyGroup(click.Group):
         self._lazy_commands = lazy_commands or {}
 
     def list_commands(self, ctx):
-        return sorted(self._lazy_commands.keys())
+        ordered = [c for c in COMMAND_ORDER if c in self._lazy_commands]
+        extras = sorted(set(self._lazy_commands.keys()) - set(COMMAND_ORDER))
+        return ordered + extras
 
     def get_command(self, ctx, name):
         if name in self._lazy_commands:
@@ -99,6 +115,7 @@ LAZY_COMMANDS = {
     "validate": ("snowflake_semantic_tools.interfaces.cli.commands.validate", "validate"),
     "generate": ("snowflake_semantic_tools.interfaces.cli.commands.generate", "generate"),
     "deploy": ("snowflake_semantic_tools.interfaces.cli.commands.deploy", "deploy"),
+    "drop": ("snowflake_semantic_tools.interfaces.cli.commands.drop", "drop"),
     "list": ("snowflake_semantic_tools.interfaces.cli.commands.list", "list_cmd"),
     "migrate-meta": ("snowflake_semantic_tools.interfaces.cli.commands.migrate_meta", "migrate_meta"),
 }
@@ -106,44 +123,56 @@ LAZY_COMMANDS = {
 
 @click.group(cls=LazyGroup, lazy_commands=LAZY_COMMANDS)
 @click.version_option(version=__version__, prog_name="snowflake-semantic-tools")
-def cli():
-    """
-    Snowflake Semantic Tools - Semantic Model Management for Snowflake using dbt
-
-    This toolkit provides comprehensive semantic modeling capabilities:
+@click.option(
+    "--output",
+    "-o",
+    type=click.Choice(["table", "json", "plain"], case_sensitive=False),
+    default="table",
+    help="Output format: table (default), json (machine-readable), plain (no colors/timestamps)",
+)
+@click.pass_context
+def cli(ctx, output):
+    """Snowflake Semantic Tools — build and deploy Snowflake Semantic Views from dbt.
 
     \b
-    - INIT: Interactive setup wizard for new projects
-    - DEBUG: Show configuration and test Snowflake connection
-    - ENRICH: Automatically populate dbt YAML metadata with semantic information
-    - FORMAT: Standardize YAML file structure and formatting
-    - VALIDATE: Check semantic models against dbt definitions
-    - EXTRACT: Parse and load semantic metadata to Snowflake
-    - GENERATE: Create Snowflake semantic views and/or YAML models
-    - DEPLOY: One-step validate → extract → generate workflow
-    - LIST: Explore semantic model components (metrics, tables, views, etc.)
-    - MIGRATE-META: Migrate meta.sst to config.meta.sst (dbt Fusion compatibility)
-
-    Use --help with any command for detailed options.
-
-    Getting Started:
-        Run 'sst init' in your dbt project to set up SST interactively.
+    Workflow (run commands in this order):
+      1. sst init        Set up SST in your dbt project (one-time)
+      2. sst enrich      Auto-populate column metadata from Snowflake
+      3. sst validate    Check for errors offline (no Snowflake needed)
+      4. sst deploy      Validate + extract + generate in one step
+    \b
+    Quick Start:
+      cd your-dbt-project/
+      sst init
+      sst enrich models/
+      sst deploy
+    \b
+    Prerequisites:
+      • A dbt project with dbt_project.yml
+      • Snowflake credentials in ~/.dbt/profiles.yml
+      • Models annotated with config.meta.sst (use 'sst enrich' to bootstrap)
+      • A compiled manifest (run 'dbt compile' or use 'sst validate --dbt-compile')
+    \b
+    Exit Codes:
+      0  Success
+      1  Errors found (validation/generation failures)
+      2  Configuration or internal error
+    \b
+    Global Options:
+      --output json    Machine-readable output for CI/CD and AI agents
+      --output plain   No colors or timestamps (for piping)
     """
-    # Issue #31: Skip config validation for --help and --version requests
-    # This allows users to explore CLI without needing valid config
-    # Also skip for 'init' command which creates the config
+    ctx.ensure_object(dict)
+    ctx.obj["output_format"] = output
+
     if _is_help_or_version_request() or _is_init_command():
         return
 
-    # Setup events early so config validation messages appear correctly
     from snowflake_semantic_tools.shared.events import setup_events
     from snowflake_semantic_tools.shared.utils.logger import get_logger
 
     setup_events(verbose=False, show_timestamps=False)
 
-    # Validate config (warns on missing optional, errors on missing required)
-    # Note: We use fail_on_errors=False here because some commands might handle it differently
-    # Individual commands can call validate_and_report_config with fail_on_errors=True
     try:
         from snowflake_semantic_tools.shared.config import get_config
         from snowflake_semantic_tools.shared.config_validator import validate_and_report_config
@@ -153,11 +182,9 @@ def cli():
         validate_and_report_config(
             config._config if hasattr(config, "_config") else {},
             config_path=config_path,
-            fail_on_errors=False,  # Let individual commands decide to fail
+            fail_on_errors=False,
         )
     except Exception as e:
-        # Don't block CLI initialization if config validation fails
-        # Individual commands will handle this
         logger = get_logger(__name__)
         logger.debug(f"Config validation during CLI init: {e}")
 

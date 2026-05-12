@@ -5,7 +5,6 @@ models:
     description: Test model with invalid column_type value
     meta:
       sst:
-        cortex_searchable: true
         database: analytics
         schema: test
         table: test_invalid_column_type

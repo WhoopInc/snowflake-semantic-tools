@@ -284,36 +284,43 @@ def _discover_yaml_files(path: Path, recursive: bool = True) -> List[Path]:
     return sorted(yaml_files)
 
 
-@click.command()
+@click.command(
+    short_help="Migrate legacy meta.sst to config.meta.sst",
+)
 @click.argument("path", type=click.Path())
 @click.option("--dry-run", is_flag=True, help="Preview changes without modifying files")
 @click.option("--backup", is_flag=True, help="Create .bak backup files before modifying")
 @click.option("--verbose", "-v", is_flag=True, help="Show detailed migration notes")
 def migrate_meta(path: str, dry_run: bool, backup: bool, verbose: bool):
-    """
-    Migrate dbt YAML files from meta.sst to config.meta.sst format.
+    """Migrate dbt YAML from meta.sst to config.meta.sst format.
 
-    This command migrates SST metadata from the legacy location (meta.sst)
-    to the new dbt Fusion compatible location (config.meta.sst).
+    Required for dbt Fusion compatibility. Moves SST metadata from the legacy
+    column-level meta.sst location to config.meta.sst.
 
-    IMPORTANT: This migration is required for dbt Fusion compatibility.
-    Column-level meta: will cause errors in dbt Fusion if not migrated.
+    \b
+    PATH: File or directory to migrate (required argument)
 
-    PATH: File or directory to migrate
+    \b
+    Prerequisites:
+      • Only needed if your project uses the old meta.sst format
+      • Run 'sst validate' after to confirm migration succeeded
 
+    \b
     Examples:
+      sst migrate-meta models/ --dry-run     Preview what would change
+      sst migrate-meta models/               Migrate all YAML files
+      sst migrate-meta models/ --backup      Create .bak files first
+      sst migrate-meta models/users.yml      Migrate a single file
 
-        # Preview migration for a directory
-        sst migrate-meta models/ --dry-run
+    \b
+    Next Step:
+      sst validate            Verify migration didn't break anything
+      sst format models/      Standardize formatting after migration
 
-        # Migrate all YAML files in a directory
-        sst migrate-meta models/
-
-        # Migrate with backups
-        sst migrate-meta models/ --backup
-
-        # Migrate a single file
-        sst migrate-meta models/analytics/users/users.yml
+    \b
+    Related Commands:
+      sst validate            Check models post-migration
+      sst format              Clean up YAML formatting
     """
     # IMMEDIATE OUTPUT
     output = CLIOutput(verbose=verbose, quiet=False)

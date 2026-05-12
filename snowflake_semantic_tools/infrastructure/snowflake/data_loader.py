@@ -168,7 +168,6 @@ class DataLoader:
             "sm_filters": "sm_filters",
             "sm_verified_queries": "sm_verified_queries",
             "sm_semantic_views": "sm_semantic_views",
-            "sm_table_summaries": "sm_table_summaries",
         }
 
     @property
@@ -668,6 +667,10 @@ class DataLoader:
                             "window",
                         ]:
                             df[col] = df[col].apply(safe_json_dumps)
+
+                    for col in df.columns:
+                        if df[col].dtype == "object":
+                            df[col] = df[col].apply(lambda x: str(x) if isinstance(x, (list, dict)) else x)
 
                     # Add sm_ prefix if not already present
                     if not table_key.startswith("sm_"):

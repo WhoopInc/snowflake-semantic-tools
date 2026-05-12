@@ -57,7 +57,6 @@ class ExtractResult:
     errors: list
     warnings: list
     table_counts: list = field(default_factory=list)
-    search_service_status: str = "Not attempted"
 
     def print_summary(self):
         """Print comprehensive extraction summary."""
@@ -78,9 +77,6 @@ class ExtractResult:
             print("Tables Loaded:")
             for tc in self.table_counts:
                 print(f"  {tc}")
-
-        # Show search service status prominently
-        print(f"\nCortex Search Service: {self.search_service_status}")
 
         if self.warnings:
             validation_warnings = sum(1 for w in self.warnings if "[VALIDATION]" in w)
@@ -329,48 +325,10 @@ class SemanticMetadataExtractionService:
                         f"Successfully loaded {total_rows_loaded} rows from {models_processed_count} models to Snowflake"
                     )
 
-                    # Step 6: Setup Cortex Search Service for table summaries
-                    progress.blank_line()
-                    progress.info("Configuring Cortex Search Service...")
-                    logger.debug("Setting up Cortex Search Service for table summaries")
-                    try:
-                        search_result = self.snowflake.cortex_search_manager.setup_search_service(
-                            tables_were_swapped=True
-                        )
-                        if search_result.get("success"):
-                            logger.debug(
-                                f"Cortex Search Service '{search_result.get('service_name')}' ready ({search_result.get('operation')})"
-                            )
-                            progress.info(f"Cortex Search Service ready ({search_result.get('operation')})", indent=1)
-                            search_service_status = "Ready"
-                        else:
-                            # Don't add to warnings if it's just that there's no data to index
-                            error_detail = search_result.get("error", "")
-                            if "no rows" in error_detail.lower() or "empty" in error_detail.lower():
-                                logger.debug("Cortex Search Service skipped (no data to index)")
-                                progress.detail("Skipped (no data to index)")
-                                search_service_status = "Skipped (no data)"
-                            else:
-                                warning_msg = f"Cortex Search Service setup failed: {error_detail}"
-                                logger.warning(warning_msg)
-                                progress.warning(f"Cortex Search setup failed: {error_detail}")
-                                warnings.append(warning_msg)
-                                search_service_status = "Failed"
-                    except Exception as e:
-                        warning_msg = f"Could not setup Cortex Search Service: {e}"
-                        logger.warning(warning_msg)
-                        progress.warning(f"Cortex Search setup error: {str(e)}")
-                        warnings.append(warning_msg)
-                        search_service_status = "Failed"
-                        # Don't fail the extraction if search service setup fails
                 else:
                     errors.append("Failed to load models to Snowflake")
             else:
                 logger.warning("No models to load to Snowflake")
-
-            # Use the search service status captured during execution
-            if "search_service_status" not in locals():
-                search_service_status = "Not attempted"
 
             result = ExtractResult(
                 success=len(errors) == 0,
@@ -378,9 +336,7 @@ class SemanticMetadataExtractionService:
                 models_processed=models_processed_count,
                 errors=errors,
                 warnings=warnings,
-                # Only show table_counts if load actually succeeded
                 table_counts=table_counts if "table_counts" in locals() and success else [],
-                search_service_status=search_service_status,
             )
 
             # Summary will be printed by CLI command
@@ -468,7 +424,7 @@ class SemanticMetadataExtractionService:
                         models[key] = dbt_data[key]
 
             # Add other metadata that doesn't need filtering
-            for key in ["sm_relationship_columns", "sm_table_summaries", "sm_semantic_views"]:
+            for key in ["sm_relationship_columns", "sm_semantic_views"]:
                 if key in dbt_data and dbt_data[key]:
                     models[key] = dbt_data[key]
 

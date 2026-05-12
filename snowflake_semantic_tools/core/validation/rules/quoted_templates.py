@@ -122,6 +122,9 @@ class QuotedTemplateValidator:
                                 "found": match,
                                 "fix": unquoted,
                             },
+                            rule_id="SST-V081",
+                            suggestion="Remove quotes around the template expression",
+                            entity_name=name,
                         )
 
         # Check expression field
@@ -151,6 +154,9 @@ class QuotedTemplateValidator:
                     "fix": unquoted,
                     "line": line_num,
                 },
+                rule_id="SST-V081",
+                suggestion="Remove quotes around the template expression",
+                entity_name=name,
             )
 
     def _validate_relationship(self, rel: Dict[str, Any], result: ValidationResult) -> None:
@@ -175,6 +181,9 @@ class QuotedTemplateValidator:
                             "found": match,
                             "fix": unquoted,
                         },
+                        rule_id="SST-V081",
+                        suggestion="Remove quotes around the template expression",
+                        entity_name=name,
                     )
 
         # Check relationship_conditions (new format)
@@ -198,6 +207,9 @@ class QuotedTemplateValidator:
                                 "found": match,
                                 "fix": unquoted,
                             },
+                            rule_id="SST-V081",
+                            suggestion="Remove quotes around the template expression",
+                            entity_name=name,
                         )
 
         # Check legacy relationship_columns format
@@ -220,6 +232,9 @@ class QuotedTemplateValidator:
                                 "found": match,
                                 "fix": unquoted,
                             },
+                            rule_id="SST-V081",
+                            suggestion="Remove quotes around the template expression",
+                            entity_name=name,
                         )
 
     def _validate_filter(self, filt: Dict[str, Any], result: ValidationResult) -> None:
@@ -236,6 +251,9 @@ class QuotedTemplateValidator:
             result.add_error(
                 f"Quoted template in filter '{name}'\n" f"  Found: {match}\n" f"  Fix: Change to {unquoted}",
                 context={"filter": name, "type": "QUOTED_TEMPLATE_EXPRESSION", "found": match, "fix": unquoted},
+                rule_id="SST-V081",
+                suggestion="Remove quotes around the template expression",
+                entity_name=name,
             )
 
     def _validate_semantic_view(self, view: Dict[str, Any], result: ValidationResult) -> None:
@@ -260,6 +278,9 @@ class QuotedTemplateValidator:
                             "found": match,
                             "fix": unquoted,
                         },
+                        rule_id="SST-V081",
+                        suggestion="Remove quotes around the template expression",
+                        entity_name=name,
                     )
 
     def _find_quoted_templates(self, text: str) -> List[Tuple[str, str, int]]:
@@ -273,6 +294,8 @@ class QuotedTemplateValidator:
             List of (pattern_type, matched_text, line_number) tuples
         """
         violations = []
+        if not isinstance(text, str):
+            return violations
 
         lines = text.split("\n")
         for line_num, line in enumerate(lines, start=1):

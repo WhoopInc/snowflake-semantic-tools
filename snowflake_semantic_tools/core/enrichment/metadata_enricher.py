@@ -424,9 +424,6 @@ class MetadataEnricher:
         if "description" not in model:
             model["description"] = ""
 
-        # Set required fields (using NEW v1.2+ names)
-        sst["cortex_searchable"] = sst.get("cortex_searchable", False)
-
         # NOTE: database/schema/table are NO LONGER written during enrichment
         # With manifest auto-detection (v1.3.0+), these fields are optional and auto-detected
         # Enrichment now focuses on data-driven metadata only (types, samples, synonyms, PKs)
@@ -512,6 +509,15 @@ class MetadataEnricher:
         # Process each column
         updated_columns = []
         for idx, table_col in enumerate(table_columns, 1):
+            col_name_upper = table_col["column_name"].upper() if "column_name" in table_col else ""
+            existing_col = existing_lookup.get(col_name_upper, {})
+            sst_meta = existing_col.get("config", {}).get("meta", {}).get("sst", {}) or existing_col.get(
+                "meta", {}
+            ).get("sst", {})
+            if sst_meta.get("exclude"):
+                updated_columns.append(existing_col)
+                continue
+
             column = self._process_single_column(
                 table_col,
                 existing_lookup,
@@ -798,7 +804,7 @@ class MetadataEnricher:
             Dict with properly ordered keys
         """
         # Desired order for model-level SST keys
-        key_order = ["cortex_searchable", "synonyms", "primary_key", "unique_keys"]
+        key_order = ["synonyms", "primary_key", "unique_keys"]
 
         ordered_sst = {}
 
