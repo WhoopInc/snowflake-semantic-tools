@@ -118,7 +118,9 @@ class ModelEnriched(BaseEvent):
 
     def message(self) -> str:
         max_name_len = 40
-        name_display = self.model_name[:max_name_len - 3] + "..." if len(self.model_name) > max_name_len else self.model_name
+        name_display = (
+            self.model_name[: max_name_len - 3] + "..." if len(self.model_name) > max_name_len else self.model_name
+        )
         dots_padding = "." * (max_name_len - len(name_display))
         name_segment = f"{name_display} {dots_padding}"
         return f"{format_progress(self.current, self.total)}  {name_segment} [OK in {format_duration(self.duration_seconds)}]"
@@ -148,7 +150,9 @@ class ModelEnrichmentSkipped(BaseEvent):
 
     def message(self) -> str:
         max_name_len = 40
-        name_display = self.model_name[:max_name_len - 3] + "..." if len(self.model_name) > max_name_len else self.model_name
+        name_display = (
+            self.model_name[: max_name_len - 3] + "..." if len(self.model_name) > max_name_len else self.model_name
+        )
         dots_padding = "." * (max_name_len - len(name_display))
         name_segment = f"{name_display} {dots_padding}"
         return f"{format_progress(self.current, self.total)}  {name_segment} [SKIP - {self.reason}]"
@@ -358,7 +362,9 @@ class ViewGenerated(BaseEvent):
     def message(self) -> str:
         action = "created" if self.executed else "generated"
         max_name_len = 40
-        name_display = self.view_name[:max_name_len - 3] + "..." if len(self.view_name) > max_name_len else self.view_name
+        name_display = (
+            self.view_name[: max_name_len - 3] + "..." if len(self.view_name) > max_name_len else self.view_name
+        )
         dots_padding = "." * (max_name_len - len(name_display))
         name_segment = f"{name_display} {dots_padding}"
         return f"{format_progress(self.current, self.total)}  {name_segment} [{action.upper()} in {format_duration(self.duration_seconds)}]"
@@ -389,7 +395,9 @@ class ViewGenerationFailed(BaseEvent):
 
     def message(self) -> str:
         max_name_len = 40
-        name_display = self.view_name[:max_name_len - 3] + "..." if len(self.view_name) > max_name_len else self.view_name
+        name_display = (
+            self.view_name[: max_name_len - 3] + "..." if len(self.view_name) > max_name_len else self.view_name
+        )
         dots_padding = "." * (max_name_len - len(name_display))
         name_segment = f"{name_display} {dots_padding}"
         return f"{format_progress(self.current, self.total)}  {name_segment} [FAILED - {self.error_message}]"

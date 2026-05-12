@@ -11,12 +11,7 @@ import click
 
 from snowflake_semantic_tools._version import __version__
 from snowflake_semantic_tools.core.parsing.parsers.manifest_parser import ManifestParser
-from snowflake_semantic_tools.interfaces.cli.defer import (
-    DeferConfig,
-    display_defer_info,
-    get_modified_views_filter,
-    resolve_defer_config,
-)
+from snowflake_semantic_tools.interfaces.cli.defer import DeferConfig, get_modified_views_filter, resolve_defer_config
 from snowflake_semantic_tools.interfaces.cli.options import database_schema_options, defer_options, target_option
 from snowflake_semantic_tools.interfaces.cli.output import CLIOutput
 from snowflake_semantic_tools.interfaces.cli.utils import (
@@ -176,13 +171,21 @@ def generate(
     try:
         output.blank_line()
         profile_info = f"{snowflake_config.profile_name}.{snowflake_config.target_name}"
-        output.info(f"Using dbt profile: {profile_info}")
-        output.info(f"Reading metadata from: {target_db}.{target_schema}", indent=1)
-        output.info(f"Creating views in: {target_db}.{target_schema}", indent=1)
-
-        # Display defer info if enabled
+        config_items = [
+            ("Profile", profile_info),
+            ("Read from", f"{target_db}.{target_schema}"),
+            ("Create in", f"{target_db}.{target_schema}"),
+        ]
         if defer_config.enabled:
-            display_defer_info(output, defer_config)
+            if defer_config.target:
+                config_items.append(("Defer target", defer_config.target))
+            if defer_config.manifest_path:
+                config_items.append(("Defer manifest", str(defer_config.manifest_path)))
+        output.config_table(config_items)
+
+        # Display defer warning if applicable
+        if defer_config.enabled and defer_config.manifest_target_warning:
+            output.warning(defer_config.manifest_target_warning)
 
         output.blank_line()
         output.info("Connecting to Snowflake...")
