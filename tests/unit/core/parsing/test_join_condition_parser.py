@@ -404,3 +404,289 @@ class TestUnifiedRefSyntax:
         assert parsed.left_column == "CUSTOMER_ID"
         assert parsed.right_table == "CUSTOMERS"
         assert parsed.right_column == "ID"
+
+
+class TestExpressionDetectionInParse:
+    """Test that parse() correctly detects SQL expressions wrapping column templates."""
+
+    def test_date_expression_left_side(self):
+        condition = "DATE({{ column('events', 'event_timestamp') }}) = {{ column('calendar', 'calendar_date') }}"
+        parsed = JoinConditionParser.parse(condition)
+
+        assert parsed.left_table == "EVENTS"
+        assert parsed.left_column == "EVENT_TIMESTAMP"
+        assert parsed.left_has_expression is True
+        assert parsed.left_sql_expression == "DATE(EVENT_TIMESTAMP)"
+        assert parsed.right_table == "CALENDAR"
+        assert parsed.right_column == "CALENDAR_DATE"
+        assert parsed.right_has_expression is False
+        assert parsed.right_sql_expression == ""
+
+    def test_date_trunc_expression_left_side(self):
+        condition = (
+            "DATE_TRUNC('month', {{ column('events', 'event_timestamp') }}) = {{ column('calendar', 'month_date') }}"
+        )
+        parsed = JoinConditionParser.parse(condition)
+
+        assert parsed.left_table == "EVENTS"
+        assert parsed.left_column == "EVENT_TIMESTAMP"
+        assert parsed.left_has_expression is True
+        assert parsed.left_sql_expression == "DATE_TRUNC('month', EVENT_TIMESTAMP)"
+        assert parsed.right_has_expression is False
+
+    def test_type_cast_expression(self):
+        condition = "{{ column('events', 'event_timestamp') }}::DATE = {{ column('calendar', 'calendar_date') }}"
+        parsed = JoinConditionParser.parse(condition)
+
+        assert parsed.left_table == "EVENTS"
+        assert parsed.left_column == "EVENT_TIMESTAMP"
+        assert parsed.left_has_expression is True
+        assert parsed.left_sql_expression == "EVENT_TIMESTAMP::DATE"
+
+    def test_cast_as_date_expression(self):
+        condition = (
+            "CAST({{ column('events', 'event_timestamp') }} AS DATE) = {{ column('calendar', 'calendar_date') }}"
+        )
+        parsed = JoinConditionParser.parse(condition)
+
+        assert parsed.left_table == "EVENTS"
+        assert parsed.left_column == "EVENT_TIMESTAMP"
+        assert parsed.left_has_expression is True
+        assert parsed.left_sql_expression == "CAST(EVENT_TIMESTAMP AS DATE)"
+
+    def test_expression_on_right_side(self):
+        condition = "{{ column('calendar', 'calendar_date') }} = DATE({{ column('events', 'event_timestamp') }})"
+        parsed = JoinConditionParser.parse(condition)
+
+        assert parsed.left_table == "CALENDAR"
+        assert parsed.left_column == "CALENDAR_DATE"
+        assert parsed.left_has_expression is False
+        assert parsed.right_table == "EVENTS"
+        assert parsed.right_column == "EVENT_TIMESTAMP"
+        assert parsed.right_has_expression is True
+        assert parsed.right_sql_expression == "DATE(EVENT_TIMESTAMP)"
+
+    def test_expression_on_both_sides(self):
+        condition = "DATE({{ column('events', 'timestamp') }}) = DATE({{ column('orders', 'created_at') }})"
+        parsed = JoinConditionParser.parse(condition)
+
+        assert parsed.left_has_expression is True
+        assert parsed.left_sql_expression == "DATE(TIMESTAMP)"
+        assert parsed.right_has_expression is True
+        assert parsed.right_sql_expression == "DATE(CREATED_AT)"
+
+    def test_no_expression_backward_compatible(self):
+        condition = "{{ column('orders', 'customer_id') }} = {{ column('customers', 'id') }}"
+        parsed = JoinConditionParser.parse(condition)
+
+        assert parsed.left_table == "ORDERS"
+        assert parsed.left_column == "CUSTOMER_ID"
+        assert parsed.left_has_expression is False
+        assert parsed.left_sql_expression == ""
+        assert parsed.right_table == "CUSTOMERS"
+        assert parsed.right_column == "ID"
+        assert parsed.right_has_expression is False
+        assert parsed.right_sql_expression == ""
+
+    def test_ref_syntax_with_expression(self):
+        condition = "DATE({{ ref('events', 'event_timestamp') }}) = {{ ref('calendar', 'calendar_date') }}"
+        parsed = JoinConditionParser.parse(condition)
+
+        assert parsed.left_table == "EVENTS"
+        assert parsed.left_column == "EVENT_TIMESTAMP"
+        assert parsed.left_has_expression is True
+        assert parsed.left_sql_expression == "DATE(EVENT_TIMESTAMP)"
+
+    def test_condition_type_still_equality(self):
+        condition = "DATE({{ column('events', 'event_timestamp') }}) = {{ column('calendar', 'calendar_date') }}"
+        parsed = JoinConditionParser.parse(condition)
+        assert parsed.condition_type == JoinType.EQUALITY
+        assert parsed.operator == "="
+
+
+class TestGenerateSqlReferencesWithExpressions:
+    """Test generate_sql_references() with join key overrides for expression-based joins."""
+
+    def test_override_left_column(self):
+        condition = "DATE({{ column('events', 'event_timestamp') }}) = {{ column('calendar', 'calendar_date') }}"
+        parsed = JoinConditionParser.parse(condition)
+
+        overrides = {"EVENTS.EVENT_TIMESTAMP": "_JK_EVENT_TIMESTAMP_A1B2"}
+        sql = JoinConditionParser.generate_sql_references([parsed], "EVENTS", "CALENDAR", join_key_overrides=overrides)
+        assert sql == "EVENTS (_JK_EVENT_TIMESTAMP_A1B2) REFERENCES CALENDAR (CALENDAR_DATE)"
+
+    def test_override_right_column(self):
+        condition = "{{ column('calendar', 'calendar_date') }} = DATE({{ column('events', 'event_timestamp') }})"
+        parsed = JoinConditionParser.parse(condition)
+
+        overrides = {"EVENTS.EVENT_TIMESTAMP": "_JK_EVENT_TIMESTAMP_A1B2"}
+        sql = JoinConditionParser.generate_sql_references([parsed], "CALENDAR", "EVENTS", join_key_overrides=overrides)
+        assert sql == "CALENDAR (CALENDAR_DATE) REFERENCES EVENTS (_JK_EVENT_TIMESTAMP_A1B2)"
+
+    def test_no_overrides_uses_raw_columns(self):
+        condition = "{{ column('orders', 'customer_id') }} = {{ column('customers', 'id') }}"
+        parsed = JoinConditionParser.parse(condition)
+
+        sql = JoinConditionParser.generate_sql_references([parsed], "ORDERS", "CUSTOMERS")
+        assert sql == "ORDERS (CUSTOMER_ID) REFERENCES CUSTOMERS (ID)"
+
+    def test_mixed_expression_and_plain_conditions(self):
+        conditions = [
+            "{{ column('events', 'user_id') }} = {{ column('calendar', 'user_id') }}",
+            "DATE({{ column('events', 'event_timestamp') }}) = {{ column('calendar', 'calendar_date') }}",
+        ]
+        parsed_list = [JoinConditionParser.parse(c) for c in conditions]
+
+        overrides = {"EVENTS.EVENT_TIMESTAMP": "_JK_EVENT_TIMESTAMP_A1B2"}
+        sql = JoinConditionParser.generate_sql_references(
+            parsed_list, "EVENTS", "CALENDAR", join_key_overrides=overrides
+        )
+        assert sql == "EVENTS (USER_ID, _JK_EVENT_TIMESTAMP_A1B2) REFERENCES CALENDAR (USER_ID, CALENDAR_DATE)"
+
+
+class TestResolvedFormatExpressionDetection:
+    """Test that parse() detects expressions in resolved (post-template) format.
+
+    This is critical because the SemanticViewBuilder re-parses JOIN_CONDITION
+    from SM_RELATIONSHIP_COLUMNS at generation time, and by then the templates
+    have been resolved to TABLE.COLUMN format.
+    """
+
+    def test_resolved_date_expression(self):
+        condition = "DATE(ORDERS.ORDERED_AT) = METRICFLOW_TIME_SPINE.DATE_DAY"
+        parsed = JoinConditionParser.parse(condition)
+
+        assert parsed.left_table == "ORDERS"
+        assert parsed.left_column == "ORDERED_AT"
+        assert parsed.left_has_expression is True
+        assert parsed.left_sql_expression == "DATE(ORDERED_AT)"
+        assert parsed.right_table == "METRICFLOW_TIME_SPINE"
+        assert parsed.right_column == "DATE_DAY"
+        assert parsed.right_has_expression is False
+
+    def test_resolved_date_trunc_expression(self):
+        condition = "DATE_TRUNC('day', ORDER_ITEMS.ORDERED_AT) = METRICFLOW_TIME_SPINE.DATE_DAY"
+        parsed = JoinConditionParser.parse(condition)
+
+        assert parsed.left_table == "ORDER_ITEMS"
+        assert parsed.left_column == "ORDERED_AT"
+        assert parsed.left_has_expression is True
+        assert parsed.left_sql_expression == "DATE_TRUNC('day', ORDERED_AT)"
+        assert parsed.right_has_expression is False
+
+    def test_resolved_no_expression_backward_compatible(self):
+        condition = "ORDERS.CUSTOMER_ID = CUSTOMERS.CUSTOMER_ID"
+        parsed = JoinConditionParser.parse(condition)
+
+        assert parsed.left_has_expression is False
+        assert parsed.right_has_expression is False
+        assert parsed.left_table == "ORDERS"
+        assert parsed.left_column == "CUSTOMER_ID"
+
+
+class TestUnresolvedExpressionDetection:
+    """Test that multi-column expressions set the unresolved_expression fields."""
+
+    def test_coalesce_two_templates_sets_unresolved(self):
+        condition = "COALESCE({{ column('orders', 'customer_id') }}, {{ column('orders', 'order_id') }}) = {{ column('customers', 'customer_id') }}"
+        parsed = JoinConditionParser.parse(condition)
+
+        assert parsed.left_has_expression is False
+        assert parsed.left_unresolved_expression != ""
+        assert "COALESCE" in parsed.left_unresolved_expression
+        assert parsed.right_unresolved_expression == ""
+
+    def test_multi_col_right_side_sets_unresolved(self):
+        condition = "{{ column('orders', 'customer_id') }} = COALESCE({{ column('customers', 'customer_id') }}, {{ column('customers', 'customer_name') }})"
+        parsed = JoinConditionParser.parse(condition)
+
+        assert parsed.right_has_expression is False
+        assert parsed.right_unresolved_expression != ""
+        assert parsed.left_unresolved_expression == ""
+
+    def test_single_col_expression_does_not_set_unresolved(self):
+        condition = "DATE({{ column('events', 'ts') }}) = {{ column('calendar', 'date_day') }}"
+        parsed = JoinConditionParser.parse(condition)
+
+        assert parsed.left_has_expression is True
+        assert parsed.left_unresolved_expression == ""
+
+    def test_resolved_multi_col_sets_unresolved(self):
+        condition = "ORDERS.COL1 + ORDERS.COL2 = CUSTOMERS.CUSTOMER_ID"
+        parsed = JoinConditionParser.parse(condition)
+
+        assert parsed.left_has_expression is False
+        assert parsed.left_unresolved_expression != ""
+
+    """Test expression detection combined with ASOF (>=) joins."""
+
+    def test_expression_on_asof_left_side_template(self):
+        condition = "DATE({{ column('events', 'event_timestamp') }}) >= {{ column('sessions', 'start_time') }}"
+        parsed = JoinConditionParser.parse(condition)
+
+        assert parsed.condition_type == JoinType.ASOF
+        assert parsed.left_has_expression is True
+        assert parsed.left_sql_expression == "DATE(EVENT_TIMESTAMP)"
+        assert parsed.left_table == "EVENTS"
+        assert parsed.left_column == "EVENT_TIMESTAMP"
+        assert parsed.right_has_expression is False
+
+    def test_expression_on_asof_left_side_resolved(self):
+        condition = "DATE(EVENTS.EVENT_TIMESTAMP) >= SESSIONS.START_TIME"
+        parsed = JoinConditionParser.parse(condition)
+
+        assert parsed.condition_type == JoinType.ASOF
+        assert parsed.left_has_expression is True
+        assert parsed.left_sql_expression == "DATE(EVENT_TIMESTAMP)"
+
+    def test_asof_expression_with_composite_key(self):
+        conditions = [
+            "{{ column('events', 'user_id') }} = {{ column('sessions', 'user_id') }}",
+            "DATE({{ column('events', 'event_timestamp') }}) >= {{ column('sessions', 'start_time') }}",
+        ]
+        parsed_list = [JoinConditionParser.parse(c) for c in conditions]
+
+        assert parsed_list[0].left_has_expression is False
+        assert parsed_list[1].left_has_expression is True
+        assert parsed_list[1].condition_type == JoinType.ASOF
+
+    def test_generate_sql_asof_with_expression_override(self):
+        conditions = [
+            "{{ column('events', 'user_id') }} = {{ column('sessions', 'user_id') }}",
+            "DATE({{ column('events', 'event_timestamp') }}) >= {{ column('sessions', 'start_time') }}",
+        ]
+        parsed_list = [JoinConditionParser.parse(c) for c in conditions]
+
+        overrides = {"EVENTS.EVENT_TIMESTAMP": "_JK_EVENT_TIMESTAMP_A1B2"}
+        sql = JoinConditionParser.generate_sql_references(
+            parsed_list, "EVENTS", "SESSIONS", join_key_overrides=overrides
+        )
+        assert sql == "EVENTS (USER_ID, _JK_EVENT_TIMESTAMP_A1B2) REFERENCES SESSIONS (USER_ID, ASOF START_TIME)"
+
+
+class TestExpressionWithRange:
+    """Test expression detection with BETWEEN/range joins."""
+
+    def test_expression_on_range_left_side(self):
+        condition = (
+            "DATE({{ column('orders', 'ordered_at') }}) "
+            "BETWEEN {{ column('rates', 'start_date') }} AND {{ column('rates', 'end_date') }} EXCLUSIVE"
+        )
+        parsed = JoinConditionParser.parse(condition)
+
+        assert parsed.condition_type == JoinType.RANGE
+        assert parsed.left_has_expression is True
+        assert parsed.left_sql_expression == "DATE(ORDERED_AT)"
+        assert parsed.left_table == "ORDERS"
+        assert parsed.left_column == "ORDERED_AT"
+
+    def test_generate_sql_range_with_expression_override(self):
+        condition = (
+            "DATE({{ column('orders', 'ordered_at') }}) "
+            "BETWEEN {{ column('rates', 'start_date') }} AND {{ column('rates', 'end_date') }} EXCLUSIVE"
+        )
+        parsed = JoinConditionParser.parse(condition)
+
+        overrides = {"ORDERS.ORDERED_AT": "_JK_ORDERED_AT_XXXX"}
+        sql = JoinConditionParser.generate_sql_references([parsed], "ORDERS", "RATES", join_key_overrides=overrides)
+        assert sql == "ORDERS (_JK_ORDERED_AT_XXXX) REFERENCES RATES (BETWEEN START_DATE AND END_DATE EXCLUSIVE)"

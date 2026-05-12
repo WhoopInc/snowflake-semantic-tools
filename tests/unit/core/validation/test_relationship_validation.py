@@ -1,7 +1,8 @@
 """
 Unit tests for relationship reference validation.
 
-Tests cover:
+if __name__ == "__main__":
+    pytest.main([__file__, "-v"])Tests cover:
 - SQL transformations in column references
 - Missing column references
 - Missing table references
@@ -1094,5 +1095,115 @@ class TestRelationshipReferenceValidation:
         assert len(circular_errors) >= 2
 
 
-if __name__ == "__main__":
-    pytest.main([__file__, "-v"])
+class TestExpressionBasedJoinValidation:
+    """Test that expression-based joins pass validation when the parser extracts base columns.
+
+    When a user writes DATE({{ column('events', 'event_timestamp') }}), the parser extracts
+    the base column 'EVENT_TIMESTAMP'. The validator should see the clean column reference
+    and validate it against the dbt catalog successfully.
+    """
+
+    @pytest.fixture
+    def validator(self):
+        return ReferenceValidator()
+
+    @pytest.fixture
+    def catalog_with_timestamps(self):
+        return {
+            "events": {
+                "database": "analytics",
+                "schema": "public",
+                "primary_key": "event_id",
+                "columns": {
+                    "event_id": {"data_type": "NUMBER"},
+                    "user_id": {"data_type": "NUMBER"},
+                    "event_timestamp": {"data_type": "TIMESTAMP_NTZ"},
+                },
+            },
+            "calendar": {
+                "database": "analytics",
+                "schema": "public",
+                "primary_key": "calendar_date",
+                "columns": {
+                    "calendar_date": {"data_type": "DATE"},
+                    "user_id": {"data_type": "NUMBER"},
+                },
+            },
+        }
+
+    def test_base_column_from_expression_passes_validation(self, validator, catalog_with_timestamps):
+        """Parser extracts EVENT_TIMESTAMP (base col), not DATE(EVENT_TIMESTAMP). Validation should pass."""
+        semantic_data = {
+            "relationships": {
+                "items": [
+                    {
+                        "relationship_name": "EVENTS_TO_CALENDAR",
+                        "left_table_name": "EVENTS",
+                        "right_table_name": "CALENDAR",
+                    }
+                ],
+                "relationship_columns": [
+                    {
+                        "relationship_name": "EVENTS_TO_CALENDAR",
+                        "left_column": "EVENTS.EVENT_TIMESTAMP",
+                        "right_column": "CALENDAR.CALENDAR_DATE",
+                    }
+                ],
+            }
+        }
+
+        result = validator.validate(semantic_data, catalog_with_timestamps)
+        column_errors = [e for e in result.get_errors() if "SST-V043" in str(e) or "does not exist" in str(e).lower()]
+        assert len(column_errors) == 0, f"Unexpected column errors: {column_errors}"
+
+    def test_raw_expression_in_column_ref_still_caught(self, validator, catalog_with_timestamps):
+        """If someone directly puts an expression in the column ref (bypassing parser), it should still error."""
+        semantic_data = {
+            "relationships": {
+                "items": [
+                    {
+                        "relationship_name": "EVENTS_TO_CALENDAR",
+                        "left_table_name": "EVENTS",
+                        "right_table_name": "CALENDAR",
+                    }
+                ],
+                "relationship_columns": [
+                    {
+                        "relationship_name": "EVENTS_TO_CALENDAR",
+                        "left_column": "EVENTS.DATE(EVENT_TIMESTAMP)",
+                        "right_column": "CALENDAR.CALENDAR_DATE",
+                    }
+                ],
+            }
+        }
+
+        result = validator.validate(semantic_data, catalog_with_timestamps)
+        errors = result.get_errors()
+        assert any("sql transformation" in str(e).lower() or "SST-V043" in str(e) for e in errors)
+
+    def test_multi_column_expression_triggers_v049(self, validator, catalog_with_timestamps):
+        """V049 fires when a condition has two column templates wrapped in one expression."""
+        semantic_data = {
+            "relationships": {
+                "items": [
+                    {
+                        "relationship_name": "EVENTS_TO_CALENDAR",
+                        "left_table_name": "EVENTS",
+                        "right_table_name": "CALENDAR",
+                    }
+                ],
+                "relationship_columns": [
+                    {
+                        "relationship_name": "EVENTS_TO_CALENDAR",
+                        "left_column": "EVENTS.EVENT_ID",
+                        "right_column": "CALENDAR.CALENDAR_DATE",
+                        "left_unresolved_expression": "COALESCE(EVENTS.EVENT_ID, EVENTS.USER_ID)",
+                    }
+                ],
+            }
+        }
+
+        result = validator.validate(semantic_data, catalog_with_timestamps)
+        errors = result.get_errors()
+        assert any("SST-V049" in str(e) for e in errors)
+        assert any("multi-column" in str(e).lower() for e in errors)

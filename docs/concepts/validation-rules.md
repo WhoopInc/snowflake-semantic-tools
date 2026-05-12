@@ -83,7 +83,7 @@ Complete list of all validation checks performed by `sst validate`.
 | **Relationship** | Right join columns exist in right table | ERROR|
 | **Relationship** | Right join columns reference primary key or unique columns | ERROR|
 | **Relationship** | Composite primary keys are fully referenced (not partial) | ERROR|
-| **Relationship** | No SQL transformations in column references (no `::`, `CAST`, functions) | ERROR|
+| **Relationship** | SQL expressions wrapping a single column reference are allowed and auto-generate [join key dimensions](semantic-models.md#expression-based-joins-auto-generated-join-key-dimensions). Multi-column expressions are not supported. | INFO|
 | **Relationship** | BETWEEN condition has valid left/right table and column references | ERROR|
 | **Relationship** | No duplicate relationship names (normalized¹) | ERROR|
 | **Relationship** | No circular dependencies in relationship chains | ERROR|

@@ -609,7 +609,45 @@ class TestEveryErrorCode:
         result = validator.validate(semantic_data, dbt_catalog)
         _assert_fires(result, "SST-V043")
 
-    def test_SST_V044_using_relationship_not_found(self):
+    def test_SST_V049_multi_column_expression_in_relationship(self):
+        validator = ReferenceValidator()
+        semantic_data = {
+            "metrics": {"items": []},
+            "relationships": {
+                "items": [
+                    {
+                        "relationship_name": "order_customer",
+                        "left_table_name": "orders",
+                        "right_table_name": "customers",
+                    }
+                ],
+                "relationship_columns": [
+                    {
+                        "relationship_name": "order_customer",
+                        "left_column": "ORDERS.CUSTOMER_ID",
+                        "right_column": "CUSTOMERS.CUSTOMER_ID",
+                        "left_unresolved_expression": "COALESCE(ORDERS.CUSTOMER_ID, ORDERS.ORDER_ID)",
+                    },
+                ],
+            },
+        }
+        dbt_catalog = {
+            "orders": {
+                "columns": {"customer_id": {}, "order_id": {}},
+                "database": "DB",
+                "schema": "SCH",
+                "primary_key": "customer_id",
+            },
+            "customers": {
+                "columns": {"customer_id": {}},
+                "database": "DB",
+                "schema": "SCH",
+                "primary_key": "customer_id",
+            },
+        }
+        result = validator.validate(semantic_data, dbt_catalog)
+        _assert_fires(result, "SST-V049")
+
         validator = ReferenceValidator()
         semantic_data = {
             "metrics": {

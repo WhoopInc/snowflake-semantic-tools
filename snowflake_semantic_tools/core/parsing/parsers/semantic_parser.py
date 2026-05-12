@@ -221,10 +221,14 @@ def parse_snowflake_relationships(
                     "condition_type": parsed.condition_type.value,
                     "left_expression": parsed.left_expression,
                     "right_expression": parsed.right_expression,
-                    "left_column": left_col_qualified,  # For backward compatibility with validation
-                    "right_column": right_col_qualified,  # For backward compatibility with validation
+                    "left_column": left_col_qualified,
+                    "right_column": right_col_qualified,
                     "operator": parsed.operator,
-                    "source_file": str(file_path),  # Store the file path for validation errors
+                    "source_file": str(file_path),
+                    "left_has_expression": parsed.left_has_expression,
+                    "right_has_expression": parsed.right_has_expression,
+                    "left_unresolved_expression": parsed.left_unresolved_expression,
+                    "right_unresolved_expression": parsed.right_unresolved_expression,
                 }
                 relationship_column_records.append(rel_col_record)
 

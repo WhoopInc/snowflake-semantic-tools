@@ -14,7 +14,6 @@ import pytest
 
 from snowflake_semantic_tools.core.diagnostics import ERRORS
 
-
 RULES_DIR = Path(__file__).parents[4] / "snowflake_semantic_tools" / "core" / "validation" / "rules"
 SERVICES_DIR = Path(__file__).parents[4] / "snowflake_semantic_tools" / "services"
 

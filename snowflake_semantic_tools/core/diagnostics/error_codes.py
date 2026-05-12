@@ -226,6 +226,13 @@ _register(
     "Remove overlapping columns from unique_keys — primary_key is already unique",
 )
 _register(
+    "SST-V049",
+    "Unsupported multi-column expression in relationship condition",
+    ErrorCategory.VALIDATION,
+    "Expressions in relationship conditions must reference exactly one column. "
+    "Multi-column expressions (e.g., COALESCE(col1, col2)) are not supported for join key generation.",
+)
+_register(
     "SST-V040",
     "Missing relationship field",
     ErrorCategory.VALIDATION,

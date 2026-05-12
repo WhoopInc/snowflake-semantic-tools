@@ -17,7 +17,7 @@ enabling it to work at any stage of the processing pipeline.
 import re
 from dataclasses import dataclass
 from enum import Enum
-from typing import List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 
 class JoinType(Enum):
@@ -43,6 +43,12 @@ class ParsedCondition:
     right_column: str  # Extracted column name from right
     operator: str  # = (equality), >= (ASOF), or BETWEEN (range)
     right_column_end: str = ""  # End column for BETWEEN...AND...EXCLUSIVE range joins
+    left_has_expression: bool = False
+    right_has_expression: bool = False
+    left_sql_expression: str = ""
+    right_sql_expression: str = ""
+    left_unresolved_expression: str = ""
+    right_unresolved_expression: str = ""
 
 
 class JoinConditionParser:
@@ -94,14 +100,40 @@ class JoinConditionParser:
         # Detect format and extract table/column accordingly
         is_template_format = "{{" in condition
 
-        if is_template_format:
-            # Template format: {{ column('table', 'col') }}
-            left_table, left_column = cls._extract_table_column_from_template(left_expr)
-            right_table, right_column = cls._extract_table_column_from_template(right_expr)
+        left_has_expression = False
+        right_has_expression = False
+        left_sql_expression = ""
+        right_sql_expression = ""
+        left_unresolved_expression = ""
+        right_unresolved_expression = ""
+
+        from snowflake_semantic_tools.core.generation.join_key_generator import detect_expression, has_wrapping_text
+
+        fallback_extractor = (
+            cls._extract_table_column_from_template if is_template_format else cls._extract_table_column_from_resolved
+        )
+
+        left_expr_info = detect_expression(left_expr.strip())
+        if left_expr_info:
+            left_table = left_expr_info["table"]
+            left_column = left_expr_info["column"]
+            left_has_expression = True
+            left_sql_expression = left_expr_info["sql_expression"]
         else:
-            # Resolved format: TABLE.COLUMN
-            left_table, left_column = cls._extract_table_column_from_resolved(left_expr)
-            right_table, right_column = cls._extract_table_column_from_resolved(right_expr)
+            left_table, left_column = fallback_extractor(left_expr)
+            if has_wrapping_text(left_expr.strip()):
+                left_unresolved_expression = left_expr.strip()
+
+        right_expr_info = detect_expression(right_expr.strip())
+        if right_expr_info:
+            right_table = right_expr_info["table"]
+            right_column = right_expr_info["column"]
+            right_has_expression = True
+            right_sql_expression = right_expr_info["sql_expression"]
+        else:
+            right_table, right_column = fallback_extractor(right_expr)
+            if has_wrapping_text(right_expr.strip()):
+                right_unresolved_expression = right_expr.strip()
 
         # For BETWEEN range joins, extract the end column
         right_column_end = ""
@@ -123,6 +155,12 @@ class JoinConditionParser:
             right_column=right_column,
             operator=operator,
             right_column_end=right_column_end,
+            left_has_expression=left_has_expression,
+            right_has_expression=right_has_expression,
+            left_sql_expression=left_sql_expression,
+            right_sql_expression=right_sql_expression,
+            left_unresolved_expression=left_unresolved_expression,
+            right_unresolved_expression=right_unresolved_expression,
         )
 
     @classmethod
@@ -283,7 +321,11 @@ class JoinConditionParser:
 
     @classmethod
     def generate_sql_references(
-        cls, parsed_conditions: List[ParsedCondition], left_table_alias: str, right_table_alias: str
+        cls,
+        parsed_conditions: List[ParsedCondition],
+        left_table_alias: str,
+        right_table_alias: str,
+        join_key_overrides: Optional[Dict[str, str]] = None,
     ) -> str:
         """
         Generate SQL REFERENCES clause from parsed conditions.
@@ -297,6 +339,9 @@ class JoinConditionParser:
             parsed_conditions: List of parsed conditions
             left_table_alias: Alias for left table
             right_table_alias: Alias for right table
+            join_key_overrides: Optional mapping of (TABLE.COLUMN) -> dimension name for
+                expression-based join keys. When a condition has an expression, the
+                generated dimension name is used instead of the raw column name.
 
         Returns:
             SQL REFERENCES clause with correct ASOF syntax
@@ -304,8 +349,14 @@ class JoinConditionParser:
         if not parsed_conditions:
             return ""
 
-        # Build left column list (all conditions in original order)
-        left_cols = [c.left_column for c in parsed_conditions]
+        overrides = join_key_overrides or {}
+
+        def _resolve_col(table: str, column: str, side: str, cond: ParsedCondition) -> str:
+            has_expr = cond.left_has_expression if side == "left" else cond.right_has_expression
+            if has_expr:
+                key = f"{table.upper()}.{column.upper()}"
+                return overrides.get(key, column)
+            return column
 
         # Check if any condition is a range join
         has_range = any(c.condition_type == JoinType.RANGE for c in parsed_conditions)
@@ -321,22 +372,23 @@ class JoinConditionParser:
                     f"Snowflake range joins only support a single BETWEEN condition per relationship."
                 )
             range_cond = next(c for c in parsed_conditions if c.condition_type == JoinType.RANGE)
+            left_col = _resolve_col(range_cond.left_table, range_cond.left_column, "left", range_cond)
             sql = (
-                f"{left_table_alias} ({range_cond.left_column}) REFERENCES "
+                f"{left_table_alias} ({left_col}) REFERENCES "
                 f"{right_table_alias} (BETWEEN {range_cond.right_column} AND {range_cond.right_column_end} EXCLUSIVE)"
             )
             return sql
 
-        # Build right column list maintaining same order as left
-        # ASOF columns get the ASOF prefix, equality columns are unchanged
+        left_cols = [_resolve_col(c.left_table, c.left_column, "left", c) for c in parsed_conditions]
+
         right_cols = []
         for c in parsed_conditions:
+            col = _resolve_col(c.right_table, c.right_column, "right", c)
             if c.condition_type == JoinType.ASOF:
-                right_cols.append(f"ASOF {c.right_column}")
+                right_cols.append(f"ASOF {col}")
             else:
-                right_cols.append(c.right_column)
+                right_cols.append(col)
 
-        # Generate SQL
         sql = f"{left_table_alias} ({', '.join(left_cols)}) REFERENCES {right_table_alias} ({', '.join(right_cols)})"
 
         return sql

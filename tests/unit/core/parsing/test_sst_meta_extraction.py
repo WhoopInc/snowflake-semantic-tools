@@ -132,15 +132,11 @@ class TestGetSstMeta:
         """Test that deprecation warnings can be disabled."""
         node = {
             "name": "test_model",
-            "meta": {
-                "sst": {
-                }
-            },
+            "meta": {"sst": {}},
         }
 
         # Should not emit warning when emit_warning=False
         result = get_sst_meta(node, node_type="model", node_name="test_model", emit_warning=False)
-
 
     def test_invalid_meta_type_returns_empty_dict(self):
         """Test that invalid meta type (non-dict) returns empty dict."""
@@ -158,14 +154,10 @@ class TestGetSstMeta:
         node = {
             "name": "test_model",
             "config": "not a dict",  # Invalid type
-            "meta": {
-                "sst": {
-                }
-            },
+            "meta": {"sst": {}},
         }
 
         result = get_sst_meta(node, node_type="model", node_name="test_model")
-
 
     def test_invalid_sst_type_returns_empty_dict(self):
         """Test that invalid sst type (non-dict) returns empty dict."""

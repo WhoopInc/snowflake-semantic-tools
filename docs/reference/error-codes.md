@@ -40,12 +40,13 @@ Stable error codes for SST diagnostics. Each code is a permanent identifier that
 | `SST-V040` | Missing relationship field | Relationship '{name}' is missing required field: {field} |
 | `SST-V041` | Relationship table not found | Table '{table}' in relationship '{name}' not found. Did you mean '{closest_match}'? |
 | `SST-V042` | Relationship missing primary key | Right table '{table}' needs a primary_key for join. Add primary_key to config.meta.sst |
-| `SST-V043` | Relationship column not found | Column '{column}' not found in table '{table}' |
+| `SST-V043` | Relationship column not found | Column '{column}' not found in table '{table}'. Note: single-column [expression-based joins](../concepts/semantic-models.md#expression-based-joins-auto-generated-join-key-dimensions) are supported and auto-generate join key dimensions |
 | `SST-V044` | Using relationship not found | Relationship '{name}' referenced in using_relationships not found. Available: {available} |
 | `SST-V045` | Derived metric must use metric references | Derived metrics must use {{ metric('name') }} syntax, not raw column expressions |
 | `SST-V046` | Invalid field on derived metric | Derived metrics cannot use using_relationships, non_additive_by, or window |
 | `SST-V047` | Excluded column conflict | Column has both exclude: true and column_type set. Excluded columns are omitted from semantic views |
 | `SST-V048` | Primary key and unique keys overlap | Columns in both primary_key and unique_keys. Remove duplicates from unique_keys |
+| `SST-V049` | Multi-column expression in relationship | Expressions in join conditions must reference exactly one column. Use a single-column expression, or add a computed column to the dbt model |
 | `SST-V050` | Deprecated filters syntax | Migrate to snowflake_custom_instructions with ai_sql_generation text |
 | `SST-V051` | Invalid filter expression | Filter expression must be a non-empty SQL string |
 | `SST-V052` | Deprecated custom instruction key names | Use 'ai_sql_generation' and 'ai_question_categorization' to align with Snowflake DDL |
