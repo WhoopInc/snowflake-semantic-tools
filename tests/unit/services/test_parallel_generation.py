@@ -98,9 +98,7 @@ class TestParallelExecution:
         config.user = "test_user"
         config.role = "test_role"
         config.connection_params = {}
-        with patch(
-            "snowflake_semantic_tools.services.generate_semantic_views.ConnectionManager"
-        ) as MockCM:
+        with patch("snowflake_semantic_tools.services.generate_semantic_views.ConnectionManager") as MockCM:
             mock_cm = MagicMock()
             MockCM.return_value = mock_cm
             service = SemanticViewGenerationService(config)
@@ -168,8 +166,7 @@ class TestParallelExecution:
         service = self._make_service()
 
         views = [
-            {"name": f"view_{i}", "tables": [f"T{i}"], "description": "", "custom_instructions": []}
-            for i in range(8)
+            {"name": f"view_{i}", "tables": [f"T{i}"], "description": "", "custom_instructions": []} for i in range(8)
         ]
 
         gen_config = GenerateConfig(

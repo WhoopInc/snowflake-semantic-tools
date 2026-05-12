@@ -7,10 +7,7 @@ from unittest.mock import MagicMock, patch
 import pandas as pd
 import pytest
 
-from snowflake_semantic_tools.interfaces.cli.commands.drop import (
-    _drop_specific_view,
-    _prune_orphaned_views,
-)
+from snowflake_semantic_tools.interfaces.cli.commands.drop import _drop_specific_view, _prune_orphaned_views
 from snowflake_semantic_tools.interfaces.cli.output import CLIOutput
 
 

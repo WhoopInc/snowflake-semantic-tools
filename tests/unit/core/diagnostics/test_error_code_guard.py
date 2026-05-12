@@ -10,7 +10,6 @@ from pathlib import Path
 
 import pytest
 
-
 RULES_DIR = Path(__file__).parents[4] / "snowflake_semantic_tools" / "core" / "validation" / "rules"
 
 

@@ -8,15 +8,16 @@ Unit tests for features added in 0.3.0:
 - _check_constraints key fix (column_name -> name)
 """
 
+from pathlib import Path
+
 import pytest
 
+from snowflake_semantic_tools.core.generation.semantic_view_builder import SemanticViewBuilder
 from snowflake_semantic_tools.core.models import ValidationResult
 from snowflake_semantic_tools.core.parsing.parsers.semantic_parser import parse_snowflake_metrics
-from snowflake_semantic_tools.core.validation.rules.semantic_models import SemanticModelValidator
 from snowflake_semantic_tools.core.validation.rules.references import ReferenceValidator
-from snowflake_semantic_tools.core.generation.semantic_view_builder import SemanticViewBuilder
+from snowflake_semantic_tools.core.validation.rules.semantic_models import SemanticModelValidator
 from snowflake_semantic_tools.infrastructure.snowflake.config import SnowflakeConfig
-from pathlib import Path
 
 
 class TestDerivedMetricParsing:

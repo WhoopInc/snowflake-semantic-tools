@@ -20,6 +20,7 @@ import json
 import re
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
+from snowflake_semantic_tools.core.generation.join_key_generator import JoinKeyDimensionGenerator
 from snowflake_semantic_tools.core.parsing.join_condition_parser import JoinConditionParser, JoinType
 from snowflake_semantic_tools.infrastructure.snowflake import SnowflakeClient
 from snowflake_semantic_tools.infrastructure.snowflake.config import SnowflakeConfig
@@ -949,8 +950,16 @@ class SemanticViewBuilder:
 
         return ",\n".join(table_definitions)
 
-    def _build_relationships_clause(self, conn, table_names: List[str]) -> str:
-        """Build the RELATIONSHIPS clause of the CREATE SEMANTIC VIEW statement ."""
+    def _build_relationships_clause(
+        self, conn, table_names: List[str], join_key_generator: Optional[JoinKeyDimensionGenerator] = None
+    ) -> str:
+        """Build the RELATIONSHIPS clause of the CREATE SEMANTIC VIEW statement.
+
+        When a join condition contains a SQL expression (e.g., DATE(timestamp_col)),
+        the expression is detected and a synthetic join key dimension is registered
+        in the generator. The generated dimension name is then used in the
+        REFERENCES clause instead of the raw column name.
+        """
         relationships = self._get_relationships(conn, table_names)
 
         if not relationships:
@@ -963,13 +972,11 @@ class SemanticViewBuilder:
             left_table = rel["LEFT_TABLE_NAME"].upper()
             right_table = rel["RIGHT_TABLE_NAME"].upper()
 
-            # Get relationship conditions (new format)
-            rel_conditions = rel.get("RELATIONSHIP_COLUMNS", [])  # Still called RELATIONSHIP_COLUMNS in the result
+            rel_conditions = rel.get("RELATIONSHIP_COLUMNS", [])
             if not rel_conditions:
                 logger.warning(f"No relationship conditions found for {rel_name}")
                 continue
 
-            # Parse join conditions
             parsed_conditions = []
             for condition_row in rel_conditions:
                 join_condition = condition_row.get("JOIN_CONDITION")
@@ -981,8 +988,23 @@ class SemanticViewBuilder:
                 logger.warning(f"Could not parse conditions for {rel_name}")
                 continue
 
-            # Generate SQL based on parsed conditions
-            sql_ref = JoinConditionParser.generate_sql_references(parsed_conditions, left_table, right_table)
+            join_key_overrides: Dict[str, str] = {}
+            if join_key_generator:
+                for pc in parsed_conditions:
+                    if pc.left_has_expression:
+                        dim_name = join_key_generator.register_join_key(
+                            pc.left_table, pc.left_column, pc.left_sql_expression
+                        )
+                        join_key_overrides[f"{pc.left_table.upper()}.{pc.left_column.upper()}"] = dim_name
+                    if pc.right_has_expression:
+                        dim_name = join_key_generator.register_join_key(
+                            pc.right_table, pc.right_column, pc.right_sql_expression
+                        )
+                        join_key_overrides[f"{pc.right_table.upper()}.{pc.right_column.upper()}"] = dim_name
+
+            sql_ref = JoinConditionParser.generate_sql_references(
+                parsed_conditions, left_table, right_table, join_key_overrides=join_key_overrides
+            )
 
             if sql_ref:
                 rel_def = f"    {rel_name.upper()} AS\n      {sql_ref}"
@@ -1041,25 +1063,29 @@ class SemanticViewBuilder:
 
         return ",\n".join(fact_definitions)
 
-    def _build_dimensions_clause(self, conn, table_names: List[str]) -> str:
-        """Build the DIMENSIONS clause of the CREATE SEMANTIC VIEW statement ."""
+    def _build_dimensions_clause(
+        self, conn, table_names: List[str], join_key_generator: Optional[JoinKeyDimensionGenerator] = None
+    ) -> str:
+        """Build the DIMENSIONS clause of the CREATE SEMANTIC VIEW statement.
+
+        If a join_key_generator is provided and contains generated dimensions,
+        they are appended after all regular and time dimensions.
+        """
         all_dimensions = []
 
         for table_name in table_names:
             dimensions = self._get_dimensions(conn, table_name)
             time_dimensions = self._get_time_dimensions(conn, table_name)
 
-            # Add regular dimensions
             for dim in dimensions:
                 dim["source_table"] = table_name
                 all_dimensions.append(dim)
 
-            # Add time dimensions
             for time_dim in time_dimensions:
                 time_dim["source_table"] = table_name
                 all_dimensions.append(time_dim)
 
-        if not all_dimensions:
+        if not all_dimensions and not (join_key_generator and join_key_generator.has_dimensions()):
             return ""
 
         dim_definitions = []
@@ -1071,7 +1097,6 @@ class SemanticViewBuilder:
 
             dim_def = f"    {table_name}.{dim_name} AS {expression}"
 
-            # Add synonyms if available
             if dim.get("SYNONYMS"):
                 synonyms = self._parse_json_field(dim["SYNONYMS"], "synonyms")
                 if synonyms and isinstance(synonyms, list):
@@ -1082,17 +1107,22 @@ class SemanticViewBuilder:
                             synonyms_str = ", ".join([f"'{syn}'" for syn in synonyms_cleaned])
                             dim_def += f"\n      WITH SYNONYMS = ({synonyms_str})"
 
-            # Add comment if available
             if dim.get("DESCRIPTION"):
                 description = self._sanitize_description(dim["DESCRIPTION"])
                 dim_def += f"\n      COMMENT = '{description}'"
 
-            # Add tags if available
             tag_clause = self._build_tag_clause(dim.get("TAGS"))
             if tag_clause:
                 dim_def += f"\n      {tag_clause}"
 
             dim_definitions.append(dim_def)
+
+        if join_key_generator and join_key_generator.has_dimensions():
+            for jk_dim in join_key_generator.get_all_dimensions():
+                comment = self._sanitize_description(jk_dim["comment"])
+                jk_def = f"    {jk_dim['table']}.{jk_dim['name']} AS {jk_dim['expression']}"
+                jk_def += f"\n      COMMENT = '{comment}'"
+                dim_definitions.append(jk_def)
 
         return ",\n".join(dim_definitions)
 
@@ -1776,11 +1806,18 @@ class SemanticViewBuilder:
         )
         sql_parts.append(f"  TABLES (\n{tables_clause}\n  )")
 
-        # Build RELATIONSHIPS clause
+        # Build RELATIONSHIPS clause (must run before DIMENSIONS so join key dims are registered)
         logger.info("Building RELATIONSHIPS clause...")
-        relationships_clause = self._build_relationships_clause(conn, table_names)
+        join_key_generator = JoinKeyDimensionGenerator()
+        relationships_clause = self._build_relationships_clause(
+            conn, table_names, join_key_generator=join_key_generator
+        )
         if relationships_clause:
             sql_parts.append(f"  RELATIONSHIPS (\n{relationships_clause}\n  )")
+
+        if join_key_generator.has_dimensions():
+            jk_count = len(join_key_generator.get_all_dimensions())
+            logger.info(f"Auto-generated {jk_count} join key dimension(s) for expression-based joins")
 
         # Build FACTS clause
         logger.info("Building FACTS clause...")
@@ -1788,9 +1825,9 @@ class SemanticViewBuilder:
         if facts_clause:
             sql_parts.append(f"  FACTS (\n{facts_clause}\n  )")
 
-        # Build DIMENSIONS clause
+        # Build DIMENSIONS clause (includes auto-generated join key dimensions from relationships)
         logger.info("Building DIMENSIONS clause...")
-        dimensions_clause = self._build_dimensions_clause(conn, table_names)
+        dimensions_clause = self._build_dimensions_clause(conn, table_names, join_key_generator=join_key_generator)
         if dimensions_clause:
             sql_parts.append(f"  DIMENSIONS (\n{dimensions_clause}\n  )")
 

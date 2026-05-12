@@ -17,7 +17,7 @@ Note: `sst validate` reports 16 models because it also counts the _error_example
 | Component            | Count | Notes |
 |----------------------|-------|-------|
 | Metrics              | 80+   | Across all 6 core tables + advanced (window, composition, non_additive, etc.) |
-| Relationships        | 8     | Standard (5) + ASOF (1) + Range/BETWEEN EXCLUSIVE (1) + Composite (1) |
+| Relationships        | 11    | Standard (5) + ASOF (2) + Range/BETWEEN EXCLUSIVE (1) + Composite (1) + Expression-based (2) |
 | Semantic Views       | 3     | Sales analytics, menu analytics, complete |
 | Custom Instructions  | 2     | business_rules, menu_analytics_guidance |
 | Filters              | 6     | Equality, date range, numeric, boolean, multi-table, legacy syntax |
@@ -29,7 +29,7 @@ Note: `sst validate` reports 16 models because it also counts the _error_example
 |------|----------------------|
 | `models/marts/_error_examples.yml` | V007, V008, V010, V011, V012, V013, V014, V015, V016, V020, V023, V024, V025 |
 | `snowflake_semantic_models/metrics/_error_examples.yml` | V002, V003, V004, V032, V033, V034, V035, V036, V037, V038, V044, V091 |
-| `snowflake_semantic_models/relationships/_error_examples.yml` | V040, V041, V043 |
+| `snowflake_semantic_models/relationships/_error_examples.yml` | V040, V041, V043, V049 |
 | `snowflake_semantic_models/filters/_error_examples.yml` | V051 |
 | `snowflake_semantic_models/verified_queries/_error_examples.yml` | V060, V061, V062 |
 | `snowflake_semantic_models/_error_semantic_views.yml` | V070, V071 |
@@ -47,9 +47,12 @@ These files are EXPECTED to produce validation errors. The test passes if:
 | order_items_to_orders      | order_items | orders          | Standard equality |
 | order_items_to_products    | order_items | products        | Standard equality |
 | supplies_to_products       | supplies    | products        | Standard equality |
+| orders_to_customers_asof   | orders      | customers       | ASOF (temporal)   |
 | orders_to_locations_asof   | orders      | locations       | ASOF (temporal)   |
 | orders_to_pricing_periods  | orders      | pricing_periods | Range/BETWEEN EXCLUSIVE |
 | order_items_composite_join | order_items | orders          | Composite (multi-column) |
+| orders_to_time_spine_daily | orders      | metricflow_time_spine | Expression: DATE(ordered_at) |
+| order_items_to_time_spine_daily | order_items | metricflow_time_spine | Expression: DATE_TRUNC('day', ordered_at) |
 
 ## Semantic Views
 
@@ -57,7 +60,7 @@ These files are EXPECTED to produce validation errors. The test passes if:
 |-------------------------------|--------|---------------------|
 | jaffle_shop_sales_analytics   | orders, customers, locations | jaffle_shop_business_rules |
 | jaffle_shop_menu_analytics    | order_items, products, supplies | menu_analytics_guidance |
-| jaffle_shop_complete          | orders, order_items, customers, products, locations, supplies, pricing_periods | jaffle_shop_business_rules, menu_analytics_guidance |
+| jaffle_shop_complete          | orders, order_items, customers, products, locations, supplies, pricing_periods, metricflow_time_spine | jaffle_shop_business_rules, menu_analytics_guidance |
 
 ## Validation (Expected)
 
@@ -72,7 +75,7 @@ These files are EXPECTED to produce validation errors. The test passes if:
 
 | Metric        | Expected |
 |---------------|----------|
-| Total tests   | ~1191    |
+| Total tests   | ~1568    |
 | Failures      | 0        |
 | Errors        | 0        |
 
@@ -111,7 +114,7 @@ These tables should be populated in the target schema after `sst extract`:
 | Column features | data_type, synonyms, sample_values, is_enum, visibility, tags |
 | VQR features | inline sql, sql_file, description, use_as_onboarding_question, verified_by, verified_at, multi-table |
 | Filter features | equality, date range, numeric, boolean, synonyms, legacy syntax |
-| Relationship features | standard equality, ASOF, range/BETWEEN EXCLUSIVE, composite/multi-column, description |
+| Relationship features | standard equality, ASOF, range/BETWEEN EXCLUSIVE, composite/multi-column, expression-based (DATE, DATE_TRUNC), description |
 
 ## Known Warnings (Expected, Non-Blocking)
 

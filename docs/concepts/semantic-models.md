@@ -534,6 +534,62 @@ ORDERS (ORDERED_AT) REFERENCES EXCHANGE_RATES (BETWEEN EFFECTIVE_START AND EFFEC
 
 > **Prerequisite:** The right table must have a `CONSTRAINT DISTINCT RANGE` declared (see [Constraints](#constraints-distinct-range)) to guarantee non-overlapping ranges.
 
+### Expression-Based Joins (Auto-Generated Join Key Dimensions)
+
+When joining tables on transformed columns (e.g., a TIMESTAMP to a DATE), you can use SQL expressions directly in relationship conditions. SST auto-generates a synthetic "join key dimension" behind the scenes so the relationship works in Snowflake's semantic view.
+
+```yaml
+snowflake_relationships:
+  - name: orders_to_calendar
+    left_table: {{ ref('orders') }}
+    right_table: {{ ref('calendar') }}
+    relationship_conditions:
+      - "DATE({{ ref('orders', 'ordered_at') }}) = {{ ref('calendar', 'date_day') }}"
+```
+
+This generates a hidden dimension and references it in the relationship:
+```sql
+DIMENSIONS (
+    ...
+    ORDERS._JK_ORDERED_AT_032F AS DATE(ORDERED_AT)
+      COMMENT = 'Auto-generated join key: DATE(ORDERED_AT)'
+)
+RELATIONSHIPS (
+    ORDERS_TO_CALENDAR AS
+      ORDERS (_JK_ORDERED_AT_032F) REFERENCES CALENDAR (DATE_DAY)
+)
+```
+
+**Supported expression patterns:**
+
+Any valid Snowflake SQL expression that wraps a single column reference is supported. Common examples:
+
+| Pattern | Example |
+|---------|---------|
+| `DATE()` | `DATE({{ ref('orders', 'ordered_at') }})` |
+| `DATE_TRUNC()` | `DATE_TRUNC('month', {{ ref('orders', 'ordered_at') }})` |
+| `::` cast | `{{ ref('orders', 'ordered_at') }}::DATE` |
+| `CAST(... AS ...)` | `CAST({{ ref('orders', 'ordered_at') }} AS DATE)` |
+| `TO_DATE()` / `TO_TIMESTAMP()` | `TO_DATE({{ ref('orders', 'ordered_at') }})` |
+| `UPPER()` / `LOWER()` / `TRIM()` | `UPPER({{ ref('users', 'email') }})` |
+| Arithmetic | `{{ ref('orders', 'amount') }} + 1` |
+
+Expressions referencing multiple columns (e.g., `{{ ref('a', 'col1') }} + {{ ref('a', 'col2') }}`) are not supported — each expression must wrap exactly one column.
+
+The expression is passed through to Snowflake as-is in the generated dimension definition. Snowflake validates the SQL at semantic view creation time.
+
+**How it works:**
+1. SST detects the expression wrapping the column template during parsing
+2. The base column (e.g., `ordered_at`) is validated against the dbt catalog as usual
+3. At generation time, a synthetic dimension (prefixed `_JK_`) is created with the expression
+4. The RELATIONSHIPS clause references the dimension name instead of the raw column
+
+**Notes:**
+- The auto-generated dimension is publicly visible (Snowflake does not support private dimensions)
+- If the same expression is used in multiple relationships, the dimension is reused (deduplicated)
+- Expressions can appear on either side (or both sides) of a join condition
+- Nested expressions (e.g., `DATE_TRUNC('month', DATE(...))`) are not supported in this release
+
 ### Real Example
 
 ```yaml

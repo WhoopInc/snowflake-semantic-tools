@@ -689,6 +689,42 @@ class ReferenceValidator:
                             )
                             continue
 
+                        # Check for unresolved multi-column expressions
+                        left_unresolved = col_mapping.get("left_unresolved_expression", "")
+                        right_unresolved = col_mapping.get("right_unresolved_expression", "")
+                        if left_unresolved:
+                            result.add_error(
+                                f"Relationship '{name}' has a multi-column expression on the left side: '{left_unresolved}'. "
+                                f"Expression-based join conditions must reference exactly one column template. "
+                                f"Multi-column expressions (e.g., COALESCE of two columns) cannot be used as join keys.",
+                                file_path=source_file,
+                                rule_id="SST-V049",
+                                suggestion="Use a single-column expression, or add a computed column to the dbt model",
+                                entity_name=name,
+                                context={
+                                    "relationship": name,
+                                    "expression": left_unresolved,
+                                    "issue": "multi_column_expression",
+                                },
+                            )
+                            continue
+                        if right_unresolved:
+                            result.add_error(
+                                f"Relationship '{name}' has a multi-column expression on the right side: '{right_unresolved}'. "
+                                f"Expression-based join conditions must reference exactly one column template. "
+                                f"Multi-column expressions (e.g., COALESCE of two columns) cannot be used as join keys.",
+                                file_path=source_file,
+                                rule_id="SST-V049",
+                                suggestion="Use a single-column expression, or add a computed column to the dbt model",
+                                entity_name=name,
+                                context={
+                                    "relationship": name,
+                                    "expression": right_unresolved,
+                                    "issue": "multi_column_expression",
+                                },
+                            )
+                            continue
+
                         # Extract column names if in TABLE.COLUMN format
                         if "." in left_col:
                             _, left_col = left_col.rsplit(".", 1)
