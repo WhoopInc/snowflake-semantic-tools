@@ -1816,8 +1816,11 @@ class SemanticViewBuilder:
             sql_parts.append(f"  RELATIONSHIPS (\n{relationships_clause}\n  )")
 
         if join_key_generator.has_dimensions():
-            jk_count = len(join_key_generator.get_all_dimensions())
+            jk_dims = join_key_generator.get_all_dimensions()
+            jk_count = len(jk_dims)
             logger.info(f"Auto-generated {jk_count} join key dimension(s) for expression-based joins")
+            for jk in jk_dims:
+                logger.warning(f"  Join key dimension: {jk['table']}.{jk['name']} AS {jk['expression']}")
 
         # Build FACTS clause
         logger.info("Building FACTS clause...")

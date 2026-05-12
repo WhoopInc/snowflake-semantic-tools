@@ -10,7 +10,12 @@ Tests cover:
 
 import pytest
 
-from snowflake_semantic_tools.core.generation.join_key_generator import JoinKeyDimensionGenerator, detect_expression
+from snowflake_semantic_tools.core.generation.join_key_generator import (
+    JoinKeyDimensionGenerator,
+    _normalize_sql_expression,
+    detect_expression,
+    has_wrapping_text,
+)
 
 
 class TestDetectExpression:
@@ -141,10 +146,11 @@ class TestJoinKeyDimensionGenerator:
 
     def test_different_tables_same_expression(self):
         gen = JoinKeyDimensionGenerator()
-        name1 = gen.register_join_key("EVENTS", "TS", "DATE(TS)")
-        name2 = gen.register_join_key("ORDERS", "TS", "DATE(TS)")
-        assert name1 == name2 or name1 != name2
+        gen.register_join_key("EVENTS", "TS", "DATE(TS)")
+        gen.register_join_key("ORDERS", "TS", "DATE(TS)")
         assert len(gen.get_all_dimensions()) == 2
+        tables = {d["table"] for d in gen.get_all_dimensions()}
+        assert tables == {"EVENTS", "ORDERS"}
 
     def test_get_dimensions_for_table(self):
         gen = JoinKeyDimensionGenerator()
@@ -356,3 +362,53 @@ class TestExpressionEdgeCasesReturnNone:
     def test_nested_expression_with_two_templates_not_detected(self):
         expr = "COALESCE({{ column('a', 'col1') }}, {{ column('a', 'col2') }})"
         assert detect_expression(expr) is None
+
+
+class TestHasWrappingText:
+    """Test has_wrapping_text() for detecting non-bare column references."""
+
+    def test_bare_template_no_wrapping(self):
+        assert has_wrapping_text("{{ column('events', 'user_id') }}") is False
+
+    def test_bare_ref_template_no_wrapping(self):
+        assert has_wrapping_text("{{ ref('events', 'user_id') }}") is False
+
+    def test_template_with_function_wrapping(self):
+        assert has_wrapping_text("DATE({{ column('events', 'ts') }})") is True
+
+    def test_template_with_cast_wrapping(self):
+        assert has_wrapping_text("{{ column('events', 'ts') }}::DATE") is True
+
+    def test_two_templates_has_wrapping(self):
+        assert has_wrapping_text("{{ column('a', 'c1') }} + {{ column('a', 'c2') }}") is True
+
+    def test_bare_resolved_no_wrapping(self):
+        assert has_wrapping_text("ORDERS.CUSTOMER_ID") is False
+
+    def test_resolved_with_function_wrapping(self):
+        assert has_wrapping_text("DATE(ORDERS.ORDERED_AT)") is True
+
+    def test_resolved_with_cast_wrapping(self):
+        assert has_wrapping_text("ORDERS.ORDERED_AT::DATE") is True
+
+    def test_two_resolved_has_wrapping(self):
+        assert has_wrapping_text("A.COL1 + A.COL2") is True
+
+    def test_empty_string(self):
+        assert has_wrapping_text("") is False
+
+    def test_plain_text_no_column(self):
+        assert has_wrapping_text("some text") is False
+
+
+class TestNormalizeSqlExpression:
+    """Test _normalize_sql_expression() whitespace handling."""
+
+    def test_strips_leading_trailing(self):
+        assert _normalize_sql_expression("  DATE(TS)  ") == "DATE(TS)"
+
+    def test_collapses_internal_whitespace(self):
+        assert _normalize_sql_expression("DATE(  TS  )") == "DATE( TS )"
+
+    def test_already_normalized(self):
+        assert _normalize_sql_expression("DATE(TS)") == "DATE(TS)"

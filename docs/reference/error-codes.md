@@ -40,7 +40,7 @@ Stable error codes for SST diagnostics. Each code is a permanent identifier that
 | `SST-V040` | Missing relationship field | Relationship '{name}' is missing required field: {field} |
 | `SST-V041` | Relationship table not found | Table '{table}' in relationship '{name}' not found. Did you mean '{closest_match}'? |
 | `SST-V042` | Relationship missing primary key | Right table '{table}' needs a primary_key for join. Add primary_key to config.meta.sst |
-| `SST-V043` | Relationship column not found | Column '{column}' not found in table '{table}'. Note: [supported expression patterns](../concepts/semantic-models.md#expression-based-joins-auto-generated-join-key-dimensions) (DATE, DATE_TRUNC, etc.) are allowed and auto-generate join key dimensions |
+| `SST-V043` | Relationship column not found | Column '{column}' not found in table '{table}'. Note: single-column [expression-based joins](../concepts/semantic-models.md#expression-based-joins-auto-generated-join-key-dimensions) are supported and auto-generate join key dimensions |
 | `SST-V044` | Using relationship not found | Relationship '{name}' referenced in using_relationships not found. Available: {available} |
 | `SST-V045` | Derived metric must use metric references | Derived metrics must use {{ metric('name') }} syntax, not raw column expressions |
 | `SST-V046` | Invalid field on derived metric | Derived metrics cannot use using_relationships, non_additive_by, or window |

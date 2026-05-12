@@ -584,7 +584,40 @@ class TestResolvedFormatExpressionDetection:
         assert parsed.left_column == "CUSTOMER_ID"
 
 
-class TestExpressionWithAsof:
+class TestUnresolvedExpressionDetection:
+    """Test that multi-column expressions set the unresolved_expression fields."""
+
+    def test_coalesce_two_templates_sets_unresolved(self):
+        condition = "COALESCE({{ column('orders', 'customer_id') }}, {{ column('orders', 'order_id') }}) = {{ column('customers', 'customer_id') }}"
+        parsed = JoinConditionParser.parse(condition)
+
+        assert parsed.left_has_expression is False
+        assert parsed.left_unresolved_expression != ""
+        assert "COALESCE" in parsed.left_unresolved_expression
+        assert parsed.right_unresolved_expression == ""
+
+    def test_multi_col_right_side_sets_unresolved(self):
+        condition = "{{ column('orders', 'customer_id') }} = COALESCE({{ column('customers', 'customer_id') }}, {{ column('customers', 'customer_name') }})"
+        parsed = JoinConditionParser.parse(condition)
+
+        assert parsed.right_has_expression is False
+        assert parsed.right_unresolved_expression != ""
+        assert parsed.left_unresolved_expression == ""
+
+    def test_single_col_expression_does_not_set_unresolved(self):
+        condition = "DATE({{ column('events', 'ts') }}) = {{ column('calendar', 'date_day') }}"
+        parsed = JoinConditionParser.parse(condition)
+
+        assert parsed.left_has_expression is True
+        assert parsed.left_unresolved_expression == ""
+
+    def test_resolved_multi_col_sets_unresolved(self):
+        condition = "ORDERS.COL1 + ORDERS.COL2 = CUSTOMERS.CUSTOMER_ID"
+        parsed = JoinConditionParser.parse(condition)
+
+        assert parsed.left_has_expression is False
+        assert parsed.left_unresolved_expression != ""
+
     """Test expression detection combined with ASOF (>=) joins."""
 
     def test_expression_on_asof_left_side_template(self):

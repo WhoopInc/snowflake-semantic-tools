@@ -1,7 +1,8 @@
 """
 Unit tests for relationship reference validation.
 
-Tests cover:
+if __name__ == "__main__":
+    pytest.main([__file__, "-v"])Tests cover:
 - SQL transformations in column references
 - Missing column references
 - Missing table references
@@ -1180,6 +1181,29 @@ class TestExpressionBasedJoinValidation:
         errors = result.get_errors()
         assert any("sql transformation" in str(e).lower() or "SST-V043" in str(e) for e in errors)
 
+    def test_multi_column_expression_triggers_v049(self, validator, catalog_with_timestamps):
+        """V049 fires when a condition has two column templates wrapped in one expression."""
+        semantic_data = {
+            "relationships": {
+                "items": [
+                    {
+                        "relationship_name": "EVENTS_TO_CALENDAR",
+                        "left_table_name": "EVENTS",
+                        "right_table_name": "CALENDAR",
+                    }
+                ],
+                "relationship_columns": [
+                    {
+                        "relationship_name": "EVENTS_TO_CALENDAR",
+                        "left_column": "EVENTS.EVENT_ID",
+                        "right_column": "CALENDAR.CALENDAR_DATE",
+                        "left_unresolved_expression": "COALESCE(EVENTS.EVENT_ID, EVENTS.USER_ID)",
+                    }
+                ],
+            }
+        }
 
-if __name__ == "__main__":
-    pytest.main([__file__, "-v"])
+        result = validator.validate(semantic_data, catalog_with_timestamps)
+        errors = result.get_errors()
+        assert any("SST-V049" in str(e) for e in errors)
+        assert any("multi-column" in str(e).lower() for e in errors)

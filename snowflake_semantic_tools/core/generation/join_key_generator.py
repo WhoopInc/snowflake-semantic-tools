@@ -133,7 +133,7 @@ def _detect_resolved_expression(side_expr: str) -> Optional[Dict[str, str]]:
 
 
 def _normalize_sql_expression(sql_expr: str) -> str:
-    """Normalize a SQL expression: strip whitespace and uppercase function names."""
+    """Normalize a SQL expression: strip outer whitespace and collapse internal whitespace."""
     sql_expr = sql_expr.strip()
     sql_expr = re.sub(r"\s+", " ", sql_expr)
     return sql_expr

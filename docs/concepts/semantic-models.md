@@ -573,10 +573,11 @@ Any valid Snowflake SQL expression that wraps a single column reference is suppo
 | `TO_DATE()` / `TO_TIMESTAMP()` | `TO_DATE({{ ref('orders', 'ordered_at') }})` |
 | `UPPER()` / `LOWER()` / `TRIM()` | `UPPER({{ ref('users', 'email') }})` |
 | Arithmetic | `{{ ref('orders', 'amount') }} + 1` |
+| Nested | `DATE_TRUNC('month', DATE({{ ref('events', 'ts') }}))` |
 
-Expressions referencing multiple columns (e.g., `{{ ref('a', 'col1') }} + {{ ref('a', 'col2') }}`) are not supported — each expression must wrap exactly one column.
+This is not an exhaustive list — any expression wrapping a single column reference will work. Expressions referencing multiple columns (e.g., `{{ ref('a', 'col1') }} + {{ ref('a', 'col2') }}`) are not supported and will raise an SST-V049 error.
 
-The expression is passed through to Snowflake as-is in the generated dimension definition. Snowflake validates the SQL at semantic view creation time.
+The expression is passed through to Snowflake as-is in the generated dimension definition. Snowflake validates the SQL at semantic view creation time. To catch SQL typos before generation, use `sst validate --snowflake-syntax-check`.
 
 **How it works:**
 1. SST detects the expression wrapping the column template during parsing
@@ -588,7 +589,6 @@ The expression is passed through to Snowflake as-is in the generated dimension d
 - The auto-generated dimension is publicly visible (Snowflake does not support private dimensions)
 - If the same expression is used in multiple relationships, the dimension is reused (deduplicated)
 - Expressions can appear on either side (or both sides) of a join condition
-- Nested expressions (e.g., `DATE_TRUNC('month', DATE(...))`) are not supported in this release
 
 ### Real Example
 

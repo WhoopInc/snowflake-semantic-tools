@@ -107,54 +107,33 @@ class JoinConditionParser:
         left_unresolved_expression = ""
         right_unresolved_expression = ""
 
-        if is_template_format:
-            from snowflake_semantic_tools.core.generation.join_key_generator import detect_expression, has_wrapping_text
+        from snowflake_semantic_tools.core.generation.join_key_generator import detect_expression, has_wrapping_text
 
-            left_expr_info = detect_expression(left_expr.strip())
-            if left_expr_info:
-                left_table = left_expr_info["table"]
-                left_column = left_expr_info["column"]
-                left_has_expression = True
-                left_sql_expression = left_expr_info["sql_expression"]
-            else:
-                left_table, left_column = cls._extract_table_column_from_template(left_expr)
-                if has_wrapping_text(left_expr.strip()):
-                    left_unresolved_expression = left_expr.strip()
+        fallback_extractor = (
+            cls._extract_table_column_from_template if is_template_format else cls._extract_table_column_from_resolved
+        )
 
-            right_expr_info = detect_expression(right_expr.strip())
-            if right_expr_info:
-                right_table = right_expr_info["table"]
-                right_column = right_expr_info["column"]
-                right_has_expression = True
-                right_sql_expression = right_expr_info["sql_expression"]
-            else:
-                right_table, right_column = cls._extract_table_column_from_template(right_expr)
-                if has_wrapping_text(right_expr.strip()):
-                    right_unresolved_expression = right_expr.strip()
+        left_expr_info = detect_expression(left_expr.strip())
+        if left_expr_info:
+            left_table = left_expr_info["table"]
+            left_column = left_expr_info["column"]
+            left_has_expression = True
+            left_sql_expression = left_expr_info["sql_expression"]
         else:
-            from snowflake_semantic_tools.core.generation.join_key_generator import detect_expression, has_wrapping_text
+            left_table, left_column = fallback_extractor(left_expr)
+            if has_wrapping_text(left_expr.strip()):
+                left_unresolved_expression = left_expr.strip()
 
-            left_expr_info = detect_expression(left_expr.strip())
-            if left_expr_info:
-                left_table = left_expr_info["table"]
-                left_column = left_expr_info["column"]
-                left_has_expression = True
-                left_sql_expression = left_expr_info["sql_expression"]
-            else:
-                left_table, left_column = cls._extract_table_column_from_resolved(left_expr)
-                if has_wrapping_text(left_expr.strip()):
-                    left_unresolved_expression = left_expr.strip()
-
-            right_expr_info = detect_expression(right_expr.strip())
-            if right_expr_info:
-                right_table = right_expr_info["table"]
-                right_column = right_expr_info["column"]
-                right_has_expression = True
-                right_sql_expression = right_expr_info["sql_expression"]
-            else:
-                right_table, right_column = cls._extract_table_column_from_resolved(right_expr)
-                if has_wrapping_text(right_expr.strip()):
-                    right_unresolved_expression = right_expr.strip()
+        right_expr_info = detect_expression(right_expr.strip())
+        if right_expr_info:
+            right_table = right_expr_info["table"]
+            right_column = right_expr_info["column"]
+            right_has_expression = True
+            right_sql_expression = right_expr_info["sql_expression"]
+        else:
+            right_table, right_column = fallback_extractor(right_expr)
+            if has_wrapping_text(right_expr.strip()):
+                right_unresolved_expression = right_expr.strip()
 
         # For BETWEEN range joins, extract the end column
         right_column_end = ""
