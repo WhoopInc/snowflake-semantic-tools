@@ -503,6 +503,30 @@ _register(
     ErrorCategory.CONFIG,
     "Create ~/.dbt/profiles.yml with Snowflake connection details",
 )
+_register(
+    "SST-C005",
+    "Compile failed",
+    ErrorCategory.CONFIG,
+    "Failed to compile SST metadata: {error}",
+)
+_register(
+    "SST-C006",
+    "Manifest write failed",
+    ErrorCategory.CONFIG,
+    "Could not write sst_manifest.json to '{path}': {error}. Check directory permissions",
+)
+_register(
+    "SST-C007",
+    "Manifest load failed",
+    ErrorCategory.CONFIG,
+    "Could not load sst_manifest.json: {error}. Run 'sst compile' first",
+)
+_register(
+    "SST-C008",
+    "Manifest stale",
+    ErrorCategory.CONFIG,
+    "sst_manifest.json is older than source YAML files. Run 'sst compile' to refresh",
+)
 
 
 def get_error(code: str) -> ErrorSpec:

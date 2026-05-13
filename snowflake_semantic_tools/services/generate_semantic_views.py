@@ -12,6 +12,7 @@ import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 from snowflake_semantic_tools.core.generation import SemanticViewBuilder
@@ -205,6 +206,7 @@ class UnifiedGenerationConfig:
     # Parallelism
     threads: int = 1
     view_timeout: int = 300
+    from_snowflake: bool = False
 
 
 class UnifiedGenerationResult:
@@ -884,93 +886,128 @@ class SemanticViewGenerationService:
         result = UnifiedGenerationResult()
 
         try:
-            # Create metadata client for pre-flight checks
-            progress.info("Validating metadata access...")
-            snowflake_client = SnowflakeClient(self.config)
-            metadata_client = MetadataClient(snowflake_client, config.metadata_database, config.metadata_schema)
-
-            # Pre-flight validation
-            if not metadata_client.validate_metadata_access():
-                result.add_error(
-                    f"Cannot access semantic metadata in {config.metadata_database}.{config.metadata_schema}"
-                )
-                return result
-
-            progress.detail(f"Metadata accessible at {config.metadata_database}.{config.metadata_schema}")
-
-            # Get available views from metadata
-            progress.info("Discovering semantic views...")
-            available_views = metadata_client.get_available_views()
-            progress.detail(f"Found {len(available_views)} available views")
-
-            # Parse view configurations
-            view_configs = []
-            for view in available_views:
-                # Parse TABLES column (stored as JSON string)
-                tables_json = view.get("TABLES", "[]")
-                try:
-                    tables = json.loads(tables_json) if isinstance(tables_json, str) else tables_json
-                except (json.JSONDecodeError, TypeError):
-                    logger.warning(f"Failed to parse tables for view {view.get('NAME')}")
-                    tables = []
-
-                # Parse CUSTOM_INSTRUCTIONS column (stored as JSON string)
-                custom_instructions = self._parse_custom_instructions(view.get("CUSTOM_INSTRUCTIONS"))
-
-                view_configs.append(
-                    {
-                        "name": view["NAME"],
-                        "tables": tables,
-                        "description": view.get("DESCRIPTION", ""),
-                        "custom_instructions": custom_instructions,
-                    }
-                )
-
-            # Filter by requested views if specified
-            if config.views_to_generate:
-                requested_views = set(config.views_to_generate)
-                view_configs = [v for v in view_configs if v["name"] in requested_views]
-
-                # Warn about missing views
-                found_views = {v["name"] for v in view_configs}
-                missing_views = requested_views - found_views
-                if missing_views:
-                    result.add_error(f"Requested views not found: {', '.join(sorted(missing_views))}")
-
-            if not view_configs:
-                result.add_error("No views found to generate")
-                return result
-
-            # Convert to low-level config and execute
-            low_level_config = GenerateConfig(
-                views_to_generate=view_configs,
-                target_database=config.target_database,
-                target_schema=config.target_schema,
-                metadata_database=config.metadata_database,
-                metadata_schema=config.metadata_schema,
-                defer_database=config.defer_database,
-                defer_manifest=config.defer_manifest,
-                execute=not config.dry_run,
-                threads=config.threads,
-                view_timeout=config.view_timeout,
-            )
-
-            # Execute using low-level interface with progress callback
-            low_level_result = self.execute(low_level_config, progress_callback=progress_callback)
-
-            # Convert to high-level result
-            for view_name in low_level_result.views_generated:
-                sql = low_level_result.sql_statements.get(view_name) if low_level_result.sql_statements else None
-                result.add_view_result(view_name, sql)
-
-            for error in low_level_result.errors:
-                result.add_error(error)
-
-            result.success = low_level_result.success
-
-            return result
-
+            if not config.from_snowflake:
+                return self._generate_from_manifest(config, progress, result)
+            return self._generate_from_snowflake(config, progress, result)
         except Exception as e:
             logger.error(f"Generation failed: {e}")
             result.add_error(f"Generation failed: {str(e)}")
             return result
+
+    def _parse_view_configs(self, available_views: List[Dict]) -> List[Dict]:
+        view_configs = []
+        for view in available_views:
+            tables_raw = view.get("TABLES", "[]")
+            try:
+                tables = json.loads(tables_raw) if isinstance(tables_raw, str) else tables_raw
+            except (json.JSONDecodeError, TypeError):
+                tables = tables_raw if isinstance(tables_raw, list) else []
+
+            custom_instructions = self._parse_custom_instructions(view.get("CUSTOM_INSTRUCTIONS"))
+
+            view_configs.append(
+                {
+                    "name": view.get("NAME", view.get("name", "")),
+                    "tables": tables if isinstance(tables, list) else [],
+                    "description": view.get("DESCRIPTION", view.get("description", "")),
+                    "custom_instructions": custom_instructions,
+                }
+            )
+        return view_configs
+
+    def _filter_and_execute(
+        self,
+        config: UnifiedGenerationConfig,
+        view_configs: List[Dict],
+        progress: ProgressCallback,
+        result: UnifiedGenerationResult,
+    ) -> UnifiedGenerationResult:
+        if config.views_to_generate:
+            requested_views = set(config.views_to_generate)
+            view_configs = [v for v in view_configs if v["name"] in requested_views]
+            found_views = {v["name"] for v in view_configs}
+            missing_views = requested_views - found_views
+            if missing_views:
+                result.add_error(f"Requested views not found: {', '.join(sorted(missing_views))}")
+
+        if not view_configs:
+            result.add_error("No views found to generate")
+            return result
+
+        low_level_config = GenerateConfig(
+            views_to_generate=view_configs,
+            target_database=config.target_database,
+            target_schema=config.target_schema,
+            metadata_database=config.metadata_database,
+            metadata_schema=config.metadata_schema,
+            defer_database=config.defer_database,
+            defer_manifest=config.defer_manifest,
+            execute=not config.dry_run,
+            threads=config.threads,
+            view_timeout=config.view_timeout,
+        )
+
+        low_level_result = self.execute(low_level_config, progress_callback=progress)
+
+        for view_name in low_level_result.views_generated:
+            sql = low_level_result.sql_statements.get(view_name) if low_level_result.sql_statements else None
+            result.add_view_result(view_name, sql)
+        for error in low_level_result.errors:
+            result.add_error(error)
+        result.success = low_level_result.success
+        return result
+
+    def _generate_from_manifest(
+        self, config: UnifiedGenerationConfig, progress: ProgressCallback, result: UnifiedGenerationResult
+    ) -> UnifiedGenerationResult:
+        from snowflake_semantic_tools.core.metadata.in_memory_store import InMemoryStore
+
+        manifest_path = Path("target") / "sst_manifest.json"
+        if not manifest_path.exists():
+            result.add_error(
+                "SST-C007: sst_manifest.json not found. Run 'sst compile' first, "
+                "or use --from-snowflake to read from SM_* tables."
+            )
+            return result
+
+        try:
+            with open(manifest_path, "r", encoding="utf-8") as f:
+                manifest_data = json.load(f)
+        except (json.JSONDecodeError, IOError) as e:
+            result.add_error(f"SST-C007: Could not load sst_manifest.json: {e}")
+            return result
+
+        tables_data = manifest_data.get("tables", {})
+        if not tables_data:
+            result.add_error("SST-C007: sst_manifest.json has no tables section. Re-run 'sst compile'.")
+            return result
+
+        store = InMemoryStore(tables_data)
+        self.builder.store = store
+
+        progress.info("Discovering semantic views...")
+        available_views = store.get_semantic_views()
+        progress.detail(f"Found {len(available_views)} available views")
+
+        view_configs = self._parse_view_configs(available_views)
+        return self._filter_and_execute(config, view_configs, progress, result)
+
+    def _generate_from_snowflake(
+        self, config: UnifiedGenerationConfig, progress: ProgressCallback, result: UnifiedGenerationResult
+    ) -> UnifiedGenerationResult:
+        progress.info("Validating metadata access...")
+        snowflake_client = SnowflakeClient(self.config)
+        metadata_client = MetadataClient(snowflake_client, config.metadata_database, config.metadata_schema)
+
+        if not metadata_client.validate_metadata_access():
+            result.add_error(f"Cannot access semantic metadata in {config.metadata_database}.{config.metadata_schema}")
+            return result
+
+        progress.detail(f"Metadata accessible at {config.metadata_database}.{config.metadata_schema}")
+
+        progress.info("Discovering semantic views...")
+        available_views = metadata_client.get_available_views()
+        progress.detail(f"Found {len(available_views)} available views")
+
+        view_configs = self._parse_view_configs(available_views)
+        return self._filter_and_execute(config, view_configs, progress, result)

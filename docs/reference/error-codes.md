@@ -105,6 +105,10 @@ Stable error codes for SST diagnostics. Each code is a permanent identifier that
 | `SST-C002` | Missing dbt_project.yml | SST must be run from a dbt project directory containing dbt_project.yml |
 | `SST-C003` | Invalid configuration | Config key '{key}' has invalid value. Expected: {expected} |
 | `SST-C004` | Missing profiles.yml | Create ~/.dbt/profiles.yml with Snowflake connection details |
+| `SST-C005` | Compile failed | Failed to compile SST metadata: {error} |
+| `SST-C006` | Manifest write failed | Could not write sst_manifest.json to '{path}': {error}. Check directory permissions |
+| `SST-C007` | Manifest load failed | Could not load sst_manifest.json: {error}. Run 'sst compile' first |
+| `SST-C008` | Manifest stale | sst_manifest.json is older than source YAML files. Run 'sst compile' to refresh |
 
 ---
 

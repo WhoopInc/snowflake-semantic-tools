@@ -183,7 +183,7 @@ class SSTManifest:
         payload = {
             "metadata": self.metadata,
             "config_checksum": self.config_checksum,
-            "files": self.files,
+            "file_checksums": self.files,
         }
         with open(out_path, "w", encoding="utf-8") as f:
             json.dump(payload, f, indent=2)
@@ -208,7 +208,9 @@ class SSTManifest:
             inst = cls()
             inst.metadata = data.get("metadata", {})
             inst.config_checksum = data.get("config_checksum")
-            inst.files = data.get("files", {})
+            if not inst.config_checksum and "__config__" in inst.files:
+                inst.config_checksum = inst.files.pop("__config__", {}).get("checksum")
+            inst.files = data.get("file_checksums", data.get("files", {}))
             logger.info(f"SST manifest loaded: {manifest_path} ({len(inst.files)} files)")
             return inst
         except (json.JSONDecodeError, IOError) as e:

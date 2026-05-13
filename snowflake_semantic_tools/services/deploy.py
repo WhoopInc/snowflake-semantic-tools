@@ -45,6 +45,7 @@ class DeployConfig:
     defer_database: Optional[str] = None  # Override table database references
     only_modified: bool = False  # Only process changed models
     defer_manifest_path: Optional[str] = None  # Path to defer manifest for selective generation
+    extract_to_snowflake: bool = False  # Write SM_* tables to Snowflake (opt-in)
 
 
 @dataclass
@@ -55,6 +56,7 @@ class DeployResult:
     validation_passed: bool
     extraction_completed: bool
     generation_completed: bool
+    compilation_completed: bool = False
 
     skip_validation: bool = False
     validation_errors: int = 0
@@ -67,6 +69,7 @@ class DeployResult:
     warnings: List[str] = None
 
     validation_time: float = 0.0
+    compilation_time: float = 0.0
     extraction_time: float = 0.0
     generation_time: float = 0.0
     total_time: float = 0.0
@@ -196,11 +199,33 @@ class DeployService:
         )
 
         try:
-            # STEP 1: Validation (unless skipped)
+            # STEP 1: Compile manifest
+            total_steps = 3 + (1 if config.extract_to_snowflake else 0)
+            step = 1
+
+            progress.stage("Compiling metadata", current=step, total=total_steps)
+            if not config.quiet:
+                logger.info(f"Step {step}/{total_steps}: Compiling metadata...")
+
+            compile_start = time.time()
+            compile_result = self._run_compile(config)
+            result.compilation_time = time.time() - compile_start
+
+            if not compile_result.success:
+                result.errors.extend([f"[COMPILE] {e}" for e in compile_result.errors])
+                logger.error("Compilation failed")
+                return result
+
+            result.compilation_completed = True
+            if not config.quiet:
+                logger.info(f"Compilation completed in {result.compilation_time:.1f}s")
+
+            # STEP 2: Validation (unless skipped)
+            step += 1
             if not config.skip_validation:
-                progress.stage("Validating semantic models", current=1, total=3)
+                progress.stage("Validating semantic models", current=step, total=total_steps)
                 if not config.quiet:
-                    logger.info("Step 1/3: Validating semantic models...")
+                    logger.info(f"Step {step}/{total_steps}: Validating semantic models...")
 
                 val_start = time.time()
                 validation_result = self._run_validation(config)
@@ -228,36 +253,42 @@ class DeployService:
                 if not config.quiet:
                     logger.warning("Skipping validation (--skip-validation flag set)")
 
-            # STEP 2: Extraction
-            progress.stage("Extracting metadata to Snowflake", current=2, total=3)
+            # STEP: Extraction (opt-in only)
+            step += 1
+            if config.extract_to_snowflake:
+                progress.stage("Extracting metadata to Snowflake", current=step, total=total_steps)
+                if not config.quiet:
+                    logger.info(f"Step {step}/{total_steps}: Extracting metadata to Snowflake...")
+
+                ext_start = time.time()
+                extraction_result = self._run_extraction(config, progress)
+                result.extraction_time = time.time() - ext_start
+
+                result.extraction_completed = extraction_result.success
+                result.rows_loaded = extraction_result.rows_loaded
+                result.models_processed = extraction_result.models_processed
+
+                if extraction_result.errors:
+                    result.errors.extend([f"[EXTRACTION] {e}" for e in extraction_result.errors])
+                if extraction_result.warnings:
+                    result.warnings.extend([f"[EXTRACTION] {w}" for w in extraction_result.warnings])
+
+                if not extraction_result.success:
+                    logger.error("Extraction failed")
+                    return result
+
+                if not config.quiet:
+                    logger.info(
+                        f"Extraction completed ({result.rows_loaded:,} rows from {result.models_processed} models)"
+                    )
+            else:
+                result.extraction_completed = True
+
+            # STEP: Generation
+            step += 1
+            progress.stage("Generating semantic artifacts", current=step, total=total_steps)
             if not config.quiet:
-                logger.info("Step 2/3: Extracting metadata to Snowflake...")
-
-            ext_start = time.time()
-            extraction_result = self._run_extraction(config, progress)
-            result.extraction_time = time.time() - ext_start
-
-            result.extraction_completed = extraction_result.success
-            result.rows_loaded = extraction_result.rows_loaded
-            result.models_processed = extraction_result.models_processed
-
-            # Collect extraction errors/warnings
-            if extraction_result.errors:
-                result.errors.extend([f"[EXTRACTION] {e}" for e in extraction_result.errors])
-            if extraction_result.warnings:
-                result.warnings.extend([f"[EXTRACTION] {w}" for w in extraction_result.warnings])
-
-            if not extraction_result.success:
-                logger.error("Extraction failed")
-                return result
-
-            if not config.quiet:
-                logger.info(f"Extraction completed ({result.rows_loaded:,} rows from {result.models_processed} models)")
-
-            # STEP 3: Generation
-            progress.stage("Generating semantic artifacts", current=3, total=3)
-            if not config.quiet:
-                logger.info("Step 3/3: Generating semantic artifacts...")
+                logger.info(f"Step {step}/{total_steps}: Generating semantic artifacts...")
 
             gen_start = time.time()
             generation_result = self._run_generation(config, progress)
@@ -288,6 +319,13 @@ class DeployService:
             result.errors.append(f"[FATAL] {str(e)}")
             result.total_time = time.time() - start_time
             return result
+
+    def _run_compile(self, config: DeployConfig):
+        from snowflake_semantic_tools.services.compile import CompileConfig, CompileService
+
+        service = CompileService()
+        compile_config = CompileConfig()
+        return service.compile(compile_config)
 
     def _run_validation(self, config: DeployConfig):
         """Run validation step with proper exclusion handling."""

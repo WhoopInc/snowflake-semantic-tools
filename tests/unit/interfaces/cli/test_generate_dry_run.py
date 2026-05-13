@@ -47,7 +47,10 @@ def _run_generate(runner, args, mock_result):
         f"{_PATCH_PREFIX}.SemanticViewGenerationService", return_value=mock_service
     ), patch(
         f"{_PATCH_PREFIX}.get_config", return_value=mock_config_obj
-    ):
+    ), patch(
+        "snowflake_semantic_tools.services.compile.CompileService"
+    ) as mock_compile:
+        mock_compile.return_value.compile.return_value = MagicMock(success=True)
         return runner.invoke(generate, args)
 
 
