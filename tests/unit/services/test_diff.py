@@ -16,6 +16,17 @@ from snowflake_semantic_tools.services.diff_service import (
 )
 
 _MODULE = "snowflake_semantic_tools.services.diff_service"
+_CLIENT_PATH = "snowflake_semantic_tools.infrastructure.snowflake.SnowflakeClient"
+
+
+def _patch_client():
+    return patch(_CLIENT_PATH, return_value=MagicMock())
+
+
+@pytest.fixture(autouse=True)
+def _mock_snowflake_client():
+    with patch(_CLIENT_PATH, return_value=MagicMock()):
+        yield
 
 
 @pytest.fixture
@@ -234,7 +245,7 @@ class TestErrorPaths:
     def test_connection_failure_d001(self, mock_config, diff_config):
         service = DiffService(mock_config)
 
-        def fail_deployed(config, result):
+        def fail_deployed(config, client, result):
             result.errors.append("SST-D001: connection refused")
             result.success = False
             return set()
@@ -259,7 +270,7 @@ class TestErrorPaths:
         service = DiffService(mock_config)
         proposed_views = {"V1": _proposed(metrics=["M1"]), "V2": _proposed(metrics=["M2"])}
 
-        def fail_describe(config, name, result):
+        def fail_describe(config, client, name, result):
             if name == "V1":
                 result.warnings.append(f"SST-D004: permission denied for {name}")
                 return None

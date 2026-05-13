@@ -12,6 +12,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, List, Optional, Set
 
+import pandas as pd
+
 from snowflake_semantic_tools.infrastructure.snowflake import SnowflakeConfig
 from snowflake_semantic_tools.services.compile import MANIFEST_FILENAME
 from snowflake_semantic_tools.shared.utils import get_logger
@@ -71,6 +73,12 @@ class DiffResult:
 _WINDOW_TAIL_RE = re.compile(r"\s+OVER\s*\(", re.IGNORECASE)
 
 
+def _safe_str(val) -> str:
+    if val is None or (isinstance(val, float) and pd.isna(val)):
+        return ""
+    return str(val)
+
+
 def _normalize_expr(expr: str) -> str:
     return " ".join(expr.upper().split())
 
@@ -95,7 +103,16 @@ class DiffService:
         if not result.success:
             return result
 
-        deployed_names = self._get_deployed_view_names(config, result)
+        from snowflake_semantic_tools.infrastructure.snowflake import SnowflakeClient
+
+        try:
+            client = SnowflakeClient(self.snowflake_config)
+        except Exception as e:
+            result.errors.append(f"SST-D001: Could not connect to Snowflake: {e}")
+            result.success = False
+            return result
+
+        deployed_names = self._get_deployed_view_names(config, client, result)
         if not result.success:
             return result
 
@@ -122,7 +139,7 @@ class DiffService:
                 result.views.append(ViewDiff(name=name, status="new", proposed_counts=counts))
                 continue
 
-            deployed = self._describe_view(config, name, result)
+            deployed = self._describe_view(config, client, name, result)
             if deployed is None:
                 continue
 
@@ -269,11 +286,8 @@ class DiffService:
 
         return views
 
-    def _get_deployed_view_names(self, config: DiffConfig, result: DiffResult) -> Set[str]:
+    def _get_deployed_view_names(self, config: DiffConfig, client, result: DiffResult) -> Set[str]:
         try:
-            from snowflake_semantic_tools.infrastructure.snowflake import SnowflakeClient
-
-            client = SnowflakeClient(self.snowflake_config)
             df = client.execute_query(f"SHOW SEMANTIC VIEWS IN {config.database}.{config.schema}")
             if df.empty:
                 return set()
@@ -285,22 +299,19 @@ class DiffService:
             return set()
 
     def _describe_view(
-        self, config: DiffConfig, view_name: str, result: DiffResult
+        self, config: DiffConfig, client, view_name: str, result: DiffResult
     ) -> Optional[Dict[str, Dict[str, Dict]]]:
         try:
-            from snowflake_semantic_tools.infrastructure.snowflake import SnowflakeClient
-
-            client = SnowflakeClient(self.snowflake_config)
             fq = f"{config.database}.{config.schema}.{view_name}"
             df = client.execute_query(f"DESCRIBE SEMANTIC VIEW {fq}")
 
             components: Dict[str, Dict[str, Dict]] = {}
             for _, row in df.iterrows():
-                kind = str(row.get("object_kind", ""))
-                obj_name = str(row.get("object_name", ""))
-                parent = str(row.get("parent_entity", ""))
-                prop = str(row.get("property", ""))
-                value = str(row.get("property_value", ""))
+                kind = _safe_str(row.get("object_kind"))
+                obj_name = _safe_str(row.get("object_name"))
+                parent = _safe_str(row.get("parent_entity"))
+                prop = _safe_str(row.get("property"))
+                value = _safe_str(row.get("property_value"))
 
                 if kind not in COMPONENT_TYPES:
                     continue
@@ -320,7 +331,7 @@ class DiffService:
                 else:
                     continue
 
-                if kind != "CUSTOM_INSTRUCTION" and (obj_name.startswith("_") or obj_name == "None"):
+                if kind != "CUSTOM_INSTRUCTION" and (not obj_name or obj_name.startswith("_")):
                     continue
 
                 entry = components.setdefault(kind, {}).setdefault(key, {"TABLE": parent})
