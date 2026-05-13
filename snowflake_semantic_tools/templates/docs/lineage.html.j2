@@ -1,0 +1,62 @@
+{% extends "_base.html.j2" %}
+
+{% block title %}SST Documentation — Lineage{% endblock %}
+{% block nav_lineage_class %}active{% endblock %}
+
+{% block head_extra %}
+<script>{{ d3_js }}</script>
+{% endblock %}
+
+{% block content %}
+<div class="sst-lineage-container" id="lineage-graph">
+    <div class="sst-lineage-filters">
+        <label><input type="checkbox" value="table" checked> Tables</label>
+        <label><input type="checkbox" value="metric" checked> Metrics</label>
+        <label><input type="checkbox" value="relationship" checked> Relationships</label>
+        <label><input type="checkbox" value="semantic_view" checked> Semantic Views</label>
+        <label><input type="checkbox" value="filter" checked> Filters</label>
+        <label><input type="checkbox" value="custom_instruction" checked> Instructions</label>
+        <label><input type="checkbox" value="verified_query" checked> Verified Queries</label>
+    </div>
+
+    <div class="sst-lineage-legend">
+        <div class="sst-lineage-legend-item"><span class="sst-lineage-legend-dot" style="background:var(--color-table)"></span> Table</div>
+        <div class="sst-lineage-legend-item"><span class="sst-lineage-legend-dot" style="background:var(--color-metric)"></span> Metric</div>
+        <div class="sst-lineage-legend-item"><span class="sst-lineage-legend-dot" style="background:var(--color-relationship)"></span> Relationship</div>
+        <div class="sst-lineage-legend-item"><span class="sst-lineage-legend-dot" style="background:var(--color-semantic-view)"></span> Semantic View</div>
+        <div class="sst-lineage-legend-item"><span class="sst-lineage-legend-dot" style="background:var(--color-filter)"></span> Filter</div>
+        <div class="sst-lineage-legend-item"><span class="sst-lineage-legend-dot" style="background:var(--color-custom-instruction)"></span> Custom Instruction</div>
+        <div class="sst-lineage-legend-item"><span class="sst-lineage-legend-dot" style="background:var(--color-verified-query)"></span> Verified Query</div>
+        <hr style="margin:0.5rem 0;border-color:var(--sst-border)">
+        <div class="sst-lineage-legend-item" style="opacity:0.7">&#x2500;&#x2500; references/joins</div>
+        <div class="sst-lineage-legend-item" style="opacity:0.7">- - - includes/uses</div>
+    </div>
+
+    <div class="sst-lineage-controls">
+        <button id="zoom-in" title="Zoom in">+</button>
+        <button id="zoom-out" title="Zoom out">&minus;</button>
+        <button id="zoom-fit" title="Fit to screen">&#8644;</button>
+    </div>
+
+    <div id="detail-panel" class="sst-detail-panel">
+        <button class="sst-detail-panel-close" onclick="closeDetailPanel()">&times;</button>
+        <div class="sst-detail-content"></div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>{{ lineage_js }}</script>
+<script>
+    var graphData = {{ graph_data_json }};
+    document.addEventListener('DOMContentLoaded', function() {
+        initLineage(graphData);
+    });
+    document.addEventListener('click', function(e) {
+        var panel = document.getElementById('detail-panel');
+        if (panel && panel.classList.contains('open') && !panel.contains(e.target) && !e.target.closest('.lineage-node')) {
+            closeDetailPanel();
+        }
+    });
+</script>
+{% endblock %}

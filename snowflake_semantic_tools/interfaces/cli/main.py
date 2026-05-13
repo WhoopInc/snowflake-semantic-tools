@@ -82,6 +82,7 @@ COMMAND_ORDER = [
     "deploy",
     "drop",
     "list",
+    "docs",
     "migrate-meta",
 ]
 
@@ -123,6 +124,7 @@ LAZY_COMMANDS = {
     "deploy": ("snowflake_semantic_tools.interfaces.cli.commands.deploy", "deploy"),
     "drop": ("snowflake_semantic_tools.interfaces.cli.commands.drop", "drop"),
     "list": ("snowflake_semantic_tools.interfaces.cli.commands.list", "list_cmd"),
+    "docs": ("snowflake_semantic_tools.interfaces.cli.commands.docs", "docs_cmd"),
     "migrate-meta": ("snowflake_semantic_tools.interfaces.cli.commands.migrate_meta", "migrate_meta"),
 }
 
