@@ -182,6 +182,9 @@ def _determine_components(
 @click.option("--exclude", help="Comma-separated list of directories to exclude")
 @click.option("--dry-run", is_flag=True, help="Preview changes without writing files")
 @click.option("--fail-fast", is_flag=True, help="Stop on first error")
+@click.option("--include-sources", is_flag=True, help="Also enrich dbt source definitions")
+@click.option("--sources-only", is_flag=True, help="Enrich only dbt sources (skip models)")
+@click.option("--source", "source_name", help="Enrich a specific source (format: source_name.table_name)")
 @click.option("--verbose", "-v", is_flag=True, help="Enable verbose logging")
 def enrich(
     target_path,
@@ -207,6 +210,9 @@ def enrich(
     force_column_types,
     force_data_types,
     force_all,
+    include_sources,
+    sources_only,
+    source_name,
 ):
     """Auto-populate dbt YAML with semantic metadata from Snowflake.
 
@@ -235,6 +241,9 @@ def enrich(
       sst enrich models/ --all                All components including synonyms
       sst enrich models/ --dry-run            Preview without writing
       sst enrich models/ --exclude staging    Skip directories
+      sst enrich models/ --include-sources    Enrich models AND sources
+      sst enrich --sources-only               Enrich only dbt sources
+      sst enrich --source raw.users           Enrich a specific source table
 
     \b
     Next Step:
@@ -254,12 +263,36 @@ def enrich(
     if target_path and model_names:
         raise click.UsageError("Specify either TARGET_PATH or --models, not both")
 
-    if not target_path and not model_names:
+    # Validate source flag combinations
+    if sources_only and (target_path or model_names):
+        raise click.UsageError("--sources-only cannot be combined with TARGET_PATH or --models")
+    if source_name and (target_path or model_names or include_sources):
+        raise click.UsageError("--source cannot be combined with TARGET_PATH, --models, or --include-sources")
+    if sources_only and source_name:
+        raise click.UsageError("--sources-only and --source are mutually exclusive")
+    if sources_only and include_sources:
+        raise click.UsageError("--sources-only and --include-sources are mutually exclusive")
+
+    # Validate source selector format
+    source_names_list = None
+    if source_name:
+        parts = source_name.split(".")
+        if len(parts) != 2 or not parts[0] or not parts[1]:
+            raise click.ClickException(
+                f"SST-E010: Invalid source selector '{source_name}'.\n\n"
+                "Source selector must be format 'source_name.table_name' (exactly one dot).\n"
+                "Example: sst enrich --source raw.users"
+            )
+        source_names_list = [source_name]
+
+    if not target_path and not model_names and not sources_only and not source_name:
         raise click.UsageError(
             "Missing required argument.\n\n"
             "Usage:\n"
-            "  sst enrich TARGET_PATH       # Enrich a directory or file\n"
-            "  sst enrich --models NAME     # Enrich specific models by name"
+            "  sst enrich TARGET_PATH            # Enrich a directory or file\n"
+            "  sst enrich --models NAME          # Enrich specific models by name\n"
+            "  sst enrich --sources-only          # Enrich only dbt sources\n"
+            "  sst enrich --source raw.users      # Enrich a specific source"
         )
 
     # Common CLI setup
@@ -325,6 +358,9 @@ def enrich(
         force_column_types=force_column_types or force_all,
         force_data_types=force_data_types or force_all,
         force_all=force_all,
+        include_sources=include_sources,
+        sources_only=sources_only,
+        source_names=source_names_list,
     )
 
     # Execute enrichment

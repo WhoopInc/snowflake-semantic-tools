@@ -105,7 +105,11 @@ class EnrichmentCompleted(BaseEvent):
 
 @dataclass
 class ModelEnriched(BaseEvent):
-    """Model successfully enriched."""
+    """Model or source successfully enriched.
+
+    The model_name field is a display name used for progress output.
+    For sources, it contains 'source_name.table_name'.
+    """
 
     model_name: str
     columns_updated: int
@@ -138,7 +142,11 @@ class ModelEnriched(BaseEvent):
 
 @dataclass
 class ModelEnrichmentSkipped(BaseEvent):
-    """Model enrichment skipped."""
+    """Model or source enrichment skipped.
+
+    The model_name field is a display name used for progress output.
+    For sources, it contains 'source_name.table_name'.
+    """
 
     model_name: str
     reason: str

@@ -133,7 +133,7 @@ class TestEnrichmentConfigWithModelFiles:
         """Test that config requires either target_path or model_files."""
         with pytest.raises(ValueError) as exc_info:
             EnrichmentConfig()
-        assert "Either target_path or model_files must be provided" in str(exc_info.value)
+        assert "Either target_path, model_files, sources_only, or source_names must be provided" in str(exc_info.value)
 
 
 class TestEnrichCLIModelsOption:

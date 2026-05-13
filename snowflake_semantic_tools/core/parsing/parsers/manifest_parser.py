@@ -107,6 +107,7 @@ class ManifestParser:
         self.manifest_path = manifest_path
         self.manifest = None
         self.model_locations = {}  # Cache: model_name -> location dict
+        self.source_locations = {}  # Cache: "source_name.table_name" -> location dict
         self._search_paths = []
 
     def _find_manifest(self) -> Optional[Path]:
@@ -169,12 +170,14 @@ class ManifestParser:
                 logger.warning(f"Manifest missing 'nodes' key: {manifest_path}")
                 return False
 
-            # Build location cache
+            # Build location caches
             self._build_location_cache()
+            self._build_source_cache()
 
             # Log summary
             model_count = len([k for k in self.manifest["nodes"].keys() if k.startswith("model.")])
-            logger.info(f"Parsed {model_count} models from manifest")
+            source_count = len(self.source_locations)
+            logger.info(f"Parsed {model_count} models and {source_count} sources from manifest")
 
             return True
 
@@ -234,6 +237,71 @@ class ManifestParser:
             }
 
             logger.debug(f"Cached location for {model_name}: {database}.{schema}")
+
+    def _build_source_cache(self):
+        """
+        Build cache of source locations from manifest sources.
+
+        Extracts database, schema, table name, and path information for all sources.
+        Only processes entries from the top-level "sources" key in the manifest
+        (not "nodes" — sources are separate from models/tests/seeds/snapshots).
+
+        Sources are keyed like "source.project_name.source_name.table_name"
+        and cached as "source_name.table_name" for lookup.
+
+        Skips sources with empty database or schema (cannot be resolved).
+        """
+        if not self.manifest or "sources" not in self.manifest:
+            return
+
+        for source_id, source in self.manifest["sources"].items():
+            source_name = source.get("source_name", "")
+            table_name = source.get("name", "")
+            if not source_name or not table_name:
+                continue
+
+            database = source.get("database", "")
+            schema = source.get("schema", "")
+
+            if not database or not schema:
+                logger.warning(f"Source '{source_name}.{table_name}' has empty database or schema. Skipping.")
+                continue
+
+            key = f"{source_name}.{table_name}"
+            self.source_locations[key] = {
+                "database": database.upper(),
+                "schema": schema.upper(),
+                "name": table_name,
+                "source_name": source_name,
+                "original_file_path": source.get("original_file_path", ""),
+                "unique_id": source_id,
+            }
+
+            logger.debug(f"Cached source location for {key}: {database.upper()}.{schema.upper()}")
+
+    def get_source_location(self, source_name: str, table_name: str) -> Optional[Dict[str, str]]:
+        """
+        Get database and schema for a source table.
+
+        Args:
+            source_name: Name of the dbt source (e.g., 'raw')
+            table_name: Name of the table within the source (e.g., 'users')
+
+        Returns:
+            Dict with keys: database, schema, name, source_name, original_file_path, unique_id
+            None if source not found
+        """
+        key = f"{source_name}.{table_name}"
+        return self.source_locations.get(key)
+
+    def get_all_sources(self) -> Dict[str, Dict[str, str]]:
+        """
+        Get all cached source locations.
+
+        Returns:
+            Dict mapping "source_name.table_name" to location dicts
+        """
+        return self.source_locations
 
     def get_location(self, model_name: str) -> Optional[Dict[str, str]]:
         """

@@ -65,10 +65,15 @@ class EnrichmentConfig:
     force_data_types: bool = False  # Overwrite existing data types
     force_all: bool = False  # Overwrite everything
 
+    # Source enrichment flags
+    include_sources: bool = False  # Also enrich dbt sources alongside models
+    sources_only: bool = False  # Enrich only sources, skip models
+    source_names: Optional[List[str]] = None  # Specific "source_name.table_name" selectors
+
     def __post_init__(self):
-        """Validate that either target_path or model_files is provided."""
-        if not self.target_path and not self.model_files:
-            raise ValueError("Either target_path or model_files must be provided")
+        """Validate that either target_path, model_files, or source flags are provided."""
+        if not self.target_path and not self.model_files and not self.sources_only and not self.source_names:
+            raise ValueError("Either target_path, model_files, sources_only, or source_names must be provided")
 
 
 @dataclass
@@ -386,29 +391,47 @@ class MetadataEnrichmentService:
         if self.config.dry_run:
             logger.info("DRY RUN mode: no files will be modified")
 
-        # Discover models
-        if self.config.model_files:
-            progress.info(f"Using {len(self.config.model_files)} specified model(s)...")
-        else:
-            progress.info(f"Discovering models in {self.config.target_path}...")
-        logger.debug("Discovering models...")
-        model_files = self._discover_models()
+        # Discover models (skip if sources_only)
+        model_files = []
+        if not self.config.sources_only and not self.config.source_names:
+            if self.config.model_files:
+                progress.info(f"Using {len(self.config.model_files)} specified model(s)...")
+            elif self.config.target_path:
+                progress.info(f"Discovering models in {self.config.target_path}...")
+            logger.debug("Discovering models...")
+            model_files = self._discover_models()
 
-        if not model_files:
-            target_desc = self.config.target_path or "specified models"
-            logger.warning(f"No models found at {target_desc}")
-            progress.warning(f"No models found at {target_desc}")
+        # Discover sources
+        source_tables = []
+        if self.config.include_sources or self.config.sources_only or self.config.source_names:
+            progress.info("Discovering dbt sources...")
+            source_tables = self._discover_sources()
+            if source_tables:
+                progress.info(f"Found {len(source_tables)} source table(s) to enrich", indent=1)
+
+        total_items = len(model_files) + len(source_tables)
+
+        if total_items == 0:
+            target_desc = self.config.target_path or "specified targets"
+            logger.warning(f"No models or sources found at {target_desc}")
+            progress.warning(f"No models or sources found at {target_desc}")
             return EnrichmentResult(status="complete", processed=0, total=0, results=[], errors=[])
 
-        progress.info(f"Found {len(model_files)} model(s) to enrich", indent=1)
+        if model_files:
+            progress.info(f"Found {len(model_files)} model(s) to enrich", indent=1)
 
         # Fire event: User-facing operation start (shown in CLI)
-        event_path = self.config.target_path or "specified models"
-        fire_event(EnrichmentStarted(path=event_path, model_count=len(model_files)))
+        event_path = self.config.target_path or "specified targets"
+        fire_event(EnrichmentStarted(path=event_path, model_count=total_items))
 
         # Show enrichment details
         progress.blank_line()
-        progress.info(f"Enriching {len(model_files)} model(s)...")
+        parts = []
+        if model_files:
+            parts.append(f"{len(model_files)} model(s)")
+        if source_tables:
+            parts.append(f"{len(source_tables)} source(s)")
+        progress.info(f"Enriching {' and '.join(parts)}...")
 
         # Start timing
         start_time = time.time()
@@ -530,26 +553,94 @@ class MetadataEnrichmentService:
                     logger.error("Fail-fast enabled, stopping on error")
                     break
 
+        # Process sources
+        for idx_offset, source_info in enumerate(source_tables):
+            idx = len(model_files) + idx_offset + 1
+            source_display = f"{source_info['source_name']}.{source_info['table_name']}"
+
+            try:
+                source_start = time.time()
+
+                if self.config.dry_run:
+                    fire_event(
+                        ModelEnrichmentSkipped(
+                            model_name=source_display, reason="dry run", current=idx, total=total_items
+                        )
+                    )
+                    results.append({"status": "dry_run", "source": source_display})
+                    skipped_count += 1
+                    continue
+
+                progress.item_progress(idx, total_items, source_display, "RUN")
+
+                result = self.enricher.enrich_source(
+                    source_info,
+                    components=self.config.components,
+                )
+
+                results.append(result)
+                source_duration = time.time() - source_start
+
+                if result["status"] == "success":
+                    success_count += 1
+                    fire_event(
+                        ModelEnriched(
+                            model_name=source_display,
+                            columns_updated=result.get("columns_processed", 0),
+                            duration_seconds=source_duration,
+                            current=idx,
+                            total=total_items,
+                        )
+                    )
+                else:
+                    errors.append(result)
+                    error_msg = result.get("error", "Unknown error")
+                    if "\n" in error_msg:
+                        error_msg = error_msg.split("\n")[0]
+                    if len(error_msg) > 100:
+                        error_msg = error_msg[:97] + "..."
+
+                    fire_event(
+                        ModelEnrichmentSkipped(
+                            model_name=source_display, reason=error_msg, current=idx, total=total_items
+                        )
+                    )
+
+                    if self.config.fail_fast:
+                        logger.error(f"Fail-fast enabled, stopping on error: {result.get('error', 'Unknown error')}")
+                        break
+
+            except Exception as e:
+                error_result = {"status": "error", "source": source_display, "error": f"{type(e).__name__}: {str(e)}"}
+                errors.append(error_result)
+                results.append(error_result)
+
+                logger.error(f"Error processing source {source_display}: {type(e).__name__}: {e}")
+                logger.debug(f"Full traceback for source {source_display}:", exc_info=True)
+
+                if self.config.fail_fast:
+                    logger.error("Fail-fast enabled, stopping on error")
+                    break
+
         # Determine overall status
-        if success_count == len(model_files):
+        if success_count == total_items:
             status = "complete"
         elif success_count > 0:
             status = "partial"
-        elif skipped_count == len(model_files):
-            # All models skipped (e.g., dry-run mode) - this is successful
+        elif skipped_count == total_items:
             status = "complete"
         else:
             status = "failed"
 
         result = EnrichmentResult(
-            status=status, processed=success_count, total=len(model_files), results=results, errors=errors
+            status=status, processed=success_count, total=total_items, results=results, errors=errors
         )
 
         # Fire event: Enrichment completed
         duration = time.time() - start_time
         fire_event(
             EnrichmentCompleted(
-                total_models=len(model_files),
+                total_models=total_items,
                 successful=success_count,
                 failed=len(errors),
                 skipped=skipped_count,
@@ -673,6 +764,127 @@ class MetadataEnrichmentService:
                     model_files.append(file_path)
 
         return sorted(model_files)
+
+    def _discover_sources(self) -> List[Dict[str, Any]]:
+        """
+        Discover dbt source tables to process.
+
+        Returns a list of dicts with keys:
+            source_name, table_name, database, schema, yaml_path
+
+        Discovery strategies (in order):
+        1. If specific source_names provided: resolve from manifest
+        2. If manifest available: return all sources from manifest
+        3. Fallback: walk YAML files in target_path for 'sources:' key
+
+        Returns:
+            List of source info dicts
+        """
+        source_tables = []
+
+        if self.config.source_names:
+            if not self.manifest_parser or not self.manifest_parser.source_locations:
+                logger.error("SST-E004: Manifest required for --source option")
+                return []
+
+            for selector in self.config.source_names:
+                parts = selector.split(".", 1)
+                if len(parts) != 2:
+                    logger.error(f"SST-E010: Invalid source selector '{selector}'. Use 'source_name.table_name'")
+                    continue
+
+                src_name, tbl_name = parts
+                location = self.manifest_parser.get_source_location(src_name, tbl_name)
+                if not location:
+                    available = list(self.manifest_parser.source_locations.keys())[:10]
+                    available_str = ", ".join(available) if available else "(none)"
+                    logger.error(
+                        f"SST-E006: Source '{selector}' not found in manifest. " f"Available sources: {available_str}"
+                    )
+                    continue
+
+                source_tables.append(
+                    {
+                        "source_name": src_name,
+                        "table_name": tbl_name,
+                        "database": location["database"],
+                        "schema": location["schema"],
+                        "yaml_path": location.get("original_file_path", ""),
+                    }
+                )
+
+            return source_tables
+
+        if self.manifest_parser and self.manifest_parser.source_locations:
+            for key, location in self.manifest_parser.source_locations.items():
+                source_tables.append(
+                    {
+                        "source_name": location["source_name"],
+                        "table_name": location["name"],
+                        "database": location["database"],
+                        "schema": location["schema"],
+                        "yaml_path": location.get("original_file_path", ""),
+                    }
+                )
+
+            logger.info(f"Found {len(source_tables)} source table(s) from manifest")
+            return sorted(source_tables, key=lambda s: f"{s['source_name']}.{s['table_name']}")
+
+        if self.config.target_path:
+            yaml_handler = YAMLHandler()
+            search_path = Path(self.config.target_path)
+
+            if search_path.is_dir():
+                yaml_files = []
+                for ext in ["**/*.yml", "**/*.yaml"]:
+                    yaml_files.extend(search_path.glob(ext))
+
+                for yaml_file in sorted(yaml_files):
+                    try:
+                        content = yaml_handler.read_yaml(str(yaml_file))
+                    except (ValueError, Exception) as e:
+                        logger.warning(f"Skipping malformed YAML file {yaml_file}: {e}")
+                        continue
+                    if not content or not yaml_handler.has_sources(content):
+                        continue
+
+                    for source in content.get("sources", []):
+                        if not isinstance(source, dict):
+                            continue
+
+                        src_name = source.get("name", "")
+                        src_database = (source.get("database") or self.config.database or "").upper()
+                        src_schema = (source.get("schema") or self.config.schema or "").upper()
+
+                        if not src_database or not src_schema:
+                            logger.warning(
+                                f"Source '{src_name}' in {yaml_file} has no database/schema. "
+                                "Use --database/--schema or define in YAML."
+                            )
+                            continue
+
+                        for table in source.get("tables", []):
+                            if not isinstance(table, dict):
+                                continue
+                            tbl_name = table.get("name", "")
+                            if not tbl_name:
+                                continue
+                            source_tables.append(
+                                {
+                                    "source_name": src_name,
+                                    "table_name": tbl_name,
+                                    "database": src_database,
+                                    "schema": src_schema,
+                                    "yaml_path": str(yaml_file),
+                                }
+                            )
+
+            logger.info(f"Found {len(source_tables)} source table(s) from YAML files")
+
+        if not source_tables:
+            logger.warning("SST-E008: No dbt source definitions found")
+
+        return sorted(source_tables, key=lambda s: f"{s['source_name']}.{s['table_name']}")
 
     def close(self):
         """Close Snowflake connection."""
