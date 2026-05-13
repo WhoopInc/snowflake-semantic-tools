@@ -223,6 +223,45 @@ class TestMixedChanges:
         assert len(result.views) == 1
         assert result.views[0].name == "V1"
 
+    def test_view_filter_case_insensitive(self, mock_config):
+        config = DiffConfig(database="DB", schema="S", views_filter=["v1"])
+        service = DiffService(mock_config)
+        proposed_views = {"V1": _proposed(metrics=["M1"]), "V2": _proposed(metrics=["M2"])}
+
+        with patch.object(service, "_load_proposed", return_value=proposed_views), patch.object(
+            service, "_get_deployed_view_names", return_value=set()
+        ):
+            result = service.diff(config)
+
+        assert len(result.views) == 1
+        assert result.views[0].name == "V1"
+
+    def test_removed_view_detected(self, mock_config, diff_config):
+        service = DiffService(mock_config)
+        proposed_views = {"V1": _proposed(metrics=["M1"])}
+
+        with patch.object(service, "_load_proposed", return_value=proposed_views), patch.object(
+            service, "_get_deployed_view_names", return_value={"V1", "V_OLD"}
+        ), patch.object(service, "_describe_view", return_value=_deployed(metrics=["M1"])):
+            result = service.diff(diff_config)
+
+        removed = [v for v in result.views if v.status == "removed"]
+        assert len(removed) == 1
+        assert removed[0].name == "V_OLD"
+
+    def test_removed_view_respects_filter(self, mock_config):
+        config = DiffConfig(database="DB", schema="S", views_filter=["V1"])
+        service = DiffService(mock_config)
+        proposed_views = {"V1": _proposed(metrics=["M1"])}
+
+        with patch.object(service, "_load_proposed", return_value=proposed_views), patch.object(
+            service, "_get_deployed_view_names", return_value={"V1", "V_OLD"}
+        ), patch.object(service, "_describe_view", return_value=_deployed(metrics=["M1"])):
+            result = service.diff(config)
+
+        removed = [v for v in result.views if v.status == "removed"]
+        assert len(removed) == 0
+
 
 class TestErrorPaths:
     def test_missing_manifest_d002(self, tmp_path, monkeypatch, mock_config, diff_config):
@@ -462,3 +501,30 @@ class TestLoadProposed:
         ci = views["V1"]["CUSTOM_INSTRUCTION"]
         assert ci["AI_SQL_GENERATION"]["VALUE"] == "Rule A\nRule B"
         assert ci["AI_QUESTION_CATEGORIZATION"]["VALUE"] == "Cat A"
+
+
+class TestFullModeRendering:
+    def test_modified_shows_old_new_values(self):
+        changes = DiffService._compare_components(
+            {"METRIC": {"M1": {"EXPRESSION": "COUNT(*)", "TABLE": "T"}}},
+            {"METRIC": {"M1": {"EXPRESSION": "SUM(amount)", "TABLE": "T"}}},
+        )
+        assert len(changes) == 1
+        assert changes[0].old_value is not None
+        assert changes[0].new_value is not None
+        assert "COUNT" in changes[0].new_value
+        assert "SUM" in changes[0].old_value
+
+    def test_new_component_has_no_old_value(self):
+        changes = DiffService._compare_components(
+            {"METRIC": {"M1": {"EXPRESSION": "SUM(X)", "TABLE": "T"}}},
+            {},
+        )
+        assert changes[0].old_value is None
+
+    def test_removed_component_has_no_new_value(self):
+        changes = DiffService._compare_components(
+            {},
+            {"METRIC": {"M1": {"EXPRESSION": "SUM(X)", "TABLE": "T"}}},
+        )
+        assert changes[0].new_value is None
