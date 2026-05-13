@@ -24,6 +24,7 @@ class ErrorCategory(Enum):
     GENERATE = "G"
     CONFIG = "C"
     DIFF = "D"
+    CLEAN = "K"
 
 
 @dataclass(frozen=True)
@@ -552,6 +553,19 @@ _register(
     "Describe view failed",
     ErrorCategory.DIFF,
     "Could not describe view '{view}'. Check USAGE privileges on the semantic view",
+)
+
+_register(
+    "SST-K001",
+    "Target directory not found",
+    ErrorCategory.CLEAN,
+    "Target directory does not exist. Nothing to clean",
+)
+_register(
+    "SST-K002",
+    "Could not remove artifact",
+    ErrorCategory.CLEAN,
+    "Permission denied or file in use. Check file permissions",
 )
 
 
