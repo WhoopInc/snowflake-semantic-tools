@@ -232,3 +232,115 @@ class TestCompileServiceErrorPaths:
 
         assert result.success
         assert service.parser.target_database == "MY_DB"
+
+
+class TestCleanRecords:
+    def test_strips_internal_fields(self):
+        records = [{"name": "x", "_internal": True, "_raw": "y"}]
+        result = CompileService._clean_records(records)
+        assert result == [{"name": "x"}]
+
+    def test_strips_none_values(self):
+        records = [{"name": "x", "visibility": None, "tags": None}]
+        result = CompileService._clean_records(records)
+        assert result == [{"name": "x"}]
+
+    def test_strips_empty_lists(self):
+        records = [{"name": "x", "sample_values": [], "non_additive_by": []}]
+        result = CompileService._clean_records(records)
+        assert result == [{"name": "x"}]
+
+    def test_preserves_false_and_zero(self):
+        records = [{"name": "x", "derived": False, "count": 0}]
+        result = CompileService._clean_records(records)
+        assert result == [{"name": "x", "derived": False, "count": 0}]
+
+    def test_preserves_empty_string(self):
+        records = [{"name": "x", "sql_file": ""}]
+        result = CompileService._clean_records(records)
+        assert result == [{"name": "x", "sql_file": ""}]
+
+    def test_relativizes_source_file(self, tmp_path):
+        abs_path = str(tmp_path / "models" / "test.yml")
+        records = [{"name": "x", "source_file": abs_path}]
+        result = CompileService._clean_records(records, project_dir=tmp_path.resolve())
+        assert result[0]["source_file"] == "models/test.yml"
+
+    def test_source_file_outside_project_kept_absolute(self, tmp_path):
+        records = [{"name": "x", "source_file": "/other/project/test.yml"}]
+        result = CompileService._clean_records(records, project_dir=tmp_path.resolve())
+        assert result[0]["source_file"] == "/other/project/test.yml"
+
+    def test_tables_json_string_to_native_list(self):
+        records = [{"name": "v1", "tables": '["ORDERS", "CUSTOMERS"]'}]
+        result = CompileService._clean_records(records)
+        assert result[0]["tables"] == ["ORDERS", "CUSTOMERS"]
+
+    def test_custom_instructions_json_string_to_native_list(self):
+        records = [{"name": "v1", "custom_instructions": '["RULE_1"]'}]
+        result = CompileService._clean_records(records)
+        assert result[0]["custom_instructions"] == ["RULE_1"]
+
+    def test_tables_malformed_json_kept_as_string(self):
+        records = [{"name": "v1", "tables": "not-json"}]
+        result = CompileService._clean_records(records)
+        assert result[0]["tables"] == "not-json"
+
+    def test_tables_native_list_preserved(self):
+        records = [{"name": "v1", "tables": ["A", "B"]}]
+        result = CompileService._clean_records(records)
+        assert result[0]["tables"] == ["A", "B"]
+
+
+class TestTableFiltering:
+    def test_staging_tables_filtered_out(self):
+        parse_result = {
+            "dbt": {
+                "sm_tables": [
+                    {"table_name": "ORDERS", "database": "DB", "schema": "S"},
+                    {"table_name": "STG_ORDERS", "database": "DB", "schema": "S"},
+                ],
+                "sm_dimensions": [
+                    {"table_name": "ORDERS", "name": "STATUS"},
+                    {"table_name": "STG_ORDERS", "name": "RAW_STATUS"},
+                ],
+                "sm_facts": [
+                    {"table_name": "ORDERS", "name": "AMOUNT"},
+                    {"table_name": "STG_ORDERS", "name": "RAW_AMOUNT"},
+                ],
+            },
+            "semantic": {
+                "semantic_views": [
+                    {"name": "my_view", "tables": '["ORDERS"]'},
+                ],
+                "metrics": [
+                    {"name": "TOTAL", "table_name": "ORDERS", "tables": ["ORDERS"]},
+                ],
+            },
+        }
+        service = CompileService()
+        result = service._prepare_tables_data(parse_result)
+
+        table_names = [t["table_name"] for t in result["tables"]]
+        assert "ORDERS" in table_names
+        assert "STG_ORDERS" not in table_names
+
+        dim_tables = {d["table_name"] for d in result.get("dimensions", [])}
+        assert "STG_ORDERS" not in dim_tables
+
+        fact_tables = {f["table_name"] for f in result.get("facts", [])}
+        assert "STG_ORDERS" not in fact_tables
+
+    def test_no_filtering_without_semantic_views(self):
+        parse_result = {
+            "dbt": {
+                "sm_tables": [
+                    {"table_name": "A", "database": "DB", "schema": "S"},
+                    {"table_name": "B", "database": "DB", "schema": "S"},
+                ],
+            },
+            "semantic": {},
+        }
+        service = CompileService()
+        result = service._prepare_tables_data(parse_result)
+        assert len(result["tables"]) == 2

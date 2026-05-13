@@ -14,7 +14,9 @@ Return value conventions:
   RELATIONSHIP_NAME, LEFT_TABLE_NAME, RIGHT_TABLE_NAME) because the
   builder needs them for filtering and routing.
 - get_relationship_columns EXCLUDES RELATIONSHIP_NAME — caller knows it.
-- All keys are UPPERCASE to match Snowflake convention.
+- All keys are UPPERCASE to match Snowflake convention, EXCEPT
+  get_custom_instructions which returns question_categorization and
+  sql_generation in lowercase (matching the builder's expected contract).
 """
 
 from abc import ABC, abstractmethod
@@ -31,7 +33,11 @@ class MetadataStore(ABC):
 
     @abstractmethod
     def get_table_info(self, table_name: str) -> Dict[str, Any]:
-        """Return table metadata excluding TABLE_NAME key (DATABASE, SCHEMA, PRIMARY_KEY, etc.)."""
+        """Return table metadata excluding TABLE_NAME key (DATABASE, SCHEMA, PRIMARY_KEY, etc.).
+
+        If the table is not found, implementations MUST return a fallback dict
+        with at least TABLE_NAME and DESCRIPTION keys rather than raising.
+        """
         ...
 
     @abstractmethod

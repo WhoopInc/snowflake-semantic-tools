@@ -41,13 +41,13 @@ def sample_tables_data():
         "metrics": [
             {
                 "name": "total_revenue",
-                "table_name": '["orders"]',
+                "table_name": ["orders"],
                 "expr": "SUM(AMOUNT)",
                 "description": "Total revenue",
             },
-            {"name": "order_count", "table_name": '["orders"]', "expr": "COUNT(*)", "description": "Order count"},
-            {"name": "cross_metric", "table_name": '["orders", "customers"]', "expr": "COUNT(DISTINCT customer_id)"},
-            {"name": "unrelated", "table_name": '["products"]', "expr": "COUNT(*)", "description": "Product count"},
+            {"name": "order_count", "table_name": ["orders"], "expr": "COUNT(*)", "description": "Order count"},
+            {"name": "cross_metric", "table_name": ["orders", "customers"], "expr": "COUNT(DISTINCT customer_id)"},
+            {"name": "unrelated", "table_name": ["products"], "expr": "COUNT(*)", "description": "Product count"},
         ],
         "relationships": [
             {"relationship_name": "orders_to_customers", "left_table_name": "orders", "right_table_name": "customers"},
@@ -67,10 +67,10 @@ def sample_tables_data():
                 "name": "vq1",
                 "question": "Total revenue?",
                 "sql": "SELECT SUM(AMOUNT) FROM ORDERS",
-                "tables": '["orders"]',
+                "tables": ["orders"],
             },
-            {"name": "vq2", "question": "Multi-table?", "sql": "SELECT ...", "tables": '["orders", "customers"]'},
-            {"name": "vq3", "question": "Unrelated?", "sql": "SELECT ...", "tables": '["products"]'},
+            {"name": "vq2", "question": "Multi-table?", "sql": "SELECT ...", "tables": ["orders", "customers"]},
+            {"name": "vq3", "question": "Unrelated?", "sql": "SELECT ...", "tables": ["products"]},
         ],
         "custom_instructions": [
             {
@@ -88,7 +88,7 @@ def sample_tables_data():
             },
         ],
         "semantic_views": [
-            {"name": "sales_analytics", "tables": '["orders", "customers"]', "description": "Sales view"},
+            {"name": "sales_analytics", "tables": ["orders", "customers"], "description": "Sales view"},
         ],
     }
 
@@ -228,6 +228,17 @@ class TestGetCustomInstructions:
         assert len(cis) == 1
         assert cis[0]["NAME"] == "BUSINESS_RULES"
 
+    def test_preserves_lowercase_keys(self, sample_tables_data):
+        store = InMemoryStore(sample_tables_data)
+        cis = store.get_custom_instructions(["business_rules"])
+        ci = cis[0]
+        assert "question_categorization" in ci
+        assert "sql_generation" in ci
+        assert ci["question_categorization"] == "Categorize by domain"
+        assert ci["sql_generation"] == "Use CTE pattern"
+        assert "QUESTION_CATEGORIZATION" not in ci
+        assert "SQL_GENERATION" not in ci
+
     def test_returns_empty_for_unknown(self, sample_tables_data):
         store = InMemoryStore(sample_tables_data)
         assert store.get_custom_instructions(["nonexistent"]) == []
@@ -337,4 +348,4 @@ class TestMalformedData:
 
         with caplog.at_level(logging.WARNING):
             InMemoryStore({"tables": []})
-        assert "missing keys" in caplog.text.lower() or len(caplog.records) >= 0
+        assert any("missing keys" in r.message.lower() for r in caplog.records)
