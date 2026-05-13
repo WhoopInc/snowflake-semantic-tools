@@ -23,6 +23,7 @@ class ErrorCategory(Enum):
     EXTRACT = "E"
     GENERATE = "G"
     CONFIG = "C"
+    DIFF = "D"
 
 
 @dataclass(frozen=True)
@@ -526,6 +527,31 @@ _register(
     "Manifest stale",
     ErrorCategory.CONFIG,
     "sst_manifest.json is older than source YAML files. Run 'sst compile' to refresh",
+)
+
+_register(
+    "SST-D001",
+    "Diff connection failed",
+    ErrorCategory.DIFF,
+    "Could not connect to Snowflake to retrieve existing views. Check credentials and network",
+)
+_register(
+    "SST-D002",
+    "Diff manifest not found",
+    ErrorCategory.DIFF,
+    "sst_manifest.json not found. Run 'sst compile' first to generate proposed state",
+)
+_register(
+    "SST-D003",
+    "No views to compare",
+    ErrorCategory.DIFF,
+    "No semantic views found in manifest or Snowflake. Define semantic views in YAML and run 'sst compile'",
+)
+_register(
+    "SST-D004",
+    "Describe view failed",
+    ErrorCategory.DIFF,
+    "Could not describe view '{view}'. Check USAGE privileges on the semantic view",
 )
 
 
