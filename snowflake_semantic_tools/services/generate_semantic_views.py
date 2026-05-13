@@ -553,6 +553,7 @@ class SemanticViewGenerationService:
                 builder.target_schema = generate_config.target_schema
                 builder.metadata_database = generate_config.metadata_database
                 builder.metadata_schema = generate_config.metadata_schema
+                builder.store = self.builder.store
 
                 with output_lock:
                     progress.item_progress(idx, total, view_name, "RUN")

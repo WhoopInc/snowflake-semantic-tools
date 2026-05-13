@@ -126,7 +126,7 @@ class InMemoryStore(MetadataStore):
     def get_relationships(self, table_names: List[str]) -> List[Dict[str, Any]]:
         normalized = {t.lower() for t in table_names}
         return [
-            r
+            dict(r)
             for r in self._relationships_raw
             if (r.get("LEFT_TABLE_NAME") or "").lower() in normalized
             and (r.get("RIGHT_TABLE_NAME") or "").lower() in normalized
