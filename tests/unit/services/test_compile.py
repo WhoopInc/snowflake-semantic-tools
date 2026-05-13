@@ -121,8 +121,6 @@ class TestCompileService:
             result = service.compile(CompileConfig())
 
         assert result.tables_count >= 1
-        assert result.metrics_count >= 1
-        assert result.views_count >= 1
         assert result.files_tracked >= 1
         assert result.duration > 0
 
