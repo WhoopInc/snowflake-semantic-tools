@@ -11,6 +11,8 @@ from snowflake_semantic_tools.services.diff_service import (
     DiffResult,
     DiffService,
     ViewDiff,
+    _is_window_extension,
+    _normalize_expr,
 )
 
 _MODULE = "snowflake_semantic_tools.services.diff_service"
@@ -29,7 +31,7 @@ def mock_config():
 def _proposed(metrics=None, dimensions=None, facts=None, relationships=None, vqs=None):
     components = {}
     if metrics:
-        components["METRIC"] = {f"T.{m}": {"EXPRESSION": f"SUM({m})", "TABLE": "T"} for m in metrics}
+        components["METRIC"] = {m: {"EXPRESSION": f"SUM({m})", "TABLE": "T"} for m in metrics}
     if dimensions:
         components["DIMENSION"] = {f"T.{d}": {"EXPRESSION": d, "TABLE": "T"} for d in dimensions}
     if facts:
@@ -44,9 +46,7 @@ def _proposed(metrics=None, dimensions=None, facts=None, relationships=None, vqs
 def _deployed(metrics=None, dimensions=None, facts=None, relationships=None, vqs=None):
     components = {}
     if metrics:
-        components["METRIC"] = {
-            f"T.{m}": {"EXPRESSION": f"SUM({m})", "TABLE": "T", "DATA_TYPE": "NUMBER"} for m in metrics
-        }
+        components["METRIC"] = {m: {"EXPRESSION": f"SUM({m})", "TABLE": "T", "DATA_TYPE": "NUMBER"} for m in metrics}
     if dimensions:
         components["DIMENSION"] = {
             f"T.{d}": {"EXPRESSION": d, "TABLE": "T", "DATA_TYPE": "VARCHAR"} for d in dimensions
@@ -150,8 +150,8 @@ class TestRemovedComponents:
 class TestModifiedComponents:
     def test_modified_metric_expression(self, mock_config, diff_config):
         service = DiffService(mock_config)
-        proposed = {"METRIC": {"T.M1": {"EXPRESSION": "COUNT(*)", "TABLE": "T"}}}
-        deployed = {"METRIC": {"T.M1": {"EXPRESSION": "SUM(amount)", "TABLE": "T"}}}
+        proposed = {"METRIC": {"M1": {"EXPRESSION": "COUNT(*)", "TABLE": "T"}}}
+        deployed = {"METRIC": {"M1": {"EXPRESSION": "SUM(amount)", "TABLE": "T"}}}
 
         changes = DiffService._compare_components(proposed, deployed)
 
@@ -160,8 +160,22 @@ class TestModifiedComponents:
         assert changes[0].detail == "expression changed"
 
     def test_case_insensitive_expression_match(self, mock_config, diff_config):
-        proposed = {"METRIC": {"T.M1": {"EXPRESSION": "sum(orders.amount)", "TABLE": "T"}}}
-        deployed = {"METRIC": {"T.M1": {"EXPRESSION": "SUM(ORDERS.AMOUNT)", "TABLE": "T"}}}
+        proposed = {"METRIC": {"M1": {"EXPRESSION": "sum(orders.amount)", "TABLE": "T"}}}
+        deployed = {"METRIC": {"M1": {"EXPRESSION": "SUM(ORDERS.AMOUNT)", "TABLE": "T"}}}
+
+        changes = DiffService._compare_components(proposed, deployed)
+        assert len(changes) == 0
+
+    def test_window_metric_not_modified(self, mock_config, diff_config):
+        proposed = {"METRIC": {"M1": {"EXPRESSION": "SUM(T.AMT)", "TABLE": "T"}}}
+        deployed = {
+            "METRIC": {
+                "M1": {
+                    "EXPRESSION": "SUM(T.AMT) OVER (\n        PARTITION BY T.ID ORDER BY T.DT ASC\n    )",
+                    "TABLE": "T",
+                }
+            }
+        }
 
         changes = DiffService._compare_components(proposed, deployed)
         assert len(changes) == 0
@@ -280,3 +294,160 @@ class TestDiffResultProperties:
     def test_view_diff_no_changes(self):
         v = ViewDiff(name="V1", status="unchanged")
         assert not v.has_changes
+
+
+class TestWindowExtension:
+    def test_over_clause_detected(self):
+        base = "SUM(T.AMT)"
+        full = "SUM(T.AMT) OVER (PARTITION BY T.ID ORDER BY T.DT ASC)"
+        assert _is_window_extension(base, full)
+
+    def test_non_over_suffix_rejected(self):
+        base = "SUM(T.AMT)"
+        full = "SUM(T.AMT) + 1"
+        assert not _is_window_extension(base, full)
+
+    def test_empty_base_rejected(self):
+        assert not _is_window_extension("", "SUM(X) OVER ()")
+
+    def test_equal_strings_rejected(self):
+        assert not _is_window_extension("SUM(X)", "SUM(X)")
+
+    def test_case_insensitive_over(self):
+        assert _is_window_extension("SUM(X)", "SUM(X) over (PARTITION BY Y)")
+
+
+class TestNormalizeExpr:
+    def test_collapses_whitespace(self):
+        assert _normalize_expr("  SUM(  x  ) ") == "SUM( X )"
+
+    def test_uppercases(self):
+        assert _normalize_expr("sum(a)") == "SUM(A)"
+
+
+class TestCustomInstructionDiff:
+    def test_new_ci_detected(self):
+        proposed = {"CUSTOM_INSTRUCTION": {"AI_SQL_GENERATION": {"VALUE": "Use foo"}}}
+        deployed = {}
+        changes = DiffService._compare_components(proposed, deployed)
+        assert len(changes) == 1
+        assert changes[0].kind == "CUSTOM_INSTRUCTION"
+        assert changes[0].status == "new"
+
+    def test_removed_ci_detected(self):
+        proposed = {}
+        deployed = {"CUSTOM_INSTRUCTION": {"AI_SQL_GENERATION": {"TABLE": "None", "AI_SQL_GENERATION": "Use foo"}}}
+        changes = DiffService._compare_components(proposed, deployed)
+        assert len(changes) == 1
+        assert changes[0].status == "removed"
+
+    def test_unchanged_ci(self):
+        proposed = {"CUSTOM_INSTRUCTION": {"AI_SQL_GENERATION": {"VALUE": "Use foo"}}}
+        deployed = {"CUSTOM_INSTRUCTION": {"AI_SQL_GENERATION": {"TABLE": "None", "AI_SQL_GENERATION": "Use foo"}}}
+        changes = DiffService._compare_components(proposed, deployed)
+        assert len(changes) == 0
+
+    def test_modified_ci(self):
+        proposed = {"CUSTOM_INSTRUCTION": {"AI_SQL_GENERATION": {"VALUE": "Use bar"}}}
+        deployed = {"CUSTOM_INSTRUCTION": {"AI_SQL_GENERATION": {"TABLE": "None", "AI_SQL_GENERATION": "Use foo"}}}
+        changes = DiffService._compare_components(proposed, deployed)
+        assert len(changes) == 1
+        assert changes[0].status == "modified"
+
+
+class TestLoadProposed:
+    def test_parses_manifest(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        target = tmp_path / "target"
+        target.mkdir()
+        import json
+
+        manifest = {
+            "tables": {
+                "semantic_views": [{"name": "V1", "tables": ["T1"]}],
+                "tables": [{"table_name": "T1"}],
+                "dimensions": [{"table_name": "T1", "name": "D1", "expr": "D1"}],
+                "time_dimensions": [],
+                "facts": [{"table_name": "T1", "name": "F1", "expr": "F1"}],
+                "metrics": [{"name": "M1", "table_name": "T1", "tables": ["T1"], "expr": "SUM(X)"}],
+                "relationships": [],
+                "verified_queries": [],
+                "custom_instructions": [],
+            }
+        }
+        (target / "sst_manifest.json").write_text(json.dumps(manifest))
+
+        from unittest.mock import MagicMock
+
+        svc = DiffService(MagicMock())
+        result = DiffResult()
+        views = svc._load_proposed(result)
+
+        assert "V1" in views
+        assert "T1" in views["V1"]["TABLE"]
+        assert "T1.D1" in views["V1"]["DIMENSION"]
+        assert "T1.F1" in views["V1"]["FACT"]
+        assert "M1" in views["V1"]["METRIC"]
+
+    def test_multi_table_metric_included(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        target = tmp_path / "target"
+        target.mkdir()
+        import json
+
+        manifest = {
+            "tables": {
+                "semantic_views": [{"name": "V1", "tables": ["T1", "T2"]}],
+                "tables": [{"table_name": "T1"}, {"table_name": "T2"}],
+                "dimensions": [],
+                "time_dimensions": [],
+                "facts": [],
+                "metrics": [{"name": "M1", "table_name": "T1", "tables": ["T1", "T2"], "expr": "SUM(X)"}],
+                "relationships": [],
+                "verified_queries": [],
+                "custom_instructions": [],
+            }
+        }
+        (target / "sst_manifest.json").write_text(json.dumps(manifest))
+
+        from unittest.mock import MagicMock
+
+        svc = DiffService(MagicMock())
+        result = DiffResult()
+        views = svc._load_proposed(result)
+
+        assert "M1" in views["V1"]["METRIC"]
+
+    def test_custom_instructions_concatenated(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        target = tmp_path / "target"
+        target.mkdir()
+        import json
+
+        manifest = {
+            "tables": {
+                "semantic_views": [{"name": "V1", "tables": ["T1"], "custom_instructions": ["CI1", "CI2"]}],
+                "tables": [{"table_name": "T1"}],
+                "dimensions": [],
+                "time_dimensions": [],
+                "facts": [],
+                "metrics": [],
+                "relationships": [],
+                "verified_queries": [],
+                "custom_instructions": [
+                    {"name": "CI1", "sql_generation": "Rule A", "question_categorization": "Cat A"},
+                    {"name": "CI2", "sql_generation": "Rule B"},
+                ],
+            }
+        }
+        (target / "sst_manifest.json").write_text(json.dumps(manifest))
+
+        from unittest.mock import MagicMock
+
+        svc = DiffService(MagicMock())
+        result = DiffResult()
+        views = svc._load_proposed(result)
+
+        ci = views["V1"]["CUSTOM_INSTRUCTION"]
+        assert ci["AI_SQL_GENERATION"]["VALUE"] == "Rule A\nRule B"
+        assert ci["AI_QUESTION_CATEGORIZATION"]["VALUE"] == "Cat A"

@@ -7,9 +7,10 @@ Shows only what changed: new, removed, and modified components.
 """
 
 import json
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import Dict, List, Optional, Set
 
 from snowflake_semantic_tools.infrastructure.snowflake import SnowflakeConfig
 from snowflake_semantic_tools.services.compile import MANIFEST_FILENAME
@@ -65,6 +66,22 @@ class DiffResult:
     @property
     def unchanged_count(self) -> int:
         return sum(1 for v in self.views if not v.has_changes)
+
+
+_WINDOW_TAIL_RE = re.compile(r"\s+OVER\s*\(", re.IGNORECASE)
+
+
+def _normalize_expr(expr: str) -> str:
+    return " ".join(expr.upper().split())
+
+
+def _is_window_extension(base: str, full: str) -> bool:
+    if not base or not full or len(full) <= len(base):
+        return False
+    if not full.startswith(base):
+        return False
+    remainder = full[len(base) :]
+    return bool(_WINDOW_TAIL_RE.match(remainder))
 
 
 class DiffService:
@@ -131,6 +148,12 @@ class DiffService:
             return {}
 
         tables_data = manifest.get("tables", {})
+
+        ci_lookup = {}
+        for ci in tables_data.get("custom_instructions", []):
+            ci_name = (ci.get("name") or "").upper()
+            ci_lookup[ci_name] = ci
+
         views = {}
         for sv in tables_data.get("semantic_views", []):
             view_name = (sv.get("name") or "").upper()
@@ -189,8 +212,8 @@ class DiffService:
                     metric_tables = set()
                 if metric_tables and metric_tables.issubset(table_set):
                     name = (m.get("name") or "").upper()
-                    parent = sorted(metric_tables)[0] if metric_tables else ""
-                    components.setdefault("METRIC", {})[f"{parent}.{name}"] = {
+                    parent = (m.get("table_name") or "").upper()
+                    components.setdefault("METRIC", {})[name] = {
                         "EXPRESSION": m.get("expr", ""),
                         "TABLE": parent,
                     }
@@ -216,6 +239,31 @@ class DiffService:
                     components.setdefault("AI_VERIFIED_QUERY", {})[name] = {
                         "QUESTION": vq.get("question", ""),
                     }
+
+            sv_ci_names = sv.get("custom_instructions", [])
+            if isinstance(sv_ci_names, str):
+                try:
+                    sv_ci_names = json.loads(sv_ci_names)
+                except (json.JSONDecodeError, TypeError):
+                    sv_ci_names = []
+            sql_parts = []
+            qcat_parts = []
+            for ci_name in sv_ci_names:
+                ci = ci_lookup.get(ci_name.upper(), {})
+                sql_gen = (ci.get("sql_generation") or "").strip()
+                q_cat = (ci.get("question_categorization") or "").strip()
+                if sql_gen:
+                    sql_parts.append(sql_gen)
+                if q_cat:
+                    qcat_parts.append(q_cat)
+            if sql_parts:
+                components.setdefault("CUSTOM_INSTRUCTION", {})["AI_SQL_GENERATION"] = {
+                    "VALUE": "\n".join(sql_parts),
+                }
+            if qcat_parts:
+                components.setdefault("CUSTOM_INSTRUCTION", {})["AI_QUESTION_CATEGORIZATION"] = {
+                    "VALUE": "\n".join(qcat_parts),
+                }
 
             views[view_name] = components
 
@@ -257,7 +305,9 @@ class DiffService:
                 if kind not in COMPONENT_TYPES:
                     continue
 
-                if kind in ("METRIC", "DIMENSION", "FACT"):
+                if kind == "METRIC":
+                    key = obj_name
+                elif kind in ("DIMENSION", "FACT"):
                     key = f"{parent}.{obj_name}"
                 elif kind == "RELATIONSHIP":
                     key = obj_name
@@ -266,8 +316,11 @@ class DiffService:
                 elif kind == "TABLE":
                     key = obj_name
                 elif kind == "CUSTOM_INSTRUCTION":
-                    key = obj_name
+                    key = prop
                 else:
+                    continue
+
+                if kind != "CUSTOM_INSTRUCTION" and (obj_name.startswith("_") or obj_name == "None"):
                     continue
 
                 entry = components.setdefault(kind, {}).setdefault(key, {"TABLE": parent})
@@ -317,9 +370,11 @@ class DiffService:
                 d_info = d_items[name]
 
                 if kind in ("METRIC", "DIMENSION", "FACT"):
-                    p_expr = (p_info.get("EXPRESSION") or "").strip()
-                    d_expr = (d_info.get("EXPRESSION") or "").strip()
-                    if p_expr.upper() != d_expr.upper():
+                    p_expr = _normalize_expr((p_info.get("EXPRESSION") or "").strip())
+                    d_expr = _normalize_expr((d_info.get("EXPRESSION") or "").strip())
+                    if kind == "METRIC" and _is_window_extension(p_expr, d_expr):
+                        continue
+                    if p_expr != d_expr:
                         changes.append(
                             ComponentChange(
                                 kind=kind,
@@ -359,6 +414,19 @@ class DiffService:
                                 detail="question changed",
                                 old_value=d_q,
                                 new_value=p_q,
+                            )
+                        )
+                elif kind == "CUSTOM_INSTRUCTION":
+                    p_val = (p_info.get("VALUE") or "").strip()
+                    d_val = (d_info.get(name) or "").strip()
+                    if p_val != d_val:
+                        changes.append(
+                            ComponentChange(
+                                kind=kind,
+                                name=name,
+                                table="",
+                                status="modified",
+                                detail="instruction changed",
                             )
                         )
 
