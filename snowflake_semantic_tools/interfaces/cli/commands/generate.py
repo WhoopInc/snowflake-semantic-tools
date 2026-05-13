@@ -227,7 +227,6 @@ def generate(
         with SemanticViewGenerationService(snowflake_config) as service:
             # If --only-modified, filter views based on manifest comparison
             if defer_config.only_modified and defer_config.enabled:
-                # Need to get available views first to filter them
                 output.info("Validating metadata access...")
                 available_views = service.get_available_views(target_db, target_schema)
 
@@ -237,7 +236,7 @@ def generate(
 
                     if filtered_views is not None:
                         if len(filtered_views) == 0:
-                            output.success("All views are up to date - nothing to regenerate")
+                            output.success("All views are up to date — nothing to regenerate")
                             return
                         gen_config.views_to_generate = filtered_views
                         output.info(f"Filtering to {len(filtered_views)} view(s): {', '.join(filtered_views)}")
@@ -319,6 +318,17 @@ def generate(
                 total_count = success_count + failed_count
 
                 output.done_line(passed=success_count, errored=failed_count, total=total_count)
+
+            if result.success and not dry_run:
+                try:
+                    from snowflake_semantic_tools.core.parsing.sst_manifest import SSTManifest
+
+                    sst_manifest = SSTManifest()
+                    sst_manifest.build()
+                    sst_manifest.save(Path("target"))
+                    output.debug("SST manifest saved to target/sst_manifest.json")
+                except Exception as e:
+                    output.warning(f"Could not save SST manifest: {e}")
 
             if not result.success:
                 raise click.ClickException("Generation failed - see errors above")
