@@ -163,19 +163,23 @@ def _output_names_only(result, output_file):
 
 def _output_text(result, output, output_file, duration, full):
     lines = []
+    use_color = not output_file
+
+    def _style(text, **kwargs):
+        return click.style(text, **kwargs) if use_color else text
 
     for v in result.views:
+        if v.status == "unchanged":
+            continue
+
         if v.status == "new":
             counts = ", ".join(
                 f"{n} {_KIND_LABELS.get(k, k).lower()}" for k, n in sorted(v.proposed_counts.items()) if n
             )
-            lines.append(f"{v.name}: new view ({counts})")
-            lines.append("")
-        elif v.status == "unchanged":
-            lines.append(f"{v.name}: no changes")
+            lines.append(_style(f"{v.name}", bold=True) + _style(": new view ", fg="green") + f"({counts})")
             lines.append("")
         else:
-            lines.append(f"{v.name}:")
+            lines.append(_style(f"{v.name}:", bold=True))
             by_kind = {}
             for c in v.changes:
                 by_kind.setdefault(c.kind, []).append(c)
@@ -192,18 +196,27 @@ def _output_text(result, output, output_file, duration, full):
                 if kind not in by_kind:
                     continue
                 label = _KIND_LABELS.get(kind, kind)
-                lines.append(f"  {label}:")
+                lines.append(_style(f"  {label}:", dim=True))
                 for c in by_kind[kind]:
                     icon = _STATUS_ICONS.get(c.status, "?")
                     short_name = c.name.split(".")[-1] if "." in c.name else c.name
                     detail = f"  {c.detail}" if c.detail else ""
-                    lines.append(f"    {icon} {short_name}{detail}")
+                    color = {"new": "green", "removed": "red", "modified": "yellow"}.get(c.status)
+                    lines.append(_style(f"    {icon} {short_name}{detail}", fg=color))
                     if full and c.status == "modified" and c.old_value and c.new_value:
-                        lines.append(f"        was: {c.old_value[:100]}")
-                        lines.append(f"        now: {c.new_value[:100]}")
+                        lines.append(_style(f"        - {c.old_value[:100]}", fg="red"))
+                        lines.append(_style(f"        + {c.new_value[:100]}", fg="green"))
             lines.append("")
 
-    lines.append(f"{result.changed_count} changed, {result.unchanged_count} unchanged")
+    summary_parts = []
+    if result.changed_count:
+        summary_parts.append(_style(f"{result.changed_count} changed", fg="yellow"))
+    if result.unchanged_count:
+        summary_parts.append(_style(f"{result.unchanged_count} unchanged", dim=True))
+    new_count = sum(1 for v in result.views if v.status == "new")
+    if new_count:
+        summary_parts.append(_style(f"{new_count} new", fg="green"))
+    lines.append(", ".join(summary_parts))
 
     text = "\n".join(lines)
     if output_file:
