@@ -98,7 +98,12 @@ class InMemoryStore(MetadataStore):
             rec = _upper_keys(ci)
             name = (rec.get("NAME") or "").upper()
             if name:
-                self._custom_instructions[name] = rec
+                mixed = dict(rec)
+                for lk in ("question_categorization", "sql_generation"):
+                    uk = lk.upper()
+                    if uk in mixed:
+                        mixed[lk] = mixed.pop(uk)
+                self._custom_instructions[name] = mixed
 
         self._filters_raw = [_upper_keys(f) for f in tables_data.get("filters", [])]
 
