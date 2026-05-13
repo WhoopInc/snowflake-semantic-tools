@@ -28,7 +28,6 @@ class DiffConfig:
     database: str
     schema: str
     views_filter: Optional[List[str]] = None
-    full: bool = False
 
 
 @dataclass
@@ -146,6 +145,12 @@ class DiffService:
             changes = self._compare_components(proposed, deployed)
             status = "changed" if changes else "unchanged"
             result.views.append(ViewDiff(name=name, status=status, changes=changes))
+
+        removed_names = deployed_upper - set(proposed_upper.keys())
+        if config.views_filter:
+            removed_names = removed_names & {v.upper() for v in config.views_filter}
+        for name in sorted(removed_names):
+            result.views.append(ViewDiff(name=name, status="removed"))
 
         return result
 
@@ -288,7 +293,9 @@ class DiffService:
 
     def _get_deployed_view_names(self, config: DiffConfig, client, result: DiffResult) -> Set[str]:
         try:
-            df = client.execute_query(f"SHOW SEMANTIC VIEWS IN {config.database}.{config.schema}")
+            db = config.database.replace('"', '""')
+            sch = config.schema.replace('"', '""')
+            df = client.execute_query(f'SHOW SEMANTIC VIEWS IN "{db}"."{sch}"')
             if df.empty:
                 return set()
             name_col = "name" if "name" in df.columns else "NAME"
@@ -302,7 +309,10 @@ class DiffService:
         self, config: DiffConfig, client, view_name: str, result: DiffResult
     ) -> Optional[Dict[str, Dict[str, Dict]]]:
         try:
-            fq = f"{config.database}.{config.schema}.{view_name}"
+            db = config.database.replace('"', '""')
+            sch = config.schema.replace('"', '""')
+            vn = view_name.replace('"', '""')
+            fq = f'"{db}"."{sch}"."{vn}"'
             df = client.execute_query(f"DESCRIBE SEMANTIC VIEW {fq}")
 
             components: Dict[str, Dict[str, Dict]] = {}

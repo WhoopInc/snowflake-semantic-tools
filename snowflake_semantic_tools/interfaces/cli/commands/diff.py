@@ -97,7 +97,6 @@ def diff_cmd(ctx, dbt_target, db, schema, full, names_only, view_filter, output_
         database=target_db,
         schema=target_schema,
         views_filter=list(view_filter) if view_filter else None,
-        full=full,
     )
 
     output.blank_line()
@@ -132,15 +131,37 @@ def _write_file(path: str, text: str):
 
 
 def _output_json(result, output_file):
+    new_count = sum(1 for v in result.views if v.status == "new")
+    removed_count = sum(1 for v in result.views if v.status == "removed")
     data = {
         "views": [],
-        "summary": {"changed": result.changed_count, "unchanged": result.unchanged_count},
+        "summary": {
+            "changed": result.changed_count,
+            "unchanged": result.unchanged_count,
+            "new": new_count,
+            "removed": removed_count,
+        },
     }
+    if result.warnings:
+        data["warnings"] = result.warnings
     for v in result.views:
         view_data = {"name": v.name, "status": v.status}
         if v.changes:
             view_data["changes"] = [
-                {"kind": c.kind, "name": c.name, "status": c.status, "detail": c.detail} for c in v.changes
+                {
+                    k: v
+                    for k, v in {
+                        "kind": c.kind,
+                        "name": c.name,
+                        "table": c.table or None,
+                        "status": c.status,
+                        "detail": c.detail,
+                        "old_value": c.old_value,
+                        "new_value": c.new_value,
+                    }.items()
+                    if v is not None
+                }
+                for c in v.changes
             ]
         if v.proposed_counts:
             view_data["proposed_counts"] = v.proposed_counts
@@ -170,6 +191,11 @@ def _output_text(result, output, output_file, duration, full):
 
     for v in result.views:
         if v.status == "unchanged":
+            continue
+
+        if v.status == "removed":
+            lines.append(_style(f"{v.name}", bold=True) + _style(": removed from manifest", fg="red"))
+            lines.append("")
             continue
 
         if v.status == "new":
@@ -204,8 +230,10 @@ def _output_text(result, output, output_file, duration, full):
                     color = {"new": "green", "removed": "red", "modified": "yellow"}.get(c.status)
                     lines.append(_style(f"    {icon} {short_name}{detail}", fg=color))
                     if full and c.status == "modified" and c.old_value and c.new_value:
-                        lines.append(_style(f"        - {c.old_value[:100]}", fg="red"))
-                        lines.append(_style(f"        + {c.new_value[:100]}", fg="green"))
+                        old_text = c.old_value[:100] + ("..." if len(c.old_value) > 100 else "")
+                        new_text = c.new_value[:100] + ("..." if len(c.new_value) > 100 else "")
+                        lines.append(_style(f"        - {old_text}", fg="red"))
+                        lines.append(_style(f"        + {new_text}", fg="green"))
             lines.append("")
 
     summary_parts = []
@@ -216,6 +244,9 @@ def _output_text(result, output, output_file, duration, full):
     new_count = sum(1 for v in result.views if v.status == "new")
     if new_count:
         summary_parts.append(_style(f"{new_count} new", fg="green"))
+    removed_count = sum(1 for v in result.views if v.status == "removed")
+    if removed_count:
+        summary_parts.append(_style(f"{removed_count} removed", fg="red"))
     lines.append(", ".join(summary_parts))
 
     text = "\n".join(lines)
