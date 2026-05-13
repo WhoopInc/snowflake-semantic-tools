@@ -58,6 +58,7 @@ Stable error codes for SST diagnostics. Each code is a permanent identifier that
 | `SST-V081` | Quoted template expression | Remove quotes around template: use {{ ref('name') }} not '{{ ref('name') }}' |
 | `SST-V090` | Circular dependency | Cycle detected: {cycle} |
 | `SST-V091` | Duplicate metric expressions | Metrics '{name1}' and '{name2}' have identical expressions |
+| `SST-V092` | Metric references undeclared column | Column '{table}.{column}' in metric is not declared as a fact or dimension. Add column_type to the YAML |
 
 ## Parsing Errors (SST-Pxxx)
 

@@ -333,6 +333,13 @@ _register(
     ErrorCategory.VALIDATION,
     "Metrics '{name1}' and '{name2}' have identical expressions",
 )
+_register(
+    "SST-V092",
+    "Metric references undeclared column",
+    ErrorCategory.VALIDATION,
+    "Column '{table}.{column}' in metric '{metric}' is not declared as a fact or dimension. "
+    "Add column_type: fact (or dimension) to the column in the YAML for table '{table}'",
+)
 
 # ===========================================================================
 # PARSING ERRORS (SST-P0xx)
