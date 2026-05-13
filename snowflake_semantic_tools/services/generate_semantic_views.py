@@ -897,7 +897,8 @@ class SemanticViewGenerationService:
 
     def _parse_view_configs(self, available_views: List[Dict]) -> List[Dict]:
         view_configs = []
-        for view in available_views:
+        for raw_view in available_views:
+            view = {k.upper(): v for k, v in raw_view.items()}
             tables_raw = view.get("TABLES", "[]")
             try:
                 tables = json.loads(tables_raw) if isinstance(tables_raw, str) else tables_raw
@@ -908,9 +909,9 @@ class SemanticViewGenerationService:
 
             view_configs.append(
                 {
-                    "name": view.get("NAME", view.get("name", "")),
+                    "name": view.get("NAME", ""),
                     "tables": tables if isinstance(tables, list) else [],
-                    "description": view.get("DESCRIPTION", view.get("description", "")),
+                    "description": view.get("DESCRIPTION", ""),
                     "custom_instructions": custom_instructions,
                 }
             )
@@ -970,6 +971,19 @@ class SemanticViewGenerationService:
                 "or use --from-snowflake to read from SM_* tables."
             )
             return result
+
+        manifest_mtime = manifest_path.stat().st_mtime
+        from snowflake_semantic_tools.shared.utils.file_utils import find_dbt_model_files, find_semantic_model_files
+
+        try:
+            for f in find_dbt_model_files() + find_semantic_model_files():
+                if f.stat().st_mtime > manifest_mtime:
+                    result.add_warning(
+                        f"SST-C008: sst_manifest.json is older than {f.name}. " "Run 'sst compile' to refresh."
+                    )
+                    break
+        except Exception:
+            pass
 
         try:
             with open(manifest_path, "r", encoding="utf-8") as f:

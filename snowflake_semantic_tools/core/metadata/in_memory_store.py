@@ -48,6 +48,24 @@ class InMemoryStore(MetadataStore):
     def __init__(self, tables_data: Dict[str, List[Dict]]):
         self._raw = tables_data
 
+        expected_keys = {
+            "tables",
+            "dimensions",
+            "time_dimensions",
+            "facts",
+            "metrics",
+            "relationships",
+            "relationship_columns",
+            "filters",
+            "verified_queries",
+            "custom_instructions",
+            "semantic_views",
+        }
+        actual_keys = set(tables_data.keys())
+        missing = expected_keys - actual_keys
+        if missing:
+            logger.warning(f"Manifest tables section missing keys: {', '.join(sorted(missing))}")
+
         raw_tables = tables_data.get("tables", [])
         self._tables: Dict[str, Dict] = {}
         for t in raw_tables:

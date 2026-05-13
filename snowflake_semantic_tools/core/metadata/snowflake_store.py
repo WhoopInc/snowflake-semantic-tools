@@ -3,15 +3,27 @@ SnowflakeStore
 
 Reads semantic metadata from SM_* tables in Snowflake.
 Backward-compatible store for --from-snowflake mode.
+
+All queries use parameterized bindings to prevent SQL injection.
+Identifiers are quoted to handle reserved words and special characters.
 """
 
 import json
+import re
 from typing import Any, Dict, List, Optional
 
 from snowflake_semantic_tools.core.metadata.store import MetadataStore
 from snowflake_semantic_tools.shared.utils import get_logger
 
 logger = get_logger(__name__)
+
+_IDENT_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+
+
+def _quote_ident(name: str) -> str:
+    if _IDENT_RE.match(name):
+        return name
+    return '"' + name.replace('"', '""') + '"'
 
 
 class SnowflakeStore(MetadataStore):
@@ -22,19 +34,20 @@ class SnowflakeStore(MetadataStore):
         self._db = metadata_database
         self._schema = metadata_schema
 
-    def _execute(self, sql: str) -> List[Dict[str, Any]]:
+    def _execute(self, sql: str, params=None) -> List[Dict[str, Any]]:
         try:
             cursor = self._conn.cursor()
-            cursor.execute(sql)
+            cursor.execute(sql, params)
             columns = [desc[0] for desc in cursor.description]
             rows = cursor.fetchall()
             return [dict(zip(columns, row)) for row in rows]
         except Exception as e:
-            logger.error(f"Error executing query: {sql} - {e}")
+            safe_sql = sql[:200] + "..." if len(sql) > 200 else sql
+            logger.error(f"Query error: {safe_sql} - {e}")
             raise
 
     def _fq(self, table: str) -> str:
-        return f"{self._db}.{self._schema}.{table}"
+        return f"{_quote_ident(self._db)}.{_quote_ident(self._schema)}.{table}"
 
     def get_semantic_views(self) -> List[Dict[str, Any]]:
         sql = (
@@ -44,12 +57,12 @@ class SnowflakeStore(MetadataStore):
 
     def get_table_info(self, table_name: str) -> Dict[str, Any]:
         try:
-            sql = f"SELECT * EXCLUDE TABLE_NAME FROM {self._fq('SM_TABLES')} WHERE LOWER(TABLE_NAME) = '{table_name.lower()}'"
-            rows = self._execute(sql)
+            sql = f"SELECT * EXCLUDE TABLE_NAME FROM {self._fq('SM_TABLES')} WHERE LOWER(TABLE_NAME) = LOWER(%s)"
+            rows = self._execute(sql, (table_name,))
             if rows:
                 return rows[0]
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(f"Error reading table info for '{table_name}': {e}")
         logger.warning(f"No metadata found for table '{table_name}' in SM_TABLES")
         return {
             "TABLE_NAME": table_name.upper(),
@@ -66,6 +79,8 @@ class SnowflakeStore(MetadataStore):
         return self._query_by_table("SM_FACTS", table_name)
 
     def get_metrics(self, table_names: List[str]) -> List[Dict[str, Any]]:
+        if not table_names:
+            return []
         sql = f"SELECT * FROM {self._fq('SM_METRICS')}"
         all_metrics = self._execute(sql)
         normalized = {t.lower() for t in table_names}
@@ -84,23 +99,28 @@ class SnowflakeStore(MetadataStore):
         return result
 
     def get_relationships(self, table_names: List[str]) -> List[Dict[str, Any]]:
-        quoted = ", ".join(f"'{t.lower()}'" for t in table_names)
+        if not table_names:
+            return []
+        placeholders = ", ".join(["%s"] * len(table_names))
+        lowered = [t.lower() for t in table_names]
         sql = (
             f"SELECT * FROM {self._fq('SM_RELATIONSHIPS')} "
-            f"WHERE LOWER(LEFT_TABLE_NAME) IN ({quoted}) "
-            f"AND LOWER(RIGHT_TABLE_NAME) IN ({quoted})"
+            f"WHERE LOWER(LEFT_TABLE_NAME) IN ({placeholders}) "
+            f"AND LOWER(RIGHT_TABLE_NAME) IN ({placeholders})"
         )
-        return self._execute(sql)
+        return self._execute(sql, lowered + lowered)
 
     def get_relationship_columns(self, relationship_name: str) -> List[Dict[str, Any]]:
         sql = (
             f"SELECT JOIN_CONDITION, CONDITION_TYPE, LEFT_EXPRESSION, RIGHT_EXPRESSION, OPERATOR "
             f"FROM {self._fq('SM_RELATIONSHIP_COLUMNS')} "
-            f"WHERE LOWER(RELATIONSHIP_NAME) = '{relationship_name.lower()}'"
+            f"WHERE LOWER(RELATIONSHIP_NAME) = LOWER(%s)"
         )
-        return self._execute(sql)
+        return self._execute(sql, (relationship_name,))
 
     def get_verified_queries(self, table_names: List[str]) -> List[Dict[str, Any]]:
+        if not table_names:
+            return []
         sql = f"SELECT * FROM {self._fq('SM_VERIFIED_QUERIES')}"
         all_vqs = self._execute(sql)
         normalized = {t.lower() for t in table_names}
@@ -121,32 +141,29 @@ class SnowflakeStore(MetadataStore):
     def get_custom_instructions(self, names: List[str]) -> List[Dict[str, Any]]:
         if not names:
             return []
-        placeholders = ", ".join(f"'{n.upper()}'" for n in names)
+        placeholders = ", ".join(["%s"] * len(names))
         sql = (
             f"SELECT NAME, QUESTION_CATEGORIZATION, SQL_GENERATION "
             f"FROM {self._fq('SM_CUSTOM_INSTRUCTIONS')} "
             f"WHERE UPPER(NAME) IN ({placeholders})"
         )
-        return self._execute(sql)
+        return self._execute(sql, [n.upper() for n in names])
 
     def get_filters(self, table_names: List[str]) -> List[Dict[str, Any]]:
         if not table_names:
             return []
-        placeholders = ", ".join(f"'{t.upper()}'" for t in table_names)
+        placeholders = ", ".join(["%s"] * len(table_names))
         sql = (
             f"SELECT NAME, TABLE_NAME, DESCRIPTION, EXPR "
             f"FROM {self._fq('SM_FILTERS')} "
             f"WHERE UPPER(TABLE_NAME) IN ({placeholders})"
         )
-        return self._execute(sql)
+        return self._execute(sql, [t.upper() for t in table_names])
 
     def _query_by_table(self, table: str, table_name: str) -> List[Dict[str, Any]]:
         try:
-            sql = (
-                f"SELECT * EXCLUDE TABLE_NAME FROM {self._fq(table)} "
-                f"WHERE LOWER(TABLE_NAME) = '{table_name.lower()}'"
-            )
-            return self._execute(sql)
+            sql = f"SELECT * EXCLUDE TABLE_NAME FROM {self._fq(table)} " f"WHERE LOWER(TABLE_NAME) = LOWER(%s)"
+            return self._execute(sql, (table_name,))
         except Exception as e:
             logger.error(f"Error querying {table} for {table_name}: {e}")
             return []
