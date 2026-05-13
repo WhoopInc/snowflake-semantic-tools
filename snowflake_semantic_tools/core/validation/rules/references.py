@@ -323,6 +323,34 @@ class ReferenceValidator:
                                 context={"metric": name, "relationship": rel_name},
                             )
 
+                # SST-V092: Check that cross-table metric columns are declared as facts/dimensions
+                # Only fires for non-derived metrics with using_relationships.
+                # For non-windowed metrics, V003 already catches undeclared columns as errors;
+                # V092 adds value for windowed metrics (excluded from V003) and provides
+                # a more specific fix suggestion mentioning column_type.
+                if using_rels and expr and isinstance(expr, str) and not is_derived:
+                    sql_keywords = {"CAST", "EXTRACT", "TRIM", "CONVERT", "DATE_TRUNC", "DATEADD", "DATEDIFF"}
+                    col_refs = re.findall(r"\b(\w+)\.(\w+)\b", expr)
+                    for table_ref, column_ref in col_refs:
+                        if table_ref.upper() in sql_keywords:
+                            continue
+                        table_lower = table_ref.lower()
+                        col_lower = column_ref.lower()
+                        if table_lower not in dbt_catalog:
+                            continue
+                        declared_columns = dbt_catalog[table_lower].get("columns", {})
+                        if col_lower not in declared_columns:
+                            result.add_warning(
+                                f"Metric '{name}' references '{table_ref}.{column_ref}' which is not declared "
+                                f"as a fact or dimension on table '{table_ref}'. This will cause a Snowflake "
+                                f"'invalid identifier' error at deploy time.",
+                                file_path=source_file,
+                                rule_id="SST-V092",
+                                suggestion=f"Add column_type: fact (or dimension) to column '{column_ref}' in the YAML for table '{table_ref}'",
+                                entity_name=name,
+                                context={"metric": name, "table": table_ref, "column": column_ref},
+                            )
+
     def _validate_relationship_references(self, relationships_data: Dict, dbt_catalog: Dict, result: ValidationResult):
         """Validate table and column references in relationships."""
         items = relationships_data.get("items", [])
