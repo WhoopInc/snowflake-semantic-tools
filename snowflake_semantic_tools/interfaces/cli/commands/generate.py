@@ -6,6 +6,7 @@ CLI command for generating SQL Semantic Views in Snowflake.
 
 import time
 import traceback
+from pathlib import Path
 
 import click
 
@@ -35,7 +36,13 @@ from snowflake_semantic_tools.shared.progress import CLIProgressCallback
 @defer_options
 @click.option("--views", "-v", multiple=True, help="Specific views to generate (can repeat)")
 @click.option("--all", "-a", is_flag=True, help="Generate all available views")
-@click.option("--dry-run", is_flag=True, help="Show what would be generated without executing")
+@click.option("--dry-run", is_flag=True, help="Generate SQL without executing; writes to --output-dir")
+@click.option(
+    "--output-dir",
+    type=click.Path(),
+    default=None,
+    help="Output directory for dry-run SQL files (default: target/semantic_views/)",
+)
 @click.option("--threads", type=int, default=None, help="Concurrent views (default: from sst_config.yml or 1)")
 @click.option("--verbose", is_flag=True, help="Verbose output")
 @click.pass_context
@@ -51,6 +58,7 @@ def generate(
     views,
     all,
     dry_run,
+    output_dir,
     threads,
     verbose,
 ):
@@ -74,6 +82,7 @@ def generate(
       sst generate --all --defer-target prod      Use prod table refs
       sst generate --all --only-modified          Only changed models
       sst generate --all --dry-run                Preview SQL output
+      sst generate --all --dry-run --output-dir out/ Write SQL to custom dir
 
     \b
     Next Step:
@@ -109,6 +118,10 @@ def generate(
     # Validate options
     if not views and not all:
         output.error("Either --views or --all must be specified")
+        raise click.Abort()
+
+    if output_dir and not dry_run:
+        output.error("--output-dir can only be used with --dry-run")
         raise click.Abort()
 
     # Resolve database and schema from profile or CLI overrides
@@ -276,17 +289,28 @@ def generate(
                 # Show detailed summary
                 result.print_summary()
 
-                # If dry-run, show SQL sample
+                # If dry-run, write SQL files to output directory
                 if dry_run and result.sql_statements:
+                    output_path = Path(output_dir or "target/semantic_views")
+                    try:
+                        output_path.mkdir(parents=True, exist_ok=True)
+
+                        for view_name, sql in result.sql_statements.items():
+                            safe_name = view_name.replace("/", "_").replace("\\", "_")
+                            sql_file = output_path / f"{safe_name}.sql"
+                            sql_file.write_text(sql, encoding="utf-8")
+
+                        output.blank_line()
+                        output.success(
+                            f"Generated SQL written to {output_path.resolve()}/ "
+                            f"({len(result.sql_statements)} file(s))"
+                        )
+                    except OSError as e:
+                        output.blank_line()
+                        output.error(f"SST-G006: Failed to write SQL files to {output_path}: {e}")
+                elif dry_run:
                     output.blank_line()
-                    output.rule("=", width=60)
-                    output.info("SAMPLE SQL (DRY RUN - First View)")
-                    output.rule("=", width=60)
-                    first_view = list(result.sql_statements.keys())[0]
-                    click.echo(f"\n-- View: {first_view}")
-                    click.echo(result.sql_statements[first_view][:2000])
-                    if len(result.sql_statements[first_view]) > 2000:
-                        click.echo("... [truncated]")
+                    output.warning("Dry-run produced no SQL statements (check for errors above)")
 
                 # Show dbt-style done line with view counts
                 output.blank_line()

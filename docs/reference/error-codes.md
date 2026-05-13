@@ -93,6 +93,7 @@ Stable error codes for SST diagnostics. Each code is a permanent identifier that
 | `SST-G003` | Missing metadata tables | SM_* tables not found. Run 'sst extract' first to populate metadata |
 | `SST-G004` | Table not found in Snowflake | Table '{table}' does not exist. Check database/schema or use --defer-target |
 | `SST-G005` | Insufficient privileges | Role needs CREATE SEMANTIC VIEW on schema. Grant: GRANT CREATE SEMANTIC VIEW ON SCHEMA {schema} TO ROLE {role} |
+| `SST-G006` | SQL output write failed | Could not write generated SQL to '{path}'. Check directory permissions and disk space |
 
 ## Config Errors (SST-Cxxx)
 
