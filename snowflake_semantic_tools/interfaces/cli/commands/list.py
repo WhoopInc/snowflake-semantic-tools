@@ -41,6 +41,9 @@ FORMAT_OPTION = click.option(
 OUTPUT_OPTION = click.option("--output", "-o", "output_file", help="Write output to file instead of stdout")
 VERBOSE_OPTION = click.option("--verbose", "-v", is_flag=True, help="Show additional details")
 QUIET_OPTION = click.option("--quiet", "-q", is_flag=True, help="Suppress all output except data")
+NO_MANIFEST_OPTION = click.option(
+    "--no-manifest", is_flag=True, help="Force YAML parsing instead of reading from compiled manifest"
+)
 DBT_OPTION = click.option("--dbt", "dbt_path", help="dbt models path (auto-detected from config if not specified)")
 SEMANTIC_OPTION = click.option(
     "--semantic", "semantic_path", help="Semantic models path (auto-detected from config if not specified)"
@@ -57,11 +60,14 @@ def _setup(verbose: bool, quiet: bool):
         logging.getLogger("snowflake_semantic_tools").setLevel(logging.ERROR)
 
 
-def _build_config(dbt_path: Optional[str], semantic_path: Optional[str], table_filter: Optional[str]) -> ListConfig:
+def _build_config(
+    dbt_path: Optional[str], semantic_path: Optional[str], table_filter: Optional[str], no_manifest: bool = False
+) -> ListConfig:
     return ListConfig(
         dbt_path=Path(dbt_path) if dbt_path else None,
         semantic_path=Path(semantic_path) if semantic_path else None,
         table_filter=table_filter,
+        no_manifest=no_manifest,
     )
 
 
@@ -94,7 +100,8 @@ def list_cmd(ctx):
     """Explore semantic model components (offline, no Snowflake needed).
 
     Lists metrics, tables, relationships, filters, semantic views, and more.
-    Reads from local YAML files — does not require a Snowflake connection.
+    Reads from compiled manifest (target/sst_manifest.json) when available,
+    falls back to YAML parsing otherwise.
 
     \b
     Examples:
@@ -129,9 +136,10 @@ def list_cmd(ctx):
 @OUTPUT_OPTION
 @VERBOSE_OPTION
 @QUIET_OPTION
+@NO_MANIFEST_OPTION
 @DBT_OPTION
 @SEMANTIC_OPTION
-def summary(output_format, output_file, verbose, quiet, dbt_path, semantic_path):
+def summary(output_format, output_file, verbose, quiet, no_manifest, dbt_path, semantic_path):
     """Show a summary of all semantic model components."""
     machine_output = output_format in ("json", "yaml", "csv") or output_file
     _setup(verbose, quiet or machine_output)
@@ -139,7 +147,7 @@ def summary(output_format, output_file, verbose, quiet, dbt_path, semantic_path)
     if not quiet and not machine_output:
         output.info(f"Running with sst={__version__}")
 
-    config = _build_config(dbt_path, semantic_path, None)
+    config = _build_config(dbt_path, semantic_path, None, no_manifest)
     start = time.time()
     result = _run_list(config)
     duration = time.time() - start
@@ -222,11 +230,12 @@ def summary(output_format, output_file, verbose, quiet, dbt_path, semantic_path)
 @OUTPUT_OPTION
 @VERBOSE_OPTION
 @QUIET_OPTION
+@NO_MANIFEST_OPTION
 @DBT_OPTION
 @SEMANTIC_OPTION
 @TABLE_FILTER_OPTION
 @click.option("--with-expr", is_flag=True, help="Include full expressions in output")
-def metrics(output_format, output_file, verbose, quiet, dbt_path, semantic_path, table_filter, with_expr):
+def metrics(output_format, output_file, verbose, quiet, no_manifest, dbt_path, semantic_path, table_filter, with_expr):
     """List all metrics defined in semantic models."""
     machine_output = output_format in ("json", "yaml", "csv") or output_file
     _setup(verbose, quiet or machine_output)
@@ -234,7 +243,7 @@ def metrics(output_format, output_file, verbose, quiet, dbt_path, semantic_path,
     if not quiet and not machine_output:
         output.info(f"Running with sst={__version__}")
 
-    config = _build_config(dbt_path, semantic_path, table_filter)
+    config = _build_config(dbt_path, semantic_path, table_filter, no_manifest)
     start = time.time()
     result = _run_list(config)
     duration = time.time() - start
@@ -298,10 +307,11 @@ def metrics(output_format, output_file, verbose, quiet, dbt_path, semantic_path,
 @OUTPUT_OPTION
 @VERBOSE_OPTION
 @QUIET_OPTION
+@NO_MANIFEST_OPTION
 @DBT_OPTION
 @SEMANTIC_OPTION
 @TABLE_FILTER_OPTION
-def relationships(output_format, output_file, verbose, quiet, dbt_path, semantic_path, table_filter):
+def relationships(output_format, output_file, verbose, quiet, no_manifest, dbt_path, semantic_path, table_filter):
     """List all relationships defined in semantic models."""
     machine_output = output_format in ("json", "yaml", "csv") or output_file
     _setup(verbose, quiet or machine_output)
@@ -309,7 +319,7 @@ def relationships(output_format, output_file, verbose, quiet, dbt_path, semantic
     if not quiet and not machine_output:
         output.info(f"Running with sst={__version__}")
 
-    config = _build_config(dbt_path, semantic_path, table_filter)
+    config = _build_config(dbt_path, semantic_path, table_filter, no_manifest)
     start = time.time()
     result = _run_list(config)
     duration = time.time() - start
@@ -370,10 +380,11 @@ def relationships(output_format, output_file, verbose, quiet, dbt_path, semantic
 @OUTPUT_OPTION
 @VERBOSE_OPTION
 @QUIET_OPTION
+@NO_MANIFEST_OPTION
 @DBT_OPTION
 @SEMANTIC_OPTION
 @TABLE_FILTER_OPTION
-def filters(output_format, output_file, verbose, quiet, dbt_path, semantic_path, table_filter):
+def filters(output_format, output_file, verbose, quiet, no_manifest, dbt_path, semantic_path, table_filter):
     """List all filters defined in semantic models."""
     machine_output = output_format in ("json", "yaml", "csv") or output_file
     _setup(verbose, quiet or machine_output)
@@ -381,7 +392,7 @@ def filters(output_format, output_file, verbose, quiet, dbt_path, semantic_path,
     if not quiet and not machine_output:
         output.info(f"Running with sst={__version__}")
 
-    config = _build_config(dbt_path, semantic_path, table_filter)
+    config = _build_config(dbt_path, semantic_path, table_filter, no_manifest)
     start = time.time()
     result = _run_list(config)
     duration = time.time() - start
@@ -442,10 +453,11 @@ def filters(output_format, output_file, verbose, quiet, dbt_path, semantic_path,
 @OUTPUT_OPTION
 @VERBOSE_OPTION
 @QUIET_OPTION
+@NO_MANIFEST_OPTION
 @DBT_OPTION
 @SEMANTIC_OPTION
 @TABLE_FILTER_OPTION
-def semantic_views(output_format, output_file, verbose, quiet, dbt_path, semantic_path, table_filter):
+def semantic_views(output_format, output_file, verbose, quiet, no_manifest, dbt_path, semantic_path, table_filter):
     """List all semantic views defined in semantic models."""
     machine_output = output_format in ("json", "yaml", "csv") or output_file
     _setup(verbose, quiet or machine_output)
@@ -453,7 +465,7 @@ def semantic_views(output_format, output_file, verbose, quiet, dbt_path, semanti
     if not quiet and not machine_output:
         output.info(f"Running with sst={__version__}")
 
-    config = _build_config(dbt_path, semantic_path, table_filter)
+    config = _build_config(dbt_path, semantic_path, table_filter, no_manifest)
     start = time.time()
     result = _run_list(config)
     duration = time.time() - start
@@ -511,9 +523,10 @@ def semantic_views(output_format, output_file, verbose, quiet, dbt_path, semanti
 @OUTPUT_OPTION
 @VERBOSE_OPTION
 @QUIET_OPTION
+@NO_MANIFEST_OPTION
 @DBT_OPTION
 @SEMANTIC_OPTION
-def custom_instructions(output_format, output_file, verbose, quiet, dbt_path, semantic_path):
+def custom_instructions(output_format, output_file, verbose, quiet, no_manifest, dbt_path, semantic_path):
     """List all custom instructions defined in semantic models."""
     machine_output = output_format in ("json", "yaml", "csv") or output_file
     _setup(verbose, quiet or machine_output)
@@ -521,7 +534,7 @@ def custom_instructions(output_format, output_file, verbose, quiet, dbt_path, se
     if not quiet and not machine_output:
         output.info(f"Running with sst={__version__}")
 
-    config = _build_config(dbt_path, semantic_path, None)
+    config = _build_config(dbt_path, semantic_path, None, no_manifest)
     start = time.time()
     result = _run_list(config)
     duration = time.time() - start
@@ -582,9 +595,10 @@ def custom_instructions(output_format, output_file, verbose, quiet, dbt_path, se
 @OUTPUT_OPTION
 @VERBOSE_OPTION
 @QUIET_OPTION
+@NO_MANIFEST_OPTION
 @DBT_OPTION
 @SEMANTIC_OPTION
-def verified_queries(output_format, output_file, verbose, quiet, dbt_path, semantic_path):
+def verified_queries(output_format, output_file, verbose, quiet, no_manifest, dbt_path, semantic_path):
     """List all verified queries defined in semantic models."""
     machine_output = output_format in ("json", "yaml", "csv") or output_file
     _setup(verbose, quiet or machine_output)
@@ -592,7 +606,7 @@ def verified_queries(output_format, output_file, verbose, quiet, dbt_path, seman
     if not quiet and not machine_output:
         output.info(f"Running with sst={__version__}")
 
-    config = _build_config(dbt_path, semantic_path, None)
+    config = _build_config(dbt_path, semantic_path, None, no_manifest)
     start = time.time()
     result = _run_list(config)
     duration = time.time() - start
@@ -653,10 +667,11 @@ def verified_queries(output_format, output_file, verbose, quiet, dbt_path, seman
 @OUTPUT_OPTION
 @VERBOSE_OPTION
 @QUIET_OPTION
+@NO_MANIFEST_OPTION
 @DBT_OPTION
 @SEMANTIC_OPTION
 @TABLE_FILTER_OPTION
-def tables(output_format, output_file, verbose, quiet, dbt_path, semantic_path, table_filter):
+def tables(output_format, output_file, verbose, quiet, no_manifest, dbt_path, semantic_path, table_filter):
     """List all tables with SST annotations."""
     machine_output = output_format in ("json", "yaml", "csv") or output_file
     _setup(verbose, quiet or machine_output)
@@ -664,7 +679,7 @@ def tables(output_format, output_file, verbose, quiet, dbt_path, semantic_path, 
     if not quiet and not machine_output:
         output.info(f"Running with sst={__version__}")
 
-    config = _build_config(dbt_path, semantic_path, table_filter)
+    config = _build_config(dbt_path, semantic_path, table_filter, no_manifest)
     start = time.time()
     result = _run_list(config)
     duration = time.time() - start
