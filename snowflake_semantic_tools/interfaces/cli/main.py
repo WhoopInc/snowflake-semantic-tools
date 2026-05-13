@@ -115,6 +115,7 @@ LAZY_COMMANDS = {
     "enrich": ("snowflake_semantic_tools.interfaces.cli.commands.enrich", "enrich"),
     "format": ("snowflake_semantic_tools.interfaces.cli.commands.format", "format_cmd"),
     "compile": ("snowflake_semantic_tools.interfaces.cli.commands.compile", "compile_cmd"),
+    "clean": ("snowflake_semantic_tools.interfaces.cli.commands.clean", "clean_cmd"),
     "extract": ("snowflake_semantic_tools.interfaces.cli.commands.extract", "extract"),
     "validate": ("snowflake_semantic_tools.interfaces.cli.commands.validate", "validate"),
     "diff": ("snowflake_semantic_tools.interfaces.cli.commands.diff", "diff_cmd"),

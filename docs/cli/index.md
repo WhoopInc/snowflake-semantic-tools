@@ -14,7 +14,7 @@ Complete reference for all Snowflake Semantic Tools commands.
 | [`sst validate`](validate.md) | Validate semantic models (99+ checks) | No |
 | [`sst format`](format.md) | YAML linter for consistency | No |
 | [`sst extract`](extract.md) | Load metadata to Snowflake tables | Yes |
-| [`sst compile`](compile.md) | Compile metadata into local manifest | No |
+| [`sst compile`](compile.md) | Compile metadata into local manifest | No |\n| [`sst clean`](clean.md) | Remove SST-generated artifacts | No |
 | [`sst diff`](diff.md) | Preview semantic view changes before deployment | Yes |
 | [`sst generate`](generate.md) | Create semantic views | Yes |
 | [`sst deploy`](deploy.md) | One-step: validate → extract → generate | Yes |

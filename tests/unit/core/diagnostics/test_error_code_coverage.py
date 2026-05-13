@@ -74,7 +74,7 @@ class TestErrorCodeCoverage:
         """All codes follow SST-{LETTER}{3DIGITS} format."""
         for code in ERRORS:
             assert re.match(
-                r"^SST-[VPEGCD]\d{3}$", code
+                r"^SST-[VPEGCDK]\d{3}$", code
             ), f"Code '{code}' doesn't match expected format SST-{{V|P|E|G|C|D}}XXX"
 
     def test_all_codes_have_nonempty_title(self):
