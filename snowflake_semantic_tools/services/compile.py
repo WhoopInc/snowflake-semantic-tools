@@ -183,21 +183,63 @@ class CompileService:
                 if key in dbt_data and dbt_data[key]:
                     raw.setdefault(key, []).extend(dbt_data[key])
 
+        project_dir = Path.cwd()
         clean: Dict[str, List] = {}
         for raw_key, records in raw.items():
             clean_key = SM_PREFIX_MAP.get(raw_key, raw_key.replace("sm_", ""))
             if clean_key in clean:
-                clean[clean_key].extend(self._clean_records(records))
+                clean[clean_key].extend(self._clean_records(records, project_dir))
             else:
-                clean[clean_key] = self._clean_records(records)
+                clean[clean_key] = self._clean_records(records, project_dir)
+
+        referenced_tables = set()
+        for sv in clean.get("semantic_views", []):
+            sv_tables = sv.get("tables", [])
+            if isinstance(sv_tables, list):
+                referenced_tables.update(t.upper() for t in sv_tables)
+
+        if referenced_tables:
+            for section in ("tables", "dimensions", "time_dimensions", "facts"):
+                if section in clean:
+                    clean[section] = [
+                        rec for rec in clean[section] if (rec.get("table_name") or "").upper() in referenced_tables
+                    ]
 
         return clean
 
     @staticmethod
-    def _clean_records(records: List[Dict]) -> List[Dict]:
+    def _clean_records(records: List[Dict], project_dir: Optional[Path] = None) -> List[Dict]:
         cleaned = []
         for rec in records:
-            clean = {k: v for k, v in rec.items() if not k.startswith("_")}
+            clean = {}
+            for k, v in rec.items():
+                if k.startswith("_"):
+                    continue
+                if v is None or v == []:
+                    continue
+                if k == "source_file" and isinstance(v, str) and project_dir:
+                    try:
+                        clean[k] = str(Path(v).relative_to(project_dir))
+                    except ValueError:
+                        clean[k] = v
+                    continue
+                if k == "tables" and isinstance(v, str):
+                    try:
+                        parsed = json.loads(v)
+                        if isinstance(parsed, list):
+                            clean[k] = parsed
+                            continue
+                    except (json.JSONDecodeError, TypeError):
+                        pass
+                if k == "custom_instructions" and isinstance(v, str):
+                    try:
+                        parsed = json.loads(v)
+                        if isinstance(parsed, list):
+                            clean[k] = parsed
+                            continue
+                    except (json.JSONDecodeError, TypeError):
+                        pass
+                clean[k] = v
             cleaned.append(clean)
         return cleaned
 
