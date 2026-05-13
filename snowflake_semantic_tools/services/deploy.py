@@ -223,6 +223,11 @@ class DeployService:
                 logger.error("Compilation failed")
                 return result
 
+            if compile_result.tables_count == 0:
+                result.errors.append("[COMPILE] No SST-annotated models found. " "Did you run 'sst enrich' first?")
+                logger.error("Compilation produced 0 tables — no SST-annotated models found")
+                return result
+
             result.compilation_completed = True
             if not config.quiet:
                 logger.info(f"Compilation completed in {result.compilation_time:.1f}s")
@@ -331,7 +336,7 @@ class DeployService:
         from snowflake_semantic_tools.services.compile import CompileConfig, CompileService
 
         service = CompileService()
-        compile_config = CompileConfig()
+        compile_config = CompileConfig(target_database=config.database)
         return service.compile(compile_config)
 
     def _run_validation(self, config: DeployConfig):
@@ -364,53 +369,54 @@ class DeployService:
         """Run generation step with progress reporting."""
         service = SemanticViewGenerationService(self.snowflake_config)
 
-        # Load defer manifest if path is provided - this is used to look up
-        # actual database/schema for each table (supports multi-database projects)
-        defer_manifest = None
-        if config.defer_manifest_path:
-            defer_manifest = ManifestParser(Path(config.defer_manifest_path))
-            if defer_manifest.load():
-                logger.info(f"Loaded defer manifest from {config.defer_manifest_path}")
+        try:
+            defer_manifest = None
+            if config.defer_manifest_path:
+                defer_manifest = ManifestParser(Path(config.defer_manifest_path))
+                if defer_manifest.load():
+                    logger.info(f"Loaded defer manifest from {config.defer_manifest_path}")
 
-                # Validate manifest target matches expected defer target (if target_name is available)
-                manifest_target = defer_manifest.get_target_name()
-                defer_target = config.defer_database  # Contains the defer target name
+                    manifest_target = defer_manifest.get_target_name()
+                    defer_target = config.defer_database
 
-                if manifest_target and defer_target:
-                    if manifest_target.lower() != defer_target.lower():
-                        # Manifest has explicit target that doesn't match - this is an error
-                        raise ValueError(
-                            f"Manifest target mismatch: manifest was compiled with '{manifest_target}' "
-                            f"but you specified --defer-target {defer_target}. "
-                            f"Please run: dbt compile --target {defer_target}"
-                        )
-                    logger.info(f"Manifest target '{manifest_target}' matches defer target")
-            else:
-                logger.warning(f"Failed to load defer manifest from {config.defer_manifest_path}")
-                defer_manifest = None
+                    if manifest_target and defer_target:
+                        if manifest_target.lower() != defer_target.lower():
+                            raise ValueError(
+                                f"Manifest target mismatch: manifest was compiled with '{manifest_target}' "
+                                f"but you specified --defer-target {defer_target}. "
+                                f"Please run: dbt compile --target {defer_target}"
+                            )
+                        logger.info(f"Manifest target '{manifest_target}' matches defer target")
+                else:
+                    logger.warning(f"Failed to load defer manifest from {config.defer_manifest_path}")
+                    defer_manifest = None
 
-        gen_config = UnifiedGenerationConfig(
-            metadata_database=config.database,
-            metadata_schema=config.schema,
-            target_database=config.database,  # Same as metadata
-            target_schema=config.schema,  # Same as metadata
-            views_to_generate=None,  # Generate all views
-            defer_manifest=defer_manifest,  # Use manifest for multi-database support
-        )
+            gen_config = UnifiedGenerationConfig(
+                metadata_database=config.database,
+                metadata_schema=config.schema,
+                target_database=config.database,
+                target_schema=config.schema,
+                views_to_generate=None,
+                defer_manifest=defer_manifest,
+            )
 
-        # If selective generation is enabled, determine which views to generate
-        if config.only_modified and config.defer_manifest_path:
-            views_to_generate = self._get_modified_views(config)
-            if views_to_generate is not None:
-                gen_config.views_to_generate = views_to_generate
-                if not config.quiet:
-                    logger.info(f"Selective generation: {len(views_to_generate)} modified views")
+            if config.only_modified and config.defer_manifest_path:
+                views_to_generate = self._get_modified_views(config)
+                if views_to_generate is not None:
+                    gen_config.views_to_generate = views_to_generate
+                    if not config.quiet:
+                        logger.info(f"Selective generation: {len(views_to_generate)} modified views")
 
-        return service.generate(gen_config, progress_callback=progress)
+            return service.generate(gen_config, progress_callback=progress)
+        finally:
+            service.close()
 
     def _get_modified_views(self, config: DeployConfig) -> Optional[List[str]]:
         """
         Determine which views need regeneration based on manifest comparison.
+
+        Reads view definitions from the local sst_manifest.json (produced by compile)
+        rather than querying SM_* tables in Snowflake.
 
         Args:
             config: Deployment configuration with defer manifest path
@@ -424,19 +430,16 @@ class DeployService:
         try:
             import json
 
-            # Load current manifest
             current_manifest = ManifestParser()
             if not current_manifest.load():
                 logger.warning("Could not load current manifest for comparison")
                 return None
 
-            # Load defer manifest
             defer_manifest = ManifestParser(Path(config.defer_manifest_path))
             if not defer_manifest.load():
                 logger.warning("Could not load defer manifest for comparison")
                 return None
 
-            # Compare manifests
             diff = current_manifest.compare_to(defer_manifest)
 
             if diff.total_changes == 0:
@@ -446,28 +449,24 @@ class DeployService:
             changed_models = set(m.lower() for m in diff.changed)
             logger.info(f"Model changes detected: {', '.join(sorted(changed_models))}")
 
-            # Get available views from metadata to filter
-            from snowflake_semantic_tools.infrastructure.snowflake import SnowflakeClient
+            sst_manifest_path = Path("target") / "sst_manifest.json"
+            if not sst_manifest_path.exists():
+                logger.warning("sst_manifest.json not found — cannot determine modified views, generating all")
+                return None
 
-            client = SnowflakeClient(self.snowflake_config)
-            query = f"""
-            SELECT DISTINCT name, tables
-            FROM {config.database}.{config.schema}.SM_SEMANTIC_VIEWS
-            ORDER BY name
-            """
-            df_result = client.execute_query(query)
+            with open(sst_manifest_path, "r", encoding="utf-8") as f:
+                sst_manifest = json.load(f)
 
-            if df_result.empty:
-                logger.warning("No semantic views found in metadata")
+            semantic_views = sst_manifest.get("tables", {}).get("semantic_views", [])
+            if not semantic_views:
+                logger.warning("No semantic views found in manifest")
                 return []
 
-            # Filter views to only those referencing changed models
             views_to_regenerate = []
-            for _, row in df_result.iterrows():
-                view_name = row.get("NAME") or row.get("name")
-                tables_data = row.get("TABLES") or row.get("tables") or ""
+            for view in semantic_views:
+                view_name = view.get("name") or view.get("NAME") or ""
+                tables_data = view.get("tables") or view.get("TABLES") or ""
 
-                # Parse tables - could be JSON array string
                 tables = []
                 if isinstance(tables_data, str):
                     try:
@@ -476,15 +475,16 @@ class DeployService:
                             tables = [str(t).lower() for t in parsed]
                     except (json.JSONDecodeError, TypeError):
                         tables = [t.strip().lower() for t in tables_data.split(",")]
+                elif isinstance(tables_data, list):
+                    tables = [str(t).lower() for t in tables_data]
 
-                # Check if any table in this view matches a changed model
                 for table in tables:
                     simple_name = table.split(".")[-1].lower()
                     if simple_name in changed_models:
                         views_to_regenerate.append(view_name)
                         break
 
-            logger.info(f"Views to regenerate: {len(views_to_regenerate)} of {len(df_result)}")
+            logger.info(f"Views to regenerate: {len(views_to_regenerate)} of {len(semantic_views)}")
             if views_to_regenerate:
                 logger.info(f"  {', '.join(views_to_regenerate)}")
 

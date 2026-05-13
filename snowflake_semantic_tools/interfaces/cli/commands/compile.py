@@ -54,6 +54,7 @@ def compile_cmd(ctx, dbt_target, dbt_path, semantic_path, verbose):
     config = CompileConfig(
         dbt_path=Path(dbt_path) if dbt_path else None,
         semantic_path=Path(semantic_path) if semantic_path else None,
+        target_database=dbt_target,
     )
 
     service = CompileService()

@@ -79,6 +79,7 @@ COMMAND_ORDER = [
     "extract",
     "generate",
     "deploy",
+    "drop",
     "list",
     "migrate-meta",
 ]

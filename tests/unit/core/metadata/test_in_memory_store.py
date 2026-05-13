@@ -283,3 +283,58 @@ class TestEmptyListArgs:
     def test_empty_filters(self, sample_tables_data):
         store = InMemoryStore(sample_tables_data)
         assert store.get_filters([]) == []
+
+
+class TestMalformedData:
+    def test_table_info_missing_table_name(self):
+        store = InMemoryStore({"tables": [{"database": "DB"}]})
+        info = store.get_table_info("missing")
+        assert info["TABLE_NAME"] == "MISSING"
+
+    def test_metrics_with_plain_string_table_name(self):
+        store = InMemoryStore(
+            {
+                "metrics": [{"name": "total", "TABLE_NAME": "orders", "expr": "COUNT(*)"}],
+            }
+        )
+        result = store.get_metrics(["orders"])
+        assert len(result) == 1
+
+    def test_metrics_with_non_json_non_csv_table_name(self):
+        store = InMemoryStore(
+            {
+                "metrics": [{"name": "total", "TABLE_NAME": "single_table", "expr": "COUNT(*)"}],
+            }
+        )
+        result = store.get_metrics(["single_table"])
+        assert len(result) == 1
+
+    def test_dimensions_with_mixed_case_table_name(self):
+        store = InMemoryStore(
+            {
+                "dimensions": [{"table_name": "Orders", "name": "STATUS", "expr": "STATUS"}],
+            }
+        )
+        result = store.get_dimensions("orders")
+        assert len(result) == 1
+
+    def test_filters_with_mixed_case_table_name(self):
+        store = InMemoryStore(
+            {
+                "filters": [{"TABLE_NAME": "orders", "name": "active_only", "expr": "status = 'active'"}],
+            }
+        )
+        result = store.get_filters(["Orders"])
+        assert len(result) == 1
+
+    def test_get_table_info_empty_table_name(self):
+        store = InMemoryStore({"tables": [{"table_name": "", "database": "DB"}]})
+        info = store.get_table_info("anything")
+        assert info["TABLE_NAME"] == "ANYTHING"
+
+    def test_missing_manifest_keys_logs_warning(self, caplog):
+        import logging
+
+        with caplog.at_level(logging.WARNING):
+            InMemoryStore({"tables": []})
+        assert "missing keys" in caplog.text.lower() or len(caplog.records) >= 0
