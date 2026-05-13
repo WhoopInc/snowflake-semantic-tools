@@ -5,7 +5,7 @@ Preview semantic view changes before deployment. Shows only what changed:
 new, removed, and modified components (metrics, dimensions, relationships, etc).
 """
 
-import json as json_mod
+import json
 import time
 import traceback
 from pathlib import Path
@@ -138,7 +138,7 @@ def _output_json(result, output_file):
         if v.proposed_counts:
             view_data["proposed_counts"] = v.proposed_counts
         data["views"].append(view_data)
-    text = json_mod.dumps(data, indent=2)
+    text = json.dumps(data, indent=2)
     if output_file:
         Path(output_file).write_text(text)
     else:
@@ -191,7 +191,7 @@ def _output_text(result, output, output_file, duration, full):
                     short_name = c.name.split(".")[-1] if "." in c.name else c.name
                     detail = f"  {c.detail}" if c.detail else ""
                     lines.append(f"    {icon} {short_name}{detail}")
-                    if full and c.status == "modified" and c.old_value:
+                    if full and c.status == "modified" and c.old_value and c.new_value:
                         lines.append(f"        was: {c.old_value[:100]}")
                         lines.append(f"        now: {c.new_value[:100]}")
             lines.append("")
