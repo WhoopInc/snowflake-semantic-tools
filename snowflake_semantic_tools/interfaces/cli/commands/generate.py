@@ -44,6 +44,7 @@ from snowflake_semantic_tools.shared.progress import CLIProgressCallback
     help="Output directory for dry-run SQL files (default: target/semantic_views/)",
 )
 @click.option("--threads", type=int, default=None, help="Concurrent views (default: from sst_config.yml or 1)")
+@click.option("--from-snowflake", is_flag=True, help="Read metadata from SM_* tables instead of manifest")
 @click.option("--verbose", is_flag=True, help="Verbose output")
 @click.pass_context
 def generate(
@@ -60,6 +61,7 @@ def generate(
     dry_run,
     output_dir,
     threads,
+    from_snowflake,
     verbose,
 ):
     """Create Snowflake SEMANTIC VIEW objects from extracted metadata.
@@ -194,6 +196,7 @@ def generate(
         defer_manifest=defer_manifest,
         threads=effective_threads,
         view_timeout=view_timeout,
+        from_snowflake=from_snowflake,
     )
 
     # Create and execute service
@@ -321,12 +324,12 @@ def generate(
 
             if result.success and not dry_run:
                 try:
-                    from snowflake_semantic_tools.core.parsing.sst_manifest import SSTManifest
+                    from snowflake_semantic_tools.services.compile import CompileConfig, CompileService
 
-                    sst_manifest = SSTManifest()
-                    sst_manifest.build()
-                    sst_manifest.save(Path("target"))
-                    output.debug("SST manifest saved to target/sst_manifest.json")
+                    compile_service = CompileService()
+                    compile_result = compile_service.compile(CompileConfig())
+                    if compile_result.success:
+                        output.debug("SST manifest saved to target/sst_manifest.json")
                 except Exception as e:
                     output.warning(f"Could not save SST manifest: {e}")
 

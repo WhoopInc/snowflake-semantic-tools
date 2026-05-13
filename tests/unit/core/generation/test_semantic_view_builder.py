@@ -689,7 +689,7 @@ class TestDeferManifestIntegration:
 
         # Call _build_tables_clause with defer_manifest
         result = builder._build_tables_clause(
-            conn=None,
+            store=None,
             table_names=["orders"],
             defer_manifest=mock_manifest_parser,
         )
@@ -715,7 +715,7 @@ class TestDeferManifestIntegration:
 
         # Build for products (should be ANALYTICS_MART.PRODUCT)
         result = builder._build_tables_clause(
-            conn=None,
+            store=None,
             table_names=["products"],
             defer_manifest=mock_manifest_parser,
         )
@@ -739,7 +739,7 @@ class TestDeferManifestIntegration:
 
         # Call with table not in manifest
         result = builder._build_tables_clause(
-            conn=None,
+            store=None,
             table_names=["unknown_table"],
             defer_manifest=mock_manifest_parser,
         )
@@ -763,7 +763,7 @@ class TestDeferManifestIntegration:
         )
 
         result = builder._build_tables_clause(
-            conn=None,
+            store=None,
             table_names=["orders"],
             defer_manifest=None,
         )
