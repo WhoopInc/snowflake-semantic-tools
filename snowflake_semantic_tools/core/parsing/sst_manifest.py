@@ -207,10 +207,10 @@ class SSTManifest:
                 )
             inst = cls()
             inst.metadata = data.get("metadata", {})
+            inst.files = data.get("file_checksums", data.get("files", {}))
             inst.config_checksum = data.get("config_checksum")
             if not inst.config_checksum and "__config__" in inst.files:
                 inst.config_checksum = inst.files.pop("__config__", {}).get("checksum")
-            inst.files = data.get("file_checksums", data.get("files", {}))
             logger.info(f"SST manifest loaded: {manifest_path} ({len(inst.files)} files)")
             return inst
         except (json.JSONDecodeError, IOError) as e:

@@ -151,16 +151,21 @@ class CompileService:
         if "dbt" in parse_result:
             dbt_data = parse_result["dbt"]
             if "sm_tables" in dbt_data:
-                raw["sm_tables"] = [t for t in dbt_data["sm_tables"] if t.get("table_name")]
+                raw.setdefault("sm_tables", []).extend([t for t in dbt_data["sm_tables"] if t.get("table_name")])
             for key in [
                 "sm_dimensions",
                 "sm_time_dimensions",
                 "sm_facts",
+                "sm_metrics",
+                "sm_relationships",
                 "sm_relationship_columns",
                 "sm_semantic_views",
+                "sm_filters",
+                "sm_verified_queries",
+                "sm_custom_instructions",
             ]:
                 if key in dbt_data and dbt_data[key]:
-                    raw[key] = dbt_data[key]
+                    raw.setdefault(key, []).extend(dbt_data[key])
 
         clean: Dict[str, List] = {}
         for raw_key, records in raw.items():
