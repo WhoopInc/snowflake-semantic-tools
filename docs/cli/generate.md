@@ -48,7 +48,8 @@ sst generate [OPTIONS]
 | `--state` | | PATH | | Path to defer state artifacts directory |
 | `--only-modified` | | FLAG | False | Only generate changed views (requires defer) |
 | `--no-defer` | | FLAG | False | Disable defer (overrides config) |
-| `--dry-run` | | FLAG | False | Preview without executing |
+| `--dry-run` | | FLAG | False | Generate SQL to files without executing |
+| `--output-dir` | | PATH | `target/semantic_views/` | Output directory for dry-run SQL files |
 | `--verbose` | | FLAG | False | Show detailed progress |
 
 **Note:** Either `--views` or `--all` must be provided.
@@ -89,12 +90,17 @@ sst generate --all --defer-target prod --state ./prod_artifacts
 ### Preview and Debug
 
 ```bash
-# Preview SQL without executing
+# Generate SQL files without executing (writes to target/semantic_views/)
 sst generate --all --dry-run
+
+# Write SQL files to a custom directory
+sst generate --all --dry-run --output-dir ./review/sql/
 
 # Verbose output
 sst generate --all --verbose
 ```
+
+Dry-run writes one `.sql` file per view to the output directory. Use this to inspect generated DDL, diff between runs, or review changes before deploying.
 
 ---
 
