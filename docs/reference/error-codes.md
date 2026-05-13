@@ -110,6 +110,15 @@ Stable error codes for SST diagnostics. Each code is a permanent identifier that
 | `SST-C007` | Manifest load failed | Could not load sst_manifest.json: {error}. Run 'sst compile' first |
 | `SST-C008` | Manifest stale | sst_manifest.json is older than source YAML files. Run 'sst compile' to refresh |
 
+### Diff Errors (SST-D0xx)
+
+| Code | Title | Suggestion |
+|------|-------|------------|
+| `SST-D001` | Diff connection failed | Check Snowflake credentials and network |
+| `SST-D002` | Diff manifest not found | Run 'sst compile' first to generate proposed DDL |
+| `SST-D003` | No views to compare | Define semantic views in YAML and run 'sst compile' |
+| `SST-D004` | GET_DDL failed | Check USAGE privileges on the semantic view |
+
 ---
 
 ## Adding New Error Codes

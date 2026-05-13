@@ -31,7 +31,7 @@ class TestErrorCodeRegistry:
             assert code.startswith("SST-")
             parts = code.split("-")
             assert len(parts) == 2
-            assert parts[1][0] in "VPEGC"
+            assert parts[1][0] in "VPEGCD"
             assert parts[1][1:].isdigit()
 
     def test_get_error_exists(self):
