@@ -14,6 +14,7 @@ from typing import Any, Dict, List, Optional
 
 from snowflake_semantic_tools.core.parsing import Parser
 from snowflake_semantic_tools.core.parsing.parser import ParsingCriticalError
+from snowflake_semantic_tools.services.compile import MANIFEST_FILENAME
 from snowflake_semantic_tools.shared.utils import get_logger
 from snowflake_semantic_tools.shared.utils.file_utils import find_dbt_model_files, find_semantic_model_files
 
@@ -48,6 +49,7 @@ class ListConfig:
     semantic_path: Optional[Path] = None
     exclude_dirs: Optional[List[str]] = None
     table_filter: Optional[str] = None
+    no_manifest: bool = False
 
 
 @dataclass
@@ -91,12 +93,21 @@ class SemanticComponentListService:
         """
         Execute the list workflow.
 
+        Reads from sst_manifest.json when available (fast, consistent with generate).
+        Falls back to YAML parsing if no manifest exists or --no-manifest is set.
+
         Args:
             config: List configuration with paths and filters
 
         Returns:
             ListResult with all discovered components
         """
+        if not config.no_manifest and not config.dbt_path and not config.semantic_path:
+            manifest_result = self._load_from_manifest(config)
+            if manifest_result is not None:
+                return manifest_result
+            logger.debug("No manifest found — falling back to YAML parsing")
+
         result = ListResult()
 
         if config.exclude_dirs is None:
@@ -272,3 +283,60 @@ class SemanticComponentListService:
         for vq in items:
             if isinstance(vq, dict):
                 result.verified_queries.append(vq)
+
+    def _load_from_manifest(self, config: ListConfig) -> Optional[ListResult]:
+        manifest_path = Path("target") / MANIFEST_FILENAME
+        if not manifest_path.exists():
+            return None
+
+        try:
+            with open(manifest_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+        except (json.JSONDecodeError, IOError) as e:
+            logger.warning(f"Could not load manifest: {e}")
+            return None
+
+        tables_data = data.get("tables", {})
+        if not tables_data:
+            return None
+
+        result = ListResult()
+        result.tables = tables_data.get("tables", [])
+        result.metrics = tables_data.get("metrics", [])
+        result.relationships = tables_data.get("relationships", [])
+        result.filters = tables_data.get("filters", [])
+        result.semantic_views = tables_data.get("semantic_views", [])
+        result.custom_instructions = tables_data.get("custom_instructions", [])
+        result.verified_queries = tables_data.get("verified_queries", [])
+
+        if config.table_filter:
+            self._apply_table_filter(result, config.table_filter)
+
+        return result
+
+    @staticmethod
+    def _apply_table_filter(result: ListResult, table_filter: str):
+        f = table_filter.upper()
+
+        result.tables = [t for t in result.tables if f in _safe_str(t.get("table_name")).upper()]
+
+        result.metrics = [
+            m
+            for m in result.metrics
+            if f in _safe_str(m.get("table_name")).upper()
+            or any(f in _safe_str(t).upper() for t in (m.get("tables") or []))
+        ]
+
+        result.relationships = [
+            r
+            for r in result.relationships
+            if f in _safe_str(r.get("left_table_name")).upper() or f in _safe_str(r.get("right_table_name")).upper()
+        ]
+
+        result.filters = [fl for fl in result.filters if f in _safe_str(fl.get("table_name")).upper()]
+
+        result.semantic_views = [
+            v
+            for v in result.semantic_views
+            if any(f in _safe_str(t).upper() for t in _parse_tables_json(v.get("tables", [])))
+        ]
