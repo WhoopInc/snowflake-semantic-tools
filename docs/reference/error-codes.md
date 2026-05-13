@@ -94,6 +94,8 @@ Stable error codes for SST diagnostics. Each code is a permanent identifier that
 | `SST-G004` | Table not found in Snowflake | Table '{table}' does not exist. Check database/schema or use --defer-target |
 | `SST-G005` | Insufficient privileges | Role needs CREATE SEMANTIC VIEW on schema. Grant: GRANT CREATE SEMANTIC VIEW ON SCHEMA {schema} TO ROLE {role} |
 | `SST-G006` | SQL output write failed | Could not write generated SQL to '{path}'. Check directory permissions and disk space |
+| `SST-G007` | SST manifest not found | sst_manifest.json not found in state directory. All SST YAML files will be treated as changed. To create a baseline, run: `sst generate --all` |
+| `SST-G008` | SST YAML change detection failed | Unexpected error during SST manifest comparison. All views will be regenerated as a safety measure |
 
 ## Config Errors (SST-Cxxx)
 
