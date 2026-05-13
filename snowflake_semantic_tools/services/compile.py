@@ -37,13 +37,17 @@ SM_PREFIX_MAP = {
     "sm_facts": "facts",
     "sm_metrics": "metrics",
     "sm_semantic_views": "semantic_views",
+    "sm_relationships": "relationships",
+    "sm_relationship_columns": "relationship_columns",
+    "sm_filters": "filters",
+    "sm_verified_queries": "verified_queries",
+    "sm_custom_instructions": "custom_instructions",
     "metrics": "metrics",
     "relationships": "relationships",
     "relationship_columns": "relationship_columns",
     "filters": "filters",
     "verified_queries": "verified_queries",
     "custom_instructions": "custom_instructions",
-    "sm_relationship_columns": "relationship_columns",
 }
 
 
@@ -64,6 +68,14 @@ class CompileResult:
     files_tracked: int = 0
     errors: List[str] = field(default_factory=list)
     duration: float = 0.0
+
+
+def _manifest_json_serializer(obj):
+    if isinstance(obj, (datetime,)):
+        return obj.isoformat()
+    if isinstance(obj, Path):
+        return str(obj)
+    raise TypeError(f"Object of type {type(obj).__name__} is not JSON serializable")
 
 
 class CompileService:
@@ -121,7 +133,7 @@ class CompileService:
             target_dir.mkdir(parents=True, exist_ok=True)
             manifest_path = target_dir / MANIFEST_FILENAME
             with open(manifest_path, "w", encoding="utf-8") as f:
-                json.dump(manifest, f, indent=2, default=str)
+                json.dump(manifest, f, indent=2, default=_manifest_json_serializer)
             logger.info(f"SST manifest written: {manifest_path}")
         except OSError as e:
             errors.append(f"SST-C006: Could not write manifest: {e}")

@@ -1,14 +1,16 @@
 # sst generate
 
-Generate Snowflake Semantic Views from metadata tables.
+Generate Snowflake Semantic Views from compiled metadata.
 
 ---
 
 ## Overview
 
-The `generate` command creates Snowflake SEMANTIC VIEW objects from the metadata previously loaded by `sst extract`. It supports defer mode for referencing production tables from development environments and selective generation for fast iteration.
+The `generate` command creates Snowflake SEMANTIC VIEW objects from the local `sst_manifest.json` compiled by `sst compile`. It supports defer mode for referencing production tables from development environments and selective generation for fast iteration.
 
-**Snowflake Connection:** Required
+By default, `generate` reads from the local manifest (`target/sst_manifest.json`). Use `--from-snowflake` to read from SM_* metadata tables instead (legacy workflow).
+
+**Snowflake Connection:** Required (to execute DDL)
 
 ---
 
@@ -314,11 +316,29 @@ GRANT CREATE SEMANTIC VIEW ON SCHEMA schema_name TO ROLE role_name;
 
 ### Views not updating
 
-If you modified SST YAML files (metrics, relationships, filters), you need to re-extract:
+If you modified SST YAML files (metrics, relationships, filters), re-compile first:
 
 ```bash
-sst extract --target prod
-sst generate --all --target prod
+sst compile
+sst generate --all
+```
+
+---
+
+## Metadata Sources
+
+By default, `generate` reads from `target/sst_manifest.json` (created by `sst compile`). This is the recommended workflow — no Snowflake connection is needed for metadata.
+
+Use `--from-snowflake` to read from SM_* metadata tables instead (legacy workflow, requires `sst extract` first):
+
+```bash
+# Manifest-first (default, recommended)
+sst compile
+sst generate --all
+
+# Legacy SM_* table workflow
+sst extract
+sst generate --all --from-snowflake
 ```
 
 ---
@@ -327,22 +347,22 @@ sst generate --all --target prod
 
 ```
 ┌─────────────────┐
-│    EXTRACT      │  Load metadata to Snowflake tables
+│    COMPILE      │  Parse YAML → target/sst_manifest.json
 └────────┬────────┘
          │
          ▼
 ┌─────────────────┐
-│    GENERATE     │  Create semantic views from metadata
+│    GENERATE     │  Create semantic views from manifest
 └─────────────────┘
 ```
 
-**Tip:** Use `sst deploy` to run validate → extract → generate in one command.
+**Tip:** Use `sst deploy` to run compile → validate → generate in one command.
 
 ---
 
 ## Related
 
-- [sst extract](extract.md) - Load metadata to Snowflake (run before generate)
+- [sst compile](compile.md) - Compile metadata into local manifest
 - [sst deploy](deploy.md) - One-step deployment
 - [sst validate](validate.md) - Validate before generating
 - [Semantic Models Guide](../concepts/semantic-models.md) - Define semantic views

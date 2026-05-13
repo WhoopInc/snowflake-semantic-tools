@@ -982,8 +982,8 @@ class SemanticViewGenerationService:
                         f"SST-C008: sst_manifest.json is older than {f.name}. " "Run 'sst compile' to refresh."
                     )
                     break
-        except Exception:
-            pass
+        except (ValueError, OSError) as e:
+            logger.debug(f"Staleness check skipped: {e}")
 
         try:
             with open(manifest_path, "r", encoding="utf-8") as f:

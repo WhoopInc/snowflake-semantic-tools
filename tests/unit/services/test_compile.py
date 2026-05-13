@@ -178,3 +178,59 @@ class TestCompileResult:
         assert result.manifest_path is None
         assert result.tables_count == 0
         assert result.errors == []
+
+
+class TestCompileServiceErrorPaths:
+    def test_find_dbt_files_failure_returns_c005(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        (tmp_path / "sst_config.yml").write_text("project:\n  semantic_models_dir: sem\n")
+        mock_cfg = MagicMock()
+        mock_cfg.get.return_value = "sem"
+
+        with patch(f"{_MODULE}.get_config", return_value=mock_cfg), patch(
+            f"{_MODULE}.find_dbt_model_files", side_effect=RuntimeError("boom")
+        ):
+            service = CompileService()
+            result = service.compile(CompileConfig())
+
+        assert not result.success
+        assert any("SST-C005" in e for e in result.errors)
+
+    def test_parse_all_files_failure_returns_c005(self, project_dir, monkeypatch):
+        monkeypatch.chdir(project_dir)
+        with patch(f"{_MODULE}.get_config", return_value=_mock_config()), patch.object(
+            CompileService, "_prepare_tables_data"
+        ) as mock_prep:
+            mock_prep.side_effect = None
+            service = CompileService()
+            service.parser = MagicMock()
+            service.parser.parse_all_files.side_effect = RuntimeError("parse failed")
+
+            result = service.compile(CompileConfig())
+
+        assert not result.success
+        assert any("SST-C005" in e for e in result.errors)
+
+    def test_manifest_write_failure_returns_c006(self, project_dir, monkeypatch):
+        monkeypatch.chdir(project_dir)
+        with patch(f"{_MODULE}.get_config", return_value=_mock_config()), patch(
+            "builtins.open", side_effect=OSError("read-only filesystem")
+        ):
+            service = CompileService()
+            service.parser = MagicMock()
+            service.parser.parse_all_files.return_value = {"dbt": {"sm_tables": []}, "semantic": {}}
+            service.parser.manifest_parser = None
+
+            result = service.compile(CompileConfig())
+
+        assert not result.success
+        assert any("SST-C006" in e for e in result.errors)
+
+    def test_compile_with_target_database(self, project_dir, monkeypatch):
+        monkeypatch.chdir(project_dir)
+        with patch(f"{_MODULE}.get_config", return_value=_mock_config()):
+            service = CompileService()
+            result = service.compile(CompileConfig(target_database="MY_DB"))
+
+        assert result.success
+        assert service.parser.target_database == "MY_DB"
