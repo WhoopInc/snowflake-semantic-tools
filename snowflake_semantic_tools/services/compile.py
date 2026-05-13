@@ -9,13 +9,17 @@ connection.
 
 import hashlib
 import json
+import re
 import time
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+import yaml as pyyaml
+
 from snowflake_semantic_tools.core.parsing import Parser
+from snowflake_semantic_tools.core.parsing.file_detector import FileTypeDetector
 from snowflake_semantic_tools.core.parsing.parsers.manifest_parser import ManifestParser
 from snowflake_semantic_tools.shared.config import get_config
 from snowflake_semantic_tools.shared.utils import get_logger
@@ -186,12 +190,6 @@ class CompileService:
         return cleaned
 
     def _build_file_checksums(self, dbt_files: List[Path], semantic_files: List[Path]) -> Dict[str, Dict]:
-        import re
-
-        import yaml as pyyaml
-
-        from snowflake_semantic_tools.core.parsing.file_detector import FileTypeDetector
-
         checksums: Dict[str, Dict] = {}
         project_dir = Path.cwd()
 
@@ -262,10 +260,6 @@ class CompileService:
 
     @staticmethod
     def _parse_view_tables_for_checksums(config) -> Dict[str, List[str]]:
-        import re
-
-        import yaml as pyyaml
-
         try:
             sem_dir_name = config.get("project.semantic_models_dir")
         except Exception:

@@ -239,6 +239,7 @@ class TestGetFilters:
         filters = store.get_filters(["orders"])
         assert len(filters) == 1
         assert filters[0]["NAME"] == "active_orders"
+        assert filters[0]["TABLE_NAME"] == "ORDERS"
 
     def test_returns_empty_for_unknown(self, sample_tables_data):
         store = InMemoryStore(sample_tables_data)
@@ -260,3 +261,25 @@ class TestEmptyStore:
         assert store.get_dimensions("x") == []
         assert store.get_metrics(["x"]) == []
         assert store.get_table_info("x")["TABLE_NAME"] == "X"
+
+
+class TestEmptyListArgs:
+    def test_empty_metrics(self, sample_tables_data):
+        store = InMemoryStore(sample_tables_data)
+        assert store.get_metrics([]) == []
+
+    def test_empty_relationships(self, sample_tables_data):
+        store = InMemoryStore(sample_tables_data)
+        assert store.get_relationships([]) == []
+
+    def test_empty_verified_queries(self, sample_tables_data):
+        store = InMemoryStore(sample_tables_data)
+        assert store.get_verified_queries([]) == []
+
+    def test_empty_custom_instructions(self, sample_tables_data):
+        store = InMemoryStore(sample_tables_data)
+        assert store.get_custom_instructions([]) == []
+
+    def test_empty_filters(self, sample_tables_data):
+        store = InMemoryStore(sample_tables_data)
+        assert store.get_filters([]) == []

@@ -111,15 +111,20 @@ class DeployResult:
 
         # Step results (clean format without redundant PASS/FAIL icons)
         print("Workflow Steps:")
+        compile_status = "COMPLETED" if self.compilation_completed else "FAILED"
+        print(f"  Compile: {compile_status}")
+
         if not self.skip_validation:
             val_status = "PASSED" if self.validation_passed else "FAILED"
             print(f"  Validation: {val_status}")
             if self.validation_errors > 0 or self.validation_warnings > 0:
                 print(f"    Errors: {self.validation_errors}, Warnings: {self.validation_warnings}")
 
-        ext_status = "COMPLETED" if self.extraction_completed else "FAILED"
-        print(f"  Extraction: {ext_status}")
-        if self.extraction_completed:
+        ext_status = (
+            "COMPLETED" if self.extraction_completed else ("SKIPPED" if not hasattr(self, "_extract_ran") else "FAILED")
+        )
+        if self.rows_loaded > 0:
+            print(f"  Extraction: {ext_status}")
             print(f"    Loaded {self.rows_loaded:,} rows from {self.models_processed} models")
 
         gen_status = "COMPLETED" if self.generation_completed else "FAILED"
@@ -132,6 +137,8 @@ class DeployResult:
         # Timing
         if not quiet:
             print("Execution Time:")
+            if self.compilation_time > 0:
+                print(f"  Compile: {self.compilation_time:.1f}s")
             if not self.skip_validation and self.validation_time > 0:
                 print(f"  Validation: {self.validation_time:.1f}s")
             if self.extraction_time > 0:
@@ -200,7 +207,7 @@ class DeployService:
 
         try:
             # STEP 1: Compile manifest
-            total_steps = 3 + (1 if config.extract_to_snowflake else 0)
+            total_steps = 1 + (0 if config.skip_validation else 1) + (1 if config.extract_to_snowflake else 0) + 1
             step = 1
 
             progress.stage("Compiling metadata", current=step, total=total_steps)
