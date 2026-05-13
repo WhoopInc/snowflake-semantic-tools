@@ -124,6 +124,13 @@ def diff_cmd(ctx, dbt_target, db, schema, full, names_only, view_filter, output_
     _output_text(result, output, output_file, duration, full)
 
 
+def _write_file(path: str, text: str):
+    try:
+        Path(path).write_text(text, encoding="utf-8")
+    except OSError as e:
+        raise click.ClickException(f"Could not write to {path}: {e}")
+
+
 def _output_json(result, output_file):
     data = {
         "views": [],
@@ -140,7 +147,7 @@ def _output_json(result, output_file):
         data["views"].append(view_data)
     text = json.dumps(data, indent=2)
     if output_file:
-        Path(output_file).write_text(text)
+        _write_file(output_file, text)
     else:
         click.echo(text)
 
@@ -149,7 +156,7 @@ def _output_names_only(result, output_file):
     names = [v.name for v in result.views if v.has_changes]
     text = "\n".join(names)
     if output_file:
-        Path(output_file).write_text(text)
+        _write_file(output_file, text)
     else:
         click.echo(text)
 
@@ -200,7 +207,7 @@ def _output_text(result, output, output_file, duration, full):
 
     text = "\n".join(lines)
     if output_file:
-        Path(output_file).write_text(text)
+        _write_file(output_file, text)
         output.success(f"Diff written to {output_file}")
     else:
         output.blank_line()
