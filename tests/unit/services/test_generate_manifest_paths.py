@@ -14,7 +14,6 @@ from snowflake_semantic_tools.services.generate_semantic_views import (
 )
 
 _MODULE = "snowflake_semantic_tools.services.generate_semantic_views"
-_FILE_UTILS = "snowflake_semantic_tools.shared.utils.file_utils"
 
 
 @pytest.fixture
@@ -58,10 +57,7 @@ class TestGenerateFromManifestErrors:
         progress = MagicMock()
         result = UnifiedGenerationResult()
 
-        with patch(f"{_FILE_UTILS}.find_dbt_model_files", return_value=[]), patch(
-            f"{_FILE_UTILS}.find_semantic_model_files", return_value=[]
-        ):
-            gen_service._generate_from_manifest(gen_config, progress, result)
+        gen_service._generate_from_manifest(gen_config, progress, result)
 
         assert not result.success
         assert any("SST-C007" in e for e in result.errors)
@@ -70,15 +66,13 @@ class TestGenerateFromManifestErrors:
         monkeypatch.chdir(tmp_path)
         target = tmp_path / "target"
         target.mkdir()
-        (target / "sst_manifest.json").write_text(json.dumps({"metadata": {}, "file_checksums": {}, "tables": {}}))
+        manifest = {"metadata": {"project_dir": str(tmp_path)}, "file_checksums": {}, "tables": {}}
+        (target / "sst_manifest.json").write_text(json.dumps(manifest))
 
         progress = MagicMock()
         result = UnifiedGenerationResult()
 
-        with patch(f"{_FILE_UTILS}.find_dbt_model_files", return_value=[]), patch(
-            f"{_FILE_UTILS}.find_semantic_model_files", return_value=[]
-        ):
-            gen_service._generate_from_manifest(gen_config, progress, result)
+        gen_service._generate_from_manifest(gen_config, progress, result)
 
         assert not result.success
         assert any("SST-C007" in e and "no tables" in e for e in result.errors)
@@ -90,28 +84,27 @@ class TestStaleManifestWarning:
         target = tmp_path / "target"
         target.mkdir()
 
+        newer_file = tmp_path / "models" / "test.yml"
+        newer_file.parent.mkdir(parents=True)
+
         manifest_data = {
-            "metadata": {},
-            "file_checksums": {},
+            "metadata": {"project_dir": str(tmp_path)},
+            "file_checksums": {"models/test.yml": {"checksum": "sha256:abc", "type": "dbt"}},
             "tables": {
                 "tables": [{"table_name": "t1"}],
-                "semantic_views": [{"name": "v1", "tables": '["t1"]'}],
+                "semantic_views": [{"name": "v1", "tables": ["t1"]}],
             },
         }
         manifest_path = target / "sst_manifest.json"
         manifest_path.write_text(json.dumps(manifest_data))
 
         time.sleep(0.1)
-        newer_file = tmp_path / "newer.yml"
         newer_file.write_text("version: 2")
 
         progress = MagicMock()
         result = UnifiedGenerationResult()
 
-        with patch(f"{_FILE_UTILS}.find_dbt_model_files", return_value=[newer_file]), patch(
-            f"{_FILE_UTILS}.find_semantic_model_files", return_value=[]
-        ):
-            gen_service._generate_from_manifest(gen_config, progress, result)
+        gen_service._generate_from_manifest(gen_config, progress, result)
 
         assert any("SST-C008" in w for w in result.warnings)
 
@@ -120,16 +113,17 @@ class TestStaleManifestWarning:
         target = tmp_path / "target"
         target.mkdir()
 
-        older_file = tmp_path / "older.yml"
+        older_file = tmp_path / "models" / "test.yml"
+        older_file.parent.mkdir(parents=True)
         older_file.write_text("version: 2")
         time.sleep(0.1)
 
         manifest_data = {
-            "metadata": {},
-            "file_checksums": {},
+            "metadata": {"project_dir": str(tmp_path)},
+            "file_checksums": {"models/test.yml": {"checksum": "sha256:abc", "type": "dbt"}},
             "tables": {
                 "tables": [{"table_name": "t1"}],
-                "semantic_views": [{"name": "v1", "tables": '["t1"]'}],
+                "semantic_views": [{"name": "v1", "tables": ["t1"]}],
             },
         }
         manifest_path = target / "sst_manifest.json"
@@ -138,24 +132,21 @@ class TestStaleManifestWarning:
         progress = MagicMock()
         result = UnifiedGenerationResult()
 
-        with patch(f"{_FILE_UTILS}.find_dbt_model_files", return_value=[older_file]), patch(
-            f"{_FILE_UTILS}.find_semantic_model_files", return_value=[]
-        ):
-            gen_service._generate_from_manifest(gen_config, progress, result)
+        gen_service._generate_from_manifest(gen_config, progress, result)
 
         assert not any("SST-C008" in w for w in result.warnings)
 
-    def test_staleness_check_handles_missing_config(self, gen_service, gen_config, tmp_path, monkeypatch):
+    def test_staleness_check_skips_missing_files(self, gen_service, gen_config, tmp_path, monkeypatch):
         monkeypatch.chdir(tmp_path)
         target = tmp_path / "target"
         target.mkdir()
 
         manifest_data = {
-            "metadata": {},
-            "file_checksums": {},
+            "metadata": {"project_dir": str(tmp_path)},
+            "file_checksums": {"models/nonexistent.yml": {"checksum": "sha256:abc", "type": "dbt"}},
             "tables": {
                 "tables": [{"table_name": "t1"}],
-                "semantic_views": [{"name": "v1", "tables": '["t1"]'}],
+                "semantic_views": [{"name": "v1", "tables": ["t1"]}],
             },
         }
         (target / "sst_manifest.json").write_text(json.dumps(manifest_data))
@@ -163,9 +154,6 @@ class TestStaleManifestWarning:
         progress = MagicMock()
         result = UnifiedGenerationResult()
 
-        with patch(f"{_FILE_UTILS}.find_dbt_model_files", side_effect=ValueError("no config")), patch(
-            f"{_FILE_UTILS}.find_semantic_model_files", return_value=[]
-        ):
-            gen_service._generate_from_manifest(gen_config, progress, result)
+        gen_service._generate_from_manifest(gen_config, progress, result)
 
         assert not any("SST-C008" in w for w in result.warnings)

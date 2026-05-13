@@ -973,17 +973,6 @@ class SemanticViewGenerationService:
             return result
 
         manifest_mtime = manifest_path.stat().st_mtime
-        from snowflake_semantic_tools.shared.utils.file_utils import find_dbt_model_files, find_semantic_model_files
-
-        try:
-            for f in find_dbt_model_files() + find_semantic_model_files():
-                if f.stat().st_mtime > manifest_mtime:
-                    result.add_warning(
-                        f"SST-C008: sst_manifest.json is older than {f.name}. " "Run 'sst compile' to refresh."
-                    )
-                    break
-        except (ValueError, OSError) as e:
-            logger.debug(f"Staleness check skipped: {e}")
 
         try:
             with open(manifest_path, "r", encoding="utf-8") as f:
@@ -991,6 +980,21 @@ class SemanticViewGenerationService:
         except (json.JSONDecodeError, IOError) as e:
             result.add_error(f"SST-C007: Could not load sst_manifest.json: {e}")
             return result
+
+        project_dir = Path(manifest_data.get("metadata", {}).get("project_dir", "."))
+        tracked_files = manifest_data.get("file_checksums", {})
+        try:
+            for rel_path in tracked_files:
+                if rel_path == "__config__":
+                    continue
+                full_path = project_dir / rel_path
+                if full_path.exists() and full_path.stat().st_mtime > manifest_mtime:
+                    result.add_warning(
+                        f"SST-C008: sst_manifest.json is older than {full_path.name}. " "Run 'sst compile' to refresh."
+                    )
+                    break
+        except (ValueError, OSError) as e:
+            logger.debug(f"Staleness check skipped: {e}")
 
         tables_data = manifest_data.get("tables", {})
         if not tables_data:

@@ -147,7 +147,17 @@ class SnowflakeStore(MetadataStore):
             f"FROM {self._fq('SM_CUSTOM_INSTRUCTIONS')} "
             f"WHERE UPPER(NAME) IN ({placeholders})"
         )
-        return self._execute(sql, [n.upper() for n in names])
+        rows = self._execute(sql, [n.upper() for n in names])
+        result = []
+        for row in rows:
+            normalized = {}
+            for k, v in row.items():
+                if k in ("QUESTION_CATEGORIZATION", "SQL_GENERATION"):
+                    normalized[k.lower()] = v
+                else:
+                    normalized[k] = v
+            result.append(normalized)
+        return result
 
     def get_filters(self, table_names: List[str]) -> List[Dict[str, Any]]:
         if not table_names:

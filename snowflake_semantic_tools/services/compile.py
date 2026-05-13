@@ -183,7 +183,7 @@ class CompileService:
                 if key in dbt_data and dbt_data[key]:
                     raw.setdefault(key, []).extend(dbt_data[key])
 
-        project_dir = Path.cwd()
+        project_dir = Path.cwd().resolve()
         clean: Dict[str, List] = {}
         for raw_key, records in raw.items():
             clean_key = SM_PREFIX_MAP.get(raw_key, raw_key.replace("sm_", ""))
@@ -204,6 +204,51 @@ class CompileService:
                     clean[section] = [
                         rec for rec in clean[section] if (rec.get("table_name") or "").upper() in referenced_tables
                     ]
+            if "filters" in clean:
+                clean["filters"] = [
+                    rec
+                    for rec in clean["filters"]
+                    if (rec.get("table_name") or rec.get("TABLE_NAME") or "").upper() in referenced_tables
+                ]
+            ref_lower = {t.lower() for t in referenced_tables}
+            if "metrics" in clean:
+                pruned = []
+                for m in clean["metrics"]:
+                    mt = m.get("tables", m.get("table_name", ""))
+                    if isinstance(mt, list):
+                        names = {str(t).lower() for t in mt}
+                    elif isinstance(mt, str):
+                        names = {mt.lower()}
+                    else:
+                        names = set()
+                    if not names or names.issubset(ref_lower):
+                        pruned.append(m)
+                clean["metrics"] = pruned
+            if "relationships" in clean:
+                clean["relationships"] = [
+                    r
+                    for r in clean["relationships"]
+                    if (r.get("left_table_name") or "").upper() in referenced_tables
+                    and (r.get("right_table_name") or "").upper() in referenced_tables
+                ]
+            if "relationship_columns" in clean:
+                kept_rels = {(r.get("relationship_name") or "").upper() for r in clean.get("relationships", [])}
+                clean["relationship_columns"] = [
+                    rc
+                    for rc in clean["relationship_columns"]
+                    if (rc.get("relationship_name") or "").upper() in kept_rels
+                ]
+            if "verified_queries" in clean:
+                pruned_vq = []
+                for vq in clean["verified_queries"]:
+                    vq_tables = vq.get("tables", [])
+                    if isinstance(vq_tables, list):
+                        names = {str(t).lower() for t in vq_tables}
+                    else:
+                        names = set()
+                    if not names or names.issubset(ref_lower):
+                        pruned_vq.append(vq)
+                clean["verified_queries"] = pruned_vq
 
         return clean
 
@@ -219,7 +264,7 @@ class CompileService:
                     continue
                 if k == "source_file" and isinstance(v, str) and project_dir:
                     try:
-                        clean[k] = str(Path(v).relative_to(project_dir))
+                        clean[k] = str(Path(v).resolve().relative_to(project_dir))
                     except ValueError:
                         clean[k] = v
                     continue
