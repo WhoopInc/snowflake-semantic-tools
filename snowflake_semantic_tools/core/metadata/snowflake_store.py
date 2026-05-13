@@ -130,7 +130,15 @@ class SnowflakeStore(MetadataStore):
             try:
                 vq_tables = json.loads(tables_field) if isinstance(tables_field, str) else tables_field
             except (json.JSONDecodeError, TypeError):
-                vq_tables = [tables_field] if tables_field else []
+                if isinstance(tables_field, str) and tables_field.startswith("["):
+                    import ast
+
+                    try:
+                        vq_tables = ast.literal_eval(tables_field)
+                    except (ValueError, SyntaxError):
+                        vq_tables = [tables_field] if tables_field else []
+                else:
+                    vq_tables = [tables_field] if tables_field else []
             if not isinstance(vq_tables, list):
                 vq_tables = [str(vq_tables)]
             vq_table_names = {str(t).lower() for t in vq_tables}
