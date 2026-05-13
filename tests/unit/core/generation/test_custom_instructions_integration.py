@@ -408,7 +408,7 @@ class TestCustomInstructionsInFullDDL:
         ]
 
         sql = builder._generate_sql(
-            conn=mock_conn,
+            store=mock_conn,
             table_names=["orders"],
             view_name="test_view",
             description="Test view description",
@@ -462,7 +462,7 @@ class TestCustomInstructionsInFullDDL:
         monkeypatch.setattr(builder, "_build_dimensions_clause", lambda conn, name, **kw: "")
 
         sql = builder._generate_sql(
-            conn=mock_conn,
+            store=mock_conn,
             table_names=["orders"],
             view_name="test_view",
             description="Test view",
@@ -506,7 +506,7 @@ class TestCustomInstructionsInFullDDL:
         ]
 
         sql = builder._generate_sql(
-            conn=mock_conn,
+            store=mock_conn,
             table_names=["orders"],
             view_name="test_view",
             description="Test view",

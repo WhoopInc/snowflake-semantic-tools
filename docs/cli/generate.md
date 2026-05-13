@@ -50,6 +50,8 @@ sst generate [OPTIONS]
 | `--no-defer` | | FLAG | False | Disable defer (overrides config) |
 | `--dry-run` | | FLAG | False | Generate SQL to files without executing |
 | `--output-dir` | | PATH | `target/semantic_views/` | Output directory for dry-run SQL files |
+| `--from-snowflake` | | FLAG | False | Read metadata from SM_* tables instead of manifest |
+| `--threads` | | INT | From config or 1 | Concurrent view generation threads |
 | `--verbose` | | FLAG | False | Show detailed progress |
 
 **Note:** Either `--views` or `--all` must be provided.

@@ -21,6 +21,7 @@ import re
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 from snowflake_semantic_tools.core.generation.join_key_generator import JoinKeyDimensionGenerator
+from snowflake_semantic_tools.core.metadata.store import MetadataStore
 from snowflake_semantic_tools.core.parsing.join_condition_parser import JoinConditionParser, JoinType
 from snowflake_semantic_tools.infrastructure.snowflake import SnowflakeClient
 from snowflake_semantic_tools.infrastructure.snowflake.config import SnowflakeConfig
@@ -55,18 +56,16 @@ class SemanticViewBuilder:
     and Cortex Analyst can directly query for semantic-aware analytics.
     """
 
-    def __init__(self, config: SnowflakeConfig, snowflake_loader: Optional[SnowflakeClient] = None):
-        """
-        Initialize the semantic view builder with required dependencies.
-
-        Args:
-            config: SnowflakeConfig instance
-            snowflake_loader: Optional SnowflakeClient instance. If None, creates a new one with config.
-        """
+    def __init__(
+        self,
+        config: SnowflakeConfig,
+        snowflake_loader: Optional[SnowflakeClient] = None,
+        store: Optional[MetadataStore] = None,
+    ):
         self.config = config
         self.snowflake_loader = snowflake_loader or SnowflakeClient(config=config)
+        self.store = store
 
-        # Set up table references - these will be set by the service
         self.metadata_database = None
         self.metadata_schema = None
         self.target_database = None
@@ -82,28 +81,97 @@ class SemanticViewBuilder:
         defer_manifest: Optional["ManifestParser"] = None,
         custom_instruction_names: Optional[List[str]] = None,
     ) -> Dict[str, Any]:
-        """
-        Build a semantic view for specified tables.
-
-        Args:
-            table_names: List of table names to include in the semantic view
-            view_name: Name of the semantic view to create
-            description: Optional description for the semantic view
-            execute: If True, executes SQL in Snowflake (default). If False, returns SQL only (dry run).
-            defer_database: DEPRECATED - use defer_manifest instead
-            defer_manifest: ManifestParser with prod manifest for looking up table locations
-
-        Returns:
-            Dictionary containing SQL statement and execution results
-        """
         logger.info(f"Building semantic view '{view_name}' with tables: {table_names}")
 
-        # Use a single connection for the entire semantic view building process
+        if self.store:
+            return self._build_from_store(
+                self.store,
+                table_names,
+                view_name,
+                description,
+                execute,
+                defer_database,
+                defer_manifest,
+                custom_instruction_names,
+            )
+        else:
+            return self._build_from_snowflake(
+                table_names,
+                view_name,
+                description,
+                execute,
+                defer_database,
+                defer_manifest,
+                custom_instruction_names,
+            )
+
+    def _build_from_store(
+        self,
+        store: MetadataStore,
+        table_names: List[str],
+        view_name: str,
+        description: str,
+        execute: bool,
+        defer_database: Optional[str],
+        defer_manifest: Optional["ManifestParser"],
+        custom_instruction_names: Optional[List[str]],
+    ) -> Dict[str, Any]:
+        try:
+            sql_statement = self._generate_sql(
+                store,
+                table_names,
+                view_name,
+                description,
+                defer_database=defer_database,
+                defer_manifest=defer_manifest,
+                custom_instruction_names=custom_instruction_names,
+            )
+
+            result = {
+                "view_name": view_name,
+                "sql_statement": sql_statement,
+                "success": True,
+                "message": f"Semantic view '{view_name}' SQL generated successfully",
+                "target_location": f"{self.target_database}.{self.target_schema}.{view_name.upper()}",
+            }
+
+            if execute:
+                with self.snowflake_loader.get_connection() as conn:
+                    cursor = conn.cursor()
+                    logger.info("Executing CREATE OR REPLACE SEMANTIC VIEW statement...")
+                    cursor.execute(sql_statement)
+                    logger.info(f"Semantic view '{view_name}' created successfully")
+                    result["message"] = f"Semantic view '{view_name}' created successfully"
+
+            return result
+
+        except Exception as e:
+            formatted_message = self._handle_semantic_view_error(e, table_names, view_name)
+            return {
+                "view_name": view_name,
+                "sql_statement": None,
+                "success": False,
+                "message": formatted_message,
+                "target_location": f"{self.target_database}.{self.target_schema}.{view_name.upper()}",
+            }
+
+    def _build_from_snowflake(
+        self,
+        table_names: List[str],
+        view_name: str,
+        description: str,
+        execute: bool,
+        defer_database: Optional[str],
+        defer_manifest: Optional["ManifestParser"],
+        custom_instruction_names: Optional[List[str]],
+    ) -> Dict[str, Any]:
+        from snowflake_semantic_tools.core.metadata.snowflake_store import SnowflakeStore
+
         with self.snowflake_loader.get_connection() as conn:
             try:
-                # Generate SQL statement using the shared connection
+                sf_store = SnowflakeStore(conn, self.metadata_database, self.metadata_schema)
                 sql_statement = self._generate_sql(
-                    conn,
+                    sf_store,
                     table_names,
                     view_name,
                     description,
@@ -121,9 +189,8 @@ class SemanticViewBuilder:
                 }
 
                 if execute:
-                    # Execute the SQL statement using the same connection
                     cursor = conn.cursor()
-                    logger.info(f"Executing CREATE OR REPLACE SEMANTIC VIEW statement...")
+                    logger.info("Executing CREATE OR REPLACE SEMANTIC VIEW statement...")
                     cursor.execute(sql_statement)
                     logger.info(f"Semantic view '{view_name}' created successfully")
                     result["message"] = f"Semantic view '{view_name}' created successfully"
@@ -132,7 +199,6 @@ class SemanticViewBuilder:
 
             except Exception as e:
                 formatted_message = self._handle_semantic_view_error(e, table_names, view_name)
-
                 return {
                     "view_name": view_name,
                     "sql_statement": None,
@@ -239,12 +305,8 @@ class SemanticViewBuilder:
                 raise Exception(error_msg)
 
     def _get_semantic_views_configs(self, conn) -> List[Dict[str, Any]]:
-        """
-        Query the sm_semantic_views table to get all semantic view configurations.
-
-        Returns:
-            List of dictionaries containing semantic view configurations
-        """
+        if self.store:
+            return self.store.get_semantic_views()
         try:
             semantic_views_table = "SM_SEMANTIC_VIEWS"
             sql = f"SELECT NAME, DESCRIPTION, TABLES, CUSTOM_INSTRUCTIONS FROM {self.metadata_database}.{self.metadata_schema}.{semantic_views_table}"
@@ -665,8 +727,10 @@ class SemanticViewBuilder:
             logger.error(f"Error executing query: {sql} - {e}")
             raise
 
-    def _get_table_info(self, conn, table_name: str) -> Dict:
-        """Get basic table metadata."""
+    def _get_table_info(self, store_or_conn, table_name: str) -> Dict:
+        if isinstance(store_or_conn, MetadataStore):
+            return store_or_conn.get_table_info(table_name)
+        conn = store_or_conn
         try:
             table_table = "SM_TABLES"
             sql = f"SELECT * EXCLUDE TABLE_NAME FROM {self.metadata_database}.{self.metadata_schema}.{table_table} WHERE LOWER(TABLE_NAME) = '{table_name.lower()}'"
@@ -707,17 +771,20 @@ class SemanticViewBuilder:
             logger.error(f"Error querying {metadata_table} for {table_name}: {e}")
             return []
 
-    def _get_dimensions(self, conn, table_name: str) -> List[Dict]:
-        """Get dimensions for a table."""
-        return self._query_metadata_table(conn, "SM_DIMENSIONS", table_name)
+    def _get_dimensions(self, store_or_conn, table_name: str) -> List[Dict]:
+        if isinstance(store_or_conn, MetadataStore):
+            return store_or_conn.get_dimensions(table_name)
+        return self._query_metadata_table(store_or_conn, "SM_DIMENSIONS", table_name)
 
-    def _get_facts(self, conn, table_name: str) -> List[Dict]:
-        """Get facts for a table."""
-        return self._query_metadata_table(conn, "SM_FACTS", table_name)
+    def _get_facts(self, store_or_conn, table_name: str) -> List[Dict]:
+        if isinstance(store_or_conn, MetadataStore):
+            return store_or_conn.get_facts(table_name)
+        return self._query_metadata_table(store_or_conn, "SM_FACTS", table_name)
 
-    def _get_time_dimensions(self, conn, table_name: str) -> List[Dict]:
-        """Get time dimensions for a table."""
-        return self._query_metadata_table(conn, "SM_TIME_DIMENSIONS", table_name)
+    def _get_time_dimensions(self, store_or_conn, table_name: str) -> List[Dict]:
+        if isinstance(store_or_conn, MetadataStore):
+            return store_or_conn.get_time_dimensions(table_name)
+        return self._query_metadata_table(store_or_conn, "SM_TIME_DIMENSIONS", table_name)
 
     def _find_table_schema(self, conn, table_name: str, database: str) -> Optional[str]:
         """
@@ -756,8 +823,10 @@ class SemanticViewBuilder:
             logger.error(f"Error querying information_schema for table '{table_name}': {e}")
             return None
 
-    def _get_metrics_for_selected_tables(self, conn, table_names: List[str]) -> List[Dict]:
-        """Get metrics for a list of selected tables."""
+    def _get_metrics_for_selected_tables(self, store_or_conn, table_names: List[str]) -> List[Dict]:
+        if isinstance(store_or_conn, MetadataStore):
+            return store_or_conn.get_metrics(table_names)
+        conn = store_or_conn
         normalized_table_names = [t.lower() for t in table_names]
 
         # Fetch all metrics once
@@ -779,8 +848,14 @@ class SemanticViewBuilder:
 
         return metrics
 
-    def _get_relationships(self, conn, table_list: List[str]) -> List[Dict]:
-        """Get relationships between tables."""
+    def _get_relationships(self, store_or_conn, table_list: List[str]) -> List[Dict]:
+        if isinstance(store_or_conn, MetadataStore):
+            rels = store_or_conn.get_relationships(table_list)
+            for row in rels:
+                rel_columns = store_or_conn.get_relationship_columns(row.get("RELATIONSHIP_NAME", ""))
+                row["RELATIONSHIP_COLUMNS"] = rel_columns
+            return rels
+        conn = store_or_conn
         tlist = ",".join([f"'{t.lower()}'" for t in table_list])
         relationship_table = "SM_RELATIONSHIPS"
         sql = f"SELECT * FROM {self.metadata_database}.{self.metadata_schema}.{relationship_table} WHERE LOWER(LEFT_TABLE_NAME) IN ({tlist}) AND LOWER(RIGHT_TABLE_NAME) IN ({tlist})"
@@ -788,22 +863,23 @@ class SemanticViewBuilder:
 
         relationships = []
         for row in rows:
-            # Get relationship columns
             rel_columns = self._get_relationship_columns(conn, row["RELATIONSHIP_NAME"])
             row["RELATIONSHIP_COLUMNS"] = rel_columns
             relationships.append(row)
 
         return relationships
 
-    def _get_relationship_columns(self, conn, rel_name: str) -> List[Dict]:
-        """Get relationship columns (now join conditions) helper."""
+    def _get_relationship_columns(self, store_or_conn, rel_name: str) -> List[Dict]:
+        if isinstance(store_or_conn, MetadataStore):
+            return store_or_conn.get_relationship_columns(rel_name)
+        conn = store_or_conn
         relationship_column_table = "SM_RELATIONSHIP_COLUMNS"
         sql = f"SELECT JOIN_CONDITION, CONDITION_TYPE, LEFT_EXPRESSION, RIGHT_EXPRESSION, OPERATOR FROM {self.metadata_database}.{self.metadata_schema}.{relationship_column_table} WHERE LOWER(RELATIONSHIP_NAME) = '{rel_name.lower()}'"
         return self._execute_query(conn, sql)
 
     def _build_tables_clause(
         self,
-        conn,
+        store,
         table_names: List[str],
         defer_database: Optional[str] = None,
         defer_manifest: Optional["ManifestParser"] = None,
@@ -820,7 +896,7 @@ class SemanticViewBuilder:
         table_definitions = []
 
         for table_name in table_names:
-            table_info = self._get_table_info(conn, table_name)
+            table_info = self._get_table_info(store, table_name)
 
             # Get physical table reference - start with metadata values
             database = table_info.get("DATABASE")
@@ -864,11 +940,11 @@ class SemanticViewBuilder:
 
             # Fallback if still no schema
             if not schema:
-                # Try to find the table in Snowflake's information schema
-                logger.warning(
-                    f"No schema reference found for table '{table_name}' in metadata. Attempting to find table in Snowflake..."
-                )
-                schema = self._find_table_schema(conn, table_name, database)
+                if hasattr(store, "_conn"):
+                    logger.warning(
+                        f"No schema reference found for table '{table_name}' in metadata. Attempting to find table in Snowflake..."
+                    )
+                    schema = self._find_table_schema(store._conn, table_name, database)
                 if not schema:
                     raise ValueError(
                         f"Table '{table_name}' not found in database '{database}'. Please ensure the table exists and metadata is properly extracted."
@@ -951,7 +1027,7 @@ class SemanticViewBuilder:
         return ",\n".join(table_definitions)
 
     def _build_relationships_clause(
-        self, conn, table_names: List[str], join_key_generator: Optional[JoinKeyDimensionGenerator] = None
+        self, store, table_names: List[str], join_key_generator: Optional[JoinKeyDimensionGenerator] = None
     ) -> str:
         """Build the RELATIONSHIPS clause of the CREATE SEMANTIC VIEW statement.
 
@@ -960,7 +1036,7 @@ class SemanticViewBuilder:
         in the generator. The generated dimension name is then used in the
         REFERENCES clause instead of the raw column name.
         """
-        relationships = self._get_relationships(conn, table_names)
+        relationships = self._get_relationships(store, table_names)
 
         if not relationships:
             return ""
@@ -1012,12 +1088,12 @@ class SemanticViewBuilder:
 
         return ",\n".join(rel_definitions)
 
-    def _build_facts_clause(self, conn, table_names: List[str]) -> str:
+    def _build_facts_clause(self, store, table_names: List[str]) -> str:
         """Build the FACTS clause of the CREATE SEMANTIC VIEW statement ."""
         all_facts = []
 
         for table_name in table_names:
-            facts = self._get_facts(conn, table_name)
+            facts = self._get_facts(store, table_name)
             for fact in facts:
                 fact["source_table"] = table_name
                 all_facts.append(fact)
@@ -1064,7 +1140,7 @@ class SemanticViewBuilder:
         return ",\n".join(fact_definitions)
 
     def _build_dimensions_clause(
-        self, conn, table_names: List[str], join_key_generator: Optional[JoinKeyDimensionGenerator] = None
+        self, store, table_names: List[str], join_key_generator: Optional[JoinKeyDimensionGenerator] = None
     ) -> str:
         """Build the DIMENSIONS clause of the CREATE SEMANTIC VIEW statement.
 
@@ -1074,8 +1150,8 @@ class SemanticViewBuilder:
         all_dimensions = []
 
         for table_name in table_names:
-            dimensions = self._get_dimensions(conn, table_name)
-            time_dimensions = self._get_time_dimensions(conn, table_name)
+            dimensions = self._get_dimensions(store, table_name)
+            time_dimensions = self._get_time_dimensions(store, table_name)
 
             for dim in dimensions:
                 dim["source_table"] = table_name
@@ -1171,9 +1247,9 @@ class SemanticViewBuilder:
 
         return refs
 
-    def _build_metrics_clause(self, conn, table_names: List[str]) -> str:
+    def _build_metrics_clause(self, store, table_names: List[str]) -> str:
         """Build the METRICS clause of the CREATE SEMANTIC VIEW statement ."""
-        metrics = self._get_metrics_for_selected_tables(conn, table_names)
+        metrics = self._get_metrics_for_selected_tables(store, table_names)
 
         if not metrics:
             return ""
@@ -1184,9 +1260,9 @@ class SemanticViewBuilder:
         # Get all defined facts and dimensions to validate metric references
         defined_columns = set()
         for table_name in table_names:
-            dimensions = self._get_dimensions(conn, table_name)
-            facts = self._get_facts(conn, table_name)
-            time_dimensions = self._get_time_dimensions(conn, table_name)
+            dimensions = self._get_dimensions(store, table_name)
+            facts = self._get_facts(store, table_name)
+            time_dimensions = self._get_time_dimensions(store, table_name)
 
             # Add all defined fact and dimension column names
             for dim in dimensions + time_dimensions + facts:
@@ -1352,9 +1428,9 @@ class SemanticViewBuilder:
 
         return ",\n".join(metric_definitions)
 
-    def _build_verified_queries_clause(self, conn, table_names: List[str]) -> str:
+    def _build_verified_queries_clause(self, store, table_names: List[str]) -> str:
         """Build the AI_VERIFIED_QUERIES clause of the CREATE SEMANTIC VIEW statement."""
-        verified_queries = self._get_verified_queries_for_tables(conn, table_names)
+        verified_queries = self._get_verified_queries_for_tables(store, table_names)
 
         if not verified_queries:
             return ""
@@ -1407,8 +1483,10 @@ class SemanticViewBuilder:
 
         return ",\n".join(vq_definitions)
 
-    def _get_verified_queries_for_tables(self, conn, table_names: List[str]) -> List[Dict]:
-        """Get verified queries relevant to the given tables."""
+    def _get_verified_queries_for_tables(self, store_or_conn, table_names: List[str]) -> List[Dict]:
+        if isinstance(store_or_conn, MetadataStore):
+            return store_or_conn.get_verified_queries(table_names)
+        conn = store_or_conn
         try:
             sql = f"SELECT * FROM {self.metadata_database}.{self.metadata_schema}.SM_VERIFIED_QUERIES"
             rows = self._execute_query(conn, sql)
@@ -1491,7 +1569,7 @@ class SemanticViewBuilder:
             return ""
         return f"WITH TAG ({', '.join(tag_parts)})"
 
-    def _build_ca_extension(self, conn, table_names: List[str]) -> str:
+    def _build_ca_extension(self, store, table_names: List[str]) -> str:
         """
         Build the WITH EXTENSION (CA='...') clause for Cortex Analyst sample_values.
 
@@ -1525,7 +1603,7 @@ class SemanticViewBuilder:
             table_entry = {"name": table_name.upper()}
 
             # Get dimensions with sample_values
-            dimensions = self._get_dimensions(conn, table_name)
+            dimensions = self._get_dimensions(store, table_name)
             dim_entries = []
             for dim in dimensions:
                 sample_values = self._parse_json_field(dim.get("SAMPLE_VALUES"), "sample_values")
@@ -1545,7 +1623,7 @@ class SemanticViewBuilder:
                 table_entry["dimensions"] = dim_entries
 
             # Get time_dimensions with sample_values (separate array per Snowflake Engineering)
-            time_dimensions = self._get_time_dimensions(conn, table_name)
+            time_dimensions = self._get_time_dimensions(store, table_name)
             time_dim_entries = []
             for time_dim in time_dimensions:
                 sample_values = self._parse_json_field(time_dim.get("SAMPLE_VALUES"), "sample_values")
@@ -1559,7 +1637,7 @@ class SemanticViewBuilder:
                 table_entry["time_dimensions"] = time_dim_entries
 
             # Get facts with sample_values
-            facts = self._get_facts(conn, table_name)
+            facts = self._get_facts(store, table_name)
             fact_entries = []
             for fact in facts:
                 sample_values = self._parse_json_field(fact.get("SAMPLE_VALUES"), "sample_values")
@@ -1599,18 +1677,11 @@ class SemanticViewBuilder:
         return f"WITH EXTENSION (CA='{ca_json_escaped}')"
 
     def _get_custom_instructions_for_view(
-        self, conn: Any, custom_instruction_names: Optional[List[str]]
+        self, store_or_conn: Any, custom_instruction_names: Optional[List[str]]
     ) -> List[Dict[str, Any]]:
-        """
-        Retrieve custom instructions from metadata table by name.
-
-        Args:
-            conn: Database connection
-            custom_instruction_names: List of custom instruction names to retrieve
-
-        Returns:
-            List of custom instruction dictionaries with name, question_categorization, and sql_generation
-        """
+        if isinstance(store_or_conn, MetadataStore):
+            return store_or_conn.get_custom_instructions(custom_instruction_names or [])
+        conn = store_or_conn
         if not custom_instruction_names:
             return []
 
@@ -1644,17 +1715,10 @@ class SemanticViewBuilder:
             logger.warning(f"Failed to retrieve custom instructions: {e}")
             return []
 
-    def _get_filters_for_tables(self, conn: Any, table_names: List[str]) -> List[Dict[str, Any]]:
-        """
-        Retrieve filters from SM_FILTERS for the given tables.
-
-        Args:
-            conn: Database connection
-            table_names: List of table names to get filters for
-
-        Returns:
-            List of filter dictionaries with NAME, TABLE_NAME, DESCRIPTION, EXPR
-        """
+    def _get_filters_for_tables(self, store_or_conn: Any, table_names: List[str]) -> List[Dict[str, Any]]:
+        if isinstance(store_or_conn, MetadataStore):
+            return store_or_conn.get_filters(table_names)
+        conn = store_or_conn
         if not table_names:
             return []
 
@@ -1675,7 +1739,7 @@ class SemanticViewBuilder:
             logger.warning(f"Failed to retrieve filters: {e}")
             return []
 
-    def _build_filters_as_instructions(self, conn: Any, table_names: List[str]) -> str:
+    def _build_filters_as_instructions(self, store: Any, table_names: List[str]) -> str:
         """
         Convert filter definitions into AI_SQL_GENERATION instruction text.
 
@@ -1696,7 +1760,7 @@ class SemanticViewBuilder:
         if not config.get("generation.filters_to_instructions", True):
             return ""
 
-        filters = self._get_filters_for_tables(conn, table_names)
+        filters = self._get_filters_for_tables(store, table_names)
         if not filters:
             return ""
 
@@ -1724,7 +1788,7 @@ class SemanticViewBuilder:
         return header + "\n" + "\n".join(filter_lines)
 
     def _build_ai_guidance_clauses(
-        self, conn: Any, custom_instruction_names: Optional[List[str]], table_names: Optional[List[str]] = None
+        self, store: Any, custom_instruction_names: Optional[List[str]], table_names: Optional[List[str]] = None
     ) -> str:
         """
         Build AI_QUESTION_CATEGORIZATION and AI_SQL_GENERATION clauses from custom instructions and filters.
@@ -1739,7 +1803,7 @@ class SemanticViewBuilder:
         """
         instructions = []
         if custom_instruction_names:
-            instructions = self._get_custom_instructions_for_view(conn, custom_instruction_names)
+            instructions = self._get_custom_instructions_for_view(store, custom_instruction_names)
 
         # Aggregate fields from all instructions
         question_cat_parts = []
@@ -1752,7 +1816,7 @@ class SemanticViewBuilder:
 
         # Append filter-based instructions to AI_SQL_GENERATION
         if table_names:
-            filter_instructions = self._build_filters_as_instructions(conn, table_names)
+            filter_instructions = self._build_filters_as_instructions(store, table_names)
             if filter_instructions:
                 sql_gen_parts.append(filter_instructions)
 
@@ -1806,7 +1870,7 @@ class SemanticViewBuilder:
 
     def _generate_sql(
         self,
-        conn,
+        store,
         table_names: List[str],
         view_name: str,
         description: str = "",
@@ -1830,7 +1894,7 @@ class SemanticViewBuilder:
         # Build TABLES clause
         logger.info("Building TABLES clause...")
         tables_clause = self._build_tables_clause(
-            conn, table_names, defer_database=defer_database, defer_manifest=defer_manifest
+            store, table_names, defer_database=defer_database, defer_manifest=defer_manifest
         )
         sql_parts.append(f"  TABLES (\n{tables_clause}\n  )")
 
@@ -1838,7 +1902,7 @@ class SemanticViewBuilder:
         logger.info("Building RELATIONSHIPS clause...")
         join_key_generator = JoinKeyDimensionGenerator()
         relationships_clause = self._build_relationships_clause(
-            conn, table_names, join_key_generator=join_key_generator
+            store, table_names, join_key_generator=join_key_generator
         )
         if relationships_clause:
             sql_parts.append(f"  RELATIONSHIPS (\n{relationships_clause}\n  )")
@@ -1852,19 +1916,19 @@ class SemanticViewBuilder:
 
         # Build FACTS clause
         logger.info("Building FACTS clause...")
-        facts_clause = self._build_facts_clause(conn, table_names)
+        facts_clause = self._build_facts_clause(store, table_names)
         if facts_clause:
             sql_parts.append(f"  FACTS (\n{facts_clause}\n  )")
 
         # Build DIMENSIONS clause (includes auto-generated join key dimensions from relationships)
         logger.info("Building DIMENSIONS clause...")
-        dimensions_clause = self._build_dimensions_clause(conn, table_names, join_key_generator=join_key_generator)
+        dimensions_clause = self._build_dimensions_clause(store, table_names, join_key_generator=join_key_generator)
         if dimensions_clause:
             sql_parts.append(f"  DIMENSIONS (\n{dimensions_clause}\n  )")
 
         # Build METRICS clause
         logger.info("Building METRICS clause...")
-        metrics_clause = self._build_metrics_clause(conn, table_names)
+        metrics_clause = self._build_metrics_clause(store, table_names)
         if metrics_clause:
             sql_parts.append(f"  METRICS (\n{metrics_clause}\n  )")
 
@@ -1879,18 +1943,18 @@ class SemanticViewBuilder:
 
         # Build AI guidance clauses from custom instructions and filters
         # These come after COMMENT per Snowflake syntax: COMMENT, then AI_SQL_GENERATION, then AI_QUESTION_CATEGORIZATION
-        ai_guidance_clauses = self._build_ai_guidance_clauses(conn, custom_instruction_names, table_names=table_names)
+        ai_guidance_clauses = self._build_ai_guidance_clauses(store, custom_instruction_names, table_names=table_names)
         if ai_guidance_clauses:
             sql_parts.append(ai_guidance_clauses)
 
         # Build AI_VERIFIED_QUERIES clause
         logger.info("Building AI_VERIFIED_QUERIES clause...")
-        vq_clause = self._build_verified_queries_clause(conn, table_names)
+        vq_clause = self._build_verified_queries_clause(store, table_names)
         if vq_clause:
             sql_parts.append(f"  AI_VERIFIED_QUERIES (\n{vq_clause}\n  )")
 
         # Build CA extension for sample_values (Cortex Analyst metadata)
-        ca_extension = self._build_ca_extension(conn, table_names)
+        ca_extension = self._build_ca_extension(store, table_names)
 
         # Join all parts and add CA extension if present
         if ca_extension:
@@ -1932,9 +1996,13 @@ class SemanticViewBuilder:
         logger.info(f"Building semantic view '{view_name}' with tables: {table_names}")
 
         try:
-            # Generate SQL statement using the shared connection
+            store_to_use = self.store
+            if not store_to_use:
+                from snowflake_semantic_tools.core.metadata.snowflake_store import SnowflakeStore
+
+                store_to_use = SnowflakeStore(conn, self.metadata_database, self.metadata_schema)
             sql_statement = self._generate_sql(
-                conn, table_names, view_name, description, custom_instruction_names=custom_instruction_names
+                store_to_use, table_names, view_name, description, custom_instruction_names=custom_instruction_names
             )
 
             result = {
