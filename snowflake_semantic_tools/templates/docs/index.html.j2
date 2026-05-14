@@ -1,0 +1,175 @@
+{% extends "_base.html.j2" %}
+
+{% block title %}SST Documentation — Catalog{% endblock %}
+{% block nav_catalog_class %}active{% endblock %}
+
+{% block nav_extra %}
+<button class="sst-search-trigger" onclick="document.getElementById('search-overlay').classList.add('active'); document.getElementById('search-input').focus();">
+    Search... <kbd>&#8984;K</kbd>
+</button>
+{% endblock %}
+
+{% block content %}
+<main class="sst-main">
+    <div class="sst-hero">
+        <h1>Semantic Model Documentation</h1>
+        <p>{{ summary.total }} components across {{ summary.semantic_views }} semantic views</p>
+    </div>
+
+    <div class="sst-stat-grid">
+        <div class="sst-stat-card" onclick="activateTab('tables')">
+            <span class="count" style="color:var(--color-table)">{{ summary.tables }}</span>
+            <span class="label">Tables</span>
+        </div>
+        <div class="sst-stat-card" onclick="activateTab('metrics')">
+            <span class="count" style="color:var(--color-metric)">{{ summary.metrics }}</span>
+            <span class="label">Metrics</span>
+        </div>
+        <div class="sst-stat-card" onclick="activateTab('relationships')">
+            <span class="count" style="color:var(--color-relationship)">{{ summary.relationships }}</span>
+            <span class="label">Relationships</span>
+        </div>
+        <div class="sst-stat-card" onclick="activateTab('semantic_views')">
+            <span class="count" style="color:var(--color-semantic-view)">{{ summary.semantic_views }}</span>
+            <span class="label">Semantic Views</span>
+        </div>
+        <div class="sst-stat-card" onclick="activateTab('filters')">
+            <span class="count" style="color:var(--color-filter)">{{ summary.filters }}</span>
+            <span class="label">Filters</span>
+        </div>
+        <div class="sst-stat-card" onclick="activateTab('verified_queries')">
+            <span class="count" style="color:var(--color-verified-query)">{{ summary.verified_queries }}</span>
+            <span class="label">Verified Queries</span>
+        </div>
+    </div>
+
+    <div class="sst-tabs">
+        <button class="sst-tab active" data-tab="all">All</button>
+        <button class="sst-tab" data-tab="tables">Tables</button>
+        <button class="sst-tab" data-tab="metrics">Metrics</button>
+        <button class="sst-tab" data-tab="relationships">Relationships</button>
+        <button class="sst-tab" data-tab="semantic_views">Semantic Views</button>
+        <button class="sst-tab" data-tab="filters">Filters</button>
+        <button class="sst-tab" data-tab="custom_instructions">Custom Instructions</button>
+        <button class="sst-tab" data-tab="verified_queries">Verified Queries</button>
+    </div>
+
+    <!-- All Panel -->
+    <div id="panel-all" class="sst-tab-panel" style="display:block">
+        <div class="sst-card-grid">
+            {% for sv in catalog.semantic_views %}
+            {{ render_card('semantic_view', sv.name, sv.description|default(''), sv) }}
+            {% endfor %}
+            {% for m in catalog.metrics %}
+            {{ render_card('metric', m.name, m.description|default(''), m) }}
+            {% endfor %}
+            {% for t in catalog.tables %}
+            {{ render_card('table', t.table_name, t.description|default(''), t) }}
+            {% endfor %}
+            {% for r in catalog.relationships %}
+            {{ render_card('relationship', r.relationship_name, '', r) }}
+            {% endfor %}
+            {% for f in catalog.filters %}
+            {{ render_card('filter', f.name, f.description|default(''), f) }}
+            {% endfor %}
+            {% for ci in catalog.custom_instructions %}
+            {{ render_card('custom_instruction', ci.name, '', ci) }}
+            {% endfor %}
+            {% for vq in catalog.verified_queries %}
+            {{ render_card('verified_query', vq.name, vq.question|default(''), vq) }}
+            {% endfor %}
+        </div>
+        {% if not catalog.tables and not catalog.metrics and not catalog.relationships %}
+        <div class="sst-empty">No components found. Run <code>sst compile</code> to build the manifest.</div>
+        {% endif %}
+    </div>
+
+    <!-- Tables Panel -->
+    <div id="panel-tables" class="sst-tab-panel" style="display:none">
+        <div class="sst-card-grid">
+            {% for t in catalog.tables %}
+            {{ render_card('table', t.table_name, t.description|default(''), t) }}
+            {% endfor %}
+        </div>
+        {% if not catalog.tables %}<div class="sst-empty">No tables found.</div>{% endif %}
+    </div>
+
+    <!-- Metrics Panel -->
+    <div id="panel-metrics" class="sst-tab-panel" style="display:none">
+        <div class="sst-card-grid">
+            {% for m in catalog.metrics %}
+            {{ render_card('metric', m.name, m.description|default(''), m) }}
+            {% endfor %}
+        </div>
+        {% if not catalog.metrics %}<div class="sst-empty">No metrics found.</div>{% endif %}
+    </div>
+
+    <!-- Relationships Panel -->
+    <div id="panel-relationships" class="sst-tab-panel" style="display:none">
+        <div class="sst-card-grid">
+            {% for r in catalog.relationships %}
+            {{ render_card('relationship', r.relationship_name, '', r) }}
+            {% endfor %}
+        </div>
+        {% if not catalog.relationships %}<div class="sst-empty">No relationships found.</div>{% endif %}
+    </div>
+
+    <!-- Semantic Views Panel -->
+    <div id="panel-semantic_views" class="sst-tab-panel" style="display:none">
+        <div class="sst-card-grid">
+            {% for sv in catalog.semantic_views %}
+            {{ render_card('semantic_view', sv.name, sv.description|default(''), sv) }}
+            {% endfor %}
+        </div>
+        {% if not catalog.semantic_views %}<div class="sst-empty">No semantic views found.</div>{% endif %}
+    </div>
+
+    <!-- Filters Panel -->
+    <div id="panel-filters" class="sst-tab-panel" style="display:none">
+        <div class="sst-card-grid">
+            {% for f in catalog.filters %}
+            {{ render_card('filter', f.name, f.description|default(''), f) }}
+            {% endfor %}
+        </div>
+        {% if not catalog.filters %}<div class="sst-empty">No filters found.</div>{% endif %}
+    </div>
+
+    <!-- Custom Instructions Panel -->
+    <div id="panel-custom_instructions" class="sst-tab-panel" style="display:none">
+        <div class="sst-card-grid">
+            {% for ci in catalog.custom_instructions %}
+            {{ render_card('custom_instruction', ci.name, '', ci) }}
+            {% endfor %}
+        </div>
+        {% if not catalog.custom_instructions %}<div class="sst-empty">No custom instructions found.</div>{% endif %}
+    </div>
+
+    <!-- Verified Queries Panel -->
+    <div id="panel-verified_queries" class="sst-tab-panel" style="display:none">
+        <div class="sst-card-grid">
+            {% for vq in catalog.verified_queries %}
+            {{ render_card('verified_query', vq.name, vq.question|default(''), vq) }}
+            {% endfor %}
+        </div>
+        {% if not catalog.verified_queries %}<div class="sst-empty">No verified queries found.</div>{% endif %}
+    </div>
+</main>
+
+<div id="search-overlay" class="sst-search-overlay">
+    <div class="sst-search-box">
+        <input id="search-input" class="sst-search-input" type="text" placeholder="Search components..." autocomplete="off">
+        <div id="search-results" class="sst-search-results"></div>
+    </div>
+</div>
+<script id="search-data" type="application/json">{{ search_data_json }}</script>
+{% endblock %}
+
+{% block scripts %}
+<script>{{ catalog_js }}</script>
+<script>
+function activateTab(name) {
+    var tab = document.querySelector('.sst-tab[data-tab="' + name + '"]');
+    if (tab) tab.click();
+}
+</script>
+{% endblock %}
