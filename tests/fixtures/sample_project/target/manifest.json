@@ -1,0 +1,364 @@
+{
+  "metadata": {
+    "dbt_schema_version": "https://schemas.getdbt.com/dbt/manifest/v12.json",
+    "dbt_version": "1.7.0",
+    "generated_at": "2024-01-01T00:00:00.000000Z",
+    "invocation_id": "test-invocation-id",
+    "env": {},
+    "project_name": "sample_project",
+    "project_id": "test-project-id",
+    "user_id": null,
+    "send_anonymous_usage_stats": false,
+    "adapter_type": "snowflake",
+    "target_name": "dev"
+  },
+  "nodes": {
+    "model.sample_project.stg_customers": {
+      "resource_type": "model",
+      "database": "SAMPLE_DATABASE",
+      "schema": "STAGING",
+      "name": "stg_customers",
+      "alias": "stg_customers",
+      "relation_name": "\"SAMPLE_DATABASE\".\"STAGING\".\"STG_CUSTOMERS\"",
+      "original_file_path": "models/staging/stg_customers.sql",
+      "unique_id": "model.sample_project.stg_customers",
+      "fqn": ["sample_project", "staging", "stg_customers"],
+      "package_name": "sample_project",
+      "path": "staging/stg_customers.sql",
+      "checksum": {
+        "name": "sha256",
+        "checksum": "abc123"
+      },
+      "config": {
+        "enabled": true,
+        "materialized": "view"
+      },
+      "tags": [],
+      "description": "Staged customer data from raw source",
+      "columns": {
+        "customer_id": {"name": "customer_id", "description": "Unique customer identifier"},
+        "customer_name": {"name": "customer_name", "description": "Full name of the customer"},
+        "email": {"name": "email", "description": "Customer email address"},
+        "created_at": {"name": "created_at", "description": "Timestamp when customer record was created"},
+        "updated_at": {"name": "updated_at", "description": "Timestamp when customer record was last updated"}
+      },
+      "meta": {},
+      "docs": {"show": true},
+      "patch_path": "sample_project://models/staging/stg_customers.yml",
+      "compiled_path": null,
+      "build_path": null,
+      "deferred": false,
+      "unrendered_config": {},
+      "created_at": 1704067200.0,
+      "depends_on": {
+        "macros": [],
+        "nodes": ["source.sample_project.raw.customers"]
+      },
+      "refs": [],
+      "sources": [["raw", "customers"]]
+    },
+    "model.sample_project.stg_orders": {
+      "resource_type": "model",
+      "database": "SAMPLE_DATABASE",
+      "schema": "STAGING",
+      "name": "stg_orders",
+      "alias": "stg_orders",
+      "relation_name": "\"SAMPLE_DATABASE\".\"STAGING\".\"STG_ORDERS\"",
+      "original_file_path": "models/staging/stg_orders.sql",
+      "unique_id": "model.sample_project.stg_orders",
+      "fqn": ["sample_project", "staging", "stg_orders"],
+      "package_name": "sample_project",
+      "path": "staging/stg_orders.sql",
+      "checksum": {
+        "name": "sha256",
+        "checksum": "def456"
+      },
+      "config": {
+        "enabled": true,
+        "materialized": "view"
+      },
+      "tags": [],
+      "description": "Staged order data from raw source",
+      "columns": {
+        "order_id": {"name": "order_id", "description": "Unique order identifier"},
+        "customer_id": {"name": "customer_id", "description": "Reference to customer who placed the order"},
+        "product_id": {"name": "product_id", "description": "Reference to product in the order"},
+        "quantity": {"name": "quantity", "description": "Number of units ordered"},
+        "unit_price": {"name": "unit_price", "description": "Price per unit at time of order"},
+        "ordered_at": {"name": "ordered_at", "description": "Timestamp when order was placed"},
+        "status": {"name": "status", "description": "Current status of the order"}
+      },
+      "meta": {},
+      "docs": {"show": true},
+      "patch_path": "sample_project://models/staging/stg_orders.yml",
+      "compiled_path": null,
+      "build_path": null,
+      "deferred": false,
+      "unrendered_config": {},
+      "created_at": 1704067200.0,
+      "depends_on": {
+        "macros": [],
+        "nodes": ["source.sample_project.raw.orders"]
+      },
+      "refs": [],
+      "sources": [["raw", "orders"]]
+    },
+    "model.sample_project.stg_products": {
+      "resource_type": "model",
+      "database": "SAMPLE_DATABASE",
+      "schema": "STAGING",
+      "name": "stg_products",
+      "alias": "stg_products",
+      "relation_name": "\"SAMPLE_DATABASE\".\"STAGING\".\"STG_PRODUCTS\"",
+      "original_file_path": "models/staging/stg_products.sql",
+      "unique_id": "model.sample_project.stg_products",
+      "fqn": ["sample_project", "staging", "stg_products"],
+      "package_name": "sample_project",
+      "path": "staging/stg_products.sql",
+      "checksum": {
+        "name": "sha256",
+        "checksum": "ghi789"
+      },
+      "config": {
+        "enabled": true,
+        "materialized": "view"
+      },
+      "tags": [],
+      "description": "Staged product data from raw source",
+      "columns": {
+        "product_id": {"name": "product_id", "description": "Unique product identifier"},
+        "product_name": {"name": "product_name", "description": "Name of the product"},
+        "product_category": {"name": "product_category", "description": "Category the product belongs to"},
+        "product_price": {"name": "product_price", "description": "Current price of the product"},
+        "created_at": {"name": "created_at", "description": "Timestamp when product was added to catalog"}
+      },
+      "meta": {},
+      "docs": {"show": true},
+      "patch_path": "sample_project://models/staging/stg_products.yml",
+      "compiled_path": null,
+      "build_path": null,
+      "deferred": false,
+      "unrendered_config": {},
+      "created_at": 1704067200.0,
+      "depends_on": {
+        "macros": [],
+        "nodes": ["source.sample_project.raw.products"]
+      },
+      "refs": [],
+      "sources": [["raw", "products"]]
+    },
+    "model.sample_project.customers": {
+      "resource_type": "model",
+      "database": "SAMPLE_DATABASE",
+      "schema": "MARTS",
+      "name": "customers",
+      "alias": "customers",
+      "relation_name": "\"SAMPLE_DATABASE\".\"MARTS\".\"CUSTOMERS\"",
+      "original_file_path": "models/marts/customers.sql",
+      "unique_id": "model.sample_project.customers",
+      "fqn": ["sample_project", "marts", "customers"],
+      "package_name": "sample_project",
+      "path": "marts/customers.sql",
+      "checksum": {
+        "name": "sha256",
+        "checksum": "jkl012"
+      },
+      "config": {
+        "enabled": true,
+        "materialized": "table"
+      },
+      "tags": [],
+      "description": "Customer dimension table with aggregated order metrics",
+      "columns": {
+        "customer_id": {"name": "customer_id", "description": "Unique identifier for each customer"},
+        "customer_name": {"name": "customer_name", "description": "Full name of the customer"},
+        "email": {"name": "email", "description": "Customer email address"},
+        "first_ordered_at": {"name": "first_ordered_at", "description": "Timestamp of customer's first order"},
+        "last_ordered_at": {"name": "last_ordered_at", "description": "Timestamp of customer's most recent order"},
+        "lifetime_spend": {"name": "lifetime_spend", "description": "Total amount spent by customer across all orders"},
+        "order_count": {"name": "order_count", "description": "Total number of orders placed by customer"},
+        "customer_type": {"name": "customer_type", "description": "Customer classification based on order history"}
+      },
+      "meta": {},
+      "docs": {"show": true},
+      "patch_path": "sample_project://models/marts/customers.yml",
+      "compiled_path": null,
+      "build_path": null,
+      "deferred": false,
+      "unrendered_config": {},
+      "created_at": 1704067200.0,
+      "depends_on": {
+        "macros": [],
+        "nodes": ["model.sample_project.stg_customers", "model.sample_project.stg_orders"]
+      },
+      "refs": [{"name": "stg_customers"}, {"name": "stg_orders"}],
+      "sources": []
+    },
+    "model.sample_project.orders": {
+      "resource_type": "model",
+      "database": "SAMPLE_DATABASE",
+      "schema": "MARTS",
+      "name": "orders",
+      "alias": "orders",
+      "relation_name": "\"SAMPLE_DATABASE\".\"MARTS\".\"ORDERS\"",
+      "original_file_path": "models/marts/orders.sql",
+      "unique_id": "model.sample_project.orders",
+      "fqn": ["sample_project", "marts", "orders"],
+      "package_name": "sample_project",
+      "path": "marts/orders.sql",
+      "checksum": {
+        "name": "sha256",
+        "checksum": "mno345"
+      },
+      "config": {
+        "enabled": true,
+        "materialized": "table"
+      },
+      "tags": [],
+      "description": "Order fact table with transaction details",
+      "columns": {
+        "order_id": {"name": "order_id", "description": "Unique identifier for each order"},
+        "customer_id": {"name": "customer_id", "description": "Reference to the customer who placed the order"},
+        "product_id": {"name": "product_id", "description": "Reference to the product in the order"},
+        "ordered_at": {"name": "ordered_at", "description": "Timestamp when the order was placed"},
+        "quantity": {"name": "quantity", "description": "Number of units ordered"},
+        "unit_price": {"name": "unit_price", "description": "Price per unit at time of order"},
+        "order_total": {"name": "order_total", "description": "Total value of the order (quantity * unit_price)"},
+        "status": {"name": "status", "description": "Current status of the order"}
+      },
+      "meta": {},
+      "docs": {"show": true},
+      "patch_path": "sample_project://models/marts/orders.yml",
+      "compiled_path": null,
+      "build_path": null,
+      "deferred": false,
+      "unrendered_config": {},
+      "created_at": 1704067200.0,
+      "depends_on": {
+        "macros": [],
+        "nodes": ["model.sample_project.stg_orders"]
+      },
+      "refs": [{"name": "stg_orders"}],
+      "sources": []
+    },
+    "model.sample_project.products": {
+      "resource_type": "model",
+      "database": "SAMPLE_DATABASE",
+      "schema": "MARTS",
+      "name": "products",
+      "alias": "products",
+      "relation_name": "\"SAMPLE_DATABASE\".\"MARTS\".\"PRODUCTS\"",
+      "original_file_path": "models/marts/products.sql",
+      "unique_id": "model.sample_project.products",
+      "fqn": ["sample_project", "marts", "products"],
+      "package_name": "sample_project",
+      "path": "marts/products.sql",
+      "checksum": {
+        "name": "sha256",
+        "checksum": "pqr678"
+      },
+      "config": {
+        "enabled": true,
+        "materialized": "table"
+      },
+      "tags": [],
+      "description": "Product dimension table with catalog information",
+      "columns": {
+        "product_id": {"name": "product_id", "description": "Unique identifier for each product"},
+        "product_name": {"name": "product_name", "description": "Name of the product"},
+        "product_category": {"name": "product_category", "description": "Category the product belongs to"},
+        "product_price": {"name": "product_price", "description": "Current retail price of the product"},
+        "created_at": {"name": "created_at", "description": "Timestamp when product was added to catalog"}
+      },
+      "meta": {},
+      "docs": {"show": true},
+      "patch_path": "sample_project://models/marts/products.yml",
+      "compiled_path": null,
+      "build_path": null,
+      "deferred": false,
+      "unrendered_config": {},
+      "created_at": 1704067200.0,
+      "depends_on": {
+        "macros": [],
+        "nodes": ["model.sample_project.stg_products"]
+      },
+      "refs": [{"name": "stg_products"}],
+      "sources": []
+    }
+  },
+  "sources": {
+    "source.sample_project.raw.customers": {
+      "resource_type": "source",
+      "database": "RAW_DATABASE",
+      "schema": "RAW_SCHEMA",
+      "name": "customers",
+      "source_name": "raw",
+      "source_description": "Raw data sources for sample project",
+      "identifier": "customers",
+      "unique_id": "source.sample_project.raw.customers",
+      "fqn": ["sample_project", "raw", "customers"],
+      "package_name": "sample_project",
+      "path": "models/staging/__sources.yml",
+      "original_file_path": "models/staging/__sources.yml",
+      "relation_name": "\"RAW_DATABASE\".\"RAW_SCHEMA\".\"CUSTOMERS\"",
+      "description": "Raw customer data"
+    },
+    "source.sample_project.raw.orders": {
+      "resource_type": "source",
+      "database": "RAW_DATABASE",
+      "schema": "RAW_SCHEMA",
+      "name": "orders",
+      "source_name": "raw",
+      "source_description": "Raw data sources for sample project",
+      "identifier": "orders",
+      "unique_id": "source.sample_project.raw.orders",
+      "fqn": ["sample_project", "raw", "orders"],
+      "package_name": "sample_project",
+      "path": "models/staging/__sources.yml",
+      "original_file_path": "models/staging/__sources.yml",
+      "relation_name": "\"RAW_DATABASE\".\"RAW_SCHEMA\".\"ORDERS\"",
+      "description": "Raw order data"
+    },
+    "source.sample_project.raw.products": {
+      "resource_type": "source",
+      "database": "RAW_DATABASE",
+      "schema": "RAW_SCHEMA",
+      "name": "products",
+      "source_name": "raw",
+      "source_description": "Raw data sources for sample project",
+      "identifier": "products",
+      "unique_id": "source.sample_project.raw.products",
+      "fqn": ["sample_project", "raw", "products"],
+      "package_name": "sample_project",
+      "path": "models/staging/__sources.yml",
+      "original_file_path": "models/staging/__sources.yml",
+      "relation_name": "\"RAW_DATABASE\".\"RAW_SCHEMA\".\"PRODUCTS\"",
+      "description": "Raw product data"
+    }
+  },
+  "macros": {},
+  "docs": {},
+  "exposures": {},
+  "metrics": {},
+  "groups": {},
+  "selectors": {},
+  "disabled": {},
+  "parent_map": {
+    "model.sample_project.stg_customers": ["source.sample_project.raw.customers"],
+    "model.sample_project.stg_orders": ["source.sample_project.raw.orders"],
+    "model.sample_project.stg_products": ["source.sample_project.raw.products"],
+    "model.sample_project.customers": ["model.sample_project.stg_customers", "model.sample_project.stg_orders"],
+    "model.sample_project.orders": ["model.sample_project.stg_orders"],
+    "model.sample_project.products": ["model.sample_project.stg_products"]
+  },
+  "child_map": {
+    "source.sample_project.raw.customers": ["model.sample_project.stg_customers"],
+    "source.sample_project.raw.orders": ["model.sample_project.stg_orders"],
+    "source.sample_project.raw.products": ["model.sample_project.stg_products"],
+    "model.sample_project.stg_customers": ["model.sample_project.customers"],
+    "model.sample_project.stg_orders": ["model.sample_project.customers", "model.sample_project.orders"],
+    "model.sample_project.stg_products": ["model.sample_project.products"]
+  },
+  "group_map": {},
+  "semantic_models": {}
+}

@@ -1,0 +1,16 @@
+version: 2
+
+models:
+  - name: stg_products
+    description: "Staged product data from raw source"
+    columns:
+      - name: product_id
+        description: "Unique product identifier"
+      - name: product_name
+        description: "Name of the product"
+      - name: product_category
+        description: "Category the product belongs to"
+      - name: product_price
+        description: "Current price of the product"
+      - name: created_at
+        description: "Timestamp when product was added to catalog"

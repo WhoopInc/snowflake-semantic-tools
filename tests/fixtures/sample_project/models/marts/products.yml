@@ -1,0 +1,87 @@
+version: 2
+
+models:
+  - name: products
+    description: "Product dimension table with catalog information"
+    config:
+      meta:
+        sst:
+          primary_key: product_id
+          synonyms:
+            - items
+            - catalog
+            - inventory
+    columns:
+      - name: product_id
+        description: "Unique identifier for each product"
+        config:
+          meta:
+            sst:
+              column_type: dimension
+              data_type: TEXT
+              sample_values:
+                - "PROD-001"
+                - "PROD-002"
+                - "PROD-003"
+              synonyms:
+                - item_id
+                - sku
+
+      - name: product_name
+        description: "Name of the product"
+        config:
+          meta:
+            sst:
+              column_type: dimension
+              data_type: TEXT
+              sample_values:
+                - "Widget Pro"
+                - "Gadget Plus"
+                - "Super Tool"
+              synonyms:
+                - name
+                - item_name
+                - title
+
+      - name: product_category
+        description: "Category the product belongs to"
+        config:
+          meta:
+            sst:
+              column_type: dimension
+              data_type: TEXT
+              sample_values:
+                - "Electronics"
+                - "Home & Garden"
+                - "Sports"
+              synonyms:
+                - category
+                - department
+                - type
+
+      - name: product_price
+        description: "Current retail price of the product"
+        config:
+          meta:
+            sst:
+              column_type: fact
+              data_type: NUMBER
+              sample_values:
+                - 29.99
+                - 49.99
+                - 149.99
+              synonyms:
+                - price
+                - retail_price
+                - cost
+
+      - name: created_at
+        description: "Timestamp when product was added to catalog"
+        config:
+          meta:
+            sst:
+              column_type: time_dimension
+              data_type: TIMESTAMP_NTZ
+              synonyms:
+                - added_date
+                - catalog_date

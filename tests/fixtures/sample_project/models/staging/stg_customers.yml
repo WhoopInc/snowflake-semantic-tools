@@ -1,0 +1,16 @@
+version: 2
+
+models:
+  - name: stg_customers
+    description: "Staged customer data from raw source"
+    columns:
+      - name: customer_id
+        description: "Unique customer identifier"
+      - name: customer_name
+        description: "Full name of the customer"
+      - name: email
+        description: "Customer email address"
+      - name: created_at
+        description: "Timestamp when customer record was created"
+      - name: updated_at
+        description: "Timestamp when customer record was last updated"

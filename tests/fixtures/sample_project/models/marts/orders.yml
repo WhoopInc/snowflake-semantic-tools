@@ -1,0 +1,129 @@
+version: 2
+
+models:
+  - name: orders
+    description: "Order fact table with transaction details"
+    config:
+      meta:
+        sst:
+          primary_key: order_id
+          synonyms:
+            - transactions
+            - purchases
+            - sales
+    columns:
+      - name: order_id
+        description: "Unique identifier for each order"
+        config:
+          meta:
+            sst:
+              column_type: dimension
+              data_type: TEXT
+              sample_values:
+                - "ORD-001"
+                - "ORD-002"
+                - "ORD-003"
+              synonyms:
+                - transaction_id
+                - purchase_id
+
+      - name: customer_id
+        description: "Reference to the customer who placed the order"
+        config:
+          meta:
+            sst:
+              column_type: dimension
+              data_type: TEXT
+              sample_values:
+                - "CUST-001"
+                - "CUST-002"
+              synonyms:
+                - buyer_id
+                - client_id
+
+      - name: product_id
+        description: "Reference to the product in the order"
+        config:
+          meta:
+            sst:
+              column_type: dimension
+              data_type: TEXT
+              sample_values:
+                - "PROD-001"
+                - "PROD-002"
+              synonyms:
+                - item_id
+                - sku
+
+      - name: ordered_at
+        description: "Timestamp when the order was placed"
+        config:
+          meta:
+            sst:
+              column_type: time_dimension
+              data_type: TIMESTAMP_NTZ
+              synonyms:
+                - order_date
+                - purchase_date
+                - transaction_date
+
+      - name: quantity
+        description: "Number of units ordered"
+        config:
+          meta:
+            sst:
+              column_type: fact
+              data_type: NUMBER
+              sample_values:
+                - 1
+                - 2
+                - 5
+              synonyms:
+                - qty
+                - units
+
+      - name: unit_price
+        description: "Price per unit at time of order"
+        config:
+          meta:
+            sst:
+              column_type: fact
+              data_type: NUMBER
+              sample_values:
+                - 29.99
+                - 49.99
+                - 99.99
+              synonyms:
+                - price
+                - item_price
+
+      - name: order_total
+        description: "Total value of the order (quantity * unit_price)"
+        config:
+          meta:
+            sst:
+              column_type: fact
+              data_type: NUMBER
+              sample_values:
+                - 29.99
+                - 99.98
+                - 499.95
+              synonyms:
+                - total
+                - amount
+                - revenue
+
+      - name: status
+        description: "Current status of the order"
+        config:
+          meta:
+            sst:
+              column_type: dimension
+              data_type: TEXT
+              sample_values:
+                - "pending"
+                - "completed"
+                - "cancelled"
+              synonyms:
+                - order_status
+                - state

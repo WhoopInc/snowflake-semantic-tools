@@ -1,0 +1,16 @@
+# Sample dbt project for integration testing
+name: 'sample_project'
+version: '1.0.0'
+
+profile: 'sample_project'
+
+model-paths: ["models"]
+analysis-paths: ["analyses"]
+test-paths: ["tests"]
+seed-paths: ["seeds"]
+macro-paths: ["macros"]
+snapshot-paths: ["snapshots"]
+
+clean-targets:
+  - "target"
+  - "dbt_packages"

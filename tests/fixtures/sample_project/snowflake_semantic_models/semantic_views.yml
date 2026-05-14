@@ -1,0 +1,33 @@
+semantic_views:
+  - name: sample_analytics
+    description: "Comprehensive analytics view combining customers, orders, and products"
+    tables:
+      - "{{ table('customers') }}"
+      - "{{ table('orders') }}"
+      - "{{ table('products') }}"
+
+    metrics:
+      - total_orders
+      - total_revenue
+      - total_customers
+      - average_order_value
+      - total_products_sold
+
+    dimensions:
+      - orders.ordered_at
+      - orders.status
+      - customers.customer_type
+      - customers.customer_name
+      - products.product_category
+      - products.product_name
+
+    filters:
+      - completed_orders_only
+      - recent_orders
+
+    custom_instructions:
+      - business_context
+
+    relationships:
+      - orders_to_customers
+      - orders_to_products

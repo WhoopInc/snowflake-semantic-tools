@@ -1,0 +1,12 @@
+snowflake_filters:
+  - name: completed_orders_only
+    description: "Filter to include only completed orders"
+    expr: "{{ column('orders', 'status') }} = 'completed'"
+    tables:
+      - "{{ table('orders') }}"
+
+  - name: recent_orders
+    description: "Filter to include only orders from the last 30 days"
+    expr: "{{ column('orders', 'ordered_at') }} >= DATEADD(day, -30, CURRENT_DATE())"
+    tables:
+      - "{{ table('orders') }}"

@@ -76,6 +76,8 @@ docs/_build/
 
 # PyBuilder
 target/
+# Exception: allow test fixture manifest for offline testing
+!tests/fixtures/sample_project/target/
 
 # Jupyter Notebook
 .ipynb_checkpoints

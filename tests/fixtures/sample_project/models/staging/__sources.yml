@@ -1,0 +1,14 @@
+version: 2
+
+sources:
+  - name: raw
+    description: "Raw data sources for sample project"
+    database: RAW_DATABASE
+    schema: RAW_SCHEMA
+    tables:
+      - name: customers
+        description: "Raw customer data"
+      - name: orders
+        description: "Raw order data"
+      - name: products
+        description: "Raw product data"
