@@ -25,7 +25,12 @@ from snowflake_semantic_tools.services.generate_semantic_views import (
     SemanticViewGenerationService,
     UnifiedGenerationConfig,
 )
+from snowflake_semantic_tools.services.validate_semantic_models import (
+    SemanticMetadataCollectionValidationService,
+    ValidateConfig,
+)
 from snowflake_semantic_tools.shared.config import get_config
+from snowflake_semantic_tools.shared.config_utils import get_exclusion_patterns, is_strict_mode
 from snowflake_semantic_tools.shared.progress import CLIProgressCallback
 
 
@@ -46,6 +51,7 @@ from snowflake_semantic_tools.shared.progress import CLIProgressCallback
 )
 @click.option("--threads", type=int, default=None, help="Concurrent views (default: from sst_config.yml or 1)")
 @click.option("--from-snowflake", is_flag=True, help="Read metadata from SM_* tables instead of manifest")
+@click.option("--skip-validation", is_flag=True, help="Skip pre-validation (use when already validated separately)")
 @click.option("--verbose", is_flag=True, help="Verbose output")
 @click.pass_context
 def generate(
@@ -63,16 +69,18 @@ def generate(
     output_dir,
     threads,
     from_snowflake,
+    skip_validation,
     verbose,
 ):
     """Create Snowflake SEMANTIC VIEW objects from extracted metadata.
 
-    Reads the SM_* metadata tables (populated by 'sst extract') and creates
-    native Snowflake semantic views for BI tools and Cortex Analyst.
+    Validates semantic models before generation (use --skip-validation to opt out).
+    Reads the compiled manifest or SM_* tables and creates native Snowflake
+    semantic views for BI tools and Cortex Analyst.
 
     \b
     Prerequisites:
-      • 'sst extract' has been run (metadata tables must exist)
+      • 'sst compile' has been run (or 'sst extract' for --from-snowflake)
       • Snowflake credentials in ~/.dbt/profiles.yml
       • Must specify --all or --views (one is required)
 
@@ -80,6 +88,7 @@ def generate(
     Examples:
       sst generate --all                          Generate all views
       sst generate --all --target prod            Use 'prod' target
+      sst generate --all --skip-validation        Skip pre-validation
       sst generate --all --db ANALYTICS -s SEM    Override db/schema
       sst generate -v customer_360 -v sales       Specific views only
       sst generate --all --defer-target prod      Use prod table refs
@@ -93,9 +102,9 @@ def generate(
 
     \b
     Related Commands:
-      sst extract             Must run before generate (loads metadata tables)
-      sst deploy              Run validate + extract + generate in one step
+      sst validate            Run validation separately for more options
       sst list semantic-views See what views would be generated
+      sst diff                Preview changes before deploying
     """
     # IMMEDIATE OUTPUT - show user command is running
     output_format = ctx.obj.get("output_format", "table") if ctx.obj else "table"
@@ -126,6 +135,49 @@ def generate(
     if output_dir and not dry_run:
         output.error("--output-dir can only be used with --dry-run")
         raise click.Abort()
+
+    if not skip_validation:
+        output.blank_line()
+        output.info("Validating semantic models...")
+        val_start = time.time()
+
+        try:
+            service = SemanticMetadataCollectionValidationService.create_from_config()
+            exclude_dirs = get_exclusion_patterns()
+            validate_config = ValidateConfig(
+                dbt_path=None,
+                semantic_path=None,
+                strict_mode=is_strict_mode(),
+                exclude_dirs=exclude_dirs,
+            )
+            val_result = service.execute(validate_config, verbose=verbose)
+            val_duration = time.time() - val_start
+
+            if not val_result.is_valid:
+                output.error(
+                    f"Validation failed ({val_result.error_count} errors, "
+                    f"{val_result.warning_count} warnings) [{val_duration:.1f}s]"
+                )
+                output.blank_line()
+                for issue in val_result.issues:
+                    if issue.severity.value == "error":
+                        output.error(f"  {issue.message}")
+                output.blank_line()
+                output.info("Fix validation errors before generating, or use --skip-validation to bypass.")
+                raise click.Abort()
+
+            output.success(
+                f"Validation passed ({val_result.error_count} errors, "
+                f"{val_result.warning_count} warnings) [{val_duration:.1f}s]"
+            )
+        except click.Abort:
+            raise
+        except Exception as e:
+            output.warning(f"Validation could not run: {e}")
+            if verbose:
+                traceback.print_exc()
+    else:
+        output.debug("Skipping validation (--skip-validation)")
 
     # Resolve database and schema from profile or CLI overrides
     target_db, target_schema = get_target_database_schema(

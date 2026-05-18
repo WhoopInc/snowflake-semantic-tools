@@ -136,21 +136,14 @@ sst generate --all --defer-target prod --only-modified
 sst generate --all --dry-run
 ```
 
-### Deploy
+### Deploy (DEPRECATED)
 
 ```bash
-# One-step deployment
-sst deploy
-
-# Deploy to specific target
-sst deploy --target prod
-
-# With defer
-sst deploy --defer-target prod
-sst deploy --defer-target prod --only-modified
-
-# Skip validation
-sst deploy --skip-validation
+# DEPRECATED: Use 'sst generate --all' instead
+# sst deploy will be removed in v0.4.0
+sst generate --all
+sst generate --all --target prod
+sst generate --all --skip-validation
 ```
 
 ---
@@ -203,11 +196,7 @@ sst format models/
 ### Deploy to Production
 
 ```bash
-sst deploy --target prod
-# Or step-by-step:
-sst validate
-sst extract --target prod
-sst generate --target prod --all
+sst generate --all --target prod
 ```
 
 ### CI/CD Pipeline
@@ -217,7 +206,7 @@ sst generate --target prod --all
 sst validate
 
 # On merge to main:
-sst deploy --target prod
+sst generate --all --target prod
 ```
 
 ---

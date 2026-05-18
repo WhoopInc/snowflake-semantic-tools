@@ -59,7 +59,7 @@ Snowflake Semantic Tools (SST) helps you create **Snowflake Semantic Views**—a
 | [`sst format`](cli/format.md) | YAML linter for consistency | No |
 | [`sst extract`](cli/extract.md) | Load metadata to Snowflake tables | Yes |
 | [`sst generate`](cli/generate.md) | Create semantic views | Yes |
-| [`sst deploy`](cli/deploy.md) | One-step: validate → extract → generate | Yes |
+| [`sst deploy`](cli/deploy.md) | ~~One-step: validate → extract → generate~~ [DEPRECATED] | Yes |
 | [`sst migrate-meta`](cli/migrate-meta.md) | Migrate to dbt Fusion format | No |
 
 **New to SST?** Start with `sst init` to configure your project.

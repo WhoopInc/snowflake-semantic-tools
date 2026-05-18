@@ -28,7 +28,7 @@ from snowflake_semantic_tools.shared.progress import CLIProgressCallback
 
 
 @click.command(
-    short_help="One-step: validate + extract + generate",
+    short_help="[DEPRECATED] Use 'sst generate --all' instead",
 )
 @target_option
 @database_schema_options
@@ -58,10 +58,10 @@ def deploy(
     verbose,
     quiet,
 ):
-    """Deploy semantic models: validate + extract + generate in one step.
+    """[DEPRECATED] Deploy semantic models: validate + generate in one step.
 
-    The recommended way to deploy. Combines the full workflow into a single
-    command, stopping at the first failure for safe CI/CD integration.
+    WARNING: This command is deprecated and will be removed in v0.4.0.
+    Use 'sst generate --all' instead (validation is now built-in).
 
     \b
     Prerequisites:
@@ -71,37 +71,27 @@ def deploy(
 
     \b
     Examples:
-      sst deploy                              Full deployment (profile defaults)
-      sst deploy --target prod                Use 'prod' dbt target
-      sst deploy --db ANALYTICS -s SEMANTIC   Override database/schema
-      sst deploy --defer-target prod          Use prod table references
-      sst deploy --only-modified              Only deploy changed models
-      sst deploy --skip-validation            Skip if already validated
-      sst deploy --quiet                      Errors only (CI/CD)
-
-    \b
-    Notes:
-      • Both extract and generate use the same --db and --schema
-      • Use --defer-target to reference production tables while deploying to dev
-      • Use --only-modified for faster iteration on large projects
-
-    \b
-    What it does (in order):
-      1. sst validate     Check for errors
-      2. sst extract      Load metadata to Snowflake tables
-      3. sst generate     Create semantic views
-      Stops at first failure.
+      sst generate --all                          Recommended replacement
+      sst generate --all --target prod            With target
+      sst generate --all --skip-validation        Skip validation
 
     \b
     Related Commands:
+      sst generate --all      Replacement for sst deploy
       sst validate            Run validation separately (faster iteration)
-      sst generate --dry-run  Preview SQL without deploying
       sst list                Explore what was deployed
     """
     # IMMEDIATE OUTPUT - show user command is running
     output_format = ctx.obj.get("output_format", "table") if ctx.obj else "table"
     quiet_mode = output_format == "json" or quiet
     output = CLIOutput(verbose=verbose, quiet=quiet_mode)
+
+    click.echo(
+        "WARNING: `sst deploy` is deprecated and will be removed in v0.4.0. "
+        "Use `sst generate --all` instead (validation is now built-in).",
+        err=True,
+    )
+    output.blank_line()
     output.info(f"Running with sst={__version__}")
 
     # Common CLI setup

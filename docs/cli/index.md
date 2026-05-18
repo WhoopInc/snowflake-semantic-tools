@@ -17,7 +17,7 @@ Complete reference for all Snowflake Semantic Tools commands.
 | [`sst compile`](compile.md) | Compile metadata into local manifest | No |\n| [`sst clean`](clean.md) | Remove SST-generated artifacts | No |
 | [`sst diff`](diff.md) | Preview semantic view changes before deployment | Yes |
 | [`sst generate`](generate.md) | Create semantic views | Yes |
-| [`sst deploy`](deploy.md) | One-step: validate → extract → generate | Yes |
+| [`sst deploy`](deploy.md) | ~~One-step: validate → extract → generate~~ [DEPRECATED] | Yes |
 | [`sst drop`](drop.md) | Remove semantic views (specific or prune orphans) | Yes |
 | [`sst migrate-meta`](migrate-meta.md) | Migrate to dbt Fusion format | No |
 
@@ -198,7 +198,7 @@ See [Getting Started](../getting-started.md) for detailed setup instructions.
 
 - **[sst extract](extract.md)** - Extract metadata from dbt/semantic models to Snowflake tables
 - **[sst generate](generate.md)** - Generate Snowflake SEMANTIC VIEWs from metadata tables
-- **[sst deploy](deploy.md)** - One-step deployment: validate → extract → generate
+- **[sst deploy](deploy.md)** - [DEPRECATED] Use `sst generate --all` instead
 
 ### Utility Commands
 

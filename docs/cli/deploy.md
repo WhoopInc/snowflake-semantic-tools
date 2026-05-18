@@ -1,5 +1,9 @@
 # sst deploy
 
+> **DEPRECATED:** `sst deploy` is deprecated and will be removed in v0.4.0.
+> Use `sst generate --all` instead — validation is now built-in.
+> See [sst generate](generate.md) for the recommended workflow.
+
 One-step deployment: validate → extract → generate.
 
 ---
