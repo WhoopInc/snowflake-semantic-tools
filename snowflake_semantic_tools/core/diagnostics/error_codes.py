@@ -461,6 +461,19 @@ _register(
     ErrorCategory.GENERATE,
     "Could not write generated SQL to '{path}'. Check directory permissions and disk space",
 )
+_register(
+    "SST-G007",
+    "SST manifest not found",
+    ErrorCategory.GENERATE,
+    "sst_manifest.json not found in state directory. All SST YAML files will be treated as changed. "
+    "To create a baseline, run: sst generate --all",
+)
+_register(
+    "SST-G008",
+    "SST YAML change detection failed",
+    ErrorCategory.GENERATE,
+    "Unexpected error during SST manifest comparison. All views will be regenerated as a safety measure",
+)
 
 # ===========================================================================
 # CONFIG ERRORS (SST-C0xx)

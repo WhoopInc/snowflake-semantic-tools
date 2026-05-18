@@ -138,25 +138,47 @@ sst generate --all --defer-target prod --state ./prod_run_artifacts
 
 ## Selective Generation
 
-Use `--only-modified` to regenerate only views affected by dbt model changes:
+Use `--only-modified` to regenerate only views affected by changes:
 
 ```bash
 sst generate --all --defer-target prod --only-modified
 ```
 
-This compares dbt model checksums between your current `manifest.json` and the defer manifest, then regenerates only semantic views that reference the changed models.
+This detects two categories of changes and regenerates only the impacted views:
+
+1. **dbt model SQL changes** — compares `manifest.json` checksums between current and defer manifests
+2. **SST YAML changes** — compares `sst_manifest.json` checksums for all SST-relevant YAML files
 
 ### What Gets Detected
 
-| Change Type | Detected by `--only-modified`? | Action Required |
-|-------------|-------------------------------|-----------------|
-| dbt model (`.sql`) | Yes | Automatic |
-| Metrics YAML | No | Run `sst extract` + `sst generate --all` |
-| Relationships YAML | No | Run `sst extract` + `sst generate --all` |
-| Filters YAML | No | Run `sst extract` + `sst generate --all` |
-| Semantic view definition | No | Run `sst generate --all` |
+| Change Type | Detected? | Views Regenerated |
+|-------------|-----------|-------------------|
+| dbt model (`.sql`) | Yes | Views referencing that table |
+| dbt model YAML (facts/dimensions) | Yes | Views referencing that table |
+| Metrics YAML | Yes | All views (cross-cutting) |
+| Relationships YAML | Yes | All views (cross-cutting) |
+| Filters YAML | Yes | All views (cross-cutting) |
+| Verified queries YAML | Yes | All views (cross-cutting) |
+| Custom instructions YAML | Yes | All views (cross-cutting) |
+| Semantic view definition | Yes | Views defined in that file |
+| `sst_config.yml` | Yes | All views (config is global) |
 
-**Important:** This flag only detects changes to dbt models (`.sql` files), not changes to SST YAML files.
+### SST Manifest
+
+After each successful non-dry-run generation, SST saves `sst_manifest.json` alongside dbt's `manifest.json` in `./target/`. This file contains SHA-256 checksums of all SST-relevant YAML files and is used as the baseline for the next `--only-modified` comparison.
+
+When using `--state` with external artifacts, ensure both `manifest.json` and `sst_manifest.json` are present. If `sst_manifest.json` is missing (SST-G007), all SST YAML files are treated as changed.
+
+### Example Output
+
+```
+Detected changes:
+  dbt models: 0 changed
+  SST YAML: 1 file(s) changed
+    • models/marts/customers.yml
+Will regenerate 2 view(s)
+Filtering to 2 view(s): jaffle_shop_complete, jaffle_shop_sales_analytics
+```
 
 ---
 

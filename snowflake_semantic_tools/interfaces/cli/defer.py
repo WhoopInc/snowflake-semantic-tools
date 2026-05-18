@@ -399,11 +399,13 @@ def get_modified_views_filter(
     output: Optional[CLIOutput] = None,
 ) -> Optional[list]:
     """
-    Get list of view names that should be regenerated based on model changes.
+    Get list of view names that should be regenerated based on changes.
 
-    This function compares the current manifest with the defer manifest to identify
-    which models have changed, then filters the available views to only those
-    that reference changed models.
+    Detects two categories of changes:
+    1. dbt model SQL changes (via manifest.json checksum comparison)
+    2. SST YAML changes (via sst_manifest.json checksum comparison)
+
+    The union of both change sets determines which views need regeneration.
 
     Args:
         defer_config: Resolved defer configuration (must have only_modified=True)
@@ -422,45 +424,65 @@ def get_modified_views_filter(
             output.warning("Cannot determine modified models: no defer manifest available")
         return None
 
+    if output:
+        output.info("Detected changes:")
+
+    dbt_views = _get_dbt_model_changes(defer_config, available_views, output)
+    sst_views = _get_sst_yaml_changes(defer_config, output)
+
+    if dbt_views is None or sst_views is None:
+        return None
+
+    merged = sorted(set(dbt_views) | set(sst_views))
+
+    if not merged:
+        return []
+
+    if output:
+        output.info(f"Will regenerate {len(merged)} view(s)")
+
+    return merged
+
+
+def _get_dbt_model_changes(
+    defer_config: DeferConfig,
+    available_views: list,
+    output: Optional[CLIOutput] = None,
+) -> Optional[list]:
+    """Detect views impacted by dbt model SQL changes (existing behaviour)."""
     try:
         from snowflake_semantic_tools.core.parsing.parsers.manifest_parser import ManifestParser
 
-        # Load current manifest (from ./target/)
         current_manifest = ManifestParser()
         if not current_manifest.load():
             if output:
                 output.warning("Could not load current manifest for comparison")
             return None
 
-        # Load defer manifest
         defer_manifest = ManifestParser(defer_config.manifest_path)
         if not defer_manifest.load():
             if output:
                 output.warning("Could not load defer manifest for comparison")
             return None
 
-        # Compare manifests
         diff = current_manifest.compare_to(defer_manifest)
 
         if diff.total_changes == 0:
             if output:
-                output.info("No model changes detected - all views up to date")
+                output.info("  dbt models: 0 changed")
             return []
 
         changed_models = set(m.lower() for m in diff.changed)
         if output:
-            output.info(f"Detected {len(changed_models)} changed model(s): {', '.join(sorted(changed_models))}")
+            output.info(f"  dbt models: {len(changed_models)} changed " f"({', '.join(sorted(changed_models))})")
 
-        # Filter views to only those referencing changed models
         views_to_regenerate = []
         for view in available_views:
             view_name = view.get("name") or view.get("NAME")
             tables_data = view.get("tables") or view.get("TABLES") or ""
 
-            # Parse tables - could be JSON array string, list, or comma-separated
             tables = []
             if isinstance(tables_data, str):
-                # Try JSON first
                 try:
                     import json
 
@@ -470,29 +492,82 @@ def get_modified_views_filter(
                     else:
                         tables = [tables_data.lower()]
                 except (json.JSONDecodeError, TypeError):
-                    # Fall back to comma-separated
                     tables = [t.strip().lower() for t in tables_data.split(",")]
             elif isinstance(tables_data, list):
                 tables = [str(t).lower() for t in tables_data]
 
-            # Check if any table in this view matches a changed model
             for table in tables:
-                # Handle fully qualified names (DATABASE.SCHEMA.TABLE)
                 simple_name = table.split(".")[-1].lower()
                 if simple_name in changed_models:
                     views_to_regenerate.append(view_name)
                     break
 
-        if output:
-            if views_to_regenerate:
-                output.info(f"Will regenerate {len(views_to_regenerate)} view(s) referencing changed models")
-            else:
-                output.info("No views reference the changed models")
-
         return views_to_regenerate
 
     except Exception as e:
-        logger.warning(f"Error determining modified views: {e}")
+        logger.warning(f"Error determining modified views from dbt manifests: {e}")
         if output:
-            output.warning(f"Could not filter views by modification: {e}")
+            output.warning(f"Could not detect dbt model changes: {e}")
+        return None
+
+
+def _get_sst_yaml_changes(
+    defer_config: DeferConfig,
+    output: Optional[CLIOutput] = None,
+) -> Optional[list]:
+    """Detect views impacted by SST YAML file changes."""
+    try:
+        from snowflake_semantic_tools.core.parsing.sst_manifest import SSTManifest
+
+        current = SSTManifest()
+        try:
+            current.build()
+        except Exception as e:
+            logger.warning(f"Could not build current SST manifest: {e}")
+            if output:
+                output.warning(f"Could not scan current SST YAML files: {e}")
+            return None
+
+        baseline_dir = defer_config.state_path or Path("target")
+        baseline = SSTManifest.load(baseline_dir)
+
+        if baseline is None:
+            if output:
+                output.warning(
+                    "SST-G007: SST manifest not found in state directory — " "treating all SST YAML files as changed"
+                )
+            return None
+
+        diff = current.compare_to(baseline)
+
+        if diff.total_changes == 0 and not diff.config_changed:
+            if output:
+                output.info("  SST YAML: 0 changed")
+            return []
+
+        if output:
+            parts = []
+            if diff.total_changes > 0:
+                parts.append(f"{diff.total_changes} file(s) changed")
+            if diff.config_changed:
+                parts.append("sst_config changed")
+            output.info(f"  SST YAML: {', '.join(parts)}")
+            for f in diff.changed_files:
+                output.info(f"    • {f}", indent=1)
+
+        file_view_map = current.get_file_view_map()
+        baseline_file_view_map = baseline.get_file_view_map()
+        impacted = diff.get_impacted_views(file_view_map, baseline_file_view_map)
+
+        if impacted is None:
+            if output:
+                output.info("  SST YAML change impacts all views")
+            return None
+
+        return impacted
+
+    except Exception as e:
+        logger.warning(f"Error determining SST YAML changes: {e}")
+        if output:
+            output.warning(f"SST-G008: SST YAML change detection failed: {e}")
         return None
