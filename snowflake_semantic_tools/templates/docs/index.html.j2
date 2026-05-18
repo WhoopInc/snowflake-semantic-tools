@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SST Docs</title>
+    <style>{{ app_css }}</style>
+</head>
+<body>
+<div class="layout">
+    <nav class="sidebar">
+        <div class="sidebar-brand">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
+            SST Docs
+        </div>
+        <div class="sidebar-section">
+            <div class="sidebar-item active" data-view="catalog" onclick="switchView('catalog')">
+                <span>Catalog</span>
+                <span class="sidebar-badge">{{ summary.total }}</span>
+            </div>
+            <div class="sidebar-item" data-view="lineage" onclick="switchView('lineage')">
+                <span>Lineage</span>
+            </div>
+        </div>
+        <div class="sidebar-section">
+            <div class="sidebar-label">Components</div>
+            {% for type_info in component_types %}
+            <div class="sidebar-item" onclick="filterByType('{{ type_info.key }}')">
+                <span style="display:flex;align-items:center"><span class="sidebar-dot" style="background:{{ type_info.color }}"></span>{{ type_info.label }}</span>
+                <span class="sidebar-badge">{{ type_info.count }}</span>
+            </div>
+            {% endfor %}
+        </div>
+        {% if catalog.semantic_views %}
+        <div class="sidebar-section">
+            <div class="sidebar-label">Semantic Views</div>
+            {% for sv in catalog.semantic_views %}
+            <div class="sidebar-item" onclick="filterByView('{{ sv.name|default('') }}')">
+                <span style="display:flex;align-items:center"><span class="sidebar-dot" style="background:var(--c-sv)"></span>{{ sv.name|default('') }}</span>
+            </div>
+            {% endfor %}
+        </div>
+        {% endif %}
+        <div style="flex:1"></div>
+        <div style="padding:12px 20px;font-size:11px;color:var(--text-muted);border-top:1px solid rgba(255,255,255,0.06)">
+            SST v{{ sst_version }}<br>{{ generated_at }}
+        </div>
+    </nav>
+
+    <div class="main">
+        <div class="topbar">
+            <span class="topbar-title" id="topbar-title">Catalog</span>
+            <div class="topbar-actions">
+                <button class="search-btn" onclick="openSearch()">Search...<kbd>&#8984;K</kbd></button>
+            </div>
+        </div>
+        <div class="content">
+            <!-- Catalog View -->
+            <div id="view-catalog" class="view active">
+                <div class="stat-row">
+                    {% for type_info in component_types %}
+                    <div class="stat-card" onclick="filterByType('{{ type_info.key }}')" style="cursor:pointer">
+                        <div class="stat-val" style="color:{{ type_info.color }}">{{ type_info.count }}</div>
+                        <div class="stat-label">{{ type_info.label }}</div>
+                    </div>
+                    {% endfor %}
+                </div>
+                <div class="entity-header">
+                    <div class="filter-bar" id="filter-bar">
+                        <span class="filter-pill active" data-filter="all" onclick="setFilter('all')">All</span>
+                        {% for type_info in component_types %}
+                        <span class="filter-pill" data-filter="{{ type_info.key }}" onclick="setFilter('{{ type_info.key }}')">{{ type_info.label }}</span>
+                        {% endfor %}
+                    </div>
+                </div>
+                <div class="entity-table-wrap">
+                    <table class="entity-table">
+                        <thead><tr>
+                            <th style="width:50px">Type</th>
+                            <th>Name</th>
+                            <th>Description</th>
+                            <th>References</th>
+                        </tr></thead>
+                        <tbody id="entity-tbody"></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Lineage View -->
+            <div id="view-lineage" class="view">
+                <div class="lineage-wrap" id="lineage-container">
+                    <div class="lineage-toolbar" id="lineage-toolbar"></div>
+                    <div class="lineage-legend">
+                        <div class="legend-item"><span class="legend-dot" style="background:var(--c-source)"></span> dbt Source</div>
+                        <div class="legend-item"><span class="legend-dot" style="background:var(--c-dbt)"></span> dbt Model</div>
+                        <div class="legend-item"><span class="legend-dot" style="background:var(--c-table)"></span> Table</div>
+                        <div class="legend-item"><span class="legend-dot" style="background:var(--c-metric)"></span> Metric</div>
+                        <div class="legend-item"><span class="legend-dot" style="background:var(--c-rel)"></span> Relationship</div>
+                        <div class="legend-item"><span class="legend-dot" style="background:var(--c-sv)"></span> Semantic View</div>
+                        <div class="legend-item"><span class="legend-dot" style="background:var(--c-filter)"></span> Filter</div>
+                        <div class="legend-item"><span class="legend-dot" style="background:var(--c-vq)"></span> Verified Query</div>
+                    </div>
+                    <div class="lineage-controls">
+                        <button onclick="zoomIn()" title="Zoom in">+</button>
+                        <button onclick="zoomOut()" title="Zoom out">&minus;</button>
+                        <button onclick="zoomFit()" title="Fit">&#8644;</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div id="detail-panel" class="detail-panel">
+    <div class="detail-panel-header">
+        <div><h3 id="detail-name"></h3><div id="detail-type-badge"></div></div>
+        <button class="detail-panel-close" onclick="closeDetail()">&times;</button>
+    </div>
+    <div class="detail-panel-body" id="detail-body"></div>
+</div>
+
+<div id="search-overlay" class="search-overlay">
+    <div class="search-box">
+        <input id="search-input" class="search-input" type="text" placeholder="Search components..." autocomplete="off">
+        <div id="search-results" class="search-results"></div>
+    </div>
+</div>
+
+<script>{{ d3_js }}</script>
+<script>{{ dagre_js }}</script>
+<script>
+var GRAPH_DATA = {{ graph_data_json }};
+var CATALOG_DATA = {{ catalog_json }};
+var SEARCH_DATA = {{ search_data_json }};
+</script>
+<script>{{ app_js }}</script>
+<script>{{ lineage_js }}</script>
+</body>
+</html>
