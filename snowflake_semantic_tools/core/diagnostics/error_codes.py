@@ -455,6 +455,12 @@ _register(
     ErrorCategory.GENERATE,
     "Role needs CREATE SEMANTIC VIEW on schema. Grant: GRANT CREATE SEMANTIC VIEW ON SCHEMA {schema} TO ROLE {role}",
 )
+_register(
+    "SST-G006",
+    "SQL output write failed",
+    ErrorCategory.GENERATE,
+    "Could not write generated SQL to '{path}'. Check directory permissions and disk space",
+)
 
 # ===========================================================================
 # CONFIG ERRORS (SST-C0xx)
