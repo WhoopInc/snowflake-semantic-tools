@@ -7,12 +7,11 @@ Shows only what changed: new, removed, and modified components.
 """
 
 import json
+import math
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, List, Optional, Set
-
-import pandas as pd
 
 from snowflake_semantic_tools.infrastructure.snowflake import SnowflakeConfig
 from snowflake_semantic_tools.services.compile import MANIFEST_FILENAME
@@ -73,7 +72,7 @@ _WINDOW_TAIL_RE = re.compile(r"\s+OVER\s*\(", re.IGNORECASE)
 
 
 def _safe_str(val) -> str:
-    if val is None or (isinstance(val, float) and pd.isna(val)):
+    if val is None or (isinstance(val, float) and math.isnan(val)):
         return ""
     return str(val)
 
