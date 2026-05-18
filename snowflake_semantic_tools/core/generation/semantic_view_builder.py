@@ -25,6 +25,7 @@ from snowflake_semantic_tools.core.parsing.join_condition_parser import JoinCond
 from snowflake_semantic_tools.infrastructure.snowflake import SnowflakeClient
 from snowflake_semantic_tools.infrastructure.snowflake.config import SnowflakeConfig
 from snowflake_semantic_tools.shared import get_logger
+from snowflake_semantic_tools.shared.constants import SQL_FUNCTION_KEYWORDS
 from snowflake_semantic_tools.shared.utils.character_sanitizer import CharacterSanitizer
 
 if TYPE_CHECKING:
@@ -1153,6 +1154,23 @@ class SemanticViewBuilder:
 
         return sorted(list(table_names))
 
+    def _extract_column_references_from_expression(self, expression: str) -> List[tuple]:
+        """
+        Extract all TABLE.COLUMN references from a metric expression.
+
+        Returns a list of (table_name, column_name) tuples.
+        Filters out common SQL keywords that match the TABLE.COLUMN pattern.
+        """
+        pattern = r"\b([A-Za-z_][A-Za-z0-9_]*)\s*\.\s*([A-Za-z_][A-Za-z0-9_]*)\b"
+        matches = re.findall(pattern, expression)
+
+        refs = []
+        for table_ref, column_ref in matches:
+            if table_ref.upper() not in SQL_FUNCTION_KEYWORDS:
+                refs.append((table_ref, column_ref))
+
+        return refs
+
     def _build_metrics_clause(self, conn, table_names: List[str]) -> str:
         """Build the METRICS clause of the CREATE SEMANTIC VIEW statement ."""
         metrics = self._get_metrics_for_selected_tables(conn, table_names)
@@ -1202,6 +1220,16 @@ class SemanticViewBuilder:
                         f"{', '.join(missing_tables)}. Available tables: {', '.join(available_tables)}"
                     )
                     continue
+
+                col_refs = self._extract_column_references_from_expression(expression)
+                for table_ref, col_ref in col_refs:
+                    qualified = f"{table_ref.upper()}.{col_ref.upper()}"
+                    if table_ref.lower() in available_tables and qualified not in defined_columns:
+                        logger.warning(
+                            f"Metric '{metric_name}' references '{qualified}' which is not declared "
+                            f"as a fact or dimension. This may cause a Snowflake 'invalid identifier' error. "
+                            f"Add column_type: fact (or dimension) to '{col_ref}' in table '{table_ref}'."
+                        )
             else:
                 referenced_tables_in_expr = self._extract_table_references_from_expression(expression)
                 missing_tables = [t for t in referenced_tables_in_expr if t not in available_tables]
