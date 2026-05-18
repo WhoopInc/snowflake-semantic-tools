@@ -4,6 +4,7 @@ Generate Command
 CLI command for generating SQL Semantic Views in Snowflake.
 """
 
+import re
 import time
 import traceback
 from pathlib import Path
@@ -296,7 +297,7 @@ def generate(
                         output_path.mkdir(parents=True, exist_ok=True)
 
                         for view_name, sql in result.sql_statements.items():
-                            safe_name = view_name.replace("/", "_").replace("\\", "_")
+                            safe_name = re.sub(r'[\\/:*?"<>|]', "_", view_name)
                             sql_file = output_path / f"{safe_name}.sql"
                             sql_file.write_text(sql, encoding="utf-8")
 
