@@ -12,7 +12,7 @@ Snowflake Semantic Tools (SST) helps you create **Snowflake Semantic Views**—a
 
 - **Define semantics as code** - Metrics, relationships, filters, and verified queries as YAML
 - **Enrich automatically** - Pull column types, sample values, and metadata from Snowflake
-- **Validate before deploy** - 100+ validation rules catch errors before they reach Snowflake
+- **Validate before deploy** - 50+ validation rules catch errors before they reach Snowflake
 - **Deploy to Snowflake** - Generate native SEMANTIC VIEW objects from your definitions
 
 ---
@@ -38,7 +38,7 @@ Snowflake Semantic Tools (SST) helps you create **Snowflake Semantic Views**—a
 | **Install SST and set up my project** | [Getting Started](getting-started.md) |
 | **Enrich my dbt models with metadata** | [sst enrich](cli/enrich.md) |
 | **Validate my semantic models** | [sst validate](cli/validate.md) |
-| **Deploy semantic views to Snowflake** | [sst deploy](cli/deploy.md) |
+| **Deploy semantic views to Snowflake** | [sst generate](cli/generate.md) |
 | **Write metrics, relationships, filters** | [Semantic Models Guide](concepts/semantic-models.md) |
 | **Set up Snowflake authentication** | [Authentication Guide](guides/authentication.md) |
 | **Configure CI/CD pipelines** | [CI/CD Guide](guides/ci-cd.md) |
@@ -64,7 +64,7 @@ Snowflake Semantic Tools (SST) helps you create **Snowflake Semantic Views**—a
 
 **New to SST?** Start with `sst init` to configure your project.
 
-**Production deployments?** Use `sst deploy` which orchestrates the full workflow.
+**Production deployments?** Use `sst generate --all` which validates and generates in one step.
 
 ---
 
@@ -90,7 +90,7 @@ sst format models/
 
 ```bash
 # Option A: One-step deployment
-sst deploy --target prod
+sst generate --all --target prod
 
 # Option B: Step-by-step (for debugging)
 sst validate
@@ -105,7 +105,7 @@ sst generate --target prod --all
 sst validate
 
 # Main branch: Full deployment
-sst deploy --target prod
+sst generate --all --target prod
 ```
 
 ---
@@ -203,7 +203,7 @@ Full reference: [Configuration Reference](reference/config.md)
 - [sst format](cli/format.md) - YAML formatting
 - [sst extract](cli/extract.md) - Metadata extraction
 - [sst generate](cli/generate.md) - Semantic view generation
-- [sst deploy](cli/deploy.md) - One-step deployment
+- [sst deploy](cli/deploy.md) - [DEPRECATED] Use `sst generate --all` instead
 - [sst migrate-meta](cli/migrate-meta.md) - dbt Fusion migration
 
 ### Concepts

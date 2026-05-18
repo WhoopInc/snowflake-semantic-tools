@@ -47,7 +47,8 @@ Complete reference for all Snowflake Semantic Tools commands.
 
 | Goal | Command |
 |------|---------|
-| One-step deployment | [`sst deploy`](deploy.md) |\n| Preview what will change | [`sst diff`](diff.md) |
+| One-step deployment | [`sst generate --all`](generate.md) |
+| Preview what will change | [`sst diff`](diff.md) |
 | Load metadata to Snowflake | [`sst extract`](extract.md) |
 | Generate semantic views | [`sst generate --all`](generate.md) |
 | Generate specific views | [`sst generate -v view_name`](generate.md) |
@@ -85,15 +86,14 @@ sst format models/
 ### Deploying to Production
 
 ```bash
-# Option A: One-step (recommended)
-sst deploy --target prod
+# Recommended: generate validates automatically
+sst generate --all --target prod
 
-# Option B: Step-by-step
+# Step-by-step (for debugging)
 sst validate
 sst compile
 sst diff --target prod
-sst extract --target prod
-sst generate --target prod --all
+sst generate --all --target prod --skip-validation
 ```
 
 ### CI/CD Pipeline
@@ -105,7 +105,7 @@ sst compile
 sst diff --target prod
 
 # On merge to main: full deployment
-sst deploy --target prod
+sst generate --all --target prod
 ```
 
 ### Incremental Development with Defer
@@ -115,7 +115,7 @@ sst deploy --target prod
 sst generate --all --defer-target prod --only-modified
 
 # Full deployment with defer
-sst deploy --defer-target prod --only-modified
+sst generate --all --defer-target prod --only-modified
 ```
 
 ---

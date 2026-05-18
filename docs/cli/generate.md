@@ -357,13 +357,13 @@ sst generate --all --from-snowflake
 └─────────────────┘
 ```
 
-**Tip:** Use `sst deploy` to run compile → validate → generate in one command.
+**Tip:** `sst generate` validates automatically. Use `--skip-validation` if you already ran `sst validate` separately.
 
 ---
 
 ## Related
 
 - [sst compile](compile.md) - Compile metadata into local manifest
-- [sst deploy](deploy.md) - One-step deployment
+- [sst deploy](deploy.md) - [DEPRECATED] Use `sst generate --all` instead
 - [sst validate](validate.md) - Validate before generating
 - [Semantic Models Guide](../concepts/semantic-models.md) - Define semantic views
