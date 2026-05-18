@@ -149,8 +149,8 @@ def _output_json(result, output_file):
         if v.changes:
             view_data["changes"] = [
                 {
-                    k: v
-                    for k, v in {
+                    dk: dv
+                    for dk, dv in {
                         "kind": c.kind,
                         "name": c.name,
                         "table": c.table or None,
@@ -159,7 +159,7 @@ def _output_json(result, output_file):
                         "old_value": c.old_value,
                         "new_value": c.new_value,
                     }.items()
-                    if v is not None
+                    if dv is not None
                 }
                 for c in v.changes
             ]
