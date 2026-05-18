@@ -14,6 +14,8 @@ Complete reference for all Snowflake Semantic Tools commands.
 | [`sst validate`](validate.md) | Validate semantic models (99+ checks) | No |
 | [`sst format`](format.md) | YAML linter for consistency | No |
 | [`sst extract`](extract.md) | Load metadata to Snowflake tables | Yes |
+| [`sst compile`](compile.md) | Compile metadata into local manifest | No |
+| [`sst diff`](diff.md) | Preview semantic view changes before deployment | Yes |
 | [`sst generate`](generate.md) | Create semantic views | Yes |
 | [`sst deploy`](deploy.md) | One-step: validate → extract → generate | Yes |
 | [`sst drop`](drop.md) | Remove semantic views (specific or prune orphans) | Yes |
@@ -37,7 +39,7 @@ Complete reference for all Snowflake Semantic Tools commands.
 |------|---------|
 | Add metadata to dbt models | [`sst enrich --models name1,name2`](enrich.md) |
 | Generate LLM synonyms | [`sst enrich --models name --synonyms`](enrich.md) |
-| Check for errors | [`sst validate`](validate.md) |
+| Check for errors | [`sst validate`](validate.md) |\n| Preview changes before deploying | [`sst diff`](diff.md) |
 | Standardize YAML formatting | [`sst format models/`](format.md) |
 | Migrate meta.sst to config.meta.sst | [`sst migrate-meta models/`](migrate-meta.md) |
 
@@ -45,7 +47,7 @@ Complete reference for all Snowflake Semantic Tools commands.
 
 | Goal | Command |
 |------|---------|
-| One-step deployment | [`sst deploy`](deploy.md) |
+| One-step deployment | [`sst deploy`](deploy.md) |\n| Preview what will change | [`sst diff`](diff.md) |
 | Load metadata to Snowflake | [`sst extract`](extract.md) |
 | Generate semantic views | [`sst generate --all`](generate.md) |
 | Generate specific views | [`sst generate -v view_name`](generate.md) |
@@ -88,6 +90,8 @@ sst deploy --target prod
 
 # Option B: Step-by-step
 sst validate
+sst compile
+sst diff --target prod
 sst extract --target prod
 sst generate --target prod --all
 ```
@@ -95,8 +99,10 @@ sst generate --target prod --all
 ### CI/CD Pipeline
 
 ```bash
-# On every PR: validate only
+# On every PR: validate and diff
 sst validate
+sst compile
+sst diff --target prod
 
 # On merge to main: full deployment
 sst deploy --target prod
