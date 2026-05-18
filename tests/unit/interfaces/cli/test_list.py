@@ -180,7 +180,7 @@ class TestListService:
         mock_dbt.return_value = []
         mock_semantic.return_value = []
         service = SemanticComponentListService()
-        result = service.execute(ListConfig())
+        result = service.execute(ListConfig(no_manifest=True))
         assert len(result.errors) > 0
         assert result.total_count == 0
 
@@ -227,7 +227,7 @@ models:
         with patch.object(
             service.parser, "parse_all_files", side_effect=ParsingCriticalError("test error", ["error1", "error2"])
         ):
-            result = service.execute(ListConfig())
+            result = service.execute(ListConfig(no_manifest=True))
         assert "error1" in result.errors
         assert "error2" in result.errors
 
@@ -871,3 +871,121 @@ class TestServiceEdgeCases:
         service = SemanticComponentListService()
         files = service._find_dbt_files(ListConfig(dbt_path=dbt_dir))
         assert len(files) == 1
+
+
+class TestManifestFirstLoading:
+    def test_loads_from_manifest_when_present(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        target = tmp_path / "target"
+        target.mkdir()
+        manifest = {
+            "metadata": {},
+            "file_checksums": {},
+            "tables": {
+                "tables": [{"table_name": "ORDERS"}],
+                "metrics": [{"name": "REVENUE", "table_name": "ORDERS", "tables": ["ORDERS"]}],
+                "relationships": [],
+                "filters": [],
+                "semantic_views": [{"name": "sv1", "tables": ["ORDERS"]}],
+                "custom_instructions": [],
+                "verified_queries": [],
+            },
+        }
+        (target / "sst_manifest.json").write_text(json.dumps(manifest))
+
+        service = SemanticComponentListService()
+        result = service.execute(ListConfig())
+        assert len(result.tables) == 1
+        assert len(result.metrics) == 1
+        assert len(result.semantic_views) == 1
+        assert result.total_count == 3
+
+    def test_falls_back_to_yaml_when_no_manifest(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        service = SemanticComponentListService()
+        result = service.execute(ListConfig(no_manifest=True))
+        assert len(result.errors) > 0
+
+    def test_no_manifest_flag_bypasses_manifest(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        target = tmp_path / "target"
+        target.mkdir()
+        manifest = {
+            "metadata": {},
+            "file_checksums": {},
+            "tables": {
+                "tables": [{"table_name": "ORDERS"}],
+                "metrics": [],
+                "relationships": [],
+                "filters": [],
+                "semantic_views": [],
+                "custom_instructions": [],
+                "verified_queries": [],
+            },
+        }
+        (target / "sst_manifest.json").write_text(json.dumps(manifest))
+
+        service = SemanticComponentListService()
+        result = service.execute(ListConfig(no_manifest=True))
+        assert result.total_count == 0
+
+    def test_table_filter_with_manifest(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        target = tmp_path / "target"
+        target.mkdir()
+        manifest = {
+            "metadata": {},
+            "file_checksums": {},
+            "tables": {
+                "tables": [
+                    {"table_name": "ORDERS"},
+                    {"table_name": "CUSTOMERS"},
+                ],
+                "metrics": [
+                    {"name": "REVENUE", "table_name": "ORDERS", "tables": ["ORDERS"]},
+                    {"name": "CUST_COUNT", "table_name": "CUSTOMERS", "tables": ["CUSTOMERS"]},
+                ],
+                "relationships": [],
+                "filters": [],
+                "semantic_views": [],
+                "custom_instructions": [],
+                "verified_queries": [],
+            },
+        }
+        (target / "sst_manifest.json").write_text(json.dumps(manifest))
+
+        service = SemanticComponentListService()
+        result = service.execute(ListConfig(table_filter="ORDER"))
+        assert len(result.tables) == 1
+        assert result.tables[0]["table_name"] == "ORDERS"
+        assert len(result.metrics) == 1
+        assert result.metrics[0]["name"] == "REVENUE"
+
+    def test_corrupt_manifest_falls_back(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        target = tmp_path / "target"
+        target.mkdir()
+        (target / "sst_manifest.json").write_text("{bad json")
+
+        service = SemanticComponentListService()
+        result = service.execute(ListConfig())
+        assert len(result.errors) > 0
+
+    def test_explicit_dbt_path_bypasses_manifest(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        target = tmp_path / "target"
+        target.mkdir()
+        manifest = {
+            "metadata": {},
+            "file_checksums": {},
+            "tables": {"tables": [{"table_name": "FROM_MANIFEST"}]},
+        }
+        (target / "sst_manifest.json").write_text(json.dumps(manifest))
+
+        models = tmp_path / "models"
+        models.mkdir()
+        (models / "test.yml").write_text("models:\n  - name: from_yaml\n")
+
+        service = SemanticComponentListService()
+        result = service.execute(ListConfig(dbt_path=models))
+        assert not any(t.get("table_name") == "FROM_MANIFEST" for t in result.tables)
