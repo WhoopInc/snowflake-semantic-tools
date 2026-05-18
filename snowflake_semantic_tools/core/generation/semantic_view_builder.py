@@ -25,6 +25,7 @@ from snowflake_semantic_tools.core.parsing.join_condition_parser import JoinCond
 from snowflake_semantic_tools.infrastructure.snowflake import SnowflakeClient
 from snowflake_semantic_tools.infrastructure.snowflake.config import SnowflakeConfig
 from snowflake_semantic_tools.shared import get_logger
+from snowflake_semantic_tools.shared.constants import SQL_FUNCTION_KEYWORDS
 from snowflake_semantic_tools.shared.utils.character_sanitizer import CharacterSanitizer
 
 if TYPE_CHECKING:
@@ -1163,10 +1164,9 @@ class SemanticViewBuilder:
         pattern = r"\b([A-Za-z_][A-Za-z0-9_]*)\s*\.\s*([A-Za-z_][A-Za-z0-9_]*)\b"
         matches = re.findall(pattern, expression)
 
-        sql_keywords = {"CAST", "EXTRACT", "TRIM", "CONVERT", "DATE_TRUNC", "DATEADD", "DATEDIFF"}
         refs = []
         for table_ref, column_ref in matches:
-            if table_ref.upper() not in sql_keywords:
+            if table_ref.upper() not in SQL_FUNCTION_KEYWORDS:
                 refs.append((table_ref, column_ref))
 
         return refs

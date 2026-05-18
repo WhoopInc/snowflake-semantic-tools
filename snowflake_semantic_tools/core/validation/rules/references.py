@@ -14,6 +14,7 @@ from typing import Any, Dict, List, Optional, Set, Tuple
 
 from snowflake_semantic_tools.core.diagnostics.suggestions import format_available_list
 from snowflake_semantic_tools.core.models import ValidationResult
+from snowflake_semantic_tools.shared.constants import SQL_FUNCTION_KEYWORDS
 
 _SQL_TRANSFORMATION_PATTERNS = [
     (r"::", "type casting (::)"),
@@ -329,10 +330,9 @@ class ReferenceValidator:
                 # V092 adds value for windowed metrics (excluded from V003) and provides
                 # a more specific fix suggestion mentioning column_type.
                 if using_rels and expr and isinstance(expr, str) and not is_derived:
-                    sql_keywords = {"CAST", "EXTRACT", "TRIM", "CONVERT", "DATE_TRUNC", "DATEADD", "DATEDIFF"}
                     col_refs = re.findall(r"\b(\w+)\.(\w+)\b", expr)
                     for table_ref, column_ref in col_refs:
-                        if table_ref.upper() in sql_keywords:
+                        if table_ref.upper() in SQL_FUNCTION_KEYWORDS:
                             continue
                         table_lower = table_ref.lower()
                         col_lower = column_ref.lower()
