@@ -16,7 +16,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-import yaml as pyyaml
+import yaml
 
 from snowflake_semantic_tools.core.parsing import Parser
 from snowflake_semantic_tools.core.parsing.file_detector import FileTypeDetector
@@ -306,7 +306,7 @@ class CompileService:
         for f in dbt_files:
             try:
                 raw = f.read_bytes()
-                data = pyyaml.safe_load(raw)
+                data = yaml.safe_load(raw)
                 if not isinstance(data, dict) or "models" not in data:
                     continue
                 model_names = []
@@ -387,8 +387,8 @@ class CompileService:
                 if "semantic_views:" not in content:
                     continue
                 try:
-                    data = pyyaml.safe_load(content)
-                except pyyaml.YAMLError:
+                    data = yaml.safe_load(content)
+                except yaml.YAMLError:
                     data = None
 
                 if data and isinstance(data, dict) and "semantic_views" in data:
