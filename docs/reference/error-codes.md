@@ -77,6 +77,11 @@ Stable error codes for SST diagnostics. Each code is a permanent identifier that
 | `SST-E003` | Permission denied | Role needs CREATE TABLE on schema. Grant: GRANT CREATE TABLE ON SCHEMA {schema} TO ROLE {role} |
 | `SST-E004` | Manifest not found | Run 'dbt compile' first, or use --dbt-compile flag |
 | `SST-E005` | Stale manifest | manifest.json is older than source files. Re-run: dbt compile |
+| `SST-E006` | Source not found in manifest | Source '{source_name}.{table_name}' not in manifest. Run `dbt compile` or check source name |
+| `SST-E007` | Source table not found in Snowflake | Table '{database}.{schema}.{table}' does not exist. Check database/schema in your source definition |
+| `SST-E008` | No sources found | No dbt source definitions found. Ensure sources.yml exists with a `sources:` key |
+| `SST-E009` | Source YAML write failed | Could not write enriched metadata to '{path}'. Check file permissions |
+| `SST-E010` | Invalid source selector | Source selector must be format 'source_name.table_name'. Got: '{value}' |
 
 ## Generate Errors (SST-Gxxx)
 

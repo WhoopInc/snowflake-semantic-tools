@@ -226,7 +226,7 @@ class MetadataEnricher:
 
             # Also need schema query if column-synonyms requested but no existing columns
             existing_columns = existing_model.get("columns", []) if existing_model else []
-            if "column-synonyms" in components and not existing_columns:
+            if components and "column-synonyms" in components and not existing_columns:
                 needs_schema_query = True
 
             # Get table schema from Snowflake ONLY if needed
@@ -368,6 +368,180 @@ class MetadataEnricher:
             logger.debug(f"  Exception type: {type(e).__name__}", exc_info=True)
 
             return {"status": "error", "model": model_sql_path, "error": f"{type(e).__name__}: {str(e)}"}
+
+    def enrich_source(
+        self,
+        source_info: Dict[str, Any],
+        components: Optional[List[str]] = None,
+    ) -> Dict[str, Any]:
+        """
+        Enrich a single dbt source table's metadata with data from Snowflake.
+
+        Sources are defined in YAML under the 'sources:' key and represent
+        raw/staging tables. Unlike models, sources have no SQL file — their
+        schema comes directly from Snowflake DESCRIBE TABLE.
+
+        Components supported are identical to model enrichment:
+        - column-types, data-types, sample-values, detect-enums
+        - table-synonyms, column-synonyms
+
+        Args:
+            source_info: Dict with keys: source_name, table_name, database,
+                        schema, yaml_path
+            components: List of component names to enrich (None = defaults)
+
+        Returns:
+            Dict with keys: status, source (display name), yaml_path, columns_processed
+            On error: status='error', source (display name), error (message)
+        """
+        display_name = f"{source_info.get('source_name', '?')}.{source_info.get('table_name', '?')}"
+
+        try:
+            source_name = source_info["source_name"]
+            table_name = source_info["table_name"]
+            database_name = source_info["database"]
+            schema_name = source_info["schema"]
+            yaml_path = source_info["yaml_path"]
+            display_name = f"{source_name}.{table_name}"
+
+            logger.info(f"Processing source: {display_name}")
+            logger.info(f"  Database:   {database_name}")
+            logger.info(f"  Schema:     {schema_name}")
+            logger.info(f"  YAML:       {yaml_path}")
+
+            existing_yaml = self.yaml_handler.read_yaml(yaml_path)
+            if not existing_yaml:
+                return {
+                    "status": "error",
+                    "source": display_name,
+                    "error": f"SST-E009: Could not read source YAML file: {yaml_path}",
+                }
+
+            existing_table = self.yaml_handler.find_source_table_in_yaml(existing_yaml, source_name, table_name)
+            if not existing_table:
+                return {
+                    "status": "error",
+                    "source": display_name,
+                    "error": f"Source table '{display_name}' not found in YAML file: {yaml_path}",
+                }
+
+            needs_schema_metadata = not components or any(c in components for c in ["column-types", "data-types"])
+            needs_sample_data = not components or any(c in components for c in ["sample-values", "detect-enums"])
+            needs_schema_query = needs_schema_metadata or needs_sample_data
+
+            existing_columns = existing_table.get("columns", [])
+            if components and "column-synonyms" in components and not existing_columns:
+                needs_schema_query = True
+
+            table_columns = None
+            if needs_schema_query:
+                logger.info(f"  Action:     Querying Snowflake for table schema...")
+                table_columns = self._execute_with_retry(
+                    self.snowflake_client.metadata_manager.get_table_schema, table_name, schema_name, database_name
+                )
+
+                if not table_columns:
+                    logger.error(f"  Result:     FAILED - Could not retrieve table schema from Snowflake")
+                    return {
+                        "status": "error",
+                        "source": display_name,
+                        "error": f"SST-E007: Table '{database_name}.{schema_name}.{table_name}' not found in Snowflake",
+                    }
+            else:
+                logger.info(f"  Action:     Synonym-only mode (no Snowflake schema query)")
+                table_columns = []
+
+            self.yaml_handler.ensure_sst_structure(existing_table)
+            sst = existing_table["config"]["meta"]["sst"]
+
+            if "description" not in existing_table:
+                existing_table["description"] = ""
+
+            if "synonyms" not in sst or sst["synonyms"] is None:
+                sst["synonyms"] = []
+
+            if needs_schema_query:
+                updated_columns = self._process_columns_metadata(
+                    existing_columns,
+                    table_columns,
+                    table_name,
+                    schema_name,
+                    database_name,
+                    components=components,
+                )
+            else:
+                updated_columns = existing_columns
+
+            existing_table["columns"] = updated_columns
+
+            if self.synonym_generator and components:
+                if "table-synonyms" in components:
+                    force = getattr(self, "force_synonyms", False)
+
+                    project_path = getattr(self, "project_path", None)
+                    avoid_synonyms = None
+                    if project_path:
+                        avoid_synonyms = self.collect_existing_table_synonyms(
+                            project_path=project_path,
+                            exclude_model=table_name,
+                        )
+
+                    existing_table = self._enrich_table_synonyms(
+                        existing_table,
+                        updated_columns,
+                        full_yaml=existing_yaml,
+                        force=force,
+                        avoid_synonyms=avoid_synonyms,
+                    )
+
+                if "column-synonyms" in components:
+                    force = getattr(self, "force_synonyms", False)
+                    updated_columns = self._enrich_column_synonyms(
+                        updated_columns,
+                        table_name,
+                        table_description=existing_table.get("description", ""),
+                        full_yaml=existing_yaml,
+                        force=force,
+                    )
+                    existing_table["columns"] = updated_columns
+
+            try:
+                success = self.yaml_handler.write_yaml(existing_yaml, yaml_path)
+            except IOError as write_err:
+                logger.error(f"  Result: FAILED - {write_err}")
+                return {
+                    "status": "error",
+                    "source": display_name,
+                    "error": f"SST-E009: Could not write enriched metadata to '{yaml_path}'. Check file permissions",
+                }
+
+            if success:
+                logger.info(f"  Result: SUCCESS - Updated {len(updated_columns)} columns")
+                return {
+                    "status": "success",
+                    "source": display_name,
+                    "yaml_path": yaml_path,
+                    "columns_processed": len(updated_columns),
+                }
+            else:
+                return {
+                    "status": "error",
+                    "source": display_name,
+                    "error": f"SST-E009: Failed to write YAML file: {yaml_path}",
+                }
+
+        except KeyError as e:
+            field_name = str(e).strip("'\"")
+            logger.error(f"  Result: ERROR - Missing required field {field_name}")
+            return {
+                "status": "error",
+                "source": display_name,
+                "error": f"Missing required field '{field_name}' in source_info dict",
+            }
+        except Exception as e:
+            logger.error(f"  Result: ERROR - {str(e)}")
+            logger.debug(f"  Exception type: {type(e).__name__}", exc_info=True)
+            return {"status": "error", "source": display_name, "error": f"{type(e).__name__}: {str(e)}"}
 
     def _extract_model_info(
         self, model_sql_path: str, database: Optional[str] = None, schema: Optional[str] = None
