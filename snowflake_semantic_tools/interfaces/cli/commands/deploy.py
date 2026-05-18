@@ -36,10 +36,28 @@ from snowflake_semantic_tools.shared.progress import CLIProgressCallback
 @click.option(
     "--skip-validation", is_flag=True, help="Skip validation step (use when validation already run separately)"
 )
+@click.option(
+    "--extract-to-snowflake",
+    is_flag=True,
+    help="Write SM_* metadata tables to Snowflake (opt-in, not needed for manifest-first workflow)",
+)
 @click.option("--verbose", "-v", is_flag=True, help="Show detailed progress (default: errors and warnings only)")
 @click.option("--quiet", "-q", is_flag=True, help="Suppress all output except errors")
 @click.pass_context
-def deploy(ctx, dbt_target, db, schema, defer_target, state, only_modified, no_defer, skip_validation, verbose, quiet):
+def deploy(
+    ctx,
+    dbt_target,
+    db,
+    schema,
+    defer_target,
+    state,
+    only_modified,
+    no_defer,
+    skip_validation,
+    extract_to_snowflake,
+    verbose,
+    quiet,
+):
     """Deploy semantic models: validate + extract + generate in one step.
 
     The recommended way to deploy. Combines the full workflow into a single
@@ -147,8 +165,9 @@ def deploy(ctx, dbt_target, db, schema, defer_target, state, only_modified, no_d
         verbose=verbose,
         quiet=quiet,
         only_modified=defer_config.only_modified,
-        defer_database=defer_config.target,  # Defer target name for validation and summary
+        defer_database=defer_config.target,
         defer_manifest_path=str(defer_config.manifest_path) if defer_config.manifest_path else None,
+        extract_to_snowflake=extract_to_snowflake,
     )
 
     # Execute deployment
