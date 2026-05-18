@@ -19,7 +19,7 @@ Complete reference for all Snowflake Semantic Tools commands.
 | [`sst extract`](extract.md) | Load metadata to Snowflake tables | Yes |
 | [`sst clean`](clean.md) | Remove SST-generated artifacts | No |
 | [`sst generate`](generate.md) | Create semantic views | Yes |
-| [`sst deploy`](deploy.md) | One-step: validate → extract → generate | Yes |
+| [`sst deploy`](deploy.md) | ~~One-step: validate → extract → generate~~ [DEPRECATED] | Yes |
 | [`sst drop`](drop.md) | Remove semantic views (specific or prune orphans) | Yes |
 | [`sst migrate-meta`](migrate-meta.md) | Migrate to dbt Fusion format | No |
 
@@ -51,7 +51,7 @@ Complete reference for all Snowflake Semantic Tools commands.
 
 | Goal | Command |
 |------|---------|
-| One-step deployment | [`sst deploy`](deploy.md) |
+| One-step deployment | [`sst generate --all`](generate.md) |
 | Preview what will change | [`sst diff`](diff.md) |
 | Load metadata to Snowflake | [`sst extract`](extract.md) |
 | Generate semantic views | [`sst generate --all`](generate.md) |
@@ -90,15 +90,14 @@ sst format models/
 ### Deploying to Production
 
 ```bash
-# Option A: One-step (recommended)
-sst deploy --target prod
+# Recommended: generate validates automatically
+sst generate --all --target prod
 
-# Option B: Step-by-step
+# Step-by-step (for debugging)
 sst validate
 sst compile
 sst diff --target prod
-sst extract --target prod
-sst generate --target prod --all
+sst generate --all --target prod --skip-validation
 ```
 
 ### CI/CD Pipeline
@@ -110,7 +109,7 @@ sst compile
 sst diff --target prod
 
 # On merge to main: full deployment
-sst deploy --target prod
+sst generate --all --target prod
 ```
 
 ### Incremental Development with Defer
@@ -120,7 +119,7 @@ sst deploy --target prod
 sst generate --all --defer-target prod --only-modified
 
 # Full deployment with defer
-sst deploy --defer-target prod --only-modified
+sst generate --all --defer-target prod --only-modified
 ```
 
 ---
@@ -209,7 +208,7 @@ See [Getting Started](../getting-started.md) for detailed setup instructions.
 
 - **[sst extract](extract.md)** - Extract metadata from dbt/semantic models to Snowflake tables
 - **[sst generate](generate.md)** - Generate Snowflake SEMANTIC VIEWs from metadata tables
-- **[sst deploy](deploy.md)** - One-step deployment: validate → extract → generate
+- **[sst deploy](deploy.md)** - [DEPRECATED] Use `sst generate --all` instead
 
 ### Utility Commands
 

@@ -63,11 +63,11 @@ sst validate
 # Preview what will change
 sst diff
 
-# Deploy to Snowflake (validate → extract → generate)
-sst deploy
+# Deploy to Snowflake (validates first, then generates)
+sst generate --all
 
 # Only deploy views affected by recent changes
-sst deploy --only-modified
+sst generate --all --only-modified
 ```
 
 ---
@@ -84,7 +84,7 @@ sst deploy --only-modified
 | `sst diff` | Preview semantic view changes before deployment |
 | `sst extract` | Load metadata to Snowflake tables |
 | `sst generate` | Create semantic views (with `--dry-run` and SQL file output) |
-| `sst deploy` | One-step: validate → extract → generate |
+| `sst deploy` | ~~One-step: validate → extract → generate~~ [DEPRECATED] |
 | `sst drop` | Remove semantic views (specific or prune orphans) |
 | `sst list` | Explore components from compiled manifest |
 | `sst clean` | Remove generated artifacts |

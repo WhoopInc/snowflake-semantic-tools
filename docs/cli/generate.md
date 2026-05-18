@@ -6,7 +6,7 @@ Generate Snowflake Semantic Views from compiled metadata.
 
 ## Overview
 
-The `generate` command creates Snowflake SEMANTIC VIEW objects from the local `sst_manifest.json` compiled by `sst compile`. It supports defer mode for referencing production tables from development environments and selective generation for fast iteration.
+The `generate` command creates Snowflake SEMANTIC VIEW objects from the local `sst_manifest.json` compiled by `sst compile`. It validates semantic models before generation (use `--skip-validation` to opt out), supports defer mode for referencing production tables from development environments, and selective generation for fast iteration.
 
 By default, `generate` reads from the local manifest (`target/sst_manifest.json`). Use `--from-snowflake` to read from SM_* metadata tables instead (legacy workflow).
 
@@ -53,6 +53,7 @@ sst generate [OPTIONS]
 | `--dry-run` | | FLAG | False | Generate SQL to files without executing |
 | `--output-dir` | | PATH | `target/semantic_views/` | Output directory for dry-run SQL files |
 | `--from-snowflake` | | FLAG | False | Read metadata from SM_* tables instead of manifest |
+| `--skip-validation` | | FLAG | False | Skip pre-validation step |
 | `--threads` | | INT | From config or 1 | Concurrent view generation threads |
 | `--verbose` | | FLAG | False | Show detailed progress |
 
@@ -356,13 +357,13 @@ sst generate --all --from-snowflake
 └─────────────────┘
 ```
 
-**Tip:** Use `sst deploy` to run compile → validate → generate in one command.
+**Tip:** `sst generate` validates automatically. Use `--skip-validation` if you already ran `sst validate` separately.
 
 ---
 
 ## Related
 
 - [sst compile](compile.md) - Compile metadata into local manifest
-- [sst deploy](deploy.md) - One-step deployment
+- [sst deploy](deploy.md) - [DEPRECATED] Use `sst generate --all` instead
 - [sst validate](validate.md) - Validate before generating
 - [Semantic Models Guide](../concepts/semantic-models.md) - Define semantic views

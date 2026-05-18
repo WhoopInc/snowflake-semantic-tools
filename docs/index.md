@@ -38,7 +38,7 @@ Snowflake Semantic Tools (SST) helps you create **Snowflake Semantic Views**—a
 | **Install SST and set up my project** | [Getting Started](getting-started.md) |
 | **Enrich my dbt models with metadata** | [sst enrich](cli/enrich.md) |
 | **Validate my semantic models** | [sst validate](cli/validate.md) |
-| **Deploy semantic views to Snowflake** | [sst deploy](cli/deploy.md) |
+| **Deploy semantic views to Snowflake** | [sst generate](cli/generate.md) |
 | **Write metrics, relationships, filters** | [Semantic Models Guide](concepts/semantic-models.md) |
 | **Set up Snowflake authentication** | [Authentication Guide](guides/authentication.md) |
 | **Configure CI/CD pipelines** | [CI/CD Guide](guides/ci-cd.md) |
@@ -62,14 +62,12 @@ Snowflake Semantic Tools (SST) helps you create **Snowflake Semantic Views**—a
 | [`sst list`](cli/list.md) | Explore semantic model components | No |
 | [`sst extract`](cli/extract.md) | Load metadata to Snowflake tables | Yes |
 | [`sst generate`](cli/generate.md) | Create semantic views | Yes |
-| [`sst deploy`](cli/deploy.md) | One-step: validate → extract → generate | Yes |
-| [`sst drop`](cli/drop.md) | Remove semantic views from Snowflake | Yes |
-| [`sst clean`](cli/clean.md) | Remove SST-generated artifacts | No |
+| [`sst deploy`](cli/deploy.md) | ~~One-step: validate → extract → generate~~ [DEPRECATED] | Yes |
 | [`sst migrate-meta`](cli/migrate-meta.md) | Migrate to dbt Fusion format | No |
 
 **New to SST?** Start with `sst init` to configure your project.
 
-**Production deployments?** Use `sst deploy` which orchestrates the full workflow.
+**Production deployments?** Use `sst generate --all` which validates and generates in one step.
 
 ---
 
@@ -95,7 +93,7 @@ sst format models/
 
 ```bash
 # Option A: One-step deployment
-sst deploy --target prod
+sst generate --all --target prod
 
 # Option B: Step-by-step (for debugging)
 sst validate
@@ -110,7 +108,7 @@ sst generate --target prod --all
 sst validate
 
 # Main branch: Full deployment
-sst deploy --target prod
+sst generate --all --target prod
 ```
 
 ---
@@ -211,9 +209,7 @@ Full reference: [Configuration Reference](reference/config.md)
 - [sst list](cli/list.md) - Explore semantic model components
 - [sst extract](cli/extract.md) - Metadata extraction
 - [sst generate](cli/generate.md) - Semantic view generation
-- [sst deploy](cli/deploy.md) - One-step deployment
-- [sst drop](cli/drop.md) - Remove semantic views
-- [sst clean](cli/clean.md) - Remove SST artifacts
+- [sst deploy](cli/deploy.md) - [DEPRECATED] Use `sst generate --all` instead
 - [sst migrate-meta](cli/migrate-meta.md) - dbt Fusion migration
 
 ### Concepts

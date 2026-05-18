@@ -24,6 +24,15 @@ def _run_generate(runner, args, mock_result):
         "generation.view_timeout": 300,
     }.get(key, default)
 
+    mock_val_result = MagicMock()
+    mock_val_result.is_valid = True
+    mock_val_result.error_count = 0
+    mock_val_result.warning_count = 0
+    mock_val_result.issues = []
+
+    mock_val_service = MagicMock()
+    mock_val_service.execute.return_value = mock_val_result
+
     with (
         patch(f"{_PATCH_PREFIX}.setup_command"),
         patch(
@@ -43,9 +52,13 @@ def _run_generate(runner, args, mock_result):
         ),
         patch(f"{_PATCH_PREFIX}.SemanticViewGenerationService", return_value=mock_service),
         patch(f"{_PATCH_PREFIX}.get_config", return_value=mock_config_obj),
+        patch(f"{_PATCH_PREFIX}.SemanticMetadataCollectionValidationService") as mock_val_cls,
+        patch(f"{_PATCH_PREFIX}.get_exclusion_patterns", return_value=[]),
+        patch(f"{_PATCH_PREFIX}.is_strict_mode", return_value=False),
         patch(f"{_PATCH_PREFIX}.ManifestParser") as mock_mp,
         patch(f"{_COMPILE_MODULE}.CompileService") as mock_compile_cls,
     ):
+        mock_val_cls.create_from_config.return_value = mock_val_service
         mock_mp.return_value.load.return_value = False
         mock_compile_cls.return_value.compile.return_value = MagicMock(success=True)
         result = runner.invoke(generate, args, catch_exceptions=False, obj={"output_format": "table"})
