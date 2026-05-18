@@ -55,8 +55,11 @@ Snowflake Semantic Tools (SST) helps you create **Snowflake Semantic Views**—a
 | [`sst init`](cli/init.md) | Interactive setup wizard | Optional |
 | [`sst debug`](cli/debug.md) | Show configuration and test connection | Optional |
 | [`sst enrich`](cli/enrich.md) | Enrich dbt YAML with metadata from Snowflake | Yes |
-| [`sst validate`](cli/validate.md) | Validate semantic models (99+ checks) | No |
+| [`sst validate`](cli/validate.md) | Validate semantic models (50+ checks) | No |
 | [`sst format`](cli/format.md) | YAML linter for consistency | No |
+| [`sst compile`](cli/compile.md) | Compile metadata into local manifest | No |
+| [`sst diff`](cli/diff.md) | Preview semantic view changes before deployment | Yes |
+| [`sst list`](cli/list.md) | Explore semantic model components | No |
 | [`sst extract`](cli/extract.md) | Load metadata to Snowflake tables | Yes |
 | [`sst generate`](cli/generate.md) | Create semantic views | Yes |
 | [`sst deploy`](cli/deploy.md) | ~~One-step: validate → extract → generate~~ [DEPRECATED] | Yes |
@@ -144,7 +147,7 @@ Templates are validated against your dbt catalog to catch errors early.
 
 ### Validation
 
-SST includes 99+ validation checks covering:
+SST includes 50+ validation checks covering:
 
 - Table and column references
 - Template resolution
@@ -201,6 +204,9 @@ Full reference: [Configuration Reference](reference/config.md)
 - [sst enrich](cli/enrich.md) - Metadata enrichment
 - [sst validate](cli/validate.md) - Semantic model validation
 - [sst format](cli/format.md) - YAML formatting
+- [sst compile](cli/compile.md) - Compile metadata manifest
+- [sst diff](cli/diff.md) - Preview changes before deployment
+- [sst list](cli/list.md) - Explore semantic model components
 - [sst extract](cli/extract.md) - Metadata extraction
 - [sst generate](cli/generate.md) - Semantic view generation
 - [sst deploy](cli/deploy.md) - [DEPRECATED] Use `sst generate --all` instead

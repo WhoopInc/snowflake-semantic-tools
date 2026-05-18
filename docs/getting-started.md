@@ -32,7 +32,6 @@ pip install snowflake-semantic-tools
 
 ```bash
 sst --version
-# Should show: snowflake-semantic-tools, version 0.2.4
 ```
 
 ---
@@ -216,7 +215,7 @@ sst --version
 
 **Example `sst debug` output:**
 ```
-SST Debug (v0.2.4)
+SST Debug
 
   ──────────────────────────────────────────────────
   Profile Configuration
@@ -268,7 +267,7 @@ sst enrich models/analytics/
 
 **Output:**
 ```
-09:15:00  Running with sst=0.2.4
+09:15:00  Running with sst=0.3.0
 09:15:00  Resolving 2 model name(s)...
 09:15:00  Resolved 2 model(s) [OK]
 09:15:00  Connecting to Snowflake...

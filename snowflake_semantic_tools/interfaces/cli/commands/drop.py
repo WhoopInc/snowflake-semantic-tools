@@ -29,7 +29,7 @@ logger = get_logger("cli.drop")
 @click.option("--prune", is_flag=True, help="Drop all orphaned views not tracked in SM_SEMANTIC_VIEWS")
 @click.option("--dry-run", is_flag=True, help="Show what would be dropped without executing")
 @click.option("--yes", "-y", is_flag=True, help="Skip confirmation prompt (for CI)")
-@click.option("--verbose", "-V", is_flag=True, help="Show detailed output")
+@click.option("--verbose", "-v", is_flag=True, help="Show detailed output")
 @click.pass_context
 def drop(ctx, dbt_target, db, schema, view_name, prune, dry_run, yes, verbose):
     """Remove semantic views from Snowflake.

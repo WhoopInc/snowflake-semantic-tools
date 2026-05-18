@@ -11,11 +11,13 @@ Complete reference for all Snowflake Semantic Tools commands.
 | [`sst init`](init.md) | Interactive setup wizard | Optional |
 | [`sst debug`](debug.md) | Show configuration and test connection | Optional |
 | [`sst enrich`](enrich.md) | Enrich dbt YAML with metadata from Snowflake | Yes |
-| [`sst validate`](validate.md) | Validate semantic models (99+ checks) | No |
+| [`sst validate`](validate.md) | Validate semantic models (50+ checks) | No |
 | [`sst format`](format.md) | YAML linter for consistency | No |
-| [`sst extract`](extract.md) | Load metadata to Snowflake tables | Yes |
-| [`sst compile`](compile.md) | Compile metadata into local manifest | No |\n| [`sst clean`](clean.md) | Remove SST-generated artifacts | No |
+| [`sst compile`](compile.md) | Compile metadata into local manifest | No |
 | [`sst diff`](diff.md) | Preview semantic view changes before deployment | Yes |
+| [`sst list`](list.md) | Explore semantic model components | No |
+| [`sst extract`](extract.md) | Load metadata to Snowflake tables | Yes |
+| [`sst clean`](clean.md) | Remove SST-generated artifacts | No |
 | [`sst generate`](generate.md) | Create semantic views | Yes |
 | [`sst deploy`](deploy.md) | ~~One-step: validate → extract → generate~~ [DEPRECATED] | Yes |
 | [`sst drop`](drop.md) | Remove semantic views (specific or prune orphans) | Yes |
@@ -39,7 +41,9 @@ Complete reference for all Snowflake Semantic Tools commands.
 |------|---------|
 | Add metadata to dbt models | [`sst enrich --models name1,name2`](enrich.md) |
 | Generate LLM synonyms | [`sst enrich --models name --synonyms`](enrich.md) |
-| Check for errors | [`sst validate`](validate.md) |\n| Preview changes before deploying | [`sst diff`](diff.md) |
+| Check for errors | [`sst validate`](validate.md) |
+| Preview changes before deploying | [`sst diff`](diff.md) |
+| Explore metrics, tables, relationships | [`sst list`](list.md) |
 | Standardize YAML formatting | [`sst format models/`](format.md) |
 | Migrate meta.sst to config.meta.sst | [`sst migrate-meta models/`](migrate-meta.md) |
 
@@ -191,8 +195,14 @@ See [Getting Started](../getting-started.md) for detailed setup instructions.
 ### Development Commands
 
 - **[sst enrich](enrich.md)** - Enrich dbt YAML metadata with semantic information from Snowflake
-- **[sst validate](validate.md)** - Validate semantic models against dbt definitions (99+ checks)
+- **[sst validate](validate.md)** - Validate semantic models against dbt definitions (50+ checks)
 - **[sst format](format.md)** - YAML linter for project-wide formatting consistency
+
+### Compilation & Inspection Commands
+
+- **[sst compile](compile.md)** - Compile metadata into local manifest
+- **[sst diff](diff.md)** - Preview semantic view changes before deployment
+- **[sst list](list.md)** - Explore semantic model components (metrics, tables, relationships)
 
 ### Deployment Commands
 
@@ -202,6 +212,8 @@ See [Getting Started](../getting-started.md) for detailed setup instructions.
 
 ### Utility Commands
 
+- **[sst drop](drop.md)** - Remove semantic views from Snowflake
+- **[sst clean](clean.md)** - Remove SST-generated artifacts
 - **[sst migrate-meta](migrate-meta.md)** - Migrate meta.sst to config.meta.sst (dbt Fusion compatibility)
 
 ---
