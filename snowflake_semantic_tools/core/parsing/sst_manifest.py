@@ -20,7 +20,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-import yaml as pyyaml
+import yaml
 
 from snowflake_semantic_tools.shared.config import get_config
 from snowflake_semantic_tools.shared.utils import get_logger
@@ -259,7 +259,7 @@ class SSTManifest:
                     logger.warning(f"Could not read {yaml_file}")
                     continue
                 try:
-                    data = pyyaml.safe_load(raw)
+                    data = yaml.safe_load(raw)
                 except Exception:
                     continue
                 if not isinstance(data, dict) or "models" not in data:
@@ -352,8 +352,8 @@ class SSTManifest:
                     continue
 
                 try:
-                    data = pyyaml.safe_load(content)
-                except pyyaml.YAMLError:
+                    data = yaml.safe_load(content)
+                except yaml.YAMLError:
                     data = None
 
                 if data and isinstance(data, dict) and "semantic_views" in data:
