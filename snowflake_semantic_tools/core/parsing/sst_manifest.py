@@ -14,7 +14,6 @@ alongside dbt's `manifest.json`.
 
 import hashlib
 import json
-import re
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -332,89 +331,14 @@ class SSTManifest:
 
         Handles both valid YAML and Jinja-templated files that can't be parsed.
         """
+        from snowflake_semantic_tools.core.parsing.view_table_parser import parse_view_tables
+
         sem_dir_name = _get_semantic_models_dir(config)
         if not sem_dir_name:
             return {}, {}
 
         sem_dir = self.project_dir / sem_dir_name
-        if not sem_dir.exists():
-            return {}, {}
-
-        view_map: Dict[str, List[str]] = {}
-        source_map: Dict[str, str] = {}
-        ref_pattern = re.compile(r"\{\{\s*(?:ref|table)\(['\"]([^'\"]+)['\"]\)\s*\}\}")
-        name_pattern = re.compile(r"^\s*-\s*name:\s*(.+)", re.MULTILINE)
-
-        for yaml_file in sorted(list(sem_dir.rglob("*.yml")) + list(sem_dir.rglob("*.yaml"))):
-            try:
-                with open(yaml_file, "r", encoding="utf-8") as f:
-                    content = f.read()
-
-                if "semantic_views:" not in content:
-                    continue
-
-                try:
-                    data = yaml.safe_load(content)
-                except yaml.YAMLError:
-                    data = None
-
-                if data and isinstance(data, dict) and "semantic_views" in data:
-                    for view_def in data["semantic_views"]:
-                        if not isinstance(view_def, dict):
-                            continue
-                        view_name = view_def.get("name", "")
-                        if not view_name:
-                            continue
-                        tables = view_def.get("tables", [])
-                        if not isinstance(tables, list):
-                            tables = []
-                        resolved_tables = []
-                        for t in tables:
-                            t_str = str(t)
-                            match = ref_pattern.search(t_str)
-                            if match:
-                                resolved_tables.append(match.group(1))
-                            else:
-                                resolved_tables.append(t_str.split(".")[-1].strip().lower())
-                        view_map[view_name] = resolved_tables
-                        source_map[view_name] = str(yaml_file)
-                else:
-                    self._parse_view_tables_from_raw(content, ref_pattern, name_pattern, view_map)
-                    for vn in view_map:
-                        if vn not in source_map:
-                            source_map[vn] = str(yaml_file)
-
-            except Exception as e:
-                logger.debug(f"Could not parse view tables from {yaml_file}: {e}")
-
-        return view_map, source_map
-
-    @staticmethod
-    def _parse_view_tables_from_raw(
-        content: str,
-        ref_pattern,
-        name_pattern,
-        view_map: Dict[str, List[str]],
-    ):
-        """
-        Fallback parser for Jinja-templated YAML that can't be parsed by PyYAML.
-
-        Extracts view names and {{ ref('...') }} table references by splitting
-        on `- name:` lines and scanning each block. This is intentionally
-        approximate — it handles the common case of semantic_views YAML with
-        Jinja ref() calls.
-        """
-        blocks = re.split(r"(?=^\s*-\s*name:)", content, flags=re.MULTILINE)
-        for block in blocks:
-            name_match = name_pattern.search(block)
-            if not name_match:
-                continue
-            view_name = name_match.group(1).strip().strip("'\"")
-            if not view_name:
-                continue
-            refs = ref_pattern.findall(block)
-            if refs:
-                view_map[view_name] = refs
+        return parse_view_tables(sem_dir)
 
     @staticmethod
     def _invert_view_table_map(

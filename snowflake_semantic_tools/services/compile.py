@@ -9,7 +9,6 @@ connection.
 
 import hashlib
 import json
-import re
 import time
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -359,6 +358,8 @@ class CompileService:
 
     @staticmethod
     def _parse_view_tables_for_checksums(config) -> Dict[str, List[str]]:
+        from snowflake_semantic_tools.core.parsing.view_table_parser import parse_view_tables
+
         try:
             sem_dir_name = config.get("project.semantic_models_dir")
         except Exception:
@@ -374,55 +375,7 @@ class CompileService:
             return {}
 
         sem_dir = Path.cwd() / sem_dir_name
-        if not sem_dir.exists():
-            return {}
-
-        view_map: Dict[str, List[str]] = {}
-        ref_pattern = re.compile(r"\{\{\s*(?:ref|table)\(['\"]([^'\"]+)['\"]\)\s*\}\}")
-        name_pattern = re.compile(r"^\s*-\s*name:\s*(.+)", re.MULTILINE)
-
-        for yaml_file in sorted(list(sem_dir.rglob("*.yml")) + list(sem_dir.rglob("*.yaml"))):
-            try:
-                content = yaml_file.read_text(encoding="utf-8")
-                if "semantic_views:" not in content:
-                    continue
-                try:
-                    data = yaml.safe_load(content)
-                except yaml.YAMLError:
-                    data = None
-
-                if data and isinstance(data, dict) and "semantic_views" in data:
-                    for view_def in data["semantic_views"]:
-                        if not isinstance(view_def, dict):
-                            continue
-                        view_name = view_def.get("name", "")
-                        if not view_name:
-                            continue
-                        tables = view_def.get("tables", [])
-                        if not isinstance(tables, list):
-                            tables = []
-                        resolved = []
-                        for t in tables:
-                            match = ref_pattern.search(str(t))
-                            if match:
-                                resolved.append(match.group(1))
-                            else:
-                                resolved.append(str(t).split(".")[-1].strip().lower())
-                        view_map[view_name] = resolved
-                else:
-                    blocks = re.split(r"(?=^\s*-\s*name:)", content, flags=re.MULTILINE)
-                    for block in blocks:
-                        nm = name_pattern.search(block)
-                        if not nm:
-                            continue
-                        vn = nm.group(1).strip().strip("'\"")
-                        if vn:
-                            refs = ref_pattern.findall(block)
-                            if refs:
-                                view_map[vn] = refs
-            except Exception:
-                continue
-
+        view_map, _ = parse_view_tables(sem_dir)
         return view_map
 
     @staticmethod
