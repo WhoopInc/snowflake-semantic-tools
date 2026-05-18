@@ -831,7 +831,7 @@ class MetadataEnrichmentService:
             return sorted(source_tables, key=lambda s: f"{s['source_name']}.{s['table_name']}")
 
         if self.config.target_path:
-            yaml_handler = YAMLHandler()
+            yaml_handler = self.enricher.yaml_handler if self.enricher else YAMLHandler()
             search_path = Path(self.config.target_path)
 
             if search_path.is_dir():

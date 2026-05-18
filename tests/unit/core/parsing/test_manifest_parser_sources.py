@@ -1,7 +1,6 @@
 """Tests for ManifestParser source caching."""
 
 import json
-import os
 import tempfile
 
 import pytest
