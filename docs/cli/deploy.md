@@ -1,12 +1,12 @@
 # sst deploy
 
-One-step deployment: validate → extract → generate.
+One-step deployment: validate → generate (with optional extract).
 
 ---
 
 ## Overview
 
-The `deploy` command orchestrates the complete SST workflow in a single command. It validates your semantic models, extracts metadata to Snowflake, and generates semantic views. Use this for production deployments or when you want a simple, reliable deployment process.
+The `deploy` command orchestrates the complete SST workflow in a single command. It validates your semantic models and generates semantic views. Optionally, it can extract metadata to Snowflake tables via `--extract-to-snowflake`. Use this for production deployments or when you want a simple, reliable deployment process.
 
 **Snowflake Connection:** Required
 
@@ -46,6 +46,7 @@ sst deploy [OPTIONS]
 | `--state` | | PATH | | Path to defer state artifacts directory |
 | `--only-modified` | | FLAG | False | Only generate changed views (requires defer) |
 | `--no-defer` | | FLAG | False | Disable defer (overrides config) |
+| `--extract-to-snowflake` | | FLAG | False | Write SM_* metadata tables to Snowflake (opt-in) |
 | `--skip-validation` | | FLAG | False | Skip validation step |
 | `--verbose` | `-v` | FLAG | False | Show detailed progress |
 | `--quiet` | `-q` | FLAG | False | Show errors and warnings only |
@@ -54,7 +55,7 @@ sst deploy [OPTIONS]
 
 ## What It Does
 
-The deploy command executes three steps in sequence:
+The deploy command executes these steps in sequence:
 
 ```
 ┌─────────────────┐
@@ -63,7 +64,7 @@ The deploy command executes three steps in sequence:
          │
          ▼
 ┌─────────────────┐
-│    EXTRACT      │  Load metadata to Snowflake
+│    EXTRACT      │  Load metadata to Snowflake (only with --extract-to-snowflake)
 └────────┬────────┘
          │
          ▼
@@ -72,7 +73,7 @@ The deploy command executes three steps in sequence:
 └─────────────────┘
 ```
 
-**Stops at first failure:** If validation fails, extraction is skipped. If extraction fails, generation is skipped.
+**Stops at first failure:** If validation fails, subsequent steps are skipped.
 
 ---
 

@@ -101,6 +101,54 @@ sst format models/ --sanitize
 
 ---
 
+## Compilation & Inspection Commands
+
+### Compile
+
+```bash
+# Compile metadata into local manifest
+sst compile
+
+# Compile with specific target
+sst compile --target prod
+```
+
+### Diff
+
+```bash
+# Preview changes before deploying
+sst diff
+
+# Diff against specific target
+sst diff --target prod
+
+# Verbose output
+sst diff --target prod --verbose
+```
+
+### List
+
+```bash
+# Summary of all components
+sst list
+
+# List specific components
+sst list metrics
+sst list tables
+sst list relationships
+sst list filters
+sst list semantic-views
+
+# Filter by table
+sst list metrics --table orders
+
+# Export
+sst list metrics -o metrics.csv -f csv
+sst list tables -o tables.json -f json
+```
+
+---
+
 ## Deployment Commands
 
 ### Extract
@@ -156,6 +204,31 @@ sst deploy --skip-validation
 ---
 
 ## Utility Commands
+
+### Drop
+
+```bash
+# Drop a specific semantic view
+sst drop VIEW_NAME
+
+# Prune orphaned views
+sst drop --prune
+
+# Dry run (preview)
+sst drop --prune --dry-run
+
+# Skip confirmation
+sst drop VIEW_NAME --yes
+```
+
+### Clean
+
+```bash
+# Remove SST artifacts from target/
+sst clean
+```
+
+### Migrate Meta
 
 ```bash
 # Migrate to dbt Fusion format

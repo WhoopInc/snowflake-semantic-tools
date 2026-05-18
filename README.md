@@ -22,7 +22,7 @@ SST helps you build **Snowflake Semantic Views**—a standardized semantic layer
 - **Define semantics as code** — Metrics, relationships, filters, verified queries as YAML in your dbt project
 - **Deploy to Snowflake** — Generate native SEMANTIC VIEW objects from your definitions
 - **Enrich automatically** — Pull column types, samples, and metadata from Snowflake schemas (including dbt sources)
-- **Validate before deploy** — 100+ validation rules catch errors before they reach Snowflake
+- **Validate before deploy** — 50+ validation rules catch errors before they reach Snowflake
 - **Compile locally** — Build a manifest for offline tooling, diffing, and CI/CD
 - **Diff before deploy** — Preview exactly what will change before touching Snowflake
 - **Incremental deploys** — Only regenerate views affected by your changes (`--only-modified`)
@@ -106,7 +106,7 @@ sst deploy --only-modified
 - AI-powered descriptions and synonym generation via Cortex
 
 ### Validation
-- 100+ rules covering references, types, expressions, and structure
+- 50+ rules covering references, types, expressions, and structure
 - SQL syntax validation against Snowflake
 - Schema verification with fuzzy column matching
 - Cross-table metric column validation
