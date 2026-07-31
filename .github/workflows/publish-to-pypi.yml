@@ -52,9 +52,9 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           python -m pip install build
-          python -m pip install twine
           python -m pip install .
           python -m pip install pytest pytest-mock
+          python -m pip install twine
 
       - name: Verify tag and pyproject.toml version match
         # Extract version from tag, stripping the leading "v".
