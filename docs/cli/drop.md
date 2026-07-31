@@ -28,7 +28,9 @@ Executes `DROP SEMANTIC VIEW IF EXISTS db.schema.VIEW_NAME`.
 sst drop --prune --dry-run --target prod
 ```
 
-Cross-references actual semantic views in the schema (via `SHOW SEMANTIC VIEWS`) against the `SM_SEMANTIC_VIEWS` tracking table. Views that exist in Snowflake but are NOT tracked by SST are considered orphaned.
+Cross-references actual semantic views in the schema (via `SHOW SEMANTIC VIEWS`) against the compiled manifest (`target/sst_manifest.json`). Views that exist in Snowflake but are NOT defined in the manifest are considered orphaned.
+
+If no manifest is found, falls back to the legacy `SM_SEMANTIC_VIEWS` tracking table with a warning.
 
 ## Options
 
@@ -46,7 +48,7 @@ Cross-references actual semantic views in the schema (via `SHOW SEMANTIC VIEWS`)
 
 - `--prune` shows a confirmation prompt before dropping (skip with `--yes`)
 - `--dry-run` shows what would be dropped without executing
-- Only targets SST-managed schemas — uses `SM_SEMANTIC_VIEWS` to identify orphans
+- Only targets SST-managed schemas — uses compiled manifest to identify orphans
 - Uses `IF EXISTS` for idempotency
 
 ## Examples
@@ -68,7 +70,8 @@ sst drop OLD_CUSTOMER_360 --target prod
 ## Prerequisites
 
 - Snowflake connection configured (via dbt profiles.yml)
-- `SM_SEMANTIC_VIEWS` table must exist (created by `sst extract`)
+- `sst compile` has been run (creates `target/sst_manifest.json`)
+- Falls back to `SM_SEMANTIC_VIEWS` if no manifest exists (legacy workflows)
 
 ## Related Commands
 

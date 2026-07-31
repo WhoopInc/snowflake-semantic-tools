@@ -26,7 +26,7 @@ logger = get_logger("cli.drop")
 @target_option
 @database_schema_options
 @click.argument("view_name", required=False)
-@click.option("--prune", is_flag=True, help="Drop all orphaned views not tracked in SM_SEMANTIC_VIEWS")
+@click.option("--prune", is_flag=True, help="Drop all orphaned views not in the compiled manifest")
 @click.option("--dry-run", is_flag=True, help="Show what would be dropped without executing")
 @click.option("--yes", "-y", is_flag=True, help="Skip confirmation prompt (for CI)")
 @click.option("--verbose", "-v", is_flag=True, help="Show detailed output")
@@ -96,24 +96,40 @@ def _drop_specific_view(client, database: str, schema: str, view_name: str, dry_
 def _prune_orphaned_views(
     client, database: str, schema: str, dry_run: bool, yes: bool, verbose: bool, output: CLIOutput
 ):
-    """Find and drop orphaned semantic views (not tracked in SM_SEMANTIC_VIEWS)."""
+    """Find and drop orphaned semantic views not in the compiled manifest."""
+    import json
+    from pathlib import Path
+
     output.info(f"Scanning semantic views in: {database}.{schema}")
 
     df = client.execute_query(f"SHOW SEMANTIC VIEWS IN {database}.{schema}")
     actual_views = set(df["name"].str.upper().tolist()) if not df.empty else set()
 
-    sm_table = f"{database}.{schema}.SM_SEMANTIC_VIEWS"
-    try:
-        tracked_df = client.execute_query(f"SELECT UPPER(NAME) AS NAME FROM {sm_table}")
-        tracked_views = set(tracked_df["NAME"].tolist()) if not tracked_df.empty else set()
-    except Exception:
-        output.warning(f"Could not read {sm_table} — assuming no tracked views")
-        tracked_views = set()
+    # Primary: read tracked views from compiled manifest
+    manifest_path = Path("target") / "sst_manifest.json"
+    if manifest_path.exists():
+        with open(manifest_path) as f:
+            manifest = json.load(f)
+        tracked_views = {sv["name"].upper() for sv in manifest.get("tables", {}).get("semantic_views", [])}
+        output.info(f"Found {len(actual_views)} semantic views in schema")
+        output.info(f"Found {len(tracked_views)} views in compiled manifest")
+    else:
+        # Legacy fallback: SM_SEMANTIC_VIEWS
+        sm_table = f"{database}.{schema}.SM_SEMANTIC_VIEWS"
+        output.warning(
+            f"No compiled manifest found at {manifest_path}. "
+            f"Falling back to {sm_table}. Run 'sst compile' for accurate pruning."
+        )
+        try:
+            tracked_df = client.execute_query(f"SELECT UPPER(NAME) AS NAME FROM {sm_table}")
+            tracked_views = set(tracked_df["NAME"].tolist()) if not tracked_df.empty else set()
+        except Exception:
+            output.warning(f"Could not read {sm_table} — assuming no tracked views")
+            tracked_views = set()
+        output.info(f"Found {len(actual_views)} semantic views in schema")
+        output.info(f"Found {len(tracked_views)} views in SM_SEMANTIC_VIEWS tracking table")
 
     orphaned = sorted(actual_views - tracked_views)
-
-    output.info(f"Found {len(actual_views)} semantic views in schema")
-    output.info(f"Found {len(tracked_views)} views in SM_SEMANTIC_VIEWS tracking table")
 
     if not orphaned:
         output.success("No orphaned semantic views found. Schema is clean.")
