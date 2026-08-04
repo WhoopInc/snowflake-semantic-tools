@@ -601,6 +601,7 @@ class Parser:
         Returns a map of view_name -> { scope_key -> [names] }.
         """
         import re
+
         from snowflake_semantic_tools.core.parsing.parsers.semantic_parser import _extract_view_scope_names
 
         scope_map: Dict[str, Dict[str, List[str]]] = {}
