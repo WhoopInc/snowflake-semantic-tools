@@ -1446,7 +1446,7 @@ class ReferenceValidator:
 
                     if len(metric_tables_in_view) > 1:
                         for i, t1 in enumerate(metric_tables_in_view):
-                            for t2 in metric_tables_in_view[i + 1:]:
+                            for t2 in metric_tables_in_view[i + 1 :]:
                                 needed_rel = rel_name_by_tables.get((t1, t2))
                                 if needed_rel and needed_rel not in view_rels_upper:
                                     result.add_error(

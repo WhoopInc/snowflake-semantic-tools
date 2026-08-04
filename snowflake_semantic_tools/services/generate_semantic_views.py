@@ -366,8 +366,14 @@ class SemanticViewGenerationService:
                 # Construct view scope from include/exclude lists
                 view_scope = {}
                 for scope_key in (
-                    "columns", "metrics", "relationships", "filters",
-                    "exclude_columns", "exclude_metrics", "exclude_relationships", "exclude_filters",
+                    "columns",
+                    "metrics",
+                    "relationships",
+                    "filters",
+                    "exclude_columns",
+                    "exclude_metrics",
+                    "exclude_relationships",
+                    "exclude_filters",
                 ):
                     val = view_config.get(scope_key)
                     if val is not None:
@@ -556,8 +562,14 @@ class SemanticViewGenerationService:
             # Construct view scope from include/exclude lists
             _view_scope = {}
             for scope_key in (
-                "columns", "metrics", "relationships", "filters",
-                "exclude_columns", "exclude_metrics", "exclude_relationships", "exclude_filters",
+                "columns",
+                "metrics",
+                "relationships",
+                "filters",
+                "exclude_columns",
+                "exclude_metrics",
+                "exclude_relationships",
+                "exclude_filters",
             ):
                 val = view_config.get(scope_key)
                 if val is not None:
@@ -799,9 +811,16 @@ class SemanticViewGenerationService:
 
                     # Extract scope fields if present in the table
                     import json
+
                     for scope_key in (
-                        "COLUMNS", "METRICS", "RELATIONSHIPS", "FILTERS",
-                        "EXCLUDE_COLUMNS", "EXCLUDE_METRICS", "EXCLUDE_RELATIONSHIPS", "EXCLUDE_FILTERS",
+                        "COLUMNS",
+                        "METRICS",
+                        "RELATIONSHIPS",
+                        "FILTERS",
+                        "EXCLUDE_COLUMNS",
+                        "EXCLUDE_METRICS",
+                        "EXCLUDE_RELATIONSHIPS",
+                        "EXCLUDE_FILTERS",
                     ):
                         raw_val = row_dict.get(scope_key)
                         if raw_val:
@@ -961,16 +980,22 @@ class SemanticViewGenerationService:
             custom_instructions = self._parse_custom_instructions(view.get("CUSTOM_INSTRUCTIONS"))
 
             view_config = {
-                    "name": view.get("NAME", ""),
-                    "tables": tables if isinstance(tables, list) else [],
-                    "description": view.get("DESCRIPTION", ""),
-                    "custom_instructions": custom_instructions,
-                }
+                "name": view.get("NAME", ""),
+                "tables": tables if isinstance(tables, list) else [],
+                "description": view.get("DESCRIPTION", ""),
+                "custom_instructions": custom_instructions,
+            }
 
             # Pass through view scope fields if present
             for scope_key in (
-                "COLUMNS", "METRICS", "RELATIONSHIPS", "FILTERS",
-                "EXCLUDE_COLUMNS", "EXCLUDE_METRICS", "EXCLUDE_RELATIONSHIPS", "EXCLUDE_FILTERS",
+                "COLUMNS",
+                "METRICS",
+                "RELATIONSHIPS",
+                "FILTERS",
+                "EXCLUDE_COLUMNS",
+                "EXCLUDE_METRICS",
+                "EXCLUDE_RELATIONSHIPS",
+                "EXCLUDE_FILTERS",
             ):
                 val = view.get(scope_key)
                 if val:

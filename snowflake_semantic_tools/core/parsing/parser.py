@@ -606,8 +606,15 @@ class Parser:
         scope_map: Dict[str, Dict[str, List[str]]] = {}
 
         scope_fields = (
-            "columns", "dimensions", "metrics", "relationships", "filters",
-            "exclude_columns", "exclude_metrics", "exclude_relationships", "exclude_filters",
+            "columns",
+            "dimensions",
+            "metrics",
+            "relationships",
+            "filters",
+            "exclude_columns",
+            "exclude_metrics",
+            "exclude_relationships",
+            "exclude_filters",
         )
 
         lines = content.split("\n")

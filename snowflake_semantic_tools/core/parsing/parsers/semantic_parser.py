@@ -551,11 +551,21 @@ def parse_semantic_views(
                     scope_fields[scope_key] = json.dumps(names)
             else:
                 for scope_key in (
-                    "columns", "metrics", "relationships", "filters",
-                    "exclude_columns", "exclude_metrics", "exclude_relationships", "exclude_filters",
+                    "columns",
+                    "metrics",
+                    "relationships",
+                    "filters",
+                    "exclude_columns",
+                    "exclude_metrics",
+                    "exclude_relationships",
+                    "exclude_filters",
                 ):
                     # Also accept "dimensions" as an alias for "columns" (legacy fixture format)
-                    yaml_key = "dimensions" if scope_key == "columns" and "columns" not in view_def and "dimensions" in view_def else scope_key
+                    yaml_key = (
+                        "dimensions"
+                        if scope_key == "columns" and "columns" not in view_def and "dimensions" in view_def
+                        else scope_key
+                    )
                     raw = view_def.get(yaml_key, None)
                     parsed = _extract_view_scope_names(raw, scope_key)
                     if parsed is not None:
