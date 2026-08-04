@@ -1,0 +1,23 @@
+semantic_views:
+  - name: sales_overview
+    description: "High-level revenue metrics for executive reporting"
+    tables:
+      - "{{ table('orders') }}"
+      - "{{ table('customers') }}"
+      - "{{ table('products') }}"
+
+    metrics:
+      - "{{ metric('total_revenue') }}"
+      - "{{ metric('average_order_value') }}"
+
+    columns:
+      - "{{ column('orders', 'order_date') }}"
+      - "{{ column('orders', 'status') }}"
+      - "{{ column('customers', 'segment') }}"
+      - "{{ column('products', 'category') }}"
+
+    relationships:
+      - "{{ relationship('orders_to_customers') }}"
+
+    filters:
+      - "{{ filter('completed_orders') }}"

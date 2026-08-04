@@ -81,6 +81,7 @@ class SemanticViewBuilder:
         defer_database: Optional[str] = None,
         defer_manifest: Optional["ManifestParser"] = None,
         custom_instruction_names: Optional[List[str]] = None,
+        view_scope: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         logger.info(f"Building semantic view '{view_name}' with tables: {table_names}")
 
@@ -94,6 +95,7 @@ class SemanticViewBuilder:
                 defer_database,
                 defer_manifest,
                 custom_instruction_names,
+                view_scope,
             )
         else:
             return self._build_from_snowflake(
@@ -104,6 +106,7 @@ class SemanticViewBuilder:
                 defer_database,
                 defer_manifest,
                 custom_instruction_names,
+                view_scope,
             )
 
     def _build_from_store(
@@ -116,6 +119,7 @@ class SemanticViewBuilder:
         defer_database: Optional[str],
         defer_manifest: Optional["ManifestParser"],
         custom_instruction_names: Optional[List[str]],
+        view_scope: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         try:
             sql_statement = self._generate_sql(
@@ -126,6 +130,7 @@ class SemanticViewBuilder:
                 defer_database=defer_database,
                 defer_manifest=defer_manifest,
                 custom_instruction_names=custom_instruction_names,
+                view_scope=view_scope,
             )
 
             result = {
@@ -134,6 +139,7 @@ class SemanticViewBuilder:
                 "success": True,
                 "message": f"Semantic view '{view_name}' SQL generated successfully",
                 "target_location": f"{self.target_database}.{self.target_schema}.{view_name.upper()}",
+                "scope_summary": getattr(self, "_last_scope_summary", None),
             }
 
             if execute:
@@ -165,6 +171,7 @@ class SemanticViewBuilder:
         defer_database: Optional[str],
         defer_manifest: Optional["ManifestParser"],
         custom_instruction_names: Optional[List[str]],
+        view_scope: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         from snowflake_semantic_tools.core.metadata.snowflake_store import SnowflakeStore
 
@@ -179,6 +186,7 @@ class SemanticViewBuilder:
                     defer_database=defer_database,
                     defer_manifest=defer_manifest,
                     custom_instruction_names=custom_instruction_names,
+                    view_scope=view_scope,
                 )
 
                 result = {
@@ -187,6 +195,7 @@ class SemanticViewBuilder:
                     "success": True,
                     "message": f"Semantic view '{view_name}' SQL generated successfully",
                     "target_location": f"{self.target_database}.{self.target_schema}.{view_name.upper()}",
+                    "scope_summary": getattr(self, "_last_scope_summary", None),
                 }
 
                 if execute:
@@ -1028,7 +1037,7 @@ class SemanticViewBuilder:
         return ",\n".join(table_definitions)
 
     def _build_relationships_clause(
-        self, store, table_names: List[str], join_key_generator: Optional[JoinKeyDimensionGenerator] = None
+        self, store, table_names: List[str], join_key_generator: Optional[JoinKeyDimensionGenerator] = None, include_relationships: Optional[List[str]] = None, exclude_relationships: Optional[List[str]] = None
     ) -> str:
         """Build the RELATIONSHIPS clause of the CREATE SEMANTIC VIEW statement.
 
@@ -1038,6 +1047,12 @@ class SemanticViewBuilder:
         REFERENCES clause instead of the raw column name.
         """
         relationships = self._get_relationships(store, table_names)
+
+        # Apply view-level relationship scope
+        relationships = self._apply_view_scope(
+            relationships, include_relationships, exclude_relationships,
+            key_fn=lambda r: r["RELATIONSHIP_NAME"].upper()
+        )
 
         if not relationships:
             return ""
@@ -1089,7 +1104,7 @@ class SemanticViewBuilder:
 
         return ",\n".join(rel_definitions)
 
-    def _build_facts_clause(self, store, table_names: List[str]) -> str:
+    def _build_facts_clause(self, store, table_names: List[str], include_columns: Optional[List[str]] = None, exclude_columns: Optional[List[str]] = None) -> str:
         """Build the FACTS clause of the CREATE SEMANTIC VIEW statement ."""
         all_facts = []
 
@@ -1098,6 +1113,12 @@ class SemanticViewBuilder:
             for fact in facts:
                 fact["source_table"] = table_name
                 all_facts.append(fact)
+
+        # Apply view-level column scope
+        all_facts = self._apply_view_scope(
+            all_facts, include_columns, exclude_columns,
+            key_fn=lambda f: f"{f['source_table'].upper()}.{f['NAME'].upper()}"
+        )
 
         if not all_facts:
             return ""
@@ -1141,7 +1162,7 @@ class SemanticViewBuilder:
         return ",\n".join(fact_definitions)
 
     def _build_dimensions_clause(
-        self, store, table_names: List[str], join_key_generator: Optional[JoinKeyDimensionGenerator] = None
+        self, store, table_names: List[str], join_key_generator: Optional[JoinKeyDimensionGenerator] = None, include_columns: Optional[List[str]] = None, exclude_columns: Optional[List[str]] = None
     ) -> str:
         """Build the DIMENSIONS clause of the CREATE SEMANTIC VIEW statement.
 
@@ -1161,6 +1182,12 @@ class SemanticViewBuilder:
             for time_dim in time_dimensions:
                 time_dim["source_table"] = table_name
                 all_dimensions.append(time_dim)
+
+        # Apply view-level column scope
+        all_dimensions = self._apply_view_scope(
+            all_dimensions, include_columns, exclude_columns,
+            key_fn=lambda d: f"{d['source_table'].upper()}.{d['NAME'].upper()}"
+        )
 
         if not all_dimensions and not (join_key_generator and join_key_generator.has_dimensions()):
             return ""
@@ -1247,9 +1274,15 @@ class SemanticViewBuilder:
 
         return refs
 
-    def _build_metrics_clause(self, store, table_names: List[str]) -> str:
+    def _build_metrics_clause(self, store, table_names: List[str], include_metrics: Optional[List[str]] = None, exclude_metrics: Optional[List[str]] = None) -> str:
         """Build the METRICS clause of the CREATE SEMANTIC VIEW statement ."""
         metrics = self._get_metrics_for_selected_tables(store, table_names)
+
+        # Apply view-level metric scope
+        metrics = self._apply_view_scope(
+            metrics, include_metrics, exclude_metrics,
+            key_fn=lambda m: m["NAME"].upper()
+        )
 
         if not metrics:
             return ""
@@ -1739,7 +1772,7 @@ class SemanticViewBuilder:
             logger.warning(f"Failed to retrieve filters: {e}")
             return []
 
-    def _build_filters_as_instructions(self, store: Any, table_names: List[str]) -> str:
+    def _build_filters_as_instructions(self, store: Any, table_names: List[str], include_filters: Optional[List[str]] = None, exclude_filters: Optional[List[str]] = None) -> str:
         """
         Convert filter definitions into AI_SQL_GENERATION instruction text.
 
@@ -1761,6 +1794,13 @@ class SemanticViewBuilder:
             return ""
 
         filters = self._get_filters_for_tables(store, table_names)
+
+        # Apply view-level filter scope
+        filters = self._apply_view_scope(
+            filters, include_filters, exclude_filters,
+            key_fn=lambda f: f["NAME"].upper()
+        )
+
         if not filters:
             return ""
 
@@ -1788,7 +1828,7 @@ class SemanticViewBuilder:
         return header + "\n" + "\n".join(filter_lines)
 
     def _build_ai_guidance_clauses(
-        self, store: Any, custom_instruction_names: Optional[List[str]], table_names: Optional[List[str]] = None
+        self, store: Any, custom_instruction_names: Optional[List[str]], table_names: Optional[List[str]] = None, include_filters: Optional[List[str]] = None, exclude_filters: Optional[List[str]] = None
     ) -> str:
         """
         Build AI_QUESTION_CATEGORIZATION and AI_SQL_GENERATION clauses from custom instructions and filters.
@@ -1816,7 +1856,7 @@ class SemanticViewBuilder:
 
         # Append filter-based instructions to AI_SQL_GENERATION
         if table_names:
-            filter_instructions = self._build_filters_as_instructions(store, table_names)
+            filter_instructions = self._build_filters_as_instructions(store, table_names, include_filters=include_filters, exclude_filters=exclude_filters)
             if filter_instructions:
                 sql_gen_parts.append(filter_instructions)
 
@@ -1868,6 +1908,27 @@ class SemanticViewBuilder:
 
         return ""
 
+    @staticmethod
+    def _apply_view_scope(items: List[Dict], include_list: Optional[List[str]], exclude_list: Optional[List[str]], key_fn) -> List[Dict]:
+        """Apply view-level include/exclude filtering to a list of items.
+
+        Args:
+            items: List of row dicts to filter
+            include_list: If not None, only items whose key is in this list are kept
+            exclude_list: If not None, items whose key is in this list are removed
+            key_fn: Callable that extracts the identifier string from each item
+
+        Returns:
+            Filtered list of items
+        """
+        if include_list is not None:
+            allowed = {name.upper() for name in include_list}
+            items = [i for i in items if key_fn(i).upper() in allowed]
+        elif exclude_list is not None:
+            blocked = {name.upper() for name in exclude_list}
+            items = [i for i in items if key_fn(i).upper() not in blocked]
+        return items
+
     def _generate_sql(
         self,
         store,
@@ -1877,9 +1938,30 @@ class SemanticViewBuilder:
         defer_database: Optional[str] = None,
         defer_manifest: Optional["ManifestParser"] = None,
         custom_instruction_names: Optional[List[str]] = None,
+        view_scope: Optional[Dict[str, Any]] = None,
     ) -> str:
         """Generate the CREATE OR REPLACE SEMANTIC VIEW SQL statement ."""
         logger.info(f"Generating SQL for semantic view '{view_name}'")
+
+        # Extract view scope parameters
+        scope = view_scope or {}
+        include_columns = scope.get("columns")
+        exclude_columns = scope.get("exclude_columns")
+        include_metrics = scope.get("metrics")
+        exclude_metrics = scope.get("exclude_metrics")
+        include_relationships = scope.get("relationships")
+        exclude_relationships = scope.get("exclude_relationships")
+        include_filters = scope.get("filters")
+        exclude_filters = scope.get("exclude_filters")
+
+        if scope:
+            logger.info(f"View scope applied: {scope}")
+
+            # Count total available items before filtering (for summary)
+            _total_facts = sum(len(self._get_facts(store, t)) for t in table_names)
+            _total_dims = sum(len(self._get_dimensions(store, t)) + len(self._get_time_dimensions(store, t)) for t in table_names)
+            _total_metrics = len(self._get_metrics_for_selected_tables(store, table_names))
+            _total_rels = len(self._get_relationships(store, table_names))
 
         if defer_manifest:
             logger.info(f"Using defer mode with manifest: table references will use locations from manifest")
@@ -1902,7 +1984,8 @@ class SemanticViewBuilder:
         logger.info("Building RELATIONSHIPS clause...")
         join_key_generator = JoinKeyDimensionGenerator()
         relationships_clause = self._build_relationships_clause(
-            store, table_names, join_key_generator=join_key_generator
+            store, table_names, join_key_generator=join_key_generator,
+            include_relationships=include_relationships, exclude_relationships=exclude_relationships
         )
         if relationships_clause:
             sql_parts.append(f"  RELATIONSHIPS (\n{relationships_clause}\n  )")
@@ -1916,19 +1999,19 @@ class SemanticViewBuilder:
 
         # Build FACTS clause
         logger.info("Building FACTS clause...")
-        facts_clause = self._build_facts_clause(store, table_names)
+        facts_clause = self._build_facts_clause(store, table_names, include_columns=include_columns, exclude_columns=exclude_columns)
         if facts_clause:
             sql_parts.append(f"  FACTS (\n{facts_clause}\n  )")
 
         # Build DIMENSIONS clause (includes auto-generated join key dimensions from relationships)
         logger.info("Building DIMENSIONS clause...")
-        dimensions_clause = self._build_dimensions_clause(store, table_names, join_key_generator=join_key_generator)
+        dimensions_clause = self._build_dimensions_clause(store, table_names, join_key_generator=join_key_generator, include_columns=include_columns, exclude_columns=exclude_columns)
         if dimensions_clause:
             sql_parts.append(f"  DIMENSIONS (\n{dimensions_clause}\n  )")
 
         # Build METRICS clause
         logger.info("Building METRICS clause...")
-        metrics_clause = self._build_metrics_clause(store, table_names)
+        metrics_clause = self._build_metrics_clause(store, table_names, include_metrics=include_metrics, exclude_metrics=exclude_metrics)
         if metrics_clause:
             sql_parts.append(f"  METRICS (\n{metrics_clause}\n  )")
 
@@ -1943,7 +2026,7 @@ class SemanticViewBuilder:
 
         # Build AI guidance clauses from custom instructions and filters
         # These come after COMMENT per Snowflake syntax: COMMENT, then AI_SQL_GENERATION, then AI_QUESTION_CATEGORIZATION
-        ai_guidance_clauses = self._build_ai_guidance_clauses(store, custom_instruction_names, table_names=table_names)
+        ai_guidance_clauses = self._build_ai_guidance_clauses(store, custom_instruction_names, table_names=table_names, include_filters=include_filters, exclude_filters=exclude_filters)
         if ai_guidance_clauses:
             sql_parts.append(ai_guidance_clauses)
 
@@ -1955,6 +2038,29 @@ class SemanticViewBuilder:
 
         # Build CA extension for sample_values (Cortex Analyst metadata)
         ca_extension = self._build_ca_extension(store, table_names)
+
+        # Log scope filtering summary if scope was applied
+        scope_summary = None
+        if scope:
+            _filtered_facts = facts_clause.count(",\n") + 1 if facts_clause else 0
+            _filtered_dims = dimensions_clause.count(",\n") + 1 if dimensions_clause else 0
+            _filtered_metrics = metrics_clause.count("COMMENT =") if metrics_clause else 0
+            _filtered_rels = relationships_clause.count("\n    ") if relationships_clause else 0
+            _filtered_cols = _filtered_facts + _filtered_dims
+            _total_cols = _total_facts + _total_dims
+            parts = []
+            if include_columns or exclude_columns:
+                parts.append(f"{_filtered_cols} columns (from {_total_cols})")
+            if include_metrics or exclude_metrics:
+                parts.append(f"{_filtered_metrics} metrics (from {_total_metrics})")
+            if include_relationships or exclude_relationships:
+                parts.append(f"{_filtered_rels} relationships (from {_total_rels})")
+            if parts:
+                scope_summary = f"{', '.join(parts)}"
+                logger.info(f"View scope summary for '{view_name}': {scope_summary}")
+
+        # Store scope summary for callers to access
+        self._last_scope_summary = scope_summary
 
         # Join all parts and add CA extension if present
         if ca_extension:

@@ -415,8 +415,74 @@ def parse_snowflake_verified_queries(queries: List[Dict[str, Any]], file_path: P
     return query_records
 
 
+def _extract_view_scope_names(items: Optional[list], scope_type: str) -> Optional[List[str]]:
+    """Extract normalized names from a view-level include/exclude list.
+
+    Supports both Jinja-wrapped references and bare names:
+      - {{ metric('name') }} -> NAME
+      - {{ column('table', 'col') }} -> TABLE.COL
+      - {{ relationship('name') }} -> NAME
+      - {{ filter('name') }} -> NAME
+      - bare_name -> BARE_NAME
+      - table.column -> TABLE.COLUMN
+
+    Returns None if items is None (field not specified), preserving
+    the distinction between "not specified" and "empty list".
+    """
+
+    if items is None:
+        return None
+    if not isinstance(items, list):
+        return None
+
+    patterns = {
+        "metric": re.compile(r'\{\{\s*metric\([\'"]([^\'")]+)[\'"]\)\s*\}\}'),
+        "column": re.compile(r'\{\{\s*column\([\'"]([^\'")]+)[\'"]\s*,\s*[\'"]([^\'")]+)[\'"]\)\s*\}\}'),
+        "relationship": re.compile(r'\{\{\s*relationship\([\'"]([^\'")]+)[\'"]\)\s*\}\}'),
+        "filter": re.compile(r'\{\{\s*filter\([\'"]([^\'")]+)[\'"]\)\s*\}\}'),
+    }
+
+    names = []
+    for item in items:
+        if not isinstance(item, str):
+            continue
+        item = item.strip()
+
+        # Try Jinja patterns
+        matched = False
+        if scope_type in ("metrics", "exclude_metrics"):
+            m = patterns["metric"].match(item)
+            if m:
+                names.append(m.group(1).upper())
+                matched = True
+        elif scope_type in ("columns", "exclude_columns"):
+            m = patterns["column"].match(item)
+            if m:
+                names.append(f"{m.group(1).upper()}.{m.group(2).upper()}")
+                matched = True
+        elif scope_type in ("relationships", "exclude_relationships"):
+            m = patterns["relationship"].match(item)
+            if m:
+                names.append(m.group(1).upper())
+                matched = True
+        elif scope_type in ("filters", "exclude_filters"):
+            m = patterns["filter"].match(item)
+            if m:
+                names.append(m.group(1).upper())
+                matched = True
+
+        if not matched:
+            # Bare name fallback — normalize to uppercase
+            names.append(item.upper())
+
+    return names if names else None
+
+
 def parse_semantic_views(
-    semantic_views: List[Dict[str, Any]], file_path: Path, instruction_names_map: Optional[Dict[str, List[str]]] = None
+    semantic_views: List[Dict[str, Any]],
+    file_path: Path,
+    instruction_names_map: Optional[Dict[str, List[str]]] = None,
+    view_scope_map: Optional[Dict[str, Dict[str, List[str]]]] = None,
 ) -> List[Dict[str, Any]]:
     """Parse semantic_views from semantic model files."""
     import json
@@ -477,12 +543,31 @@ def parse_semantic_views(
             # Store instruction names as JSON array (like metrics store metric names)
             custom_instructions_json = json.dumps(instruction_names) if instruction_names else None
 
+            # Extract view-level include/exclude scope lists
+            # Prefer pre-extracted names (from raw YAML before template resolution)
+            scope_fields = {}
+            if view_scope_map and name in view_scope_map:
+                for scope_key, names in view_scope_map[name].items():
+                    scope_fields[scope_key] = json.dumps(names)
+            else:
+                for scope_key in (
+                    "columns", "metrics", "relationships", "filters",
+                    "exclude_columns", "exclude_metrics", "exclude_relationships", "exclude_filters",
+                ):
+                    # Also accept "dimensions" as an alias for "columns" (legacy fixture format)
+                    yaml_key = "dimensions" if scope_key == "columns" and "columns" not in view_def and "dimensions" in view_def else scope_key
+                    raw = view_def.get(yaml_key, None)
+                    parsed = _extract_view_scope_names(raw, scope_key)
+                    if parsed is not None:
+                        scope_fields[scope_key] = json.dumps(parsed)
+
             view_record = {
                 "name": str(name),
                 "description": str(description),
                 "tables": tables_json,
                 "custom_instructions": custom_instructions_json,
-                "source_file": str(file_path),  # Store the file path for validation errors
+                "source_file": str(file_path),
+                **scope_fields,
             }
 
             view_records.append(view_record)

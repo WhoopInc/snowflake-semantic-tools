@@ -392,10 +392,10 @@ class TestCustomInstructionsInFullDDL:
         monkeypatch.setattr(builder, "_get_dimensions", lambda conn, name: [])
         monkeypatch.setattr(builder, "_get_time_dimensions", lambda conn, name: [])
         monkeypatch.setattr(builder, "_get_facts", lambda conn, name: [])
-        monkeypatch.setattr(builder, "_build_metrics_clause", lambda conn, names: "")
+        monkeypatch.setattr(builder, "_build_metrics_clause", lambda conn, names, **kw: "")
         monkeypatch.setattr(builder, "_build_ca_extension", lambda conn, names: "")
         monkeypatch.setattr(builder, "_build_relationships_clause", lambda conn, names, **kw: "")
-        monkeypatch.setattr(builder, "_build_facts_clause", lambda conn, names: "")
+        monkeypatch.setattr(builder, "_build_facts_clause", lambda conn, names, **kw: "")
         monkeypatch.setattr(builder, "_build_dimensions_clause", lambda conn, names, **kw: "")
 
         # Mock custom instructions retrieval
@@ -455,10 +455,10 @@ class TestCustomInstructionsInFullDDL:
         monkeypatch.setattr(builder, "_get_dimensions", lambda conn, name: [])
         monkeypatch.setattr(builder, "_get_time_dimensions", lambda conn, name: [])
         monkeypatch.setattr(builder, "_get_facts", lambda conn, name: [])
-        monkeypatch.setattr(builder, "_build_metrics_clause", lambda conn, names: "")
+        monkeypatch.setattr(builder, "_build_metrics_clause", lambda conn, names, **kw: "")
         monkeypatch.setattr(builder, "_build_ca_extension", lambda conn, names: "")
         monkeypatch.setattr(builder, "_build_relationships_clause", lambda conn, names, **kw: "")
-        monkeypatch.setattr(builder, "_build_facts_clause", lambda conn, name: "")
+        monkeypatch.setattr(builder, "_build_facts_clause", lambda conn, name, **kw: "")
         monkeypatch.setattr(builder, "_build_dimensions_clause", lambda conn, name, **kw: "")
 
         sql = builder._generate_sql(
@@ -493,10 +493,10 @@ class TestCustomInstructionsInFullDDL:
         monkeypatch.setattr(builder, "_get_dimensions", lambda conn, name: [])
         monkeypatch.setattr(builder, "_get_time_dimensions", lambda conn, name: [])
         monkeypatch.setattr(builder, "_get_facts", lambda conn, name: [])
-        monkeypatch.setattr(builder, "_build_metrics_clause", lambda conn, names: "")
+        monkeypatch.setattr(builder, "_build_metrics_clause", lambda conn, names, **kw: "")
         monkeypatch.setattr(builder, "_build_ca_extension", lambda conn, names: "")
         monkeypatch.setattr(builder, "_build_relationships_clause", lambda conn, names, **kw: "")
-        monkeypatch.setattr(builder, "_build_facts_clause", lambda conn, name: "")
+        monkeypatch.setattr(builder, "_build_facts_clause", lambda conn, name, **kw: "")
         monkeypatch.setattr(builder, "_build_dimensions_clause", lambda conn, name, **kw: "")
 
         # Multiple instructions
