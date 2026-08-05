@@ -81,6 +81,41 @@ class TestExtractViewScopeNames:
         )
         assert result == ["TOTAL_REVENUE", "ACTIVE_USERS"]
 
+    def test_ref_two_arg_syntax_for_columns(self):
+        """{{ ref('table', 'column') }} should work as column reference."""
+        result = _extract_view_scope_names(
+            ["{{ ref('orders', 'order_total') }}", "{{ ref('customers', 'name') }}"],
+            "columns",
+        )
+        assert result == ["ORDERS.ORDER_TOTAL", "CUSTOMERS.NAME"]
+
+    def test_ref_syntax_in_exclude_columns(self):
+        result = _extract_view_scope_names(
+            ["{{ ref('orders', 'order_cost') }}"],
+            "exclude_columns",
+        )
+        assert result == ["ORDERS.ORDER_COST"]
+
+    def test_mixed_ref_column_and_bare(self):
+        """All three column formats should work together."""
+        result = _extract_view_scope_names(
+            [
+                "{{ ref('orders', 'order_id') }}",
+                "{{ column('orders', 'order_total') }}",
+                "orders.order_date",
+            ],
+            "columns",
+        )
+        assert result == ["ORDERS.ORDER_ID", "ORDERS.ORDER_TOTAL", "ORDERS.ORDER_DATE"]
+
+    def test_unquoted_jinja_metric(self):
+        """Unquoted Jinja (no double quotes) should work the same as quoted."""
+        result = _extract_view_scope_names(
+            ["{{ metric('total_revenue') }}"],  # same string whether YAML was quoted or not
+            "metrics",
+        )
+        assert result == ["TOTAL_REVENUE"]
+
 
 class TestParseSemanticViewsScope:
     """Tests for scope field extraction in parse_semantic_views."""
