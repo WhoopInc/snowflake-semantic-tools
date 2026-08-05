@@ -436,10 +436,11 @@ def _extract_view_scope_names(items: Optional[list], scope_type: str) -> Optiona
         return None
 
     patterns = {
-        "metric": re.compile(r'\{\{\s*metric\([\'"]([^\'")]+)[\'"]\)\s*\}\}'),
-        "column": re.compile(r'\{\{\s*column\([\'"]([^\'")]+)[\'"]\s*,\s*[\'"]([^\'")]+)[\'"]\)\s*\}\}'),
-        "relationship": re.compile(r'\{\{\s*relationship\([\'"]([^\'")]+)[\'"]\)\s*\}\}'),
-        "filter": re.compile(r'\{\{\s*filter\([\'"]([^\'")]+)[\'"]\)\s*\}\}'),
+        "metric": re.compile(r"\{\{\s*metric\(['\"]([^'\")+]+)['\"]\)\s*\}\}"),
+        "column": re.compile(r"\{\{\s*column\(['\"]([^'\")+]+)['\"]\s*,\s*['\"]([^'\")+]+)['\"]\)\s*\}\}"),
+        "ref_two_arg": re.compile(r"\{\{\s*ref\(['\"]([^'\")+]+)['\"]\s*,\s*['\"]([^'\")+]+)['\"]\)\s*\}\}"),
+        "relationship": re.compile(r"\{\{\s*relationship\(['\"]([^'\")+]+)['\"]\)\s*\}\}"),
+        "filter": re.compile(r"\{\{\s*filter\(['\"]([^'\")+]+)['\"]\)\s*\}\}"),
     }
 
     names = []
@@ -460,6 +461,12 @@ def _extract_view_scope_names(items: Optional[list], scope_type: str) -> Optiona
             if m:
                 names.append(f"{m.group(1).upper()}.{m.group(2).upper()}")
                 matched = True
+            else:
+                # Also try {{ ref('table', 'column') }} syntax
+                m = patterns["ref_two_arg"].match(item)
+                if m:
+                    names.append(f"{m.group(1).upper()}.{m.group(2).upper()}")
+                    matched = True
         elif scope_type in ("relationships", "exclude_relationships"):
             m = patterns["relationship"].match(item)
             if m:
