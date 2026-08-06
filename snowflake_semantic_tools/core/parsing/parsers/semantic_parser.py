@@ -434,13 +434,16 @@ def _extract_view_scope_names(items: Optional[list], scope_type: str) -> Optiona
         return None
     if not isinstance(items, list):
         return None
+    if len(items) == 0:
+        # Explicit empty list means "include nothing" — distinct from None (not specified)
+        return []
 
     patterns = {
-        "metric": re.compile(r"\{\{\s*metric\(['\"]([^'\")+]+)['\"]\)\s*\}\}"),
-        "column": re.compile(r"\{\{\s*column\(['\"]([^'\")+]+)['\"]\s*,\s*['\"]([^'\")+]+)['\"]\)\s*\}\}"),
-        "ref_two_arg": re.compile(r"\{\{\s*ref\(['\"]([^'\")+]+)['\"]\s*,\s*['\"]([^'\")+]+)['\"]\)\s*\}\}"),
-        "relationship": re.compile(r"\{\{\s*relationship\(['\"]([^'\")+]+)['\"]\)\s*\}\}"),
-        "filter": re.compile(r"\{\{\s*filter\(['\"]([^'\")+]+)['\"]\)\s*\}\}"),
+        "metric": re.compile(r"\{\{\s*metric\(['\"]([^'\"]+)['\"]\)\s*\}\}"),
+        "column": re.compile(r"\{\{\s*column\(['\"]([^'\"]+)['\"]\s*,\s*['\"]([^'\"]+)['\"]\)\s*\}\}"),
+        "ref_two_arg": re.compile(r"\{\{\s*ref\(['\"]([^'\"]+)['\"]\s*,\s*['\"]([^'\"]+)['\"]\)\s*\}\}"),
+        "relationship": re.compile(r"\{\{\s*relationship\(['\"]([^'\"]+)['\"]\)\s*\}\}"),
+        "filter": re.compile(r"\{\{\s*filter\(['\"]([^'\"]+)['\"]\)\s*\}\}"),
     }
 
     names = []

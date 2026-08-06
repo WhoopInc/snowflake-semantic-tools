@@ -382,8 +382,12 @@ class SemanticViewGenerationService:
                             try:
                                 val = json.loads(val)
                             except (json.JSONDecodeError, TypeError, ValueError):
-                                pass
-                        if isinstance(val, list) and val:
+                                logger.warning(
+                                    f"View '{view_name}': could not parse scope field '{scope_key}' "
+                                    f"as JSON list — scope will not be applied for this field"
+                                )
+                                val = None
+                        if isinstance(val, list):
                             view_scope[scope_key] = val
                 view_scope = view_scope or None
 
@@ -578,8 +582,12 @@ class SemanticViewGenerationService:
                         try:
                             val = json.loads(val)
                         except (json.JSONDecodeError, TypeError, ValueError):
-                            pass
-                    if isinstance(val, list) and val:
+                            logger.warning(
+                                f"View '{view_name}': could not parse scope field '{scope_key}' "
+                                f"as JSON list — scope will not be applied for this field"
+                            )
+                            val = None
+                    if isinstance(val, list):
                         _view_scope[scope_key] = val
             _view_scope = _view_scope or None
 

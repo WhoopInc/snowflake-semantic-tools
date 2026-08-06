@@ -70,9 +70,10 @@ class TestExtractViewScopeNames:
         )
         assert result == ["DEBUG_METRIC"]
 
-    def test_empty_list_returns_none(self):
+    def test_empty_list_returns_empty(self):
+        """Explicit empty list means 'include nothing', distinct from None (not specified)."""
         result = _extract_view_scope_names([], "metrics")
-        assert result is None
+        assert result == []
 
     def test_mixed_jinja_and_bare(self):
         result = _extract_view_scope_names(
