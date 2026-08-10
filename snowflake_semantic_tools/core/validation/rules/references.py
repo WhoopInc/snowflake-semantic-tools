@@ -1357,7 +1357,18 @@ class ReferenceValidator:
                             parts = col_upper.split(".", 1)
                             table_part = parts[0] if len(parts) == 2 else ""
                             table_exists = table_part in available_columns_by_table
-                            if table_exists:
+                            if table_exists and key == "exclude_columns":
+                                # Excluding a globally-excluded column is redundant but not an error
+                                result.add_warning(
+                                    f"Semantic view '{view_name}' references column '{col_ref}' in '{key}' "
+                                    f"but that column is already globally excluded via meta.sst.exclude: true. "
+                                    f"This exclusion is redundant.",
+                                    rule_id="SST-V082",
+                                    suggestion="You can safely remove this entry — the column is already excluded globally.",
+                                    entity_name=view_name,
+                                    context={"view": view_name, "item": col_ref, "field": key},
+                                )
+                            elif table_exists:
                                 error_msg = (
                                     f"Semantic view '{view_name}' references column '{col_ref}' in '{key}' "
                                     f"but that column does not exist in the view's tables. "
@@ -1369,19 +1380,26 @@ class ReferenceValidator:
                                     "Check if the column has 'exclude: true' in its dbt model YAML. "
                                     "Remove the global exclusion first if you want to include it in this view."
                                 )
+                                result.add_error(
+                                    error_msg,
+                                    rule_id="SST-V082",
+                                    suggestion=suggestion,
+                                    entity_name=view_name,
+                                    context={"view": view_name, "item": col_ref, "field": key},
+                                )
                             else:
                                 error_msg = (
                                     f"Semantic view '{view_name}' references column '{col_ref}' in '{key}' "
                                     f"but that column does not exist in the view's tables."
                                 )
                                 suggestion = "Check column name and table membership"
-                            result.add_error(
-                                error_msg,
-                                rule_id="SST-V082",
-                                suggestion=suggestion,
-                                entity_name=view_name,
-                                context={"view": view_name, "item": col_ref, "field": key},
-                            )
+                                result.add_error(
+                                    error_msg,
+                                    rule_id="SST-V082",
+                                    suggestion=suggestion,
+                                    entity_name=view_name,
+                                    context={"view": view_name, "item": col_ref, "field": key},
+                                )
 
             # Validate metric-to-relationship dependencies
             # If a multi-table metric is in the view, its required relationships must also be present
@@ -1401,17 +1419,6 @@ class ReferenceValidator:
                     if exclude_rels:
                         view_rels_upper -= {r.upper() for r in exclude_rels}
 
-                # Build relationship graph with names: (table1, table2) -> relationship_name
-                rel_name_by_tables = {}
-                for r in relationships_data.get("items", []):
-                    if isinstance(r, dict):
-                        rel_name = (r.get("relationship_name") or r.get("name") or "").upper()
-                        left = (r.get("left_table_name") or r.get("left_table") or "").lower()
-                        right = (r.get("right_table_name") or r.get("right_table") or "").lower()
-                        if left and right and rel_name:
-                            rel_name_by_tables[(left, right)] = rel_name
-                            rel_name_by_tables[(right, left)] = rel_name
-
                 # Determine which metrics will be in the view
                 for metric in metrics_data.get("items", []):
                     if not isinstance(metric, dict):
@@ -1428,7 +1435,7 @@ class ReferenceValidator:
                         if metric_name in {m.upper() for m in exclude_metrics_list}:
                             continue
 
-                    # Get tables this metric references
+                    # Skip metrics whose tables aren't all in this view
                     metric_tables_raw = metric.get("tables") or metric.get("table_name", "")
                     try:
                         if isinstance(metric_tables_raw, str) and metric_tables_raw.startswith("["):
@@ -1439,31 +1446,41 @@ class ReferenceValidator:
                             metric_tables = [metric_tables_raw] if metric_tables_raw else []
                     except (json.JSONDecodeError, TypeError, ValueError):
                         metric_tables = []
+                    metric_tables_upper = {t.upper() for t in metric_tables if isinstance(t, str)}
+                    if not metric_tables_upper.issubset(view_tables_upper):
+                        continue
 
-                    metric_tables_lower = [t.lower() for t in metric_tables if isinstance(t, str)]
-                    # Only check metrics that span multiple tables within this view
-                    metric_tables_in_view = [t for t in metric_tables_lower if t.upper() in view_tables_upper]
+                    # Use the metric's explicit using_relationships field if available
+                    using_rels_raw = metric.get("using_relationships")
+                    metric_required_rels = []
+                    if using_rels_raw:
+                        try:
+                            if isinstance(using_rels_raw, str) and using_rels_raw.startswith("["):
+                                metric_required_rels = json.loads(using_rels_raw)
+                            elif isinstance(using_rels_raw, list):
+                                metric_required_rels = using_rels_raw
+                            elif isinstance(using_rels_raw, str):
+                                metric_required_rels = [using_rels_raw]
+                        except (json.JSONDecodeError, TypeError, ValueError):
+                            metric_required_rels = []
 
-                    if len(metric_tables_in_view) > 1:
-                        for i, t1 in enumerate(metric_tables_in_view):
-                            for t2 in metric_tables_in_view[i + 1 :]:
-                                needed_rel = rel_name_by_tables.get((t1, t2))
-                                if needed_rel and needed_rel not in view_rels_upper:
-                                    result.add_error(
-                                        f"Semantic view '{view_name}' includes metric '{metric_name}' which requires "
-                                        f"relationship '{needed_rel}' to join tables '{t1}' and '{t2}', but that "
-                                        f"relationship is not included in this view's relationship scope. "
-                                        f"Either add '{needed_rel}' to the relationships list, or remove the metric.",
-                                        rule_id="SST-V083",
-                                        suggestion=f"Add '{{{{ relationship('{needed_rel.lower()}') }}}}' to the view's relationships list",
-                                        entity_name=view_name,
-                                        context={
-                                            "view": view_name,
-                                            "metric": metric_name,
-                                            "missing_relationship": needed_rel,
-                                            "tables": [t1, t2],
-                                        },
-                                    )
+                    # Check that each required relationship is in the view's scope
+                    for req_rel in metric_required_rels:
+                        if req_rel.upper() not in view_rels_upper:
+                            result.add_error(
+                                f"Semantic view '{view_name}' includes metric '{metric_name}' which requires "
+                                f"relationship '{req_rel.upper()}' (via using_relationships), but that "
+                                f"relationship is not included in this view's relationship scope. "
+                                f"Either add '{req_rel.upper()}' to the relationships list, or remove the metric.",
+                                rule_id="SST-V083",
+                                suggestion=f"Add '{req_rel}' to the view's relationships list",
+                                entity_name=view_name,
+                                context={
+                                    "view": view_name,
+                                    "metric": metric_name,
+                                    "missing_relationship": req_rel.upper(),
+                                },
+                            )
 
     def _is_cte_or_subquery(self, table_name: str) -> bool:
         """

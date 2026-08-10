@@ -633,6 +633,36 @@ class SemanticViewBuilder:
             logger.error(formatted_message)
             return formatted_message
 
+        # PRIORITY 3: Handle metric definition errors (window functions, semi-additive)
+        is_metric_error = (
+            "metric definition" in error_msg_lower
+            or "non-additive clause" in error_msg_lower
+            or "non additive" in error_msg_lower
+        )
+        if is_metric_error:
+            # Extract the metric name from the error if possible
+            import re
+
+            metric_match = re.search(r"metric definition for '([^']+)'", error_msg_lower)
+            if not metric_match:
+                metric_match = re.search(r"semi-additive metric '([^']+)'", error_msg_lower)
+            metric_ref = metric_match.group(1).upper() if metric_match else "unknown"
+
+            formatted_message = (
+                f"Error building semantic view '{view_name}': A metric ({metric_ref}) "
+                f"cannot be compiled by Snowflake in this view's configuration.\n\n"
+                f"This typically happens when a window function or semi-additive metric references "
+                f"dimensions from a related entity, but the required relationship or table is not "
+                f"included in this view.\n\n"
+                f"To fix this, either:\n"
+                f"  1. Add the related table to the view's 'tables' list (so the relationship is available)\n"
+                f"  2. Exclude the problematic metric using 'exclude_metrics' in the view scope\n"
+                f"  3. Restrict metrics to only the ones you need using the 'metrics' include list\n\n"
+                f"Original error: {error_msg}"
+            )
+            logger.error(formatted_message)
+            return formatted_message
+
         # Handle other errors
         logger.error(f"Error building semantic view '{view_name}': {error}")
         return f"Error building semantic view '{view_name}': {error_msg}"
@@ -1312,6 +1342,18 @@ class SemanticViewBuilder:
         # Create a set of normalized table names for quick lookup
         available_tables = set(t.lower() for t in table_names)
 
+        # Build set of available relationships for this view's tables
+        available_rel_names = set()
+        try:
+            view_relationships = self._get_relationships(store, table_names)
+            for rel in view_relationships:
+                rel_name = (rel.get("RELATIONSHIP_NAME") or "").upper()
+                if rel_name:
+                    available_rel_names.add(rel_name)
+        except (AttributeError, Exception):
+            # If relationships can't be fetched, skip the using_relationships check
+            available_rel_names = None
+
         # Get all defined facts and dimensions to validate metric references
         defined_columns = set()
         for table_name in table_names:
@@ -1351,6 +1393,25 @@ class SemanticViewBuilder:
                         f"{', '.join(missing_tables)}. Available tables: {', '.join(available_tables)}"
                     )
                     continue
+
+                # Skip metrics whose using_relationships aren't available in this view
+                if available_rel_names is not None:
+                    using_rels_raw = self._parse_json_field(metric.get("USING_RELATIONSHIPS"), "using_relationships")
+                    if using_rels_raw and isinstance(using_rels_raw, list):
+                        missing_rels = [r.upper() for r in using_rels_raw if r and r.upper() not in available_rel_names]
+                        if missing_rels:
+                            skipped_metrics.append(
+                                {
+                                    "metric": metric_name,
+                                    "missing_tables": missing_rels,
+                                    "available": list(available_rel_names),
+                                }
+                            )
+                            logger.debug(
+                                f"Skipping metric '{metric_name}' - requires relationship(s) not available in view: "
+                                f"{', '.join(missing_rels)}. Available relationships: {', '.join(available_rel_names)}"
+                            )
+                            continue
 
                 col_refs = self._extract_column_references_from_expression(expression)
                 for table_ref, col_ref in col_refs:
