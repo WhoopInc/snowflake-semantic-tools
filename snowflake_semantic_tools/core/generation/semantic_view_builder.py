@@ -1329,6 +1329,7 @@ class SemanticViewBuilder:
         table_names: List[str],
         include_metrics: Optional[List[str]] = None,
         exclude_metrics: Optional[List[str]] = None,
+        include_columns: Optional[List[str]] = None,
     ) -> str:
         """Build the METRICS clause of the CREATE SEMANTIC VIEW statement ."""
         metrics = self._get_metrics_for_selected_tables(store, table_names)
@@ -1344,15 +1345,59 @@ class SemanticViewBuilder:
 
         # Build set of available relationships for this view's tables
         available_rel_names = set()
+        # Also build a set of FK dimension columns that point to entities NOT in the view
+        fk_columns_to_external_entities = set()  # e.g., {"ORDERS.CUSTOMER_ID"}
         try:
             view_relationships = self._get_relationships(store, table_names)
             for rel in view_relationships:
                 rel_name = (rel.get("RELATIONSHIP_NAME") or "").upper()
                 if rel_name:
                     available_rel_names.add(rel_name)
+
+            # Find FK columns pointing to entities outside the view
+            # by looking at ALL relationships where left table is in view but right table is not
+            if isinstance(store, MetadataStore):
+                # Access all relationships from the in-memory store
+                all_rels_raw = getattr(store, "_relationships_raw", [])
+                for rel in all_rels_raw:
+                    left_table = (rel.get("LEFT_TABLE_NAME") or "").lower()
+                    right_table = (rel.get("RIGHT_TABLE_NAME") or "").lower()
+                    if left_table in available_tables and right_table not in available_tables:
+                        rel_name = rel.get("RELATIONSHIP_NAME") or ""
+                        rel_cols = store.get_relationship_columns(rel_name)
+                        for col_row in rel_cols:
+                            left_expr = col_row.get("LEFT_EXPRESSION", "")
+                            if left_expr and "." in left_expr:
+                                fk_columns_to_external_entities.add(left_expr.upper())
+                            elif left_expr:
+                                fk_columns_to_external_entities.add(f"{left_table.upper()}.{left_expr.upper()}")
+            else:
+                # Query Snowflake directly for relationships to external tables
+                tlist = ",".join([f"'{t.lower()}'" for t in table_names])
+                rel_table = "SM_RELATIONSHIPS"
+                sql = (
+                    f"SELECT LEFT_TABLE_NAME, RIGHT_TABLE_NAME, RELATIONSHIP_NAME "
+                    f"FROM {self.metadata_database}.{self.metadata_schema}.{rel_table} "
+                    f"WHERE LOWER(LEFT_TABLE_NAME) IN ({tlist}) AND LOWER(RIGHT_TABLE_NAME) NOT IN ({tlist})"
+                )
+                ext_rels = self._execute_query(store, sql)
+                for rel in ext_rels:
+                    left_table = (rel.get("LEFT_TABLE_NAME") or "").upper()
+                    right_table = (rel.get("RIGHT_TABLE_NAME") or "").upper()
+                    rel_name = rel.get("RELATIONSHIP_NAME", "")
+                    rel_cols = self._get_relationship_columns(store, rel_name)
+                    for col_row in rel_cols:
+                        left_expr = col_row.get("LEFT_EXPRESSION", "")
+                        if left_expr and "." in left_expr:
+                            fk_columns_to_external_entities.add(left_expr.upper())
+                        elif left_expr:
+                            fk_columns_to_external_entities.add(f"{left_table}.{left_expr.upper()}")
         except (AttributeError, Exception):
-            # If relationships can't be fetched, skip the using_relationships check
+            # If relationships can't be fetched, skip the checks
             available_rel_names = None
+
+        if fk_columns_to_external_entities:
+            logger.info(f"FK columns to external entities: {fk_columns_to_external_entities}")
 
         # Get all defined facts and dimensions to validate metric references
         defined_columns = set()
@@ -1412,6 +1457,102 @@ class SemanticViewBuilder:
                                 f"{', '.join(missing_rels)}. Available relationships: {', '.join(available_rel_names)}"
                             )
                             continue
+
+                # Skip window/non-additive metrics that reference FK dimensions to entities not in the view
+                # OR that reference columns not in the view's column scope
+                window_config = self._parse_json_field(metric.get("WINDOW"), "window")
+                non_additive_by = self._parse_json_field(metric.get("NON_ADDITIVE_BY"), "non_additive_by")
+
+                # Build scoped column set if columns are restricted
+                scoped_columns_upper = None
+                if include_columns:
+                    scoped_columns_upper = {c.upper() for c in include_columns}
+
+                if window_config and isinstance(window_config, dict):
+                    partition_by = window_config.get("partition_by") or []
+                    partition_by_excluding = window_config.get("partition_by_excluding") or []
+                    all_window_cols = list(partition_by) + list(partition_by_excluding)
+
+                    should_skip = False
+                    for col_expr in all_window_cols:
+                        col_refs_in_window = self._extract_column_references_from_expression(str(col_expr))
+                        for tbl, col in col_refs_in_window:
+                            qualified = f"{tbl.upper()}.{col.upper()}"
+                            # Check FK columns to external entities
+                            if fk_columns_to_external_entities and qualified in fk_columns_to_external_entities:
+                                skipped_metrics.append(
+                                    {
+                                        "metric": metric_name,
+                                        "missing_tables": [qualified],
+                                        "available": list(available_tables),
+                                    }
+                                )
+                                logger.debug(
+                                    f"Skipping window metric '{metric_name}' - PARTITION BY references FK dimension "
+                                    f"'{qualified}' which points to an entity not in this view"
+                                )
+                                should_skip = True
+                                break
+                            # Check columns not in scope
+                            if scoped_columns_upper and qualified not in scoped_columns_upper:
+                                skipped_metrics.append(
+                                    {
+                                        "metric": metric_name,
+                                        "missing_tables": [qualified],
+                                        "available": list(scoped_columns_upper),
+                                    }
+                                )
+                                logger.debug(
+                                    f"Skipping window metric '{metric_name}' - references column '{qualified}' "
+                                    f"not in view's column scope"
+                                )
+                                should_skip = True
+                                break
+                        if should_skip:
+                            break
+                    if should_skip:
+                        continue
+
+                if non_additive_by and isinstance(non_additive_by, list):
+                    primary_table = (metric.get("TABLE_NAME") or "").upper()
+                    should_skip = False
+                    for entry in non_additive_by:
+                        if isinstance(entry, dict):
+                            dim = entry.get("dimension", "").upper()
+                            if dim and primary_table:
+                                qualified = f"{primary_table}.{dim}"
+                                # Check FK columns
+                                if fk_columns_to_external_entities and qualified in fk_columns_to_external_entities:
+                                    skipped_metrics.append(
+                                        {
+                                            "metric": metric_name,
+                                            "missing_tables": [qualified],
+                                            "available": list(available_tables),
+                                        }
+                                    )
+                                    logger.debug(
+                                        f"Skipping semi-additive metric '{metric_name}' - NON_ADDITIVE_BY dimension "
+                                        f"'{qualified}' is a FK to an entity not in this view"
+                                    )
+                                    should_skip = True
+                                    break
+                                # Check columns not in scope
+                                if scoped_columns_upper and qualified not in scoped_columns_upper:
+                                    skipped_metrics.append(
+                                        {
+                                            "metric": metric_name,
+                                            "missing_tables": [qualified],
+                                            "available": list(scoped_columns_upper),
+                                        }
+                                    )
+                                    logger.debug(
+                                        f"Skipping semi-additive metric '{metric_name}' - NON_ADDITIVE_BY dimension "
+                                        f"'{qualified}' not in view's column scope"
+                                    )
+                                    should_skip = True
+                                    break
+                    if should_skip:
+                        continue
 
                 col_refs = self._extract_column_references_from_expression(expression)
                 for table_ref, col_ref in col_refs:
@@ -2120,7 +2261,11 @@ class SemanticViewBuilder:
         # Build METRICS clause
         logger.info("Building METRICS clause...")
         metrics_clause = self._build_metrics_clause(
-            store, table_names, include_metrics=include_metrics, exclude_metrics=exclude_metrics
+            store,
+            table_names,
+            include_metrics=include_metrics,
+            exclude_metrics=exclude_metrics,
+            include_columns=include_columns,
         )
         if metrics_clause:
             sql_parts.append(f"  METRICS (\n{metrics_clause}\n  )")
