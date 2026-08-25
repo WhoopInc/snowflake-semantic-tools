@@ -369,11 +369,9 @@ class SemanticViewGenerationService:
                     "columns",
                     "metrics",
                     "relationships",
-                    "filters",
                     "exclude_columns",
                     "exclude_metrics",
                     "exclude_relationships",
-                    "exclude_filters",
                 ):
                     val = view_config.get(scope_key)
                     if val is not None:
@@ -569,11 +567,9 @@ class SemanticViewGenerationService:
                 "columns",
                 "metrics",
                 "relationships",
-                "filters",
                 "exclude_columns",
                 "exclude_metrics",
                 "exclude_relationships",
-                "exclude_filters",
             ):
                 val = view_config.get(scope_key)
                 if val is not None:

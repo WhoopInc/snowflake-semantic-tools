@@ -2000,8 +2000,6 @@ class SemanticViewBuilder:
         self,
         store: Any,
         table_names: List[str],
-        include_filters: Optional[List[str]] = None,
-        exclude_filters: Optional[List[str]] = None,
     ) -> str:
         """
         Convert filter definitions into AI_SQL_GENERATION instruction text.
@@ -2024,9 +2022,6 @@ class SemanticViewBuilder:
             return ""
 
         filters = self._get_filters_for_tables(store, table_names)
-
-        # Apply view-level filter scope
-        filters = self._apply_view_scope(filters, include_filters, exclude_filters, key_fn=lambda f: f["NAME"].upper())
 
         if not filters:
             return ""
@@ -2059,8 +2054,6 @@ class SemanticViewBuilder:
         store: Any,
         custom_instruction_names: Optional[List[str]],
         table_names: Optional[List[str]] = None,
-        include_filters: Optional[List[str]] = None,
-        exclude_filters: Optional[List[str]] = None,
     ) -> str:
         """
         Build AI_QUESTION_CATEGORIZATION and AI_SQL_GENERATION clauses from custom instructions and filters.
@@ -2088,9 +2081,7 @@ class SemanticViewBuilder:
 
         # Append filter-based instructions to AI_SQL_GENERATION
         if table_names:
-            filter_instructions = self._build_filters_as_instructions(
-                store, table_names, include_filters=include_filters, exclude_filters=exclude_filters
-            )
+            filter_instructions = self._build_filters_as_instructions(store, table_names)
             if filter_instructions:
                 sql_gen_parts.append(filter_instructions)
 
@@ -2187,8 +2178,6 @@ class SemanticViewBuilder:
         exclude_metrics = scope.get("exclude_metrics")
         include_relationships = scope.get("relationships")
         exclude_relationships = scope.get("exclude_relationships")
-        include_filters = scope.get("filters")
-        exclude_filters = scope.get("exclude_filters")
 
         if scope:
             logger.info(f"View scope applied: {scope}")
@@ -2285,8 +2274,6 @@ class SemanticViewBuilder:
             store,
             custom_instruction_names,
             table_names=table_names,
-            include_filters=include_filters,
-            exclude_filters=exclude_filters,
         )
         if ai_guidance_clauses:
             sql_parts.append(ai_guidance_clauses)

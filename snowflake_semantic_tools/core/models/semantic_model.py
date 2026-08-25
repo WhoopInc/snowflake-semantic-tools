@@ -201,13 +201,11 @@ class SemanticView:
     columns: Optional[List[str]] = None
     metrics: Optional[List[str]] = None
     relationships: Optional[List[str]] = None
-    filters: Optional[List[str]] = None
 
     # Exclude lists (blocklist mode — all items EXCEPT listed ones appear)
     exclude_columns: Optional[List[str]] = None
     exclude_metrics: Optional[List[str]] = None
     exclude_relationships: Optional[List[str]] = None
-    exclude_filters: Optional[List[str]] = None
 
     def __post_init__(self):
         """Ensure tables is always a list."""
@@ -228,16 +226,12 @@ class SemanticView:
             result["metrics"] = self.metrics
         if self.relationships is not None:
             result["relationships"] = self.relationships
-        if self.filters is not None:
-            result["filters"] = self.filters
         if self.exclude_columns is not None:
             result["exclude_columns"] = self.exclude_columns
         if self.exclude_metrics is not None:
             result["exclude_metrics"] = self.exclude_metrics
         if self.exclude_relationships is not None:
             result["exclude_relationships"] = self.exclude_relationships
-        if self.exclude_filters is not None:
-            result["exclude_filters"] = self.exclude_filters
 
         return result
 

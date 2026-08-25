@@ -611,11 +611,9 @@ class Parser:
             "dimensions",
             "metrics",
             "relationships",
-            "filters",
             "exclude_columns",
             "exclude_metrics",
             "exclude_relationships",
-            "exclude_filters",
         )
 
         lines = content.split("\n")

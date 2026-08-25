@@ -475,11 +475,6 @@ def _extract_view_scope_names(items: Optional[list], scope_type: str) -> Optiona
             if m:
                 names.append(m.group(1).upper())
                 matched = True
-        elif scope_type in ("filters", "exclude_filters"):
-            m = patterns["filter"].match(item)
-            if m:
-                names.append(m.group(1).upper())
-                matched = True
 
         if not matched:
             # Bare name fallback — normalize to uppercase
@@ -564,11 +559,9 @@ def parse_semantic_views(
                     "columns",
                     "metrics",
                     "relationships",
-                    "filters",
                     "exclude_columns",
                     "exclude_metrics",
                     "exclude_relationships",
-                    "exclude_filters",
                 ):
                     # Also accept "dimensions" as an alias for "columns" (legacy fixture format)
                     yaml_key = (

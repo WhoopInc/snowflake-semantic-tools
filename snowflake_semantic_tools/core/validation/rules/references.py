@@ -1273,7 +1273,6 @@ class ReferenceValidator:
                 ("columns", "exclude_columns", "columns"),
                 ("metrics", "exclude_metrics", "metrics"),
                 ("relationships", "exclude_relationships", "relationships"),
-                ("filters", "exclude_filters", "filters"),
             ]
             for include_key, exclude_key, label in scope_pairs:
                 include_val = view.get(include_key)
@@ -1326,21 +1325,6 @@ class ReferenceValidator:
                                 f"but no relationship with that name exists.",
                                 rule_id="SST-V082",
                                 suggestion="Check relationship name spelling or define the relationship",
-                                entity_name=view_name,
-                                context={"view": view_name, "item": name, "field": key},
-                            )
-
-            # Validate filter references
-            for key in ("filters", "exclude_filters"):
-                items = _parse_scope_list(view.get(key))
-                if items:
-                    for name in items:
-                        if name.upper() not in available_filters:
-                            result.add_error(
-                                f"Semantic view '{view_name}' references filter '{name}' in '{key}' "
-                                f"but no filter with that name exists.",
-                                rule_id="SST-V082",
-                                suggestion="Check filter name spelling or define the filter",
                                 entity_name=view_name,
                                 context={"view": view_name, "item": name, "field": key},
                             )

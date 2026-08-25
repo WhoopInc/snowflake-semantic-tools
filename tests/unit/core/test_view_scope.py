@@ -1,4 +1,5 @@
 """Tests for view-level include/exclude scope controls (GitHub issue #248)."""
+
 import json
 from pathlib import Path
 
@@ -10,7 +11,6 @@ from snowflake_semantic_tools.core.parsing.parsers.semantic_parser import (
 )
 from snowflake_semantic_tools.core.generation.semantic_view_builder import SemanticViewBuilder
 from snowflake_semantic_tools.core.models.semantic_model import SemanticView
-
 
 # ===== Parser tests =====
 
@@ -48,13 +48,6 @@ class TestExtractViewScopeNames:
             "relationships",
         )
         assert result == ["ORDERS_TO_CUSTOMERS"]
-
-    def test_jinja_filter_syntax(self):
-        result = _extract_view_scope_names(
-            ["{{ filter('completed_orders') }}"],
-            "filters",
-        )
-        assert result == ["COMPLETED_ORDERS"]
 
     def test_bare_column_with_dot_notation(self):
         result = _extract_view_scope_names(
@@ -167,7 +160,6 @@ class TestParseSemanticViewsScope:
         assert "metrics" not in result[0]
         assert "columns" not in result[0]
         assert "relationships" not in result[0]
-        assert "filters" not in result[0]
 
 
 # ===== Builder scope filter tests =====
@@ -183,8 +175,7 @@ class TestApplyViewScope:
             {"NAME": "user_count"},
         ]
         result = SemanticViewBuilder._apply_view_scope(
-            items, include_list=["TOTAL_REVENUE", "AVG_ORDER"], exclude_list=None,
-            key_fn=lambda x: x["NAME"]
+            items, include_list=["TOTAL_REVENUE", "AVG_ORDER"], exclude_list=None, key_fn=lambda x: x["NAME"]
         )
         assert len(result) == 2
         assert result[0]["NAME"] == "total_revenue"
@@ -197,8 +188,7 @@ class TestApplyViewScope:
             {"NAME": "user_count"},
         ]
         result = SemanticViewBuilder._apply_view_scope(
-            items, include_list=None, exclude_list=["DEBUG_METRIC"],
-            key_fn=lambda x: x["NAME"]
+            items, include_list=None, exclude_list=["DEBUG_METRIC"], key_fn=lambda x: x["NAME"]
         )
         assert len(result) == 2
         assert all(i["NAME"] != "debug_metric" for i in result)
@@ -206,8 +196,7 @@ class TestApplyViewScope:
     def test_none_lists_returns_all(self):
         items = [{"NAME": "a"}, {"NAME": "b"}]
         result = SemanticViewBuilder._apply_view_scope(
-            items, include_list=None, exclude_list=None,
-            key_fn=lambda x: x["NAME"]
+            items, include_list=None, exclude_list=None, key_fn=lambda x: x["NAME"]
         )
         assert result == items
 
@@ -215,8 +204,7 @@ class TestApplyViewScope:
         """When include_list is set, exclude_list is ignored."""
         items = [{"NAME": "a"}, {"NAME": "b"}, {"NAME": "c"}]
         result = SemanticViewBuilder._apply_view_scope(
-            items, include_list=["A"], exclude_list=["B"],
-            key_fn=lambda x: x["NAME"]
+            items, include_list=["A"], exclude_list=["B"], key_fn=lambda x: x["NAME"]
         )
         assert len(result) == 1
         assert result[0]["NAME"] == "a"
@@ -224,8 +212,7 @@ class TestApplyViewScope:
     def test_case_insensitive_matching(self):
         items = [{"NAME": "Total_Revenue"}]
         result = SemanticViewBuilder._apply_view_scope(
-            items, include_list=["TOTAL_REVENUE"], exclude_list=None,
-            key_fn=lambda x: x["NAME"]
+            items, include_list=["TOTAL_REVENUE"], exclude_list=None, key_fn=lambda x: x["NAME"]
         )
         assert len(result) == 1
 
@@ -241,11 +228,9 @@ class TestSemanticViewDataclass:
         assert view.columns is None
         assert view.metrics is None
         assert view.relationships is None
-        assert view.filters is None
         assert view.exclude_columns is None
         assert view.exclude_metrics is None
         assert view.exclude_relationships is None
-        assert view.exclude_filters is None
 
     def test_to_dict_includes_scope_when_set(self):
         view = SemanticView(
