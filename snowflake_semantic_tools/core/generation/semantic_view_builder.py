@@ -634,6 +634,7 @@ class SemanticViewBuilder:
             return formatted_message
 
         # PRIORITY 3: Handle metric definition errors (window functions, semi-additive)
+        # Catch window/semi-additive metric errors that the builder's pre-checks couldn't predict
         is_metric_error = (
             "metric definition" in error_msg_lower
             or "non-additive clause" in error_msg_lower
@@ -641,7 +642,6 @@ class SemanticViewBuilder:
         )
         if is_metric_error:
             # Extract the metric name from the error if possible
-            import re
 
             metric_match = re.search(r"metric definition for '([^']+)'", error_msg_lower)
             if not metric_match:
