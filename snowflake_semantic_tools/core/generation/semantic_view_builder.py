@@ -1372,7 +1372,7 @@ class SemanticViewBuilder:
                             elif left_expr:
                                 fk_columns_to_external_entities.add(f"{left_table.upper()}.{left_expr.upper()}")
             else:
-                # Query Snowflake directly for relationships to external tables
+                # Backward support: query Snowflake directly for relationships (legacy --from-snowflake path)
                 tlist = ",".join([f"'{t.lower()}'" for t in table_names])
                 rel_table = "SM_RELATIONSHIPS"
                 sql = (

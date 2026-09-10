@@ -18,6 +18,3 @@ semantic_views:
 
     relationships:
       - "{{ relationship('orders_to_customers') }}"
-
-    filters:
-      - "{{ filter('completed_orders') }}"

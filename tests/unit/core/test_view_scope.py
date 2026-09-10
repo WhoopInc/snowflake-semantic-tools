@@ -162,13 +162,13 @@ class TestParseSemanticViewsScope:
         assert "relationships" not in result[0]
 
 
-# ===== Builder scope filter tests =====
+# ===== Builder scope tests =====
 
 
 class TestApplyViewScope:
     """Tests for SemanticViewBuilder._apply_view_scope static method."""
 
-    def test_include_mode_filters_to_allowed(self):
+    def test_include_mode_filters_to_allowed_items(self):
         items = [
             {"NAME": "total_revenue"},
             {"NAME": "avg_order"},

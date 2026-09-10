@@ -1205,7 +1205,7 @@ class ReferenceValidator:
 
         Checks:
         - Cannot specify both include and exclude for the same item type
-        - Referenced metrics/relationships/filters must exist
+        - Referenced metrics/relationships must exist
         - Referenced columns must exist in tables belonging to the view
         """
         view_items = views_data.get("items", [])

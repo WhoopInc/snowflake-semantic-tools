@@ -422,7 +422,6 @@ def _extract_view_scope_names(items: Optional[list], scope_type: str) -> Optiona
       - {{ metric('name') }} -> NAME
       - {{ column('table', 'col') }} -> TABLE.COL
       - {{ relationship('name') }} -> NAME
-      - {{ filter('name') }} -> NAME
       - bare_name -> BARE_NAME
       - table.column -> TABLE.COLUMN
 
@@ -443,7 +442,6 @@ def _extract_view_scope_names(items: Optional[list], scope_type: str) -> Optiona
         "column": re.compile(r"\{\{\s*column\(['\"]([^'\"]+)['\"]\s*,\s*['\"]([^'\"]+)['\"]\)\s*\}\}"),
         "ref_two_arg": re.compile(r"\{\{\s*ref\(['\"]([^'\"]+)['\"]\s*,\s*['\"]([^'\"]+)['\"]\)\s*\}\}"),
         "relationship": re.compile(r"\{\{\s*relationship\(['\"]([^'\"]+)['\"]\)\s*\}\}"),
-        "filter": re.compile(r"\{\{\s*filter\(['\"]([^'\"]+)['\"]\)\s*\}\}"),
     }
 
     names = []

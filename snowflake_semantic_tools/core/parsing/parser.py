@@ -592,7 +592,7 @@ class Parser:
         return instruction_names_map
 
     def _extract_view_scope_from_raw(self, content: str) -> Dict[str, Dict[str, List[str]]]:
-        """Extract view-level scope names (metrics, columns, relationships, filters, exclude_*)
+        """Extract view-level scope names (metrics, columns, relationships, exclude_*)
         from raw YAML content BEFORE template resolution.
 
         Uses regex-based extraction because the raw YAML may contain unquoted
