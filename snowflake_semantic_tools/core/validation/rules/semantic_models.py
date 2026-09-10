@@ -912,8 +912,8 @@ class SemanticModelValidator:
                         context={"semantic_view": view_name, "field": "tables", "type": "semantic_view"},
                     )
 
-            # Validate optional list fields (raw YAML fields, not JSON-serialized scope fields)
-            for list_field in ["dimensions", "measures", "time_dimensions"]:
+            # Validate optional list fields
+            for list_field in ["dimensions", "measures", "time_dimensions", "filters"]:
                 if list_field in view:
                     if not isinstance(view[list_field], list):
                         result.add_error(
