@@ -388,8 +388,10 @@ class Parser:
                 # For semantic_views, extract custom instruction names BEFORE template resolution
                 # Store the raw instruction names so we can look them up during DDL generation
                 instruction_names_map = {}
+                view_scope_map = {}
                 if semantic_type == "semantic_views":
                     instruction_names_map = self._extract_custom_instruction_names_from_views(content)
+                    view_scope_map = self._extract_view_scope_from_raw(content)
 
                 # Resolve templates if enabled
                 if self.template_resolver:
@@ -403,6 +405,7 @@ class Parser:
                     content,
                     str(file_path),
                     instruction_names_map if semantic_type == "semantic_views" else None,
+                    view_scope_map if semantic_type == "semantic_views" else None,
                 )
                 if parsed:
                     if semantic_type == "relationships" and isinstance(parsed, tuple):
@@ -588,12 +591,102 @@ class Parser:
 
         return instruction_names_map
 
+    def _extract_view_scope_from_raw(self, content: str) -> Dict[str, Dict[str, List[str]]]:
+        """Extract view-level scope names (metrics, columns, relationships, exclude_*)
+        from raw YAML content BEFORE template resolution.
+
+        Uses regex-based extraction because the raw YAML may contain unquoted
+        Jinja expressions (e.g., {{ table('x') }}) that make yaml.safe_load fail.
+
+        Returns a map of view_name -> { scope_key -> [names] }.
+        """
+        import re
+
+        from snowflake_semantic_tools.core.parsing.parsers.semantic_parser import _extract_view_scope_names
+
+        scope_map: Dict[str, Dict[str, List[str]]] = {}
+
+        scope_fields = (
+            "columns",
+            "dimensions",
+            "metrics",
+            "relationships",
+            "exclude_columns",
+            "exclude_metrics",
+            "exclude_relationships",
+        )
+
+        lines = content.split("\n")
+        current_view_name: Optional[str] = None
+        current_scope_key: Optional[str] = None
+        current_scope_items: List[str] = []
+        view_indent_level = 0
+        scope_indent_level = 0
+
+        # Pattern to detect view name
+        view_name_pattern = re.compile(r"^(\s*)-\s+name:\s*(.+)$")
+        # Pattern to detect a scope key (e.g., "    metrics:")
+        scope_key_pattern = re.compile(r"^(\s+)(" + "|".join(scope_fields) + r"):\s*$")
+        # Pattern to detect a list item
+        list_item_pattern = re.compile(r"^\s+-\s+(.+)$")
+
+        def _flush_scope():
+            nonlocal current_scope_key, current_scope_items
+            if current_view_name and current_scope_key and current_scope_items:
+                # Normalize "dimensions" -> "columns"
+                key = "columns" if current_scope_key == "dimensions" else current_scope_key
+                parsed = _extract_view_scope_names(current_scope_items, key)
+                if parsed is not None:
+                    if current_view_name not in scope_map:
+                        scope_map[current_view_name] = {}
+                    scope_map[current_view_name][key] = parsed
+            current_scope_key = None
+            current_scope_items = []
+
+        for line in lines:
+            # Check for new view
+            view_match = view_name_pattern.match(line)
+            if view_match:
+                _flush_scope()
+                current_view_name = view_match.group(2).strip().strip("'\"")
+                view_indent_level = len(view_match.group(1))
+                continue
+
+            if not current_view_name:
+                continue
+
+            # Check for scope key
+            scope_match = scope_key_pattern.match(line)
+            if scope_match:
+                _flush_scope()
+                scope_indent_level = len(scope_match.group(1))
+                current_scope_key = scope_match.group(2)
+                continue
+
+            # Collect list items under current scope key
+            if current_scope_key:
+                item_match = list_item_pattern.match(line)
+                if item_match:
+                    item_value = item_match.group(1).strip().strip("'\"")
+                    current_scope_items.append(item_value)
+                elif line.strip() and not line.strip().startswith("#"):
+                    # Hit a non-list line — check if it's a new key at same/lower indent
+                    line_indent = len(line) - len(line.lstrip())
+                    if line_indent <= scope_indent_level:
+                        _flush_scope()
+
+        # Flush any remaining scope
+        _flush_scope()
+
+        return scope_map
+
     def _parse_semantic_content(
         self,
         semantic_type: str,
         content: str,
         file_path: str,
         instruction_names_map: Optional[Dict[str, List[str]]] = None,
+        view_scope_map: Optional[Dict[str, Dict[str, List[str]]]] = None,
     ) -> Optional[List[Dict]]:
         """Parse semantic content based on type."""
         try:
@@ -628,7 +721,9 @@ class Parser:
                 views_list = data.get("semantic_views", []) if data else []
                 if not views_list:
                     return None
-                parsed_views = semantic_parser.parse_semantic_views(views_list, Path(file_path), instruction_names_map)
+                parsed_views = semantic_parser.parse_semantic_views(
+                    views_list, Path(file_path), instruction_names_map, view_scope_map
+                )
                 return parsed_views
 
         except yaml.YAMLError as e:

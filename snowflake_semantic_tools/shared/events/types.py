@@ -363,6 +363,7 @@ class ViewGenerated(BaseEvent):
     current: int
     total: int
     executed: bool
+    scope_summary: Optional[str] = None
 
     def get_level(self) -> EventLevel:
         return EventLevel.INFO
@@ -375,7 +376,10 @@ class ViewGenerated(BaseEvent):
         )
         dots_padding = "." * (max_name_len - len(name_display))
         name_segment = f"{name_display} {dots_padding}"
-        return f"{format_progress(self.current, self.total)}  {name_segment} [{action.upper()} in {format_duration(self.duration_seconds)}]"
+        msg = f"{format_progress(self.current, self.total)}  {name_segment} [{action.upper()} in {format_duration(self.duration_seconds)}]"
+        if self.scope_summary:
+            msg += f"\n{'':>8}  Scope: {self.scope_summary}"
+        return msg
 
     def log_dict(self) -> Dict[str, Any]:
         return {

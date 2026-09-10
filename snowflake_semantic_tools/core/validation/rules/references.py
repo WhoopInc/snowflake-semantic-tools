@@ -144,9 +144,13 @@ class ReferenceValidator:
         instructions_data = semantic_data.get("custom_instructions", {})
         metrics_data = semantic_data.get("metrics", {})
         relationships_data = semantic_data.get("relationships", {})
+        filters_data = semantic_data.get("filters", {})
         if views_data:
             self._validate_semantic_view_references(
                 views_data, instructions_data, metrics_data, relationships_data, dbt_catalog, result
+            )
+            self._validate_view_scope_lists(
+                views_data, metrics_data, relationships_data, filters_data, dbt_catalog, result
             )
 
         return result
@@ -1187,6 +1191,280 @@ class ReferenceValidator:
                                         "available": list(available_instructions),
                                     },
                                 )
+
+    def _validate_view_scope_lists(
+        self,
+        views_data: Dict,
+        metrics_data: Dict,
+        relationships_data: Dict,
+        filters_data: Dict,
+        dbt_catalog: Dict,
+        result: ValidationResult,
+    ):
+        """Validate view-level include/exclude scope lists.
+
+        Checks:
+        - Cannot specify both include and exclude for the same item type
+        - Referenced metrics/relationships must exist
+        - Referenced columns must exist in tables belonging to the view
+        """
+        view_items = views_data.get("items", [])
+
+        # Build lookup sets for available items
+        available_metrics = set()
+        for m in metrics_data.get("items", []):
+            if isinstance(m, dict):
+                name = m.get("name") or m.get("NAME", "")
+                if name:
+                    available_metrics.add(name.upper())
+
+        available_relationships = set()
+        for r in relationships_data.get("items", []):
+            if isinstance(r, dict):
+                name = r.get("relationship_name") or r.get("name") or r.get("RELATIONSHIP_NAME", "")
+                if name:
+                    available_relationships.add(name.upper())
+
+        available_filters = set()
+        for f in filters_data.get("items", []):
+            if isinstance(f, dict):
+                name = f.get("name") or f.get("NAME", "")
+                if name:
+                    available_filters.add(name.upper())
+
+        # Build column lookup: TABLE.COLUMN for all dimensions/facts/time_dimensions
+        available_columns_by_table = {}  # table_upper -> set of TABLE.COLUMN
+        for table_name, table_info in dbt_catalog.items():
+            if isinstance(table_info, dict):
+                table_upper = table_name.upper()
+                cols = set()
+                # Columns may be stored as a dict (col_name -> col_info) or a list
+                columns_field = table_info.get("columns", {})
+                if isinstance(columns_field, dict):
+                    for col_name in columns_field.keys():
+                        cols.add(f"{table_upper}.{col_name.upper()}")
+                elif isinstance(columns_field, list):
+                    for col in columns_field:
+                        col_name = col.get("name", "") if isinstance(col, dict) else str(col)
+                        if col_name:
+                            cols.add(f"{table_upper}.{col_name.upper()}")
+                available_columns_by_table[table_upper] = cols
+
+        for view in view_items:
+            if not isinstance(view, dict):
+                continue
+            view_name = view.get("name", "")
+
+            # Parse tables for this view
+            tables_json = view.get("tables", "[]")
+            try:
+                tables = json.loads(tables_json) if isinstance(tables_json, str) else tables_json
+            except (json.JSONDecodeError, TypeError, ValueError):
+                tables = []
+            view_tables_upper = {t.upper() for t in tables if isinstance(t, str)}
+
+            # Columns available to this view
+            view_columns = set()
+            for t in view_tables_upper:
+                view_columns.update(available_columns_by_table.get(t, set()))
+
+            # Check mutual exclusivity
+            scope_pairs = [
+                ("columns", "exclude_columns", "columns"),
+                ("metrics", "exclude_metrics", "metrics"),
+                ("relationships", "exclude_relationships", "relationships"),
+            ]
+            for include_key, exclude_key, label in scope_pairs:
+                include_val = view.get(include_key)
+                exclude_val = view.get(exclude_key)
+                has_include = include_val is not None and include_val != "null"
+                has_exclude = exclude_val is not None and exclude_val != "null"
+                if has_include and has_exclude:
+                    result.add_error(
+                        f"Semantic view '{view_name}' specifies both '{include_key}' and '{exclude_key}'. "
+                        f"Choose one mode: include (allowlist) or exclude (blocklist), not both.",
+                        rule_id="SST-V080",
+                        suggestion=f"Remove either '{include_key}' or '{exclude_key}' from the view definition",
+                        entity_name=view_name,
+                        context={"view": view_name, "type": label},
+                    )
+
+            # Validate referenced items exist
+            def _parse_scope_list(raw):
+                if raw is None or raw == "null":
+                    return None
+                try:
+                    parsed = json.loads(raw) if isinstance(raw, str) else raw
+                    return parsed if isinstance(parsed, list) else None
+                except (json.JSONDecodeError, TypeError, ValueError):
+                    return None
+
+            # Validate metrics references
+            for key in ("metrics", "exclude_metrics"):
+                items = _parse_scope_list(view.get(key))
+                if items:
+                    for name in items:
+                        if name.upper() not in available_metrics:
+                            result.add_error(
+                                f"Semantic view '{view_name}' references metric '{name}' in '{key}' "
+                                f"but no metric with that name exists.",
+                                rule_id="SST-V082",
+                                suggestion="Check metric name spelling or define the metric",
+                                entity_name=view_name,
+                                context={"view": view_name, "item": name, "field": key},
+                            )
+
+            # Validate relationship references
+            for key in ("relationships", "exclude_relationships"):
+                items = _parse_scope_list(view.get(key))
+                if items:
+                    for name in items:
+                        if name.upper() not in available_relationships:
+                            result.add_error(
+                                f"Semantic view '{view_name}' references relationship '{name}' in '{key}' "
+                                f"but no relationship with that name exists.",
+                                rule_id="SST-V082",
+                                suggestion="Check relationship name spelling or define the relationship",
+                                entity_name=view_name,
+                                context={"view": view_name, "item": name, "field": key},
+                            )
+
+            # Validate column references
+            for key in ("columns", "exclude_columns"):
+                items = _parse_scope_list(view.get(key))
+                if items:
+                    for col_ref in items:
+                        col_upper = col_ref.upper()
+                        if col_upper not in view_columns:
+                            # Check if the table exists but the column is missing
+                            # (suggests global exclusion via meta.sst.exclude: true)
+                            parts = col_upper.split(".", 1)
+                            table_part = parts[0] if len(parts) == 2 else ""
+                            table_exists = table_part in available_columns_by_table
+                            if table_exists and key == "exclude_columns":
+                                # Excluding a globally-excluded column is redundant but not an error
+                                result.add_warning(
+                                    f"Semantic view '{view_name}' references column '{col_ref}' in '{key}' "
+                                    f"but that column is already globally excluded via meta.sst.exclude: true. "
+                                    f"This exclusion is redundant.",
+                                    rule_id="SST-V082",
+                                    suggestion="You can safely remove this entry — the column is already excluded globally.",
+                                    entity_name=view_name,
+                                    context={"view": view_name, "item": col_ref, "field": key},
+                                )
+                            elif table_exists:
+                                error_msg = (
+                                    f"Semantic view '{view_name}' references column '{col_ref}' in '{key}' "
+                                    f"but that column does not exist in the view's tables. "
+                                    f"If the column exists on the physical table, it may be globally excluded "
+                                    f"via meta.sst.exclude: true — globally excluded columns cannot be "
+                                    f"re-included at the view level."
+                                )
+                                suggestion = (
+                                    "Check if the column has 'exclude: true' in its dbt model YAML. "
+                                    "Remove the global exclusion first if you want to include it in this view."
+                                )
+                                result.add_error(
+                                    error_msg,
+                                    rule_id="SST-V082",
+                                    suggestion=suggestion,
+                                    entity_name=view_name,
+                                    context={"view": view_name, "item": col_ref, "field": key},
+                                )
+                            else:
+                                error_msg = (
+                                    f"Semantic view '{view_name}' references column '{col_ref}' in '{key}' "
+                                    f"but that column does not exist in the view's tables."
+                                )
+                                suggestion = "Check column name and table membership"
+                                result.add_error(
+                                    error_msg,
+                                    rule_id="SST-V082",
+                                    suggestion=suggestion,
+                                    entity_name=view_name,
+                                    context={"view": view_name, "item": col_ref, "field": key},
+                                )
+
+            # Validate metric-to-relationship dependencies
+            # If a multi-table metric is in the view, its required relationships must also be present
+            include_rels = _parse_scope_list(view.get("relationships"))
+            exclude_rels = _parse_scope_list(view.get("exclude_relationships"))
+            include_metrics_list = _parse_scope_list(view.get("metrics"))
+            exclude_metrics_list = _parse_scope_list(view.get("exclude_metrics"))
+
+            # Only check if relationships are scoped (otherwise all relationships are present)
+            if include_rels is not None or exclude_rels is not None:
+                # Build set of relationships that will be in the view
+                if include_rels is not None:
+                    view_rels_upper = {r.upper() for r in include_rels}
+                else:
+                    # All relationships minus excluded
+                    view_rels_upper = set(available_relationships)
+                    if exclude_rels:
+                        view_rels_upper -= {r.upper() for r in exclude_rels}
+
+                # Determine which metrics will be in the view
+                for metric in metrics_data.get("items", []):
+                    if not isinstance(metric, dict):
+                        continue
+                    metric_name = (metric.get("name") or metric.get("NAME") or "").upper()
+                    if not metric_name:
+                        continue
+
+                    # Check if this metric is in the view
+                    if include_metrics_list is not None:
+                        if metric_name not in {m.upper() for m in include_metrics_list}:
+                            continue
+                    elif exclude_metrics_list is not None:
+                        if metric_name in {m.upper() for m in exclude_metrics_list}:
+                            continue
+
+                    # Skip metrics whose tables aren't all in this view
+                    metric_tables_raw = metric.get("tables") or metric.get("table_name", "")
+                    try:
+                        if isinstance(metric_tables_raw, str) and metric_tables_raw.startswith("["):
+                            metric_tables = json.loads(metric_tables_raw)
+                        elif isinstance(metric_tables_raw, list):
+                            metric_tables = metric_tables_raw
+                        else:
+                            metric_tables = [metric_tables_raw] if metric_tables_raw else []
+                    except (json.JSONDecodeError, TypeError, ValueError):
+                        metric_tables = []
+                    metric_tables_upper = {t.upper() for t in metric_tables if isinstance(t, str)}
+                    if not metric_tables_upper.issubset(view_tables_upper):
+                        continue
+
+                    # Use the metric's explicit using_relationships field if available
+                    using_rels_raw = metric.get("using_relationships")
+                    metric_required_rels = []
+                    if using_rels_raw:
+                        try:
+                            if isinstance(using_rels_raw, str) and using_rels_raw.startswith("["):
+                                metric_required_rels = json.loads(using_rels_raw)
+                            elif isinstance(using_rels_raw, list):
+                                metric_required_rels = using_rels_raw
+                            elif isinstance(using_rels_raw, str):
+                                metric_required_rels = [using_rels_raw]
+                        except (json.JSONDecodeError, TypeError, ValueError):
+                            metric_required_rels = []
+
+                    # Check that each required relationship is in the view's scope
+                    for req_rel in metric_required_rels:
+                        if req_rel.upper() not in view_rels_upper:
+                            result.add_error(
+                                f"Semantic view '{view_name}' includes metric '{metric_name}' which requires "
+                                f"relationship '{req_rel.upper()}' (via using_relationships), but that "
+                                f"relationship is not included in this view's relationship scope. "
+                                f"Either add '{req_rel.upper()}' to the relationships list, or remove the metric.",
+                                rule_id="SST-V083",
+                                suggestion=f"Add '{req_rel}' to the view's relationships list",
+                                entity_name=view_name,
+                                context={
+                                    "view": view_name,
+                                    "metric": metric_name,
+                                    "missing_relationship": req_rel.upper(),
+                                },
+                            )
 
     def _is_cte_or_subquery(self, table_name: str) -> bool:
         """

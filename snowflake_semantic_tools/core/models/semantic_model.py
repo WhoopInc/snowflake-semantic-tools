@@ -197,6 +197,16 @@ class SemanticView:
     description: Optional[str] = None
     custom_instructions: List[str] = field(default_factory=list)
 
+    # Include lists (allowlist mode — only listed items appear in the view)
+    columns: Optional[List[str]] = None
+    metrics: Optional[List[str]] = None
+    relationships: Optional[List[str]] = None
+
+    # Exclude lists (blocklist mode — all items EXCEPT listed ones appear)
+    exclude_columns: Optional[List[str]] = None
+    exclude_metrics: Optional[List[str]] = None
+    exclude_relationships: Optional[List[str]] = None
+
     def __post_init__(self):
         """Ensure tables is always a list."""
         if isinstance(self.tables, str):
@@ -210,6 +220,18 @@ class SemanticView:
             result["description"] = self.description
         if self.custom_instructions:
             result["custom_instructions"] = self.custom_instructions
+        if self.columns is not None:
+            result["columns"] = self.columns
+        if self.metrics is not None:
+            result["metrics"] = self.metrics
+        if self.relationships is not None:
+            result["relationships"] = self.relationships
+        if self.exclude_columns is not None:
+            result["exclude_columns"] = self.exclude_columns
+        if self.exclude_metrics is not None:
+            result["exclude_metrics"] = self.exclude_metrics
+        if self.exclude_relationships is not None:
+            result["exclude_relationships"] = self.exclude_relationships
 
         return result
 

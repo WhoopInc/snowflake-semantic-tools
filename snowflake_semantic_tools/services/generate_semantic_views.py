@@ -363,6 +363,32 @@ class SemanticViewGenerationService:
                 description = view_config.get("description", "")
                 custom_instruction_names = view_config.get("custom_instructions", [])
 
+                # Construct view scope from include/exclude lists
+                view_scope = {}
+                for scope_key in (
+                    "columns",
+                    "metrics",
+                    "relationships",
+                    "exclude_columns",
+                    "exclude_metrics",
+                    "exclude_relationships",
+                ):
+                    val = view_config.get(scope_key)
+                    if val is not None:
+                        # Parse JSON strings into lists if needed
+                        if isinstance(val, str):
+                            try:
+                                val = json.loads(val)
+                            except (json.JSONDecodeError, TypeError, ValueError):
+                                logger.warning(
+                                    f"View '{view_name}': could not parse scope field '{scope_key}' "
+                                    f"as JSON list — scope will not be applied for this field"
+                                )
+                                val = None
+                        if isinstance(val, list):
+                            view_scope[scope_key] = val
+                view_scope = view_scope or None
+
                 if not table_names:
                     error_msg = "No tables specified"
                     errors.append(f"No tables specified for view {view_name}")
@@ -389,6 +415,7 @@ class SemanticViewGenerationService:
                         defer_database=generate_config.defer_database,
                         defer_manifest=generate_config.defer_manifest,
                         custom_instruction_names=view_config.get("custom_instructions", []),
+                        view_scope=view_scope,
                     )
 
                     view_duration = time.time() - view_start
@@ -406,6 +433,7 @@ class SemanticViewGenerationService:
                                 current=idx,
                                 total=len(views_to_generate),
                                 executed=generate_config.execute,
+                                scope_summary=result.get("scope_summary"),
                             )
                         )
                     else:
@@ -533,6 +561,32 @@ class SemanticViewGenerationService:
             description = view_config.get("description", "")
             custom_instruction_names = view_config.get("custom_instructions", [])
 
+            # Construct view scope from include/exclude lists
+            _view_scope = {}
+            for scope_key in (
+                "columns",
+                "metrics",
+                "relationships",
+                "exclude_columns",
+                "exclude_metrics",
+                "exclude_relationships",
+            ):
+                val = view_config.get(scope_key)
+                if val is not None:
+                    # Parse JSON strings into lists if needed
+                    if isinstance(val, str):
+                        try:
+                            val = json.loads(val)
+                        except (json.JSONDecodeError, TypeError, ValueError):
+                            logger.warning(
+                                f"View '{view_name}': could not parse scope field '{scope_key}' "
+                                f"as JSON list — scope will not be applied for this field"
+                            )
+                            val = None
+                    if isinstance(val, list):
+                        _view_scope[scope_key] = val
+            _view_scope = _view_scope or None
+
             if cancelled.is_set():
                 return {"view_name": view_name, "success": False, "error": "Cancelled", "duration": 0}
 
@@ -567,6 +621,7 @@ class SemanticViewGenerationService:
                     defer_database=generate_config.defer_database,
                     defer_manifest=generate_config.defer_manifest,
                     custom_instruction_names=custom_instruction_names,
+                    view_scope=_view_scope,
                 )
                 view_duration = time.time() - view_start
 
@@ -620,6 +675,7 @@ class SemanticViewGenerationService:
                             defer_database=generate_config.defer_database,
                             defer_manifest=generate_config.defer_manifest,
                             custom_instruction_names=custom_instruction_names,
+                            view_scope=_view_scope,
                         )
                         view_duration = time.time() - view_start
                         if result["success"]:
@@ -733,33 +789,53 @@ class SemanticViewGenerationService:
                 cursor = conn.cursor()
 
                 query = f"""
-                SELECT 
-                    NAME,
-                    TABLES,
-                    DESCRIPTION,
-                    CUSTOM_INSTRUCTIONS
+                SELECT *
                 FROM {self.builder.metadata_database}.{self.builder.metadata_schema}.SM_SEMANTIC_VIEWS
                 """
 
                 logger.info(f"Executing query: {query}")
                 cursor.execute(query)
+                columns = [desc[0].upper() for desc in cursor.description]
                 rows = cursor.fetchall()
                 logger.info(f"Query returned {len(rows)} rows")
 
                 views = []
                 for row in rows:
+                    row_dict = dict(zip(columns, row))
                     # Parse tables (stored as JSON string)
-                    tables = self._parse_tables_column(row[1])
+                    tables = self._parse_tables_column(row_dict.get("TABLES"))
+                    custom_instruction_names = self._parse_custom_instructions(row_dict.get("CUSTOM_INSTRUCTIONS"))
 
-                    custom_instruction_names = self._parse_custom_instructions(row[3])
-                    views.append(
-                        {
-                            "name": row[0],
-                            "tables": tables,
-                            "description": row[2] or "",
-                            "custom_instructions": custom_instruction_names,
-                        }
-                    )
+                    view_config = {
+                        "name": row_dict.get("NAME"),
+                        "tables": tables,
+                        "description": row_dict.get("DESCRIPTION") or "",
+                        "custom_instructions": custom_instruction_names,
+                    }
+
+                    # Extract scope fields if present in the table
+                    import json
+
+                    for scope_key in (
+                        "COLUMNS",
+                        "METRICS",
+                        "RELATIONSHIPS",
+                        "FILTERS",
+                        "EXCLUDE_COLUMNS",
+                        "EXCLUDE_METRICS",
+                        "EXCLUDE_RELATIONSHIPS",
+                        "EXCLUDE_FILTERS",
+                    ):
+                        raw_val = row_dict.get(scope_key)
+                        if raw_val:
+                            try:
+                                parsed = json.loads(raw_val) if isinstance(raw_val, str) else raw_val
+                                if isinstance(parsed, list) and parsed:
+                                    view_config[scope_key.lower()] = parsed
+                            except (json.JSONDecodeError, TypeError, ValueError):
+                                pass
+
+                    views.append(view_config)
 
                 return views
 
@@ -907,14 +983,29 @@ class SemanticViewGenerationService:
 
             custom_instructions = self._parse_custom_instructions(view.get("CUSTOM_INSTRUCTIONS"))
 
-            view_configs.append(
-                {
-                    "name": view.get("NAME", ""),
-                    "tables": tables if isinstance(tables, list) else [],
-                    "description": view.get("DESCRIPTION", ""),
-                    "custom_instructions": custom_instructions,
-                }
-            )
+            view_config = {
+                "name": view.get("NAME", ""),
+                "tables": tables if isinstance(tables, list) else [],
+                "description": view.get("DESCRIPTION", ""),
+                "custom_instructions": custom_instructions,
+            }
+
+            # Pass through view scope fields if present
+            for scope_key in (
+                "COLUMNS",
+                "METRICS",
+                "RELATIONSHIPS",
+                "FILTERS",
+                "EXCLUDE_COLUMNS",
+                "EXCLUDE_METRICS",
+                "EXCLUDE_RELATIONSHIPS",
+                "EXCLUDE_FILTERS",
+            ):
+                val = view.get(scope_key)
+                if val:
+                    view_config[scope_key.lower()] = val
+
+            view_configs.append(view_config)
         return view_configs
 
     def _filter_and_execute(

@@ -81,6 +81,7 @@ class SemanticViewBuilder:
         defer_database: Optional[str] = None,
         defer_manifest: Optional["ManifestParser"] = None,
         custom_instruction_names: Optional[List[str]] = None,
+        view_scope: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         logger.info(f"Building semantic view '{view_name}' with tables: {table_names}")
 
@@ -94,6 +95,7 @@ class SemanticViewBuilder:
                 defer_database,
                 defer_manifest,
                 custom_instruction_names,
+                view_scope,
             )
         else:
             return self._build_from_snowflake(
@@ -104,6 +106,7 @@ class SemanticViewBuilder:
                 defer_database,
                 defer_manifest,
                 custom_instruction_names,
+                view_scope,
             )
 
     def _build_from_store(
@@ -116,6 +119,7 @@ class SemanticViewBuilder:
         defer_database: Optional[str],
         defer_manifest: Optional["ManifestParser"],
         custom_instruction_names: Optional[List[str]],
+        view_scope: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         try:
             sql_statement = self._generate_sql(
@@ -126,6 +130,7 @@ class SemanticViewBuilder:
                 defer_database=defer_database,
                 defer_manifest=defer_manifest,
                 custom_instruction_names=custom_instruction_names,
+                view_scope=view_scope,
             )
 
             result = {
@@ -134,6 +139,7 @@ class SemanticViewBuilder:
                 "success": True,
                 "message": f"Semantic view '{view_name}' SQL generated successfully",
                 "target_location": f"{self.target_database}.{self.target_schema}.{view_name.upper()}",
+                "scope_summary": getattr(self, "_last_scope_summary", None),
             }
 
             if execute:
@@ -165,6 +171,7 @@ class SemanticViewBuilder:
         defer_database: Optional[str],
         defer_manifest: Optional["ManifestParser"],
         custom_instruction_names: Optional[List[str]],
+        view_scope: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         from snowflake_semantic_tools.core.metadata.snowflake_store import SnowflakeStore
 
@@ -179,6 +186,7 @@ class SemanticViewBuilder:
                     defer_database=defer_database,
                     defer_manifest=defer_manifest,
                     custom_instruction_names=custom_instruction_names,
+                    view_scope=view_scope,
                 )
 
                 result = {
@@ -187,6 +195,7 @@ class SemanticViewBuilder:
                     "success": True,
                     "message": f"Semantic view '{view_name}' SQL generated successfully",
                     "target_location": f"{self.target_database}.{self.target_schema}.{view_name.upper()}",
+                    "scope_summary": getattr(self, "_last_scope_summary", None),
                 }
 
                 if execute:
@@ -624,6 +633,36 @@ class SemanticViewBuilder:
             logger.error(formatted_message)
             return formatted_message
 
+        # PRIORITY 3: Handle metric definition errors (window functions, semi-additive)
+        # Catch window/semi-additive metric errors that the builder's pre-checks couldn't predict
+        is_metric_error = (
+            "metric definition" in error_msg_lower
+            or "non-additive clause" in error_msg_lower
+            or "non additive" in error_msg_lower
+        )
+        if is_metric_error:
+            # Extract the metric name from the error if possible
+
+            metric_match = re.search(r"metric definition for '([^']+)'", error_msg_lower)
+            if not metric_match:
+                metric_match = re.search(r"semi-additive metric '([^']+)'", error_msg_lower)
+            metric_ref = metric_match.group(1).upper() if metric_match else "unknown"
+
+            formatted_message = (
+                f"Error building semantic view '{view_name}': A metric ({metric_ref}) "
+                f"cannot be compiled by Snowflake in this view's configuration.\n\n"
+                f"This typically happens when a window function or semi-additive metric references "
+                f"dimensions from a related entity, but the required relationship or table is not "
+                f"included in this view.\n\n"
+                f"To fix this, either:\n"
+                f"  1. Add the related table to the view's 'tables' list (so the relationship is available)\n"
+                f"  2. Exclude the problematic metric using 'exclude_metrics' in the view scope\n"
+                f"  3. Restrict metrics to only the ones you need using the 'metrics' include list\n\n"
+                f"Original error: {error_msg}"
+            )
+            logger.error(formatted_message)
+            return formatted_message
+
         # Handle other errors
         logger.error(f"Error building semantic view '{view_name}': {error}")
         return f"Error building semantic view '{view_name}': {error_msg}"
@@ -1028,7 +1067,12 @@ class SemanticViewBuilder:
         return ",\n".join(table_definitions)
 
     def _build_relationships_clause(
-        self, store, table_names: List[str], join_key_generator: Optional[JoinKeyDimensionGenerator] = None
+        self,
+        store,
+        table_names: List[str],
+        join_key_generator: Optional[JoinKeyDimensionGenerator] = None,
+        include_relationships: Optional[List[str]] = None,
+        exclude_relationships: Optional[List[str]] = None,
     ) -> str:
         """Build the RELATIONSHIPS clause of the CREATE SEMANTIC VIEW statement.
 
@@ -1038,6 +1082,11 @@ class SemanticViewBuilder:
         REFERENCES clause instead of the raw column name.
         """
         relationships = self._get_relationships(store, table_names)
+
+        # Apply view-level relationship scope
+        relationships = self._apply_view_scope(
+            relationships, include_relationships, exclude_relationships, key_fn=lambda r: r["RELATIONSHIP_NAME"].upper()
+        )
 
         if not relationships:
             return ""
@@ -1089,7 +1138,13 @@ class SemanticViewBuilder:
 
         return ",\n".join(rel_definitions)
 
-    def _build_facts_clause(self, store, table_names: List[str]) -> str:
+    def _build_facts_clause(
+        self,
+        store,
+        table_names: List[str],
+        include_columns: Optional[List[str]] = None,
+        exclude_columns: Optional[List[str]] = None,
+    ) -> str:
         """Build the FACTS clause of the CREATE SEMANTIC VIEW statement ."""
         all_facts = []
 
@@ -1098,6 +1153,14 @@ class SemanticViewBuilder:
             for fact in facts:
                 fact["source_table"] = table_name
                 all_facts.append(fact)
+
+        # Apply view-level column scope
+        all_facts = self._apply_view_scope(
+            all_facts,
+            include_columns,
+            exclude_columns,
+            key_fn=lambda f: f"{f['source_table'].upper()}.{f['NAME'].upper()}",
+        )
 
         if not all_facts:
             return ""
@@ -1141,7 +1204,12 @@ class SemanticViewBuilder:
         return ",\n".join(fact_definitions)
 
     def _build_dimensions_clause(
-        self, store, table_names: List[str], join_key_generator: Optional[JoinKeyDimensionGenerator] = None
+        self,
+        store,
+        table_names: List[str],
+        join_key_generator: Optional[JoinKeyDimensionGenerator] = None,
+        include_columns: Optional[List[str]] = None,
+        exclude_columns: Optional[List[str]] = None,
     ) -> str:
         """Build the DIMENSIONS clause of the CREATE SEMANTIC VIEW statement.
 
@@ -1161,6 +1229,14 @@ class SemanticViewBuilder:
             for time_dim in time_dimensions:
                 time_dim["source_table"] = table_name
                 all_dimensions.append(time_dim)
+
+        # Apply view-level column scope
+        all_dimensions = self._apply_view_scope(
+            all_dimensions,
+            include_columns,
+            exclude_columns,
+            key_fn=lambda d: f"{d['source_table'].upper()}.{d['NAME'].upper()}",
+        )
 
         if not all_dimensions and not (join_key_generator and join_key_generator.has_dimensions()):
             return ""
@@ -1247,15 +1323,81 @@ class SemanticViewBuilder:
 
         return refs
 
-    def _build_metrics_clause(self, store, table_names: List[str]) -> str:
+    def _build_metrics_clause(
+        self,
+        store,
+        table_names: List[str],
+        include_metrics: Optional[List[str]] = None,
+        exclude_metrics: Optional[List[str]] = None,
+        include_columns: Optional[List[str]] = None,
+    ) -> str:
         """Build the METRICS clause of the CREATE SEMANTIC VIEW statement ."""
         metrics = self._get_metrics_for_selected_tables(store, table_names)
+
+        # Apply view-level metric scope
+        metrics = self._apply_view_scope(metrics, include_metrics, exclude_metrics, key_fn=lambda m: m["NAME"].upper())
 
         if not metrics:
             return ""
 
         # Create a set of normalized table names for quick lookup
         available_tables = set(t.lower() for t in table_names)
+
+        # Build set of available relationships for this view's tables
+        available_rel_names = set()
+        # Also build a set of FK dimension columns that point to entities NOT in the view
+        fk_columns_to_external_entities = set()  # e.g., {"ORDERS.CUSTOMER_ID"}
+        try:
+            view_relationships = self._get_relationships(store, table_names)
+            for rel in view_relationships:
+                rel_name = (rel.get("RELATIONSHIP_NAME") or "").upper()
+                if rel_name:
+                    available_rel_names.add(rel_name)
+
+            # Find FK columns pointing to entities outside the view
+            # by looking at ALL relationships where left table is in view but right table is not
+            if isinstance(store, MetadataStore):
+                # Access all relationships from the in-memory store
+                all_rels_raw = getattr(store, "_relationships_raw", [])
+                for rel in all_rels_raw:
+                    left_table = (rel.get("LEFT_TABLE_NAME") or "").lower()
+                    right_table = (rel.get("RIGHT_TABLE_NAME") or "").lower()
+                    if left_table in available_tables and right_table not in available_tables:
+                        rel_name = rel.get("RELATIONSHIP_NAME") or ""
+                        rel_cols = store.get_relationship_columns(rel_name)
+                        for col_row in rel_cols:
+                            left_expr = col_row.get("LEFT_EXPRESSION", "")
+                            if left_expr and "." in left_expr:
+                                fk_columns_to_external_entities.add(left_expr.upper())
+                            elif left_expr:
+                                fk_columns_to_external_entities.add(f"{left_table.upper()}.{left_expr.upper()}")
+            else:
+                # Backward support: query Snowflake directly for relationships (legacy --from-snowflake path)
+                tlist = ",".join([f"'{t.lower()}'" for t in table_names])
+                rel_table = "SM_RELATIONSHIPS"
+                sql = (
+                    f"SELECT LEFT_TABLE_NAME, RIGHT_TABLE_NAME, RELATIONSHIP_NAME "
+                    f"FROM {self.metadata_database}.{self.metadata_schema}.{rel_table} "
+                    f"WHERE LOWER(LEFT_TABLE_NAME) IN ({tlist}) AND LOWER(RIGHT_TABLE_NAME) NOT IN ({tlist})"
+                )
+                ext_rels = self._execute_query(store, sql)
+                for rel in ext_rels:
+                    left_table = (rel.get("LEFT_TABLE_NAME") or "").upper()
+                    right_table = (rel.get("RIGHT_TABLE_NAME") or "").upper()
+                    rel_name = rel.get("RELATIONSHIP_NAME", "")
+                    rel_cols = self._get_relationship_columns(store, rel_name)
+                    for col_row in rel_cols:
+                        left_expr = col_row.get("LEFT_EXPRESSION", "")
+                        if left_expr and "." in left_expr:
+                            fk_columns_to_external_entities.add(left_expr.upper())
+                        elif left_expr:
+                            fk_columns_to_external_entities.add(f"{left_table}.{left_expr.upper()}")
+        except (AttributeError, Exception):
+            # If relationships can't be fetched, skip the checks
+            available_rel_names = None
+
+        if fk_columns_to_external_entities:
+            logger.info(f"FK columns to external entities: {fk_columns_to_external_entities}")
 
         # Get all defined facts and dimensions to validate metric references
         defined_columns = set()
@@ -1296,6 +1438,121 @@ class SemanticViewBuilder:
                         f"{', '.join(missing_tables)}. Available tables: {', '.join(available_tables)}"
                     )
                     continue
+
+                # Skip metrics whose using_relationships aren't available in this view
+                if available_rel_names is not None:
+                    using_rels_raw = self._parse_json_field(metric.get("USING_RELATIONSHIPS"), "using_relationships")
+                    if using_rels_raw and isinstance(using_rels_raw, list):
+                        missing_rels = [r.upper() for r in using_rels_raw if r and r.upper() not in available_rel_names]
+                        if missing_rels:
+                            skipped_metrics.append(
+                                {
+                                    "metric": metric_name,
+                                    "missing_tables": missing_rels,
+                                    "available": list(available_rel_names),
+                                }
+                            )
+                            logger.debug(
+                                f"Skipping metric '{metric_name}' - requires relationship(s) not available in view: "
+                                f"{', '.join(missing_rels)}. Available relationships: {', '.join(available_rel_names)}"
+                            )
+                            continue
+
+                # Skip window/non-additive metrics that reference FK dimensions to entities not in the view
+                # OR that reference columns not in the view's column scope
+                window_config = self._parse_json_field(metric.get("WINDOW"), "window")
+                non_additive_by = self._parse_json_field(metric.get("NON_ADDITIVE_BY"), "non_additive_by")
+
+                # Build scoped column set if columns are restricted
+                scoped_columns_upper = None
+                if include_columns:
+                    scoped_columns_upper = {c.upper() for c in include_columns}
+
+                if window_config and isinstance(window_config, dict):
+                    partition_by = window_config.get("partition_by") or []
+                    partition_by_excluding = window_config.get("partition_by_excluding") or []
+                    all_window_cols = list(partition_by) + list(partition_by_excluding)
+
+                    should_skip = False
+                    for col_expr in all_window_cols:
+                        col_refs_in_window = self._extract_column_references_from_expression(str(col_expr))
+                        for tbl, col in col_refs_in_window:
+                            qualified = f"{tbl.upper()}.{col.upper()}"
+                            # Check FK columns to external entities
+                            if fk_columns_to_external_entities and qualified in fk_columns_to_external_entities:
+                                skipped_metrics.append(
+                                    {
+                                        "metric": metric_name,
+                                        "missing_tables": [qualified],
+                                        "available": list(available_tables),
+                                    }
+                                )
+                                logger.debug(
+                                    f"Skipping window metric '{metric_name}' - PARTITION BY references FK dimension "
+                                    f"'{qualified}' which points to an entity not in this view"
+                                )
+                                should_skip = True
+                                break
+                            # Check columns not in scope
+                            if scoped_columns_upper and qualified not in scoped_columns_upper:
+                                skipped_metrics.append(
+                                    {
+                                        "metric": metric_name,
+                                        "missing_tables": [qualified],
+                                        "available": list(scoped_columns_upper),
+                                    }
+                                )
+                                logger.debug(
+                                    f"Skipping window metric '{metric_name}' - references column '{qualified}' "
+                                    f"not in view's column scope"
+                                )
+                                should_skip = True
+                                break
+                        if should_skip:
+                            break
+                    if should_skip:
+                        continue
+
+                if non_additive_by and isinstance(non_additive_by, list):
+                    primary_table = (metric.get("TABLE_NAME") or "").upper()
+                    should_skip = False
+                    for entry in non_additive_by:
+                        if isinstance(entry, dict):
+                            dim = entry.get("dimension", "").upper()
+                            if dim and primary_table:
+                                qualified = f"{primary_table}.{dim}"
+                                # Check FK columns
+                                if fk_columns_to_external_entities and qualified in fk_columns_to_external_entities:
+                                    skipped_metrics.append(
+                                        {
+                                            "metric": metric_name,
+                                            "missing_tables": [qualified],
+                                            "available": list(available_tables),
+                                        }
+                                    )
+                                    logger.debug(
+                                        f"Skipping semi-additive metric '{metric_name}' - NON_ADDITIVE_BY dimension "
+                                        f"'{qualified}' is a FK to an entity not in this view"
+                                    )
+                                    should_skip = True
+                                    break
+                                # Check columns not in scope
+                                if scoped_columns_upper and qualified not in scoped_columns_upper:
+                                    skipped_metrics.append(
+                                        {
+                                            "metric": metric_name,
+                                            "missing_tables": [qualified],
+                                            "available": list(scoped_columns_upper),
+                                        }
+                                    )
+                                    logger.debug(
+                                        f"Skipping semi-additive metric '{metric_name}' - NON_ADDITIVE_BY dimension "
+                                        f"'{qualified}' not in view's column scope"
+                                    )
+                                    should_skip = True
+                                    break
+                    if should_skip:
+                        continue
 
                 col_refs = self._extract_column_references_from_expression(expression)
                 for table_ref, col_ref in col_refs:
@@ -1739,7 +1996,11 @@ class SemanticViewBuilder:
             logger.warning(f"Failed to retrieve filters: {e}")
             return []
 
-    def _build_filters_as_instructions(self, store: Any, table_names: List[str]) -> str:
+    def _build_filters_as_instructions(
+        self,
+        store: Any,
+        table_names: List[str],
+    ) -> str:
         """
         Convert filter definitions into AI_SQL_GENERATION instruction text.
 
@@ -1761,6 +2022,7 @@ class SemanticViewBuilder:
             return ""
 
         filters = self._get_filters_for_tables(store, table_names)
+
         if not filters:
             return ""
 
@@ -1788,7 +2050,10 @@ class SemanticViewBuilder:
         return header + "\n" + "\n".join(filter_lines)
 
     def _build_ai_guidance_clauses(
-        self, store: Any, custom_instruction_names: Optional[List[str]], table_names: Optional[List[str]] = None
+        self,
+        store: Any,
+        custom_instruction_names: Optional[List[str]],
+        table_names: Optional[List[str]] = None,
     ) -> str:
         """
         Build AI_QUESTION_CATEGORIZATION and AI_SQL_GENERATION clauses from custom instructions and filters.
@@ -1868,6 +2133,29 @@ class SemanticViewBuilder:
 
         return ""
 
+    @staticmethod
+    def _apply_view_scope(
+        items: List[Dict], include_list: Optional[List[str]], exclude_list: Optional[List[str]], key_fn
+    ) -> List[Dict]:
+        """Apply view-level include/exclude filtering to a list of items.
+
+        Args:
+            items: List of row dicts to filter
+            include_list: If not None, only items whose key is in this list are kept
+            exclude_list: If not None, items whose key is in this list are removed
+            key_fn: Callable that extracts the identifier string from each item
+
+        Returns:
+            Filtered list of items
+        """
+        if include_list is not None:
+            allowed = {name.upper() for name in include_list}
+            items = [i for i in items if key_fn(i).upper() in allowed]
+        elif exclude_list is not None:
+            blocked = {name.upper() for name in exclude_list}
+            items = [i for i in items if key_fn(i).upper() not in blocked]
+        return items
+
     def _generate_sql(
         self,
         store,
@@ -1877,9 +2165,30 @@ class SemanticViewBuilder:
         defer_database: Optional[str] = None,
         defer_manifest: Optional["ManifestParser"] = None,
         custom_instruction_names: Optional[List[str]] = None,
+        view_scope: Optional[Dict[str, Any]] = None,
     ) -> str:
         """Generate the CREATE OR REPLACE SEMANTIC VIEW SQL statement ."""
         logger.info(f"Generating SQL for semantic view '{view_name}'")
+
+        # Extract view scope parameters
+        scope = view_scope or {}
+        include_columns = scope.get("columns")
+        exclude_columns = scope.get("exclude_columns")
+        include_metrics = scope.get("metrics")
+        exclude_metrics = scope.get("exclude_metrics")
+        include_relationships = scope.get("relationships")
+        exclude_relationships = scope.get("exclude_relationships")
+
+        if scope:
+            logger.info(f"View scope applied: {scope}")
+
+            # Count total available items before filtering (for summary)
+            _total_facts = sum(len(self._get_facts(store, t)) for t in table_names)
+            _total_dims = sum(
+                len(self._get_dimensions(store, t)) + len(self._get_time_dimensions(store, t)) for t in table_names
+            )
+            _total_metrics = len(self._get_metrics_for_selected_tables(store, table_names))
+            _total_rels = len(self._get_relationships(store, table_names))
 
         if defer_manifest:
             logger.info(f"Using defer mode with manifest: table references will use locations from manifest")
@@ -1902,7 +2211,11 @@ class SemanticViewBuilder:
         logger.info("Building RELATIONSHIPS clause...")
         join_key_generator = JoinKeyDimensionGenerator()
         relationships_clause = self._build_relationships_clause(
-            store, table_names, join_key_generator=join_key_generator
+            store,
+            table_names,
+            join_key_generator=join_key_generator,
+            include_relationships=include_relationships,
+            exclude_relationships=exclude_relationships,
         )
         if relationships_clause:
             sql_parts.append(f"  RELATIONSHIPS (\n{relationships_clause}\n  )")
@@ -1916,19 +2229,33 @@ class SemanticViewBuilder:
 
         # Build FACTS clause
         logger.info("Building FACTS clause...")
-        facts_clause = self._build_facts_clause(store, table_names)
+        facts_clause = self._build_facts_clause(
+            store, table_names, include_columns=include_columns, exclude_columns=exclude_columns
+        )
         if facts_clause:
             sql_parts.append(f"  FACTS (\n{facts_clause}\n  )")
 
         # Build DIMENSIONS clause (includes auto-generated join key dimensions from relationships)
         logger.info("Building DIMENSIONS clause...")
-        dimensions_clause = self._build_dimensions_clause(store, table_names, join_key_generator=join_key_generator)
+        dimensions_clause = self._build_dimensions_clause(
+            store,
+            table_names,
+            join_key_generator=join_key_generator,
+            include_columns=include_columns,
+            exclude_columns=exclude_columns,
+        )
         if dimensions_clause:
             sql_parts.append(f"  DIMENSIONS (\n{dimensions_clause}\n  )")
 
         # Build METRICS clause
         logger.info("Building METRICS clause...")
-        metrics_clause = self._build_metrics_clause(store, table_names)
+        metrics_clause = self._build_metrics_clause(
+            store,
+            table_names,
+            include_metrics=include_metrics,
+            exclude_metrics=exclude_metrics,
+            include_columns=include_columns,
+        )
         if metrics_clause:
             sql_parts.append(f"  METRICS (\n{metrics_clause}\n  )")
 
@@ -1943,7 +2270,11 @@ class SemanticViewBuilder:
 
         # Build AI guidance clauses from custom instructions and filters
         # These come after COMMENT per Snowflake syntax: COMMENT, then AI_SQL_GENERATION, then AI_QUESTION_CATEGORIZATION
-        ai_guidance_clauses = self._build_ai_guidance_clauses(store, custom_instruction_names, table_names=table_names)
+        ai_guidance_clauses = self._build_ai_guidance_clauses(
+            store,
+            custom_instruction_names,
+            table_names=table_names,
+        )
         if ai_guidance_clauses:
             sql_parts.append(ai_guidance_clauses)
 
@@ -1955,6 +2286,29 @@ class SemanticViewBuilder:
 
         # Build CA extension for sample_values (Cortex Analyst metadata)
         ca_extension = self._build_ca_extension(store, table_names)
+
+        # Log scope filtering summary if scope was applied
+        scope_summary = None
+        if scope:
+            _filtered_facts = facts_clause.count(",\n") + 1 if facts_clause else 0
+            _filtered_dims = dimensions_clause.count(",\n") + 1 if dimensions_clause else 0
+            _filtered_metrics = metrics_clause.count("COMMENT =") if metrics_clause else 0
+            _filtered_rels = relationships_clause.count("\n    ") if relationships_clause else 0
+            _filtered_cols = _filtered_facts + _filtered_dims
+            _total_cols = _total_facts + _total_dims
+            parts = []
+            if include_columns or exclude_columns:
+                parts.append(f"{_filtered_cols} columns (from {_total_cols})")
+            if include_metrics or exclude_metrics:
+                parts.append(f"{_filtered_metrics} metrics (from {_total_metrics})")
+            if include_relationships or exclude_relationships:
+                parts.append(f"{_filtered_rels} relationships (from {_total_rels})")
+            if parts:
+                scope_summary = f"{', '.join(parts)}"
+                logger.info(f"View scope summary for '{view_name}': {scope_summary}")
+
+        # Store scope summary for callers to access
+        self._last_scope_summary = scope_summary
 
         # Join all parts and add CA extension if present
         if ca_extension:
