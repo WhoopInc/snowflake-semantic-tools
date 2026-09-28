@@ -1,0 +1,15 @@
+{
+  "models": {
+    "orchestration": "claude-sonnet-4-6"
+  },
+  "orchestration": {
+    "budget": {
+      "seconds": 120,
+      "tokens": 16000
+    },
+    "tool_not_accessible": "reject",
+    "capabilities": {
+      "analytical_search": false
+    }
+  }
+}

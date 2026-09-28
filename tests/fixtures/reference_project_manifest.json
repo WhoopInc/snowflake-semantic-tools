@@ -1,0 +1,1763 @@
+{
+  "metadata": {
+    "dbt_schema_version": "https://schemas.getdbt.com/dbt/manifest/v12.json",
+    "dbt_version": "1.11.2",
+    "project_name": "sst_reference_impl"
+  },
+  "nodes": {
+    "model.sst_reference_impl.stg_orders": {
+      "unique_id": "model.sst_reference_impl.stg_orders",
+      "resource_type": "model",
+      "name": "stg_orders",
+      "alias": "stg_orders",
+      "database": "SST_REF_DEV",
+      "schema": "JAFFLE",
+      "relation_name": "SST_REF_DEV.JAFFLE.stg_orders",
+      "original_file_path": "models/staging/stg_orders.sql",
+      "patch_path": "sst_reference_impl://models/staging/stg_orders.yml",
+      "config": {
+        "meta": {}
+      },
+      "columns": {
+        "order_id": {
+          "name": "order_id",
+          "description": "Surrogate key for the order, passed through from the source.",
+          "meta": {},
+          "data_type": null,
+          "constraints": [],
+          "quote": null,
+          "config": {
+            "meta": {},
+            "tags": []
+          },
+          "tags": [],
+          "granularity": null,
+          "doc_blocks": []
+        },
+        "customer_id": {
+          "name": "customer_id",
+          "description": "Foreign key to the customer.",
+          "meta": {},
+          "data_type": null,
+          "constraints": [],
+          "quote": null,
+          "config": {
+            "meta": {},
+            "tags": []
+          },
+          "tags": [],
+          "granularity": null,
+          "doc_blocks": []
+        },
+        "location_id": {
+          "name": "location_id",
+          "description": "Foreign key to the store location.",
+          "meta": {},
+          "data_type": null,
+          "constraints": [],
+          "quote": null,
+          "config": {
+            "meta": {},
+            "tags": []
+          },
+          "tags": [],
+          "granularity": null,
+          "doc_blocks": []
+        },
+        "order_state": {
+          "name": "order_state",
+          "description": "Fulfilment state as the source records it.",
+          "meta": {},
+          "data_type": null,
+          "constraints": [],
+          "quote": null,
+          "config": {
+            "meta": {},
+            "tags": []
+          },
+          "tags": [],
+          "granularity": null,
+          "doc_blocks": []
+        },
+        "ordered_at": {
+          "name": "ordered_at",
+          "description": "When the order was placed.",
+          "meta": {},
+          "data_type": null,
+          "constraints": [],
+          "quote": null,
+          "config": {
+            "meta": {},
+            "tags": []
+          },
+          "tags": [],
+          "granularity": null,
+          "doc_blocks": []
+        },
+        "subtotal": {
+          "name": "subtotal",
+          "description": "Order value before tax, in cents.",
+          "meta": {},
+          "data_type": null,
+          "constraints": [],
+          "quote": null,
+          "config": {
+            "meta": {},
+            "tags": []
+          },
+          "tags": [],
+          "granularity": null,
+          "doc_blocks": []
+        },
+        "order_total": {
+          "name": "order_total",
+          "description": "Order value including tax, in cents.",
+          "meta": {},
+          "data_type": null,
+          "constraints": [],
+          "quote": null,
+          "config": {
+            "meta": {},
+            "tags": []
+          },
+          "tags": [],
+          "granularity": null,
+          "doc_blocks": []
+        },
+        "tax_paid_derived": {
+          "name": "tax_paid_derived",
+          "description": "Tax paid, derived as order total less subtotal.",
+          "meta": {},
+          "data_type": null,
+          "constraints": [],
+          "quote": null,
+          "config": {
+            "meta": {},
+            "tags": []
+          },
+          "tags": [],
+          "granularity": null,
+          "doc_blocks": []
+        },
+        "order_state_coalesced": {
+          "name": "order_state_coalesced",
+          "description": "Fulfilment state with the synthetic unknown-state placeholder applied.",
+          "meta": {},
+          "data_type": null,
+          "constraints": [],
+          "quote": null,
+          "config": {
+            "meta": {},
+            "tags": []
+          },
+          "tags": [],
+          "granularity": null,
+          "doc_blocks": []
+        }
+      }
+    },
+    "model.sst_reference_impl.pricing_periods": {
+      "unique_id": "model.sst_reference_impl.pricing_periods",
+      "resource_type": "model",
+      "name": "pricing_periods",
+      "alias": "pricing_calendar",
+      "database": "SST_REF_DEV",
+      "schema": "JAFFLE",
+      "relation_name": "SST_REF_DEV.JAFFLE.pricing_calendar",
+      "original_file_path": "models/marts/pricing_periods.sql",
+      "patch_path": "sst_reference_impl://models/marts/pricing_periods.yml",
+      "config": {
+        "meta": {
+          "sst": {
+            "primary_key": [
+              "pricing_period_id"
+            ]
+          }
+        }
+      },
+      "columns": {
+        "pricing_period_id": {
+          "name": "pricing_period_id",
+          "description": "Surrogate key for the pricing period. An identifier, therefore a dimension.",
+          "meta": {
+            "sst": {
+              "column_type": "dimension",
+              "is_enum": false,
+              "synonyms": [
+                "pricing period key",
+                "rate period identifier"
+              ]
+            }
+          },
+          "data_type": "VARCHAR",
+          "constraints": [],
+          "quote": null,
+          "config": {
+            "meta": {
+              "sst": {
+                "column_type": "dimension",
+                "is_enum": false,
+                "synonyms": [
+                  "pricing period key",
+                  "rate period identifier"
+                ]
+              }
+            },
+            "tags": []
+          },
+          "tags": [],
+          "granularity": null,
+          "doc_blocks": []
+        },
+        "period_name": {
+          "name": "period_name",
+          "description": "Human-readable label for the pricing period.",
+          "meta": {
+            "sst": {
+              "column_type": "dimension",
+              "is_enum": true,
+              "synonyms": [
+                "pricing window",
+                "promo name",
+                "rate period"
+              ],
+              "sample_values": [
+                "summer promo",
+                "standard"
+              ]
+            }
+          },
+          "data_type": "VARCHAR",
+          "constraints": [],
+          "quote": null,
+          "config": {
+            "meta": {
+              "sst": {
+                "column_type": "dimension",
+                "is_enum": true,
+                "synonyms": [
+                  "pricing window",
+                  "promo name",
+                  "rate period"
+                ],
+                "sample_values": [
+                  "summer promo",
+                  "standard"
+                ]
+              }
+            },
+            "tags": []
+          },
+          "tags": [],
+          "granularity": null,
+          "doc_blocks": []
+        },
+        "effective_start_at": {
+          "name": "effective_start_at",
+          "description": "Inclusive start of the pricing period.",
+          "meta": {
+            "sst": {
+              "column_type": "dimension",
+              "synonyms": [
+                "period start",
+                "when the rate took effect"
+              ],
+              "sample_values": [
+                "2024-06-01 00:00:00",
+                "2024-09-01 00:00:00"
+              ]
+            }
+          },
+          "data_type": "TIMESTAMP_NTZ",
+          "constraints": [],
+          "quote": null,
+          "config": {
+            "meta": {
+              "sst": {
+                "column_type": "dimension",
+                "synonyms": [
+                  "period start",
+                  "when the rate took effect"
+                ],
+                "sample_values": [
+                  "2024-06-01 00:00:00",
+                  "2024-09-01 00:00:00"
+                ]
+              }
+            },
+            "tags": []
+          },
+          "tags": [],
+          "granularity": null,
+          "doc_blocks": []
+        },
+        "effective_end_at": {
+          "name": "effective_end_at",
+          "description": "Exclusive end of the pricing period.",
+          "meta": {
+            "sst": {
+              "column_type": "dimension",
+              "synonyms": [
+                "period end",
+                "when the rate stopped applying"
+              ],
+              "sample_values": [
+                "2024-09-01 00:00:00",
+                "2024-12-01 00:00:00"
+              ]
+            }
+          },
+          "data_type": "TIMESTAMP_NTZ",
+          "constraints": [],
+          "quote": null,
+          "config": {
+            "meta": {
+              "sst": {
+                "column_type": "dimension",
+                "synonyms": [
+                  "period end",
+                  "when the rate stopped applying"
+                ],
+                "sample_values": [
+                  "2024-09-01 00:00:00",
+                  "2024-12-01 00:00:00"
+                ]
+              }
+            },
+            "tags": []
+          },
+          "tags": [],
+          "granularity": null,
+          "doc_blocks": []
+        },
+        "base_price_multiplier": {
+          "name": "base_price_multiplier",
+          "description": "Multiplier applied to list price during this period.",
+          "meta": {
+            "sst": {
+              "column_type": "fact",
+              "synonyms": [
+                "price multiplier",
+                "rate factor"
+              ],
+              "sample_values": [
+                1.0,
+                1.15
+              ]
+            }
+          },
+          "data_type": "NUMBER(38,4)",
+          "constraints": [],
+          "quote": null,
+          "config": {
+            "meta": {
+              "sst": {
+                "column_type": "fact",
+                "synonyms": [
+                  "price multiplier",
+                  "rate factor"
+                ],
+                "sample_values": [
+                  1.0,
+                  1.15
+                ]
+              }
+            },
+            "tags": []
+          },
+          "tags": [],
+          "granularity": null,
+          "doc_blocks": []
+        },
+        "discount_pct": {
+          "name": "discount_pct",
+          "description": "Percentage discount applied during this period.",
+          "meta": {
+            "sst": {
+              "column_type": "fact",
+              "synonyms": [
+                "discount rate",
+                "percent off"
+              ],
+              "sample_values": [
+                0.0,
+                0.1
+              ]
+            }
+          },
+          "data_type": "NUMBER(38,4)",
+          "constraints": [],
+          "quote": null,
+          "config": {
+            "meta": {
+              "sst": {
+                "column_type": "fact",
+                "synonyms": [
+                  "discount rate",
+                  "percent off"
+                ],
+                "sample_values": [
+                  0.0,
+                  0.1
+                ]
+              }
+            },
+            "tags": []
+          },
+          "tags": [],
+          "granularity": null,
+          "doc_blocks": []
+        }
+      }
+    },
+    "model.sst_reference_impl.supplies": {
+      "unique_id": "model.sst_reference_impl.supplies",
+      "resource_type": "model",
+      "name": "supplies",
+      "alias": "supplies",
+      "database": "SST_REF_DEV",
+      "schema": "JAFFLE",
+      "relation_name": "SST_REF_DEV.JAFFLE.supplies",
+      "original_file_path": "models/marts/supplies.sql",
+      "patch_path": "sst_reference_impl://models/marts/supplies.yml",
+      "config": {
+        "meta": {
+          "sst": {
+            "primary_key": [
+              "supply_id"
+            ]
+          }
+        }
+      },
+      "columns": {
+        "supply_id": {
+          "name": "supply_id",
+          "description": "Surrogate key for the supply snapshot row. An identifier, therefore a dimension.",
+          "meta": {
+            "sst": {
+              "data_type": "VARCHAR",
+              "column_type": "dimension",
+              "is_enum": false,
+              "synonyms": [
+                "supply key",
+                "supply snapshot identifier"
+              ]
+            }
+          },
+          "data_type": null,
+          "constraints": [],
+          "quote": null,
+          "config": {
+            "meta": {
+              "sst": {
+                "data_type": "VARCHAR",
+                "column_type": "dimension",
+                "is_enum": false,
+                "synonyms": [
+                  "supply key",
+                  "supply snapshot identifier"
+                ]
+              }
+            },
+            "tags": []
+          },
+          "tags": [],
+          "granularity": null,
+          "doc_blocks": []
+        },
+        "product_id": {
+          "name": "product_id",
+          "description": "The product this supply cost belongs to.",
+          "meta": {
+            "sst": {
+              "data_type": "VARCHAR",
+              "column_type": "dimension",
+              "is_enum": false,
+              "synonyms": [
+                "product key",
+                "which item is supplied"
+              ]
+            }
+          },
+          "data_type": null,
+          "constraints": [],
+          "quote": null,
+          "config": {
+            "meta": {
+              "sst": {
+                "data_type": "VARCHAR",
+                "column_type": "dimension",
+                "is_enum": false,
+                "synonyms": [
+                  "product key",
+                  "which item is supplied"
+                ]
+              }
+            },
+            "tags": []
+          },
+          "tags": [],
+          "granularity": null,
+          "doc_blocks": []
+        },
+        "snapshot_month": {
+          "name": "snapshot_month",
+          "description": "The month this supply cost was restated for.",
+          "meta": {
+            "sst": {
+              "data_type": "TIMESTAMP_NTZ",
+              "column_type": "dimension",
+              "synonyms": [
+                "snapshot month",
+                "as-of month",
+                "restatement month"
+              ],
+              "sample_values": [
+                "2024-07-01 00:00:00",
+                "2024-08-01 00:00:00"
+              ]
+            }
+          },
+          "data_type": null,
+          "constraints": [],
+          "quote": null,
+          "config": {
+            "meta": {
+              "sst": {
+                "data_type": "TIMESTAMP_NTZ",
+                "column_type": "dimension",
+                "synonyms": [
+                  "snapshot month",
+                  "as-of month",
+                  "restatement month"
+                ],
+                "sample_values": [
+                  "2024-07-01 00:00:00",
+                  "2024-08-01 00:00:00"
+                ]
+              }
+            },
+            "tags": []
+          },
+          "tags": [],
+          "granularity": null,
+          "doc_blocks": []
+        },
+        "is_perishable": {
+          "name": "is_perishable",
+          "description": "Whether the supply spoils and must be reordered on a schedule.",
+          "meta": {
+            "sst": {
+              "data_type": "BOOLEAN",
+              "column_type": "dimension",
+              "is_enum": true,
+              "synonyms": [
+                "perishable flag",
+                "needs refrigeration"
+              ],
+              "sample_values": [
+                true,
+                false
+              ]
+            }
+          },
+          "data_type": null,
+          "constraints": [],
+          "quote": null,
+          "config": {
+            "meta": {
+              "sst": {
+                "data_type": "BOOLEAN",
+                "column_type": "dimension",
+                "is_enum": true,
+                "synonyms": [
+                  "perishable flag",
+                  "needs refrigeration"
+                ],
+                "sample_values": [
+                  true,
+                  false
+                ]
+              }
+            },
+            "tags": []
+          },
+          "tags": [],
+          "granularity": null,
+          "doc_blocks": []
+        },
+        "supply_cost": {
+          "name": "supply_cost",
+          "description": "Cost to supply one unit of the product in this month, in cents.",
+          "meta": {
+            "sst": {
+              "data_type": "NUMBER(38,2)",
+              "column_type": "fact",
+              "synonyms": [
+                "cost of supply",
+                "unit supply cost"
+              ],
+              "sample_values": [
+                100,
+                250
+              ]
+            }
+          },
+          "data_type": null,
+          "constraints": [],
+          "quote": null,
+          "config": {
+            "meta": {
+              "sst": {
+                "data_type": "NUMBER(38,2)",
+                "column_type": "fact",
+                "synonyms": [
+                  "cost of supply",
+                  "unit supply cost"
+                ],
+                "sample_values": [
+                  100,
+                  250
+                ]
+              }
+            },
+            "tags": []
+          },
+          "tags": [],
+          "granularity": null,
+          "doc_blocks": []
+        }
+      }
+    },
+    "model.sst_reference_impl.products": {
+      "unique_id": "model.sst_reference_impl.products",
+      "resource_type": "model",
+      "name": "products",
+      "alias": "products",
+      "database": "SST_REF_DEV",
+      "schema": "JAFFLE",
+      "relation_name": "SST_REF_DEV.JAFFLE.products",
+      "original_file_path": "models/marts/products.sql",
+      "patch_path": "sst_reference_impl://models/marts/products.yml",
+      "config": {
+        "meta": {
+          "sst": {
+            "primary_key": [
+              "product_id"
+            ]
+          }
+        }
+      },
+      "columns": {
+        "product_id": {
+          "name": "product_id",
+          "description": "Surrogate key for the product. An identifier, therefore a dimension.",
+          "meta": {
+            "sst": {
+              "column_type": "dimension",
+              "is_enum": false,
+              "synonyms": [
+                "product key",
+                "menu item identifier"
+              ]
+            }
+          },
+          "data_type": "VARCHAR",
+          "constraints": [],
+          "quote": null,
+          "config": {
+            "meta": {
+              "sst": {
+                "column_type": "dimension",
+                "is_enum": false,
+                "synonyms": [
+                  "product key",
+                  "menu item identifier"
+                ]
+              }
+            },
+            "tags": []
+          },
+          "tags": [],
+          "granularity": null,
+          "doc_blocks": []
+        },
+        "product_name": {
+          "name": "product_name",
+          "description": "The menu item's name as printed on the receipt.",
+          "meta": {
+            "sst": {
+              "column_type": "dimension",
+              "is_enum": false,
+              "synonyms": [
+                "menu item",
+                "item name",
+                "dish"
+              ],
+              "sample_values": [
+                "nutellaphone who dis",
+                "doctor stew"
+              ]
+            }
+          },
+          "data_type": "VARCHAR",
+          "constraints": [],
+          "quote": null,
+          "config": {
+            "meta": {
+              "sst": {
+                "column_type": "dimension",
+                "is_enum": false,
+                "synonyms": [
+                  "menu item",
+                  "item name",
+                  "dish"
+                ],
+                "sample_values": [
+                  "nutellaphone who dis",
+                  "doctor stew"
+                ]
+              }
+            },
+            "tags": []
+          },
+          "tags": [],
+          "granularity": null,
+          "doc_blocks": []
+        },
+        "product_type": {
+          "name": "product_type",
+          "description": "Whether the item is food or drink. A closed set.",
+          "meta": {
+            "sst": {
+              "column_type": "dimension",
+              "is_enum": true,
+              "synonyms": [
+                "item category",
+                "menu category",
+                "food or drink"
+              ],
+              "sample_values": [
+                "jaffle",
+                "beverage"
+              ]
+            }
+          },
+          "data_type": "VARCHAR",
+          "constraints": [],
+          "quote": null,
+          "config": {
+            "meta": {
+              "sst": {
+                "column_type": "dimension",
+                "is_enum": true,
+                "synonyms": [
+                  "item category",
+                  "menu category",
+                  "food or drink"
+                ],
+                "sample_values": [
+                  "jaffle",
+                  "beverage"
+                ]
+              }
+            },
+            "tags": []
+          },
+          "tags": [],
+          "granularity": null,
+          "doc_blocks": []
+        },
+        "list_price": {
+          "name": "list_price",
+          "description": "Menu price for one unit, in cents.",
+          "meta": {
+            "sst": {
+              "column_type": "fact",
+              "synonyms": [
+                "menu price",
+                "catalogue price",
+                "sticker price"
+              ],
+              "sample_values": [
+                1100,
+                700
+              ]
+            }
+          },
+          "data_type": "NUMBER(38,2)",
+          "constraints": [],
+          "quote": null,
+          "config": {
+            "meta": {
+              "sst": {
+                "column_type": "fact",
+                "synonyms": [
+                  "menu price",
+                  "catalogue price",
+                  "sticker price"
+                ],
+                "sample_values": [
+                  1100,
+                  700
+                ]
+              }
+            },
+            "tags": []
+          },
+          "tags": [],
+          "granularity": null,
+          "doc_blocks": []
+        }
+      }
+    },
+    "model.sst_reference_impl.customers": {
+      "unique_id": "model.sst_reference_impl.customers",
+      "resource_type": "model",
+      "name": "customers",
+      "alias": "customers",
+      "database": "SST_REF_DEV",
+      "schema": "JAFFLE",
+      "relation_name": "SST_REF_DEV.JAFFLE.customers",
+      "original_file_path": "models/marts/customers.sql",
+      "patch_path": "sst_reference_impl://models/marts/customers.yml",
+      "config": {
+        "meta": {
+          "sst": {
+            "primary_key": [
+              "customer_id"
+            ],
+            "unique_keys": [
+              [
+                "customer_name"
+              ]
+            ]
+          }
+        }
+      },
+      "columns": {
+        "customer_id": {
+          "name": "customer_id",
+          "description": "Surrogate key for the customer. An identifier, therefore a dimension and never a fact.",
+          "meta": {
+            "sst": {
+              "column_type": "dimension",
+              "is_enum": false,
+              "synonyms": [
+                "customer key",
+                "customer identifier"
+              ]
+            }
+          },
+          "data_type": "VARCHAR",
+          "constraints": [],
+          "quote": null,
+          "config": {
+            "meta": {
+              "sst": {
+                "column_type": "dimension",
+                "is_enum": false,
+                "synonyms": [
+                  "customer key",
+                  "customer identifier"
+                ]
+              }
+            },
+            "tags": []
+          },
+          "tags": [],
+          "granularity": null,
+          "doc_blocks": []
+        },
+        "customer_name": {
+          "name": "customer_name",
+          "description": "The customer's display name.",
+          "meta": {
+            "sst": {
+              "column_type": "dimension",
+              "is_enum": false,
+              "synonyms": [
+                "customer full name",
+                "who the customer is"
+              ]
+            }
+          },
+          "data_type": "VARCHAR",
+          "constraints": [],
+          "quote": null,
+          "config": {
+            "meta": {
+              "sst": {
+                "column_type": "dimension",
+                "is_enum": false,
+                "synonyms": [
+                  "customer full name",
+                  "who the customer is"
+                ]
+              }
+            },
+            "tags": []
+          },
+          "tags": [],
+          "granularity": null,
+          "doc_blocks": []
+        },
+        "customer_type": {
+          "name": "customer_type",
+          "description": "Whether the customer has ordered before. A closed set.",
+          "meta": {
+            "sst": {
+              "column_type": "dimension",
+              "is_enum": true,
+              "synonyms": [
+                "customer segment",
+                "new or returning",
+                "customer cohort"
+              ],
+              "sample_values": [
+                "new",
+                "returning"
+              ]
+            }
+          },
+          "data_type": "VARCHAR",
+          "constraints": [],
+          "quote": null,
+          "config": {
+            "meta": {
+              "sst": {
+                "column_type": "dimension",
+                "is_enum": true,
+                "synonyms": [
+                  "customer segment",
+                  "new or returning",
+                  "customer cohort"
+                ],
+                "sample_values": [
+                  "new",
+                  "returning"
+                ]
+              }
+            },
+            "tags": []
+          },
+          "tags": [],
+          "granularity": null,
+          "doc_blocks": []
+        },
+        "first_ordered_at": {
+          "name": "first_ordered_at",
+          "description": "When the customer placed their first order.",
+          "meta": {
+            "sst": {
+              "column_type": "dimension",
+              "synonyms": [
+                "first order date",
+                "date of first purchase",
+                "cohort date"
+              ],
+              "sample_values": [
+                "2024-01-15 09:30:00",
+                "2024-06-02 14:05:00"
+              ]
+            }
+          },
+          "data_type": "TIMESTAMP_NTZ",
+          "constraints": [],
+          "quote": null,
+          "config": {
+            "meta": {
+              "sst": {
+                "column_type": "dimension",
+                "synonyms": [
+                  "first order date",
+                  "date of first purchase",
+                  "cohort date"
+                ],
+                "sample_values": [
+                  "2024-01-15 09:30:00",
+                  "2024-06-02 14:05:00"
+                ]
+              }
+            },
+            "tags": []
+          },
+          "tags": [],
+          "granularity": null,
+          "doc_blocks": []
+        },
+        "lifetime_spend": {
+          "name": "lifetime_spend",
+          "description": "Total amount the customer has spent across all orders, in cents.",
+          "meta": {
+            "sst": {
+              "column_type": "fact",
+              "synonyms": [
+                "total spend",
+                "customer value",
+                "spend to date"
+              ],
+              "sample_values": [
+                1836,
+                4590
+              ]
+            }
+          },
+          "data_type": "NUMBER(38,2)",
+          "constraints": [],
+          "quote": null,
+          "config": {
+            "meta": {
+              "sst": {
+                "column_type": "fact",
+                "synonyms": [
+                  "total spend",
+                  "customer value",
+                  "spend to date"
+                ],
+                "sample_values": [
+                  1836,
+                  4590
+                ]
+              }
+            },
+            "tags": []
+          },
+          "tags": [],
+          "granularity": null,
+          "doc_blocks": []
+        }
+      }
+    },
+    "model.sst_reference_impl.orders": {
+      "unique_id": "model.sst_reference_impl.orders",
+      "resource_type": "model",
+      "name": "orders",
+      "alias": "orders",
+      "database": "SST_REF_DEV",
+      "schema": "JAFFLE",
+      "relation_name": "SST_REF_DEV.JAFFLE.orders",
+      "original_file_path": "models/marts/orders.sql",
+      "patch_path": "sst_reference_impl://models/marts/orders.yml",
+      "config": {
+        "meta": {
+          "sst": {
+            "primary_key": [
+              "order_id"
+            ]
+          }
+        }
+      },
+      "columns": {
+        "order_id": {
+          "name": "order_id",
+          "description": "Surrogate key for the order. An identifier, therefore a dimension.",
+          "meta": {
+            "sst": {
+              "column_type": "dimension",
+              "is_enum": false,
+              "synonyms": [
+                "order key",
+                "order number"
+              ]
+            }
+          },
+          "data_type": "VARCHAR",
+          "constraints": [],
+          "quote": null,
+          "config": {
+            "meta": {
+              "sst": {
+                "column_type": "dimension",
+                "is_enum": false,
+                "synonyms": [
+                  "order key",
+                  "order number"
+                ]
+              }
+            },
+            "tags": []
+          },
+          "tags": [],
+          "granularity": null,
+          "doc_blocks": []
+        },
+        "customer_id": {
+          "name": "customer_id",
+          "description": "The customer who placed this order.",
+          "meta": {
+            "sst": {
+              "column_type": "dimension",
+              "is_enum": false,
+              "synonyms": [
+                "customer key",
+                "who placed the order"
+              ]
+            }
+          },
+          "data_type": "VARCHAR",
+          "constraints": [],
+          "quote": null,
+          "config": {
+            "meta": {
+              "sst": {
+                "column_type": "dimension",
+                "is_enum": false,
+                "synonyms": [
+                  "customer key",
+                  "who placed the order"
+                ]
+              }
+            },
+            "tags": []
+          },
+          "tags": [],
+          "granularity": null,
+          "doc_blocks": []
+        },
+        "location_id": {
+          "name": "location_id",
+          "description": "The store location where this order was placed.",
+          "meta": {
+            "sst": {
+              "column_type": "dimension",
+              "is_enum": false,
+              "synonyms": [
+                "shop key",
+                "where the order was placed"
+              ]
+            }
+          },
+          "data_type": "VARCHAR",
+          "constraints": [],
+          "quote": null,
+          "config": {
+            "meta": {
+              "sst": {
+                "column_type": "dimension",
+                "is_enum": false,
+                "synonyms": [
+                  "shop key",
+                  "where the order was placed"
+                ]
+              }
+            },
+            "tags": []
+          },
+          "tags": [],
+          "granularity": null,
+          "doc_blocks": []
+        },
+        "ordered_at": {
+          "name": "ordered_at",
+          "description": "When the order was placed.",
+          "meta": {
+            "sst": {
+              "column_type": "dimension",
+              "synonyms": [
+                "order date",
+                "purchase time",
+                "when the order was placed"
+              ],
+              "sample_values": [
+                "2024-07-04 12:15:00",
+                "2024-07-04 18:42:00"
+              ]
+            }
+          },
+          "data_type": "TIMESTAMP_NTZ",
+          "constraints": [],
+          "quote": null,
+          "config": {
+            "meta": {
+              "sst": {
+                "column_type": "dimension",
+                "synonyms": [
+                  "order date",
+                  "purchase time",
+                  "when the order was placed"
+                ],
+                "sample_values": [
+                  "2024-07-04 12:15:00",
+                  "2024-07-04 18:42:00"
+                ]
+              }
+            },
+            "tags": []
+          },
+          "tags": [],
+          "granularity": null,
+          "doc_blocks": []
+        },
+        "order_state": {
+          "name": "order_state",
+          "description": "Fulfilment state of the order. A closed set.",
+          "meta": {
+            "sst": {
+              "column_type": "dimension",
+              "is_enum": true,
+              "synonyms": [
+                "order status",
+                "fulfilment state"
+              ],
+              "sample_values": [
+                "completed",
+                "returned",
+                "placed"
+              ]
+            }
+          },
+          "data_type": "VARCHAR",
+          "constraints": [],
+          "quote": null,
+          "config": {
+            "meta": {
+              "sst": {
+                "column_type": "dimension",
+                "is_enum": true,
+                "synonyms": [
+                  "order status",
+                  "fulfilment state"
+                ],
+                "sample_values": [
+                  "completed",
+                  "returned",
+                  "placed"
+                ]
+              }
+            },
+            "tags": []
+          },
+          "tags": [],
+          "granularity": null,
+          "doc_blocks": []
+        },
+        "subtotal": {
+          "name": "subtotal",
+          "description": "Order value before tax, in cents.",
+          "meta": {
+            "sst": {
+              "column_type": "fact",
+              "synonyms": [
+                "pre-tax total",
+                "net amount",
+                "amount before tax"
+              ],
+              "sample_values": [
+                850,
+                1100
+              ]
+            }
+          },
+          "data_type": "NUMBER(38,2)",
+          "constraints": [],
+          "quote": null,
+          "config": {
+            "meta": {
+              "sst": {
+                "column_type": "fact",
+                "synonyms": [
+                  "pre-tax total",
+                  "net amount",
+                  "amount before tax"
+                ],
+                "sample_values": [
+                  850,
+                  1100
+                ]
+              }
+            },
+            "tags": []
+          },
+          "tags": [],
+          "granularity": null,
+          "doc_blocks": []
+        },
+        "tax_paid": {
+          "name": "tax_paid",
+          "description": "Tax collected on this order, in cents.",
+          "meta": {
+            "sst": {
+              "column_type": "fact",
+              "synonyms": [
+                "tax amount",
+                "sales tax charged"
+              ],
+              "sample_values": [
+                68,
+                88
+              ]
+            }
+          },
+          "data_type": "NUMBER(38,2)",
+          "constraints": [],
+          "quote": null,
+          "config": {
+            "meta": {
+              "sst": {
+                "column_type": "fact",
+                "synonyms": [
+                  "tax amount",
+                  "sales tax charged"
+                ],
+                "sample_values": [
+                  68,
+                  88
+                ]
+              }
+            },
+            "tags": []
+          },
+          "tags": [],
+          "granularity": null,
+          "doc_blocks": []
+        },
+        "order_total": {
+          "name": "order_total",
+          "description": "Order value including tax, in cents.",
+          "meta": {
+            "sst": {
+              "column_type": "fact",
+              "synonyms": [
+                "gross total",
+                "amount charged",
+                "order value"
+              ],
+              "sample_values": [
+                918,
+                1188
+              ]
+            }
+          },
+          "data_type": "NUMBER(38,2)",
+          "constraints": [],
+          "quote": null,
+          "config": {
+            "meta": {
+              "sst": {
+                "column_type": "fact",
+                "synonyms": [
+                  "gross total",
+                  "amount charged",
+                  "order value"
+                ],
+                "sample_values": [
+                  918,
+                  1188
+                ]
+              }
+            },
+            "tags": []
+          },
+          "tags": [],
+          "granularity": null,
+          "doc_blocks": []
+        }
+      }
+    },
+    "model.sst_reference_impl.order_items": {
+      "unique_id": "model.sst_reference_impl.order_items",
+      "resource_type": "model",
+      "name": "order_items",
+      "alias": "order_items",
+      "database": "SST_REF_DEV",
+      "schema": "JAFFLE",
+      "relation_name": "SST_REF_DEV.JAFFLE.order_items",
+      "original_file_path": "models/marts/order_items.sql",
+      "patch_path": "sst_reference_impl://models/marts/order_items.yml",
+      "config": {
+        "meta": {
+          "sst": {
+            "primary_key": [
+              "order_item_id"
+            ]
+          }
+        }
+      },
+      "columns": {
+        "order_item_id": {
+          "name": "order_item_id",
+          "description": "Surrogate key for the line item. An identifier, therefore a dimension.",
+          "meta": {
+            "sst": {
+              "column_type": "dimension"
+            }
+          },
+          "data_type": "VARCHAR",
+          "constraints": [],
+          "quote": null,
+          "config": {
+            "meta": {
+              "sst": {
+                "column_type": "dimension"
+              }
+            },
+            "tags": []
+          },
+          "tags": [],
+          "granularity": null,
+          "doc_blocks": []
+        },
+        "order_id": {
+          "name": "order_id",
+          "description": "The order this line item belongs to.",
+          "meta": {
+            "sst": {
+              "column_type": "dimension"
+            }
+          },
+          "data_type": "VARCHAR",
+          "constraints": [],
+          "quote": null,
+          "config": {
+            "meta": {
+              "sst": {
+                "column_type": "dimension"
+              }
+            },
+            "tags": []
+          },
+          "tags": [],
+          "granularity": null,
+          "doc_blocks": []
+        },
+        "product_id": {
+          "name": "product_id",
+          "description": "The product sold on this line item.",
+          "meta": {
+            "sst": {
+              "column_type": "dimension"
+            }
+          },
+          "data_type": "VARCHAR",
+          "constraints": [],
+          "quote": null,
+          "config": {
+            "meta": {
+              "sst": {
+                "column_type": "dimension"
+              }
+            },
+            "tags": []
+          },
+          "tags": [],
+          "granularity": null,
+          "doc_blocks": []
+        },
+        "occurred_at": {
+          "name": "occurred_at",
+          "description": "When the line item was recorded.",
+          "meta": {
+            "sst": {
+              "column_type": "dimension"
+            }
+          },
+          "data_type": "TIMESTAMP_NTZ",
+          "constraints": [],
+          "quote": null,
+          "config": {
+            "meta": {
+              "sst": {
+                "column_type": "dimension"
+              }
+            },
+            "tags": []
+          },
+          "tags": [],
+          "granularity": null,
+          "doc_blocks": []
+        },
+        "item_price": {
+          "name": "item_price",
+          "description": "Price charged for this line item, in cents.",
+          "meta": {
+            "sst": {
+              "column_type": "fact"
+            }
+          },
+          "data_type": "NUMBER(38,2)",
+          "constraints": [],
+          "quote": null,
+          "config": {
+            "meta": {
+              "sst": {
+                "column_type": "fact"
+              }
+            },
+            "tags": []
+          },
+          "tags": [],
+          "granularity": null,
+          "doc_blocks": []
+        }
+      }
+    },
+    "model.sst_reference_impl.locations": {
+      "unique_id": "model.sst_reference_impl.locations",
+      "resource_type": "model",
+      "name": "locations",
+      "alias": "locations",
+      "database": "SST_REF_DEV",
+      "schema": "JAFFLE",
+      "relation_name": "SST_REF_DEV.JAFFLE.locations",
+      "original_file_path": "models/marts/locations.sql",
+      "patch_path": "sst_reference_impl://models/marts/locations.yml",
+      "config": {
+        "meta": {
+          "sst": {
+            "primary_key": [
+              "location_id"
+            ]
+          }
+        }
+      },
+      "columns": {
+        "location_id": {
+          "name": "location_id",
+          "description": "Surrogate key for the location. An identifier, therefore a dimension.",
+          "meta": {
+            "sst": {
+              "column_type": "dimension",
+              "is_enum": false,
+              "synonyms": [
+                "location key",
+                "shop identifier"
+              ]
+            }
+          },
+          "data_type": "VARCHAR",
+          "constraints": [],
+          "quote": null,
+          "config": {
+            "meta": {
+              "sst": {
+                "column_type": "dimension",
+                "is_enum": false,
+                "synonyms": [
+                  "location key",
+                  "shop identifier"
+                ]
+              }
+            },
+            "tags": []
+          },
+          "tags": [],
+          "granularity": null,
+          "doc_blocks": []
+        },
+        "location_name": {
+          "name": "location_name",
+          "description": "The store's trading name.",
+          "meta": {
+            "sst": {
+              "column_type": "dimension",
+              "is_enum": false,
+              "synonyms": [
+                "shop name",
+                "store name",
+                "branch"
+              ],
+              "sample_values": [
+                "Philadelphia",
+                "Brooklyn"
+              ]
+            }
+          },
+          "data_type": "VARCHAR",
+          "constraints": [],
+          "quote": null,
+          "config": {
+            "meta": {
+              "sst": {
+                "column_type": "dimension",
+                "is_enum": false,
+                "synonyms": [
+                  "shop name",
+                  "store name",
+                  "branch"
+                ],
+                "sample_values": [
+                  "Philadelphia",
+                  "Brooklyn"
+                ]
+              }
+            },
+            "tags": []
+          },
+          "tags": [],
+          "granularity": null,
+          "doc_blocks": []
+        },
+        "opened_at": {
+          "name": "opened_at",
+          "description": "When the location opened for trade.",
+          "meta": {
+            "sst": {
+              "column_type": "dimension",
+              "synonyms": [
+                "opening date",
+                "when the shop opened"
+              ],
+              "sample_values": [
+                "2023-03-01 08:00:00",
+                "2023-09-15 08:00:00"
+              ]
+            }
+          },
+          "data_type": "TIMESTAMP_NTZ",
+          "constraints": [],
+          "quote": null,
+          "config": {
+            "meta": {
+              "sst": {
+                "column_type": "dimension",
+                "synonyms": [
+                  "opening date",
+                  "when the shop opened"
+                ],
+                "sample_values": [
+                  "2023-03-01 08:00:00",
+                  "2023-09-15 08:00:00"
+                ]
+              }
+            },
+            "tags": []
+          },
+          "tags": [],
+          "granularity": null,
+          "doc_blocks": []
+        },
+        "tax_rate": {
+          "name": "tax_rate",
+          "description": "Local sales tax rate applied at this location.",
+          "meta": {
+            "sst": {
+              "column_type": "fact",
+              "synonyms": [
+                "sales tax rate",
+                "tax percentage"
+              ],
+              "sample_values": [
+                0.08,
+                0.0875
+              ]
+            }
+          },
+          "data_type": "NUMBER(38,4)",
+          "constraints": [],
+          "quote": null,
+          "config": {
+            "meta": {
+              "sst": {
+                "column_type": "fact",
+                "synonyms": [
+                  "sales tax rate",
+                  "tax percentage"
+                ],
+                "sample_values": [
+                  0.08,
+                  0.0875
+                ]
+              }
+            },
+            "tags": []
+          },
+          "tags": [],
+          "granularity": null,
+          "doc_blocks": []
+        }
+      }
+    },
+    "model.sst_reference_impl.product_docs": {
+      "unique_id": "model.sst_reference_impl.product_docs",
+      "resource_type": "model",
+      "name": "product_docs",
+      "alias": "product_docs",
+      "database": "SST_REF_DEV",
+      "schema": "JAFFLE",
+      "relation_name": "SST_REF_DEV.JAFFLE.product_docs",
+      "original_file_path": "models/marts/product_docs.sql",
+      "patch_path": "sst_reference_impl://models/marts/product_docs.yml",
+      "config": {
+        "meta": {}
+      },
+      "columns": {
+        "product_id": {
+          "name": "product_id",
+          "description": "Surrogate key for the product. Joins to `products.product_id`, and is\nthe id_column the search service returns so a citation can be resolved\nback to a catalogue row.",
+          "meta": {},
+          "data_type": "VARCHAR",
+          "constraints": [],
+          "quote": null,
+          "config": {
+            "meta": {},
+            "tags": []
+          },
+          "tags": [],
+          "granularity": null,
+          "doc_blocks": []
+        },
+        "product_name": {
+          "name": "product_name",
+          "description": "The menu item's name as printed on the receipt. Carried here as the\nsearch service's title_column, so a citation names the item rather\nthan its key.",
+          "meta": {},
+          "data_type": "VARCHAR",
+          "constraints": [],
+          "quote": null,
+          "config": {
+            "meta": {},
+            "tags": []
+          },
+          "tags": [],
+          "granularity": null,
+          "doc_blocks": []
+        },
+        "product_type": {
+          "name": "product_type",
+          "description": "Whether the item is food or drink. Carried here as a search ATTRIBUTE,\nwhich is what makes it filterable in a search request -- the same\ncolumn is an enum DIMENSION over on `products`, for the analyst path.",
+          "meta": {},
+          "data_type": "VARCHAR",
+          "constraints": [],
+          "quote": null,
+          "config": {
+            "meta": {},
+            "tags": []
+          },
+          "tags": [],
+          "granularity": null,
+          "doc_blocks": []
+        },
+        "dietary_class": {
+          "name": "dietary_class",
+          "description": "Whether the item is vegan, vegetarian or omnivore. A search ATTRIBUTE,\nwhich is what makes it FILTERABLE in a search request.\n\nAUTHORED, NOT DERIVED FROM THE PROSE. The description already says\n\"Vegetarian.\" or \"Not vegetarian.\", and an ILIKE over that text is a\nfilter that INVERTS ITSELF the first time somebody writes \"not\nsuitable for vegetarians\" -- the substring \"vegetarian\" matches both\nreadings. The class is a column because the answer must not depend on\nhow the sentence was phrased.\n\nAND IT EXISTS BECAUSE SEMANTIC SEARCH ALONE GOT THIS WRONG, measured\nrather than assumed. With diet expressed only in the prose, the query\n\"vegan items with no dairy\" returned FOUR VEGETARIAN-BUT-DAIRY items\nand NONE of the three vegan ones: the embedding puts \"Vegetarian.\" and\n\"Vegetarian and vegan.\" close together and cannot be asked to exclude\none. With this column as an attribute the same intent returns exactly\nthe three vegan items. A closed set belongs in a filter, not in a\nvector.",
+          "meta": {},
+          "data_type": "VARCHAR",
+          "constraints": [],
+          "quote": null,
+          "config": {
+            "meta": {},
+            "tags": []
+          },
+          "tags": [],
+          "granularity": null,
+          "doc_blocks": []
+        },
+        "product_description": {
+          "name": "product_description",
+          "description": "Long-form menu copy: what is in the item, and whether it is\nvegetarian. THE INDEXED COLUMN. This is the only column in the project\nthat carries prose, and the only reason `product_docs` exists.",
+          "meta": {},
+          "data_type": "VARCHAR",
+          "constraints": [],
+          "quote": null,
+          "config": {
+            "meta": {},
+            "tags": []
+          },
+          "tags": [],
+          "granularity": null,
+          "doc_blocks": []
+        }
+      }
+    }
+  }
+}

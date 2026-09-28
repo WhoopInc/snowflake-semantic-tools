@@ -1,0 +1,86 @@
+---
+# =============================================================================
+# models/marts/product_docs.yml
+# =============================================================================
+# THE ONE MODEL YAML IN THIS FIXTURE WITH NO `meta.sst` BLOCK ON ANY COLUMN, and
+# the absence is the assertion.
+#
+# `SST-VAL308` is an ERROR when a column THE SEMANTIC LAYER CONSUMES carries no
+# `column_type`. No semantic view lists this table, so nothing here is consumed
+# and nothing here needs the key. Authoring `column_type` anyway would be worse
+# than redundant: it would state that a relation reachable only by a Cortex
+# Search tool is part of the semantic layer, which is the opposite of why this
+# model was split out of `products`.
+#
+# THE COLUMNS ARE STILL DOCUMENTED. `+persist_docs` is on for every model in
+# this project, so these descriptions reach the relation and its columns in
+# Snowflake whether or not a semantic view reads them. A column that no metric
+# can use is not a column a reader can skip.
+#
+# NO DATA VALUES. No `sample_values` appear below, which is not an omission:
+# sample values exist so Cortex Analyst can learn a column's value range, and
+# Cortex Analyst never sees this table. The prose itself is in the seed.
+# =============================================================================
+
+version: 2
+
+models:
+  - name: product_docs
+    description: |-
+      Menu catalogue prose, one row per product. Backs the `menu_docs_search`
+      Cortex Search service and NOTHING ELSE -- no semantic view references this
+      table, so none of its columns are semantic members.
+
+      Built from the same raw relation as `products`, so the two cannot disagree
+      about which products exist. See `product_docs.sql` for why the prose is
+      not simply a fifth column on `products`.
+    columns:
+      - name: product_id
+        data_type: VARCHAR
+        description: |-
+          Surrogate key for the product. Joins to `products.product_id`, and is
+          the id_column the search service returns so a citation can be resolved
+          back to a catalogue row.
+
+      - name: product_name
+        data_type: VARCHAR
+        description: |-
+          The menu item's name as printed on the receipt. Carried here as the
+          search service's title_column, so a citation names the item rather
+          than its key.
+
+      - name: product_type
+        data_type: VARCHAR
+        description: |-
+          Whether the item is food or drink. Carried here as a search ATTRIBUTE,
+          which is what makes it filterable in a search request -- the same
+          column is an enum DIMENSION over on `products`, for the analyst path.
+
+      - name: dietary_class
+        data_type: VARCHAR
+        description: |-
+          Whether the item is vegan, vegetarian or omnivore. A search ATTRIBUTE,
+          which is what makes it FILTERABLE in a search request.
+
+          AUTHORED, NOT DERIVED FROM THE PROSE. The description already says
+          "Vegetarian." or "Not vegetarian.", and an ILIKE over that text is a
+          filter that INVERTS ITSELF the first time somebody writes "not
+          suitable for vegetarians" -- the substring "vegetarian" matches both
+          readings. The class is a column because the answer must not depend on
+          how the sentence was phrased.
+
+          AND IT EXISTS BECAUSE SEMANTIC SEARCH ALONE GOT THIS WRONG, measured
+          rather than assumed. With diet expressed only in the prose, the query
+          "vegan items with no dairy" returned FOUR VEGETARIAN-BUT-DAIRY items
+          and NONE of the three vegan ones: the embedding puts "Vegetarian." and
+          "Vegetarian and vegan." close together and cannot be asked to exclude
+          one. With this column as an attribute the same intent returns exactly
+          the three vegan items. A closed set belongs in a filter, not in a
+          vector.
+
+      - name: product_description
+        data_type: VARCHAR
+        description: |-
+          Long-form menu copy: what is in the item, and whether it is
+          vegetarian. THE INDEXED COLUMN. This is the only column in the project
+          that carries prose, and the only reason `product_docs` exists.

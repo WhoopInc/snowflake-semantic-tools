@@ -47,9 +47,38 @@ jobs:
       - name: Run tests
         run: poetry run pytest tests/unit/ -v
 
+      - name: Check M2 domain coverage
+        run: >-
+          poetry run pytest -q --cov=snowflake_semantic_tools.domain --cov-branch
+          --cov-report=term --cov-fail-under=100
+          tests/unit/domain tests/unit/test_render_semantic_view.py
+
+      - name: Check M2 application coverage
+        run: >-
+          poetry run pytest -q --cov=snowflake_semantic_tools.app --cov-branch
+          --cov-report=term --cov-fail-under=95
+          tests/unit/app tests/unit/test_compile_use_case.py tests/unit/test_manifest_v1.py
+
+      - name: Check M2 CLI coverage
+        run: >-
+          poetry run pytest -q --cov=snowflake_semantic_tools.cli --cov-branch
+          --cov-report=term --cov-fail-under=85
+          tests/unit/test_cli_v1.py tests/unit/test_cli_m2.py
+
+      - name: Check M2 strict typing
+        run: >-
+          poetry run mypy snowflake_semantic_tools/domain snowflake_semantic_tools/app
+          snowflake_semantic_tools/adapters snowflake_semantic_tools/cli
+
       - name: Check code formatting with Black
         run: poetry run black --check snowflake_semantic_tools/
 
       - name: Check import sorting with isort
         run: poetry run isort --check snowflake_semantic_tools/
+
+      # The four-ring boundaries (cli -> app | adapters -> domain). This step IS the
+      # enforcement; tests/unit/test_ring_boundaries.py separately proves the
+      # contracts actually reject a crossing rather than passing vacuously.
+      - name: Check ring boundaries with import-linter
+        run: poetry run lint-imports
 

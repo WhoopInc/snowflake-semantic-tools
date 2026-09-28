@@ -1,0 +1,152 @@
+---
+# =============================================================================
+# tools/jaffle_platform.yml -- the reference-impl fixture
+# =============================================================================
+# GROUP ONE OF TWO. This is the MUTABLE group: it carries `define:` entries this
+# repo creates and `reference:` entries it only points at. The second group,
+# `tools/jaffle_partner.yml`, is marked `immutable: true` and therefore carries
+# NO `define:` at all -- X020 makes that a validation error, not a runtime one.
+#
+# =============================================================================
+# EVERY TOOL KIND THE SPEC DEFINES APPEARS ACROSS THE TWO FILES, BUT ONLY ONE OF
+# THEM RENDERS
+# =============================================================================
+# `cortex_search_service` is the only kind with a renderer. `procedure`,
+# `function` and `stage` are specified, parse, and validate -- and then
+# `SST-RND040` ("kind '{found}' has no renderer") is what they produce if render
+# is reached. That asymmetry is the point:
+#
+#   under `reference:`  no DDL is ever emitted for ANY kind, so all four are legal
+#                       and RND040 is unreachable
+#   under `define:`     only cortex_search_service can be rendered; the other three
+#                       are authored here so the fixture proves they PARSE and
+#                       VALIDATE, and `negative/` asserts the RND040 they raise
+#
+# A fixture that authored only the renderable kind would leave 3 of the 4 `define:`
+# kinds and the whole RND040 path dark, which was the fixture's standing gap.
+#
+# NO DATA VALUES.
+# =============================================================================
+
+tools:
+  # KEY CORRECTED `name:` -> `group:` 2026-09-25 (`D253`). The tools spec
+  # declares `group` as **REQ** and has no `name` key at this level, so this file was
+  # missing a required key and carrying an undeclared one -- it could not have validated
+  # against its own spec. The VALUE is unchanged, so no golden moves: the group name
+  # reaches the goldens as a `tool()` ref argument and as a file path, never as a key.
+  - group: jaffle_platform
+    description: |-
+      Tool backing objects for the jaffle analytics surface. Search over the menu,
+      plus lookups owned by the ordering platform team.
+    owner: daa-platform
+    # `immutable:` IS ABSENT HERE, and it has to be: `immutable: true` forbids
+    # `define:` anywhere in the group (X020), and this group's whole purpose is to
+    # carry one. The immutable case lives in the sibling file.
+
+    # =======================================================================
+    # define: -- THIS REPO CREATES IT. DDL IS EMITTED.
+    # =======================================================================
+    define:
+      # ---- THE ONE RENDERABLE KIND -------------------------------------
+      - name: menu_docs_search
+        type: cortex_search_service
+        description: |-
+          Full-text search over menu item DESCRIPTIONS -- the prose saying what
+          is in each item. Answers what an item contains, how items differ, and
+          which items suit a diet. Filter on `dietary_class` for vegan,
+          vegetarian or omnivore rather than searching the prose for the word
+          vegetarian.
+          Does NOT answer questions about how many were sold -- that is an order
+          question and belongs to the Analyst tools.
+        on:
+          database: null
+          schema: null
+          # `product_docs`, NOT `products`, AND THE DIFFERENCE IS THE POINT. This
+          # was authored against `products` with `text_column: product_name`,
+          # which made the tool's own description false: it promises search over
+          # DESCRIPTIONS including which items are vegetarian, and a product name
+          # carries neither. The eval record that tests this tool FAILED for
+          # exactly that reason -- the judge found the agent retrying the search
+          # six times and then guessing from the name "the kitchen sink".
+          #
+          # `products` CANNOT CARRY THE PROSE. semantic_views.yml lists tables
+          # rather than members, so a column added there becomes a member of two
+          # views and a paragraph becomes a dimension (`SST-VAL308` forces a
+          # `column_type` on it). `models/marts/product_docs.sql` carries the
+          # reasoning in full.
+          table: "{{ ref('product_docs') }}"
+          # KEY CORRECTED `text_column:` -> `search_column:` 2026-09-25 (`D253`).
+          # The tools spec declares `search_column`, `X016` resolves it,
+          # `SST-VAL609` is defined on it, the renderer emits
+          # `ON {quote_ident(model.search_column)}`, and the tool examples author
+          # it. THIS FILE WAS THE ONLY SITE SPELLING IT `text_column`, so `X016` could
+          # never have resolved against it. The rendered golden emits the VALUE, not the
+          # key, so `expected/tool/menu_docs_search.sql` does not move.
+          search_column: product_description
+          attributes:
+            - product_type
+            # FILTERABLE BECAUSE A CLOSED SET BELONGS IN A FILTER, NOT A VECTOR.
+            # MEASURED: with diet expressed only in the indexed prose, the query
+            # "vegan items with no dairy" returned four vegetarian-but-dairy
+            # items and none of the three vegan ones -- "Vegetarian." and
+            # "Vegetarian and vegan." embed close together and the index cannot
+            # be asked to exclude one. As an attribute the same intent returns
+            # exactly three. This tool's description PROMISES to answer which
+            # items are vegetarian, so the promise needs a filter behind it.
+            - dietary_class
+        columns_and_descriptions:
+          product_id:
+            description: Stable product identifier used to join search results.
+            type: string
+            searchable: false
+            filterable: false
+          product_name:
+            description: Display name of the menu item.
+            type: string
+            searchable: true
+            filterable: false
+          product_type:
+            description: Menu category used to group related products.
+            type: string
+            searchable: false
+            filterable: true
+          dietary_class:
+            description: Closed dietary classification for precise filtering.
+            type: string
+            searchable: false
+            filterable: true
+          product_description:
+            description: Menu prose indexed for semantic retrieval.
+            type: string
+            searchable: true
+            filterable: false
+        target_lag: 1 hour
+        warehouse: null
+
+    # =======================================================================
+    # reference: -- THIS REPO DOES NOT CREATE IT. NO DDL IS EVER EMITTED.
+    # =======================================================================
+    reference:
+      - name: order_tier_lookup
+        type: procedure
+        description: |-
+          Returns the loyalty tier an order qualifies for under current rules. Owned
+          by the ordering platform team, not by this repo.
+        # -------------------------------------------------------------------
+        # ONE ENTRY PER TARGET, AND NO `default:`.
+        # -------------------------------------------------------------------
+        # The two keys resolve to DIFFERENT objects, which is what X009 wants: it
+        # warns when dev and prod resolve to the SAME object -- legitimate for a
+        # read-only shared index, suspicious for anything writable.
+        #
+        # THESE KEYS ARE dbt TARGET NAMES, AND profiles.yml IS WHAT DECIDES WHICH
+        # ONES ARE LEGAL. SST declares no target namespace of its own, so a key
+        # here that profiles.yml does not declare can never be selected.
+        #
+        # `ci` IS MISSING ON PURPOSE. profiles.yml declares it, nothing here maps
+        # it, so `--target ci` produces a single `SST-REF018`. The reference
+        # project's CI-target diagnostics golden is the
+        # only place the missing-target path is observable.
+        relations:
+          dev: SCRATCH.SST_1_REFERENCE_IMPL.ORDER_TIER_LOOKUP
+          prod: SST_REF_PROD.JAFFLE.ORDER_TIER_LOOKUP

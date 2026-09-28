@@ -1,0 +1,116 @@
+---
+# =============================================================================
+# semantic_models/verified_queries/verified_queries.yml
+# =============================================================================
+# FOUR VERIFIED QUERIES, AND EVERY AUTHORING VARIANT APPEARS ONCE:
+#
+#   1. inline `sql:`, onboarding, `verified_at` as an EPOCH INTEGER
+#   2. inline `sql:`, onboarding, `verified_at` as a DATE STRING
+#   3. `sql_file:` sidecar, NOT onboarding
+#   4. inline `sql:`, minimal -- no onboarding, no verified_at, no verified_by
+#
+# BOTH `verified_at` SPELLINGS ARE DELIBERATE. The field accepts an epoch integer
+# and a date string, and a fixture carrying only one of them cannot tell a parser
+# that handles both from one that coerces silently.
+#
+# THE FOURTH IS THE MINIMAL CASE, and it is the verified-query equivalent of
+# `jaffle_minimal`: everything optional is absent, so a renderer that emits
+# ONBOARDING_QUESTION or VERIFIED_BY unconditionally is caught.
+#
+# SUB-CLAUSE ORDER IS NOT SIGNIFICANT, AND THAT WAS MEASURED RATHER THAN ASSUMED.
+# Both the fixture's order (QUESTION -> SQL -> ONBOARDING_QUESTION -> VERIFIED_AT
+# -> VERIFIED_BY) and the documented order parse against Snowflake; a control with
+# a bogus sub-clause name failed, which is what makes the negative result
+# meaningful. NEITHER GOLDEN MOVES if the order is rewritten.
+#
+# EVERY `sql:` BODY IS MULTI-LINE, which is the second place the multi-line COMMENT
+# path is exercised (the first is the custom instructions).
+#
+# NO DATA VALUES. Enum literals go through their filters where a filter exists.
+# =============================================================================
+
+snowflake_verified_queries:
+
+  # ===========================================================================
+  # 1. INLINE SQL, ONBOARDING, EPOCH INTEGER `verified_at`
+  # ===========================================================================
+  - name: order_count_by_state
+    tables:
+      - orders
+    description: |-
+      Order volume split by fulfilment state. The canonical first question against
+      jaffle_sales.
+    question: "How many orders are there in each fulfilment state?"
+    sql: |-
+      SELECT
+            orders.order_state                  AS order_state
+          , COUNT(DISTINCT orders.order_id)     AS order_count
+      FROM orders AS orders
+      GROUP BY ALL
+      ORDER BY order_count DESC
+    use_as_onboarding_question: true
+    # EPOCH SECONDS. The integer form.
+    verified_at: 1769904000
+    verified_by: "daa-platform"
+
+  # ===========================================================================
+  # 2. INLINE SQL, ONBOARDING, DATE STRING `verified_at`
+  # ===========================================================================
+  - name: revenue_by_location
+    tables:
+      - orders
+      - locations
+    description: |-
+      Total revenue per store location, completed orders only.
+    question: "What is total revenue by store location?"
+    sql: |-
+      SELECT
+            locations.location_name                       AS location_name
+          , SUM(orders.order_total) / 100                 AS revenue
+      FROM orders AS orders
+      INNER JOIN locations AS locations
+          ON orders.location_id = locations.location_id
+      WHERE orders.order_state = 'completed'
+      GROUP BY ALL
+      ORDER BY revenue DESC
+    use_as_onboarding_question: true
+    # THE DATE STRING FORM, exercised alongside the integer above.
+    verified_at: "2026-01-01"
+    verified_by: "daa-platform"
+
+  # ===========================================================================
+  # 3. SIDECAR `sql_file:`, NOT an onboarding question
+  # ===========================================================================
+  # THE `{{ file() }}` SIDECAR PATH. `sql_file:` is relative to THIS declaring
+  # file, not to the project root -- `D208` settled that the base-path difference
+  # between `sql_file:` and `{{ file() }}` is correct rather than accidental:
+  # relative-to-declaring-file is what lets this directory be moved as a unit.
+  - name: product_mix_by_type
+    tables:
+      - order_items
+      - products
+      - orders
+    description: |-
+      Units sold split by whether the item is food or drink. Held in a sidecar so
+      the fixture exercises the external-SQL path.
+    question: "How many units did we sell of food versus drink?"
+    sql_file: sql/product_mix_by_type.sql
+    # NOT an onboarding question, and NO verified_at / verified_by. Three of four
+    # queries carry those keys and this one does not, which is what makes their
+    # presence in the golden attributable to the input.
+
+  # ===========================================================================
+  # 4. THE MINIMAL CASE. Everything optional is ABSENT.
+  # ===========================================================================
+  # DO NOT ADD KEYS TO THIS ENTRY. Its value is the absence, exactly as with
+  # `jaffle_minimal` among the views.
+  - name: total_revenue_all_time
+    tables:
+      - orders
+    description: |-
+      A single total. The smallest valid verified query in this fixture.
+    question: "What is our total revenue?"
+    sql: |-
+      SELECT
+          SUM(orders.order_total) / 100 AS revenue
+      FROM orders AS orders

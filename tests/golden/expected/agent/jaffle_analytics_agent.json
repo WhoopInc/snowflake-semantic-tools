@@ -1,0 +1,146 @@
+{
+  "models": {
+    "orchestration": "claude-sonnet-4-6"
+  },
+  "orchestration": {
+    "budget": {
+      "seconds": 120,
+      "tokens": 16000
+    },
+    "tool_not_accessible": "reject",
+    "capabilities": {
+      "analytical_search": false
+    }
+  },
+  "instructions": {
+    "orchestration": "# Orchestration instructions -- jaffle_analytics_agent\n\n## Tool selection\n\nRoute every question to exactly one tool unless it genuinely requires two.\n\n- Counts of customers or orders, lifecycle status, or revenue\n  sliced by a customer attribute: JAFFLE_SALES.\n- Line-item volume, product mix, units sold, or margin:\n  JAFFLE_MENU.\n- What a menu item contains, how items differ, or whether an item suits a\n  diet: menu_docs_search.\n- Which tier one named order falls into: order_tier_lookup.\n\nThe two Analyst tools overlap only on the orders table. A question needing a\ncustomer attribute and a line-item count together needs two calls, not one.\n\n## Calling each tool once\n\nAsk each tool for everything you need from it in ONE call. If a question wants\na measure broken down by a label, get the measure and the label together\nrather than fetching the measure and then going back for the label.\n\nIf a search returns nothing useful, do not retry the same search with reworded\nqueries. Say what is missing from the index and stop.\n\n## Decomposition\n\nA question containing two measures that live in different views is two questions.\nAnswer both parts and state the relationship between them rather than picking the\nhalf that fits one tool.\n\n## Refusal\n\nDecline any question about an individual customer and redirect to the population\nview. Do not satisfy it from a filtered aggregate.",
+    "response": "# Response instructions -- jaffle_analytics_agent\n\n## Naming your source is MANDATORY\n\nEVERY answer must name the tool or view it came from, in the answer text itself.\nA reader who sees only your final answer must be able to tell where the number\nor the quotation came from. This applies to search answers exactly as much as to\nanalytical ones: if you used menu_docs_search, say so by name.\n\nWrite it as part of a sentence, for example \"from JAFFLE_SALES, ...\" or\n\"menu_docs_search returns ...\". Do not put it in a footnote and do not leave it\nimplicit because the tool call is visible in the trace -- the trace is not the\nanswer.\n\nWhere a figure counts things that EXIST rather than things that were USED, say\nwhich of the two it is.\n\n## Format\n\nLead with the number, then the qualification. Never lead with the method.\n\nState the population the number covers in the same sentence as the number. A count\nwith no stated population is not an answer.\n\nRound every monetary amount to two decimal places. Express a share or a rate as a\ndecimal between zero and one.\n\n## Qualification\n\nWhen a result depends on a filter, name the filter in the answer. A number produced\nunder is_completed_order and a number produced without it are different numbers.\n\nWhen two populations are compared, report both and state the direction of the\ndifference. Do not report only the difference.\n\n## Honesty\n\nIf a question cannot be answered from the available tools, say so and name what\nwould be needed. Do not answer a narrower question as though it were the one asked.",
+    "sample_questions": [
+      {
+        "question": "How many orders are open across all locations?"
+      },
+      {
+        "question": "Which location contributes the most monthly recurring revenue?"
+      },
+      {
+        "question": "Which menu item has the most ingredients?"
+      }
+    ]
+  },
+  "tools": [
+    {
+      "tool_spec": {
+        "type": "cortex_analyst_text_to_sql",
+        "name": "JAFFLE_SALES",
+        "description": "Customers and the orders they placed. Use for counts of customers or\norders, lifecycle status breakdowns, and revenue totals and averages\nsliced by customer attributes such as customer type, or by store\nlocation.\n\nTHE ONLY TOOL THAT CARRIES LOCATION NAMES. `jaffle_menu` has\n`location_id` and no locations table, so ask for names here.\n\nDo NOT use for line-item or product detail -- use JAFFLE_MENU for\nunits sold, product mix and margin."
+      }
+    },
+    {
+      "tool_spec": {
+        "type": "cortex_analyst_text_to_sql",
+        "name": "JAFFLE_MENU",
+        "description": "Order line items, the products sold on them, the pricing period in\neffect when the order was placed, and the monthly supply cost of each\nproduct. Use for product mix, units sold, line-item revenue, and margin\nagainst supply cost.\n\nDo NOT use for customer attributes -- there is no join to customers\nhere, so a question about customer type belongs to JAFFLE_SALES. It has\n`location_id` but no location NAMES."
+      }
+    },
+    {
+      "tool_spec": {
+        "type": "cortex_search",
+        "name": "menu_docs_search",
+        "description": "Full-text search over menu item DESCRIPTIONS -- the prose saying what\nis in each item. Answers what an item contains, how items differ, and\nwhich items suit a diet. Filter on `dietary_class` for vegan,\nvegetarian or omnivore rather than searching the prose for the word\nvegetarian.\nDoes NOT answer questions about how many were sold -- that is an order\nquestion and belongs to the Analyst tools."
+      }
+    },
+    {
+      "tool_spec": {
+        "type": "generic",
+        "name": "order_tier_lookup",
+        "description": "Resolves the pricing tier a single order falls into under current\nrules. Use only when a question is about one named order and the\nanswer is a tier rather than a count.\n\nDo NOT use for population questions -- any question phrased \"how many\" or\n\"which location\" belongs to an Analyst tool.",
+        "input_schema": {
+          "type": "object",
+          "properties": {
+            "order_id": {
+              "type": "string",
+              "description": "The order to resolve a tier for."
+            }
+          },
+          "required": [
+            "order_id"
+          ]
+        }
+      }
+    }
+  ],
+  "tool_resources": {
+    "JAFFLE_SALES": {
+      "semantic_view": "SST_REF_DEV.JAFFLE.JAFFLE_SALES",
+      "execution_environment": {
+        "type": "warehouse",
+        "warehouse": "SST_REF_WH",
+        "query_timeout": 60
+      }
+    },
+    "JAFFLE_MENU": {
+      "semantic_view": "SST_REF_DEV.CORE.JAFFLE_MENU",
+      "execution_environment": {
+        "type": "warehouse",
+        "warehouse": "SST_REF_WH",
+        "query_timeout": 60
+      }
+    },
+    "menu_docs_search": {
+      "search_service": "SST_REF_DEV.JAFFLE.MENU_DOCS_SEARCH",
+      "max_results": 5,
+      "id_column": "PRODUCT_ID",
+      "title_column": "PRODUCT_NAME",
+      "columns_and_descriptions": {
+        "PRODUCT_NAME": {
+          "description": "Display name of the menu item.",
+          "type": "string",
+          "searchable": true,
+          "filterable": false
+        },
+        "PRODUCT_TYPE": {
+          "description": "Menu category used to group related products.",
+          "type": "string",
+          "searchable": false,
+          "filterable": true
+        },
+        "DIETARY_CLASS": {
+          "description": "Closed dietary classification for precise filtering.",
+          "type": "string",
+          "searchable": false,
+          "filterable": true
+        },
+        "PRODUCT_DESCRIPTION": {
+          "description": "Menu prose indexed for semantic retrieval.",
+          "type": "string",
+          "searchable": true,
+          "filterable": false
+        }
+      },
+      "execution_environment": {
+        "type": "warehouse",
+        "warehouse": "SST_REF_WH",
+        "query_timeout": 60
+      }
+    },
+    "order_tier_lookup": {
+      "identifier": "SCRATCH.SST_1_REFERENCE_IMPL.ORDER_TIER_LOOKUP",
+      "type": "procedure",
+      "execution_environment": {
+        "type": "warehouse",
+        "warehouse": "SST_REF_WH",
+        "query_timeout": 60
+      }
+    }
+  },
+  "skills": [
+    {
+      "name": "jaffle-semantics",
+      "source": {
+        "type": "CORTEX_EXTENSION",
+        "path": "SST_REF_DEV.JAFFLE.JAFFLE_SEMANTICS",
+        "version": "GIT_0000000"
+      }
+    }
+  ]
+}

@@ -1,0 +1,107 @@
+---
+# =============================================================================
+# models/staging/_sources.yml -- THE SOURCE DECLARATION
+# =============================================================================
+# SOURCES LIVE IN THEIR OWN FILE because a source belongs to NO SINGLE MODEL. The
+# rest of this directory is one `.sql` plus one `.yml` per model, which is the
+# `analytics-dbt` production convention; a source has no `.sql` and is read by
+# several models, so pairing it with one of them would be arbitrary.
+#
+# SOURCES CANNOT BE ALIASED, and source names must be unique across the whole
+# project -- dbt scopes source uniqueness per package, so two projects tolerate a
+# duplicate indefinitely and one merged project fails `dbt parse` outright (B015).
+#
+# See `../README.md` for the cross-cutting reasoning about this directory.
+# =============================================================================
+
+version: 2
+
+sources:
+  # Declared so `stg_orders.sql` has something to select from, and so the
+  # source rules have a subject. SOURCES CANNOT BE ALIASED, and source names must
+  # be unique across the whole project -- dbt scopes source uniqueness per
+  # package, so two projects tolerate a duplicate indefinitely and one merged
+  # project fails `dbt parse` outright (B015).
+  - name: jaffle_service
+    description: |-
+      Raw relations replicated from the ordering service. Not read by the
+      semantic layer; the marts layer is what the semantic views reference.
+
+      IN PROD this resolves to the replicated schema below. EVERYWHERE ELSE it
+      resolves to the target's own schema, where `seeds/*.csv` materialises the
+      same seven relations -- see the seeds block in `../../dbt_project.yml`.
+      That is what lets the whole DAG run in a clean account with no upstream
+      replication, which is how the golden DDL gets smoke-tested end to end.
+
+      THE SWITCH LIVES HERE RATHER THAN IN THE MODELS because a source is
+      declared once and read by several models; putting the conditional in each
+      model would put the same decision in seven places.
+    database: "{{ 'SST_REF_RAW' if target.name == 'prod' else target.database }}"
+    schema: "{{ 'JAFFLE_SERVICE' if target.name == 'prod' else target.schema }}"
+    tables:
+      # FRESHNESS IS DECLARED HERE, ON THE ONE TABLE THAT CAN SUPPORT IT, not on
+      # the source. `loaded_at_field: _replicated_at` at source level applies to
+      # ALL SEVEN tables, and only `orders_raw` carries that column -- so
+      # `dbt source freshness` would resolve `_replicated_at` against six
+      # relations that do not have it and fail on invalid identifier. The six
+      # other relations are snapshots and catalogues with no replication
+      # timestamp to check, so the right answer is not to give them a column but
+      # to not claim freshness for them at all.
+      - name: orders_raw
+        description: |-
+          Append-only replica of the service's order table.
+        # UNDER `config:`, NOT AT TABLE LEVEL. dbt 1.11 emits
+        # `PropertyMovedToConfigDeprecation` for a top-level `freshness` or
+        # `loaded_at_field` on a source table, and a deprecation in 1.11 is the
+        # shape that becomes an error in a later minor. MEASURED 2026-09-24:
+        # `dbt seed` warned twice at table level and is silent under `config:`.
+        config:
+          freshness:
+            warn_after:
+              count: 6
+              period: hour
+            error_after:
+              count: 24
+              period: hour
+          loaded_at_field: _replicated_at
+
+      # ---------------------------------------------------------------------
+      # THE SIX RAW RELATIONS THE MARTS READ DIRECTLY.
+      # ---------------------------------------------------------------------
+      # NO STAGING MODEL SITS IN FRONT OF THESE, and that is a deliberate
+      # asymmetry with `orders_raw`. `stg_orders` exists because its raw relation
+      # needs casting and renaming before anything can join to it; these six need
+      # nothing, and a staging model that only does `SELECT *` is a file to
+      # maintain in exchange for a longer DAG. The fixture therefore shows BOTH
+      # shapes -- a mart on a staging model, and a mart straight on source --
+      # because a real project has both and a reader should see both.
+      #
+      # COLUMNS ARE NOT RESTATED HERE. A source's columns are documented where
+      # they are CONSUMED, on the mart that selects them. Declaring them twice
+      # means two places to update and one of them goes stale.
+      - name: customers_raw
+        description: |-
+          Raw customer relation. Consumed by `marts/customers.sql`.
+
+      - name: order_items_raw
+        description: |-
+          Raw line-item relation, one row per item on an order. Consumed by
+          `marts/order_items.sql`.
+
+      - name: products_raw
+        description: |-
+          Raw product catalogue. Consumed by `marts/products.sql`.
+
+      - name: locations_raw
+        description: |-
+          Raw location relation. Consumed by `marts/locations.sql`.
+
+      - name: pricing_periods_raw
+        description: |-
+          Raw pricing periods, each a half-open interval. Consumed by
+          `marts/pricing_periods.sql`.
+
+      - name: supplies_raw
+        description: |-
+          Raw supply snapshot, restated per month. Consumed by
+          `marts/supplies.sql`.

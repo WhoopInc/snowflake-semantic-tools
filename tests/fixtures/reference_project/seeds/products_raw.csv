@@ -1,0 +1,11 @@
+product_id,product_name,product_type,list_price,dietary_class,product_description
+prd-001,nutellaphone who dis,jaffle,1100,vegetarian,"Griddled jaffle filled with nutella and sliced banana. Contains wheat, dairy and hazelnut. Vegetarian."
+prd-002,doctor stew,beverage,700,vegan,"Slow-simmered infusion of apple, ginger, cinnamon and clove, served hot. Vegetarian and vegan."
+prd-003,the kitchen sink,jaffle,1500,omnivore,"The everything jaffle: cheddar, ham, tomato, red onion, mushroom, spinach, egg, bechamel and cracked pepper. Contains wheat, dairy, egg and pork. Not vegetarian."
+prd-004,mel's mm-mms,jaffle,450,vegetarian,"Sweet jaffle with milk chocolate buttons and marshmallow. Contains wheat, dairy and soy. Vegetarian."
+prd-005,flat white,beverage,400,vegetarian,Double espresso with steamed whole milk. Contains dairy. Vegetarian.
+prd-006,the jaffle dog,jaffle,1200,omnivore,"Frankfurter jaffle with mustard, sauerkraut and crispy onion. Contains wheat, pork and mustard. Not vegetarian."
+prd-007,vanilla ice cream,jaffle,600,vegetarian,"Vanilla bean ice cream folded into a warm sweet jaffle. Contains wheat, dairy, egg and vanilla. Vegetarian."
+prd-008,chai latte,beverage,500,vegetarian,"Black tea brewed with cardamom, cinnamon, ginger and star anise, finished with steamed milk. Contains dairy. Vegetarian."
+prd-009,cold brew,beverage,450,vegan,Coarse-ground coffee steeped cold for eighteen hours. Vegetarian and vegan.
+prd-010,mango sticky rice,jaffle,900,vegan,"Sweet jaffle with glutinous rice, coconut cream and fresh mango. Contains wheat and coconut. Vegetarian and vegan."

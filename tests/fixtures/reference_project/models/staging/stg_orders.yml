@@ -1,0 +1,50 @@
+---
+# =============================================================================
+# models/staging/stg_orders.yml
+# =============================================================================
+# THE ONE STAGING MODEL, and the only mart input that needs a staging layer at
+# all: `orders_raw` requires casting and renaming before anything can join to it.
+# The other six raw relations need nothing, so their marts read source directly.
+#
+# IT ALSO DEMONSTRATES THAT THE SEAM IS NARROW. `stg_orders` is in the dbt manifest
+# and in dbt's DAG, and no rule in the semantic layer reports on it at all: no B011
+# contract warning, no B012 test warning, no attachment report. A model the
+# semantic layer does not reference is invisible to it.
+#
+# See `../README.md` for the cross-cutting reasoning about this directory.
+# =============================================================================
+
+version: 2
+
+models:
+  - name: stg_orders
+    description: |-
+      Light cleanup over the raw order replica. Staging only -- no semantic
+      layer member is built on it.
+    config:
+      materialized: view
+    columns:
+      - name: order_id
+        description: |-
+          Surrogate key for the order, passed through from the source.
+        data_tests:
+          - unique
+          - not_null
+      - name: customer_id
+        description: |-
+          Foreign key to the customer.
+      - name: location_id
+        description: |-
+          Foreign key to the store location.
+      - name: order_state
+        description: |-
+          Fulfilment state as the source records it.
+      - name: ordered_at
+        description: |-
+          When the order was placed.
+      - name: subtotal
+        description: |-
+          Order value before tax, in cents.
+      - name: order_total
+        description: |-
+          Order value including tax, in cents.

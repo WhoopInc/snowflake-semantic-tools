@@ -1,0 +1,140 @@
+---
+# =============================================================================
+# models/marts/supplies.yml
+# =============================================================================
+# THE SNAPSHOT GRAIN. `snapshot_month` is what makes a non-additive metric
+# authorable, and non-additivity is unreachable without a snapshot table.
+#
+# THE CROSS-CUTTING REASONING -- the seam, the jaffle domain, the one-line
+# `description:` constraint and the `D213` data rule -- IS IN `../README.md`, not
+# repeated here. Read that first if this is the first model file you have opened.
+# =============================================================================
+
+version: 2
+
+models:
+  - name: supplies
+    description: |-
+      One row per product per month, restating the cost of supplying that product. A snapshot grain.
+    config:
+      # =====================================================================
+      # NO CONTRACT ON THIS MODEL, AND THAT IS WHAT MAKES THE NEXT THING LEGAL.
+      # =====================================================================
+      # `contract.enforced: true` REQUIRES a native `data_type:` on every column.
+      # The other six marts enforce a contract and therefore declare one. This
+      # model does not, so its columns can carry `meta.sst.data_type` INSTEAD --
+      # and the two shapes are MUTUALLY EXCLUSIVE PER MODEL, which is exactly why
+      # the fixture needs both.
+      #
+      # WHY THE FIXTURE MUST COVER THIS SHAPE AT ALL, and it is not a curiosity:
+      # MEASURED 2026-09-21 on a large production dbt project (dbt 1.11.2, manifest
+      # schema v12), the native `nodes.<id>.columns.<name>.data_type` is EMPTY on
+      # EVERY MODEL COLUMN, while `meta.sst.data_type` carries a value on nearly
+      # all of them. The reference consumer resolves almost every column
+      # through the fallback, not through the native field.
+      #
+      # So a fixture carrying only the contract shape would exercise the path
+      # production NEVER uses and skip the one it uses on 96% of columns. `D142`
+      # records the resolution order -- warehouse relation, then
+      # `meta.sst.data_type`, then the `"text"` default -- and a rule keyed on the
+      # native field alone "would classify almost nothing in the reference
+      # consumer".
+      contract:
+        enforced: false
+      on_schema_change: fail
+      meta:
+        sst:
+          # THE GRAIN OF THIS MODEL, AND THE MODEL IS THE SINGLE SOURCE (`D231`).
+          # A snapshot grain: one row per product per month.
+          primary_key:
+            - supply_id
+    columns:
+      - name: supply_id
+        description: |-
+          Surrogate key for the supply snapshot row. An identifier, therefore a dimension.
+        config:
+          meta:
+            sst:
+              data_type: VARCHAR
+              column_type: dimension
+              is_enum: false
+              synonyms:
+                - supply key
+                - supply snapshot identifier
+        data_tests:
+          - unique
+          - not_null
+
+      - name: product_id
+        description: |-
+          The product this supply cost belongs to.
+        config:
+          meta:
+            sst:
+              data_type: VARCHAR
+              column_type: dimension
+              is_enum: false
+              synonyms:
+                - product key
+                - which item is supplied
+        data_tests:
+          - not_null
+
+      # THE NON-ADDITIVE DIMENSION. A metric summing `supply_cost` across this
+      # column double-counts, which is precisely what M022 exists to declare.
+      - name: snapshot_month
+        description: |-
+          The month this supply cost was restated for.
+        config:
+          meta:
+            sst:
+              data_type: TIMESTAMP_NTZ
+              column_type: dimension
+              synonyms:
+                - snapshot month
+                - as-of month
+                - restatement month
+              sample_values:
+                - "2024-07-01 00:00:00"
+                - "2024-08-01 00:00:00"
+
+      - name: is_perishable
+        description: |-
+          Whether the supply spoils and must be reordered on a schedule.
+        config:
+          meta:
+            sst:
+              data_type: BOOLEAN
+              column_type: dimension
+              is_enum: true
+              synonyms:
+                - perishable flag
+                - needs refrigeration
+              sample_values:
+                - true
+                - false
+
+      - name: supply_cost
+        description: |-
+          Cost to supply one unit of the product in this month, in cents.
+        config:
+          meta:
+            sst:
+              data_type: NUMBER(38,2)
+              column_type: fact
+              synonyms:
+                - cost of supply
+                - unit supply cost
+              sample_values:
+                - 100
+                - 250
+
+    data_tests:
+      # THE SNAPSHOT GRAIN, ASSERTED. This is the test that makes the
+      # non-additive claim true rather than asserted: if this combination stops
+      # being unique the metric is wrong and nothing else would catch it.
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns:
+              - product_id
+              - snapshot_month

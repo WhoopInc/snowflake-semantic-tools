@@ -1,0 +1,195 @@
+---
+# =============================================================================
+# models/marts/orders.yml
+# =============================================================================
+# THE BUSIEST MODEL IN THE FIXTURE. It is the ASOF join's right side, the
+# range join's probe, and the only model carrying three `sample_values` columns.
+#
+# THE CROSS-CUTTING REASONING -- the seam, the jaffle domain, the one-line
+# `description:` constraint and the `D213` data rule -- IS IN `../README.md`, not
+# repeated here. Read that first if this is the first model file you have opened.
+# =============================================================================
+
+version: 2
+
+models:
+  - name: orders
+    description: |-
+      One row per order. The primary transaction grain of the jaffle shop.
+    config:
+      contract:
+        enforced: true
+      on_schema_change: fail
+      meta:
+        sst:
+          # THE GRAIN OF THIS MODEL, AND THE MODEL IS THE SINGLE SOURCE (`D231`).
+          # Declaring the primary key is the cheapest fan-out protection
+          # available. Omitting it means Snowflake GUESSES cardinality from the
+          # data (`V012`, `R011`). One-to-one is inferred only when both sides
+          # declare the join column.
+          #
+          # IT IS DECLARED ONCE HERE AND REACHES EVERY VIEW THAT READS THIS
+          # MODEL. `orders` is in BOTH `jaffle_sales` and `jaffle_menu`, and
+          # under the earlier `table_config` placement this same key had to be
+          # written twice -- once per view -- because a per-view key cannot
+          # express a property of the model's grain. That duplication is what
+          # settled `D231`.
+          primary_key:
+            - order_id
+    columns:
+      - name: order_id
+        data_type: VARCHAR
+        description: |-
+          Surrogate key for the order. An identifier, therefore a dimension.
+        config:
+          meta:
+            sst:
+              column_type: dimension
+              is_enum: false
+              synonyms:
+                - order key
+                - order number
+        data_tests:
+          - unique
+          - not_null
+
+      # THE EQUALITY JOIN KEY. `orders_to_customers` joins on this, and R006
+      # requires both sides to exist in the view's TABLES clause.
+      - name: customer_id
+        data_type: VARCHAR
+        description: |-
+          The customer who placed this order.
+        config:
+          meta:
+            sst:
+              column_type: dimension
+              is_enum: false
+              synonyms:
+                - customer key
+                - who placed the order
+        data_tests:
+          - not_null
+          - relationships:
+              # NESTED UNDER `arguments:`. dbt 1.11 deprecates top-level arguments
+              # to a generic test; MEASURED 2026-09-24, six occurrences across four
+              # model YAMLs, silent once nested.
+              arguments:
+                to: ref('customers')
+                field: customer_id
+
+      - name: location_id
+        data_type: VARCHAR
+        description: |-
+          The store location where this order was placed.
+        config:
+          meta:
+            sst:
+              column_type: dimension
+              is_enum: false
+              synonyms:
+                - shop key
+                - where the order was placed
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('locations')
+                field: location_id
+
+      # THE ASOF PROBE AND THE RANGE PROBE ARE THE SAME COLUMN. `order_items_to_orders`
+      # uses it as the `>=` time probe; `orders_to_pricing_periods` uses it as the
+      # BETWEEN subject. One column reaching two join kinds is deliberate -- it proves
+      # the kind is inferred from the CONDITION SHAPE and not from the column.
+      - name: ordered_at
+        data_type: TIMESTAMP_NTZ
+        description: |-
+          When the order was placed.
+        config:
+          meta:
+            sst:
+              column_type: dimension
+              synonyms:
+                - order date
+                - purchase time
+                - when the order was placed
+              sample_values:
+                - "2024-07-04 12:15:00"
+                - "2024-07-04 18:42:00"
+
+      - name: order_state
+        data_type: VARCHAR
+        description: |-
+          Fulfilment state of the order. A closed set.
+        config:
+          meta:
+            sst:
+              column_type: dimension
+              is_enum: true
+              synonyms:
+                - order status
+                - fulfilment state
+              sample_values:
+                - completed
+                - returned
+                - placed
+
+      - name: subtotal
+        data_type: NUMBER(38,2)
+        description: |-
+          Order value before tax, in cents.
+        config:
+          meta:
+            sst:
+              column_type: fact
+              synonyms:
+                - pre-tax total
+                - net amount
+                - amount before tax
+              sample_values:
+                - 850
+                - 1100
+
+      - name: tax_paid
+        data_type: NUMBER(38,2)
+        description: |-
+          Tax collected on this order, in cents.
+        config:
+          meta:
+            sst:
+              column_type: fact
+              synonyms:
+                - tax amount
+                - sales tax charged
+              sample_values:
+                - 68
+                - 88
+
+      - name: order_total
+        data_type: NUMBER(38,2)
+        description: |-
+          Order value including tax, in cents.
+        config:
+          meta:
+            sst:
+              column_type: fact
+              synonyms:
+                - gross total
+                - amount charged
+                - order value
+              sample_values:
+                - 918
+                - 1188
+
+    data_tests:
+      # THE DECLARED GRAIN, ASSERTED. The single most useful dbt test for
+      # semantic-layer correctness: a model that silently becomes one row per
+      # order per line item breaks every metric arithmetically while every ref
+      # still resolves and every SQL expression still compiles.
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns:
+              - order_id
+
+  # ========================================================================
+  # order_items -- the line-item grain. The ASOF SOURCE.
+  # ========================================================================

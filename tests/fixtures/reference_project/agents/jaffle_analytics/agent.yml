@@ -1,0 +1,472 @@
+---
+# =============================================================================
+# agents/jaffle_analytics/agent.yml -- the reference-impl fixture
+# =============================================================================
+# ONE AGENT, FOUR TOOLS -- two Cortex Analyst tools (one per semantic view), one
+# Cortex Search tool over the DEFINED backing object, and one `generic` tool over
+# the REFERENCED one. Four is the minimum that exercises name derivation, name
+# authoring, both sides of the tools registry, and tool-name uniqueness.
+#
+# =============================================================================
+# THIS ENTIRE ARTIFACT TYPE IS NET-NEW, AND THE REASON IS STRUCTURAL
+# =============================================================================
+# Grepping 0.3 for `CREATE AGENT` and for `tool_resources` returns ZERO matches
+# across 233 Python files. There is no agent module, no renderer, no validator and
+# no tool-type handling of any kind. So unlike every other artifact here there is
+# no existing spelling to keep, rename or fix.
+#
+# ADDING ONE ARTIFACT TYPE TO 0.3 COSTS 11-20 FILE EDITS, including a new abstract
+# method on the `MetadataStore` ABC that immediately breaks BOTH implementations --
+# and nothing tells you when you have missed one. Worse for this type specifically:
+# an agent is a TOP-LEVEL Snowflake object, not a clause inside
+# CREATE SEMANTIC VIEW, so `SemanticViewBuilder` is the wrong home entirely and a
+# second builder plus a second generation service are required. THAT COST IS THE
+# ACTUAL REASON AGENTS WERE NEVER ADDED.
+#
+# =============================================================================
+# THREE CONSTRAINTS THAT SHAPE EVERY LINE BELOW
+# =============================================================================
+# 1. THE SPEC IS REPLACED WHOLE. "Fields that are not included in the new
+#    specification are removed." A PARTIAL RENDER SILENTLY DELETES TOOLS, so the
+#    renderer must always emit the complete spec (A012). That is why
+#    expected/agent/jaffle_analytics_agent.json is asserted in full rather
+#    than as a diff.
+# 2. 100,000-BYTE CAP on the specification object, warn at 80% (A011).
+# 3. SST's `tools:` SHAPE IS NOT SNOWFLAKE'S. Snowflake splits every tool across a
+#    `tools[]` array and a `tool_resources{}` map keyed BY TOOL NAME, so each tool
+#    is authored in two places kept in sync by hand -- and a mismatch is not an
+#    error, it is a tool that silently has no resources. SST authors ONE entry per
+#    tool and the renderer performs the split. The golden JSON is the split form;
+#    this file is the merged form. Reading them side by side is the mapping.
+#
+# Every template is QUOTED -- a FIXTURE STYLE CHOICE, not a rule. The engine accepts
+# both spellings; see the header of semantic_models/semantic_views.yml. Every
+# multi-line string uses `|-`, never
+# `>`: folded scalars reflow, so an instruction written as a list arrives as one
+# paragraph and nothing in a diff shows it (A060).
+#
+# NO DATA VALUES. No question, instruction or description below contains an
+# identifier, a name, a date or a value drawn from a column.
+# =============================================================================
+
+name: jaffle_analytics_agent
+
+# ADD VERSION FROM @stage. Bypasses LIVE, preserves grants implicitly, and never
+# drops the object.
+#
+# NO `create_mode` KEY. `D255` removed it. The publisher CREATES IF ABSENT and ADDS
+# A VERSION IF PRESENT, which is decided by observation rather than authored -- the
+# two surviving values were never alternatives, they were the two halves of one
+# sequence: `if_not_exists` created and could not update, `or_alter` updated and
+# could not create. `A003` is withdrawn and `SST-VAL501` retired.
+#
+# NO `copy_grants` KEY EITHER (`D250`). It was only meaningful with OR REPLACE, and
+# that value destroyed every committed version and alias (drift row 35). `A004` and
+# `A005` are withdrawn with it.
+
+# `secure` is ABSENT, i.e. false. Turning it on hides the complete specification
+# from every role except the owner -- which BREAKS the round-trip assertion in
+# A010 for any non-owner, so CI would have to run as the owner to diff a rendered
+# spec against the live one (A007). It is also NOT FREELY REVERSIBLE: unsetting it
+# fails with error 093932 if the agent is in a share or a Native App export.
+
+# A ROUTING SIGNAL, NOT A DESCRIPTION. Once an account has more than a handful of
+# agents, an explicit "does not cover X, use <other>" is what stops a router --
+# human or agent -- picking the wrong one. `|-` preserves the blank line between
+# the two halves; `>` would collapse it.
+comment: |-
+  Covers order populations: how many customers and orders exist, how they
+  distribute across lifecycle status and location, monthly recurring revenue totals
+  and averages, and order event volume over a calendar spine.
+
+  Does not cover anything about an individual customer, and does not cover the menu
+  catalogue beyond plan descriptions.
+
+profile:
+  # THE HANDLE USERS REFERENCE IN CONVERSATION, and what CoWork displays. Distinct
+  # from `name`. A collision with another agent's display_name is a genuine
+  # routing ambiguity (A059).
+  display_name: Jaffle Analytics
+  # *** NOT A CLOSED ENUM. *** Documented only as "Avatar image file name or
+  # identifier". Two accepted forms: a built-in identifier (<Name>AgentIcon) and
+  # an uploaded file name. The identifiers are OBSERVED, not documented, so the
+  # real set is larger and will grow -- which is why SST cannot validate against a
+  # fixed list and `profile.avatar_allowlist` is opt-in and empty here (A057).
+  avatar: SparklesAgentIcon
+  # ALSO NOT A CLOSED ENUM. A plain name is PREFERRED over a `var(--token)` theme
+  # token: tokens are opaque generated identifiers, stable but meaningless in
+  # review (A058).
+  color: blue
+
+spec:
+  models:
+    # NOT AN ENUM -- the valid set is whatever Cortex currently serves, and it
+    # moves. Validated against the PINNED, VERSIONED allowlist in sst_config.yml,
+    # never a list compiled into SST (A051), so a model retired upstream fails CI
+    # and a newly shipped one is one config line away from usable.
+    #
+    # MUST NOT be `auto`: this agent has a BLOCKING eval, and `auto` can shift
+    # models between runs, making score movement unattributable to a change
+    # (A052). `auto` is the default for agents created through Snowsight, so this
+    # is a commonly INHERITED state rather than a rare one.
+    orchestration: claude-sonnet-4-6
+
+  orchestration:
+    budget:
+      # Wall-clock ceiling. Either limit ends generation.
+      seconds: 120
+      # *** ORCHESTRATION TOKENS ONLY *** -- excludes tokens consumed inside Cortex
+      # Analyst, Cortex Search and other tools. NOT A SPEND CEILING (A056).
+      tokens: 16000
+    # THREE VALUES, NOT TWO: accept (Snowflake's default) | reject | legacy.
+    # Governs what happens when the CALLER lacks a privilege on a configured tool,
+    # and permissions resolve from the caller's DEFAULT role -- so two users
+    # invoking one agent can see different tool sets.
+    #
+    # `reject` is chosen deliberately. `accept` degrades gracefully, which means AN
+    # AGENT CAN SILENTLY ANSWER FROM FEWER TOOLS THAN INTENDED, and that is
+    # invisible to an eval unless the eval runs as the same role. For an
+    # eval-gated agent, a loud failure is worth more than a quiet degradation.
+    #
+    # MUST be set on the TOP-LEVEL orchestration key, not on models.orchestration
+    # or instructions.orchestration (A053).
+    tool_not_accessible: reject
+    capabilities:
+      # Public Preview. Multi-index analytics over large document collections.
+      # REQUIRES a cortex_search tool, which this agent has -- so `true` would be
+      # legal (A054). It is false because it adds AI function cost and nothing in
+      # this fixture needs it.
+      analytical_search: false
+
+  instructions:
+    # -------------------------------------------------------------------------
+    # SIDECAR FILES, NOT INLINE, AND THIS IS THE SINGLE HIGHEST-LEVERAGE
+    # AUTHORING DECISION IN THE FILE.
+    # -------------------------------------------------------------------------
+    # Orchestration instructions on a mature agent routinely run to tens of
+    # thousands of characters and can account for 40% of the entire spec. Inline,
+    # the YAML is unreviewable and every diff unreadable. A Markdown sidecar stays
+    # diffable line by line and keeps the instruction under normal code review
+    # rather than buried in a config file.
+    #
+    # Every `{{ file() }}` sidecar must exist and be non-empty (A040).
+    orchestration: "{{ file('instructions/orchestration.md') }}"
+    response: "{{ file('instructions/response.md') }}"
+    # ONBOARDING PROMPTS, NOT EVAL GROUND TRUTH -- there is no expected answer
+    # here. A good sample question is one the agent answers WELL; a good eval
+    # question is one that would catch it FAILING. Different sets, and A044 warns
+    # when they are byte-identical.
+    #
+    # MAPS, NOT BARE STRINGS (A045). Relative dates are FINE here and WRONG in
+    # evals/dataset.yml -- none appear, only because this fixture carries no dates
+    # at all.
+    sample_questions:
+      - question: How many orders are open across all locations?
+      - question: Which location contributes the most monthly recurring revenue?
+      - question: Which menu item has the most ingredients?
+
+  # =========================================================================
+  # TOOLS -- ONE ENTRY PER TOOL, RESOURCES INLINE. The renderer performs
+  # Snowflake's split into `tools[]` plus `tool_resources{}`.
+  # =========================================================================
+  tools:
+    # ---- 1. Cortex Analyst over view 1. NAME IS DERIVED, NOT AUTHORED. -----
+    - type: cortex_analyst_text_to_sql
+      # *** THE TOOL NAME IS DERIVED FROM THIS REF, SO THERE IS NO `name:` KEY
+      # (A020). *** For an Analyst tool the SEMANTIC VIEW NAME *IS* the tool name.
+      # Deriving it removes the third copy of the string and makes a renamed view
+      # propagate automatically.
+      #
+      # Snowflake requires a tool name of 1-64 characters and a semantic view name
+      # can exceed that, so THE DERIVATION IS CHECKED, NOT ASSUMED (A014): a long
+      # view name fails HERE, not at publish. `jaffle_sales` is 19.
+      semantic_view: "{{ semantic_view('jaffle_sales') }}"
+      # THE TOOL DESCRIPTION IS THE ROUTER. Tool selection is decided almost
+      # entirely here, and the effect COMPOUNDS: at two tools the wording barely
+      # matters, at twenty it is the dominant factor in whether the agent is
+      # right. This is why `tool_selection_accuracy` is the best gating metric --
+      # it is deterministic, and it grades exactly this text.
+      #
+      # Nominally optional in Snowflake; treated as REQUIRED (A018). Write what the
+      # tool is for AND what it is not for, naming the tool to use instead (A019
+      # warns on near-duplicate descriptions, which is the dominant cause of
+      # tool_selection_accuracy loss -- hence the explicit contrast below).
+      description: |-
+        Customers and the orders they placed. Use for counts of customers or
+        orders, lifecycle status breakdowns, and revenue totals and averages
+        sliced by customer attributes such as customer type, or by store
+        location.
+
+        THE ONLY TOOL THAT CARRIES LOCATION NAMES. `jaffle_menu` has
+        `location_id` and no locations table, so ask for names here.
+
+        Do NOT use for line-item or product detail -- use JAFFLE_MENU for
+        units sold, product mix and margin.
+      # NULL IS INTENTIONAL AND IS THE DEFAULT ON ANALYST TOOLS: Snowflake falls
+      # back to the caller's default warehouse, so compute and cost follow the
+      # user. A POLICY CHOICE, not a defect. It renders as "" -- Snowflake's own
+      # representation -- and is NOT omitted.
+      #
+      # THE GENUINE FAILURE MODE IS NOT VALIDATABLE HERE: a caller with no default
+      # warehouse, or no USAGE on it, cannot invoke the agent at all.
+      warehouse: null
+      # Flattened. SST does not make the author write the `execution_environment`
+      # wrapper or repeat `type: warehouse`. A039 warns if this exceeds the
+      # warehouse STATEMENT_TIMEOUT_IN_SECONDS, which silently wins.
+      query_timeout: 60
+
+    # ---- 2. Cortex Analyst over view 2. ------------------------------------
+    - type: cortex_analyst_text_to_sql
+      semantic_view: "{{ semantic_view('jaffle_menu') }}"
+      description: |-
+        Order line items, the products sold on them, the pricing period in
+        effect when the order was placed, and the monthly supply cost of each
+        product. Use for product mix, units sold, line-item revenue, and margin
+        against supply cost.
+
+        Do NOT use for customer attributes -- there is no join to customers
+        here, so a question about customer type belongs to JAFFLE_SALES. It has
+        `location_id` but no location NAMES.
+      warehouse: null
+      query_timeout: 60
+
+    # ---- 3. Cortex Search over the DEFINED backing object. -----------------
+    - type: cortex_search
+      # REQUIRED for every type EXCEPT cortex_analyst_text_to_sql (A021).
+      name: menu_docs_search
+      # ONE REF FORM, REGARDLESS OF WHO OWNS THE OBJECT. This resolves to a
+      # `define:` member -- an object this repo CREATES -- and the ref is
+      # byte-identical in shape to the `generic` tool's ref below, which resolves
+      # to a `reference:` member this repo does NOT create.
+      search_service: "{{ tool('jaffle_platform', 'menu_docs_search') }}"
+      # `description`, `title_column`, `id_column` and `columns_and_descriptions`
+      # are all INHERITED from the backing object and deliberately NOT restated.
+      # They are properties OF THE OBJECT, not of this agent's use of it, and every
+      # override is REPORTED (X011) so divergence is visible rather than
+      # discovered.
+      #
+      # THE TEST FOR WHICH SIDE A KEY BELONGS ON: would two agents using this
+      # object reasonably DISAGREE about it? `max_results` yes, `id_column` no.
+      max_results: 5
+      # `filter:` is ABSENT. It would need a literal value, and every column named
+      # in a filter must be marked `filterable: true` in
+      # `columns_and_descriptions` -- otherwise it is a RUNTIME failure that
+      # passes a naive validator (A023). `dietary_class` is marked filterable in
+      # the registry precisely so a consuming agent COULD filter on it; this one
+      # does not, because pinning one diet literal here would narrow the tool for
+      # every question rather than the one that asks about diet.
+      #
+      # `stage_path` and `relative_path_column` are both ABSENT. They are A PAIR:
+      # together they enable in-app document preview, and DECLARING ONE WITHOUT THE
+      # OTHER IS A SILENT NO-OP (A022). Omitting both means citations appear and
+      # cannot be opened, which is the correct outcome for a fixture with no stage.
+      query_timeout: 60
+
+    # ---- 4. A `generic` tool over the REFERENCED backing object. -----------
+    - type: generic
+      name: order_tier_lookup
+      # *** THIS IS THE RESOLUTION OF THE FQN QUESTION. *** The procedure is not
+      # managed by this repo, so there is no model to `{{ ref() }}`. A literal FQN
+      # would break target routing -- a dev agent would call the PROD procedure,
+      # which for a procedure that WRITES is a production mutation triggered from a
+      # dev deploy. The `reference:` member declares one relation per target, so
+      # the authored value stays path-free and dev still points at dev.
+      identifier: "{{ tool('jaffle_platform', 'order_tier_lookup') }}"
+      description: |-
+        Resolves the pricing tier a single order falls into under current
+        rules. Use only when a question is about one named order and the
+        answer is a tier rather than a count.
+
+        Do NOT use for population questions -- any question phrased "how many" or
+        "which location" belongs to an Analyst tool.
+      # -------------------------------------------------------------------
+      # input_schema -- TREAT AS REQUIRED for a generic tool (A026).
+      # -------------------------------------------------------------------
+      # Without it the agent must infer argument names and types from the
+      # description, which is where custom tools fail most often.
+      #
+      # *** `object` IS NOT PERMITTED AS A PROPERTY TYPE *** -- Snowflake Cortex
+      # does not support procedures or custom tools with an OBJECT parameter
+      # (A027). Every property type must be in
+      # {string, number, integer, boolean, array}, and every name in `required`
+      # must exist in `properties` (A028).
+      #
+      # X014 additionally asserts this matches the backing object's declared
+      # `signature` in arity, names and types -- one VARCHAR parameter named
+      # `order_id`, required. That is the check a bare FQN could never support.
+      input_schema:
+        type: object
+        properties:
+          order_id:
+            type: string
+            description: |-
+              The order to resolve a tier for.
+        required:
+          - order_id
+      # `warehouse` is NOT restated here. It is inherited from the backing object,
+      # which declares SST_REF_WH.
+      #
+      # AN UNCERTAIN, NOW SETTLED -- and the annotation is on this line deliberately,
+      # because a same-line annotation is the only thing audit/decisions.py treats as
+      # closing a marker since the five-line window was abolished.
+      # A029 inspects the RESOLVED warehouse, not the authored key, so omitting the
+      # key here is correct and this tool validates. The settling statement is
+      # ../../../README.md section 9.6 item 53: "the resolved value, since inheritance
+      # is documented as the mechanism that removes this duplication". The fixture
+      # already relied on that reading; it now cites a recorded answer instead of an
+      # assumption, so it no longer claims to have found an ambiguity.
+      query_timeout: 60
+
+  # =========================================================================
+  # SKILLS
+  # =========================================================================
+  skills:
+    - # `name` is REQUIRED for a SKILL-type (single-skill) extension and OPTIONAL
+      # for a PLUGIN-type (multi-skill) one, where member names come from the
+      # `skills/<member>/` subdirectories (A048, K015). This fixture publishes one
+      # skill, so the extension is SKILL-type and the name is required.
+      name: jaffle-semantics
+      source:
+        # *** CORTEX_EXTENSION IS GA AS OF 2026-08-26. *** Snowflake expands the
+        # reference into the extension's member skills AT REQUEST TIME, so updates
+        # to the extension flow to every agent referencing it.
+        #
+        # THIS REPLACES THE LIVE PATTERN of a raw STAGE path into a mutable profile
+        # bundle -- which changes agent behaviour with NO VERSION, NO DIFF and NO
+        # ERROR, and is the specific defect CORTEX_EXTENSION references exist to
+        # remove (A047, K009).
+        type: CORTEX_EXTENSION
+        # NAME-BASED. Resolves to the extension FQN from sst_config.yml `skills:`
+        # at render time, so dev and prod resolve differently from one authored
+        # value. NEVER hardcode the FQN.
+        path: "{{ extension('jaffle-semantics') }}"
+        # ALWAYS PIN. *** LIVE IS REFUSED BY A046 / SST-VAL538, NOT BY SNOWFLAKE.
+        # CORRECTED 2026-09-22, D155. *** This comment read "LIVE VERSIONS ARE
+        # REJECTED BY SNOWFLAKE so 'never reference a mutable version' is enforced
+        # natively as well as by A046 and K008". The native clause is FALSE:
+        # TESTED 2026-09-22, CREATE AGENT accepted version: "LIVE" and DESCRIBE
+        # AGENT returned it verbatim. A046 and K008 are the enforcement, full stop.
+        # Omitted, it resolves to the extension default and falls back to
+        # last committed -- safe, but not reproducible.
+        #
+        # PINNED THROUGH `var`, NOT THROUGH A BARE NAME. This key used to read
+        # `{{ sha_version }}`, the bare-token form an earlier draft showed.
+        # That form could never work: `TEMPLATE_RE` matches `{{ fn(args) }}` only,
+        # so a bare name with no parentheses never reached the resolver, rendered
+        # as literal text, and did not even trip `SST-REF004` for an unknown
+        # function -- the regex never produced a function name to be unknown. The
+        # pin looked resolved and was not, while `K008 [E]` requires a real one.
+        #
+        # `var` is the resolver that already does this job.
+        #
+        # THE NEXT TWO SENTENCES USED TO BE INVERTED AND ARE CORRECTED 2026-09-25
+        # (`D248`). They said "the value is declared in sst_config.yml `vars:`; an
+        # undeclared one is `SST-CFG029`". FOR THIS NAME IT IS THE OTHER WAY ROUND:
+        # `sha_version` must NOT be declared, and DECLARING it is `SST-CFG040`, an
+        # ERROR. SST supplies it from `Provenance.sha` -- the same value that forms
+        # this agent's stage path -- so the skill version and the commit agree by
+        # construction. `SST-CFG029` governs every OTHER var name, not this one.
+        #
+        # SO THIS CALL DOES NOT EXERCISE THE `vars:` BLOCK, which is why the old
+        # claim that it gave `var` "its FIRST fixture coverage" was only half true:
+        # the RESOLVER had a call site, but nothing read the block. `D248` closed
+        # that separately -- `sst_config.yml` now declares `completed_state` and
+        # `returned_state`, read from three expression sites.
+        #
+        # The golden JSON carries `GIT_0000000` -- `skills.+version_prefix: "GIT_"`
+        # plus the normalised 7-character SHA token this var holds.
+        version: "{{ var('sha_version') }}"
+
+# =============================================================================
+# PLATFORM KEYS -- consumed by SST, STRIPPED BEFORE RENDERING
+# =============================================================================
+# None of the following appears in expected/agent/jaffle_analytics_agent.json.
+# That is the assertion: a platform key that leaked into the spec would be a field
+# Snowflake does not model, and the spec is replaced whole.
+
+# PROMOTION AND ROLLBACK ARE ALIAS MOVES, NEVER REWRITES. Aliases are unique per
+# agent and stored uppercase unless double-quoted, and must not collide with the
+# reserved shortcuts LIVE | FIRST | LAST | DEFAULT (A006).
+#
+# THIS VALUE WAS `current` AND `current` CANNOT BE CREATED. It is a SQL reserved
+# word, so `SET ALIAS = current` is a syntax error before any SST rule is
+# consulted -- drift row 30, with `prod` and `previous` as unquoted controls that
+# both succeed. The only way to reach the name is `SET ALIAS = "current"`, and
+# double-quoting is exactly what makes an alias case-sensitive: `DESCRIBE AGENT`
+# then returns `"current"` in lowercase, so `agent_version:`, `LIST
+# snow://agent/...` and every rollback must match that case forever.
+#
+# `promoted` says the same thing and is not reserved. VERIFIED unquoted in the
+# reference account: it stores as `PROMOTED` beside the four built-in shortcuts.
+alias: promoted
+
+enabled: true
+
+meta:
+  owner: daa-platform
+  # DEPRECATION IS THE ONLY REMOVAL PATH FOR A GOVERNED AGENT: unset aliases, mark
+  # deprecated, KEEP EVERY VERSION. A dropped version renders as a dash in the
+  # evaluation history of any retained run, destroying the audit trail (A065,
+  # A066) -- and `evals.+retention: audit` in sst_config.yml means this agent's
+  # versions can never be dropped at all.
+  deprecated: false
+
+# POINTER ONLY. Content lives in ./evals/. Eval FILES colocate here; eval OBJECTS
+# colocate in this agent's SCHEMA by inheritance, and evals get no +database or
+# +schema of their own.
+evals:
+  dataset: evals/dataset.yml
+  config: evals/config.yml
+
+# =============================================================================
+# WHAT IS DELIBERATELY ABSENT FROM THIS FILE
+# =============================================================================
+# `temporary: true`
+#   NOT A YAML KEY AT ALL, by design. `CREATE TEMPORARY AGENT` is a property of an
+#   INVOCATION, not of a definition -- a committed `temporary: true` would mean the
+#   repo describes an object that cannot exist in production. It is therefore a CLI
+#   flag (`sst agent apply <agent> --temporary`).
+#   AND THE DOCUMENTED PRIVILEGE CLAIM IS FALSE. Snowflake documents "Not required
+#   for temporary agents" under CREATE AGENT's access control table. TESTED
+#   2026-09-19: both the qualified and the unqualified form were rejected
+#   identically for want of CREATE AGENT on the schema (A075). So `--temporary` is
+#   still the right design and is NOT a way to let an analyst iterate without a
+#   grant.
+#   RE-TESTED 2026-09-22: STILL FALSE, now with a three-way control -- permanent
+#   CREATE AGENT denied in a schema without the privilege, CREATE TEMPORARY AGENT
+#   denied identically in that same schema, CREATE TEMPORARY AGENT succeeded where
+#   the privilege IS held. The keyword works; the exemption does not. Dated twice on
+#   purpose: the claim is still in the docs six days after GA, so it is a standing
+#   defect rather than a rollout lag. `D158`.
+#
+# `tags`
+#   Applied by a SEPARATE ALTER statement (A009). Absent for the same reason as on
+#   the semantic views: it would assert a second statement whose form no document
+#   in this plan specifies.
+#
+# `passthrough:` / `tool_spec_passthrough:`
+#   The forward-compat escape hatch, available on every tool and on the spec root.
+#   Using either is a WARNING by design, so off-spec usage stays visible and can be
+#   promoted to a first-class key later (A068, A070). Absent because this fixture
+#   is authored to be warning-free, and because a fixture that asserted a
+#   passthrough would be asserting a key Snowflake does not have.
+#
+# A `mcp` TOOL
+#   *** MCP TOOLS ARE NEVER INVOKED DURING AN EVAL. *** The run proceeds and the
+#   results do not reflect MCP behaviour at all, so an agent whose value rests on
+#   an MCP tool cannot be covered by the eval gate (E017). Adding one to an
+#   eval-gated fixture would assert a tool the fixture's own gate cannot see.
+#
+# A `web_search` TOOL
+#   THE TRACE NAME IS ALWAYS LITERALLY `web_search` and is not configurable, so an
+#   eval's ground_truth_invocations must use that exact value regardless of what
+#   the spec calls it -- and Snowsight's own example writes "Web Search", which
+#   would not match a trace (A017, D009). Absent because it also requires
+#   account-level enablement by an ACCOUNTADMIN, and because queries and results
+#   LEAVE SNOWFLAKE -- a governance fact, not a config one.
+#
+# `data_to_chart` AND `code_execution`
+#   Built-ins with no resources. They emit NO tool_resources entry at all, and an
+#   empty map entry is NOT equivalent (A032). Not covered: the assertion is an
+#   absence, and the fixture already asserts four present entries.
+# =============================================================================

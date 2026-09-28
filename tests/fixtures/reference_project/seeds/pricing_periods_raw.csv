@@ -1,0 +1,4 @@
+pricing_period_id,period_name,effective_start_at,effective_end_at,base_price_multiplier,discount_pct
+pp-001,summer promo,2024-06-01 00:00:00,2024-09-01 00:00:00,1.0,0.0
+pp-002,standard,2024-09-01 00:00:00,2024-12-01 00:00:00,1.15,0.1
+pp-003,winter,2024-12-01 00:00:00,2025-03-01 00:00:00,1.2,0.05

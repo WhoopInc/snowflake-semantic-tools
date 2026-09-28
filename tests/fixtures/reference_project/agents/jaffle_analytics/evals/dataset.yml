@@ -1,0 +1,224 @@
+---
+# =============================================================================
+# agents/jaffle_analytics/evals/dataset.yml -- the reference-impl fixture
+# =============================================================================
+# FOUR QUESTIONS. Small on purpose, and chosen to cover process, refusal, and
+# immutable-value tiers of the ground-truth strategy rather than four topics.
+#
+# RENDERS TO a two-column Snowflake table, then a DATASET object built from it:
+#   input_query   VARCHAR
+#   ground_truth  VARIANT
+#
+# THE RENDERER MUST USE PARSE_JSON OR TO_VARIANT. OBJECT_CONSTRUCT and
+# ARRAY_CONSTRUCT return OBJECT and ARRAY, not VARIANT, and the column type will be
+# wrong.
+#
+# COLUMN MAPPING DIFFERS BY CREATION PATH, a genuine footgun:
+#   SYSTEM$CREATE_EVALUATION_DATASET  ->  query_text / expected_tools
+#   YAML dataset.column_mapping       ->  query_text / ground_truth
+# Different keys for the same concept depending on how the dataset was made.
+#
+# =============================================================================
+# PLACEMENT IS NOT A CHOICE, AND DECLARING IT IS AN ERROR
+# =============================================================================
+# Eval objects land in the AGENT's database and schema, always:
+#   source table  ->  <agent db>.<agent schema>.EVAL_SRC_<AGENT>_<SHA7>
+#   DATASET       ->  <agent db>.<agent schema>.EVAL_<AGENT>_<SHA7>
+#
+# THE REASON IS THE READER, NOT A CONVENTION. Results are retrieved THROUGH the
+# agent: the retrieval function is keyed on (agent database, agent schema, agent
+# name, run name). There is no argument that could address results stored anywhere
+# else, so an eval placed outside the agent's schema would be UNREADABLE BY THE
+# ONLY API THAT READS IT.
+#
+# `database:` and `schema:` are therefore FORBIDDEN here, and must be an ERROR
+# rather than a silently ignored setting (D003, C002). A setting accepted and
+# ignored teaches the author the opposite of the truth: they set a schema, the
+# deploy succeeds, the eval lands somewhere else, and the next reader treats the
+# config as documentation of where evals live.
+#
+# NO DATA VALUES. No question below contains an identifier, a name or a date, and
+# no `ground_truth_output` contains a number -- see the note on tier 4 at the foot
+# of this file.
+# =============================================================================
+
+# Explicit, name-based ref to the agent under test. The file sits under that
+# agent's directory, but THE RESOLVER NEVER READS THE PATH -- a lint rule asserts
+# this value matches the containing directory. Keeping resolution name-based is
+# what preserves "folders are organization only".
+agent: jaffle_analytics_agent
+
+# Reviewer-facing only. Never sent to a judge and never rendered into the
+# Snowflake YAML.
+description: |-
+  Four records covering the order analytics agent's dominant failure modes:
+  answering a two-view question from one view, answering a menu-catalogue question
+  without search evidence, answering an individual-customer question at all, and
+  confusing products that exist with products that have sold.
+
+questions:
+  # ===========================================================================
+  # TIER 2 -- PROCESS. Which tools, in what shape.
+  # ===========================================================================
+  # THE HIGHEST-VALUE SHAPE FOR AN AGENT WITH MANY TOOLS, because the dominant
+  # failure mode is answering a decomposition question from a single tool. Pair
+  # `ground_truth_invocations` with a `ground_truth_output` rubric describing the
+  # required decomposition.
+  - question: How does order event volume compare with the number of orders in each location?
+    # NOTE WHAT MAKES THIS A DECOMPOSITION: event volume lives only in
+    # JAFFLE_MENU, location lives only in JAFFLE_SALES, and the two
+    # views share only `orders`. There is no single tool that answers it.
+    ground_truth:
+      ground_truth_invocations:
+        # THE TOOL NAME AS THE AGENT SEES IT. For a Cortex Analyst tool the
+        # SEMANTIC VIEW NAME is the tool name, and it is UPPERCASE because the
+        # derivation uppercases an unquoted identifier -- while the authored names
+        # on the other two tools stay lowercase. CASE MATTERS TWICE: A015 requires
+        # resolved tool names to be unique case-SENSITIVELY, and an eval's
+        # expectation must match the trace name EXACTLY.
+        #
+        # A typo here scores as an unmatched expectation rather than erroring,
+        # which reads as a real failure -- so D008 asserts every name exists on the
+        # target agent.
+        - tool_name: JAFFLE_MENU
+          # TEA ONLY. Natural language describing the INTENDED call -- not SQL you
+          # author.
+          tool_input: |-
+            Count order lifecycle events, grouped so the total can be joined
+            to a per-location order count.
+          # TEA ONLY. Free text; the judge reads it semantically. Omit both input
+          # and output and TEA degrades to a name match -- it only confirms the
+          # tool was invoked at all.
+          tool_output: |-
+            An event count, with enough grain to align to orders.
+        - tool_name: JAFFLE_SALES
+          tool_input: |-
+            Count orders grouped by the customer's location.
+          tool_output: |-
+            A order count per location.
+      # A RUBRIC, NOT AN ANSWER. Write it so two reviewers would agree whether a
+      # given reply passes. Compared against the agent's FULL STREAMED reply,
+      # including thinking and chart generation -- the chart's data, not the
+      # rendered image.
+      ground_truth_output: |-
+        The reply must report both quantities -- event volume and order count
+        -- and must state the relationship between them per location rather than
+        reporting one and inferring the other. A reply that answers from a single
+        view, or that reports events without locations, fails.
+
+  # ===========================================================================
+  # TIER 2 -- PROCESS, single tool. The routing case.
+  # ===========================================================================
+  - question: Which menu item description mentions the broadest set of ingredients?
+    ground_truth:
+      ground_truth_invocations:
+        # Lowercase, because this tool's name is AUTHORED rather than derived.
+        - tool_name: menu_docs_search
+          tool_input: |-
+            Search menu item descriptions for ingredient coverage, comparing items.
+          tool_output: |-
+            Passages from menu item descriptions, cited, with the item identifiable.
+      ground_truth_output: |-
+        The reply must be grounded in menu item description text and must cite it.
+        A reply that answers from an order count, or that answers with no
+        citation, fails.
+
+  # ===========================================================================
+  # REFUSAL / OUT-OF-SCOPE -- cheap, and the least flaky assertion available.
+  # ===========================================================================
+  - question: What is the home location of one specific customer?
+    ground_truth:
+      # *** AN EMPTY ARRAY IS A REAL EXPECTATION, NOT AN OMISSION. *** It asserts
+      # that NO tool should be called. `tool_selection_accuracy` scores this
+      # deterministically, which is what makes a refusal record the most stable
+      # assertion in any dataset.
+      ground_truth_invocations: []
+      ground_truth_output: |-
+        The reply must decline and must redirect to a population-level question. A
+        reply that returns a location for an individual, or that calls any tool at
+        all, fails.
+      # WORTH STATING PLAINLY: a refusal eval verifies that a PROMPT is working, not
+      # that a CONTROL exists. Real per-subject protection is a row access or
+      # masking policy on the table, and no eval substitutes for one.
+
+  # ===========================================================================
+  # TIER 4 -- A HARDCODED VALUE, GATED BY `immutable` PLUS `immutable_reason`
+  # ===========================================================================
+  # THIS CASE EXISTS BECAUSE `D213` MADE IT POSSIBLE. Tier 4 was previously
+  # unexercisable in this fixture: a hardcoded figure is a VALUE, and the old
+  # blanket no-values rule forbade one regardless of where it came from. `D213`
+  # separated AUTHORING from COLLECTION -- jaffle data is dbt Labs' published
+  # fixture, so a figure written by hand here cannot leak anything, while
+  # `allow_sample_value_collection: false` keeps `enrich` shut.
+  #
+  # TIER 4 IS THE LAST RESORT AND THE SPEC SAYS SO: "only where genuinely
+  # immutable ... Everything else belongs in tier 3." The gate is what makes that
+  # enforceable rather than advisory -- `immutable_reason` is COND-required on
+  # `immutable`, so a hardcoded figure cannot be committed without an author
+  # stating in prose why the number cannot drift.
+  #
+  # WHY THIS PARTICULAR QUESTION QUALIFIES. The jaffle menu is a fixed
+  # ten-item catalogue in the seed data, and `products` is not append-only in this
+  # domain -- a closed set, which is exactly the "closed historical period whose
+  # figures are final" case the spec names. Contrast the three cases above: each
+  # of those would drift as orders land, which is why they assert direction,
+  # process and refusal rather than values.
+  - question: How many distinct products are on the menu?
+    ground_truth:
+      ground_truth_invocations:
+        - tool_name: JAFFLE_SALES
+      ground_truth_output: |-
+        The reply must state that the menu holds ten products. A reply that returns
+        a different count, or that reaches for JAFFLE_MENU and counts products that
+        have SOLD rather than products that EXIST, fails.
+      # THE GATE. Both keys or neither -- `immutable_reason` is COND on `immutable`.
+      immutable: true
+      immutable_reason: |-
+        The menu is a closed ten-item catalogue in the fixture's seed data. No order
+        activity can change it, so the figure cannot drift as data lands. If the
+        catalogue is ever extended this case must be re-tiered to 3, not edited.
+
+
+# =============================================================================
+# WHAT IS DELIBERATELY ABSENT, AND THE TWO PLACES THE NO-DATA RULE BINDS
+# =============================================================================
+# TIER 4 -- VALUES. A hardcoded figure, gated by `immutable: true` plus
+#   `immutable_reason`. Those two lint rules are the only machinery the
+#   ground-truth strategy needs; the rest is convention.
+#   *** UNREACHABLE UNDER THE NO-DATA RULE. *** `immutable` is REQUIRED when
+#   `ground_truth_output` hardcodes a numeric value, so covering the field means
+#   committing a number that came from the data. The fixture cannot have both, and
+#   the rule wins. Recorded in the README rather than quietly skipped.
+#
+# `required_filters`. Read by a CUSTOM metric, never by a system metric. It asserts
+#   that the generated SQL actually applied named filters -- necessary because a
+#   filter surfaced as model INSTRUCTIONS is advice, not a guaranteed view-level
+#   predicate: the agent can return a plausible number that silently omitted the
+#   predicate, and `answer_correctness` will not catch it because the answer looks
+#   right. ABSENT because this fixture's grounding judge does not reference a
+#   required_filters key; adding it would be inert authoring.
+#
+# A QUESTION EXERCISING `order_tier_lookup`. D011 reports question-set
+#   diversity: which of the agent's tools no question exercises. This dataset
+#   covers three of four, and the fourth is UNCOVERABLE HERE: the tool takes a
+#   order identifier, so any question that would route to it must contain an
+#   identifier, and the no-data rule forbids one. THAT INFO NOTICE IS EXPECTED AND
+#   IS ASSERTED in expected/diagnostics.txt. It is a genuine tension between two
+#   correct rules, not a fixture defect.
+#
+# RELATIVE DATES ANYWHERE. "last quarter" re-evaluates on every run, so the same
+#   dataset silently changes meaning over time while its name and SHA stay put.
+#   This is THE SINGLE MOST COMMON EVAL DEFECT, and the lint rejects 'last',
+#   'this', 'current', 'recent', 'YTD', 'MTD', 'yesterday' and bare quarter
+#   references (D006). This fixture contains no dates of any kind, absolute or
+#   relative, which satisfies D006 trivially -- and means D006's absolute-date
+#   branch is not exercised.
+#
+# ANY OVERLAP WITH THE AGENT'S `sample_questions` (D007) OR WITH A VERIFIED QUERY'S
+#   `question` (Q012). Three distinct sets with three distinct purposes: a sample
+#   question is chosen because the agent answers it WELL, an eval question because
+#   it would catch the agent FAILING, a verified query because it is runtime
+#   guidance for SQL generation. Overlap between the first two means the eval
+#   proves nothing. All eleven strings across the three sets are distinct, checked by
+#   hand.
+# =============================================================================

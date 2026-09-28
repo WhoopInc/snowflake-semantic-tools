@@ -1,0 +1,302 @@
+---
+# =============================================================================
+# agents/jaffle_analytics/evals/config.yml -- the reference-impl fixture
+# =============================================================================
+# ONE RUN CONFIGURATION. Two pinned system metrics plus one custom grounding
+# judge, with gating policy retained only in SST's metadata layer.
+#
+# *** A RUN RE-INVOKES THE AGENT. *** Nothing in this file makes a score
+# reproducible -- pinning fixes the CONFIG under test, not the BEHAVIOUR. Every
+# threshold decision below follows from that one fact, and it is why
+# `baseline_runs` exists and why `threshold` IS TYPED AS A RANGE (D085). E018 is
+# what remains once the type carries the shape: at least one bound, min <= max.
+#
+# RENDERS TO a Snowflake Agent Evaluation YAML with EXACTLY THREE top-level keys --
+# `dataset:` (optional and dangerous), `evaluation:`, `metrics:` -- PUT to a stage,
+# then invoked as a CALL to EXECUTE_AI_EVALUATION('START', ...).
+#
+# NO DATA VALUES. Every number below is a threshold, a count or a limit.
+# =============================================================================
+
+agent: jaffle_analytics_agent
+
+# committed | alias:<name> | VERSION$<integer>.
+# *** NEVER `LIVE`, AND NEVER OMIT IT. ***
+#   OMITTING IT targets the agent's DEFAULT version once two or more versions
+#   exist, which drifts silently as versions are added -- not an error, just a
+#   different subject under test with no config change.
+#   LIVE is mutable, so two runs can score differently for reasons unrelated to the
+#   dataset.
+#   An ALIAS resolves to one version per run but can be REPOINTED later, so a
+#   pinned VERSION$<integer> is the only fully reproducible choice. `committed` is
+#   the CI-appropriate value: it is whatever this deploy just committed (E003).
+agent_version: committed
+
+dataset:
+  # =========================================================================
+  # THE REPEAT-RUN TRAP THIS KEY EXISTS TO AVOID
+  # =========================================================================
+  # EMIT `dataset:` ONLY WHEN MINTING A NEW DATASET. If the rendered YAML contains
+  # `dataset:` on a REPEAT run, Snowflake tries to CREATE the dataset again and
+  # FAILS because it already exists -- even when only the run name changed, and
+  # even after a previous attempt failed partway.
+  #
+  # With `auto`, SST checks whether the SHA-keyed dataset exists and OMITS THE WHOLE
+  # BLOCK if it does, keeping only `evaluation.source_metadata` pointing at it
+  # (D016).
+  #
+  # Dataset minting is an apply concern. The committed repeat-run YAML always
+  # omits `dataset:` and points at the content-addressed DATASET, so its exact
+  # output is deterministic and reviewed in expected/eval/.
+  mint: auto
+  # SHA-KEYED, NOT DATE-KEYED. Same SHA means same questions, so the dataset is
+  # REUSED rather than recreated and historical runs keep resolving. Date-stamped
+  # names mint a new object per run date whether the questions changed or not,
+  # which produces object sprawl and breaks the link between a score and a question
+  # set.
+  #
+  # THE AGENT NAME IS REQUIRED IN THE TEMPLATE: a dataset name must be unique among
+  # the schema-level objects in its schema, every agent in a domain shares one
+  # schema, and there is no per-agent namespace to lean on. Limit is 128 chars
+  # (D002).
+  name_template: "EVAL_{{ agent | upper }}_{{ sha7 }}"
+  # THE DATASET IS CREATED IN THE SAME DATABASE AND SCHEMA AS THIS TABLE, which is
+  # how source-table placement determines dataset placement -- reinforcing that
+  # placement is determined rather than configured.
+  source_table_template: "EVAL_SRC_{{ agent | upper }}_{{ sha7 }}"
+  column_mapping:
+    query_text: input_query
+    ground_truth: ground_truth
+
+metrics:
+  system:
+    # ---------------------------------------------------------------------
+    # THE BEST GATING METRIC AVAILABLE, AND THE ONLY ONE GATED HERE.
+    # ---------------------------------------------------------------------
+    # USES NO LLM JUDGE. Scoring is matched / max(expected, actual) and is
+    # DETERMINISTIC for a given set of tool calls. It penalises too few calls, too
+    # many calls AND wrong calls; ordering is not considered. If the score moves
+    # between runs, THE AGENT'S TOOL CALLS CHANGED -- the metric did not (E010).
+    #
+    # It also grades exactly the text that decides routing: the tool descriptions.
+    # That is why A018 treats a missing tool description as an error and A019 warns
+    # on near-duplicates.
+    - name: tool_selection_accuracy
+      version: v3
+      # PIN IT. Unversioned metrics and `auto` ROLL FORWARD on deprecation, so
+      # scores shift with no config change. A pinned version does NOT roll forward
+      # and FAILS after its judge's deprecation date -- which is the safer failure
+      # (E007). Scores across versions are NOT comparable, and the evaluations UI
+      # treats each version as its own chart and column.
+      #
+      # Explicit v3 pin: system metrics must not roll forward without a config diff.
+      gate: true
+      # =================================================================
+      # A CONTRADICTION THAT IS NOW SETTLED. DECISION D085.
+      # =================================================================
+      # `threshold` IS A RANGE: `{min: <float>, max: <float>}`, with either bound
+      # legal on its own. An earlier draft of the field reference typed it as a
+      # FLOAT and this fixture wrote a bare `0.80` to match; that typing is
+      # RETRACTED by D085 and a bare float is now a type error (`SST-PRS003`).
+      #
+      # WHY THE RANGE WON: a range SUBSUMES a float -- a floor is a range whose
+      # upper bound is open -- while a float cannot express a range at all. E018
+      # also carried the substantive reason: runs re-invoke a non-deterministic
+      # agent, so a fixed number either flaps or is set so loose it never fires.
+      # `threshold_range:` was rejected as a rename -- the range is the SHAPE of
+      # the threshold, not a second concept, and every rule and diagnostic code
+      # already says `threshold`.
+      #
+      # THIS IS A ONE-SIDED BOUND, WHICH IS THE COMMON FORM. `tool_selection_accuracy`
+      # degenerates in one direction only, so only a floor is meaningful; a metric
+      # that can degenerate at both ends (latency, or a score that saturates
+      # because the questions got easier) writes `max:` as well.
+      #
+      # The bound is A BASELINED FLOOR, NOT A GUESS -- `baseline_runs: 5` below is
+      # what earns it, and E020 warns when a threshold is set without one: "a guess
+      # wearing the costume of a measurement".
+      #
+      # `MEASURED` 2026-09-24 in a scratch schema, THREE RUNS OF THIS DATASET:
+      #   run 1  0.698   the fixture was DEFECTIVE, not the agent -- `menu_docs_search`
+      #                  indexed `products.product_name`, so the search record scored
+      #                  0.12 after SIX retries against an index with no prose
+      #   run 2  1.000   after repointing the tool at `product_docs.product_description`
+      #   run 3  1.000   after making "name your source" mandatory in response.md
+      #
+      # SO 0.80 IS A FLOOR WITH 0.20 OF HEADROOM, and that headroom is the point.
+      # Gating at the measured 1.00 would fail on the first run where the agent
+      # legitimately takes a different path -- E010 already says a TSA move means the
+      # TOOL CALLS changed, and orchestration is non-deterministic, so a ceiling-tight
+      # gate converts ordinary variance into a red build.
+      #
+      # THREE RUNS IS NOT FIVE. `baseline_runs: 5` is what this key asks for and only
+      # three exist, two of them clean. The floor is evidenced rather than fully
+      # baselined, and saying so is cheaper than implying five runs happened.
+      threshold: {min: 0.80}
+    # ---------------------------------------------------------------------
+    # JUDGED, AND REPORTED RATHER THAN GATED.
+    # ---------------------------------------------------------------------
+    # Usually the most stable judged metric -- different tool paths often reach the
+    # same answer. Gate it against relationship and shape assertions rather than
+    # exact values, which is what the tier-3 and refusal rubrics in dataset.yml do.
+    - name: answer_correctness
+      version: v3
+      # Explicit v3 pin, matching every system metric in this fixture.
+      gate: false
+      # No `threshold`, because `gate: false`. A threshold on an ungated metric
+      # would be a number with no effect.
+      #
+      # `judge_model` IS FORBIDDEN HERE AND IS ABSENT. A SYSTEM metric takes its
+      # judge from its metric VERSION and the judge cannot be selected directly, so
+      # setting it is a SILENT NO-OP -- which must therefore be an ERROR (E009).
+      # Silence is the whole problem: the author gets positive evidence of a choice
+      # that never took effect.
+
+  # `project.eval_metrics_dir` is declared in sst_config.yml and
+  # `eval_metrics/answer_grounding.yml` is the judge, which gives the 17 `J0xx`
+  # custom-metric rules a happy path they previously had nowhere.
+  custom:
+    # A REF, NOT AN INLINE COPY, AND THE DISTINCTION IS THE ASSERTION. The judge is
+    # INLINED into the rendered YAML at render time (`D166`), so the rendered golden
+    # carries the whole prompt while this file carries only the name. That is what
+    # makes the broken-reference case meaningful: delete the judge and nothing is
+    # orphaned in Snowflake, because there was never an object -- only this ref,
+    # which validation must catch.
+    - "{{ eval_metric('answer_grounding') }}"
+
+run:
+  # MUST YIELD A NAME UNIQUE PER (agent db, agent schema, agent name): that 4-tuple
+  # plus the run name IS THE PRIMARY KEY of a result set (E001).
+  #
+  # MUST INCLUDE THE GIT SHA so a score is attributable to a commit (E002). `TS` is
+  # compact ISO-8601 UTC with no separators, so the whole name stays a valid
+  # unquoted identifier.
+  name_template: "EVAL_{{ agent | upper }}_{{ sha7 }}_{{ variant }}_{{ ts }}"
+  label: order-analytics-ci
+  description: |-
+    Continuous integration run for the order analytics agent. Gates on tool
+    selection; reports answer correctness.
+  # A TOKEN CLASSIFYING WHY THE RUN HAPPENED, and *** IT DRIVES RETENTION, NOT JUST
+  # READABILITY. ***
+  variant: ci
+  retention:
+    # Variant tokens KEPT INDEFINITELY. Their agent versions can NEVER be dropped:
+    # Snowflake renders a deleted version as a dash in evaluation history, which
+    # destroys the audit trail of every retained run referencing it (E005, A066).
+    audit:
+      - ci
+    # Variant tokens REAPABLE past a window. THE DURABLE ARTIFACT OF A MODEL
+    # COMPARISON IS THE WINNING CHOICE COMMITTED TO CONFIG, not the run -- which is
+    # what makes it safe to drop a sweep's ephemeral agent even though that dangles
+    # the run's agent reference.
+    decision:
+      - sweep
+    decision_window_days: 30
+  tier: blocking
+  # Automatic retries. BOTH RESULTS MUST BE REPORTED -- a silently discarded first
+  # attempt hides the non-determinism the retry exists to absorb.
+  retry: 1
+  # Parallel START calls. Wall time becomes the SLOWEST eval, not the sum. This is
+  # REAL AGENT LOAD AND REAL SPEND, because each run re-invokes the agent (E016).
+  concurrency: 2
+  # Runs used to LEARN a score's range BEFORE any threshold gates (E019). Required
+  # because orchestration is non-deterministic: repeated runs of the same dataset
+  # against the same pinned agent version and the same pinned metric version can
+  # take different tool paths and score differently.
+  baseline_runs: 5
+  # *** INVOCATION_PARTIALLY_COMPLETED AND PARTIALLY_COMPLETED ARE NOT PASSES. ***
+  # The full status set is CREATED, INVOCATION_IN_PROGRESS, INVOCATION_COMPLETED,
+  # INVOCATION_PARTIALLY_COMPLETED, COMPUTATION_IN_PROGRESS, COMPLETED,
+  # PARTIALLY_COMPLETED, CANCELLED. Treating a partial as a pass is the easiest way
+  # to ship a green build over a half-run eval (E015).
+  accept_statuses:
+    - COMPLETED
+
+# `sweep:` IS ABSENT. It compares ORCHESTRATION MODELS, not judges, and N
+# invocations are unavoidable: the orchestration model is a property of the agent
+# SPEC, and the run endpoint CANNOT override models, instructions or orchestration.
+# So a sweep means rendering the agent spec N times, deploying each as an EPHEMERAL
+# agent, and running the same config against each -- N agents and N runs. Not
+# covered here because it multiplies the fixture by N and because whether
+# EXECUTE_AI_EVALUATION can target a temporary agent is UNVERIFIED: eval runs are
+# addressed as (agent db, schema, name, run_name) and temporary agents have no
+# versioning.
+
+# =============================================================================
+# WHAT THIS FILE CANNOT EXPRESS, AND WHY IT IS NOT AN OMISSION
+# =============================================================================
+# THE CONFIG STAGE'S FILE FORMAT. E014 requires the stage holding this rendered YAML
+#   to carry TYPE='CSV' FIELD_DELIMITER=NONE RECORD_DELIMITER='\n' SKIP_HEADER=0
+#   FIELD_OPTIONALLY_ENCLOSED_BY=NONE ESCAPE_UNENCLOSED_FIELD=NONE, uncompressed.
+#   Any other format and EXECUTE_AI_EVALUATION cannot parse the file it is handed.
+#   NO KEY IN ANY SPEC EXPRESSES THIS, and that part has not changed: `apply.eval_config_stage`
+#   in sst_config.yml names the stage and says nothing about its format.
+#   *** WHAT CHANGED: SST OWNS THE STAGE'S FORMAT. Decision D086 -- CREATE IT IF ABSENT,
+#   ASSERT IT IF PRESENT, NEVER ALTER IT. *** So the requirement stops being infrastructure
+#   the author cannot state and becomes something the apply path guarantees. Three branches:
+#     ABSENT  -> SST creates it, carrying E014's format exactly, uncompressed.
+#     PRESENT AND CORRECT -> nothing happens.
+#     PRESENT AND WRONG   -> HARD ERROR quoting the exact required clause. SST never ALTERs a
+#                            stage it did not create, because a pre-existing stage may be used
+#                            by processes that are not SST and a silent FILE FORMAT change
+#                            breaks them. The error is actionable: one ALTER the deployer runs
+#                            once.
+#   *** THE CREATE IS `CREATE STAGE IF NOT EXISTS`, NEVER `CREATE OR REPLACE STAGE`. ***
+#   This is a constraint, not a style preference, and the reason is specific to THIS stage:
+#   CREATE OR REPLACE STAGE DESTROYS THE STAGED FILES, and the staged files are the eval
+#   configs themselves -- so a second apply would wipe what the first uploaded.
+#   *** CREATE BUT NEVER PRUNE, AND THE ASYMMETRY IS DELIBERATE. *** Reaping this stage would
+#   delete config files. Note that the eval sweep's ephemeral agents ARE reaped, so
+#   "SST cleans up what it creates" is NOT a uniform rule and must not be read as one.
+#   WHY CREATING IS SAFE HERE, AND WHY THIS DOES NOT GENERALISE: `apply.eval_config_stage`
+#   takes a stage NAME ONLY, with no database or schema key, because the stage follows the
+#   agent by the colocation rule. So it is always in the
+#   agent's own schema, where SST already needs CREATE AGENT. *** CONTRAST
+#   `apply.agent_spec_stage`, WHICH DOES HAVE `.database` AND `.schema` KEYS *** and can
+#   therefore point at a schema SST holds no CREATE on -- this answer must NOT be generalised
+#   to that stage.
+#   REJECTED: document-only, the cheapest option, which leaves exactly the silent-failure class
+#   this plan exists to remove -- a project that passes every check and fails at run time.
+#   Also REJECTED: ALTER-if-wrong, including the sub-variant of marking SST-created stages with
+#   a COMMENT and altering only those, which is real and cheap but adds a provenance convention
+#   to maintain for a case one clear error message already handles.
+#
+# THE ONE-PRIMARY-ROLE REQUIREMENT. *** RUNS EXECUTE AS TASKS, AND TASKS IGNORE
+#   SECONDARY ROLES. *** So a role set that works interactively can fail as a run
+#   with no config difference at all -- the privileges are present in the session
+#   and absent in the task (E012). Not expressible here either; it is a grant
+#   topology, and the consequence worth stating is that AN ANALYST CANNOT RUN AN
+#   AD-HOC UI EVAL AGAINST A GOVERNED AGENT, because the run executes from the
+#   agent's schema and an analyst will not hold CREATE TASK there.
+#   *** DIRECTION SETTLED AND MECHANISM NOW SETTLED TOO -- THERE IS NO PRE-FLIGHT.
+#   D149, TESTED 2026-09-22. *** D086 established the principle for the line above
+#   it -- assert what is cheaply assertable rather than failing silently -- and
+#   that principle applies here too. What D086 could not settle was whether the
+#   assertion is AVAILABLE. It is not. The candidate mechanism was
+#   EXPLAIN_PRIVILEGES(<stmt>, missing_only => TRUE, for_role => '<the primary
+#   role>'), which has the right SEMANTICS by construction, because naming one
+#   role is exactly what a task does. Measured, the semantics are not the problem
+#   and neither is the grammar: the function PARSES
+#   CALL EXECUTE_AI_EVALUATION(...) -- so the first of the three doubts above is
+#   discharged -- and then returns {"authorized": true} INVARIANTLY, including
+#   with missing_only => FALSE. It has no privilege model for that function, so a
+#   verdict comes back that cannot discriminate the failure E012 describes. An
+#   always-true pre-flight is worse than none: it would assert the requirement is
+#   met in exactly the case where it is not.
+#   *** SO E012 IS DOCUMENTED, NOT PRE-FLIGHTABLE, AND THAT IS THE ANSWER RATHER
+#   THAN A GAP. *** It stays a grant-topology requirement stated here and in
+#   errors/, and this block is where a reader learns it is unenforced. The other
+#   two doubts stand unchanged and are now moot for this leg: PUT is a
+#   client-side command with no statement to parse, and an unresolvable reference
+#   raises instead of returning a verdict, which still bites whenever the dataset
+#   or an ephemeral sweep agent does not yet exist.
+#   NOTE the blind spot is SPECIFIC to this function, not a general weakness of
+#   EXPLAIN_PRIVILEGES -- it analyses function calls in general -- which is why
+#   nothing in the grant-capability rules for evaluations is withdrawn: their
+#   five properties are all re-confirmed by this run.
+#
+# COORDINATION WITH A SEMANTIC VIEW REGENERATE. E021 warns when an eval run overlaps
+#   a regenerate of a view the agent uses, because the run READS that view while the
+#   regenerate is republishing it. NOTHING IN SNOWFLAKE COORDINATES THIS; SST must
+#   serialise. A fixture cannot assert a race.
+# =============================================================================

@@ -1,0 +1,177 @@
+---
+# =============================================================================
+# profiles.yml -- the reference-impl fixture
+# =============================================================================
+# WHY THIS FILE IS IN THE FIXTURE AT ALL. The golden DDL in expected/ddl/ names
+# fully-qualified relations. Those come from the resolved target, and the target
+# comes from here -- not from sst_config.yml, which by design carries no
+# credentials, no account and no role. Without this file the
+# golden DDL would not be derivable from the inputs, and a golden file you
+# cannot derive is a golden file you cannot review.
+#
+# THIS FILE IS THE SINGLE AUTHORITY ON WHAT A TARGET IS. SST's `--target` IS a
+# dbt target: SST declares no target namespace of its own, and a `--target` this
+# file does not declare is a REFUSAL rather than a warning. Everything keyed by a
+# target resolves against the blocks below -- `relations:` keys in
+# tools/jaffle_platform.yml, `defer.target` in sst_config.yml, and `sweep.target`
+# in an eval config.
+#
+# WHY THAT IS THE DESIGN RATHER THAN A RESTRICTION. The mismatch class exists only
+# because two target namespaces can disagree: dbt's, which selects the database, and
+# an SST-private one. `MEASURED` -- 0.3 warns only, only when defer is enabled, and only
+# against the defer target, so a `dbt compile --target dev` followed by a prod apply
+# points EVERY view at a scratch schema and reports success. Merging the namespaces
+# stops the class existing rather than detecting it. The cost is real and is paid here:
+# an SST-only target has to become a declared dbt target, which is what the `ci` block
+# below is.
+#
+# THE GOLDEN FILES ASSUME `--target dev`. That is the single most important fact
+# about this file. expected/ddl/*.sql, expected/agent/*.json and
+# expected/manifest.json all resolve against the `dev` block below.
+#
+# NO DATA VALUES AND NO CREDENTIALS. `account`, `user`, `password`, `role` and
+# `private_key_path` are deliberately absent: a fixture that carried them would
+# be a secret in git, and none of the golden files depend on them. A harness
+# supplies them from the environment for the two connected phases
+# (--verify-schema, --snowflake-syntax-check) and for `plan` / `apply`.
+# Everything else in this fixture is offline.
+# =============================================================================
+
+sst_reference_impl:
+  target: dev
+
+  outputs:
+    dev:
+      type: snowflake
+      database: SST_REF_DEV
+      schema: JAFFLE
+      warehouse: SST_REF_WH
+      threads: 4
+
+    prod:
+      type: snowflake
+      database: SST_REF_PROD
+      schema: JAFFLE
+      warehouse: SST_REF_WH
+      threads: 4
+
+    # DECLARED BECAUSE THE HARNESS NAMES IT, AND AN UNDECLARED TARGET IS A REFUSAL.
+    # The test harness runs a connected CI job against an `SST_REF_CI`
+    # database. For as long as SST carried its own target namespace, that target could
+    # exist in the harness and nowhere else -- which is exactly the shape the merged
+    # namespace removes. It is declared here rather than deleted from the harness
+    # because a CI account that writes to the same database a developer reads is a
+    # worse fixture than one with a third target.
+    ci:
+      type: snowflake
+      database: SST_REF_CI
+      schema: JAFFLE
+      warehouse: SST_REF_WH
+      threads: 4
+
+    # =========================================================================
+    # THE VERIFICATION TARGET. NOT A FOURTH ENVIRONMENT -- A WAY TO RUN THE
+    # FIXTURE SOMEWHERE REAL.
+    # =========================================================================
+    # THIS BLOCK EXISTS BECAUSE ITS ABSENCE WAS A DEFECT. The fixture was verified
+    # end to end against a live account on 2026-09-24 -- `dbt build` returning
+    # `PASS=43 WARN=0 ERROR=0`, three semantic views created and round-tripped
+    # through `GET_DDL`, a search service, three agents and three eval runs -- and
+    # the target that made all of it possible lived in a throwaway file in /tmp.
+    # So the verification was real and NOT REPRODUCIBLE BY ANYONE ELSE, which makes
+    # it an anecdote rather than a result.
+    #
+    # EVERY VALUE IS FROM THE ENVIRONMENT, AND THAT IS THE WHOLE POINT. The account
+    # this fixture was verified in used a single engineer's personal scratch
+    # schema. Hardcoding it would put one person's namespace in a
+    # spec artifact and make the block useless to the next reader. The defaults
+    # below name no real object: `SCRATCH` is a conventional database name and the
+    # schema has NO default, so a `--target verify` with `SST_VERIFY_SCHEMA` unset
+    # fails loudly instead of writing somewhere arbitrary.
+    #
+    # THE GOLDENS DO NOT RESOLVE AGAINST THIS BLOCK AND MUST NOT. `dev` is the
+    # golden target, and `expected/ddl/*.sql` names `SST_REF_DEV.JAFFLE`
+    # relations. Verification therefore compares SHAPE, not text: take a golden,
+    # substitute the namespace, execute it, and diff `GET_DDL` of the result
+    # against `GET_DDL` of the independently built object. That is what
+    # `expected/README.md` records for the three DDL goldens.
+    #
+    # IT IS DELIBERATELY ABSENT FROM `relations:` IN tools/jaffle_platform.yml, so
+    # a `--target verify` plan that reaches the referenced procedure fails on
+    # registry coverage exactly as `ci` does (X007). That is correct: a target for
+    # running the fixture is not a target the fixture's own tool registry should
+    # claim to cover.
+    #
+    # STILL NO CREDENTIALS IN GIT. `account`, `user`, `role` and the authenticator
+    # are `env_var` calls WITH NO DEFAULT, so an unset one fails at profile load
+    # with the variable named rather than connecting somewhere unintended. That is
+    # the same rule the header states for the other three blocks; the difference is
+    # only that those blocks never connect, so they can omit the keys entirely while
+    # this one has to name them.
+    #
+    # `MEASURED` 2026-09-24: with these keys absent, `dbt debug --target verify`
+    # fails `Credentials in profile "sst_reference_impl", target "verify" invalid:
+    # 'account' is a required property`. A target that cannot load is a worse
+    # fixture than one that names its inputs.
+    #
+    # `externalbrowser` IS THE DEFAULT AUTHENTICATOR AND NOT A REQUIREMENT. The
+    # 2026-09-24 run used it against an already-cached SSO credential and never
+    # prompted. Set `SST_VERIFY_AUTHENTICATOR` to anything the Snowflake adapter
+    # accepts -- keypair, oauth -- where browser auth is unavailable.
+    verify:
+      type: snowflake
+      account: "{{ env_var('SST_VERIFY_ACCOUNT') }}"
+      user: "{{ env_var('SST_VERIFY_USER') }}"
+      authenticator: "{{ env_var('SST_VERIFY_AUTHENTICATOR', 'externalbrowser') }}"
+      role: "{{ env_var('SST_VERIFY_ROLE') }}"
+      database: "{{ env_var('SST_VERIFY_DATABASE', 'SCRATCH') }}"
+      schema: "{{ env_var('SST_VERIFY_SCHEMA') }}"
+      warehouse: "{{ env_var('SST_VERIFY_WAREHOUSE') }}"
+      threads: 4
+
+# FOUR TARGETS, AND EACH ONE IS LOAD-BEARING FOR A DIFFERENT REASON.
+#
+#   `dev`   THE GOLDEN TARGET. Every file in expected/ resolves against this block.
+#
+#   `prod`  EXERCISES X007 POSITIVELY. `tools/jaffle_platform.yml` declares a
+#           `reference:` member whose `relations:` map is KEYED BY TARGET with
+#           deliberately no `default:` key (rule X007). A registry
+#           covering only `prod` must FAIL a `dev` plan rather than silently resolve
+#           to the wrong environment -- and for a procedure that WRITES, a dev deploy
+#           resolving to the production path is a production mutation triggered by a
+#           development run. That rule is unexercisable with a single target, so the
+#           map covers `dev` and `prod` and the fixture can assert both resolve.
+#
+#   `ci`    EXERCISES X007 NEGATIVELY, AND IS DELIBERATELY ABSENT FROM `relations:`.
+#           A `--target ci` plan that reaches the referenced procedure must fail on
+#           registry coverage. Note what that failure is NOT: it is not "ci is not a
+#           target". `ci` is a declared target, so the refusal comes from the tool
+#           registry not covering it, which is a different and more specific finding
+#           than an unknown target. Distinguishing those two refusals is only possible
+#           because this file is the authority on the first one.
+#           `PROPOSAL` -- no golden asserts the X007 refusal today. The negative corpus
+#           is twelve overlays across three targets -- semantic layer, dbt seam and
+#           config -- and none of them is a target
+#           probe, so adding one is a fixture change with a golden behind it, not a
+#           comment. Recorded here because the target that makes it expressible now
+#           exists.
+#
+#   `verify` THE ONLY TARGET THAT POINTS AT A REAL ACCOUNT, and the only one whose
+#           values are environment-driven. It asserts nothing. Its job is to make the
+#           run that produced `expected/README.md`'s VERIFIED column repeatable by
+#           someone who is not the person who did it first. Set
+#           `SST_VERIFY_SCHEMA` and `SST_VERIFY_WAREHOUSE`, then:
+#
+#             dbt deps
+#             dbt build --target verify
+#
+#           A clean run is `PASS=43 WARN=0 ERROR=0 SKIP=0` -- 7 seeds, 8 table
+#           models, 1 view, 27 data tests.
+#
+#           TWO THINGS TO KNOW BEFORE RUNNING IT. `dbt build` REMATERIALISES EVERY
+#           MART, and a rebuilt mart silently breaks any Cortex Search service
+#           standing on it -- the service keeps reporting `ACTIVE` over a stale index
+#           (drift row 21). And the seeds carry three deliberate
+#           edge cases, so a diff against a hand-loaded schema is expected to show
+#           them: a duplicated `orders_raw` row for the dedup path, a null
+#           `order_state`, and a null `item_price` for the list-price fallback.

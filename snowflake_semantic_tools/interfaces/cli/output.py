@@ -92,8 +92,8 @@ class CLIOutput:
         Example:
             output.config_table([
                 ("Profile", "analytics_dbt.dev"),
-                ("Read from", "SCRATCH.LUIZZI_SCRATCH_SST"),
-                ("Create in", "SCRATCH.LUIZZI_SCRATCH_SST"),
+                ("Read from", "MY_DB.MY_SCHEMA"),
+                ("Create in", "MY_DB.MY_SCHEMA"),
             ])
         """
         if self.quiet or not items:

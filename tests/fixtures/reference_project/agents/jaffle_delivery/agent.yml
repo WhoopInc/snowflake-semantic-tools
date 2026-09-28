@@ -1,0 +1,118 @@
+---
+# =============================================================================
+# agents/jaffle_delivery/agent.yml -- the reference-impl fixture
+# =============================================================================
+# THE DELEGATING AGENT, AND THE ONLY PLACE `A030` IS REACHABLE.
+#
+# A030: "an `agent` toolset ref resolves, and the agent reference graph is ACYCLIC
+# (a cycle is an infinite delegation at run time)." Two things have to be true
+# before that rule can fire at all:
+#
+#   1. Some agent must reference ANOTHER agent as a tool. One agent in a project
+#      cannot form a graph, so `jaffle_analytics` alone leaves A030 unreachable.
+#   2. The referenced agent must resolve. This one points at
+#      `partner_delivery_agent`, the `type: agent` entry in the IMMUTABLE tool
+#      group -- so the reference also proves an `agent`-kind tool under
+#      `reference:` is addressable without this repo ever creating it.
+#
+# THE GRAPH HERE IS DELIBERATELY A TWO-NODE CHAIN, NOT A CYCLE:
+#
+#   jaffle_delivery ---> partner_delivery_agent (external, immutable group)
+#
+# `jaffle_analytics` does NOT reference this agent back. The acyclic case is the
+# happy path and belongs here; the CYCLE is an error and belongs in `negative/`,
+# where a fixture that pointed two agents at each other would assert A030 firing.
+# Authoring the cycle here would make the whole project invalid.
+#
+# WHY A DELIVERY AGENT AND NOT A SECOND ANALYTICS ONE. Delegation only makes sense
+# when the delegate knows something the caller does not. Delivery status lives with
+# the partner, not in any semantic view here, so routing to them is the honest
+# shape -- and it keeps this agent's own scope narrow enough that its instructions
+# stay short.
+#
+# NO DATA VALUES.
+# =============================================================================
+
+name: jaffle_delivery_agent
+
+# NO `create_mode` KEY (`D255`) -- the publisher creates if absent and adds a version
+# if present, decided by observation rather than authored.
+
+comment: |-
+  Answers questions about the delivery status of a jaffle order by routing to the
+  partner's delivery agent. Holds no semantic views of its own.
+
+profile:
+  display_name: Jaffle Delivery
+  avatar: TruckAgentIcon
+  color: green
+
+spec:
+  models:
+    orchestration: claude-sonnet-4-5
+
+  # BOTH INSTRUCTION CHANNELS SIT UNDER `instructions:`, WHICH IS A MAP.
+  #
+  # These two blocks were authored as `spec.orchestration:` and `spec.instructions:`
+  # holding BARE STRINGS, and both were TYPE ERRORS (`SST-PRS003` twice).
+  # `spec.orchestration` is a map of `budget`, `tool_not_accessible` and
+  # `capabilities` -- putting prose there collides with the budget keys
+  # `jaffle_analytics` uses -- and `spec.instructions` is a map of
+  # `orchestration`, `response` and `sample_questions`.
+  #
+  # NO SHORTHAND EXISTS TO RESCUE THE OLD SHAPE, and the plan is pointed about
+  # it: `A045` is an ERROR precisely for `sample_questions` entries written as
+  # bare strings instead of maps. A reader who saw a scalar tolerated here would
+  # reasonably infer a general string-for-map coercion, and there is none.
+  #
+  # INLINE HERE, `{{ file() }}` IN `jaffle_analytics`. That asymmetry is
+  # deliberate: this agent's instructions are short enough to read in place, and
+  # the fixture needs one agent of each kind so a renderer that only handles the
+  # file form, or only the inline form, fails on one of them.
+  instructions:
+    orchestration: |-
+      Decide whether the question is about DELIVERY or about the ORDER ITSELF.
+
+      A question about where an order is, when it will arrive, or why it is late is a
+      delivery question: route it to the partner delivery agent and return what it
+      says.
+
+      A question about what was ordered, what it cost, or how many were sold is NOT a
+      delivery question. Do not answer it. Say that it belongs to the jaffle analytics
+      agent and stop -- you hold no semantic view and cannot answer it even
+      approximately.
+
+      Never invent a delivery status. If the partner agent returns nothing, say the
+      status is unavailable.
+
+    response: |-
+      Report a delivery status exactly as the partner returns it, including any
+      timestamp, and name the partner as the source.
+
+      If the partner's answer and the question disagree about which order is meant,
+      say so rather than guessing which order the user intended.
+
+  tools:
+    # THE `agent` TOOLSET REF. This is the edge A030 walks. It resolves into the
+    # `jaffle_partner` group's `reference:` block, which means:
+    #   - no DDL is emitted for it here, ever
+    #   - the group is `immutable: true`, so this repo could not create it even by
+    #     mistake -- X020 would reject a `define:` in that group
+    - name: partner_delivery_agent
+      type: agent
+      description: |-
+        The partner's delivery agent. Answers where an order is and when it will
+        arrive. Does NOT answer anything about order contents or value.
+
+# `current` WAS THE AUTHORED VALUE AND IT CANNOT BE CREATED -- it is a SQL
+# reserved word, so `SET ALIAS = current` is a syntax error (drift row 30).
+# `"current"` works but is stored case-sensitively lowercase. `promoted` is not
+# reserved and stores as `PROMOTED`; see jaffle_analytics/agent.yml for the full
+# note. Both agents move together because both declared the same bad name.
+alias: promoted
+
+enabled: true
+
+meta:
+  owner: daa-platform
+  deprecated: false

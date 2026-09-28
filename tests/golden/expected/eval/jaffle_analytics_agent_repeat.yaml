@@ -1,0 +1,56 @@
+evaluation:
+  agent_params:
+    agent_name: "SST_REF_DEV.JAFFLE.JAFFLE_ANALYTICS_AGENT"
+    agent_type: "CORTEX AGENT"
+    agent_version: "LAST"
+  run_params:
+    label: "order-analytics-ci"
+    description: |-
+      Continuous integration run for the order analytics agent. Gates on tool
+      selection; reports answer correctness.
+  source_metadata:
+    type: "dataset"
+    dataset_name: "SST_REF_DEV.JAFFLE.EVAL_JAFFLE_ANALYTICS_AGENT_DCE1F8A"
+metrics:
+  - name: "tool_selection_accuracy"
+    version: "v3"
+  - name: "answer_correctness"
+    version: "v3"
+  - name: "answer_grounding"
+    model: "claude-sonnet-4-6"
+    score_ranges:
+      min_score:
+        - 0
+        - 1
+      median_score:
+        - 2
+        - 3
+      max_score:
+        - 4
+        - 5
+    prompt: |-
+      You are scoring whether an analytical answer is GROUNDED in the semantic view it
+      claims to have used.
+
+      You will be given the question, the view the answer cites, and the answer.
+
+      Score 4 to 5 when the cited view can actually answer the question, the answer
+      states which view it used, and any threshold-dependent figure says which
+      threshold applied.
+
+      Score 2 to 3 when the cited view can answer the question but the answer omits
+      something a reader needs to interpret it -- the view it used, the units, or the
+      threshold behind a "large order" figure. The number may be right.
+
+      Score 0 to 1 when the cited view CANNOT answer the question, when the answer
+      silently spans two views whose scopes do not overlap, or when it answers a
+      question about an individual customer instead of declining.
+
+      A CLEAN DECLINE SCORES 4 TO 5. If the question needs both customer attributes
+      and product detail, the correct answer is to say it spans two views and cannot
+      be answered from either. Do not penalise a refusal that is correct.
+
+      If evidence is insufficient or two scores are tied, choose the lower score.
+
+      Judge only grounding. Do not judge SQL correctness, which is scored separately,
+      and do not penalise an answer for being brief.

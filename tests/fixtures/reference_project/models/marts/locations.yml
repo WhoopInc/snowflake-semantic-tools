@@ -1,0 +1,104 @@
+---
+# =============================================================================
+# models/marts/locations.yml
+# =============================================================================
+# THE DIMENSION-ONLY MODEL. No fact, no metric of its own -- it exists to be
+# joined, and it is the only table `jaffle_sales` has that `jaffle_menu` does not.
+#
+# THE CROSS-CUTTING REASONING -- the seam, the jaffle domain, the one-line
+# `description:` constraint and the `D213` data rule -- IS IN `../README.md`, not
+# repeated here. Read that first if this is the first model file you have opened.
+# =============================================================================
+
+version: 2
+
+models:
+  - name: locations
+    description: |-
+      One row per store location.
+    config:
+      contract:
+        enforced: true
+      on_schema_change: fail
+      meta:
+        sst:
+          # THE GRAIN OF THIS MODEL, AND THE MODEL IS THE SINGLE SOURCE (`D231`).
+          primary_key:
+            - location_id
+    columns:
+      - name: location_id
+        data_type: VARCHAR
+        description: |-
+          Surrogate key for the location. An identifier, therefore a dimension.
+        config:
+          meta:
+            sst:
+              column_type: dimension
+              is_enum: false
+              synonyms:
+                - location key
+                - shop identifier
+        data_tests:
+          - unique
+          - not_null
+
+      - name: location_name
+        data_type: VARCHAR
+        description: |-
+          The store's trading name.
+        config:
+          meta:
+            sst:
+              column_type: dimension
+              is_enum: false
+              synonyms:
+                - shop name
+                - store name
+                - branch
+              sample_values:
+                - Philadelphia
+                - Brooklyn
+
+      - name: opened_at
+        data_type: TIMESTAMP_NTZ
+        description: |-
+          When the location opened for trade.
+        config:
+          meta:
+            sst:
+              column_type: dimension
+              synonyms:
+                - opening date
+                - when the shop opened
+              sample_values:
+                - "2023-03-01 08:00:00"
+                - "2023-09-15 08:00:00"
+
+      - name: tax_rate
+        data_type: NUMBER(38,4)
+        description: |-
+          Local sales tax rate applied at this location.
+        config:
+          meta:
+            sst:
+              column_type: fact
+              synonyms:
+                - sales tax rate
+                - tax percentage
+              sample_values:
+                - 0.08
+                - 0.0875
+
+  # ========================================================================
+  # pricing_periods -- the RANGE join target
+  # ========================================================================
+  # THIS TABLE IS THE ONE ASSET TAKEN FROM THE DONOR'S DESIGN. `sst-jaffle-shop`
+  # added `raw_pricing_periods` for exactly one reason: to exercise
+  # `BETWEEN ... EXCLUSIVE` and `CONSTRAINT ... DISTINCT RANGE`. Reusing that idea
+  # is why the range relationship here joins real business grain rather than a
+  # synthetic date spine.
+  #
+  # `UNIQUE` ON THE RANGE PAIR IS NOT REQUIRED BY THE GRAMMAR, and that was
+  # MEASURED rather than assumed: the form below -- `PRIMARY KEY` on the identifier
+  # plus `CONSTRAINT ... DISTINCT RANGE BETWEEN ... EXCLUSIVE` with no key on the
+  # range pair -- parses against Snowflake.

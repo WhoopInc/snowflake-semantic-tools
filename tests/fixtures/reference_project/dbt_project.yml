@@ -1,0 +1,150 @@
+---
+# =============================================================================
+# dbt_project.yml -- the reference-impl fixture
+# =============================================================================
+# SST reads exactly TWO keys out of this file directly -- `name` and
+# `model-paths` -- and everything else about a model through target/manifest.json.
+# Nothing here is an SST authoring surface.
+#
+# NO DATA VALUES. This file carries configuration only.
+# =============================================================================
+
+name: sst_reference_impl
+version: "1.0.0"
+config-version: 2
+
+# Must match a key in profiles.yml. SST resolves its connection through the SAME
+# profile, which is what makes `--target dev` mean one thing to both tools.
+profile: sst_reference_impl
+
+# THE ONE PATH KEY SST READS. sst_config.yml deliberately has no key for it.
+model-paths: ["models"]
+macro-paths: ["macros"]
+test-paths: ["tests"]
+snapshot-paths: ["snapshots"]
+seed-paths: ["seeds"]
+target-path: "target"
+
+clean-targets:
+  - "target"
+  - "dbt_packages"
+
+# PINNED DELIBERATELY, AND THE UPPER BOUND IS NOW MEASURED RATHER THAN ASSUMED.
+#
+# This read `[">=1.11.0", "<1.12.0"]` on the stated grounds that "two dbt versions
+# produce two manifest shapes, and the seam reads the manifest". THE PREMISE WAS
+# NOT TRUE ACROSS THIS BOUNDARY. `MEASURED` 2026-09-24, same project parsed under
+# both:
+#
+#   dbt 1.11.15  manifest schema v12.json   43 nodes, 7 sources
+#   dbt 1.12.5   manifest schema v12.json   43 nodes, 7 sources
+#
+# Identical schema, identical counts, and `dbt build` returned
+# `PASS=43 WARN=0 ERROR=0` under both. 1.12 also emitted NO deprecations, where
+# 1.11 emitted three classes of them that have since been fixed. So the old ceiling
+# excluded a version that is strictly better behaved on this project.
+#
+# THE SEAM ARGUMENT STILL STANDS, it just binds to the MANIFEST SCHEMA rather than
+# to the dbt minor. Widen while the schema holds at v12; re-pin the moment it moves,
+# because that is the change SST's manifest reader actually feels.
+#
+# 2.x IS NOT AN OPTION *THROUGH PIP*, AND THE EARLIER READING OF WHY WAS WRONG.
+# `MEASURED` 2026-09-24 against a private package mirror: `dbt-core` resolves
+# no higher than `2.0.0rc8` and `dbt-snowflake` no higher than `1.12.1`. An earlier
+# version of this comment concluded from that "the blocker is the adapter, not the
+# core", because asking for `dbt-core==2.0.0rc8` resolved only by downgrading the
+# adapter to 1.11.2.
+#
+# THAT CONCLUSION WAS AN ARTEFACT OF ASKING PIP. dbt `v2` adapters are written in
+# RUST and live in the dbt monorepo, not as standalone Python packages -- dbt's own
+# docs contrast "Adapters in `v2` are written in Rust ... rather than as standalone
+# Python packages" with "A separate Python package (e.g. dbt-snowflake)". dbt Core
+# `v2`.0 IS the Fusion runtime, open-sourced under Apache 2.0, and it ships as a
+# single binary: "The Rust binary replaces the pip-and-virtualenv pattern".
+# Connectivity is ADBC, not the Python connector. **SO `dbt-snowflake` IS NOT A
+# GATE ON 2.0 AT ALL, AND THE VERSION OF THE ENGINE IS THE ONLY THING THAT
+# DEFINES 2.0/FUSION.** Pip paired a 2.0 core with a 1.11 adapter because pip
+# satisfies version constraints, not because that pairing means anything.
+#
+# WHAT REMAINS TRUE IS THE MATURITY, NOT THE ADAPTER. dbt Core `v2`.0 is in ALPHA
+# (first released 2026-06-01) and the proprietary Fusion distribution is in
+# PREVIEW. Snowflake is among the adapters supported at launch. Pinning a
+# reference implementation -- the artifact an engine gets built against -- to an
+# alpha would make the manifest shape a moving target, which is the one thing
+# this key exists to prevent.
+require-dbt-version: [">=1.11.0", "<1.13.0"]
+
+models:
+  sst_reference_impl:
+    +materialized: table
+
+    # THE KEY THAT MAKES DESCRIPTIONS REACH THE SEMANTIC LAYER. Without it the
+    # column descriptions exist in dbt docs and nowhere Cortex Analyst can read
+    # them.
+    +persist_docs:
+      relation: true
+      columns: true
+
+    staging:
+      +materialized: view
+
+    marts:
+      +materialized: table
+
+# =============================================================================
+# SEEDS -- THE RAW LAYER, FOR EVERY TARGET THAT IS NOT PROD
+# =============================================================================
+# The seven CSVs under `seeds/` carry the same seven relations that
+# `models/staging/_sources.yml` declares. In prod that source resolves to the
+# real replicated schema; everywhere else it resolves to these seeds, which is
+# what makes the whole DAG runnable from a clean account with no upstream
+# replication. `_sources.yml` does the switching.
+#
+# COLUMN TYPES ARE DECLARED, NOT INFERRED. dbt infers a seed's types from the
+# CSV text, and it gets timestamps and booleans wrong often enough that the
+# marts' casts then fail on type rather than on value -- a failure that reads
+# like a model bug and is not one. `_replicated_at` is the one that matters
+# most: `stg_orders` ORDERs BY it to dedup, and a VARCHAR sorts
+# lexicographically, which happens to agree with a TIMESTAMP for ISO-8601 text
+# and so hides the defect until a format changes.
+#
+# NO DATA VALUES HERE. The values live in the CSVs, which are synthetic.
+seeds:
+  sst_reference_impl:
+    +quote_columns: false
+    orders_raw:
+      +column_types:
+        ordered_at: TIMESTAMP_NTZ
+        subtotal: NUMBER(38,2)
+        order_total: NUMBER(38,2)
+        _replicated_at: TIMESTAMP_NTZ
+    order_items_raw:
+      +column_types:
+        occurred_at: TIMESTAMP_NTZ
+        item_price: NUMBER(38,2)
+    products_raw:
+      +column_types:
+        list_price: NUMBER(38,2)
+    locations_raw:
+      +column_types:
+        opened_at: TIMESTAMP_NTZ
+        tax_rate: NUMBER(38,4)
+    pricing_periods_raw:
+      +column_types:
+        effective_start_at: TIMESTAMP_NTZ
+        effective_end_at: TIMESTAMP_NTZ
+        base_price_multiplier: NUMBER(38,4)
+        discount_pct: NUMBER(38,4)
+    supplies_raw:
+      +column_types:
+        snapshot_month: TIMESTAMP_NTZ
+        is_perishable: BOOLEAN
+        supply_cost: NUMBER(38,2)
+
+# NOTE ON WHAT IS ABSENT, AND WHY:
+#   +schema is NOT set. Every model therefore lands in the target's own schema,
+#   so the resolved relation for a model is <target database>.<target schema>.
+#   <alias or name>. That keeps the resolved relations in expected/ddl/*.sql
+#   derivable from profiles.yml alone, with no generate_schema_name question to
+#   settle. Adding a +schema here would be a legitimate fixture extension and
+#   would change every relation in both golden DDL files.

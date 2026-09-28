@@ -1,0 +1,139 @@
+---
+# =============================================================================
+# models/marts/customers.yml
+# =============================================================================
+# THE EQUALITY-JOIN TARGET, AND THE ENUM CASE. Its `customer_type`
+# carries `sample_values` and `is_enum`, which render as a NATIVE
+# `SAMPLE_VALUES (...) IS_ENUM` tail on the member itself in the DDL goldens. This
+# header used to say they put a `CA=` entry in those goldens; `D220` deletes that
+# clause, so the values land on the dimension rather than in a payload beside it.
+#
+# THE CROSS-CUTTING REASONING -- the seam, the jaffle domain, the one-line
+# `description:` constraint and the `D213` data rule -- IS IN `../README.md`, not
+# repeated here. Read that first if this is the first model file you have opened.
+# =============================================================================
+
+version: 2
+
+models:
+  - name: customers
+    description: |-
+      One row per customer. A customer is a person who has placed at least one order.
+    config:
+      # The only dbt-side guard on SHAPE (B011).
+      contract:
+        enforced: true
+      # `fail` rather than `sync_all_columns`. `sync_all_columns` REMOVES columns
+      # that disappeared upstream, which is the column-drop failure mode arriving
+      # BY CONFIGURATION rather than by edit, with no diff in any model file to
+      # review. A model feeding a semantic view wants a build failure instead.
+      on_schema_change: fail
+      meta:
+        sst:
+          # THE GRAIN OF THIS MODEL, AND THE MODEL IS THE SINGLE SOURCE (`D231`).
+          primary_key:
+            - customer_id
+          # `unique_keys` ALONGSIDE `primary_key`. `primary_key` alone satisfies
+          # `V012` and `R011`, so this second declaration is here to exercise
+          # the key rather than because any view needs it -- a natural key that
+          # is unique but is not the surrogate the joins use. `V026` forbids a
+          # column appearing in both, which is why these two lists are disjoint.
+          unique_keys:
+            - - customer_name
+    columns:
+      # AN IDENTIFIER IS A DIMENSION, NEVER A FACT. An identifier is numeric-looking
+      # to anything inferring by type, and summing one validates cleanly and
+      # produces a meaningless number.
+      - name: customer_id
+        data_type: VARCHAR
+        description: |-
+          Surrogate key for the customer. An identifier, therefore a dimension and never a fact.
+        config:
+          meta:
+            sst:
+              column_type: dimension
+              is_enum: false
+              synonyms:
+                - customer key
+                - customer identifier
+        data_tests:
+          - unique
+          - not_null
+
+      # THE ESCAPING CASE. This description contains an apostrophe, so the rendered
+      # COMMENT must double it: 'The customer''s display name.' Three such
+      # descriptions exist in this file and all three are asserted in a golden.
+      - name: customer_name
+        data_type: VARCHAR
+        description: |-
+          The customer's display name.
+        config:
+          meta:
+            sst:
+              column_type: dimension
+              is_enum: false
+              synonyms:
+                - customer full name
+                - who the customer is
+
+      # THE ENUM CASE (`D213`). A closed set, so `is_enum` is true and the sample
+      # values ARE the domain rather than a sample of it.
+      - name: customer_type
+        data_type: VARCHAR
+        description: |-
+          Whether the customer has ordered before. A closed set.
+        config:
+          meta:
+            sst:
+              column_type: dimension
+              is_enum: true
+              synonyms:
+                - customer segment
+                - new or returning
+                - customer cohort
+              sample_values:
+                - new
+                - returning
+
+      # A TIMESTAMP IS EMITTED AS A PLAIN DIMENSION. There is no time-dimension clause
+      # of its own and nothing records that this column was one: `D219` deletes the
+      # `time_dimensions` provenance array as redundant with `DATA_TYPE`, and `D220`
+      # deletes the `WITH EXTENSION (CA=...)` payload that used to hold it. THIS COMMENT
+      # CITED THAT PAYLOAD as the reason the DDL path is not lossy. The reason is now
+      # simpler: the values below render as a NATIVE `SAMPLE_VALUES` clause on the
+      # member itself.
+      - name: first_ordered_at
+        data_type: TIMESTAMP_NTZ
+        description: |-
+          When the customer placed their first order.
+        config:
+          meta:
+            sst:
+              column_type: dimension
+              synonyms:
+                - first order date
+                - date of first purchase
+                - cohort date
+              sample_values:
+                - "2024-01-15 09:30:00"
+                - "2024-06-02 14:05:00"
+
+      - name: lifetime_spend
+        data_type: NUMBER(38,2)
+        description: |-
+          Total amount the customer has spent across all orders, in cents.
+        config:
+          meta:
+            sst:
+              column_type: fact
+              synonyms:
+                - total spend
+                - customer value
+                - spend to date
+              sample_values:
+                - 1836
+                - 4590
+
+  # ========================================================================
+  # orders -- the primary fact grain. Equality SOURCE and RANGE source.
+  # ========================================================================

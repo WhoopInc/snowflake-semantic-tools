@@ -1,0 +1,212 @@
+---
+# =============================================================================
+# semantic_models/metrics/metrics.yml -- the reference-impl fixture
+# =============================================================================
+# SIXTEEN METRICS, AND THE COUNT IS DRIVEN BY SHAPE RATHER THAN BY REALISM. Each
+# one below is the smallest metric that reaches a distinct rule or rendering path:
+# every aggregation family, both derivation depths, the non-additive case, and
+# both view variables. Twelve are table-scoped and four are derived. Another
+# metric that repeated a shape would add golden DDL a
+# reviewer has to diff and assert nothing new.
+#
+#   TABLE-SCOPED   an `expr:` over `{{ ref(table, column) }}`. Renders into the
+#                  owning table's METRICS clause.
+#   DERIVED        an `expr:` over `{{ metric(...) }}`. Renders at view level.
+#
+# A DERIVED METRIC MAY NOT CONTAIN A WINDOW FUNCTION. `negative/06` proves that
+# refusal. M008 also rejects window-root table-scoped metrics, so window logic is
+# deliberately absent here and belongs in the dbt model where it can be tested.
+#
+# MAX_METRIC_DEPTH IS REACHED ON PURPOSE. `gross_margin_rate` is derived from
+# `gross_margin`, which is itself derived -- two levels. The engine's
+# `expand_metric` guard runs BEFORE descent and returns the `TOO_DEEP` sentinel
+# (`SST-REF900`) past the limit, so a fixture that never nests could not tell a
+# working guard from an absent one.
+#
+# THE DONOR PROJECT HAS 91 METRICS AND THIS HAS 17, WHICH IS NOT A SHORTFALL.
+# Byte-exact goldens have to be diffable by a human; 91 metrics of rendered DDL is
+# not. `D216` records the split -- the repo carries realism, the fixture carries
+# coverage.
+#
+# NO DATA VALUES. The two numeric literals below are a view VARIABLE's default and
+# a percentage, both declared in `semantic_views/`, neither read from a column.
+# =============================================================================
+
+snowflake_metrics:
+
+  # ===========================================================================
+  # TABLE-SCOPED -- jaffle_sales
+  # ===========================================================================
+
+  # COUNT DISTINCT over an identifier. The most common metric in any corpus.
+  - name: order_count
+    tables:
+      - orders
+    description: |-
+      Number of distinct orders placed.
+    expr: "COUNT(DISTINCT {{ ref('orders', 'order_id') }})"
+    synonyms:
+      - orders
+      - order volume
+
+  - name: customer_count
+    tables:
+      - customers
+    description: |-
+      Number of distinct customers who placed at least one order.
+    expr: "COUNT(DISTINCT {{ ref('customers', 'customer_id') }})"
+    synonyms:
+      - customers
+      - buyers
+
+  # SUM over a fact.
+  - name: total_revenue
+    tables:
+      - orders
+    description: |-
+      Total order value including tax, in cents.
+    expr: "SUM({{ ref('orders', 'order_total') }})"
+    synonyms:
+      - revenue
+      - gross sales
+
+  - name: total_tax_collected
+    tables:
+      - orders
+    description: |-
+      Total tax collected across all orders, in cents.
+    expr: "SUM({{ ref('orders', 'tax_paid') }})"
+
+  # AVG, so the fixture does not assert that every aggregate renders like SUM.
+  - name: avg_order_value
+    tables:
+      - orders
+    description: |-
+      Mean order value including tax, in cents.
+    expr: "AVG({{ ref('orders', 'order_total') }})"
+    synonyms:
+      - AOV
+      - average basket
+
+  # THE FIRST VIEW-VARIABLE READER. `large_order_cents` is declared in
+  # jaffle_sales' `variables:` and used here as a BARE IDENTIFIER, which is the
+  # whole point of the clause. V024 WARNS on a declared variable no `expr:`
+  # references, so this metric is what keeps that rule satisfied rather than
+  # merely present.
+  - name: large_order_count
+    tables:
+      - orders
+    description: |-
+      Number of orders whose value exceeds the large-order threshold.
+    expr: "COUNT(DISTINCT CASE WHEN {{ ref('orders', 'order_total') }} > large_order_cents THEN {{ ref('orders', 'order_id') }} END)"
+    synonyms:
+      - big orders
+
+  # THE SECOND VIEW-VARIABLE READER, and a BOOLEAN one -- so the fixture does not
+  # assert that a variable is always numeric.
+  - name: revenue_on_policy
+    tables:
+      - orders
+    description: |-
+      Revenue measured with or without collected tax, per the view's tax policy.
+    expr: "SUM(CASE WHEN tax_inclusive THEN {{ ref('orders', 'order_total') }} ELSE {{ ref('orders', 'subtotal') }} END)"
+
+  # CASE WHEN over an enum column. Reads the closed set `orders.order_state`
+  # declares with `is_enum: true`.
+  - name: returned_order_count
+    tables:
+      - orders
+    description: |-
+      Number of orders that were returned.
+    expr: "COUNT(DISTINCT CASE WHEN {{ ref('orders', 'order_state') }} = '{{ var('returned_state') }}' THEN {{ ref('orders', 'order_id') }} END)"
+
+  # ===========================================================================
+  # TABLE-SCOPED -- jaffle_menu
+  # ===========================================================================
+
+  # PLAIN COUNT, not COUNT DISTINCT, and it carries `using_relationships`.
+  - name: line_item_count
+    tables:
+      - order_items
+    description: |-
+      Number of line items sold.
+    expr: "COUNT({{ ref('order_items', 'order_item_id') }})"
+    # WHY THIS ONE NAMES ITS PATH. `order_items` reaches `products` directly and
+    # `orders` by the ASOF relationship. Naming the path makes the metric's join
+    # explicit rather than inferred, which is what M020 asks for once more than one
+    # route exists from a metric's table.
+    using_relationships:
+      - order_items_to_orders
+    synonyms:
+      - units sold
+      - items
+
+  - name: product_count
+    tables:
+      - products
+    description: |-
+      Number of distinct products sold.
+    expr: "COUNT(DISTINCT {{ ref('products', 'product_id') }})"
+
+  - name: total_line_item_revenue
+    tables:
+      - order_items
+    description: |-
+      Total line-item value, in cents.
+    expr: "SUM({{ ref('order_items', 'item_price') }})"
+
+  # THE NON-ADDITIVE CASE (M022), AND THE ONLY METRIC IN THE FIXTURE CARRYING THE
+  # KEY. `supplies` restates cost per product per month, so summing across
+  # `snapshot_month` double-counts while summing across products does not. The
+  # declaration is what tells Snowflake the difference; the dbt composite
+  # uniqueness test on (product_id, snapshot_month) is what makes the claim true.
+  - name: total_supply_cost
+    tables:
+      - supplies
+    description: |-
+      Cost of supplying the products sold, in cents. Not additive across months.
+    expr: "SUM({{ ref('supplies', 'supply_cost') }})"
+    non_additive_dimensions:
+      - dimension: snapshot_month
+        window_function: LAST_VALUE
+
+  # ===========================================================================
+  # DERIVED -- view level. `{{ metric() }}`, never `{{ ref() }}`.
+  # ===========================================================================
+
+  # DIV0 RATHER THAN `/`. A derived ratio over a metric whose value can be zero is
+  # the single most common division-by-zero site in a semantic layer, and Snowflake
+  # gives it a total function.
+  - name: revenue_per_order
+    derived: true
+    description: |-
+      Mean revenue per order, derived from two table-scoped metrics.
+    expr: "DIV0({{ metric('total_revenue') }}, {{ metric('order_count') }})"
+    synonyms:
+      - revenue per order
+
+  - name: revenue_per_customer
+    derived: true
+    description: |-
+      Mean revenue per customer over the period in scope.
+    expr: "DIV0({{ metric('total_revenue') }}, {{ metric('customer_count') }})"
+
+  # DEPTH 1 -- derived from two table-scoped metrics.
+  - name: gross_margin
+    derived: true
+    description: |-
+      Line-item revenue less the cost of supplying what was sold, in cents.
+    expr: "{{ metric('total_line_item_revenue') }} - {{ metric('total_supply_cost') }}"
+
+  # DEPTH 2 -- derived from a DERIVED metric. This is the metric that makes the
+  # depth guard observable: `expand_metric` checks the stack BEFORE descending, so
+  # without a nested case the difference between a working guard and no guard at
+  # all is invisible.
+  - name: gross_margin_rate
+    derived: true
+    description: |-
+      Gross margin as a share of line-item revenue.
+    expr: "DIV0({{ metric('gross_margin') }}, {{ metric('total_line_item_revenue') }})"
+    synonyms:
+      - margin rate
+      - margin percentage

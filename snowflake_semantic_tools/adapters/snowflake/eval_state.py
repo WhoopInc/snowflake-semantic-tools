@@ -1,0 +1,237 @@
+"""Snowflake and in-memory metadata-only evaluation state stores."""
+
+from __future__ import annotations
+
+import json
+from dataclasses import dataclass, field
+from typing import Mapping
+
+from ...domain.model.eval import EvalBaselineMetric, EvalBaselineRecord, EvalGateState, EvalRegression
+from ...domain.model.identifier import QualifiedName
+from ...domain.ports.snowflake import SnowflakePort, SnowflakePortError
+
+
+@dataclass
+class InMemoryEvalStateStore:
+    baselines: dict[tuple[str, str], EvalBaselineRecord] = field(default_factory=dict)
+    gates: dict[tuple[str, str], EvalGateState] = field(default_factory=dict)
+
+    def read_baseline(self, target_name: str, eval_key: str) -> EvalBaselineRecord | None:
+        return self.baselines.get((target_name, eval_key))
+
+    def write_baseline(self, target_name: str, baseline: EvalBaselineRecord) -> None:
+        self.baselines[(target_name, baseline.eval_key)] = baseline
+
+    def write_baselines(self, target_name: str, baselines: tuple[EvalBaselineRecord, ...]) -> None:
+        for baseline in baselines:
+            self.write_baseline(target_name, baseline)
+
+    def read_gate(self, target_name: str, eval_key: str) -> EvalGateState | None:
+        return self.gates.get((target_name, eval_key))
+
+    def write_gate(self, target_name: str, gate: EvalGateState) -> None:
+        self.gates[(target_name, gate.eval_key)] = gate
+
+
+class SnowflakeEvalStateStore:
+    def __init__(self, port: SnowflakePort, table: QualifiedName) -> None:
+        self._port = port
+        self._table = table
+
+    def read_baseline(self, target_name: str, eval_key: str) -> EvalBaselineRecord | None:
+        self._ensure_table()
+        result = self._port.query(
+            f"SELECT PAYLOAD FROM {self._table.sql} "
+            "WHERE TARGET_NAME = %s AND EVAL_KEY = %s AND RECORD_KIND = 'baseline'",
+            (target_name, eval_key),
+        )
+        if not result.rows:
+            return None
+        if len(result.rows) != 1:
+            raise SnowflakePortError(f"eval baseline state returned {len(result.rows)} rows")
+        return _baseline_from_payload(result.rows[0][0])
+
+    def write_baseline(self, target_name: str, baseline: EvalBaselineRecord) -> None:
+        self._write(target_name, baseline.eval_key, "baseline", _baseline_payload(baseline))
+
+    def write_baselines(self, target_name: str, baselines: tuple[EvalBaselineRecord, ...]) -> None:
+        if not baselines:
+            return
+        self._ensure_table()
+        statements = tuple(
+            self._merge_sql(target_name, baseline.eval_key, "baseline", _baseline_payload(baseline))
+            for baseline in baselines
+        )
+        result = self._port.execute_script(("BEGIN", *statements, "COMMIT"))
+        if not result.ok:
+            self._port.try_execute("ROLLBACK")
+            raise SnowflakePortError(result.error.message if result.error else "eval baseline batch write failed")
+
+    def read_gate(self, target_name: str, eval_key: str) -> EvalGateState | None:
+        self._ensure_table()
+        result = self._port.query(
+            f"SELECT PAYLOAD FROM {self._table.sql} "
+            "WHERE TARGET_NAME = %s AND EVAL_KEY = %s AND RECORD_KIND = 'gate'",
+            (target_name, eval_key),
+        )
+        if not result.rows:
+            return None
+        if len(result.rows) != 1:
+            raise SnowflakePortError(f"eval gate state returned {len(result.rows)} rows")
+        return _gate_from_payload(result.rows[0][0])
+
+    def write_gate(self, target_name: str, gate: EvalGateState) -> None:
+        self._write(target_name, gate.eval_key, "gate", _gate_payload(gate))
+
+    def _ensure_table(self) -> None:
+        result = self._port.execute_script(
+            (
+                f"CREATE TABLE IF NOT EXISTS {self._table.sql} ("
+                "TARGET_NAME VARCHAR NOT NULL, EVAL_KEY VARCHAR NOT NULL, "
+                "RECORD_KIND VARCHAR NOT NULL, PAYLOAD OBJECT NOT NULL, UPDATED_AT TIMESTAMP_TZ NOT NULL, "
+                "PRIMARY KEY (TARGET_NAME, EVAL_KEY, RECORD_KIND))",
+            )
+        )
+        if not result.ok:
+            raise SnowflakePortError(result.error.message if result.error else "eval state table creation failed")
+
+    def _write(self, target_name: str, eval_key: str, kind: str, payload: Mapping[str, object]) -> None:
+        self._ensure_table()
+        result = self._port.execute_script((self._merge_sql(target_name, eval_key, kind, payload),))
+        if not result.ok:
+            raise SnowflakePortError(result.error.message if result.error else "eval state write failed")
+
+    def _merge_sql(self, target_name: str, eval_key: str, kind: str, payload: Mapping[str, object]) -> str:
+        return (
+            f"MERGE INTO {self._table.sql} AS target USING (SELECT "
+            f"{_literal(target_name)} TARGET_NAME, {_literal(eval_key)} EVAL_KEY, "
+            f"{_literal(kind)} RECORD_KIND, PARSE_JSON({_literal(json.dumps(payload, sort_keys=True, separators=(',', ':')))}) PAYLOAD, "
+            "CURRENT_TIMESTAMP() UPDATED_AT) source "
+            "ON target.TARGET_NAME = source.TARGET_NAME AND target.EVAL_KEY = source.EVAL_KEY "
+            "AND target.RECORD_KIND = source.RECORD_KIND "
+            "WHEN MATCHED THEN UPDATE SET PAYLOAD = source.PAYLOAD, UPDATED_AT = source.UPDATED_AT "
+            "WHEN NOT MATCHED THEN INSERT (TARGET_NAME, EVAL_KEY, RECORD_KIND, PAYLOAD, UPDATED_AT) "
+            "VALUES (source.TARGET_NAME, source.EVAL_KEY, source.RECORD_KIND, source.PAYLOAD, source.UPDATED_AT)"
+        )
+
+
+def _baseline_payload(value: EvalBaselineRecord) -> dict[str, object]:
+    return {
+        "eval_key": value.eval_key,
+        "dataset_fingerprint": value.dataset_fingerprint,
+        "config_fingerprint": value.config_fingerprint,
+        "agent_version": value.agent_version,
+        "metric_versions": dict(value.metric_versions),
+        "metrics": [
+            {
+                "question_key": metric.question_key,
+                "metric_name": metric.metric_name,
+                "passed_attempts": list(metric.passed_attempts),
+                "score_range": list(metric.score_range) if metric.score_range is not None else None,
+            }
+            for metric in value.metrics
+        ],
+        "run_names": list(value.run_names),
+        "captured_at": value.captured_at,
+        "expires_at": value.expires_at,
+        "reason": value.reason,
+        "tier": value.tier,
+        "gate_policy": dict(value.gate_policy),
+    }
+
+
+def _baseline_from_payload(value: object) -> EvalBaselineRecord:
+    payload = _mapping(value, "baseline")
+    metrics = payload.get("metrics", [])
+    run_names = payload.get("run_names", [])
+    if not isinstance(metrics, list) or not isinstance(run_names, list):
+        raise SnowflakePortError("eval baseline metrics must be an array")
+    metric_versions = _mapping(payload.get("metric_versions", {}), "metric versions")
+    gate_policy = _mapping(payload.get("gate_policy", {}), "gate policy")
+    parsed_metrics = []
+    for item in metrics:
+        metric = _mapping(item, "baseline metric")
+        passed_attempts = metric.get("passed_attempts", [])
+        score_range = metric.get("score_range")
+        if not isinstance(passed_attempts, list) or any(not isinstance(flag, bool) for flag in passed_attempts):
+            raise SnowflakePortError("eval baseline passed_attempts must be booleans")
+        if score_range is not None:
+            if not isinstance(score_range, list) or len(score_range) != 2:
+                raise SnowflakePortError("eval baseline score_range must have two values")
+            parsed_range = tuple(float(item) if item is not None else None for item in score_range)
+        else:
+            parsed_range = None
+        parsed_metrics.append(
+            EvalBaselineMetric(
+                str(metric.get("question_key") or ""),
+                str(metric.get("metric_name") or ""),
+                tuple(passed_attempts),
+                parsed_range,  # type: ignore[arg-type]
+            )
+        )
+    return EvalBaselineRecord(
+        eval_key=str(payload.get("eval_key") or ""),
+        dataset_fingerprint=str(payload.get("dataset_fingerprint") or ""),
+        config_fingerprint=str(payload.get("config_fingerprint") or ""),
+        agent_version=str(payload.get("agent_version") or ""),
+        metric_versions=tuple(sorted((str(key), str(item)) for key, item in metric_versions.items())),
+        metrics=tuple(parsed_metrics),
+        run_names=tuple(str(item) for item in run_names),
+        captured_at=str(payload.get("captured_at") or ""),
+        expires_at=str(payload.get("expires_at") or ""),
+        reason=str(payload.get("reason") or ""),
+        tier=str(payload.get("tier") or "report"),
+        gate_policy=tuple(sorted((str(key), bool(item)) for key, item in gate_policy.items())),
+    )
+
+
+def _gate_payload(value: EvalGateState) -> dict[str, object]:
+    return {
+        "eval_key": value.eval_key,
+        "tier": value.tier,
+        "regression_count": value.regression_count,
+        "regressions": [
+            {"question_key": item.question_key, "metric_name": item.metric_name} for item in value.regressions
+        ],
+        "unresolved": value.unresolved,
+        "evaluated_at": value.evaluated_at,
+        "run_names": list(value.run_names),
+    }
+
+
+def _gate_from_payload(value: object) -> EvalGateState:
+    payload = _mapping(value, "gate")
+    regressions = payload.get("regressions", [])
+    run_names = payload.get("run_names", [])
+    if not isinstance(regressions, list) or not isinstance(run_names, list):
+        raise SnowflakePortError("eval gate regressions must be an array")
+    regression_count = payload.get("regression_count", 0)
+    if isinstance(regression_count, bool) or not isinstance(regression_count, (int, float, str)):
+        raise SnowflakePortError("eval gate regression_count must be an integer")
+    return EvalGateState(
+        eval_key=str(payload.get("eval_key") or ""),
+        tier=str(payload.get("tier") or ""),
+        regression_count=int(regression_count),
+        regressions=tuple(
+            EvalRegression(
+                str(_mapping(item, "regression").get("question_key") or ""),
+                str(_mapping(item, "regression").get("metric_name") or ""),
+            )
+            for item in regressions
+        ),
+        unresolved=bool(payload.get("unresolved")),
+        evaluated_at=str(payload.get("evaluated_at") or ""),
+        run_names=tuple(str(item) for item in run_names),
+    )
+
+
+def _mapping(value: object, subject: str) -> dict[str, object]:
+    if isinstance(value, str):
+        value = json.loads(value)
+    if not isinstance(value, dict):
+        raise SnowflakePortError(f"eval {subject} payload must be an object")
+    return {str(key): item for key, item in value.items()}
+
+
+def _literal(value: str) -> str:
+    return "'" + value.replace("'", "''") + "'"

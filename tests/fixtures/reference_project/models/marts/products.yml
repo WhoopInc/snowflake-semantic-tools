@@ -1,0 +1,113 @@
+---
+# =============================================================================
+# models/marts/products.yml
+# =============================================================================
+# THE CLOSED CATALOGUE. Ten rows, which is what makes the eval dataset's
+# tier-4 hardcoded count legitimate rather than brittle (`D213`).
+#
+# THE CROSS-CUTTING REASONING -- the seam, the jaffle domain, the one-line
+# `description:` constraint and the `D213` data rule -- IS IN `../README.md`, not
+# repeated here. Read that first if this is the first model file you have opened.
+# =============================================================================
+
+version: 2
+
+models:
+  - name: products
+    description: |-
+      One row per menu item. Jaffles and drinks.
+    config:
+      contract:
+        enforced: true
+      on_schema_change: fail
+      meta:
+        sst:
+          # THE GRAIN OF THIS MODEL, AND THE MODEL IS THE SINGLE SOURCE (`D231`).
+          #
+          # THIS ONE KEY IS ASSERTED BY TWO GOLDENS AND THAT IS DELIBERATE.
+          # `products` is read by `jaffle_menu`, which declares `table_config`,
+          # and by `jaffle_minimal`, which declares NONE. Both goldens render
+          # `PRIMARY KEY (PRODUCT_ID)`, because the key is a property of the
+          # model rather than of a view's treatment of it. A view that declares
+          # nothing still RECEIVES what its models declare -- the distinction
+          # `expected/ddl/jaffle_minimal.sql` already draws for metrics.
+          primary_key:
+            - product_id
+    columns:
+      - name: product_id
+        data_type: VARCHAR
+        description: |-
+          Surrogate key for the product. An identifier, therefore a dimension.
+        config:
+          meta:
+            sst:
+              column_type: dimension
+              is_enum: false
+              synonyms:
+                - product key
+                - menu item identifier
+        data_tests:
+          - unique
+          - not_null
+
+      # A SECOND ESCAPING CASE, and a jaffle-flavoured one. The menu item names in
+      # the donor project genuinely contain apostrophes and punctuation.
+      - name: product_name
+        data_type: VARCHAR
+        description: |-
+          The menu item's name as printed on the receipt.
+        config:
+          meta:
+            sst:
+              column_type: dimension
+              is_enum: false
+              synonyms:
+                - menu item
+                - item name
+                - dish
+              sample_values:
+                - nutellaphone who dis
+                - doctor stew
+
+      - name: product_type
+        data_type: VARCHAR
+        description: |-
+          Whether the item is food or drink. A closed set.
+        config:
+          meta:
+            sst:
+              column_type: dimension
+              is_enum: true
+              synonyms:
+                - item category
+                - menu category
+                - food or drink
+              sample_values:
+                - jaffle
+                - beverage
+
+      - name: list_price
+        data_type: NUMBER(38,2)
+        description: |-
+          Menu price for one unit, in cents.
+        config:
+          meta:
+            sst:
+              column_type: fact
+              synonyms:
+                - menu price
+                - catalogue price
+                - sticker price
+              sample_values:
+                - 1100
+                - 700
+
+  # ========================================================================
+  # locations -- the store dimension
+  # ========================================================================
+  # ROLE-PLAYING IS NOT EXERCISED, AND THAT IS SETTLED RATHER THAN MISSING.
+  # An earlier plan for this fixture had `locations` appear twice in one view under
+  # `table_config.name`. `D017` DEFERRED ROLE-PLAYING PAST 1.0 and `V009` carries
+  # the withdrawn-rule tombstone, so one physical table cannot appear twice in a
+  # view. The semantic-view rules state the consequence
+  # directly. Building it would have contradicted a settled decision.

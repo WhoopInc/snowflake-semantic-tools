@@ -43,7 +43,7 @@ The skill checks for the test project as a sibling directory (`../sst-jaffle-sho
 The dbt target controls which Snowflake database/schema SST writes to. Targets are defined in `~/.dbt/profiles.yml` under the `sst_jaffle_shop` profile.
 
 Common targets:
-- `dev` — personal development schema (default: SCRATCH.LUIZZI_SST)
+- `dev` — personal development schema (for example, `SCRATCH.<YOUR_SCHEMA>`)
 - `ci` — dedicated CI/CD schema (if configured)
 
 The E2E skill will ask which target to use at runtime. Default: `dev`.

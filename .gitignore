@@ -161,6 +161,13 @@ Thumbs.db
 
 # Cortex Code local state
 .snowflake/
+.cortex/plans/
+
+# dbt-generated anonymous user id
+.user.yml
+
+# The project is managed with Poetry; a uv lockfile is local-only
+uv.lock
 
 # Temporary files
 tmp/

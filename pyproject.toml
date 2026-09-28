@@ -4,7 +4,7 @@ build-backend = "poetry.core.masonry.api"
 
 [tool.poetry]
 name = "snowflake-semantic-tools"
-version = "0.3.1"
+version = "1.0.0.dev0"
 description = "dbt extension for managing Snowflake Semantic Views and Cortex Analyst semantic models"
 readme = "README.md"
 authors = ["Matt Luizzi <matthew.luizzi@whoop.com>"]
@@ -15,12 +15,11 @@ keywords = ["snowflake", "dbt", "semantic-layer"]
 
 [tool.poetry.scripts]
 # Main CLI entry points
-snowflake-semantic-tools = "snowflake_semantic_tools.interfaces.cli.main:cli"
-sst = "snowflake_semantic_tools.interfaces.cli.main:cli"  # Short alias for convenience
+snowflake-semantic-tools = "snowflake_semantic_tools.cli.main:cli"
+sst = "snowflake_semantic_tools.cli.main:cli"
 
 [tool.poetry.dependencies]
-python = ">=3.10,<3.12"
-numpy = ">=1.24.0,<1.25.0"
+python = ">=3.11,<3.14"
 pyyaml = ">=6.0.2,<6.1.0"
 ruamel-yaml = ">=0.18.6,<0.19.0"
 snowflake-connector-python = {extras = ["pandas", "secure-local-storage"], version = ">=3.12.3,<5.0"}
@@ -28,7 +27,6 @@ python-dotenv = ">=1.0.1,<1.1.0"
 rich = ">=13.9.4,<14.0"
 click = ">=8.1.7,<9.0"
 tqdm = ">=4.67.1,<4.68.0"
-typing-extensions = ">=4.12.2,<5.0"
 packaging = ">=24.2,<25.0"
 certifi = ">=2017.4.17,<2025.4.26"
 questionary = ">=2.0.0,<3.0"
@@ -46,6 +44,8 @@ pytest = "8.3.4"
 pytest-mock = "3.14.0"
 pytest-cov = "6.0.0"
 mypy = "1.13.0"
+import-linter = "^2.1"
+types-PyYAML = "^6.0.12"
 isort = "5.13.2"
 black = "24.10.0"
 
@@ -67,7 +67,17 @@ exclude = '''
 
 [tool.coverage.run]
 branch = true
-omit = ["test/*"]
+source = [
+    "snowflake_semantic_tools/domain",
+    "snowflake_semantic_tools/app",
+    "snowflake_semantic_tools/cli",
+]
+omit = ["tests/*"]
+
+[tool.coverage.report]
+fail_under = 95
+show_missing = true
+skip_covered = true
 
 [tool.coverage.xml]
 output = "test-coverage-results/coverage.xml"
@@ -111,4 +121,111 @@ filterwarnings = [
     "ignore::UserWarning",
     "ignore::DeprecationWarning",
     "ignore::PendingDeprecationWarning",
+]
+
+# ---------------------------------------------------------------------------
+# Ring boundaries: cli -> (app | adapters) -> domain. These contracts ARE the
+# enforcement -- an architecture rule that
+# lives only in a README is a comment, and 0.3's layering decayed precisely
+# because nothing checked it.
+#
+# Run with: lint-imports
+# ---------------------------------------------------------------------------
+[tool.importlinter]
+root_package = "snowflake_semantic_tools"
+# Required because the domain/ and app/ contracts forbid third-party packages
+# (yaml, click, snowflake, ...) and not just internal modules.
+include_external_packages = true
+
+# cli -> (app | adapters) -> domain.
+# app and adapters are SIBLINGS declared independent: app must not reach for a
+# concrete adapter, and an adapter must not call back into a use case. cli is the
+# composition root above both and may import anything.
+#
+# The delimiter is load-bearing and the two are near-opposites: "|" makes siblings
+# INDEPENDENT (neither may import the other), ":" makes them non-independent (both
+# may). An earlier draft used ":" here, which licensed the exact crossing this
+# contract exists to forbid -- caught by tests/test_ring_boundaries.py.
+[[tool.importlinter.contracts]]
+name = "Rings are layered: cli above (app | adapters) above domain"
+type = "layers"
+layers = [
+    "snowflake_semantic_tools.cli",
+    "snowflake_semantic_tools.app | snowflake_semantic_tools.adapters",
+    "snowflake_semantic_tools.domain",
+]
+
+# domain/ is the pure ring: no I/O, no clock, no environment. Everything it needs
+# from the outside world arrives as a PARAMETER. This is what makes rendering a
+# pure function of its input, hence the manifest byte-reproducible, hence golden
+# testing possible.
+[[tool.importlinter.contracts]]
+name = "domain is pure -- no I/O, no clock, no environment, no SDKs"
+type = "forbidden"
+source_modules = ["snowflake_semantic_tools.domain"]
+forbidden_modules = [
+    "yaml",
+    "ruamel",
+    "click",
+    "snowflake",
+    "rich",
+    "tqdm",
+    "questionary",
+    "dotenv",
+    "packaging",
+    "os",
+    "pathlib",
+    "datetime",
+    "time",
+    "random",
+    "tempfile",
+    "subprocess",
+    "socket",
+    "logging",
+]
+
+# app/ orchestrates domain through injected ports. It never touches an SDK, and it
+# never touches the terminal -- that is cli's job.
+[[tool.importlinter.contracts]]
+name = "app imports domain only -- no SDKs, no terminal"
+type = "forbidden"
+source_modules = ["snowflake_semantic_tools.app"]
+forbidden_modules = [
+    "yaml",
+    "ruamel",
+    "click",
+    "snowflake",
+    "rich",
+    "tqdm",
+    "questionary",
+    "dotenv",
+]
+
+# An adapter may depend on the ports it implements and the models it returns, but
+# not on domain's renderers -- rendering is domain logic, not edge work.
+[[tool.importlinter.contracts]]
+name = "adapters use domain ports and models, not domain renderers"
+type = "forbidden"
+source_modules = ["snowflake_semantic_tools.adapters"]
+forbidden_modules = ["snowflake_semantic_tools.domain.render"]
+
+# The 1.0 rings must not lean on 0.3's internals. 0.3's modules still ship on this
+# branch and are deleted per-module as each ring replaces them; without this
+# contract the new engine could quietly inherit the old one's coupling and the
+# rewrite would never actually land.
+[[tool.importlinter.contracts]]
+name = "1.0 rings do not import 0.3 internals"
+type = "forbidden"
+source_modules = [
+    "snowflake_semantic_tools.cli",
+    "snowflake_semantic_tools.app",
+    "snowflake_semantic_tools.domain",
+    "snowflake_semantic_tools.adapters",
+]
+forbidden_modules = [
+    "snowflake_semantic_tools.core",
+    "snowflake_semantic_tools.infrastructure",
+    "snowflake_semantic_tools.interfaces",
+    "snowflake_semantic_tools.services",
+    "snowflake_semantic_tools.shared",
 ]

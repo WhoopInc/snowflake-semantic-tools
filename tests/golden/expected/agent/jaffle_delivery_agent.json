@@ -1,0 +1,34 @@
+{
+  "models": {
+    "orchestration": "claude-sonnet-4-5"
+  },
+  "orchestration": {
+    "budget": {
+      "seconds": 120,
+      "tokens": 16000
+    },
+    "tool_not_accessible": "reject",
+    "capabilities": {
+      "analytical_search": false
+    }
+  },
+  "instructions": {
+    "orchestration": "Decide whether the question is about DELIVERY or about the ORDER ITSELF.\n\nA question about where an order is, when it will arrive, or why it is late is a\ndelivery question: route it to the partner delivery agent and return what it\nsays.\n\nA question about what was ordered, what it cost, or how many were sold is NOT a\ndelivery question. Do not answer it. Say that it belongs to the jaffle analytics\nagent and stop -- you hold no semantic view and cannot answer it even\napproximately.\n\nNever invent a delivery status. If the partner agent returns nothing, say the\nstatus is unavailable.",
+    "response": "Report a delivery status exactly as the partner returns it, including any\ntimestamp, and name the partner as the source.\n\nIf the partner's answer and the question disagree about which order is meant,\nsay so rather than guessing which order the user intended."
+  },
+  "tools": [
+    {
+      "tool_spec": {
+        "type": "agent",
+        "name": "partner_delivery_agent",
+        "description": "The partner's delivery agent. Answers where an order is and when it will\narrive. Does NOT answer anything about order contents or value."
+      }
+    }
+  ],
+  "tool_resources": {
+    "partner_delivery_agent": {
+      "identifier": "SCRATCH.SST_1_REFERENCE_IMPL.DELIVERY_AGENT",
+      "type": "agent"
+    }
+  }
+}

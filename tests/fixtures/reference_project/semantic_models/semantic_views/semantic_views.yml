@@ -1,0 +1,172 @@
+---
+# =============================================================================
+# semantic_models/semantic_views/semantic_views.yml -- the reference-impl fixture
+# =============================================================================
+# THIS IS A DIRECTORY NOW, NOT A FLAT FILE (`D215`). `discover` derives every root
+# from `root_key`, and `semantic_view.root_key` is `semantic_views` -- so a flat
+# `semantic_views.yml` made this the only artifact whose root_key did not name a
+# directory, while all five file-sourced member types used subdirectories. The flat
+# file was the anomaly and `owner_of(root_key)` reads the same key either way.
+#
+# THREE VIEWS. A view is authored as A LIST OF TABLES; every dimension, fact,
+# metric, relationship, filter and verified query is COMPILED -- derived from the
+# dbt model's columns, or attached from a sibling file that declares the same
+# tables.
+#
+# =============================================================================
+# TEMPLATES IN THIS FILE ARE QUOTED, BUT BOTH SPELLINGS ARE VALID
+# =============================================================================
+# MEASURED: a production corpus carries roughly 25 UNQUOTED templates for every
+# quoted one, and unquoted `{{` is not valid YAML -- `{` opens a flow mapping -- so
+# 96% of real files need a pre-parse substitution regardless. 1.0 NEUTRALISES
+# rather than rejects: one pass at the load boundary replaces each `{{ ... }}`
+# with a scalar placeholder, retaining the original line and column.
+#
+# This fixture quotes them anyway, for one reason: a quoted file is valid YAML on
+# its own, so it can be parsed by any tool -- an editor, a linter, this plan's
+# audit script -- without running SST's neutraliser first. That is a property worth
+# having in a golden fixture specifically. It is a fixture convention, NOT a
+# requirement, and `negative/07` covers the unquoted form as an accepted case.
+#
+# =============================================================================
+# WHY THE THIRD VIEW IS ALMOST EMPTY
+# =============================================================================
+# `jaffle_minimal` declares the REQUIRED keys and NOTHING ELSE -- no table_config,
+# no custom_instructions, no variables, no tags, no max_staleness. It exists to
+# assert the negative space: that a renderer given minimal input emits minimal
+# output and does not invent a clause it was never given. Views 1 and 2 are
+# maximal, so without view 3 every optional clause in every golden would be
+# present, and a renderer that emitted clauses unconditionally would pass.
+#
+# This is the same argument the marts file makes about deliberately-absent
+# `sample_values`, applied at view level rather than column level.
+# =============================================================================
+
+semantic_views:
+  # ===========================================================================
+  # VIEW 1 -- jaffle_sales. The MAXIMAL view: every optional key that can be
+  # exercised is exercised here. Equality joins only.
+  # ===========================================================================
+  - name: jaffle_sales
+    description: |-
+      Orders, the customers who placed them, and the locations they were placed at.
+      Use this view for questions about order volume, order value, tax collected,
+      and how revenue and customer counts break down by location or by whether a
+      customer is new or returning.
+
+      Does NOT cover what was ON an order -- line items, products and supply costs
+      live in `jaffle_menu`. Does not cover menu catalogue detail at all.
+    enabled: true
+    tables:
+      - "{{ ref('orders') }}"
+      - "{{ ref('customers') }}"
+      - "{{ ref('locations') }}"
+
+    # -----------------------------------------------------------------------
+    # variables -- declares names an `expr:` may use as bare identifiers.
+    # V024 WARNS if a declared name is never referenced, so each of these is
+    # read by at least one metric in metrics/metrics.yml. That rule exists
+    # because a view variable was the last unchecked name in the dialect
+    # (`D179`): nothing verified either direction before it.
+    # -----------------------------------------------------------------------
+    variables:
+      - name: large_order_cents
+        data_type: NUMBER
+        description: |-
+          Threshold above which an order counts as large.
+        default_value: 1000
+      - name: tax_inclusive
+        data_type: BOOLEAN
+        description: |-
+          Whether revenue metrics should include collected tax.
+        default_value: false
+
+    # -----------------------------------------------------------------------
+    # max_staleness -- rendered as `"<n> seconds"`. V010 requires >= 120, and
+    # 60 is rejected outright, which is why this is 300 and not a round 60.
+    # -----------------------------------------------------------------------
+    max_staleness: 300
+
+    # -----------------------------------------------------------------------
+    # tags -- AND WHETHER THIS ADDS A SECOND STATEMENT IS NOW A MEASURED
+    # QUESTION RATHER THAN AN ASSUMED ONE. V017 says tags are applied by a
+    # separate ALTER because CREATE OR ALTER cannot set them, and the grant rules
+    # specify that statement's form and its
+    # `APPLY` privilege requirement. Both remain true of CREATE OR ALTER.
+    #
+    # THE GOLDENS DO NOT USE CREATE OR ALTER. Every file in `expected/ddl/`
+    # opens `CREATE OR REPLACE SEMANTIC VIEW`, and drift rows 25 and 26 measured
+    # what that changes:
+    #
+    #   row 25 -- CREATE OR REPLACE with no `WITH TAG` clause DESTROYS every tag
+    #             already on the view, silently. The statement succeeds and only
+    #             `TAG_REFERENCES` knows anything was lost.
+    #   row 26 -- `WITH TAG (...)` IS accepted inline as the last clause of
+    #             CREATE OR REPLACE, after `ai_verified_queries`, and `GET_DDL`
+    #             returns it verbatim.
+    #
+    # SO THE RENDERER EMITS ONE STATEMENT, NOT TWO, and the golden carries the
+    # clause. The separate ALTER is correct under CREATE OR ALTER and strictly
+    # worse here: two statements leave a window in which the view exists
+    # untagged, and an ordering contract for the engine to get wrong.
+    #
+    # `name:` IS A RESOLVER CALL, NOT A STRING. An earlier draft wrote
+    # `name: cost_center`, which reads as a value and exercises nothing -- the
+    # declared shape is `{{ tag('<ref>') }}` and it resolves against the
+    # top-level `tags:` block in `sst_config.yml`, which that draft had not
+    # declared either. Authoring the bare string made a fixture that could not
+    # have caught the missing block.
+    # -----------------------------------------------------------------------
+    tags:
+      - name: "{{ tag('cost_center') }}"
+        value: analytics
+      - name: "{{ tag('data_domain') }}"
+        value: jaffle_sales
+
+    # -----------------------------------------------------------------------
+    # table_config -- the escape hatch for what enrichment cannot derive.
+    # A table absent from this map behaves exactly as it would without it.
+    # -----------------------------------------------------------------------
+    # NO KEYS HERE, AND THAT IS `D231`. `primary_key` and `unique_keys` are
+    # properties of a MODEL's grain, not of a view's treatment of a table, so
+    # they are declared once in `models/marts/*.yml` under `config.meta.sst`
+    # and reach every view that reads the model. `PRIMARY KEY (ORDER_ID)`,
+    # `PRIMARY KEY (CUSTOMER_ID) UNIQUE (CUSTOMER_NAME)` and
+    # `PRIMARY KEY (LOCATION_ID)` all still render below -- from the models.
+    table_config:
+      orders:
+        synonyms:
+          - sale
+          - transaction
+      customers:
+        synonyms:
+          - buyer
+          - guest
+
+    custom_instructions:
+      - "{{ custom_instructions('jaffle_sql_conventions') }}"
+      - "{{ custom_instructions('jaffle_question_scope') }}"
+  - name: jaffle_minimal
+    description: |-
+      Menu products only. The smallest valid semantic view in this fixture.
+    tables:
+      - "{{ ref('products') }}"
+
+# =============================================================================
+# WHAT IS STILL DELIBERATELY ABSENT FROM THIS FILE
+# =============================================================================
+# table_config.name  ROLE-PLAYING -- one physical table under two logical names.
+#                    NOT COVERED, AND THAT IS SETTLED RATHER THAN A GAP. `D017`
+#                    DEFERRED ROLE-PLAYING PAST 1.0 and `V009` carries the
+#                    withdrawn-rule tombstone; the semantic-view rules state the
+#                    consequence outright -- one physical table cannot appear
+#                    twice in a view. An earlier plan for this fixture had
+#                    `locations` appear twice here, which would have contradicted
+#                    a settled owner decision.
+#
+#                    R015 (MULTI-PATH) IS STILL COVERED, in `negative/`, because
+#                    multi-path is reachable without role-playing: two distinct
+#                    relationship chains between the same pair of logical tables
+#                    produce it. It is a WARNING, not an error, and the rule text
+#                    says so.
+# =============================================================================

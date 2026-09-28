@@ -251,7 +251,7 @@ class TestRealWorldScenarios:
         # → Queries ANALYTICS.MEMBERSHIPS.CHURN_DETAILS for sample values
 
         # Step 2: Extract (uses --db SCRATCH for destination)
-        # sst extract --db SCRATCH --schema dbt_matthew
+        # sst extract --db SCRATCH --schema dbt_dev
         # → Writes metadata with database = SCRATCH
 
         # THIS IS THE KEY INSIGHT:
