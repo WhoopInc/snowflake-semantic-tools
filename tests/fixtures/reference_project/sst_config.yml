@@ -121,12 +121,14 @@ project:
   eval_metrics_dir: eval_metrics
   #
   # THE DESKTOP INPUTS. A plugin groups skills into one extension; a profile is
-  # one CoCo Desktop registry row; hooks and MCP configs are what profiles name.
-  # These are the defaults, written out so the reference shows every root.
+  # one CoCo Desktop registry row; hooks, MCP configs, and slash commands are what
+  # profiles name. These are the defaults, written out so the reference shows
+  # every root -- and a root written out must exist (`SST-CFG047`).
   plugins_dir: plugins
   profiles_dir: profiles
   hooks_dir: hooks
   mcp_servers_dir: mcp-servers
+  commands_dir: commands
   #
   # NOT A KEY, BY DESIGN: the dbt models directory. Auto-detected from
   # dbt_project.yml `model-paths`.

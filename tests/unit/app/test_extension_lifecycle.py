@@ -14,6 +14,7 @@ from snowflake_semantic_tools.app.extension_lifecycle import (
     _difference,
     _recorded_target,
     _stale,
+    _version_number,
 )
 from snowflake_semantic_tools.app.manifest import build_manifest
 from snowflake_semantic_tools.app.plan import PlanArtifacts
@@ -113,6 +114,16 @@ def test_catalog_channel_absent_or_invalid_prefix_compiles_nothing() -> None:
     ).run_result()
     assert blocked.compiled == ()
     assert {item.code for item in blocked.diagnostics} >= {"SST-VAL808", "SST-VAL836"}
+
+    # A member that fails catalog validation blocks its plugin as well as itself.
+    unsafe = replace(skill(), files=(*skill().files, SkillFile("reference/q1+q2.md", b"q")))
+    kit = Plugin("kit", "plugins/kit", "p", "d", None, ("month-close",), Origin("p"))
+    result = CompileSkills(SkillCatalog((unsafe,), (kit,)), CHANNEL).run_result()
+    assert result.compiled == ()
+    assert [(item.code, item.subject) for item in result.diagnostics if item.code != "SST-VAL813"] == [
+        ("SST-VAL857", "skill:month-close"),
+        ("SST-VAL836", "plugin:kit"),
+    ]
 
 
 def test_first_publish_then_noop_then_revert_is_a_state_only_update() -> None:
@@ -259,6 +270,81 @@ def test_comment_drift_and_certification_with_readback() -> None:
     silent._record_extension_statement = ignore_tags  # type: ignore[method-assign]
     _, result, _ = publish(silent, certified, state())
     assert result.outcomes[0].error is not None and "reports certification" in result.outcomes[0].error.message
+
+
+def served_warnings(changeset) -> list[str]:
+    return [item.message for item in changeset.diagnostics if item.code == "SST-VAL841"]
+
+
+def test_the_catalog_keeps_serving_a_certified_version_over_an_uncertified_one() -> None:
+    port = RecordedSnowflake(existing=())
+    certified_channel = replace(CHANNEL, certified=True)
+    first = compile_catalog(SkillCatalog((skill(),)), certified_channel)
+    changeset, result, after = publish(port, first, state())
+    assert result.success and served_warnings(changeset) == []
+    target = QualifiedName.parse("DB.S.MONTH_CLOSE")
+    assert port.observe_extension(target).latest_certified_version == "VERSION$2"
+
+    uncertified = compile_catalog(SkillCatalog((skill(body="Read reference/steps.md twice.\n"),)))
+    changeset, result, after_change = publish(port, uncertified, after)
+    assert [change.action for change in changeset.changes] == [Action.UPDATE]
+    alias = uncertified["skill:month-close"].release.alias
+    assert served_warnings(changeset) == [
+        f"skill:month-close: the catalog will serve VERSION$2 of DB.S.MONTH_CLOSE, not {alias}, "
+        "because it is the latest certified version"
+    ]
+    observed = port.observe_extension(target)
+    assert (observed.effective_version, observed.latest_certified_version) == ("VERSION$2", "VERSION$2")
+
+    # Certifying the newer version makes it the one the catalog serves.
+    newer = compile_catalog(SkillCatalog((skill(body="Read reference/steps.md twice.\n"),)), certified_channel)
+    changeset, result, _ = publish(port, newer, after_change)
+    assert [change.action for change in changeset.changes] == [Action.UPDATE]
+    assert result.success and served_warnings(changeset) == []
+    assert port.observe_extension(target).effective_version == "VERSION$3"
+
+    # Reverting to the older version cannot outrank the later certified one.
+    changeset, _, _ = publish(port, first, after_change)
+    assert served_warnings(changeset) == [
+        f"skill:month-close: the catalog will serve VERSION$3 of DB.S.MONTH_CLOSE, not "
+        f"{first['skill:month-close'].release.alias}, because it is the latest certified version"
+    ]
+
+
+class LaggingCertification(RecordedSnowflake):
+    """Some pipeline-tagged versions report an empty status while the extension names them."""
+
+    def extension_versions(self, qualified_name: QualifiedName) -> tuple[ExtensionVersion, ...]:
+        return tuple(replace(item, certification_status=None) for item in super().extension_versions(qualified_name))
+
+
+def test_the_extension_latest_certified_version_counts_as_certified() -> None:
+    port = LaggingCertification(existing=())
+    certified = compile_catalog(SkillCatalog((skill(),)), replace(CHANNEL, certified=True))
+    changeset, result, after = publish(port, certified, state())
+    assert result.success, result.outcomes[0].error
+    tags = [statement for script in port.scripts for statement in script if "SET TAG" in statement]
+    assert len(tags) == 1
+    changeset, result, _ = publish(port, certified, after)
+    assert [change.action for change in changeset.changes] == [Action.NOOP]
+    assert served_warnings(changeset) == []
+
+
+def test_served_version_prediction_edges() -> None:
+    port = RecordedSnowflake(existing=())
+    compiled = compile_catalog(SkillCatalog((skill(),)))
+    _, _, after = publish(port, compiled, state())
+    changed = compile_catalog(SkillCatalog((skill(body="Read reference/steps.md twice.\n"),)))
+    _, _, after_change = publish(port, changed, after)
+    # Nothing is certified, so a revert is served only if it is the default.
+    changeset, _, _ = publish(port, compiled, after_change)
+    assert [message.split(", because ")[-1] for message in served_warnings(changeset)] == ["it is the default version"]
+    # A certified revert with no later certified version becomes the one served.
+    certified = compile_catalog(SkillCatalog((skill(),)), replace(CHANNEL, certified=True))
+    changeset, result, _ = publish(port, certified, after_change)
+    assert result.success and served_warnings(changeset) == []
+    assert port.observe_extension(QualifiedName.parse("DB.S.MONTH_CLOSE")).effective_version == "VERSION$2"
+    assert _version_number("VERSION$12") == 12 and _version_number("LIVE") == -1
 
 
 def test_plugin_falls_back_to_a_live_version_built_from_empty() -> None:

@@ -233,6 +233,52 @@ def test_usage_errors_exit_three() -> None:
     assert json.loads(machine.output)["exit_code"] == 3
 
 
+@pytest.mark.parametrize(
+    ("file", "before", "after", "code"),
+    [
+        ("semantic_models/filters/filters.yml", "var('completed_state')", "var('no_such_var')", "SST-REF038"),
+        (
+            "semantic_models/semantic_views/semantic_views.yml",
+            "custom_instructions('jaffle_sql_conventions')",
+            "custom_instructions('no_such_instruction')",
+            "SST-REF039",
+        ),
+        ("semantic_models/semantic_views/semantic_views.yml", "tag('cost_center')", "tag('no_such_tag')", "SST-REF040"),
+    ],
+)
+def test_unknown_references_name_their_own_code(tmp_path: Path, file: str, before: str, after: str, code: str) -> None:
+    project = project_copy(tmp_path)
+    path = project / file
+    text = path.read_text(encoding="utf-8")
+    assert before in text
+    path.write_text(text.replace(before, after, 1), encoding="utf-8")
+    result = CliRunner().invoke(cli, ["compile", *common(project), "--output", "json"])
+    assert result.exit_code == 1, result.output
+    codes = [item["code"] for item in json.loads(result.output)["diagnostics"]]
+    assert code in codes and "SST-INT902" not in codes
+
+
+# INT902 means SST broke an invariant; every user-caused condition has its own code.
+INT902_ALLOWLIST = {
+    "snowflake_semantic_tools/app/apply.py": 1,  # an APL028 outcome the plan never recorded
+    "snowflake_semantic_tools/app/compile.py": 1,  # rendering a view that validated
+    "snowflake_semantic_tools/app/eval_compile.py": 1,  # rendering an eval that validated (VAL762 guards templates)
+    "snowflake_semantic_tools/app/tool_compile.py": 1,  # rendering a tool that validated
+    "snowflake_semantic_tools/cli/main.py": 1,  # the catch-all for an unexpected exception
+}
+
+
+def test_int902_is_emitted_only_at_the_invariant_allowlist() -> None:
+    package = REPO_ROOT / "snowflake_semantic_tools"
+    found = {
+        path.relative_to(REPO_ROOT).as_posix(): count
+        for path in sorted(package.rglob("*.py"))
+        if "domain/model/diagnostic.py" not in path.as_posix()
+        and (count := path.read_text(encoding="utf-8").count('"SST-INT902"'))
+    }
+    assert found == INT902_ALLOWLIST
+
+
 def test_unexpected_json_failure_emits_one_error_document(monkeypatch: pytest.MonkeyPatch) -> None:
     def fail(*args, **kwargs):
         del args, kwargs
@@ -260,13 +306,16 @@ def test_init_debug_clean_and_list_json(tmp_path: Path) -> None:
     project = project_copy(tmp_path)
     debugged = CliRunner().invoke(cli, ["debug", "--project-dir", str(project), "--output", "json"])
     assert debugged.exit_code == 0
-    assert json.loads(debugged.output)["data"]["target"] == "dev"
+    debug_data = json.loads(debugged.output)["data"]
+    assert debug_data["target"] == "dev"
+    # The method is shown, never a credential.
+    assert isinstance(debug_data["authentication"], str) and "password" not in set(debug_data) - {"authentication"}
 
     compiled = CliRunner().invoke(cli, ["compile", *common(project)])
     assert compiled.exit_code == 0
     listed = CliRunner().invoke(cli, ["list", "--project-dir", str(project), "--output", "json"])
     assert listed.exit_code == 0
-    assert len(json.loads(listed.output)["data"]) == 13
+    assert len(json.loads(listed.output)["data"]) == 14
     cleaned = CliRunner().invoke(cli, ["clean", "--project-dir", str(project), "--output", "json"])
     assert cleaned.exit_code == 0
     assert not (project / "target" / "sst").exists()
@@ -285,7 +334,7 @@ def test_plan_live_observation_saved_plan_and_detailed_exitcode(
     assert result.exit_code == 2, result.output
     payload = json.loads(result.output)
     assert payload["status"] == "changes"
-    assert [item["action"] for item in payload["data"]["changes"]] == ["create"] * 13
+    assert [item["action"] for item in payload["data"]["changes"]] == ["create"] * 14
     assert Path(payload["data"]["plan_path"]).is_file()
     assert Path(payload["data"]["sql_path"]).is_dir()
 
@@ -521,7 +570,7 @@ def test_apply_requires_confirmation_and_accepts_current_saved_plan(
     planned_payload = json.loads(planned.output)
     plan_path = planned_payload["data"]["plan_path"]
     saved_plan = json.loads(Path(plan_path).read_text(encoding="utf-8"))
-    assert len(saved_plan["changes"]) == 13
+    assert len(saved_plan["changes"]) == 14
     assert {item["artifact_type"] for item in saved_plan["changes"]} == {
         "semantic_view",
         "tool",
@@ -573,6 +622,108 @@ def test_apply_requires_confirmation_and_accepts_current_saved_plan(
     assert sum("JAFFLE_TOOLKIT" in line for line in first_lines) == 2
     assert sum("SKILL_BUNDLES " in line and line.startswith("CREATE STAGE") for line in first_lines) == 1
     assert sum("[sst:" in statement for statements in apply_port.scripts for statement in statements) == 7
+
+
+def break_menu_view(project: Path) -> None:
+    path = project / "semantic_models" / "semantic_views" / "core" / "semantic_views.yml"
+    text = path.read_text(encoding="utf-8")
+    entry = "- \"{{ ref('products') }}\""
+    assert entry in text
+    path.write_text(text.replace(entry, '- "products"', 1), encoding="utf-8")
+
+
+def test_partial_runs_publish_what_is_healthy_and_still_exit_one(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    project = project_copy(tmp_path)
+    break_menu_view(project)
+    manifest_file = project / "target" / "sst" / "manifest.json"
+    refused = CliRunner().invoke(cli, ["compile", *common(project), "--output", "json"])
+    assert refused.exit_code == 1 and not manifest_file.exists()
+
+    compiled = CliRunner().invoke(cli, ["compile", *common(project), "--partial", "--output", "json"])
+    assert compiled.exit_code == 1, compiled.output
+    payload = json.loads(compiled.output)
+    excluded = set(payload["data"]["partial"]["excluded"])
+    # The analytics agent uses the broken view, and its eval uses the agent.
+    assert {"semantic_view:jaffle_menu", "agent:jaffle_analytics_agent", "eval:jaffle_analytics_agent"} <= excluded
+    kept = {item["artifact_key"] for item in payload["data"]["artifacts"]}
+    assert "semantic_view:jaffle_sales" in kept and not kept & excluded and manifest_file.is_file()
+    assert sum(item["code"] == "SST-PLN032" for item in payload["diagnostics"]) == len(excluded)
+
+    port = RecordedSnowflake(state={})
+    whole = invoke_with_port(monkeypatch, port, ["plan", *common(project), "--target", "dev", "--output", "json"])
+    assert whole.exit_code == 1
+    planned = invoke_with_port(
+        monkeypatch, port, ["plan", *common(project), "--target", "dev", "--partial", "--output", "json"]
+    )
+    assert planned.exit_code == 1, planned.output
+    plan_payload = json.loads(planned.output)
+    assert plan_payload["data"]["manifest_id"] == payload["data"]["manifest_id"]
+    assert {item["artifact_key"] for item in plan_payload["data"]["changes"]} == kept
+    assert set(plan_payload["data"]["partial"]["excluded"]) == excluded
+    plan_path = plan_payload["data"]["plan_path"]
+    assert json.loads(Path(plan_path).read_text(encoding="utf-8"))["selection"]["partial"] is True
+
+    # Publishing a partial result is explicit, and --partial never prunes.
+    apply_args = ["apply", *common(project), "--target", "dev", "--plan", plan_path, "--yes", "--output", "json"]
+    assert CliRunner().invoke(cli, apply_args).exit_code == 3
+    assert CliRunner().invoke(cli, ["plan", *common(project), "--partial", "--prune"]).exit_code == 3
+    assert CliRunner().invoke(cli, ["apply", *common(project), "--partial", "--prune", "--yes"]).exit_code == 3
+
+    original_execute = port.execute_script
+
+    def execute_with_markers(statements):
+        executed = original_execute(statements)
+        for change in plan_payload["data"]["changes"]:
+            if change["artifact_type"] in {"tool", "agent"}:
+                port.markers[change["target"]] = OwnershipMarker(plan_payload["data"]["manifest_id"], change["fingerprint"])
+        return executed
+
+    port.execute_script = execute_with_markers  # type: ignore[method-assign]
+    applied = invoke_with_port(monkeypatch, port, [*apply_args, "--partial"])
+    assert applied.exit_code == 1, applied.output
+    applied_payload = json.loads(applied.output)
+    outcomes = {item["artifact_key"]: item["status"] for item in applied_payload["data"]["outcomes"]}
+    assert set(outcomes) == kept and set(outcomes.values()) == {"applied"}
+    assert applied_payload["data"]["state_written"] is True
+    # Nothing addressed the excluded view or the agent that uses it.
+    targets = {statement.split("\n", 1)[0] for script in port.scripts for statement in script}
+    assert not any(".JAFFLE_MENU" in line or "JAFFLE_ANALYTICS_AGENT" in line for line in targets)
+
+
+def test_a_partial_run_still_stops_on_an_error_that_names_no_artifact(tmp_path: Path) -> None:
+    project = project_copy(tmp_path)
+    break_menu_view(project)
+    config = project / "sst_config.yml"
+    text = config.read_text(encoding="utf-8")
+    assert "  hooks_dir: hooks\n" in text
+    config.write_text(text.replace("  hooks_dir: hooks\n", "  hooks_dir: nowhere\n", 1), encoding="utf-8")
+    result = CliRunner().invoke(cli, ["compile", *common(project), "--partial", "--output", "json"])
+    assert result.exit_code == 1
+    assert "SST-CFG047" in {item["code"] for item in json.loads(result.output)["diagnostics"]}
+    assert not (project / "target" / "sst" / "manifest.json").exists()
+
+
+def test_a_partial_run_refuses_to_publish_a_view_without_a_broken_member(tmp_path: Path) -> None:
+    project = project_copy(tmp_path)
+    metrics = project / "semantic_models" / "metrics" / "metrics.yml"
+    text = metrics.read_text(encoding="utf-8")
+    expression = "expr: \"SUM({{ ref('orders', 'order_total') }})\""
+    assert expression in text
+    metrics.write_text(
+        text.replace(expression, "expr: \"SUM({{ ref('orders', 'order_total') }}) * {{ var('nope') }}\"", 1),
+        encoding="utf-8",
+    )
+    # The failing metric would silently leave every view it belongs to, so no split
+    # is safe: nothing is published, and the run says why.
+    result = CliRunner().invoke(cli, ["compile", *common(project), "--partial", "--output", "json"])
+    assert result.exit_code == 1
+    diagnostics = json.loads(result.output)["diagnostics"]
+    assert {"SST-REF038", "SST-PLN033"} <= {item["code"] for item in diagnostics}
+    refusal = next(item for item in diagnostics if item["code"] == "SST-PLN033")
+    assert "metric:total_revenue" in refusal["message"]
+    assert not (project / "target" / "sst" / "manifest.json").exists()
 
 
 def test_apply_reuses_saved_plan_selection_without_repeated_selectors(
@@ -1139,7 +1290,7 @@ def test_golden_json_failure_missing_file_and_smoke_failure(tmp_path: Path, monk
         ["test", *common(project), "--suite", "golden", "--golden-dir", str(empty_golden), "--output", "json"],
     )
     assert missing.exit_code == 1
-    assert len(json.loads(missing.output)["data"]["failures"]) == 14
+    assert len(json.loads(missing.output)["data"]["failures"]) == 15
 
     from snowflake_semantic_tools.domain.model.lifecycle import OwnershipMarker
     from snowflake_semantic_tools.domain.ports.snowflake import SnowflakePortError

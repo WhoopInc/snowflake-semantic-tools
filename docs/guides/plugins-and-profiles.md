@@ -4,9 +4,9 @@ Skills reach people through two more artifact types:
 
 - a **plugin** publishes several project skills as one plugin-type Cortex
   Extension;
-- a **profile** publishes a CoCo Desktop profile: a set of skills, a system
-  prompt, MCP servers, and hooks, which Desktop installs for everyone who
-  selects the profile.
+- a **profile** publishes a CoCo Desktop profile: a set of skills, plugins, slash
+  commands, a system prompt, MCP servers, and hooks, which Desktop installs for
+  everyone who selects the profile.
 
 Both build from the same `skills/` folders as the catalog, so a skill is
 written once and published everywhere it is listed.
@@ -44,10 +44,14 @@ profiles/
     AGENTS.md
     rules/
       sql-style.md
-    profile.yml           # skills: only
+    profile.yml           # skills: and commands: only
   sales-analyst/
     profile.yml
     AGENTS.md             # optional
+commands/
+  daily-summary.md        # /daily-summary
+  sql/
+    check.md              # /sql:check
 hooks/
   sql-guard/
     hook.yml
@@ -65,31 +69,67 @@ owner_team: Sales Analytics
 skills:
   - sales-semantics
   - month-close
+plugins:
+  - sales-toolkit
+commands:
+  - sql/check
 mcp_servers:
   - sales-docs
 hooks:
   - sql-guard
 ```
 
-- `skills`, `mcp_servers`, and `hooks` name folders in `project.skills_dir`,
-  `project.mcp_servers_dir`, and `project.hooks_dir`. An unknown name is an error
-  (`SST-VAL844`, `SST-VAL846`, `SST-VAL847`), and a skill with errors stops the
-  profile from publishing (`SST-VAL855`).
+- `skills`, `plugins`, `commands`, `mcp_servers`, and `hooks` name what is in
+  `project.skills_dir`, `project.plugins_dir`, `project.commands_dir`,
+  `project.mcp_servers_dir`, and `project.hooks_dir`. An unknown name is an
+  error (`SST-VAL844`, `SST-VAL860`, `SST-VAL858`, `SST-VAL847`, `SST-VAL846`),
+  and a skill or plugin with errors stops the profile from publishing
+  (`SST-VAL855`).
 - `profile.yaml` works too; having both is an error.
-- `allowed_roles`, `active`, `plugins`, `commands`, `env_vars`, and
-  `settings_overrides` are refused (`SST-VAL851`). Desktop does not read
-  `allowed_roles`, so access control does not belong in the file; to retire a
-  profile, delete its folder and plan with `--prune`.
+- `allowed_roles`, `active`, `env_vars`, and `settings_overrides` are refused
+  (`SST-VAL851`). Desktop does not read `allowed_roles`, so access control does
+  not belong in the file; to retire a profile, delete its folder and plan with
+  `--prune`. Environment variables and settings overrides would change every
+  user's local setup, so SST does not publish them.
+- Every file a profile publishes must have a name a stage accepts: letters,
+  digits, `.`, `_`, `-`, and `$` (`SST-VAL857`). This is checked before anything
+  is uploaded.
 
 ### The shared folder
 
 `profiles/shared/` is reserved. Its `AGENTS.md` and `rules/*.md` form the start
-of every profile's system prompt, and the skills in its `profile.yml` are part
-of every profile. A profile that lists a shared skill again gets a warning
-(`SST-VAL845`).
+of every profile's system prompt, and the skills and commands in its
+`profile.yml` are part of every profile. A profile that lists a shared skill or
+command again gets a warning (`SST-VAL845`).
 
 Each profile's prompt is assembled in a fixed order: the shared `AGENTS.md`, the
 shared rules sorted by file name, then the profile's own `AGENTS.md`.
+
+### Commands
+
+A command is a Markdown file anywhere under `project.commands_dir` (default
+`commands/`). A profile names it by its path without `.md`; Desktop joins nested
+folders with `:`, so `sql/check` is `/sql:check` for the user.
+
+```markdown
+---
+description: Check a query against the SQL style rules.
+allowed-tools: [snowflake_sql_execute]
+---
+Review the SQL in the last message against the rules in AGENTS.md.
+```
+
+Frontmatter is optional. When it is present, it is a YAML mapping of
+`description`, `allowed-tools` (a string or a list), `skill`, and `hidden`
+(`SST-VAL859`); any other key is a warning (`SST-PRS004`). The file is
+published as written.
+
+### Plugins in a profile
+
+A profile that lists a plugin carries that plugin's bundle, byte for byte the
+bundle its catalog extension publishes, and Desktop loads it as a plugin.
+Listing a plugin does not require the catalog channel: without it, the plugin is
+built for the profile alone, and its errors block the profile (`SST-VAL855`).
 
 ### Hooks
 
@@ -150,6 +190,9 @@ registry table that points at them:
 | `prompts/<profile>/<hash>/AGENTS.md` | the assembled system prompt |
 | `mcp/<profile>/<hash>/mcp.json` | the merged MCP servers |
 | `hooks/<profile>/<hash>/<hook>/<script>` | hook scripts |
+| `commands/shared/<hash>/` | the shared commands |
+| `commands/<profile>/<hash>/` | the profile's own commands |
+| `plugins/<profile>/<hash>/<plugin>/` | each listed plugin's bundle |
 
 Each `<hash>` is 12 hex characters of that tree's own digest, so a new version of
 a tree lands at a new path and never overwrites one a published row names.

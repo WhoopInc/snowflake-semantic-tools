@@ -5,10 +5,11 @@
 # Every member is also published as its own SKILL-type extension; the plugin is
 # the one-install bundle of them.
 #
-# NO AGENT REFERENCES THIS PLUGIN, AND SST SAYS SO. `SST-VAL804` warns that the
-# published version has no agent consumer. That is true and deliberate here: the
-# plugin serves the catalog only. An agent would reference it as
-# `{{ plugin('jaffle-toolkit') }}`, with no `version:`.
+# NO AGENT REFERENCES THIS PLUGIN, AND IT STILL HAS A CONSUMER. The
+# `jaffle-operator` Desktop profile lists it, so the profile carries this bundle
+# byte for byte, and SST does not warn that the version is unreferenced
+# (`SST-VAL804`). An agent would reference it as `{{ plugin('jaffle-toolkit') }}`,
+# with no `version:`.
 name: jaffle-toolkit
 description: |-
   The jaffle analytics toolkit: which semantic view answers which question, and

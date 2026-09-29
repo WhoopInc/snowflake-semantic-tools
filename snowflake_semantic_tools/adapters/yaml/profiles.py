@@ -7,10 +7,14 @@ from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
+import yaml
+
 from ...domain.model.diagnostic import D, Diagnostic, DiagnosticBag, Origin
 from ...domain.model.profile import (
+    COMMAND_FRONTMATTER_KEYS,
     REJECTED_PROFILE_KEYS,
     SHARED_PROFILE,
+    CommandFile,
     DesktopProfile,
     HookDefinition,
     McpConfig,
@@ -22,7 +26,8 @@ from ..project import ProjectError
 from .loader import _parse_yaml_bytes
 from .skills import _published
 
-PROFILE_KEYS = frozenset(("name", "description", "owner_team", "skills", "mcp_servers", "hooks"))
+PROFILE_KEYS = frozenset(("name", "description", "owner_team", "skills", "mcp_servers", "hooks", "commands", "plugins"))
+SHARED_KEYS = frozenset(("skills", "commands"))
 HOOK_KEYS = frozenset(
     ("name", "event", "type", "command", "matcher", "timeout", "interactive", "description", "script")
 )
@@ -31,7 +36,12 @@ PROFILE_FILES = ("profile.yml", "profile.yaml")
 
 
 def load_profile_catalog(
-    project_dir: Path, *, profiles_dir: str, hooks_dir: str, mcp_servers_dir: str
+    project_dir: Path,
+    *,
+    profiles_dir: str,
+    hooks_dir: str,
+    mcp_servers_dir: str,
+    commands_dir: str = "commands",
 ) -> ProfileCatalog:
     diagnostics: list[Diagnostic] = []
     profiles: list[DesktopProfile] = []
@@ -54,7 +64,8 @@ def load_profile_catalog(
         for folder in _folders(project_dir / mcp_servers_dir)
         if (config := _load_mcp(project_dir, folder, diagnostics)) is not None
     ]
-    return ProfileCatalog(tuple(profiles), shared, tuple(hooks), tuple(configs), DiagnosticBag(diagnostics))
+    commands = _load_commands(project_dir, project_dir / commands_dir, diagnostics)
+    return ProfileCatalog(tuple(profiles), shared, tuple(hooks), tuple(configs), DiagnosticBag(diagnostics), commands)
 
 
 def _folders(root: Path) -> tuple[Path, ...]:
@@ -79,7 +90,7 @@ def _parse(project_dir: Path, path: Path, subject: str, diagnostics: list[Diagno
     try:
         parsed = _parse_yaml_bytes(path.read_bytes(), file)
     except ProjectError as exc:
-        found = exc.diagnostics or (D("SST-INT902", detail=str(exc)),)
+        found = exc.diagnostics or (D("SST-LOD001", origin=Origin(file), file=file, line=1, col=1, detail=str(exc)),)
         diagnostics.extend(replace(item, subject=subject) for item in found)
         return None
     return dict(parsed.tree)
@@ -186,6 +197,8 @@ def _load_profile(project_dir: Path, folder: Path, diagnostics: list[Diagnostic]
         prompt=_prompt(prompt_path),
         origin=origin,
         source_files=tuple(sources),
+        commands=_names(tree.get("commands"), "commands", subject, origin, diagnostics),
+        plugins=_names(tree.get("plugins"), "plugins", subject, origin, diagnostics),
     )
 
 
@@ -194,6 +207,7 @@ def _load_shared(project_dir: Path, folder: Path, diagnostics: list[Diagnostic])
     origin = Origin(_relative(project_dir, folder))
     sources: list[str] = []
     skills: tuple[str, ...] = ()
+    commands: tuple[str, ...] = ()
     manifest, problem = _manifest(folder, PROFILE_FILES)
     if manifest is None and problem is not None and "both" in problem:
         diagnostics.append(
@@ -203,9 +217,10 @@ def _load_shared(project_dir: Path, folder: Path, diagnostics: list[Diagnostic])
         origin = Origin(_relative(project_dir, manifest), 1)
         sources.append(_relative(project_dir, manifest))
         tree = _parse(project_dir, manifest, subject, diagnostics) or {}
-        for key in sorted(set(tree) - {"skills"}):
+        for key in sorted(set(tree) - SHARED_KEYS):
             diagnostics.append(D("SST-PRS004", origin=origin, subject=subject, artifact=subject, field=key))
         skills = _names(tree.get("skills"), "skills", subject, origin, diagnostics)
+        commands = _names(tree.get("commands"), "commands", subject, origin, diagnostics)
     prompt_path = folder / "AGENTS.md"
     if prompt_path.is_file():
         sources.append(_relative(project_dir, prompt_path))
@@ -216,7 +231,76 @@ def _load_shared(project_dir: Path, folder: Path, diagnostics: list[Diagnostic])
         if path.is_file() and _published(path, rules_dir)
     )
     sources.extend(_relative(project_dir, rules_dir / name) for name, _ in rules)
-    return SharedProfile(_prompt(prompt_path), rules, skills, origin, tuple(sources))
+    return SharedProfile(_prompt(prompt_path), rules, skills, origin, tuple(sources), commands)
+
+
+def _load_commands(project_dir: Path, root: Path, diagnostics: list[Diagnostic]) -> tuple[CommandFile, ...]:
+    """Every `*.md` below the commands directory, as Desktop scans a command repository."""
+    if not root.is_dir():
+        return ()
+    commands: list[CommandFile] = []
+    for path in sorted(root.rglob("*.md")):
+        if not path.is_file() or not _published(path, root):
+            continue
+        relative = path.relative_to(root).as_posix()
+        file = _relative(project_dir, path)
+        content = path.read_bytes()
+        command = CommandFile(relative, content, file, Origin(file, 1))
+        _check_command(command, diagnostics)
+        commands.append(command)
+    return tuple(commands)
+
+
+def _check_command(command: CommandFile, diagnostics: list[Diagnostic]) -> None:
+    """Frontmatter is optional; when present it must be a mapping Desktop can read."""
+
+    def invalid(detail: str, line: int = 1) -> None:
+        diagnostics.append(
+            D(
+                "SST-VAL859",
+                origin=Origin(command.file, line),
+                subject=command.key,
+                artifact=command.name,
+                detail=detail,
+            )
+        )
+
+    try:
+        text = command.content.decode("utf-8")
+    except UnicodeDecodeError:
+        invalid("is not UTF-8")
+        return
+    lines = text.splitlines()
+    if not lines or lines[0].strip() != "---":
+        return
+    closing = next((index for index, line in enumerate(lines[1:], start=1) if line.strip() == "---"), None)
+    if closing is None:
+        invalid("frontmatter opens with --- but never closes")
+        return
+    try:
+        value: Any = yaml.safe_load("\n".join(lines[1:closing]))
+    except yaml.YAMLError as exc:
+        invalid(f"frontmatter is not valid YAML: {getattr(exc, 'problem', exc)}")
+        return
+    if value is None:
+        return
+    if not isinstance(value, dict):
+        invalid(f"frontmatter is a {type(value).__name__}, not a mapping")
+        return
+    for key in sorted(set(value) - COMMAND_FRONTMATTER_KEYS, key=str):
+        diagnostics.append(
+            D("SST-PRS004", origin=Origin(command.file, 1), subject=command.key, artifact=command.key, field=key)
+        )
+    for key in ("description", "skill"):
+        if key in value and not isinstance(value[key], str):
+            invalid(f"'{key}' must be a string")
+    if "hidden" in value and not isinstance(value["hidden"], bool):
+        invalid("'hidden' must be true or false")
+    tools = value.get("allowed-tools")
+    if "allowed-tools" in value and not (
+        isinstance(tools, str) or (isinstance(tools, list) and all(isinstance(item, str) for item in tools))
+    ):
+        invalid("'allowed-tools' must be a string or a list of strings")
 
 
 def _load_hook(project_dir: Path, folder: Path, diagnostics: list[Diagnostic]) -> HookDefinition | None:

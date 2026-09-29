@@ -45,6 +45,7 @@ class _Observed:
     extension: ExtensionObservation | None
     version: ExtensionVersion | None
     version_files: tuple[str, ...]
+    versions: tuple[ExtensionVersion, ...] = ()
 
     def details(self) -> tuple[tuple[str, str], ...]:
         extension = self.extension
@@ -131,18 +132,21 @@ class ExtensionLifecycleHandler:
                         detail=_difference(observed.version_files, release.paths),
                     ),
                 )
-            if not version.is_default:
-                diagnostics.append(
-                    D(
-                        "SST-VAL841",
-                        subject=artifact.key,
-                        artifact=artifact.key,
-                        value=release.alias,
-                        target=release.target.sql,
-                    )
+        served = _served_instead(observed, release)
+        if served is not None:
+            diagnostics.append(
+                D(
+                    "SST-VAL841",
+                    subject=artifact.key,
+                    artifact=artifact.key,
+                    value=release.alias,
+                    target=release.target.sql,
+                    found=served[0],
+                    detail=served[1],
                 )
+            )
         comment_drift = extension is not None and (extension.comment or "") != release.comment
-        uncertified = release.certified and (version is None or version.certification_status != CERTIFIED)
+        uncertified = release.certified and (version is None or not _certified(extension, version))
         if extension is None:
             action, reason = Action.CREATE, ChangeReason.NOT_PRESENT
         elif version is None or comment_drift or uncertified:
@@ -176,7 +180,13 @@ class ExtensionLifecycleHandler:
     def report_prune(self, artifact_key: str, state_entry: AppliedEntry) -> Change:
         """Prune is report-only: SST never drops an extension or a version."""
         resources = ", ".join(resource.qualified_name for resource in state_entry.applied_resources) or artifact_key
-        diagnostic = D("SST-PLN021", count=len(state_entry.applied_resources), value=resources)
+        diagnostic = D(
+            "SST-PLN021",
+            subject=artifact_key,
+            artifact=artifact_key,
+            value=resources,
+            detail="remove the extension by hand once nothing uses it",
+        )
         return Change(
             artifact_key,
             self.artifact_type,
@@ -204,18 +214,16 @@ class ExtensionLifecycleHandler:
         extension = self._port.observe_extension(release.target)
         version = None
         version_files: tuple[str, ...] = ()
+        versions: tuple[ExtensionVersion, ...] = ()
         if extension is not None:
+            versions = self._port.extension_versions(release.target)
             version = next(
-                (
-                    item
-                    for item in self._port.extension_versions(release.target)
-                    if (item.alias or "").casefold() == release.alias.casefold()
-                ),
+                (item for item in versions if (item.alias or "").casefold() == release.alias.casefold()),
                 None,
             )
             if version is not None:
                 version_files = self._port.list_location(version.location)
-        return _Observed(stage_type, tuple(sorted(staged)), extension, version, tuple(sorted(version_files)))
+        return _Observed(stage_type, tuple(sorted(staged)), extension, version, tuple(sorted(version_files)), versions)
 
     def _observation(self, release: ExtensionRelease, observed: _Observed) -> CompositeObservation:
         return CompositeObservation(
@@ -329,7 +337,7 @@ class _Run:
             failure = self._execute(f"ALTER CORTEX EXTENSION {target} SET COMMENT = {_sql_string(release.comment)}")
             if failure is not None:
                 return failure
-        if release.certified and version.certification_status != CERTIFIED:
+        if release.certified and not _certified(current.extension, version):
             failure = self._execute(
                 f"ALTER CORTEX EXTENSION {target} VERSION {release.alias} "
                 "SET TAG SNOWFLAKE.CORE.CERTIFICATION_STATUS = 'CERTIFIED'",
@@ -338,7 +346,7 @@ class _Run:
             if failure is not None:
                 return failure
             version = self._version()
-            if version is None or version.certification_status != CERTIFIED:
+            if version is None or not _certified(self._port.observe_extension(release.target), version):
                 found = version.certification_status if version is not None else "absent"
                 return self._fail(
                     f"{release.alias} of {target} reports certification {found or 'unset'} after tagging",
@@ -445,6 +453,47 @@ def _recorded_target(entry: AppliedEntry, release: ExtensionRelease) -> bool:
         return QualifiedName.parse(entry.qualified_name).folded == release.target.folded
     except ValueError:
         return False
+
+
+def _certified(extension: ExtensionObservation | None, version: ExtensionVersion) -> bool:
+    """Either signal counts: some versions tagged by the extensions pipeline report an
+    empty per-version status while the extension names them its latest certified one."""
+    if (version.certification_status or "").upper() == CERTIFIED:
+        return True
+    latest = extension.latest_certified_version if extension is not None else None
+    return latest is not None and latest.upper() == version.name.upper()
+
+
+def _served_instead(observed: _Observed, release: ExtensionRelease) -> tuple[str, str] | None:
+    """The version the catalog will serve instead of this release's, and why.
+
+    The catalog serves the latest certified version when any is certified, and the
+    default otherwise; ADD VERSION makes the new version the default. Agents pin
+    their version, so only catalog users are affected.
+    """
+    extension = observed.extension
+    if extension is None:
+        return None
+    certified = {item.name.upper() for item in observed.versions if _certified(extension, item)}
+    ours = observed.version.name.upper() if observed.version is not None else None
+    if release.certified:
+        if ours is None:
+            return None
+        certified.add(ours)
+    if certified:
+        latest = max(certified, key=_version_number)
+        if latest == ours:
+            return None
+        return latest, "it is the latest certified version"
+    default = next((item.name.upper() for item in observed.versions if item.is_default), None)
+    if ours is None or default is None or default == ours:
+        return None
+    return default, "it is the default version"
+
+
+def _version_number(name: str) -> int:
+    number = name.upper().removeprefix("VERSION$")
+    return int(number) if number.isdigit() else -1
 
 
 def _stale(planned: tuple[tuple[str, str], ...], current: tuple[tuple[str, str], ...]) -> bool:

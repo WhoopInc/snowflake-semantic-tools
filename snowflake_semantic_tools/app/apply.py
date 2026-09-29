@@ -212,7 +212,9 @@ class ApplyArtifacts:
                         expected=len(changeset.changes),
                     )
                 )
-            if not changeset.writes:
+            # A report-only prune executes nothing, but state still records the run:
+            # the entry is retained and the manifest moves on, or SST-MAN021 never clears.
+            if not changeset.writes and not changeset.report_only:
                 return ApplyResult(
                     tuple(outcomes),
                     DiagnosticBag(diagnostics),
@@ -543,6 +545,13 @@ class ApplyArtifacts:
         }
         for outcome in outcomes:
             change = by_key[outcome.key]
+            if change.action is Action.PRUNE and not change.prune_executable:
+                # Nothing was removed, so the entry stays and the next plan reports it
+                # again; it now belongs to this manifest, which is what clears SST-MAN021.
+                retained = previous.applied.get(change.key)
+                if retained is not None:
+                    applied[change.key] = replace(retained, manifest_id=changeset.manifest_id)
+                continue
             if outcome.status is not OutcomeStatus.APPLIED and not outcome.write_succeeded:
                 continue
             if change.action is Action.PRUNE:

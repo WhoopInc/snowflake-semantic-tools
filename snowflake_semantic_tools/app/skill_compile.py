@@ -61,6 +61,8 @@ class CompiledExtension:
     release: ExtensionRelease
     source_files: tuple[str, ...]
     has_scripts: bool = False
+    # What the bundle carries besides itself: a plugin's member skills.
+    contained_keys: tuple[str, ...] = ()
 
     @property
     def name(self) -> str:
@@ -157,6 +159,16 @@ class CompileSkills:
                 )
             )
         for plugin in self._catalog.plugins:
+            # A member that fails catalog validation (say, a file a stage rejects) would
+            # upload inside the plugin too, so the plugin is blocked on it.
+            for name in dict.fromkeys(plugin.members):
+                member = members.get(name)
+                if member is not None and _blocked(diagnostics, member.key):
+                    diagnostics.append(
+                        D("SST-VAL836", origin=plugin.origin, subject=plugin.key, artifact=plugin.name, name=name)
+                    )
+            if _blocked(diagnostics, plugin.key):
+                continue
             bundle, bundle_diagnostics = build_plugin_bundle(plugin, members)
             diagnostics.extend(bundle_diagnostics)
             if bundle is None or _blocked(diagnostics, plugin.key):
@@ -174,6 +186,7 @@ class CompileSkills:
                     self._release(plugin.key, "PLUGIN", plugin.extension_name, plugin.description or "", bundle),
                     sources,
                     has_scripts=any(members[name].scripts for name in plugin.members if name in members),
+                    contained_keys=tuple(f"skill:{name}" for name in dict.fromkeys(plugin.members)),
                 )
             )
         return CompileResult(tuple(sorted(compiled, key=lambda item: item.artifact_key)), DiagnosticBag(diagnostics))

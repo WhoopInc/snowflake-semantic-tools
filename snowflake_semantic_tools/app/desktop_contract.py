@@ -59,6 +59,13 @@ def stage_pointers(view: Mapping[str, object]) -> tuple[str, ...]:
         for item in values if isinstance(values, list) else ():
             if is_pointer(item) and isinstance(item.get("snowflake_stage"), str):
                 found.append(str(item["snowflake_stage"]))
+    # PLUGINS holds plain strings; Desktop fetches the ones naming a stage path.
+    plugins = view.get("PLUGINS")
+    found.extend(
+        str(item)
+        for item in (plugins if isinstance(plugins, list) else ())
+        if isinstance(item, str) and item.startswith("@")
+    )
     for column in ("SYSTEM_PROMPT_REPO", "MCP_SERVERS"):
         value = view.get(column)
         if is_pointer(value) and isinstance(value, Mapping) and isinstance(value.get("snowflake_stage"), str):

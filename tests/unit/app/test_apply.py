@@ -760,9 +760,18 @@ def test_apply_prune_non_executable_and_observed_marker_state_paths() -> None:
     ownership = marker(artifact)
     live = observed(artifact, ownership=ownership)
     non_executable = replace(change(artifact, Action.PRUNE, live=live), prune_executable=False)
-    use_case, _, _, _ = runner()
-    skipped = use_case.run(changeset(non_executable), state(), ApplyOptions(allow_prune=True))
+    use_case, _, store, _ = runner()
+    from snowflake_semantic_tools.domain.state.model import AppliedEntry
+
+    recorded = AppliedEntry(
+        artifact.fingerprint, artifact.target.sql, "now", "prior", "applied", artifact.fingerprint, "o" * 64
+    )
+    prior = replace(state(), applied=MappingProxyType({artifact.key: recorded}))
+    skipped = use_case.run(changeset(non_executable), prior, ApplyOptions(allow_prune=True))
     assert skipped.outcomes[0].status is OutcomeStatus.SKIPPED
+    # Nothing executes, but the retained entry moves to this manifest so the plan reconciles.
+    assert skipped.state_written and store.state is not None
+    assert store.state.applied[artifact.key] == replace(recorded, manifest_id="m" * 64)
 
     noop = replace(change(artifact), action=Action.NOOP, observed=live)
     use_case, _, store, _ = runner()

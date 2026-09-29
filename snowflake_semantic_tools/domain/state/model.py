@@ -579,6 +579,7 @@ class SavedPlan:
     selected: tuple[str, ...] = ()
     excluded: tuple[str, ...] = ()
     include_prune: bool = False
+    partial: bool = False
 
     @classmethod
     def from_changeset(
@@ -588,6 +589,7 @@ class SavedPlan:
         selected: tuple[str, ...] = (),
         excluded: tuple[str, ...] = (),
         include_prune: bool = False,
+        partial: bool = False,
     ) -> SavedPlan:
         changes = tuple(SavedChange.from_change(change) for change in changeset.changes)
         observed = [
@@ -608,11 +610,7 @@ class SavedPlan:
             "observation_at": changeset.observation_at,
             "observation_fingerprint": observation_fingerprint,
             "changes": [change.as_dict() for change in changes],
-            "selection": {
-                "selected": list(selected),
-                "excluded": list(excluded),
-                "include_prune": include_prune,
-            },
+            "selection": _selection(selected, excluded, include_prune, partial),
         }
         return cls(
             PLAN_SCHEMA_VERSION,
@@ -625,6 +623,7 @@ class SavedPlan:
             selected,
             excluded,
             include_prune,
+            partial,
         )
 
     def as_dict(self) -> dict[str, object]:
@@ -636,15 +635,21 @@ class SavedPlan:
             "observation_at": self.observation_at,
             "observation_fingerprint": self.observation_fingerprint,
             "changes": [change.as_dict() for change in self.changes],
-            "selection": {
-                "selected": list(self.selected),
-                "excluded": list(self.excluded),
-                "include_prune": self.include_prune,
-            },
+            "selection": _selection(self.selected, self.excluded, self.include_prune, self.partial),
         }
 
     def matches(self, manifest_id: str, target: TargetIdentity) -> bool:
         return self.manifest_id == manifest_id and self.target.key == target.key
+
+
+def _selection(
+    selected: tuple[str, ...], excluded: tuple[str, ...], include_prune: bool, partial: bool
+) -> dict[str, object]:
+    # `partial` appears only when set, so a plan that is not partial keeps its id.
+    value: dict[str, object] = {"selected": list(selected), "excluded": list(excluded), "include_prune": include_prune}
+    if partial:
+        value["partial"] = True
+    return value
 
 
 def _object_map(value: object) -> dict[str, object]:

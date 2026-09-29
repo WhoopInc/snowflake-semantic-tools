@@ -137,3 +137,56 @@ def test_missing_directories_are_empty(tmp_path: Path) -> None:
         (),
         (),
     )
+    assert catalog.commands == ()
+
+
+def test_commands_load_like_a_desktop_command_repository(tmp_path: Path) -> None:
+    write(
+        tmp_path,
+        {
+            "profiles/analyst/profile.yml": "name: analyst\ncommands: [review, sql/check]\nplugins: [kit]\n",
+            "profiles/shared/profile.yml": "skills: []\ncommands: [daily]\n",
+            "commands/daily.md": "Summarise yesterday.\n",
+            "commands/review.md": "---\ndescription: Review a PR.\nallowed-tools: [Read, Grep]\nhidden: false\n---\nGo.\n",
+            "commands/sql/check.md": "---\nskill: sql-author\nallowed-tools: Bash\n---\nCheck it.\n",
+            "commands/notes.txt": "not a command",
+            "commands/.drafts/wip.md": "hidden",
+            "commands/bad/unclosed.md": "---\ndescription: x\n",
+            "commands/bad/listy.md": "---\n- a\n---\n",
+            "commands/bad/types.md": "---\ndescription: 3\nhidden: maybe\nallowed-tools: [1]\nskill: [x]\ncolour: red\n---\n",
+            "commands/bad/yaml.md": "---\ndescription: [unclosed\n---\n",
+            "commands/bad/empty.md": "---\n---\nBody only.\n",
+        },
+    )
+    (tmp_path / "commands" / "bad" / "binary.md").write_bytes(b"\xff\xfe")
+    catalog = load_profile_catalog(
+        tmp_path, profiles_dir="profiles", hooks_dir="hooks", mcp_servers_dir="mcp-servers", commands_dir="commands"
+    )
+    assert [command.name for command in catalog.commands] == [
+        "bad/binary",
+        "bad/empty",
+        "bad/listy",
+        "bad/types",
+        "bad/unclosed",
+        "bad/yaml",
+        "daily",
+        "review",
+        "sql/check",
+    ]
+    found = [(item.subject, item.code, item.context.get("field") or item.context.get("detail")) for item in catalog.diagnostics]
+    assert found == [
+        ("command:bad/binary", "SST-VAL859", "is not UTF-8"),
+        ("command:bad/listy", "SST-VAL859", "frontmatter is a list, not a mapping"),
+        ("command:bad/types", "SST-PRS004", "colour"),
+        ("command:bad/types", "SST-VAL859", "'description' must be a string"),
+        ("command:bad/types", "SST-VAL859", "'skill' must be a string"),
+        ("command:bad/types", "SST-VAL859", "'hidden' must be true or false"),
+        ("command:bad/types", "SST-VAL859", "'allowed-tools' must be a string or a list of strings"),
+        ("command:bad/unclosed", "SST-VAL859", "frontmatter opens with --- but never closes"),
+        ("command:bad/yaml", "SST-VAL859", "frontmatter is not valid YAML: expected ',' or ']', but got '<stream end>'"),
+    ]
+    profile = catalog.profiles[0]
+    assert (profile.commands, profile.plugins) == (("review", "sql/check"), ("kit",))
+    assert catalog.shared is not None and catalog.shared.commands == ("daily",)
+    review = next(command for command in catalog.commands if command.name == "review")
+    assert review.file == "commands/review.md" and review.content.startswith(b"---\ndescription")

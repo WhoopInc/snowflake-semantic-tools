@@ -30,6 +30,7 @@ Where each artifact type lives on disk.
 | `project.profiles_dir` | string | `profiles` | CoCo Desktop profiles plus the shared prompt and rules. |
 | `project.hooks_dir` | string | `hooks` | Hook definitions and their scripts, referenced by profiles. |
 | `project.mcp_servers_dir` | string | `mcp-servers` | MCP server configs, referenced by profiles. |
+| `project.commands_dir` | string | `commands` | Desktop slash commands (`*.md`, nested folders allowed), referenced by profiles. |
 | `project.target_profile` | string |  | The `profiles.yml` profile of a project with no `dbt_project.yml`. In a dbt project it must match the dbt `profile:`. |
 
 ## validation

@@ -15,16 +15,16 @@ cannot be downgraded by any setting.
 
 ## Contents
 
-- [Configuration (CFG)](#configuration-cfg) -- 15 codes
-- [Parsing (PRS)](#parsing-prs) -- 33 codes
+- [Configuration (CFG)](#configuration-cfg) -- 19 codes
+- [Parsing (PRS)](#parsing-prs) -- 35 codes
 - [Loading (LOD)](#loading-lod) -- 8 codes
-- [References (REF)](#references-ref) -- 21 codes
+- [References (REF)](#references-ref) -- 28 codes
 - [Membership (MEM)](#membership-mem) -- 6 codes
-- [Validation (VAL)](#validation-val) -- 154 codes
+- [Validation (VAL)](#validation-val) -- 159 codes
 - [dbt (DBT)](#dbt-dbt) -- 5 codes
 - [Rendering (RND)](#rendering-rnd) -- 2 codes
 - [Manifest and state (MAN)](#manifest-and-state-man) -- 13 codes
-- [Planning (PLN)](#planning-pln) -- 17 codes
+- [Planning (PLN)](#planning-pln) -- 19 codes
 - [Apply (APL)](#apply-apl) -- 20 codes
 - [Snowflake (SNO)](#snowflake-sno) -- 6 codes
 - [External systems (PRT)](#external-systems-prt) -- 5 codes
@@ -152,6 +152,38 @@ Fix: rename the key
 `<key> requires a dbt project, and the project has no dbt_project.yml`
 
 Fix: add dbt_project.yml, or remove the configuration; a project without dbt publishes skills, plugins, and profiles only
+
+### SST-CFG047
+
+**Configured directory does not exist** (error)
+
+`<key> is <value>, which is not a directory in the project`
+
+Fix: fix the path, or remove the key to use the default; otherwise SST finds nothing there, and --prune would remove everything that directory published
+
+### SST-CFG048
+
+**profiles.yml field is not used by SST** (warning)
+
+`target '<target>': '<key>' is not a setting SST reads, so it is ignored`
+
+Fix: check the spelling; SST passes only connection settings to Snowflake, so a misspelled credential field would otherwise be dropped silently
+
+### SST-CFG049
+
+**profiles.yml value cannot be used** (error)
+
+`target '<target>': '<key>' <problem>`
+
+Fix: SST renders {{ env_var('NAME') }} and {{ env_var('NAME', 'default') }} anywhere in a value, and no other template; write numbers and booleans without filters such as as_number
+
+### SST-CFG050
+
+**Unsupported authentication configuration** (error)
+
+`target '<target>': <detail>`
+
+Fix: authenticate with a key pair, a password, SSO (authenticator), or an OAuth access token (token)
 
 ## Parsing (PRS)
 
@@ -419,6 +451,22 @@ Fix: move the nested skill beside its parent; one skill per folder
 
 Fix: delete the 0.3 spelling; sst migrate refs does not rename keys
 
+### SST-PRS122
+
+**File is not UTF-8** (error)
+
+`<file>: cannot be decoded as UTF-8 at byte <offset>`
+
+Fix: save the file as UTF-8
+
+### SST-PRS123
+
+**Semantic view definition is malformed** (error)
+
+`<artifact>: <detail>`
+
+Fix: fix the field the message names; the semantic views guide lists each field's form
+
 ## Loading (LOD)
 
 ### SST-LOD001
@@ -654,6 +702,62 @@ Fix: declare the plugin under the plugins directory, or correct the name
 `agent '<artifact>': extension('<name>') names a <kind> this project publishes`
 
 Fix: reference it with skill() or plugin(), which pins the published version
+
+### SST-REF038
+
+**Unknown project variable** (error)
+
+`<artifact>: var('<name>') names no project variable`
+
+Fix: declare it under vars: in sst_config.yml, or fix the name
+
+### SST-REF039
+
+**Unknown custom instruction** (error)
+
+`<artifact>: custom_instructions('<name>') names no custom instruction`
+
+Fix: declare it under semantic_models/custom_instructions/, or fix the name
+
+### SST-REF040
+
+**Unknown or invalid tag reference** (error)
+
+`<artifact>: <detail>`
+
+Fix: write the tag name as {{ tag('&lt;name&gt;') }} and declare the tag under tags: in sst_config.yml
+
+### SST-REF041
+
+**Template function not allowed in this field** (error)
+
+`<artifact>: <function>() is not allowed in <field>`
+
+Fix: remove the call; each field accepts only the functions its reference page lists
+
+### SST-REF042
+
+**Invalid template arguments** (error)
+
+`<artifact>: <detail>`
+
+Fix: ref() takes a model and an optional column; metric(), var(), and tag() take one name
+
+### SST-REF043
+
+**Expression references a table outside the view** (error)
+
+`<artifact>: ref('<model>') is not one of the view's tables`
+
+Fix: add the model to the view's tables:, or reference one of them
+
+### SST-REF044
+
+**View table entry is not a ref()** (error)
+
+`<artifact>: table entry <found> is not a {{ ref('<model>') }} call`
+
+Fix: write each tables: entry as {{ ref('&lt;model&gt;') }}
 
 ## Membership (MEM)
 
@@ -1615,6 +1719,14 @@ Fix: capture a replacement baseline before it expires
 
 Fix: capture a replacement baseline with a reason
 
+### SST-VAL762
+
+**Eval dataset template is missing** (error)
+
+`eval '<artifact>': dataset.<field> is not set`
+
+Fix: set dataset.name_template and dataset.source_table_template in the eval's config.yml
+
 ### SST-VAL801
 
 **Skill folder layout or name is wrong** (error)
@@ -1809,11 +1921,11 @@ Fix: use the skill's name, or a member name of the plugin
 
 ### SST-VAL841
 
-**Published version is not the extension default** (warning)
+**Catalog serves a different version** (warning)
 
-`<artifact>: version <value> is not the default version of <target>`
+`<artifact>: the catalog will serve <found> of <target>, not <value>, because <detail>`
 
-Fix: agents pin their version; set the default in Snowflake if the catalog should show this one
+Fix: agents pin their version and are unaffected; to serve this version in the catalog, set `+certified: true` and un-certify any later certified version in Snowsight
 
 ### SST-VAL843
 
@@ -1833,9 +1945,9 @@ Fix: add the skill under the skills directory, or remove it from the profile
 
 ### SST-VAL845
 
-**Profile repeats a shared skill** (warning)
+**Profile repeats a shared skill or command** (warning)
 
-`profile '<artifact>': skill '<name>' already reaches every profile through shared/`
+`profile '<artifact>': <kind> '<name>' already reaches every profile through shared/`
 
 Fix: remove it from the profile
 
@@ -1913,11 +2025,11 @@ Fix: point skills.stage at the Desktop registry to publish for real, or keep thi
 
 ### SST-VAL855
 
-**Profile includes a skill with errors** (error)
+**Profile includes a skill or plugin with errors** (error)
 
-`profile '<artifact>': skill '<name>' has errors, so the profile cannot publish`
+`profile '<artifact>': <kind> '<name>' has errors, so the profile cannot publish`
 
-Fix: fix the skill's errors
+Fix: fix the errors reported for it
 
 ### SST-VAL856
 
@@ -1926,6 +2038,38 @@ Fix: fix the skill's errors
 `agent '<artifact>': <kind>('<name>') has no version to pin because <reason>`
 
 Fix: fix the diagnostic that names the cause; the reference resolves once the extension publishes
+
+### SST-VAL857
+
+**File name cannot be published to a stage** (error)
+
+`<artifact>: <value> cannot be staged, because '<found>' is not made only of <expected>`
+
+Fix: rename the file or folder; a stage rejects any other name, so apply would fail partway through
+
+### SST-VAL858
+
+**Profile names an unknown command** (error)
+
+`profile '<artifact>': command '<name>' is not a .md file under the commands directory`
+
+Fix: name a command by its path below project.commands_dir without .md, such as sql/check
+
+### SST-VAL859
+
+**Command file is invalid** (error)
+
+`command '<artifact>': <detail>`
+
+Fix: frontmatter is optional; when present it is a YAML mapping of description, allowed-tools, skill, and hidden
+
+### SST-VAL860
+
+**Profile names an unknown plugin** (error)
+
+`profile '<artifact>': plugin '<name>' is not a plugin under the plugins directory`
+
+Fix: name a plugin folder that has a plugin.yml
 
 ## dbt (DBT)
 
@@ -2151,11 +2295,11 @@ Fix: review and explicitly reconcile the object before applying
 
 ### SST-PLN021
 
-**Prune reconciliation found undeletable composite resources** (warning)
+**Prune is report-only** (info)
 
-`<count> objects in <value> are not declared here`
+`<artifact> is no longer declared; SST never removes <value>: <detail>`
 
-Fix: retain them until no evaluation run or baseline references them
+Fix: the plan lists it until the objects are removed by hand; it never counts as a change
 
 ### SST-PLN023
 
@@ -2220,6 +2364,22 @@ Fix: SST never alters the registry; fix the table or point skills.stage at a com
 `<artifact>: pins the published version of <value>; select <value> as well`
 
 Fix: plan the pinned artifact in the same run; when its version is already published it plans as NOOP
+
+### SST-PLN032
+
+**Excluded from a partial run** (info)
+
+`<artifact> has errors, or depends on something that does, so this partial run leaves it unpublished`
+
+Fix: fix the errors reported for it; what is live stays as it is, and state keeps its record
+
+### SST-PLN033
+
+**Partial run cannot go ahead** (info)
+
+`--partial publishes nothing: <found> on <value> cannot be traced to the artifacts it would change`
+
+Fix: fix that error first; a configuration error, or an error in a semantic view member such as a metric, stops every run, because the views it belongs to would otherwise publish without it
 
 ### SST-PLN900
 

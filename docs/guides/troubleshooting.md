@@ -119,3 +119,62 @@ the bundle. Check the validation output for the file:
 
 `--strict` and `validation.strict: true` promote every warning to an error. The
 summary's `promoted` count says how many diagnostics that affected.
+
+## `plan --prune` keeps listing a deleted skill, plugin, or eval
+
+Those prunes are report-only (`SST-PLN021`, info): SST never removes them, so the
+plan lists them until the objects are removed by hand. They are not changes, so
+they never make `plan` exit 2 or fail `--strict`. Run `apply --prune` once so
+state records that the source is gone.
+
+## A reference does not resolve
+
+- **`SST-REF038`**: `var()` names no project variable; declare it under `vars:`.
+- **`SST-REF039`**: `custom_instructions()` names no custom instruction.
+- **`SST-REF040`**: `tag()` names no declared tag, or a tag name is not written
+  as one `tag()` call.
+- **`SST-REF041`**: the function is not allowed in that field, such as
+  `metric()` inside a filter.
+- **`SST-REF042`**: a function has the wrong number of arguments.
+- **`SST-REF043`**: an expression refs a model that is not one of the view's
+  `tables:`.
+
+## SST cannot connect, or connects the wrong way
+
+`sst debug` shows the authentication method SST resolved from `profiles.yml`.
+
+- **`SST-CFG048`**: a field SST does not read, often a misspelled credential
+  field such as `private_key_pth`.
+- **`SST-CFG049`**: a template other than `env_var()`, such as `| as_number`, or
+  a number or boolean that is not one.
+- **`SST-CFG050`**: `oauth_client_id` and `oauth_client_secret` (use an access
+  token in `token`), a key set both inline and as a file, or a key that cannot
+  be read.
+
+## A file name is refused
+
+**`SST-VAL857`**: a stage accepts only letters, digits, `.`, `_`, `-`, and `$` in
+a file or folder name, so SST checks every skill, hook, and command file before
+uploading anything. Rename the file; a plugin whose member has such a file is
+blocked too (`SST-VAL836`).
+
+## A configured directory is reported missing
+
+**`SST-CFG047`**: a `project.*_dir` key names a directory that does not exist.
+Without this check SST would find nothing there, and `--prune` would remove
+everything that directory used to publish.
+
+## I need to ship while one artifact is broken
+
+Run `compile`, `plan`, and `apply` with `--partial`. Everything without errors,
+and not depending on anything with errors, goes ahead; each artifact left out is
+listed (`SST-PLN032`), and the command still exits 1. A configuration error
+still stops the run, and `--partial` cannot be combined with `--prune`.
+
+## The catalog still offers an older skill version
+
+**`SST-VAL841`**: once any version of an extension is certified, the catalog
+serves the latest certified version rather than the newest one. Publish with
+`skills.+certified: true`, or certify the new version; a later certified version
+has to be un-certified in Snowsight. Agents pin their version and are
+unaffected.

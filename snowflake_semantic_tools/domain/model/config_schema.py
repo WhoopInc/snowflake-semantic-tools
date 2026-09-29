@@ -113,6 +113,12 @@ CONFIG_SCHEMA: tuple[ConfigKey, ...] = (
     _key("project.hooks_dir", _S, "Hook definitions and their scripts, referenced by profiles.", default="hooks"),
     _key("project.mcp_servers_dir", _S, "MCP server configs, referenced by profiles.", default="mcp-servers"),
     _key(
+        "project.commands_dir",
+        _S,
+        "Desktop slash commands (`*.md`, nested folders allowed), referenced by profiles.",
+        default="commands",
+    ),
+    _key(
         "project.target_profile",
         _S,
         "The `profiles.yml` profile of a project with no `dbt_project.yml`. In a dbt project it must match "

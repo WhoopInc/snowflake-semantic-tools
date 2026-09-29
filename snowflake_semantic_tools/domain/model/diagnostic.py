@@ -691,10 +691,10 @@ _SPECS = (
     ),
     _spec(
         "SST-PLN021",
-        Severity.WARNING,
-        "Prune reconciliation found undeletable composite resources",
-        "{count} objects in {value} are not declared here",
-        "retain them until no evaluation run or baseline references them",
+        Severity.INFO,
+        "Prune is report-only",
+        "{artifact} is no longer declared; SST never removes {value}: {detail}",
+        "the plan lists it until the objects are removed by hand; it never counts as a change",
     ),
     _spec(
         "SST-PLN023",
@@ -1886,6 +1886,37 @@ _PUBLISHING_SPECS = (
         "and profiles only",
     ),
     _spec(
+        "SST-CFG047",
+        Severity.ERROR,
+        "Configured directory does not exist",
+        "{key} is {value}, which is not a directory in the project",
+        "fix the path, or remove the key to use the default; otherwise SST finds nothing there, and "
+        "--prune would remove everything that directory published",
+    ),
+    _spec(
+        "SST-CFG048",
+        Severity.WARNING,
+        "profiles.yml field is not used by SST",
+        "target '{target}': '{key}' is not a setting SST reads, so it is ignored",
+        "check the spelling; SST passes only connection settings to Snowflake, so a misspelled credential "
+        "field would otherwise be dropped silently",
+    ),
+    _spec(
+        "SST-CFG049",
+        Severity.ERROR,
+        "profiles.yml value cannot be used",
+        "target '{target}': '{key}' {problem}",
+        "SST renders {{ env_var('NAME') }} and {{ env_var('NAME', 'default') }} anywhere in a value, and no "
+        "other template; write numbers and booleans without filters such as as_number",
+    ),
+    _spec(
+        "SST-CFG050",
+        Severity.ERROR,
+        "Unsupported authentication configuration",
+        "target '{target}': {detail}",
+        "authenticate with a key pair, a password, SSO (authenticator), or an OAuth access token (token)",
+    ),
+    _spec(
         "SST-VAL817",
         Severity.ERROR,
         "No publication channel configured",
@@ -2075,6 +2106,76 @@ _PUBLISHING_SPECS = (
         "reference it with skill() or plugin(), which pins the published version",
     ),
     _spec(
+        "SST-REF038",
+        Severity.ERROR,
+        "Unknown project variable",
+        "{artifact}: var('{name}') names no project variable",
+        "declare it under vars: in sst_config.yml, or fix the name",
+    ),
+    _spec(
+        "SST-REF039",
+        Severity.ERROR,
+        "Unknown custom instruction",
+        "{artifact}: custom_instructions('{name}') names no custom instruction",
+        "declare it under semantic_models/custom_instructions/, or fix the name",
+    ),
+    _spec(
+        "SST-REF040",
+        Severity.ERROR,
+        "Unknown or invalid tag reference",
+        "{artifact}: {detail}",
+        "write the tag name as {{ tag('<name>') }} and declare the tag under tags: in sst_config.yml",
+    ),
+    _spec(
+        "SST-REF041",
+        Severity.ERROR,
+        "Template function not allowed in this field",
+        "{artifact}: {function}() is not allowed in {field}",
+        "remove the call; each field accepts only the functions its reference page lists",
+    ),
+    _spec(
+        "SST-REF042",
+        Severity.ERROR,
+        "Invalid template arguments",
+        "{artifact}: {detail}",
+        "ref() takes a model and an optional column; metric(), var(), and tag() take one name",
+    ),
+    _spec(
+        "SST-REF043",
+        Severity.ERROR,
+        "Expression references a table outside the view",
+        "{artifact}: ref('{model}') is not one of the view's tables",
+        "add the model to the view's tables:, or reference one of them",
+    ),
+    _spec(
+        "SST-REF044",
+        Severity.ERROR,
+        "View table entry is not a ref()",
+        "{artifact}: table entry {found} is not a {{{{ ref('<model>') }}}} call",
+        "write each tables: entry as {{ ref('<model>') }}",
+    ),
+    _spec(
+        "SST-PRS122",
+        Severity.ERROR,
+        "File is not UTF-8",
+        "{file}: cannot be decoded as UTF-8 at byte {offset}",
+        "save the file as UTF-8",
+    ),
+    _spec(
+        "SST-PRS123",
+        Severity.ERROR,
+        "Semantic view definition is malformed",
+        "{artifact}: {detail}",
+        "fix the field the message names; the semantic views guide lists each field's form",
+    ),
+    _spec(
+        "SST-VAL762",
+        Severity.ERROR,
+        "Eval dataset template is missing",
+        "eval '{artifact}': dataset.{field} is not set",
+        "set dataset.name_template and dataset.source_table_template in the eval's config.yml",
+    ),
+    _spec(
         "SST-VAL540",
         Severity.ERROR,
         "SKILL-type extension source has no name",
@@ -2119,9 +2220,10 @@ _PUBLISHING_SPECS = (
     _spec(
         "SST-VAL841",
         Severity.WARNING,
-        "Published version is not the extension default",
-        "{artifact}: version {value} is not the default version of {target}",
-        "agents pin their version; set the default in Snowflake if the catalog should show this one",
+        "Catalog serves a different version",
+        "{artifact}: the catalog will serve {found} of {target}, not {value}, because {detail}",
+        "agents pin their version and are unaffected; to serve this version in the catalog, "
+        "set `+certified: true` and un-certify any later certified version in Snowsight",
     ),
     _spec(
         "SST-PLN026",
@@ -2163,8 +2265,8 @@ _PUBLISHING_SPECS = (
     _spec(
         "SST-VAL845",
         Severity.WARNING,
-        "Profile repeats a shared skill",
-        "profile '{artifact}': skill '{name}' already reaches every profile through shared/",
+        "Profile repeats a shared skill or command",
+        "profile '{artifact}': {kind} '{name}' already reaches every profile through shared/",
         "remove it from the profile",
     ),
     _spec(
@@ -2233,9 +2335,9 @@ _PUBLISHING_SPECS = (
     _spec(
         "SST-VAL855",
         Severity.ERROR,
-        "Profile includes a skill with errors",
-        "profile '{artifact}': skill '{name}' has errors, so the profile cannot publish",
-        "fix the skill's errors",
+        "Profile includes a skill or plugin with errors",
+        "profile '{artifact}': {kind} '{name}' has errors, so the profile cannot publish",
+        "fix the errors reported for it",
     ),
     _spec(
         "SST-VAL856",
@@ -2243,6 +2345,35 @@ _PUBLISHING_SPECS = (
         "Agent references an extension that cannot publish",
         "agent '{artifact}': {kind}('{name}') has no version to pin because {reason}",
         "fix the diagnostic that names the cause; the reference resolves once the extension publishes",
+    ),
+    _spec(
+        "SST-VAL857",
+        Severity.ERROR,
+        "File name cannot be published to a stage",
+        "{artifact}: {value} cannot be staged, because '{found}' is not made only of {expected}",
+        "rename the file or folder; a stage rejects any other name, so apply would fail partway through",
+    ),
+    _spec(
+        "SST-VAL858",
+        Severity.ERROR,
+        "Profile names an unknown command",
+        "profile '{artifact}': command '{name}' is not a .md file under the commands directory",
+        "name a command by its path below project.commands_dir without .md, such as sql/check",
+    ),
+    _spec(
+        "SST-VAL859",
+        Severity.ERROR,
+        "Command file is invalid",
+        "command '{artifact}': {detail}",
+        "frontmatter is optional; when present it is a YAML mapping of description, allowed-tools, skill, "
+        "and hidden",
+    ),
+    _spec(
+        "SST-VAL860",
+        Severity.ERROR,
+        "Profile names an unknown plugin",
+        "profile '{artifact}': plugin '{name}' is not a plugin under the plugins directory",
+        "name a plugin folder that has a plugin.yml",
     ),
     _spec(
         "SST-PLN028",
@@ -2267,6 +2398,21 @@ _PUBLISHING_SPECS = (
         "{artifact}: pins the published version of {value}; select {value} as well",
         "plan the pinned artifact in the same run; when its version is already published it plans as NOOP",
         demotable=False,
+    ),
+    _spec(
+        "SST-PLN032",
+        Severity.INFO,
+        "Excluded from a partial run",
+        "{artifact} has errors, or depends on something that does, so this partial run leaves it unpublished",
+        "fix the errors reported for it; what is live stays as it is, and state keeps its record",
+    ),
+    _spec(
+        "SST-PLN033",
+        Severity.INFO,
+        "Partial run cannot go ahead",
+        "--partial publishes nothing: {found} on {value} cannot be traced to the artifacts it would change",
+        "fix that error first; a configuration error, or an error in a semantic view member such as a metric, "
+        "stops every run, because the views it belongs to would otherwise publish without it",
     ),
     _spec(
         "SST-APL018",

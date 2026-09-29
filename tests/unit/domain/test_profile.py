@@ -6,6 +6,7 @@ import json
 
 from snowflake_semantic_tools.domain.model.diagnostic import D, DiagnosticBag, Origin
 from snowflake_semantic_tools.domain.model.profile import (
+    CommandFile,
     DesktopProfile,
     HookDefinition,
     McpConfig,
@@ -17,7 +18,7 @@ from snowflake_semantic_tools.domain.model.profile import (
     unreached_skills,
     validate_profile_catalog,
 )
-from snowflake_semantic_tools.domain.model.skill import BundleEntry, Skill, SkillFile
+from snowflake_semantic_tools.domain.model.skill import BundleEntry, Plugin, Skill, SkillFile, build_plugin_bundle
 
 ORIGIN = Origin("profiles/analyst/profile.yml", 1)
 
@@ -233,6 +234,84 @@ def test_hooks_and_mcp_configs_that_failed_to_load_are_not_reported_unknown() ->
     catalog = ProfileCatalog((profile(hooks=("guard",), mcp_servers=("docs",)),), None, (), (), loader_errors)
     codes = [item.code for item in validate_profile_catalog(catalog, SKILLS)]
     assert codes == ["SST-VAL852", "SST-VAL853"]
+
+
+def test_hook_scripts_a_stage_rejects_fail_validation_on_the_hook() -> None:
+    unsafe = HookDefinition("guard", "hooks/guard", "PreToolUse", "bash", SkillFile("check me.sh", b"x"), Origin("g"))
+    catalog = ProfileCatalog((profile(hooks=("guard",)),), None, (unsafe,), ())
+    found = [(item.code, item.subject) for item in validate_profile_catalog(catalog, SKILLS)]
+    assert found == [("SST-VAL857", "hook:guard")]
+
+
+def command(path: str, content: str = "Run the check.\n") -> CommandFile:
+    return CommandFile(path, content.encode(), f"commands/{path}", Origin(f"commands/{path}", 1))
+
+
+KIT = Plugin("kit", "plugins/kit", "plugins/kit/plugin.yml", "Kit.", "Data", ("operations",), Origin("p"))
+
+
+def test_commands_and_plugins_publish_as_trees_named_by_the_row() -> None:
+    shared = SharedProfile(None, (), (), Origin("s"), commands=("daily",))
+    catalog = ProfileCatalog((), shared, commands=(command("daily.md"), command("sql/check.md")))
+    release = build_profile(
+        profile(commands=("sql/check",), plugins=("kit",)),
+        catalog,
+        SKILLS,
+        stage="DB.S.PROFILES",
+        version_prefix="SST_",
+        plugins={"kit": KIT},
+    )
+    trees = {(tree.kind, tree.scope): tree for tree in release.trees}
+    assert trees[("commands", "shared")].paths == ("daily.md",)
+    assert trees[("commands", "analyst")].paths == ("sql/check.md",)
+    plugin_tree = trees[("plugins", "analyst")]
+    bundle, _ = build_plugin_bundle(KIT, SKILLS)
+    assert bundle is not None
+    # The profile copy is byte for byte the bundle the plugin's extension publishes.
+    assert plugin_tree.entries == tuple(BundleEntry(f"kit/{entry.path}", entry.content) for entry in bundle.entries)
+    assert release.row["COMMAND_REPOS"] == [
+        {"snowflake_stage": f"@DB.S.PROFILES/{trees[('commands', 'shared')].prefix}"},
+        {"snowflake_stage": f"@DB.S.PROFILES/{trees[('commands', 'analyst')].prefix}"},
+    ]
+    assert release.row["PLUGINS"] == [f"@DB.S.PROFILES/{plugin_tree.prefix}kit/"]
+    assert {"commands/daily.md", "commands/sql/check.md", "plugins/kit/plugin.yml"} <= set(release.source_files)
+    assert command("sql/check.md").desktop_name == "/sql:check"
+
+    plain = build_profile(profile(), ProfileCatalog(), SKILLS, stage="DB.S.PROFILES", version_prefix="SST_")
+    assert (plain.row["PLUGINS"], plain.row["COMMAND_REPOS"]) == ([], [])
+    missing = build_profile(
+        profile(plugins=("ghost",)), ProfileCatalog(), SKILLS, stage="DB.S.PROFILES", version_prefix="SST_"
+    )
+    assert missing.version == plain.version and missing.trees == plain.trees
+
+
+def test_command_and_plugin_references_are_validated() -> None:
+    shared = SharedProfile(None, (), (), Origin("s"), commands=("daily", "gone"))
+    unsafe = command("bad name.md")
+    loader_error = D("SST-VAL859", origin=Origin("c"), subject="command:broken", artifact="broken", detail="x")
+    catalog = ProfileCatalog(
+        (profile(commands=("daily", "nope", "broken", "own"), plugins=("kit", "ghost")),),
+        shared,
+        commands=(command("daily.md"), command("own.md"), unsafe),
+        diagnostics=DiagnosticBag((loader_error,)),
+    )
+    found = [
+        (item.code, item.subject, item.context.get("name")) for item in validate_profile_catalog(catalog, SKILLS, {"kit": KIT})
+    ]
+    assert found == [
+        ("SST-VAL859", "command:broken", None),
+        ("SST-VAL858", "profile:shared", "gone"),
+        ("SST-VAL845", "profile:analyst", "daily"),
+        ("SST-VAL858", "profile:analyst", "nope"),
+        ("SST-VAL860", "profile:analyst", "ghost"),
+        ("SST-VAL857", "command:bad name", None),
+    ]
+
+
+def test_a_skill_reached_only_through_a_profile_plugin_is_reached() -> None:
+    catalog = ProfileCatalog((profile(skills=(), plugins=("kit",)),))
+    unreached = unreached_skills(SKILLS, catalog, catalog_channel=False, plugins={"kit": KIT})
+    assert [item.subject for item in unreached] == ["skill:common", "skill:semantics"]
 
 
 def test_unreached_skills_only_when_the_catalog_channel_is_off() -> None:

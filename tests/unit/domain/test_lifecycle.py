@@ -224,6 +224,13 @@ def test_changeset_partitions_writes_and_blocked() -> None:
         Action.PRUNE,
     )
     assert changeset.blocked[0].action is Action.BLOCKED
+    assert changeset.report_only == ()
+    listed_changes = tuple(
+        replace(change, prune_executable=False) if change.action is Action.PRUNE else change for change in changes
+    )
+    listed = ChangeSet("m", target(), listed_changes, DiagnosticBag(), "now")
+    assert tuple(change.action for change in listed.writes) == (Action.CREATE, Action.UPDATE)
+    assert tuple(change.action for change in listed.report_only) == (Action.PRUNE,)
 
 
 def test_retry_policy_apply_results_and_transport_values() -> None:

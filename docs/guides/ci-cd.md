@@ -76,7 +76,8 @@ jobs:
 ```
 
 The `prod` output in `profiles.yml` reads the key path with
-`private_key_file: "{{ env_var('SNOWFLAKE_PRIVATE_KEY_PATH') }}"`.
+`private_key_path: "{{ env_var('SNOWFLAKE_PRIVATE_KEY_PATH') }}"`, the field dbt
+reads too; see [authentication](configuration.md#authentication).
 
 ## JSON output
 

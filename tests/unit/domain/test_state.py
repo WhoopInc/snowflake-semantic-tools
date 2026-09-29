@@ -336,3 +336,8 @@ def test_saved_plan_is_content_addressed_and_target_guarded() -> None:
     assert scoped.selected == ("v",)
     assert scoped.excluded == ("other",)
     assert scoped.include_prune
+    # `partial` is recorded only when set, so a plan that is not partial keeps its id.
+    assert "partial" not in saved.as_dict()["selection"]  # type: ignore[operator]
+    partial = SavedPlan.from_changeset(changeset, partial=True)
+    assert partial.partial and partial.as_dict()["selection"]["partial"] is True  # type: ignore[index]
+    assert partial.plan_id != saved.plan_id

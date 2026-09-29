@@ -342,7 +342,17 @@ class ChangeSet:
 
     @property
     def writes(self) -> tuple[Change, ...]:
-        return tuple(change for change in self.changes if change.action in (Action.CREATE, Action.UPDATE, Action.PRUNE))
+        """What apply would execute. A report-only prune is listed, never executed."""
+        return tuple(
+            change
+            for change in self.changes
+            if change.action in (Action.CREATE, Action.UPDATE)
+            or (change.action is Action.PRUNE and change.prune_executable)
+        )
+
+    @property
+    def report_only(self) -> tuple[Change, ...]:
+        return tuple(change for change in self.changes if change.action is Action.PRUNE and not change.prune_executable)
 
     @property
     def blocked(self) -> tuple[Change, ...]:

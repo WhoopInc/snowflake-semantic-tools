@@ -18,6 +18,7 @@ from dataclasses import dataclass
 from hashlib import sha256
 
 from .diagnostic import D, Diagnostic, DiagnosticBag, Origin
+from .stage_path import ALLOWED_DESCRIPTION, unsafe_segment
 
 SKILL_FILE = "SKILL.md"
 PLUGIN_MANIFEST = ".cortex-plugin/plugin.json"
@@ -378,6 +379,20 @@ def validate_skill_catalog(catalog: SkillCatalog) -> DiagnosticBag:
             )
         if not skill.body.strip():
             diagnostics.append(D("SST-RND031", origin=skill.origin, subject=subject, artifact=skill.name))
+        for file in sorted(skill.files, key=lambda item: item.path):
+            unsafe = unsafe_segment(file.path)
+            if unsafe is not None:
+                diagnostics.append(
+                    D(
+                        "SST-VAL857",
+                        origin=_origin(skill, file.path),
+                        subject=subject,
+                        artifact=subject,
+                        value=file.path,
+                        found=unsafe,
+                        expected=ALLOWED_DESCRIPTION,
+                    )
+                )
         other = seen.get(skill.extension_name)
         if other is not None:
             diagnostics.append(

@@ -352,7 +352,13 @@ class EvalLifecycleHandler:
 
     def report_prune(self, artifact_key: str, state_entry: AppliedEntry) -> Change:
         resources = ", ".join(resource.qualified_name for resource in state_entry.applied_resources) or artifact_key
-        diagnostic = D("SST-PLN021", count=len(state_entry.applied_resources), value=resources)
+        diagnostic = D(
+            "SST-PLN021",
+            subject=artifact_key,
+            artifact=artifact_key,
+            value=resources,
+            detail="keep them while an evaluation run or baseline references them",
+        )
         return Change(
             artifact_key,
             self.artifact_type,

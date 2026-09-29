@@ -25,6 +25,7 @@ from ...domain.model.lifecycle import (
     ShowRow,
     extract_marker,
 )
+from ...domain.model.stage_path import SAFE_SEGMENT_CHARACTERS as _SAFE_SEGMENT
 from ...domain.ports.snowflake import (
     ExtensionObservation,
     ExtensionVersion,
@@ -755,7 +756,6 @@ def _validated_stage_path(value: str, *, directory: bool = False) -> str:
     return value
 
 
-_SAFE_SEGMENT = frozenset("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._-$")
 _EXTENSION_URI = re.compile(
     r"snow://cortex_extension/(?P<name>[A-Za-z0-9_$.]+)/versions/(?P<version>version\$[0-9]+|live)/(?P<path>.*)",
     re.IGNORECASE,

@@ -124,13 +124,28 @@ project against that record and against what is live.
 
 SST changes only objects it published. An object that already exists and that
 SST did not publish is reported as **unmanaged** (`SST-PLN024`) and left alone;
-adopt it or remove it deliberately. SST issues no grants: access to published
-objects is managed outside SST.
+adopt it or remove it deliberately. SST never grants new access: access to
+published objects is managed outside SST. When it has to replace an object
+rather than alter it -- a tool whose definition cannot change in place -- it
+re-issues exactly the explicit grants that object already held, and verifies
+them afterwards.
 
 `--prune` extends a plan to managed artifacts whose source was deleted. What
 happens depends on the type: semantic views and agents are dropped, and
-profiles are deactivated. Skills and plugins are reported and never dropped,
-because an agent elsewhere may still pin one of their versions.
+profiles are deactivated. Skills, plugins, and evals are **report-only**: the
+plan lists them (`SST-PLN021`, an info diagnostic), but they are never removed,
+because an agent elsewhere may still pin a version, or a run or baseline may
+still reference an evaluation. A report-only prune is not a change, so it never
+makes `plan` exit 2 or `--strict` fail. `apply --prune` records that the source
+is gone, and the plan keeps listing the objects until they are removed by hand.
+
+`--partial` lets `compile`, `plan`, and `apply` go ahead with every artifact
+that has no errors and depends on nothing that does. Each artifact left out is
+listed (`SST-PLN032`); what is live for it stays as it is, and its state record
+is untouched. The command still exits 1 while errors remain, and an error that
+names no artifact, such as a configuration error, still stops the run. A saved
+partial plan applies only with `--partial`, and `--partial` cannot be combined
+with `--prune`, because an artifact left out for errors would look deleted.
 
 ## Diagnostics
 

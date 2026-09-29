@@ -62,6 +62,7 @@ sst apply [OPTIONS]
 | `--exclude` | TEXT, repeatable |  | Leave these artifacts out; same forms as `--select`. |
 | `--plan` | FILE |  | Apply this saved plan. It must still match the compiled project. |
 | `--prune` | flag |  | Also act on managed artifacts whose source was deleted, as far as each type allows: drop, deactivate, or report. |
+| `--partial` | flag |  | Go ahead with every artifact that has no errors and depends on nothing that does; still exits 1 while errors remain. Cannot be combined with `--prune`. |
 | `--yes` | flag |  | Apply without asking for confirmation. |
 | `--fail-fast` | flag |  | Stop at the first failure instead of continuing. |
 | `--break-stale-lock` | flag |  | Take over a state lock left behind by a run that no longer exists. |
@@ -98,6 +99,7 @@ sst compile [OPTIONS]
 | `--print-ddl` | flag |  | Print the rendered DDL to stdout. |
 | `--manifest-output` | FILE |  | Also write the SST manifest here; with `--select`, only the selection. |
 | `--select` | TEXT |  | Only this artifact: a semantic view name, `type:<type>`, or `<type>:<name>`. |
+| `--partial` | flag |  | Go ahead with every artifact that has no errors and depends on nothing that does; still exits 1 while errors remain. Cannot be combined with `--prune`. |
 | `--target` | TEXT |  | Target from `profiles.yml`; defaults to the profile's own default target. |
 | `--manifest` | FILE |  | Read this dbt `manifest.json` instead of running `dbt parse`. |
 | `--output` | human\|json | `human` | `human` for readable text, or `json` for one machine-readable envelope. |
@@ -201,6 +203,7 @@ sst plan [OPTIONS]
 | `--select` | TEXT, repeatable |  | Only these artifacts: a semantic view name, `type:<type>`, or `<type>:<name>`. |
 | `--exclude` | TEXT, repeatable |  | Leave these artifacts out; same forms as `--select`. |
 | `--prune` | flag |  | Also act on managed artifacts whose source was deleted, as far as each type allows: drop, deactivate, or report. |
+| `--partial` | flag |  | Go ahead with every artifact that has no errors and depends on nothing that does; still exits 1 while errors remain. Cannot be combined with `--prune`. |
 | `--plan-out` | FILE |  | Write the saved plan here instead of `target/sst/plan.json`. |
 | `--no-plan-out` | flag |  | Do not write a saved plan. |
 | `--sql-out` | DIRECTORY |  | Also write the statements for each change into this directory. |

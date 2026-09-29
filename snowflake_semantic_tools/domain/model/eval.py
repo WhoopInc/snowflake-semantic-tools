@@ -550,6 +550,11 @@ def _validate_eval_config(
     resolved_custom = {metric.name.casefold() for metric in resolved.custom_metrics}
     for name in sorted(configured_custom - resolved_custom):
         diagnostics.append(D("SST-VAL721", artifact=resolved.name, name=name, origin=config.origin, subject=subject))
+    for field_name in ("name_template", "source_table_template"):
+        if config.dataset is None or getattr(config.dataset, field_name) is None:
+            diagnostics.append(
+                D("SST-VAL762", artifact=resolved.name, field=field_name, origin=config.origin, subject=subject)
+            )
     if config.dataset is not None:
         for value in (config.dataset.name_template, config.dataset.source_table_template):
             if value is None:

@@ -1,10 +1,10 @@
 """CoCo Desktop profiles: content-addressed stage trees and one registry row each.
 
 A profile publishes as trees below the fixed `by_type` prefixes Desktop reads --
-`skills/`, `prompts/`, `mcp/`, `hooks/` -- each named by the digest of its own
-content, then one registry row whose pointers name those trees. Uploading a new
-tree never touches a tree a live row points at, so the row write is the atomic
-switch and the previous trees remain for rollback.
+`skills/`, `prompts/`, `mcp/`, `hooks/`, `commands/`, `plugins/` -- each named by
+the digest of its own content, then one registry row whose pointers name those
+trees. Uploading a new tree never touches a tree a live row points at, so the row
+write is the atomic switch and the previous trees remain for rollback.
 """
 
 from __future__ import annotations
@@ -16,7 +16,8 @@ from dataclasses import dataclass
 from hashlib import sha256
 
 from .diagnostic import D, Diagnostic, DiagnosticBag, Origin, Severity
-from .skill import BundleEntry, Skill, SkillFile, bundle_digest
+from .skill import BundleEntry, Plugin, Skill, SkillFile, build_plugin_bundle, bundle_digest
+from .stage_path import ALLOWED_DESCRIPTION, unsafe_segment
 
 SHARED_PROFILE = "shared"
 DESKTOP_REGISTRY = "CORTEX_CODE.CONFIG.PROFILE_REGISTRY"
@@ -25,11 +26,11 @@ TREE_HASH_CHARACTERS = 12
 REJECTED_PROFILE_KEYS: Mapping[str, str] = {
     "allowed_roles": "access is managed outside SST; Desktop never reads the column",
     "active": "delete the profile and apply with --prune to deactivate it",
-    "plugins": "Desktop profiles do not load plugins from the registry",
-    "commands": "command repositories are not published by SST",
-    "env_vars": "environment variables are not published by SST",
-    "settings_overrides": "settings overrides are not published by SST",
+    "env_vars": "environment variables change every user's local environment, so SST does not publish them",
+    "settings_overrides": "settings overrides change every user's local settings, so SST does not publish them",
 }
+# Frontmatter a Desktop command may carry; Desktop ignores anything else.
+COMMAND_FRONTMATTER_KEYS = frozenset(("description", "allowed-tools", "skill", "hidden"))
 _NAME = re.compile(r"^[a-z0-9]+(?:[-_][a-z0-9]+)*$")
 _PLACEHOLDER = re.compile(r"^\$\{[A-Za-z_][A-Za-z0-9_]*\}$")
 _CREDENTIAL_KEY = re.compile(r"(?i)(token|secret|password|passwd|api[_-]?key|private[_-]?key)")
@@ -58,6 +59,33 @@ class McpConfig:
 
 
 @dataclass(frozen=True, slots=True)
+class CommandFile:
+    """One slash command, `<commands_dir>/<path>`, which Desktop loads as `/<name>`.
+
+    A profile names it by its path without `.md`; Desktop joins nested folders with
+    `:`, so `sql/check.md` is `sql/check` here and `/sql:check` in Desktop.
+    """
+
+    path: str
+    content: bytes
+    file: str
+    origin: Origin
+    skill: str | None = None
+
+    @property
+    def name(self) -> str:
+        return self.path.removesuffix(".md")
+
+    @property
+    def key(self) -> str:
+        return f"command:{self.name}"
+
+    @property
+    def desktop_name(self) -> str:
+        return "/" + self.name.replace("/", ":")
+
+
+@dataclass(frozen=True, slots=True)
 class DesktopProfile:
     name: str
     directory: str
@@ -69,6 +97,8 @@ class DesktopProfile:
     prompt: str | None
     origin: Origin
     source_files: tuple[str, ...] = ()
+    commands: tuple[str, ...] = ()
+    plugins: tuple[str, ...] = ()
 
     @property
     def key(self) -> str:
@@ -77,13 +107,14 @@ class DesktopProfile:
 
 @dataclass(frozen=True, slots=True)
 class SharedProfile:
-    """`profiles_dir/shared/`: the prompt, rules, and skills every profile carries."""
+    """`profiles_dir/shared/`: the prompt, rules, skills, and commands every profile carries."""
 
     prompt: str | None
     rules: tuple[tuple[str, str], ...]
     skills: tuple[str, ...]
     origin: Origin
     source_files: tuple[str, ...] = ()
+    commands: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -93,6 +124,7 @@ class ProfileCatalog:
     hooks: tuple[HookDefinition, ...] = ()
     mcp_configs: tuple[McpConfig, ...] = ()
     diagnostics: DiagnosticBag = DiagnosticBag()
+    commands: tuple[CommandFile, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -159,20 +191,38 @@ def assemble_prompt(shared: SharedProfile | None, profile: DesktopProfile) -> st
     return "\n\n".join(kept) + "\n" if kept else None
 
 
-def validate_profile_catalog(catalog: ProfileCatalog, skills: Mapping[str, Skill]) -> DiagnosticBag:
+def validate_profile_catalog(
+    catalog: ProfileCatalog,
+    skills: Mapping[str, Skill],
+    plugins: Mapping[str, Plugin] | None = None,
+) -> DiagnosticBag:
     diagnostics: list[Diagnostic] = list(catalog.diagnostics)
-    # A hook or MCP folder that failed to load already carries its own error;
-    # it is defined, so a profile naming it is not also told it is unknown.
+    # A hook, MCP, or command file that failed to load already carries its own
+    # error; it is defined, so a profile naming it is not also told it is unknown.
     broken = {item.subject for item in catalog.diagnostics if item.severity is Severity.ERROR}
     hooks = {hook.name for hook in catalog.hooks}
     configs = {config.name: config for config in catalog.mcp_configs}
+    commands = {command.name for command in catalog.commands}
+    plugins = plugins or {}
     shared_skills = set(catalog.shared.skills) if catalog.shared is not None else set()
+    shared_commands = set(catalog.shared.commands) if catalog.shared is not None else set()
     if catalog.shared is not None:
         for name in catalog.shared.skills:
             if name not in skills:
                 diagnostics.append(
                     D(
                         "SST-VAL844",
+                        origin=catalog.shared.origin,
+                        subject="profile:shared",
+                        artifact="shared",
+                        name=name,
+                    )
+                )
+        for name in catalog.shared.commands:
+            if name not in commands and f"command:{name}" not in broken:
+                diagnostics.append(
+                    D(
+                        "SST-VAL858",
                         origin=catalog.shared.origin,
                         subject="profile:shared",
                         artifact="shared",
@@ -198,7 +248,36 @@ def validate_profile_catalog(catalog: ProfileCatalog, skills: Mapping[str, Skill
                 )
             elif name in shared_skills:
                 diagnostics.append(
-                    D("SST-VAL845", origin=profile.origin, subject=subject, artifact=profile.name, name=name)
+                    D(
+                        "SST-VAL845",
+                        origin=profile.origin,
+                        subject=subject,
+                        artifact=profile.name,
+                        kind="skill",
+                        name=name,
+                    )
+                )
+        for name in profile.commands:
+            if name not in commands:
+                if f"command:{name}" not in broken:
+                    diagnostics.append(
+                        D("SST-VAL858", origin=profile.origin, subject=subject, artifact=profile.name, name=name)
+                    )
+            elif name in shared_commands:
+                diagnostics.append(
+                    D(
+                        "SST-VAL845",
+                        origin=profile.origin,
+                        subject=subject,
+                        artifact=profile.name,
+                        kind="command",
+                        name=name,
+                    )
+                )
+        for name in profile.plugins:
+            if name not in plugins:
+                diagnostics.append(
+                    D("SST-VAL860", origin=profile.origin, subject=subject, artifact=profile.name, name=name)
                 )
         for name in profile.hooks:
             if name not in hooks and f"hook:{name}" not in broken:
@@ -245,6 +324,35 @@ def validate_profile_catalog(catalog: ProfileCatalog, skills: Mapping[str, Skill
                     key=key,
                 )
             )
+    for hook in catalog.hooks:
+        path = f"{hook.name}/{hook.script.path}"
+        unsafe = unsafe_segment(path)
+        if unsafe is not None:
+            diagnostics.append(
+                D(
+                    "SST-VAL857",
+                    origin=hook.origin,
+                    subject=f"hook:{hook.name}",
+                    artifact=f"hook:{hook.name}",
+                    value=path,
+                    found=unsafe,
+                    expected=ALLOWED_DESCRIPTION,
+                )
+            )
+    for command in catalog.commands:
+        unsafe = unsafe_segment(command.path)
+        if unsafe is not None:
+            diagnostics.append(
+                D(
+                    "SST-VAL857",
+                    origin=command.origin,
+                    subject=command.key,
+                    artifact=command.key,
+                    value=command.path,
+                    found=unsafe,
+                    expected=ALLOWED_DESCRIPTION,
+                )
+            )
     return DiagnosticBag(diagnostics)
 
 
@@ -281,6 +389,36 @@ def _skill_tree(scope: str, names: tuple[str, ...], skills: Mapping[str, Skill])
     return StageTree("skills", scope, entries)
 
 
+def _command_tree(scope: str, names: tuple[str, ...], commands: Mapping[str, CommandFile]) -> StageTree:
+    entries = tuple(
+        sorted(
+            (
+                BundleEntry(commands[name].path, commands[name].content)
+                for name in dict.fromkeys(names)
+                if name in commands
+            ),
+            key=lambda entry: entry.path,
+        )
+    )
+    return StageTree("commands", scope, entries)
+
+
+def _plugin_tree(
+    scope: str, names: tuple[str, ...], plugins: Mapping[str, Plugin], skills: Mapping[str, Skill]
+) -> tuple[StageTree, tuple[str, ...]]:
+    """Each plugin's own bundle under `<plugin>/`, byte for byte what its extension publishes."""
+    entries: list[BundleEntry] = []
+    included: list[str] = []
+    for name in dict.fromkeys(names):
+        plugin = plugins.get(name)
+        bundle = build_plugin_bundle(plugin, skills)[0] if plugin is not None else None
+        if bundle is None:
+            continue
+        entries.extend(BundleEntry(f"{name}/{entry.path}", entry.content) for entry in bundle.entries)
+        included.append(name)
+    return StageTree("plugins", scope, tuple(sorted(entries, key=lambda entry: entry.path))), tuple(included)
+
+
 def build_profile(
     profile: DesktopProfile,
     catalog: ProfileCatalog,
@@ -288,11 +426,13 @@ def build_profile(
     *,
     stage: str,
     version_prefix: str,
+    plugins: Mapping[str, Plugin] | None = None,
 ) -> ProfileRelease:
     """Render the nested trees and the registry row one profile publishes."""
     shared = catalog.shared
     shared_names = shared.skills if shared is not None else ()
     own = tuple(name for name in profile.skills if name not in shared_names)
+    plugins = plugins or {}
     trees: list[StageTree] = []
     skill_repos: list[dict[str, str]] = []
     for tree in (_skill_tree(SHARED_PROFILE, shared_names, skills), _skill_tree(profile.name, own, skills)):
@@ -350,6 +490,22 @@ def build_profile(
             hook_list = group["hooks"]
             assert isinstance(hook_list, list)
             hook_list.append(entry)
+    commands = {command.name: command for command in catalog.commands}
+    shared_commands = shared.commands if shared is not None else ()
+    own_commands = tuple(name for name in profile.commands if name not in shared_commands)
+    command_repos: list[dict[str, str]] = []
+    for tree in (
+        _command_tree(SHARED_PROFILE, shared_commands, commands),
+        _command_tree(profile.name, own_commands, commands),
+    ):
+        if tree.entries:
+            trees.append(tree)
+            command_repos.append({"snowflake_stage": f"@{stage}/{tree.prefix}"})
+    plugin_tree, included = _plugin_tree(profile.name, profile.plugins, plugins, skills)
+    plugin_pointers: list[str] = []
+    if plugin_tree.entries:
+        trees.append(plugin_tree)
+        plugin_pointers = [f"@{stage}/{plugin_tree.prefix}{name}/" for name in included]
     row: dict[str, object] = {
         "CONFIG_NAME": profile.name,
         "DESCRIPTION": profile.description,
@@ -358,8 +514,8 @@ def build_profile(
         "SYSTEM_PROMPT_REPO": prompt_pointer,
         "MCP_SERVERS": mcp_pointer,
         "HOOKS": events,
-        "PLUGINS": [],
-        "COMMAND_REPOS": [],
+        "PLUGINS": plugin_pointers,
+        "COMMAND_REPOS": command_repos,
         "ENV_VARS": {},
         "SETTINGS_OVERRIDES": {},
     }
@@ -373,6 +529,20 @@ def build_profile(
                 *(path for name in (*shared_names, *own) if name in skills for path in skills[name].source_files),
                 *(f"{hook.directory}/{hook.script.path}" for hook in selected),
                 *(configs[name].file for name in profile.mcp_servers if name in configs),
+                *(commands[name].file for name in (*shared_commands, *own_commands) if name in commands),
+                *(
+                    path
+                    for name in included
+                    for path in (
+                        plugins[name].manifest_file,
+                        *(
+                            file
+                            for member in plugins[name].members
+                            if member in skills
+                            for file in skills[member].source_files
+                        ),
+                    )
+                ),
             )
         )
     )
@@ -380,14 +550,20 @@ def build_profile(
 
 
 def unreached_skills(
-    skills: Mapping[str, Skill], catalog: ProfileCatalog, *, catalog_channel: bool
+    skills: Mapping[str, Skill],
+    catalog: ProfileCatalog,
+    *,
+    catalog_channel: bool,
+    plugins: Mapping[str, Plugin] | None = None,
 ) -> tuple[Diagnostic, ...]:
     """`K215`: a skill no channel publishes, when the catalog channel is off."""
     if catalog_channel:
         return ()
+    plugins = plugins or {}
     reached = set(catalog.shared.skills) if catalog.shared is not None else set()
     for profile in catalog.profiles:
         reached.update(profile.skills)
+        reached.update(member for name in profile.plugins if name in plugins for member in plugins[name].members)
     return tuple(
         D("SST-VAL830", origin=skill.origin, subject=skill.key, artifact=skill.name)
         for name, skill in sorted(skills.items())

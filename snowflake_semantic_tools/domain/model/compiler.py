@@ -129,12 +129,19 @@ def resolve_scalar(
                 )
             continue
         if function not in policy.allowed:
-            diagnostics.append(D("SST-INT902", origin=origin, detail=f"{function}() is not permitted in {field}"))
+            diagnostics.append(D("SST-REF041", origin=origin, artifact=field, function=function, field=field))
             continue
         value: str | None = None
         if function == "ref":
             if len(call.args) not in (1, 2):
-                diagnostics.append(D("SST-INT902", origin=origin, detail="ref() expects one or two arguments"))
+                diagnostics.append(
+                    D(
+                        "SST-REF042",
+                        origin=origin,
+                        artifact=field,
+                        detail=f"ref() takes one or two arguments, found {len(call.args)} in {call.raw}",
+                    )
+                )
                 continue
             model = context.catalog.model(call.args[0])
             if model is None:
@@ -149,23 +156,34 @@ def resolve_scalar(
             else:
                 value = ref_value(call) if ref_value is not None else model.relation_name
         elif function == "metric":
-            if len(call.args) != 1 or call.args[0].casefold() not in context.metric_names:
-                diagnostics.append(D("SST-INT902", origin=origin, detail=f"unknown metric {call.args!r}"))
+            if len(call.args) != 1:
+                diagnostics.append(_one_argument(origin, field, call))
+                continue
+            if call.args[0].casefold() not in context.metric_names:
+                diagnostics.append(D("SST-REF006", origin=origin, name=call.args[0]))
                 continue
             value = context.metric_values.get(call.args[0].casefold(), call.args[0].upper())
         elif function == "custom_instructions":
-            if len(call.args) != 1 or call.args[0].casefold() not in context.instruction_names:
-                diagnostics.append(D("SST-INT902", origin=origin, detail=f"unknown custom instruction {call.args!r}"))
+            if len(call.args) != 1:
+                diagnostics.append(_one_argument(origin, field, call))
+                continue
+            if call.args[0].casefold() not in context.instruction_names:
+                diagnostics.append(D("SST-REF039", origin=origin, artifact=field, name=call.args[0]))
                 continue
             value = call.args[0].upper()
         elif function == "var":
-            if len(call.args) != 1 or call.args[0] not in context.variables:
-                diagnostics.append(D("SST-INT902", origin=origin, detail=f"unknown project var {call.args!r}"))
+            if len(call.args) != 1:
+                diagnostics.append(_one_argument(origin, field, call))
+                continue
+            if call.args[0] not in context.variables:
+                diagnostics.append(D("SST-REF038", origin=origin, artifact=field, name=call.args[0]))
                 continue
             value = str(context.variables[call.args[0]])
         else:
             if len(call.args) != 1 or call.args[0] not in context.tags:
-                diagnostics.append(D("SST-INT902", origin=origin, detail=f"unknown tag {call.args!r}"))
+                diagnostics.append(
+                    D("SST-REF040", origin=origin, artifact=field, detail=f"{call.raw} names no declared tag")
+                )
                 continue
             value = context.tags[call.args[0]]
         assert value is not None
@@ -181,7 +199,25 @@ def resolve_scalar(
         )
 
     if policy.required and not calls:
-        diagnostics.append(D("SST-INT902", origin=origin, detail=f"{field} requires a reference"))
+        diagnostics.append(
+            D(
+                "SST-REF040",
+                origin=origin,
+                artifact=field,
+                detail=f"{field} must be a single {{{{ tag('<name>') }}}} call",
+            )
+        )
     if not policy.multi and len(calls) > 1:
-        diagnostics.append(D("SST-INT902", origin=origin, detail=f"{field} accepts one reference"))
+        diagnostics.append(
+            D("SST-REF042", origin=origin, artifact=field, detail=f"{field} accepts one reference, found {len(calls)}")
+        )
     return Resolved(rendered, tuple(origins), bool(diagnostics)), DiagnosticBag(diagnostics)
+
+
+def _one_argument(origin: Origin, field: str, call: TemplateCall) -> Diagnostic:
+    return D(
+        "SST-REF042",
+        origin=origin,
+        artifact=field,
+        detail=f"{call.function}() takes one name, found {len(call.args)} in {call.raw}",
+    )

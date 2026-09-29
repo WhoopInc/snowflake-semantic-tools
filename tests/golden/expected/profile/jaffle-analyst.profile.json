@@ -1,6 +1,10 @@
 {
   "row": {
-    "COMMAND_REPOS": [],
+    "COMMAND_REPOS": [
+      {
+        "snowflake_stage": "@SST_REF_DEV.JAFFLE.SKILL_BUNDLES/commands/shared/cb676fac84cc/"
+      }
+    ],
     "CONFIG_NAME": "jaffle-analyst",
     "DESCRIPTION": "Jaffle analysts: sales, menu, and month-close questions against the jaffle\nsemantic views.",
     "ENV_VARS": {},
@@ -38,7 +42,7 @@
     "SYSTEM_PROMPT_REPO": {
       "snowflake_stage": "@SST_REF_DEV.JAFFLE.SKILL_BUNDLES/prompts/jaffle-analyst/de73ec596abf/AGENTS.md"
     },
-    "VERSION": "SST_4DB21B6D4554"
+    "VERSION": "SST_8A07E70A8340"
   },
   "trees": [
     {
@@ -120,6 +124,17 @@
         }
       ],
       "prefix": "hooks/jaffle-analyst/68181301bf02/"
+    },
+    {
+      "digest": "cb676fac84cce77a6247fb64b5b3064ebca620981fe8a35ac48b00f4fdd1efaf",
+      "files": [
+        {
+          "path": "daily-summary.md",
+          "sha256": "f065dc1cdac08868776f83071377ef680c98901731d7381eb16ba74116ac9ca2",
+          "size": 444
+        }
+      ],
+      "prefix": "commands/shared/cb676fac84cc/"
     }
   ]
 }

@@ -107,8 +107,8 @@ for example `SST_16D8F6686433`.
 
 - Unchanged content keeps its alias, so an unchanged skill publishes nothing.
 - Reverting a change returns to an alias that already exists, so the revert
-  publishes nothing either; the plan warns if that version is not the
-  extension's default (`SST-VAL841`).
+  publishes nothing either; the plan warns if the catalog will serve a different
+  version (`SST-VAL841`).
 - The commit that published each version is recorded in SST's state, not in
   the version name.
 
@@ -130,6 +130,11 @@ skills:
 - `+certified: true` tags each new version with
   `SNOWFLAKE.CORE.CERTIFICATION_STATUS = 'CERTIFIED'` and reads the tag back.
   There is no un-certify step.
+- Certification decides what the catalog serves. Once any version of an
+  extension is certified, catalog users receive the latest certified version
+  instead of the default, so a version published without `+certified: true`
+  stays behind a certified one; the plan says so (`SST-VAL841`). Agents pin their
+  version and are unaffected.
 - `+threads` caps concurrent catalog publishes (1 to 16).
 
 ## Publishing

@@ -50,6 +50,7 @@ from ..app.extension_lifecycle import ExtensionLifecycleHandler
 from ..app.listing import list_artifacts
 from ..app.manifest import build_manifest
 from ..app.migrate_refs import MigrateRefs
+from ..app.partial import partial_refusal, partial_split
 from ..app.plan import PlanArtifacts
 from ..app.profile_compile import CompiledProfile, CompileProfiles, DesktopChannel
 from ..app.profile_lifecycle import ProfileLifecycleHandler
@@ -223,7 +224,9 @@ def _compile_result(
         if item.code == "SST-CFG036"
     )
     compilers: list[_StaticCompiler] = [
-        _StaticCompiler(CompileResult((), DiagnosticBag((*project_config.diagnostics, *consumed_diagnostics)))),
+        _StaticCompiler(
+            CompileResult((), DiagnosticBag((*project_config.diagnostics, *profile.diagnostics, *consumed_diagnostics)))
+        ),
         _StaticCompiler(skills),
         _StaticCompiler(profiles),
     ]
@@ -307,6 +310,7 @@ def _compile_publishing(
         profiles_dir=_project_dir_value(config, "profiles_dir", "profiles"),
         hooks_dir=_project_dir_value(config, "hooks_dir", "hooks"),
         mcp_servers_dir=_project_dir_value(config, "mcp_servers_dir", "mcp-servers"),
+        commands_dir=_project_dir_value(config, "commands_dir", "commands"),
     )
     desktop = None
     if isinstance(stage_config.get("+stage"), str):
@@ -316,23 +320,30 @@ def _compile_publishing(
             registry=_object_in(str(stage_config.get("+registry_table") or "PROFILE_REGISTRY"), database, schema),
             version_prefix=prefix,
         )
-    blocked = frozenset(
-        str(item.subject).split(":", 1)[1]
-        for item in skills.diagnostics
-        if item.severity is Severity.ERROR and str(item.subject or "").startswith("skill:")
-    )
+
+    def blocked_names(kind: str) -> frozenset[str]:
+        prefix = f"{kind}:"
+        return frozenset(
+            str(item.subject)[len(prefix) :]
+            for item in skills.diagnostics
+            if item.severity is Severity.ERROR and str(item.subject or "").startswith(prefix)
+        )
+
     profiles = CompileProfiles(
         profiles_catalog,
         catalog,
         desktop,
         catalog_channel=channel is not None,
-        blocked_skills=blocked,
+        blocked_skills=blocked_names("skill"),
+        blocked_plugins=blocked_names("plugin"),
     ).run_result()
     reached = {
         *(profiles_catalog.shared.skills if profiles_catalog.shared is not None else ()),
         *(name for item in profiles_catalog.profiles for name in item.skills),
     }
-    return skills, profiles, frozenset(f"skill:{name}" for name in reached), unpublished
+    plugins_reached = {name for item in profiles_catalog.profiles for name in item.plugins}
+    consumed = frozenset((*(f"skill:{name}" for name in reached), *(f"plugin:{name}" for name in plugins_reached)))
+    return skills, profiles, consumed, unpublished
 
 
 def _unpublished(catalog: SkillCatalog, skills: CompileResult, channel_problem: str | None) -> dict[str, str]:
@@ -974,16 +985,19 @@ def _change_json(change: Change) -> dict[str, object]:
             else []
         ),
         "prune_executable": change.prune_executable,
+        "report_only": change.action is Action.PRUNE and not change.prune_executable,
     }
 
 
 def _print_plan(changeset: ChangeSet) -> None:
     counts = {action: sum(change.action is action for change in changeset.changes) for action in Action}
+    report_only = len(changeset.report_only)
     click.echo(
         "Plan: "
         f"{counts[Action.CREATE]} to create, {counts[Action.UPDATE]} to update, "
-        f"{counts[Action.PRUNE]} to prune, {counts[Action.NOOP]} unchanged, "
-        f"{counts[Action.BLOCKED]} blocked."
+        f"{counts[Action.PRUNE] - report_only} to prune, {counts[Action.NOOP]} unchanged, "
+        f"{counts[Action.BLOCKED]} blocked"
+        + (f", {report_only} report-only (SST never removes these)." if report_only else ".")
     )
     markers = {
         Action.CREATE: "+",
@@ -1002,6 +1016,7 @@ def _print_plan(changeset: ChangeSet) -> None:
         click.echo(
             f"{markers[change.action]} {change.key} {change.action.value.upper()} {target} {change.reason.value}"
             + (f" {alias}" if alias else "")
+            + (" (report only)" if change.action is Action.PRUNE and not change.prune_executable else "")
         )
 
 
@@ -1061,6 +1076,8 @@ def _plan_runtime(
     include_prune: bool,
     strict: bool | None,
     connected: bool | None,
+    *,
+    partial: bool = False,
 ) -> tuple[
     CompileResult,
     Manifest | None,
@@ -1081,13 +1098,17 @@ def _plan_runtime(
             raise SstUsageError("--prune with --exclude requires --select so the prune scope is explicit")
         prune_keys = frozenset(prune_keys - excluded_keys)
     full_result = _compile_result(project_dir, target_name, manifest_path)
+    # `--partial` plans only what can publish; the manifest is built from the same set
+    # `compile --partial` wrote, so the two agree on the manifest id.
+    split = partial_split(full_result) if partial and not full_result.success else None
+    source = split.healthy if split is not None else full_result
     compiled_manifest_store = ManifestFileStore(_target_dir(project_dir) / "manifest.json")
     compiled_manifest = compiled_manifest_store.read()
     if compiled_manifest is None:
         raise ProjectError("no SST manifest; run sst compile before plan or apply")
     compiled = tuple(
         item
-        for item in full_result.compiled
+        for item in source.compiled
         if (
             (prune_types is None and prune_keys is None)
             or (prune_types is not None and item.artifact_type in prune_types)
@@ -1098,15 +1119,18 @@ def _plan_runtime(
     )
     if selected and not compiled and not include_prune:
         raise ProjectError(f"selectors {selected!r} matched no artifact in {project_dir}")
-    result = dataclasses.replace(full_result, compiled=compiled)
-    if not result.success:
+    result = dataclasses.replace(source, compiled=compiled)
+    if not result.success and split is None:
+        refusal = partial_refusal(full_result) if partial else None
+        if refusal is not None:
+            result = dataclasses.replace(result, diagnostics=DiagnosticBag((*result.diagnostics, refusal)))
         return result, None, None, None, None
     effective_strict, effective_connected = _effective_validation_settings(
         project_dir,
         strict=strict,
         connected=connected,
     )
-    manifest = _build_manifest(project_dir, full_result, manifest_path)
+    manifest = _build_manifest(project_dir, source, manifest_path)
     if compiled_manifest.manifest_id != manifest.manifest_id:
         raise ProjectError("compiled SST manifest is stale; run sst compile before plan or apply")
     profile, port = _connect(project_dir, target_name)
@@ -1115,9 +1139,26 @@ def _plan_runtime(
         strict=effective_strict,
         connected=effective_connected,
     )
-    if not validation.success:
+    # The split walks the whole healthy set, so a selection cannot hide a dependency;
+    # its result is then narrowed back to what was selected.
+    validated = partial_split(dataclasses.replace(source, diagnostics=validation.diagnostics)) if partial else None
+    if validated is not None:
+        # Strict promotion or a connected check can exclude more; the notices name
+        # everything left out, including what the compile split already excluded.
+        left_out = dict.fromkeys((*(split.excluded if split is not None else ()), *validated.excluded))
+        notices = tuple(D("SST-PLN032", subject=key, artifact=key) for key in left_out)
+        still_healthy = {item.artifact_key for item in validated.healthy.compiled}
+        result = dataclasses.replace(
+            result,
+            compiled=tuple(item for item in result.compiled if item.artifact_key in still_healthy),
+            diagnostics=DiagnosticBag((*validation.diagnostics, *notices)),
+        )
+    elif not validation.success:
         port.close()
-        failed_result = dataclasses.replace(result, diagnostics=validation.diagnostics)
+        refusal = partial_refusal(dataclasses.replace(result, diagnostics=validation.diagnostics)) if partial else None
+        failed_result = dataclasses.replace(
+            result, diagnostics=DiagnosticBag((*validation.diagnostics, *((refusal,) if refusal else ())))
+        )
         return failed_result, None, None, None, None
     state_store = StateFileStore(_target_dir(project_dir) / f"state.{profile.target_name}.json")
     state, state_diagnostics = read_state(
@@ -1247,6 +1288,7 @@ def debug(project_dir: Path, target_name: str | None, test_connection: bool, out
             "database": profile.identity.database.sql,
             "schema": profile.identity.schema.sql,
             "state_table": profile.state_table.sql,
+            "authentication": profile.authentication,
         }
         if test_connection:
             port = SnowflakeConnector(profile.connection_params)
@@ -1255,8 +1297,10 @@ def debug(project_dir: Path, target_name: str | None, test_connection: bool, out
                 data["current_account"] = port.current_account_locator()
             finally:
                 port.close()
+        diagnostics = DiagnosticBag(profile.diagnostics)
         if output == "json":
-            _emit_json(_json_envelope("debug", DiagnosticBag(), data=data), OK)
+            _emit_json(_json_envelope("debug", diagnostics, data=data), OK)
+        _render_diagnostics(diagnostics)
         for key, value in data.items():
             click.echo(f"{key}: {value}")
 
@@ -1274,6 +1318,7 @@ def debug(project_dir: Path, target_name: str | None, test_connection: bool, out
 @click.option("--ddl-output-dir", type=click.Path(file_okay=False, path_type=Path), hidden=True)
 @click.option("--manifest-output", type=click.Path(dir_okay=False, path_type=Path))
 @click.option("--select", "selected")
+@click.option("--partial", is_flag=True)
 @click.option("--target", "target_name")
 @click.option(
     "--manifest",
@@ -1288,6 +1333,7 @@ def compile(
     ddl_output_dir: Path | None,
     manifest_output: Path | None,
     selected: str | None,
+    partial: bool,
     target_name: str | None,
     manifest_path: Path | None,
     output: str,
@@ -1296,18 +1342,28 @@ def compile(
 
     def action() -> None:
         full_result = _compile_result(project_dir, target_name, manifest_path)
-        if not full_result.success:
+        split = partial_split(full_result) if partial and not full_result.success else None
+        if not full_result.success and split is None:
+            refusal = partial_refusal(full_result) if partial else None
+            failed = DiagnosticBag((*full_result.diagnostics, *((refusal,) if refusal else ())))
             if output == "json":
                 _emit_json(
                     _json_envelope(
                         "compile",
-                        full_result.diagnostics,
+                        failed,
                         artifact_count=len(full_result.compiled),
                     ),
                     ERROR,
                 )
-            _render_diagnostics(full_result.diagnostics)
+            _render_diagnostics(failed)
             raise click.exceptions.Exit(ERROR)
+        # `--partial` writes the manifest for what can publish and still exits 1.
+        exit_code = OK
+        shown = full_result.diagnostics
+        if split is not None:
+            full_result = split.healthy
+            exit_code = ERROR
+            shown = DiagnosticBag((*full_result.diagnostics, *split.notices))
         default_manifest = _target_dir(project_dir) / "manifest.json"
         full_manifest = _build_manifest(project_dir, full_result, manifest_path)
         ManifestFileStore(default_manifest).write(full_manifest)
@@ -1341,24 +1397,22 @@ def compile(
                 }
                 for item in result.compiled
             ]
+            data: dict[str, object] = {
+                "manifest_path": str(destination),
+                "manifest_id": manifest.manifest_id,
+                "artifacts": artifacts,
+            }
+            if split is not None:
+                data["partial"] = {"excluded": list(split.excluded)}
             _emit_json(
-                _json_envelope(
-                    "compile",
-                    result.diagnostics,
-                    artifact_count=len(result.compiled),
-                    data={
-                        "manifest_path": str(destination),
-                        "manifest_id": manifest.manifest_id,
-                        "artifacts": artifacts,
-                    },
-                ),
-                OK,
+                _json_envelope("compile", shown, exit_code=exit_code, artifact_count=len(result.compiled), data=data),
+                exit_code,
             )
+        if split is not None:
+            _render_diagnostics(shown)
         if print_ddl:
             click.echo("\n\n".join(item.rendered_artifact.content for item in result.compiled))
-            return
-        output_dir = emit_ddl_dir or ddl_output_dir
-        if output_dir is not None:
+        elif (output_dir := emit_ddl_dir or ddl_output_dir) is not None:
             output_dir.mkdir(parents=True, exist_ok=True)
             for item in result.compiled:
                 suffix = _artifact_suffix(item.rendered_artifact.render_dialect)
@@ -1371,8 +1425,11 @@ def compile(
                     encoding="utf-8",
                 )
             click.echo(f"wrote {len(result.compiled)} artifact payload file(s) to {output_dir}")
-            return
-        click.echo(f"compiled {len(result.compiled)} artifact(s); manifest {destination}")
+        else:
+            partial_note = f" (partial: {len(split.excluded)} excluded)" if split is not None else ""
+            click.echo(f"compiled {len(result.compiled)} artifact(s){partial_note}; manifest {destination}")
+        if exit_code:
+            raise click.exceptions.Exit(exit_code)
 
     _guarded(action, command="compile", output=output)
 
@@ -1468,6 +1525,7 @@ def validate(
 @click.option("--select", "selected", multiple=True)
 @click.option("--exclude", "excluded", multiple=True)
 @click.option("--prune", is_flag=True)
+@click.option("--partial", is_flag=True)
 @click.option("--plan-out", type=click.Path(dir_okay=False, path_type=Path))
 @click.option("--no-plan-out", is_flag=True)
 @click.option("--sql-out", type=click.Path(file_okay=False, path_type=Path))
@@ -1482,6 +1540,7 @@ def plan(
     selected: tuple[str, ...],
     excluded: tuple[str, ...],
     prune: bool,
+    partial: bool,
     plan_out: Path | None,
     no_plan_out: bool,
     sql_out: Path | None,
@@ -1494,6 +1553,7 @@ def plan(
 
     if plan_out is not None and no_plan_out:
         raise SstUsageError("--plan-out and --no-plan-out are mutually exclusive")
+    _refuse_partial_prune(partial, prune)
 
     def action() -> None:
         result, manifest, _, port, runtime = _plan_runtime(
@@ -1505,6 +1565,7 @@ def plan(
             prune,
             strict,
             snowflake_syntax_check,
+            partial=partial,
         )
         if runtime is None or manifest is None or port is None:
             if output == "json":
@@ -1518,6 +1579,7 @@ def plan(
                 selected=selected,
                 excluded=excluded,
                 include_prune=prune,
+                partial=partial,
             )
             destination = plan_out or _target_dir(project_dir) / "plan.json"
             if not no_plan_out:
@@ -1525,35 +1587,45 @@ def plan(
             sql_path = _write_plan_sql(project_dir, changeset, sql_out)
         finally:
             port.close()
-        if changeset.blocked or changeset.diagnostics.has_errors:
+        shown = DiagnosticBag((*result.diagnostics, *changeset.diagnostics)) if partial else changeset.diagnostics
+        if changeset.blocked or shown.has_errors:
             exit_code = ERROR
         elif changeset.writes:
             exit_code = OK if no_detailed_exitcode else CHANGES
         else:
             exit_code = OK
         if output == "json":
+            data: dict[str, object] = {
+                "manifest_id": manifest.manifest_id,
+                "plan_id": saved.plan_id,
+                "plan_path": None if no_plan_out else str(destination),
+                "sql_path": str(sql_path),
+                "changes": [_change_json(change) for change in changeset.changes],
+                "report_only": [change.key for change in changeset.report_only],
+            }
+            if partial:
+                data["partial"] = {"excluded": _partial_excluded(result.diagnostics)}
             _emit_json(
-                _json_envelope(
-                    "plan",
-                    changeset.diagnostics,
-                    exit_code=exit_code,
-                    artifact_count=len(changeset.changes),
-                    data={
-                        "manifest_id": manifest.manifest_id,
-                        "plan_id": saved.plan_id,
-                        "plan_path": None if no_plan_out else str(destination),
-                        "sql_path": str(sql_path),
-                        "changes": [_change_json(change) for change in changeset.changes],
-                    },
-                ),
+                _json_envelope("plan", shown, exit_code=exit_code, artifact_count=len(changeset.changes), data=data),
                 exit_code,
             )
-        _render_diagnostics(changeset.diagnostics)
+        _render_diagnostics(shown)
         _print_plan(changeset)
         if exit_code:
             raise click.exceptions.Exit(exit_code)
 
     _guarded(action, command="plan", output=output)
+
+
+def _refuse_partial_prune(partial: bool, prune: bool) -> None:
+    # An artifact left out for errors looks orphaned, so pruning could remove a live
+    # object whose source is only broken; the combination is refused outright.
+    if partial and prune:
+        raise SstUsageError("--partial cannot be combined with --prune")
+
+
+def _partial_excluded(diagnostics: DiagnosticBag) -> list[str]:
+    return [str(item.subject) for item in diagnostics if item.code == "SST-PLN032"]
 
 
 def _saved_plan_guard(saved: SavedPlan, current: SavedPlan) -> None:
@@ -1615,6 +1687,7 @@ def _saved_plan_guard(saved: SavedPlan, current: SavedPlan) -> None:
 @click.option("--exclude", "excluded", multiple=True)
 @click.option("--plan", "plan_path", type=click.Path(exists=True, dir_okay=False, path_type=Path))
 @click.option("--prune", is_flag=True)
+@click.option("--partial", is_flag=True)
 @click.option("--yes", "confirmed", is_flag=True)
 @click.option("--fail-fast", is_flag=True)
 @click.option("--break-stale-lock", is_flag=True)
@@ -1630,6 +1703,7 @@ def apply(
     excluded: tuple[str, ...],
     plan_path: Path | None,
     prune: bool,
+    partial: bool,
     confirmed: bool,
     fail_fast: bool,
     break_stale_lock: bool,
@@ -1644,6 +1718,7 @@ def apply(
         raise SstUsageError("--output json apply requires --yes")
     if prune and not confirmed:
         raise SstUsageError("--prune requires --yes")
+    _refuse_partial_prune(partial, prune)
 
     def action() -> None:
         saved = None
@@ -1660,6 +1735,11 @@ def apply(
                 raise SstUsageError("--exclude conflicts with the saved plan selection")
             if prune and not saved.include_prune:
                 raise SstUsageError("--prune conflicts with a non-pruning saved plan")
+            # Publishing a partial result is always explicit, in both directions.
+            if saved.partial and not partial:
+                raise SstUsageError("the saved plan is partial; apply it with --partial")
+            if partial and not saved.partial:
+                raise SstUsageError("--partial conflicts with a saved plan that is not partial")
             effective_selected = saved.selected
             effective_excluded = saved.excluded
             effective_prune = saved.include_prune
@@ -1672,6 +1752,7 @@ def apply(
             effective_prune,
             strict,
             snowflake_syntax_check,
+            partial=partial,
         )
         if runtime is None or manifest is None or profile is None or port is None:
             if output == "json":
@@ -1684,6 +1765,7 @@ def apply(
             selected=effective_selected,
             excluded=effective_excluded,
             include_prune=effective_prune,
+            partial=partial,
         )
         if saved is not None:
             if not saved.matches(manifest.manifest_id, profile.identity):
@@ -1712,35 +1794,37 @@ def apply(
             ).run(changeset, previous, options)
         finally:
             port.close()
-        exit_code = OK if apply_result.success else ERROR
+        # A partial apply publishes the healthy changes and still fails while errors remain.
+        left_out = result.diagnostics if partial else DiagnosticBag()
+        shown = DiagnosticBag((*left_out, *apply_result.diagnostics))
+        exit_code = OK if apply_result.success and not left_out.has_errors else ERROR
         if output == "json":
+            data: dict[str, object] = {
+                "run_id": apply_result.run_id,
+                "state_written": apply_result.state_written,
+                "outcomes": [
+                    {
+                        "artifact_key": outcome.key,
+                        "action": outcome.action.value,
+                        "status": outcome.status.value,
+                        "attempts": outcome.attempts,
+                        "duration_ms": outcome.duration_ms,
+                        "grant_check": outcome.grants.value,
+                        "error": (outcome.error.message if outcome.error else None),
+                        "component_fingerprints": dict(outcome.component_fingerprints),
+                    }
+                    for outcome in apply_result.outcomes
+                ],
+            }
+            if partial:
+                data["partial"] = {"excluded": _partial_excluded(result.diagnostics)}
             _emit_json(
                 _json_envelope(
-                    "apply",
-                    apply_result.diagnostics,
-                    exit_code=exit_code,
-                    artifact_count=len(apply_result.outcomes),
-                    data={
-                        "run_id": apply_result.run_id,
-                        "state_written": apply_result.state_written,
-                        "outcomes": [
-                            {
-                                "artifact_key": outcome.key,
-                                "action": outcome.action.value,
-                                "status": outcome.status.value,
-                                "attempts": outcome.attempts,
-                                "duration_ms": outcome.duration_ms,
-                                "grant_check": outcome.grants.value,
-                                "error": (outcome.error.message if outcome.error else None),
-                                "component_fingerprints": dict(outcome.component_fingerprints),
-                            }
-                            for outcome in apply_result.outcomes
-                        ],
-                    },
+                    "apply", shown, exit_code=exit_code, artifact_count=len(apply_result.outcomes), data=data
                 ),
                 exit_code,
             )
-        _render_diagnostics(apply_result.diagnostics)
+        _render_diagnostics(shown)
         for outcome in apply_result.outcomes:
             click.echo(f"{outcome.status.value}: {outcome.key} ({outcome.action.value})")
         if exit_code:
@@ -2365,6 +2449,10 @@ _OPTION_HELP: Mapping[str, str] = {
     "--prune": (
         "Also act on managed artifacts whose source was deleted, as far as each type "
         "allows: drop, deactivate, or report."
+    ),
+    "--partial": (
+        "Go ahead with every artifact that has no errors and depends on nothing that does; "
+        "still exits 1 while errors remain. Cannot be combined with `--prune`."
     ),
     "--sql-out": "Also write the statements for each change into this directory.",
     "--fail-fast": "Stop at the first failure instead of continuing.",

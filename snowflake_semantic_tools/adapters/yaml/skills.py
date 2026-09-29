@@ -167,7 +167,7 @@ def _load_plugin(project_dir: Path, folder: Path, diagnostics: list[Diagnostic])
     try:
         parsed = _parse_yaml_bytes(manifest.read_bytes(), file)
     except ProjectError as exc:
-        found = exc.diagnostics or (D("SST-INT902", detail=str(exc)),)
+        found = exc.diagnostics or (D("SST-LOD001", origin=Origin(file), file=file, line=1, col=1, detail=str(exc)),)
         diagnostics.extend(replace(item, subject=subject) for item in found)
         return None
     tree = dict(parsed.tree)

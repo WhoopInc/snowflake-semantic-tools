@@ -28,10 +28,10 @@ import dataclasses
 import re
 import subprocess
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from types import MappingProxyType
-from typing import Any
+from typing import Any, NoReturn
 
 import yaml
 
@@ -297,14 +297,23 @@ def _construct_yaml_node(node: yaml.Node, path: str) -> Any:
             return loader.construct_object(node, deep=True)
         finally:
             loader.dispose()
-    raise ProjectError(f"unsupported YAML node {type(node).__name__} in {path}")
+    mark = node.start_mark
+    diagnostic = D(
+        "SST-LOD001",
+        file=str(path),
+        line=mark.line + 1,
+        col=mark.column + 1,
+        detail=f"unsupported YAML node {type(node).__name__}",
+    )
+    raise ProjectError(diagnostic.message, diagnostics=(diagnostic,))
 
 
 def _parse_yaml_bytes(raw: bytes, path: str) -> ParsedYaml:
     try:
         text = raw.decode("utf-8")
     except UnicodeDecodeError as exc:
-        raise ProjectError(f"cannot decode {path} as UTF-8 at byte {exc.start}") from exc
+        diagnostic = D("SST-PRS122", origin=Origin(path), file=path, offset=exc.start)
+        raise ProjectError(diagnostic.message, diagnostics=(diagnostic,)) from exc
     neutralized, templates = _neutralize_templates(text, path)
     try:
         nodes = list(yaml.compose_all(neutralized, Loader=yaml.SafeLoader))
@@ -834,14 +843,7 @@ def _metric_diagnostics(
             if call.function == "var" and (
                 len(call.args) != 1 or variables is not None and call.args[0] not in variables
             ):
-                diagnostics.append(
-                    D(
-                        "SST-INT902",
-                        origin=metric.origin,
-                        subject=f"metric:{metric.name}",
-                        detail=f"invalid project var reference {call.raw}",
-                    )
-                )
+                diagnostics.append(_var_diagnostic(call, metric.origin, f"metric:{metric.name}"))
                 continue
             if call.function != "ref" or len(call.args) not in (1, 2):
                 continue
@@ -972,32 +974,31 @@ def _expression_reference_diagnostics(
             if call.function == "metric" and isinstance(member, FilterDef):
                 diagnostics.append(
                     D(
-                        "SST-INT902",
+                        "SST-REF041",
                         origin=member.origin,
                         subject=subject,
-                        detail=f"metric() is not permitted in filter expressions: {call.raw}",
+                        artifact=subject,
+                        function="metric",
+                        field="a filter expression",
                     )
                 )
                 continue
             if call.function == "metric" and (len(call.args) != 1 or call.args[0].casefold() not in metric_names):
-                diagnostics.append(
-                    D(
-                        "SST-INT902",
-                        origin=member.origin,
-                        subject=subject,
-                        detail=f"unknown metric reference {call.raw}",
+                if len(call.args) != 1:
+                    diagnostics.append(
+                        D(
+                            "SST-REF042",
+                            origin=member.origin,
+                            subject=subject,
+                            artifact=subject,
+                            detail=f"metric() takes one name, found {len(call.args)} in {call.raw}",
+                        )
                     )
-                )
+                else:
+                    diagnostics.append(D("SST-REF006", origin=member.origin, subject=subject, name=call.args[0]))
                 continue
             if call.function == "var" and (len(call.args) != 1 or call.args[0] not in variables):
-                diagnostics.append(
-                    D(
-                        "SST-INT902",
-                        origin=member.origin,
-                        subject=subject,
-                        detail=f"unknown project var {call.raw}",
-                    )
-                )
+                diagnostics.append(_var_diagnostic(call, member.origin, subject))
                 continue
             if call.function in ("table", "column"):
                 # SST-REF034/SST-REF035 already name the legacy global at its position.
@@ -1005,10 +1006,12 @@ def _expression_reference_diagnostics(
             if call.function not in ("ref", "metric", "var"):
                 diagnostics.append(
                     D(
-                        "SST-INT902",
+                        "SST-REF041",
                         origin=member.origin,
                         subject=subject,
-                        detail=f"unsupported template function {call.function}() in {subject}",
+                        artifact=subject,
+                        function=call.function,
+                        field="an expression",
                     )
                 )
                 continue
@@ -1051,12 +1054,7 @@ def _expression_reference_diagnostics(
                     )
             elif declared and model_name.casefold() not in declared:
                 diagnostics.append(
-                    D(
-                        "SST-INT902",
-                        origin=member.origin,
-                        subject=subject,
-                        detail=f"{subject} references table {model_name!r} outside its declared tables",
-                    )
+                    D("SST-REF043", origin=member.origin, subject=subject, artifact=subject, model=model_name)
                 )
     return tuple(diagnostics)
 
@@ -1432,12 +1430,18 @@ def _resolve_refs(expr: str, models_in_view: dict[str, str]) -> str:
 
     def sub(call: TemplateCall) -> str:
         if len(call.args) not in (1, 2):
-            raise ProjectError(f"ref() expects one or two arguments, found {len(call.args)}: {call.raw}")
+            diagnostic = D(
+                "SST-REF042",
+                artifact="expression",
+                detail=f"ref() takes one or two arguments, found {len(call.args)} in {call.raw}",
+            )
+            raise ProjectError(diagnostic.message, diagnostics=(diagnostic,))
         model = call.args[0]
         column = call.args[1] if len(call.args) == 2 else None
         logical = models_in_view.get(model.casefold())
         if logical is None:
-            raise ProjectError(f"expression refs {model!r}, which is not a table in this view: {expr}")
+            diagnostic = D("SST-REF043", artifact="expression", model=model)
+            raise ProjectError(diagnostic.message, diagnostics=(diagnostic,))
         return f"{logical}.{column.upper()}" if column else logical
 
     try:
@@ -2486,13 +2490,27 @@ def load_semantic_views_result(
                 )
                 continue
             for call in calls:
-                if call.function != "custom_instructions" or len(call.args) != 1:
+                view_subject = f"semantic_view:{parsed_view.name}"
+                if call.function != "custom_instructions":
                     diagnostics.append(
                         D(
-                            "SST-INT902",
+                            "SST-REF041",
                             origin=parsed_view.origin,
-                            subject=f"semantic_view:{parsed_view.name}",
-                            detail=f"invalid custom instruction reference {call.raw}",
+                            subject=view_subject,
+                            artifact=view_subject,
+                            function=call.function,
+                            field="custom_instructions",
+                        )
+                    )
+                    continue
+                if len(call.args) != 1:
+                    diagnostics.append(
+                        D(
+                            "SST-REF042",
+                            origin=parsed_view.origin,
+                            subject=view_subject,
+                            artifact=view_subject,
+                            detail=f"custom_instructions() takes one name, found {len(call.args)} in {call.raw}",
                         )
                     )
                     continue
@@ -2500,10 +2518,11 @@ def load_semantic_views_result(
                 if instruction_name not in known_instruction_names:
                     diagnostics.append(
                         D(
-                            "SST-INT902",
+                            "SST-REF039",
                             origin=parsed_view.origin,
-                            subject=f"semantic_view:{parsed_view.name}",
-                            detail=f"unknown custom instruction {call.args[0]!r}",
+                            subject=view_subject,
+                            artifact=view_subject,
+                            name=call.args[0],
                         )
                     )
                     continue
@@ -2562,14 +2581,20 @@ def load_semantic_views_result(
                     )
                 )
             except ProjectError as exc:
+                view_origin = Origin(path.resolve().relative_to(project_dir.resolve()).as_posix())
+                view_subject = f"semantic_view:{node['name']}"
                 if exc.diagnostics:
-                    diagnostics.extend(exc.diagnostics)
+                    diagnostics.extend(
+                        replace(item, origin=item.origin or view_origin, subject=item.subject or view_subject)
+                        for item in exc.diagnostics
+                    )
                 else:
                     diagnostics.append(
                         D(
-                            "SST-INT902",
-                            origin=Origin(path.resolve().relative_to(project_dir.resolve()).as_posix()),
-                            subject=f"semantic_view:{node['name']}",
+                            "SST-PRS123",
+                            origin=view_origin,
+                            subject=view_subject,
+                            artifact=view_subject,
                             detail=str(exc),
                         )
                     )
@@ -2636,7 +2661,8 @@ def _build_view(
     for raw in node.get("tables") or []:
         call = single_template_call(str(raw), "ref")
         if call is None or len(call.args) != 1:
-            raise ProjectError(f"{path}: view {name} has a table entry that is not a ref(): {raw!r}")
+            diagnostic = D("SST-REF044", artifact=f"semantic_view:{name}", found=repr(raw))
+            raise ProjectError(diagnostic.message, diagnostics=(diagnostic,))
         model_name = call.args[0]
         model = models.get(model_name.lower())
         if model is None:
@@ -2646,7 +2672,8 @@ def _build_view(
         if logical in logical_by_model.values():
             # D017 defers role-playing past 1.0, so one physical table cannot
             # appear twice under two logical names.
-            raise ProjectError(f"{path}: view {name} lists table {model_name!r} more than once")
+            diagnostic = D("SST-PRS006", type="table", name=model_name)
+            raise ProjectError(diagnostic.message, diagnostics=(diagnostic,))
         logical_by_model[model_name.lower()] = logical
         per_table = table_config.get(model_name) if isinstance(table_config, dict) else None
         table_synonyms = _as_str_tuple(per_table.get("synonyms")) if isinstance(per_table, dict) else ()
@@ -2821,8 +2848,21 @@ def _build_view(
 def _config_var(config: dict[str, Any], name: str) -> str:
     variables = config.get("vars") or {}
     if not isinstance(variables, dict) or name not in variables:
-        raise ProjectError(f"unknown project var {name!r}")
+        diagnostic = D("SST-REF038", artifact="semantic view", name=name)
+        raise ProjectError(diagnostic.message, diagnostics=(diagnostic,))
     return str(variables[name])
+
+
+def _var_diagnostic(call: TemplateCall, origin: Origin | None, subject: str) -> Diagnostic:
+    if len(call.args) != 1:
+        return D(
+            "SST-REF042",
+            origin=origin,
+            subject=subject,
+            artifact=subject,
+            detail=f"var() takes one name, found {len(call.args)} in {call.raw}",
+        )
+    return D("SST-REF038", origin=origin, subject=subject, artifact=subject, name=call.args[0])
 
 
 def _distinct_range(
@@ -2875,15 +2915,19 @@ def _variable(value: object, *, path: Path, view_name: str) -> Variable:
 
 
 def _tag(value: object, *, config: dict[str, Any], target: Target, path: Path, view_name: str) -> Tag:
+    def invalid(detail: str) -> NoReturn:
+        diagnostic = D("SST-REF040", artifact=f"semantic_view:{view_name}", detail=detail)
+        raise ProjectError(diagnostic.message, diagnostics=(diagnostic,))
+
     if not isinstance(value, dict) or not value.get("name") or "value" not in value:
-        raise ProjectError(f"{path}: view {view_name} has an invalid tag {value!r}")
+        invalid(f"tag {value!r} needs a name and a value")
     call = single_template_call(str(value["name"]), "tag")
     if call is None or len(call.args) != 1:
-        raise ProjectError(f"{path}: view {view_name} tag name must use tag(), found {value['name']!r}")
+        invalid(f"tag name must be one tag() call, found {value['name']!r}")
     tags = config.get("tags") or {}
     tag_name = call.args[0]
     if not isinstance(tags, dict) or tag_name not in tags:
-        raise ProjectError(f"unknown tag {tag_name!r}")
+        invalid(f"tag('{tag_name}') names no tag under tags: in sst_config.yml")
     prefix = (
         str(tags.get("default_prefix") or "")
         .replace("{{ target.database }}", target.database)

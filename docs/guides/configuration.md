@@ -52,7 +52,7 @@ an error (`SST-CFG041`), so a mistyped route cannot quietly route nothing.
 
 | Block | What it controls |
 |---|---|
-| `project` | Where each artifact type is authored. |
+| `project` | Where each artifact type is authored. A directory key that is set must name a directory that exists (`SST-CFG047`); an unset one falls back to its default, which may be absent. |
 | `validation` | `strict` promotes warnings to errors; `snowflake_syntax_check` compiles expressions against Snowflake. |
 | `vars` | Values `{{ var() }}` substitutes into expressions. |
 | `tags` | Tags `{{ tag() }}` resolves, by `fqn:` or by `default_prefix`. |
@@ -82,19 +82,37 @@ blocks are an error in such a project (`SST-CFG046`).
 
 ## Authentication
 
-SST connects with the fields of the selected `profiles.yml` output. Values can
-come from the environment with `{{ env_var('NAME') }}` or
-`{{ env_var('NAME', 'default') }}`.
+SST connects with the fields of the selected `profiles.yml` output, read the way
+dbt-snowflake reads them. `{{ env_var('NAME') }}` and
+`{{ env_var('NAME', 'default') }}` are rendered anywhere in a value, so
+`"svc_{{ env_var('SUFFIX') }}"` works; any other template, including a filter
+such as `as_number`, is an error (`SST-CFG049`). Numbers and booleans can be
+written plainly or as strings.
 
 | Method | Fields |
 |---|---|
 | Browser SSO | `authenticator: externalbrowser` |
-| Key pair | `private_key_file`, and `private_key_file_pwd` for an encrypted key |
+| Key pair, file | `private_key_path` (or `private_key_file`), and `private_key_passphrase` for an encrypted key |
+| Key pair, inline | `private_key` as PEM or base64 DER, and `private_key_passphrase` for an encrypted key |
+| OAuth access token | `token`; `authenticator: oauth` is implied |
 | Password | `password` |
 
 Every output also needs `account` and `user`, and `database` and `schema` are
 required: they are where SST publishes by default and keeps its state.
-`role`, `warehouse`, and `query_tag` are used when set.
+`role`, `warehouse`, `query_tag`, `host`, `port`, `protocol`, `insecure_mode`,
+`client_session_keep_alive`, and `connect_timeout` are used when set.
+
+- dbt settings with no meaning for one connection -- `threads`,
+  `connect_retries`, `retry_on_database_errors`, `retry_all`,
+  `reuse_connections` -- are ignored, and never rendered, so an unset variable
+  there cannot stop a run.
+- Any other field is a warning (`SST-CFG048`), so a misspelled credential field
+  is reported instead of dropped silently.
+- `oauth_client_id` and `oauth_client_secret` ask dbt to exchange a refresh
+  token; SST does not, so they are an error (`SST-CFG050`). Supply an access
+  token in `token` instead. `private_key` together with a key file is an error
+  too, and a key that cannot be read is reported without echoing it.
+- `sst debug` shows the method SST will use, never the credential.
 
 Because SST passes the project directory to `dbt parse` as `--profiles-dir`,
 `profiles.yml` must be in the project root. Commit it with every secret behind

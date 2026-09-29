@@ -1,0 +1,21 @@
+# A SECOND COCO DESKTOP PROFILE, FOR THE TWO THINGS THE ANALYST PROFILE DOES NOT
+# CARRY: a plugin and a slash command.
+#
+# `plugins:` names a plugin folder. The profile carries that plugin's bundle byte
+# for byte as its catalog extension publishes it, under
+# `plugins/<profile>/<H>/jaffle-toolkit/`, and the row's PLUGINS column names that
+# directory. The plugin's two skills therefore reach this profile through the
+# plugin alone; listing them under `skills:` as well would ship them twice.
+#
+# `commands:` names Markdown files under `commands/` by path, without `.md`.
+# Desktop joins nested folders with `:`, so `ops/month-check` is `/ops:month-check`.
+# `/daily-summary` reaches this profile, like every other, through `shared/`.
+name: jaffle-operator
+description: |-
+  Jaffle operators: the month-close toolkit as one plugin, and the month-check
+  command.
+owner_team: Jaffle Analytics
+plugins:
+  - jaffle-toolkit
+commands:
+  - ops/month-check

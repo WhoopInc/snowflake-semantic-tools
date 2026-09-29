@@ -386,6 +386,23 @@ def test_custom_metric_version_field_is_not_required() -> None:
     assert all(diagnostic.code != "SST-VAL744" for diagnostic in diagnostics)
 
 
+def test_missing_dataset_templates_fail_validation_before_compile() -> None:
+    value = _resolved_eval()
+    assert value.config.dataset is not None
+    missing = replace(value, config=replace(value.config, dataset=replace(value.config.dataset, name_template=None)))
+    diagnostics = validate_eval_catalog(EvalCatalog((missing,), missing.custom_metrics))
+    found = [item for item in diagnostics if item.code == "SST-VAL762"]
+    assert [item.context["field"] for item in found] == ["name_template"]
+    assert found[0].subject == missing.key and found[0].origin == missing.config.origin
+    absent = replace(value, config=replace(value.config, dataset=None))
+    fields = [
+        item.context["field"]
+        for item in validate_eval_catalog(EvalCatalog((absent,), absent.custom_metrics))
+        if item.code == "SST-VAL762"
+    ]
+    assert fields == ["name_template", "source_table_template"]
+
+
 def test_eval_validation_covers_omitted_configs_templates_invocations_and_defaults() -> None:
     value = _resolved_eval()
     dataset = EvalDataset(

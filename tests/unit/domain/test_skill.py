@@ -266,6 +266,16 @@ def test_catalog_validation_names_layout_uniqueness_and_plugin_membership() -> N
     assert validate_skill_catalog(SkillCatalog((good,))) == ()
 
 
+def test_file_names_a_stage_rejects_fail_validation_at_the_file() -> None:
+    unsafe = skill(files={"reference/q1+q2.md": "q", "bad dir/notes.md": "n", "reference/ok.md": "o"})
+    diagnostics = validate_skill_catalog(SkillCatalog((unsafe,)))
+    assert codes(diagnostics) == ["SST-VAL857", "SST-VAL857"]
+    first, second = diagnostics
+    assert first.subject == "skill:month-close" and first.origin == Origin("skills/finance/month-close/bad dir/notes.md")
+    assert "'bad dir' is not made only of letters" in first.message
+    assert second.message.startswith("skill:month-close: reference/q1+q2.md cannot be staged, because 'q1+q2.md'")
+
+
 def test_skill_bundle_budgets_limits_and_empty_folders() -> None:
     bundle, diagnostics = build_skill_bundle(skill(files={"reference/steps.md": "s"}))
     assert bundle is not None and diagnostics == ()

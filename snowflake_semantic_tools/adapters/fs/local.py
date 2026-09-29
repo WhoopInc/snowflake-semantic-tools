@@ -175,6 +175,7 @@ def _saved_plan_from_dict(value: object) -> SavedPlan:
         selected=tuple(str(item) for item in raw_selection.get("selected", [])),
         excluded=tuple(str(item) for item in raw_selection.get("excluded", [])),
         include_prune=bool(raw_selection.get("include_prune", False)),
+        partial=bool(raw_selection.get("partial", False)),
     )
     recorded = str(value.get("plan_id") or "")
     expected_body = dict(value)

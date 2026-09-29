@@ -313,6 +313,11 @@ def test_stale_plan_and_desktop_pointer_rules() -> None:
         stage_pointers({"HOOKS": {"PreToolUse": [{"hooks": [{"type": "prompt"}, "bad"]}, "bad"]}, "SKILL_REPOS": "x"})
         == ()
     )
+    # PLUGINS holds strings; only stage paths are fetched, so only they must resolve.
+    assert stage_pointers({"PLUGINS": ["@DB.S.P/plugins/a/H/kit/", "snow://skill_catalog/DB.S.KIT", 3]}) == (
+        "@DB.S.P/plugins/a/H/kit/",
+    )
+    assert stage_pointers({"PLUGINS": "not a list"}) == ()
 
 
 class FlakyProfilePort(RecordedSnowflake):

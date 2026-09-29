@@ -106,6 +106,7 @@ def test_compile_writes_deterministic_manifest(tmp_path: Path) -> None:
         "eval:jaffle_analytics_agent",
         "plugin:jaffle-toolkit",
         "profile:jaffle-analyst",
+        "profile:jaffle-operator",
         "semantic_view:jaffle_menu",
         "semantic_view:jaffle_minimal",
         "semantic_view:jaffle_sales",
@@ -132,7 +133,7 @@ def test_compile_json_emits_artifact_fingerprints() -> None:
     )
     assert result.exit_code == 0, result.output
     envelope = json.loads(result.output)
-    assert len(envelope["data"]["artifacts"]) == 13
+    assert len(envelope["data"]["artifacts"]) == 14
     assert all(len(artifact["fingerprint"]) == 64 for artifact in envelope["data"]["artifacts"])
 
 
@@ -196,7 +197,7 @@ def test_compile_selection_keeps_the_canonical_manifest_full(tmp_path: Path) -> 
     )
     assert result.exit_code == 0, result.output
     canonical = json.loads((project / "target" / "sst" / "manifest.json").read_text(encoding="utf-8"))
-    assert len(canonical["artifacts"]) == 13
+    assert len(canonical["artifacts"]) == 14
 
 
 def test_validate_accepts_the_recorded_manifest_offline() -> None:
@@ -214,7 +215,7 @@ def test_validate_accepts_the_recorded_manifest_offline() -> None:
     )
     assert result.exit_code == 0, result.output
     # Two warnings are SST-VAL804: no agent references jaffle-catalogue or jaffle-operations.
-    assert "validated 13 artifact(s): 0 errors, 2 warnings" in result.output
+    assert "validated 14 artifact(s): 0 errors, 1 warnings" in result.output
 
 
 def test_validate_uses_config_strict_unless_cli_overrides() -> None:
@@ -297,10 +298,11 @@ def test_validate_json_emits_one_v2_envelope() -> None:
     assert envelope["invocation"]["duration_s"] >= 0
     assert envelope["status"] == "ok"
     # Seven infos are SST-CFG044, keys the fixture sets that 1.0 reads nowhere, and
-    # one is SST-VAL854: the fixture's profile registry is not Desktop's.
+    # one is SST-VAL854: the fixture's profile registry is not Desktop's. The one
+    # warning is SST-VAL528; the plugin has a consumer now, the operator profile.
     assert envelope["summary"] == {
         "error": 0,
-        "warning": 2,
+        "warning": 1,
         "info": 12,
         "promoted": 0,
         "suppressed_cascade": 0,
@@ -343,7 +345,7 @@ def test_golden_suite_compares_every_compiled_view() -> None:
         ],
     )
     assert result.exit_code == 0, result.output
-    assert "golden suite passed for 13 artifact(s)" in result.output
+    assert "golden suite passed for 14 artifact(s)" in result.output
 
 
 def test_golden_suite_reports_a_diff(tmp_path: Path) -> None:

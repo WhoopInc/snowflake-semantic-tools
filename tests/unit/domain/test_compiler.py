@@ -119,6 +119,23 @@ def test_resolver_handles_metric_instruction_var_and_tag_calls() -> None:
     assert tag.text == "DB.SCH.DOMAIN"
     assert diagnostics == ()
 
+    # Each function names one thing; a wrong argument count is its own error.
+    for text, policy, field in (
+        ("{{ metric('a', 'b') }}", METRIC_EXPR, "expression"),
+        ("{{ var('a', 'b') }}", METRIC_EXPR, "expression"),
+        ("{{ custom_instructions('a', 'b') }}", CUSTOM_INSTRUCTION_ITEM, "custom_instructions"),
+    ):
+        resolved, diagnostics = resolve_scalar(text, policy, Origin("views.yml"), context, field=field)
+        assert resolved.poisoned and [item.code for item in diagnostics] == ["SST-REF042"]
+        assert "takes one name, found 2" in diagnostics[0].message
+    unknown = (
+        ("{{ var('missing') }}", METRIC_EXPR, "expression", "SST-REF038"),
+        ("{{ custom_instructions('missing') }}", CUSTOM_INSTRUCTION_ITEM, "custom_instructions", "SST-REF039"),
+    )
+    for text, policy, field, code in unknown:
+        _, diagnostics = resolve_scalar(text, policy, Origin("views.yml"), context, field=field)
+        assert [item.code for item in diagnostics] == [code]
+
 
 def test_resolver_reports_policy_arity_and_unknown_targets() -> None:
     context = ResolveContext(catalog())
@@ -130,7 +147,8 @@ def test_resolver_reports_policy_arity_and_unknown_targets() -> None:
         field="description",
     )
     assert description.poisoned
-    assert diagnostics[0].code == "SST-INT902"
+    assert diagnostics[0].code == "SST-REF041"
+    assert diagnostics[0].message == "description: ref() is not allowed in description"
 
     bad_arity, diagnostics = resolve_scalar(
         "{{ ref() }}",
@@ -140,7 +158,7 @@ def test_resolver_reports_policy_arity_and_unknown_targets() -> None:
         field="expression",
     )
     assert bad_arity.poisoned
-    assert diagnostics[0].code == "SST-INT902"
+    assert diagnostics[0].code == "SST-REF042"
 
     unknown_metric, diagnostics = resolve_scalar(
         "{{ metric('missing') }}",
@@ -150,7 +168,7 @@ def test_resolver_reports_policy_arity_and_unknown_targets() -> None:
         field="expression",
     )
     assert unknown_metric.poisoned
-    assert diagnostics[0].code == "SST-INT902"
+    assert diagnostics[0].code == "SST-REF006"
 
 
 def test_resolver_rejects_legacy_calls_and_required_missing_refs() -> None:
@@ -173,7 +191,7 @@ def test_resolver_rejects_legacy_calls_and_required_missing_refs() -> None:
         field="tag",
     )
     assert missing.poisoned
-    assert diagnostics[0].code == "SST-INT902"
+    assert diagnostics[0].code == "SST-REF040"
 
 
 def test_resolver_reports_unknown_columns_and_malformed_templates() -> None:

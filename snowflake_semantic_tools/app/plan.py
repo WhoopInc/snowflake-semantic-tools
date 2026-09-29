@@ -193,7 +193,9 @@ class PlanArtifacts:
                     changeset.manifest_id,
                     changeset.target,
                     (*changeset.changes, *composite_prunes),
-                    changeset.diagnostics,
+                    DiagnosticBag(
+                        (*changeset.diagnostics, *(item for prune in composite_prunes for item in prune.diagnostics))
+                    ),
                     changeset.observation_at,
                     changeset.full,
                     changeset.plan_id,

@@ -124,13 +124,19 @@ class RecordedSnowflake:
         extension = self.extensions.get(qualified_name.sql)
         if extension is None:
             return None
-        default = next((version for version in _versions(extension) if version["is_default"]), None)
+        versions = _versions(extension)
+        default = next((version for version in versions if version["is_default"]), None)
+        # MEASURED 2026-09-29: once a version is certified, the extension serves the
+        # latest certified version instead of the default.
+        certified = next((version for version in reversed(versions) if version["certification"] == "CERTIFIED"), None)
+        effective = certified or default
         return ExtensionObservation(
             qualified_name=qualified_name,
             extension_type=str(extension["type"]),
             comment=extension["comment"] if isinstance(extension["comment"], str) else None,
             owner=self.role,
-            effective_version=str(default["name"]) if default is not None else None,
+            effective_version=str(effective["name"]) if effective is not None else None,
+            latest_certified_version=str(certified["name"]) if certified is not None else None,
         )
 
     def extension_versions(self, qualified_name: QualifiedName) -> tuple[ExtensionVersion, ...]:
@@ -367,9 +373,9 @@ class RecordedSnowflake:
         elif clause.startswith("SET COMMENT"):
             extension["comment"] = quoted[0]
         elif clause.startswith("VERSION ") and "SET TAG" in clause:
-            alias = tokens[5]
+            label = tokens[5].casefold()
             for version in _versions(extension):
-                if str(version["alias"]).casefold() == alias.casefold():
+                if label in (str(version["alias"]).casefold(), str(version["name"]).casefold()):
                     version["certification"] = quoted[0]
 
     @staticmethod

@@ -124,6 +124,11 @@ In the agent:
 A `type: agent` tool delegates to another agent: `agent: "{{ agent('<name>') }}"`
 for one this project publishes. Delegation cannot form a cycle.
 
+A tool object that a `define:` entry publishes is replaced when its definition
+cannot change in place. SST never grants new access, but it re-issues exactly
+the explicit grants the object held before the replacement, then checks that
+they are all back, so the objects an agent calls keep the access they had.
+
 ## Skills
 
 An agent loads skills published as Cortex Extensions:
