@@ -1,0 +1,18 @@
+  # The whole document is indented two spaces, root key included. YAML permits
+  # it and 0.3 parsed it; a parser that anchors root keys at column 0 would see
+  # no relationships here at all.
+  snowflake_relationships:
+
+  - name: orders_to_customers
+    left_table: orders
+    right_table: customers
+    # The 0.3 pair form. 1.0 reads it as one equality condition and warns.
+    relationship_columns:
+      - left_column: "{{ ref('orders', 'customer_id') }}"
+        right_column: "{{ ref('customers', 'customer_id') }}"
+
+  - name: orders_to_locations
+    left_table: orders
+    right_table: locations
+    relationship_conditions:
+      - "{{ ref('orders', 'location_id') }} = {{ ref('locations', 'location_id') }}"

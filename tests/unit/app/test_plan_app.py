@@ -28,10 +28,17 @@ def test_observe_collects_markers_grants_and_errors() -> None:
         SEMANTIC_REGISTRY,
         (artifact.target,),
         fetched_at="now",
+        desired_artifacts={artifact.key: artifact},
     )
     assert observation.artifacts[artifact.key].marker is not None
     assert observation.artifacts[artifact.key].explicit_grants[0].grantee_name == "R"
     assert diagnostics == ()
+
+    # An object this plan does not render -- a prune candidate or an unrelated one --
+    # is never replaced, so its grants are not read (an unrelated routine could not
+    # even be addressed without its signature).
+    unrelated, quiet = observe(port, SEMANTIC_REGISTRY, (artifact.target,), fetched_at="now")
+    assert unrelated.artifacts[artifact.key].grants is None and quiet == ()
 
     port.show_error = SnowflakePortError("offline")
     empty, failed = observe(port, SEMANTIC_REGISTRY, (artifact.target,), fetched_at="later")
@@ -58,7 +65,9 @@ def test_observe_grant_failure_keeps_unknown_not_empty() -> None:
     artifact = rendered()
     port.rows = (ShowRow("V", "DB", "SCHEMA", "O", "now"),)
     port.grant_error = SnowflakePortError("denied")
-    observation, diagnostics = observe(port, SEMANTIC_REGISTRY, (artifact.target,), fetched_at="now")
+    observation, diagnostics = observe(
+        port, SEMANTIC_REGISTRY, (artifact.target,), fetched_at="now", desired_artifacts={artifact.key: artifact}
+    )
     assert observation.artifacts[artifact.key].grants is None
     assert diagnostics[0].code == "SST-PLN001"
 

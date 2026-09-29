@@ -2,7 +2,11 @@
 
 from __future__ import annotations
 
+import contextlib
 import json
+import re
+import sys
+from datetime import datetime, timezone
 from pathlib import PurePosixPath
 from threading import RLock
 from types import MappingProxyType
@@ -21,7 +25,13 @@ from ...domain.model.lifecycle import (
     ShowRow,
     extract_marker,
 )
-from ...domain.ports.snowflake import SnowflakePortError, StagedFileMetadata, StageObservation
+from ...domain.ports.snowflake import (
+    ExtensionObservation,
+    ExtensionVersion,
+    SnowflakePortError,
+    StagedFileMetadata,
+    StageObservation,
+)
 from ...domain.state.model import AppliedEntry, AppliedResource
 
 STATE_COLUMNS = (
@@ -42,6 +52,7 @@ OBJECT_TYPES = frozenset(
     (
         "SEMANTIC VIEW",
         "CORTEX SEARCH SERVICE",
+        "CORTEX EXTENSION",
         "PROCEDURE",
         "FUNCTION",
         "STAGE",
@@ -56,7 +67,10 @@ OBJECT_TYPES = frozenset(
 class SnowflakeConnector:
     def __init__(self, connection_params: Mapping[str, object]) -> None:
         try:
-            self._connection = snowflake.connector.connect(**dict(connection_params))
+            # Browser SSO prints its prompts to stdout, which `--output json` reserves
+            # for exactly one envelope; the prompts still reach the user on stderr.
+            with contextlib.redirect_stdout(sys.stderr):
+                self._connection = snowflake.connector.connect(**dict(connection_params))
             self._lock = RLock()
         except Exception as exc:
             raise _port_error(exc) from exc
@@ -74,14 +88,17 @@ class SnowflakeConnector:
                 (
                     ShowRow(
                         name=str(row["name"]),
-                        database_name=str(row.get("database_name") or scope.database.folded),
+                        # SHOW FUNCTIONS and SHOW PROCEDURES name the database `catalog_name`.
+                        database_name=str(row.get("database_name") or row.get("catalog_name") or scope.database.folded),
                         schema_name=str(row.get("schema_name") or scope.schema.folded),
                         owner=str(row.get("owner") or ""),
                         created_on=str(row.get("created_on") or ""),
-                        comment=str(row["comment"]) if row.get("comment") is not None else None,
+                        comment=_show_comment(row),
                         object_type=normalized_type,
                     )
                     for row in rows
+                    # Both also list every built-in routine in every schema; none is an artifact.
+                    if str(row.get("is_builtin") or "").upper() != "Y"
                 ),
                 key=lambda item: item.qualified_name.folded,
             )
@@ -122,7 +139,7 @@ class SnowflakeConnector:
         )
         for row in rows:
             if str(row.get("name") or "").upper() == qualified_name.name.folded.upper():
-                return extract_marker(str(row["comment"]) if row.get("comment") is not None else None)
+                return extract_marker(_show_comment(row))
         return None
 
     def query(self, sql: str, params: Sequence[object] | Mapping[str, object] | None = None) -> QueryResult:
@@ -309,7 +326,7 @@ class SnowflakeConnector:
             shutil.rmtree(temp_dir, ignore_errors=True)
 
     def upload(self, stage_path: str, content: bytes) -> None:
-        stage_path = _validated_stage_path(stage_path)
+        stage_path = _validated_upload_target(stage_path)
         import os
         import tempfile
 
@@ -319,7 +336,10 @@ class SnowflakeConnector:
         try:
             with open(local_path, "wb") as handle:
                 handle.write(content)
+            # K204: the PUT target is always a directory, so it ends in a separator.
             destination = stage_path.rsplit("/", 1)[0] + "/"
+            if destination.startswith("snow://"):
+                destination = f"'{destination}'"
             result = self.execute_script(
                 (f"PUT 'file://{local_path}' {destination} " "OVERWRITE=TRUE AUTO_COMPRESS=FALSE",)
             )
@@ -331,6 +351,133 @@ class SnowflakeConnector:
                 os.rmdir(temp_dir)
             except OSError:
                 pass
+
+    def stage_type(self, qualified_name: QualifiedName) -> str | None:
+        pattern = qualified_name.name.folded.replace("'", "''")
+        rows = self._dict_rows(
+            f"SHOW STAGES LIKE '{pattern}' IN SCHEMA {qualified_name.database.sql}.{qualified_name.schema.sql}"
+        )
+        match = next(
+            (row for row in rows if _identifier_matches(row.get("name"), qualified_name.name.folded)),
+            None,
+        )
+        return str(match.get("type") or "") if match is not None else None
+
+    def list_location(self, location: str) -> tuple[str, ...]:
+        """File paths below a stage prefix or an extension version, relative to it."""
+        location = _validated_location(location)
+        rows = self._dict_rows(f"LIST '{location}'")
+        if location.startswith("snow://"):
+            marker = location[location.index("/versions/") :]
+            names = (str(row.get("name") or "") for row in rows)
+            return tuple(sorted(name[len(marker) :] for name in names if name.casefold().startswith(marker.casefold())))
+        prefix = location[1:].split("/", 1)[1]
+        relative: list[str] = []
+        for row in rows:
+            returned = str(row.get("name") or "")
+            if "/" not in returned:
+                continue
+            path = returned.split("/", 1)[1]
+            if path.startswith(prefix):
+                relative.append(path[len(prefix) :])
+        return tuple(sorted(relative))
+
+    def observe_extension(self, qualified_name: QualifiedName) -> ExtensionObservation | None:
+        pattern = qualified_name.name.folded.replace("'", "''")
+        rows = self._dict_rows(
+            f"SHOW CORTEX EXTENSIONS LIKE '{pattern}' IN SCHEMA "
+            f"{qualified_name.database.sql}.{qualified_name.schema.sql}"
+        )
+        match = next(
+            (row for row in rows if _identifier_matches(row.get("name"), qualified_name.name.folded)),
+            None,
+        )
+        if match is None:
+            return None
+        return ExtensionObservation(
+            qualified_name=qualified_name,
+            extension_type=str(match.get("type") or "").upper(),
+            comment=str(match["comment"]) if match.get("comment") is not None else None,
+            owner=str(match.get("owner") or ""),
+            effective_version=_optional_text(match.get("effective_version")),
+            latest_certified_version=_optional_text(match.get("latest_certified_version")),
+        )
+
+    def extension_versions(self, qualified_name: QualifiedName) -> tuple[ExtensionVersion, ...]:
+        rows = self._dict_rows(f"SHOW VERSIONS IN CORTEX EXTENSION {qualified_name.sql}")
+        return tuple(
+            ExtensionVersion(
+                name=str(row.get("name") or "").upper(),
+                alias=_optional_text(row.get("alias")),
+                location=str(row.get("location_uri") or ""),
+                is_default=str(row.get("is_default") or "").casefold() == "true",
+                certification_status=_optional_text(row.get("certification_status")),
+            )
+            for row in rows
+            if row.get("name")
+        )
+
+    def table_columns(self, qualified_name: QualifiedName) -> tuple[tuple[str, str], ...] | None:
+        if not self.object_exists("TABLE", qualified_name):
+            return None
+        rows = self._dict_rows(f"DESCRIBE TABLE {qualified_name.sql}")
+        return tuple((str(row.get("name") or "").upper(), str(row.get("type") or "").upper()) for row in rows)
+
+    def ensure_profile_registry(self, qualified_name: QualifiedName) -> None:
+        result = self.execute_script((f"CREATE TABLE IF NOT EXISTS {qualified_name.sql} ({PROFILE_REGISTRY_COLUMNS})",))
+        if not result.ok:
+            raise SnowflakePortError(result.error.message if result.error else "profile registry creation failed")
+
+    def read_profile_row(self, registry: QualifiedName, name: str) -> Mapping[str, object] | None:
+        result = self.query(f"SELECT * FROM {registry.sql} WHERE CONFIG_NAME = %s", (name,))
+        rows = [dict(zip((column.upper() for column in result.columns), row)) for row in result.rows]
+        if len(rows) > 1:
+            raise SnowflakePortError(f"profile registry {registry.sql} holds {len(rows)} rows named {name!r}")
+        return rows[0] if rows else None
+
+    def merge_profile_row(
+        self,
+        registry: QualifiedName,
+        row: Mapping[str, object],
+        *,
+        expected_version: str | None,
+    ) -> int:
+        """One MERGE on CONFIG_NAME, guarded by the VERSION the plan observed."""
+        params: dict[str, object] = {
+            "name": row["CONFIG_NAME"],
+            "description": row.get("DESCRIPTION"),
+            "owner_team": row.get("OWNER_TEAM"),
+            "version": row["VERSION"],
+            "expected": expected_version,
+            **{column.lower(): _variant_parameter(row.get(column)) for column in PROFILE_VARIANT_COLUMNS},
+        }
+        updates = ", ".join(f"{column} = PARSE_JSON(%({column.lower()})s)" for column in PROFILE_VARIANT_COLUMNS)
+        inserted = ", ".join(PROFILE_VARIANT_COLUMNS)
+        values = ", ".join(f"PARSE_JSON(%({column.lower()})s)" for column in PROFILE_VARIANT_COLUMNS)
+        result = self.query(
+            f"MERGE INTO {registry.sql} AS t USING (SELECT %(name)s AS CONFIG_NAME) AS s "
+            "ON t.CONFIG_NAME = s.CONFIG_NAME "
+            "WHEN MATCHED AND t.VERSION = %(expected)s THEN UPDATE SET "
+            f"DESCRIPTION = %(description)s, OWNER_TEAM = %(owner_team)s, VERSION = %(version)s, {updates}, "
+            "ACTIVE = TRUE, UPDATED_AT = CURRENT_TIMESTAMP() "
+            f"WHEN NOT MATCHED THEN INSERT (CONFIG_NAME, DESCRIPTION, OWNER_TEAM, VERSION, {inserted}, ACTIVE) "
+            f"VALUES (%(name)s, %(description)s, %(owner_team)s, %(version)s, {values}, TRUE)",
+            params,
+        )
+        return _affected(result)
+
+    def deactivate_profile_row(self, registry: QualifiedName, name: str, *, expected_version: str) -> int:
+        result = self.query(
+            f"UPDATE {registry.sql} SET ACTIVE = FALSE, UPDATED_AT = CURRENT_TIMESTAMP() "
+            "WHERE CONFIG_NAME = %s AND VERSION = %s AND ACTIVE = TRUE",
+            (name, expected_version),
+        )
+        return _affected(result)
+
+    def desktop_profile_rows(self, registry: QualifiedName) -> tuple[Mapping[str, object], ...]:
+        """The exact query CoCo Desktop runs against its registry."""
+        result = self.query(f"SELECT * FROM {registry.sql} WHERE active = TRUE ORDER BY config_name")
+        return tuple(dict(zip((column.upper() for column in result.columns), row)) for row in result.rows)
 
     def agent_has_live_version(self, qualified_name: QualifiedName) -> bool:
         rows = self._dict_rows(f"SHOW VERSIONS IN AGENT {qualified_name.sql}")
@@ -383,7 +530,7 @@ class SnowflakeConnector:
                     qualified_name=str(row[2]),
                     manifest_id=str(row[3]),
                     git_sha=str(row[4] or ""),
-                    applied_at=str(row[5]),
+                    applied_at=_state_timestamp(row[5]),
                     run_id=str(row[6]),
                     outcome=str(row[7]),
                     ddl_sha256=str(row[8]),
@@ -583,7 +730,7 @@ def _staged_file_name_matches(value: object, stage_path: str) -> bool:
     return returned_stage.casefold() in {expected_stage.casefold(), stage_name.casefold()}
 
 
-def _validated_stage_path(value: str) -> str:
+def _validated_stage_path(value: str, *, directory: bool = False) -> str:
     message = "stage path must use safe segments and a safe basename under @<db>.<schema>.<stage>"
     if not value.startswith("@") or any(character.isspace() or ord(character) < 32 for character in value):
         raise SnowflakePortError(message)
@@ -594,15 +741,117 @@ def _validated_stage_path(value: str) -> str:
         QualifiedName.parse(stage)
     except ValueError:
         raise SnowflakePortError(message) from None
+    if directory:
+        if not path.endswith("/"):
+            raise SnowflakePortError(message)
+        path = path[:-1]
     parts = path.split("/")
     if not parts or any(not part or part in (".", "..") for part in parts):
         raise SnowflakePortError(message)
-    safe = frozenset("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._-$")
-    if any(any(character not in safe for character in part) for part in parts):
+    if any(any(character not in _SAFE_SEGMENT for character in part) for part in parts):
         raise SnowflakePortError(message)
     if PurePosixPath(path).is_absolute():
         raise SnowflakePortError(message)
     return value
+
+
+_SAFE_SEGMENT = frozenset("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._-$")
+_EXTENSION_URI = re.compile(
+    r"snow://cortex_extension/(?P<name>[A-Za-z0-9_$.]+)/versions/(?P<version>version\$[0-9]+|live)/(?P<path>.*)",
+    re.IGNORECASE,
+)
+
+
+def _extension_uri(value: str, *, directory: bool) -> str:
+    message = "extension path must be snow://cortex_extension/<db>.<schema>.<name>/versions/<version>/<safe path>"
+    match = _EXTENSION_URI.fullmatch(value)
+    if match is None:
+        raise SnowflakePortError(message)
+    try:
+        QualifiedName.parse(match.group("name"))
+    except ValueError:
+        raise SnowflakePortError(message) from None
+    path = match.group("path")
+    if directory:
+        if path:
+            raise SnowflakePortError(message)
+        return value
+    parts = path.split("/")
+    if any(
+        not part or part in (".", "..") or any(character not in _SAFE_SEGMENT for character in part) for part in parts
+    ):
+        raise SnowflakePortError(message)
+    return value
+
+
+def _validated_upload_target(value: str) -> str:
+    if value.startswith("snow://"):
+        return _extension_uri(value, directory=False)
+    return _validated_stage_path(value)
+
+
+def _validated_location(value: str) -> str:
+    if value.startswith("snow://"):
+        return _extension_uri(value, directory=True)
+    return _validated_stage_path(value, directory=True)
+
+
+def _show_comment(row: Mapping[str, object]) -> str | None:
+    """An object's COMMENT from a SHOW row; routines report it as `description`."""
+    value = row["comment"] if "comment" in row else row.get("description")
+    return str(value) if value is not None else None
+
+
+def _state_timestamp(value: object) -> str:
+    """APPLIED_AT in the clock's own form, so a written entry reads back equal.
+
+    The column is TIMESTAMP_TZ and the driver returns a datetime, whose `str()`
+    (`2026-09-29 11:56:32.077209+00:00`) never equals the ISO text SST wrote
+    (`2026-09-29T11:56:32.077209Z`); the cache then disagreed after every apply.
+    """
+    if isinstance(value, datetime):
+        moment = value if value.tzinfo is not None else value.replace(tzinfo=timezone.utc)
+        return moment.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
+    return str(value)
+
+
+def _optional_text(value: object) -> str | None:
+    text = str(value).strip() if value is not None else ""
+    return text or None
+
+
+# The 18 columns of CoCo Desktop's profile registry, as the production table
+# declares them. Desktop reads 12; the rest belong to other writers and are
+# never written by SST on update.
+PROFILE_REGISTRY_COLUMNS = (
+    "CONFIG_NAME VARCHAR NOT NULL PRIMARY KEY, DESCRIPTION VARCHAR, OWNER_TEAM VARCHAR, "
+    "SKILL_REPOS VARIANT, MCP_SERVERS VARIANT, COMMAND_REPOS VARIANT, ENV_VARS VARIANT, "
+    "SETTINGS_OVERRIDES VARIANT, VERSION VARCHAR DEFAULT '1.0', ACTIVE BOOLEAN DEFAULT TRUE, "
+    "CREATED_AT TIMESTAMP_NTZ DEFAULT CURRENT_TIMESTAMP(), UPDATED_AT TIMESTAMP_NTZ DEFAULT CURRENT_TIMESTAMP(), "
+    "SYSTEM_PROMPT_REPO VARIANT, HOOKS VARIANT, SCRIPTS VARIANT, PLUGINS VARIANT, ALLOWED_ROLES VARIANT, "
+    "PERMISSIONS VARIANT"
+)
+PROFILE_VARIANT_COLUMNS = (
+    "SKILL_REPOS",
+    "SYSTEM_PROMPT_REPO",
+    "MCP_SERVERS",
+    "HOOKS",
+    "PLUGINS",
+    "COMMAND_REPOS",
+    "ENV_VARS",
+    "SETTINGS_OVERRIDES",
+)
+
+
+def _variant_parameter(value: object) -> str | None:
+    """JSON text for PARSE_JSON; None binds SQL NULL rather than a JSON null."""
+    return None if value is None else json.dumps(value, sort_keys=True, separators=(",", ":"))
+
+
+def _affected(result: QueryResult) -> int:
+    return sum(
+        int(value) for row in result.rows for value in row if isinstance(value, int) and not isinstance(value, bool)
+    )
 
 
 def _json_components(entry: AppliedEntry) -> str:

@@ -1,0 +1,58 @@
+{
+  "alias": "SST_7BF2170FE50F",
+  "comment": "The jaffle analytics toolkit: which semantic view answers which question, and\nthe month-close procedure for supply cost.",
+  "digest": "7bf2170fe50f87d332b166b4d03d909cfc52f7daa81d30d7bae62f6c1d60d4f9",
+  "extension": "SST_REF_DEV.JAFFLE.JAFFLE_TOOLKIT",
+  "files": [
+    {
+      "path": ".cortex-plugin/plugin.json",
+      "sha256": "64a2321d4ca22b5e726eb9feee8ce3a94e0d967479239489a3ce20c5bd26127a",
+      "size": 248
+    },
+    {
+      "path": "skills/jaffle-operations/SKILL.md",
+      "sha256": "8237db9ebbe3a7e7ea94383f8f8f0aae0bfe322d84e8cf46b25cbe231e87149f",
+      "size": 3183
+    },
+    {
+      "path": "skills/jaffle-operations/check-supply-month.sql",
+      "sha256": "7ccab0ebcd29eafd1b3bd65ad90807f63e0a921afc00ee5c65b70bd99e3bef63",
+      "size": 2049
+    },
+    {
+      "path": "skills/jaffle-operations/reference__month-close.md",
+      "sha256": "326ad5f55cb9b09f984786ce47a83150f12f6c6888a33d9b682d4180e9a4c556",
+      "size": 1708
+    },
+    {
+      "path": "skills/jaffle-semantics/SKILL.md",
+      "sha256": "7ec3e5e8ab53c6019b07e8d3914b6864acbc8c3fc69fa01c785d67f7e5b704ee",
+      "size": 4192
+    },
+    {
+      "path": "skills/jaffle-semantics/reference__join-paths.md",
+      "sha256": "1fb44522bced940541dfa35eacbe04534a80864671ef742ff974aabb24f82bf6",
+      "size": 2072
+    },
+    {
+      "path": "skills/jaffle-semantics/reference__metric-shapes.md",
+      "sha256": "22f566c34494178aa1655289ca65363de562be781e268a8303b35628c608cb30",
+      "size": 1885
+    }
+  ],
+  "flattened": [
+    {
+      "authored": "jaffle-semantics/reference/join-paths.md",
+      "published": "jaffle-semantics/reference__join-paths.md"
+    },
+    {
+      "authored": "jaffle-semantics/reference/metric-shapes.md",
+      "published": "jaffle-semantics/reference__metric-shapes.md"
+    },
+    {
+      "authored": "jaffle-operations/reference/month-close.md",
+      "published": "jaffle-operations/reference__month-close.md"
+    }
+  ],
+  "type": "PLUGIN"
+}

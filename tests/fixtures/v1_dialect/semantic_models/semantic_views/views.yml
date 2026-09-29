@@ -1,0 +1,11 @@
+semantic_views:
+  - name: dialect_sales
+    description: |-
+      Orders and the customers and locations behind them, authored in the 0.3
+      dialect.
+    tables:
+      - {{ table('orders') }}
+      - {{ table('customers')}}
+      - "{{ table('locations') }}"
+    custom_instructions:
+      - "{{ custom_instructions('dialect_conventions') }}"

@@ -32,6 +32,29 @@ class StagedFileMetadata:
     last_modified: str | None = None
 
 
+@dataclass(frozen=True, slots=True)
+class ExtensionObservation:
+    """One `SHOW CORTEX EXTENSIONS` row."""
+
+    qualified_name: QualifiedName
+    extension_type: str
+    comment: str | None
+    owner: str
+    effective_version: str | None = None
+    latest_certified_version: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class ExtensionVersion:
+    """One `SHOW VERSIONS IN CORTEX EXTENSION` row, addressed by its system name."""
+
+    name: str
+    alias: str | None
+    location: str
+    is_default: bool = False
+    certification_status: str | None = None
+
+
 class SnowflakePort(Protocol):
     def show_objects(self, object_type: str, scope: SchemaScope) -> tuple[ShowRow, ...]: ...
 
@@ -80,6 +103,32 @@ class SnowflakePort(Protocol):
     def stage_file_exists(self, stage_path: str) -> bool: ...
 
     def upload(self, stage_path: str, content: bytes) -> None: ...
+
+    def stage_type(self, qualified_name: QualifiedName) -> str | None: ...
+
+    def list_location(self, location: str) -> tuple[str, ...]: ...
+
+    def observe_extension(self, qualified_name: QualifiedName) -> ExtensionObservation | None: ...
+
+    def extension_versions(self, qualified_name: QualifiedName) -> tuple[ExtensionVersion, ...]: ...
+
+    def table_columns(self, qualified_name: QualifiedName) -> tuple[tuple[str, str], ...] | None: ...
+
+    def ensure_profile_registry(self, qualified_name: QualifiedName) -> None: ...
+
+    def read_profile_row(self, registry: QualifiedName, name: str) -> Mapping[str, object] | None: ...
+
+    def merge_profile_row(
+        self,
+        registry: QualifiedName,
+        row: Mapping[str, object],
+        *,
+        expected_version: str | None,
+    ) -> int: ...
+
+    def deactivate_profile_row(self, registry: QualifiedName, name: str, *, expected_version: str) -> int: ...
+
+    def desktop_profile_rows(self, registry: QualifiedName) -> tuple[Mapping[str, object], ...]: ...
 
     def agent_has_live_version(self, qualified_name: QualifiedName) -> bool: ...
 

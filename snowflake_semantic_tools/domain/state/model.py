@@ -302,6 +302,13 @@ def _applied_resources(values: Iterable[AppliedResourceInput]) -> tuple[AppliedR
     return tuple(resources)
 
 
+# An executed prune that deactivates rather than drops leaves this outcome: the
+# object is still SST's, so the entry is kept as a tombstone it can reactivate.
+DEACTIVATED = "deactivated"
+# A publish that wrote something and then failed; the next plan retries it.
+FAILED_AFTER_WRITE = "failed_after_write"
+
+
 @dataclass(frozen=True, slots=True)
 class AppliedEntry:
     fingerprint: str
@@ -508,6 +515,13 @@ class SavedChange:
                             "config_exists": change.composite_observation.config_exists,
                             "config_size": change.composite_observation.config_size,
                             "config_md5": change.composite_observation.config_md5,
+                            # Only handlers that record details add the key, so
+                            # an eval plan's hash is unchanged by its existence.
+                            **(
+                                {"details": [list(item) for item in change.composite_observation.details]}
+                                if change.composite_observation.details
+                                else {}
+                            ),
                         }
                     )
                     if change.composite_observation is not None

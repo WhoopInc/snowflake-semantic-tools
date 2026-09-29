@@ -34,15 +34,47 @@ def _string_value(value: object) -> str:
     return str(value)
 
 
-def _unique_keys(value: object, *, path: str) -> tuple[tuple[str, ...], ...]:
+def _primary_key(value: object, *, path: str) -> tuple[tuple[str, ...], bool]:
+    """The key columns, and whether they were written in the 0.3 string form.
+
+    0.3 read `primary_key` as a list, a single column name, or a comma-separated
+    string, and treated an empty string as absent. 1.0 reads the same forms for
+    one release so a 0.3 project still loads; the string forms are reported
+    where a view uses the model.
+    """
+    if isinstance(value, str):
+        return _split(value), bool(value.strip())
+    return _strings(value, path=path), False
+
+
+def _split(value: str) -> tuple[str, ...]:
+    return tuple(part.strip() for part in value.split(",") if part.strip())
+
+
+def _unique_keys(value: object, *, path: str) -> tuple[tuple[tuple[str, ...], ...], bool]:
+    """The unique keys, and whether they were written in a 0.3 form.
+
+    1.0 writes a list of column lists. 0.3 also read a comma-separated string or a
+    flat list of names as ONE composite key, and a bare name inside a nested list
+    as a one-column key; those forms are read for one release, like `primary_key`.
+    """
     if value is None:
-        return ()
+        return (), False
+    if isinstance(value, str):
+        return ((_split(value),) if _split(value) else ()), bool(value.strip())
     if not isinstance(value, list):
         raise ProjectError(f"dbt manifest {path} must be a list of column lists")
+    if value and not any(isinstance(key, list) for key in value):
+        return (tuple(_string_value(item) for item in value),), True
     keys: list[tuple[str, ...]] = []
+    legacy = False
     for index, key in enumerate(value):
-        keys.append(_strings(key, path=f"{path}[{index}]"))
-    return tuple(keys)
+        if isinstance(key, list):
+            keys.append(_strings(key, path=f"{path}[{index}]"))
+        else:
+            keys.append((_string_value(key),))
+            legacy = True
+    return tuple(keys), legacy
 
 
 def _sst_meta(value: object, *, path: str) -> Mapping[str, Any]:
@@ -105,20 +137,35 @@ def catalog_from_document(document: object) -> DbtCatalog:
         if not name:
             raise ProjectError(f"dbt manifest {path}.name is required")
         meta = _sst_meta(node, path=path)
+        if not meta and not str(node.get("relation_name") or "").strip():
+            # An ephemeral model has no relation to query and, without SST
+            # metadata, nothing to validate; a view that names it gets SST-MEM003.
+            continue
         raw_columns = _mapping(node.get("columns") or {}, path=f"{path}.columns")
         columns = tuple(_column(str(column_name), value, node_path=path) for column_name, value in raw_columns.items())
+        primary_key, legacy_primary_key = _primary_key(
+            meta.get("primary_key"), path=f"{path}.config.meta.sst.primary_key"
+        )
+        unique_keys, legacy_unique_keys = _unique_keys(
+            meta.get("unique_keys"), path=f"{path}.config.meta.sst.unique_keys"
+        )
         models.append(
             DbtModel(
                 unique_id=str(unique_id),
                 name=name,
                 relation_name=_relation_name(node, path=path),
-                primary_key=_strings(meta.get("primary_key"), path=f"{path}.config.meta.sst.primary_key"),
-                unique_keys=_unique_keys(meta.get("unique_keys"), path=f"{path}.config.meta.sst.unique_keys"),
+                primary_key=primary_key,
+                unique_keys=unique_keys,
                 columns=columns,
                 original_file_path=str(node.get("original_file_path") or "").strip() or None,
                 patch_path=str(node.get("patch_path") or "").strip() or None,
                 forbidden_location_keys=tuple(key for key in ("database", "schema") if key in meta),
                 description=str(node.get("description") or "").strip() or None,
+                legacy_key_fields=tuple(
+                    field
+                    for field, legacy in (("primary_key", legacy_primary_key), ("unique_keys", legacy_unique_keys))
+                    if legacy
+                ),
             )
         )
 

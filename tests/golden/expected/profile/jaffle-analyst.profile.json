@@ -1,0 +1,125 @@
+{
+  "row": {
+    "COMMAND_REPOS": [],
+    "CONFIG_NAME": "jaffle-analyst",
+    "DESCRIPTION": "Jaffle analysts: sales, menu, and month-close questions against the jaffle\nsemantic views.",
+    "ENV_VARS": {},
+    "HOOKS": {
+      "PreToolUse": [
+        {
+          "hooks": [
+            {
+              "command": "bash",
+              "source": {
+                "snowflake_stage": "@SST_REF_DEV.JAFFLE.SKILL_BUNDLES/hooks/jaffle-analyst/68181301bf02/sql-guard/sql-guard.sh"
+              },
+              "timeout": 30,
+              "type": "command"
+            }
+          ],
+          "matcher": "snowflake_sql_execute"
+        }
+      ]
+    },
+    "MCP_SERVERS": {
+      "snowflake_stage": "@SST_REF_DEV.JAFFLE.SKILL_BUNDLES/mcp/jaffle-analyst/bf5c82a9df18/mcp.json"
+    },
+    "OWNER_TEAM": "Jaffle Analytics",
+    "PLUGINS": [],
+    "SETTINGS_OVERRIDES": {},
+    "SKILL_REPOS": [
+      {
+        "snowflake_stage": "@SST_REF_DEV.JAFFLE.SKILL_BUNDLES/skills/shared/b8c2cc8d4998/"
+      },
+      {
+        "snowflake_stage": "@SST_REF_DEV.JAFFLE.SKILL_BUNDLES/skills/jaffle-analyst/6a0fecb93b31/"
+      }
+    ],
+    "SYSTEM_PROMPT_REPO": {
+      "snowflake_stage": "@SST_REF_DEV.JAFFLE.SKILL_BUNDLES/prompts/jaffle-analyst/de73ec596abf/AGENTS.md"
+    },
+    "VERSION": "SST_4DB21B6D4554"
+  },
+  "trees": [
+    {
+      "digest": "b8c2cc8d499809cd276e7fa58d1a92193ca102ff58cb14fd6f647b1a1fb00820",
+      "files": [
+        {
+          "path": "jaffle-catalogue/SKILL.md",
+          "sha256": "0ca6cb5fe3e27fbedb6a856e9166dcf7f83f4c863848856ea51e3e289905ecd3",
+          "size": 1643
+        }
+      ],
+      "prefix": "skills/shared/b8c2cc8d4998/"
+    },
+    {
+      "digest": "6a0fecb93b31590867837ac5df8b93958cd2a27f7bde09f75f785f936a388686",
+      "files": [
+        {
+          "path": "jaffle-operations/SKILL.md",
+          "sha256": "60fcec5b42e35b7477f427ec8ec52f96bfe96b7a6c602675ae76865bf247ef77",
+          "size": 3182
+        },
+        {
+          "path": "jaffle-operations/check-supply-month.sql",
+          "sha256": "7ccab0ebcd29eafd1b3bd65ad90807f63e0a921afc00ee5c65b70bd99e3bef63",
+          "size": 2049
+        },
+        {
+          "path": "jaffle-operations/reference/month-close.md",
+          "sha256": "934594df76cd50ae4303839218d8edc66e7a5c9bafdbd9bcf78ea5edc038bd40",
+          "size": 1711
+        },
+        {
+          "path": "jaffle-semantics/SKILL.md",
+          "sha256": "cc6579ad3aff0f2e35c886b7c39eb54ac895498b67a8ce7fba26adb01e79f7d2",
+          "size": 4190
+        },
+        {
+          "path": "jaffle-semantics/reference/join-paths.md",
+          "sha256": "9551c564db358be435d114eea3d9ede834504da41d7291a6b879a5919805154f",
+          "size": 2075
+        },
+        {
+          "path": "jaffle-semantics/reference/metric-shapes.md",
+          "sha256": "b74f59b47db3fe9560248bffaa12c36019107a7d70f50bb0abc33377f3cc53c7",
+          "size": 1888
+        }
+      ],
+      "prefix": "skills/jaffle-analyst/6a0fecb93b31/"
+    },
+    {
+      "digest": "de73ec596abf6247f0762e684c8f6141b38ea13130dac07a7c8fd66a68f521c9",
+      "files": [
+        {
+          "path": "AGENTS.md",
+          "sha256": "47cd94b9703ba4e51235c0ff78e5315e252c08f10317e51c1547b8eda552bec1",
+          "size": 514
+        }
+      ],
+      "prefix": "prompts/jaffle-analyst/de73ec596abf/"
+    },
+    {
+      "digest": "bf5c82a9df18030935e0aa91b4690345bab5a0489ebb54c4d0977ae221be6130",
+      "files": [
+        {
+          "path": "mcp.json",
+          "sha256": "96faab2ed9f433d07ca2d34f019e8e89835843b76c5b1a6f500c3eb9c91ce536",
+          "size": 234
+        }
+      ],
+      "prefix": "mcp/jaffle-analyst/bf5c82a9df18/"
+    },
+    {
+      "digest": "68181301bf026519a6eda751ed87dc42567c4831c47cb368aa7e8a4adb08455e",
+      "files": [
+        {
+          "path": "sql-guard/sql-guard.sh",
+          "sha256": "97f43a6f26bd3326f62858d227671a4d806d16fc93a5885e5dfeaaaf3d0cd25f",
+          "size": 270
+        }
+      ],
+      "prefix": "hooks/jaffle-analyst/68181301bf02/"
+    }
+  ]
+}

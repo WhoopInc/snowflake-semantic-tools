@@ -1,0 +1,14 @@
+{
+  "mcpServers": {
+    "jaffle-docs": {
+      "args": [
+        "--read-only"
+      ],
+      "command": "jaffle-docs-mcp",
+      "env": {
+        "JAFFLE_DOCS_TOKEN": "${JAFFLE_DOCS_TOKEN}"
+      },
+      "type": "stdio"
+    }
+  }
+}

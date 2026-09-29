@@ -197,6 +197,8 @@ def build_changeset(
     if include_prune:
         changes.extend(_prunes(rendered, observation, state, registry, diagnostics, prune_types, prune_keys))
 
+    planned = {change.key for change in changes}
+    changes = [_require_pinned(change, planned, registry, diagnostics) for change in changes]
     blocked_keys = {change.key for change in changes if change.action is Action.BLOCKED}
     changes = [_block_dependents(change, blocked_keys) for change in changes]
     ordered, cycle = topological_order(tuple(changes))
@@ -310,6 +312,32 @@ def _prunes(
             )
         )
     return tuple(changes)
+
+
+def _require_pinned(change: Change, planned: set[str], registry: Registry, diagnostics: list[Diagnostic]) -> Change:
+    """Block a write that pins a version this plan neither observes nor publishes.
+
+    A pinned dependency in the plan is either NOOP, which proves its version
+    exists, or published first. One outside it -- left out by `--select` or
+    `--exclude` -- is unverified, and Snowflake accepts a pin to a missing version.
+    """
+    if change.action not in (Action.CREATE, Action.UPDATE):
+        return change
+    pinned = registry.artifacts[change.artifact_type].pins_versions_of
+    missing = [
+        D("SST-PLN030", artifact=change.key, value=dependency)
+        for dependency in change.depends_on
+        if dependency.split(":", 1)[0] in pinned and dependency not in planned
+    ]
+    if not missing:
+        return change
+    diagnostics.extend(missing)
+    return replace(
+        change,
+        action=Action.BLOCKED,
+        reason=ChangeReason.DEPENDENCY_BLOCKED,
+        diagnostics=DiagnosticBag((*change.diagnostics, *missing)),
+    )
 
 
 def _block_dependents(change: Change, blocked: set[str]) -> Change:

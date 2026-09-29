@@ -147,3 +147,61 @@ def test_forbidden_model_location_keys_are_retained_for_validation() -> None:
     projected = catalog_from_document(document).model("products")
     assert projected is not None
     assert projected.forbidden_location_keys == ("database", "schema")
+
+
+@pytest.mark.parametrize(
+    ("value", "expected", "legacy"),
+    [
+        (["product_id"], ("product_id",), False),
+        (None, (), False),
+        ("product_id", ("product_id",), True),
+        ("calendar_date, user_id", ("calendar_date", "user_id"), True),
+        ("", (), False),
+        ("  ", (), False),
+    ],
+)
+def test_primary_key_reads_the_03_string_forms(value: object, expected: tuple[str, ...], legacy: bool) -> None:
+    document = manifest_document()
+    sst = document["nodes"]["model.fixture.products"]["config"]["meta"]["sst"]  # type: ignore[index]
+    sst["primary_key"] = value
+    projected = catalog_from_document(document).model("products")
+    assert projected is not None
+    assert (projected.primary_key, projected.legacy_key_fields) == (expected, ("primary_key",) if legacy else ())
+
+
+@pytest.mark.parametrize(
+    ("value", "expected", "legacy"),
+    [
+        ([["a", "b"], ["c"]], (("a", "b"), ("c",)), False),
+        ([], (), False),
+        (["a", "b"], (("a", "b"),), True),
+        ([["a", "b"], "c"], (("a", "b"), ("c",)), True),
+        ("a, b", (("a", "b"),), True),
+        ("", (), False),
+    ],
+)
+def test_unique_keys_read_the_03_forms(value: object, expected: tuple[tuple[str, ...], ...], legacy: bool) -> None:
+    document = manifest_document()
+    sst = document["nodes"]["model.fixture.products"]["config"]["meta"]["sst"]  # type: ignore[index]
+    sst["unique_keys"] = value
+    projected = catalog_from_document(document).model("products")
+    assert projected is not None
+    assert (projected.unique_keys, projected.legacy_key_fields) == (expected, ("unique_keys",) if legacy else ())
+
+
+def test_primary_key_of_another_type_is_still_a_project_error() -> None:
+    document = manifest_document()
+    sst = document["nodes"]["model.fixture.products"]["config"]["meta"]["sst"]  # type: ignore[index]
+    sst["primary_key"] = {"column": "product_id"}
+    with pytest.raises(ProjectError, match="primary_key must be a list"):
+        catalog_from_document(document)
+
+
+def test_a_relationless_model_without_sst_metadata_is_skipped() -> None:
+    document = manifest_document()
+    nodes = document["nodes"]
+    assert isinstance(nodes, dict)
+    nodes["model.fixture.ephemeral"] = {"resource_type": "model", "name": "ephemeral", "relation_name": None}
+    catalog = catalog_from_document(document)
+    assert catalog.model("ephemeral") is None
+    assert catalog.model("products") is not None

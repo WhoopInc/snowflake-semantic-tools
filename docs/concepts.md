@@ -1,0 +1,147 @@
+# Concepts
+
+The ideas every other page assumes: what SST publishes, how authored pieces find
+each other, and what each command does with them.
+
+## Artifacts
+
+An **artifact** is one thing SST publishes and tracks. There are seven types:
+
+| Type | Authored as | Publishes |
+|---|---|---|
+| `semantic_view` | `semantic_views:` YAML | a semantic view |
+| `tool` | tool group YAML | a Cortex Search service, procedure, function, or stage |
+| `skill` | a `SKILL.md` folder | a skill-type Cortex Extension |
+| `plugin` | `plugin.yml` | a plugin-type Cortex Extension |
+| `profile` | `profile.yml` | a CoCo Desktop profile |
+| `agent` | `agent.yml` | a Cortex Agent |
+| `eval` | an agent's `evals/` folder | an agent evaluation |
+
+Every command works on the same set, in the same order: an artifact is always
+published after the artifacts it depends on, so a view exists before the agent
+that queries it. The [artifact reference](reference/artifacts.md) lists each
+type's position, dependencies, and how it is updated.
+
+## Members
+
+A semantic view is assembled from **members** that are authored separately:
+
+- **facts, dimensions, and time dimensions** come from dbt column metadata
+  (`config.meta.sst.column_type`);
+- **metrics, relationships, filters, and verified queries** are YAML entries
+  under `snowflake_metrics:`, `snowflake_relationships:`, `snowflake_filters:`,
+  and `snowflake_verified_queries:`;
+- **custom instructions** are YAML entries under `snowflake_custom_instructions:`.
+
+A member is not published on its own; it reaches Snowflake inside every view it
+attaches to.
+
+## Association: how members find views
+
+Metrics, relationships, filters, and verified queries attach by **table
+membership**: a member joins every semantic view whose `tables:` include all of
+the member's `tables:`. Nothing lists a view's metrics; adding a metric over
+`orders` adds it to every view that has `orders`.
+
+Two consequences:
+
+- A member whose tables no view covers attaches nowhere, and validation warns
+  about it (`SST-MEM005`) instead of dropping it silently.
+- A member's `tables:` cannot be empty. An empty list would otherwise mean
+  "every view", which is never what an author meant.
+
+Custom instructions are the exception: a view names the ones it wants with
+`{{ custom_instructions('<name>') }}`.
+
+## References
+
+Authored files never contain a hardcoded database or schema. They name things,
+and SST resolves the name for the target being built:
+
+| Reference | Resolves to | Where it is accepted |
+|---|---|---|
+| `{{ ref('orders') }}` | the dbt model's relation | view and member `tables:` |
+| `{{ ref('orders', 'order_id') }}` | a column of that model | expressions, relationship conditions |
+| `{{ metric('order_count') }}` | another metric's expression | metric expressions, verified query SQL |
+| `{{ var('name') }}` | a value from `vars:` in `sst_config.yml` | expressions, verified query SQL |
+| `{{ custom_instructions('name') }}` | a custom instruction block | a view's `custom_instructions:` |
+| `{{ tag('name') }}` | a tag from `tags:` in `sst_config.yml` | a view's `tags:` |
+| `{{ semantic_view('name') }}`, `{{ tool('name') }}`, `{{ agent('name') }}` | the published object | agent specs |
+| `{{ skill('name') }}`, `{{ plugin('name') }}` | a skill or plugin this project publishes, pinned to its current version | agent skill sources |
+| `{{ extension('name') }}` | an extension another project publishes | agent skill sources |
+| `{{ eval_metric('name') }}` | a custom judge metric | eval configs |
+| `{{ file('path') }}` | the contents of a file beside the artifact | agent instructions |
+
+A reference that does not resolve is an error. SST's `ref()` resolves against
+the dbt manifest, so it names models and their columns exactly as dbt does.
+
+## Targets
+
+`--target` selects a target from `profiles.yml`, and that target decides where
+everything lands. Configuration writes locations relative to it:
+
+```yaml
+semantic_views:
+  +database: "{{ target.database }}"
+  +schema: "{{ target.schema }}"
+```
+
+Keys that start with `+` set a default for everything below them. Under
+`semantic_views:`, an unprefixed key names a folder of view files, and its `+`
+keys apply to the views in that folder:
+
+```yaml
+semantic_views:
+  +schema: "{{ target.schema }}"
+  finance:
+    +schema: FINANCE_SEMANTIC
+```
+
+## The pipeline
+
+```text
+validate  ->  compile  ->  plan  ->  apply
+```
+
+- **`validate`** loads every artifact and checks it. It writes nothing.
+- **`compile`** renders every artifact and writes the SST manifest to
+  `target/sst/manifest.json`. `--emit-ddl <dir>` also writes each view's DDL.
+- **`plan`** compiles, reads what is live in Snowflake, and saves the changes
+  to `target/sst/plan.json`. It never writes to Snowflake, and it exits `2`
+  when there are changes.
+- **`apply`** executes one saved plan, and only if the project still compiles to
+  the plan's manifest.
+
+`validate`, `plan`, and `apply` all run the same validation, so a project that
+fails `validate` cannot be applied.
+
+## State and ownership
+
+`apply` records every artifact it publishes -- its fingerprint, target, and the
+commit it came from -- in a state table, `SST_STATE` in the target schema by
+default (`state:` in `sst_config.yml` moves it). The next `plan` compares the
+project against that record and against what is live.
+
+SST changes only objects it published. An object that already exists and that
+SST did not publish is reported as **unmanaged** (`SST-PLN024`) and left alone;
+adopt it or remove it deliberately. SST issues no grants: access to published
+objects is managed outside SST.
+
+`--prune` extends a plan to managed artifacts whose source was deleted. What
+happens depends on the type: semantic views and agents are dropped, and
+profiles are deactivated. Skills and plugins are reported and never dropped,
+because an agent elsewhere may still pin one of their versions.
+
+## Diagnostics
+
+Every problem SST reports is a **diagnostic** with a stable code, such as
+`SST-VAL405`:
+
+- an **error** blocks the command;
+- a **warning** does not, unless `--strict` or `validation.strict: true`
+  promotes it;
+- an **info** never blocks.
+
+Some errors stop other checks from running on the same artifact, so fixing one
+error can reveal the next. The [error code reference](reference/error-codes.md)
+describes every code and its fix.

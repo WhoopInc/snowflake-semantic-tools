@@ -87,6 +87,25 @@ def test_uses_relation_grain_and_columns_from_manifest(tmp_path: Path) -> None:
     assert view.dimensions[0].comment == "Manifest description."
 
 
+def test_semantic_views_enabled_default_follows_folder_routes(tmp_path: Path) -> None:
+    manifest = write_project(tmp_path)
+    views_dir = tmp_path / "semantic_models" / "semantic_views"
+    (views_dir / "archive").mkdir()
+    (views_dir / "archive" / "old.yml").write_text(
+        "semantic_views:\n  - name: retired\n    description: Retired.\n    tables: [\"{{ ref('products') }}\"]\n"
+        "  - name: kept\n    enabled: true\n    description: Kept.\n    tables: [\"{{ ref('products') }}\"]\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "sst_config.yml").write_text(
+        "project:\n  semantic_models_dir: semantic_models\nsemantic_views:\n  archive:\n    +enabled: false\n",
+        encoding="utf-8",
+    )
+    names = [
+        view.fqn.rsplit(".", 1)[-1] for view in load_semantic_views(tmp_path, manifest_path=manifest, invoke_dbt=False)
+    ]
+    assert sorted(names) == ["CATALOG", "KEPT"]
+
+
 def test_malformed_expression_carries_a_structured_load_diagnostic() -> None:
     with pytest.raises(ProjectError) as exc_info:
         _resolve_refs("{{ ref('products')", {"products": "PRODUCTS"})

@@ -7,7 +7,7 @@ from types import MappingProxyType
 from ..domain.model.diagnostic import D, DiagnosticBag
 from ..domain.model.identifier import QualifiedName, TargetIdentity
 from ..domain.ports.snowflake import SnowflakePort, StateStore
-from ..domain.state.model import STATE_SCHEMA_VERSION, State
+from ..domain.state.model import DEACTIVATED, STATE_SCHEMA_VERSION, State
 
 
 def read_state(
@@ -36,7 +36,9 @@ def read_state(
         )
         return State.empty(target, store.config_path), DiagnosticBag(diagnostics)
 
-    remote_manifest_ids = {entry.manifest_id for entry in remote.values() if entry.manifest_id}
+    remote_manifest_ids = {
+        entry.manifest_id for entry in remote.values() if entry.manifest_id and entry.outcome != DEACTIVATED
+    }
     remote_manifest_id = next(iter(remote_manifest_ids)) if len(remote_manifest_ids) == 1 else ""
     remote_state = State(
         STATE_SCHEMA_VERSION,

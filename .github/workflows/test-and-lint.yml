@@ -63,7 +63,7 @@ jobs:
         run: >-
           poetry run pytest -q --cov=snowflake_semantic_tools.cli --cov-branch
           --cov-report=term --cov-fail-under=85
-          tests/unit/test_cli_v1.py tests/unit/test_cli_m2.py
+          tests/unit/test_cli_v1.py tests/unit/test_cli_m2.py tests/unit/test_cli_m5.py
 
       - name: Check M2 strict typing
         run: >-

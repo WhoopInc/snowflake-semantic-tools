@@ -1,0 +1,8 @@
+v1_dialect:
+  target: dev
+  outputs:
+    dev:
+      type: snowflake
+      database: SST_REF_DEV
+      schema: JAFFLE
+      warehouse: SST_REF_WH

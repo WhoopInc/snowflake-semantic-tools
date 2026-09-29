@@ -1,0 +1,8 @@
+snowflake_filters:
+  # A boolean predicate with no labels: key. 1.0 refuses it (SST-VAL405); the
+  # codemod adds labels: [filter], which renders it as a native filter.
+  - name: dialect_completed_order
+    tables:
+      - {{ table('orders') }}
+    description: Orders that completed.
+    expr: "{{ column('orders', 'order_state') }} = 'completed'"

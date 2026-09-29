@@ -1,332 +1,123 @@
-# CI/CD Guide
+# CI/CD
 
-Integrating SST into CircleCI pipelines with dbt.
+The commands a person runs locally are the ones CI runs: `validate` and `plan`
+on every pull request, `apply` from a reviewed plan on merge. This page shows
+the shape of each job and the pieces of SST's output that are built for
+automation.
 
----
+## On every pull request
 
-## Overview
+```bash
+sst validate --strict
+sst compile --emit-ddl target/ddl/
+sst plan --target prod --output json > plan.json || test $? -eq 2
+```
 
-SST integrates with dbt by reading your `profiles.yml` and using dbt targets for environment management.
+- `validate --strict` fails on any warning. Leave `--strict` off to fail on
+  errors only.
+- `compile --emit-ddl` writes each semantic view's DDL, a readable artifact to
+  attach to the review.
+- `plan` reads production and reports what merging would change without writing
+  anything. It exits `2` when there are changes, so a pipeline that should
+  accept a pending change treats `2` as success; any other non-zero exit is a
+  failure.
 
-**Recommended workflow:**
+If the project commits golden files, `sst test --suite golden` compares the
+rendered DDL and specs with them offline.
 
-1. **PRs**: Run `sst validate` to catch errors early
-2. **Main branch**: Run `sst deploy --target prod` to deploy semantic views to production
+## On merge
 
----
+```bash
+sst plan --target prod
+sst apply --target prod --plan target/sst/plan.json --yes
+sst test --suite smoke --target prod
+```
 
-## CircleCI Configuration
+`apply` executes exactly the plan it is given and refuses a plan that no longer
+matches the project, so it cannot publish something no one planned. Keep the
+`plan` and `apply` in one job, or pass `target/sst/plan.json` between jobs as an
+artifact.
 
-### Complete Example
+`apply` holds a lock on the target's state while it runs, so a second apply
+against the same target stops with `SST-APL011` instead of interleaving with
+the first. If a run died and left its lock behind, `--break-stale-lock` takes it
+over.
+
+## Example: GitHub Actions
 
 ```yaml
-version: 2.1
-
-commands:
-  setup-environment:
-    steps:
-      - checkout
-      - run:
-          name: Install dependencies
-          command: |
-            pip install --upgrade pip
-            pip install dbt-snowflake snowflake-semantic-tools
-            dbt deps
+name: semantic layer
+on:
+  pull_request:
+  push:
+    branches: [main]
 
 jobs:
-  validate-semantic-models:
-    docker:
-      - image: cimg/python:3.11
+  sst:
+    runs-on: ubuntu-latest
+    env:
+      SNOWFLAKE_ACCOUNT: ${{ secrets.SNOWFLAKE_ACCOUNT }}
+      SNOWFLAKE_USER: ${{ secrets.SNOWFLAKE_USER }}
+      SNOWFLAKE_PRIVATE_KEY_PATH: ${{ runner.temp }}/snowflake_key.p8
     steps:
-      - setup-environment
-      - run:
-          name: Setup Snowflake private key
-          command: |
-            echo "$SNOWFLAKE_PRIVATE_KEY" | sed 's/\\n/\n/g' > /tmp/snowflake_key.pem
-            chmod 600 /tmp/snowflake_key.pem
-      - run:
-          name: Compile dbt manifest
-          command: dbt compile --target prod
-      - run:
-          name: Validate semantic models
-          command: sst validate --target prod
-
-  deploy-semantic-models:
-    docker:
-      - image: cimg/python:3.11
-    steps:
-      - setup-environment
-      - run:
-          name: Setup Snowflake private key
-          command: |
-            echo "$SNOWFLAKE_PRIVATE_KEY" | sed 's/\\n/\n/g' > /tmp/snowflake_key.pem
-            chmod 600 /tmp/snowflake_key.pem
-      - run:
-          name: Deploy semantic models
-          command: sst deploy --target prod
-
-workflows:
-  version: 2
-  semantic-models:
-    jobs:
-      # Validate on all branches
-      - validate-semantic-models:
-          context: snowflake-credentials
-      
-      # Deploy only on main
-      - deploy-semantic-models:
-          context: snowflake-credentials
-          requires:
-            - validate-semantic-models
-          filters:
-            branches:
-              only: main
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install "snowflake-semantic-tools[dbt]"
+      - run: echo "${{ secrets.SNOWFLAKE_PRIVATE_KEY }}" > "$SNOWFLAKE_PRIVATE_KEY_PATH"
+      - run: dbt deps
+      - run: sst validate --strict
+      - name: plan
+        run: sst plan --target prod || test $? -eq 2
+      - name: apply
+        if: github.event_name == 'push'
+        run: sst apply --target prod --plan target/sst/plan.json --yes
 ```
 
----
+The `prod` output in `profiles.yml` reads the key path with
+`private_key_file: "{{ env_var('SNOWFLAKE_PRIVATE_KEY_PATH') }}"`.
 
-## Key Concepts
+## JSON output
 
-### 1. Use dbt Targets
+Every command accepts `--output json` and then prints exactly one JSON object on
+stdout:
 
-Configure different environments in `~/.dbt/profiles.yml`:
-
-```yaml
-my_project:
-  target: dev
-  outputs:
-    dev:
-      type: snowflake
-      account: abc12345
-      user: "{{ env_var('SNOWFLAKE_USER') }}"
-      private_key_path: "{{ env_var('SNOWFLAKE_PRIVATE_KEY_PATH') }}"
-      role: DEV_ROLE
-      warehouse: DEV_WH
-      database: ANALYTICS_DEV
-      schema: SEMANTIC_VIEWS
-    
-    prod:
-      type: snowflake
-      account: abc12345
-      user: "{{ env_var('SNOWFLAKE_USER') }}"
-      private_key_path: "{{ env_var('SNOWFLAKE_PRIVATE_KEY_PATH') }}"
-      role: PROD_ROLE
-      warehouse: PROD_WH
-      database: ANALYTICS
-      schema: SEMANTIC_VIEWS
+```json
+{
+  "tool": "sst",
+  "sst_version": "1.0.0",
+  "schema_version": 2,
+  "command": "plan",
+  "status": "changes",
+  "exit_code": 2,
+  "invocation": {"argv": ["sst", "plan"], "target": "prod", "project_dir": "...", "config_file": "...", "started_at": "...", "duration_s": 4.2},
+  "diagnostics": [],
+  "summary": {"error": 0, "warning": 0, "info": 3, "promoted": 0, "suppressed_cascade": 0, "baselined": 0},
+  "data": {}
+}
 ```
 
-Then in CI, use `--target prod` to deploy to production:
+- `status` is `ok`, `changes`, or `error`, and `exit_code` is the process exit
+  code.
+- Each diagnostic carries `code`, `severity`, `message`, `location`, `suggestion`,
+  and `help_url`, a link to its entry in the
+  [error code reference](../reference/error-codes.md).
+- `data` holds the command's result: the planned changes for `plan`, the
+  outcomes for `apply`, the artifacts for `compile`.
 
-```bash
-sst deploy --target prod
-```
+`schema_version` changes only when a field is removed or changes meaning; new
+fields can appear in the same version.
 
-### 2. RSA Key Authentication
+## Exit codes
 
-Store your private key as a CircleCI environment variable and write it to a file:
+| Code | Meaning |
+|---:|---|
+| 0 | Success. For `plan`, nothing to change. |
+| 1 | Errors were reported, or an apply or test failed. |
+| 2 | `plan` found changes. |
+| 3 | The command line is invalid. |
+| 4 | The project or its configuration cannot be used. |
+| 5 | Snowflake could not be reached. |
 
-```yaml
-- run:
-    name: Setup Snowflake private key
-    command: |
-      echo "$SNOWFLAKE_PRIVATE_KEY" | sed 's/\\n/\n/g' > /tmp/snowflake_key.pem
-      chmod 600 /tmp/snowflake_key.pem
-```
-
-Set the environment variable that your dbt profile references:
-
-```yaml
-- run:
-    name: Deploy
-    environment:
-      SNOWFLAKE_PRIVATE_KEY_PATH: /tmp/snowflake_key.pem
-      SNOWFLAKE_USER: CIRCLECI_SVC_USER
-    command: sst deploy --target prod
-```
-
-### 3. Validate on PRs, Deploy on Main
-
-Use CircleCI filters to control when jobs run:
-
-```yaml
-workflows:
-  semantic-models:
-    jobs:
-      - validate:  # Runs on all branches
-          context: snowflake-credentials
-      
-      - deploy:    # Only runs on main
-          requires: [validate]
-          filters:
-            branches:
-              only: main
-```
-
----
-
-## Environment Variables
-
-Set these in CircleCI (Project Settings → Environment Variables):
-
-| Variable | Description | Example |
-|----------|-------------|---------|
-| `SNOWFLAKE_USER` | Service account username | `CIRCLECI_SVC_USER` |
-| `SNOWFLAKE_PRIVATE_KEY` | RSA private key | `-----BEGIN PRIVATE KEY-----\n...` |
-
-**Optional:**
-- `SNOWFLAKE_ACCOUNT` - If not in profiles.yml
-- `SNOWFLAKE_ROLE` - If not in profiles.yml
-- `SNOWFLAKE_WAREHOUSE` - If not in profiles.yml
-
----
-
-## Integrating with dbt
-
-If SST and dbt run in the same pipeline:
-
-```yaml
-workflows:
-  build-and-deploy:
-    jobs:
-      # 1. Validate semantic models first (fast)
-      - validate-semantic-models
-      
-      # 2. Build dbt models (creates tables)
-      - dbt-build:
-          requires: [validate-semantic-models]
-      
-      # 3. Deploy semantic views (after tables exist)
-      - deploy-semantic-models:
-          requires: [dbt-build]
-          filters:
-            branches:
-              only: main
-```
-
-**Why this order:**
-- Catch semantic model errors early (fast feedback)
-- dbt creates/updates the actual tables
-- SST creates semantic views referencing those tables
-
----
-
-## Common Patterns
-
-### Multiple Environments
-
-Use different targets for different branches:
-
-```yaml
-- run:
-    name: Deploy to appropriate environment
-    command: |
-      if [ "$CIRCLE_BRANCH" == "main" ]; then
-        sst deploy --target prod
-      elif [ "$CIRCLE_BRANCH" == "qa" ]; then
-        sst deploy --target qa
-      fi
-```
-
-### Defer to Production
-
-For PR builds that reference production tables without deploying there:
-
-```yaml
-- run:
-    name: Validate against prod tables
-    command: sst validate --target prod --verify-schema
-```
-
-### Speed Up Deployment
-
-Skip validation in deploy since it already ran:
-
-```yaml
-- run:
-    name: Deploy (skip validation)
-    command: sst deploy --target prod --skip-validation
-```
-
----
-
-## Troubleshooting
-
-### "manifest.json not found"
-
-**Fix:** Run `dbt compile` before SST commands:
-
-```bash
-dbt compile --target prod
-sst validate --target prod
-```
-
-### "Table does not exist"
-
-**Cause:** SST ran before dbt created the table.
-
-**Fix:** Make sure dbt runs before SST:
-
-```yaml
-- deploy-semantic-models:
-    requires:
-      - dbt-build  # Wait for dbt
-```
-
-### "Permission denied" on private key
-
-**Fix:** Set correct file permissions:
-
-```bash
-chmod 600 /tmp/snowflake_key.pem
-```
-
-### CircleCI IP ranges
-
-If Snowflake requires network policies:
-
-```yaml
-jobs:
-  validate:
-    circleci_ip_ranges: true  # Use static IPs
-```
-
-Then add CircleCI's IP ranges to your Snowflake network policy.
-
----
-
-## Best Practices
-
-1. **Always validate before deploying**
-   ```yaml
-   - deploy:
-       requires: [validate]
-   ```
-
-2. **Use service accounts with RSA keys**
-   - Never use personal credentials
-   - Use dedicated service account (e.g., `CIRCLECI_SVC_USER`)
-   - Store private key securely in CircleCI secrets
-
-3. **Run validation on every PR**
-   - Catches errors before merge
-   - No Snowflake writes needed for validation
-
-4. **Deploy only from main branch**
-   ```yaml
-   filters:
-     branches:
-       only: main
-   ```
-
-5. **Use dbt targets for environment management**
-   - Don't hardcode database/schema in CI config
-   - Define in profiles.yml, reference with `--target`
-
----
-
-## Next Steps
-
-- [Authentication Guide](authentication.md) - RSA key pair setup
-- [CLI Reference](../cli/index.md) - All SST commands
-- [Validation Rules](../concepts/validation-rules.md) - What SST validates
+The [CLI reference](../reference/cli.md#exit-codes) lists every code.

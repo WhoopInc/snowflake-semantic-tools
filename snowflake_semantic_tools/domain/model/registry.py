@@ -41,8 +41,16 @@ class ArtifactType:
     replaces_on_update: bool = True
     grant_preservation: GrantPreservation = GrantPreservation.CLAUSE
     dependency_types: tuple[str, ...] = ()
+    # Dependencies whose published version this type's payload names. A write of
+    # this type is planned only together with them, so it cannot pin a version
+    # that was never created.
+    pins_versions_of: tuple[str, ...] = ()
     object_types: tuple[str, ...] = ()
     lifecycle: ArtifactLifecycle = ArtifactLifecycle.OBJECT
+    # Reference-page text; the generated artifact reference renders these rows.
+    summary: str = ""
+    authored_in: str = ""
+    publishes: str = ""
 
 
 @dataclass(frozen=True, slots=True)
@@ -120,6 +128,8 @@ def build_registry(artifact_types: tuple[ArtifactType, ...], member_types: tuple
             raise RegistryIntegrityError(
                 f"artifact {artifact.name} has unknown dependencies {sorted(unknown_dependencies)}"
             )
+        if not set(artifact.pins_versions_of) <= set(artifact.dependency_types):
+            raise RegistryIntegrityError(f"artifact {artifact.name} pins versions of types it does not depend on")
         if artifact.replaces_on_update and artifact.grant_preservation is GrantPreservation.NONE:
             raise RegistryIntegrityError(f"artifact {artifact.name} replaces without grant preservation")
         if not artifact.replaces_on_update and artifact.grant_preservation is not GrantPreservation.NONE:
@@ -172,6 +182,9 @@ ARTIFACT_REGISTRY = build_registry(
                 "custom_instruction",
             ),
             object_type="SEMANTIC VIEW",
+            summary="A Snowflake semantic view built from dbt models and the semantic members attached to them.",
+            authored_in="`semantic_views:` in `project.semantic_models_dir`",
+            publishes="SEMANTIC VIEW",
         ),
         ArtifactType(
             name="tool",
@@ -185,6 +198,60 @@ ARTIFACT_REGISTRY = build_registry(
             grant_preservation=GrantPreservation.REPLAY,
             dependency_types=("semantic_view",),
             object_types=("CORTEX SEARCH SERVICE", "PROCEDURE", "FUNCTION", "STAGE"),
+            summary="A Snowflake object an agent tool calls, published before any agent that uses it.",
+            authored_in="`project.tools_dir`",
+            publishes="CORTEX SEARCH SERVICE, PROCEDURE, FUNCTION, or STAGE",
+        ),
+        ArtifactType(
+            name="skill",
+            root_key=None,
+            ddl_position=250,
+            ref_function="skill",
+            member_types=(),
+            object_type="",
+            prunable=False,
+            replaces_on_update=False,
+            grant_preservation=GrantPreservation.NONE,
+            lifecycle=ArtifactLifecycle.COMPOSITE,
+            summary=(
+                "One `SKILL.md` folder, flattened and published as a Cortex Extension version "
+                "whose alias is a hash of its content."
+            ),
+            authored_in="a `SKILL.md` folder in `project.skills_dir`",
+            publishes="CORTEX EXTENSION (TYPE = 'SKILL') and its bundle stage",
+        ),
+        ArtifactType(
+            name="plugin",
+            root_key=None,
+            ddl_position=260,
+            ref_function="plugin",
+            member_types=(),
+            object_type="",
+            prunable=False,
+            replaces_on_update=False,
+            grant_preservation=GrantPreservation.NONE,
+            lifecycle=ArtifactLifecycle.COMPOSITE,
+            summary="A named set of project skills, published together as one plugin-type Cortex Extension.",
+            authored_in="`plugin.yml` in `project.plugins_dir`",
+            publishes="CORTEX EXTENSION (TYPE = 'PLUGIN') and its bundle stage",
+        ),
+        ArtifactType(
+            name="profile",
+            root_key=None,
+            ddl_position=270,
+            ref_function=None,
+            member_types=(),
+            object_type="",
+            prunable=False,
+            replaces_on_update=False,
+            grant_preservation=GrantPreservation.NONE,
+            lifecycle=ArtifactLifecycle.COMPOSITE,
+            summary=(
+                "A CoCo Desktop profile: content-addressed skill, prompt, MCP, and hook trees "
+                "behind one profile registry row."
+            ),
+            authored_in="`profile.yml` in `project.profiles_dir`",
+            publishes="profile stage trees and one profile registry row",
         ),
         ArtifactType(
             name="agent",
@@ -195,7 +262,11 @@ ARTIFACT_REGISTRY = build_registry(
             object_type="AGENT",
             replaces_on_update=False,
             grant_preservation=GrantPreservation.NONE,
-            dependency_types=("semantic_view", "tool"),
+            dependency_types=("semantic_view", "tool", "skill", "plugin"),
+            pins_versions_of=("skill", "plugin"),
+            summary="A Cortex Agent whose specification SST renders and pins to exactly what it uses.",
+            authored_in="`agent.yml` in `project.agents_dir`",
+            publishes="AGENT",
         ),
         ArtifactType(
             name="eval",
@@ -209,6 +280,9 @@ ARTIFACT_REGISTRY = build_registry(
             grant_preservation=GrantPreservation.NONE,
             dependency_types=("agent",),
             lifecycle=ArtifactLifecycle.COMPOSITE,
+            summary="An agent evaluation: its question dataset, the table it reads, and its run configuration.",
+            authored_in="an agent's `evals/` folder",
+            publishes="TABLE, DATASET, and a staged run configuration",
         ),
     ),
     (

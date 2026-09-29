@@ -1,0 +1,11 @@
+snowflake_metrics:
+  - name: dialect_order_count
+    tables:
+      - {{ table('orders') }}
+    description: Distinct orders placed.
+    expr: COUNT(DISTINCT {{ column('orders', 'order_id') }})
+
+  - name: dialect_revenue
+    tables: [{{ table('orders') }}]
+    description: Order value including tax, in cents.
+    expr: "SUM({{ column('orders', 'order_total') }})"

@@ -336,46 +336,32 @@ spec:
         # ERROR, and is the specific defect CORTEX_EXTENSION references exist to
         # remove (A047, K009).
         type: CORTEX_EXTENSION
-        # NAME-BASED. Resolves to the extension FQN from sst_config.yml `skills:`
-        # at render time, so dev and prod resolve differently from one authored
-        # value. NEVER hardcode the FQN.
-        path: "{{ extension('jaffle-semantics') }}"
-        # ALWAYS PIN. *** LIVE IS REFUSED BY A046 / SST-VAL538, NOT BY SNOWFLAKE.
-        # CORRECTED 2026-09-22, D155. *** This comment read "LIVE VERSIONS ARE
-        # REJECTED BY SNOWFLAKE so 'never reference a mutable version' is enforced
-        # natively as well as by A046 and K008". The native clause is FALSE:
-        # TESTED 2026-09-22, CREATE AGENT accepted version: "LIVE" and DESCRIBE
-        # AGENT returned it verbatim. A046 and K008 are the enforcement, full stop.
-        # Omitted, it resolves to the extension default and falls back to
-        # last committed -- safe, but not reproducible.
+        # NAME-BASED, THROUGH `skill()`. This project publishes the skill, so the
+        # reference resolves to its extension FQN from sst_config.yml
+        # `skills.catalog:` at render time -- dev and prod resolve differently from
+        # one authored value. NEVER hardcode the FQN. `extension()` is only for an
+        # extension some other project publishes.
+        path: "{{ skill('jaffle-semantics') }}"
+        # NO `version:`, AND THAT IS THE PIN. SST renders the published version's
+        # alias: `skills.+version_prefix` plus 12 hex characters of the flattened
+        # bundle's SHA-256 digest. The alias names content, not a commit, so an
+        # unchanged skill keeps its alias and this agent keeps pointing at a version
+        # that exists. The earlier `{{ var('sha_version') }}` pin named a version
+        # per COMMIT, and because an unchanged skill publishes nothing, most of those
+        # versions were never created -- CREATE AGENT accepts a pin to a missing
+        # version without complaint. An authored `version:` here is SST-VAL838, and
+        # a `sha_version` pin anywhere is SST-VAL839.
         #
-        # PINNED THROUGH `var`, NOT THROUGH A BARE NAME. This key used to read
-        # `{{ sha_version }}`, the bare-token form an earlier draft showed.
-        # That form could never work: `TEMPLATE_RE` matches `{{ fn(args) }}` only,
-        # so a bare name with no parentheses never reached the resolver, rendered
-        # as literal text, and did not even trip `SST-REF004` for an unknown
-        # function -- the regex never produced a function name to be unknown. The
-        # pin looked resolved and was not, while `K008 [E]` requires a real one.
-        #
-        # `var` is the resolver that already does this job.
-        #
-        # THE NEXT TWO SENTENCES USED TO BE INVERTED AND ARE CORRECTED 2026-09-25
-        # (`D248`). They said "the value is declared in sst_config.yml `vars:`; an
-        # undeclared one is `SST-CFG029`". FOR THIS NAME IT IS THE OTHER WAY ROUND:
-        # `sha_version` must NOT be declared, and DECLARING it is `SST-CFG040`, an
-        # ERROR. SST supplies it from `Provenance.sha` -- the same value that forms
-        # this agent's stage path -- so the skill version and the commit agree by
-        # construction. `SST-CFG029` governs every OTHER var name, not this one.
-        #
-        # SO THIS CALL DOES NOT EXERCISE THE `vars:` BLOCK, which is why the old
-        # claim that it gave `var` "its FIRST fixture coverage" was only half true:
-        # the RESOLVER had a call site, but nothing read the block. `D248` closed
-        # that separately -- `sst_config.yml` now declares `completed_state` and
-        # `returned_state`, read from three expression sites.
-        #
-        # The golden JSON carries `GIT_0000000` -- `skills.+version_prefix: "GIT_"`
-        # plus the normalised 7-character SHA token this var holds.
-        version: "{{ var('sha_version') }}"
+        # LIVE is still refused, by SST-VAL538 rather than by Snowflake: CREATE
+        # AGENT accepts `version: "LIVE"` and DESCRIBE AGENT returns it verbatim.
+    - # A CONSUMED extension: another project publishes it, so SST cannot know
+      # its content and this reference must pin a version itself. `extension()`
+      # resolves only through `sst_config.yml` `skills.extensions`.
+      name: partner-glossary
+      source:
+        type: CORTEX_EXTENSION
+        path: "{{ extension('partner-glossary') }}"
+        version: VERSION$3
 
 # =============================================================================
 # PLATFORM KEYS -- consumed by SST, STRIPPED BEFORE RENDERING

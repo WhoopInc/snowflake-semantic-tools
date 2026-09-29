@@ -1,0 +1,30 @@
+{
+  "alias": "SST_354B1FD046D0",
+  "comment": "Use when a question is about running the jaffle analytics surface rather than\nquerying it -- which pricing period is in effect, how to reconcile a margin figure\nagainst supply snapshots, or how to check whether a supply month is complete.\nInvoke for terms like pricing period, effective date, supply snapshot, month\nclose, reconcile, backfill. Do NOT invoke for ordinary analytical questions about\norders or products; those belong to the jaffle-semantics skill.",
+  "digest": "354b1fd046d07b43b7fd226627ed9c01d1275d4d121148695fdc394006ef02c4",
+  "extension": "SST_REF_DEV.JAFFLE.JAFFLE_OPERATIONS",
+  "files": [
+    {
+      "path": "skills/jaffle-operations/SKILL.md",
+      "sha256": "8237db9ebbe3a7e7ea94383f8f8f0aae0bfe322d84e8cf46b25cbe231e87149f",
+      "size": 3183
+    },
+    {
+      "path": "skills/jaffle-operations/check-supply-month.sql",
+      "sha256": "7ccab0ebcd29eafd1b3bd65ad90807f63e0a921afc00ee5c65b70bd99e3bef63",
+      "size": 2049
+    },
+    {
+      "path": "skills/jaffle-operations/reference__month-close.md",
+      "sha256": "326ad5f55cb9b09f984786ce47a83150f12f6c6888a33d9b682d4180e9a4c556",
+      "size": 1708
+    }
+  ],
+  "flattened": [
+    {
+      "authored": "reference/month-close.md",
+      "published": "reference__month-close.md"
+    }
+  ],
+  "type": "SKILL"
+}

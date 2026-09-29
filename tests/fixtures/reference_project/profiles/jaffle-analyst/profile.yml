@@ -1,0 +1,20 @@
+# ONE COCO DESKTOP PROFILE: a row in the profile registry whose pointers name
+# content-addressed stage trees -- this profile's skills, its assembled prompt,
+# its merged MCP config, and its hook scripts. A changed file changes only its
+# own tree's digest, so an apply uploads that tree and flips the row; the old
+# trees stay in place for rollback.
+#
+# NO `allowed_roles`, NO `active`. Access is managed outside SST, and a profile is
+# deactivated by deleting it and applying with --prune.
+name: jaffle-analyst
+description: |-
+  Jaffle analysts: sales, menu, and month-close questions against the jaffle
+  semantic views.
+owner_team: Jaffle Analytics
+skills:
+  - jaffle-semantics
+  - jaffle-operations
+mcp_servers:
+  - jaffle-docs
+hooks:
+  - sql-guard

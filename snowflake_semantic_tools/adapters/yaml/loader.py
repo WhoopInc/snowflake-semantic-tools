@@ -38,6 +38,10 @@ import yaml
 from ...domain.model.compiler import FILTER_EXPR, METRIC_EXPR, VQR_SQL, ResolveContext, resolve_scalar
 from ...domain.model.dbt import DbtCatalog, DbtModel
 from ...domain.model.diagnostic import D, Diagnostic, DiagnosticBag, Origin, Severity
+from ...domain.model.expression import is_aggregate_expression
+from ...domain.model.expression import is_boolean_expression as _is_boolean_expression
+from ...domain.model.expression import outer_parentheses as _outer_parentheses
+from ...domain.model.expression import root_function as _root_function
 from ...domain.model.project import ParsedMember, ParsedProject, ParsedView, ResolvedProject, SemanticViewProject
 from ...domain.model.reference import (
     TemplateCall,
@@ -73,22 +77,6 @@ from .documents import (
 )
 
 PLACEHOLDER = "__SST_TPL_%d__"
-AGGREGATE_FUNCTIONS = frozenset(
-    (
-        "APPROX_COUNT_DISTINCT",
-        "ARRAY_AGG",
-        "AVG",
-        "COUNT",
-        "LISTAGG",
-        "MAX",
-        "MEDIAN",
-        "MIN",
-        "OBJECT_AGG",
-        "STDDEV",
-        "SUM",
-        "VARIANCE",
-    )
-)
 NUMERIC_TYPES = frozenset(
     (
         "BIGINT",
@@ -134,10 +122,11 @@ def _render_target_value(value: object, target: Target) -> str:
     return str(value).replace("{{ target.database }}", target.database).replace("{{ target.schema }}", target.schema)
 
 
-def _semantic_view_target(config: dict[str, Any], path: Path, views_dir: Path, target: Target) -> Target:
+def _semantic_view_defaults(config: dict[str, Any], path: Path, views_dir: Path) -> dict[str, object]:
+    """Merge `semantic_views` `+` keys along the folder routes above one file."""
     block = config.get("semantic_views") or {}
     if not isinstance(block, dict):
-        return target
+        return {}
     resolved: dict[str, object] = {key[1:]: value for key, value in block.items() if str(key).startswith("+")}
     relative_parent = path.resolve().relative_to(views_dir.resolve()).parent
     cursor: object = block
@@ -149,6 +138,11 @@ def _semantic_view_target(config: dict[str, Any], path: Path, views_dir: Path, t
             break
         resolved.update({key[1:]: value for key, value in child.items() if str(key).startswith("+")})
         cursor = child
+    return resolved
+
+
+def _semantic_view_target(config: dict[str, Any], path: Path, views_dir: Path, target: Target) -> Target:
+    resolved = _semantic_view_defaults(config, path, views_dir)
     database = _render_target_value(resolved.get("database", target.database), target)
     schema = _render_target_value(resolved.get("schema", target.schema), target)
     return Target(database=database, schema=schema)
@@ -417,24 +411,18 @@ def _synonyms_diagnostics(
 
 
 def resolve_target(project_dir: Path, target_name: str | None = None) -> Target:
-    """Resolve a declared dbt target's database and schema from `profiles.yml`."""
-    dbt_project = _read_yaml(project_dir / "dbt_project.yml")
-    profile_name = dbt_project.get("profile")
-    if not profile_name:
-        raise ProjectError("dbt_project.yml declares no `profile:`")
+    """Resolve a declared dbt target's database and schema from `profiles.yml`.
 
-    profiles = _read_yaml(project_dir / "profiles.yml")
-    profile = profiles.get(profile_name)
-    if not isinstance(profile, dict):
-        raise ProjectError(f"profiles.yml has no profile named {profile_name!r}")
+    The profile adapter reads the file: it is plain YAML, not a semantic model, so
+    the template-preserving parser would keep a single-quoted scalar's `''`
+    escapes inside `{{ env_var(...) }}` and the value would never resolve.
+    """
+    from ..profile import profile_output
 
-    selected_target = target_name or profile.get("target")
-    outputs = profile.get("outputs") or {}
-    output = outputs.get(selected_target)
-    if not isinstance(output, dict):
-        diagnostic = D("SST-CFG010", target=selected_target, profile=profile_name)
-        raise ProjectError(diagnostic.message, diagnostics=(diagnostic,))
-
+    try:
+        _profile, selected_target, output = profile_output(project_dir, target_name)
+    except ValueError as exc:
+        raise ProjectError(str(exc)) from exc
     database, schema = output.get("database"), output.get("schema")
     if not database or not schema:
         raise ProjectError(f"target {selected_target!r} must set both `database` and `schema`")
@@ -677,62 +665,6 @@ def _metric_cycles(metrics: tuple[MetricDef, ...]) -> tuple[tuple[str, ...], ...
     return tuple(cycles)
 
 
-def _outer_parentheses(text: str) -> bool:
-    if not text.startswith("(") or not text.endswith(")"):
-        return False
-    depth = 0
-    quote: str | None = None
-    for index, character in enumerate(text):
-        if quote is not None:
-            if character == quote:
-                quote = None
-            continue
-        if character in ("'", '"'):
-            quote = character
-        elif character == "(":
-            depth += 1
-        elif character == ")":
-            depth -= 1
-            if depth == 0 and index != len(text) - 1:
-                return False
-    return depth == 0 and quote is None
-
-
-def _root_function(expression: str) -> str | None:
-    text = expression.strip()
-    while _outer_parentheses(text):
-        text = text[1:-1].strip()
-    match = re.match(r"^([A-Za-z_][A-Za-z0-9_$]*)\s*\(", text)
-    if match is None:
-        return None
-    depth = 0
-    quote: str | None = None
-    end = -1
-    for index in range(match.end() - 1, len(text)):
-        character = text[index]
-        if quote is not None:
-            if character == quote:
-                quote = None
-            continue
-        if character in ("'", '"'):
-            quote = character
-        elif character == "(":
-            depth += 1
-        elif character == ")":
-            depth -= 1
-            if depth == 0:
-                end = index
-                break
-    if end < 0 or text[end + 1 :].strip():
-        return None
-    return match.group(1).upper()
-
-
-def _is_root_aggregate(expression: str) -> bool:
-    text = expression.strip()
-    return "OVER" not in text.upper() and _root_function(text) in AGGREGATE_FUNCTIONS
-
-
 def _base_type(data_type: str | None) -> str:
     return re.sub(r"\s*\(.*\)\s*$", "", (data_type or "").strip().upper())
 
@@ -788,7 +720,7 @@ def _metric_diagnostics(
                     subject=f"metric:{metric.name}",
                 )
             )
-        if not metric.derived and metric.tables and not _is_root_aggregate(metric.expr):
+        if not metric.derived and metric.tables and not is_aggregate_expression(metric.expr):
             diagnostics.append(
                 D(
                     "SST-VAL101",
@@ -1019,12 +951,7 @@ def _expression_reference_diagnostics(
             for table_name in _sql_tables(member.sql):
                 if declared and table_name not in declared:
                     diagnostics.append(
-                        D(
-                            "SST-INT902",
-                            origin=member.origin,
-                            subject=subject,
-                            detail=f"{subject} reads table {table_name!r} outside its declared tables",
-                        )
+                        D("SST-VAL413", origin=member.origin, subject=subject, member=member.name, name=table_name)
                     )
         try:
             calls = scan_template_calls(text)
@@ -1071,6 +998,9 @@ def _expression_reference_diagnostics(
                         detail=f"unknown project var {call.raw}",
                     )
                 )
+                continue
+            if call.function in ("table", "column"):
+                # SST-REF034/SST-REF035 already name the legacy global at its position.
                 continue
             if call.function not in ("ref", "metric", "var"):
                 diagnostics.append(
@@ -1132,47 +1062,21 @@ def _expression_reference_diagnostics(
 
 
 def _filter_diagnostics(filters: tuple[FilterDef, ...]) -> tuple[Diagnostic, ...]:
-    return tuple(
-        D(
-            "SST-VAL401",
-            member=filter_def.name,
-            subject=f"filter:{filter_def.name}",
-            origin=filter_def.origin,
+    diagnostics: list[Diagnostic] = []
+    for filter_def in filters:
+        boolean = _is_boolean_expression(filter_def.expr)
+        if filter_def.entity_level and not boolean:
+            code = "SST-VAL401"
+        elif not filter_def.entity_level and not filter_def.labeled and boolean:
+            # A boolean predicate with no labels: key has no native home; it
+            # must carry labels: [filter] to render as a LABELS = (FILTER) dimension.
+            code = "SST-VAL405"
+        else:
+            continue
+        diagnostics.append(
+            D(code, member=filter_def.name, subject=f"filter:{filter_def.name}", origin=filter_def.origin)
         )
-        for filter_def in filters
-        if filter_def.entity_level and not _is_boolean_expression(filter_def.expr)
-    )
-
-
-def _is_boolean_expression(expression: str) -> bool:
-    text = expression.strip()
-    while _outer_parentheses(text):
-        text = text[1:-1].strip()
-    if text.upper() in {"TRUE", "FALSE"}:
-        return True
-    if re.match(r"(?is)^NOT\s+.+$", text):
-        return True
-    if re.match(r"(?is)^EXISTS\s*\(", text):
-        return True
-    root = _root_function(text)
-    if root in {
-        "BOOLAND",
-        "BOOLOR",
-        "BOOLXOR",
-        "COALESCE",
-        "EQUAL_NULL",
-        "IS_BOOLEAN",
-        "REGEXP_LIKE",
-        "RLIKE",
-    }:
-        return True
-    return bool(
-        re.search(
-            r"(?:=|<>|!=|<=|>=|<|>|\bBETWEEN\b|\bIN\s*\(|\bIS\s+(?:NOT\s+)?NULL\b|\bLIKE\b|\bRLIKE\b)",
-            text,
-            re.IGNORECASE,
-        )
-    )
+    return tuple(diagnostics)
 
 
 def _bare_column_identifiers(
@@ -1311,6 +1215,9 @@ def _dbt_model_diagnostics(
         )
         if referenced_models is not None and model.name.casefold() not in referenced_models:
             continue
+        diagnostics.extend(
+            D("SST-DBT005", model=model.name, field=field, subject=subject) for field in model.legacy_key_fields
+        )
         if not model.primary_key and not model.unique_keys:
             diagnostics.append(
                 D(
@@ -1636,6 +1543,7 @@ class FilterDef:
     origin: Origin | None = None
     template_calls: tuple[TemplateCall, ...] = ()
     poisoned: bool = False
+    labeled: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -1659,6 +1567,87 @@ class VerifiedQueryDef:
     origin: Origin | None = None
     template_calls: tuple[TemplateCall, ...] = ()
     poisoned: bool = False
+
+
+# 0.3 spellings accepted for one release: (member type, old key, 1.0 key).
+LEGACY_SPELLINGS = (
+    ("custom_instruction", "sql_generation", "ai_sql_generation"),
+    ("custom_instruction", "question_categorization", "ai_question_categorization"),
+)
+
+
+def normalize_legacy_spellings(documents: RawDocuments) -> RawDocuments:
+    """Read the 0.3 spellings into the 1.0 model with a deprecation warning.
+
+    Setting both spellings on one entry is an error: which one wins would be a
+    guess, and a guess here changes rendered DDL.
+    """
+    diagnostics: list[Diagnostic] = list(documents.diagnostics)
+    rewritten: list[RawDocument] = []
+    for document in documents.documents:
+        tree = dict(document.tree)
+        changed = False
+        for member_type in ("custom_instruction", "relationship"):
+            root_key = _member_root(member_type)
+            nodes = tree.get(root_key)
+            if not isinstance(nodes, list):
+                continue
+            updated: list[object] = []
+            for index, node in enumerate(nodes):
+                if not isinstance(node, dict):
+                    updated.append(node)
+                    continue
+                entry = dict(node)
+                subject = f"{member_type}:{entry.get('name') or index}"
+                renames = [(old, new) for kind, old, new in LEGACY_SPELLINGS if kind == member_type]
+                if member_type == "relationship":
+                    renames = [("relationship_columns", "relationship_conditions")]
+                for old, new in renames:
+                    if old not in entry:
+                        continue
+                    origin = _node_origin(document, root_key, index, old)
+                    if new in entry:
+                        diagnostics.append(
+                            D("SST-PRS121", origin=origin, subject=subject, artifact=subject, field=old, expected=new)
+                        )
+                        del entry[old]
+                        continue
+                    value = entry.pop(old)
+                    entry[new] = _relationship_columns(value) if old == "relationship_columns" else value
+                    diagnostics.append(
+                        D("SST-PRS020", origin=origin, subject=subject, artifact=subject, field=old, expected=new)
+                    )
+                changed = changed or entry != node
+                updated.append(entry)
+            tree[root_key] = updated
+        rewritten.append(dataclasses.replace(document, tree=MappingProxyType(tree)) if changed else document)
+    by_path = MappingProxyType({document.path: document for document in rewritten})
+    return RawDocuments(tuple(rewritten), by_path, documents.failed, tuple(diagnostics))
+
+
+def _relationship_columns(value: object) -> object:
+    """`relationship_columns` pairs become `relationship_conditions` equality strings."""
+    if not isinstance(value, list):
+        return value
+    conditions: list[object] = []
+    for item in value:
+        if (
+            isinstance(item, dict)
+            and isinstance(item.get("left_column"), str)
+            and isinstance(item.get("right_column"), str)
+        ):
+            conditions.append(f"{item['left_column']} = {item['right_column']}")
+        else:
+            conditions.append(item)
+    return conditions
+
+
+def _uses_legacy_globals(value: object) -> bool:
+    try:
+        calls = scan_template_calls(str(value))
+    except TemplateSyntaxError:
+        return False
+    return any(call.function in ("table", "column") for call in calls)
 
 
 def _legacy_reference_diagnostics(documents: RawDocuments) -> tuple[Diagnostic, ...]:
@@ -1764,6 +1753,7 @@ def load_filters(documents: RawDocuments, project_dir: Path, semantic_models_dir
                 origin=_node_origin(document, _member_root("filter"), index),
                 template_calls=template_calls,
                 poisoned=_table_refs_poisoned(node.get("tables")),
+                labeled="labels" in node,
             )
         )
     return tuple(out)
@@ -1788,9 +1778,18 @@ def load_instructions(
 
 
 def _sql_tables(sql: str) -> tuple[str, ...]:
-    statement = "\n".join(line for line in sql.splitlines() if not line.lstrip().startswith("--"))
+    """The logical tables a verified query reads: FROM/JOIN names that are not its own CTEs.
+
+    String literals are masked first, so `IN ('Join Flow')` is not read as a join.
+    """
+    lines = "\n".join(line for line in sql.splitlines() if not line.lstrip().startswith("--"))
+    statement = re.sub(r"'(?:[^']|'')*'", "''", lines)
     names = re.findall(r"(?i)\b(?:FROM|JOIN)\s+([A-Za-z_][A-Za-z0-9_$]*)", statement)
-    return tuple(dict.fromkeys(name.casefold() for name in names))
+    ctes = {
+        name.casefold()
+        for name in re.findall(r"(?i)(?:\bWITH\s+(?:RECURSIVE\s+)?|,\s*)([A-Za-z_][A-Za-z0-9_$]*)\s+AS\s*\(", statement)
+    }
+    return tuple(dict.fromkeys(name.casefold() for name in names if name.casefold() not in ctes))
 
 
 def _resolve_verified_query_sql(
@@ -1932,14 +1931,30 @@ def _verified_query_diagnostics(
     return tuple(diagnostics)
 
 
+_ENDPOINT_REF = re.compile(r"^\{\{\s*ref\(\s*['\"]([^'\"]+)['\"]\s*\)\s*\}\}$")
+
+
+def _endpoint(value: object) -> str:
+    """A relationship endpoint's model name; a 0.3 `{{ ref('x') }}` endpoint reads as `x`."""
+    text = str(value).strip()
+    match = _ENDPOINT_REF.fullmatch(text)
+    return match.group(1) if match else text
+
+
 def load_relationships(
     documents: RawDocuments,
     project_dir: Path,
     semantic_models_dir: str,
     models: Mapping[str, DbtModel] | None = None,
-) -> tuple[tuple[Relationship, Origin], ...]:
+) -> tuple[tuple[tuple[Relationship, Origin], ...], tuple[Diagnostic, ...]]:
+    """Every well-formed relationship, and one diagnostic for each that is not.
+
+    A malformed relationship is reported and left out rather than stopping the
+    load, so one bad entry cannot hide every other diagnostic in the project.
+    """
     root = project_dir / semantic_models_dir / "relationships"
     out: list[tuple[Relationship, Origin]] = []
+    diagnostics: list[Diagnostic] = []
     equality = re.compile(
         r"^\s*\{\{\s*ref\(['\"]([^'\"]+)['\"],\s*['\"]([^'\"]+)['\"]\)\s*\}\}\s*=\s*"
         r"\{\{\s*ref\(['\"]([^'\"]+)['\"],\s*['\"]([^'\"]+)['\"]\)\s*\}\}\s*$"
@@ -1960,9 +1975,17 @@ def load_relationships(
         raw_conditions = node.get("relationship_conditions")
         if not isinstance(raw_conditions, list) or not raw_conditions:
             continue
+        if any(_uses_legacy_globals(condition) for condition in raw_conditions):
+            # SST-REF034/SST-REF035 report the legacy globals; parsing further
+            # would only bury that diagnostic under a condition-shape error.
+            continue
         pairs: list[tuple[str, str]] = []
         asof_index: int | None = None
         range_bounds: tuple[str, str] | None = None
+        origin = _node_origin(document, _member_root("relationship"), index)
+        subject = f"relationship:{node['name']}"
+        left_endpoint, right_endpoint = _endpoint(node.get("left_table")), _endpoint(node.get("right_table"))
+        problem: Diagnostic | None = None
         for condition in raw_conditions:
             match = equality.fullmatch(str(condition))
             if match is not None:
@@ -1974,72 +1997,70 @@ def load_relationships(
                     asof_index = len(pairs)
                 else:
                     range_match = range_condition.fullmatch(str(condition))
-                    if range_match is None:
-                        diagnostic = D(
-                            "SST-PRS110",
-                            origin=_node_origin(document, _member_root("relationship"), index),
-                            subject=f"relationship:{node['name']}",
-                            artifact=f"relationship:{node['name']}",
-                            value=condition,
-                        )
-                        raise ProjectError(diagnostic.message, diagnostics=(diagnostic,))
+                    if range_match is None or range_match.group(3).casefold() != range_match.group(5).casefold():
+                        problem = D("SST-PRS110", origin=origin, subject=subject, artifact=subject, value=condition)
+                        break
                     (
                         left_table,
                         left_column,
                         right_table,
                         range_start,
-                        range_table,
+                        _range_table,
                         range_end,
                     ) = range_match.groups()
-                    if right_table.casefold() != range_table.casefold():
-                        raise ProjectError(
-                            f"{document.abs_path}: relationship {node['name']} range bounds use different tables"
-                        )
                     right_column = range_start
                     range_bounds = (range_start.upper(), range_end.upper())
-            if (
-                left_table.casefold() != str(node.get("left_table")).casefold()
-                or right_table.casefold() != str(node.get("right_table")).casefold()
-            ):
-                raise ProjectError(
-                    f"{document.abs_path}: relationship {node['name']} condition tables disagree with its endpoints"
+            endpoints = (left_endpoint, right_endpoint)
+            mismatch = next(
+                (
+                    (table, column, endpoint)
+                    for table, column, endpoint in (
+                        (left_table, left_column, endpoints[0]),
+                        (right_table, right_column, endpoints[1]),
+                    )
+                    if table.casefold() != endpoint.casefold()
+                ),
+                None,
+            )
+            if mismatch is not None:
+                table, column, endpoint = mismatch
+                problem = D(
+                    "SST-VAL204",
+                    origin=origin,
+                    subject=subject,
+                    relationship=node["name"],
+                    column=f"{table}.{column}",
+                    name=endpoint,
                 )
+                break
             pairs.append((left_column.upper(), right_column.upper()))
-        if models is not None:
+        if problem is None and models is not None:
             for table_name, column_name in (
                 pair
                 for left_column, right_column in pairs
                 for pair in (
-                    (str(node.get("left_table")).casefold(), left_column),
-                    (str(node.get("right_table")).casefold(), right_column),
+                    (left_endpoint.casefold(), left_column),
+                    (right_endpoint.casefold(), right_column),
                 )
             ):
                 model = models.get(table_name)
-                if model is None or model.column(column_name) is None:
-                    if model is None:
-                        diagnostic = D(
-                            "SST-REF001",
-                            origin=_node_origin(document, _member_root("relationship"), index),
-                            subject=f"relationship:{node['name']}",
-                            model=table_name,
-                        )
-                    else:
-                        diagnostic = D(
-                            "SST-REF002",
-                            origin=_node_origin(document, _member_root("relationship"), index),
-                            subject=f"relationship:{node['name']}",
-                            model=table_name,
-                            column=column_name,
-                        )
-                    raise ProjectError(diagnostic.message, diagnostics=(diagnostic,))
+                if model is None:
+                    problem = D("SST-REF001", origin=origin, subject=subject, model=table_name)
+                    break
+                if model.column(column_name) is None:
+                    problem = D("SST-REF002", origin=origin, subject=subject, model=table_name, column=column_name)
+                    break
+        if problem is not None:
+            diagnostics.append(problem)
+            continue
         if pairs and len(pairs) == len(raw_conditions):
             out.append(
                 (
                     Relationship(
                         name=str(node["name"]).upper(),
-                        from_table=str(node["left_table"]).upper(),
+                        from_table=left_endpoint.upper(),
                         from_columns=tuple(left for left, _ in pairs),
-                        to_table=str(node["right_table"]).upper(),
+                        to_table=right_endpoint.upper(),
                         to_columns=tuple(right for _, right in pairs),
                         asof_index=asof_index,
                         range_bounds=range_bounds,
@@ -2047,7 +2068,7 @@ def load_relationships(
                     _node_origin(document, _member_root("relationship"), index),
                 )
             )
-    return tuple(out)
+    return tuple(out), tuple(diagnostics)
 
 
 def load_semantic_views(
@@ -2110,7 +2131,9 @@ def parse_semantic_project(
     filters = load_filters(documents, project_dir, semantic_models_dir)
     instructions = load_instructions(documents, project_dir, semantic_models_dir)
     verified_queries = load_verified_queries(documents, project_dir, semantic_models_dir)
-    relationship_records = load_relationships(documents, project_dir, semantic_models_dir, models)
+    relationship_records, relationship_diagnostics = load_relationships(
+        documents, project_dir, semantic_models_dir, models
+    )
     members.extend(
         ParsedMember(
             "metric",
@@ -2189,7 +2212,9 @@ def parse_semantic_project(
                     (model.name.casefold(),),
                 )
             )
-    return ParsedProject(tuple(views), tuple(members), DiagnosticBag(documents.diagnostics))
+    return ParsedProject(
+        tuple(views), tuple(members), DiagnosticBag((*documents.diagnostics, *relationship_diagnostics))
+    )
 
 
 def load_semantic_views_result(
@@ -2202,7 +2227,9 @@ def load_semantic_views_result(
     """Load healthy views while collecting view-local failures."""
     config = _read_yaml(project_dir / "sst_config.yml")
     semantic_models_dir = str((config.get("project") or {}).get("semantic_models_dir") or "semantic_models")
-    documents = load_documents(discover_yaml(project_dir, semantic_models_dir), _parse_yaml_bytes)
+    documents = normalize_legacy_spellings(
+        load_documents(discover_yaml(project_dir, semantic_models_dir), _parse_yaml_bytes)
+    )
     target = resolve_target(project_dir, target_name)
     models = load_models(
         project_dir,
@@ -2241,7 +2268,7 @@ def load_semantic_views_result(
         raise ProjectError(f"no semantic_views/ directory under {project_dir / semantic_models_dir}")
 
     out: list[SemanticView] = []
-    diagnostics: list[Diagnostic] = list(documents.diagnostics)
+    diagnostics: list[Diagnostic] = list(parsed.diagnostics)
     view_counts: dict[str, int] = {}
     for parsed_view in parsed.views:
         name = parsed_view.name.casefold()
@@ -2490,6 +2517,11 @@ def load_semantic_views_result(
         and diagnostic.severity is Severity.ERROR
     }
     poisoned_views.update(f"semantic_view:{view.name}".casefold() for view in parsed.views if view.poisoned)
+    # A view authored with the legacy globals is rejected by SST-REF034; building
+    # it would only report the same call again as an internal error.
+    poisoned_views.update(
+        f"semantic_view:{view.name}".casefold() for view in parsed.views if view.origin.file in legacy_files
+    )
     metric_dependencies = {
         member.key: tuple(f"metric:{name}" for name in member.source.referenced_metrics)
         for member in attachment_members
@@ -2508,6 +2540,8 @@ def load_semantic_views_result(
             if not isinstance(node, dict) or not node.get("name"):
                 continue
             if node.get("enabled") is False:
+                continue
+            if node.get("enabled") is None and _semantic_view_defaults(config, path, views_dir).get("enabled") is False:
                 continue
             if str(node["name"]).casefold() in duplicate_views:
                 continue
@@ -2534,7 +2568,7 @@ def load_semantic_views_result(
                     diagnostics.append(
                         D(
                             "SST-INT902",
-                            origin=Origin(path.relative_to(project_dir).as_posix()),
+                            origin=Origin(path.resolve().relative_to(project_dir.resolve()).as_posix()),
                             subject=f"semantic_view:{node['name']}",
                             detail=str(exc),
                         )
@@ -2636,11 +2670,13 @@ def _build_view(
             try:
                 kind = ColumnKind(col.column_type)
             except ValueError as exc:
-                known = ", ".join(k.value for k in ColumnKind)
-                raise ProjectError(
-                    f"dbt manifest column {models[model_key].name}.{col.name} has "
-                    f"column_type: {col.column_type!r}; expected one of {known}"
-                ) from exc
+                role = D(
+                    "SST-DBT003",
+                    subject=f"dbt_model:{models[model_key].name}",
+                    model=f"{models[model_key].name}.{col.name}",
+                    found=col.column_type,
+                )
+                raise ProjectError(role.message, diagnostics=(role,)) from exc
             if kind is ColumnKind.TIME_DIMENSION:
                 kind = ColumnKind.DIMENSION
             columns.append(

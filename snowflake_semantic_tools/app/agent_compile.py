@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from hashlib import sha256
 from types import MappingProxyType
 from typing import Mapping
@@ -13,6 +13,7 @@ from ..domain.model.agent import (
     KNOWN_AGENT_TOOL_TYPES,
     RESERVED_AGENT_ALIASES,
     AgentModel,
+    AgentSkill,
     AgentTool,
     ResolvedAgent,
     ResolvedAgentTool,
@@ -44,7 +45,25 @@ class AgentCompileContext:
     analytical_search: bool | None
     alias: str | None
     allowed_models: frozenset[str]
-    skill_version_prefix: str = ""
+    skills: Mapping[str, ExtensionPin] = field(default_factory=lambda: MappingProxyType({}))
+    plugins: Mapping[str, ExtensionPin] = field(default_factory=lambda: MappingProxyType({}))
+    # Skills a plugin or profile already consumes, so K010 does not report them.
+    consumed: frozenset[str] = frozenset()
+    # Declared extensions with no version to pin -- `skill:<name>`, `plugin:<name>`,
+    # or `extension:<name>` -- mapped to the reason, so a reference to one names
+    # the cause instead of reporting the name as undeclared.
+    unpublished: Mapping[str, str] = field(default_factory=lambda: MappingProxyType({}))
+
+
+@dataclass(frozen=True, slots=True)
+class ExtensionPin:
+    """An extension this project publishes, as an agent reference resolves it."""
+
+    key: str
+    target: QualifiedName
+    alias: str
+    members: tuple[str, ...] = ()
+    has_scripts: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -148,6 +167,7 @@ class CompileAgents:
         names: dict[str, AgentModel] = {}
         display_names: dict[str, AgentModel] = {}
         compiled: list[CompiledAgent] = []
+        resolved_agents: list[ResolvedAgent] = []
         graph: dict[str, tuple[str, ...]] = {}
         for model in self._models:
             folded = model.name.casefold()
@@ -169,6 +189,7 @@ class CompileAgents:
                 display_names[model.profile.display_name.casefold()] = model
             effective = _inherit(model, self._context)
             resolved, agent_diagnostics = _resolve_agent(effective, self._context)
+            resolved_agents.append(resolved)
             diagnostics.extend(agent_diagnostics)
             graph[folded] = tuple(
                 str(tool.resources.get("identifier", "")).casefold() for tool in resolved.tools if tool.type == "agent"
@@ -187,6 +208,11 @@ class CompileAgents:
         if cycle:
             diagnostics.append(D("SST-REF022", cycle=" -> ".join(cycle)))
             compiled = []
+        if self._models:
+            referenced = {dependency for agent in resolved_agents for dependency in agent.skill_dependencies}
+            for pin in (*self._context.skills.values(), *self._context.plugins.values()):
+                if pin.key not in referenced and pin.key not in self._context.consumed:
+                    diagnostics.append(D("SST-VAL804", artifact=pin.key, value=pin.alias, subject=pin.key))
         return CompileResult(tuple(compiled), DiagnosticBag(diagnostics))
 
 
@@ -203,22 +229,6 @@ def _inherit(model: AgentModel, context: AgentCompileContext) -> AgentModel:
             model.analytical_search if model.analytical_search is not None else context.analytical_search
         ),
         alias=model.alias or context.alias,
-        skills=tuple(
-            replace(
-                skill,
-                path=(
-                    context.extensions[skill.path.casefold()].sql
-                    if skill.path.casefold() in context.extensions
-                    else skill.path
-                ),
-                version=(
-                    f"{context.skill_version_prefix}{context.variables['sha_version']}"
-                    if skill.version == "sha_version" and "sha_version" in context.variables
-                    else skill.version
-                ),
-            )
-            for skill in model.skills
-        ),
     )
 
 
@@ -248,7 +258,116 @@ def _resolve_agent(model: AgentModel, context: AgentCompileContext) -> tuple[Res
         )
     if model.analytical_search and not any(tool.type == "cortex_search" for tool in tools):
         diagnostics.append(D("SST-VAL546", artifact=model.name, subject=model.key))
-    return ResolvedAgent(model, tuple(tools), DiagnosticBag(diagnostics)), tuple(diagnostics)
+    skills, dependencies, skill_diagnostics = _resolve_skills(model, context)
+    diagnostics.extend(skill_diagnostics)
+    agent = ResolvedAgent(
+        replace(model, skills=skills),
+        tuple(tools),
+        DiagnosticBag(diagnostics),
+        skill_dependencies=dependencies,
+    )
+    return agent, tuple(diagnostics)
+
+
+def _resolve_skills(
+    model: AgentModel,
+    context: AgentCompileContext,
+) -> tuple[tuple[AgentSkill, ...], tuple[str, ...], tuple[Diagnostic, ...]]:
+    """Pin owned extensions to their published alias; check consumed ones are pinned."""
+    diagnostics: list[Diagnostic] = []
+    resolved: list[AgentSkill] = []
+    dependencies: list[str] = []
+    executes_code = any(tool.type == "code_execution" for tool in model.tools)
+    for skill in model.skills:
+        label = skill.name or skill.path
+        if skill.source_type == "STAGE":
+            diagnostics.append(D("SST-VAL539", artifact=model.name, name=label, subject=model.key))
+            resolved.append(skill)
+            continue
+        if skill.version_var == "sha_version":
+            diagnostics.append(D("SST-VAL839", artifact=model.name, name=label, subject=model.key))
+            continue
+        if skill.ref in ("skill", "plugin"):
+            pins = context.skills if skill.ref == "skill" else context.plugins
+            pin = pins.get(skill.path)
+            if pin is None:
+                reason = context.unpublished.get(f"{skill.ref}:{skill.path}")
+                if reason is not None:
+                    diagnostics.append(
+                        D(
+                            "SST-VAL856",
+                            artifact=model.name,
+                            kind=skill.ref,
+                            name=skill.path,
+                            reason=reason,
+                            subject=model.key,
+                            origin=model.origin,
+                        )
+                    )
+                else:
+                    code = "SST-REF032" if skill.ref == "skill" else "SST-REF036"
+                    diagnostics.append(D(code, name=skill.path, subject=model.key, origin=model.origin))
+                continue
+            if skill.version or skill.version_var:
+                diagnostics.append(
+                    D("SST-VAL838", artifact=model.name, name=label, kind=skill.ref, path=skill.path, subject=model.key)
+                )
+                continue
+            if skill.ref == "skill" and not skill.name:
+                diagnostics.append(D("SST-VAL540", artifact=model.name, path=skill.path, subject=model.key))
+                continue
+            if skill.name and skill.name not in pin.members:
+                expected = (
+                    f"'{skill.path}'"
+                    if skill.ref == "skill"
+                    else "one of the plugin's members: " + ", ".join(pin.members)
+                )
+                diagnostics.append(
+                    D("SST-VAL840", artifact=model.name, name=skill.name, expected=expected, subject=model.key)
+                )
+                continue
+            if pin.has_scripts and not executes_code:
+                diagnostics.append(
+                    D("SST-VAL814", artifact=model.name, name=f"{skill.ref}('{skill.path}')", subject=model.key)
+                )
+            resolved.append(replace(skill, path=pin.target.sql, version=pin.alias))
+            dependencies.append(pin.key)
+            continue
+        owned = next(
+            (
+                kind
+                for kind, pins in (("skill", context.skills), ("plugin", context.plugins))
+                if skill.path in pins or f"{kind}:{skill.path}" in context.unpublished
+            ),
+            None,
+        )
+        if owned is not None:
+            diagnostics.append(D("SST-REF037", artifact=model.name, name=skill.path, kind=owned, subject=model.key))
+            continue
+        target = context.extensions.get(skill.path.casefold())
+        if target is None:
+            reason = context.unpublished.get(f"extension:{skill.path.casefold()}")
+            if reason is not None:
+                diagnostics.append(
+                    D(
+                        "SST-VAL856",
+                        artifact=model.name,
+                        kind="extension",
+                        name=skill.path,
+                        reason=reason,
+                        subject=model.key,
+                        origin=model.origin,
+                    )
+                )
+            else:
+                diagnostics.append(D("SST-REF013", name=skill.path or label, subject=model.key))
+            continue
+        version = context.variables.get(skill.version_var, "") if skill.version_var else skill.version
+        if not version or version.upper() == "LIVE":
+            diagnostics.append(D("SST-VAL538", artifact=model.name, name=label, subject=model.key))
+            continue
+        resolved.append(replace(skill, path=target.sql, version=version))
+    return tuple(resolved), tuple(dict.fromkeys(dependencies)), tuple(diagnostics)
 
 
 def _resolve_tool(
@@ -492,17 +611,6 @@ def _validate_rendered(resolved: ResolvedAgent, payload: str, context: AgentComp
         diagnostics.append(D("SST-VAL511", artifact=resolved.model.name, size=size, subject=resolved.model.key))
     elif size >= 80_000:
         diagnostics.append(D("SST-VAL512", artifact=resolved.model.name, size=size, subject=resolved.model.key))
-    for skill in resolved.model.skills:
-        if skill.source_type == "STAGE":
-            diagnostics.append(
-                D("SST-VAL539", artifact=resolved.model.name, name=skill.name, subject=resolved.model.key)
-            )
-        if not skill.version or skill.version.upper() == "LIVE":
-            diagnostics.append(
-                D("SST-VAL538", artifact=resolved.model.name, name=skill.name, subject=resolved.model.key)
-            )
-        if skill.source_type == "CORTEX_EXTENSION" and not skill.path:
-            diagnostics.append(D("SST-REF013", name=skill.name, subject=resolved.model.key))
     return tuple(diagnostics)
 
 

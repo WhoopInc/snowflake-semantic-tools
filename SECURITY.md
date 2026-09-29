@@ -44,7 +44,7 @@ When using Snowflake Semantic Tools:
 
 - Keep your dependencies up to date
 - Never commit credentials or sensitive data to your repository
-- Use environment variables for authentication (see [Authentication Guide](docs/authentication.md))
+- Use environment variables for authentication (see [Authentication](docs/guides/configuration.md#authentication))
 - Review the `.env.example` template for proper credential management
 - Enable branch protection and require code reviews for production deployments
 

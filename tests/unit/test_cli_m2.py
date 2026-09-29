@@ -12,7 +12,7 @@ import pytest
 from click.testing import CliRunner
 
 from snowflake_semantic_tools.adapters.snowflake.eval_state import InMemoryEvalStateStore
-from snowflake_semantic_tools.adapters.snowflake.memory import RecordedSnowflake
+from snowflake_semantic_tools.adapters.snowflake.memory import PROFILE_REGISTRY_SHAPE, RecordedSnowflake
 from snowflake_semantic_tools.app.eval_compile import CompiledEval
 from snowflake_semantic_tools.app.eval_lifecycle import EVAL_STAGE_FILE_FORMAT
 from snowflake_semantic_tools.app.eval_run import EvalRunResult, EvalSuiteResult
@@ -119,6 +119,59 @@ def configure_eval_as_applied(
     port.query = query  # type: ignore[method-assign]
 
 
+def configure_skills_as_published(port: RecordedSnowflake, changes: list[dict[str, object]], project: Path) -> None:
+    """Seed the recorded port with the extension versions a previous apply published."""
+    for item in changes:
+        artifact_type = str(item["artifact_type"])
+        if artifact_type not in ("skill", "plugin"):
+            continue
+        name = str(item["artifact_key"]).split(":", 1)[1]
+        bundle = json.loads((project / "target" / "sst" / "sql" / f"{artifact_type}__{name}.json").read_text())
+        resources = item["physical_resources"]
+        assert isinstance(resources, list)
+        stage = next(str(resource["qualified_name"]) for resource in resources if resource["object_type"] == "STAGE")
+        target = str(item["target"])
+        paths = [str(entry["path"]) for entry in bundle["files"]]
+        port.stage_types[stage] = "INTERNAL NO CSE"
+        port.stage_files.update(f"@{stage}/{name}/{bundle['alias']}/{path}" for path in paths)
+        port.extensions[target] = {
+            "type": bundle["type"],
+            "comment": bundle["comment"],
+            "versions": [
+                {
+                    "name": "VERSION$2",
+                    "alias": bundle["alias"],
+                    "location": f"snow://cortex_extension/{target}/versions/version$2/",
+                    "files": paths,
+                    "is_default": True,
+                    "certification": None,
+                }
+            ],
+            "live": None,
+        }
+
+
+def configure_profiles_as_published(port: RecordedSnowflake, changes: list[dict[str, object]], project: Path) -> None:
+    """Seed the recorded port with the registry rows and stage trees a previous apply published."""
+    for item in changes:
+        if item["artifact_type"] != "profile":
+            continue
+        name = str(item["artifact_key"]).split(":", 1)[1]
+        document = json.loads((project / "target" / "sst" / "sql" / f"profile__{name}.json").read_text())
+        resources = item["physical_resources"]
+        assert isinstance(resources, list)
+        stage, registry = (
+            next(str(resource["qualified_name"]) for resource in resources if resource["object_type"] == kind)
+            for kind in ("STAGE", "TABLE")
+        )
+        port.stage_types[stage] = "INTERNAL NO CSE"
+        port.stage_files.update(
+            f"@{stage}/{tree['prefix']}{entry['path']}" for tree in document["trees"] for entry in tree["files"]
+        )
+        port.tables[registry] = PROFILE_REGISTRY_SHAPE
+        port.profile_rows.setdefault(registry, {})[name] = {**document["row"], "ACTIVE": True}
+
+
 def configure_eval_apply(port: RecordedSnowflake, changes: list[dict[str, object]]) -> None:
     eval_change = next(item for item in changes if item["artifact_type"] == "eval")
     resources = eval_change["physical_resources"]
@@ -152,7 +205,7 @@ def configure_eval_apply(port: RecordedSnowflake, changes: list[dict[str, object
                 existing_eval_resources.add(source_table)
             elif "SYSTEM$CREATE_EVALUATION_DATASET" in normalized:
                 existing_eval_resources.add(dataset)
-            elif normalized.startswith("CREATE STAGE IF NOT EXISTS "):
+            elif normalized.startswith("CREATE STAGE IF NOT EXISTS SST_REF_DEV.JAFFLE.EVAL_CONFIGS "):
                 existing_eval_resources.add("SST_REF_DEV.JAFFLE.EVAL_CONFIGS")
         return result
 
@@ -213,7 +266,7 @@ def test_init_debug_clean_and_list_json(tmp_path: Path) -> None:
     assert compiled.exit_code == 0
     listed = CliRunner().invoke(cli, ["list", "--project-dir", str(project), "--output", "json"])
     assert listed.exit_code == 0
-    assert len(json.loads(listed.output)["data"]) == 8
+    assert len(json.loads(listed.output)["data"]) == 13
     cleaned = CliRunner().invoke(cli, ["clean", "--project-dir", str(project), "--output", "json"])
     assert cleaned.exit_code == 0
     assert not (project / "target" / "sst").exists()
@@ -232,7 +285,7 @@ def test_plan_live_observation_saved_plan_and_detailed_exitcode(
     assert result.exit_code == 2, result.output
     payload = json.loads(result.output)
     assert payload["status"] == "changes"
-    assert [item["action"] for item in payload["data"]["changes"]] == ["create"] * 8
+    assert [item["action"] for item in payload["data"]["changes"]] == ["create"] * 13
     assert Path(payload["data"]["plan_path"]).is_file()
     assert Path(payload["data"]["sql_path"]).is_dir()
 
@@ -292,7 +345,7 @@ def test_plan_noop_uses_remote_state_not_a_prior_manifest(tmp_path: Path, monkey
     }
     objects = {}
     for item in payload["data"]["changes"]:
-        if item["artifact_type"] == "eval":
+        if item["artifact_type"] in ("eval", "skill", "plugin", "profile"):
             continue
         object_type = {
             "semantic_view": "SEMANTIC VIEW",
@@ -319,6 +372,8 @@ def test_plan_noop_uses_remote_state_not_a_prior_manifest(tmp_path: Path, monkey
         payload["data"]["changes"],
         config_content=eval_config.read_text(encoding="utf-8"),
     )
+    configure_skills_as_published(port, payload["data"]["changes"], project)
+    configure_profiles_as_published(port, payload["data"]["changes"], project)
     planned = invoke_with_port(
         monkeypatch,
         port,
@@ -400,9 +455,57 @@ def test_type_exclusion_removes_semantic_views_from_plan_and_prune_scope(
     assert result.exit_code == 2, result.output
     assert {item["artifact_type"] for item in json.loads(result.output)["data"]["changes"]} == {
         "tool",
+        "skill",
+        "plugin",
+        "profile",
         "agent",
         "eval",
     }
+
+
+def test_an_agent_is_never_planned_without_the_skill_version_it_pins(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    project = project_copy(tmp_path)
+    excluded = invoke_with_port(
+        monkeypatch,
+        RecordedSnowflake(state={}),
+        ["plan", *common(project), "--target", "dev", "--exclude", "type:skill", "--no-plan-out", "--output", "json"],
+    )
+    assert excluded.exit_code == 1, excluded.output
+    payload = json.loads(excluded.output)
+    actions = {item["artifact_key"]: (item["action"], item["reason"]) for item in payload["data"]["changes"]}
+    assert actions["agent:jaffle_analytics_agent"] == ("blocked", "dependency_blocked")
+    assert actions["eval:jaffle_analytics_agent"] == ("blocked", "dependency_blocked")
+    assert actions["agent:jaffle_minimal_agent"] == ("create", "not_present")
+    assert [item["message"] for item in payload["diagnostics"] if item["code"] == "SST-PLN030"] == [
+        "agent:jaffle_analytics_agent: pins the published version of skill:jaffle-semantics; "
+        "select skill:jaffle-semantics as well"
+    ]
+
+    together = invoke_with_port(
+        monkeypatch,
+        RecordedSnowflake(state={}),
+        [
+            "plan",
+            *common(project),
+            "--target",
+            "dev",
+            "--select",
+            "agent:jaffle_analytics_agent",
+            "--select",
+            "skill:jaffle-semantics",
+            "--no-plan-out",
+            "--output",
+            "json",
+        ],
+    )
+    assert together.exit_code == 2, together.output
+    assert [(item["artifact_key"], item["action"]) for item in json.loads(together.output)["data"]["changes"]] == [
+        ("skill:jaffle-semantics", "create"),
+        ("agent:jaffle_analytics_agent", "create"),
+    ]
 
 
 def test_apply_requires_confirmation_and_accepts_current_saved_plan(
@@ -418,10 +521,13 @@ def test_apply_requires_confirmation_and_accepts_current_saved_plan(
     planned_payload = json.loads(planned.output)
     plan_path = planned_payload["data"]["plan_path"]
     saved_plan = json.loads(Path(plan_path).read_text(encoding="utf-8"))
-    assert len(saved_plan["changes"]) == 8
+    assert len(saved_plan["changes"]) == 13
     assert {item["artifact_type"] for item in saved_plan["changes"]} == {
         "semantic_view",
         "tool",
+        "skill",
+        "plugin",
+        "profile",
         "agent",
         "eval",
     }
@@ -460,7 +566,12 @@ def test_apply_requires_confirmation_and_accepts_current_saved_plan(
     assert applied.exit_code == 0, applied.output
     payload = json.loads(applied.output)
     assert payload["data"]["state_written"] is True
-    assert len(apply_port.scripts) == 11
+    # Ten more than M4: the bundle stage, CREATE and ADD VERSION for each of three
+    # skills and the plugin, and the profile stage.
+    assert len(apply_port.scripts) == 21
+    first_lines = [statements[0].split("\n", 1)[0] for statements in apply_port.scripts]
+    assert sum("JAFFLE_TOOLKIT" in line for line in first_lines) == 2
+    assert sum("SKILL_BUNDLES " in line and line.startswith("CREATE STAGE") for line in first_lines) == 1
     assert sum("[sst:" in statement for statements in apply_port.scripts for statement in statements) == 7
 
 
@@ -1028,7 +1139,7 @@ def test_golden_json_failure_missing_file_and_smoke_failure(tmp_path: Path, monk
         ["test", *common(project), "--suite", "golden", "--golden-dir", str(empty_golden), "--output", "json"],
     )
     assert missing.exit_code == 1
-    assert len(json.loads(missing.output)["data"]["failures"]) == 9
+    assert len(json.loads(missing.output)["data"]["failures"]) == 14
 
     from snowflake_semantic_tools.domain.model.lifecycle import OwnershipMarker
     from snowflake_semantic_tools.domain.ports.snowflake import SnowflakePortError

@@ -360,6 +360,10 @@ def _validate_eval(
         )
 
     exact_tool_names = agent_tool_names.get(agent_name.casefold(), frozenset())
+    # An agent that did not compile has no projection. Its own diagnostics say
+    # why; checking the dataset against an empty tool set would only repeat that
+    # failure as one "absent tool" per expected invocation.
+    has_tool_projection = has_tool_projection and agent_name.casefold() in agent_tool_names
     sample_questions = frozenset(resolved.agent.sample_questions)
     exercised: set[str] = set()
     for index, row in enumerate(dataset.questions):

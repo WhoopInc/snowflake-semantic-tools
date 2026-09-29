@@ -252,3 +252,13 @@ def test_retry_policy_apply_results_and_transport_values() -> None:
     assert ExecResult(True, rows_affected=0).rows_affected == 0
     transport_error = ExecutionError("failed", "42000", 1)
     assert ExecResult(False, error=transport_error).error == transport_error
+
+
+def test_a_shown_name_that_cannot_be_unquoted_is_the_exact_quoted_name() -> None:
+    assert ShowRow("v", "db", "sch", "owner", "now").qualified_name.sql == "DB.SCH.V"
+    operator = ShowRow("!=", "DB", "SCH", "", "now").qualified_name
+    assert (operator.name.value, operator.name.quoted, operator.sql) == ("!=", True, 'DB.SCH."!="')
+    assert ShowRow("my view", "Mixed Db", "SCH", "", "now").qualified_name.sql == '"Mixed Db".SCH."my view"'
+    assert Identifier.shown("Sales") == Identifier("SALES")
+    with pytest.raises(ValueError, match="empty identifier"):
+        Identifier.shown("")

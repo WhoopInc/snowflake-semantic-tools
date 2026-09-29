@@ -1,538 +1,177 @@
-# Getting Started with Snowflake Semantic Tools
+# Getting started
 
-This guide walks you through **setting up SST in an existing dbt project** to build and deploy Snowflake Semantic Views.
+This guide takes a dbt project to a published Snowflake semantic view. The
+commands it uses -- `validate`, `plan`, `apply` -- are the same ones every later
+change goes through.
 
-**Already have a project using SST?** Just install SST and you're ready to go:
+## Requirements
 
-```bash
-pip install snowflake-semantic-tools
-sst debug --test-connection  # Verify your setup
-```
+- Python 3.11, 3.12, or 3.13.
+- A dbt project on the Snowflake adapter whose `dbt parse` writes manifest
+  schema v12. SST is tested with dbt 1.11 and 1.12 and reports `SST-PRT007` for
+  any other manifest schema.
+- A Snowflake role that can create semantic views in the schema you publish to,
+  and create a table for SST's state.
 
----
-
-## Prerequisites
-
-Before installing SST, ensure you have:
-
-- **Python 3.10 or 3.11** (required)
-- **Access to a Snowflake account** with appropriate permissions
-- **A dbt project** with models defined
-- **dbt installed** (dbt Core or dbt Cloud CLI)
-
----
-
-## Installation
+## 1. Install
 
 ```bash
-pip install snowflake-semantic-tools
-```
-
-**Verify installation:**
-
-```bash
+python -m pip install snowflake-semantic-tools
 sst --version
 ```
 
----
+Install `snowflake-semantic-tools[dbt]` instead if the environment does not
+already have `dbt-snowflake`.
 
-## Quick Start with `sst init`
+## 2. Put `profiles.yml` in the project
 
-The easiest way to set up SST in your dbt project:
-
-```bash
-cd your-dbt-project
-sst init
-```
-
-The wizard will:
-1. Detect your dbt project and profile configuration
-2. Help you set up Snowflake credentials (if not already configured)
-3. Create `sst_config.yml` with sensible defaults
-4. Create the semantic models directory structure
-5. Generate example files to get you started
-
-**Example output:**
-```
-╭─────────────────────────────────────────╮
-│ Welcome to Snowflake Semantic Tools!    │
-╰─────────────────────────────────────────╯
-
-✓ Detected dbt project: jaffle_shop
-✓ Found profile: jaffle_shop (targets: dev, prod)
-
-? Where should SST store semantic models?
-  > snowflake_semantic_models (recommended)
-
-✓ Created sst_config.yml
-✓ Created snowflake_semantic_models/
-✓ Created example files
-
-Setup Complete!
-```
-
-**Options:**
-- `sst init --skip-prompts` - Use defaults without prompting
-- `sst init --check-only` - Check current setup status
-
-If you prefer manual setup, continue with the steps below.
-
----
-
-## Manual Configuration
-
-### Step 2: Create Required Directories
-
-Create the semantic models directory in your dbt project:
-
-```bash
-cd your-dbt-project
-
-# Create semantic models directory
-mkdir -p snowflake_semantic_models/metrics
-mkdir -p snowflake_semantic_models/relationships
-mkdir -p snowflake_semantic_models/filters
-mkdir -p snowflake_semantic_models/custom_instructions
-mkdir -p snowflake_semantic_models/verified_queries
-
-# Create initial files (optional but helpful)
-touch snowflake_semantic_models/semantic_views.yml
-```
-
-**Directory structure you just created:**
-```
-your-dbt-project/
-├── snowflake_semantic_models/     # This directory holds semantic layer definitions
-│   ├── metrics/                   # Business metrics (KPIs, calculations)
-│   ├── relationships/             # How tables join together
-│   ├── filters/                   # Reusable WHERE clauses
-│   ├── custom_instructions/       # AI behavior customization
-│   ├── verified_queries/          # Example queries for AI
-│   └── semantic_views.yml         # View definitions
-└── models/                        # Your existing dbt models (already exists)
-```
-
-**Note:** The directory name `snowflake_semantic_models` is a convention. You can use a different name, but it must match what you specify in `sst_config.yml` in the next step.
-
-### Step 3: Create sst_config.yml
-
-Create this file in your dbt project root (same directory as `dbt_project.yml`):
+SST reads connection targets from `profiles.yml` **in the project root**, the
+directory that holds `dbt_project.yml`, and passes that directory to `dbt parse`
+as `--profiles-dir`. Keep secrets out of the file with `env_var()`:
 
 ```yaml
-# sst_config.yml
-project:
-  # Directory you created in Step 2
-  semantic_models_dir: "snowflake_semantic_models"  # Required - must match directory name
-
-validation:
-  exclude_dirs: []             # Paths to skip during validation
-  strict: false                # Warnings don't block deployment
-  snowflake_syntax_check: true # Validate SQL against Snowflake
-
-enrichment:
-  distinct_limit: 25                    # Distinct values to fetch
-  sample_values_display_limit: 10       # Sample values to show
-  synonym_model: 'mistral-large2'       # LLM for synonyms (universally available)
-  synonym_max_count: 4                  # Max synonyms per field
-```
-
-**Required fields:**
-- `project.semantic_models_dir` - Directory you created in Step 2 (e.g., "snowflake_semantic_models")
-
-**Note:** The dbt models directory is **auto-detected** from your `dbt_project.yml` file.
-
-**Important:** Paths are relative to your project root (where `dbt_project.yml` and `sst_config.yml` live).
-
-### Step 4: Set Up Snowflake Authentication
-
-SST uses dbt's `~/.dbt/profiles.yml` for Snowflake authentication. If you already have this configured for dbt, you're all set!
-
-If not, create `~/.dbt/profiles.yml`:
-
-```bash
-mkdir -p ~/.dbt
-```
-
-Add your Snowflake connection (the profile name must match `profile:` in your `dbt_project.yml`):
-
-```yaml
-# ~/.dbt/profiles.yml
-your_project:  # Must match 'profile:' in dbt_project.yml
+jaffle_shop:
   target: dev
   outputs:
     dev:
       type: snowflake
-      account: your_account.us-east-1  # Your Snowflake account
-      user: your.email@company.com
-      authenticator: externalbrowser   # Opens browser for SSO
-      role: YOUR_ROLE
-      warehouse: YOUR_WAREHOUSE
-      database: ANALYTICS
-      schema: DEV
+      account: "{{ env_var('SNOWFLAKE_ACCOUNT') }}"
+      user: "{{ env_var('SNOWFLAKE_USER') }}"
+      authenticator: externalbrowser
+      role: ANALYTICS_DEV
+      warehouse: ANALYTICS_WH
+      database: ANALYTICS_DEV
+      schema: SEMANTIC
 ```
 
-**Authentication methods:**
-- **SSO/Browser** (recommended): Use `authenticator: externalbrowser`
-- **Password**: Add `password: your_password` or use `{{ env_var('SNOWFLAKE_PASSWORD') }}`
-- **RSA Key Pair** (production): Add `private_key_path: ~/.ssh/snowflake_key.p8`
+The profile name must match `profile:` in `dbt_project.yml`. The target's
+`database` and `schema` are where SST publishes by default and where it keeps
+its state table. See [Configuration](guides/configuration.md#authentication) for
+the other authentication methods.
 
-**See:** [Authentication Guide](guides/authentication.md) for detailed setup of each auth method.
-
-### Step 5: Generate manifest.json
-
-SST uses dbt's manifest to auto-detect database and schema locations:
+## 3. Scaffold
 
 ```bash
-cd your-dbt-project
-dbt compile --target prod
-# Creates target/manifest.json
-```
-
-**Why this matters:**
-- SST auto-detects database/schema from manifest
-- No need to specify `--database` and `--schema` for every command
-- Works correctly across all environments (dev/qa/prod)
-
----
-
-## Verify Setup
-
-Test that everything is configured correctly:
-
-```bash
-# Test 1: Show configuration (verifies profiles.yml is read correctly)
+sst init
 sst debug
-
-# Test 2: Test Snowflake connection
-sst debug --test-connection
-
-# Test 3: Validate semantic models
-sst validate
-
-# Test 4: Check version
-sst --version
 ```
 
-**Example `sst debug` output:**
-```
-SST Debug
+`sst init` writes a minimal `sst_config.yml` and a `semantic_models/semantic_views/`
+directory, and never overwrites a file that exists. `sst debug` prints the
+profile, target, database, schema, and state table SST resolved. Add
+`--test-connection` to also open a Snowflake session and report its role.
 
-  ──────────────────────────────────────────────────
-  Profile Configuration
-  ──────────────────────────────────────────────────
-  Profile:        your_project
-  Target:         dev
-  ──────────────────────────────────────────────────
-  Account:        your_account.us-east-1
-  User:           your.email@company.com
-  Role:           YOUR_ROLE
-  Warehouse:      YOUR_WAREHOUSE
-  Database:       ANALYTICS
-  Schema:         DEV
-  Auth Method:    sso_browser
-  ──────────────────────────────────────────────────
+## 4. Describe columns in dbt
 
-  ✓ Configuration valid
-```
+Semantic views are built from dbt models, and the column metadata lives in the
+model YAML under `config.meta.sst`:
 
-If `sst debug` shows your configuration and `sst validate` passes, you're ready to go!
-
----
-
-## Quick Start Workflow
-
-### 1. Enrich dbt Models with Metadata
-
-Add semantic metadata to your existing dbt models:
-
-```bash
-# Compile dbt to generate manifest (required for --models)
-dbt compile --target prod
-
-# Enrich specific models by name
-sst enrich --models customers,orders
-
-# Or enrich an entire directory
-sst enrich models/analytics/
-```
-
-**What this does:**
-- Queries Snowflake schema
-- Populates `config.meta.sst` blocks (dbt Fusion compatible)
-- Adds column types (dimension/fact/time_dimension)
-- Adds sample values
-- Detects enums
-
-> **Note:** SST writes metadata in the new `config.meta.sst` format required by dbt Fusion. If you have existing `meta.sst` blocks, run `sst migrate-meta` to migrate them. See [dbt Fusion Migration Guide](guides/dbt-fusion-migration.md).
-
-**Output:**
-```
-09:15:00  Running with sst=0.3.0
-09:15:00  Resolving 2 model name(s)...
-09:15:00  Resolved 2 model(s) [OK]
-09:15:00  Connecting to Snowflake...
-09:15:02  Connected to Snowflake [OK in 2.1s]
-
-09:15:02  Enriching 2 model(s)...
-09:15:03   1 of  2  customers .......... [OK in 2.3s]
-09:15:05   2 of  2  orders ............. [OK in 1.8s]
-```
-
-### 2. Create Semantic Models
-
-Create semantic layer definitions in `snowflake_semantic_models/`:
-
-**Metrics** (`metrics/sales.yml`):
 ```yaml
-snowflake_metrics:
-  - name: total_revenue
-    description: Total revenue from all orders
-    tables:
-      - {{ table('orders') }}
-    expr: SUM({{ column('orders', 'amount') }})
+models:
+  - name: orders
+    description: One row per order.
+    config:
+      meta:
+        sst:
+          primary_key: [order_id]
+    columns:
+      - name: order_id
+        description: Surrogate key for the order.
+        config:
+          meta:
+            sst:
+              column_type: dimension
+              synonyms: [order number]
+      - name: order_total
+        description: Order value in cents, including tax.
+        config:
+          meta:
+            sst:
+              column_type: fact
+      - name: ordered_at
+        description: When the order was placed.
+        config:
+          meta:
+            sst:
+              column_type: time_dimension
 ```
 
-**Relationships** (`relationships/core.yml`):
-```yaml
-snowflake_relationships:
-  - name: orders_to_customers
-    left_table: {{ table('orders') }}
-    right_table: {{ table('customers') }}
-    relationship_conditions:
-      - "{{ column('orders', 'customer_id') }} = {{ column('customers', 'customer_id') }}"
-```
+`column_type` is `dimension`, `fact`, or `time_dimension`. Give every column a
+view exposes a description: it is what Cortex Analyst reads to choose a column.
 
-**Semantic Views** (`semantic_views.yml`):
+## 5. Write a semantic view and a metric
+
 ```yaml
+# semantic_models/semantic_views/sales.yml
 semantic_views:
-  - name: sales_analytics
-    description: Sales data with customer context
+  - name: sales
+    description: Orders and their value. Use for order counts and revenue.
     tables:
-      - {{ table('orders') }}
-      - {{ table('customers') }}
+      - "{{ ref('orders') }}"
 ```
 
-### 3. Validate Everything
-
-Check for errors before deployment:
-
-```bash
-sst validate --verbose
-
-# Output shows:
-# - 0 errors
-# - Warnings by category (missing primary_key, no synonyms, etc.)
-# - Grouped summary
+```yaml
+# semantic_models/metrics/orders.yml
+snowflake_metrics:
+  - name: order_count
+    description: Number of distinct orders placed.
+    tables:
+      - orders
+    expr: "COUNT(DISTINCT {{ ref('orders', 'order_id') }})"
 ```
 
-### 4. Deploy to Snowflake
+A metric joins every view whose tables include all of the metric's `tables:`,
+so `order_count` lands in `sales` without the view naming it. [Concepts](concepts.md)
+explains this association rule.
 
-Deploy metadata and generate semantic views:
+## 6. Validate
 
 ```bash
-# Option A: One-step deployment (recommended)
-sst deploy --target prod
-
-# Option B: Step-by-step (for debugging)
 sst validate
-sst extract --target prod
-sst generate --target prod --all
 ```
 
-**What deployment does:**
-1. Validates semantic models (0 errors required)
-2. Extracts metadata to Snowflake tables (SM_*)
-3. Generates semantic views for BI tools
+`validate` runs `dbt parse`, loads every artifact, and checks references, types,
+and the rules each artifact type carries. With a connection it also compiles
+each expression against Snowflake; pass `--no-snowflake-syntax-check` to stay
+offline. Each diagnostic prints its code and a `docs:` link into the
+[error code reference](reference/error-codes.md).
 
----
-
-## Common Tasks
-
-### Format YAML Files
-
-Keep your YAML files consistently formatted:
+## 7. Plan
 
 ```bash
-# Format all models
-sst format models/
-
-# Sanitize problematic characters (apostrophes in synonyms)
-sst format models/ --sanitize
-
-# Preview changes before applying
-sst format models/ --dry-run
+sst plan
 ```
 
-### Update Metadata
+`plan` renders every artifact, reads what is live in Snowflake, and saves the
+difference to `target/sst/plan.json`. It never writes to Snowflake. It exits
+`2` when there are changes and `0` when there are none, so CI can tell the two
+apart.
 
-Re-enrich when your Snowflake schema changes:
+## 8. Apply
 
 ```bash
-# Refresh sample values for specific models
-sst enrich --models customers,orders --sample-values
-
-# Re-generate synonyms
-sst enrich --models customers --synonyms --force-synonyms
+sst apply --plan target/sst/plan.json --yes
 ```
 
----
+`apply` executes exactly the saved plan, and refuses one that no longer matches
+the project. It records what it published in the state table, so the next
+`plan` compares against what SST actually wrote.
 
-## Directory Structure
+## 9. Check it
 
-After setup, your dbt project should look like:
-
-```
-your-dbt-project/
-├── dbt_project.yml
-├── sst_config.yml              # SST configuration
-├── models/                      # dbt models
-│   └── analytics/
-│       ├── customers/
-│       │   ├── customers.sql
-│       │   └── customers.yml    # Contains config.meta.sst blocks
-│       └── orders/
-│           ├── orders.sql
-│           └── orders.yml
-├── snowflake_semantic_models/   # Semantic layer definitions
-│   ├── metrics/
-│   │   └── sales.yml
-│   ├── relationships/
-│   │   └── core.yml
-│   └── semantic_views.yml
-└── target/
-    └── manifest.json            # Generated by dbt compile
-
-# Plus your dbt authentication (in home directory):
-~/.dbt/
-└── profiles.yml                 # Snowflake credentials (don't commit!)
-```
-
----
-
-## Troubleshooting
-
-### "Config error: Missing required field"
-
-**Problem:** `sst_config.yml` missing or incorrectly configured
-
-**Solution:**
 ```bash
-# Ensure file exists in dbt project root
-ls sst_config.yml
-
-# Check required field is present:
-# - project.semantic_models_dir
+sst plan          # exits 0: nothing left to change
+sst test --suite smoke
 ```
 
-### "manifest.json not found"
+The smoke suite queries each published view, its metrics, and its verified
+queries, and reports any that fail.
 
-**Problem:** SST can't find dbt's compiled manifest
+## Next
 
-**Solution:**
-```bash
-# Compile your dbt project
-dbt compile --target prod
-
-# Or use auto-compile flag
-sst validate --dbt-compile
-```
-
-### "Failed to connect to Snowflake"
-
-**Problem:** Authentication or credentials issue
-
-**Solution:**
-1. Run `sst debug` to verify your profile configuration
-2. Run `sst debug --test-connection` to test the Snowflake connection
-3. Check `~/.dbt/profiles.yml` exists and is correctly configured
-4. Verify profile name in `dbt_project.yml` matches profiles.yml
-5. Verify Snowflake account URL is correct
-6. See [Authentication Guide](guides/authentication.md)
-
-### "No models found"
-
-**Problem:** SST can't find your models
-
-**Solution:**
-```bash
-# Check sst_config.yml paths are correct
-# Paths should be relative to project root
-
-# Verify models exist
-ls models/
-ls snowflake_semantic_models/
-```
-
-### "Model unavailable" during synonym generation
-
-**Problem:** Cortex model not available error when running `sst enrich --synonyms`:
-```
-Model "openai-gpt-4.1" is unavailable
-```
-
-**Cause:** OpenAI models (gpt-4.1, gpt-5, etc.) are only available on Snowflake accounts hosted on Azure, or require cross-region inference to be enabled.
-
-**Solution:** Use a universally available model in `sst_config.yml`:
-```yaml
-enrichment:
-  synonym_model: 'mistral-large2'  # Works on AWS, Azure, GCP
-```
-
-Other universally available models:
-- `llama3.1-70b`, `llama3.1-8b` (Meta open models)
-- `mixtral-8x7b`, `mistral-7b` (fast, lower cost)
-
-**See:** [Snowflake Cortex Model Availability](https://docs.snowflake.com/en/user-guide/snowflake-cortex/llm-functions#availability) for models available in your region.
-
-### YAML Parsing Errors
-
-**Problem:** Metrics or other semantic models are silently skipped or fail with YAML errors:
-```
-YAML error in metrics.yml at line 6: Invalid mapping values
-```
-
-**Cause:** YAML has strict syntax rules. Common issues include:
-- Unquoted colons (`:`) in descriptions
-- Template syntax (`{{ }}`) on the same line as other content
-
-**Solution:** Use proper YAML syntax for strings with special characters:
-
-```yaml
-# ❌ WRONG - colon breaks YAML parsing
-description: Use this metric like this: SUM(amount)
-
-# ✅ CORRECT - use multiline syntax
-description: |-
-  Use this metric like this: SUM(amount)
-
-# ✅ CORRECT - or quote the string
-description: "Use this metric like this: SUM(amount)"
-```
-
-**For template syntax:**
-```yaml
-# ✅ CORRECT - templates on their own line
-tables:
-  - {{ table('customers') }}
-
-expr: |
-  SUM({{ column('orders', 'amount') }})
-```
-
----
-
-## Next Steps
-
-Now that SST is set up:
-
-1. **Enrich your models:** [sst enrich](cli/enrich.md)
-2. **Learn CLI commands:** [CLI Reference](cli/index.md)
-3. **Write semantic models:** [Semantic Models Guide](concepts/semantic-models.md)
-4. **Configure authentication:** [Authentication Guide](guides/authentication.md)
-5. **Understand validation:** [Validation Rules](concepts/validation-rules.md)
-
----
-
-**You're ready to use Snowflake Semantic Tools!**
-
-For questions or issues, see the [GitHub repository](https://github.com/WhoopInc/snowflake-semantic-tools).
+- [Concepts](concepts.md): artifacts, members, references, and the compile pipeline.
+- [Semantic views](guides/semantic-views.md): relationships, filters, verified queries.
+- [Agents](guides/agents.md), [evals](guides/evals.md), [skills](guides/skills.md),
+  and [plugins and profiles](guides/plugins-and-profiles.md).
+- [CI/CD](guides/ci-cd.md): the same four commands in a pipeline.
+- Coming from SST 0.3: [Migrating from 0.3](guides/migrating-from-0.3.md).

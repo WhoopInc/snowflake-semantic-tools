@@ -139,7 +139,15 @@
       "source": {
         "type": "CORTEX_EXTENSION",
         "path": "SST_REF_DEV.JAFFLE.JAFFLE_SEMANTICS",
-        "version": "GIT_0000000"
+        "version": "SST_DF5E1ED7C1EE"
+      }
+    },
+    {
+      "name": "partner-glossary",
+      "source": {
+        "type": "CORTEX_EXTENSION",
+        "path": "SST_REF_DEV.PARTNER.PARTNER_GLOSSARY",
+        "version": "VERSION$3"
       }
     }
   ]

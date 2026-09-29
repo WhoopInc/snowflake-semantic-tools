@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import dataclasses
 from pathlib import Path
 
 import pytest
@@ -14,7 +15,6 @@ from snowflake_semantic_tools.adapters.yaml.loader import (
     _dbt_model_diagnostics,
     _expression_reference_diagnostics,
     _filter_diagnostics,
-    _is_root_aggregate,
     _metric_cycles,
     _metric_diagnostics,
     _multipath_diagnostics,
@@ -22,6 +22,7 @@ from snowflake_semantic_tools.adapters.yaml.loader import (
     load_semantic_views,
 )
 from snowflake_semantic_tools.domain.model.dbt import DbtColumn, DbtModel
+from snowflake_semantic_tools.domain.model.expression import is_aggregate_expression
 from snowflake_semantic_tools.domain.model.semantic_view import Relationship, SemanticView
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -116,11 +117,11 @@ def test_metric_diagnostics_cover_unknown_columns_empty_tables_and_duplicates() 
     ]
 
 
-def test_table_scoped_metrics_require_an_aggregate_at_the_root() -> None:
-    assert _is_root_aggregate("SUM({{ ref('orders', 'amount') }})")
-    assert _is_root_aggregate("(COUNT(DISTINCT {{ ref('orders', 'id') }}))")
-    assert not _is_root_aggregate("{{ ref('orders', 'amount') }}")
-    assert not _is_root_aggregate("SUM({{ ref('orders', 'amount') }}) OVER (ORDER BY 1)")
+def test_table_scoped_metrics_require_an_aggregate_expression() -> None:
+    assert is_aggregate_expression("SUM({{ ref('orders', 'amount') }})")
+    assert is_aggregate_expression("(COUNT(DISTINCT {{ ref('orders', 'id') }}))")
+    assert not is_aggregate_expression("{{ ref('orders', 'amount') }}")
+    assert not is_aggregate_expression("SUM({{ ref('orders', 'amount') }}) OVER (ORDER BY 1)")
     metric = MetricDef(
         "raw_amount",
         "{{ ref('orders', 'amount') }}",
@@ -170,6 +171,13 @@ def test_dbt_column_and_key_validation_cover_semantic_metadata() -> None:
     assert [diagnostic.code for diagnostic in _dbt_model_diagnostics({"keyless": keyless})] == [
         "SST-VAL312",
     ]
+
+    legacy = DbtModel(
+        "model.fixture.legacy", "legacy", "DB.SCH.LEGACY", ("id",), (), (DbtColumn("id", "Key.", "VARCHAR", None),)
+    )
+    legacy = dataclasses.replace(legacy, legacy_key_fields=("primary_key", "unique_keys"))
+    assert [item.code for item in _dbt_model_diagnostics({"legacy": legacy})] == ["SST-DBT005", "SST-DBT005"]
+    assert _dbt_model_diagnostics({"legacy": legacy}, frozenset()) == ()
 
 
 def test_derived_window_and_unattached_relationship_diagnostics() -> None:
@@ -470,3 +478,17 @@ def test_critical_metric_restrictions_are_non_demotable_diagnostics() -> None:
     )
     codes = [diagnostic.code for diagnostic in _metric_diagnostics(metrics, {"orders": model})]
     assert {"SST-VAL103", "SST-VAL104", "SST-VAL105", "SST-VAL106", "SST-VAL107"} <= set(codes)
+
+
+def test_verified_query_tables_skip_ctes_and_string_literals() -> None:
+    from snowflake_semantic_tools.adapters.yaml.loader import _endpoint, _sql_tables
+
+    sql = (
+        "WITH flow AS (SELECT * FROM orders WHERE source IN ('Join Flow')),\n"
+        "     recent AS (SELECT * FROM flow)\n"
+        "SELECT * FROM recent JOIN customers ON TRUE\n"
+        "-- FROM commented_out\n"
+    )
+    assert _sql_tables(sql) == ("orders", "customers")
+    assert _endpoint("{{ ref('orders') }}") == "orders"
+    assert _endpoint(" orders ") == "orders"

@@ -296,12 +296,22 @@ def _parse_skill(
     assert isinstance(source, dict)
     name = value.get("name")
     source_type = source.get("type")
-    if not isinstance(name, str) or not isinstance(source_type, str):
+    if not isinstance(source_type, str) or (name is not None and not isinstance(name, str)):
         diagnostics.append(D("SST-PRS002", artifact=source_file, field=f"skills[{index}].name/source.type"))
         return None
-    path = _single_template_arg(source.get("path"), "extension", diagnostics, Origin(source_file))
-    version = _single_template_arg(source.get("version"), "var", diagnostics, Origin(source_file))
-    return AgentSkill(name, source_type, path or "", version or _optional_string(source.get("version")) or "")
+    ref = "extension"
+    path: str | None = None
+    for function in ("skill", "plugin"):
+        # Syntax errors are reported once, by the final extension() attempt.
+        path = _single_template_arg(source.get("path"), function, [], Origin(source_file))
+        if path is not None:
+            ref = function
+            break
+    else:
+        path = _single_template_arg(source.get("path"), "extension", diagnostics, Origin(source_file))
+    version_var = _single_template_arg(source.get("version"), "var", diagnostics, Origin(source_file))
+    literal = None if version_var is not None else _optional_string(source.get("version"))
+    return AgentSkill(name or "", source_type, path or "", literal or "", ref=ref, version_var=version_var)
 
 
 def _template_args(

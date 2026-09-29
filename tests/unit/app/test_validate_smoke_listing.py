@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from types import MappingProxyType
 
 from snowflake_semantic_tools.app.compile import CompiledView, CompileResult
@@ -144,6 +145,17 @@ def test_listing_projects_pending_and_applied_artifacts() -> None:
     )
     applied = list_artifacts(manifest, state)
     assert applied[0].status == "applied"
+
+    # A publish that failed after writing, and a tombstone SST's own prune left,
+    # are neither "applied" nor merely "pending".
+    for outcome, status in (("failed_after_write", "failed"), ("deactivated", "deactivated")):
+        recorded = replace(entry, outcome=outcome)
+        listed = list_artifacts(manifest, replace(state, applied=MappingProxyType({pending[0].key: recorded})))
+        assert listed[0].status == status
+    changed = replace(entry, fingerprint="0" * 64)
+    assert list_artifacts(manifest, replace(state, applied=MappingProxyType({pending[0].key: changed})))[0].status == (
+        "pending"
+    )
 
 
 class _NonViewArtifact:

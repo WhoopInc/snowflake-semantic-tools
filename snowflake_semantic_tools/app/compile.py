@@ -15,7 +15,7 @@ from dataclasses import dataclass, replace
 from hashlib import sha256
 from typing import Protocol
 
-from ..domain.model.diagnostic import D, DiagnosticBag
+from ..domain.model.diagnostic import D, Diagnostic, DiagnosticBag
 from ..domain.model.identifier import QualifiedName
 from ..domain.model.lifecycle import OwnershipMarker, ProbeKind, RenderedArtifact, SmokeProbe
 from ..domain.model.semantic_view import SemanticView
@@ -253,10 +253,31 @@ class CompileArtifacts:
             result = compiler.run_result()
             compiled.extend(result.compiled)
             diagnostics = DiagnosticBag((*diagnostics, *result.diagnostics))
-        return CompileResult(
-            tuple(sorted(compiled, key=lambda item: (self._positions[item.artifact_type], item.artifact_key))),
-            diagnostics,
+        ordered = tuple(sorted(compiled, key=lambda item: (self._positions[item.artifact_type], item.artifact_key)))
+        return CompileResult(ordered, DiagnosticBag((*diagnostics, *_shared_targets(ordered))))
+
+
+def _shared_targets(compiled: tuple[CompiledArtifact, ...]) -> tuple[Diagnostic, ...]:
+    """Two artifacts of different types that publish to one Snowflake name.
+
+    Whether the object types share a namespace is not documented for every pair,
+    so this warns rather than refuses; it always makes a report ambiguous.
+    """
+    by_target: dict[tuple[str, str, str], list[CompiledArtifact]] = {}
+    for item in compiled:
+        by_target.setdefault(item.rendered_artifact.target.folded, []).append(item)
+    # Profiles share the registry table by design, so only a clash across types counts.
+    return tuple(
+        D(
+            "SST-VAL843",
+            subject=items[1].artifact_key,
+            a=items[0].artifact_key,
+            b=items[1].artifact_key,
+            target=items[0].rendered_artifact.target.sql,
         )
+        for items in by_target.values()
+        if len({item.artifact_type for item in items}) > 1
+    )
 
 
 class CompileSemanticViews:

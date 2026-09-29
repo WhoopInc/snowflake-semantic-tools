@@ -54,10 +54,16 @@ class AgentTool:
 
 @dataclass(frozen=True, slots=True)
 class AgentSkill:
+    """One `skills:` entry. `ref` names the resolver its `source.path` used:
+    `skill` or `plugin` for extensions this project publishes, `extension` for a
+    consumed one. `name` is empty when omitted, which only a plugin allows."""
+
     name: str
     source_type: str
     path: str
     version: str
+    ref: str = "extension"
+    version_var: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -114,10 +120,18 @@ class ResolvedAgent:
     tools: tuple[ResolvedAgentTool, ...]
     diagnostics: DiagnosticBag = DiagnosticBag()
     external_dependencies: tuple[str, ...] = ()
+    skill_dependencies: tuple[str, ...] = ()
 
     @property
     def depends_on(self) -> tuple[str, ...]:
-        return tuple(dict.fromkeys(dependency for tool in self.tools for dependency in tool.depends_on))
+        return tuple(
+            dict.fromkeys(
+                (
+                    *(dependency for tool in self.tools for dependency in tool.depends_on),
+                    *self.skill_dependencies,
+                )
+            )
+        )
 
     @property
     def agent_facing_tool_names(self) -> frozenset[str]:

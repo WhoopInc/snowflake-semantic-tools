@@ -15,6 +15,7 @@ from ...domain.model.project import SemanticViewProject
 from ...domain.model.semantic_view import SemanticView
 from ...domain.model.tool import ToolCatalog
 from ..dbt.manifest import load_manifest_catalog
+from ..profile import resolve_profile_name
 from .agents import load_agents
 from .evals import load_eval_catalog, parse_eval_defaults
 from .loader import _read_yaml, _run_dbt_parse, _target_path, load_semantic_views, load_semantic_views_result
@@ -72,10 +73,9 @@ class YamlProjectSource:
         config = _read_yaml(self._project_dir / "sst_config.yml")
         project = config.get("project")
         tools_dir = str(project.get("tools_dir") or "tools") if isinstance(project, dict) else "tools"
-        dbt_project = _read_yaml(self._project_dir / "dbt_project.yml")
-        profile_name = dbt_project.get("profile")
+        profile_name = resolve_profile_name(self._project_dir)
         profiles = _read_yaml(self._project_dir / "profiles.yml")
-        profile = profiles.get(str(profile_name)) if profile_name is not None else None
+        profile = profiles.get(profile_name)
         outputs = profile.get("outputs") if isinstance(profile, dict) else None
         declared_targets = frozenset(str(key) for key in outputs) if isinstance(outputs, dict) else frozenset()
         selected = self._target_name or (profile.get("target") if isinstance(profile, dict) else None)

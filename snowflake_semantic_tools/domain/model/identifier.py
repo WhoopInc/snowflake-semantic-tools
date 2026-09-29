@@ -54,6 +54,13 @@ class Identifier:
             raise ValueError(f"invalid unquoted identifier {raw!r}")
         return cls(text.upper(), quoted=False)
 
+    @classmethod
+    def shown(cls, raw: str) -> Identifier:
+        """A name as SHOW prints it: unquoted when it can be, else the exact name it was created with."""
+        if not raw:
+            raise ValueError("empty identifier")
+        return cls.parse(raw) if _UNQUOTED.fullmatch(raw.strip()) else cls(raw, quoted=True)
+
     @property
     def folded(self) -> str:
         return self.value if self.quoted else self.value.upper()

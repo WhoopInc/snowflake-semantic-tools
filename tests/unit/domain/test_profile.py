@@ -1,0 +1,246 @@
+"""Desktop profiles render content-addressed trees and one Desktop-shaped registry row."""
+
+from __future__ import annotations
+
+import json
+
+from snowflake_semantic_tools.domain.model.diagnostic import D, DiagnosticBag, Origin
+from snowflake_semantic_tools.domain.model.profile import (
+    DesktopProfile,
+    HookDefinition,
+    McpConfig,
+    ProfileCatalog,
+    SharedProfile,
+    StageTree,
+    assemble_prompt,
+    build_profile,
+    unreached_skills,
+    validate_profile_catalog,
+)
+from snowflake_semantic_tools.domain.model.skill import BundleEntry, Skill, SkillFile
+
+ORIGIN = Origin("profiles/analyst/profile.yml", 1)
+
+
+def skill(name: str) -> Skill:
+    files = (SkillFile("SKILL.md", f"---\nname: {name}\n---\nbody\n".encode()), SkillFile("reference/a.md", b"a"))
+    return Skill(name, f"skills/{name}", name, "d", "body", files, Origin(f"skills/{name}/SKILL.md"))
+
+
+SKILLS = {name: skill(name) for name in ("common", "semantics", "operations")}
+
+
+def profile(name: str = "analyst", **fields: object) -> DesktopProfile:
+    values: dict[str, object] = {
+        "name": name,
+        "directory": f"profiles/{name}",
+        "description": "Analyst.",
+        "owner_team": "Data",
+        "skills": ("semantics",),
+        "mcp_servers": (),
+        "hooks": (),
+        "prompt": None,
+        "origin": ORIGIN,
+        "source_files": (f"profiles/{name}/profile.yml",),
+    }
+    values.update(fields)
+    return DesktopProfile(**values)  # type: ignore[arg-type]
+
+
+SHARED = SharedProfile(
+    "Shared rules.\n",
+    (("b.md", "Rule B."), ("a.md", "Rule A.")),
+    ("common",),
+    Origin("profiles/shared/profile.yml", 1),
+    ("profiles/shared/AGENTS.md",),
+)
+HOOK = HookDefinition(
+    "sql-safety",
+    "hooks/sql-safety",
+    "PreToolUse",
+    "bash",
+    SkillFile("check.sh", b"#!/bin/sh\n"),
+    Origin("hooks/sql-safety/hook.yml", 1),
+    matcher="snowflake_sql_execute",
+    timeout=30,
+    interactive=False,
+)
+START = HookDefinition("warm", "hooks/warm", "SessionStart", "bash", SkillFile("warm.sh", b"echo\n"), Origin("h"))
+SECOND = HookDefinition(
+    "audit",
+    "hooks/audit",
+    "PreToolUse",
+    "bash",
+    SkillFile("audit.sh", b"x"),
+    Origin("h"),
+    matcher="snowflake_sql_execute",
+)
+MCP = McpConfig(
+    "dbt", "mcp-servers/dbt/mcp.json", {"dbt": {"command": "dbt-mcp", "env": {"TOKEN": "${DBT_TOKEN}"}}}, Origin("m")
+)
+
+
+def test_stage_tree_prefix_names_its_own_digest() -> None:
+    tree = StageTree("skills", "analyst", (BundleEntry("a/SKILL.md", b"x"),))
+    assert tree.prefix == f"skills/analyst/{tree.digest[:12]}/"
+    assert tree.paths == ("a/SKILL.md",)
+
+
+def test_prompt_assembles_shared_then_sorted_rules_then_profile() -> None:
+    assert assemble_prompt(SHARED, profile(prompt="Profile.\n")) == "Shared rules.\n\nRule A.\n\nRule B.\n\nProfile.\n"
+    assert assemble_prompt(None, profile()) is None
+    assert assemble_prompt(None, profile(prompt="Only.")) == "Only.\n"
+
+
+def test_build_profile_renders_trees_pointers_and_a_content_version() -> None:
+    catalog = ProfileCatalog((), SHARED, (HOOK, START, SECOND), (MCP,))
+    release = build_profile(
+        profile(
+            skills=("semantics", "common"), mcp_servers=("dbt",), hooks=("sql-safety", "warm", "audit"), prompt="P"
+        ),
+        catalog,
+        SKILLS,
+        stage="DB.S.PROFILES",
+        version_prefix="SST_",
+    )
+    kinds = [(tree.kind, tree.scope, tree.paths) for tree in release.trees]
+    assert kinds == [
+        ("skills", "shared", ("common/SKILL.md", "common/reference/a.md")),
+        ("skills", "analyst", ("semantics/SKILL.md", "semantics/reference/a.md")),
+        ("prompts", "analyst", ("AGENTS.md",)),
+        ("mcp", "analyst", ("mcp.json",)),
+        ("hooks", "analyst", ("audit/audit.sh", "sql-safety/check.sh", "warm/warm.sh")),
+    ]
+    row = release.row
+    assert row["SKILL_REPOS"] == [
+        {"snowflake_stage": f"@DB.S.PROFILES/{release.trees[0].prefix}"},
+        {"snowflake_stage": f"@DB.S.PROFILES/{release.trees[1].prefix}"},
+    ]
+    assert row["SYSTEM_PROMPT_REPO"] == {"snowflake_stage": f"@DB.S.PROFILES/{release.trees[2].prefix}AGENTS.md"}
+    assert row["MCP_SERVERS"] == {"snowflake_stage": f"@DB.S.PROFILES/{release.trees[3].prefix}mcp.json"}
+    hooks = row["HOOKS"]
+    assert isinstance(hooks, dict)
+    pre = hooks["PreToolUse"]
+    assert len(pre) == 1 and pre[0]["matcher"] == "snowflake_sql_execute"
+    assert [entry["source"]["snowflake_stage"].rsplit("/", 2)[-2] for entry in pre[0]["hooks"]] == [
+        "sql-safety",
+        "audit",
+    ]
+    assert pre[0]["hooks"][0]["timeout"] == 30 and pre[0]["hooks"][0]["interactive"] is False
+    assert hooks["SessionStart"] == [
+        {
+            "hooks": [
+                {
+                    "type": "command",
+                    "command": "bash",
+                    "source": {"snowflake_stage": f"@DB.S.PROFILES/{release.trees[4].prefix}warm/warm.sh"},
+                }
+            ]
+        }
+    ]
+    assert (row["PLUGINS"], row["COMMAND_REPOS"], row["ENV_VARS"], row["SETTINGS_OVERRIDES"]) == ([], [], {}, {})
+    assert release.version == row["VERSION"] and release.version.startswith("SST_")
+    assert release.key == "profile:analyst"
+    assert "mcp-servers/dbt/mcp.json" in release.source_files
+    document = json.loads(release.document())
+    assert document["row"]["CONFIG_NAME"] == "analyst" and len(document["trees"]) == 5
+
+    bare = build_profile(
+        profile(skills=(), mcp_servers=("missing",)),
+        ProfileCatalog(),
+        SKILLS,
+        stage="DB.S.PROFILES",
+        version_prefix="SST_",
+    )
+    assert bare.trees == ()
+    assert (bare.row["SKILL_REPOS"], bare.row["SYSTEM_PROMPT_REPO"], bare.row["MCP_SERVERS"], bare.row["HOOKS"]) == (
+        [],
+        None,
+        {},
+        {},
+    )
+    changed = build_profile(
+        profile(skills=(), mcp_servers=("missing",)),
+        ProfileCatalog(),
+        SKILLS,
+        stage="DB.S.PROFILES",
+        version_prefix="SST_",
+    )
+    assert changed.version == bare.version
+    renamed = build_profile(
+        profile(skills=(), mcp_servers=("missing",), description="Other."),
+        ProfileCatalog(),
+        SKILLS,
+        stage="DB.S.PROFILES",
+        version_prefix="SST_",
+    )
+    assert renamed.version != bare.version
+
+
+def test_validation_covers_members_hooks_mcp_shape_and_credentials() -> None:
+    placeholder = McpConfig("amplitude", "mcp-servers/amplitude/mcp.json", {"amplitude": "TODO"}, Origin("a"))
+    clash = McpConfig("dbt-copy", "mcp-servers/dbt-copy/mcp.json", {"dbt": {"command": "x"}}, Origin("c"))
+    leaky = McpConfig(
+        "leaky",
+        "mcp-servers/leaky/mcp.json",
+        {"svc": {"env": {"API_KEY": "abc123", "token_list": ["plain"], "SAFE": "x"}, "args": ["--password", "p"]}},
+        Origin("l"),
+    )
+    catalog = ProfileCatalog(
+        (
+            profile(
+                skills=("semantics", "common", "ghost"),
+                hooks=("nope", "sql-safety"),
+                mcp_servers=("amplitude", "dbt", "dbt-copy", "missing"),
+            ),
+            profile("shared"),
+            profile("Bad Name"),
+        ),
+        SharedProfile(None, (), ("common", "vanished"), Origin("profiles/shared/profile.yml")),
+        (HOOK,),
+        (MCP, placeholder, clash, leaky),
+    )
+    found = [(item.code, item.subject, item.context.get("name")) for item in validate_profile_catalog(catalog, SKILLS)]
+    assert found == [
+        ("SST-VAL844", "profile:shared", "vanished"),
+        ("SST-VAL845", "profile:analyst", "common"),
+        ("SST-VAL844", "profile:analyst", "ghost"),
+        ("SST-VAL846", "profile:analyst", "nope"),
+        ("SST-VAL848", "profile:analyst", "amplitude"),
+        ("SST-VAL849", "profile:analyst", "dbt"),
+        ("SST-VAL847", "profile:analyst", "missing"),
+        ("SST-VAL801", "profile:shared", None),
+        ("SST-VAL801", "profile:Bad Name", None),
+        ("SST-VAL850", "mcp:leaky", "svc"),
+        ("SST-VAL850", "mcp:leaky", "svc"),
+    ]
+    assert validate_profile_catalog(ProfileCatalog((profile(),)), SKILLS) == ()
+
+
+def test_hooks_and_mcp_configs_that_failed_to_load_are_not_reported_unknown() -> None:
+    loader_errors = DiagnosticBag(
+        (
+            D(
+                "SST-VAL852",
+                origin=Origin("hooks/guard"),
+                subject="hook:guard",
+                artifact="guard",
+                detail="has no script",
+            ),
+            D("SST-VAL853", origin=Origin("mcp-servers/docs"), subject="mcp:docs", artifact="docs", detail="bad"),
+        )
+    )
+    catalog = ProfileCatalog((profile(hooks=("guard",), mcp_servers=("docs",)),), None, (), (), loader_errors)
+    codes = [item.code for item in validate_profile_catalog(catalog, SKILLS)]
+    assert codes == ["SST-VAL852", "SST-VAL853"]
+
+
+def test_unreached_skills_only_when_the_catalog_channel_is_off() -> None:
+    catalog = ProfileCatalog((profile(),), SHARED)
+    assert unreached_skills(SKILLS, catalog, catalog_channel=True) == ()
+    assert [item.subject for item in unreached_skills(SKILLS, catalog, catalog_channel=False)] == ["skill:operations"]
+    assert [item.subject for item in unreached_skills(SKILLS, ProfileCatalog(), catalog_channel=False)] == [
+        "skill:common",
+        "skill:operations",
+        "skill:semantics",
+    ]

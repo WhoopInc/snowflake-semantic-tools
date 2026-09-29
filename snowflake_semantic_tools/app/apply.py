@@ -28,7 +28,16 @@ from ..domain.model.registry import GrantPreservation
 from ..domain.plan.diff import dependency_waves
 from ..domain.ports.lifecycle import CompositeLifecycleHandler
 from ..domain.ports.snowflake import ClockPort, SnowflakePort, SnowflakePortError, StateStore
-from ..domain.state.model import SST_VERSION, STATE_SCHEMA_VERSION, AppliedEntry, AppliedResourceInput, LastRun, State
+from ..domain.state.model import (
+    DEACTIVATED,
+    FAILED_AFTER_WRITE,
+    SST_VERSION,
+    STATE_SCHEMA_VERSION,
+    AppliedEntry,
+    AppliedResourceInput,
+    LastRun,
+    State,
+)
 
 
 def classify_error(message: str, *, sqlstate: str | None = None) -> ClassifiedError:
@@ -538,16 +547,27 @@ class ApplyArtifacts:
                 continue
             if change.action is Action.PRUNE:
                 if change.prune_executable and outcome.status is OutcomeStatus.APPLIED:
-                    applied.pop(change.key, None)
+                    retired = previous.applied.get(change.key)
+                    if change.artifact_type in self._lifecycle_handlers and retired is not None:
+                        # A composite prune deactivates rather than drops, so the
+                        # object is still SST's: keep a tombstone to reactivate it.
+                        applied[change.key] = replace(retired, outcome=DEACTIVATED, applied_at=finished, run_id=run_id)
+                    else:
+                        applied.pop(change.key, None)
                 continue
             if change.rendered is None:
                 continue
-            current_resources = outcome.physical_resources or tuple(
-                (object_type, name.sql) for object_type, name in change.rendered.physical_resources
+            lifecycle_handler = self._lifecycle_handlers.get(change.artifact_type)
+            # A composite handler reports exactly the resources it verified, so an
+            # empty report is authoritative rather than a cue to assume the rendered set.
+            current_resources = (
+                outcome.physical_resources
+                if lifecycle_handler is not None
+                else outcome.physical_resources
+                or tuple((object_type, name.sql) for object_type, name in change.rendered.physical_resources)
             )
             physical_resources: tuple[AppliedResourceInput, ...] = current_resources
             previous_entry = previous.applied.get(change.key)
-            lifecycle_handler = self._lifecycle_handlers.get(change.artifact_type)
             if lifecycle_handler is not None:
                 physical_resources = lifecycle_handler.merge_physical_resources(current_resources, previous_entry)
             applied[change.key] = AppliedEntry(
@@ -555,7 +575,7 @@ class ApplyArtifacts:
                 qualified_name=change.rendered.target.sql,
                 applied_at=finished,
                 run_id=run_id,
-                outcome=("applied" if outcome.status is OutcomeStatus.APPLIED else "failed_after_write"),
+                outcome=("applied" if outcome.status is OutcomeStatus.APPLIED else FAILED_AFTER_WRITE),
                 ddl_sha256=change.rendered.fingerprint,
                 manifest_id=changeset.manifest_id,
                 git_sha=self._git_sha,

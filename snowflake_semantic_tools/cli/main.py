@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import dataclasses
 import difflib
+import inspect
 import json
 import shutil
 import sys
@@ -11,11 +12,13 @@ import time
 from collections.abc import Callable, Sequence
 from hashlib import sha256
 from pathlib import Path
-from typing import Any, cast
+from types import MappingProxyType
+from typing import Any, Mapping, cast
 
 import click
 
 from ..adapters.clock import SystemClock
+from ..adapters.config import load_project_config
 from ..adapters.dbt.manifest import load_manifest_catalog
 from ..adapters.fs.local import ManifestFileStore, PlanFileStore, StateFileStore
 from ..adapters.profile import ProfileTarget, load_profile_target
@@ -25,8 +28,11 @@ from ..adapters.snowflake.eval_state import SnowflakeEvalStateStore
 from ..adapters.yaml.agents import load_agents
 from ..adapters.yaml.documents import discover_yaml, load_documents
 from ..adapters.yaml.loader import _parse_yaml_bytes
+from ..adapters.yaml.migrate import filter_sites, semantic_files, write_file
+from ..adapters.yaml.profiles import load_profile_catalog
 from ..adapters.yaml.project_source import YamlProjectSource
-from ..app.agent_compile import AgentCompileContext, CompileAgents, CompiledAgent, for_publication
+from ..adapters.yaml.skills import _published, load_skill_catalog
+from ..app.agent_compile import AgentCompileContext, CompileAgents, CompiledAgent, ExtensionPin, for_publication
 from ..app.apply import ApplyArtifacts
 from ..app.compile import CompileArtifacts, CompileResult, CompileSemanticViews
 from ..app.eval_compile import CompiledEval, CompileEvals
@@ -40,14 +46,20 @@ from ..app.eval_run import (
     eval_suite_json,
     validate_eval_publication,
 )
+from ..app.extension_lifecycle import ExtensionLifecycleHandler
 from ..app.listing import list_artifacts
 from ..app.manifest import build_manifest
+from ..app.migrate_refs import MigrateRefs
 from ..app.plan import PlanArtifacts
+from ..app.profile_compile import CompiledProfile, CompileProfiles, DesktopChannel
+from ..app.profile_lifecycle import ProfileLifecycleHandler
+from ..app.skill_compile import CatalogChannel, CompiledExtension, CompileSkills
 from ..app.smoke import RunSmokeSuite
 from ..app.state import read_state
 from ..app.tool_compile import CompileTools
 from ..app.validate import ValidateArtifacts
-from ..domain.model.diagnostic import ERROR_REGISTRY, D, Diagnostic, DiagnosticBag, Severity
+from ..domain.model.dbt import DbtCatalog
+from ..domain.model.diagnostic import ERROR_REGISTRY, D, Diagnostic, DiagnosticBag, Origin, Severity
 from ..domain.model.identifier import Identifier, QualifiedName
 from ..domain.model.lifecycle import (
     Action,
@@ -59,7 +71,10 @@ from ..domain.model.lifecycle import (
     OwnershipMarker,
 )
 from ..domain.model.registry import SEMANTIC_REGISTRY
+from ..domain.model.skill import SkillCatalog, extension_identifier
+from ..domain.ports.lifecycle import CompositeLifecycleHandler
 from ..domain.ports.snowflake import SnowflakePortError
+from ..domain.render.reference_docs import CommandDoc, OptionDoc, reference_pages
 from ..domain.state.model import Manifest, SavedPlan, State, canonical_json
 
 VERSION = "1.0.0.dev0"
@@ -72,6 +87,7 @@ CONNECTION = 5
 INTERRUPTED = 130
 
 _INVOCATION: dict[str, object] = {}
+_ARTIFACT_SUBJECTS = frozenset(SEMANTIC_REGISTRY.artifacts) | {"profile"}
 
 
 class SstUsageError(click.UsageError):
@@ -196,10 +212,222 @@ def _compile_result(
     manifest_path: Path | None,
     selected: str | None = None,
 ) -> CompileResult:
+    project_config = load_project_config(project_dir)
+    config = dict(project_config.tree)
+    profile = load_profile_target(project_dir, target_name)
+    consumed, consumed_diagnostics = _consumed_extensions(config, profile)
+    skills, profiles, desktop_skills, unpublished = _compile_publishing(project_dir, config, profile)
+    unpublished.update(
+        (f"extension:{str(item.context['name']).casefold()}", "its skills.extensions entry cannot be qualified")
+        for item in consumed_diagnostics
+        if item.code == "SST-CFG036"
+    )
+    compilers: list[_StaticCompiler] = [
+        _StaticCompiler(CompileResult((), DiagnosticBag((*project_config.diagnostics, *consumed_diagnostics)))),
+        _StaticCompiler(skills),
+        _StaticCompiler(profiles),
+    ]
+    if project_config.has_dbt_project:
+        compilers.extend(
+            _StaticCompiler(item)
+            for item in _compile_dbt_artifacts(
+                project_dir, target_name, manifest_path, config, profile, skills, consumed, desktop_skills, unpublished
+            )
+        )
+    result = CompileArtifacts(
+        tuple(compilers),
+        {name: value.ddl_position for name, value in SEMANTIC_REGISTRY.artifacts.items()},
+    ).run_result()
+    return _selected_result(project_dir, result, selected)
+
+
+def _skills_configured(config: dict[str, object]) -> bool:
+    skills = _config_map(config.get("skills"))
+    return "catalog" in skills or "stage" in skills
+
+
+def _channel_location(block: Mapping[str, object], profile: ProfileTarget) -> tuple[str, str]:
+    database = (
+        _target_config_text(block.get("+database"), profile, profile.identity.database.folded)
+        or profile.identity.database.folded
+    )
+    schema = (
+        _target_config_text(block.get("+schema"), profile, profile.identity.schema.folded)
+        or profile.identity.schema.folded
+    )
+    return database, schema
+
+
+def _object_in(name: str, database: str, schema: str) -> QualifiedName:
+    return QualifiedName.parse(name) if "." in name else QualifiedName.from_parts(database, schema, name)
+
+
+def _compile_publishing(
+    project_dir: Path, config: dict[str, object], profile: ProfileTarget
+) -> tuple[CompileResult, CompileResult, frozenset[str], dict[str, str]]:
+    """Skills, plugins, and Desktop profiles, loaded only when a channel is configured.
+
+    The last value maps each declared skill and plugin that produced no version
+    to the reason, for agents that reference one.
+    """
+    skills_config = _config_map(config.get("skills"))
+    catalog = load_skill_catalog(
+        project_dir,
+        skills_dir=_project_dir_value(config, "skills_dir", "skills"),
+        plugins_dir=_project_dir_value(config, "plugins_dir", "plugins"),
+    )
+    if not _skills_configured(config):
+        empty = CompileResult(())
+        return empty, empty, frozenset(), _unpublished(catalog, empty, "skills.catalog is not configured")
+    prefix = _config_text(skills_config.get("+version_prefix"), "SST_") or "SST_"
+    channel = None
+    catalog_config = skills_config.get("catalog")
+    if isinstance(catalog_config, dict) and isinstance(catalog_config.get("+bundle_stage"), str):
+        database, schema = _channel_location(catalog_config, profile)
+        channel = CatalogChannel(
+            database=database,
+            schema=schema,
+            bundle_stage=_object_in(str(catalog_config["+bundle_stage"]), database, schema),
+            version_prefix=prefix,
+            certified=_config_bool(skills_config.get("+certified")) or False,
+        )
+    skills = CompileSkills(catalog, channel).run_result()
+    if not isinstance(catalog_config, dict):
+        channel_problem: str | None = "skills.catalog is not configured"
+    elif channel is None:
+        channel_problem = "skills.catalog sets no +bundle_stage"
+    else:
+        channel_problem = None
+    unpublished = _unpublished(catalog, skills, channel_problem)
+    stage_config = skills_config.get("stage")
+    if not isinstance(stage_config, dict):
+        return skills, CompileResult(()), frozenset(), unpublished
+    profiles_catalog = load_profile_catalog(
+        project_dir,
+        profiles_dir=_project_dir_value(config, "profiles_dir", "profiles"),
+        hooks_dir=_project_dir_value(config, "hooks_dir", "hooks"),
+        mcp_servers_dir=_project_dir_value(config, "mcp_servers_dir", "mcp-servers"),
+    )
+    desktop = None
+    if isinstance(stage_config.get("+stage"), str):
+        database, schema = _channel_location(stage_config, profile)
+        desktop = DesktopChannel(
+            stage=_object_in(str(stage_config["+stage"]), database, schema),
+            registry=_object_in(str(stage_config.get("+registry_table") or "PROFILE_REGISTRY"), database, schema),
+            version_prefix=prefix,
+        )
+    blocked = frozenset(
+        str(item.subject).split(":", 1)[1]
+        for item in skills.diagnostics
+        if item.severity is Severity.ERROR and str(item.subject or "").startswith("skill:")
+    )
+    profiles = CompileProfiles(
+        profiles_catalog,
+        catalog,
+        desktop,
+        catalog_channel=channel is not None,
+        blocked_skills=blocked,
+    ).run_result()
+    reached = {
+        *(profiles_catalog.shared.skills if profiles_catalog.shared is not None else ()),
+        *(name for item in profiles_catalog.profiles for name in item.skills),
+    }
+    return skills, profiles, frozenset(f"skill:{name}" for name in reached), unpublished
+
+
+def _unpublished(catalog: SkillCatalog, skills: CompileResult, channel_problem: str | None) -> dict[str, str]:
+    """Why each declared skill and plugin produced no extension version."""
+    compiled = {item.artifact_key for item in skills.compiled}
+    failed = {item.subject for item in skills.diagnostics if item.severity is Severity.ERROR}
+    return {
+        key: "it has errors" if key in failed else channel_problem or "the catalog channel cannot publish it"
+        for key in (*(item.key for item in catalog.skills), *(item.key for item in catalog.plugins))
+        if key not in compiled
+    }
+
+
+def _consumed_extensions(
+    config: dict[str, object], profile: ProfileTarget
+) -> tuple[dict[str, QualifiedName], tuple[Diagnostic, ...]]:
+    """`skills.extensions`: extensions agents consume and this project does not publish."""
+    block = _config_map(_config_map(config.get("skills")).get("extensions"))
+    prefix = _target_config_text(block.get("default_prefix"), profile, None)
+    resolved: dict[str, QualifiedName] = {}
+    diagnostics: list[Diagnostic] = []
+    for name, entry in block.items():
+        if name == "default_prefix":
+            continue
+        fqn = _target_config_text(entry.get("fqn"), profile, None) if isinstance(entry, dict) else None
+        try:
+            if fqn:
+                resolved[name.casefold()] = QualifiedName.parse(fqn)
+                continue
+            if prefix and "." not in name:
+                resolved[name.casefold()] = QualifiedName.parse(f"{prefix}.{extension_identifier(name)}")
+                continue
+        except ValueError as exc:
+            diagnostics.append(
+                D(
+                    "SST-CFG036",
+                    origin=Origin("sst_config.yml"),
+                    subject=f"config:skills.extensions.{name}",
+                    block="skills.extensions",
+                    name=name,
+                    reason=f"its name does not parse ({exc})",
+                )
+            )
+            continue
+        diagnostics.append(
+            D(
+                "SST-CFG036",
+                origin=Origin("sst_config.yml"),
+                subject=f"config:skills.extensions.{name}",
+                block="skills.extensions",
+                name=name,
+                reason="the block sets no default_prefix" if not prefix else "the key is not a single identifier",
+            )
+        )
+    return resolved, tuple(diagnostics)
+
+
+def _extension_pins(skills: CompileResult) -> tuple[dict[str, ExtensionPin], dict[str, ExtensionPin], frozenset[str]]:
+    skill_pins: dict[str, ExtensionPin] = {}
+    plugin_pins: dict[str, ExtensionPin] = {}
+    consumed: set[str] = set()
+    for item in skills.compiled:
+        if not isinstance(item, CompiledExtension):
+            continue
+        release = item.release
+        if item.artifact_type == "skill":
+            skill_pins[item.name] = ExtensionPin(
+                item.artifact_key, release.target, release.alias, (item.name,), item.has_scripts
+            )
+            continue
+        members = tuple(
+            dict.fromkeys(
+                entry.path.split("/")[1] for entry in release.bundle.entries if entry.path.startswith("skills/")
+            )
+        )
+        plugin_pins[item.name] = ExtensionPin(
+            item.artifact_key, release.target, release.alias, members, item.has_scripts
+        )
+        consumed.update(f"skill:{member}" for member in members)
+    return skill_pins, plugin_pins, frozenset(consumed)
+
+
+def _compile_dbt_artifacts(
+    project_dir: Path,
+    target_name: str | None,
+    manifest_path: Path | None,
+    config: dict[str, object],
+    profile: ProfileTarget,
+    skills: CompileResult,
+    consumed_extensions: dict[str, QualifiedName],
+    desktop_skills: frozenset[str] = frozenset(),
+    unpublished: Mapping[str, str] = MappingProxyType({}),
+) -> tuple[CompileResult, ...]:
     source = _source(project_dir, target_name, manifest_path)
     semantic = CompileSemanticViews(source).run_result()
-    profile = load_profile_target(project_dir, target_name)
-    config = _config(project_dir)
     dbt_path = manifest_path or project_dir / "target" / "manifest.json"
     dbt = load_manifest_catalog(dbt_path)
     tool_catalog = source.load_tools()
@@ -221,29 +449,11 @@ def _compile_result(
     )
     agent_defaults = _config_map(config.get("agents"))
     snowflake_config = _config_map(config.get("snowflake"))
-    skills_config = _config_map(config.get("skills"))
     raw_models = snowflake_config.get("orchestration_models")
     allowed_models = (
         frozenset(str(value) for value in raw_models) if isinstance(raw_models, list) else frozenset(("auto",))
     )
-    extensions = {
-        skill.name.replace("-", "_").casefold(): QualifiedName.from_parts(
-            profile.identity.database.folded,
-            profile.identity.schema.folded,
-            skill.name.replace("-", "_"),
-        )
-        for skill in (skill for agent in agent_models for skill in agent.skills)
-    }
-    extensions.update(
-        {
-            skill.name.casefold(): QualifiedName.from_parts(
-                profile.identity.database.folded,
-                profile.identity.schema.folded,
-                skill.name.replace("-", "_"),
-            )
-            for skill in (skill for agent in agent_models for skill in agent.skills)
-        }
-    )
+    skill_pins, plugin_pins, consumed = _extension_pins(skills)
     semantic_targets = {item.name.casefold(): item.rendered_artifact.target for item in semantic.compiled}
     agent_targets = {
         model.name.casefold(): QualifiedName.from_parts(
@@ -263,7 +473,7 @@ def _compile_result(
             semantic_targets,
             tool_catalog,
             agent_targets,
-            extensions,
+            consumed_extensions,
             {"sha_version": _git_sha(project_dir)},
             _target_config_text(agent_defaults.get("+database"), profile, profile.identity.database.folded)
             or profile.identity.database.folded,
@@ -278,7 +488,10 @@ def _compile_result(
             _config_bool(agent_defaults.get("+analytical_search")),
             _config_text(agent_defaults.get("+alias"), None),
             allowed_models,
-            _config_text(skills_config.get("+version_prefix"), "") or "",
+            skills=skill_pins,
+            plugins=plugin_pins,
+            consumed=consumed | desktop_skills,
+            unpublished=MappingProxyType(dict(unpublished)),
         ),
     ).run_result()
     resolved_agent_tools = {
@@ -296,10 +509,10 @@ def _compile_result(
         ),
         agent_targets=agent_targets,
     ).run_result()
-    result = CompileArtifacts(
-        (_StaticCompiler(semantic), _StaticCompiler(tools), _StaticCompiler(agents), _StaticCompiler(evals)),
-        {name: value.ddl_position for name, value in SEMANTIC_REGISTRY.artifacts.items()},
-    ).run_result()
+    return semantic, tools, agents, evals
+
+
+def _selected_result(project_dir: Path, result: CompileResult, selected: str | None) -> CompileResult:
     if selected is None:
         return result
     selected_types, selected_keys = _selection((selected,))
@@ -323,10 +536,7 @@ class _StaticCompiler:
 
 
 def _config(project_dir: Path) -> dict[str, object]:
-    import yaml
-
-    value = yaml.safe_load((project_dir / "sst_config.yml").read_text(encoding="utf-8")) or {}
-    return {str(key): item for key, item in value.items()} if isinstance(value, dict) else {}
+    return dict(load_project_config(project_dir).tree)
 
 
 def _project_dir_value(config: dict[str, object], key: str, default: str) -> str:
@@ -413,26 +623,37 @@ def _selection(values: tuple[str, ...]) -> tuple[frozenset[str] | None, frozense
 
 
 def _file_checksums(project_dir: Path) -> dict[str, str]:
-    config_path = project_dir / "sst_config.yml"
-    semantic_models_dir = "semantic_models"
-    if config_path.is_file():
-        import yaml
-
-        config = yaml.safe_load(config_path.read_text(encoding="utf-8")) or {}
-        if isinstance(config, dict) and isinstance(config.get("project"), dict):
-            semantic_models_dir = str(config["project"].get("semantic_models_dir") or semantic_models_dir)
-    documents = load_documents(discover_yaml(project_dir, semantic_models_dir), _parse_yaml_bytes)
-    checksums = {document.path: document.checksum for document in documents.documents}
-    config = _config(project_dir) if config_path.is_file() else {}
-    for directory in (
+    config = _config(project_dir)
+    checksums: dict[str, str] = {}
+    if (project_dir / "dbt_project.yml").is_file():
+        semantic_models_dir = _project_dir_value(config, "semantic_models_dir", "semantic_models")
+        documents = load_documents(discover_yaml(project_dir, semantic_models_dir), _parse_yaml_bytes)
+        checksums.update({document.path: document.checksum for document in documents.documents})
+    directories = [
         _project_dir_value(config, "tools_dir", "tools"),
         _project_dir_value(config, "agents_dir", "agents"),
         _project_dir_value(config, "eval_metrics_dir", "eval_metrics"),
-    ):
+    ]
+    bundled: tuple[str, ...] = (
+        (_project_dir_value(config, "skills_dir", "skills"), _project_dir_value(config, "plugins_dir", "plugins"))
+        if _skills_configured(config)
+        else ()
+    )
+    if isinstance(_config_map(config.get("skills")).get("stage"), dict):
+        bundled = (
+            *bundled,
+            _project_dir_value(config, "profiles_dir", "profiles"),
+            _project_dir_value(config, "hooks_dir", "hooks"),
+            _project_dir_value(config, "mcp_servers_dir", "mcp-servers"),
+        )
+    for directory in (*directories, *bundled):
         root = project_dir / directory
         if not root.is_dir():
             continue
         for path in sorted(root.rglob("*")):
+            # Skill folders skip what publication skips: hidden entries and caches.
+            if directory in bundled and not _published(path, root):
+                continue
             if path.is_file():
                 checksums[path.relative_to(project_dir).as_posix()] = sha256(path.read_bytes()).hexdigest()
     return checksums
@@ -441,14 +662,16 @@ def _file_checksums(project_dir: Path) -> dict[str, str]:
 def _build_manifest(project_dir: Path, result: CompileResult, manifest_path: Path | None) -> Manifest:
     dbt_project_name = ""
     dbt_project = project_dir / "dbt_project.yml"
+    dbt_path = manifest_path or project_dir / "target" / "manifest.json"
     if dbt_project.is_file():
         import yaml
 
         value = yaml.safe_load(dbt_project.read_text(encoding="utf-8")) or {}
         if isinstance(value, dict):
             dbt_project_name = str(value.get("name") or "")
-    dbt_path = manifest_path or project_dir / "target" / "manifest.json"
-    catalog = load_manifest_catalog(dbt_path)
+        catalog = load_manifest_catalog(dbt_path)
+    else:
+        catalog = DbtCatalog(schema_version="", dbt_version=None, project_name=None, models=())
     dbt_projection = [
         {
             "name": model.name,
@@ -467,7 +690,9 @@ def _build_manifest(project_dir: Path, result: CompileResult, manifest_path: Pat
         for model in sorted(catalog.models, key=lambda item: item.name.casefold())
     ]
     try:
-        recorded_dbt_path = dbt_path.resolve().relative_to(project_dir.resolve()).as_posix()
+        recorded_dbt_path = (
+            dbt_path.resolve().relative_to(project_dir.resolve()).as_posix() if dbt_project.is_file() else ""
+        )
     except ValueError:
         recorded_dbt_path = str(dbt_path)
     config_path = project_dir / "sst_config.yml"
@@ -538,12 +763,12 @@ def _diagnostic_json(value: Diagnostic) -> dict[str, object]:
         "params": dict(value.context),
         "artifact": (
             {"type": subject_parts[0], "name": subject_parts[1]}
-            if subject_parts and subject_parts[0] in ("semantic_view", "agent", "tool", "skill", "eval")
+            if subject_parts and subject_parts[0] in _ARTIFACT_SUBJECTS
             else None
         ),
         "member": (
             {"type": subject_parts[0], "name": subject_parts[1]}
-            if subject_parts and subject_parts[0] not in ("semantic_view", "agent", "tool", "skill", "eval")
+            if subject_parts and subject_parts[0] not in _ARTIFACT_SUBJECTS
             else None
         ),
         "location": (
@@ -678,6 +903,8 @@ def _guarded(action: Callable[[], None], *, command: str, output: str) -> None:
                 CONFIG,
             )
         _render_diagnostics(diagnostics)
+        if not diagnostics:
+            click.echo(f"error: {exc}", err=True)
         raise click.exceptions.Exit(CONFIG) from exc
     except Exception as exc:
         diagnostics = DiagnosticBag((D("SST-INT902", subject=command, detail=str(exc)),))
@@ -771,8 +998,10 @@ def _print_plan(changeset: ChangeSet) -> None:
             if change.rendered
             else change.observed.qualified_name.sql if change.observed else "-"
         )
+        alias = dict(change.rendered.component_fingerprints).get("alias") if change.rendered else None
         click.echo(
             f"{markers[change.action]} {change.key} {change.action.value.upper()} {target} {change.reason.value}"
+            + (f" {alias}" if alias else "")
         )
 
 
@@ -837,7 +1066,7 @@ def _plan_runtime(
     Manifest | None,
     ProfileTarget | None,
     SnowflakeConnector | None,
-    tuple[StateFileStore, State, ChangeSet, dict[str, EvalLifecycleHandler]] | None,
+    tuple[StateFileStore, State, ChangeSet, dict[str, CompositeLifecycleHandler]] | None,
 ]:
     prune_types, prune_keys = _selection(selected)
     excluded_types, excluded_keys = _selection(excluded)
@@ -921,11 +1150,17 @@ def _plan_runtime(
     publication_result = dataclasses.replace(result, compiled=publication_compiled)
     publish = {artifact.key: artifact for artifact in publication_result.rendered_for_publish(manifest.manifest_id)}
     eval_stage_config = _config_map(apply_config.get("eval_config_stage"))
-    lifecycle_handlers = {
+    releases = {item.artifact_key: item.release for item in full_result.compiled if isinstance(item, CompiledExtension)}
+    lifecycle_handlers: dict[str, CompositeLifecycleHandler] = {
         "eval": EvalLifecycleHandler(
             port,
             EvalLifecycleConfig(str(eval_stage_config.get("stage") or "EVAL_CONFIGS")),
-        )
+        ),
+        "skill": ExtensionLifecycleHandler(port, releases, "skill"),
+        "plugin": ExtensionLifecycleHandler(port, releases, "plugin"),
+        "profile": ProfileLifecycleHandler(
+            port, {item.artifact_key: item for item in full_result.compiled if isinstance(item, CompiledProfile)}
+        ),
     }
     observation_targets = tuple(
         dict.fromkeys(
@@ -1143,7 +1378,7 @@ def compile(
 
 
 def _artifact_suffix(render_dialect: str) -> str:
-    if render_dialect == "json":
+    if render_dialect in ("json", "bundle_json", "profile_json"):
         return ".json"
     if render_dialect == "eval_yaml":
         return ".yaml"
@@ -1459,6 +1694,8 @@ def apply(
             _print_plan(changeset)
             click.confirm("Apply this plan?", abort=True)
         options = ApplyOptions(
+            # skills.+threads bounds each wave's concurrency (1..16, default 4).
+            parallelism=_config_int(_config_map(_config(project_dir).get("skills")).get("+threads")) or 4,
             on_failure=(FailurePolicy.STOP_ALL if fail_fast else FailurePolicy.STOP_DEPENDENTS),
             allow_prune=effective_prune,
             break_stale_lock=break_stale_lock,
@@ -1495,6 +1732,7 @@ def apply(
                                 "duration_ms": outcome.duration_ms,
                                 "grant_check": outcome.grants.value,
                                 "error": (outcome.error.message if outcome.error else None),
+                                "component_fingerprints": dict(outcome.component_fingerprints),
                             }
                             for outcome in apply_result.outcomes
                         ],
@@ -1568,6 +1806,156 @@ def clean(project_dir: Path, output: str) -> None:
     _guarded(action, command="clean", output=output)
 
 
+@cli.group()
+@click.pass_context
+def migrate(ctx: click.Context) -> None:
+    """Rewrite a 0.3 project into the 1.0 dialect."""
+    inherited = dict(ctx.default_map or {})
+    ctx.default_map = {name: dict(inherited) for name in ("refs",)}
+
+
+@migrate.command(name="refs")
+@click.option(
+    "--project-dir",
+    type=click.Path(exists=True, file_okay=False, path_type=Path),
+    default=Path("."),
+)
+@click.option("--write", "write_files", is_flag=True, help="Rewrite files in place instead of reporting.")
+@click.option("--output", type=click.Choice(["human", "json"]), default="human")
+def migrate_refs_command(project_dir: Path, write_files: bool, output: str) -> None:
+    """Rewrite legacy table()/column() globals to ref(), and label boolean filters.
+
+    Dry-run by default: exit 2 when rewrites are pending, 0 when there are none,
+    and 1 when a table() call sits where no rewrite is safe.
+    """
+
+    def action() -> None:
+        config = _config(project_dir)
+        files = semantic_files(project_dir, _project_dir_value(config, "semantic_models_dir", "semantic_models"))
+        report = MigrateRefs(files, filter_sites).run()
+        if write_files:
+            for item in report.changed:
+                write_file(project_dir, item.path, item.result.text)
+        if report.untouched:
+            exit_code = ERROR
+        elif report.changed and not write_files:
+            exit_code = CHANGES
+        else:
+            exit_code = OK
+        if output == "json":
+            _emit_json(
+                _json_envelope(
+                    "migrate refs",
+                    DiagnosticBag(),
+                    exit_code=exit_code,
+                    status="error" if exit_code == ERROR else None,
+                    artifact_count=len(report.changed),
+                    data={
+                        "written": write_files and bool(report.changed),
+                        "files": [
+                            {
+                                "path": item.path,
+                                "rewrites": item.counts(),
+                                "untouched": [
+                                    {
+                                        "line": entry.line,
+                                        "column": entry.col,
+                                        "text": entry.text,
+                                        "reason": entry.reason,
+                                    }
+                                    for entry in item.result.untouched
+                                ],
+                            }
+                            for item in report.files
+                            if item.result.changed or item.result.untouched
+                        ],
+                    },
+                ),
+                exit_code,
+            )
+        for item in report.files:
+            if item.result.changed:
+                counts = ", ".join(f"{value} {kind}" for kind, value in item.counts().items() if value)
+                click.echo(f"{'rewrote' if write_files else 'would rewrite'} {item.path}: {counts}")
+            for entry in item.result.untouched:
+                click.echo(
+                    f"{item.path}:{entry.line}:{entry.col}: left {entry.text} unchanged: {entry.reason}", err=True
+                )
+        if not report.changed and not report.untouched:
+            click.echo("no legacy references found")
+        if exit_code:
+            raise click.exceptions.Exit(exit_code)
+
+    _guarded(action, command="migrate refs", output=output)
+
+
+def _golden_payloads(item: object, resolved: Path) -> tuple[tuple[Path, str, str, bool], ...]:
+    """Where each artifact type's golden lives: one explicit route per registered type."""
+    name = str(getattr(item, "name", "")).casefold()
+    artifact_type = str(getattr(item, "artifact_type", ""))
+    root = resolved.parent
+    if isinstance(item, CompiledEval):
+        return (
+            (root / "eval" / f"{name}_repeat.yaml", item.rendered.config_yaml, f"compiled/{name}_repeat.yaml", False),
+            (
+                root / "eval" / f"{name.removesuffix('_agent')}_source.sql",
+                item.rendered.source_table_sql,
+                f"compiled/{name}_source.sql",
+                False,
+            ),
+        )
+    if isinstance(item, CompiledExtension):
+        payloads = [
+            (
+                root / artifact_type / f"{name}.bundle.json",
+                item.rendered_artifact.content,
+                f"compiled/{artifact_type}/{name}.bundle.json",
+                False,
+            )
+        ]
+        # Optional goldens: compared when committed, so a reference project can
+        # pin the flattened SKILL.md or the plugin manifest it cares about.
+        optional = {
+            "skill": (root / "skill" / f"{name}-flattened.md", f"skills/{name}/SKILL.md"),
+            "plugin": (root / "plugin" / f"{name}.plugin.json", ".cortex-plugin/plugin.json"),
+        }
+        golden, member = optional[artifact_type]
+        entry = next((entry for entry in item.release.bundle.entries if entry.path == member), None)
+        if golden.is_file() and entry is not None:
+            payloads.append((golden, entry.content.decode("utf-8"), f"compiled/{artifact_type}/{member}", False))
+        return tuple(payloads)
+    rendered = getattr(item, "rendered_artifact")
+    if isinstance(item, CompiledProfile):
+        profile_payloads = [
+            (
+                root / "profile" / f"{name}.profile.json",
+                rendered.content,
+                f"compiled/profile/{name}.profile.json",
+                False,
+            )
+        ]
+        for tree in item.release.trees:
+            for tree_entry in tree.entries:
+                golden = root / "profile" / name / tree_entry.path
+                if tree.kind in ("prompts", "mcp") and golden.is_file():
+                    profile_payloads.append(
+                        (
+                            golden,
+                            tree_entry.content.decode("utf-8"),
+                            f"compiled/profile/{name}/{tree_entry.path}",
+                            False,
+                        )
+                    )
+        return tuple(profile_payloads)
+    if artifact_type == "semantic_view":
+        return ((resolved / f"{name}.sql", rendered.content, f"compiled/{name}.sql", True),)
+    if artifact_type == "tool":
+        return ((root / "tool" / f"{name}.sql", rendered.content, f"compiled/{name}.sql", True),)
+    if artifact_type == "agent":
+        return ((root / "agent" / f"{name}.json", rendered.content, f"compiled/{name}.json", False),)
+    raise ProjectError(f"no golden route for artifact type {artifact_type!r}")
+
+
 def _golden_ddl(path: Path) -> str:
     lines = path.read_text(encoding="utf-8").splitlines()
     for index, line in enumerate(lines):
@@ -1628,49 +2016,7 @@ def test_command(
             resolved = golden_dir if golden_dir.is_absolute() else project_dir / golden_dir
             failures: list[str] = []
             for item in result.compiled:
-                payloads: tuple[tuple[Path, str, str, bool], ...]
-                if item.artifact_type == "semantic_view":
-                    payloads = (
-                        (
-                            resolved / f"{item.name.casefold()}.sql",
-                            item.rendered_artifact.content,
-                            f"compiled/{item.name.casefold()}.sql",
-                            True,
-                        ),
-                    )
-                elif item.artifact_type == "tool":
-                    payloads = (
-                        (
-                            resolved.parent / "tool" / f"{item.name.casefold()}.sql",
-                            item.rendered_artifact.content,
-                            f"compiled/{item.name.casefold()}.sql",
-                            True,
-                        ),
-                    )
-                elif isinstance(item, CompiledEval):
-                    payloads = (
-                        (
-                            resolved.parent / "eval" / f"{item.name.casefold()}_repeat.yaml",
-                            item.rendered.config_yaml,
-                            f"compiled/{item.name.casefold()}_repeat.yaml",
-                            False,
-                        ),
-                        (
-                            resolved.parent / "eval" / f"{item.name.casefold().removesuffix('_agent')}_source.sql",
-                            item.rendered.source_table_sql,
-                            f"compiled/{item.name.casefold()}_source.sql",
-                            False,
-                        ),
-                    )
-                else:
-                    payloads = (
-                        (
-                            resolved.parent / "agent" / f"{item.name.casefold()}.json",
-                            item.rendered_artifact.content,
-                            f"compiled/{item.name.casefold()}.json",
-                            False,
-                        ),
-                    )
+                payloads = _golden_payloads(item, resolved)
                 for path, content, compiled_path, is_ddl in payloads:
                     if not path.is_file():
                         failures.append(f"missing golden {path}")
@@ -1899,7 +2245,9 @@ def test_command(
             published = {
                 artifact.key: artifact for artifact in result.rendered_for_publish(current_manifest.manifest_id)
             }
-            for artifact in result.rendered:
+            # Ownership is proven for what smoke probes: composite artifacts carry
+            # no COMMENT marker and have no probe, so they are not asked for one.
+            for artifact in (item for item in result.rendered if item.smoke):
                 entry = state.applied.get(artifact.key)
                 expected_marker = OwnershipMarker(
                     current_manifest.manifest_id,
@@ -1950,6 +2298,161 @@ def test_command(
         click.echo(f"smoke suite passed: {len(smoke.attempted)} probe(s)")
 
     _guarded(action, command="test", output=output)
+
+
+@cli.command()
+@click.option("--project-dir", type=click.Path(file_okay=False, path_type=Path), default=Path("."))
+@click.option("--check", is_flag=True)
+@click.option("--output", type=click.Choice(["human", "json"]), default="human")
+def docs(project_dir: Path, check: bool, output: str) -> None:
+    """Write the generated reference pages under docs/reference/.
+
+    The artifact, error-code, configuration, and command-line references are
+    rendered from the engine's own registries, so they cannot drift from what the
+    engine accepts. With --check, nothing is written and the command exits 1 when
+    a committed page differs.
+    """
+
+    def action() -> None:
+        pages = reference_pages(_command_docs(cli), _option_docs(cli), EXIT_CODE_DOCS)
+        drifted = [
+            path
+            for path, text in sorted(pages.items())
+            if not (project_dir / path).is_file() or (project_dir / path).read_text(encoding="utf-8") != text
+        ]
+        if not check:
+            for path in drifted:
+                (project_dir / path).parent.mkdir(parents=True, exist_ok=True)
+                (project_dir / path).write_text(pages[path], encoding="utf-8")
+        exit_code = ERROR if check and drifted else OK
+        if output == "json":
+            data = {"pages": sorted(pages), "drifted": drifted, "written": [] if check else drifted}
+            _emit_json(_json_envelope("docs", DiagnosticBag(), exit_code=exit_code, data=data), exit_code)
+        for path in drifted:
+            click.echo(f"out of date: {path}" if check else f"wrote {path}")
+        if exit_code:
+            click.echo("run `sst docs` to regenerate the reference pages")
+            raise click.exceptions.Exit(exit_code)
+        click.echo(f"{len(pages)} reference page(s) current")
+
+    _guarded(action, command="docs", output=output)
+
+
+EXIT_CODE_DOCS: tuple[tuple[int, str, str], ...] = (
+    (OK, "OK", "Success. For `sst plan`, nothing to change."),
+    (ERROR, "ERROR", "Errors were reported, or an apply, a test suite, or a check failed."),
+    (CHANGES, "CHANGES", "`sst plan` found changes, or `sst migrate refs` found rewrites to make."),
+    (USAGE, "USAGE", "The command line is invalid."),
+    (CONFIG, "CONFIG", "The project, its configuration, or a saved plan cannot be used."),
+    (CONNECTION, "CONNECTION", "Snowflake could not be reached."),
+    (INTERRUPTED, "INTERRUPTED", "The run was interrupted."),
+)
+
+# One description per flag, shared by every command that takes it, so `--help`
+# and the generated CLI reference say the same thing everywhere. A command whose
+# flag means something narrower overrides it in `_COMMAND_OPTION_HELP`.
+_OPTION_HELP: Mapping[str, str] = {
+    "--project-dir": "Project root: the directory that holds `sst_config.yml`.",
+    "--target": "Target from `profiles.yml`; defaults to the profile's own default target.",
+    "--manifest": "Read this dbt `manifest.json` instead of running `dbt parse`.",
+    "--output": "`human` for readable text, or `json` for one machine-readable envelope.",
+    "--select": "Only these artifacts: a semantic view name, `type:<type>`, or `<type>:<name>`.",
+    "--exclude": "Leave these artifacts out; same forms as `--select`.",
+    "--strict": "Promote every warning to an error. Defaults to `validation.strict`.",
+    "--snowflake-syntax-check": (
+        "Compile expressions against Snowflake. Defaults to `validation.snowflake_syntax_check`."
+    ),
+    "--prune": (
+        "Also act on managed artifacts whose source was deleted, as far as each type "
+        "allows: drop, deactivate, or report."
+    ),
+    "--sql-out": "Also write the statements for each change into this directory.",
+    "--fail-fast": "Stop at the first failure instead of continuing.",
+}
+_COMMAND_OPTION_HELP: Mapping[tuple[str, str], str] = {
+    ("sst", "--output"): "Default `--output` for the command that follows.",
+    ("sst", "--project-dir"): "Default `--project-dir` for the command that follows.",
+    ("sst apply", "--plan"): "Apply this saved plan. It must still match the compiled project.",
+    ("sst apply", "--yes"): "Apply without asking for confirmation.",
+    ("sst apply", "--break-stale-lock"): "Take over a state lock left behind by a run that no longer exists.",
+    ("sst compile", "--emit-ddl"): "Write each semantic view's rendered DDL into this directory.",
+    ("sst compile", "--print-ddl"): "Print the rendered DDL to stdout.",
+    ("sst compile", "--ddl-output-dir"): "Same as `--emit-ddl`.",
+    ("sst compile", "--manifest-output"): "Also write the SST manifest here; with `--select`, only the selection.",
+    ("sst compile", "--select"): "Only this artifact: a semantic view name, `type:<type>`, or `<type>:<name>`.",
+    ("sst debug", "--test-connection"): "Also connect to Snowflake and report the session's role and account.",
+    ("sst docs", "--check"): "Write nothing; exit 1 when a committed reference page is out of date.",
+    ("sst plan", "--plan-out"): "Write the saved plan here instead of `target/sst/plan.json`.",
+    ("sst plan", "--no-plan-out"): "Do not write a saved plan.",
+    ("sst plan", "--no-detailed-exitcode"): "Exit 0 when changes are pending, instead of 2.",
+    ("sst test", "--suite"): (
+        "`golden` compares outputs with committed goldens offline; `smoke` probes deployed "
+        "objects; `evals` runs agent evaluations."
+    ),
+    ("sst test", "--golden-dir"): "Directory of the semantic view DDL goldens; the other goldens sit beside it.",
+    ("sst test", "--capture-baseline"): "Record this eval run as the new baseline. Requires `--reason`.",
+    ("sst test", "--reason"): "Why the baseline is changing; stored with it.",
+    ("sst test", "--fail-fast"): "Stop at the first failing golden, probe, or eval.",
+}
+
+
+def _document_options(command: click.Command, path: str = "sst") -> None:
+    """Give every option declared without help text its shared description."""
+    for param in command.params:
+        if isinstance(param, click.Option) and not param.help:
+            flag = param.opts[0]
+            param.help = _COMMAND_OPTION_HELP.get((path, flag)) or _OPTION_HELP.get(flag)
+    for name, child in getattr(command, "commands", {}).items():
+        _document_options(child, f"{path} {name}")
+
+
+def _command_docs(group: click.Group, prefix: str = "sst") -> tuple[CommandDoc, ...]:
+    """The visible command tree, each group followed by its subcommands."""
+    documented: list[CommandDoc] = []
+    for name in sorted(group.commands):
+        command = group.commands[name]
+        if command.hidden:
+            continue
+        path = f"{prefix} {name}"
+        description = inspect.cleandoc(command.help or "")
+        if isinstance(command, click.Group):
+            children = tuple(f"{path} {child}" for child in sorted(command.commands))
+            documented.append(CommandDoc(path, description, subcommands=children))
+            documented.extend(_command_docs(command, path))
+        else:
+            documented.append(CommandDoc(path, description, _option_docs(command)))
+    return tuple(documented)
+
+
+def _option_docs(command: click.Command) -> tuple[OptionDoc, ...]:
+    documented: list[OptionDoc] = []
+    for param in command.params:
+        if not isinstance(param, click.Option) or param.hidden:
+            continue
+        if param.is_flag:
+            value = None
+        elif isinstance(param.type, click.Choice):
+            value = "|".join(str(choice) for choice in param.type.choices)
+        elif isinstance(param.type, click.Path):
+            value = "DIRECTORY" if not param.type.file_okay else "FILE" if not param.type.dir_okay else "PATH"
+        else:
+            value = param.type.name.upper()
+        default = param.default
+        shown = str(default) if isinstance(default, (str, int, Path)) and not isinstance(default, bool) else None
+        documented.append(
+            OptionDoc(
+                " / ".join((*param.opts, *param.secondary_opts)),
+                value,
+                None if param.is_flag else shown,
+                param.help or "",
+                multiple=param.multiple,
+                required=param.required,
+            )
+        )
+    return tuple(documented)
+
+
+_document_options(cli)
 
 
 def main() -> None:

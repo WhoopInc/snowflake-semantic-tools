@@ -20,6 +20,9 @@ OBJECT_TYPES = {
     "tool": "CORTEX SEARCH SERVICE",
     "agent": "AGENT",
 }
+# Composite artifacts carry no COMMENT marker and are not SHOW-observed; the
+# recorded adapter keeps their state (versions, trees, registry rows) itself.
+COMPOSITE_TYPES = frozenset(("eval", "skill", "plugin", "profile"))
 
 
 def invoke(runner: CliRunner, args: list[str], expected_exit: int) -> dict[str, object]:
@@ -109,7 +112,7 @@ def main() -> None:
                 return result
             sql = "\n".join(statements)
             for raw in changes:
-                if not isinstance(raw, dict) or raw.get("artifact_type") == "eval":
+                if not isinstance(raw, dict) or raw.get("artifact_type") in COMPOSITE_TYPES:
                     continue
                 target = str(raw.get("target") or "")
                 if target and target in sql:
@@ -144,7 +147,7 @@ def main() -> None:
             if not isinstance(raw, dict):
                 continue
             artifact_type = str(raw.get("artifact_type") or "")
-            if artifact_type == "eval":
+            if artifact_type in COMPOSITE_TYPES:
                 continue
             object_type = OBJECT_TYPES[artifact_type]
             target = str(raw["target"])

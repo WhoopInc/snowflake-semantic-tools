@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from ..domain.state.model import Manifest, State
+from ..domain.state.model import DEACTIVATED, FAILED_AFTER_WRITE, AppliedEntry, Manifest, State
 
 
 @dataclass(frozen=True, slots=True)
@@ -14,6 +14,7 @@ class ArtifactSummary:
     fingerprint: str
     applied_fingerprint: str | None
     status: str
+    version: str | None = None
 
 
 def list_artifacts(manifest: Manifest, state: State | None = None) -> tuple[ArtifactSummary, ...]:
@@ -24,7 +25,20 @@ def list_artifacts(manifest: Manifest, state: State | None = None) -> tuple[Arti
             entry.publish_target,
             entry.fingerprint,
             state_entries[key].fingerprint if key in state_entries else None,
-            "applied" if key in state_entries and state_entries[key].fingerprint == entry.fingerprint else "pending",
+            _status(state_entries.get(key), entry.fingerprint),
+            # The published version of an extension-backed artifact, when state records one.
+            dict(state_entries[key].component_fingerprints).get("alias") if key in state_entries else None,
         )
         for key, entry in sorted(manifest.artifacts.items())
     )
+
+
+def _status(recorded: AppliedEntry | None, fingerprint: str) -> str:
+    if recorded is None:
+        return "pending"
+    if recorded.outcome == DEACTIVATED:
+        return DEACTIVATED
+    if recorded.outcome == FAILED_AFTER_WRITE:
+        # Something was written, but the publish did not complete.
+        return "failed"
+    return "applied" if recorded.fingerprint == fingerprint else "pending"

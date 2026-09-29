@@ -229,6 +229,27 @@ def test_dataset_validation_covers_agreement_placement_rows_dates_overlap_and_to
     assert {"SST-VAL708", "SST-VAL709", "SST-VAL710", "SST-PRS015"}.issubset(codes)
 
 
+def test_agent_absent_from_tool_projection_skips_tool_checks() -> None:
+    origin = Origin("agents/sales/evals/dataset.yml", 4)
+    dataset = EvalDataset(
+        origin,
+        origin.file,
+        None,
+        None,
+        (
+            EvalQuestion(
+                origin,
+                "Show revenue by region.",
+                EvalGroundTruth(origin, (EvalInvocation(origin, "SALES_VIEW"),), "Revenue by region."),
+            ),
+        ),
+    )
+    value = _resolved_eval(dataset=dataset)
+    # The agent failed to compile, so the compiler projected no tools for it.
+    codes = _codes(EvalCatalog((value,), value.custom_metrics), agent_tool_names={"other": ("SALES_VIEW",)})
+    assert not {"SST-VAL708", "SST-VAL709", "SST-VAL711"}.intersection(codes)
+
+
 def test_dataset_name_template_bounds_and_collisions_are_checked_when_renderable() -> None:
     first = _resolved_eval()
     second_agent = AgentModel("other", Origin("agents/other/agent.yml"), ("agents/other/agent.yml",))

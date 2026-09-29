@@ -7,7 +7,7 @@
 #
 # ITS VALUE IS THE ABSENCE, and this is the third negative-space assertion in the
 # fixture -- `jaffle_minimal` among the views, `total_revenue_all_time` among the
-# verified queries, `jaffle-minimal` among the skills. `agents/agent.md` is the
+# verified queries, `jaffle-catalogue` among the skills. `agents/agent.md` is the
 # heaviest spec in the plan at 76 rules, and every one of the OPT keys it defines is
 # exercised by `jaffle_analytics`. Without this file every rendered agent in every
 # golden would carry `profile`, `orchestration`, `instructions`, `tools`, `skills`,

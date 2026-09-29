@@ -1,0 +1,10 @@
+# A COMMAND HOOK WHOSE SCRIPT IS PUBLISHED WITH THE PROFILE. Desktop runs
+# `<command> <cached script path>` on the event; SST uploads the script into the
+# profile's `hooks/` tree and points the hook's `source.snowflake_stage` at it.
+name: sql-guard
+event: PreToolUse
+type: command
+command: bash
+matcher: snowflake_sql_execute
+timeout: 30
+description: Refuses destructive SQL unless the user confirms it.

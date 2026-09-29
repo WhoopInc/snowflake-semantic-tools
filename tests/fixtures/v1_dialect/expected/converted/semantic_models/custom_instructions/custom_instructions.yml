@@ -1,0 +1,7 @@
+snowflake_custom_instructions:
+  - name: dialect_conventions
+    # The 0.3 spellings. 1.0 reads both for one release, with a warning.
+    sql_generation: |-
+      Monetary columns are stored in cents; divide by one hundred for currency.
+    question_categorization: |-
+      Decline questions about an individual named customer.

@@ -33,6 +33,8 @@ class DbtModel:
     patch_path: str | None = None
     forbidden_location_keys: tuple[str, ...] = ()
     description: str | None = None
+    # Key fields written in a 0.3 form rather than the 1.0 lists.
+    legacy_key_fields: tuple[str, ...] = ()
 
     def column(self, name: str) -> DbtColumn | None:
         """Return a column case-insensitively."""

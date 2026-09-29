@@ -54,7 +54,7 @@ one of the three things that cannot be derived from a dbt model.
 `gross_margin` is `total_line_item_revenue` minus `total_supply_cost`. If a margin
 figure looks wrong, check in this order:
 
-1. **Is the supply month complete?** Run `scripts/check-supply-month.sql`. A partial
+1. **Is the supply month complete?** Run `check-supply-month.sql`. A partial
    month understates cost and overstates margin.
 2. **Was supply cost summed across months?** It must not be. `total_supply_cost`
    declares `snapshot_month` non-additive; aggregating the column directly does not.

@@ -120,6 +120,14 @@ project:
   # five artifact types with a `ddl_position` and not six.
   eval_metrics_dir: eval_metrics
   #
+  # THE DESKTOP INPUTS. A plugin groups skills into one extension; a profile is
+  # one CoCo Desktop registry row; hooks and MCP configs are what profiles name.
+  # These are the defaults, written out so the reference shows every root.
+  plugins_dir: plugins
+  profiles_dir: profiles
+  hooks_dir: hooks
+  mcp_servers_dir: mcp-servers
+  #
   # NOT A KEY, BY DESIGN: the dbt models directory. Auto-detected from
   # dbt_project.yml `model-paths`.
 
@@ -154,12 +162,14 @@ project:
 # This block is that coverage.
 # `sha_version` IS DELIBERATELY ABSENT FROM `vars:` AND DECLARING IT IS AN ERROR.
 #
-# It is the token that pins the agent's Cortex Extension reference
-# (`version: "{{ var('sha_version') }}"` in agents/jaffle_analytics/agent.yml), so it
-# IS the published skill's version identity. SST supplies it from the commit being
-# published -- `Provenance.sha`, the same value that already forms the agent's stage
-# path -- so the two SHAs agree BY CONSTRUCTION rather than by someone keeping two
-# places in step. `SST-CFG040` refuses a declared one.
+# It used to pin the agent's Cortex Extension reference (`version: "{{
+# var('sha_version') }}"` in agents/jaffle_analytics/agent.yml). M5 retired that
+# pin: a skill version is now named by its CONTENT -- `skills.+version_prefix` plus
+# 12 hex characters of the flattened bundle's digest -- and SST injects that alias
+# into the rendered spec, so the agent authors no version at all. A commit-named
+# pin is SST-VAL839 wherever it appears, and `SST-CFG040` still refuses a declared
+# `sha_version`, because SST records the commit that published each version in
+# its own state and a declared value could only disagree with it.
 #
 # AN EARLIER VERSION OF THIS FILE DECLARED `sha_version: "0000000"`, and the comment
 # on it argued its own case away: *"a committed literal SHA would be stale on the next
@@ -168,7 +178,9 @@ project:
 # with the commit so traceability is lost with nothing raised; or the SHA names a
 # version that does not exist, which drift row 34 measured is
 # ACCEPTED by `CREATE AGENT` with `DESCRIBE`, `SHOW` and `COMMIT` all passing -- an
-# agent that reports success and silently has no skill.
+# agent that reports success and silently has no skill. The commit-named pin had the
+# second failure built in -- an unchanged skill publishes nothing, so most commits
+# named a version that was never created -- which is why content aliases replaced it.
 #
 # `0000000` REMAINS THE TOKEN IN THE GOLDENS, and that is unaffected: the golden
 # harness's SHA normalisation replaces the real SHA with a fixed token in `plan.txt`,
@@ -208,8 +220,8 @@ vars:
   returned_state: returned
 
   # `sha_version` IS STILL DELIBERATELY ABSENT and declaring it is still `SST-CFG040`.
-  # See the note above this block: SST supplies it from the commit being published, so
-  # the agent's skill version and its stage path agree BY CONSTRUCTION.
+  # See the note above this block: skill versions are content aliases, and the
+  # publishing commit lives in SST state, not in a variable.
 
 # ---------------------------------------------------------------------------
 # # =============================================================================
@@ -651,31 +663,47 @@ skills:
   # (K013). There is NO un-certify path, so this fixture leaves it off.
   +certified: false
 
-  # A git SHA, not a UTC timestamp. Timestamps collide at one-second granularity
-  # under parallel deploys and carry no link to a commit (K007, K210).
-  +version_prefix: "GIT_"
+  # Every version alias is this prefix plus 12 hex characters of the flattened
+  # bundle's SHA-256 digest -- a CONTENT hash, never a timestamp (which collides
+  # at one-second granularity under parallel deploys) and never a commit SHA
+  # (which names versions an unchanged skill never publishes). The same content
+  # always yields the same alias, so a revert republishes nothing, and agents
+  # that reference the skill are pinned to it automatically (K007, K210). The
+  # commit that published each version is recorded in SST state instead.
+  +version_prefix: "SST_"
 
-  +grant_read_to: []
+  # NO `+grant_read_to`. Access to extensions is managed outside SST, and SST
+  # issues no grants.
   +threads: 4
+
+  # EXTENSIONS THIS PROJECT CONSUMES BUT DOES NOT PUBLISH. `{{ extension('<name>') }}`
+  # resolves only through this map: an entry's `fqn:`, or `default_prefix` plus
+  # the UPPER_SNAKE name. An extension this project publishes is referenced with
+  # `skill()` or `plugin()` instead, and `extension()` on one is an error.
+  extensions:
+    default_prefix: "{{ target.database }}.PARTNER"
+    partner-glossary:
 
   catalog:
     +database: "{{ target.database }}"
     +schema: JAFFLE
-    +registry_table: EXTENSION_REGISTRY
 
     # THE STAGE `ADD VERSION` READS FROM, AND THIS KEY WAS MISSING. A CORTEX
     # EXTENSION version is created by `ALTER CORTEX EXTENSION ... ADD VERSION
-    # <GIT_sha> FROM @<stage>/<path>/`, so the catalog channel needs a stage --
+    # <ALIAS> FROM @<stage>/<path>/`, so the catalog channel needs a stage --
     # and without this key it had none, which made the channel unpublishable.
     # `stage.+stage` below is the OTHER channel's and cannot be reused: that tree
-    # is nested and its `skills/` holds every skill at once.
+    # is nested and content-addressed per profile.
     #
-    # ONE ROOT PER EXTENSION, forced by the server. Drift row 31: a version root
+    # ONE ROOT PER VERSION, forced by the server. Drift row 31: a version root
     # must contain ONLY `skills/`, and `skills/` must contain EXACTLY ONE
     # subdirectory. So the layout is
-    #   @SKILL_BUNDLE_SRC/<skill-name>/skills/<skill-name>/SKILL.md
-    # and ADD VERSION points at `@SKILL_BUNDLE_SRC/<skill-name>/`, the level ABOVE
-    # `skills/`. One level deeper puts SKILL.md at the version root and is invalid.
+    #   @SKILL_BUNDLE_SRC/<skill-name>/<ALIAS>/skills/<skill-name>/SKILL.md
+    # and ADD VERSION points at `@SKILL_BUNDLE_SRC/<skill-name>/<ALIAS>/`, the
+    # level ABOVE `skills/`. The alias level makes each prefix immutable: new
+    # content gets a new alias and a new prefix, so an upload can never change
+    # the files a published version was built from. A plugin root holds
+    # `.cortex-plugin/plugin.json` beside `skills/`, one subdirectory per member.
     +bundle_stage: SKILL_BUNDLE_SRC
 
     # REQUIRED TRUE. Cortex Agents do not search subdirectories, and two of this
@@ -687,14 +715,20 @@ skills:
     # the skills spec's "FLAT required" row dropped that component and
     # produced a version the server rejected outright.
     +flatten: true
-    # FROM LAST inherits all prior files and only ever uploads, so a locally
-    # deleted file lingers forever without this (K209).
-    +prune_deleted: true
+    # No `+registry_table` and no `+prune_deleted`: SST state records every
+    # published version, and each version is built from one complete,
+    # content-addressed bundle, so a deleted file cannot linger (K209).
 
   stage:
     +database: "{{ target.database }}"
     +schema: JAFFLE
     +stage: SKILL_BUNDLES
+    # A REHEARSAL REGISTRY, ON PURPOSE. CoCo Desktop reads exactly one registry,
+    # `CORTEX_CODE.CONFIG.PROFILE_REGISTRY`, and this fixture must never write it.
+    # An unqualified name resolves into this channel's schema, and SST-VAL854
+    # says on every run that Desktop will not see the row. Publishing for real
+    # is pointing this key at Desktop's table. SST creates the table only when it
+    # is absent, with Desktop's 18 columns, and never alters one that exists.
     +registry_table: PROFILE_REGISTRY
     # MUST STAY FALSE. CoCo Desktop supports and EXPECTS nested subdirectories.
     # `catalog.+flatten: true` beside `stage.+flatten: false` is not an

@@ -5,7 +5,7 @@ from types import MappingProxyType
 
 import pytest
 
-from snowflake_semantic_tools.app.agent_compile import AgentCompileContext, CompileAgents, for_publication
+from snowflake_semantic_tools.app.agent_compile import AgentCompileContext, CompileAgents, ExtensionPin, for_publication
 from snowflake_semantic_tools.domain.model.agent import (
     AgentModel,
     AgentProfile,
@@ -18,6 +18,15 @@ from snowflake_semantic_tools.domain.model.diagnostic import DiagnosticBag, Orig
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
 from snowflake_semantic_tools.domain.model.tool import ToolCatalog, ToolColumn, ToolGroup, ToolMember, ToolOwnership
 
+SEMANTICS = ExtensionPin("skill:semantics", QualifiedName.parse("DB.S.SEMANTICS"), "SST_ABCDEF012345", ("semantics",))
+TOOLKIT = ExtensionPin(
+    "plugin:toolkit",
+    QualifiedName.parse("DB.S.TOOLKIT"),
+    "SST_0123456789AB",
+    ("semantics", "operations"),
+    has_scripts=True,
+)
+
 
 def context(
     *,
@@ -29,7 +38,7 @@ def context(
         semantic_views={"sales": QualifiedName.parse("DB.S.SALES")},
         tools=tools or ToolCatalog((), "dev", frozenset(("dev",))),
         agents=agents or {},
-        extensions={"semantics": QualifiedName.parse("DB.S.SEMANTICS")},
+        extensions={"vendor-pack": QualifiedName.parse("DB.EXT.VENDOR_PACK")},
         variables={"sha_version": "0000000"},
         database="DB",
         schema="S",
@@ -42,7 +51,8 @@ def context(
         analytical_search=False,
         alias="promoted",
         allowed_models=frozenset(("model",)),
-        skill_version_prefix="GIT_",
+        skills={"semantics": SEMANTICS},
+        plugins={"toolkit": TOOLKIT},
     )
 
 
@@ -89,7 +99,7 @@ def test_agent_compiler_resolves_tools_and_renders_complete_spec() -> None:
                 ),
             ),
         ),
-        skills=(AgentSkill("semantics", "CORTEX_EXTENSION", "semantics", "sha_version"),),
+        skills=(AgentSkill("semantics", "CORTEX_EXTENSION", "semantics", "", ref="skill"),),
     )
     result = CompileAgents((model,), DiagnosticBag(), context(tools=tools)).run_result()
     assert not result.diagnostics.has_errors
@@ -99,8 +109,8 @@ def test_agent_compiler_resolves_tools_and_renders_complete_spec() -> None:
     assert '"semantic_view": "DB.S.SALES"' in payload
     assert '"identifier": "DB.S.LOOKUP"' in payload
     assert '"path": "DB.S.SEMANTICS"' in payload
-    assert '"version": "GIT_0000000"' in payload
-    assert result.compiled[0].rendered_artifact.depends_on == ("semantic_view:sales",)
+    assert '"version": "SST_ABCDEF012345"' in payload
+    assert result.compiled[0].rendered_artifact.depends_on == ("semantic_view:sales", "skill:semantics")
 
 
 def test_agent_compiler_validates_unknown_refs_names_alias_and_input_schema() -> None:
@@ -275,6 +285,7 @@ def test_agent_compiler_duplicate_names_size_skills_and_publish_properties() -> 
         skills=(
             AgentSkill("stage", "STAGE", "@stage", "LIVE"),
             AgentSkill("missing", "CORTEX_EXTENSION", "", ""),
+            AgentSkill("vendor", "CORTEX_EXTENSION", "vendor-pack", "LIVE"),
         ),
     )
     result = CompileAgents((model,), DiagnosticBag(), context()).run_result()
@@ -312,11 +323,12 @@ def test_agent_compiler_size_limit_and_inheritance_resolution() -> None:
         "inherited",
         Origin("agent.yml"),
         ("agent.yml",),
-        skills=(AgentSkill("semantics", "CORTEX_EXTENSION", "semantics", "sha_version"),),
+        skills=(AgentSkill("vendor", "CORTEX_EXTENSION", "vendor-pack", "", version_var="release"),),
     )
-    result = CompileAgents((inherited,), DiagnosticBag(), context()).run_result()
-    assert '"path": "DB.S.SEMANTICS"' in result.compiled[0].payload
-    assert '"version": "GIT_0000000"' in result.compiled[0].payload
+    pinned = replace(context(), variables={"release": "V7"})
+    result = CompileAgents((inherited,), DiagnosticBag(), pinned).run_result()
+    assert '"path": "DB.EXT.VENDOR_PACK"' in result.compiled[0].payload
+    assert '"version": "V7"' in result.compiled[0].payload
 
 
 def test_agent_compiler_reports_duplicate_identity_and_display_name() -> None:
@@ -697,3 +709,96 @@ def test_agent_artifact_programs_cover_temporary_alias_tags_and_metadata() -> No
             git_sha="abcdef0",
             temporary=True,
         ).rendered_artifact
+
+
+def test_skill_references_pin_owned_versions_and_check_consumed_ones() -> None:
+    def skill(name: str, path: str, *, ref: str = "skill", version: str = "", var: str | None = None) -> AgentSkill:
+        return AgentSkill(name, "CORTEX_EXTENSION", path, version, ref=ref, version_var=var)
+
+    agent = AgentModel(
+        "router",
+        Origin("agent.yml"),
+        ("agent.yml",),
+        skills=(
+            skill("semantics", "semantics"),
+            skill("", "toolkit", ref="plugin"),
+            skill("vendor", "vendor-pack", ref="extension", version="V2"),
+        ),
+    )
+    result = CompileAgents((agent,), DiagnosticBag(), context()).run_result()
+    assert [item.code for item in result.diagnostics] == ["SST-VAL814"]
+    payload = result.compiled[0].payload
+    assert '"path": "DB.S.TOOLKIT"' in payload and '"version": "SST_0123456789AB"' in payload
+    assert '"path": "DB.EXT.VENDOR_PACK"' in payload and '"version": "V2"' in payload
+    assert payload.count('"name":') == 2  # semantics and vendor; the plugin entry omits name
+    assert result.compiled[0].rendered_artifact.depends_on == ("skill:semantics", "plugin:toolkit")
+
+    broken = AgentModel(
+        "broken",
+        Origin("agent.yml"),
+        ("agent.yml",),
+        skills=(
+            skill("ghost", "ghost"),
+            skill("", "ghost-kit", ref="plugin"),
+            skill("semantics", "semantics", ref="extension", version="V1"),
+            skill("semantics", "semantics", version="V1"),
+            skill("", "semantics"),
+            skill("other", "semantics"),
+            skill("stranger", "toolkit", ref="plugin"),
+            skill("vendor", "vendor-pack", ref="extension", var="sha_version"),
+            skill("unknown", "nowhere", ref="extension", version="V1"),
+        ),
+    )
+    diagnostics = CompileAgents((broken,), DiagnosticBag(), context()).run_result().diagnostics
+    assert [item.code for item in diagnostics] == [
+        "SST-REF032",
+        "SST-REF036",
+        "SST-REF037",
+        "SST-VAL838",
+        "SST-VAL540",
+        "SST-VAL840",
+        "SST-VAL840",
+        "SST-VAL839",
+        "SST-REF013",
+        "SST-VAL804",
+        "SST-VAL804",
+    ]
+
+
+def test_references_to_declared_but_unpublished_extensions_name_the_cause() -> None:
+    def skill(name: str, path: str, *, ref: str = "skill", version: str = "") -> AgentSkill:
+        return AgentSkill(name, "CORTEX_EXTENSION", path, version, ref=ref)
+
+    agent = AgentModel(
+        "router",
+        Origin("agent.yml"),
+        ("agent.yml",),
+        skills=(
+            skill("draft", "draft"),
+            skill("", "kit", ref="plugin"),
+            skill("draft", "draft", ref="extension", version="V1"),
+            skill("glossary", "partner-glossary", ref="extension", version="V1"),
+        ),
+    )
+    unpublished = {
+        "skill:draft": "it has errors",
+        "plugin:kit": "skills.catalog is not configured",
+        "extension:partner-glossary": "its skills.extensions entry cannot be qualified",
+    }
+    diagnostics = (
+        CompileAgents((agent,), DiagnosticBag(), replace(context(), unpublished=unpublished)).run_result().diagnostics
+    )
+    assert [(item.code, item.context.get("reason")) for item in diagnostics[:4]] == [
+        ("SST-VAL856", "it has errors"),
+        ("SST-VAL856", "skills.catalog is not configured"),
+        ("SST-REF037", None),
+        ("SST-VAL856", "its skills.extensions entry cannot be qualified"),
+    ]
+
+
+def test_unreferenced_extensions_are_reported_only_in_projects_with_agents() -> None:
+    assert CompileAgents((), DiagnosticBag(), context()).run_result().diagnostics == ()
+    lonely = AgentModel("lonely", Origin("agent.yml"), ("agent.yml",))
+    consumed = replace(context(), consumed=frozenset(("skill:semantics",)))
+    diagnostics = CompileAgents((lonely,), DiagnosticBag(), consumed).run_result().diagnostics
+    assert [(item.code, item.subject) for item in diagnostics] == [("SST-VAL804", "plugin:toolkit")]

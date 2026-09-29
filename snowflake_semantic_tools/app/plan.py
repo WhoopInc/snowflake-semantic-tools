@@ -19,7 +19,7 @@ from ..domain.model.registry import SEMANTIC_REGISTRY, Registry
 from ..domain.plan.diff import build_changeset
 from ..domain.ports.lifecycle import CompositeLifecycleHandler
 from ..domain.ports.snowflake import SnowflakePort, SnowflakePortError
-from ..domain.state.model import Manifest, State
+from ..domain.state.model import DEACTIVATED, Manifest, State
 
 
 def observe(
@@ -68,7 +68,10 @@ def observe(
                     desired_artifact = desired.get(row.qualified_name.folded)
                     key = f"{artifact_type.name}:{row.qualified_name.artifact_component}"
                     grants: tuple[GrantRow, ...] | None = None
-                    if artifact_type.replaces_on_update:
+                    # Grants matter only for an object this plan may replace. A prune
+                    # candidate or an unrelated object is never replaced, and an
+                    # unrelated routine has no known signature to address it by.
+                    if artifact_type.replaces_on_update and desired_artifact is not None:
                         try:
                             grants = tuple(
                                 sorted(
@@ -180,6 +183,7 @@ class PlanArtifacts:
                 for key, entry in sorted(state.applied.items())
                 if key not in rendered
                 and key not in existing_keys
+                and entry.outcome != DEACTIVATED
                 and (handler := self._lifecycle_handlers.get(key.split(":", 1)[0])) is not None
                 and (prune_types is None or key.split(":", 1)[0] in prune_types)
                 and (prune_keys is None or key in prune_keys)

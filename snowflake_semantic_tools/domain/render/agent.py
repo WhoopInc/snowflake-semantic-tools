@@ -44,7 +44,8 @@ def render_agent_spec(model: AgentModel, tools: tuple[ResolvedAgentTool, ...]) -
     if model.skills:
         document["skills"] = [
             {
-                "name": skill.name,
+                # A plugin reference may omit `name`; its members come from the version.
+                **({"name": skill.name} if skill.name else {}),
                 "source": {
                     "type": skill.source_type,
                     "path": skill.path,

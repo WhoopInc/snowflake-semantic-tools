@@ -496,3 +496,94 @@ def test_plan_uses_composite_lifecycle_action_observation_and_diagnostics() -> N
     assert result.changes[0].action is Action.BLOCKED
     assert result.changes[0].composite_observation == composite.observation
     assert result.diagnostics == composite.diagnostics
+
+
+def _versioned(key: str, artifact_type: str, depends_on: tuple[str, ...] = ()) -> RenderedArtifact:
+    return RenderedArtifact.create(
+        key=key,
+        artifact_type=artifact_type,
+        target=QualifiedName.from_parts("db", "sch", key.split(":", 1)[1].replace("-", "_")),
+        ddl=f"payload {key}",
+        depends_on=depends_on,
+        object_type="AGENT" if artifact_type == "agent" else "",
+        generic_apply_safe=artifact_type == "agent",
+    )
+
+
+def test_a_write_that_pins_a_version_outside_the_plan_is_blocked() -> None:
+    agent = _versioned("agent:analyst", "agent", ("skill:guide", "plugin:kit", "semantic_view:sales"))
+    evaluation = _versioned("eval:analyst", "eval", (agent.key,))
+    skill = _versioned("skill:guide", "skill")
+    manifest, state = context({agent.key: agent, evaluation.key: evaluation}, {})
+    noop = CompositePlan(Action.NOOP, ChangeReason.UNCHANGED, CompositeObservation(skill.key))
+    result = build_changeset(
+        {agent.key: agent, evaluation.key: evaluation, skill.key: skill},
+        SnowflakeObservation(fetched_at="now"),
+        manifest,
+        state,
+        SEMANTIC_REGISTRY,
+        target(),
+        composite_plans={
+            skill.key: noop,
+            evaluation.key: CompositePlan(
+                Action.CREATE, ChangeReason.NOT_PRESENT, CompositeObservation(evaluation.key)
+            ),
+        },
+    )
+    by_key = {change.key: change for change in result.changes}
+    # The skill is planned (NOOP proves its version exists); the plugin is not,
+    # and an unplanned semantic view is not a pinned version, so only the plugin blocks.
+    assert by_key[agent.key].action is Action.BLOCKED
+    assert by_key[agent.key].reason is ChangeReason.DEPENDENCY_BLOCKED
+    assert [(item.code, item.message) for item in by_key[agent.key].diagnostics] == [
+        (
+            "SST-PLN030",
+            "agent:analyst: pins the published version of plugin:kit; select plugin:kit as well",
+        )
+    ]
+    assert [item.code for item in result.diagnostics] == ["SST-PLN030"]
+    assert by_key[evaluation.key].reason is ChangeReason.DEPENDENCY_BLOCKED
+    assert by_key[skill.key].action is Action.NOOP
+
+    plugin = _versioned("plugin:kit", "plugin")
+    planned = build_changeset(
+        {agent.key: agent, skill.key: skill, plugin.key: plugin},
+        SnowflakeObservation(fetched_at="now"),
+        manifest,
+        state,
+        SEMANTIC_REGISTRY,
+        target(),
+        composite_plans={
+            skill.key: noop,
+            plugin.key: CompositePlan(Action.CREATE, ChangeReason.NOT_PRESENT, CompositeObservation(plugin.key)),
+        },
+    )
+    assert {change.key: change.action for change in planned.changes}[agent.key] is Action.CREATE
+    assert planned.diagnostics == DiagnosticBag()
+
+
+def test_an_unchanged_agent_is_not_blocked_by_an_unplanned_pinned_version() -> None:
+    agent = _versioned("agent:analyst", "agent", ("skill:guide",))
+    manifest, _ = context({agent.key: agent}, {})
+    state = State(
+        STATE_SCHEMA_VERSION,
+        target(),
+        manifest.manifest_id,
+        "cfg",
+        None,
+        MappingProxyType({agent.key: applied(agent, manifest.manifest_id)}),
+    )
+    observation = SnowflakeObservation(
+        MappingProxyType(
+            {
+                agent.key: observed(
+                    agent,
+                    marker=OwnershipMarker(manifest.manifest_id, agent.fingerprint),
+                    object_type="AGENT",
+                )
+            }
+        ),
+        "now",
+    )
+    result = build_changeset({agent.key: agent}, observation, manifest, state, SEMANTIC_REGISTRY, target())
+    assert [(change.key, change.action) for change in result.changes] == [(agent.key, Action.NOOP)]

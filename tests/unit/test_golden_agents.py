@@ -7,7 +7,9 @@ import yaml
 from snowflake_semantic_tools.adapters.dbt.manifest import load_manifest_catalog
 from snowflake_semantic_tools.adapters.yaml.agents import load_agents
 from snowflake_semantic_tools.adapters.yaml.project_source import YamlProjectSource
-from snowflake_semantic_tools.app.agent_compile import AgentCompileContext, CompileAgents
+from snowflake_semantic_tools.adapters.yaml.skills import load_skill_catalog
+from snowflake_semantic_tools.app.agent_compile import AgentCompileContext, CompileAgents, ExtensionPin
+from snowflake_semantic_tools.app.skill_compile import CatalogChannel, CompiledExtension, CompileSkills
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
 
 ROOT = Path(__file__).parents[2]
@@ -25,6 +27,21 @@ def test_reference_agents_match_complete_json_goldens() -> None:
     ).load_tools()
     config = yaml.safe_load((FIXTURE / "sst_config.yml").read_text(encoding="utf-8"))
     defaults = config["agents"]
+    # Pins come from the compiled skills, exactly as the CLI resolves them.
+    skills = CompileSkills(
+        load_skill_catalog(FIXTURE, skills_dir="skills", plugins_dir="plugins"),
+        CatalogChannel(
+            "SST_REF_DEV",
+            "JAFFLE",
+            QualifiedName.parse("SST_REF_DEV.JAFFLE.SKILL_BUNDLE_SRC"),
+            version_prefix=str(config["skills"]["+version_prefix"]),
+        ),
+    ).run_result()
+    pins = {
+        item.name: ExtensionPin(item.artifact_key, item.release.target, item.release.alias, (item.name,))
+        for item in skills.compiled
+        if isinstance(item, CompiledExtension) and item.artifact_type == "skill"
+    }
     agent_targets = {
         model.name.casefold(): QualifiedName.from_parts("SCRATCH", "SST_1_REFERENCE_IMPL", model.name)
         for model in models
@@ -40,7 +57,8 @@ def test_reference_agents_match_complete_json_goldens() -> None:
             },
             tools=tool_catalog,
             agents=agent_targets,
-            extensions={"jaffle-semantics": QualifiedName.parse("SST_REF_DEV.JAFFLE.JAFFLE_SEMANTICS")},
+            # `skills.extensions`: default_prefix plus the UPPER_SNAKE name.
+            extensions={"partner-glossary": QualifiedName.parse("SST_REF_DEV.PARTNER.PARTNER_GLOSSARY")},
             variables={"sha_version": "0000000"},
             database="SST_REF_DEV",
             schema="JAFFLE",
@@ -53,7 +71,7 @@ def test_reference_agents_match_complete_json_goldens() -> None:
             analytical_search=bool(defaults["+analytical_search"]),
             alias=str(defaults["+alias"]),
             allowed_models=frozenset(config["snowflake"]["orchestration_models"]),
-            skill_version_prefix=str(config["skills"]["+version_prefix"]),
+            skills=pins,
         ),
     ).run_result()
     assert not result.diagnostics.has_errors

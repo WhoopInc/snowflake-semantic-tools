@@ -73,7 +73,9 @@ class ShowRow:
 
     @property
     def qualified_name(self) -> QualifiedName:
-        return QualifiedName.from_parts(self.database_name, self.schema_name, self.name)
+        return QualifiedName(
+            Identifier.shown(self.database_name), Identifier.shown(self.schema_name), Identifier.shown(self.name)
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -122,6 +124,9 @@ class CompositeObservation:
     diagnostics: DiagnosticBag = DiagnosticBag()
     config_size: int | None = None
     config_md5: str | None = None
+    # Handler-specific observed facts. Each composite handler records what it
+    # observed here, so a saved plan goes stale when any of them changes.
+    details: tuple[tuple[str, str], ...] = ()
 
 
 @dataclass(frozen=True, slots=True)

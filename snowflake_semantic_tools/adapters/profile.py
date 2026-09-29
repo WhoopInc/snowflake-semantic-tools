@@ -9,7 +9,9 @@ from typing import Any
 
 import yaml
 
+from ..domain.model.diagnostic import D
 from ..domain.model.identifier import Identifier, QualifiedName, TargetIdentity
+from .project import ProjectError
 
 _ENV_VAR = re.compile(r"^\{\{\s*env_var\(\s*['\"]([^'\"]+)['\"](?:\s*,\s*['\"]([^'\"]*)['\"])?\s*\)\s*\}\}$")
 
@@ -52,11 +54,33 @@ class ProfileTarget:
         self.state_table = state_table
 
 
-def load_profile_target(project_dir: Path, target_name: str | None = None) -> ProfileTarget:
-    project = _read_yaml(project_dir / "dbt_project.yml")
-    profile_name = project.get("profile")
+def resolve_profile_name(project_dir: Path) -> str:
+    """The `profiles.yml` profile: dbt's `profile:`, or `project.target_profile` without dbt."""
+    config_path = project_dir / "sst_config.yml"
+    config = _read_yaml(config_path) if config_path.is_file() else {}
+    project_block = config.get("project")
+    configured = project_block.get("target_profile") if isinstance(project_block, dict) else None
+    dbt_project_path = project_dir / "dbt_project.yml"
+    if not dbt_project_path.is_file():
+        if not isinstance(configured, str) or not configured:
+            raise ValueError(
+                "the project has no dbt_project.yml; set project.target_profile in sst_config.yml "
+                "to name its profiles.yml profile"
+            )
+        return configured
+    profile_name = _read_yaml(dbt_project_path).get("profile")
     if not isinstance(profile_name, str) or not profile_name:
         raise ValueError("dbt_project.yml declares no profile")
+    if configured is not None and configured != profile_name:
+        raise ValueError(
+            f"project.target_profile {configured!r} disagrees with dbt_project.yml profile {profile_name!r}"
+        )
+    return profile_name
+
+
+def profile_output(project_dir: Path, target_name: str | None = None) -> tuple[str, str, dict[str, object]]:
+    """The profile name, target name, and `env_var()`-resolved fields of one output."""
+    profile_name = resolve_profile_name(project_dir)
     profiles = _read_yaml(project_dir / "profiles.yml")
     profile = profiles.get(profile_name)
     if not isinstance(profile, dict):
@@ -65,8 +89,13 @@ def load_profile_target(project_dir: Path, target_name: str | None = None) -> Pr
     outputs = profile.get("outputs")
     output = outputs.get(selected) if isinstance(outputs, dict) else None
     if not isinstance(selected, str) or not isinstance(output, dict):
-        raise ValueError(f"profiles.yml has no target {selected!r}")
-    resolved = {str(key): _resolve_env(value) for key, value in output.items()}
+        diagnostic = D("SST-CFG010", target=selected, profile=profile_name)
+        raise ProjectError(diagnostic.message, diagnostics=(diagnostic,))
+    return profile_name, selected, {str(key): _resolve_env(value) for key, value in output.items()}
+
+
+def load_profile_target(project_dir: Path, target_name: str | None = None) -> ProfileTarget:
+    profile_name, selected, resolved = profile_output(project_dir, target_name)
     database = resolved.get("database")
     schema = resolved.get("schema")
     if not isinstance(database, str) or not isinstance(schema, str):

@@ -18,10 +18,24 @@ from snowflake_semantic_tools.domain.model.registry import (
 
 
 def test_registry_has_m4_artifacts_and_all_seven_semantic_member_types() -> None:
-    assert tuple(SEMANTIC_REGISTRY.artifacts) == ("semantic_view", "tool", "agent", "eval")
-    assert [value.ddl_position for value in SEMANTIC_REGISTRY.artifacts.values()] == [100, 200, 300, 400]
+    assert tuple(SEMANTIC_REGISTRY.artifacts) == (
+        "semantic_view",
+        "tool",
+        "skill",
+        "plugin",
+        "profile",
+        "agent",
+        "eval",
+    )
+    assert [value.ddl_position for value in SEMANTIC_REGISTRY.artifacts.values()] == [100, 200, 250, 260, 270, 300, 400]
+    assert SEMANTIC_REGISTRY.artifacts["profile"].ref_function is None
     assert SEMANTIC_REGISTRY.artifacts["tool"].dependency_types == ("semantic_view",)
-    assert SEMANTIC_REGISTRY.artifacts["agent"].dependency_types == ("semantic_view", "tool")
+    assert SEMANTIC_REGISTRY.artifacts["agent"].dependency_types == ("semantic_view", "tool", "skill", "plugin")
+    assert SEMANTIC_REGISTRY.artifacts["agent"].pins_versions_of == ("skill", "plugin")
+    assert all(not value.pins_versions_of for name, value in SEMANTIC_REGISTRY.artifacts.items() if name != "agent")
+    for name in ("skill", "plugin"):
+        assert SEMANTIC_REGISTRY.artifacts[name].lifecycle is ArtifactLifecycle.COMPOSITE
+        assert SEMANTIC_REGISTRY.artifacts[name].ref_function == name
     assert SEMANTIC_REGISTRY.artifacts["eval"].dependency_types == ("agent",)
     assert SEMANTIC_REGISTRY.artifacts["eval"].lifecycle is ArtifactLifecycle.COMPOSITE
     assert tuple(SEMANTIC_REGISTRY.members) == (
@@ -158,6 +172,13 @@ def test_registry_refuses_dependency_order_inversion() -> None:
         build_registry((first, second), ())
 
 
+def test_registry_refuses_version_pins_on_types_it_does_not_depend_on() -> None:
+    first = ArtifactType("first", "firsts", 100, "first", (), "FIRST")
+    second = ArtifactType("second", "seconds", 200, "second", (), "SECOND", pins_versions_of=("first",))
+    with pytest.raises(RegistryIntegrityError, match="pins versions of types it does not depend on"):
+        build_registry((first, second), ())
+
+
 def test_registry_refuses_object_lifecycle_without_observable_type() -> None:
     with pytest.raises(RegistryIntegrityError, match="requires an observable object type"):
         build_registry(
@@ -285,6 +306,7 @@ def test_registry_refuses_generic_grant_preservation_on_composite_after_earlier_
         object_type = ""
         prunable = False
         dependency_types: tuple[str, ...] = ()
+        pins_versions_of: tuple[str, ...] = ()
         object_types: tuple[str, ...] = ()
         lifecycle = ArtifactLifecycle.COMPOSITE
         _replace_reads = 0
