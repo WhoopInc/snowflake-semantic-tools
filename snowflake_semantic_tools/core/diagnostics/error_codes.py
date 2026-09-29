@@ -319,6 +319,26 @@ _register(
     "Table '{table}' not found. Did you mean '{closest_match}'?",
 )
 
+# --- View scope validation ---
+_register(
+    "SST-V080",
+    "Include/exclude mutual exclusion",
+    ErrorCategory.VALIDATION,
+    "Cannot specify both include and exclude lists for the same item type in a semantic view",
+)
+_register(
+    "SST-V082",
+    "View scope references unknown item",
+    ErrorCategory.VALIDATION,
+    "Semantic view references an item in include/exclude list that does not exist",
+)
+_register(
+    "SST-V083",
+    "Included metric missing required relationship",
+    ErrorCategory.VALIDATION,
+    "A multi-table metric requires a relationship that is excluded from the view's scope",
+)
+
 # --- Template validation ---
 _register(
     "SST-V081",

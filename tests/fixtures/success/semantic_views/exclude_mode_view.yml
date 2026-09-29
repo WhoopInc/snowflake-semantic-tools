@@ -1,0 +1,13 @@
+semantic_views:
+  - name: safe_customer_view
+    description: "Customer view with PII removed"
+    tables:
+      - "{{ table('customers') }}"
+      - "{{ table('orders') }}"
+
+    exclude_columns:
+      - "{{ column('customers', 'email') }}"
+      - "{{ column('customers', 'phone') }}"
+
+    exclude_metrics:
+      - "{{ metric('internal_debug_metric') }}"

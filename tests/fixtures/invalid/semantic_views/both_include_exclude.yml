@@ -1,0 +1,11 @@
+semantic_views:
+  - name: invalid_both_specified
+    description: "This should fail validation - both include and exclude specified"
+    tables:
+      - "{{ table('orders') }}"
+
+    metrics:
+      - "{{ metric('total_revenue') }}"
+
+    exclude_metrics:
+      - "{{ metric('average_order_value') }}"
