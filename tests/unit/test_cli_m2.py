@@ -9,8 +9,9 @@ from hashlib import md5
 from pathlib import Path
 
 import pytest
-from click.testing import CliRunner
+from click.testing import CliRunner, Result
 
+from snowflake_semantic_tools.adapters.fs.local import StateFileStore
 from snowflake_semantic_tools.adapters.project import ProjectError
 from tests.helpers.eval_state_store import InMemoryEvalStateStore
 from tests.helpers.recorded_snowflake import PROFILE_REGISTRY_SHAPE, RecordedSnowflake
@@ -26,7 +27,7 @@ from snowflake_semantic_tools.domain.model.eval import (
     EvalResultRow,
     EvalRunAttempt,
 )
-from snowflake_semantic_tools.domain.model.identifier import Identifier, TargetIdentity
+from snowflake_semantic_tools.domain.model.identifier import Identifier, QualifiedName, TargetIdentity
 from snowflake_semantic_tools.domain.model.lifecycle import OwnershipMarker, QueryResult, ShowRow
 from snowflake_semantic_tools.domain.ports.snowflake import SnowflakePortError, StagedFileMetadata
 from snowflake_semantic_tools.domain.state.model import AppliedEntry, State, content_hash
@@ -1240,6 +1241,111 @@ def test_debug_connection_and_human_apply_prompt(tmp_path: Path, monkeypatch: py
         ["apply", *common(project), "--target", "dev"],
     )
     assert applied.exit_code != 0 and "Apply this plan?" in applied.output
+
+
+def test_a_declined_or_interrupted_run_exits_130_without_an_internal_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    project = project_copy(tmp_path)
+    declined = invoke_with_port(
+        monkeypatch, RecordedSnowflake(state={}), ["apply", *common(project), "--target", "dev"]
+    )
+    assert declined.exit_code == 130, declined.output
+    assert "Apply this plan?" in declined.output and "Aborted." in declined.output
+    assert "SST-INT902" not in declined.output
+
+    def interrupt(params: object) -> RecordedSnowflake:
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr("snowflake_semantic_tools.cli.main.SnowflakeConnector", interrupt)
+    human = CliRunner().invoke(cli, ["plan", *common(project), "--target", "dev"])
+    assert human.exit_code == 130 and "SST-INT902" not in human.output
+    as_json = CliRunner().invoke(cli, ["plan", *common(project), "--target", "dev", "--output", "json"])
+    assert as_json.exit_code == 130
+    envelope = json.loads(as_json.output)
+    assert (envelope["exit_code"], envelope["status"], envelope["diagnostics"]) == (130, "error", [])
+
+
+def invoke_counting_closes(
+    monkeypatch: pytest.MonkeyPatch, port: RecordedSnowflake, args: list[str]
+) -> tuple[Result, list[str]]:
+    """Run `sst` against `port`, recording every close() so a test can prove the connection was released."""
+    closes: list[str] = []
+    monkeypatch.setattr("snowflake_semantic_tools.cli.main.SnowflakeConnector", lambda params: port)
+    port.close = lambda: closes.append("closed")  # type: ignore[attr-defined]
+    return CliRunner().invoke(cli, args), closes
+
+
+def test_plan_closes_its_connection_when_it_fails_after_connecting(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    project = project_copy(tmp_path)
+    compile_project(project)
+    plan = ["plan", *common(project), "--target", "dev", "--output", "json"]
+
+    class DroppedMidPlan(RecordedSnowflake):
+        def read_state(self, state_table: QualifiedName, target_name: str) -> None:
+            raise SnowflakePortError("connection reset while reading state")
+
+    dropped, closes = invoke_counting_closes(monkeypatch, DroppedMidPlan(), plan)
+    assert (
+        dropped.exit_code == 5 and json.loads(dropped.output)["data"]["error"] == "connection reset while reading state"
+    )
+    assert closes == ["closed"]
+
+    (project / "target" / "sst" / "state.dev.json").write_text("[]", encoding="utf-8")
+    unreadable, closes = invoke_counting_closes(monkeypatch, RecordedSnowflake(state={}), plan)
+    assert unreadable.exit_code == 4
+    assert [item["code"] for item in json.loads(unreadable.output)["diagnostics"]] == ["SST-MAN022"]
+    assert closes == ["closed"]
+
+
+def test_apply_closes_its_connection_when_it_stops_before_applying(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    project = project_copy(tmp_path)
+    compile_project(project)
+    declined, closes = invoke_counting_closes(
+        monkeypatch, RecordedSnowflake(state={}), ["apply", *common(project), "--target", "dev"]
+    )
+    assert declined.exit_code == 130 and "Apply this plan?" in declined.output
+    assert closes == ["closed"]
+
+    planned = invoke_with_port(
+        monkeypatch, RecordedSnowflake(state={}), ["plan", *common(project), "--target", "dev", "--output", "json"]
+    )
+    path = Path(json.loads(planned.output)["data"]["plan_path"])
+    document = json.loads(path.read_text(encoding="utf-8"))
+    document["observation_fingerprint"] = "0" * 64
+    document["plan_id"] = content_hash({key: value for key, value in document.items() if key != "plan_id"})
+    path.write_text(json.dumps(document), encoding="utf-8")
+    stale, closes = invoke_counting_closes(
+        monkeypatch,
+        RecordedSnowflake(state={}),
+        ["apply", *common(project), "--target", "dev", "--plan", str(path), "--yes", "--output", "json"],
+    )
+    assert stale.exit_code == 4 and "saved plan is stale" in json.loads(stale.output)["data"]["error"]
+    assert closes == ["closed"]
+
+
+def test_the_eval_suite_closes_its_connection_when_it_fails_before_running(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    project = project_copy(tmp_path)
+    compile_project(project)
+    evals = ["test", *common(project), "--target", "dev", "--suite", "evals", "--output", "json"]
+    StateFileStore(project / "target" / "sst" / "state.dev.json").acquire_lock("apply-run", break_stale=False)
+    locked, closes = invoke_counting_closes(monkeypatch, RecordedSnowflake(state={}), evals)
+    assert locked.exit_code == 4 and "apply-run holds the target lock" in json.loads(locked.output)["data"]["error"]
+    assert closes == ["closed"]
+
+    def unwritable(self: StateFileStore, run_id: str, *, break_stale: bool) -> tuple[bool, str | None, bool]:
+        raise PermissionError("target/sst is read-only")
+
+    monkeypatch.setattr("snowflake_semantic_tools.cli.main.StateFileStore.acquire_lock", unwritable)
+    failed, closes = invoke_counting_closes(monkeypatch, RecordedSnowflake(state={}), evals)
+    assert failed.exit_code == 4 and json.loads(failed.output)["data"]["error"] == "target/sst is read-only"
+    assert closes == ["closed"]
 
 
 def test_connection_binds_plan_to_live_account_and_refuses_role_drift(

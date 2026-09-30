@@ -103,9 +103,7 @@ def test_semantic_views_enabled_default_follows_folder_routes(tmp_path: Path) ->
         "project:\n  semantic_models_dir: semantic_models\nsemantic_views:\n  archive:\n    +enabled: false\n",
         encoding="utf-8",
     )
-    names = [
-        view.fqn.rsplit(".", 1)[-1] for view in load_views(tmp_path, manifest_path=manifest)
-    ]
+    names = [view.fqn.rsplit(".", 1)[-1] for view in load_views(tmp_path, manifest_path=manifest)]
     assert sorted(names) == ["CATALOG", "KEPT"]
 
 
@@ -636,3 +634,36 @@ def test_0_3_key_forms_and_unknown_meta_keys_are_reported_where_a_view_uses_the_
     ]
     assert project.diagnostics[1].context["field"] == "meta.sst.cortex_searchable"
     assert project.diagnostics[2].context["field"] == "meta.sst.privacy_category"
+
+
+def test_filter_labels_must_be_a_list_of_strings(tmp_path: Path) -> None:
+    manifest = write_project(tmp_path)
+    (tmp_path / "semantic_models" / "filters").mkdir()
+    (tmp_path / "semantic_models" / "filters" / "filters.yml").write_text(
+        "snowflake_filters:\n"
+        "  - name: scalar_label\n    tables: [\"{{ ref('products') }}\"]\n"
+        "    expr: \"{{ ref('products', 'product_id') }} < 5\"\n    labels: filter\n"
+        "  - name: listed_label\n    tables: [\"{{ ref('products') }}\"]\n"
+        "    expr: \"{{ ref('products', 'product_id') }} < 5\"\n    labels: [filter]\n",
+        encoding="utf-8",
+    )
+    project = load_semantic_views_result(tmp_path, manifest_path=manifest)
+    shape = [item for item in project.diagnostics if item.code == "SST-PRS003"]
+    assert [(item.context["artifact"], item.context["field"]) for item in shape] == [("filter:scalar_label", "labels")]
+    assert shape[0].origin is not None and shape[0].origin.file == "semantic_models/filters/filters.yml"
+
+
+@pytest.mark.parametrize("relative", ["semantic_models/metrics/stray.yml", "semantic_models/stray.yml"])
+def test_a_view_list_outside_the_views_folder_is_reported_not_dropped_silently(tmp_path: Path, relative: str) -> None:
+    manifest = write_project(tmp_path)
+    (tmp_path / relative).write_text(
+        "semantic_views:\n  - name: stray\n    description: Stray view.\n    tables: [\"{{ ref('products') }}\"]\n",
+        encoding="utf-8",
+    )
+    project = load_semantic_views_result(tmp_path, manifest_path=manifest)
+    assert [view.fqn for view in project.views] == ["DB.SCH.CATALOG"]
+    assert [(item.code, item.context["artifact"], item.context["field"]) for item in project.diagnostics] == [
+        ("SST-PRS004", relative, "semantic_views")
+    ]
+    origin = project.diagnostics[0].origin
+    assert origin is not None and (origin.file, origin.line) == (relative, 2)

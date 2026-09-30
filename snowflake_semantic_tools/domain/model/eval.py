@@ -469,6 +469,17 @@ def _validate_eval(
     return tuple(diagnostics)
 
 
+def _rendered_or_none(template: str, agent: str) -> str | None:
+    """Render a name template with placeholder coordinates, to check its shape; None if it cannot render.
+
+    A template that cannot render is reported where it is parsed, so its length is not checked here.
+    """
+    try:
+        return render_eval_name_template(template, agent=agent, sha7="0000000", variant="ci", ts="20000101T000000Z")
+    except ValueError:
+        return None
+
+
 def _validate_dataset_name(resolved: ResolvedEval, dataset_names: dict[str, str]) -> tuple[Diagnostic, ...]:
     config = resolved.config.dataset
     if config is None or config.name_template is None:
@@ -484,15 +495,8 @@ def _validate_dataset_name(resolved: ResolvedEval, dataset_names: dict[str, str]
                 subject=resolved.key,
             )
         )
-    try:
-        rendered = render_eval_name_template(
-            config.name_template,
-            agent=resolved.agent.name,
-            sha7="0000000",
-            variant="ci",
-            ts="20000101T000000Z",
-        )
-    except ValueError:
+    rendered = _rendered_or_none(config.name_template, resolved.agent.name)
+    if rendered is None:
         return tuple(diagnostics)
     folded = rendered.casefold()
     other = dataset_names.get(folded)
@@ -555,31 +559,21 @@ def _validate_eval_config(
             diagnostics.append(
                 D("SST-VAL762", artifact=resolved.name, field=field_name, origin=config.origin, subject=subject)
             )
-    if config.dataset is not None:
-        for value in (config.dataset.name_template, config.dataset.source_table_template):
-            if value is None:
-                continue
-            try:
-                rendered = render_eval_name_template(
-                    value,
-                    agent=resolved.agent.name,
-                    sha7="0000000",
-                    variant="ci",
-                    ts="20000101T000000Z",
-                )
-            except ValueError:
-                continue
-            if not rendered or len(rendered) > 128:
-                diagnostics.append(
-                    D(
-                        "SST-PRS010",
-                        name=rendered,
-                        size=len(rendered),
-                        expected=128,
-                        origin=config.origin,
-                        subject=subject,
-                    )
-                )
+    # The dataset name's length is SST-VAL702, from _validate_dataset_name; only the source
+    # table's is checked here, so one over-long name is never reported twice.
+    source_template = config.dataset.source_table_template if config.dataset is not None else None
+    source_name = _rendered_or_none(source_template, resolved.agent.name) if source_template is not None else None
+    if source_name is not None and (not source_name or len(source_name) > 128):
+        diagnostics.append(
+            D(
+                "SST-PRS010",
+                name=source_name,
+                size=len(source_name),
+                expected=128,
+                origin=config.origin,
+                subject=subject,
+            )
+        )
     if not config.system_metrics and not config.custom_metric_names:
         diagnostics.append(
             D(

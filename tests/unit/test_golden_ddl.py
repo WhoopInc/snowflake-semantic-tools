@@ -111,9 +111,7 @@ def test_rendering_is_deterministic(views: dict[str, SemanticView]) -> None:
     view = views["JAFFLE_MINIMAL"]
     assert render(view) == render(view)
     manifest = REPO_ROOT / "tests" / "fixtures" / "reference_project_manifest.json"
-    reloaded = {
-        v.fqn.rsplit(".", 1)[-1]: v for v in load_views(FIXTURE, manifest_path=manifest)
-    }
+    reloaded = {v.fqn.rsplit(".", 1)[-1]: v for v in load_views(FIXTURE, manifest_path=manifest)}
     assert render(reloaded["JAFFLE_MINIMAL"]) == render(view)
 
 

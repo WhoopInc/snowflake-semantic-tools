@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from hashlib import md5, sha256
+from threading import Lock
 from types import MappingProxyType
 
 from ..domain.model.diagnostic import D, DiagnosticBag
@@ -44,6 +45,10 @@ class EvalLifecycleHandler:
     def __init__(self, port: SnowflakePort, config: EvalLifecycleConfig = EvalLifecycleConfig()) -> None:
         self._port = port
         self._config = config
+        # Every eval in a schema shares its config stage, and the first to apply
+        # creates it; the others' plans saw it absent.
+        self._stage_lock = Lock()
+        self._created_stages: set[tuple[str, str, str]] = set()
 
     def plan(
         self,
@@ -138,8 +143,7 @@ class EvalLifecycleHandler:
             error = ClassifiedError(diagnostic.code, diagnostic.message, ErrorKind.UNKNOWN)
             return ApplyOutcome(change.key, change.action, OutcomeStatus.FAILED, 0, 0, artifact.ddl, error)
 
-        current_observation = self._observe(artifact)
-        if _observation_identity(current_observation) != _observation_identity(observation):
+        if self._changed_since_plan(observation, artifact):
             return self._failure(
                 change,
                 "composite resources changed since plan",
@@ -235,28 +239,30 @@ class EvalLifecycleHandler:
         verified_resources.append(("DATASET", dataset.sql))
 
         stage = self._config_stage(artifact)
-        if not self._port.object_exists("STAGE", stage):
-            attempts += 1
-            stage_result = self._port.execute_script((self._create_stage_sql(stage),))
-            if not stage_result.ok:
-                return self._execution_failure(
-                    change,
-                    stage_result.error.message if stage_result.error else "config-stage creation failed",
-                    attempts,
-                    True,
-                    tuple(verified_resources),
-                )
-            write_succeeded = True
+        with self._stage_lock:
             if not self._port.object_exists("STAGE", stage):
-                return self._failure(
-                    change,
-                    f"config stage {stage.sql} is absent after creation",
-                    write_succeeded=True,
-                    code="SST-APL016",
-                    attempts=attempts,
-                    physical_resources=tuple(verified_resources),
-                )
-            verified_resources.append(("STAGE", stage.sql))
+                attempts += 1
+                stage_result = self._port.execute_script((self._create_stage_sql(stage),))
+                if not stage_result.ok:
+                    return self._execution_failure(
+                        change,
+                        stage_result.error.message if stage_result.error else "config-stage creation failed",
+                        attempts,
+                        True,
+                        tuple(verified_resources),
+                    )
+                write_succeeded = True
+                if not self._port.object_exists("STAGE", stage):
+                    return self._failure(
+                        change,
+                        f"config stage {stage.sql} is absent after creation",
+                        write_succeeded=True,
+                        code="SST-APL016",
+                        attempts=attempts,
+                        physical_resources=tuple(verified_resources),
+                    )
+                self._created_stages.add(stage.folded)
+                verified_resources.append(("STAGE", stage.sql))
         stage_format = self._port.describe_stage_file_format(stage)
         if _normalize_file_format(stage_format) != _normalize_file_format(EVAL_STAGE_FILE_FORMAT):
             diagnostic = D(
@@ -440,6 +446,22 @@ class EvalLifecycleHandler:
 
     def config_path(self, artifact: RenderedArtifact) -> str:
         return self._config_path(artifact)
+
+    def _changed_since_plan(self, planned: CompositeObservation, artifact: RenderedArtifact) -> bool:
+        """Report whether an eval changed since its plan, allowing for a config stage this run created."""
+        # Under the lock, a sibling creating the stage is seen before it starts or
+        # once the stage is recorded, never in between.
+        with self._stage_lock:
+            current = self._observe(artifact)
+            if (
+                not planned.stage_exists
+                and current.stage_exists
+                and self._config_stage(artifact).folded in self._created_stages
+            ):
+                # A sibling eval's apply created the shared stage after this plan saw
+                # it absent. Its format is still checked before the config is uploaded.
+                planned = replace(planned, stage_exists=True, stage_file_format=current.stage_file_format)
+        return _observation_identity(current) != _observation_identity(planned)
 
     @staticmethod
     def _resources_by_type(artifact: RenderedArtifact) -> MappingProxyType[str, QualifiedName]:

@@ -1,8 +1,12 @@
 from __future__ import annotations
 
+import json
 from dataclasses import replace
 
+import pytest
+
 from snowflake_semantic_tools.adapters.snowflake.eval_state import (
+    SnowflakeEvalStateStore,
     _baseline_from_payload,
     _baseline_payload,
     _gate_from_payload,
@@ -14,7 +18,13 @@ from snowflake_semantic_tools.domain.model.eval import (
     EvalGateState,
     EvalRegression,
 )
+from snowflake_semantic_tools.domain.model.identifier import QualifiedName
+from snowflake_semantic_tools.domain.model.lifecycle import QueryResult
+from snowflake_semantic_tools.domain.ports.snowflake import SnowflakePortError
 from tests.helpers.eval_state_store import InMemoryEvalStateStore
+from tests.helpers.recorded_snowflake import ReadOnlySnowflake, RecordedSnowflake, ScriptedSnowflake
+
+TABLE = QualifiedName.parse("DB.S.SST_STATE_EVALS")
 
 
 def baseline() -> EvalBaselineRecord:
@@ -75,3 +85,45 @@ def test_in_memory_batch_baseline_write_publishes_all_records() -> None:
 
     assert store.read_baseline("dev", "eval:a") == baseline()
     assert store.read_baseline("dev", "eval:b") == second
+
+
+def _payload_row(payload: dict[str, object]) -> QueryResult:
+    # The driver returns an OBJECT column as JSON text.
+    return QueryResult(("PAYLOAD",), ((json.dumps(payload),),))
+
+
+def test_reading_eval_state_never_creates_the_table_so_a_read_only_role_can_read() -> None:
+    recorded = ScriptedSnowflake(
+        query_results=(_payload_row(_baseline_payload(baseline())), _payload_row(_gate_payload(gate()))),
+        existing=(TABLE.sql,),
+    )
+    store = SnowflakeEvalStateStore(ReadOnlySnowflake(recorded), TABLE)  # type: ignore[arg-type]
+
+    assert store.read_baseline("dev", "eval:a") == baseline()
+    assert store.read_gate("dev", "eval:a") == gate()
+    assert recorded.scripts == []
+    assert [sql.split(" WHERE ")[0] for sql, _ in recorded.queries] == [f"SELECT PAYLOAD FROM {TABLE.sql}"] * 2
+
+
+def test_a_missing_eval_state_table_reads_as_no_baseline_and_no_gate() -> None:
+    recorded = RecordedSnowflake(existing=())
+    store = SnowflakeEvalStateStore(ReadOnlySnowflake(recorded), TABLE)  # type: ignore[arg-type]
+
+    assert store.read_baseline("dev", "eval:a") is None
+    assert store.read_gate("dev", "eval:a") is None
+    assert (recorded.scripts, recorded.queries) == ([], [])
+
+
+def test_writing_eval_state_still_ensures_the_table_first() -> None:
+    port = ScriptedSnowflake()
+    store = SnowflakeEvalStateStore(port, TABLE)
+
+    store.write_gate("dev", gate())
+    store.write_baselines("dev", (baseline(),))
+
+    create = f"CREATE TABLE IF NOT EXISTS {TABLE.sql} ("
+    assert [script[0].startswith(create) for script in port.scripts] == [True, False, True, False]
+    assert port.scripts[1][0].startswith(f"MERGE INTO {TABLE.sql} AS target")
+    assert port.scripts[3][0] == "BEGIN" and port.scripts[3][-1] == "COMMIT"
+    with pytest.raises(SnowflakePortError, match="read-only"):
+        SnowflakeEvalStateStore(ReadOnlySnowflake(port), TABLE).write_gate("dev", gate())  # type: ignore[arg-type]

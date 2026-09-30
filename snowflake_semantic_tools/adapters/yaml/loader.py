@@ -56,6 +56,7 @@ from ...domain.model.semantic_view import (
     VerifiedQuery,
     Window,
 )
+from ...domain.model.sql import string_literal
 from ...domain.resolve.members import attach_view_members
 from ..dbt.manifest import load_manifest_catalog
 from ..project import ProjectError
@@ -174,6 +175,24 @@ def _folder_route_diagnostics(config: dict[str, Any], views_dir: Path) -> tuple[
     return tuple(diagnostics)
 
 
+def _stray_view_diagnostics(documents: RawDocuments, views_dir: Path) -> tuple[Diagnostic, ...]:
+    """Report each view list outside `views_dir` as an unread key (SST-PRS004).
+
+    Views are validated from every file but built only from files under `views_dir`, so
+    such a list would otherwise be dropped without a word.
+    """
+    root_key = _node_root("semantic_view")
+    built = {document.path for document in documents.under(views_dir, root_key)}
+    diagnostics: list[Diagnostic] = []
+    for document in documents.documents:
+        if document.path in built or not isinstance(document.tree.get(root_key), list):
+            continue
+        position = document.position((root_key,))
+        origin = Origin(document.path, position.line if position else None, position.col if position else None)
+        diagnostics.append(D("SST-PRS004", origin=origin, artifact=document.path, field=root_key))
+    return tuple(diagnostics)
+
+
 def _neutralize_templates(text: str, path: str) -> tuple[str, dict[str, TemplateSource]]:
     """Replace template spans with YAML-safe scalars before parsing."""
     # Comments and block scalars are already legal YAML and may discuss invalid
@@ -192,8 +211,9 @@ def _neutralize_templates(text: str, path: str) -> tuple[str, dict[str, Template
         if stripped.startswith("#"):
             neutralizable_lines.append(" " * len(line.rstrip("\n")) + ("\n" if line.endswith("\n") else ""))
             continue
-        if re.search(r":\s*[>|][+-]?\s*(?:#.*)?$", line.rstrip("\n")):
-            block_indent = indent
+        opened = _block_scalar_indent(line.rstrip("\n"))
+        if opened is not None:
+            block_indent = opened
         neutralizable_lines.append(line)
     neutralizable = "".join(neutralizable_lines)
     spans: list[tuple[int, int]] = []
@@ -239,6 +259,23 @@ def _neutralize_templates(text: str, path: str) -> tuple[str, dict[str, Template
     return rewritten, templates
 
 
+# Leading spaces and `- ` sequence entries: whatever precedes a line's first key or scalar.
+_ENTRY_PREFIX = re.compile(r" *(?:- +)*")
+
+
+def _block_scalar_indent(line: str) -> int | None:
+    """Return the column a block scalar opened on `line` is indented past, or None if it opens none."""
+    entries = _ENTRY_PREFIX.match(line)
+    prefix = entries.end() if entries else 0
+    # Measured from the owning key or entry, not the line's first `-`, so the rest of a
+    # list item after its `- key: |` block is still executable text.
+    if re.search(r":\s*[>|][+-]?\s*(?:#.*)?$", line):
+        return prefix
+    if line[:prefix].strip() and re.fullmatch(r"[>|][+-]?\s*(?:#.*)?", line[prefix:]):
+        return line.rindex("-", 0, prefix)
+    return None
+
+
 def _restore_templates(value: Any, templates: Mapping[str, TemplateSource]) -> Any:
     if isinstance(value, str):
         restored = value
@@ -271,28 +308,22 @@ def _node_path_index(node: yaml.Node) -> Mapping[NodePath, SourcePosition]:
 
 
 def _construct_yaml_node(node: yaml.Node, path: str) -> Any:
+    """Build the Python value of one composed node, as `yaml.safe_load` would.
+
+    Differences from safe_load: a key written twice in one mapping is SST-LOD005, and a
+    value YAML cannot construct (an unknown tag, an impossible date, a bad merge) is
+    SST-LOD001 at its own position rather than an exception. Merge keys (`<<: *anchor`)
+    expand as in YAML 1.1, with the mapping's own keys winning over merged ones.
+    """
     if isinstance(node, yaml.MappingNode):
         mapping: dict[Any, Any] = {}
-        for key_node, value_node in node.value:
-            key = _construct_yaml_node(key_node, path)
-            if key in mapping:
-                diagnostic = D(
-                    "SST-LOD005",
-                    file=path,
-                    line=key_node.start_mark.line + 1,
-                    key=str(key),
-                )
-                raise ProjectError(diagnostic.message, diagnostics=(diagnostic,))
-            mapping[key] = _construct_yaml_node(value_node, path)
+        for key_node, value_node in _merged_pairs(node, path):
+            mapping[_construct_yaml_node(key_node, path)] = _construct_yaml_node(value_node, path)
         return mapping
     if isinstance(node, yaml.SequenceNode):
         return [_construct_yaml_node(child, path) for child in node.value]
     if isinstance(node, yaml.ScalarNode):
-        loader = yaml.SafeLoader("")
-        try:
-            return loader.construct_object(node, deep=True)
-        finally:
-            loader.dispose()
+        return _construct_scalar(node, path)
     mark = node.start_mark
     diagnostic = D(
         "SST-LOD001",
@@ -302,6 +333,70 @@ def _construct_yaml_node(node: yaml.Node, path: str) -> Any:
         detail=f"unsupported YAML node {type(node).__name__}",
     )
     raise ProjectError(diagnostic.message, diagnostics=(diagnostic,))
+
+
+_MERGE_TAG = "tag:yaml.org,2002:merge"
+
+
+def _merged_pairs(node: yaml.MappingNode, path: str) -> list[tuple[yaml.Node, yaml.Node]]:
+    """A mapping's key/value pairs with merge keys expanded, lowest precedence first.
+
+    Building a dict from the result in order gives YAML 1.1 merge semantics: the
+    mapping's own keys win over merged ones, and an earlier mapping in `<<: [*a, *b]`
+    wins over a later one. Composed nodes are never modified -- an anchored node is
+    shared by every alias that reaches it.
+    """
+    merged: list[tuple[yaml.Node, yaml.Node]] = []
+    own: list[tuple[yaml.Node, yaml.Node]] = []
+    for key_node, value_node in node.value:
+        if key_node.tag != _MERGE_TAG:
+            own.append((key_node, value_node))
+            continue
+        if isinstance(value_node, yaml.MappingNode):
+            sources: list[yaml.Node] = [value_node]
+        elif isinstance(value_node, yaml.SequenceNode):
+            sources = list(value_node.value)
+        else:
+            _raise_at(
+                value_node, path, f"expected a mapping or list of mappings for merging, found {_node_kind(value_node)}"
+            )
+        for source in reversed(sources):
+            if not isinstance(source, yaml.MappingNode):
+                _raise_at(source, path, f"expected a mapping for merging, found {_node_kind(source)}")
+            merged.extend(_merged_pairs(source, path))
+    _refuse_duplicate_keys(own, path)
+    return merged + own
+
+
+def _node_kind(node: yaml.Node) -> str:
+    """`scalar`, `sequence` or `mapping`, as YAML's own messages name a node."""
+    return type(node).__name__.removesuffix("Node").lower()
+
+
+def _refuse_duplicate_keys(pairs: list[tuple[yaml.Node, yaml.Node]], path: str) -> None:
+    seen: set[Any] = set()
+    for key_node, _ in pairs:
+        key = _construct_yaml_node(key_node, path)
+        if key in seen:
+            diagnostic = D("SST-LOD005", file=path, line=key_node.start_mark.line + 1, key=str(key))
+            raise ProjectError(diagnostic.message, diagnostics=(diagnostic,))
+        seen.add(key)
+
+
+def _construct_scalar(node: yaml.ScalarNode, path: str) -> Any:
+    loader = yaml.SafeLoader("")
+    try:
+        return loader.construct_object(node, deep=True)
+    except (yaml.constructor.ConstructorError, ValueError) as exc:
+        _raise_at(node, path, str(getattr(exc, "problem", None) or f"cannot read {node.value!r}: {exc}"), exc)
+    finally:
+        loader.dispose()
+
+
+def _raise_at(node: yaml.Node, path: str, detail: str, cause: Exception | None = None) -> NoReturn:
+    mark = node.start_mark
+    diagnostic = D("SST-LOD001", file=str(path), line=mark.line + 1, col=mark.column + 1, detail=detail)
+    raise ProjectError(diagnostic.message, diagnostics=(diagnostic,)) from cause
 
 
 def _parse_yaml_bytes(raw: bytes, path: str) -> ParsedYaml:
@@ -723,6 +818,37 @@ def _metric_parse_diagnostics(
         diagnostics.extend(_non_additive_parse_diagnostics(node.get("non_additive_dimensions"), subject, origin))
         diagnostics.extend(_window_parse_diagnostics(node, subject, origin))
         diagnostics.extend(_synonyms_diagnostics(node.get("synonyms"), artifact=subject, subject=subject))
+    return tuple(diagnostics)
+
+
+def _filter_parse_diagnostics(
+    documents: RawDocuments,
+    project_dir: Path,
+    semantic_models_dir: str,
+) -> tuple[Diagnostic, ...]:
+    """Shape checks on filter keys whose wrong type would otherwise be read silently.
+
+    Diagnostics:
+        SST-PRS003: `labels` is not a list of strings.
+    """
+    filters_dir = project_dir / semantic_models_dir / "filters"
+    diagnostics: list[Diagnostic] = []
+    for document, index, node in _load_nodes(documents, filters_dir, _member_root("filter")):
+        labels = node.get("labels")
+        if labels is None or (isinstance(labels, list) and all(isinstance(label, str) for label in labels)):
+            continue
+        subject = f"filter:{node.get('name') or '<unnamed>'}"
+        diagnostics.append(
+            D(
+                "SST-PRS003",
+                artifact=subject,
+                field="labels",
+                expected="a list of strings",
+                found=type(labels).__name__,
+                subject=subject,
+                origin=_node_origin(document, _member_root("filter"), index),
+            )
+        )
     return tuple(diagnostics)
 
 
@@ -2244,7 +2370,8 @@ def load_filters(documents: RawDocuments, project_dir: Path, semantic_models_dir
     for document, index, node in _load_nodes(documents, root, _member_root("filter")):
         if not node.get("name") or not node.get("expr"):
             continue
-        labels = {str(label).casefold() for label in node.get("labels") or []}
+        labels = node.get("labels")
+        labels = {str(label).casefold() for label in labels} if isinstance(labels, list) else set()
         expression = str(node["expr"])
         try:
             template_calls = scan_template_calls(expression)
@@ -2808,10 +2935,12 @@ def load_semantic_views_result(
         table for view in parsed.views if not view.poisoned for table in view.declared_tables if table in models
     )
     diagnostics.extend(_folder_route_diagnostics(config, views_dir))
+    diagnostics.extend(_stray_view_diagnostics(documents, views_dir))
     diagnostics.extend(_authored_key_diagnostics(documents))
     diagnostics.extend(_member_name_diagnostics(documents))
     diagnostics.extend(_description_diagnostics(parsed.views, metrics))
     diagnostics.extend(_metric_parse_diagnostics(documents, project_dir, semantic_models_dir))
+    diagnostics.extend(_filter_parse_diagnostics(documents, project_dir, semantic_models_dir))
     diagnostics.extend(_relationship_parse_diagnostics(documents, project_dir, semantic_models_dir))
     diagnostics.extend(_dbt_model_diagnostics(models, referenced_models))
     diagnostics.extend(_dbt_column_diagnostics(models, referenced_models))
@@ -3434,13 +3563,13 @@ def _distinct_range(
     return str(value["start"]).upper(), str(value["end"]).upper()
 
 
-def _sql_literal(value: object) -> tuple[str, str]:
+def _sql_value(value: object) -> str:
+    """The SQL literal for a YAML scalar: a boolean or number as written, anything else a string."""
     if isinstance(value, bool):
-        return "BOOLEAN", "TRUE" if value else "FALSE"
+        return "TRUE" if value else "FALSE"
     if isinstance(value, (int, float)):
-        return "NUMBER", str(value)
-    escaped = str(value).replace("'", "''")
-    return "VARCHAR", f"'{escaped}'"
+        return str(value)
+    return string_literal(str(value))
 
 
 def _variable(value: object, *, path: Path, view_name: str) -> Variable:
@@ -3459,7 +3588,7 @@ def _variable(value: object, *, path: Path, view_name: str) -> Variable:
         raise ProjectError(f"{path}: view {view_name} variable {value['name']} requires a numeric default")
     if data_type.startswith(("VARCHAR", "TEXT", "STRING")) and not isinstance(raw_default, str):
         raise ProjectError(f"{path}: view {view_name} variable {value['name']} requires a string default")
-    _, default = _sql_literal(raw_default)
+    default = _sql_value(raw_default)
     return Variable(
         name=str(value["name"]).upper(),
         data_type=data_type,

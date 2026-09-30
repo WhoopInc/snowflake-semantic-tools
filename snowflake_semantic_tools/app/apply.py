@@ -416,7 +416,26 @@ class ApplyArtifacts:
             self._clock.sleep(options.retry.delay_after(attempt))
         assert result is not None
         outcome = self._execution_outcome(change, result, attempts, started, ddl)
-        if outcome.write_succeeded and change.rendered.expected_marker is not None:
+        if not outcome.write_succeeded:
+            return outcome
+        try:
+            return self._verify_write(change, outcome, before)
+        except Exception as exc:
+            # The statements ran, so the object is written whatever failed while it was
+            # checked. Reporting no write would drop it from state, and the next plan
+            # would call an object SST created unmanaged.
+            error = classify_error(str(exc), sqlstate=getattr(exc, "sqlstate", None))
+            return replace(outcome, status=OutcomeStatus.FAILED, error=error, write_succeeded=True)
+
+    def _verify_write(
+        self,
+        change: Change,
+        outcome: ApplyOutcome,
+        before: tuple[GrantRow, ...] | None,
+    ) -> ApplyOutcome:
+        """Check the ownership marker and the explicit grants of an object the statements wrote."""
+        assert change.rendered is not None
+        if change.rendered.expected_marker is not None:
             current_marker = self._port.describe_marker(
                 change.rendered.target,
                 change.rendered.object_type,

@@ -234,3 +234,40 @@ def test_a_relationless_model_without_sst_metadata_is_skipped() -> None:
     catalog = catalog_from_document(document)
     assert catalog.model("ephemeral") is None
     assert catalog.model("products") is not None
+
+
+BARE_META_WITHOUT_SST = pytest.mark.parametrize(
+    "bare_meta", [{}, {"owner": "analytics"}, {"sst": None}], ids=("empty", "no-sst", "null-sst")
+)
+
+
+@BARE_META_WITHOUT_SST
+def test_model_config_meta_sst_is_read_when_the_bare_meta_has_none(bare_meta: dict[str, object]) -> None:
+    document = manifest_document()
+    document["nodes"]["model.fixture.products"]["meta"] = dict(bare_meta)  # type: ignore[index]
+    projected = catalog_from_document(document).model("products")
+    assert projected is not None
+    assert (projected.primary_key, projected.unique_keys) == (("product_id",), (("product_name",),))
+
+
+@BARE_META_WITHOUT_SST
+def test_column_config_meta_sst_is_read_when_the_bare_meta_has_none(bare_meta: dict[str, object]) -> None:
+    document = manifest_document()
+    column = document["nodes"]["model.fixture.products"]["columns"]["product_id"]  # type: ignore[index]
+    column["config"] = {"meta": column.pop("meta")}
+    column["meta"] = dict(bare_meta)
+    projected = catalog_from_document(document).model("products")
+    assert projected is not None
+    projected_column = projected.column("product_id")
+    assert projected_column is not None
+    assert (projected_column.column_type, projected_column.synonyms) == ("dimension", ("item key",))
+
+
+def test_the_bare_meta_sst_wins_when_both_places_carry_one() -> None:
+    document = manifest_document()
+    model = document["nodes"]["model.fixture.products"]  # type: ignore[index]
+    model["meta"] = {"sst": {"primary_key": ["bare_id"]}}
+    model["columns"]["product_id"]["config"] = {"meta": {"sst": {"column_type": "fact"}}}
+    projected = catalog_from_document(document).model("products")
+    assert projected is not None and projected.primary_key == ("bare_id",)
+    assert projected.column("product_id").column_type == "dimension"  # type: ignore[union-attr]

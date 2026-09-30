@@ -21,8 +21,8 @@ from snowflake_semantic_tools.domain.model.semantic_view import (
     VerifiedQuery,
     Window,
 )
+from snowflake_semantic_tools.domain.model.sql import string_literal as quote
 from snowflake_semantic_tools.domain.render.semantic_view import (
-    quote,
     render,
     render_column,
     render_metric,
@@ -54,6 +54,10 @@ class TestQuoting:
 
     def test_empty_string_is_still_quoted(self) -> None:
         assert quote("") == "''"
+
+    def test_escapes_a_backslash_so_snowflake_keeps_it(self) -> None:
+        """Snowflake reads `\\t` inside a literal as a tab; the literal must carry `\\\\t`."""
+        assert quote("C:\\temp") == "'C:\\\\temp'"
 
 
 class TestTables:

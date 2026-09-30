@@ -14,8 +14,8 @@ from snowflake_semantic_tools.app.manifest import build_manifest
 from snowflake_semantic_tools.app.plan import PlanArtifacts
 from snowflake_semantic_tools.app.profile_compile import CompiledProfile, CompileProfiles, DesktopChannel
 from snowflake_semantic_tools.app.profile_lifecycle import ProfileLifecycleHandler, _shape_problem, _stale
-from snowflake_semantic_tools.app.skill_compile import CompileSkills
-from snowflake_semantic_tools.domain.model.diagnostic import DiagnosticBag, Origin
+from snowflake_semantic_tools.app.skill_compile import CatalogChannel, CompileSkills
+from snowflake_semantic_tools.domain.model.diagnostic import DiagnosticBag, Origin, Severity
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
 from snowflake_semantic_tools.domain.model.lifecycle import Action, ApplyOptions, ChangeReason, OutcomeStatus
 from snowflake_semantic_tools.domain.model.profile import (
@@ -25,7 +25,7 @@ from snowflake_semantic_tools.domain.model.profile import (
     ProfileCatalog,
     SharedProfile,
 )
-from snowflake_semantic_tools.domain.model.skill import Skill, SkillCatalog, SkillFile
+from snowflake_semantic_tools.domain.model.skill import Plugin, Skill, SkillCatalog, SkillFile
 from snowflake_semantic_tools.domain.ports.snowflake import SnowflakePortError
 from snowflake_semantic_tools.domain.state.model import (
     DEACTIVATED,
@@ -129,6 +129,38 @@ def test_compile_reports_desktop_registry_and_blocks_on_broken_members() -> None
     result = blocked.run_result()
     assert result.compiled == () and [note.code for note in result.diagnostics] == ["SST-VAL854", "SST-VAL855"]
     assert CompileProfiles(catalog(), SKILLS, None, catalog_channel=False).run_result().compiled == ()
+
+
+def test_a_profile_whose_plugin_cannot_be_bundled_does_not_publish() -> None:
+    dangling = Skill(
+        "dangling",
+        "skills/dangling",
+        "dangling",
+        "d",
+        "Read reference/missing.md.\n",
+        (SkillFile("SKILL.md", b"---\nname: dangling\n---\nRead reference/missing.md.\n"),),
+        Origin("skills/dangling/SKILL.md"),
+    )
+    kit = Plugin("kit", "plugins/kit", "plugins/kit/plugin.yml", "Kit.", "Data", ("dangling",), Origin("p"))
+    skills = SkillCatalog((*SKILLS.skills, dangling), (kit,))
+    profiles = catalog(plugins=("kit",))
+    # Without the catalog channel the profile compile bundles the plugin itself.
+    alone = CompileProfiles(profiles, skills, CHANNEL, catalog_channel=False).run_result()
+    # With it, the CLI passes the plugins the skill compile could not bundle.
+    extensions = CompileSkills(skills, CatalogChannel("DB", "S", QualifiedName.parse("DB.S.BUNDLES"))).run_result()
+    blocked = frozenset(
+        str(item.subject).removeprefix("plugin:")
+        for item in extensions.diagnostics
+        if item.severity is Severity.ERROR and str(item.subject).startswith("plugin:")
+    )
+    shared = CompileProfiles(profiles, skills, CHANNEL, catalog_channel=True, blocked_plugins=blocked).run_result()
+
+    for bundle_errors, result in ((alone.diagnostics, alone), (extensions.diagnostics, shared)):
+        assert ("SST-VAL836", "plugin:kit") in {(item.code, item.subject) for item in bundle_errors}
+        assert result.compiled == ()
+        assert [item.message for item in result.diagnostics if item.code == "SST-VAL855"] == [
+            "profile 'analyst': plugin 'kit' has errors, so the profile cannot publish"
+        ]
 
 
 def test_first_publish_creates_registry_uploads_trees_and_reads_back_like_desktop() -> None:

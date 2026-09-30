@@ -8,11 +8,13 @@ from types import MappingProxyType
 import pytest
 
 from snowflake_semantic_tools.app.apply import ApplyArtifacts
+from snowflake_semantic_tools.app.eval_compile import CompileEvals
 from snowflake_semantic_tools.app.eval_lifecycle import EVAL_STAGE_FILE_FORMAT, EvalLifecycleHandler
 from snowflake_semantic_tools.app.manifest import build_manifest
 from snowflake_semantic_tools.app.plan import PlanArtifacts
 from snowflake_semantic_tools.domain.model.diagnostic import D, DiagnosticBag, Origin
-from snowflake_semantic_tools.domain.model.eval import EvalGroundTruth, EvalQuestion
+from snowflake_semantic_tools.domain.model.eval import EvalCatalog, EvalGroundTruth, EvalQuestion
+from snowflake_semantic_tools.domain.model.identifier import QualifiedName
 from snowflake_semantic_tools.domain.model.lifecycle import (
     Action,
     ApplyOptions,
@@ -356,6 +358,70 @@ def test_eval_stage_format_drift_after_plan_is_rejected_as_observation_drift() -
     assert outcome.status is OutcomeStatus.FAILED
     assert outcome.error is not None
     assert outcome.error.code == "SST-APL012"
+
+
+def two_evals_in_one_schema():
+    first = resolved_eval()
+    second = replace(
+        first,
+        agent=replace(first.agent, name="ops_agent"),
+        dataset=replace(first.dataset, agent="ops_agent"),
+        config=replace(first.config, agent="ops_agent"),
+    )
+    result = CompileEvals(
+        EvalCatalog((first, second), first.custom_metrics),
+        agent_targets={
+            "sales_agent": QualifiedName.parse("DB.S.SALES_AGENT"),
+            "ops_agent": QualifiedName.parse("DB.S.OPS_AGENT"),
+        },
+    ).run_result()
+    manifest = build_manifest(result)
+    return manifest, {item.artifact_key: item.rendered_for_publish(manifest.manifest_id) for item in result.compiled}
+
+
+def test_evals_sharing_a_config_stage_this_run_creates_all_apply() -> None:
+    manifest, artifacts = two_evals_in_one_schema()
+    port = InMemorySnowflake()
+    port.existing = set()
+    handler = EvalLifecycleHandler(port)
+    prior = state_with(None, "")
+    # Both plans see the shared stage absent; the first apply then creates it.
+    planned = PlanArtifacts(port, lifecycle_handlers={"eval": handler}).run(
+        artifacts, manifest, prior, target(), fetched_at="now"
+    )
+    assert [(change.key, change.action) for change in planned.changes] == [
+        ("eval:ops_agent", Action.CREATE),
+        ("eval:sales_agent", Action.CREATE),
+    ]
+
+    result = ApplyArtifacts(
+        port,
+        InMemoryStateStore(),
+        FixedClock(),
+        state_table=artifacts["eval:sales_agent"].target,
+        lifecycle_handlers={"eval": handler},
+    ).run(planned, prior, ApplyOptions(parallelism=1))
+
+    assert [item.code for item in result.diagnostics] == []
+    assert [outcome.status for outcome in result.outcomes] == [OutcomeStatus.APPLIED, OutcomeStatus.APPLIED]
+    assert [script for script in port.scripts if script[0].startswith("CREATE STAGE")] == [
+        (f"CREATE STAGE IF NOT EXISTS DB.S.EVAL_CONFIGS FILE_FORMAT = ({EVAL_STAGE_FILE_FORMAT})",)
+    ]
+    assert len(port.uploads) == 2
+
+
+def test_a_config_stage_created_outside_the_run_after_plan_is_still_drift() -> None:
+    manifest, artifact, port, handler = setup_eval()
+    change = planned_change(artifact, manifest, port, handler, state_with(None, ""))
+    # The exact format SST would create, but made by someone else after the plan.
+    port.stage_formats["DB.S.EVAL_CONFIGS"] = EVAL_STAGE_FILE_FORMAT
+
+    outcome = handler.apply(change, ApplyOptions())
+
+    assert outcome.status is OutcomeStatus.FAILED
+    assert outcome.error is not None
+    assert outcome.error.code == "SST-APL012"
+    assert port.scripts == [] and port.uploads == []
 
 
 def test_eval_partial_dataset_failure_records_only_written_source_table() -> None:

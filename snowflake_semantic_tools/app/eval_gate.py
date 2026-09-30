@@ -19,7 +19,9 @@ from .eval_compile import CompiledEval
 from .eval_run import EvalRunResult
 
 BASELINE_TTL_DAYS = 30
-BASELINE_WARNING_DAYS = 30
+# SST-VAL760 fires in the last week of a baseline's life: long enough to capture a
+# replacement, short enough that a fresh baseline does not warn from the day it lands.
+BASELINE_WARNING_DAYS = 7
 
 
 def capture_baseline(

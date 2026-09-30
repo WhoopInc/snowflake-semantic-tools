@@ -7,6 +7,7 @@ import re
 from ..model.identifier import Identifier, QualifiedName
 from ..model.lifecycle import ProbeKind, RenderedArtifact, SmokeProbe
 from ..model.registry import GrantPreservation
+from ..model.sql import string_literal
 from ..model.tool import ToolKind, ToolMember
 
 
@@ -47,13 +48,13 @@ def _render_search(
     clauses.extend(
         (
             f"  WAREHOUSE = {_identifier(member.warehouse)}",
-            f"  TARGET_LAG = {_string(member.target_lag)}",
+            f"  TARGET_LAG = {string_literal(member.target_lag)}",
         )
     )
     if member.embedding_model:
-        clauses.append(f"  EMBEDDING_MODEL = {_string(member.embedding_model)}")
+        clauses.append(f"  EMBEDDING_MODEL = {string_literal(member.embedding_model)}")
     if member.description:
-        clauses.append(f"  COMMENT = {_string(_one_line(member.description))}")
+        clauses.append(f"  COMMENT = {string_literal(_one_line(member.description))}")
     query = f"SELECT {', '.join(_identifier(value) for value in selected)} FROM {source_relation.sql}"
     if member.where:
         query += f" WHERE {member.where}"
@@ -91,12 +92,12 @@ def _render_routine(member: ToolMember, target: QualifiedName, *, procedure: boo
     if member.language.casefold() != "sql":
         if not member.runtime_version or not member.handler:
             raise ValueError(f"routine {member.name!r} requires runtime_version and handler")
-        clauses.append(f"  RUNTIME_VERSION = {_string(member.runtime_version)}")
-        clauses.append(f"  HANDLER = {_string(member.handler)}")
+        clauses.append(f"  RUNTIME_VERSION = {string_literal(member.runtime_version)}")
+        clauses.append(f"  HANDLER = {string_literal(member.handler)}")
     if member.packages:
-        clauses.append(f"  PACKAGES = ({', '.join(_string(value) for value in member.packages)})")
+        clauses.append(f"  PACKAGES = ({', '.join(string_literal(value) for value in member.packages)})")
     if member.imports:
-        clauses.append(f"  IMPORTS = ({', '.join(_string(value) for value in member.imports)})")
+        clauses.append(f"  IMPORTS = ({', '.join(string_literal(value) for value in member.imports)})")
     if member.external_access_integrations:
         clauses.append(
             "  EXTERNAL_ACCESS_INTEGRATIONS = ("
@@ -107,7 +108,8 @@ def _render_routine(member: ToolMember, target: QualifiedName, *, procedure: boo
         clauses.append(
             "  SECRETS = ("
             + ", ".join(
-                f"{_string(key)} = {QualifiedName.parse(value).sql}" for key, value in sorted(member.secrets.items())
+                f"{string_literal(key)} = {QualifiedName.parse(value).sql}"
+                for key, value in sorted(member.secrets.items())
             )
             + ")"
         )
@@ -136,7 +138,7 @@ def _render_routine(member: ToolMember, target: QualifiedName, *, procedure: boo
 def _render_stage(member: ToolMember, target: QualifiedName) -> RenderedArtifact:
     ddl = f"CREATE STAGE IF NOT EXISTS {target.sql}"
     if member.description:
-        ddl += f" COMMENT = {_string(_one_line(member.description))}"
+        ddl += f" COMMENT = {string_literal(_one_line(member.description))}"
     return RenderedArtifact.create(
         key=f"tool:{member.name.casefold()}",
         artifact_type="tool",
@@ -156,10 +158,6 @@ def _render_stage(member: ToolMember, target: QualifiedName) -> RenderedArtifact
 
 def _identifier(value: str) -> str:
     return str(Identifier.parse(value).sql)
-
-
-def _string(value: str) -> str:
-    return "'" + value.replace("'", "''") + "'"
 
 
 def _one_line(value: str) -> str:

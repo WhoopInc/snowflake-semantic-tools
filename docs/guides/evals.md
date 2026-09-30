@@ -136,5 +136,9 @@ with a reason that is recorded beside it:
 sst test --suite evals --capture-baseline --reason "new tool for supply cost"
 ```
 
+A baseline expires 30 days after it is captured. In its last 7 days each run warns
+(`SST-VAL760`); after that the gate reports the expired baseline as an error
+(`SST-VAL761`) until a new one is captured.
+
 `evals.+eval_tier` decides what a regression does: `blocking` fails the run,
 `report` only reports it.

@@ -18,6 +18,7 @@ from ...domain.model.tool import (
     ToolParameter,
     validate_tool_catalog,
 )
+from ..project import ProjectError
 from .loader import _parse_yaml_bytes
 
 
@@ -38,7 +39,10 @@ def load_tool_catalog(
         relative = path.relative_to(project_dir).as_posix()
         try:
             loaded = dict(_parse_yaml_bytes(path.read_bytes(), relative).tree)
-        except (OSError, ValueError) as exc:
+        except ProjectError as exc:
+            diagnostics.extend(exc.diagnostics)
+            continue
+        except OSError as exc:
             diagnostics.append(
                 D("SST-LOD004", file=relative, line=1, col=1, reason=str(exc), origin=Origin(relative, 1, 1))
             )

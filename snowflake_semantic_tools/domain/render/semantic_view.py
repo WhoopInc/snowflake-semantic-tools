@@ -44,23 +44,14 @@ from ..model.semantic_view import (
     VerifiedQuery,
     Window,
 )
+from ..model.sql import string_literal
 
 CLAUSE_INDENT = "  "
 MEMBER_INDENT = "    "
 
 
-def quote(text: str) -> str:
-    """Render a SQL string literal, doubling embedded single quotes.
-
-    `The menu item's name` becomes `'The menu item''s name'`. Newlines are kept
-    literal -- the golden's multi-line COMMENT spans lines inside one literal
-    rather than being folded or escaped.
-    """
-    return "'" + text.replace("'", "''") + "'"
-
-
 def _quoted_list(values: tuple[str, ...]) -> str:
-    return ", ".join(quote(v) for v in values)
+    return ", ".join(string_literal(v) for v in values)
 
 
 def _synonyms(values: tuple[str, ...]) -> str:
@@ -68,7 +59,7 @@ def _synonyms(values: tuple[str, ...]) -> str:
 
 
 def _comment(text: str | None) -> str:
-    return f" COMMENT = {quote(text)}" if text else ""
+    return f" COMMENT = {string_literal(text)}" if text else ""
 
 
 def render_table(table: Table) -> str:
@@ -172,14 +163,14 @@ def render_verified_query(vq: VerifiedQuery) -> str:
     Optional parts are omitted entirely when absent rather than rendered empty --
     the golden's TOTAL_REVENUE_ALL_TIME carries only QUESTION and SQL.
     """
-    lines = [f"{MEMBER_INDENT}{vq.name} AS (", f"{MEMBER_INDENT}  QUESTION {quote(vq.question)}"]
+    lines = [f"{MEMBER_INDENT}{vq.name} AS (", f"{MEMBER_INDENT}  QUESTION {string_literal(vq.question)}"]
     if vq.verified_at is not None:
         lines.append(f"{MEMBER_INDENT}  VERIFIED_AT {vq.verified_at}")
     if vq.onboarding_question is not None:
         lines.append(f"{MEMBER_INDENT}  ONBOARDING_QUESTION {'TRUE' if vq.onboarding_question else 'FALSE'}")
     if vq.verified_by is not None:
-        lines.append(f"{MEMBER_INDENT}  VERIFIED_BY {quote(vq.verified_by)}")
-    lines.append(f"{MEMBER_INDENT}  SQL {quote(vq.sql)}")
+        lines.append(f"{MEMBER_INDENT}  VERIFIED_BY {string_literal(vq.verified_by)}")
+    lines.append(f"{MEMBER_INDENT}  SQL {string_literal(vq.sql)}")
     lines.append(f"{MEMBER_INDENT})")
     return "\n".join(lines)
 
@@ -218,11 +209,11 @@ def render(view: SemanticView) -> str:
     if view.ownership_marker:
         comment = f"{comment.rstrip()} {view.ownership_marker}" if comment else view.ownership_marker
     if comment:
-        lines.append(f"{CLAUSE_INDENT}COMMENT = {quote(comment)}")
+        lines.append(f"{CLAUSE_INDENT}COMMENT = {string_literal(comment)}")
     if view.ai_sql_generation:
-        lines.append(f"{CLAUSE_INDENT}AI_SQL_GENERATION {quote(view.ai_sql_generation)}")
+        lines.append(f"{CLAUSE_INDENT}AI_SQL_GENERATION {string_literal(view.ai_sql_generation)}")
     if view.ai_question_categorization:
-        lines.append(f"{CLAUSE_INDENT}AI_QUESTION_CATEGORIZATION {quote(view.ai_question_categorization)}")
+        lines.append(f"{CLAUSE_INDENT}AI_QUESTION_CATEGORIZATION {string_literal(view.ai_question_categorization)}")
 
     if view.verified_queries:
         lines.append(f"{CLAUSE_INDENT}AI_VERIFIED_QUERIES (")
@@ -230,12 +221,12 @@ def render(view: SemanticView) -> str:
         lines.append(f"{CLAUSE_INDENT})")
 
     if view.max_staleness:
-        lines.append(f"{CLAUSE_INDENT}MAX_STALENESS = {quote(view.max_staleness)}")
+        lines.append(f"{CLAUSE_INDENT}MAX_STALENESS = {string_literal(view.max_staleness)}")
 
     if view.tags:
         # Leading-comma layout, matching the golden. The indent is deliberately
         # deeper than MEMBER_INDENT here; that is what was verified.
-        tag_lines = [f"{t.name} = {quote(t.value)}" for t in view.tags]
+        tag_lines = [f"{t.name} = {string_literal(t.value)}" for t in view.tags]
         lines.append(f"{CLAUSE_INDENT}WITH TAG (")
         lines.append("      " + "\n    , ".join(tag_lines))
         lines.append(f"{CLAUSE_INDENT})")

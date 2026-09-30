@@ -20,6 +20,7 @@ from ..domain.model.diagnostic import D, Diagnostic, DiagnosticBag, Severity
 from ..domain.model.identifier import QualifiedName
 from ..domain.model.lifecycle import OwnershipMarker, ProbeKind, RenderedArtifact, SmokeProbe
 from ..domain.model.registry import GrantPreservation
+from ..domain.model.sql import string_literal
 from ..domain.model.tool import ToolCatalog, ToolKind, ToolMember
 from ..domain.render.agent import desired_agent_definition, render_agent_json, render_agent_spec
 from .compile import CompileResult
@@ -675,7 +676,7 @@ def _agent_programs(
         profile = _profile_json(model)
         statement = (
             f"CREATE OR REPLACE TEMPORARY AGENT {target.sql}"
-            + (f" WITH PROFILE = {_sql_string(profile)}" if profile else "")
+            + (f" WITH PROFILE = {string_literal(profile)}" if profile else "")
             + f" FROM SPECIFICATION $${payload.rstrip()}$$"
         )
         return (statement,), (statement,), (statement,)
@@ -694,7 +695,7 @@ def _agent_programs(
         update.append(alias)
         update_live.append(alias)
     if model.tags:
-        pairs = ", ".join(f"{_qualified_or_identifier(name)} = {_sql_string(value)}" for name, value in model.tags)
+        pairs = ", ".join(f"{_qualified_or_identifier(name)} = {string_literal(value)}" for name, value in model.tags)
         tag = f"ALTER AGENT {target.sql}\n  SET TAG {pairs}"
         create.append(tag)
         update.append(tag)
@@ -724,15 +725,11 @@ def _agent_metadata_statements(
 ) -> tuple[str, ...]:
     statements: list[str] = []
     profile = _profile_json(model)
-    statements.append(f"ALTER AGENT {target.sql} SET PROFILE = {_sql_string(profile)}")
+    statements.append(f"ALTER AGENT {target.sql} SET PROFILE = {string_literal(profile)}")
     comment = f"{marker} {model.comment}" if model.comment else marker
-    statements.append(f"ALTER AGENT {target.sql} SET COMMENT = {_sql_string(comment)}")
+    statements.append(f"ALTER AGENT {target.sql} SET COMMENT = {string_literal(comment)}")
     statements.append(f"ALTER AGENT {target.sql} SET SECURE = {'TRUE' if model.secure else 'FALSE'}")
     return tuple(statements)
-
-
-def _sql_string(value: str) -> str:
-    return "'" + value.replace("'", "''") + "'"
 
 
 def _identifier(value: str) -> str:

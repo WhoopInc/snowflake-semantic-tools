@@ -70,16 +70,16 @@ def _unique_keys(value: object, *, path: str) -> tuple[tuple[tuple[str, ...], ..
 
 def _sst_meta(value: object, *, path: str) -> Mapping[str, Any]:
     node = _mapping(value, path=path)
-    meta = node.get("meta")
-    if meta is None:
-        config = node.get("config")
-        if isinstance(config, dict):
-            meta = config.get("meta")
-    if meta is None:
-        return {}
-    meta_map = _mapping(meta, path=f"{path}.meta")
-    sst = meta_map.get("sst")
-    return {} if sst is None else _mapping(sst, path=f"{path}.meta.sst")
+    config = node.get("config")
+    # dbt can write `meta` both bare and under `config`, one of them without `sst` (often
+    # `meta: {}`), so a place without it must not hide the other. The bare `sst` wins over config's.
+    for meta in (node.get("meta"), config.get("meta") if isinstance(config, dict) else None):
+        if meta is None:
+            continue
+        sst = _mapping(meta, path=f"{path}.meta").get("sst")
+        if sst is not None:
+            return _mapping(sst, path=f"{path}.meta.sst")
+    return {}
 
 
 def _column(name: str, value: object, *, node_path: str) -> DbtColumn:

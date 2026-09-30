@@ -104,5 +104,7 @@ def checked() -> None:
 
 
 def test_documented_codes_stop_at_the_next_section() -> None:
-    docstring = "Check.\n\nDiagnostics:\n    SST-VAL102: one.\n    continued text.\n\nReturns:\n    SST-VAL999 is prose."
+    docstring = (
+        "Check.\n\nDiagnostics:\n    SST-VAL102: one.\n    continued text.\n\nReturns:\n    SST-VAL999 is prose."
+    )
     assert docstring_rules.documented_codes(docstring) == ["SST-VAL102"]

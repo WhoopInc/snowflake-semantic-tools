@@ -7,6 +7,7 @@ from typing import Mapping
 
 from ...domain.model.eval import EvalBaselineMetric, EvalBaselineRecord, EvalGateState, EvalRegression
 from ...domain.model.identifier import QualifiedName
+from ...domain.model.sql import string_literal
 from ...domain.ports.snowflake import SnowflakePort, SnowflakePortError
 
 
@@ -16,7 +17,9 @@ class SnowflakeEvalStateStore:
         self._table = table
 
     def read_baseline(self, target_name: str, eval_key: str) -> EvalBaselineRecord | None:
-        self._ensure_table()
+        # Reads never create the table, so a read-only role can read; no table means no record.
+        if not self._port.object_exists("TABLE", self._table):
+            return None
         result = self._port.query(
             f"SELECT PAYLOAD FROM {self._table.sql} "
             "WHERE TARGET_NAME = %s AND EVAL_KEY = %s AND RECORD_KIND = 'baseline'",
@@ -45,7 +48,8 @@ class SnowflakeEvalStateStore:
             raise SnowflakePortError(result.error.message if result.error else "eval baseline batch write failed")
 
     def read_gate(self, target_name: str, eval_key: str) -> EvalGateState | None:
-        self._ensure_table()
+        if not self._port.object_exists("TABLE", self._table):
+            return None
         result = self._port.query(
             f"SELECT PAYLOAD FROM {self._table.sql} "
             "WHERE TARGET_NAME = %s AND EVAL_KEY = %s AND RECORD_KIND = 'gate'",
@@ -81,8 +85,8 @@ class SnowflakeEvalStateStore:
     def _merge_sql(self, target_name: str, eval_key: str, kind: str, payload: Mapping[str, object]) -> str:
         return (
             f"MERGE INTO {self._table.sql} AS target USING (SELECT "
-            f"{_literal(target_name)} TARGET_NAME, {_literal(eval_key)} EVAL_KEY, "
-            f"{_literal(kind)} RECORD_KIND, PARSE_JSON({_literal(json.dumps(payload, sort_keys=True, separators=(',', ':')))}) PAYLOAD, "
+            f"{string_literal(target_name)} TARGET_NAME, {string_literal(eval_key)} EVAL_KEY, "
+            f"{string_literal(kind)} RECORD_KIND, PARSE_JSON({string_literal(json.dumps(payload, sort_keys=True, separators=(',', ':')))}) PAYLOAD, "
             "CURRENT_TIMESTAMP() UPDATED_AT) source "
             "ON target.TARGET_NAME = source.TARGET_NAME AND target.EVAL_KEY = source.EVAL_KEY "
             "AND target.RECORD_KIND = source.RECORD_KIND "
@@ -208,7 +212,3 @@ def _mapping(value: object, subject: str) -> dict[str, object]:
     if not isinstance(value, dict):
         raise SnowflakePortError(f"eval {subject} payload must be an object")
     return {str(key): item for key, item in value.items()}
-
-
-def _literal(value: str) -> str:
-    return "'" + value.replace("'", "''") + "'"

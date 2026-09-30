@@ -9,11 +9,12 @@ import json
 import shutil
 import sys
 import time
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Iterator, Sequence
+from contextlib import contextmanager
 from hashlib import sha256
 from pathlib import Path
 from types import MappingProxyType
-from typing import Any, Mapping, cast
+from typing import Any, Mapping, NoReturn, cast
 
 import click
 
@@ -93,6 +94,14 @@ class SstGroup(click.Group):
             return super().parse_args(ctx, args)
         except click.UsageError as exc:
             raise SstUsageError(str(exc), ctx) from exc
+
+    def invoke(self, ctx: click.Context) -> Any:
+        """Run the command; an interrupt outside a guarded action still exits 130 rather than click's 1."""
+        try:
+            return super().invoke(ctx)
+        except (click.exceptions.Abort, KeyboardInterrupt, EOFError) as exc:
+            click.echo("Aborted.", err=True)
+            raise click.exceptions.Exit(INTERRUPTED) from exc
 
     def main(
         self,
@@ -878,6 +887,18 @@ def _emit_json(envelope: dict[str, object], exit_code: int) -> None:
     raise click.exceptions.Exit(exit_code)
 
 
+def _interrupted(command: str, output: str, cause: BaseException) -> NoReturn:
+    """End a run the user interrupted or declined to confirm with exit 130, never an internal error."""
+    if output == "json":
+        envelope = _json_envelope(
+            command, DiagnosticBag(), exit_code=INTERRUPTED, status="error", data={"error": "interrupted"}
+        )
+        click.echo(json.dumps(envelope, sort_keys=True, separators=(",", ":")))
+    else:
+        click.echo("Aborted.", err=True)
+    raise click.exceptions.Exit(INTERRUPTED) from cause
+
+
 def _render_diagnostics(diagnostics: DiagnosticBag) -> None:
     for diagnostic in diagnostics:
         click.echo(
@@ -893,6 +914,8 @@ def _guarded(action: Callable[[], None], *, command: str, output: str) -> None:
         raise
     except click.UsageError:
         raise
+    except (click.exceptions.Abort, KeyboardInterrupt, EOFError) as exc:
+        _interrupted(command, output, exc)
     except SnowflakePortError as exc:
         diagnostics = DiagnosticBag((exc.diagnostic,) if exc.diagnostic is not None else ())
         if output == "json":
@@ -968,6 +991,17 @@ def _connect(project_dir: Path, target_name: str | None) -> tuple[ProfileTarget,
         )
         return resolved, port
     except Exception:
+        port.close()
+        raise
+
+
+@contextmanager
+def _closed_on_error(port: SnowflakeConnector) -> Iterator[None]:
+    """Close `port` if the block raises; a block that completes leaves the connection to its owner."""
+    try:
+        yield
+    except BaseException:
+        # Also on an interrupt or a declined prompt: nothing else will close the session.
         port.close()
         raise
 
@@ -1141,104 +1175,109 @@ def _plan_runtime(
     if compiled_manifest.manifest_id != manifest.manifest_id:
         raise ProjectError("compiled SST manifest is stale; run sst compile before plan or apply")
     profile, port = _connect(project_dir, target_name)
-    validation = ValidateArtifacts(port if effective_connected else None).run(
-        result,
-        strict=effective_strict,
-        connected=effective_connected,
-    )
-    # The split walks the whole healthy set, so a selection cannot hide a dependency;
-    # its result is then narrowed back to what was selected.
-    validated = partial_split(dataclasses.replace(source, diagnostics=validation.diagnostics)) if partial else None
-    if validated is not None:
-        # Strict promotion or a connected check can exclude more; the notices name
-        # everything left out, including what the compile split already excluded.
-        left_out = dict.fromkeys((*(split.excluded if split is not None else ()), *validated.excluded))
-        notices = tuple(D("SST-PLN032", subject=key, artifact=key) for key in left_out)
-        still_healthy = {item.artifact_key for item in validated.healthy.compiled}
-        result = dataclasses.replace(
+    with _closed_on_error(port):
+        validation = ValidateArtifacts(port if effective_connected else None).run(
             result,
-            compiled=tuple(item for item in result.compiled if item.artifact_key in still_healthy),
-            diagnostics=DiagnosticBag((*validation.diagnostics, *notices)),
+            strict=effective_strict,
+            connected=effective_connected,
         )
-    elif not validation.success:
-        port.close()
-        refusal = partial_refusal(dataclasses.replace(result, diagnostics=validation.diagnostics)) if partial else None
-        failed_result = dataclasses.replace(
-            result, diagnostics=DiagnosticBag((*validation.diagnostics, *((refusal,) if refusal else ())))
-        )
-        return failed_result, None, None, None, None
-    state_store = StateFileStore(_target_dir(project_dir) / f"state.{profile.target_name}.json")
-    state, state_diagnostics = read_state(
-        state_store,
-        port,
-        state_table=profile.state_table,
-        target=profile.identity,
-    )
-    config = _config(project_dir)
-    apply_config = _config_map(config.get("apply"))
-    stage_config = _config_map(apply_config.get("agent_spec_stage"))
-    stage = QualifiedName.from_parts(
-        _config_text(stage_config.get("database"), profile.identity.database.folded)
-        or profile.identity.database.folded,
-        _config_text(stage_config.get("schema"), profile.identity.schema.folded) or profile.identity.schema.folded,
-        str(stage_config.get("stage") or "AGENT_SPECS"),
-    )
-    publication_compiled = tuple(
-        (
-            for_publication(
-                item,
-                stage=stage,
-                git_sha=_git_sha(project_dir),
+        # The split walks the whole healthy set, so a selection cannot hide a dependency;
+        # its result is then narrowed back to what was selected.
+        validated = partial_split(dataclasses.replace(source, diagnostics=validation.diagnostics)) if partial else None
+        if validated is not None:
+            # Strict promotion or a connected check can exclude more; the notices name
+            # everything left out, including what the compile split already excluded.
+            left_out = dict.fromkeys((*(split.excluded if split is not None else ()), *validated.excluded))
+            notices = tuple(D("SST-PLN032", subject=key, artifact=key) for key in left_out)
+            still_healthy = {item.artifact_key for item in validated.healthy.compiled}
+            result = dataclasses.replace(
+                result,
+                compiled=tuple(item for item in result.compiled if item.artifact_key in still_healthy),
+                diagnostics=DiagnosticBag((*validation.diagnostics, *notices)),
             )
-            if isinstance(item, CompiledAgent)
-            else item
-        )
-        for item in result.compiled
-    )
-    publication_result = dataclasses.replace(result, compiled=publication_compiled)
-    publish = {artifact.key: artifact for artifact in publication_result.rendered_for_publish(manifest.manifest_id)}
-    eval_stage_config = _config_map(apply_config.get("eval_config_stage"))
-    releases = {item.artifact_key: item.release for item in full_result.compiled if isinstance(item, CompiledExtension)}
-    lifecycle_handlers: dict[str, CompositeLifecycleHandler] = {
-        "eval": EvalLifecycleHandler(
+        elif not validation.success:
+            port.close()
+            refusal = (
+                partial_refusal(dataclasses.replace(result, diagnostics=validation.diagnostics)) if partial else None
+            )
+            failed_result = dataclasses.replace(
+                result, diagnostics=DiagnosticBag((*validation.diagnostics, *((refusal,) if refusal else ())))
+            )
+            return failed_result, None, None, None, None
+        state_store = StateFileStore(_target_dir(project_dir) / f"state.{profile.target_name}.json")
+        state, state_diagnostics = read_state(
+            state_store,
             port,
-            EvalLifecycleConfig(str(eval_stage_config.get("stage") or "EVAL_CONFIGS")),
-        ),
-        "skill": ExtensionLifecycleHandler(port, releases, "skill"),
-        "plugin": ExtensionLifecycleHandler(port, releases, "plugin"),
-        "profile": ProfileLifecycleHandler(
-            port, {item.artifact_key: item for item in full_result.compiled if isinstance(item, CompiledProfile)}
-        ),
-    }
-    observation_targets = tuple(
-        dict.fromkeys(
+            state_table=profile.state_table,
+            target=profile.identity,
+        )
+        config = _config(project_dir)
+        apply_config = _config_map(config.get("apply"))
+        stage_config = _config_map(apply_config.get("agent_spec_stage"))
+        stage = QualifiedName.from_parts(
+            _config_text(stage_config.get("database"), profile.identity.database.folded)
+            or profile.identity.database.folded,
+            _config_text(stage_config.get("schema"), profile.identity.schema.folded) or profile.identity.schema.folded,
+            str(stage_config.get("stage") or "AGENT_SPECS"),
+        )
+        publication_compiled = tuple(
             (
-                *(artifact.target for artifact in full_result.rendered),
-                *(
-                    QualifiedName.parse(entry.qualified_name)
-                    for entry in state.applied.values()
-                    if entry.qualified_name
-                ),
+                for_publication(
+                    item,
+                    stage=stage,
+                    git_sha=_git_sha(project_dir),
+                )
+                if isinstance(item, CompiledAgent)
+                else item
+            )
+            for item in result.compiled
+        )
+        publication_result = dataclasses.replace(result, compiled=publication_compiled)
+        publish = {artifact.key: artifact for artifact in publication_result.rendered_for_publish(manifest.manifest_id)}
+        eval_stage_config = _config_map(apply_config.get("eval_config_stage"))
+        releases = {
+            item.artifact_key: item.release for item in full_result.compiled if isinstance(item, CompiledExtension)
+        }
+        lifecycle_handlers: dict[str, CompositeLifecycleHandler] = {
+            "eval": EvalLifecycleHandler(
+                port,
+                EvalLifecycleConfig(str(eval_stage_config.get("stage") or "EVAL_CONFIGS")),
+            ),
+            "skill": ExtensionLifecycleHandler(port, releases, "skill"),
+            "plugin": ExtensionLifecycleHandler(port, releases, "plugin"),
+            "profile": ProfileLifecycleHandler(
+                port, {item.artifact_key: item for item in full_result.compiled if isinstance(item, CompiledProfile)}
+            ),
+        }
+        observation_targets = tuple(
+            dict.fromkeys(
+                (
+                    *(artifact.target for artifact in full_result.rendered),
+                    *(
+                        QualifiedName.parse(entry.qualified_name)
+                        for entry in state.applied.values()
+                        if entry.qualified_name
+                    ),
+                )
             )
         )
-    )
-    changeset = PlanArtifacts(port, lifecycle_handlers=lifecycle_handlers).run(
-        publish,
-        manifest,
-        state,
-        profile.identity,
-        fetched_at=SystemClock().now_iso(),
-        include_prune=include_prune,
-        prune_types=prune_types,
-        prune_keys=prune_keys,
-        observation_targets=observation_targets,
-    )
-    if state_diagnostics:
-        changeset = dataclasses.replace(
-            changeset,
-            diagnostics=DiagnosticBag((*state_diagnostics, *changeset.diagnostics)),
+        changeset = PlanArtifacts(port, lifecycle_handlers=lifecycle_handlers).run(
+            publish,
+            manifest,
+            state,
+            profile.identity,
+            fetched_at=SystemClock().now_iso(),
+            include_prune=include_prune,
+            prune_types=prune_types,
+            prune_keys=prune_keys,
+            observation_targets=observation_targets,
         )
-    return result, manifest, profile, port, (state_store, state, changeset, lifecycle_handlers)
+        if state_diagnostics:
+            changeset = dataclasses.replace(
+                changeset,
+                diagnostics=DiagnosticBag((*state_diagnostics, *changeset.diagnostics)),
+            )
+        return result, manifest, profile, port, (state_store, state, changeset, lifecycle_handlers)
 
 
 @cli.command()
@@ -1767,36 +1806,37 @@ def apply(
             _render_diagnostics(result.diagnostics)
             raise click.exceptions.Exit(ERROR)
         state_store, previous, changeset, lifecycle_handlers = runtime
-        current_saved = SavedPlan.from_changeset(
-            changeset,
-            selected=effective_selected,
-            excluded=effective_excluded,
-            include_prune=effective_prune,
-            partial=partial,
-        )
-        if saved is not None:
-            if saved.target.key != profile.identity.key:
-                diagnostic = D(
-                    "SST-APL005",
-                    artifact=str(plan_path),
-                    found=_target_label(saved.target),
-                    expected=_target_label(profile.identity),
-                )
-                raise ProjectError(diagnostic.message, diagnostics=(diagnostic,))
-            if not saved.matches(manifest.manifest_id, profile.identity):
-                raise ProjectError("the saved plan was made from a different manifest; re-run sst plan")
-            _saved_plan_guard(saved, current_saved)
-        _write_plan_sql(project_dir, changeset, sql_out)
-        if changeset.writes and not confirmed:
-            _print_plan(changeset)
-            click.confirm("Apply this plan?", abort=True)
-        options = ApplyOptions(
-            # skills.+threads bounds each wave's concurrency (1..16, default 4).
-            parallelism=_config_int(_config_map(_config(project_dir).get("skills")).get("+threads")) or 4,
-            on_failure=(FailurePolicy.STOP_ALL if fail_fast else FailurePolicy.STOP_DEPENDENTS),
-            allow_prune=effective_prune,
-            break_stale_lock=break_stale_lock,
-        )
+        with _closed_on_error(port):
+            current_saved = SavedPlan.from_changeset(
+                changeset,
+                selected=effective_selected,
+                excluded=effective_excluded,
+                include_prune=effective_prune,
+                partial=partial,
+            )
+            if saved is not None:
+                if saved.target.key != profile.identity.key:
+                    diagnostic = D(
+                        "SST-APL005",
+                        artifact=str(plan_path),
+                        found=_target_label(saved.target),
+                        expected=_target_label(profile.identity),
+                    )
+                    raise ProjectError(diagnostic.message, diagnostics=(diagnostic,))
+                if not saved.matches(manifest.manifest_id, profile.identity):
+                    raise ProjectError("the saved plan was made from a different manifest; re-run sst plan")
+                _saved_plan_guard(saved, current_saved)
+            _write_plan_sql(project_dir, changeset, sql_out)
+            if changeset.writes and not confirmed:
+                _print_plan(changeset)
+                click.confirm("Apply this plan?", abort=True)
+            options = ApplyOptions(
+                # skills.+threads bounds each wave's concurrency (1..16, default 4).
+                parallelism=_config_int(_config_map(_config(project_dir).get("skills")).get("+threads")) or 4,
+                on_failure=(FailurePolicy.STOP_ALL if fail_fast else FailurePolicy.STOP_DEPENDENTS),
+                allow_prune=effective_prune,
+                break_stale_lock=break_stale_lock,
+            )
         try:
             apply_result = ApplyArtifacts(
                 port,
@@ -2172,17 +2212,17 @@ def test_command(
             if compiled_manifest.manifest_id != current_manifest.manifest_id:
                 raise ProjectError("compiled SST manifest is stale; run sst compile before evals")
             profile, port = _connect(project_dir, target_name)
-            config = _config(project_dir)
-            eval_defaults = _source(project_dir, target_name, manifest_path).load_evals().defaults
-            eval_stage = _config_map(_config_map(config.get("apply")).get("eval_config_stage"))
-            lifecycle_config = EvalLifecycleConfig(str(eval_stage.get("stage") or "EVAL_CONFIGS"))
-            handler = EvalLifecycleHandler(port, lifecycle_config)
-            state_store = StateFileStore(_target_dir(project_dir) / f"state.{profile.target_name}.json")
-            eval_lock_id = f"eval-{SystemClock().new_run_id()}"
-            locked, holder, _ = state_store.acquire_lock(eval_lock_id, break_stale=False)
-            if not locked:
-                port.close()
-                raise ProjectError(f"cannot run evals while {holder or 'another operation'} holds the target lock")
+            with _closed_on_error(port):
+                config = _config(project_dir)
+                eval_defaults = _source(project_dir, target_name, manifest_path).load_evals().defaults
+                eval_stage = _config_map(_config_map(config.get("apply")).get("eval_config_stage"))
+                lifecycle_config = EvalLifecycleConfig(str(eval_stage.get("stage") or "EVAL_CONFIGS"))
+                handler = EvalLifecycleHandler(port, lifecycle_config)
+                state_store = StateFileStore(_target_dir(project_dir) / f"state.{profile.target_name}.json")
+                eval_lock_id = f"eval-{SystemClock().new_run_id()}"
+                locked, holder, _ = state_store.acquire_lock(eval_lock_id, break_stale=False)
+                if not locked:
+                    raise ProjectError(f"cannot run evals while {holder or 'another operation'} holds the target lock")
             try:
                 state, state_diagnostics = read_state(
                     state_store,
@@ -2553,10 +2593,8 @@ _document_options(cli)
 
 
 def main() -> None:
-    try:
-        cli(standalone_mode=True)
-    except KeyboardInterrupt:
-        raise SystemExit(INTERRUPTED)
+    """Run `sst`; `python -m snowflake_semantic_tools.cli.main` enters here."""
+    cli(standalone_mode=True)
 
 
 if __name__ == "__main__":

@@ -284,7 +284,16 @@ def test_dataset_name_template_bounds_and_collisions_are_checked_when_renderable
     )
     first = ResolvedEval(first.agent, first.dataset, first_config, first.custom_metrics)
     codes = _codes(EvalCatalog((first, second), first.custom_metrics), allowed_models=("claude-sonnet-4-6",))
-    assert {"SST-VAL701", "SST-VAL702", "SST-PRS010", "SST-PRS002"}.issubset(codes)
+    assert {"SST-VAL701", "SST-VAL702", "SST-PRS002"}.issubset(codes)
+    # An over-long dataset name is VAL702 alone, never PRS010 as well.
+    assert "SST-PRS010" not in codes
+
+    long_source = replace(first_config, dataset=replace(first_config.dataset, source_table_template="SRC_" + "X" * 130))
+    source_codes = _codes(
+        EvalCatalog((ResolvedEval(first.agent, first.dataset, long_source, first.custom_metrics),), ()),
+        allowed_models=("claude-sonnet-4-6",),
+    )
+    assert "SST-PRS010" in source_codes
 
 
 def test_rendered_run_names_must_be_unique_per_agent() -> None:

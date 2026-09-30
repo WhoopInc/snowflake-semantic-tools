@@ -2,15 +2,18 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 from threading import RLock
-from typing import Sequence
+from typing import Callable, Mapping, Sequence
 
 import pytest
+from snowflake.connector.errors import Error as DriverError
+from snowflake.connector.errors import OperationalError, ProgrammingError
 
 from snowflake_semantic_tools.adapters.clock import SystemClock
 from snowflake_semantic_tools.adapters.snowflake.connector import SnowflakeConnector
-from snowflake_semantic_tools.domain.model.identifier import QualifiedName, SchemaScope
+from snowflake_semantic_tools.domain.model.identifier import Identifier, QualifiedName, SchemaScope
 from snowflake_semantic_tools.domain.model.lifecycle import ExecResult, QueryResult
 from snowflake_semantic_tools.domain.ports.snowflake import SnowflakePortError, StagedFileMetadata, StageObservation
+from snowflake_semantic_tools.domain.state.model import AppliedEntry
 
 
 class StubSnowflakeConnector(SnowflakeConnector):
@@ -347,7 +350,7 @@ def test_connection_prompts_go_to_stderr_so_json_stdout_stays_one_envelope(
     assert "Initiating login request" in captured.err
 
 
-class _ConnectorFailure(Exception):
+class _ConnectorFailure(DriverError):
     def __init__(self, message: str, sqlstate: str | None = None) -> None:
         super().__init__(message)
         self.sqlstate = sqlstate
@@ -394,3 +397,114 @@ def test_query_failures_carry_the_diagnostic_a_command_reports(
         FailingConnector().query("SELECT 1")
     diagnostic = raised.value.diagnostic
     assert (diagnostic.code if diagnostic is not None else None) == code
+
+
+class _Session:
+    """A driver session double: its own single cursor, recording statements, failing where scripted."""
+
+    def __init__(self, failures: Mapping[str, BaseException] | None = None) -> None:
+        self.failures = dict(failures or {})
+        self.executed: list[str] = []
+        self.description: tuple[tuple[str], ...] | None = None
+        self.sfqid = "query-id"
+        self.rowcount = 1
+
+    def cursor(self, *args: object) -> _Session:
+        return self
+
+    def execute(self, sql: str, params: object = None) -> None:
+        self.executed.append(sql)
+        failure = next((error for prefix, error in self.failures.items() if sql.startswith(prefix)), None)
+        if failure is not None:
+            raise failure
+
+    def fetchall(self) -> list[object]:
+        return []
+
+    def close(self) -> None:
+        pass
+
+
+class SessionConnector(SnowflakeConnector):
+    def __init__(self, session: _Session) -> None:
+        self._lock = RLock()
+        self._connection = session
+
+
+STATE_TABLE = QualifiedName.parse("DB.S.SST_STATE")
+SCOPE = SchemaScope.from_qualified_name(STATE_TABLE)
+ENTRY = AppliedEntry("f" * 64, "DB.S.V", "2026-09-29T00:00:00Z", "run", "applied", "d" * 64, "m" * 64)
+DRIVER_CALLS: tuple[tuple[str, str, Callable[[SnowflakeConnector], object]], ...] = (
+    ("query", "SELECT 1", lambda port: port.query("SELECT 1")),
+    ("query_in_context", "SELECT 1", lambda port: port.query_in_context(SCOPE, "SELECT 1")),
+    ("show_objects", "SHOW TABLES", lambda port: port.show_objects("TABLE", SCOPE)),
+    ("delete_state", "DELETE FROM", lambda port: port.delete_state(STATE_TABLE, "dev", "k")),
+    ("upsert_state", "MERGE INTO", lambda port: port.upsert_state(STATE_TABLE, "dev", "k", ENTRY)),
+    ("write_state", "INSERT INTO", lambda port: port.write_state(STATE_TABLE, "dev", "m" * 64, {"k": ENTRY})),
+)
+
+
+@pytest.mark.parametrize(
+    ("prefix", "call"), [item[1:] for item in DRIVER_CALLS], ids=[item[0] for item in DRIVER_CALLS]
+)
+def test_a_programming_error_in_a_driver_call_propagates_rather_than_passing_as_a_snowflake_failure(
+    prefix: str, call: Callable[[SnowflakeConnector], object]
+) -> None:
+    session = _Session({prefix: TypeError("unsupported parameter type: Decimal")})
+    with pytest.raises(TypeError, match="unsupported parameter type"):
+        call(SessionConnector(session))
+
+
+@pytest.mark.parametrize(
+    "error",
+    [
+        ProgrammingError(msg="SQL compilation error", errno=1003, sqlstate="42000"),
+        # The driver lets transport failures (its vendored `requests` errors, socket timeouts:
+        # all OSError) escape from a large result's chunk download.
+        TimeoutError("The read operation timed out"),
+    ],
+    ids=["driver-error", "transport-error"],
+)
+@pytest.mark.parametrize(
+    ("prefix", "call"), [item[1:] for item in DRIVER_CALLS], ids=[item[0] for item in DRIVER_CALLS]
+)
+def test_a_driver_or_transport_failure_is_still_reported_as_a_port_error(
+    prefix: str, call: Callable[[SnowflakeConnector], object], error: Exception
+) -> None:
+    with pytest.raises(SnowflakePortError) as raised:
+        call(SessionConnector(_Session({prefix: error})))
+    assert str(raised.value) == str(error) and raised.value.__cause__ is error
+
+
+def test_a_programming_error_mid_state_write_still_rolls_the_transaction_back() -> None:
+    session = _Session({"INSERT INTO": TypeError("unsupported parameter type: Decimal")})
+    with pytest.raises(TypeError):
+        SessionConnector(session).write_state(STATE_TABLE, "dev", "m" * 64, {"k": ENTRY})
+    assert session.executed[-3:] == [
+        "DELETE FROM DB.S.SST_STATE WHERE TARGET_NAME = %s",
+        session.executed[-2],
+        "ROLLBACK",
+    ]
+
+
+def test_a_failed_rollback_keeps_the_error_that_aborted_the_state_write() -> None:
+    aborted = ProgrammingError(msg="Numeric value 'x' is not recognized", errno=100038, sqlstate="22018")
+    session = _Session({"INSERT INTO": aborted, "ROLLBACK": OperationalError(msg="Connection is closed")})
+    with pytest.raises(SnowflakePortError) as raised:
+        SessionConnector(session).write_state(STATE_TABLE, "dev", "m" * 64, {"k": ENTRY})
+    assert str(raised.value) == str(aborted) == "100038 (22018): Numeric value 'x' is not recognized"
+    assert (raised.value.sqlstate, raised.value.errno) == ("22018", 100038)
+    assert raised.value.__cause__ is aborted
+    assert session.executed[-1] == "ROLLBACK"
+    assert getattr(aborted, "__notes__", []) == ["ROLLBACK also failed: Connection is closed"]
+
+
+def test_query_in_context_sends_its_use_pair_and_statement_together_on_one_cursor() -> None:
+    # The session is not restored afterwards. That is safe while every statement SST sends is
+    # fully qualified or, like this one, carries its own USE pair within the same locked call:
+    # concurrent evals share one session.
+    session = _Session()
+    SessionConnector(session).query_in_context(
+        SchemaScope(Identifier.parse("AGENTS"), Identifier.parse("EVALS")), "SELECT 1"
+    )
+    assert session.executed == ["USE DATABASE AGENTS", "USE SCHEMA AGENTS.EVALS", "SELECT 1"]

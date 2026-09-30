@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from snowflake_semantic_tools.adapters.yaml.agents import load_agents
 from snowflake_semantic_tools.adapters.yaml.evals import load_eval_catalog, parse_eval_defaults
 from snowflake_semantic_tools.domain.model.eval import EvalDefaults
@@ -194,3 +196,14 @@ def test_eval_loader_flags_forbidden_custom_metric_version_field(tmp_path: Path)
     _write(metric, metric.read_text(encoding="utf-8") + "\nversion: v2")
     catalog = load_eval_catalog(tmp_path, agents, initial_diagnostics=agent_diagnostics)
     assert "SST-PRS004" in [diagnostic.code for diagnostic in catalog.diagnostics]
+
+
+def test_an_over_long_dataset_name_is_reported_once(tmp_path: Path) -> None:
+    agents, agent_diagnostics = _project(tmp_path)
+    config = tmp_path / "agents" / "sales" / "evals" / "config.yml"
+    short = 'name_template: "EVAL_{{ agent | upper }}_{{ sha7 }}"'
+    long = 'name_template: "EVAL_{{ agent | upper }}_' + "X" * 130 + '"'
+    _write(config, config.read_text(encoding="utf-8").replace(short, long))
+    catalog = load_eval_catalog(tmp_path, agents, initial_diagnostics=agent_diagnostics)
+    length = [(item.code, item.subject) for item in catalog.diagnostics if item.code in ("SST-VAL702", "SST-PRS010")]
+    assert length == [("SST-VAL702", "eval:sales")]

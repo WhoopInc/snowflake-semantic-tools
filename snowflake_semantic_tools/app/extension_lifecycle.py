@@ -29,6 +29,7 @@ from ..domain.model.lifecycle import (
     PhysicalResource,
     RenderedArtifact,
 )
+from ..domain.model.sql import string_literal
 from ..domain.ports.snowflake import ExtensionObservation, ExtensionVersion, SnowflakePort, SnowflakePortError
 from ..domain.state.model import FAILED_AFTER_WRITE, AppliedEntry, AppliedResourceInput, Manifest
 from .apply import classify_error
@@ -315,7 +316,7 @@ class _Run:
         if current.extension is None:
             failure = self._execute(
                 f"CREATE CORTEX EXTENSION IF NOT EXISTS {target} TYPE = '{release.extension_type}' "
-                f"COMMENT = {_sql_string(release.comment)}"
+                f"COMMENT = {string_literal(release.comment)}"
             )
             if failure is not None:
                 return failure
@@ -334,7 +335,7 @@ class _Run:
                 "SST-APL016",
             )
         if current.extension is not None and (current.extension.comment or "") != release.comment:
-            failure = self._execute(f"ALTER CORTEX EXTENSION {target} SET COMMENT = {_sql_string(release.comment)}")
+            failure = self._execute(f"ALTER CORTEX EXTENSION {target} SET COMMENT = {string_literal(release.comment)}")
             if failure is not None:
                 return failure
         if release.certified and not _certified(current.extension, version):
@@ -525,8 +526,3 @@ def _digest(paths: tuple[str, ...]) -> str:
 
 def _text_digest(value: str) -> str:
     return sha256(value.encode("utf-8")).hexdigest()
-
-
-def _sql_string(value: str) -> str:
-    """A single-quoted Snowflake literal: backslash is an escape inside one."""
-    return "'" + value.replace("\\", "\\\\").replace("'", "''") + "'"

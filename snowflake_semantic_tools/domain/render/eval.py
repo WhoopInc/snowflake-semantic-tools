@@ -8,6 +8,7 @@ from typing import Mapping, Sequence
 
 from ..model.eval import CustomEvalMetric, EvalConfig, EvalDataset, EvalGroundTruth, EvalScoreRanges, EvalSystemMetric
 from ..model.identifier import QualifiedName
+from ..model.sql import string_literal
 
 
 @dataclass(frozen=True, slots=True)
@@ -49,8 +50,8 @@ def render_source_table_sql(dataset_payload: str, source_table: QualifiedName) -
             )
             row_selects.append(
                 "SELECT\n"
-                f"    {_sql_string(str(row['input_query']))}::VARCHAR AS INPUT_QUERY\n"
-                f"  , PARSE_JSON({_sql_string(ground_truth)})         AS GROUND_TRUTH"
+                f"    {string_literal(str(row['input_query']))}::VARCHAR AS INPUT_QUERY\n"
+                f"  , PARSE_JSON({string_literal(ground_truth)})         AS GROUND_TRUTH"
             )
         statements.append(
             f"INSERT INTO {source_table.sql} (INPUT_QUERY, GROUND_TRUTH)\n" + "\nUNION ALL\n".join(row_selects)
@@ -73,11 +74,11 @@ def render_create_dataset_sql(
     return (
         "CALL SYSTEM$CREATE_EVALUATION_DATASET(\n"
         "    'Cortex Agent'\n"
-        f"  , {_sql_string(source_table.sql)}\n"
-        f"  , {_sql_string(dataset_target.sql)}\n"
+        f"  , {string_literal(source_table.sql)}\n"
+        f"  , {string_literal(dataset_target.sql)}\n"
         "  , OBJECT_CONSTRUCT(\n"
-        f"        'query_text', {_sql_string(query_text)}\n"
-        f"      , 'expected_tools', {_sql_string(ground_truth)}\n"
+        f"        'query_text', {string_literal(query_text)}\n"
+        f"      , 'expected_tools', {string_literal(ground_truth)}\n"
         "    )\n"
         ");\n"
     )
@@ -168,10 +169,6 @@ def _agent_version(value: str | None) -> str:
     if value.startswith("alias:"):
         return value.split(":", 1)[1]
     return value
-
-
-def _sql_string(value: str) -> str:
-    return "'" + value.replace("'", "''") + "'"
 
 
 def _emit_yaml(value: Mapping[str, object]) -> str:

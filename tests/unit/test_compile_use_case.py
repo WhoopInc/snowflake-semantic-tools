@@ -83,7 +83,9 @@ def test_compiled_artifact_metadata_is_deterministic() -> None:
     assert compiled.artifact_key == "semantic_view:alpha"
     assert compiled.byte_length == len(compiled.canonical_ddl.encode("utf-8"))
     assert len(compiled.fingerprint) == 64
-    assert compiled.fingerprint == CompileSemanticViews(InMemorySource(view("ALPHA"))).run_result().compiled[0].fingerprint
+    assert (
+        compiled.fingerprint == CompileSemanticViews(InMemorySource(view("ALPHA"))).run_result().compiled[0].fingerprint
+    )
 
 
 def test_compile_result_retains_structured_diagnostics() -> None:

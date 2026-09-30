@@ -37,6 +37,13 @@ class JsonStore(Generic[T]):
             if self.unreadable_code is None:
                 raise
             diagnostic = D(self.unreadable_code, path=str(self.path), detail=str(exc))
+        except (KeyError, TypeError, OverflowError) as exc:
+            # Valid JSON of the wrong shape: the parser indexed a key the file lacks or
+            # converted a mistyped value. That is the file's fault, not an SST invariant.
+            detail = _shape_problem(exc)
+            if self.unreadable_code is None:
+                raise ValueError(f"{self.path} has the wrong shape: {detail}") from exc
+            diagnostic = D(self.unreadable_code, path=str(self.path), detail=detail)
         raise ProjectError(diagnostic.message, diagnostics=(diagnostic,))
 
     def write(self, value: object) -> None:
@@ -216,3 +223,8 @@ def _saved_resources(value: object) -> list[dict[str, object]]:
     if not isinstance(value, list) or any(not isinstance(item, dict) for item in value):
         raise ValueError("saved plan physical_resources must be objects")
     return value
+
+
+def _shape_problem(exc: Exception) -> str:
+    # A KeyError's own text is only the quoted key.
+    return f"missing key {exc.args[0]!r}" if isinstance(exc, KeyError) and exc.args else str(exc)

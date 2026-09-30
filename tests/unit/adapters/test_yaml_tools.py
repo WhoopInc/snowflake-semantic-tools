@@ -151,3 +151,24 @@ tools:
     assert "SST-PRS032" in codes
     resolved, diagnostics = catalog.resolve("same")
     assert resolved is None and diagnostics[0].code == "SST-REF010"
+
+
+def test_an_unreadable_tools_file_is_reported_and_the_rest_still_load(tmp_path: Path) -> None:
+    _write(tmp_path / "tools" / "a_broken.yml", "tools: [\n")
+    _write(tmp_path / "tools" / "b_dated.yml", "tools: []\nreviewed: 2024-13-01\n")
+    _write(
+        tmp_path / "tools" / "c_platform.yml",
+        """
+tools:
+  - group: platform
+    reference:
+      - name: lookup
+        type: procedure
+        relations:
+          dev: DB.S.LOOKUP
+""".strip(),
+    )
+    catalog = load_tool_catalog(tmp_path, _dbt(), target_name="dev", declared_targets=frozenset(("dev",)))
+    located = sorted((item.code, item.context["file"]) for item in catalog.diagnostics)
+    assert located == [("SST-LOD001", "tools/a_broken.yml"), ("SST-LOD001", "tools/b_dated.yml")]
+    assert [member.name for member in catalog.references] == ["lookup"]

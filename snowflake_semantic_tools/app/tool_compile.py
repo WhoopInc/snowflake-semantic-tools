@@ -7,6 +7,7 @@ from dataclasses import dataclass, replace
 from ..domain.model.diagnostic import D, DiagnosticBag
 from ..domain.model.identifier import QualifiedName
 from ..domain.model.lifecycle import OwnershipMarker, RenderedArtifact
+from ..domain.model.sql import string_literal
 from ..domain.model.tool import ToolCatalog, ToolKind, ToolMember
 from ..domain.render.tool import render_tool
 from .compile import CompileResult
@@ -55,14 +56,13 @@ class CompiledTool:
         return self.rendered
 
     def rendered_for_publish(self, manifest_id: str) -> RenderedArtifact:
-        marker = f"[sst:{manifest_id}:{self.rendered.fingerprint}]"
+        marker = OwnershipMarker(manifest_id, self.rendered.fingerprint).text
         statements = self.rendered.statements
         if self.rendered.object_type == "CORTEX SEARCH SERVICE":
             base = self.rendered.ddl.rstrip()
             description = self.member.description
             comment_value = f"{marker} {description}" if description else marker
-            escaped_comment = comment_value.replace("'", "''")
-            comment = f"COMMENT = '{escaped_comment}'"
+            comment = f"COMMENT = {string_literal(comment_value)}"
             if "\n  COMMENT = " in base:
                 start = base.index("\n  COMMENT = ")
                 end = base.index("\n  AS ", start)
@@ -76,10 +76,9 @@ class CompiledTool:
                 object_name += f"({', '.join(self.rendered.routine_signature)})"
             description = self.member.description
             comment_value = f"{marker} {description}" if description else marker
-            escaped_comment = comment_value.replace("'", "''")
             statements = (
                 *statements,
-                f"ALTER {self.rendered.object_type} {object_name} SET COMMENT = '{escaped_comment}'",
+                f"ALTER {self.rendered.object_type} {object_name} SET COMMENT = {string_literal(comment_value)}",
             )
         return replace(
             self.rendered,

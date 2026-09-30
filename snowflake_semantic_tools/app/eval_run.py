@@ -23,6 +23,7 @@ from ..domain.model.eval import (
 )
 from ..domain.model.identifier import SchemaScope
 from ..domain.model.lifecycle import Action
+from ..domain.model.sql import string_literal
 from ..domain.ports.snowflake import ClockPort, SnowflakePort, SnowflakePortError
 from ..domain.state.model import Manifest, State
 from .eval_compile import CompiledEval
@@ -436,17 +437,13 @@ def validate_eval_publication(
 
 def _evaluation_call(job: str, run_name: str, config_path: str) -> str:
     return (
-        f"CALL EXECUTE_AI_EVALUATION('{job}', "
-        f"OBJECT_CONSTRUCT('run_name', {_sql_literal(run_name)}), {_sql_literal(config_path)})"
+        f"CALL EXECUTE_AI_EVALUATION({string_literal(job)}, "
+        f"OBJECT_CONSTRUCT('run_name', {string_literal(run_name)}), {string_literal(config_path)})"
     )
 
 
 def _evaluation_status_call() -> str:
     return "CALL EXECUTE_AI_EVALUATION('STATUS', OBJECT_CONSTRUCT('run_name', %s), %s)"
-
-
-def _sql_literal(value: str) -> str:
-    return "'" + value.replace("'", "''") + "'"
 
 
 def _rows_by_name(

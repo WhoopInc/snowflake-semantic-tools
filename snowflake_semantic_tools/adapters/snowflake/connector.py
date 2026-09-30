@@ -14,6 +14,7 @@ from typing import Any, Mapping, Sequence, cast
 
 import snowflake.connector
 from snowflake.connector import DictCursor
+from snowflake.connector.errors import Error as DriverError
 
 from ...domain.model.diagnostic import D, Diagnostic
 from ...domain.model.identifier import QualifiedName, SchemaScope
@@ -26,6 +27,7 @@ from ...domain.model.lifecycle import (
     ShowRow,
     extract_marker,
 )
+from ...domain.model.sql import string_literal
 from ...domain.model.stage_path import SAFE_SEGMENT_CHARACTERS as _SAFE_SEGMENT
 from ...domain.ports.snowflake import (
     ExtensionObservation,
@@ -64,6 +66,11 @@ OBJECT_TYPES = frozenset(
         "VIEW",
     )
 )
+# What a statement or fetch raises when Snowflake or the network fails: the driver's own
+# errors, and the OSError family (its vendored `requests` errors, socket timeouts) that it
+# lets escape a large result's chunk download. Anything else is an SST bug, never a
+# Snowflake failure, so it propagates unwrapped.
+_DRIVER_ERRORS = (DriverError, OSError)
 
 
 class SnowflakeConnector:
@@ -134,9 +141,9 @@ class SnowflakeConnector:
         qualified_name: QualifiedName,
         object_type: str = "SEMANTIC VIEW",
     ) -> OwnershipMarker | None:
-        pattern = qualified_name.name.folded.replace("'", "''")
+        pattern = string_literal(qualified_name.name.folded)
         rows = self._dict_rows(
-            f"SHOW {_object_type(object_type)}S LIKE '{pattern}' "
+            f"SHOW {_object_type(object_type)}S LIKE {pattern} "
             f"IN SCHEMA {qualified_name.database.sql}.{qualified_name.schema.sql}"
         )
         for row in rows:
@@ -156,7 +163,7 @@ class SnowflakeConnector:
                     return QueryResult(columns, rows)
                 finally:
                     cursor.close()
-        except Exception as exc:
+        except _DRIVER_ERRORS as exc:
             raise _port_error(exc) from exc
 
     def query_in_context(
@@ -178,7 +185,7 @@ class SnowflakeConnector:
                     return QueryResult(columns, rows)
                 finally:
                     cursor.close()
-        except Exception as exc:
+        except _DRIVER_ERRORS as exc:
             raise _port_error(exc) from exc
 
     def execute_script(self, statements: Sequence[str]) -> ExecResult:
@@ -229,9 +236,9 @@ class SnowflakeConnector:
             count = result.rows[0][0] if result.rows else 0
             return isinstance(count, (int, float, str)) and int(count) > 0
         normalized_type = _object_type(normalized_input)
-        pattern = qualified_name.name.folded.replace("'", "''")
+        pattern = string_literal(qualified_name.name.folded)
         rows = self._dict_rows(
-            f"SHOW {normalized_type}S LIKE '{pattern}' IN SCHEMA "
+            f"SHOW {normalized_type}S LIKE {pattern} IN SCHEMA "
             f"{qualified_name.database.sql}.{qualified_name.schema.sql}"
         )
         return any(
@@ -244,9 +251,9 @@ class SnowflakeConnector:
         )
 
     def dataset_exists(self, qualified_name: QualifiedName) -> bool:
-        pattern = qualified_name.name.folded.replace("'", "''")
+        pattern = string_literal(qualified_name.name.folded)
         rows = self._dict_rows(
-            f"SHOW DATASETS LIKE '{pattern}' IN SCHEMA {qualified_name.database.sql}.{qualified_name.schema.sql}"
+            f"SHOW DATASETS LIKE {pattern} IN SCHEMA {qualified_name.database.sql}.{qualified_name.schema.sql}"
         )
         return any(
             _identifier_matches(row.get("name"), qualified_name.name.folded)
@@ -355,9 +362,9 @@ class SnowflakeConnector:
                 pass
 
     def stage_type(self, qualified_name: QualifiedName) -> str | None:
-        pattern = qualified_name.name.folded.replace("'", "''")
+        pattern = string_literal(qualified_name.name.folded)
         rows = self._dict_rows(
-            f"SHOW STAGES LIKE '{pattern}' IN SCHEMA {qualified_name.database.sql}.{qualified_name.schema.sql}"
+            f"SHOW STAGES LIKE {pattern} IN SCHEMA {qualified_name.database.sql}.{qualified_name.schema.sql}"
         )
         match = next(
             (row for row in rows if _identifier_matches(row.get("name"), qualified_name.name.folded)),
@@ -385,9 +392,9 @@ class SnowflakeConnector:
         return tuple(sorted(relative))
 
     def observe_extension(self, qualified_name: QualifiedName) -> ExtensionObservation | None:
-        pattern = qualified_name.name.folded.replace("'", "''")
+        pattern = string_literal(qualified_name.name.folded)
         rows = self._dict_rows(
-            f"SHOW CORTEX EXTENSIONS LIKE '{pattern}' IN SCHEMA "
+            f"SHOW CORTEX EXTENSIONS LIKE {pattern} IN SCHEMA "
             f"{qualified_name.database.sql}.{qualified_name.schema.sql}"
         )
         match = next(
@@ -610,12 +617,17 @@ class SnowflakeConnector:
                             ),
                         )
                     cursor.execute("COMMIT")
-                except Exception:
-                    cursor.execute("ROLLBACK")
+                except Exception as failure:
+                    try:
+                        cursor.execute("ROLLBACK")
+                    except Exception as rollback_failure:
+                        # The error that aborted the write is the one to report; a ROLLBACK
+                        # that fails too (the session is usually gone) is context for it.
+                        failure.add_note(f"ROLLBACK also failed: {rollback_failure}")
                     raise
                 finally:
                     cursor.close()
-        except Exception as exc:
+        except _DRIVER_ERRORS as exc:
             raise _port_error(exc) from exc
 
     def delete_state(self, state_table: QualifiedName, target_name: str, artifact_key: str) -> int:
@@ -630,7 +642,7 @@ class SnowflakeConnector:
                     return max(cursor.rowcount or 0, 0)
                 finally:
                     cursor.close()
-        except Exception as exc:
+        except _DRIVER_ERRORS as exc:
             raise _port_error(exc) from exc
 
     def upsert_state(
@@ -681,7 +693,7 @@ class SnowflakeConnector:
                     return max(cursor.rowcount or 0, 0)
                 finally:
                     cursor.close()
-        except Exception as exc:
+        except _DRIVER_ERRORS as exc:
             raise _port_error(exc) from exc
 
     def _dict_rows(self, sql: str) -> tuple[dict[str, Any], ...]:
@@ -697,7 +709,7 @@ class SnowflakeConnector:
                     return tuple({str(key).lower(): value for key, value in row.items()} for row in dictionaries)
                 finally:
                     cursor.close()
-        except Exception as exc:
+        except _DRIVER_ERRORS as exc:
             raise _port_error(exc) from exc
 
 

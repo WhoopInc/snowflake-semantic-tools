@@ -6,6 +6,7 @@ from types import MappingProxyType
 import pytest
 
 from snowflake_semantic_tools.app.apply import ApplyArtifacts, classify_error, preserves_grants
+from snowflake_semantic_tools.app.plan import PlanArtifacts
 from snowflake_semantic_tools.domain.model.diagnostic import D, DiagnosticBag
 from snowflake_semantic_tools.domain.model.lifecycle import (
     Action,
@@ -22,13 +23,14 @@ from snowflake_semantic_tools.domain.model.lifecycle import (
     OutcomeStatus,
     OwnershipMarker,
     RetryPolicy,
+    ShowRow,
 )
 from snowflake_semantic_tools.domain.model.registry import GrantPreservation
 from snowflake_semantic_tools.domain.ports.snowflake import SnowflakePortError
-from snowflake_semantic_tools.domain.state.model import State
+from snowflake_semantic_tools.domain.state.model import FAILED_AFTER_WRITE, State
 
 from .conftest import FixedClock, InMemorySnowflake, InMemoryStateStore, failed
-from .helpers import change, changeset, marker, observed, rendered, state
+from .helpers import change, changeset, manifest, marker, observed, rendered, state, target
 
 
 def runner(
@@ -602,6 +604,61 @@ def test_expected_marker_must_be_visible_after_multi_statement_publish() -> None
     assert result.outcomes[0].error.code == "SST-APL012"  # type: ignore[union-attr]
     assert store.state is not None
     assert store.state.applied[artifact.key].outcome == "failed_after_write"
+
+
+def test_an_error_reading_the_marker_back_after_create_keeps_ownership() -> None:
+    base = rendered()
+    published = manifest({base.key: base})
+    ownership = OwnershipMarker(published.manifest_id, base.fingerprint)
+    artifact = replace(base, expected_marker=ownership)
+    port = InMemorySnowflake()
+    # The CREATE succeeds; the SHOW that reads its marker back then fails.
+    port.marker_error = SnowflakePortError("connection reset", sqlstate="08001")
+    use_case, _, store, _ = runner(port)
+
+    result = use_case.run(replace(changeset(change(artifact)), manifest_id=published.manifest_id), state())
+
+    assert port.scripts == [artifact.statements]
+    assert store.state is not None
+    port.marker_error = None
+    port.rows = (ShowRow("V", "DB", "SCHEMA", "OWNER", "now", f"published {ownership.text}"),)
+    replanned = PlanArtifacts(port).run({artifact.key: artifact}, published, store.state, target(), fetched_at="later")
+    # The view is SST's: the next plan must not call it unmanaged.
+    assert [item.code for item in replanned.diagnostics] == []
+    assert replanned.changes[0].action is Action.NOOP
+    assert not result.success
+    assert result.outcomes[0].status is OutcomeStatus.FAILED and result.outcomes[0].write_succeeded
+    assert store.state.applied[artifact.key].outcome == FAILED_AFTER_WRITE
+
+
+def test_an_error_rechecking_grants_after_update_records_the_write() -> None:
+    artifact = rendered()
+    ownership = marker(artifact)
+    live = observed(artifact, ownership=ownership)
+    port = InMemorySnowflake()
+    port.markers[artifact.target.sql] = ownership
+    reads = 0
+
+    def grants(object_type, qualified_name, routine_signature=()):
+        nonlocal reads
+        del object_type, qualified_name, routine_signature
+        reads += 1
+        if reads == 1:
+            return (GrantRow("SELECT", "ROLE", "R"),)
+        raise RuntimeError("unexpected SHOW GRANTS row")
+
+    port.show_grants = grants  # type: ignore[method-assign]
+    use_case, _, store, _ = runner(port)
+
+    result = use_case.run(changeset(change(artifact, Action.UPDATE, live=live)), state())
+
+    assert port.scripts == [artifact.statements]
+    assert result.outcomes[0].status is OutcomeStatus.FAILED
+    assert result.outcomes[0].write_succeeded
+    assert result.outcomes[0].error.message == "unexpected SHOW GRANTS row"  # type: ignore[union-attr]
+    assert store.state is not None
+    assert store.state.applied[artifact.key].outcome == FAILED_AFTER_WRITE
+    assert store.state.applied[artifact.key].fingerprint == artifact.fingerprint
 
 
 def test_database_role_grant_replay_uses_snowflake_spelling() -> None:

@@ -159,19 +159,21 @@ def test_gate_absent_incompatible_expired_and_near_expiry() -> None:
     assert expired_diagnostics[0].code == "SST-VAL761"
 
 
-def test_gate_omits_expiry_warning_outside_warning_window(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_a_fresh_baseline_warns_only_in_its_last_week() -> None:
     compiled = compiled_eval()
     current = result(
         attempt("run-1", (("q", "answer_correctness", True), ("q", "grounding", True))),
         attempt("run-2", (("q", "answer_correctness", True), ("q", "grounding", True))),
     )
+    # Captured 2026-09-01, so it expires 2026-10-01.
     baseline = capture_baseline(compiled, current, reason="initial", captured_at="2026-09-01T00:00:00Z")
-    monkeypatch.setattr("snowflake_semantic_tools.app.eval_gate.BASELINE_WARNING_DAYS", 5)
 
-    verdict, diagnostics = evaluate_gate(compiled, current, baseline, now="2026-09-10T00:00:00Z")
-
-    assert verdict.passed
-    assert diagnostics == ()
+    for now in ("2026-09-01T00:00:00Z", "2026-09-10T00:00:00Z", "2026-09-23T23:59:59Z"):
+        verdict, diagnostics = evaluate_gate(compiled, current, baseline, now=now)
+        assert verdict.passed and diagnostics == (), now
+    for now in ("2026-09-24T00:00:00Z", "2026-09-30T23:59:59Z"):
+        _, diagnostics = evaluate_gate(compiled, current, baseline, now=now)
+        assert [item.code for item in diagnostics] == ["SST-VAL760"], now
 
 
 def test_report_tier_does_not_block_and_gate_state_is_retrospective() -> None:
