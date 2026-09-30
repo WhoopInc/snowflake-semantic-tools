@@ -323,3 +323,136 @@ def test_unreached_skills_only_when_the_catalog_channel_is_off() -> None:
         "skill:operations",
         "skill:semantics",
     ]
+
+
+def test_a_hook_script_sits_under_the_hook_name_in_its_tree() -> None:
+    assert HOOK.tree_path == "sql-safety/check.sh"
+
+
+def test_each_list_a_profile_names_is_checked_in_order_and_only_a_loader_error_excuses_a_miss() -> None:
+    loader_errors = DiagnosticBag(
+        (
+            D("SST-VAL852", origin=Origin("hooks/broken"), subject="hook:broken", artifact="broken", detail="x"),
+            D("SST-VAL853", origin=Origin("mcp-servers/broken"), subject="mcp:broken", artifact="broken", detail="x"),
+            D(
+                "SST-VAL859",
+                origin=Origin("commands/broken.md"),
+                subject="command:broken",
+                artifact="broken",
+                detail="x",
+            ),
+            # A warning leaves its subject defined, so a profile naming it is still told it is unknown.
+            D("SST-PRS004", origin=Origin("hooks/warned"), subject="hook:warned", artifact="hook:warned", field="x"),
+        )
+    )
+    named = profile(
+        skills=("ghost", "semantics", "lost"),
+        commands=("broken", "ghost"),
+        plugins=("ghost", "kit"),
+        hooks=("broken", "warned", "ghost"),
+        mcp_servers=("ghost", "broken"),
+    )
+    catalog = ProfileCatalog((named,), None, (), (), loader_errors)
+    found = [
+        (item.code, item.subject, item.context.get("name"))
+        for item in validate_profile_catalog(catalog, SKILLS, {"kit": KIT})
+    ]
+    assert found == [
+        ("SST-VAL852", "hook:broken", None),
+        ("SST-VAL853", "mcp:broken", None),
+        ("SST-VAL859", "command:broken", None),
+        ("SST-PRS004", "hook:warned", None),
+        ("SST-VAL844", "profile:analyst", "ghost"),
+        ("SST-VAL844", "profile:analyst", "lost"),
+        ("SST-VAL858", "profile:analyst", "ghost"),
+        ("SST-VAL860", "profile:analyst", "ghost"),
+        ("SST-VAL846", "profile:analyst", "warned"),
+        ("SST-VAL846", "profile:analyst", "ghost"),
+        ("SST-VAL847", "profile:analyst", "ghost"),
+    ]
+    reported = validate_profile_catalog(catalog, SKILLS, {"kit": KIT})[4]
+    assert (reported.origin, list(reported.context.items())) == (ORIGIN, [("artifact", "analyst"), ("name", "ghost")])
+
+
+def test_a_server_defined_again_is_reported_against_the_config_that_defined_it_last() -> None:
+    first, second, third = (
+        McpConfig(name, f"mcp-servers/{name}/mcp.json", {"dbt": {"command": name}}, Origin(name))
+        for name in ("first", "second", "third")
+    )
+    catalog = ProfileCatalog(
+        (profile(mcp_servers=("first", "second", "third", "third")),), mcp_configs=(first, second, third)
+    )
+    found = [
+        (item.code, item.context["a"], item.context["b"], item.origin)
+        for item in validate_profile_catalog(catalog, SKILLS)
+    ]
+    # A config named twice clashes with itself.
+    assert found == [
+        ("SST-VAL849", "first", "second", Origin("second")),
+        ("SST-VAL849", "second", "third", Origin("third")),
+        ("SST-VAL849", "third", "third", Origin("third")),
+    ]
+
+
+def test_profile_names_follow_one_rule_that_reserves_shared() -> None:
+    names = ("data_analyst", "x-y_z", "shared", "a__b", "Upper", "-a", "a-")
+    catalog = ProfileCatalog(tuple(profile(name) for name in names))
+    found = [
+        (item.subject, item.context["artifact"], item.context["detail"])
+        for item in validate_profile_catalog(catalog, SKILLS)
+    ]
+    rule = "must be lowercase letters, digits, '-' or '_', and not 'shared'"
+    assert found == [
+        (f"profile:{name}", f"profile:{name}", f"profile name '{name}' {rule}")
+        for name in ("shared", "a__b", "Upper", "-a", "a-")
+    ]
+
+
+def test_hooks_group_by_event_then_matcher_in_the_order_the_profile_first_names_them() -> None:
+    def hook(name: str, event: str, matcher: str | None = None) -> HookDefinition:
+        script = SkillFile(f"{name}.sh", name.encode())
+        return HookDefinition(name, f"hooks/{name}", event, "bash", script, Origin(name), matcher=matcher)
+
+    hooks = (
+        hook("a", "PreToolUse", "sql"),
+        hook("b", "PreToolUse"),
+        hook("c", "Stop"),
+        hook("d", "PreToolUse", "sql"),
+        hook("e", "PreToolUse", "other"),
+    )
+    release = build_profile(
+        profile(skills=(), hooks=("c", "b", "a", "e", "d", "b", "ghost")),
+        ProfileCatalog(hooks=hooks),
+        SKILLS,
+        stage="DB.S.PROFILES",
+        version_prefix="SST_",
+    )
+    events = release.row["HOOKS"]
+    assert isinstance(events, dict)
+    shape = {
+        event: [
+            (group.get("matcher"), [entry["source"]["snowflake_stage"].rsplit("/", 1)[-1] for entry in group["hooks"]])
+            for group in groups
+        ]
+        for event, groups in events.items()
+    }
+    assert list(shape) == ["Stop", "PreToolUse"]
+    assert shape == {
+        "Stop": [(None, ["c.sh"])],
+        "PreToolUse": [(None, ["b.sh"]), ("sql", ["a.sh", "d.sh"]), ("other", ["e.sh"])],
+    }
+    # The group of hooks without a matcher carries no matcher key at all.
+    assert list(events["PreToolUse"][0]) == ["hooks"]
+    assert [entry for group in events["PreToolUse"] for entry in group["hooks"]][0] == {
+        "type": "command",
+        "command": "bash",
+        "source": {"snowflake_stage": f"@DB.S.PROFILES/{release.trees[0].prefix}b/b.sh"},
+    }
+    assert release.trees[0].paths == ("a/a.sh", "b/b.sh", "c/c.sh", "d/d.sh", "e/e.sh")
+    assert [path for path in release.source_files if path.startswith("hooks/")] == [
+        "hooks/c/c.sh",
+        "hooks/b/b.sh",
+        "hooks/a/a.sh",
+        "hooks/e/e.sh",
+        "hooks/d/d.sh",
+    ]

@@ -10,7 +10,7 @@ import pytest
 from snowflake_semantic_tools.domain.model.diagnostic import DiagnosticBag
 from snowflake_semantic_tools.domain.model.identifier import Identifier, QualifiedName, TargetIdentity
 from snowflake_semantic_tools.domain.model.lifecycle import Action, Change, ChangeReason, ChangeSet, RenderedArtifact
-from snowflake_semantic_tools.domain.state.model import (
+from snowflake_semantic_tools.domain.state import (
     STATE_SCHEMA_VERSION,
     AppliedEntry,
     AppliedResource,
@@ -22,13 +22,12 @@ from snowflake_semantic_tools.domain.state.model import (
     SavedChange,
     SavedPlan,
     State,
-    _manifest_from_dict_unchecked,
-    _object_map,
     canonical_json,
     content_hash,
     migrate_manifest,
     migrate_state,
 )
+from snowflake_semantic_tools.domain.state.manifest import _manifest_from_dict_unchecked, _object_map
 from tests.helpers.manifests import build_minimal_manifest
 
 

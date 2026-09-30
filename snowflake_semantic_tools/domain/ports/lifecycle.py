@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Protocol
 
 from ..model.lifecycle import ApplyOptions, ApplyOutcome, Change, CompositePlan, RenderedArtifact
-from ..state.model import AppliedEntry, AppliedResourceInput, Manifest
+from ..state import AppliedEntry, AppliedResourceInput, Manifest
 
 
 class CompositeLifecycleHandler(Protocol):

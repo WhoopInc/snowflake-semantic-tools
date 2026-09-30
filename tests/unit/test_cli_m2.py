@@ -30,7 +30,7 @@ from snowflake_semantic_tools.domain.model.eval import (
 from snowflake_semantic_tools.domain.model.identifier import Identifier, QualifiedName, TargetIdentity
 from snowflake_semantic_tools.domain.model.lifecycle import OwnershipMarker, QueryResult, ShowRow
 from snowflake_semantic_tools.domain.ports.snowflake import SnowflakePortError, StagedFileMetadata
-from snowflake_semantic_tools.domain.state.model import AppliedEntry, State, content_hash
+from snowflake_semantic_tools.domain.state import AppliedEntry, State, content_hash
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 FIXTURE = REPO_ROOT / "tests" / "fixtures" / "reference_project"
@@ -275,7 +275,7 @@ def test_int902_is_emitted_only_at_the_invariant_allowlist() -> None:
     found = {
         path.relative_to(REPO_ROOT).as_posix(): count
         for path in sorted(package.rglob("*.py"))
-        if "domain/model/diagnostic.py" not in path.as_posix()
+        if "domain/model/diagnostic/" not in path.as_posix()
         and (count := path.read_text(encoding="utf-8").count('"SST-INT902"'))
     }
     assert found == INT902_ALLOWLIST
@@ -843,7 +843,7 @@ def test_smoke_suite_is_separate_from_apply(tmp_path: Path, monkeypatch: pytest.
     manifest = json.loads((project / "target" / "sst" / "manifest.json").read_text(encoding="utf-8"))
     manifest_id = manifest["manifest_id"]
     from snowflake_semantic_tools.domain.model.lifecycle import OwnershipMarker
-    from snowflake_semantic_tools.domain.state.model import AppliedEntry
+    from snowflake_semantic_tools.domain.state import AppliedEntry
 
     applied_state = {
         key: AppliedEntry(
@@ -1445,7 +1445,7 @@ def test_golden_json_failure_missing_file_and_smoke_failure(tmp_path: Path, monk
 
     from snowflake_semantic_tools.domain.model.lifecycle import OwnershipMarker
     from snowflake_semantic_tools.domain.ports.snowflake import SnowflakePortError
-    from snowflake_semantic_tools.domain.state.model import AppliedEntry
+    from snowflake_semantic_tools.domain.state import AppliedEntry
 
     manifest = json.loads((project / "target" / "sst" / "manifest.json").read_text(encoding="utf-8"))
     manifest_id = manifest["manifest_id"]

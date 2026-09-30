@@ -75,9 +75,9 @@ sst migrate refs --project-dir <project>
 ## Key Files
 
 - SST repo root: resolve with `git rev-parse --show-toplevel`
-- Diagnostic registry: `snowflake_semantic_tools/domain/model/diagnostic.py`; find where a code is raised with `grep -rn "SST-VAL116" snowflake_semantic_tools/`
+- Diagnostic registry: `snowflake_semantic_tools/domain/model/diagnostic/` (the codes are in `specs/`, one module per code family); find where a code is raised with `grep -rn "SST-VAL116" snowflake_semantic_tools/`
 - Validation use case: `snowflake_semantic_tools/app/validate.py`
-- Configuration schema: `snowflake_semantic_tools/domain/model/config_schema.py`
+- Configuration schema: `snowflake_semantic_tools/domain/model/config_schema/keys.py`
 - Loaders: `snowflake_semantic_tools/adapters/yaml/` and `snowflake_semantic_tools/adapters/dbt/manifest.py`
 
 ## Stopping Points

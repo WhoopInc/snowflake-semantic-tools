@@ -4,7 +4,7 @@ from dataclasses import replace
 from types import MappingProxyType
 
 from snowflake_semantic_tools.app.state import read_state
-from snowflake_semantic_tools.domain.state.model import AppliedEntry, AppliedResource, ResourceStatus, State
+from snowflake_semantic_tools.domain.state import AppliedEntry, AppliedResource, ResourceStatus, State
 
 from .conftest import InMemorySnowflake, InMemoryStateStore
 from .helpers import rendered, target

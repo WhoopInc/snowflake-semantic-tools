@@ -41,7 +41,7 @@ from snowflake_semantic_tools.domain.model.eval import (
 )
 from snowflake_semantic_tools.domain.model.lifecycle import ExecResult, ExecutionError, QueryResult
 from snowflake_semantic_tools.domain.ports.snowflake import SnowflakePortError, StagedFileMetadata
-from snowflake_semantic_tools.domain.state.model import STATE_SCHEMA_VERSION, AppliedEntry, State
+from snowflake_semantic_tools.domain.state import STATE_SCHEMA_VERSION, AppliedEntry, State
 
 from .conftest import FixedClock, InMemorySnowflake
 from .helpers import target

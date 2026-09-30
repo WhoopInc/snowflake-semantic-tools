@@ -24,7 +24,7 @@ from snowflake_semantic_tools.domain.model.identifier import QualifiedName
 from snowflake_semantic_tools.domain.model.lifecycle import Action, ApplyOptions, ChangeReason, OutcomeStatus
 from snowflake_semantic_tools.domain.model.skill import Plugin, Skill, SkillCatalog, SkillFile
 from snowflake_semantic_tools.domain.ports.snowflake import ExecResult, ExtensionVersion, SnowflakePortError
-from snowflake_semantic_tools.domain.state.model import FAILED_AFTER_WRITE, STATE_SCHEMA_VERSION, AppliedEntry, State
+from snowflake_semantic_tools.domain.state import FAILED_AFTER_WRITE, STATE_SCHEMA_VERSION, AppliedEntry, State
 
 from .conftest import FixedClock, InMemoryStateStore
 from .helpers import target

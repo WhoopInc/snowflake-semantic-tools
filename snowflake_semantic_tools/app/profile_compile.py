@@ -8,7 +8,7 @@ from hashlib import sha256
 from ..domain.model.artifact_key import artifact_key
 from ..domain.model.diagnostic import D, Diagnostic, DiagnosticBag, Severity
 from ..domain.model.identifier import QualifiedName
-from ..domain.model.lifecycle import RenderedArtifact
+from ..domain.model.lifecycle import CompositeFacts, PublishShape, RenderedArtifact, StatementPlan
 from ..domain.model.profile import (
     DESKTOP_REGISTRY,
     ProfileCatalog,
@@ -74,16 +74,15 @@ class CompiledProfile:
             artifact_type="profile",
             target=self.channel.registry,
             ddl=self.release.document(),
-            object_type="",
-            render_dialect="profile_json",
-            grant_preservation=GrantPreservation.NONE,
-            statements=(),
-            component_fingerprints=(
-                ("version", self.release.version),
-                ("trees", sha256(prefixes.encode("utf-8")).hexdigest()),
+            shape=PublishShape("", render_dialect="profile_json", grant_preservation=GrantPreservation.NONE),
+            statements=StatementPlan(default=()),
+            composite=CompositeFacts(
+                component_fingerprints=(
+                    ("version", self.release.version),
+                    ("trees", sha256(prefixes.encode("utf-8")).hexdigest()),
+                ),
+                physical_resources=(("STAGE", self.channel.stage), ("TABLE", self.channel.registry)),
             ),
-            physical_resources=(("STAGE", self.channel.stage), ("TABLE", self.channel.registry)),
-            generic_apply_safe=False,
         )
 
     def rendered_for_publish(self, manifest_id: str) -> RenderedArtifact:

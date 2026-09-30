@@ -31,7 +31,7 @@ from ..domain.model.lifecycle import (
 )
 from ..domain.model.skill import BundleEntry
 from ..domain.ports.snowflake import SnowflakePort, SnowflakePortError
-from ..domain.state.model import DEACTIVATED, FAILED_AFTER_WRITE, AppliedEntry, AppliedResourceInput, Manifest
+from ..domain.state import DEACTIVATED, FAILED_AFTER_WRITE, AppliedEntry, AppliedResourceInput, Manifest
 from .apply import classify_error
 from .desktop_contract import desktop_view, stage_pointers
 from .extension_lifecycle import SSE_STAGE_TYPE

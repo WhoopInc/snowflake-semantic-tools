@@ -25,7 +25,7 @@ from ..domain.model.identifier import SchemaScope
 from ..domain.model.lifecycle import Action
 from ..domain.model.sql import string_literal
 from ..domain.ports.snowflake import ClockPort, SnowflakePort, SnowflakePortError
-from ..domain.state.model import APPLIED, Manifest, State
+from ..domain.state import APPLIED, Manifest, State
 from .eval_compile import CompiledEval
 from .eval_lifecycle import EvalLifecycleConfig, EvalLifecycleHandler
 

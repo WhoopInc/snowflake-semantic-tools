@@ -13,7 +13,7 @@ from recorded_snowflake import RecordedSnowflake
 from snowflake_semantic_tools.cli import main as cli_module
 from snowflake_semantic_tools.domain.model.lifecycle import OwnershipMarker, ShowRow
 from snowflake_semantic_tools.domain.ports.snowflake import StagedFileMetadata
-from snowflake_semantic_tools.domain.state.model import AppliedEntry
+from snowflake_semantic_tools.domain.state import AppliedEntry
 
 
 def recorded(path: pathlib.Path) -> RecordedSnowflake:

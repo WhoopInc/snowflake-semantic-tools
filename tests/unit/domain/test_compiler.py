@@ -345,6 +345,22 @@ def test_resolver_covers_remaining_error_and_value_branches() -> None:
     assert diagnostics == ()
 
 
+def test_resolver_reports_calls_last_first_then_the_call_count() -> None:
+    _, diagnostics = resolve_scalar(
+        "{{ ref('orders') }} {{ metric('m') }} {{ tag('missing') }}",
+        TAG_NAME,
+        Origin("views.yml"),
+        ResolveContext(catalog()),
+        field="tag",
+    )
+    assert [(item.code, item.message) for item in diagnostics] == [
+        ("SST-REF040", "tag: {{ tag('missing') }} names no declared tag"),
+        ("SST-REF041", "tag: metric() is not allowed in tag"),
+        ("SST-REF041", "tag: ref() is not allowed in tag"),
+        ("SST-REF042", "tag: tag accepts one reference, found 3"),
+    ]
+
+
 def test_parsed_project_groups_members_and_resolved_project_defaults() -> None:
     from snowflake_semantic_tools.domain.model.project import ParsedProject, ResolvedProject
 

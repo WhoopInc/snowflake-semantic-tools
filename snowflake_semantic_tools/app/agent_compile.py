@@ -19,7 +19,16 @@ from ..domain.model.agent import (
 from ..domain.model.artifact_key import artifact_key
 from ..domain.model.diagnostic import D, Diagnostic, DiagnosticBag, Severity
 from ..domain.model.identifier import QualifiedName
-from ..domain.model.lifecycle import OwnershipMarker, ProbeKind, RenderedArtifact, SmokeProbe
+from ..domain.model.lifecycle import (
+    DesiredMetadata,
+    OwnershipMarker,
+    ProbeKind,
+    PublishShape,
+    RenderedArtifact,
+    SmokeProbe,
+    StatementPlan,
+    Upload,
+)
 from ..domain.model.registry import GrantPreservation
 from ..domain.model.sql import string_literal
 from ..domain.model.tool import ToolCatalog, ToolKind, ToolMember
@@ -117,18 +126,18 @@ class CompiledAgent:
             artifact_type="agent",
             target=self.target,
             ddl=self.payload,
-            object_type="AGENT",
-            render_dialect="json",
-            grant_preservation=GrantPreservation.NONE,
-            statements=create,
-            upload_path=(None if self.temporary else f"@{self.stage_path.rstrip('/')}/agent_spec.yaml"),
-            upload_content=(None if self.temporary else self.payload.encode("utf-8")),
-            temporary=self.temporary,
-            create_statements=create,
-            update_statements=update,
-            update_live_statements=update_live,
-            desired_alias=self.resolved.model.alias,
-            desired_tags=tuple(name for name, _ in self.resolved.model.tags),
+            shape=PublishShape(
+                "AGENT", render_dialect="json", grant_preservation=GrantPreservation.NONE, temporary=self.temporary
+            ),
+            statements=StatementPlan(default=create, create=create, update=update, update_live=update_live),
+            upload=(
+                None
+                if self.temporary
+                else Upload(f"@{self.stage_path.rstrip('/')}/agent_spec.yaml", self.payload.encode("utf-8"))
+            ),
+            metadata=DesiredMetadata(
+                alias=self.resolved.model.alias, tags=tuple(name for name, _ in self.resolved.model.tags)
+            ),
             depends_on=self.resolved.depends_on,
             smoke=(
                 SmokeProbe(

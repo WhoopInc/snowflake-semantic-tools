@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from ..domain.state.model import DEACTIVATED, FAILED_AFTER_WRITE, AppliedEntry, Manifest, State
+from ..domain.state import DEACTIVATED, FAILED_AFTER_WRITE, AppliedEntry, Manifest, State
 
 
 @dataclass(frozen=True, slots=True)

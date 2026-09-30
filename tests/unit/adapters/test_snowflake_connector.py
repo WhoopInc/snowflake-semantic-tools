@@ -13,7 +13,7 @@ from snowflake_semantic_tools.adapters.snowflake.connector import SnowflakeConne
 from snowflake_semantic_tools.domain.model.identifier import Identifier, QualifiedName, SchemaScope
 from snowflake_semantic_tools.domain.model.lifecycle import ExecResult, QueryResult
 from snowflake_semantic_tools.domain.ports.snowflake import SnowflakePortError, StagedFileMetadata, StageObservation
-from snowflake_semantic_tools.domain.state.model import AppliedEntry
+from snowflake_semantic_tools.domain.state import AppliedEntry
 
 
 class StubSnowflakeConnector(SnowflakeConnector):

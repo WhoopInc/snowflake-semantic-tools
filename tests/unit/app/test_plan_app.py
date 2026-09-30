@@ -161,7 +161,7 @@ def test_observe_agent_live_version_selects_update_program() -> None:
 def test_plan_reports_composite_prune_when_generic_observation_has_no_change() -> None:
     artifact = rendered()
     prior = state()
-    from snowflake_semantic_tools.domain.state.model import AppliedEntry
+    from snowflake_semantic_tools.domain.state import AppliedEntry
 
     entry = AppliedEntry(
         artifact.fingerprint,

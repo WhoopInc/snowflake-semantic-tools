@@ -9,7 +9,7 @@ from snowflake_semantic_tools.adapters.snowflake.connector import (
     _port_error,
 )
 from snowflake_semantic_tools.domain.ports.snowflake import SnowflakePortError
-from snowflake_semantic_tools.domain.state.model import AppliedEntry, AppliedResource, ResourceStatus
+from snowflake_semantic_tools.domain.state import AppliedEntry, AppliedResource, ResourceStatus
 
 
 def test_connector_validates_object_type_and_preserves_error_metadata() -> None:

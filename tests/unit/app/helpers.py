@@ -15,7 +15,7 @@ from snowflake_semantic_tools.domain.model.lifecycle import (
     OwnershipMarker,
     RenderedArtifact,
 )
-from snowflake_semantic_tools.domain.state.model import ImpactIndex, State
+from snowflake_semantic_tools.domain.state import ImpactIndex, State
 from tests.helpers.manifests import build_minimal_manifest
 
 

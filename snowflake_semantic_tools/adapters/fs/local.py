@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Callable, Generic, TypeVar
 
 from ...domain.model.diagnostic import D
-from ...domain.state.model import Manifest, SavedPlan, State, StoredDocumentError, canonical_json
+from ...domain.state import Manifest, SavedPlan, State, StoredDocumentError, canonical_json
 from ..project import ProjectError
 
 T = TypeVar("T")

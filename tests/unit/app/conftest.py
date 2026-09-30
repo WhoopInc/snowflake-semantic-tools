@@ -17,7 +17,7 @@ from snowflake_semantic_tools.domain.model.lifecycle import (
     ShowRow,
 )
 from snowflake_semantic_tools.domain.ports.snowflake import StagedFileMetadata
-from snowflake_semantic_tools.domain.state.model import AppliedEntry, State
+from snowflake_semantic_tools.domain.state import AppliedEntry, State
 
 
 class InMemorySnowflake:

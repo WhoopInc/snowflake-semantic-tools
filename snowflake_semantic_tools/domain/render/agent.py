@@ -6,7 +6,7 @@ from types import MappingProxyType
 from typing import Mapping
 
 from ..model.agent import BUILTIN_AGENT_TOOLS, AgentModel, ResolvedAgentTool
-from ..state.model import canonical_json
+from ..state import canonical_json
 
 
 def render_agent_spec(model: AgentModel, tools: tuple[ResolvedAgentTool, ...]) -> dict[str, object]:

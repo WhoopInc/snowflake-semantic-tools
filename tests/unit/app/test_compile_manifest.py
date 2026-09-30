@@ -6,7 +6,7 @@ from snowflake_semantic_tools.app.compile import CompileArtifacts, CompiledView,
 from snowflake_semantic_tools.app.manifest import build_manifest
 from snowflake_semantic_tools.domain.model.diagnostic import D, DiagnosticBag
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
-from snowflake_semantic_tools.domain.model.lifecycle import RenderedArtifact
+from snowflake_semantic_tools.domain.model.lifecycle import CompositeFacts, PublishShape, RenderedArtifact
 from snowflake_semantic_tools.domain.model.semantic_view import (
     Column,
     ColumnKind,
@@ -112,7 +112,7 @@ class _CompiledTool:
             artifact_type=self.artifact_type,
             target=QualifiedName.parse("DB.S.SEARCH"),
             ddl="CREATE CORTEX SEARCH SERVICE DB.S.SEARCH ON BODY AS SELECT BODY FROM DB.S.DOCS",
-            object_type="CORTEX SEARCH SERVICE",
+            shape=PublishShape("CORTEX SEARCH SERVICE"),
             depends_on=("semantic_view:v",),
         )
 
@@ -152,14 +152,14 @@ def test_manifest_round_trip_preserves_composite_component_metadata() -> None:
         artifact_type="eval",
         target=QualifiedName.parse("DB.S.EVAL_A"),
         ddl="evaluation:\n  agent_params: {}\nmetrics: []",
-        object_type="",
-        render_dialect="eval_yaml",
-        component_fingerprints=(("dataset", "a" * 64), ("config", "b" * 64)),
-        physical_resources=(
-            ("TABLE", QualifiedName.parse("DB.S.EVAL_SRC_A")),
-            ("DATASET", QualifiedName.parse("DB.S.EVAL_A")),
+        shape=PublishShape("", render_dialect="eval_yaml"),
+        composite=CompositeFacts(
+            component_fingerprints=(("dataset", "a" * 64), ("config", "b" * 64)),
+            physical_resources=(
+                ("TABLE", QualifiedName.parse("DB.S.EVAL_SRC_A")),
+                ("DATASET", QualifiedName.parse("DB.S.EVAL_A")),
+            ),
         ),
-        generic_apply_safe=False,
     )
     manifest = build_manifest(CompileResult((_CompiledComposite(rendered),)))
     entry = manifest.artifacts["eval:a"]

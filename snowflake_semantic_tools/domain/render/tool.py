@@ -6,7 +6,7 @@ import re
 
 from ..model.artifact_key import artifact_key
 from ..model.identifier import Identifier, QualifiedName
-from ..model.lifecycle import ProbeKind, RenderedArtifact, SmokeProbe
+from ..model.lifecycle import ProbeKind, PublishShape, RenderedArtifact, SmokeProbe
 from ..model.registry import GrantPreservation
 from ..model.sql import string_literal
 from ..model.tool import ToolKind, ToolMember
@@ -66,8 +66,7 @@ def _render_search(
         artifact_type="tool",
         target=target,
         ddl=ddl,
-        object_type="CORTEX SEARCH SERVICE",
-        grant_preservation=GrantPreservation.REPLAY,
+        shape=PublishShape("CORTEX SEARCH SERVICE", grant_preservation=GrantPreservation.REPLAY),
         smoke=(
             SmokeProbe(
                 f"{artifact_key('tool', member.name.casefold())}:describe",
@@ -123,9 +122,11 @@ def _render_routine(member: ToolMember, target: QualifiedName, *, procedure: boo
         artifact_type="tool",
         target=target,
         ddl=ddl,
-        object_type=object_type,
-        grant_preservation=GrantPreservation.CLAUSE,
-        routine_signature=tuple(parameter.type for parameter in member.signature),
+        shape=PublishShape(
+            object_type,
+            grant_preservation=GrantPreservation.CLAUSE,
+            routine_signature=tuple(parameter.type for parameter in member.signature),
+        ),
         smoke=(
             SmokeProbe(
                 f"{artifact_key('tool', member.name.casefold())}:describe",
@@ -145,8 +146,7 @@ def _render_stage(member: ToolMember, target: QualifiedName) -> RenderedArtifact
         artifact_type="tool",
         target=target,
         ddl=ddl,
-        object_type="STAGE",
-        grant_preservation=GrantPreservation.NONE,
+        shape=PublishShape("STAGE", grant_preservation=GrantPreservation.NONE),
         smoke=(
             SmokeProbe(
                 f"{artifact_key('tool', member.name.casefold())}:describe",

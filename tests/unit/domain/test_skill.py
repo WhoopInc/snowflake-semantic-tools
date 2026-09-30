@@ -18,7 +18,6 @@ from snowflake_semantic_tools.domain.model.skill import (
     SkillBundle,
     SkillCatalog,
     SkillFile,
-    _recheck,
     build_plugin_bundle,
     build_skill_bundle,
     bundle_digest,
@@ -29,6 +28,7 @@ from snowflake_semantic_tools.domain.model.skill import (
     scan_references,
     validate_skill_catalog,
 )
+from snowflake_semantic_tools.domain.model.skill.flatten import _recheck
 
 SKILL_MD = "---\nname: {name}\ndescription: Does things.\n---\n{body}"
 
@@ -263,6 +263,76 @@ def test_catalog_validation_names_layout_uniqueness_and_plugin_membership() -> N
         "SST-PRS002",
     ]
     assert validate_skill_catalog(SkillCatalog((good,))) == ()
+
+
+def test_a_skill_locates_its_own_files_for_a_diagnostic() -> None:
+    authored = skill()
+    assert authored.origin_of("reference/steps.md", 3, 4) == Origin(
+        "skills/finance/month-close/reference/steps.md", 3, 4
+    )
+    assert authored.origin_of("SKILL.md") == Origin("skills/finance/month-close/SKILL.md")
+
+
+def test_each_repeated_extension_name_pairs_with_the_first_claim_and_skills_claim_first() -> None:
+    first = skill(directory="skills/a/month-close")
+
+    def plugin(name: str) -> Plugin:
+        return Plugin(name, f"plugins/{name}", f"plugins/{name}/plugin.yml", "d", None, ("month-close",), Origin("p"))
+
+    # The same record listed twice is two claims: only the second is a repeat.
+    catalog = SkillCatalog(
+        (skill(directory="skills/c/month-close"), first, skill(directory="skills/b/month-close"), first),
+        (plugin("month_close"), plugin("month-close")),
+    )
+    found = [
+        (item.context["artifact"], item.context["other"])
+        for item in validate_skill_catalog(catalog)
+        if item.code == "SST-VAL832"
+    ]
+    assert found == [
+        ("skills/a/month-close", "skills/a/month-close"),
+        ("skills/b/month-close", "skills/a/month-close"),
+        ("skills/c/month-close", "skills/a/month-close"),
+        ("plugins/month-close", "skills/a/month-close"),
+        ("plugins/month_close", "skills/a/month-close"),
+    ]
+
+
+def test_plugin_members_report_each_repeat_once_by_name_then_each_unknown_listing() -> None:
+    members = ("zeta", "month-close", "zeta", "alpha", "month-close", "zeta", "alpha")
+    plugin = Plugin(
+        "kit", "plugins/kit", "plugins/kit/plugin.yml", "d", None, members, Origin("plugins/kit/plugin.yml")
+    )
+    found = [(item.code, item.context["name"]) for item in validate_skill_catalog(SkillCatalog((skill(),), (plugin,)))]
+    assert found == [
+        ("SST-VAL837", "alpha"),
+        ("SST-VAL837", "month-close"),
+        ("SST-VAL837", "zeta"),
+        ("SST-VAL835", "zeta"),
+        ("SST-VAL835", "zeta"),
+        ("SST-VAL835", "alpha"),
+        ("SST-VAL835", "zeta"),
+        ("SST-VAL835", "alpha"),
+    ]
+
+
+def test_folder_and_plugin_names_follow_one_kebab_case_rule_of_at_most_64_characters() -> None:
+    longest, too_long = "a" * 64, "a" * 65
+    catalog = SkillCatalog(
+        (
+            skill(longest, directory=f"skills/{longest}"),
+            skill(too_long, directory=f"skills/{too_long}"),
+            skill("trailing-", directory="skills/trailing-"),
+        ),
+        (Plugin("Kit", "plugins/Kit", "plugins/Kit/plugin.yml", "d", None, (longest,), Origin("p")),),
+    )
+    details = [item.context["detail"] for item in validate_skill_catalog(catalog) if item.code == "SST-VAL801"]
+    rule = "is not lowercase kebab-case of at most 64 characters"
+    assert details == [
+        f"folder name '{too_long}' {rule}",
+        f"folder name 'trailing-' {rule}",
+        f"plugin name 'Kit' {rule}",
+    ]
 
 
 def test_file_names_a_stage_rejects_fail_validation_at_the_file() -> None:

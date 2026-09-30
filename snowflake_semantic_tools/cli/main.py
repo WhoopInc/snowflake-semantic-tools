@@ -72,7 +72,7 @@ from ..domain.model.skill import DEFAULT_VERSION_PREFIX, SkillCatalog, extension
 from ..domain.ports.lifecycle import CompositeLifecycleHandler
 from ..domain.ports.snowflake import SnowflakePortError
 from ..domain.render.reference_docs import CommandDoc, OptionDoc, reference_pages
-from ..domain.state.model import Manifest, SavedPlan, State, canonical_json
+from ..domain.state import Manifest, SavedPlan, State, canonical_json
 
 OK = 0
 ERROR = 1

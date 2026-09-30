@@ -7,7 +7,7 @@ from types import MappingProxyType
 from ..domain.model.diagnostic import D, DiagnosticBag
 from ..domain.model.identifier import QualifiedName, TargetIdentity
 from ..domain.ports.snowflake import SnowflakePort, StateStore
-from ..domain.state.model import DEACTIVATED, STATE_SCHEMA_VERSION, State
+from ..domain.state import DEACTIVATED, STATE_SCHEMA_VERSION, State
 
 
 def read_state(

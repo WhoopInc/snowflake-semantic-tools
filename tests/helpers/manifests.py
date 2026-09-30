@@ -6,7 +6,7 @@ from types import MappingProxyType
 from typing import Mapping
 
 from snowflake_semantic_tools.domain.model.lifecycle import RenderedArtifact
-from snowflake_semantic_tools.domain.state.model import (
+from snowflake_semantic_tools.domain.state import (
     MANIFEST_SCHEMA_VERSION,
     SST_VERSION,
     ArtifactEntry,

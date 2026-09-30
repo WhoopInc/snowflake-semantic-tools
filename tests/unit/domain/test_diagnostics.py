@@ -146,14 +146,14 @@ def test_human_render_omits_help_when_registry_has_no_suggestion() -> None:
 
 
 def test_registry_integrity_checks_invalid_codes_and_duplicates() -> None:
-    from snowflake_semantic_tools.domain.model.diagnostic import ErrorSpec, RegistryIntegrityError, _build_registry
+    from snowflake_semantic_tools.domain.model.diagnostic import ErrorSpec, RegistryIntegrityError, build_registry
 
     first = ErrorSpec("BAD-X001", Severity.ERROR, "x", "{value}", None, "X00", "x00", "https://x")
     with pytest.raises(RegistryIntegrityError, match="invalid error code"):
-        _build_registry((first,))
+        build_registry((first,))
     valid = ERROR_REGISTRY["SST-REF001"]
     with pytest.raises(RegistryIntegrityError, match="duplicate error code"):
-        _build_registry((valid, valid))
+        build_registry((valid, valid))
 
 
 def test_non_strict_resolution_returns_the_same_bag() -> None:

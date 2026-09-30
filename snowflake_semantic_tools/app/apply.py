@@ -25,10 +25,10 @@ from ..domain.model.lifecycle import (
     OutcomeStatus,
 )
 from ..domain.model.registry import GrantPreservation
-from ..domain.plan.diff import dependency_waves
+from ..domain.plan import dependency_waves
 from ..domain.ports.lifecycle import CompositeLifecycleHandler
 from ..domain.ports.snowflake import ClockPort, SnowflakePort, SnowflakePortError, StateStore
-from ..domain.state.model import (
+from ..domain.state import (
     APPLIED,
     DEACTIVATED,
     FAILED_AFTER_WRITE,

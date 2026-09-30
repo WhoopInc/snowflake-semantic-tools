@@ -5,7 +5,7 @@ from __future__ import annotations
 from types import MappingProxyType
 
 from ..domain.model.diagnostic import Severity
-from ..domain.state.model import SST_VERSION, ArtifactEntry, ImpactIndex, Manifest
+from ..domain.state import SST_VERSION, ArtifactEntry, ImpactIndex, Manifest
 from .compile import CompileResult
 
 

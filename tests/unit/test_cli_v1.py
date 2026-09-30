@@ -11,7 +11,7 @@ from click.testing import CliRunner
 
 from snowflake_semantic_tools import __version__
 from snowflake_semantic_tools.cli.main import cli
-from snowflake_semantic_tools.domain.state.model import SST_VERSION
+from snowflake_semantic_tools.domain.state import SST_VERSION
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 FIXTURE = REPO_ROOT / "tests" / "fixtures" / "reference_project"

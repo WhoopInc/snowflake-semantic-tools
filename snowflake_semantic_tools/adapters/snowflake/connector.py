@@ -36,8 +36,7 @@ from ...domain.ports.snowflake import (
     StagedFileMetadata,
     StageObservation,
 )
-from ...domain.state.codec import pairs_from_json, pairs_to_json
-from ...domain.state.model import AppliedEntry, AppliedResource
+from ...domain.state import AppliedEntry, AppliedResource, pairs_from_json, pairs_to_json
 
 STATE_COLUMNS = (
     "TARGET_NAME",

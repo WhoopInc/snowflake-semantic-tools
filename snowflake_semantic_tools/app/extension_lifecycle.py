@@ -31,7 +31,7 @@ from ..domain.model.lifecycle import (
 )
 from ..domain.model.sql import string_literal
 from ..domain.ports.snowflake import ExtensionObservation, ExtensionVersion, SnowflakePort, SnowflakePortError
-from ..domain.state.model import FAILED_AFTER_WRITE, AppliedEntry, AppliedResourceInput, Manifest
+from ..domain.state import FAILED_AFTER_WRITE, AppliedEntry, AppliedResourceInput, Manifest
 from .apply import classify_error
 from .skill_compile import ExtensionRelease
 

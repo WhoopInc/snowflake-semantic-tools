@@ -75,67 +75,130 @@ class RegistryIntegrityError(RuntimeError):
 
 
 def build_registry(artifact_types: tuple[ArtifactType, ...], member_types: tuple[MemberType, ...]) -> Registry:
+    """Index artifact and member types by name, refusing a set that breaks the registry's integrity.
+
+    The checks run in a fixed order and the first failure raises, so a set with several
+    faults always reports the same one. The per-artifact checks run artifact by artifact,
+    in declaration order.
+
+    Raises:
+        RegistryIntegrityError: A name, root key, position, or reference function repeats;
+            a member's owner or an artifact's dependency is not registered; or an artifact's
+            version pins, grant handling, lifecycle metadata, member types, or DDL position
+            contradict the rest of the registry.
+    """
     artifacts = {artifact.name: artifact for artifact in artifact_types}
     members = {member.name: member for member in member_types}
+    _check_unique_names(artifacts, artifact_types, members, member_types)
+    _check_unique_root_keys(artifact_types, member_types)
+    _check_unique_positions(artifact_types, member_types)
+    _check_member_owners(artifacts, member_types)
+    for artifact in artifact_types:
+        _check_dependencies(artifact, artifacts)
+        _check_grant_preservation(artifact)
+        _check_lifecycle(artifact)
+        _check_member_totality(artifact, member_types)
+        _check_dependency_order(artifact, artifacts)
+    _check_unique_ref_functions(artifact_types, member_types)
+    return Registry(MappingProxyType(artifacts), MappingProxyType(members))
+
+
+def _check_unique_names(
+    artifacts: Mapping[str, ArtifactType],
+    artifact_types: tuple[ArtifactType, ...],
+    members: Mapping[str, MemberType],
+    member_types: tuple[MemberType, ...],
+) -> None:
+    """Refuse two artifact types, or two member types, with one name."""
     if len(artifacts) != len(artifact_types):
         raise RegistryIntegrityError("duplicate artifact type")
     if len(members) != len(member_types):
         raise RegistryIntegrityError("duplicate member type")
+
+
+def _check_unique_root_keys(artifact_types: tuple[ArtifactType, ...], member_types: tuple[MemberType, ...]) -> None:
+    """Refuse a YAML root key claimed twice; artifact types without one claim nothing."""
     root_keys = [artifact.root_key for artifact in artifact_types if artifact.root_key is not None] + [
         member.root_key for member in member_types
     ]
     if len(root_keys) != len(set(root_keys)):
         raise RegistryIntegrityError("duplicate root key")
+
+
+def _check_unique_positions(artifact_types: tuple[ArtifactType, ...], member_types: tuple[MemberType, ...]) -> None:
+    """Refuse two members at one clause position of one owner, then two artifacts at one DDL position."""
     positions = [(member.owner_type, member.clause_position) for member in member_types]
     if len(positions) != len(set(positions)):
         raise RegistryIntegrityError("duplicate member clause position for one owner")
     artifact_positions = [artifact.ddl_position for artifact in artifact_types]
     if len(artifact_positions) != len(set(artifact_positions)):
         raise RegistryIntegrityError("duplicate artifact DDL position")
+
+
+def _check_member_owners(artifacts: Mapping[str, ArtifactType], member_types: tuple[MemberType, ...]) -> None:
+    """Refuse a member whose owner is not a registered artifact type."""
     for member in member_types:
         if member.owner_type not in artifacts:
             raise RegistryIntegrityError(f"member {member.name} has unknown owner {member.owner_type}")
-    for artifact in artifact_types:
-        unknown_dependencies = set(artifact.dependency_types) - set(artifacts)
-        if unknown_dependencies:
+
+
+def _check_dependencies(artifact: ArtifactType, artifacts: Mapping[str, ArtifactType]) -> None:
+    """Refuse a dependency on an unregistered type, and a version pin on a type it does not depend on."""
+    unknown_dependencies = set(artifact.dependency_types) - set(artifacts)
+    if unknown_dependencies:
+        raise RegistryIntegrityError(
+            f"artifact {artifact.name} has unknown dependencies {sorted(unknown_dependencies)}"
+        )
+    if not set(artifact.pins_versions_of) <= set(artifact.dependency_types):
+        raise RegistryIntegrityError(f"artifact {artifact.name} pins versions of types it does not depend on")
+
+
+def _check_grant_preservation(artifact: ArtifactType) -> None:
+    """Refuse a replaced type that keeps no grants, and a type kept in place that claims to keep them."""
+    if artifact.replaces_on_update and artifact.grant_preservation is GrantPreservation.NONE:
+        raise RegistryIntegrityError(f"artifact {artifact.name} replaces without grant preservation")
+    if not artifact.replaces_on_update and artifact.grant_preservation is not GrantPreservation.NONE:
+        raise RegistryIntegrityError(f"artifact {artifact.name} preserves grants without replacing")
+
+
+def _check_lifecycle(artifact: ArtifactType) -> None:
+    """Refuse object-lifecycle metadata on a composite type, and an object type nothing can observe."""
+    if artifact.lifecycle is ArtifactLifecycle.COMPOSITE:
+        if artifact.object_type or artifact.object_types:
+            raise RegistryIntegrityError(f"composite artifact {artifact.name} cannot declare an observable object type")
+        if artifact.prunable or artifact.replaces_on_update:
             raise RegistryIntegrityError(
-                f"artifact {artifact.name} has unknown dependencies {sorted(unknown_dependencies)}"
+                f"composite artifact {artifact.name} cannot use generic prune or replace lifecycle"
             )
-        if not set(artifact.pins_versions_of) <= set(artifact.dependency_types):
-            raise RegistryIntegrityError(f"artifact {artifact.name} pins versions of types it does not depend on")
-        if artifact.replaces_on_update and artifact.grant_preservation is GrantPreservation.NONE:
-            raise RegistryIntegrityError(f"artifact {artifact.name} replaces without grant preservation")
-        if not artifact.replaces_on_update and artifact.grant_preservation is not GrantPreservation.NONE:
-            raise RegistryIntegrityError(f"artifact {artifact.name} preserves grants without replacing")
-        if artifact.lifecycle is ArtifactLifecycle.COMPOSITE:
-            if artifact.object_type or artifact.object_types:
-                raise RegistryIntegrityError(
-                    f"composite artifact {artifact.name} cannot declare an observable object type"
-                )
-            if artifact.prunable or artifact.replaces_on_update:
-                raise RegistryIntegrityError(
-                    f"composite artifact {artifact.name} cannot use generic prune or replace lifecycle"
-                )
-            if artifact.grant_preservation is not GrantPreservation.NONE:
-                raise RegistryIntegrityError(
-                    f"composite artifact {artifact.name} cannot declare generic grant preservation"
-                )
-        elif not artifact.object_type and not artifact.object_types:
-            raise RegistryIntegrityError(f"object artifact {artifact.name} requires an observable object type")
-        declared = set(artifact.member_types)
-        owned = {member.name for member in member_types if member.owner_type == artifact.name}
-        if declared != owned:
-            raise RegistryIntegrityError(f"artifact {artifact.name} member types are not total")
-        for dependency in artifact.dependency_types:
-            if artifacts[dependency].ddl_position >= artifact.ddl_position:
-                raise RegistryIntegrityError(
-                    f"artifact {artifact.name} must follow dependency {dependency} in DDL order"
-                )
+        if artifact.grant_preservation is not GrantPreservation.NONE:
+            raise RegistryIntegrityError(
+                f"composite artifact {artifact.name} cannot declare generic grant preservation"
+            )
+    elif not artifact.object_type and not artifact.object_types:
+        raise RegistryIntegrityError(f"object artifact {artifact.name} requires an observable object type")
+
+
+def _check_member_totality(artifact: ArtifactType, member_types: tuple[MemberType, ...]) -> None:
+    """Refuse an artifact whose declared member types differ from the members that name it as owner."""
+    declared = set(artifact.member_types)
+    owned = {member.name for member in member_types if member.owner_type == artifact.name}
+    if declared != owned:
+        raise RegistryIntegrityError(f"artifact {artifact.name} member types are not total")
+
+
+def _check_dependency_order(artifact: ArtifactType, artifacts: Mapping[str, ArtifactType]) -> None:
+    """Refuse an artifact whose DDL position does not follow every type it depends on."""
+    for dependency in artifact.dependency_types:
+        if artifacts[dependency].ddl_position >= artifact.ddl_position:
+            raise RegistryIntegrityError(f"artifact {artifact.name} must follow dependency {dependency} in DDL order")
+
+
+def _check_unique_ref_functions(artifact_types: tuple[ArtifactType, ...], member_types: tuple[MemberType, ...]) -> None:
+    """Refuse a reference function claimed by two types; types without one claim nothing."""
     functions = [artifact.ref_function for artifact in artifact_types if artifact.ref_function is not None]
     functions.extend(member.ref_function for member in member_types if member.ref_function is not None)
     if len(functions) != len(set(functions)):
         raise RegistryIntegrityError("duplicate ref function")
-    return Registry(MappingProxyType(artifacts), MappingProxyType(members))
 
 
 ARTIFACT_REGISTRY = build_registry(

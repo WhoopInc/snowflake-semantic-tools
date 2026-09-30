@@ -9,7 +9,7 @@ from hashlib import sha256
 from ..domain.model.artifact_key import artifact_key, split_artifact_key
 from ..domain.model.diagnostic import D, Diagnostic, DiagnosticBag, Origin, Severity
 from ..domain.model.identifier import QualifiedName
-from ..domain.model.lifecycle import RenderedArtifact
+from ..domain.model.lifecycle import CompositeFacts, PublishShape, RenderedArtifact, StatementPlan
 from ..domain.model.registry import GrantPreservation
 from ..domain.model.skill import (
     DEFAULT_VERSION_PREFIX,
@@ -103,18 +103,17 @@ class CompiledExtension:
                 comment=release.comment,
                 certified=release.certified,
             ),
-            object_type="",
-            render_dialect="bundle_json",
-            grant_preservation=GrantPreservation.NONE,
-            statements=(),
-            component_fingerprints=(
-                ("bundle", release.bundle.digest),
-                ("alias", release.alias),
-                ("comment", sha256(release.comment.encode("utf-8")).hexdigest()),
-                ("certified", "true" if release.certified else "false"),
+            shape=PublishShape("", render_dialect="bundle_json", grant_preservation=GrantPreservation.NONE),
+            statements=StatementPlan(default=()),
+            composite=CompositeFacts(
+                component_fingerprints=(
+                    ("bundle", release.bundle.digest),
+                    ("alias", release.alias),
+                    ("comment", sha256(release.comment.encode("utf-8")).hexdigest()),
+                    ("certified", "true" if release.certified else "false"),
+                ),
+                physical_resources=(("CORTEX EXTENSION", release.target), ("STAGE", release.stage)),
             ),
-            physical_resources=(("CORTEX EXTENSION", release.target), ("STAGE", release.stage)),
-            generic_apply_safe=False,
         )
 
     def rendered_for_publish(self, manifest_id: str) -> RenderedArtifact:

@@ -27,7 +27,7 @@ from snowflake_semantic_tools.domain.model.lifecycle import (
 )
 from snowflake_semantic_tools.domain.model.registry import GrantPreservation
 from snowflake_semantic_tools.domain.ports.snowflake import SnowflakePortError
-from snowflake_semantic_tools.domain.state.model import FAILED_AFTER_WRITE, State
+from snowflake_semantic_tools.domain.state import FAILED_AFTER_WRITE, State
 
 from .conftest import FixedClock, InMemorySnowflake, InMemoryStateStore, failed
 from .helpers import change, changeset, manifest, marker, observed, rendered, state, target
@@ -237,7 +237,7 @@ def test_apply_prune_requires_permission_and_marker_and_updates_state() -> None:
     prune = change(artifact, Action.PRUNE, live=live)
     port = InMemorySnowflake()
     port.markers[artifact.target.sql] = ownership
-    from snowflake_semantic_tools.domain.state.model import AppliedEntry
+    from snowflake_semantic_tools.domain.state import AppliedEntry
 
     prior_entry = AppliedEntry(
         artifact.fingerprint,
@@ -824,7 +824,7 @@ def test_apply_prune_non_executable_and_observed_marker_state_paths() -> None:
     live = observed(artifact, ownership=ownership)
     non_executable = replace(change(artifact, Action.PRUNE, live=live), prune_executable=False)
     use_case, _, store, _ = runner()
-    from snowflake_semantic_tools.domain.state.model import AppliedEntry
+    from snowflake_semantic_tools.domain.state import AppliedEntry
 
     recorded = AppliedEntry(
         artifact.fingerprint, artifact.target.sql, "now", "prior", "applied", artifact.fingerprint, "o" * 64
@@ -876,7 +876,7 @@ def test_finish_state_skips_markerless_observation_and_unrendered_outcome() -> N
 
 def test_finish_state_prunes_applied_entry_and_preserves_prior_failed_entry() -> None:
     artifact = rendered()
-    from snowflake_semantic_tools.domain.state.model import AppliedEntry
+    from snowflake_semantic_tools.domain.state import AppliedEntry
 
     entry = AppliedEntry(
         artifact.fingerprint,

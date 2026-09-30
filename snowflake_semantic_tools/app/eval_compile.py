@@ -8,7 +8,7 @@ from hashlib import sha256
 from ..domain.model.diagnostic import D, DiagnosticBag, Severity
 from ..domain.model.eval import EvalCatalog, EvalDefaults, ResolvedEval, render_eval_name_template
 from ..domain.model.identifier import QualifiedName
-from ..domain.model.lifecycle import RenderedArtifact
+from ..domain.model.lifecycle import CompositeFacts, PublishShape, RenderedArtifact, StatementPlan
 from ..domain.model.registry import GrantPreservation
 from ..domain.render.eval import (
     RenderedEval,
@@ -66,17 +66,16 @@ class CompiledEval:
             artifact_type="eval",
             target=self.dataset_target,
             ddl=self.rendered.config_yaml,
-            object_type="",
-            render_dialect="eval_yaml",
-            grant_preservation=GrantPreservation.NONE,
-            statements=(),
-            depends_on=self.resolved.depends_on,
-            component_fingerprints=(
-                ("dataset", self.rendered.dataset_fingerprint),
-                ("config", self.rendered.config_fingerprint),
+            shape=PublishShape("", render_dialect="eval_yaml", grant_preservation=GrantPreservation.NONE),
+            statements=StatementPlan(default=()),
+            composite=CompositeFacts(
+                component_fingerprints=(
+                    ("dataset", self.rendered.dataset_fingerprint),
+                    ("config", self.rendered.config_fingerprint),
+                ),
+                physical_resources=(("TABLE", self.source_table), ("DATASET", self.dataset_target)),
             ),
-            physical_resources=(("TABLE", self.source_table), ("DATASET", self.dataset_target)),
-            generic_apply_safe=False,
+            depends_on=self.resolved.depends_on,
         )
         return replace(artifact, fingerprint=combined)
 

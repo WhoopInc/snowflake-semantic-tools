@@ -322,3 +322,24 @@ def test_tool_validation_reports_unknown_search_model() -> None:
         DbtCatalog("v12", None, None, ()),
     )
     assert any(diagnostic.code == "SST-VAL608" for diagnostic in diagnostics)
+
+
+def test_a_relation_with_an_undeclared_target_is_reported_before_the_missing_current_target() -> None:
+    origin = Origin("tools.yml")
+    member = ToolMember(
+        "group",
+        "lookup",
+        "procedure",
+        ToolOwnership.REFERENCE,
+        origin,
+        "tools.yml",
+        relations=MappingProxyType({"staging": "DB.S.LOOKUP"}),
+    )
+    diagnostics = validate_tool_catalog(
+        ToolCatalog((ToolGroup("group", origin, "tools.yml", members=(member,)),), "dev", frozenset(("dev",))),
+        DbtCatalog("v12", None, None, ()),
+    )
+    assert [item.message for item in diagnostics if item.code == "SST-REF018"] == [
+        "{{ tool target('staging') }} has no entry for target 'profiles.yml'",
+        "{{ tool('group', 'lookup') }} has no entry for target 'dev'",
+    ]

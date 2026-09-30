@@ -17,10 +17,10 @@ from ..domain.model.lifecycle import (
     extract_marker,
 )
 from ..domain.model.registry import SEMANTIC_REGISTRY, Registry
-from ..domain.plan.diff import build_changeset
+from ..domain.plan import build_changeset
 from ..domain.ports.lifecycle import CompositeLifecycleHandler
 from ..domain.ports.snowflake import SnowflakePort, SnowflakePortError
-from ..domain.state.model import DEACTIVATED, Manifest, State
+from ..domain.state import DEACTIVATED, Manifest, State
 
 
 def observe(

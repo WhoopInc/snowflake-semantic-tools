@@ -27,7 +27,7 @@ from ..domain.model.lifecycle import (
     RenderedArtifact,
 )
 from ..domain.ports.snowflake import SnowflakePort, SnowflakePortError
-from ..domain.state.model import AppliedEntry, Manifest, ResourceStatus
+from ..domain.state import AppliedEntry, Manifest, ResourceStatus
 from .apply import classify_error
 
 EVAL_STAGE_FILE_FORMAT = (

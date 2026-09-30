@@ -1,9 +1,9 @@
-"""The declared shape of `sst_config.yml`.
+"""The key table of `sst_config.yml`: every key, block, and wildcard slot SST reads.
 
-One table serves two consumers. Validation turns an unknown, removed, mistyped, or
-unsupported key into a diagnostic instead of a silent no-op, and the generated
-configuration reference renders the same rows, so the documentation cannot drift
-from what the engine accepts.
+One table serves two consumers. Validation (`validate.py`) turns an unknown, removed,
+mistyped, or unsupported key into a diagnostic instead of a silent no-op, and the
+generated configuration reference renders the same rows, so the documentation cannot
+drift from what the engine accepts. Row order is the reference page's order.
 """
 
 from __future__ import annotations
@@ -12,16 +12,20 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from enum import Enum
 from types import MappingProxyType
-from typing import Any
 
-from .diagnostic import D, Diagnostic, DiagnosticBag, Origin
-from .eval import DEFAULT_EVAL_CONFIG_STAGE
-from .skill import DEFAULT_VERSION_PREFIX
+from ..eval import DEFAULT_EVAL_CONFIG_STAGE
+from ..skill import DEFAULT_VERSION_PREFIX
 
 CONFIG_FILE = "sst_config.yml"
 
 
 class KeyKind(Enum):
+    """The type of value a key takes.
+
+    `MAP` is a block of free-form names, `ENUM` a string from the key's `choices`, and
+    `ANY` accepts every value unchecked. An `INTEGER` key never accepts a boolean.
+    """
+
     BLOCK = "block"
     MAP = "map"
     STRING = "string"
@@ -33,6 +37,8 @@ class KeyKind(Enum):
 
 
 class KeyStatus(Enum):
+    """Whether SST reads a key, reserves it for a later release, or no longer reads it."""
+
     CURRENT = "current"
     # Reserved for a later release: setting it is an error until SST reads it.
     UNSUPPORTED = "unsupported"
@@ -40,6 +46,13 @@ class KeyStatus(Enum):
 
 
 class ChildPolicy(Enum):
+    """Which undeclared children a block accepts.
+
+    `DECLARED` accepts none, `NAMES` matches any other child to the block's `<name>`
+    slot, and `ROUTES` matches any other child not starting with `+` to its `<route>`
+    slot.
+    """
+
     DECLARED = "declared"
     NAMES = "names"
     ROUTES = "routes"
@@ -51,6 +64,18 @@ class ConfigKey:
 
     `<name>` stands for any free-form entry of a name map and `<route>` for any
     unprefixed folder route or group key inside a routed block.
+
+    Attributes:
+        summary: The reference-page description; for a removed key, why it was removed.
+        default: The default as the reference prints it, or None when the key has none.
+        required: A block that is present must set this key; an empty value is unset.
+        minimum: Inclusive lower bound of an integer value, or None for no bound.
+        maximum: Inclusive upper bound of an integer value, or None for no bound.
+        replacement: For a removed key, the reason its diagnostic gives.
+        code: The code reported instead of the generic one: a removed key's dedicated
+            code, or the code for a value outside `choices` or not `fixed`.
+        fixed: The only boolean the key accepts, or None when either is accepted.
+        one_of: Children of which a present block must declare at least one.
     """
 
     path: str
@@ -70,14 +95,17 @@ class ConfigKey:
 
     @property
     def segments(self) -> tuple[str, ...]:
+        """Return the dotted path split into its segments."""
         return tuple(self.path.split("."))
 
     @property
     def parent(self) -> str:
+        """Return the path of the enclosing block; `""` for a top-level key."""
         return ".".join(self.segments[:-1])
 
     @property
     def name(self) -> str:
+        """Return the last path segment: the key as it is written in its block."""
         return self.segments[-1]
 
 
@@ -347,6 +375,7 @@ CONFIG_SCHEMA: tuple[ConfigKey, ...] = (
 
 CONFIG_KEYS: Mapping[str, ConfigKey] = MappingProxyType({key.path: key for key in CONFIG_SCHEMA})
 
+# Keyed by parent path, with the top-level keys under "", in table order.
 _CHILDREN: dict[str, dict[str, ConfigKey]] = {}
 for _entry in CONFIG_SCHEMA:
     _CHILDREN.setdefault(_entry.parent, {})[_entry.name] = _entry
@@ -354,170 +383,3 @@ CHILDREN: Mapping[str, Mapping[str, ConfigKey]] = MappingProxyType(
     {parent: MappingProxyType(children) for parent, children in _CHILDREN.items()}
 )
 TOP_LEVEL_KEYS: tuple[str, ...] = tuple(CHILDREN[""])
-
-_TYPES: Mapping[KeyKind, tuple[type, ...]] = MappingProxyType(
-    {
-        KeyKind.BLOCK: (dict,),
-        KeyKind.MAP: (dict,),
-        KeyKind.STRING: (str,),
-        KeyKind.BOOLEAN: (bool,),
-        KeyKind.INTEGER: (int,),
-        KeyKind.LIST: (list,),
-        KeyKind.ENUM: (str,),
-    }
-)
-
-Positions = Mapping[tuple[str | int, ...], tuple[int, int]]
-
-
-def validate_config(tree: Mapping[Any, object], *, positions: Positions | None = None) -> DiagnosticBag:
-    """Check every key of a parsed `sst_config.yml` against the declared schema."""
-    diagnostics: list[Diagnostic] = []
-    _walk("", ChildPolicy.DECLARED, tree, (), positions or {}, diagnostics)
-    return DiagnosticBag(diagnostics)
-
-
-def _origin(path: tuple[str, ...], positions: Positions) -> Origin:
-    position = positions.get(path)
-    return Origin(CONFIG_FILE, position[0], position[1]) if position is not None else Origin(CONFIG_FILE)
-
-
-def _diagnostic(code: str, path: tuple[str, ...], positions: Positions, **context: Any) -> Diagnostic:
-    return D(code, origin=_origin(path, positions), subject=f"config:{'.'.join(path)}", **context)
-
-
-def _walk(
-    entry_path: str,
-    policy: ChildPolicy,
-    value: Mapping[Any, object],
-    actual: tuple[str, ...],
-    positions: Positions,
-    diagnostics: list[Diagnostic],
-) -> None:
-    declared = CHILDREN.get(entry_path, {})
-    for raw_key, child in value.items():
-        key = str(raw_key)
-        path = (*actual, key)
-        spec = declared.get(key)
-        route = False
-        if spec is None and policy is ChildPolicy.NAMES:
-            spec = declared.get("<name>")
-        if spec is None and policy is ChildPolicy.ROUTES and not key.startswith("+"):
-            spec = declared.get("<route>")
-            route = spec is not None
-        if spec is None:
-            diagnostics.append(_unknown(path, positions))
-            continue
-        _check(spec, child, path, positions, diagnostics, route_of=entry_path if route else None)
-    for spec in declared.values():
-        if spec.required and spec.name not in {str(key) for key in value}:
-            diagnostics.append(_diagnostic("SST-CFG006", (*actual, spec.name), positions, key=spec.path))
-    block = CONFIG_KEYS.get(entry_path)
-    if block is not None and block.one_of and not any(name in {str(key) for key in value} for name in block.one_of):
-        diagnostics.append(_diagnostic("SST-VAL817", actual, positions, key=entry_path))
-
-
-def _unknown(path: tuple[str, ...], positions: Positions) -> Diagnostic:
-    key = ".".join(path)
-    if len(path) == 1:
-        suggestion = _near_miss(path[0])
-        if suggestion is not None:
-            return _diagnostic("SST-CFG007", path, positions, key=key, suggestion=suggestion)
-    return _diagnostic("SST-CFG003", path, positions, key=key)
-
-
-def _near_miss(key: str) -> str | None:
-    candidates = sorted((distance, known) for known in TOP_LEVEL_KEYS if (distance := _edit_distance(key, known)) <= 2)
-    return candidates[0][1] if candidates else None
-
-
-def _edit_distance(left: str, right: str) -> int:
-    previous = list(range(len(right) + 1))
-    for row, left_character in enumerate(left, start=1):
-        current = [row]
-        for column, right_character in enumerate(right, start=1):
-            current.append(
-                min(
-                    previous[column] + 1,
-                    current[column - 1] + 1,
-                    previous[column - 1] + (left_character != right_character),
-                )
-            )
-        previous = current
-    return previous[-1]
-
-
-def _check(
-    spec: ConfigKey,
-    value: object,
-    path: tuple[str, ...],
-    positions: Positions,
-    diagnostics: list[Diagnostic],
-    *,
-    route_of: str | None,
-) -> None:
-    key = ".".join(path)
-    if spec.status is KeyStatus.REMOVED:
-        if spec.code == "SST-CFG042":
-            diagnostics.append(_diagnostic(spec.code, path, positions, block=path[0], key=path[-1]))
-        elif spec.code == "SST-CFG015":
-            diagnostics.append(_diagnostic(spec.code, path, positions, key=path[-1]))
-        elif spec.code == "SST-CFG040":
-            diagnostics.append(_diagnostic(spec.code, path, positions))
-        else:
-            diagnostics.append(_diagnostic("SST-CFG043", path, positions, key=key, reason=spec.replacement))
-        return
-    if spec.status is KeyStatus.UNSUPPORTED:
-        diagnostics.append(_diagnostic("SST-CFG044", path, positions, key=key))
-        return
-    if value is None:
-        # An empty YAML value means unset: a scalar keeps its default, and a block
-        # is checked as an empty block so its required children are still named.
-        if spec.kind not in (KeyKind.BLOCK, KeyKind.MAP):
-            if spec.required:
-                diagnostics.append(_diagnostic("SST-CFG006", path, positions, key=spec.path))
-            return
-        value = {}
-    expected = _TYPES.get(spec.kind)
-    mistyped = expected is not None and not isinstance(value, expected)
-    if mistyped or spec.kind is KeyKind.INTEGER and isinstance(value, bool):
-        diagnostics.append(
-            _diagnostic("SST-CFG004", path, positions, key=key, expected=spec.kind.value, found=type(value).__name__)
-        )
-        return
-    if spec.choices and value not in spec.choices:
-        code = spec.code or "SST-CFG008"
-        diagnostics.append(
-            _diagnostic(code, path, positions, key=key, found=repr(value), expected=", ".join(spec.choices))
-        )
-        return
-    if spec.fixed is not None and value is not spec.fixed:
-        diagnostics.append(
-            _diagnostic(
-                spec.code or "SST-CFG008",
-                path,
-                positions,
-                key=key,
-                found=str(value).lower(),
-                expected=str(spec.fixed).lower(),
-            )
-        )
-        return
-    if isinstance(value, int) and not isinstance(value, bool):
-        if (spec.minimum is not None and value < spec.minimum) or (spec.maximum is not None and value > spec.maximum):
-            diagnostics.append(
-                _diagnostic(
-                    "SST-CFG008",
-                    path,
-                    positions,
-                    key=key,
-                    found=str(value),
-                    expected=f"{spec.minimum}..{spec.maximum}",
-                )
-            )
-        return
-    if isinstance(value, dict) and spec.kind in (KeyKind.BLOCK, KeyKind.MAP):
-        if route_of is not None:
-            _walk(route_of, ChildPolicy.ROUTES, value, path, positions, diagnostics)
-        else:
-            _walk(spec.path, spec.children, value, path, positions, diagnostics)

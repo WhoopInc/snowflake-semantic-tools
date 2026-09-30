@@ -10,22 +10,19 @@ from snowflake_semantic_tools.domain.model.lifecycle import (
     Action,
     Change,
     ChangeReason,
+    CompositeFacts,
     CompositeObservation,
     CompositePlan,
     GrantRow,
     ObservedArtifact,
     OwnershipMarker,
+    PublishShape,
     RenderedArtifact,
     SnowflakeObservation,
 )
 from snowflake_semantic_tools.domain.model.registry import SEMANTIC_REGISTRY
-from snowflake_semantic_tools.domain.plan.diff import build_changeset, dependency_waves, topological_order
-from snowflake_semantic_tools.domain.state.model import (
-    STATE_SCHEMA_VERSION,
-    AppliedEntry,
-    ImpactIndex,
-    State,
-)
+from snowflake_semantic_tools.domain.plan import build_changeset, dependency_waves, topological_order
+from snowflake_semantic_tools.domain.state import STATE_SCHEMA_VERSION, AppliedEntry, ImpactIndex, State
 from tests.helpers.manifests import build_minimal_manifest
 
 
@@ -473,8 +470,8 @@ def test_plan_uses_composite_lifecycle_action_observation_and_diagnostics() -> N
         artifact_type="eval",
         target=QualifiedName.from_parts("db", "sch", "sales_eval"),
         ddl="payload",
-        object_type="",
-        generic_apply_safe=False,
+        shape=PublishShape(""),
+        composite=CompositeFacts(),
     )
     manifest, state = context({value.key: value}, {})
     diagnostic = D("SST-PLN028", artifact=value.key, detail="stage mismatch")
@@ -504,9 +501,9 @@ def _versioned(key: str, artifact_type: str, depends_on: tuple[str, ...] = ()) -
         artifact_type=artifact_type,
         target=QualifiedName.from_parts("db", "sch", key.split(":", 1)[1].replace("-", "_")),
         ddl=f"payload {key}",
+        shape=PublishShape("AGENT" if artifact_type == "agent" else ""),
+        composite=None if artifact_type == "agent" else CompositeFacts(),
         depends_on=depends_on,
-        object_type="AGENT" if artifact_type == "agent" else "",
-        generic_apply_safe=artifact_type == "agent",
     )
 
 

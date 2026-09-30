@@ -135,11 +135,11 @@ Imports run one way, `cli` → (`app` | `adapters`) → `domain`:
 
 ### Diagnostics
 
-Every problem SST reports is a diagnostic registered in `snowflake_semantic_tools/domain/model/diagnostic.py`: a stable code (`SST-`, a three-letter subsystem, and a number, such as `SST-VAL116`), a severity, a message template, and a suggestion that says how to fix it. Build one with `D("SST-...", ...)`. A new problem gets a new code; codes are never reused, even after the diagnostic that used one is removed.
+Every problem SST reports is a diagnostic registered in `snowflake_semantic_tools/domain/model/diagnostic/specs/`, in the module for its code family: a stable code (`SST-`, a three-letter subsystem, and a number, such as `SST-VAL116`), a severity, a message template, and a suggestion that says how to fix it. Build one with `D("SST-...", ...)`. A new problem gets a new code; codes are never reused, even after the diagnostic that used one is removed.
 
 ### Generated Reference Pages
 
-`docs/reference/*.md` is rendered from the engine's registries: the diagnostics, the configuration schema (`snowflake_semantic_tools/domain/model/config_schema.py`, where every `sst_config.yml` key is declared), the CLI's commands and options, and the artifact registry (`snowflake_semantic_tools/domain/model/registry.py`). After changing any of them, run `poetry run sst docs` and commit the pages it rewrites; CI fails on `sst docs --check` otherwise.
+`docs/reference/*.md` is rendered from the engine's registries: the diagnostics, the configuration schema (`snowflake_semantic_tools/domain/model/config_schema/keys.py`, where every `sst_config.yml` key is declared), the CLI's commands and options, and the artifact registry (`snowflake_semantic_tools/domain/model/registry.py`). After changing any of them, run `poetry run sst docs` and commit the pages it rewrites; CI fails on `sst docs --check` otherwise.
 
 ### Version
 

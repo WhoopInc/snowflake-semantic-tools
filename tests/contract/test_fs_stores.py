@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 
 from snowflake_semantic_tools.adapters.fs.local import ManifestFileStore, PlanFileStore, StateFileStore
-from snowflake_semantic_tools.domain.state.model import SavedPlan
+from snowflake_semantic_tools.domain.state import SavedPlan
 from tests.unit.app.helpers import change, changeset, manifest, rendered, state
 
 

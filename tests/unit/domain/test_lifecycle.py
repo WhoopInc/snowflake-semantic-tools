@@ -18,6 +18,7 @@ from snowflake_semantic_tools.domain.model.lifecycle import (
     ChangeReason,
     ChangeSet,
     ClassifiedError,
+    DesiredMetadata,
     ErrorKind,
     ExecResult,
     ExecutionError,
@@ -27,12 +28,14 @@ from snowflake_semantic_tools.domain.model.lifecycle import (
     OutcomeStatus,
     OwnershipMarker,
     ProbeKind,
+    PublishShape,
     QueryResult,
     RenderedArtifact,
     RetryPolicy,
     ShowRow,
     SmokeProbe,
     SnowflakeObservation,
+    StatementPlan,
     extract_marker,
 )
 
@@ -106,9 +109,8 @@ def test_rendered_artifact_canonicalizes_and_accepts_explicit_statements() -> No
         artifact_type="semantic_view",
         target=QualifiedName.from_parts("db", "sch", "x"),
         ddl="payload",
-        object_type="AGENT",
-        render_dialect="json",
-        statements=("one", "two"),
+        shape=PublishShape("AGENT", render_dialect="json"),
+        statements=StatementPlan(default=("one", "two")),
         depends_on=("semantic_view:y",),
     )
     assert explicit.statements == ("one", "two")
@@ -132,10 +134,9 @@ def test_rendered_artifact_canonicalizes_and_accepts_explicit_statements() -> No
         artifact_type="agent",
         target=observed.qualified_name,
         ddl="{}",
-        object_type="AGENT",
-        update_statements=("ALTER AGENT ADD VERSION",),
-        desired_alias="KEEP",
-        desired_tags=("DB.S.KEEP",),
+        shape=PublishShape("AGENT"),
+        statements=StatementPlan(update=("ALTER AGENT ADD VERSION",)),
+        metadata=DesiredMetadata(alias="KEEP", tags=("DB.S.KEEP",)),
     ).for_action(Action.UPDATE, observed)
     assert not any("KEEP UNSET ALIAS" in statement for statement in metadata.statements)
     assert any('"Mixed Alias" UNSET ALIAS' in statement for statement in metadata.statements)
@@ -163,11 +164,9 @@ def test_rendered_artifact_selects_create_live_update_and_safe_metadata_statemen
         artifact_type="agent",
         target=QualifiedName.from_parts("db", "sch", "a"),
         ddl="{}",
-        object_type="AGENT",
-        create_statements=("create",),
-        update_statements=("update",),
-        update_live_statements=("update live",),
-        desired_tags=("DB.S.KEEP",),
+        shape=PublishShape("AGENT"),
+        statements=StatementPlan(create=("create",), update=("update",), update_live=("update live",)),
+        metadata=DesiredMetadata(tags=("DB.S.KEEP",)),
     )
     observed = ObservedArtifact(
         agent.key,

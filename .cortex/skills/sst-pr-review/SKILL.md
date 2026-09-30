@@ -48,8 +48,8 @@ Read the diff carefully. Focus on:
 **Consistency with project conventions**
 - Read `AGENTS.md` and `CONTRIBUTING.md` for current conventions
 - Black (line length 120), isort (black profile), and every function annotated for mypy
-- Each new problem is a new diagnostic in `domain/model/diagnostic.py`: a new `SST-` code (never a reused one) with an actionable suggestion
-- A new `sst_config.yml` key is declared in `domain/model/config_schema.py`
+- Each new problem is a new diagnostic in its code family's module under `domain/model/diagnostic/specs/`: a new `SST-` code (never a reused one) with an actionable suggestion
+- A new `sst_config.yml` key is declared in `domain/model/config_schema/keys.py`
 - A change to diagnostics, config keys, CLI options, or artifact types ships the regenerated `docs/reference/*.md` (`sst docs`)
 - `--output json` prints exactly one envelope on stdout; exit codes match `docs/reference/cli.md`
 
@@ -57,7 +57,7 @@ Read the diff carefully. Focus on:
 - Rings: `cli` → (`app` | `adapters`) → `domain`, with `app` and `adapters` independent. `lint-imports` catches crossing imports; also look for I/O or SDK use hidden behind a helper in `domain/` or `app/`
 - The package root gains nothing beside `__init__.py`, `_version.py`, and the four rings, and `__init__.py` exports nothing but `__version__`: there is no Python API
 - Where code belongs: commands and options in `cli/`; use cases in `app/`; YAML, dbt, Snowflake, and filesystem access in `adapters/`, behind a port in `domain/ports/`; rules, rendering, reference resolution, plan diffing, and state in `domain/`
-- Tests use real in-memory ports (`adapters/snowflake/memory.py`, `tests/unit/app/conftest.py`), not mocks
+- Tests use real in-memory ports (`tests/helpers/recorded_snowflake.py`, `tests/unit/app/conftest.py`), not mocks
 - A golden change is intended and explained in the PR; otherwise it is a regression
 
 ### Step 4: Run tests

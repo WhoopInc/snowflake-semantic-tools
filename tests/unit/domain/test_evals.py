@@ -522,11 +522,8 @@ def test_custom_metric_validation_covers_ungated_threshold_intent_and_band_ancho
 
 
 def test_eval_helpers_cover_threshold_scale_anchor_and_regression_count_edges() -> None:
-    from snowflake_semantic_tools.domain.model.eval import (
-        _prompt_anchors_declared_bands,
-        _prompt_scale,
-        _usable_threshold,
-    )
+    from snowflake_semantic_tools.domain.model.eval.validate_config import _usable_threshold
+    from snowflake_semantic_tools.domain.model.eval.validate_metric import _prompt_anchors_declared_bands, _prompt_scale
 
     assert not _usable_threshold(ThresholdRange())
     assert _usable_threshold(ThresholdRange(max=1))

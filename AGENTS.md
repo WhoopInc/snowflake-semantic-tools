@@ -54,8 +54,8 @@ poetry run sst docs --check
 - **Package manager**: Poetry (NOT uv). Python 3.11–3.13.
 - **Style**: black and isort (black profile), line length 120; mypy requires every function to be annotated.
 - **Docstrings and size**: follow "Docstrings and comments" in `CONTRIBUTING.md`; `tests/unit/test_docstrings.py` and `tests/unit/test_structure.py` enforce it against ratchet lists in `tests/unit/ratchets/` that may only shrink.
-- **Diagnostics**: every problem is registered in `snowflake_semantic_tools/domain/model/diagnostic.py` with a stable `SST-XXXnnn` code and an actionable suggestion (what is wrong AND how to fix it). Codes are never reused.
-- **Config keys** are declared in `snowflake_semantic_tools/domain/model/config_schema.py`.
+- **Diagnostics**: every problem is registered in `snowflake_semantic_tools/domain/model/diagnostic/specs/` (one module per code family) with a stable `SST-XXXnnn` code and an actionable suggestion (what is wrong AND how to fix it). Codes are never reused.
+- **Config keys** are declared in `snowflake_semantic_tools/domain/model/config_schema/keys.py`.
 - **Generated pages**: after changing diagnostics, the config schema, CLI options, or the artifact registry, run `poetry run sst docs` and commit `docs/reference/*.md`.
 - **Version**: `snowflake_semantic_tools/_version.py` must equal the version in `pyproject.toml` (a test asserts it).
 - **Tests** never connect to Snowflake; fixtures and goldens are described in `tests/README.md`.

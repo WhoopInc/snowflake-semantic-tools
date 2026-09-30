@@ -18,7 +18,7 @@ from snowflake_semantic_tools.domain.model.lifecycle import (
     ShowRow,
 )
 from snowflake_semantic_tools.domain.ports.snowflake import SnowflakePortError, StagedFileMetadata, StageObservation
-from snowflake_semantic_tools.domain.state.model import AppliedEntry
+from snowflake_semantic_tools.domain.state import AppliedEntry
 
 
 def values():
