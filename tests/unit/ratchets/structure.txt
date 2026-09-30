@@ -1,11 +1,4 @@
 # Known violations; the list may only shrink. Regenerate: python -m tests.helpers.ratchet
-function-complexity snowflake_semantic_tools/adapters/yaml/semantic/build.py::_build_view 87
-function-complexity snowflake_semantic_tools/adapters/yaml/semantic/checks/dbt.py::_dbt_column_diagnostics 28
-function-complexity snowflake_semantic_tools/adapters/yaml/semantic/checks/expressions.py::_expression_reference_diagnostics 31
-function-complexity snowflake_semantic_tools/adapters/yaml/semantic/checks/metrics.py::_metric_diagnostics 77
-function-complexity snowflake_semantic_tools/adapters/yaml/semantic/collect.py::parse_semantic_project 26
-function-complexity snowflake_semantic_tools/adapters/yaml/semantic/pipeline.py::load_semantic_views_result 125
-function-complexity snowflake_semantic_tools/adapters/yaml/semantic/relationships.py::load_relationships 28
 function-complexity snowflake_semantic_tools/app/agent_compile.py::_resolve_skills 30
 function-complexity snowflake_semantic_tools/app/agent_compile.py::_resolve_tool 48
 function-complexity snowflake_semantic_tools/app/apply.py::ApplyArtifacts._apply_one_guarded 35
@@ -23,13 +16,6 @@ function-complexity snowflake_semantic_tools/cli/main.py::compile 31
 function-complexity snowflake_semantic_tools/cli/main.py::compile.action 31
 function-complexity snowflake_semantic_tools/cli/main.py::test_command 74
 function-complexity snowflake_semantic_tools/cli/main.py::test_command.action 74
-function-lines snowflake_semantic_tools/adapters/yaml/semantic/build.py::_build_view 271
-function-lines snowflake_semantic_tools/adapters/yaml/semantic/checks/dbt.py::_dbt_column_diagnostics 110
-function-lines snowflake_semantic_tools/adapters/yaml/semantic/checks/expressions.py::_expression_reference_diagnostics 120
-function-lines snowflake_semantic_tools/adapters/yaml/semantic/checks/metrics.py::_metric_diagnostics 291
-function-lines snowflake_semantic_tools/adapters/yaml/semantic/collect.py::parse_semantic_project 122
-function-lines snowflake_semantic_tools/adapters/yaml/semantic/pipeline.py::load_semantic_views_result 390
-function-lines snowflake_semantic_tools/adapters/yaml/semantic/relationships.py::load_relationships 133
 function-lines snowflake_semantic_tools/app/agent_compile.py::_resolve_tool 167
 function-lines snowflake_semantic_tools/app/apply.py::ApplyArtifacts._apply_one_guarded 132
 function-lines snowflake_semantic_tools/app/apply.py::ApplyArtifacts._finish_state 104
@@ -43,7 +29,6 @@ function-lines snowflake_semantic_tools/cli/main.py::compile 106
 function-lines snowflake_semantic_tools/cli/main.py::test_command 302
 function-lines snowflake_semantic_tools/cli/main.py::test_command.action 287
 module-lines snowflake_semantic_tools/cli/main.py 2596
-nested-function-lines snowflake_semantic_tools/adapters/yaml/semantic/checks/authored_keys.py::_legacy_reference_diagnostics.walk 35
 nested-function-lines snowflake_semantic_tools/cli/main.py::apply.action 118
 nested-function-lines snowflake_semantic_tools/cli/main.py::compile.action 90
 nested-function-lines snowflake_semantic_tools/cli/main.py::migrate_refs_command.action 56

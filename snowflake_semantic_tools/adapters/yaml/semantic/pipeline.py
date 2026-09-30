@@ -1,8 +1,13 @@
-"""The semantic load: parse, check, attach and build every view, collecting each diagnostic on the way."""
+"""The semantic load: parse, check, attach and build every view, collecting each diagnostic on the way.
+
+`load_semantic_views_result` runs the load as a fixed sequence of phases. The checks live
+in `phases` and `view_instructions`, the poisoning in `poison`; attaching and building
+live here. Every phase returns its diagnostics, which the loader reports in phase order.
+"""
 
 from __future__ import annotations
 
-import dataclasses
+from collections.abc import Iterator, Mapping
 from dataclasses import dataclass, replace
 from pathlib import Path
 from types import MappingProxyType
@@ -10,31 +15,29 @@ from typing import Any
 
 from ....domain.model.artifact_key import artifact_key
 from ....domain.model.dbt import DbtModel, DbtTarget
-from ....domain.model.diagnostic import D, Diagnostic, DiagnosticBag, Origin, Severity
-from ....domain.model.project import ResolvedProject, SemanticViewProject
-from ....domain.model.reference import TemplateSyntaxError, scan_template_calls
+from ....domain.model.diagnostic import D, Diagnostic, DiagnosticBag, Origin
+from ....domain.model.project import ParsedMember, ResolvedProject, SemanticViewProject
 from ....domain.model.registry import SEMANTIC_REGISTRY
-from ....domain.model.semantic_view import Relationship, SemanticView
+from ....domain.model.semantic_view import SemanticView
 from ....domain.resolve.members import attach_view_members
 from ...errors import ProjectError
 from ..documents import RawDocuments, discover_yaml, load_documents
-from ..fields import mapping
 from ..parse import parse_yaml_bytes, read_yaml_mapping
 from .build import _build_view
-from .checks.authored_keys import _authored_key_diagnostics, _legacy_reference_diagnostics, _member_name_diagnostics
-from .checks.dbt import _dbt_column_diagnostics, _dbt_model_diagnostics, _description_diagnostics
-from .checks.expressions import _expression_reference_diagnostics, _filter_diagnostics
-from .checks.metrics import _metric_cycles, _metric_diagnostics
-from .checks.shape import _filter_parse_diagnostics, _metric_parse_diagnostics, _verified_query_diagnostics
 from .collect import parse_semantic_project
-from .defs import FilterDef, InstructionDef, MetricDef, VerifiedQueryDef
-from .relationships import (
-    _multipath_diagnostics,
-    _relationship_cycle_diagnostics,
-    _relationship_diagnostics,
-    _relationship_parse_diagnostics,
+from .defs import MetricDef
+from .phases import (
+    LoadContext,
+    _relationship_checks,
+    _semantic_checks,
+    _structural_checks,
+    _typed_members,
+    _using_checks,
+    _view_tables,
 )
-from .target import _folder_route_diagnostics, _semantic_view_defaults, _semantic_view_target, _stray_view_diagnostics
+from .poison import Poison, _member_poison, _view_poison
+from .target import _semantic_view_defaults, _semantic_view_target
+from .view_instructions import _view_instructions
 
 
 @dataclass(frozen=True, slots=True)
@@ -67,384 +70,175 @@ def load_semantic_views_result(
 ) -> SemanticViewProject:
     """Load healthy views while collecting view-local failures.
 
+    Eleven phases run in this order, and their diagnostics are reported in it:
+
+    1. Inputs: parse the documents into views and members.
+    2. Typed members: split the members by type and find the metric cycles. Only then is
+       a missing semantic_views/ directory refused, so an unreadable member is reported first.
+    3. Structural checks: repeated view names, malformed tables, routes, authored keys,
+       descriptions, shapes, the dbt models and columns in use, legacy globals, verified queries.
+    4. Semantic checks: filter, verified query and metric references, tables that are not
+       dbt models, metric cycles.
+    5. Member poison, from what phases 2-4 found; this also fixes the healthy metrics.
+    6. Relationships, against the views and the healthy metrics; one whose tables share no
+       view is poisoned.
+    7. The healthy metrics' `using_relationships`; a metric naming a relationship that is
+       missing or starts elsewhere is poisoned.
+    8. View instructions: each view's `custom_instructions()` entries.
+    9. Poisoned views: each view an error of phases 1-8 names, whose name repeats, whose
+       tables are malformed, or whose file uses the legacy globals.
+    10. Attach every unpoisoned member to the views it belongs to.
+    11. Build every enabled, unpoisoned view under semantic_views/; one that fails is
+        reported and left out.
+
+    Poisoning keeps one fault to one diagnostic: a poisoned member attaches to no view and
+    a poisoned view is not built, while everything else still builds. Phase 9 reads every
+    diagnostic reported before it, so only a check that runs before phase 9 can keep the
+    view it reports on from being built.
+
     Args:
         inputs: The project config and semantic-model documents, as `read_semantic_inputs` read them.
         target: The dbt target that `{{ target.database }}` and `{{ target.schema }}` name.
         models: The target's dbt models, by casefolded name.
+
+    Raises:
+        ProjectError: A member cannot be read at all, or there is no semantic_views/ directory.
     """
-    config = inputs.config
-    semantic_models_dir = inputs.semantic_models_dir
-    documents = inputs.documents
-    parsed = parse_semantic_project(documents, project_dir, semantic_models_dir, models)
-    metrics = tuple(
-        member.source for member in parsed.members_by_type.get("metric", ()) if isinstance(member.source, MetricDef)
+    parsed = parse_semantic_project(inputs.documents, project_dir, inputs.semantic_models_dir, models)
+    members = _typed_members(parsed)
+    context = _load_context(project_dir, inputs, target, models)
+    structure = _structural_checks(context, parsed, members.metrics)
+    semantic = _semantic_checks(context, members, structure.legacy_files)
+    poison = _member_poison(parsed.members, members, structure.legacy_files, semantic)
+    healthy = poison.healthy_metrics(members.metrics)
+    view_tables = _view_tables(parsed.views)
+    relationship_diagnostics, unattached = _relationship_checks(context, members, healthy, view_tables)
+    using_diagnostics, misrouted = _using_checks(members, healthy)
+    poison = poison.with_members(unattached | misrouted)
+    instruction_names, instruction_diagnostics = _view_instructions(parsed.views, members.instruction_names)
+    reported = (
+        *parsed.diagnostics,
+        *structure.diagnostics,
+        *semantic.diagnostics,
+        *relationship_diagnostics,
+        *using_diagnostics,
+        *instruction_diagnostics,
     )
-    cycles = _metric_cycles(metrics)
-    poisoned_metrics = {name for cycle in cycles for name in cycle[:-1]}
-    healthy_metrics = tuple(metric for metric in metrics if metric.name.casefold() not in poisoned_metrics)
-    filters = tuple(
-        member.source for member in parsed.members_by_type.get("filter", ()) if isinstance(member.source, FilterDef)
+    # After every check: the views left unbuilt are read from the errors reported so far.
+    poison = _view_poison(poison, parsed.views, reported, structure.duplicate_views, structure.legacy_files)
+    attached_members, attachment = _attach(parsed.members, poison, view_tables, instruction_names)
+    views, build_diagnostics = _build_views(context, poison, attached_members, attachment)
+    resolved = ResolvedProject(
+        views=views,
+        attachment=attachment,
+        custom_instruction_names=MappingProxyType(
+            {artifact.casefold(): tuple(sorted(names)) for artifact, names in instruction_names.items()}
+        ),
+        diagnostics=DiagnosticBag((*reported, *build_diagnostics)),
     )
-    instructions = {
-        member.name.casefold(): member.source
-        for member in parsed.members_by_type.get("custom_instruction", ())
-        if isinstance(member.source, InstructionDef)
-    }
-    verified_queries = tuple(
-        member.source
-        for member in parsed.members_by_type.get("verified_query", ())
-        if isinstance(member.source, VerifiedQueryDef)
-    )
-    relationship_members = parsed.members_by_type.get("relationship", ())
-    relationships = tuple(member.source for member in relationship_members if isinstance(member.source, Relationship))
-    relationship_records = tuple(
-        (member.source, member.origin) for member in relationship_members if isinstance(member.source, Relationship)
-    )
+    return SemanticViewProject(resolved.views, resolved.diagnostics)
 
-    views_dir = project_dir / semantic_models_dir / "semantic_views"
+
+def _load_context(
+    project_dir: Path, inputs: SemanticInputs, target: DbtTarget, models: dict[str, DbtModel]
+) -> LoadContext:
+    """Gather the fixed inputs every later phase reads.
+
+    Raises:
+        ProjectError: `<semantic_models_dir>/semantic_views` is not a directory.
+    """
+    views_dir = project_dir / inputs.semantic_models_dir / "semantic_views"
     if not views_dir.is_dir():
-        raise ProjectError(f"no semantic_views/ directory under {project_dir / semantic_models_dir}")
+        raise ProjectError(f"no semantic_views/ directory under {project_dir / inputs.semantic_models_dir}")
+    return LoadContext(
+        project_dir, inputs.config, inputs.semantic_models_dir, inputs.documents, views_dir, target, models
+    )
 
-    out: list[SemanticView] = []
-    diagnostics: list[Diagnostic] = list(parsed.diagnostics)
-    view_counts: dict[str, int] = {}
-    for parsed_view in parsed.views:
-        name = parsed_view.name.casefold()
-        view_counts[name] = view_counts.get(name, 0) + 1
-    diagnostics.extend(
-        D(
-            "SST-VAL001",
-            type="semantic_view",
-            name=name,
-            subject=artifact_key("semantic_view", name),
-        )
-        for name, count in sorted(view_counts.items())
-        if count > 1
-    )
-    duplicate_views = {name for name, count in view_counts.items() if count > 1}
-    for view in parsed.views:
-        if view.poisoned:
-            diagnostics.append(
-                D(
-                    "SST-LOD004",
-                    origin=view.origin,
-                    file=view.origin.file,
-                    line=view.origin.line or 1,
-                    col=view.origin.col or 1,
-                    reason="malformed table reference",
-                    subject=artifact_key("semantic_view", view.name),
-                )
-            )
-    for member in parsed.members:
-        if member.poisoned and member.type_name in (
-            "metric",
-            "filter",
-            "verified_query",
-        ):
-            diagnostics.append(
-                D(
-                    "SST-LOD004",
-                    origin=member.origin,
-                    file=member.origin.file,
-                    line=member.origin.line or 1,
-                    col=member.origin.col or 1,
-                    reason="malformed tables reference",
-                    subject=member.key,
-                )
-            )
-    referenced_models = frozenset(
-        table for view in parsed.views if not view.poisoned for table in view.declared_tables if table in models
-    )
-    diagnostics.extend(_folder_route_diagnostics(config, views_dir))
-    diagnostics.extend(_stray_view_diagnostics(documents, views_dir))
-    diagnostics.extend(_authored_key_diagnostics(documents))
-    diagnostics.extend(_member_name_diagnostics(documents))
-    diagnostics.extend(_description_diagnostics(parsed.views, metrics))
-    diagnostics.extend(_metric_parse_diagnostics(documents, project_dir, semantic_models_dir))
-    diagnostics.extend(_filter_parse_diagnostics(documents, project_dir, semantic_models_dir))
-    diagnostics.extend(_relationship_parse_diagnostics(documents, project_dir, semantic_models_dir))
-    diagnostics.extend(_dbt_model_diagnostics(models, referenced_models))
-    diagnostics.extend(_dbt_column_diagnostics(models, referenced_models))
-    legacy_diagnostics = _legacy_reference_diagnostics(documents)
-    diagnostics.extend(legacy_diagnostics)
-    legacy_files = {
-        diagnostic.context.get("file")
-        for diagnostic in legacy_diagnostics
-        if isinstance(diagnostic.context.get("file"), str)
-    }
-    verified_query_diagnostics = _verified_query_diagnostics(documents, project_dir, semantic_models_dir)
-    diagnostics.extend(verified_query_diagnostics)
-    variables: dict[str, object] = mapping(config.get("vars"))
-    expression_diagnostics = _expression_reference_diagnostics(
-        filters + verified_queries,
-        models,
-        metric_names=frozenset(metric.name.casefold() for metric in metrics),
-        variables=variables,
-    )
-    diagnostics.extend(
-        diagnostic
-        for diagnostic in expression_diagnostics
-        if diagnostic.code not in ("SST-REF034", "SST-REF035")
-        or diagnostic.origin is None
-        or diagnostic.origin.file not in legacy_files
-    )
-    diagnostics.extend(_filter_diagnostics(filters))
-    metric_diagnostics = _metric_diagnostics(metrics, models, variables)
-    diagnostics.extend(
-        diagnostic
-        for diagnostic in metric_diagnostics
-        if diagnostic.code not in ("SST-REF034", "SST-REF035")
-        or diagnostic.origin is None
-        or diagnostic.origin.file not in legacy_files
-    )
-    poisoned_metric_subjects = {
-        diagnostic.subject
-        for diagnostic in metric_diagnostics
-        if diagnostic.subject is not None and diagnostic.severity is Severity.ERROR
-    }
-    poisoned_expression_subjects = {
-        diagnostic.subject.casefold()
-        for diagnostic in expression_diagnostics
-        if diagnostic.subject is not None and diagnostic.severity is Severity.ERROR
-    }
-    known_models = set(models)
-    invalid_metrics: set[str] = set()
-    invalid_member_subjects: set[str] = set()
-    for metric in metrics:
-        for table_name in metric.tables:
-            if table_name not in known_models:
-                invalid_metrics.add(metric.name.casefold())
-                diagnostics.append(
-                    D(
-                        "SST-MEM003",
-                        member=artifact_key("metric", metric.name),
-                        name=table_name,
-                        subject=artifact_key("metric", metric.name),
-                    )
-                )
-    attachment_members_to_validate: tuple[FilterDef | VerifiedQueryDef, ...] = filters + verified_queries
-    for authored_member in attachment_members_to_validate:
-        subject = artifact_key(
-            "filter" if isinstance(authored_member, FilterDef) else "verified_query", authored_member.name
-        )
-        for table_name in authored_member.tables:
-            if table_name not in known_models:
-                invalid_member_subjects.add(subject.casefold())
-                diagnostics.append(D("SST-MEM003", member=subject, name=table_name, subject=subject))
-    metric_by_name = {metric.name.casefold(): metric for metric in metrics}
-    for cycle in cycles:
-        participants = tuple(metric_by_name[name] for name in cycle[:-1] if name in metric_by_name)
-        origins = tuple(metric.origin for metric in participants if metric.origin is not None)
-        diagnostics.append(
-            D(
-                "SST-REF005",
-                cycle=" -> ".join(cycle),
-                subject=artifact_key("metric", cycle[0]),
-                origin=origins[0] if origins else None,
-                related=origins,
-            )
-        )
-    healthy_metrics = tuple(
-        metric
-        for metric in healthy_metrics
-        if metric.name.casefold() not in invalid_metrics
-        and artifact_key("metric", metric.name) not in poisoned_metric_subjects
-    )
-    view_table_sets = [
-        (artifact_key("semantic_view", view.name), frozenset(view.declared_tables)) for view in parsed.views
-    ]
-    view_root_key = SEMANTIC_REGISTRY.artifacts["semantic_view"].root_key
-    assert view_root_key is not None
-    relationship_diagnostics = _relationship_diagnostics(
-        relationships,
-        tuple(view_table_sets),
-        {relationship.name.casefold(): origin for relationship, origin in relationship_records},
-        models,
-    )
-    diagnostics.extend(relationship_diagnostics)
-    diagnostics.extend(_relationship_cycle_diagnostics(relationships, tuple(view_table_sets)))
-    diagnostics.extend(_multipath_diagnostics(relationships, healthy_metrics, tuple(view_table_sets)))
-    poisoned_relationships = {
-        diagnostic.subject
-        for diagnostic in relationship_diagnostics
-        if diagnostic.code == "SST-VAL203" and diagnostic.subject is not None
-    }
-    poisoned_member_keys = {
-        subject.casefold() for subject in poisoned_metric_subjects | poisoned_relationships if subject is not None
-    }
-    poisoned_member_keys.update(artifact_key("metric", name) for name in poisoned_metrics)
-    poisoned_member_keys.update(poisoned_expression_subjects)
-    poisoned_member_keys.update(invalid_member_subjects)
-    poisoned_member_keys.update(member.key for member in parsed.members if member.origin.file in legacy_files)
-    known_relationships = {relationship.name.casefold(): relationship for relationship in relationships}
-    for metric in healthy_metrics:
-        for relationship_name in metric.using_relationships:
-            relationship = known_relationships.get(relationship_name.casefold())
-            if relationship is None:
-                diagnostics.append(
-                    D(
-                        "SST-VAL214",
-                        metric=metric.name,
-                        relationship=relationship_name,
-                        subject=artifact_key("metric", metric.name),
-                        origin=metric.origin,
-                    )
-                )
-                poisoned_member_keys.add(artifact_key("metric", metric.name).casefold())
-                continue
-            if metric.tables and relationship.from_table.casefold() != metric.tables[0]:
-                diagnostics.append(
-                    D(
-                        "SST-VAL114",
-                        metric=metric.name,
-                        other=relationship_name,
-                        name=metric.tables[0],
-                        subject=artifact_key("metric", metric.name),
-                        origin=metric.origin,
-                    )
-                )
-                poisoned_member_keys.add(artifact_key("metric", metric.name).casefold())
-    attachment_members = tuple(
-        (dataclasses.replace(member, poisoned=True) if member.key in poisoned_member_keys else member)
-        for member in parsed.members
-    )
-    view_named_members: dict[str, frozenset[str]] = {}
-    known_instruction_names = frozenset(instructions)
-    for parsed_view in parsed.views:
-        raw_instructions = parsed_view.source.get("custom_instructions")
-        instruction_values = raw_instructions if isinstance(raw_instructions, list) else []
-        names: set[str] = set()
-        for raw in instruction_values:
-            try:
-                calls = scan_template_calls(str(raw))
-            except TemplateSyntaxError as exc:
-                diagnostics.append(
-                    D(
-                        "SST-LOD004",
-                        origin=parsed_view.origin,
-                        file=parsed_view.origin.file,
-                        line=exc.line,
-                        col=exc.col,
-                        reason=exc.reason,
-                        subject=artifact_key("semantic_view", parsed_view.name),
-                    )
-                )
-                continue
-            for call in calls:
-                view_subject = artifact_key("semantic_view", parsed_view.name)
-                if call.function != "custom_instructions":
-                    diagnostics.append(
-                        D(
-                            "SST-REF041",
-                            origin=parsed_view.origin,
-                            subject=view_subject,
-                            artifact=view_subject,
-                            function=call.function,
-                            field="custom_instructions",
-                        )
-                    )
-                    continue
-                if len(call.args) != 1:
-                    diagnostics.append(
-                        D(
-                            "SST-REF042",
-                            origin=parsed_view.origin,
-                            subject=view_subject,
-                            artifact=view_subject,
-                            detail=f"custom_instructions() takes one name, found {len(call.args)} in {call.raw}",
-                        )
-                    )
-                    continue
-                instruction_name = call.args[0].casefold()
-                if instruction_name not in known_instruction_names:
-                    diagnostics.append(
-                        D(
-                            "SST-REF039",
-                            origin=parsed_view.origin,
-                            subject=view_subject,
-                            artifact=view_subject,
-                            name=call.args[0],
-                        )
-                    )
-                    continue
-                names.add(instruction_name)
-        view_named_members[artifact_key("semantic_view", parsed_view.name)] = frozenset(names)
-    poisoned_views = {
-        diagnostic.subject.casefold()
-        for diagnostic in diagnostics
-        if diagnostic.subject is not None
-        and diagnostic.subject.casefold().startswith(artifact_key("semantic_view", ""))
-        and diagnostic.severity is Severity.ERROR
-    }
-    poisoned_views.update(artifact_key("semantic_view", view.name).casefold() for view in parsed.views if view.poisoned)
-    # A view authored with the legacy globals is rejected by SST-REF034; building
-    # it would only report the same call again as an internal error.
-    poisoned_views.update(
-        artifact_key("semantic_view", view.name).casefold() for view in parsed.views if view.origin.file in legacy_files
+
+def _attach(
+    parsed_members: tuple[ParsedMember, ...],
+    poison: Poison,
+    view_tables: tuple[tuple[str, frozenset[str]], ...],
+    view_instructions: Mapping[str, frozenset[str]],
+) -> tuple[tuple[ParsedMember, ...], Mapping[str, tuple[str, ...]]]:
+    """Mark the poisoned members, then attach every member to the views it belongs to.
+
+    Returns:
+        Every member, the poisoned ones marked so, and the view keys each member key attaches to.
+    """
+    members = tuple(
+        (replace(member, poisoned=True) if member.key in poison.member_keys else member) for member in parsed_members
     )
     metric_dependencies = {
         member.key: tuple(artifact_key("metric", name) for name in member.source.referenced_metrics)
-        for member in attachment_members
+        for member in members
         if member.type_name == "metric" and isinstance(member.source, MetricDef)
     }
     attachment = attach_view_members(
-        {artifact: tables for artifact, tables in view_table_sets},
-        attachment_members,
+        {artifact: tables for artifact, tables in view_tables},
+        members,
         SEMANTIC_REGISTRY,
-        view_named_members=view_named_members,
+        view_named_members=view_instructions,
         metric_dependencies=metric_dependencies,
     )
-    for document in documents.under(views_dir, view_root_key):
+    return members, attachment
+
+
+def _build_views(
+    context: LoadContext,
+    poison: Poison,
+    members: tuple[ParsedMember, ...],
+    attachment: Mapping[str, tuple[str, ...]],
+) -> tuple[tuple[SemanticView, ...], tuple[Diagnostic, ...]]:
+    """Build each view `_buildable_nodes` yields, reporting a failure to build instead of raising it."""
+    views: list[SemanticView] = []
+    diagnostics: list[Diagnostic] = []
+    for path, node in _buildable_nodes(context, poison):
+        view_target = _semantic_view_target(context.config, path, context.views_dir, context.target)
+        try:
+            views.append(
+                _build_view(
+                    node, path, context.project_dir, view_target, context.models, members, attachment, context.config
+                )
+            )
+        except ProjectError as exc:
+            diagnostics.extend(_build_failure(context.project_dir, path, node, exc))
+    return tuple(views), tuple(diagnostics)
+
+
+def _buildable_nodes(context: LoadContext, poison: Poison) -> Iterator[tuple[Path, dict[str, Any]]]:
+    """Yield, in document order, each named view under semantic_views/ that is enabled and not poisoned.
+
+    A view's own `enabled` wins; only an unset one falls back to the folder routes' `+enabled`.
+    """
+    root_key = SEMANTIC_REGISTRY.artifacts["semantic_view"].root_key
+    assert root_key is not None
+    for document in context.documents.under(context.views_dir, root_key):
         path = document.abs_path
-        for node in document.tree.get(view_root_key) or []:
+        for node in document.tree.get(root_key) or []:
             if not isinstance(node, dict) or not node.get("name"):
                 continue
             if node.get("enabled") is False:
                 continue
-            if node.get("enabled") is None and _semantic_view_defaults(config, path, views_dir).get("enabled") is False:
+            if (
+                node.get("enabled") is None
+                and _semantic_view_defaults(context.config, path, context.views_dir).get("enabled") is False
+            ):
                 continue
-            if str(node["name"]).casefold() in duplicate_views:
+            if str(node["name"]).casefold() in poison.view_names:
                 continue
-            if artifact_key("semantic_view", node["name"]).casefold() in poisoned_views:
+            if artifact_key("semantic_view", node["name"]).casefold() in poison.view_keys:
                 continue
-            view_target = _semantic_view_target(config, path, views_dir, target)
-            try:
-                out.append(
-                    _build_view(
-                        node,
-                        path,
-                        project_dir,
-                        view_target,
-                        models,
-                        attachment_members,
-                        attachment,
-                        config,
-                    )
-                )
-            except ProjectError as exc:
-                view_origin = Origin(path.resolve().relative_to(project_dir.resolve()).as_posix())
-                view_subject = artifact_key("semantic_view", node["name"])
-                if exc.diagnostics:
-                    diagnostics.extend(
-                        replace(item, origin=item.origin or view_origin, subject=item.subject or view_subject)
-                        for item in exc.diagnostics
-                    )
-                else:
-                    diagnostics.append(
-                        D(
-                            "SST-PRS123",
-                            origin=view_origin,
-                            subject=view_subject,
-                            artifact=view_subject,
-                            detail=str(exc),
-                        )
-                    )
-    resolved = ResolvedProject(
-        views=tuple(out),
-        attachment=attachment,
-        custom_instruction_names=MappingProxyType(
-            {artifact.casefold(): tuple(sorted(names)) for artifact, names in view_named_members.items()}
-        ),
-        diagnostics=DiagnosticBag(diagnostics),
-    )
-    return SemanticViewProject(resolved.views, resolved.diagnostics)
+            yield path, node
+
+
+def _build_failure(project_dir: Path, path: Path, node: dict[str, Any], exc: ProjectError) -> tuple[Diagnostic, ...]:
+    """Report a view that failed to build, at its file and key wherever the failure names neither."""
+    view_origin = Origin(path.resolve().relative_to(project_dir.resolve()).as_posix())
+    view_subject = artifact_key("semantic_view", node["name"])
+    if exc.diagnostics:
+        return tuple(
+            replace(item, origin=item.origin or view_origin, subject=item.subject or view_subject)
+            for item in exc.diagnostics
+        )
+    return (D("SST-PRS123", origin=view_origin, subject=view_subject, artifact=view_subject, detail=str(exc)),)

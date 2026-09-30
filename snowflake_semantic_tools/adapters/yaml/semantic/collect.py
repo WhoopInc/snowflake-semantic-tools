@@ -5,14 +5,16 @@ from __future__ import annotations
 from collections.abc import Mapping
 from pathlib import Path
 from types import MappingProxyType
+from typing import Any
 
 from ....domain.model.dbt import DbtModel
 from ....domain.model.diagnostic import DiagnosticBag, Origin
 from ....domain.model.project import ParsedMember, ParsedProject, ParsedView
 from ....domain.model.reference import TemplateCall, TemplateSyntaxError, scan_template_calls
 from ....domain.model.registry import SEMANTIC_REGISTRY
-from ....domain.model.semantic_view import ColumnKind
-from ..documents import RawDocuments
+from ....domain.model.semantic_view import ColumnKind, Relationship
+from ..documents import RawDocument, RawDocuments
+from .defs import FilterDef, InstructionDef, MetricDef, VerifiedQueryDef
 from .nodes import _node_origin, _safe_table_refs
 from .readers import load_filters, load_instructions, load_metrics, load_verified_queries
 from .relationships import load_relationships
@@ -24,34 +26,14 @@ def parse_semantic_project(
     semantic_models_dir: str,
     models: Mapping[str, DbtModel] | None = None,
 ) -> ParsedProject:
-    """Parse loaded trees into immutable unresolved view and member records."""
-    views: list[ParsedView] = []
-    members: list[ParsedMember] = []
-    view_root = SEMANTIC_REGISTRY.artifacts["semantic_view"].root_key
-    assert view_root is not None
-    for document in documents.documents:
-        for index, node in enumerate(document.tree.get(view_root) or []):
-            if not isinstance(node, dict) or not node.get("name"):
-                continue
-            calls: list[TemplateCall] = []
-            malformed = False
-            for raw in node.get("tables") or []:
-                try:
-                    calls.extend(scan_template_calls(str(raw)))
-                except TemplateSyntaxError:
-                    malformed = True
-            views.append(
-                ParsedView(
-                    name=str(node["name"]),
-                    origin=_node_origin(document, view_root, index),
-                    source_path=document.path,
-                    source=MappingProxyType({str(key): value for key, value in node.items()}),
-                    declared_tables=_safe_table_refs(node.get("tables")),
-                    template_calls=tuple(calls),
-                    poisoned=malformed,
-                )
-            )
+    """Parse loaded trees into immutable unresolved view and member records.
 
+    The views come first, in document order. The members follow by type -- metrics,
+    filters, custom instructions, verified queries, relationships -- and then the fact and
+    dimension columns of the dbt models. The readers run in that order too, so when more
+    than one cannot read its members, the first one's error is the one raised.
+    """
+    views = _parse_views(documents)
     metrics = load_metrics(documents, project_dir, semantic_models_dir)
     filters = load_filters(documents, project_dir, semantic_models_dir)
     instructions = load_instructions(documents, project_dir, semantic_models_dir)
@@ -59,55 +41,89 @@ def parse_semantic_project(
     relationship_records, relationship_diagnostics = load_relationships(
         documents, project_dir, semantic_models_dir, models
     )
-    members.extend(
-        ParsedMember(
-            "metric",
-            metric.name,
-            metric.origin or Origin("<unknown>"),
-            metric,
-            metric.tables if metric.has_tables_key else None,
-            metric.template_calls,
-            metric.poisoned,
-        )
-        for metric in metrics
+    members = (
+        *_authored_members(metrics, filters, instructions, verified_queries),
+        *_relationship_members(relationship_records),
+        *_column_members(models),
     )
-    members.extend(
-        ParsedMember(
-            "filter",
-            filter_def.name,
-            filter_def.origin or Origin("<unknown>"),
-            filter_def,
-            filter_def.tables,
-            filter_def.template_calls,
-            filter_def.poisoned,
-        )
-        for filter_def in filters
+    return ParsedProject(views, members, DiagnosticBag((*documents.diagnostics, *relationship_diagnostics)))
+
+
+def _parse_views(documents: RawDocuments) -> tuple[ParsedView, ...]:
+    """Record every named view node of every document, in document order."""
+    view_root = SEMANTIC_REGISTRY.artifacts["semantic_view"].root_key
+    assert view_root is not None
+    views: list[ParsedView] = []
+    for document in documents.documents:
+        for index, node in enumerate(document.tree.get(view_root) or []):
+            if not isinstance(node, dict) or not node.get("name"):
+                continue
+            views.append(_parsed_view(document, view_root, index, node))
+    return tuple(views)
+
+
+def _parsed_view(document: RawDocument, view_root: str, index: int, node: dict[str, Any]) -> ParsedView:
+    """Record one view node, poisoned when one of its `tables` entries is a malformed template."""
+    calls: list[TemplateCall] = []
+    malformed = False
+    for raw in node.get("tables") or []:
+        try:
+            calls.extend(scan_template_calls(str(raw)))
+        except TemplateSyntaxError:
+            malformed = True
+    return ParsedView(
+        name=str(node["name"]),
+        origin=_node_origin(document, view_root, index),
+        source_path=document.path,
+        source=MappingProxyType({str(key): value for key, value in node.items()}),
+        declared_tables=_safe_table_refs(node.get("tables")),
+        template_calls=tuple(calls),
+        poisoned=malformed,
     )
-    members.extend(
-        ParsedMember(
-            "custom_instruction",
-            instruction.name,
-            instruction.origin or Origin("<unknown>"),
-            instruction,
-            None,
-            (),
-            instruction.poisoned,
-        )
-        for instruction in instructions.values()
+
+
+def _authored_members(
+    metrics: tuple[MetricDef, ...],
+    filters: tuple[FilterDef, ...],
+    instructions: Mapping[str, InstructionDef],
+    verified_queries: tuple[VerifiedQueryDef, ...],
+) -> tuple[ParsedMember, ...]:
+    """Record the metrics, filters, custom instructions and verified queries, in that order.
+
+    A metric without a `tables:` key declares no tables (None): it attaches by the models
+    its expression refs. A custom instruction declares none either: views attach it by name.
+    """
+    return (
+        *(
+            _authored("metric", metric, metric.tables if metric.has_tables_key else None, metric.template_calls)
+            for metric in metrics
+        ),
+        *(_authored("filter", filter_def, filter_def.tables, filter_def.template_calls) for filter_def in filters),
+        *(_authored("custom_instruction", instruction, None, ()) for instruction in instructions.values()),
+        *(_authored("verified_query", query, query.tables, query.template_calls) for query in verified_queries),
     )
-    members.extend(
-        ParsedMember(
-            "verified_query",
-            query.name,
-            query.origin or Origin("<unknown>"),
-            query,
-            query.tables,
-            query.template_calls,
-            query.poisoned,
-        )
-        for query in verified_queries
+
+
+def _authored(
+    type_name: str,
+    record: MetricDef | FilterDef | InstructionDef | VerifiedQueryDef,
+    declared_tables: tuple[str, ...] | None,
+    template_calls: tuple[TemplateCall, ...],
+) -> ParsedMember:
+    return ParsedMember(
+        type_name,
+        record.name,
+        record.origin or Origin("<unknown>"),
+        record,
+        declared_tables,
+        template_calls,
+        record.poisoned,
     )
-    members.extend(
+
+
+def _relationship_members(records: tuple[tuple[Relationship, Origin], ...]) -> tuple[ParsedMember, ...]:
+    """Record each relationship, declaring its two tables, casefolded."""
+    return tuple(
         ParsedMember(
             "relationship",
             relationship.name,
@@ -115,8 +131,13 @@ def parse_semantic_project(
             relationship,
             (relationship.from_table.casefold(), relationship.to_table.casefold()),
         )
-        for relationship, origin in relationship_records
+        for relationship, origin in records
     )
+
+
+def _column_members(models: Mapping[str, DbtModel] | None) -> tuple[ParsedMember, ...]:
+    """Record each fact and dimension column of the dbt models, declaring its model's table."""
+    members: list[ParsedMember] = []
     for model in (models or {}).values():
         model_origin = Origin(
             model.patch_path or model.original_file_path or "<dbt-manifest>",
@@ -137,6 +158,4 @@ def parse_semantic_project(
                     (model.name.casefold(),),
                 )
             )
-    return ParsedProject(
-        tuple(views), tuple(members), DiagnosticBag((*documents.diagnostics, *relationship_diagnostics))
-    )
+    return tuple(members)

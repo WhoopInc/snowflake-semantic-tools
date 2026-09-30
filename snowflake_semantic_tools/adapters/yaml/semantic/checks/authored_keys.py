@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Iterator, Mapping
 from types import MappingProxyType
 from typing import Any
 
@@ -205,44 +205,60 @@ def _unread_key(document: RawDocument, path: NodePath, scope: str, field: str, s
 
 
 def _legacy_reference_diagnostics(documents: RawDocuments) -> tuple[Diagnostic, ...]:
-    diagnostics: list[Diagnostic] = []
+    """Report every legacy `table()` and `column()` global in every string of every document.
 
-    def walk(value: Any, file: str) -> None:
-        if isinstance(value, str):
-            try:
-                calls = scan_template_calls(value)
-            except TemplateSyntaxError:
-                return
-            for call in calls:
-                if call.function == "table" and len(call.args) == 1:
-                    diagnostics.append(
-                        D(
-                            "SST-REF034",
-                            file=file,
-                            line=call.line,
-                            col=call.col,
-                            model=call.args[0],
-                        )
-                    )
-                elif call.function == "column" and len(call.args) == 2:
-                    diagnostics.append(
-                        D(
-                            "SST-REF035",
-                            file=file,
-                            line=call.line,
-                            col=call.col,
-                            model=call.args[0],
-                            column=call.args[1],
-                        )
-                    )
-            return
-        if isinstance(value, list):
-            for item in value:
-                walk(item, file)
-        elif isinstance(value, Mapping):
-            for item in value.values():
-                walk(item, file)
+    Documents are read in order and each tree depth-first, so the calls come out in the order
+    they are written.
 
-    for document in documents.documents:
-        walk(document.tree, document.path)
-    return tuple(diagnostics)
+    Diagnostics:
+        SST-REF034: when a string calls `table()` with one argument.
+        SST-REF035: when a string calls `column()` with two arguments.
+    """
+    return tuple(
+        diagnostic for document in documents.documents for diagnostic in _legacy_calls(document.tree, document.path)
+    )
+
+
+def _legacy_calls(value: Any, file: str) -> Iterator[Diagnostic]:
+    """Walk one YAML value depth-first: a string's own calls, then list items and mapping values."""
+    if isinstance(value, str):
+        yield from _legacy_string_calls(value, file)
+    elif isinstance(value, list):
+        for item in value:
+            yield from _legacy_calls(item, file)
+    elif isinstance(value, Mapping):
+        for item in value.values():
+            yield from _legacy_calls(item, file)
+
+
+def _legacy_string_calls(text: str, file: str) -> Iterator[Diagnostic]:
+    """Report the legacy globals one string calls.
+
+    A malformed template reports nothing here: the check that reads its field reports it.
+
+    Diagnostics:
+        SST-REF034: when the string calls `table()` with one argument.
+        SST-REF035: when the string calls `column()` with two arguments.
+    """
+    try:
+        calls = scan_template_calls(text)
+    except TemplateSyntaxError:
+        return
+    for call in calls:
+        if call.function == "table" and len(call.args) == 1:
+            yield D(
+                "SST-REF034",
+                file=file,
+                line=call.line,
+                col=call.col,
+                model=call.args[0],
+            )
+        elif call.function == "column" and len(call.args) == 2:
+            yield D(
+                "SST-REF035",
+                file=file,
+                line=call.line,
+                col=call.col,
+                model=call.args[0],
+                column=call.args[1],
+            )

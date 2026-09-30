@@ -1,92 +1,37 @@
-"""Build one resolved `SemanticView` from its node and the members attached to it."""
+"""Build one resolved `SemanticView` from its node and the members attached to it.
+
+`_build_view` runs the build as phases, each taking what the earlier ones returned. The phases
+for the view's own keys -- tables, columns, variables, tags -- live here; the members attached to
+the view are built in `build_members`.
+"""
 
 from __future__ import annotations
 
-import re
 from collections.abc import Mapping
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, NoReturn
+from typing import Any, NoReturn, TypeVar
 
 from ....domain.model.artifact_key import artifact_key
-from ....domain.model.compiler import FILTER_EXPR, METRIC_EXPR, VQR_SQL, ResolveContext, resolve_scalar
-from ....domain.model.dbt import DbtCatalog, DbtModel, DbtTarget
-from ....domain.model.diagnostic import D, Origin
+from ....domain.model.dbt import DbtCatalog, DbtColumn, DbtModel, DbtTarget
+from ....domain.model.diagnostic import D
 from ....domain.model.project import ParsedMember
-from ....domain.model.reference import scan_template_calls, single_template_call
-from ....domain.model.semantic_view import (
-    Column,
-    ColumnKind,
-    Metric,
-    Relationship,
-    SemanticView,
-    SortKey,
-    Table,
-    Tag,
-    Variable,
-    VerifiedQuery,
-    Window,
-)
+from ....domain.model.reference import single_template_call
+from ....domain.model.semantic_view import Column, ColumnKind, Relationship, SemanticView, Table, Tag, Variable
 from ....domain.model.sql import string_literal
 from ...errors import ProjectError
 from ..fields import mapping
+from .build_members import (
+    _instruction_parts,
+    _metric_names,
+    _Resolver,
+    _view_filters,
+    _view_metrics,
+    _view_verified_queries,
+    _with_variable_names,
+)
 from .defs import FilterDef, InstructionDef, MetricDef, VerifiedQueryDef
 from .nodes import _as_str_tuple
-
-
-def _resolve_expression(
-    text: str,
-    *,
-    policy: Any,
-    origin: Origin,
-    catalog: DbtCatalog,
-    logical_by_model: Mapping[str, str],
-    metric_names: Mapping[str, str],
-    instruction_names: frozenset[str],
-    variables: Mapping[str, object],
-    field: str,
-) -> str:
-    context = ResolveContext(
-        catalog,
-        metric_names=frozenset(metric_names),
-        metric_values=metric_names,
-        instruction_names=instruction_names,
-        variables=variables,
-    )
-    resolved, diagnostics = resolve_scalar(
-        text,
-        policy,
-        origin,
-        context,
-        field=field,
-        ref_value=lambda call: logical_by_model.get(call.args[0].casefold(), call.raw),
-    )
-    if diagnostics:
-        raise ProjectError(
-            "; ".join(diagnostic.message for diagnostic in diagnostics),
-            diagnostics=tuple(diagnostics),
-        )
-    return resolved.text
-
-
-def _resolve_verified_query_sql(
-    query: VerifiedQueryDef,
-    logical_by_model: Mapping[str, str],
-    resolved_metric_names: Mapping[str, str],
-    config: dict[str, Any],
-    catalog: DbtCatalog,
-) -> str:
-    variables: dict[str, object] = mapping(config.get("vars"))
-    return _resolve_expression(
-        query.sql,
-        policy=VQR_SQL,
-        origin=query.origin or Origin("<verified-query>"),
-        catalog=catalog,
-        logical_by_model=logical_by_model,
-        metric_names=resolved_metric_names,
-        instruction_names=frozenset(),
-        variables=variables,
-        field="verified_query.sql",
-    )
 
 
 def _build_view(
@@ -99,300 +44,197 @@ def _build_view(
     attachment: Mapping[str, tuple[str, ...]],
     config: dict[str, Any],
 ) -> SemanticView:
-    name = str(node["name"])
-    view_key = artifact_key("semantic_view", name)
-    attached_members = tuple(member for member in members if view_key in attachment.get(member.key, ()))
-    metrics = tuple(
-        member.source
-        for member in attached_members
-        if member.type_name == "metric" and isinstance(member.source, MetricDef)
-    )
-    filters = tuple(
-        member.source
-        for member in attached_members
-        if member.type_name == "filter" and isinstance(member.source, FilterDef)
-    )
-    instructions = {
-        member.name.casefold(): member.source
-        for member in attached_members
-        if member.type_name == "custom_instruction" and isinstance(member.source, InstructionDef)
-    }
-    verified_queries = tuple(
-        member.source
-        for member in attached_members
-        if member.type_name == "verified_query" and isinstance(member.source, VerifiedQueryDef)
-    )
-    relationships = tuple(
-        member.source
-        for member in attached_members
-        if member.type_name == "relationship" and isinstance(member.source, Relationship)
-    )
-    catalog = DbtCatalog("v12", None, None, tuple(models.values()))
-    project_variables: dict[str, object] = mapping(config.get("vars"))
+    """Build one view from its node and the members attached to it, one phase at a time.
 
+    The phases run in this order, and each raises `ProjectError` at the first problem it finds,
+    so the order decides which problem a broken view reports: select the attached members, set
+    up the context, then tables, columns, metric names, metrics and their windows, filters,
+    instructions, verified queries, variables, tags, and assemble. A phase reads only what the
+    earlier phases returned.
+
+    Raises:
+        ProjectError: A table, column, member, variable or tag does not resolve. Its diagnostics
+            name the problem; one without diagnostics is reported by its message.
+    """
+    name = str(node["name"])
+    selected = _select_members(artifact_key("semantic_view", name), members, attachment)
+    view = _View(name, path, models, DbtCatalog("v12", None, None, tuple(models.values())), mapping(config.get("vars")))
+    tables, logical_by_model = _view_tables(node, view)
+    columns = _view_columns(models, logical_by_model)
+    resolver = _member_resolver(view, logical_by_model, selected)
+    metrics = _view_metrics(selected.metrics, selected.relationships, resolver)
+    entity_filters, standalone_filters = _view_filters(selected.filters, resolver)
+    instructions = tuple(selected.instructions.values())
+    sql_parts, question_parts = _instruction_parts(instructions, standalone_filters, logical_by_model)
+    queries = _view_verified_queries(
+        selected.verified_queries, logical_by_model, resolver.metric_names, config, view.catalog
+    )
+    variables = _view_variables(node, view)
+    # Rewrites the resolved expressions, so it runs once the metrics and filters are built.
+    metrics, entity_filters = _with_variable_names(variables, metrics, entity_filters)
+    tags = _view_tags(node, view, config, target)
+    max_staleness = node.get("max_staleness")
+    source_path, source_files = _source_files(path, project_dir, selected.attached, models, logical_by_model)
+    return SemanticView(
+        fqn=target.fqn(name),
+        tables=tables,
+        relationships=selected.relationships,
+        variables=variables,
+        columns=tuple(columns + entity_filters),
+        metrics=tuple(metrics),
+        comment=(node.get("description") or "").strip() or None,
+        ai_sql_generation="\n\n".join(sql_parts) or None,
+        ai_question_categorization="\n\n".join(question_parts) or None,
+        custom_instruction_names=tuple(item.name for item in instructions),
+        verified_queries=queries,
+        max_staleness=f"{max_staleness} seconds" if max_staleness is not None else None,
+        tags=tags,
+        source_path=source_path,
+        source_files=source_files,
+        referenced_models=tuple(sorted(logical_by_model)),
+    )
+
+
+@dataclass(frozen=True, slots=True)
+class _Members:
+    """The parsed members attached to one view, by type, each type in attachment order.
+
+    Attributes:
+        attached: Every attached member, whatever its type: their files are sources of the view.
+        instructions: The custom instructions, by casefolded name.
+    """
+
+    attached: tuple[ParsedMember, ...]
+    metrics: tuple[MetricDef, ...]
+    filters: tuple[FilterDef, ...]
+    instructions: Mapping[str, InstructionDef]
+    verified_queries: tuple[VerifiedQueryDef, ...]
+    relationships: tuple[Relationship, ...]
+
+
+def _select_members(
+    view_key: str, members: tuple[ParsedMember, ...], attachment: Mapping[str, tuple[str, ...]]
+) -> _Members:
+    """Select the parsed members attached to the view, and split them by type."""
+    attached = tuple(member for member in members if view_key in attachment.get(member.key, ()))
+    return _Members(
+        attached=attached,
+        metrics=_sources(attached, "metric", MetricDef),
+        filters=_sources(attached, "filter", FilterDef),
+        instructions={
+            member.name.casefold(): member.source
+            for member in attached
+            if member.type_name == "custom_instruction" and isinstance(member.source, InstructionDef)
+        },
+        verified_queries=_sources(attached, "verified_query", VerifiedQueryDef),
+        relationships=_sources(attached, "relationship", Relationship),
+    )
+
+
+_Source = TypeVar("_Source")
+
+
+def _sources(attached: tuple[ParsedMember, ...], type_name: str, kind: type[_Source]) -> tuple[_Source, ...]:
+    """Return the records of the attached members of one type, in attachment order."""
+    return tuple(
+        member.source for member in attached if member.type_name == type_name and isinstance(member.source, kind)
+    )
+
+
+@dataclass(frozen=True, slots=True)
+class _View:
+    """The view being built, and the project inputs every phase of its build reads.
+
+    Attributes:
+        models: The target's dbt models, by casefolded name.
+        catalog: The same models, as the expression resolver reads them.
+        variables: The project's `vars:`.
+    """
+
+    name: str
+    path: Path
+    models: Mapping[str, DbtModel]
+    catalog: DbtCatalog
+    variables: Mapping[str, object]
+
+    @property
+    def key(self) -> str:
+        """The view's artifact key, which the view's build diagnostics name."""
+        return artifact_key("semantic_view", self.name)
+
+
+def _member_resolver(view: _View, logical_by_model: dict[str, str], selected: _Members) -> _Resolver:
+    """Name the view's metrics, and set up how its members' expressions resolve with those names."""
+    return _Resolver(
+        view_key=view.key,
+        path=view.path,
+        catalog=view.catalog,
+        logical_by_model=logical_by_model,
+        metric_names=_metric_names(selected.metrics, logical_by_model),
+        instruction_names=frozenset(selected.instructions),
+        variables=view.variables,
+    )
+
+
+def _view_tables(node: Mapping[str, Any], view: _View) -> tuple[tuple[Table, ...], dict[str, str]]:
+    """Build the view's tables, and each table's logical name by lower-cased model name.
+
+    Raises:
+        ProjectError: A table entry is not a one-argument `ref()`, names no model or one an
+            earlier entry names, or has a malformed `table_config` entry.
+    """
     # Tables keep DECLARATION order -- that is authored information and the golden
     # preserves it. Members are sorted later, by the renderer.
     tables: list[Table] = []
     logical_by_model: dict[str, str] = {}
     table_config = node.get("table_config") or {}
     for raw in node.get("tables") or []:
-        call = single_template_call(str(raw), "ref")
-        if call is None or len(call.args) != 1:
-            diagnostic = D("SST-REF044", artifact=artifact_key("semantic_view", name), found=repr(raw))
-            raise ProjectError(diagnostic.message, diagnostics=(diagnostic,))
-        model_name = call.args[0]
-        model = models.get(model_name.lower())
-        if model is None:
-            diagnostic = D("SST-REF001", model=model_name, subject=artifact_key("semantic_view", name))
-            raise ProjectError(diagnostic.message, diagnostics=(diagnostic,))
-        logical = model_name.upper()
-        if logical in logical_by_model.values():
-            # Role-playing tables are not supported in 1.0, so one physical table
-            # cannot appear twice under two logical names.
-            diagnostic = D("SST-PRS006", type="table", name=model_name)
-            raise ProjectError(diagnostic.message, diagnostics=(diagnostic,))
-        logical_by_model[model_name.lower()] = logical
-        per_table = table_config.get(model_name) if isinstance(table_config, dict) else None
-        table_synonyms = _as_str_tuple(per_table.get("synonyms")) if isinstance(per_table, dict) else ()
-        distinct_range = _distinct_range(per_table, path=path, view_name=name, table_name=model_name)
-        tables.append(
-            Table(
-                logical_name=logical,
-                fqn=model.relation_name,
-                primary_key=tuple(c.upper() for c in model.primary_key),
-                unique_keys=tuple(tuple(column.upper() for column in key) for key in model.unique_keys),
-                synonyms=table_synonyms,
-                distinct_range=distinct_range,
-            )
-        )
+        model_key, table = _view_table(raw, view, table_config, logical_by_model)
+        logical_by_model[model_key] = table.logical_name
+        tables.append(table)
+    return tuple(tables), logical_by_model
 
-    columns: list[Column] = []
-    for model_key, logical in logical_by_model.items():
-        for col in models[model_key].columns:
-            if col.column_type is None or col.excluded:
-                continue
-            try:
-                kind = ColumnKind(col.column_type)
-            except ValueError as exc:
-                role = D(
-                    "SST-DBT003",
-                    subject=f"dbt_model:{models[model_key].name}",
-                    model=f"{models[model_key].name}.{col.name}",
-                    found=col.column_type,
-                )
-                raise ProjectError(role.message, diagnostics=(role,)) from exc
-            if kind is ColumnKind.TIME_DIMENSION:
-                kind = ColumnKind.DIMENSION
-            columns.append(
-                Column(
-                    table=logical,
-                    name=col.name.upper(),
-                    kind=kind,
-                    expr=f"{logical}.{col.name.upper()}",
-                    comment=col.description,
-                    synonyms=col.synonyms,
-                    sample_values=col.sample_values,
-                    is_enum=col.is_enum,
-                )
-            )
 
-    attached: list[Metric] = []
-    resolved_metric_names: dict[str, str] = {}
-    for metric in metrics:
-        metric_name = metric.name.casefold()
-        referenced = metric.tables or metric.referenced_models
-        owner = logical_by_model[referenced[0]] if len(referenced) == 1 else None
-        resolved_metric_names[metric_name] = metric.name.upper() if owner is None else f"{owner}.{metric.name.upper()}"
+def _view_table(
+    raw: object, view: _View, table_config: object, logical_by_model: Mapping[str, str]
+) -> tuple[str, Table]:
+    """Build one table entry against the dbt models and the entries declared before it.
 
-    for metric in metrics:
-        referenced = metric.tables or metric.referenced_models
-        owner = logical_by_model[referenced[0]] if len(referenced) == 1 else None
-        outside = next(
-            (entry for entry in metric.non_additive if entry.table and entry.table.casefold() not in logical_by_model),
-            None,
-        )
-        if outside is not None:
-            diagnostic = D(
-                "SST-VAL118",
-                metric=metric.name,
-                value=f"{outside.table}.{outside.dimension}",
-                subject=artifact_key("semantic_view", name),
-            )
-            raise ProjectError(diagnostic.message, diagnostics=(diagnostic,))
-        expr = _resolve_expression(
-            metric.expr,
-            policy=METRIC_EXPR,
-            origin=metric.origin or Origin(str(path)),
-            catalog=catalog,
-            logical_by_model=logical_by_model,
-            metric_names=resolved_metric_names,
-            instruction_names=frozenset(instructions),
-            variables=project_variables,
-            field="metric.expression",
-        )
-        window: Window | None = None
-        if metric.window is not None and owner is not None:
-            _require_reachable(metric, owner, relationships, logical_by_model, artifact_key("semantic_view", name))
+    Diagnostics:
+        SST-REF044: when the entry is not one `{{ ref('<model>') }}` call.
+        SST-REF001: when the entry names no dbt model.
+        SST-PRS006: when the entry names a model an earlier entry names.
 
-            def resolve(text: str, metric: MetricDef = metric) -> str:
-                return _resolve_expression(
-                    text,
-                    policy=METRIC_EXPR,
-                    origin=metric.origin or Origin(str(path)),
-                    catalog=catalog,
-                    logical_by_model=logical_by_model,
-                    metric_names=resolved_metric_names,
-                    instruction_names=frozenset(instructions),
-                    variables=project_variables,
-                    field="metric.window",
-                )
-
-            window = Window(
-                partition_by=tuple(resolve(text) for text in metric.window.partition_by),
-                partition_excluding=tuple(resolve(text) for text in metric.window.partition_excluding),
-                order_by=tuple(
-                    SortKey(resolve(entry.ref), entry.descending, entry.nulls_first) for entry in metric.window.order_by
-                ),
-                frame=metric.window.frame,
-            )
-        attached.append(
-            Metric(
-                name=metric.name.upper(),
-                expr=expr,
-                table=owner,
-                comment=metric.description,
-                synonyms=metric.synonyms,
-                using_relationships=metric.using_relationships,
-                non_additive_by=tuple(entry.key for entry in metric.non_additive),
-                access_modifier=metric.access_modifier,
-                window=window,
-            )
-        )
-
-    entity_filters: list[Column] = []
-    standalone_filters: list[FilterDef] = []
-    for filter_def in filters:
-        if not filter_def.entity_level:
-            standalone_filters.append(filter_def)
-            continue
-        referenced = filter_def.tables or tuple(
-            call.args[0] for call in scan_template_calls(filter_def.expr) if call.function == "ref" and call.args
-        )
-        if len(referenced) != 1:
-            raise ProjectError(f"filter {filter_def.name!r} must resolve to exactly one table")
-        model_name = referenced[0].casefold()
-        expr = _resolve_expression(
-            filter_def.expr,
-            policy=FILTER_EXPR,
-            origin=filter_def.origin or Origin(str(path)),
-            catalog=catalog,
-            logical_by_model=logical_by_model,
-            metric_names=resolved_metric_names,
-            instruction_names=frozenset(instructions),
-            variables=project_variables,
-            field="filter.expression",
-        )
-        entity_filters.append(
-            Column(
-                table=logical_by_model[model_name],
-                name=filter_def.name.upper(),
-                kind=ColumnKind.FILTER,
-                expr=expr,
-                comment=filter_def.description,
-            )
-        )
-
-    attached_relationships = relationships
-
-    view_instructions = list(instructions.values())
-    sql_instruction_parts = [item.ai_sql_generation for item in view_instructions if item.ai_sql_generation]
-    sql_instruction_parts.extend(_standalone_filter_instruction(item, logical_by_model) for item in standalone_filters)
-    question_parts = [item.ai_question_categorization for item in view_instructions if item.ai_question_categorization]
-
-    attached_queries = tuple(
-        VerifiedQuery(
-            name=query.name.upper(),
-            question=query.question,
-            sql=_resolve_verified_query_sql(query, logical_by_model, resolved_metric_names, config, catalog),
-            verified_at=query.verified_at,
-            verified_by=query.verified_by,
-            onboarding_question=query.onboarding_question,
-        )
-        for query in verified_queries
-    )
-
-    variables = tuple(_variable(value, path=path, view_name=name) for value in node.get("variables") or [])
-    for variable in variables:
-        attached = [_replace_metric_variable_name(metric, variable.name) for metric in attached]
-        entity_filters = [
-            _replace_column_variable_name(entity_filter, variable.name) for entity_filter in entity_filters
-        ]
-    raw_tags = node.get("tags")
-    if raw_tags is not None and not isinstance(raw_tags, list):
-        diagnostic = D("SST-PRS027", artifact=artifact_key("semantic_view", name), found=type(raw_tags).__name__)
+    Raises:
+        ProjectError: For each diagnostic above, and when the table's `table_config` entry has
+            malformed synonyms or `distinct_range`.
+    """
+    call = single_template_call(str(raw), "ref")
+    if call is None or len(call.args) != 1:
+        diagnostic = D("SST-REF044", artifact=view.key, found=repr(raw))
         raise ProjectError(diagnostic.message, diagnostics=(diagnostic,))
-    tags = tuple(_tag(value, config=config, target=target, path=path, view_name=name) for value in raw_tags or [])
-    max_staleness = node.get("max_staleness")
-
-    source_path = path.resolve().relative_to(project_dir.resolve()).as_posix()
-    source_files = {source_path}
-    source_files.update(member.origin.file for member in attached_members)
-    for model_key in logical_by_model:
-        model = models[model_key]
-        model_path = model.patch_path or model.original_file_path
-        if model_path:
-            source_files.add(model_path)
-    return SemanticView(
-        fqn=target.fqn(name),
-        tables=tuple(tables),
-        relationships=attached_relationships,
-        variables=variables,
-        columns=tuple(columns + entity_filters),
-        metrics=tuple(attached),
-        comment=(node.get("description") or "").strip() or None,
-        ai_sql_generation="\n\n".join(sql_instruction_parts) or None,
-        ai_question_categorization="\n\n".join(question_parts) or None,
-        custom_instruction_names=tuple(item.name for item in view_instructions),
-        verified_queries=attached_queries,
-        max_staleness=f"{max_staleness} seconds" if max_staleness is not None else None,
-        tags=tags,
-        source_path=source_path,
-        source_files=tuple(sorted(source_files)),
-        referenced_models=tuple(sorted(logical_by_model)),
+    model_name = call.args[0]
+    model = view.models.get(model_name.lower())
+    if model is None:
+        diagnostic = D("SST-REF001", model=model_name, subject=view.key)
+        raise ProjectError(diagnostic.message, diagnostics=(diagnostic,))
+    logical = model_name.upper()
+    if logical in logical_by_model.values():
+        # Role-playing tables are not supported in 1.0, so one physical table
+        # cannot appear twice under two logical names.
+        diagnostic = D("SST-PRS006", type="table", name=model_name)
+        raise ProjectError(diagnostic.message, diagnostics=(diagnostic,))
+    per_table = table_config.get(model_name) if isinstance(table_config, dict) else None
+    table_synonyms = _as_str_tuple(per_table.get("synonyms")) if isinstance(per_table, dict) else ()
+    distinct_range = _distinct_range(per_table, path=view.path, view_name=view.name, table_name=model_name)
+    return model_name.lower(), Table(
+        logical_name=logical,
+        fqn=model.relation_name,
+        primary_key=tuple(c.upper() for c in model.primary_key),
+        unique_keys=tuple(tuple(column.upper() for column in key) for key in model.unique_keys),
+        synonyms=table_synonyms,
+        distinct_range=distinct_range,
     )
-
-
-def _require_reachable(
-    metric: MetricDef,
-    owner: str,
-    relationships: tuple[Relationship, ...],
-    logical_by_model: Mapping[str, str],
-    subject: str,
-) -> None:
-    """A window's dimensions must be ones the metric's table reaches through the view's relationships."""
-    reached = {owner}
-    frontier = [owner]
-    while frontier:
-        table = frontier.pop()
-        for relationship in relationships:
-            if relationship.from_table == table and relationship.to_table not in reached:
-                reached.add(relationship.to_table)
-                frontier.append(relationship.to_table)
-    assert metric.window is not None
-    for field, text in metric.window.references():
-        call = single_template_call(text, "ref")
-        if call is None or len(call.args) != 2:
-            continue
-        if logical_by_model.get(call.args[0].casefold()) not in reached:
-            diagnostic = D(
-                "SST-VAL125",
-                metric=metric.name,
-                field=field,
-                value=text,
-                expected=f"a dimension {owner} reaches in this view",
-                subject=subject,
-            )
-            raise ProjectError(diagnostic.message, diagnostics=(diagnostic,))
 
 
 def _distinct_range(
@@ -410,6 +252,65 @@ def _distinct_range(
     return str(value["start"]).upper(), str(value["end"]).upper()
 
 
+def _view_columns(models: Mapping[str, DbtModel], logical_by_model: Mapping[str, str]) -> list[Column]:
+    """Build the facts and dimensions of each table in turn, leaving out unset and excluded columns.
+
+    Raises:
+        ProjectError: A column's role is not a known column kind (SST-DBT003).
+    """
+    columns: list[Column] = []
+    for model_key, logical in logical_by_model.items():
+        model = models[model_key]
+        columns.extend(
+            _view_column(model, column, logical)
+            for column in model.columns
+            if column.column_type is not None and not column.excluded
+        )
+    return columns
+
+
+def _view_column(model: DbtModel, column: DbtColumn, logical: str) -> Column:
+    """Build one fact or dimension from its dbt column; a time dimension renders as a dimension.
+
+    Diagnostics:
+        SST-DBT003: when the column's role is not a known column kind.
+
+    Raises:
+        ProjectError: The column's role is not a known column kind.
+    """
+    try:
+        kind = ColumnKind(column.column_type)
+    except ValueError as exc:
+        role = D(
+            "SST-DBT003",
+            subject=f"dbt_model:{model.name}",
+            model=f"{model.name}.{column.name}",
+            found=column.column_type,
+        )
+        raise ProjectError(role.message, diagnostics=(role,)) from exc
+    if kind is ColumnKind.TIME_DIMENSION:
+        kind = ColumnKind.DIMENSION
+    return Column(
+        table=logical,
+        name=column.name.upper(),
+        kind=kind,
+        expr=f"{logical}.{column.name.upper()}",
+        comment=column.description,
+        synonyms=column.synonyms,
+        sample_values=column.sample_values,
+        is_enum=column.is_enum,
+    )
+
+
+def _view_variables(node: Mapping[str, Any], view: _View) -> tuple[Variable, ...]:
+    """Build the view's variables in declaration order.
+
+    Raises:
+        ProjectError: A variable is malformed, or its default does not fit its type.
+    """
+    return tuple(_variable(value, path=view.path, view_name=view.name) for value in node.get("variables") or [])
+
+
 def _sql_value(value: object) -> str:
     """The SQL literal for a YAML scalar: a boolean or number as written, anything else a string."""
     if isinstance(value, bool):
@@ -420,6 +321,12 @@ def _sql_value(value: object) -> str:
 
 
 def _variable(value: object, *, path: Path, view_name: str) -> Variable:
+    """Build one view variable, its default rendered as the SQL literal of its type.
+
+    Raises:
+        ProjectError: The variable lacks a name, a type or a default, or a BOOLEAN, NUMBER or
+            string variable's default is not of that type.
+    """
     if (
         not isinstance(value, dict)
         or not value.get("name")
@@ -444,7 +351,35 @@ def _variable(value: object, *, path: Path, view_name: str) -> Variable:
     )
 
 
+def _view_tags(node: Mapping[str, Any], view: _View, config: dict[str, Any], target: DbtTarget) -> tuple[Tag, ...]:
+    """Build the view's tags in declaration order.
+
+    Diagnostics:
+        SST-PRS027: when `tags:` is not a list.
+
+    Raises:
+        ProjectError: `tags:` is not a list, or a tag does not resolve (SST-REF040).
+    """
+    raw_tags = node.get("tags")
+    if raw_tags is not None and not isinstance(raw_tags, list):
+        diagnostic = D("SST-PRS027", artifact=view.key, found=type(raw_tags).__name__)
+        raise ProjectError(diagnostic.message, diagnostics=(diagnostic,))
+    return tuple(
+        _tag(value, config=config, target=target, path=view.path, view_name=view.name) for value in raw_tags or []
+    )
+
+
 def _tag(value: object, *, config: dict[str, Any], target: DbtTarget, path: Path, view_name: str) -> Tag:
+    """Build one tag: its name a `tag()` call naming a tag under `tags:` in `sst_config.yml`.
+
+    Diagnostics:
+        SST-REF040: when the entry lacks a name or a value, its name is not one `tag()` call, or
+            the call names no declared tag.
+
+    Raises:
+        ProjectError: For the diagnostic above.
+    """
+
     def invalid(detail: str) -> NoReturn:
         diagnostic = D("SST-REF040", artifact=artifact_key("semantic_view", view_name), detail=detail)
         raise ProjectError(diagnostic.message, diagnostics=(diagnostic,))
@@ -466,39 +401,23 @@ def _tag(value: object, *, config: dict[str, Any], target: DbtTarget, path: Path
     return Tag(name=f"{prefix}.{tag_name.upper()}", value=str(value["value"]))
 
 
-def _standalone_filter_instruction(filter_def: FilterDef, logical_by_model: dict[str, str]) -> str:
-    if len(filter_def.tables) != 1:
-        raise ProjectError(f"standalone filter {filter_def.name!r} must attach to exactly one table")
-    table = logical_by_model[filter_def.tables[0]]
-    description = filter_def.description or ""
-    return _wrap_text(f"For {table}, {filter_def.name} is {filter_def.expr}. {description}".strip())
+def _source_files(
+    path: Path,
+    project_dir: Path,
+    attached: tuple[ParsedMember, ...],
+    models: Mapping[str, DbtModel],
+    logical_by_model: Mapping[str, str],
+) -> tuple[str, tuple[str, ...]]:
+    """Return the view file's project-relative path, and every file the view is built from, sorted.
 
-
-def _replace_metric_variable_name(metric: Metric, variable_name: str) -> Metric:
-    from dataclasses import replace
-
-    expr = re.sub(
-        rf"\b{re.escape(variable_name)}\b",
-        variable_name.upper(),
-        metric.expr,
-        flags=re.IGNORECASE,
-    )
-    return replace(metric, expr=expr)
-
-
-def _replace_column_variable_name(column: Column, variable_name: str) -> Column:
-    from dataclasses import replace
-
-    expr = re.sub(
-        rf"\b{re.escape(variable_name)}\b",
-        variable_name.upper(),
-        column.expr,
-        flags=re.IGNORECASE,
-    )
-    return replace(column, expr=expr)
-
-
-def _wrap_text(text: str, width: int = 77) -> str:
-    import textwrap
-
-    return "\n".join(textwrap.wrap(text, width=width, break_long_words=False, break_on_hyphens=False))
+    Those are the view's own file, each attached member's, and each of its models' dbt files.
+    """
+    source_path = path.resolve().relative_to(project_dir.resolve()).as_posix()
+    source_files = {source_path}
+    source_files.update(member.origin.file for member in attached)
+    for model_key in logical_by_model:
+        model = models[model_key]
+        model_path = model.patch_path or model.original_file_path
+        if model_path:
+            source_files.add(model_path)
+    return source_path, tuple(sorted(source_files))

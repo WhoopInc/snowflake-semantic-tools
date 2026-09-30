@@ -22,8 +22,11 @@ models, and the caller passes both in. Every authored key the loader does not re
 reported (`checks.authored_keys.AUTHORED_KEYS`), so no setting is dropped silently.
 
 Modules, lowest first: `nodes` and `defs` (node iteration and the member records);
-`readers`, `relationships`, `target` and `checks/` (reading or checking one concern);
-`collect` (the parsed project); `build` (one view); `pipeline` (the whole load).
+`readers`, `relationships`, `target` and `checks/` (reading or checking one concern,
+with `checks/windows` beside `checks/metrics`); `collect` (the parsed project);
+`build` and `build_members` (one view); `poison` (which members and views are not
+built, as one frozen value); `phases` and `view_instructions` (the load's phases);
+`pipeline` (the whole load, phase by phase).
 """
 
 from .pipeline import SemanticInputs, load_semantic_views_result, read_semantic_inputs

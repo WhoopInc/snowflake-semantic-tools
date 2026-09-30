@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 from collections.abc import Mapping
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -238,126 +239,201 @@ def load_relationships(
 
     A malformed relationship is reported and left out rather than stopping the
     load, so one bad entry cannot hide every other diagnostic in the project.
+    Each is parsed, checked and built by `_read_relationship`. One with no name,
+    no list of conditions or a legacy global is left out without a word here:
+    SST-PRS107, SST-VAL201 and SST-REF034/SST-REF035 report those.
+
+    Diagnostics:
+        SST-REF045: when an endpoint is written as a `{{ ref() }}` call.
+        SST-PRS110: when a condition is not an equality, an ASOF comparison or a range.
+        SST-VAL204: when a condition's column is on a table other than its side's endpoint.
+        SST-REF001: when an endpoint names no dbt model.
+        SST-REF002: when a condition names a column its endpoint's model does not have.
     """
     root = project_dir / semantic_models_dir / "relationships"
     out: list[tuple[Relationship, Origin]] = []
     diagnostics: list[Diagnostic] = []
-    equality = re.compile(
-        r"^\s*\{\{\s*ref\(['\"]([^'\"]+)['\"],\s*['\"]([^'\"]+)['\"]\)\s*\}\}\s*=\s*"
-        r"\{\{\s*ref\(['\"]([^'\"]+)['\"],\s*['\"]([^'\"]+)['\"]\)\s*\}\}\s*$"
-    )
-    asof = re.compile(
-        r"^\s*\{\{\s*ref\(['\"]([^'\"]+)['\"],\s*['\"]([^'\"]+)['\"]\)\s*\}\}\s*>=\s*"
-        r"\{\{\s*ref\(['\"]([^'\"]+)['\"],\s*['\"]([^'\"]+)['\"]\)\s*\}\}\s*$"
-    )
-    range_condition = re.compile(
-        r"^\s*\{\{\s*ref\(['\"]([^'\"]+)['\"],\s*['\"]([^'\"]+)['\"]\)\s*\}\}\s+BETWEEN\s+"
-        r"\{\{\s*ref\(['\"]([^'\"]+)['\"],\s*['\"]([^'\"]+)['\"]\)\s*\}\}\s+AND\s+"
-        r"\{\{\s*ref\(['\"]([^'\"]+)['\"],\s*['\"]([^'\"]+)['\"]\)\s*\}\}\s*$",
-        re.IGNORECASE,
-    )
     for document, index, node in _load_nodes(documents, root, _member_root("relationship")):
-        if not node.get("name"):
-            continue
         raw_conditions = node.get("relationship_conditions")
-        if not isinstance(raw_conditions, list) or not raw_conditions:
+        if not node.get("name") or not isinstance(raw_conditions, list) or not raw_conditions:
             continue
         if any(_uses_legacy_globals(condition) for condition in raw_conditions):
             # SST-REF034/SST-REF035 report the legacy globals; parsing further
             # would only bury that diagnostic under a condition-shape error.
             continue
-        pairs: list[tuple[str, str]] = []
-        asof_index: int | None = None
-        range_bounds: tuple[str, str] | None = None
         origin = _node_origin(document, _member_root("relationship"), index)
-        subject = artifact_key("relationship", node["name"])
-        endpoint_problems = _endpoint_diagnostics(node, subject, origin)
-        if endpoint_problems:
-            diagnostics.extend(endpoint_problems)
-            continue
-        left_endpoint = str(node.get("left_table")).strip()
-        right_endpoint = str(node.get("right_table")).strip()
-        problem: Diagnostic | None = None
-        for condition in raw_conditions:
-            match = equality.fullmatch(str(condition))
-            if match is not None:
-                left_table, left_column, right_table, right_column = match.groups()
-            else:
-                match = asof.fullmatch(str(condition))
-                if match is not None:
-                    left_table, left_column, right_table, right_column = match.groups()
-                    asof_index = len(pairs)
-                else:
-                    range_match = range_condition.fullmatch(str(condition))
-                    if range_match is None or range_match.group(3).casefold() != range_match.group(5).casefold():
-                        problem = D("SST-PRS110", origin=origin, subject=subject, artifact=subject, value=condition)
-                        break
-                    (
-                        left_table,
-                        left_column,
-                        right_table,
-                        range_start,
-                        _range_table,
-                        range_end,
-                    ) = range_match.groups()
-                    right_column = range_start
-                    range_bounds = (range_start.upper(), range_end.upper())
-            endpoints = (left_endpoint, right_endpoint)
-            mismatch = next(
-                (
-                    (table, column, endpoint)
-                    for table, column, endpoint in (
-                        (left_table, left_column, endpoints[0]),
-                        (right_table, right_column, endpoints[1]),
-                    )
-                    if table.casefold() != endpoint.casefold()
-                ),
-                None,
-            )
-            if mismatch is not None:
-                table, column, endpoint = mismatch
-                problem = D(
-                    "SST-VAL204",
-                    origin=origin,
-                    subject=subject,
-                    relationship=node["name"],
-                    column=f"{table}.{column}",
-                    name=endpoint,
-                )
-                break
-            pairs.append((left_column.upper(), right_column.upper()))
-        if problem is None and models is not None:
-            for table_name, column_name in (
-                pair
-                for left_column, right_column in pairs
-                for pair in (
-                    (left_endpoint.casefold(), left_column),
-                    (right_endpoint.casefold(), right_column),
-                )
-            ):
-                model = models.get(table_name)
-                if model is None:
-                    problem = D("SST-REF001", origin=origin, subject=subject, model=table_name)
-                    break
-                if model.column(column_name) is None:
-                    problem = D("SST-REF002", origin=origin, subject=subject, model=table_name, column=column_name)
-                    break
-        if problem is not None:
-            diagnostics.append(problem)
-            continue
-        if pairs and len(pairs) == len(raw_conditions):
-            out.append(
-                (
-                    Relationship(
-                        name=str(node["name"]).upper(),
-                        from_table=left_endpoint.upper(),
-                        from_columns=tuple(left for left, _ in pairs),
-                        to_table=right_endpoint.upper(),
-                        to_columns=tuple(right for _, right in pairs),
-                        asof_index=asof_index,
-                        range_bounds=range_bounds,
-                    ),
-                    _node_origin(document, _member_root("relationship"), index),
-                )
-            )
+        read = _read_relationship(node, raw_conditions, origin, models)
+        if isinstance(read, Relationship):
+            out.append((read, origin))
+        else:
+            diagnostics.extend(read)
     return tuple(out), tuple(diagnostics)
+
+
+_REF = r"\{\{\s*ref\(['\"]([^'\"]+)['\"],\s*['\"]([^'\"]+)['\"]\)\s*\}\}"
+_EQUALITY = re.compile(rf"^\s*{_REF}\s*=\s*{_REF}\s*$")
+_ASOF = re.compile(rf"^\s*{_REF}\s*>=\s*{_REF}\s*$")
+_RANGE = re.compile(rf"^\s*{_REF}\s+BETWEEN\s+{_REF}\s+AND\s+{_REF}\s*$", re.IGNORECASE)
+
+
+@dataclass(frozen=True, slots=True)
+class _Condition:
+    """One relationship condition, parsed: the column each side names and the kind of join it makes."""
+
+    left_table: str
+    left_column: str
+    right_table: str
+    right_column: str
+    asof: bool = False
+    range_bounds: tuple[str, str] | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class _Conditions:
+    """A relationship's conditions, parsed: its column pairs, upper-cased, and its temporal modifiers."""
+
+    pairs: tuple[tuple[str, str], ...]
+    asof_index: int | None
+    range_bounds: tuple[str, str] | None
+
+
+def _read_relationship(
+    node: Mapping[str, Any],
+    raw_conditions: list[Any],
+    origin: Origin,
+    models: Mapping[str, DbtModel] | None,
+) -> Relationship | tuple[Diagnostic, ...]:
+    """Parse, check and build one relationship, or return why it is left out.
+
+    The steps run in order and each stops at its first problem: endpoints, then conditions in
+    order, then (when `models` is given) the columns each pair names.
+
+    Diagnostics:
+        SST-REF045: when an endpoint is written as a `{{ ref() }}` call.
+        SST-PRS110: when a condition is not an equality, an ASOF comparison or a range.
+        SST-VAL204: when a condition's column is on a table other than its side's endpoint.
+        SST-REF001: when an endpoint names no dbt model.
+        SST-REF002: when a condition names a column its endpoint's model does not have.
+    """
+    subject = artifact_key("relationship", node["name"])
+    endpoint_problems = _endpoint_diagnostics(node, subject, origin)
+    if endpoint_problems:
+        return endpoint_problems
+    endpoints = (str(node.get("left_table")).strip(), str(node.get("right_table")).strip())
+    conditions = _parse_conditions(raw_conditions, endpoints, node["name"], origin, subject)
+    if isinstance(conditions, Diagnostic):
+        return (conditions,)
+    problem = _column_problem(conditions.pairs, endpoints, models, origin, subject) if models is not None else None
+    if problem is not None:
+        return (problem,)
+    left_endpoint, right_endpoint = endpoints
+    return Relationship(
+        name=str(node["name"]).upper(),
+        from_table=left_endpoint.upper(),
+        from_columns=tuple(left for left, _ in conditions.pairs),
+        to_table=right_endpoint.upper(),
+        to_columns=tuple(right for _, right in conditions.pairs),
+        asof_index=conditions.asof_index,
+        range_bounds=conditions.range_bounds,
+    )
+
+
+def _parse_conditions(
+    raw_conditions: list[Any], endpoints: tuple[str, str], name: object, origin: Origin, subject: str
+) -> _Conditions | Diagnostic:
+    """Parse every condition in order, or return the first one that is malformed or misplaced.
+
+    The last ASOF condition sets the ASOF column and the last range sets the range bounds.
+
+    Diagnostics:
+        SST-PRS110: when a condition is not an equality, an ASOF comparison or a range.
+        SST-VAL204: when a condition's column is on a table other than its side's endpoint.
+    """
+    pairs: list[tuple[str, str]] = []
+    asof_index: int | None = None
+    range_bounds: tuple[str, str] | None = None
+    for condition in raw_conditions:
+        parsed = _parse_condition(condition)
+        if parsed is None:
+            return D("SST-PRS110", origin=origin, subject=subject, artifact=subject, value=condition)
+        mismatch = _endpoint_mismatch(parsed, endpoints)
+        if mismatch is not None:
+            table, column, endpoint = mismatch
+            return D(
+                "SST-VAL204",
+                origin=origin,
+                subject=subject,
+                relationship=name,
+                column=f"{table}.{column}",
+                name=endpoint,
+            )
+        if parsed.asof:
+            asof_index = len(pairs)
+        if parsed.range_bounds is not None:
+            range_bounds = parsed.range_bounds
+        pairs.append((parsed.left_column.upper(), parsed.right_column.upper()))
+    return _Conditions(tuple(pairs), asof_index, range_bounds)
+
+
+def _parse_condition(condition: object) -> _Condition | None:
+    """Parse one condition as an equality, an ASOF comparison or a range, trying them in that order.
+
+    A range whose two bounds are on different tables parses to None, like any other shape.
+    """
+    match = _EQUALITY.fullmatch(str(condition))
+    if match is not None:
+        left_table, left_column, right_table, right_column = match.groups()
+        return _Condition(left_table, left_column, right_table, right_column)
+    match = _ASOF.fullmatch(str(condition))
+    if match is not None:
+        left_table, left_column, right_table, right_column = match.groups()
+        return _Condition(left_table, left_column, right_table, right_column, asof=True)
+    match = _RANGE.fullmatch(str(condition))
+    if match is None or match.group(3).casefold() != match.group(5).casefold():
+        return None
+    left_table, left_column, right_table, range_start, _range_table, range_end = match.groups()
+    return _Condition(
+        left_table, left_column, right_table, range_start, range_bounds=(range_start.upper(), range_end.upper())
+    )
+
+
+def _endpoint_mismatch(condition: _Condition, endpoints: tuple[str, str]) -> tuple[str, str, str] | None:
+    """Return the first side, left then right, whose column is not on that side's endpoint."""
+    return next(
+        (
+            (table, column, endpoint)
+            for table, column, endpoint in (
+                (condition.left_table, condition.left_column, endpoints[0]),
+                (condition.right_table, condition.right_column, endpoints[1]),
+            )
+            if table.casefold() != endpoint.casefold()
+        ),
+        None,
+    )
+
+
+def _column_problem(
+    pairs: tuple[tuple[str, str], ...],
+    endpoints: tuple[str, str],
+    models: Mapping[str, DbtModel],
+    origin: Origin,
+    subject: str,
+) -> Diagnostic | None:
+    """Return the first endpoint model or pair column, pair by pair and left side first, that is missing.
+
+    Diagnostics:
+        SST-REF001: when an endpoint names no dbt model.
+        SST-REF002: when a pair names a column its endpoint's model does not have.
+    """
+    left_endpoint, right_endpoint = endpoints
+    for left_column, right_column in pairs:
+        for table_name, column_name in (
+            (left_endpoint.casefold(), left_column),
+            (right_endpoint.casefold(), right_column),
+        ):
+            model = models.get(table_name)
+            if model is None:
+                return D("SST-REF001", origin=origin, subject=subject, model=table_name)
+            if model.column(column_name) is None:
+                return D("SST-REF002", origin=origin, subject=subject, model=table_name, column=column_name)
+    return None
