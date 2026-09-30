@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from snowflake_semantic_tools.adapters.project import ProjectError
+from snowflake_semantic_tools.adapters.errors import ProjectError
 from snowflake_semantic_tools.adapters.yaml.migrate import filter_sites, semantic_files, write_file
 
 

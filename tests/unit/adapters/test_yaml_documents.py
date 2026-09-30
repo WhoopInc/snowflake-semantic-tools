@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 import yaml
 
-from snowflake_semantic_tools.adapters.project import ProjectError
+from snowflake_semantic_tools.adapters.errors import ProjectError
 from snowflake_semantic_tools.adapters.yaml.parse import parse_yaml_bytes, read_yaml_mapping
 
 TEMPLATE = "{{ ref('orders', 'amount') }}"

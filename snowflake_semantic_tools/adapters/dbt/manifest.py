@@ -9,7 +9,7 @@ from typing import Any
 
 from ...domain.model.dbt import DbtCatalog, DbtColumn, DbtModel
 from ...domain.model.diagnostic import D
-from ..project import ProjectError
+from ..errors import ProjectError
 
 SUPPORTED_SCHEMA = "https://schemas.getdbt.com/dbt/manifest/v12.json"
 
@@ -83,14 +83,19 @@ def _sst_meta(value: object, *, path: str) -> Mapping[str, Any]:
 
 
 def _column(name: str, value: object, *, node_path: str) -> DbtColumn:
+    """Project one column node; dbt's own `data_type` wins over `meta.sst.data_type`.
+
+    A `meta.sst.data_type` that disagrees with dbt's, compared without case or whitespace, is
+    kept as `declared_data_type` for the validator to report.
+    """
     path = f"{node_path}.columns.{name}"
     node = _mapping(value, path=path)
     meta = _sst_meta(node, path=path)
-    description = str(node.get("description") or "").strip() or None
-    native_type = str(node.get("data_type") or "").strip() or None
-    declared_type = str(meta.get("data_type") or "").strip() or None
+    description = _text(node.get("description"))
+    native_type = _text(node.get("data_type"))
+    declared_type = _text(meta.get("data_type"))
     data_type = native_type or declared_type
-    column_type = str(meta.get("column_type") or "").strip() or None
+    column_type = _text(meta.get("column_type"))
     # dbt's own data_type wins; a meta.sst.data_type that says otherwise is reported.
     disagrees = (
         native_type is not None and declared_type is not None and _type_key(native_type) != _type_key(declared_type)
@@ -113,6 +118,11 @@ def _type_key(data_type: str) -> str:
     return "".join(data_type.upper().split())
 
 
+def _text(value: object) -> str | None:
+    """Return a manifest field as stripped text, or None when it is falsy or only whitespace."""
+    return str(value or "").strip() or None
+
+
 def _relation_name(node: Mapping[str, Any], *, path: str) -> str:
     relation = str(node.get("relation_name") or "").strip()
     if not relation:
@@ -120,8 +130,77 @@ def _relation_name(node: Mapping[str, Any], *, path: str) -> str:
     return relation.upper()
 
 
+def _model(unique_id: object, raw_node: object) -> DbtModel | None:
+    """Project one manifest node, or return None for a node SST does not read.
+
+    Every node must be a mapping; only a model is read, and a model with neither a relation
+    nor SST metadata is left out.
+
+    Raises:
+        ProjectError: The node is not a mapping, or the model has no name or a malformed part.
+    """
+    path = f"nodes.{unique_id}"
+    node = _mapping(raw_node, path=path)
+    if node.get("resource_type") != "model":
+        return None
+    name = str(node.get("name") or "").strip()
+    if not name:
+        raise ProjectError(f"dbt manifest {path}.name is required")
+    meta = _sst_meta(node, path=path)
+    if not meta and not str(node.get("relation_name") or "").strip():
+        # An ephemeral model has no relation to query and, without SST
+        # metadata, nothing to validate; a view that names it gets SST-MEM003.
+        return None
+    return _build_model(unique_id, name, node, meta, path=path)
+
+
+def _build_model(
+    unique_id: object, name: str, node: Mapping[str, Any], meta: Mapping[str, Any], *, path: str
+) -> DbtModel:
+    """Read a model's columns, keys and relation, in that order, into its domain value.
+
+    The order decides which problem a malformed model reports: its first bad column, then its
+    keys, then a missing relation.
+
+    Raises:
+        ProjectError: A column or key has the wrong shape, or the model has no relation name.
+    """
+    raw_columns = _mapping(node.get("columns") or {}, path=f"{path}.columns")
+    columns = tuple(_column(str(column_name), value, node_path=path) for column_name, value in raw_columns.items())
+    primary_key, legacy_primary_key = _primary_key(meta.get("primary_key"), path=f"{path}.config.meta.sst.primary_key")
+    unique_keys, legacy_unique_keys = _unique_keys(meta.get("unique_keys"), path=f"{path}.config.meta.sst.unique_keys")
+    return DbtModel(
+        unique_id=str(unique_id),
+        name=name,
+        relation_name=_relation_name(node, path=path),
+        primary_key=primary_key,
+        unique_keys=unique_keys,
+        columns=columns,
+        original_file_path=_text(node.get("original_file_path")),
+        patch_path=_text(node.get("patch_path")),
+        forbidden_location_keys=tuple(key for key in ("database", "schema") if key in meta),
+        description=_text(node.get("description")),
+        legacy_key_fields=tuple(
+            field
+            for field, legacy in (("primary_key", legacy_primary_key), ("unique_keys", legacy_unique_keys))
+            if legacy
+        ),
+        unknown_meta_keys=tuple(sorted(str(key) for key in meta if key not in MODEL_META_KEYS)),
+    )
+
+
 def catalog_from_document(document: object) -> DbtCatalog:
-    """Project a decoded manifest document into immutable domain values."""
+    """Project a decoded manifest document into immutable domain values.
+
+    Nodes are read in sorted unique-id order, and the catalog keeps their models in that order.
+
+    Raises:
+        ProjectError: The schema version is not `SUPPORTED_SCHEMA`, or a part SST reads has the
+            wrong shape, such as a model without a name or a relation.
+
+    Diagnostics:
+        SST-PRT007: the manifest's `dbt_schema_version` is not `SUPPORTED_SCHEMA`; raised.
+    """
     root = _mapping(document, path="root")
     metadata = _mapping(root.get("metadata"), path="metadata")
     schema_version = str(metadata.get("dbt_schema_version") or "")
@@ -132,51 +211,14 @@ def catalog_from_document(document: object) -> DbtCatalog:
     nodes = _mapping(root.get("nodes"), path="nodes")
     models: list[DbtModel] = []
     for unique_id, raw_node in sorted(nodes.items()):
-        path = f"nodes.{unique_id}"
-        node = _mapping(raw_node, path=path)
-        if node.get("resource_type") != "model":
-            continue
-        name = str(node.get("name") or "").strip()
-        if not name:
-            raise ProjectError(f"dbt manifest {path}.name is required")
-        meta = _sst_meta(node, path=path)
-        if not meta and not str(node.get("relation_name") or "").strip():
-            # An ephemeral model has no relation to query and, without SST
-            # metadata, nothing to validate; a view that names it gets SST-MEM003.
-            continue
-        raw_columns = _mapping(node.get("columns") or {}, path=f"{path}.columns")
-        columns = tuple(_column(str(column_name), value, node_path=path) for column_name, value in raw_columns.items())
-        primary_key, legacy_primary_key = _primary_key(
-            meta.get("primary_key"), path=f"{path}.config.meta.sst.primary_key"
-        )
-        unique_keys, legacy_unique_keys = _unique_keys(
-            meta.get("unique_keys"), path=f"{path}.config.meta.sst.unique_keys"
-        )
-        models.append(
-            DbtModel(
-                unique_id=str(unique_id),
-                name=name,
-                relation_name=_relation_name(node, path=path),
-                primary_key=primary_key,
-                unique_keys=unique_keys,
-                columns=columns,
-                original_file_path=str(node.get("original_file_path") or "").strip() or None,
-                patch_path=str(node.get("patch_path") or "").strip() or None,
-                forbidden_location_keys=tuple(key for key in ("database", "schema") if key in meta),
-                description=str(node.get("description") or "").strip() or None,
-                legacy_key_fields=tuple(
-                    field
-                    for field, legacy in (("primary_key", legacy_primary_key), ("unique_keys", legacy_unique_keys))
-                    if legacy
-                ),
-                unknown_meta_keys=tuple(sorted(str(key) for key in meta if key not in MODEL_META_KEYS)),
-            )
-        )
+        model = _model(unique_id, raw_node)
+        if model is not None:
+            models.append(model)
 
     return DbtCatalog(
         schema_version=schema_version,
-        dbt_version=str(metadata.get("dbt_version") or "").strip() or None,
-        project_name=str(metadata.get("project_name") or "").strip() or None,
+        dbt_version=_text(metadata.get("dbt_version")),
+        project_name=_text(metadata.get("project_name")),
         models=tuple(models),
     )
 

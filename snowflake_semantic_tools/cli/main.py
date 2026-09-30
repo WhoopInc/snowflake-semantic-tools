@@ -20,19 +20,20 @@ import click
 
 from .._version import __version__ as VERSION
 from ..adapters.clock import SystemClock
-from ..adapters.config import load_project_config
 from ..adapters.dbt.manifest import load_manifest_catalog
+from ..adapters.dbt.profiles import ProfileTarget, load_profile_target
+from ..adapters.dbt.project import dbt_project_name as read_dbt_project_name
+from ..adapters.errors import ProjectError
 from ..adapters.fs.local import STATE_FILE_GLOB, ManifestFileStore, PlanFileStore, StateFileStore, state_file
-from ..adapters.profile import ProfileTarget, load_profile_target
-from ..adapters.project import ProjectError
+from ..adapters.project_source import YamlProjectSource
 from ..adapters.snowflake.connector import SnowflakeConnector
 from ..adapters.snowflake.eval_state import SnowflakeEvalStateStore
 from ..adapters.yaml.agents import load_agents
+from ..adapters.yaml.config import load_project_config, read_config_document
 from ..adapters.yaml.documents import discover_yaml, load_documents
 from ..adapters.yaml.migrate import filter_sites, semantic_files, write_file
 from ..adapters.yaml.parse import parse_yaml_bytes
 from ..adapters.yaml.profiles import load_profile_catalog
-from ..adapters.yaml.project_source import YamlProjectSource
 from ..adapters.yaml.skills import _published, load_skill_catalog
 from ..app.agent_compile import AgentCompileContext, CompileAgents, CompiledAgent, ExtensionPin, for_publication
 from ..app.apply import ApplyArtifacts
@@ -697,11 +698,7 @@ def _build_manifest(project_dir: Path, result: CompileResult, manifest_path: Pat
     dbt_project = project_dir / "dbt_project.yml"
     dbt_path = manifest_path or project_dir / "target" / "manifest.json"
     if dbt_project.is_file():
-        import yaml
-
-        value = yaml.safe_load(dbt_project.read_text(encoding="utf-8")) or {}
-        if isinstance(value, dict):
-            dbt_project_name = str(value.get("name") or "")
+        dbt_project_name = read_dbt_project_name(project_dir)
         catalog = load_manifest_catalog(dbt_path)
     else:
         catalog = DbtCatalog(schema_version="", dbt_version=None, project_name=None, models=())
@@ -728,13 +725,10 @@ def _build_manifest(project_dir: Path, result: CompileResult, manifest_path: Pat
         )
     except ValueError:
         recorded_dbt_path = str(dbt_path)
-    config_path = project_dir / "sst_config.yml"
     config_checksum = ""
     semantic_path = "semantic_models"
-    if config_path.is_file():
-        import yaml
-
-        config_value = yaml.safe_load(config_path.read_text(encoding="utf-8")) or {}
+    config_value = read_config_document(project_dir)
+    if config_value is not None:
         config_checksum = sha256(canonical_json(config_value)).hexdigest()
         if isinstance(config_value, dict) and isinstance(config_value.get("project"), dict):
             semantic_path = str(config_value["project"].get("semantic_models_dir") or semantic_path)
@@ -753,12 +747,9 @@ def _build_manifest(project_dir: Path, result: CompileResult, manifest_path: Pat
 
 
 def _validation_settings(project_dir: Path) -> tuple[bool, bool]:
-    config_path = project_dir / "sst_config.yml"
-    if not config_path.is_file():
+    config = read_config_document(project_dir)
+    if config is None:
         return False, True
-    import yaml
-
-    config = yaml.safe_load(config_path.read_text(encoding="utf-8")) or {}
     validation = config.get("validation") if isinstance(config, dict) else None
     if not isinstance(validation, dict):
         return False, True

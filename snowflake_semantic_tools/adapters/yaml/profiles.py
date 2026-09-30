@@ -23,7 +23,7 @@ from ...domain.model.profile import (
     SharedProfile,
 )
 from ...domain.model.skill import SkillFile
-from ..project import ProjectError
+from ..errors import ProjectError
 from .fields import checked_strings, checked_text, optional_int, project_relative, report_unknown_keys, unknown_keys
 from .parse import parse_yaml_bytes
 from .skills import _published

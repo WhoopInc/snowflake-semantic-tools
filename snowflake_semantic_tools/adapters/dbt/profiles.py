@@ -12,9 +12,9 @@ from typing import Any, NoReturn
 
 import yaml
 
-from ..domain.model.diagnostic import D, Diagnostic, Origin
-from ..domain.model.identifier import Identifier, QualifiedName, TargetIdentity
-from .project import ProjectError
+from ...domain.model.diagnostic import D, Diagnostic, Origin
+from ...domain.model.identifier import Identifier, QualifiedName, TargetIdentity
+from ..errors import ProjectError
 
 _ENV_VAR = re.compile(
     r"\{\{\s*env_var\(\s*['\"]([^'\"]+)['\"](?:\s*,\s*['\"]([^'\"]*)['\"])?\s*\)"
@@ -97,6 +97,12 @@ def _read_yaml(path: Path) -> dict[str, Any]:
 
 
 class ProfileTarget:
+    """One resolved dbt target: its connection arguments, identity, and state table.
+
+    An inline `private_key` is held undecoded and decoded only when `connection_params` is
+    read, so resolving a target for an offline compile needs no usable key.
+    """
+
     def __init__(
         self,
         *,
@@ -119,6 +125,11 @@ class ProfileTarget:
 
     @property
     def connection_params(self) -> dict[str, object]:
+        """Return a fresh copy of the connector arguments, with any inline key decoded to DER.
+
+        Raises:
+            ProjectError: The inline `private_key` cannot be read (SST-CFG050).
+        """
         params = dict(self._params)
         if self._inline_key is not None:
             value, passphrase = self._inline_key
@@ -198,6 +209,13 @@ def _refuse(code: str, target: str, **context: Any) -> NoReturn:
 
 
 def _checked(target: str, key: str, value: object) -> object:
+    """Return a whole-number or boolean field as its type, also read from text; others as given.
+
+    A YAML `true` is not a whole number.
+
+    Diagnostics:
+        SST-CFG049: a whole-number field is not one, or a boolean field is not true or false; raised.
+    """
     if key in _INTEGER_KEYS:
         if isinstance(value, int) and not isinstance(value, bool):
             return value
@@ -241,12 +259,43 @@ def _inline_private_key(target: str, value: object, passphrase: object) -> bytes
 def _connection_params(
     target: str, output: Mapping[str, object]
 ) -> tuple[dict[str, object], tuple[str, object] | None, tuple[Diagnostic, ...]]:
-    """dbt-snowflake profile fields, translated to the Snowflake connector's arguments.
+    """Translate a dbt-snowflake output's fields into the Snowflake connector's arguments.
 
-    An inline `private_key` is returned apart, with its passphrase, to be decoded
-    when a connection is opened.
+    A field that is absent, None or empty is not read. The steps run in a fixed order, so the
+    first problem found is the one raised: refused authentication, then each field in the
+    output's order, then the inline key.
+
+    Returns:
+        The connector arguments; an inline `private_key` with its passphrase, returned apart
+        to be decoded when a connection is opened, or None; a report per field SST ignores.
+
+    Diagnostics:
+        SST-CFG050: the output asks for a refresh-token exchange, sets two private keys, or sets
+            an inline key that is not a string; raised.
+        SST-CFG049: a whole-number or boolean field has another value; raised.
+        SST-CFG048: a field SST does not read; returned.
     """
     present = {key: value for key, value in output.items() if value not in (None, "")}
+    _refuse_unusable_auth(target, present)
+    params, diagnostics = _connector_arguments(target, present)
+    inline_key = _inline_key(target, present)
+    passphrase = present.get("private_key_passphrase")
+    if inline_key is None and passphrase is not None and "private_key_file" in params:
+        params.setdefault("private_key_file_pwd", _checked(target, "private_key_passphrase", passphrase))
+    # dbt reads `token` only for OAuth; imply it only when nothing else authenticates.
+    other = inline_key is not None or any(key in params for key in ("password", "private_key_file"))
+    if "token" in params and "authenticator" not in params and not other:
+        params["authenticator"] = "oauth"
+    return params, inline_key, diagnostics
+
+
+def _refuse_unusable_auth(target: str, present: Mapping[str, object]) -> None:
+    """Refuse authentication SST cannot use: a refresh-token exchange, or two private keys.
+
+    Diagnostics:
+        SST-CFG050: `oauth_client_id` or `oauth_client_secret` is set, an inline key and a key
+            file are both set, or `private_key_path` and `private_key_file` differ; raised.
+    """
     refresh = [key for key in ("oauth_client_id", "oauth_client_secret") if key in present]
     if refresh:
         _refuse(
@@ -259,6 +308,20 @@ def _connection_params(
     files = {str(present[key]) for key in ("private_key_path", "private_key_file") if key in present}
     if len(files) > 1:
         _refuse("SST-CFG050", target, detail="private_key_path and private_key_file name different files")
+
+
+def _connector_arguments(
+    target: str, present: Mapping[str, object]
+) -> tuple[dict[str, object], tuple[Diagnostic, ...]]:
+    """Pass each connection field through under the connector's name, checking its type.
+
+    A field SST neither passes through, reads apart, nor ignores as dbt-only is reported and
+    dropped.
+
+    Diagnostics:
+        SST-CFG049: a whole-number or boolean field has another value; raised.
+        SST-CFG048: a field SST does not read; returned.
+    """
     params: dict[str, object] = {}
     diagnostics: list[Diagnostic] = []
     for key, value in present.items():
@@ -272,23 +335,42 @@ def _connection_params(
             diagnostics.append(
                 D("SST-CFG048", origin=Origin("profiles.yml"), subject="config:profiles.yml", target=target, key=key)
             )
-    passphrase = present.get("private_key_passphrase")
-    inline_key: tuple[str, object] | None = None
-    if "private_key" in present:
-        key_value = present["private_key"]
-        if not isinstance(key_value, str):
-            _refuse("SST-CFG050", target, detail="private_key must be a PEM or base64-encoded DER key")
-        inline_key = (key_value, passphrase)
-    elif passphrase is not None and "private_key_file" in params:
-        params.setdefault("private_key_file_pwd", _checked(target, "private_key_passphrase", passphrase))
-    # dbt reads `token` only for OAuth; imply it only when nothing else authenticates.
-    other = inline_key is not None or any(key in params for key in ("password", "private_key_file"))
-    if "token" in params and "authenticator" not in params and not other:
-        params["authenticator"] = "oauth"
-    return params, inline_key, tuple(diagnostics)
+    return params, tuple(diagnostics)
+
+
+def _inline_key(target: str, present: Mapping[str, object]) -> tuple[str, object] | None:
+    """Return an inline `private_key`, undecoded, with its passphrase; None when there is none.
+
+    Diagnostics:
+        SST-CFG050: `private_key` is not a string; raised.
+    """
+    if "private_key" not in present:
+        return None
+    key_value = present["private_key"]
+    if not isinstance(key_value, str):
+        _refuse("SST-CFG050", target, detail="private_key must be a PEM or base64-encoded DER key")
+    return (key_value, present.get("private_key_passphrase"))
 
 
 def load_profile_target(project_dir: Path, target_name: str | None = None) -> ProfileTarget:
+    """Resolve one profiles.yml target into its connection arguments, identity, and state table.
+
+    `target_name` None selects the profile's default target. The state table is `SST_STATE` in
+    the target's database and schema unless `state:` in `sst_config.yml` overrides a part.
+
+    Raises:
+        OSError: profiles.yml cannot be read.
+        yaml.YAMLError: profiles.yml, dbt_project.yml or sst_config.yml is not valid YAML.
+        ValueError: The profile cannot be resolved, a required environment variable is unset,
+            or the target's database, schema or state table is missing or not a valid name.
+        ProjectError: The target is absent or holds a value SST cannot use.
+
+    Diagnostics:
+        SST-CFG010: the profile has no such target; raised.
+        SST-CFG049: a field holds a template other than env_var(), or a value of the wrong type; raised.
+        SST-CFG050: the target's authentication cannot be used; raised.
+        SST-CFG048: a field SST does not read; carried on the target.
+    """
     profile_name, selected, resolved = profile_output(project_dir, target_name)
     database = resolved.get("database")
     schema = resolved.get("schema")
@@ -307,6 +389,24 @@ def load_profile_target(project_dir: Path, target_name: str | None = None) -> Pr
         str(resolved["role"]) if resolved.get("role") else None,
         str(resolved["warehouse"]) if resolved.get("warehouse") else None,
     )
+    state_table = _state_table(project_dir, database, schema)
+    return ProfileTarget(
+        profile_name=profile_name,
+        target_name=selected,
+        connection_params=params,
+        identity=identity,
+        state_table=state_table,
+        diagnostics=diagnostics,
+        inline_key=inline_key,
+    )
+
+
+def _state_table(project_dir: Path, database: str, schema: str) -> QualifiedName:
+    """Locate the state table: `SST_STATE` in the target's database and schema by default.
+
+    `state:` in `sst_config.yml` overrides each part: `+table` with `env_var()` rendered, and
+    `+database` and `+schema` with `{{ target.database }}` and `{{ target.schema }}` replaced.
+    """
     config_path = project_dir / "sst_config.yml"
     config = _read_yaml(config_path) if config_path.is_file() else {}
     state_config = config.get("state")
@@ -323,13 +423,4 @@ def load_profile_target(project_dir: Path, target_name: str | None = None) -> Pr
             state_database = str(raw_database).replace("{{ target.database }}", database)
         if raw_schema:
             state_schema = str(raw_schema).replace("{{ target.schema }}", schema)
-    state_table = QualifiedName.from_parts(state_database, state_schema, state_name)
-    return ProfileTarget(
-        profile_name=profile_name,
-        target_name=selected,
-        connection_params=params,
-        identity=identity,
-        state_table=state_table,
-        diagnostics=diagnostics,
-        inline_key=inline_key,
-    )
+    return QualifiedName.from_parts(state_database, state_schema, state_name)

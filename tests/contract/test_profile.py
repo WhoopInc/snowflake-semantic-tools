@@ -5,8 +5,8 @@ from pathlib import Path
 
 import pytest
 
-from snowflake_semantic_tools.adapters.profile import load_profile_target
-from snowflake_semantic_tools.adapters.project import ProjectError
+from snowflake_semantic_tools.adapters.dbt.profiles import load_profile_target
+from snowflake_semantic_tools.adapters.errors import ProjectError
 
 
 def test_profile_target_resolves_env_and_fixed_state_location(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -176,3 +176,18 @@ def test_dbt_filters_secrets_with_braces_and_token_precedence(tmp_path: Path, mo
     assert params["password"] == "hunter{{2"
     # With a password present, a token does not switch the login to OAuth.
     assert "authenticator" not in params and target.authentication == "password"
+
+
+def test_passphrase_precedence_unread_fields_and_refusal_order(tmp_path: Path) -> None:
+    explicit = load_profile_target(
+        target_with(tmp_path, "private_key_file: /k.p8\nprivate_key_file_pwd: first\nprivate_key_passphrase: second")
+    )
+    assert explicit.connection_params["private_key_file_pwd"] == "first"
+    # A passphrase with no key to open is dropped.
+    dropped = load_profile_target(target_with(tmp_path, "private_key_passphrase: x"))
+    assert "private_key_file_pwd" not in dropped.connection_params
+    keyed = load_profile_target(target_with(tmp_path, "token: abc\nprivate_key_path: /k.p8\nzeta: 1\nalpha: 2"))
+    assert "authenticator" not in keyed.connection_params
+    assert [item.context["key"] for item in keyed.diagnostics] == ["zeta", "alpha"]
+    # Authentication SST cannot use is refused before any field's type is checked.
+    assert refused(tmp_path, "port: many\noauth_client_secret: s")[0] == "SST-CFG050"

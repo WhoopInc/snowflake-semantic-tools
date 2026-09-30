@@ -11,7 +11,7 @@ from typing import Callable, Generic, TypeVar
 
 from ...domain.model.diagnostic import D
 from ...domain.state import Manifest, SavedPlan, State, StoredDocumentError, canonical_json
-from ..project import ProjectError
+from ..errors import ProjectError
 
 T = TypeVar("T")
 

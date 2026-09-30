@@ -180,8 +180,6 @@ forbidden_modules = ["snowflake_semantic_tools.domain.render"]
 
 # An adapter subpackage never imports another, so each stays replaceable and testable
 # alone. Top-level adapter modules outside these four may compose them.
-# The ignore_imports entries are the crossings still being removed; import-linter fails
-# on an entry that no longer matches, so each one must go when its crossing does.
 [[tool.importlinter.contracts]]
 name = "adapter subpackages are independent"
 type = "independence"
@@ -190,10 +188,6 @@ modules = [
     "snowflake_semantic_tools.adapters.dbt",
     "snowflake_semantic_tools.adapters.snowflake",
     "snowflake_semantic_tools.adapters.fs",
-]
-ignore_imports = [
-    "snowflake_semantic_tools.adapters.yaml.loader -> snowflake_semantic_tools.adapters.dbt.manifest",
-    "snowflake_semantic_tools.adapters.yaml.project_source -> snowflake_semantic_tools.adapters.dbt.manifest",
 ]
 
 # YAML is parsed only at the edge that owns the file: adapters.yaml for SST's own files,
@@ -207,13 +201,8 @@ source_modules = [
     "snowflake_semantic_tools.adapters.snowflake",
     "snowflake_semantic_tools.adapters.fs",
     "snowflake_semantic_tools.adapters.clock",
-    "snowflake_semantic_tools.adapters.config",
-    "snowflake_semantic_tools.adapters.profile",
-    "snowflake_semantic_tools.adapters.project",
+    "snowflake_semantic_tools.adapters.errors",
+    "snowflake_semantic_tools.adapters.project_source",
 ]
 forbidden_modules = ["yaml"]
 allow_indirect_imports = true
-ignore_imports = [
-    "snowflake_semantic_tools.cli.main -> yaml",
-    "snowflake_semantic_tools.adapters.profile -> yaml",
-]

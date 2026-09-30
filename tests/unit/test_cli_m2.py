@@ -12,7 +12,7 @@ import pytest
 from click.testing import CliRunner, Result
 
 from snowflake_semantic_tools.adapters.fs.local import StateFileStore
-from snowflake_semantic_tools.adapters.project import ProjectError
+from snowflake_semantic_tools.adapters.errors import ProjectError
 from tests.helpers.eval_state_store import InMemoryEvalStateStore
 from tests.helpers.recorded_snowflake import PROFILE_REGISTRY_SHAPE, RecordedSnowflake
 from snowflake_semantic_tools.app.eval_compile import CompiledEval

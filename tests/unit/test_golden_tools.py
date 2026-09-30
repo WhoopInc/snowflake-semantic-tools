@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from snowflake_semantic_tools.adapters.dbt.manifest import load_manifest_catalog
-from snowflake_semantic_tools.adapters.yaml.project_source import YamlProjectSource
+from snowflake_semantic_tools.adapters.project_source import YamlProjectSource
 from snowflake_semantic_tools.app.tool_compile import CompileTools
 
 ROOT = Path(__file__).parents[2]

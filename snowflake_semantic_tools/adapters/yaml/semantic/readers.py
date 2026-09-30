@@ -1,0 +1,173 @@
+"""Read metrics, filters, custom instructions and verified queries into their member records."""
+
+from __future__ import annotations
+
+from pathlib import Path
+
+from ....domain.model.reference import TemplateSyntaxError, scan_template_calls
+from ...errors import ProjectError
+from ..documents import RawDocuments
+from .defs import FilterDef, InstructionDef, MetricDef, VerifiedQueryDef, _non_additive, _window
+from .nodes import (
+    _as_str_tuple,
+    _list_of,
+    _load_nodes,
+    _member_root,
+    _node_origin,
+    _safe_table_refs,
+    _table_refs_poisoned,
+)
+
+
+def load_metrics(documents: RawDocuments, project_dir: Path, semantic_models_dir: str) -> tuple[MetricDef, ...]:
+    """Read `<semantic_models_dir>/metrics/*.yml` under the `snowflake_metrics:` key."""
+    metrics_dir = project_dir / semantic_models_dir / "metrics"
+    out: list[MetricDef] = []
+    for document, index, node in _load_nodes(documents, metrics_dir, _member_root("metric")):
+        if not node.get("name") or not node.get("expr"):
+            continue
+        expression = str(node["expr"])
+        try:
+            template_calls = scan_template_calls(expression)
+        except TemplateSyntaxError:
+            template_calls = ()
+        out.append(
+            MetricDef(
+                name=str(node["name"]),
+                expr=expression,
+                description=" ".join(str(node.get("description") or "").splitlines()).strip() or None,
+                synonyms=_as_str_tuple(node.get("synonyms")),
+                tables=_safe_table_refs(node.get("tables")),
+                derived=bool(node.get("derived", False)),
+                using_relationships=tuple(str(value).upper() for value in node.get("using_relationships") or []),
+                non_additive=tuple(
+                    _non_additive(value)
+                    for value in _list_of(node.get("non_additive_dimensions"))
+                    if isinstance(value, dict)
+                    and isinstance(value.get("dimension"), str)
+                    and value["dimension"].strip()
+                ),
+                access_modifier=str(node.get("access_modifier") or "public_access"),
+                has_tables_key="tables" in node,
+                origin=_node_origin(document, _member_root("metric"), index),
+                template_calls=template_calls,
+                poisoned=_table_refs_poisoned(node.get("tables")),
+                window=_window(node.get("window")),
+            )
+        )
+    return tuple(out)
+
+
+def load_filters(documents: RawDocuments, project_dir: Path, semantic_models_dir: str) -> tuple[FilterDef, ...]:
+    out: list[FilterDef] = []
+    root = project_dir / semantic_models_dir / "filters"
+    for document, index, node in _load_nodes(documents, root, _member_root("filter")):
+        if not node.get("name") or not node.get("expr"):
+            continue
+        labels = node.get("labels")
+        labels = {str(label).casefold() for label in labels} if isinstance(labels, list) else set()
+        expression = str(node["expr"])
+        try:
+            template_calls = scan_template_calls(expression)
+        except TemplateSyntaxError:
+            template_calls = ()
+        out.append(
+            FilterDef(
+                name=str(node["name"]),
+                expr=expression,
+                description=str(node.get("description") or "").strip() or None,
+                tables=_safe_table_refs(node.get("tables")),
+                entity_level="filter" in labels,
+                origin=_node_origin(document, _member_root("filter"), index),
+                template_calls=template_calls,
+                poisoned=_table_refs_poisoned(node.get("tables")),
+                labeled="labels" in node,
+            )
+        )
+    return tuple(out)
+
+
+def load_instructions(
+    documents: RawDocuments, project_dir: Path, semantic_models_dir: str
+) -> dict[str, InstructionDef]:
+    root = project_dir / semantic_models_dir / "custom_instructions"
+    out: dict[str, InstructionDef] = {}
+    for document, index, node in _load_nodes(documents, root, _member_root("custom_instruction")):
+        if not node.get("name"):
+            continue
+        name = str(node["name"])
+        out[name.casefold()] = InstructionDef(
+            name=name,
+            ai_sql_generation=str(node.get("ai_sql_generation") or "").strip() or None,
+            ai_question_categorization=str(node.get("ai_question_categorization") or "").strip() or None,
+            origin=_node_origin(document, _member_root("custom_instruction"), index),
+        )
+    return out
+
+
+def _strip_sql_header(sql: str) -> str:
+    lines = sql.splitlines()
+    while lines and (not lines[0].strip() or lines[0].lstrip().startswith("--")):
+        lines.pop(0)
+    return "\n".join(lines).rstrip()
+
+
+def _verified_at(value: object, *, path: Path, name: str) -> int | None:
+    if value is None:
+        return None
+    if isinstance(value, int):
+        return value
+    if isinstance(value, str):
+        try:
+            from datetime import datetime, timezone
+
+            return int(datetime.strptime(value, "%Y-%m-%d").replace(tzinfo=timezone.utc).timestamp())
+        except ValueError as exc:
+            raise ProjectError(f"{path}: verified query {name} has invalid verified_at {value!r}") from exc
+    raise ProjectError(f"{path}: verified query {name} has unsupported verified_at {value!r}")
+
+
+def load_verified_queries(
+    documents: RawDocuments, project_dir: Path, semantic_models_dir: str
+) -> tuple[VerifiedQueryDef, ...]:
+    root = project_dir / semantic_models_dir / "verified_queries"
+    out: list[VerifiedQueryDef] = []
+    for document, index, node in _load_nodes(documents, root, _member_root("verified_query")):
+        if not node.get("name") or not node.get("question"):
+            continue
+        has_sql = node.get("sql") is not None
+        has_sql_file = node.get("sql_file") is not None
+        if has_sql == has_sql_file:
+            continue
+        sql = str(node.get("sql") or "")
+        if not sql and node.get("sql_file"):
+            sql_path = document.abs_path.parent / str(node["sql_file"])
+            try:
+                sql = sql_path.read_text(encoding="utf-8").rstrip("\n")
+            except OSError:
+                continue
+            if not sql.strip():
+                continue
+        sql = _strip_sql_header(sql)
+        name = str(node["name"])
+        try:
+            template_calls = scan_template_calls(sql)
+        except TemplateSyntaxError:
+            template_calls = ()
+        out.append(
+            VerifiedQueryDef(
+                name=name,
+                question=str(node["question"]),
+                sql=sql,
+                tables=_safe_table_refs(node.get("tables")),
+                verified_at=_verified_at(node.get("verified_at"), path=document.abs_path, name=name),
+                verified_by=str(node.get("verified_by") or "").strip() or None,
+                onboarding_question=(
+                    bool(node["use_as_onboarding_question"]) if "use_as_onboarding_question" in node else None
+                ),
+                origin=_node_origin(document, _member_root("verified_query"), index),
+                template_calls=template_calls,
+                poisoned=_table_refs_poisoned(node.get("tables")),
+            )
+        )
+    return tuple(out)

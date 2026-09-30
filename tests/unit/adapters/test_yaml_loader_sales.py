@@ -7,19 +7,21 @@ from pathlib import Path
 
 import pytest
 
-from snowflake_semantic_tools.adapters.yaml.loader import (
+from snowflake_semantic_tools.adapters.yaml.semantic.checks.dbt import _dbt_column_diagnostics, _dbt_model_diagnostics
+from snowflake_semantic_tools.adapters.yaml.semantic.checks.expressions import (
+    _expression_reference_diagnostics,
+    _filter_diagnostics,
+)
+from snowflake_semantic_tools.adapters.yaml.semantic.checks.metrics import _metric_cycles, _metric_diagnostics
+from snowflake_semantic_tools.adapters.yaml.semantic.defs import (
     FilterDef,
     MetricDef,
     NonAdditiveDef,
     VerifiedQueryDef,
     WindowDef,
     WindowOrderDef,
-    _dbt_column_diagnostics,
-    _dbt_model_diagnostics,
-    _expression_reference_diagnostics,
-    _filter_diagnostics,
-    _metric_cycles,
-    _metric_diagnostics,
+)
+from snowflake_semantic_tools.adapters.yaml.semantic.relationships import (
     _multipath_diagnostics,
     _relationship_cycle_diagnostics,
     _relationship_diagnostics,
@@ -687,7 +689,7 @@ def test_relationship_targets_need_a_key_and_the_graph_no_cycle() -> None:
 
 
 def test_verified_query_tables_skip_ctes_and_string_literals() -> None:
-    from snowflake_semantic_tools.adapters.yaml.loader import _sql_tables
+    from snowflake_semantic_tools.adapters.yaml.semantic.checks.expressions import _sql_tables
 
     sql = (
         "WITH flow AS (SELECT * FROM orders WHERE source IN ('Join Flow')),\n"

@@ -11,7 +11,7 @@ from ...domain.model.agent import AgentEvalFiles, AgentModel, AgentProfile, Agen
 from ...domain.model.artifact_key import artifact_key
 from ...domain.model.diagnostic import D, Diagnostic, DiagnosticBag, Origin
 from ...domain.model.reference import TemplateSyntaxError, scan_template_calls
-from ..project import ProjectError
+from ..errors import ProjectError
 from .fields import mapping, optional_int, optional_string
 from .parse import parse_yaml_bytes
 

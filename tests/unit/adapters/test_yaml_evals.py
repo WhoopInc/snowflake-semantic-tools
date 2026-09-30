@@ -190,6 +190,28 @@ def test_eval_loader_rejects_unknown_accept_status(tmp_path: Path) -> None:
     assert "SST-PRS013" in [diagnostic.code for diagnostic in catalog.diagnostics]
 
 
+def test_run_block_problems_are_reported_in_read_order(tmp_path: Path) -> None:
+    agents, agent_diagnostics = _project(tmp_path)
+    config = tmp_path / "agents" / "sales" / "evals" / "config.yml"
+    text = config.read_text(encoding="utf-8")
+    run = "run:\n  retry: x\n  tier: sometimes\n  accept_statuses: [NOPE]\n  label: 3\n  retention: [a]\n"
+    _write(config, text[: text.index("run:\n")] + run)
+    catalog = load_eval_catalog(tmp_path, agents, initial_diagnostics=agent_diagnostics)
+    found = [
+        (item.code, item.context.get("field"))
+        for item in catalog.diagnostics
+        if item.context.get("artifact") == "agents/sales/evals/config.yml"
+    ]
+    # Retention, accepted statuses and tier come first, then the fields in EvalRunConfig's order.
+    assert found[:5] == [
+        ("SST-PRS003", "run.retention"),
+        ("SST-PRS013", "run.accept_statuses"),
+        ("SST-PRS013", "run.tier"),
+        ("SST-PRS003", "label"),
+        ("SST-PRS003", "retry"),
+    ]
+
+
 def test_eval_loader_flags_forbidden_custom_metric_version_field(tmp_path: Path) -> None:
     agents, agent_diagnostics = _project(tmp_path)
     metric = tmp_path / "eval_metrics" / "judge.yml"

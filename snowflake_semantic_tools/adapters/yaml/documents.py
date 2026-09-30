@@ -10,7 +10,7 @@ from typing import Any, Callable, Mapping, TypeAlias
 
 from ...domain.model.diagnostic import Diagnostic
 from ...domain.model.registry import SEMANTIC_REGISTRY, Registry
-from ..project import ProjectError
+from ..errors import ProjectError
 
 YAML_SUFFIXES = frozenset((".yml", ".yaml"))
 NodePath: TypeAlias = tuple[str | int, ...]

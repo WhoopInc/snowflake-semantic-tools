@@ -26,7 +26,7 @@ from typing import Any, NoReturn
 import yaml
 
 from ...domain.model.diagnostic import D, Diagnostic, Origin
-from ..project import ProjectError
+from ..errors import ProjectError
 from .documents import NodePath, ParsedYaml, SourcePosition, TemplateSource
 
 _PLACEHOLDER = "__SST_TPL_%d__"

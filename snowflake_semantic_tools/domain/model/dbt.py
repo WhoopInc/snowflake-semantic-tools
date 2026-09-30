@@ -1,8 +1,20 @@
-"""Immutable projection of the dbt manifest fields SST consumes."""
+"""Immutable projections of what SST consumes from dbt: manifest models and the resolved target."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass
+
+
+@dataclass(frozen=True, slots=True)
+class DbtTarget:
+    """The resolved dbt target -- what `{{ target.database }}` stands for."""
+
+    database: str
+    schema: str
+
+    def fqn(self, name: str) -> str:
+        """`name`, upper-cased, qualified by this target's database and schema."""
+        return f"{self.database}.{self.schema}.{name.upper()}"
 
 
 @dataclass(frozen=True, slots=True)

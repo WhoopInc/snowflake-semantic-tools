@@ -12,7 +12,7 @@ from snowflake_semantic_tools.adapters.dbt.manifest import (
     catalog_from_document,
     load_manifest_catalog,
 )
-from snowflake_semantic_tools.adapters.project import ProjectError
+from snowflake_semantic_tools.adapters.errors import ProjectError
 
 
 def manifest_document() -> dict[str, object]:
@@ -271,3 +271,30 @@ def test_the_bare_meta_sst_wins_when_both_places_carry_one() -> None:
     projected = catalog_from_document(document).model("products")
     assert projected is not None and projected.primary_key == ("bare_id",)
     assert projected.column("product_id").column_type == "dimension"  # type: ignore[union-attr]
+
+
+def test_models_keep_unique_id_order_and_a_malformed_model_reports_its_first_problem() -> None:
+    document = manifest_document()
+    nodes = document["nodes"]
+    assert isinstance(nodes, dict)
+    product = nodes["model.fixture.products"]
+    nodes["model.a.products"] = dict(product, relation_name="db.a.products")
+    catalog = catalog_from_document(document)
+    assert [model.unique_id for model in catalog.models] == ["model.a.products", "model.fixture.products"]
+    # A node of any type must be a mapping, even one SST skips.
+    nodes["seed.fixture.raw"] = "oops"
+    with pytest.raises(ProjectError, match="seed.fixture.raw must be an object"):
+        catalog_from_document(document)
+    del nodes["seed.fixture.raw"]
+    # Columns are read before keys, and keys before the relation.
+    broken = dict(product, relation_name=None, columns={"bad": 3})
+    broken["config"] = {"meta": {"sst": {"primary_key": {"column": "x"}}}}
+    nodes["model.fixture.products"] = broken
+    with pytest.raises(ProjectError, match=r"columns\.bad must be an object"):
+        catalog_from_document(document)
+    broken["columns"] = {}
+    with pytest.raises(ProjectError, match="primary_key must be a list"):
+        catalog_from_document(document)
+    broken["config"] = {"meta": {"sst": {"primary_key": ["x"]}}}
+    with pytest.raises(ProjectError, match="relation_name is required"):
+        catalog_from_document(document)

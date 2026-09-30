@@ -7,7 +7,7 @@ from types import MappingProxyType
 
 import pytest
 
-from snowflake_semantic_tools.adapters.project import ProjectError
+from snowflake_semantic_tools.adapters.errors import ProjectError
 from snowflake_semantic_tools.adapters.yaml.documents import ParsedYaml, SourcePosition, TemplateSource
 from snowflake_semantic_tools.adapters.yaml.parse import parse_yaml_bytes, read_yaml_file, read_yaml_mapping
 from snowflake_semantic_tools.domain.model.diagnostic import D, Origin

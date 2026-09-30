@@ -12,7 +12,7 @@ import yaml
 from ...domain.model.artifact_key import artifact_key
 from ...domain.model.diagnostic import D, Diagnostic, DiagnosticBag, Origin
 from ...domain.model.skill import SKILL_FILE, Plugin, Skill, SkillCatalog, SkillFile
-from ..project import ProjectError
+from ..errors import ProjectError
 from .fields import checked_strings, checked_text, optional_string, project_relative, report_unknown_keys
 from .parse import parse_yaml_bytes
 

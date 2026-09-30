@@ -19,7 +19,7 @@ from ...domain.model.tool import (
     ToolParameter,
     validate_tool_catalog,
 )
-from ..project import ProjectError
+from ..errors import ProjectError
 from .fields import optional_string, strings
 from .parse import parse_yaml_bytes
 

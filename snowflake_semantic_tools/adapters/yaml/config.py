@@ -7,10 +7,12 @@ from pathlib import Path
 from types import MappingProxyType
 from typing import Any, Mapping
 
-from ..domain.model.config_schema import CONFIG_FILE, validate_config
-from ..domain.model.diagnostic import D, DiagnosticBag, Origin
-from .project import ProjectError
-from .yaml.parse import parse_yaml_bytes
+import yaml
+
+from ...domain.model.config_schema import CONFIG_FILE, validate_config
+from ...domain.model.diagnostic import D, DiagnosticBag, Origin
+from ..errors import ProjectError
+from .parse import parse_yaml_bytes
 
 # Blocks and directory keys whose artifacts are compiled from a dbt project.
 DBT_ONLY_KEYS = (
@@ -95,3 +97,16 @@ def load_project_config(project_dir: Path) -> ProjectConfig:
                     )
                 )
     return ProjectConfig(MappingProxyType(tree), DiagnosticBag(diagnostics), has_dbt_project)
+
+
+def read_config_document(project_dir: Path) -> object | None:
+    """Return `sst_config.yml` parsed as plain YAML, or None when the file does not exist.
+
+    This is the document as written, with no templates neutralized and no positions: the
+    manifest's config checksum hashes exactly this value, so it must stay a plain parse.
+    An empty file reads as `{}`.
+    """
+    path = project_dir / CONFIG_FILE
+    if not path.is_file():
+        return None
+    return yaml.safe_load(path.read_text(encoding="utf-8")) or {}

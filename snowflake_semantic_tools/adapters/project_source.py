@@ -2,25 +2,29 @@
 
 Thin by design: it binds a project directory to the loader functions so `app/` can
 hold a source without holding a path. All the reading lives in the loaders it calls.
+It is also where the dbt side meets the semantic layer: it loads the dbt target and
+models through `dbt.project` and passes them to the semantic pipeline, which reads no
+dbt file itself.
 """
 
 from __future__ import annotations
 
 from pathlib import Path
 
-from ...domain.model.agent import AgentModel
-from ...domain.model.diagnostic import DiagnosticBag
-from ...domain.model.eval import EvalCatalog
-from ...domain.model.project import SemanticViewProject
-from ...domain.model.tool import ToolCatalog
-from ..dbt.manifest import load_manifest_catalog
-from ..profile import resolve_profile_name
-from .agents import load_agents
-from .evals import load_eval_catalog, parse_eval_defaults
-from .fields import strings
-from .loader import _run_dbt_parse, _target_path, load_semantic_views_result
-from .parse import read_yaml_mapping
-from .tools import load_tool_catalog
+from ..domain.model.agent import AgentModel
+from ..domain.model.diagnostic import DiagnosticBag
+from ..domain.model.eval import EvalCatalog
+from ..domain.model.project import SemanticViewProject
+from ..domain.model.tool import ToolCatalog
+from .dbt.manifest import load_manifest_catalog
+from .dbt.profiles import resolve_profile_name
+from .dbt.project import load_models, resolve_target, run_dbt_parse, target_path
+from .yaml.agents import load_agents
+from .yaml.evals import load_eval_catalog, parse_eval_defaults
+from .yaml.fields import strings
+from .yaml.parse import read_yaml_mapping
+from .yaml.semantic import load_semantic_views_result, read_semantic_inputs
+from .yaml.tools import load_tool_catalog
 
 
 class YamlProjectSource:
@@ -49,17 +53,23 @@ class YamlProjectSource:
         return self._project_dir
 
     def load_project(self) -> SemanticViewProject:
-        return load_semantic_views_result(
+        # SST's own files first, then the dbt target and models: a problem in either is
+        # reported in that order, and before dbt is run.
+        inputs = read_semantic_inputs(self._project_dir)
+        target = resolve_target(self._project_dir, self._target_name)
+        models = load_models(
             self._project_dir,
+            read_yaml=read_yaml_mapping,
             target_name=self._target_name,
             manifest_path=self._manifest_path,
             invoke_dbt=self._invoke_dbt,
         )
+        return load_semantic_views_result(self._project_dir, inputs, target=target, models=models)
 
     def load_tools(self) -> ToolCatalog:
         if self._invoke_dbt and self._manifest_path is None:
-            _run_dbt_parse(self._project_dir, self._target_name)
-        manifest_path = self._manifest_path or _target_path(self._project_dir)
+            run_dbt_parse(self._project_dir, self._target_name)
+        manifest_path = self._manifest_path or target_path(self._project_dir, read_yaml_mapping)
         dbt = load_manifest_catalog(manifest_path)
         config = read_yaml_mapping(self._project_dir / "sst_config.yml")
         project = config.get("project")

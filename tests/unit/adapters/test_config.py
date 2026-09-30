@@ -6,9 +6,9 @@ from pathlib import Path
 
 import pytest
 
-from snowflake_semantic_tools.adapters.config import load_project_config
-from snowflake_semantic_tools.adapters.profile import load_profile_target, resolve_profile_name
-from snowflake_semantic_tools.adapters.project import ProjectError
+from snowflake_semantic_tools.adapters.yaml.config import load_project_config
+from snowflake_semantic_tools.adapters.dbt.profiles import load_profile_target, resolve_profile_name
+from snowflake_semantic_tools.adapters.errors import ProjectError
 
 PROFILES = """
 sst:
@@ -118,7 +118,7 @@ def test_profile_name_comes_from_dbt_or_target_profile(tmp_path: Path) -> None:
 
 
 def test_semantic_targets_resolve_single_quoted_env_vars(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    from snowflake_semantic_tools.adapters.yaml.loader import resolve_target
+    from snowflake_semantic_tools.adapters.dbt.project import resolve_target
 
     project = _write(
         tmp_path,
