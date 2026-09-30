@@ -22,15 +22,15 @@ from .._version import __version__ as VERSION
 from ..adapters.clock import SystemClock
 from ..adapters.config import load_project_config
 from ..adapters.dbt.manifest import load_manifest_catalog
-from ..adapters.fs.local import ManifestFileStore, PlanFileStore, StateFileStore
+from ..adapters.fs.local import STATE_FILE_GLOB, ManifestFileStore, PlanFileStore, StateFileStore, state_file
 from ..adapters.profile import ProfileTarget, load_profile_target
 from ..adapters.project import ProjectError
 from ..adapters.snowflake.connector import SnowflakeConnector
 from ..adapters.snowflake.eval_state import SnowflakeEvalStateStore
 from ..adapters.yaml.agents import load_agents
 from ..adapters.yaml.documents import discover_yaml, load_documents
-from ..adapters.yaml.loader import _parse_yaml_bytes
 from ..adapters.yaml.migrate import filter_sites, semantic_files, write_file
+from ..adapters.yaml.parse import parse_yaml_bytes
 from ..adapters.yaml.profiles import load_profile_catalog
 from ..adapters.yaml.project_source import YamlProjectSource
 from ..adapters.yaml.skills import _published, load_skill_catalog
@@ -61,12 +61,14 @@ from ..app.smoke import RunSmokeSuite
 from ..app.state import read_state
 from ..app.tool_compile import CompileTools
 from ..app.validate import ValidateArtifacts
+from ..domain.model.artifact_key import artifact_key, split_artifact_key
 from ..domain.model.dbt import DbtCatalog
-from ..domain.model.diagnostic import ERROR_REGISTRY, D, Diagnostic, DiagnosticBag, Origin, Severity
+from ..domain.model.diagnostic import ERROR_REGISTRY, D, Diagnostic, DiagnosticBag, Origin, Severity, render_diagnostic
+from ..domain.model.eval import DEFAULT_EVAL_CONFIG_STAGE
 from ..domain.model.identifier import Identifier, QualifiedName, TargetIdentity
 from ..domain.model.lifecycle import Action, ApplyOptions, Change, ChangeSet, FailurePolicy, OwnershipMarker
 from ..domain.model.registry import SEMANTIC_REGISTRY
-from ..domain.model.skill import SkillCatalog, extension_identifier
+from ..domain.model.skill import DEFAULT_VERSION_PREFIX, SkillCatalog, extension_identifier
 from ..domain.ports.lifecycle import CompositeLifecycleHandler
 from ..domain.ports.snowflake import SnowflakePortError
 from ..domain.render.reference_docs import CommandDoc, OptionDoc, reference_pages
@@ -297,7 +299,7 @@ def _compile_publishing(
     if not _skills_configured(config):
         empty = CompileResult(())
         return empty, empty, frozenset(), _unpublished(catalog, empty, "skills.catalog is not configured")
-    prefix = _config_text(skills_config.get("+version_prefix"), "SST_") or "SST_"
+    prefix = _config_text(skills_config.get("+version_prefix"), DEFAULT_VERSION_PREFIX) or DEFAULT_VERSION_PREFIX
     channel = None
     catalog_config = skills_config.get("catalog")
     if isinstance(catalog_config, dict) and isinstance(catalog_config.get("+bundle_stage"), str):
@@ -337,9 +339,9 @@ def _compile_publishing(
         )
 
     def blocked_names(kind: str) -> frozenset[str]:
-        prefix = f"{kind}:"
+        prefix = artifact_key(kind, "")
         return frozenset(
-            str(item.subject)[len(prefix) :]
+            split_artifact_key(str(item.subject))[1]
             for item in skills.diagnostics
             if item.severity is Severity.ERROR and str(item.subject or "").startswith(prefix)
         )
@@ -357,7 +359,12 @@ def _compile_publishing(
         *(name for item in profiles_catalog.profiles for name in item.skills),
     }
     plugins_reached = {name for item in profiles_catalog.profiles for name in item.plugins}
-    consumed = frozenset((*(f"skill:{name}" for name in reached), *(f"plugin:{name}" for name in plugins_reached)))
+    consumed = frozenset(
+        (
+            *(artifact_key("skill", name) for name in reached),
+            *(artifact_key("plugin", name) for name in plugins_reached),
+        )
+    )
     return skills, profiles, consumed, unpublished
 
 
@@ -437,7 +444,7 @@ def _extension_pins(skills: CompileResult) -> tuple[dict[str, ExtensionPin], dic
         plugin_pins[item.name] = ExtensionPin(
             item.artifact_key, release.target, release.alias, members, item.has_scripts
         )
-        consumed.update(f"skill:{member}" for member in members)
+        consumed.update(artifact_key("skill", member) for member in members)
     return skill_pins, plugin_pins, frozenset(consumed)
 
 
@@ -634,7 +641,7 @@ def _selection(values: tuple[str, ...]) -> tuple[frozenset[str] | None, frozense
         if "," in value:
             raise SstUsageError("commas are not accepted in selectors; pass space-separated selectors")
         if ":" in value:
-            prefix, name = value.split(":", 1)
+            prefix, name = split_artifact_key(value)
             if prefix == "type":
                 if name not in SEMANTIC_REGISTRY.artifacts:
                     raise SstUsageError(f"unknown artifact type {name!r}")
@@ -642,9 +649,9 @@ def _selection(values: tuple[str, ...]) -> tuple[frozenset[str] | None, frozense
                 continue
             if prefix not in SEMANTIC_REGISTRY.artifacts or not name:
                 raise SstUsageError(f"unsupported selector {value!r}")
-            keys.add(f"{prefix}:{name.casefold()}")
+            keys.add(artifact_key(prefix, name.casefold()))
             continue
-        keys.add(f"semantic_view:{value.casefold()}")
+        keys.add(artifact_key("semantic_view", value.casefold()))
     return (frozenset(types) if types else None), (frozenset(keys) if keys else None)
 
 
@@ -653,7 +660,7 @@ def _file_checksums(project_dir: Path) -> dict[str, str]:
     checksums: dict[str, str] = {}
     if (project_dir / "dbt_project.yml").is_file():
         semantic_models_dir = _project_dir_value(config, "semantic_models_dir", "semantic_models")
-        documents = load_documents(discover_yaml(project_dir, semantic_models_dir), _parse_yaml_bytes)
+        documents = load_documents(discover_yaml(project_dir, semantic_models_dir), parse_yaml_bytes)
         checksums.update({document.path: document.checksum for document in documents.documents})
     directories = [
         _project_dir_value(config, "tools_dir", "tools"),
@@ -774,7 +781,7 @@ def _effective_validation_settings(
 def _diagnostic_json(value: Diagnostic) -> dict[str, object]:
     origin = getattr(value, "origin", None)
     spec = ERROR_REGISTRY[value.code]
-    subject_parts = value.subject.split(":", 1) if value.subject and ":" in value.subject else None
+    subject_parts = split_artifact_key(value.subject) if value.subject and ":" in value.subject else None
     return {
         "code": value.code,
         "severity": value.severity.name.lower(),
@@ -901,10 +908,7 @@ def _interrupted(command: str, output: str, cause: BaseException) -> NoReturn:
 
 def _render_diagnostics(diagnostics: DiagnosticBag) -> None:
     for diagnostic in diagnostics:
-        click.echo(
-            f"{diagnostic.severity.name.lower()}[{diagnostic.code}]: {diagnostic.message}",
-            err=True,
-        )
+        click.echo(render_diagnostic(diagnostic), err=True)
 
 
 def _guarded(action: Callable[[], None], *, command: str, output: str) -> None:
@@ -1101,7 +1105,7 @@ def _write_plan_sql(project_dir: Path, changeset: ChangeSet, sql_out: Path | Non
         ):
             continue
         suffix = _artifact_suffix(change.rendered.render_dialect)
-        path = output / f"{change.artifact_type}__{change.key.split(':', 1)[1].replace('/', '_')}{suffix}"
+        path = output / f"{change.artifact_type}__{split_artifact_key(change.key)[1].replace('/', '_')}{suffix}"
         content = (
             change.rendered.content
             if suffix in (".json", ".yaml")
@@ -1204,7 +1208,7 @@ def _plan_runtime(
                 result, diagnostics=DiagnosticBag((*validation.diagnostics, *((refusal,) if refusal else ())))
             )
             return failed_result, None, None, None, None
-        state_store = StateFileStore(_target_dir(project_dir) / f"state.{profile.target_name}.json")
+        state_store = StateFileStore(state_file(_target_dir(project_dir), profile.target_name))
         state, state_diagnostics = read_state(
             state_store,
             port,
@@ -1241,7 +1245,7 @@ def _plan_runtime(
         lifecycle_handlers: dict[str, CompositeLifecycleHandler] = {
             "eval": EvalLifecycleHandler(
                 port,
-                EvalLifecycleConfig(str(eval_stage_config.get("stage") or "EVAL_CONFIGS")),
+                EvalLifecycleConfig(str(eval_stage_config.get("stage") or DEFAULT_EVAL_CONFIG_STAGE)),
             ),
             "skill": ExtensionLifecycleHandler(port, releases, "skill"),
             "plugin": ExtensionLifecycleHandler(port, releases, "plugin"),
@@ -1900,7 +1904,7 @@ def list_command(project_dir: Path, output: str) -> None:
 
     def action() -> None:
         manifest = _compiled_manifest(project_dir)
-        states = tuple(sorted(_target_dir(project_dir).glob("state.*.json")))
+        states = tuple(sorted(_target_dir(project_dir).glob(STATE_FILE_GLOB)))
         state = StateFileStore(states[0]).read_local() if len(states) == 1 else None
         summaries = list_artifacts(manifest, state)
         data = [dataclasses.asdict(item) for item in summaries]
@@ -2216,9 +2220,9 @@ def test_command(
                 config = _config(project_dir)
                 eval_defaults = _source(project_dir, target_name, manifest_path).load_evals().defaults
                 eval_stage = _config_map(_config_map(config.get("apply")).get("eval_config_stage"))
-                lifecycle_config = EvalLifecycleConfig(str(eval_stage.get("stage") or "EVAL_CONFIGS"))
+                lifecycle_config = EvalLifecycleConfig(str(eval_stage.get("stage") or DEFAULT_EVAL_CONFIG_STAGE))
                 handler = EvalLifecycleHandler(port, lifecycle_config)
-                state_store = StateFileStore(_target_dir(project_dir) / f"state.{profile.target_name}.json")
+                state_store = StateFileStore(state_file(_target_dir(project_dir), profile.target_name))
                 eval_lock_id = f"eval-{SystemClock().new_run_id()}"
                 locked, holder, _ = state_store.acquire_lock(eval_lock_id, break_stale=False)
                 if not locked:
@@ -2359,7 +2363,7 @@ def test_command(
             raise ProjectError("compiled SST manifest is stale; run sst compile before smoke")
         profile, port = _connect(project_dir, target_name)
         try:
-            state_store = StateFileStore(_target_dir(project_dir) / f"state.{profile.target_name}.json")
+            state_store = StateFileStore(state_file(_target_dir(project_dir), profile.target_name))
             state, state_diagnostics = read_state(
                 state_store,
                 port,

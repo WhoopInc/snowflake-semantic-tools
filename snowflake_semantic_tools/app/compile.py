@@ -15,6 +15,7 @@ from dataclasses import dataclass, replace
 from hashlib import sha256
 from typing import Protocol
 
+from ..domain.model.artifact_key import artifact_key
 from ..domain.model.diagnostic import D, Diagnostic, DiagnosticBag
 from ..domain.model.identifier import QualifiedName
 from ..domain.model.lifecycle import OwnershipMarker, ProbeKind, RenderedArtifact, SmokeProbe
@@ -85,7 +86,7 @@ class CompiledView:
 
     @property
     def artifact_key(self) -> str:
-        return f"semantic_view:{self.name.casefold()}"
+        return artifact_key("semantic_view", self.name.casefold())
 
     @property
     def artifact_type(self) -> str:
@@ -99,29 +100,29 @@ class CompiledView:
     def member_keys(self) -> tuple[str, ...]:
         keys: list[str] = []
         keys.extend(
-            f"relationship:{value.name.casefold()}"
+            artifact_key("relationship", value.name.casefold())
             for value in sorted(self.view.relationships, key=lambda item: item.name)
         )
         keys.extend(
-            f"fact:{value.qualified_name.casefold()}"
+            artifact_key("fact", value.qualified_name.casefold())
             for value in sorted(self.view.facts, key=lambda item: item.qualified_name)
         )
         keys.extend(
-            f"filter:{value.name.casefold()}"
+            artifact_key("filter", value.name.casefold())
             for value in sorted(self.view.dimensions, key=lambda item: item.qualified_name)
             if value.kind.value == "filter"
         )
         keys.extend(
-            f"dimension:{value.qualified_name.casefold()}"
+            artifact_key("dimension", value.qualified_name.casefold())
             for value in sorted(self.view.dimensions, key=lambda item: item.qualified_name)
             if value.kind.value != "filter"
         )
         keys.extend(
-            f"metric:{value.name.casefold()}"
+            artifact_key("metric", value.name.casefold())
             for value in sorted(self.view.metrics, key=lambda item: item.qualified_name)
         )
-        keys.extend(f"verified_query:{value.name.casefold()}" for value in self.view.verified_queries)
-        keys.extend(f"custom_instruction:{name.casefold()}" for name in self.view.custom_instruction_names)
+        keys.extend(artifact_key("verified_query", value.name.casefold()) for value in self.view.verified_queries)
+        keys.extend(artifact_key("custom_instruction", name.casefold()) for name in self.view.custom_instruction_names)
         return tuple(keys)
 
     @property
@@ -158,7 +159,7 @@ class CompiledView:
         ]
         probes.extend(
             SmokeProbe(
-                key=f"metric:{metric.qualified_name.casefold()}",
+                key=artifact_key("metric", metric.qualified_name.casefold()),
                 kind=ProbeKind.METRIC,
                 sql=(
                     f"SELECT SV.{metric.name} FROM "
@@ -171,7 +172,7 @@ class CompiledView:
         )
         probes.extend(
             SmokeProbe(
-                key=f"verified_query:{query.name.casefold()}",
+                key=artifact_key("verified_query", query.name.casefold()),
                 kind=ProbeKind.VERIFIED_QUERY,
                 sql=f"SELECT * FROM ({query.sql.rstrip(';')}) LIMIT 0",
             )
@@ -297,6 +298,6 @@ class CompileSemanticViews:
                 compiled.append(CompiledView(view=view, ddl=render(view)))
             except (TypeError, ValueError) as exc:
                 diagnostics = DiagnosticBag(
-                    (*diagnostics, D("SST-INT902", subject=f"semantic_view:{view.fqn}", detail=str(exc)))
+                    (*diagnostics, D("SST-INT902", subject=artifact_key("semantic_view", view.fqn), detail=str(exc)))
                 )
         return CompileResult(tuple(item for item in compiled), diagnostics)

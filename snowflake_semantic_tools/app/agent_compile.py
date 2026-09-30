@@ -16,6 +16,7 @@ from ..domain.model.agent import (
     ResolvedAgent,
     ResolvedAgentTool,
 )
+from ..domain.model.artifact_key import artifact_key
 from ..domain.model.diagnostic import D, Diagnostic, DiagnosticBag, Severity
 from ..domain.model.identifier import QualifiedName
 from ..domain.model.lifecycle import OwnershipMarker, ProbeKind, RenderedArtifact, SmokeProbe
@@ -290,7 +291,7 @@ def _resolve_skills(
             pins = context.skills if skill.ref == "skill" else context.plugins
             pin = pins.get(skill.path)
             if pin is None:
-                reason = context.unpublished.get(f"{skill.ref}:{skill.path}")
+                reason = context.unpublished.get(artifact_key(skill.ref, skill.path))
                 if reason is not None:
                     diagnostics.append(
                         D(
@@ -336,7 +337,7 @@ def _resolve_skills(
             (
                 kind
                 for kind, pins in (("skill", context.skills), ("plugin", context.plugins))
-                if skill.path in pins or f"{kind}:{skill.path}" in context.unpublished
+                if skill.path in pins or artifact_key(kind, skill.path) in context.unpublished
             ),
             None,
         )
@@ -409,7 +410,7 @@ def _resolve_tool(
                 authored.query_timeout or context.query_timeout,
             )
         )
-        depends_on = (f"semantic_view:{authored.semantic_view.casefold()}",)
+        depends_on = (artifact_key("semantic_view", authored.semantic_view.casefold()),)
     elif authored.type in ("cortex_search", "generic"):
         if not authored.backing or not name:
             diagnostics.append(
@@ -489,7 +490,7 @@ def _resolve_tool(
             if target is not None:
                 name = name or target.artifact_name
                 resources = {"identifier": target.sql, "type": "agent"}
-                depends_on = (f"agent:{authored.agent_ref.casefold()}",)
+                depends_on = (artifact_key("agent", authored.agent_ref.casefold()),)
             else:
                 diagnostics.append(D("SST-REF012", name=authored.agent_ref, subject=agent.key))
         elif name:

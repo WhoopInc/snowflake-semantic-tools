@@ -9,6 +9,7 @@ from typing import Any
 
 import yaml
 
+from ...domain.model.artifact_key import artifact_key
 from ...domain.model.diagnostic import D, Diagnostic, DiagnosticBag, Origin
 from ...domain.model.profile import (
     COMMAND_FRONTMATTER_KEYS,
@@ -23,7 +24,8 @@ from ...domain.model.profile import (
 )
 from ...domain.model.skill import SkillFile
 from ..project import ProjectError
-from .loader import _parse_yaml_bytes
+from .fields import checked_strings, checked_text, optional_int, project_relative, report_unknown_keys, unknown_keys
+from .parse import parse_yaml_bytes
 from .skills import _published
 
 PROFILE_KEYS = frozenset(("name", "description", "owner_team", "skills", "mcp_servers", "hooks", "commands", "plugins"))
@@ -74,10 +76,6 @@ def _folders(root: Path) -> tuple[Path, ...]:
     return tuple(sorted(path for path in root.iterdir() if path.is_dir() and _published(path, root)))
 
 
-def _relative(project_dir: Path, path: Path) -> str:
-    return path.relative_to(project_dir).as_posix()
-
-
 def _manifest(folder: Path, names: tuple[str, ...]) -> tuple[Path | None, str | None]:
     found = [folder / name for name in names if (folder / name).is_file()]
     if len(found) > 1:
@@ -86,9 +84,9 @@ def _manifest(folder: Path, names: tuple[str, ...]) -> tuple[Path | None, str | 
 
 
 def _parse(project_dir: Path, path: Path, subject: str, diagnostics: list[Diagnostic]) -> dict[str, Any] | None:
-    file = _relative(project_dir, path)
+    file = project_relative(project_dir, path)
     try:
-        parsed = _parse_yaml_bytes(path.read_bytes(), file)
+        parsed = parse_yaml_bytes(path.read_bytes(), file)
     except ProjectError as exc:
         found = exc.diagnostics or (D("SST-LOD001", origin=Origin(file), file=file, line=1, col=1, detail=str(exc)),)
         diagnostics.extend(replace(item, subject=subject) for item in found)
@@ -97,41 +95,13 @@ def _parse(project_dir: Path, path: Path, subject: str, diagnostics: list[Diagno
 
 
 def _names(value: object, field: str, subject: str, origin: Origin, diagnostics: list[Diagnostic]) -> tuple[str, ...]:
-    if value is None:
-        return ()
-    if not isinstance(value, list) or any(not isinstance(item, str) for item in value):
-        diagnostics.append(
-            D(
-                "SST-PRS003",
-                origin=origin,
-                subject=subject,
-                artifact=subject,
-                field=field,
-                expected="a list of names",
-                found=type(value).__name__,
-            )
-        )
-        return ()
-    return tuple(value)
+    return checked_strings(
+        value, diagnostics, field=field, artifact=subject, origin=origin, subject=subject, expected="a list of names"
+    )
 
 
 def _text(value: object, field: str, subject: str, origin: Origin, diagnostics: list[Diagnostic]) -> str | None:
-    if value is None:
-        return None
-    if not isinstance(value, str):
-        diagnostics.append(
-            D(
-                "SST-PRS003",
-                origin=origin,
-                subject=subject,
-                artifact=subject,
-                field=field,
-                expected="a string",
-                found=type(value).__name__,
-            )
-        )
-        return None
-    return value.strip() or None
+    return checked_text(value, diagnostics, field=field, artifact=subject, origin=origin, subject=subject)
 
 
 def _prompt(path: Path) -> str | None:
@@ -139,9 +109,9 @@ def _prompt(path: Path) -> str | None:
 
 
 def _load_profile(project_dir: Path, folder: Path, diagnostics: list[Diagnostic]) -> DesktopProfile | None:
-    subject = f"profile:{folder.name}"
+    subject = artifact_key("profile", folder.name)
     manifest, problem = _manifest(folder, PROFILE_FILES)
-    directory = _relative(project_dir, folder)
+    directory = project_relative(project_dir, folder)
     if manifest is None:
         diagnostics.append(
             D(
@@ -156,8 +126,8 @@ def _load_profile(project_dir: Path, folder: Path, diagnostics: list[Diagnostic]
     tree = _parse(project_dir, manifest, subject, diagnostics)
     if tree is None:
         return None
-    origin = Origin(_relative(project_dir, manifest), 1)
-    for key in sorted(set(tree) - PROFILE_KEYS):
+    origin = Origin(project_relative(project_dir, manifest), 1)
+    for key in unknown_keys(tree, PROFILE_KEYS):
         if key in REJECTED_PROFILE_KEYS:
             diagnostics.append(
                 D(
@@ -183,9 +153,9 @@ def _load_profile(project_dir: Path, folder: Path, diagnostics: list[Diagnostic]
             )
         )
     prompt_path = folder / "AGENTS.md"
-    sources = [_relative(project_dir, manifest)]
+    sources = [project_relative(project_dir, manifest)]
     if prompt_path.is_file():
-        sources.append(_relative(project_dir, prompt_path))
+        sources.append(project_relative(project_dir, prompt_path))
     return DesktopProfile(
         name=folder.name,
         directory=directory,
@@ -204,7 +174,7 @@ def _load_profile(project_dir: Path, folder: Path, diagnostics: list[Diagnostic]
 
 def _load_shared(project_dir: Path, folder: Path, diagnostics: list[Diagnostic]) -> SharedProfile:
     subject = "profile:shared"
-    origin = Origin(_relative(project_dir, folder))
+    origin = Origin(project_relative(project_dir, folder))
     sources: list[str] = []
     skills: tuple[str, ...] = ()
     commands: tuple[str, ...] = ()
@@ -214,23 +184,22 @@ def _load_shared(project_dir: Path, folder: Path, diagnostics: list[Diagnostic])
             D("SST-VAL801", origin=origin, subject=subject, artifact=subject, detail=f"shared folder {problem}")
         )
     if manifest is not None:
-        origin = Origin(_relative(project_dir, manifest), 1)
-        sources.append(_relative(project_dir, manifest))
+        origin = Origin(project_relative(project_dir, manifest), 1)
+        sources.append(project_relative(project_dir, manifest))
         tree = _parse(project_dir, manifest, subject, diagnostics) or {}
-        for key in sorted(set(tree) - SHARED_KEYS):
-            diagnostics.append(D("SST-PRS004", origin=origin, subject=subject, artifact=subject, field=key))
+        report_unknown_keys(tree, SHARED_KEYS, diagnostics, artifact=subject, origin=origin, subject=subject)
         skills = _names(tree.get("skills"), "skills", subject, origin, diagnostics)
         commands = _names(tree.get("commands"), "commands", subject, origin, diagnostics)
     prompt_path = folder / "AGENTS.md"
     if prompt_path.is_file():
-        sources.append(_relative(project_dir, prompt_path))
+        sources.append(project_relative(project_dir, prompt_path))
     rules_dir = folder / "rules"
     rules = tuple(
         (path.name, path.read_text(encoding="utf-8"))
         for path in sorted(rules_dir.glob("*.md"))
         if path.is_file() and _published(path, rules_dir)
     )
-    sources.extend(_relative(project_dir, rules_dir / name) for name, _ in rules)
+    sources.extend(project_relative(project_dir, rules_dir / name) for name, _ in rules)
     return SharedProfile(_prompt(prompt_path), rules, skills, origin, tuple(sources), commands)
 
 
@@ -243,7 +212,7 @@ def _load_commands(project_dir: Path, root: Path, diagnostics: list[Diagnostic])
         if not path.is_file() or not _published(path, root):
             continue
         relative = path.relative_to(root).as_posix()
-        file = _relative(project_dir, path)
+        file = project_relative(project_dir, path)
         content = path.read_bytes()
         command = CommandFile(relative, content, file, Origin(file, 1))
         _check_command(command, diagnostics)
@@ -287,10 +256,14 @@ def _check_command(command: CommandFile, diagnostics: list[Diagnostic]) -> None:
     if not isinstance(value, dict):
         invalid(f"frontmatter is a {type(value).__name__}, not a mapping")
         return
-    for key in sorted(set(value) - COMMAND_FRONTMATTER_KEYS, key=str):
-        diagnostics.append(
-            D("SST-PRS004", origin=Origin(command.file, 1), subject=command.key, artifact=command.key, field=key)
-        )
+    report_unknown_keys(
+        value,
+        COMMAND_FRONTMATTER_KEYS,
+        diagnostics,
+        artifact=command.key,
+        origin=Origin(command.file, 1),
+        subject=command.key,
+    )
     for key in ("description", "skill"):
         if key in value and not isinstance(value[key], str):
             invalid(f"'{key}' must be a string")
@@ -306,7 +279,7 @@ def _check_command(command: CommandFile, diagnostics: list[Diagnostic]) -> None:
 def _load_hook(project_dir: Path, folder: Path, diagnostics: list[Diagnostic]) -> HookDefinition | None:
     name = folder.name
     subject = f"hook:{name}"
-    directory = _relative(project_dir, folder)
+    directory = project_relative(project_dir, folder)
     manifest, problem = _manifest(folder, HOOK_FILES)
     if manifest is None:
         diagnostics.append(
@@ -316,9 +289,8 @@ def _load_hook(project_dir: Path, folder: Path, diagnostics: list[Diagnostic]) -
     tree = _parse(project_dir, manifest, subject, diagnostics)
     if tree is None:
         return None
-    origin = Origin(_relative(project_dir, manifest), 1)
-    for key in sorted(set(tree) - HOOK_KEYS):
-        diagnostics.append(D("SST-PRS004", origin=origin, subject=subject, artifact=subject, field=key))
+    origin = Origin(project_relative(project_dir, manifest), 1)
+    report_unknown_keys(tree, HOOK_KEYS, diagnostics, artifact=subject, origin=origin, subject=subject)
     event = tree.get("event")
     command = tree.get("command")
     if tree.get("type", "command") != "command":
@@ -367,7 +339,7 @@ def _load_hook(project_dir: Path, folder: Path, diagnostics: list[Diagnostic]) -
         script=SkillFile(chosen[0].name, chosen[0].read_bytes()),
         origin=origin,
         matcher=matcher if isinstance(matcher, str) and matcher else None,
-        timeout=timeout if isinstance(timeout, int) and not isinstance(timeout, bool) else None,
+        timeout=optional_int(timeout),
         interactive=interactive if isinstance(interactive, bool) else None,
         description=tree.get("description") if isinstance(tree.get("description"), str) else None,
     )
@@ -377,13 +349,13 @@ def _load_mcp(project_dir: Path, folder: Path, diagnostics: list[Diagnostic]) ->
     name = folder.name
     subject = f"mcp:{name}"
     path = folder / "mcp.json"
-    file = _relative(project_dir, path)
+    file = project_relative(project_dir, path)
     origin = Origin(file, 1)
     if not path.is_file():
         diagnostics.append(
             D(
                 "SST-VAL853",
-                origin=Origin(_relative(project_dir, folder)),
+                origin=Origin(project_relative(project_dir, folder)),
                 subject=subject,
                 artifact=name,
                 detail="folder has no mcp.json",

@@ -8,10 +8,12 @@ from types import MappingProxyType
 from typing import Any, Mapping
 
 from ...domain.model.agent import AgentEvalFiles, AgentModel, AgentProfile, AgentSkill, AgentTool
+from ...domain.model.artifact_key import artifact_key
 from ...domain.model.diagnostic import D, Diagnostic, DiagnosticBag, Origin
 from ...domain.model.reference import TemplateSyntaxError, scan_template_calls
 from ..project import ProjectError
-from .loader import _parse_yaml_bytes
+from .fields import mapping, optional_int, optional_string
+from .parse import parse_yaml_bytes
 
 
 def load_agents(project_dir: Path, *, agents_dir: str = "agents") -> tuple[tuple[AgentModel, ...], DiagnosticBag]:
@@ -23,7 +25,7 @@ def load_agents(project_dir: Path, *, agents_dir: str = "agents") -> tuple[tuple
     for path in sorted(root.glob("*/agent.y*ml")):
         relative = path.relative_to(project_dir).as_posix()
         try:
-            tree = dict(_parse_yaml_bytes(path.read_bytes(), relative).tree)
+            tree = dict(parse_yaml_bytes(path.read_bytes(), relative).tree)
         except ProjectError as exc:
             diagnostics.extend(exc.diagnostics)
             continue
@@ -48,13 +50,13 @@ def _parse_agent(
     name = tree.get("name")
     if not isinstance(name, str) or not name:
         return None, (D("SST-PRS002", artifact=relative, field="name", origin=origin),)
-    profile_node = _mapping(tree.get("profile"))
-    spec = _mapping(tree.get("spec"))
-    models = _mapping(spec.get("models"))
-    orchestration = _mapping(spec.get("orchestration"))
-    budget = _mapping(orchestration.get("budget"))
-    capabilities = _mapping(orchestration.get("capabilities"))
-    instructions = _mapping(spec.get("instructions"))
+    profile_node = mapping(tree.get("profile"))
+    spec = mapping(tree.get("spec"))
+    models = mapping(spec.get("models"))
+    orchestration = mapping(spec.get("orchestration"))
+    budget = mapping(orchestration.get("budget"))
+    capabilities = mapping(orchestration.get("capabilities"))
+    instructions = mapping(spec.get("instructions"))
     source_files = [relative]
     orchestration_text = _instruction(
         project_dir,
@@ -88,10 +90,10 @@ def _parse_agent(
             diagnostics.append(
                 D(
                     "SST-PRS118",
-                    artifact=f"agent:{name}",
+                    artifact=artifact_key("agent", name),
                     index=index,
                     origin=origin,
-                    subject=f"agent:{name.casefold()}",
+                    subject=artifact_key("agent", name.casefold()),
                 )
             )
             continue
@@ -107,17 +109,17 @@ def _parse_agent(
             name=name,
             origin=origin,
             source_files=tuple(dict.fromkeys(source_files)),
-            comment=_optional_string(tree.get("comment")),
+            comment=optional_string(tree.get("comment")),
             secure=bool(tree.get("secure", False)),
             profile=AgentProfile(
-                _optional_string(profile_node.get("display_name")),
-                _optional_string(profile_node.get("avatar")),
-                _optional_string(profile_node.get("color")),
+                optional_string(profile_node.get("display_name")),
+                optional_string(profile_node.get("avatar")),
+                optional_string(profile_node.get("color")),
             ),
             orchestration_model=str(models.get("orchestration") or "auto"),
-            budget_seconds=_optional_int(budget.get("seconds")),
-            budget_tokens=_optional_int(budget.get("tokens")),
-            tool_not_accessible=_optional_string(orchestration.get("tool_not_accessible")),
+            budget_seconds=optional_int(budget.get("seconds")),
+            budget_tokens=optional_int(budget.get("tokens")),
+            tool_not_accessible=optional_string(orchestration.get("tool_not_accessible")),
             analytical_search=(
                 bool(capabilities.get("analytical_search")) if "analytical_search" in capabilities else None
             ),
@@ -126,7 +128,7 @@ def _parse_agent(
             sample_questions=tuple(sample_questions),
             tools=tools,
             skills=skills,
-            alias=_optional_string(tree.get("alias")),
+            alias=optional_string(tree.get("alias")),
             enabled=bool(tree.get("enabled", True)),
             meta=MappingProxyType(dict(tree.get("meta") or {})),
             tags=tags,
@@ -254,18 +256,18 @@ def _parse_tool(
     return AgentTool(
         type=type_name,
         origin=origin,
-        name=_optional_string(value.get("name")),
-        description=_optional_string(value.get("description")),
+        name=optional_string(value.get("name")),
+        description=optional_string(value.get("description")),
         semantic_view=semantic,
         backing=backing,
         agent_ref=agent_ref,
-        warehouse=_optional_string(value.get("warehouse")),
-        query_timeout=_optional_int(value.get("query_timeout")),
-        max_results=_optional_int(value.get("max_results")),
-        title_column=_optional_string(value.get("title_column")),
-        id_column=_optional_string(value.get("id_column")),
-        stage_path=_optional_string(value.get("stage_path")),
-        relative_path_column=_optional_string(value.get("relative_path_column")),
+        warehouse=optional_string(value.get("warehouse")),
+        query_timeout=optional_int(value.get("query_timeout")),
+        max_results=optional_int(value.get("max_results")),
+        title_column=optional_string(value.get("title_column")),
+        id_column=optional_string(value.get("id_column")),
+        stage_path=optional_string(value.get("stage_path")),
+        relative_path_column=optional_string(value.get("relative_path_column")),
         filter=MappingProxyType(dict(value.get("filter") or {})),
         columns_and_descriptions=MappingProxyType(dict(value.get("columns_and_descriptions") or {})),
         input_schema=MappingProxyType(dict(value.get("input_schema") or {})),
@@ -310,7 +312,7 @@ def _parse_skill(
     else:
         path = _single_template_arg(source.get("path"), "extension", diagnostics, Origin(source_file))
     version_var = _single_template_arg(source.get("version"), "var", diagnostics, Origin(source_file))
-    literal = None if version_var is not None else _optional_string(source.get("version"))
+    literal = None if version_var is not None else optional_string(source.get("version"))
     return AgentSkill(name or "", source_type, path or "", literal or "", ref=ref, version_var=version_var)
 
 
@@ -341,15 +343,3 @@ def _single_template_arg(
 ) -> str | None:
     args = _template_args(value, function, diagnostics, origin)
     return args[0] if len(args) == 1 else None
-
-
-def _optional_string(value: object) -> str | None:
-    return value.strip() if isinstance(value, str) and value.strip() else None
-
-
-def _optional_int(value: object) -> int | None:
-    return value if isinstance(value, int) and not isinstance(value, bool) else None
-
-
-def _mapping(value: object) -> dict[str, Any]:
-    return {str(key): item for key, item in value.items()} if isinstance(value, dict) else {}

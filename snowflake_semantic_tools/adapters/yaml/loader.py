@@ -32,8 +32,7 @@ from pathlib import Path
 from types import MappingProxyType
 from typing import Any, NoReturn
 
-import yaml
-
+from ...domain.model.artifact_key import artifact_key
 from ...domain.model.compiler import FILTER_EXPR, METRIC_EXPR, VQR_SQL, ResolveContext, resolve_scalar
 from ...domain.model.dbt import DbtCatalog, DbtModel
 from ...domain.model.diagnostic import D, Diagnostic, DiagnosticBag, Origin, Severity
@@ -60,18 +59,10 @@ from ...domain.model.sql import string_literal
 from ...domain.resolve.members import attach_view_members
 from ..dbt.manifest import load_manifest_catalog
 from ..project import ProjectError
-from .documents import (
-    NodePath,
-    ParsedYaml,
-    RawDocument,
-    RawDocuments,
-    SourcePosition,
-    TemplateSource,
-    discover_yaml,
-    load_documents,
-)
+from .documents import NodePath, RawDocument, RawDocuments, discover_yaml, load_documents
+from .fields import mapping, optional_string
+from .parse import parse_yaml_bytes, read_yaml_mapping
 
-PLACEHOLDER = "__SST_TPL_%d__"
 # The column types a NON ADDITIVE BY entry or a window may sort or partition by.
 DIMENSION_TYPES = frozenset((ColumnKind.DIMENSION.value, ColumnKind.TIME_DIMENSION.value))
 NUMERIC_TYPES = frozenset(
@@ -193,258 +184,6 @@ def _stray_view_diagnostics(documents: RawDocuments, views_dir: Path) -> tuple[D
     return tuple(diagnostics)
 
 
-def _neutralize_templates(text: str, path: str) -> tuple[str, dict[str, TemplateSource]]:
-    """Replace template spans with YAML-safe scalars before parsing."""
-    # Comments and block scalars are already legal YAML and may discuss invalid
-    # examples verbatim; only neutralize executable scalar text.
-    neutralizable_lines: list[str] = []
-    block_indent: int | None = None
-    for line in text.splitlines(keepends=True):
-        stripped = line.lstrip()
-        indent = len(line) - len(stripped)
-        if block_indent is not None:
-            if stripped.strip() and indent <= block_indent:
-                block_indent = None
-            else:
-                neutralizable_lines.append(" " * len(line.rstrip("\n")) + ("\n" if line.endswith("\n") else ""))
-                continue
-        if stripped.startswith("#"):
-            neutralizable_lines.append(" " * len(line.rstrip("\n")) + ("\n" if line.endswith("\n") else ""))
-            continue
-        opened = _block_scalar_indent(line.rstrip("\n"))
-        if opened is not None:
-            block_indent = opened
-        neutralizable_lines.append(line)
-    neutralizable = "".join(neutralizable_lines)
-    spans: list[tuple[int, int]] = []
-    diagnostics: list[Diagnostic] = []
-    absolute_offset = 0
-    for line_number, line in enumerate(neutralizable.splitlines(keepends=True), start=1):
-        cursor = 0
-        while True:
-            start = line.find("{{", cursor)
-            if start < 0:
-                break
-            end = line.find("}}", start + 2)
-            nested = line.find("{{", start + 2, end if end >= 0 else len(line))
-            if end < 0 or nested >= 0:
-                col = (nested if nested >= 0 else start) + 1
-                reason = "nested template expression" if nested >= 0 else "unterminated template expression"
-                diagnostics.append(
-                    D(
-                        "SST-LOD004",
-                        file=str(path),
-                        line=line_number,
-                        col=col,
-                        reason=reason,
-                    )
-                )
-                break
-            spans.append((absolute_offset + start, absolute_offset + end + 2))
-            cursor = end + 2
-        absolute_offset += len(line)
-    if diagnostics:
-        raise ProjectError(
-            "; ".join(diagnostic.message for diagnostic in diagnostics),
-            diagnostics=tuple(diagnostics),
-        )
-    rewritten = text
-    templates: dict[str, TemplateSource] = {}
-    for index, (start, end) in reversed(tuple(enumerate(spans))):
-        placeholder = PLACEHOLDER % index
-        template_line = text.count("\n", 0, start) + 1
-        previous_newline = text.rfind("\n", 0, start)
-        templates[placeholder] = TemplateSource(text[start:end], template_line, start - previous_newline)
-        rewritten = rewritten[:start] + placeholder + rewritten[end:]
-    return rewritten, templates
-
-
-# Leading spaces and `- ` sequence entries: whatever precedes a line's first key or scalar.
-_ENTRY_PREFIX = re.compile(r" *(?:- +)*")
-
-
-def _block_scalar_indent(line: str) -> int | None:
-    """Return the column a block scalar opened on `line` is indented past, or None if it opens none."""
-    entries = _ENTRY_PREFIX.match(line)
-    prefix = entries.end() if entries else 0
-    # Measured from the owning key or entry, not the line's first `-`, so the rest of a
-    # list item after its `- key: |` block is still executable text.
-    if re.search(r":\s*[>|][+-]?\s*(?:#.*)?$", line):
-        return prefix
-    if line[:prefix].strip() and re.fullmatch(r"[>|][+-]?\s*(?:#.*)?", line[prefix:]):
-        return line.rindex("-", 0, prefix)
-    return None
-
-
-def _restore_templates(value: Any, templates: Mapping[str, TemplateSource]) -> Any:
-    if isinstance(value, str):
-        restored = value
-        for placeholder, source in templates.items():
-            restored = restored.replace(placeholder, source.raw)
-        return restored
-    if isinstance(value, list):
-        return [_restore_templates(item, templates) for item in value]
-    if isinstance(value, dict):
-        return {_restore_templates(key, templates): _restore_templates(item, templates) for key, item in value.items()}
-    return value
-
-
-def _node_path_index(node: yaml.Node) -> Mapping[NodePath, SourcePosition]:
-    positions: dict[NodePath, SourcePosition] = {}
-
-    def walk(current: yaml.Node, path: NodePath) -> None:
-        positions[path] = SourcePosition(current.start_mark.line + 1, current.start_mark.column + 1)
-        if isinstance(current, yaml.MappingNode):
-            for key_node, value_node in current.value:
-                key = str(key_node.value)
-                positions[path + (key,)] = SourcePosition(key_node.start_mark.line + 1, key_node.start_mark.column + 1)
-                walk(value_node, path + (key,))
-        elif isinstance(current, yaml.SequenceNode):
-            for index, child in enumerate(current.value):
-                walk(child, path + (index,))
-
-    walk(node, ())
-    return MappingProxyType(positions)
-
-
-def _construct_yaml_node(node: yaml.Node, path: str) -> Any:
-    """Build the Python value of one composed node, as `yaml.safe_load` would.
-
-    Differences from safe_load: a key written twice in one mapping is SST-LOD005, and a
-    value YAML cannot construct (an unknown tag, an impossible date, a bad merge) is
-    SST-LOD001 at its own position rather than an exception. Merge keys (`<<: *anchor`)
-    expand as in YAML 1.1, with the mapping's own keys winning over merged ones.
-    """
-    if isinstance(node, yaml.MappingNode):
-        mapping: dict[Any, Any] = {}
-        for key_node, value_node in _merged_pairs(node, path):
-            mapping[_construct_yaml_node(key_node, path)] = _construct_yaml_node(value_node, path)
-        return mapping
-    if isinstance(node, yaml.SequenceNode):
-        return [_construct_yaml_node(child, path) for child in node.value]
-    if isinstance(node, yaml.ScalarNode):
-        return _construct_scalar(node, path)
-    mark = node.start_mark
-    diagnostic = D(
-        "SST-LOD001",
-        file=str(path),
-        line=mark.line + 1,
-        col=mark.column + 1,
-        detail=f"unsupported YAML node {type(node).__name__}",
-    )
-    raise ProjectError(diagnostic.message, diagnostics=(diagnostic,))
-
-
-_MERGE_TAG = "tag:yaml.org,2002:merge"
-
-
-def _merged_pairs(node: yaml.MappingNode, path: str) -> list[tuple[yaml.Node, yaml.Node]]:
-    """A mapping's key/value pairs with merge keys expanded, lowest precedence first.
-
-    Building a dict from the result in order gives YAML 1.1 merge semantics: the
-    mapping's own keys win over merged ones, and an earlier mapping in `<<: [*a, *b]`
-    wins over a later one. Composed nodes are never modified -- an anchored node is
-    shared by every alias that reaches it.
-    """
-    merged: list[tuple[yaml.Node, yaml.Node]] = []
-    own: list[tuple[yaml.Node, yaml.Node]] = []
-    for key_node, value_node in node.value:
-        if key_node.tag != _MERGE_TAG:
-            own.append((key_node, value_node))
-            continue
-        if isinstance(value_node, yaml.MappingNode):
-            sources: list[yaml.Node] = [value_node]
-        elif isinstance(value_node, yaml.SequenceNode):
-            sources = list(value_node.value)
-        else:
-            _raise_at(
-                value_node, path, f"expected a mapping or list of mappings for merging, found {_node_kind(value_node)}"
-            )
-        for source in reversed(sources):
-            if not isinstance(source, yaml.MappingNode):
-                _raise_at(source, path, f"expected a mapping for merging, found {_node_kind(source)}")
-            merged.extend(_merged_pairs(source, path))
-    _refuse_duplicate_keys(own, path)
-    return merged + own
-
-
-def _node_kind(node: yaml.Node) -> str:
-    """`scalar`, `sequence` or `mapping`, as YAML's own messages name a node."""
-    return type(node).__name__.removesuffix("Node").lower()
-
-
-def _refuse_duplicate_keys(pairs: list[tuple[yaml.Node, yaml.Node]], path: str) -> None:
-    seen: set[Any] = set()
-    for key_node, _ in pairs:
-        key = _construct_yaml_node(key_node, path)
-        if key in seen:
-            diagnostic = D("SST-LOD005", file=path, line=key_node.start_mark.line + 1, key=str(key))
-            raise ProjectError(diagnostic.message, diagnostics=(diagnostic,))
-        seen.add(key)
-
-
-def _construct_scalar(node: yaml.ScalarNode, path: str) -> Any:
-    loader = yaml.SafeLoader("")
-    try:
-        return loader.construct_object(node, deep=True)
-    except (yaml.constructor.ConstructorError, ValueError) as exc:
-        _raise_at(node, path, str(getattr(exc, "problem", None) or f"cannot read {node.value!r}: {exc}"), exc)
-    finally:
-        loader.dispose()
-
-
-def _raise_at(node: yaml.Node, path: str, detail: str, cause: Exception | None = None) -> NoReturn:
-    mark = node.start_mark
-    diagnostic = D("SST-LOD001", file=str(path), line=mark.line + 1, col=mark.column + 1, detail=detail)
-    raise ProjectError(diagnostic.message, diagnostics=(diagnostic,)) from cause
-
-
-def _parse_yaml_bytes(raw: bytes, path: str) -> ParsedYaml:
-    try:
-        text = raw.decode("utf-8")
-    except UnicodeDecodeError as exc:
-        diagnostic = D("SST-PRS122", origin=Origin(path), file=path, offset=exc.start)
-        raise ProjectError(diagnostic.message, diagnostics=(diagnostic,)) from exc
-    neutralized, templates = _neutralize_templates(text, path)
-    try:
-        nodes = list(yaml.compose_all(neutralized, Loader=yaml.SafeLoader))
-    except yaml.YAMLError as exc:
-        mark = getattr(exc, "problem_mark", None)
-        line = mark.line + 1 if mark is not None else 1
-        col = mark.column + 1 if mark is not None else 1
-        detail = str(getattr(exc, "problem", exc))
-        diagnostic = D("SST-LOD001", file=str(path), line=line, col=col, detail=detail)
-        raise ProjectError(diagnostic.message, diagnostics=(diagnostic,)) from exc
-    if not nodes:
-        # Only whitespace or comments: nothing to load, and nothing wrong enough to stop a build.
-        diagnostic = D("SST-LOD003", file=str(path))
-        raise ProjectError(diagnostic.message, diagnostics=(diagnostic,))
-    if len(nodes) != 1:
-        diagnostic = D("SST-LOD008", file=str(path), count=len(nodes))
-        raise ProjectError(diagnostic.message, diagnostics=(diagnostic,))
-    composed = nodes[0]
-    loaded = _restore_templates(None if composed is None else _construct_yaml_node(composed, path), templates)
-    if loaded is None:
-        return ParsedYaml(MappingProxyType({}), MappingProxyType({}), MappingProxyType(templates))
-    if not isinstance(loaded, dict):
-        diagnostic = D("SST-LOD002", file=str(path), found=type(loaded).__name__)
-        raise ProjectError(diagnostic.message, diagnostics=(diagnostic,))
-    line_index = MappingProxyType({}) if composed is None else _node_path_index(composed)
-    return ParsedYaml(
-        MappingProxyType({str(key): value for key, value in loaded.items()}),
-        line_index,
-        MappingProxyType(templates),
-    )
-
-
-def _read_yaml(path: Path) -> dict[str, Any]:
-    try:
-        raw = path.read_bytes()
-    except OSError as exc:
-        raise ProjectError(f"cannot read {path}: {exc}") from exc
-    return dict(_parse_yaml_bytes(raw, str(path)).tree)
-
-
 def _as_str_tuple(value: Any) -> tuple[str, ...]:
     """Normalise a YAML scalar-or-list into a tuple of strings.
 
@@ -514,7 +253,7 @@ def resolve_target(project_dir: Path, target_name: str | None = None) -> Target:
 
 
 def _target_path(project_dir: Path) -> Path:
-    target_path = str(_read_yaml(project_dir / "dbt_project.yml").get("target-path") or "target")
+    target_path = str(read_yaml_mapping(project_dir / "dbt_project.yml").get("target-path") or "target")
     return project_dir / target_path / "manifest.json"
 
 
@@ -573,10 +312,9 @@ NULL_ORDERS: Mapping[str, bool] = MappingProxyType({"first": True, "last": False
 
 
 def _non_additive(entry: Mapping[str, Any]) -> NonAdditiveDef:
-    table = entry.get("table")
     return NonAdditiveDef(
         dimension=str(entry["dimension"]).strip(),
-        table=table.strip() if isinstance(table, str) and table.strip() else None,
+        table=optional_string(entry.get("table")),
         descending=SORT_DIRECTIONS.get(str(entry.get("sort_direction"))),
         nulls_first=NULL_ORDERS.get(str(entry.get("null_order"))),
     )
@@ -754,7 +492,7 @@ def _metric_parse_diagnostics(
     allowed_access = ("private_access", "public_access")
     for document, index, node in _load_nodes(documents, metrics_dir, _member_root("metric")):
         name = str(node.get("name") or "<unnamed>")
-        subject = f"metric:{name}"
+        subject = artifact_key("metric", name)
         origin = _node_origin(document, _member_root("metric"), index)
         if "expr" not in node:
             diagnostics.append(
@@ -837,7 +575,7 @@ def _filter_parse_diagnostics(
         labels = node.get("labels")
         if labels is None or (isinstance(labels, list) and all(isinstance(label, str) for label in labels)):
             continue
-        subject = f"filter:{node.get('name') or '<unnamed>'}"
+        subject = artifact_key("filter", node.get("name") or "<unnamed>")
         diagnostics.append(
             D(
                 "SST-PRS003",
@@ -1040,32 +778,33 @@ def _metric_diagnostics(
     known_metrics = {metric.name.casefold() for metric in metrics}
     metric_by_name = {metric.name.casefold(): metric for metric in metrics}
     diagnostics.extend(
-        D("SST-VAL001", type="metric", name=name, subject=f"metric:{name}") for name in sorted(duplicate_names)
+        D("SST-VAL001", type="metric", name=name, subject=artifact_key("metric", name))
+        for name in sorted(duplicate_names)
     )
     for metric in metrics:
         if metric.name.casefold() in duplicate_names:
             continue
         if not metric.derived and not metric.has_tables_key:
-            diagnostics.append(D("SST-VAL109", metric=metric.name, subject=f"metric:{metric.name}"))
+            diagnostics.append(D("SST-VAL109", metric=metric.name, subject=artifact_key("metric", metric.name)))
         elif not metric.derived and not metric.tables:
             diagnostics.append(
                 D(
                     "SST-PRS102",
-                    artifact=f"metric:{metric.name}",
-                    subject=f"metric:{metric.name}",
+                    artifact=artifact_key("metric", metric.name),
+                    subject=artifact_key("metric", metric.name),
                 )
             )
         if metric.derived and metric.has_tables_key:
-            diagnostics.append(D("SST-VAL108", metric=metric.name, subject=f"metric:{metric.name}"))
+            diagnostics.append(D("SST-VAL108", metric=metric.name, subject=artifact_key("metric", metric.name)))
         if metric.derived and metric.using_relationships:
-            diagnostics.append(D("SST-VAL113", metric=metric.name, subject=f"metric:{metric.name}"))
+            diagnostics.append(D("SST-VAL113", metric=metric.name, subject=artifact_key("metric", metric.name)))
         if len(metric.using_relationships) > 1:
             diagnostics.append(
                 D(
                     "SST-VAL115",
                     metric=metric.name,
                     count=len(metric.using_relationships),
-                    subject=f"metric:{metric.name}",
+                    subject=artifact_key("metric", metric.name),
                 )
             )
         if metric.access_modifier not in ("public_access", "private_access"):
@@ -1074,7 +813,7 @@ def _metric_diagnostics(
                     "SST-VAL121",
                     metric=metric.name,
                     found=metric.access_modifier,
-                    subject=f"metric:{metric.name}",
+                    subject=artifact_key("metric", metric.name),
                 )
             )
         referenced_tables = metric.tables or metric.referenced_models
@@ -1089,7 +828,7 @@ def _metric_diagnostics(
                         "SST-VAL118",
                         metric=metric.name,
                         value=f"{entry.table}.{entry.dimension}" if entry.table else entry.dimension,
-                        subject=f"metric:{metric.name}",
+                        subject=artifact_key("metric", metric.name),
                         origin=metric.origin,
                     )
                 )
@@ -1100,7 +839,7 @@ def _metric_diagnostics(
                 D(
                     "SST-VAL101",
                     metric=metric.name,
-                    subject=f"metric:{metric.name}",
+                    subject=artifact_key("metric", metric.name),
                     origin=metric.origin,
                 )
             )
@@ -1116,7 +855,7 @@ def _metric_diagnostics(
                         "SST-VAL102",
                         function=window.group(1).upper() if window else _root_function(metric.expr) or "window",
                         metric=metric.name,
-                        subject=f"metric:{metric.name}",
+                        subject=artifact_key("metric", metric.name),
                     )
                 )
             for referenced_metric in metric.referenced_metrics:
@@ -1130,7 +869,7 @@ def _metric_diagnostics(
                             "SST-VAL103",
                             metric=metric.name,
                             other=referenced_metric,
-                            subject=f"metric:{metric.name}",
+                            subject=artifact_key("metric", metric.name),
                         )
                     )
             for call in metric.calls:
@@ -1140,7 +879,7 @@ def _metric_diagnostics(
                             "SST-VAL104",
                             metric=metric.name,
                             column=f"{call.args[0]}.{call.args[1]}",
-                            subject=f"metric:{metric.name}",
+                            subject=artifact_key("metric", metric.name),
                         )
                     )
             for member in re.findall(
@@ -1154,7 +893,7 @@ def _metric_diagnostics(
                         metric=metric.name,
                         member_type="member",
                         other=member,
-                        subject=f"metric:{metric.name}",
+                        subject=artifact_key("metric", metric.name),
                     )
                 )
         else:
@@ -1168,7 +907,7 @@ def _metric_diagnostics(
                             "SST-VAL106",
                             metric=metric.name,
                             other=referenced.name,
-                            subject=f"metric:{metric.name}",
+                            subject=artifact_key("metric", metric.name),
                         )
                     )
                 if referenced.non_additive:
@@ -1177,7 +916,7 @@ def _metric_diagnostics(
                             "SST-VAL107",
                             metric=metric.name,
                             other=referenced.name,
-                            subject=f"metric:{metric.name}",
+                            subject=artifact_key("metric", metric.name),
                         )
                     )
         for referenced_metric in metric.referenced_metrics:
@@ -1186,7 +925,7 @@ def _metric_diagnostics(
                     D(
                         "SST-REF006",
                         origin=metric.origin,
-                        subject=f"metric:{metric.name}",
+                        subject=artifact_key("metric", metric.name),
                         name=referenced_metric,
                     )
                 )
@@ -1196,7 +935,7 @@ def _metric_diagnostics(
                         "SST-VAL128",
                         metric=metric.name,
                         other=metric_by_name[referenced_metric].name,
-                        subject=f"metric:{metric.name}",
+                        subject=artifact_key("metric", metric.name),
                         origin=metric.origin,
                     )
                 )
@@ -1211,7 +950,7 @@ def _metric_diagnostics(
                     line=exc.line,
                     col=exc.col,
                     reason=exc.reason,
-                    subject=f"metric:{metric.name}",
+                    subject=artifact_key("metric", metric.name),
                 )
             )
             continue
@@ -1219,7 +958,7 @@ def _metric_diagnostics(
             if call.function == "var" and (
                 len(call.args) != 1 or variables is not None and call.args[0] not in variables
             ):
-                diagnostics.append(_var_diagnostic(call, metric.origin, f"metric:{metric.name}"))
+                diagnostics.append(_var_diagnostic(call, metric.origin, artifact_key("metric", metric.name)))
                 continue
             if call.function != "ref" or len(call.args) not in (1, 2):
                 continue
@@ -1230,7 +969,7 @@ def _metric_diagnostics(
                     D(
                         "SST-REF001",
                         model=model_name,
-                        subject=f"metric:{metric.name}",
+                        subject=artifact_key("metric", metric.name),
                         origin=metric.origin,
                     )
                 )
@@ -1243,7 +982,7 @@ def _metric_diagnostics(
                             "SST-REF002",
                             model=model_name,
                             column=column_name,
-                            subject=f"metric:{metric.name}",
+                            subject=artifact_key("metric", metric.name),
                             origin=metric.origin,
                         )
                     )
@@ -1251,10 +990,10 @@ def _metric_diagnostics(
                     diagnostics.append(
                         D(
                             "SST-VAL318",
-                            artifact=f"metric:{metric.name}",
+                            artifact=artifact_key("metric", metric.name),
                             member=metric.name,
                             column=column_name,
-                            subject=f"metric:{metric.name}",
+                            subject=artifact_key("metric", metric.name),
                             origin=metric.origin,
                         )
                     )
@@ -1268,9 +1007,9 @@ def _metric_diagnostics(
                     D(
                         "SST-VAL112",
                         origin=metric.origin,
-                        subject=f"metric:{metric.name}",
+                        subject=artifact_key("metric", metric.name),
                         metric=metric.name,
-                        artifact=f"metric:{metric.name}",
+                        artifact=artifact_key("metric", metric.name),
                         outside=model_name,
                     )
                 )
@@ -1285,7 +1024,7 @@ def _metric_diagnostics(
                     "SST-VAL110",
                     metric=metric.name,
                     column=identifier,
-                    subject=f"metric:{metric.name}",
+                    subject=artifact_key("metric", metric.name),
                     origin=metric.origin,
                 )
             )
@@ -1309,7 +1048,7 @@ def _metric_diagnostics(
                     "SST-VAL124",
                     metric=metric.name,
                     other=previous,
-                    subject=f"metric:{metric.name}",
+                    subject=artifact_key("metric", metric.name),
                     origin=metric.origin,
                 )
             )
@@ -1332,7 +1071,7 @@ def _window_diagnostics(
     """Snowflake's rules for a window function metric that its own compile does not report plainly."""
     window = metric.window
     assert window is not None
-    subject = f"metric:{metric.name}"
+    subject = artifact_key("metric", metric.name)
     diagnostics: list[Diagnostic] = []
     arguments = call_arguments(metric.expr)
     # The window must apply to a metric or an aggregate: over a raw column it is a
@@ -1410,7 +1149,7 @@ def _expression_reference_diagnostics(
     diagnostics: list[Diagnostic] = []
     for member in members:
         text = member.expr if isinstance(member, FilterDef) else member.sql
-        subject = f"{'filter' if isinstance(member, FilterDef) else 'verified_query'}:{member.name}"
+        subject = artifact_key("filter" if isinstance(member, FilterDef) else "verified_query", member.name)
         declared = {table.casefold() for table in member.tables}
         if isinstance(member, VerifiedQueryDef):
             for table_name in _sql_tables(member.sql):
@@ -1535,7 +1274,7 @@ def _filter_diagnostics(filters: tuple[FilterDef, ...]) -> tuple[Diagnostic, ...
         else:
             continue
         diagnostics.append(
-            D(code, member=filter_def.name, subject=f"filter:{filter_def.name}", origin=filter_def.origin)
+            D(code, member=filter_def.name, subject=artifact_key("filter", filter_def.name), origin=filter_def.origin)
         )
     return tuple(diagnostics)
 
@@ -1750,7 +1489,7 @@ def _description_diagnostics(
                     "SST-VAL003",
                     type="semantic_view",
                     name=view.name,
-                    subject=f"semantic_view:{view.name}",
+                    subject=artifact_key("semantic_view", view.name),
                     origin=view.origin,
                 )
             )
@@ -1759,7 +1498,7 @@ def _description_diagnostics(
             "SST-VAL003",
             type="metric",
             name=metric.name,
-            subject=f"metric:{metric.name}",
+            subject=artifact_key("metric", metric.name),
             origin=metric.origin,
         )
         for metric in metrics
@@ -1781,7 +1520,7 @@ def _relationship_diagnostics(
             relationship.from_table.casefold(),
             relationship.to_table.casefold(),
         }
-        subject = f"relationship:{relationship.name.casefold()}"
+        subject = artifact_key("relationship", relationship.name.casefold())
         if not any(endpoints.issubset(tables) for _, tables in view_table_sets):
             closest_name, closest_tables = max(
                 view_table_sets,
@@ -1903,7 +1642,7 @@ def _relationship_parse_diagnostics(
                 D(
                     "SST-VAL201",
                     relationship=name,
-                    subject=f"relationship:{name}",
+                    subject=artifact_key("relationship", name),
                     origin=_node_origin(document, _member_root("relationship"), index),
                 )
             )
@@ -1941,7 +1680,7 @@ def _multipath_diagnostics(
                         metric=metric.name,
                         count=count,
                         name=b,
-                        subject=f"metric:{metric.name}",
+                        subject=artifact_key("metric", metric.name),
                     )
                 )
                 break
@@ -1952,7 +1691,7 @@ def _multipath_diagnostics(
                         metric=metric.name,
                         count=count,
                         name=a,
-                        subject=f"metric:{metric.name}",
+                        subject=artifact_key("metric", metric.name),
                     )
                 )
                 break
@@ -2168,7 +1907,7 @@ def _authored_key_diagnostics(documents: RawDocuments) -> tuple[Diagnostic, ...]
             nodes = document.tree.get(root_key) if root_key in document.root_keys else None
             for index, node in enumerate(nodes if isinstance(nodes, list) else ()):
                 if isinstance(node, dict):
-                    subject = f"{node_type}:{node.get('name') or index}"
+                    subject = artifact_key(node_type, str(node.get("name") or index))
                     diagnostics.extend(_unread_keys(document, subject, node_type, (root_key, index), "", node, allowed))
     return tuple(diagnostics)
 
@@ -2197,7 +1936,7 @@ def _member_name_diagnostics(documents: RawDocuments) -> tuple[Diagnostic, ...]:
                             artifact=document.path,
                             member_type=node_type,
                             index=index,
-                            subject=f"{node_type}:{index}",
+                            subject=artifact_key(node_type, str(index)),
                             origin=origin,
                         )
                     )
@@ -2212,7 +1951,7 @@ def _member_name_diagnostics(documents: RawDocuments) -> tuple[Diagnostic, ...]:
                             artifact=document.path,
                             member_type=node_type,
                             name=name,
-                            subject=f"{node_type}:{name}",
+                            subject=artifact_key(node_type, name),
                             origin=origin,
                         )
                     )
@@ -2433,10 +2172,7 @@ def _resolve_verified_query_sql(
     config: dict[str, Any],
     catalog: DbtCatalog,
 ) -> str:
-    raw_variables = config.get("vars")
-    variables: dict[str, object] = (
-        {str(key): value for key, value in raw_variables.items()} if isinstance(raw_variables, dict) else {}
-    )
+    variables: dict[str, object] = mapping(config.get("vars"))
     return _resolve_expression(
         query.sql,
         policy=VQR_SQL,
@@ -2525,7 +2261,7 @@ def _verified_query_diagnostics(
     diagnostics: list[Diagnostic] = []
     for document, index, node in _load_nodes(documents, root, _member_root("verified_query")):
         name = str(node.get("name") or "<unnamed>")
-        subject = f"verified_query:{name}"
+        subject = artifact_key("verified_query", name)
         origin = _node_origin(document, _member_root("verified_query"), index)
         has_sql = node.get("sql") is not None
         has_sql_file = node.get("sql_file") is not None
@@ -2619,7 +2355,7 @@ def load_relationships(
         asof_index: int | None = None
         range_bounds: tuple[str, str] | None = None
         origin = _node_origin(document, _member_root("relationship"), index)
-        subject = f"relationship:{node['name']}"
+        subject = artifact_key("relationship", node["name"])
         endpoint_problems = _endpoint_diagnostics(node, subject, origin)
         if endpoint_problems:
             diagnostics.extend(endpoint_problems)
@@ -2844,9 +2580,9 @@ def load_semantic_views_result(
     invoke_dbt: bool = True,
 ) -> SemanticViewProject:
     """Load healthy views while collecting view-local failures."""
-    config = _read_yaml(project_dir / "sst_config.yml")
+    config = read_yaml_mapping(project_dir / "sst_config.yml")
     semantic_models_dir = str((config.get("project") or {}).get("semantic_models_dir") or "semantic_models")
-    documents = load_documents(discover_yaml(project_dir, semantic_models_dir), _parse_yaml_bytes)
+    documents = load_documents(discover_yaml(project_dir, semantic_models_dir), parse_yaml_bytes)
     target = resolve_target(project_dir, target_name)
     models = load_models(
         project_dir,
@@ -2895,7 +2631,7 @@ def load_semantic_views_result(
             "SST-VAL001",
             type="semantic_view",
             name=name,
-            subject=f"semantic_view:{name}",
+            subject=artifact_key("semantic_view", name),
         )
         for name, count in sorted(view_counts.items())
         if count > 1
@@ -2911,7 +2647,7 @@ def load_semantic_views_result(
                     line=view.origin.line or 1,
                     col=view.origin.col or 1,
                     reason="malformed table reference",
-                    subject=f"semantic_view:{view.name}",
+                    subject=artifact_key("semantic_view", view.name),
                 )
             )
     for member in parsed.members:
@@ -2953,10 +2689,7 @@ def load_semantic_views_result(
     }
     verified_query_diagnostics = _verified_query_diagnostics(documents, project_dir, semantic_models_dir)
     diagnostics.extend(verified_query_diagnostics)
-    raw_variables = config.get("vars")
-    variables: dict[str, object] = (
-        {str(key): value for key, value in raw_variables.items()} if isinstance(raw_variables, dict) else {}
-    )
+    variables: dict[str, object] = mapping(config.get("vars"))
     expression_diagnostics = _expression_reference_diagnostics(
         filters + verified_queries,
         models,
@@ -2999,14 +2732,16 @@ def load_semantic_views_result(
                 diagnostics.append(
                     D(
                         "SST-MEM003",
-                        member=f"metric:{metric.name}",
+                        member=artifact_key("metric", metric.name),
                         name=table_name,
-                        subject=f"metric:{metric.name}",
+                        subject=artifact_key("metric", metric.name),
                     )
                 )
     attachment_members_to_validate: tuple[FilterDef | VerifiedQueryDef, ...] = filters + verified_queries
     for authored_member in attachment_members_to_validate:
-        subject = f"{'filter' if isinstance(authored_member, FilterDef) else 'verified_query'}:{authored_member.name}"
+        subject = artifact_key(
+            "filter" if isinstance(authored_member, FilterDef) else "verified_query", authored_member.name
+        )
         for table_name in authored_member.tables:
             if table_name not in known_models:
                 invalid_member_subjects.add(subject.casefold())
@@ -3019,7 +2754,7 @@ def load_semantic_views_result(
             D(
                 "SST-REF005",
                 cycle=" -> ".join(cycle),
-                subject=f"metric:{cycle[0]}",
+                subject=artifact_key("metric", cycle[0]),
                 origin=origins[0] if origins else None,
                 related=origins,
             )
@@ -3027,9 +2762,12 @@ def load_semantic_views_result(
     healthy_metrics = tuple(
         metric
         for metric in healthy_metrics
-        if metric.name.casefold() not in invalid_metrics and f"metric:{metric.name}" not in poisoned_metric_subjects
+        if metric.name.casefold() not in invalid_metrics
+        and artifact_key("metric", metric.name) not in poisoned_metric_subjects
     )
-    view_table_sets = [(f"semantic_view:{view.name}", frozenset(view.declared_tables)) for view in parsed.views]
+    view_table_sets = [
+        (artifact_key("semantic_view", view.name), frozenset(view.declared_tables)) for view in parsed.views
+    ]
     view_root_key = SEMANTIC_REGISTRY.artifacts["semantic_view"].root_key
     assert view_root_key is not None
     relationship_diagnostics = _relationship_diagnostics(
@@ -3049,7 +2787,7 @@ def load_semantic_views_result(
     poisoned_member_keys = {
         subject.casefold() for subject in poisoned_metric_subjects | poisoned_relationships if subject is not None
     }
-    poisoned_member_keys.update(f"metric:{name}" for name in poisoned_metrics)
+    poisoned_member_keys.update(artifact_key("metric", name) for name in poisoned_metrics)
     poisoned_member_keys.update(poisoned_expression_subjects)
     poisoned_member_keys.update(invalid_member_subjects)
     poisoned_member_keys.update(member.key for member in parsed.members if member.origin.file in legacy_files)
@@ -3063,11 +2801,11 @@ def load_semantic_views_result(
                         "SST-VAL214",
                         metric=metric.name,
                         relationship=relationship_name,
-                        subject=f"metric:{metric.name}",
+                        subject=artifact_key("metric", metric.name),
                         origin=metric.origin,
                     )
                 )
-                poisoned_member_keys.add(f"metric:{metric.name}".casefold())
+                poisoned_member_keys.add(artifact_key("metric", metric.name).casefold())
                 continue
             if metric.tables and relationship.from_table.casefold() != metric.tables[0]:
                 diagnostics.append(
@@ -3076,11 +2814,11 @@ def load_semantic_views_result(
                         metric=metric.name,
                         other=relationship_name,
                         name=metric.tables[0],
-                        subject=f"metric:{metric.name}",
+                        subject=artifact_key("metric", metric.name),
                         origin=metric.origin,
                     )
                 )
-                poisoned_member_keys.add(f"metric:{metric.name}".casefold())
+                poisoned_member_keys.add(artifact_key("metric", metric.name).casefold())
     attachment_members = tuple(
         (dataclasses.replace(member, poisoned=True) if member.key in poisoned_member_keys else member)
         for member in parsed.members
@@ -3103,12 +2841,12 @@ def load_semantic_views_result(
                         line=exc.line,
                         col=exc.col,
                         reason=exc.reason,
-                        subject=f"semantic_view:{parsed_view.name}",
+                        subject=artifact_key("semantic_view", parsed_view.name),
                     )
                 )
                 continue
             for call in calls:
-                view_subject = f"semantic_view:{parsed_view.name}"
+                view_subject = artifact_key("semantic_view", parsed_view.name)
                 if call.function != "custom_instructions":
                     diagnostics.append(
                         D(
@@ -3145,22 +2883,22 @@ def load_semantic_views_result(
                     )
                     continue
                 names.add(instruction_name)
-        view_named_members[f"semantic_view:{parsed_view.name}"] = frozenset(names)
+        view_named_members[artifact_key("semantic_view", parsed_view.name)] = frozenset(names)
     poisoned_views = {
         diagnostic.subject.casefold()
         for diagnostic in diagnostics
         if diagnostic.subject is not None
-        and diagnostic.subject.casefold().startswith("semantic_view:")
+        and diagnostic.subject.casefold().startswith(artifact_key("semantic_view", ""))
         and diagnostic.severity is Severity.ERROR
     }
-    poisoned_views.update(f"semantic_view:{view.name}".casefold() for view in parsed.views if view.poisoned)
+    poisoned_views.update(artifact_key("semantic_view", view.name).casefold() for view in parsed.views if view.poisoned)
     # A view authored with the legacy globals is rejected by SST-REF034; building
     # it would only report the same call again as an internal error.
     poisoned_views.update(
-        f"semantic_view:{view.name}".casefold() for view in parsed.views if view.origin.file in legacy_files
+        artifact_key("semantic_view", view.name).casefold() for view in parsed.views if view.origin.file in legacy_files
     )
     metric_dependencies = {
-        member.key: tuple(f"metric:{name}" for name in member.source.referenced_metrics)
+        member.key: tuple(artifact_key("metric", name) for name in member.source.referenced_metrics)
         for member in attachment_members
         if member.type_name == "metric" and isinstance(member.source, MetricDef)
     }
@@ -3182,7 +2920,7 @@ def load_semantic_views_result(
                 continue
             if str(node["name"]).casefold() in duplicate_views:
                 continue
-            if f"semantic_view:{node['name']}".casefold() in poisoned_views:
+            if artifact_key("semantic_view", node["name"]).casefold() in poisoned_views:
                 continue
             view_target = _semantic_view_target(config, path, views_dir, target)
             try:
@@ -3200,7 +2938,7 @@ def load_semantic_views_result(
                 )
             except ProjectError as exc:
                 view_origin = Origin(path.resolve().relative_to(project_dir.resolve()).as_posix())
-                view_subject = f"semantic_view:{node['name']}"
+                view_subject = artifact_key("semantic_view", node["name"])
                 if exc.diagnostics:
                     diagnostics.extend(
                         replace(item, origin=item.origin or view_origin, subject=item.subject or view_subject)
@@ -3238,8 +2976,8 @@ def _build_view(
     config: dict[str, Any],
 ) -> SemanticView:
     name = str(node["name"])
-    artifact_key = f"semantic_view:{name}"
-    attached_members = tuple(member for member in members if artifact_key in attachment.get(member.key, ()))
+    view_key = artifact_key("semantic_view", name)
+    attached_members = tuple(member for member in members if view_key in attachment.get(member.key, ()))
     metrics = tuple(
         member.source
         for member in attached_members
@@ -3266,10 +3004,7 @@ def _build_view(
         if member.type_name == "relationship" and isinstance(member.source, Relationship)
     )
     catalog = DbtCatalog("v12", None, None, tuple(models.values()))
-    raw_variables = config.get("vars")
-    project_variables: dict[str, object] = (
-        {str(key): value for key, value in raw_variables.items()} if isinstance(raw_variables, dict) else {}
-    )
+    project_variables: dict[str, object] = mapping(config.get("vars"))
 
     # Tables keep DECLARATION order -- that is authored information and the golden
     # preserves it. Members are sorted later, by the renderer.
@@ -3279,12 +3014,12 @@ def _build_view(
     for raw in node.get("tables") or []:
         call = single_template_call(str(raw), "ref")
         if call is None or len(call.args) != 1:
-            diagnostic = D("SST-REF044", artifact=f"semantic_view:{name}", found=repr(raw))
+            diagnostic = D("SST-REF044", artifact=artifact_key("semantic_view", name), found=repr(raw))
             raise ProjectError(diagnostic.message, diagnostics=(diagnostic,))
         model_name = call.args[0]
         model = models.get(model_name.lower())
         if model is None:
-            diagnostic = D("SST-REF001", model=model_name, subject=f"semantic_view:{name}")
+            diagnostic = D("SST-REF001", model=model_name, subject=artifact_key("semantic_view", name))
             raise ProjectError(diagnostic.message, diagnostics=(diagnostic,))
         logical = model_name.upper()
         if logical in logical_by_model.values():
@@ -3357,7 +3092,7 @@ def _build_view(
                 "SST-VAL118",
                 metric=metric.name,
                 value=f"{outside.table}.{outside.dimension}",
-                subject=f"semantic_view:{name}",
+                subject=artifact_key("semantic_view", name),
             )
             raise ProjectError(diagnostic.message, diagnostics=(diagnostic,))
         expr = _resolve_expression(
@@ -3373,7 +3108,7 @@ def _build_view(
         )
         window: Window | None = None
         if metric.window is not None and owner is not None:
-            _require_reachable(metric, owner, relationships, logical_by_model, f"semantic_view:{name}")
+            _require_reachable(metric, owner, relationships, logical_by_model, artifact_key("semantic_view", name))
 
             def resolve(text: str, metric: MetricDef = metric) -> str:
                 return _resolve_expression(
@@ -3470,7 +3205,7 @@ def _build_view(
         ]
     raw_tags = node.get("tags")
     if raw_tags is not None and not isinstance(raw_tags, list):
-        diagnostic = D("SST-PRS027", artifact=f"semantic_view:{name}", found=type(raw_tags).__name__)
+        diagnostic = D("SST-PRS027", artifact=artifact_key("semantic_view", name), found=type(raw_tags).__name__)
         raise ProjectError(diagnostic.message, diagnostics=(diagnostic,))
     tags = tuple(_tag(value, config=config, target=target, path=path, view_name=name) for value in raw_tags or [])
     max_staleness = node.get("max_staleness")
@@ -3599,7 +3334,7 @@ def _variable(value: object, *, path: Path, view_name: str) -> Variable:
 
 def _tag(value: object, *, config: dict[str, Any], target: Target, path: Path, view_name: str) -> Tag:
     def invalid(detail: str) -> NoReturn:
-        diagnostic = D("SST-REF040", artifact=f"semantic_view:{view_name}", detail=detail)
+        diagnostic = D("SST-REF040", artifact=artifact_key("semantic_view", view_name), detail=detail)
         raise ProjectError(diagnostic.message, diagnostics=(diagnostic,))
 
     if not isinstance(value, dict) or not value.get("name") or "value" not in value:

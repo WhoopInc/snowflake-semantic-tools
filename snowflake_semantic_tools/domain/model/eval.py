@@ -8,13 +8,18 @@ from types import MappingProxyType
 from typing import Iterable, Mapping
 
 from .agent import AgentModel
+from .artifact_key import artifact_key
 from .diagnostic import D, Diagnostic, DiagnosticBag, Origin
 
 SYSTEM_EVAL_METRICS = frozenset(
     ("tool_selection_accuracy", "tool_execution_accuracy", "answer_correctness", "logical_consistency")
 )
 SYSTEM_EVAL_METRIC_VERSION = "v3"
-EVAL_PASS_STATUSES = frozenset(("COMPLETED",))
+# The run status Snowflake reports for an evaluation that finished every question.
+EVAL_COMPLETED = "COMPLETED"
+EVAL_PASS_STATUSES = frozenset((EVAL_COMPLETED,))
+# The stage in each agent's schema that holds its eval run configs.
+DEFAULT_EVAL_CONFIG_STAGE = "EVAL_CONFIGS"
 EVAL_RETRY_MIN = 0
 EVAL_CONCURRENCY_MIN = 1
 SUPPORTED_JUDGE_PLACEHOLDERS = frozenset(
@@ -33,7 +38,9 @@ SUPPORTED_JUDGE_PLACEHOLDERS = frozenset(
         "status",
     )
 )
-EVAL_TERMINAL_STATUSES = frozenset(("COMPLETED", "PARTIALLY_COMPLETED", "INVOCATION_PARTIALLY_COMPLETED", "CANCELLED"))
+EVAL_TERMINAL_STATUSES = frozenset(
+    (EVAL_COMPLETED, "PARTIALLY_COMPLETED", "INVOCATION_PARTIALLY_COMPLETED", "CANCELLED")
+)
 _EVAL_NAME_TOKEN = re.compile(r"{{\s*(agent(?:\s*\|\s*upper)?|sha7|variant|ts)\s*}}")
 _JUDGE_PLACEHOLDER = re.compile(r"{{\s*([A-Za-z_][A-Za-z0-9_]*)\s*}}")
 _RELATIVE_DATE = re.compile(
@@ -251,7 +258,7 @@ class ResolvedEval:
 
     @property
     def key(self) -> str:
-        return f"eval:{self.agent.name.casefold()}"
+        return artifact_key("eval", self.agent.name.casefold())
 
     @property
     def source_files(self) -> tuple[str, ...]:
@@ -767,7 +774,7 @@ def _validate_eval_config(
                     artifact=config.source_file,
                     field="run.accept_statuses",
                     found=status,
-                    expected="COMPLETED",
+                    expected=EVAL_COMPLETED,
                     origin=config.origin,
                     subject=subject,
                 )

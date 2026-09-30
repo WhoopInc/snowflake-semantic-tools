@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from types import MappingProxyType
 
+from ...domain.model.artifact_key import artifact_key
 from ...domain.model.dbt import DbtCatalog
 from ...domain.model.diagnostic import D, Diagnostic, DiagnosticBag, Origin
 from ...domain.model.reference import TemplateSyntaxError, scan_template_calls
@@ -19,7 +20,8 @@ from ...domain.model.tool import (
     validate_tool_catalog,
 )
 from ..project import ProjectError
-from .loader import _parse_yaml_bytes
+from .fields import optional_string, strings
+from .parse import parse_yaml_bytes
 
 
 def load_tool_catalog(
@@ -38,7 +40,7 @@ def load_tool_catalog(
     for path in sorted(root.glob("*.y*ml")):
         relative = path.relative_to(project_dir).as_posix()
         try:
-            loaded = dict(_parse_yaml_bytes(path.read_bytes(), relative).tree)
+            loaded = dict(parse_yaml_bytes(path.read_bytes(), relative).tree)
         except ProjectError as exc:
             diagnostics.extend(exc.diagnostics)
             continue
@@ -128,8 +130,8 @@ def _parse_group(
             name=name,
             origin=origin,
             source_file=source_file,
-            description=_optional_string(value.get("description")),
-            owner=_optional_string(value.get("owner")),
+            description=optional_string(value.get("description")),
+            owner=optional_string(value.get("owner")),
             immutable=bool(value.get("immutable", False)),
             members=tuple(members),
         ),
@@ -166,7 +168,7 @@ def _parse_member(
     if diagnostics:
         return None, tuple(diagnostics)
     on_model, search_column, attributes = _on_fields(value.get("on", value.get(True)), origin, str(name), diagnostics)
-    body_file = _optional_string(value.get("body_file"))
+    body_file = optional_string(value.get("body_file"))
     body: str | None = None
     if body_file:
         sidecar = (project_dir / body_file).resolve()
@@ -186,29 +188,29 @@ def _parse_member(
             ownership=ownership,
             origin=origin,
             source_file=source_file,
-            description=_optional_string(value.get("description")),
+            description=optional_string(value.get("description")),
             on_model=on_model,
-            search_column=_optional_string(value.get("search_column")) or search_column,
-            attribute_columns=_strings(value.get("attribute_columns")) or attributes,
-            title_column=_optional_string(value.get("title_column")),
-            id_column=_optional_string(value.get("id_column")),
+            search_column=optional_string(value.get("search_column")) or search_column,
+            attribute_columns=strings(value.get("attribute_columns")) or attributes,
+            title_column=optional_string(value.get("title_column")),
+            id_column=optional_string(value.get("id_column")),
             columns=columns,
-            relative_path_column=_optional_string(value.get("relative_path_column")),
-            warehouse=_optional_string(value.get("warehouse")),
+            relative_path_column=optional_string(value.get("relative_path_column")),
+            warehouse=optional_string(value.get("warehouse")),
             signature=signature,
-            where=_optional_string(value.get("where")),
-            target_lag=_optional_string(value.get("target_lag")),
-            embedding_model=_optional_string(value.get("embedding_model")),
-            language=_optional_string(value.get("language")),
-            runtime_version=_optional_string(value.get("runtime_version")),
-            handler=_optional_string(value.get("handler")),
+            where=optional_string(value.get("where")),
+            target_lag=optional_string(value.get("target_lag")),
+            embedding_model=optional_string(value.get("embedding_model")),
+            language=optional_string(value.get("language")),
+            runtime_version=optional_string(value.get("runtime_version")),
+            handler=optional_string(value.get("handler")),
             body_file=body_file,
             body=body,
-            returns=_optional_string(value.get("returns")),
-            execute_as=_optional_string(value.get("execute_as")),
-            packages=_strings(value.get("packages")),
-            imports=_strings(value.get("imports")),
-            external_access_integrations=_strings(value.get("external_access_integrations")),
+            returns=optional_string(value.get("returns")),
+            execute_as=optional_string(value.get("execute_as")),
+            packages=strings(value.get("packages")),
+            imports=strings(value.get("imports")),
+            external_access_integrations=strings(value.get("external_access_integrations")),
             secrets=MappingProxyType(_string_map(value.get("secrets"), "secrets", str(name), origin, diagnostics)),
             relations=MappingProxyType(relations),
             creation_keys=tuple(
@@ -230,15 +232,15 @@ def _on_fields(
     attributes: tuple[str, ...] = ()
     if isinstance(value, dict):
         raw = value.get("table")
-        search_column = _optional_string(value.get("search_column"))
-        attributes = _strings(value.get("attributes"))
+        search_column = optional_string(value.get("search_column"))
+        attributes = strings(value.get("attributes"))
     if raw is None:
         return None, search_column, attributes
     if not isinstance(raw, str):
         diagnostics.append(
             D(
                 "SST-PRS003",
-                artifact=f"tool:{name}",
+                artifact=artifact_key("tool", name),
                 field="on",
                 expected="ref() string",
                 found=type(raw).__name__,
@@ -266,7 +268,7 @@ def _signature(value: object, name: str, origin: Origin, diagnostics: list[Diagn
         diagnostics.append(
             D(
                 "SST-PRS003",
-                artifact=f"tool:{name}",
+                artifact=artifact_key("tool", name),
                 field="signature",
                 expected="list",
                 found=type(value).__name__,
@@ -280,7 +282,7 @@ def _signature(value: object, name: str, origin: Origin, diagnostics: list[Diagn
             diagnostics.append(
                 D(
                     "SST-PRS003",
-                    artifact=f"tool:{name}",
+                    artifact=artifact_key("tool", name),
                     field="signature",
                     expected="name/type entries",
                     found=type(item).__name__,
@@ -299,7 +301,7 @@ def _columns(value: object, name: str, origin: Origin, diagnostics: list[Diagnos
         diagnostics.append(
             D(
                 "SST-PRS003",
-                artifact=f"tool:{name}",
+                artifact=artifact_key("tool", name),
                 field="columns_and_descriptions",
                 expected="mapping",
                 found=type(value).__name__,
@@ -313,7 +315,7 @@ def _columns(value: object, name: str, origin: Origin, diagnostics: list[Diagnos
             diagnostics.append(
                 D(
                     "SST-PRS003",
-                    artifact=f"tool:{name}",
+                    artifact=artifact_key("tool", name),
                     field=f"columns_and_descriptions.{column_name}",
                     expected="mapping",
                     found=type(raw).__name__,
@@ -346,7 +348,7 @@ def _string_map(
         diagnostics.append(
             D(
                 "SST-PRS003",
-                artifact=f"tool:{name}",
+                artifact=artifact_key("tool", name),
                 field=field,
                 expected="string mapping",
                 found=type(value).__name__,
@@ -355,11 +357,3 @@ def _string_map(
         )
         return {}
     return {str(key): str(item) for key, item in value.items()}
-
-
-def _strings(value: object) -> tuple[str, ...]:
-    return tuple(str(item) for item in value) if isinstance(value, list) else ()
-
-
-def _optional_string(value: object) -> str | None:
-    return value.strip() if isinstance(value, str) and value.strip() else None

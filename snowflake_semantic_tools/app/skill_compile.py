@@ -6,11 +6,13 @@ import re
 from dataclasses import dataclass
 from hashlib import sha256
 
+from ..domain.model.artifact_key import artifact_key, split_artifact_key
 from ..domain.model.diagnostic import D, Diagnostic, DiagnosticBag, Origin, Severity
 from ..domain.model.identifier import QualifiedName
 from ..domain.model.lifecycle import RenderedArtifact
 from ..domain.model.registry import GrantPreservation
 from ..domain.model.skill import (
+    DEFAULT_VERSION_PREFIX,
     SkillBundle,
     SkillCatalog,
     build_plugin_bundle,
@@ -29,7 +31,7 @@ class CatalogChannel:
     database: str
     schema: str
     bundle_stage: QualifiedName
-    version_prefix: str = "SST_"
+    version_prefix: str = DEFAULT_VERSION_PREFIX
     certified: bool = False
 
 
@@ -74,7 +76,7 @@ class CompiledExtension:
 
     @property
     def artifact_type(self) -> str:
-        return self.release.key.split(":", 1)[0]
+        return split_artifact_key(self.release.key)[0]
 
     @property
     def member_keys(self) -> tuple[str, ...]:
@@ -186,7 +188,7 @@ class CompileSkills:
                     self._release(plugin.key, "PLUGIN", plugin.extension_name, plugin.description or "", bundle),
                     sources,
                     has_scripts=any(members[name].scripts for name in plugin.members if name in members),
-                    contained_keys=tuple(f"skill:{name}" for name in dict.fromkeys(plugin.members)),
+                    contained_keys=tuple(artifact_key("skill", name) for name in dict.fromkeys(plugin.members)),
                 )
             )
         return CompileResult(tuple(sorted(compiled, key=lambda item: item.artifact_key)), DiagnosticBag(diagnostics))

@@ -9,7 +9,7 @@ import yaml
 from ...domain.model.migrate import FilterSite
 from ..project import ProjectError
 from .documents import YAML_SUFFIXES
-from .loader import _neutralize_templates, _restore_templates
+from .parse import _neutralize_templates, _restore_templates
 
 
 def semantic_files(project_dir: Path, semantic_models_dir: str) -> dict[str, str]:

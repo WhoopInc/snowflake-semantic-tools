@@ -1,7 +1,7 @@
 """A `SemanticViewSource` backed by YAML files on disk.
 
 Thin by design: it binds a project directory to the loader functions so `app/` can
-hold a source without holding a path. All the reading lives in `loader.py`.
+hold a source without holding a path. All the reading lives in the loaders it calls.
 """
 
 from __future__ import annotations
@@ -17,7 +17,9 @@ from ..dbt.manifest import load_manifest_catalog
 from ..profile import resolve_profile_name
 from .agents import load_agents
 from .evals import load_eval_catalog, parse_eval_defaults
-from .loader import _read_yaml, _run_dbt_parse, _target_path, load_semantic_views_result
+from .fields import strings
+from .loader import _run_dbt_parse, _target_path, load_semantic_views_result
+from .parse import read_yaml_mapping
 from .tools import load_tool_catalog
 
 
@@ -59,11 +61,11 @@ class YamlProjectSource:
             _run_dbt_parse(self._project_dir, self._target_name)
         manifest_path = self._manifest_path or _target_path(self._project_dir)
         dbt = load_manifest_catalog(manifest_path)
-        config = _read_yaml(self._project_dir / "sst_config.yml")
+        config = read_yaml_mapping(self._project_dir / "sst_config.yml")
         project = config.get("project")
         tools_dir = str(project.get("tools_dir") or "tools") if isinstance(project, dict) else "tools"
         profile_name = resolve_profile_name(self._project_dir)
-        profiles = _read_yaml(self._project_dir / "profiles.yml")
+        profiles = read_yaml_mapping(self._project_dir / "profiles.yml")
         profile = profiles.get(profile_name)
         outputs = profile.get("outputs") if isinstance(profile, dict) else None
         declared_targets = frozenset(str(key) for key in outputs) if isinstance(outputs, dict) else frozenset()
@@ -84,7 +86,7 @@ class YamlProjectSource:
         agent_diagnostics: DiagnosticBag = DiagnosticBag(),
         agent_tool_names: dict[str, tuple[str, ...]] | None = None,
     ) -> EvalCatalog:
-        config = _read_yaml(self._project_dir / "sst_config.yml")
+        config = read_yaml_mapping(self._project_dir / "sst_config.yml")
         project = config.get("project")
         agents_dir = str(project.get("agents_dir") or "agents") if isinstance(project, dict) else "agents"
         metrics_dir = (
@@ -95,7 +97,7 @@ class YamlProjectSource:
         defaults, default_diagnostics = parse_eval_defaults(config.get("evals"))
         snowflake = config.get("snowflake")
         raw_models = snowflake.get("orchestration_models") if isinstance(snowflake, dict) else None
-        allowed_models = tuple(str(model) for model in raw_models) if isinstance(raw_models, list) else ()
+        allowed_models = strings(raw_models)
         return load_eval_catalog(
             self._project_dir,
             agents,

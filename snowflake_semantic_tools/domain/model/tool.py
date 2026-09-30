@@ -7,6 +7,7 @@ from enum import Enum
 from types import MappingProxyType
 from typing import Mapping
 
+from .artifact_key import artifact_key
 from .dbt import DbtCatalog
 from .diagnostic import D, Diagnostic, DiagnosticBag, Origin
 from .identifier import QualifiedName
@@ -85,7 +86,7 @@ class ToolMember:
     def artifact_key(self) -> str | None:
         if self.ownership is ToolOwnership.REFERENCE:
             return None
-        return f"tool:{self.name.casefold()}"
+        return artifact_key("tool", self.name.casefold())
 
 
 @dataclass(frozen=True, slots=True)
@@ -242,7 +243,7 @@ def validate_tool_catalog(catalog: ToolCatalog, dbt: DbtCatalog) -> DiagnosticBa
 
 def _validate_member(member: ToolMember, catalog: ToolCatalog, dbt: DbtCatalog) -> tuple[Diagnostic, ...]:
     diagnostics: list[Diagnostic] = []
-    subject = f"tool:{member.name.casefold()}"
+    subject = artifact_key("tool", member.name.casefold())
     if member.type not in KNOWN_TOOL_TYPES:
         diagnostics.append(
             D(

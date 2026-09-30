@@ -341,3 +341,58 @@ def test_saved_plan_is_content_addressed_and_target_guarded() -> None:
     partial = SavedPlan.from_changeset(changeset, partial=True)
     assert partial.partial and partial.as_dict()["selection"]["partial"] is True  # type: ignore[index]
     assert partial.plan_id != saved.plan_id
+
+
+def _saved_plan_document() -> dict[str, object]:
+    rendered = artifact()
+    change = Change(rendered.key, "semantic_view", Action.CREATE, ChangeReason.NOT_PRESENT, rendered, None, (), 100)
+    saved = SavedPlan.from_changeset(ChangeSet("m", target(), (change,), DiagnosticBag(), "now"), selected=("v",))
+    return saved.as_dict()
+
+
+def _rehash(document: dict[str, object]) -> dict[str, object]:
+    body = {key: value for key, value in document.items() if key != "plan_id"}
+    return {**body, "plan_id": content_hash(body)}
+
+
+def test_a_saved_plan_reads_back_what_it_wrote() -> None:
+    document = _saved_plan_document()
+    restored = SavedPlan.from_dict(document)
+    assert restored.as_dict() == document
+    assert restored.selected == ("v",) and restored.changes[0].target is not None
+    change = {**document["changes"][0], "target": None, "fingerprint": None}  # type: ignore[dict-item]
+    del change["component_fingerprints"], change["physical_resources"]
+    sparse = SavedPlan.from_dict(_rehash({**document, "changes": [change]}))
+    assert sparse.changes[0].target is None and sparse.changes[0].component_fingerprints == ()
+
+
+@pytest.mark.parametrize(
+    ("patch", "message"),
+    [
+        ({"schema_version": 1}, "saved plan schema 1 is not supported"),
+        ({"changes": {}}, "saved plan changes must be a list"),
+        ({"changes": ["x"]}, "saved plan change must be an object"),
+        ({"selection": []}, "saved plan selection must be an object"),
+        ({"plan_id": "0" * 64}, "saved plan id 0{64}, recomputed"),
+    ],
+)
+def test_a_saved_plan_that_is_not_one_is_refused(patch: dict[str, object], message: str) -> None:
+    with pytest.raises(ValueError, match=message):
+        SavedPlan.from_dict({**_saved_plan_document(), **patch})
+    with pytest.raises(ValueError, match="saved plan must be an object"):
+        SavedPlan.from_dict([])
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "message"),
+    [
+        ("component_fingerprints", [], "saved plan component_fingerprints must be an object"),
+        ("physical_resources", {}, "saved plan physical_resources must be objects"),
+        ("physical_resources", ["x"], "saved plan physical_resources must be objects"),
+    ],
+)
+def test_a_saved_change_refuses_mistyped_metadata(field: str, value: object, message: str) -> None:
+    document = _saved_plan_document()
+    change = {**document["changes"][0], field: value}  # type: ignore[dict-item]
+    with pytest.raises(ValueError, match=message):
+        SavedPlan.from_dict({**document, "changes": [change]})

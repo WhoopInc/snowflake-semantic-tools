@@ -9,10 +9,12 @@ from typing import Any
 
 import yaml
 
+from ...domain.model.artifact_key import artifact_key
 from ...domain.model.diagnostic import D, Diagnostic, DiagnosticBag, Origin
 from ...domain.model.skill import SKILL_FILE, Plugin, Skill, SkillCatalog, SkillFile
 from ..project import ProjectError
-from .loader import _parse_yaml_bytes
+from .fields import checked_strings, checked_text, optional_string, project_relative, report_unknown_keys
+from .parse import parse_yaml_bytes
 
 PLUGIN_FILES = ("plugin.yml", "plugin.yaml")
 PLUGIN_KEYS = frozenset(("name", "description", "owner_team", "skills"))
@@ -50,15 +52,11 @@ def load_skill_catalog(project_dir: Path, *, skills_dir: str, plugins_dir: str) 
     return SkillCatalog(tuple(skills), tuple(plugins), DiagnosticBag(diagnostics))
 
 
-def _relative(project_dir: Path, path: Path) -> str:
-    return path.relative_to(project_dir).as_posix()
-
-
 def _load_skill(project_dir: Path, folder: Path, nested: tuple[Path, ...], diagnostics: list[Diagnostic]) -> Skill:
     name = folder.name
-    directory = _relative(project_dir, folder)
+    directory = project_relative(project_dir, folder)
     skill_md = posixpath.join(directory, SKILL_FILE)
-    subject = f"skill:{name}"
+    subject = artifact_key("skill", name)
     for child in nested:
         diagnostics.append(
             D(
@@ -66,7 +64,7 @@ def _load_skill(project_dir: Path, folder: Path, nested: tuple[Path, ...], diagn
                 origin=Origin(skill_md),
                 subject=subject,
                 artifact=subject,
-                path=_relative(project_dir, child / SKILL_FILE),
+                path=project_relative(project_dir, child / SKILL_FILE),
             )
         )
     files = tuple(
@@ -140,16 +138,16 @@ def _frontmatter(
             diagnostics.append(D("SST-PRS034", origin=Origin(file, 1), subject=subject, artifact=subject, field=field))
     return (
         declared if isinstance(declared, str) and declared.strip() else None,
-        description.strip() if isinstance(description, str) and description.strip() else None,
+        optional_string(description),
         body,
     )
 
 
 def _load_plugin(project_dir: Path, folder: Path, diagnostics: list[Diagnostic]) -> Plugin | None:
     name = folder.name
-    subject = f"plugin:{name}"
+    subject = artifact_key("plugin", name)
     manifests = [folder / candidate for candidate in PLUGIN_FILES if (folder / candidate).is_file()]
-    directory = _relative(project_dir, folder)
+    directory = project_relative(project_dir, folder)
     if len(manifests) != 1:
         detail = "has both plugin.yml and plugin.yaml" if manifests else "has no plugin.yml"
         diagnostics.append(
@@ -163,9 +161,9 @@ def _load_plugin(project_dir: Path, folder: Path, diagnostics: list[Diagnostic])
         )
         return None
     manifest = manifests[0]
-    file = _relative(project_dir, manifest)
+    file = project_relative(project_dir, manifest)
     try:
-        parsed = _parse_yaml_bytes(manifest.read_bytes(), file)
+        parsed = parse_yaml_bytes(manifest.read_bytes(), file)
     except ProjectError as exc:
         found = exc.diagnostics or (D("SST-LOD001", origin=Origin(file), file=file, line=1, col=1, detail=str(exc)),)
         diagnostics.extend(replace(item, subject=subject) for item in found)
@@ -176,8 +174,7 @@ def _load_plugin(project_dir: Path, folder: Path, diagnostics: list[Diagnostic])
         position = parsed.line_index.get((key,))
         return Origin(file, position.line, position.col) if position is not None else Origin(file)
 
-    for key in sorted(set(tree) - PLUGIN_KEYS):
-        diagnostics.append(D("SST-PRS004", origin=origin(key), subject=subject, artifact=subject, field=key))
+    report_unknown_keys(tree, PLUGIN_KEYS, diagnostics, artifact=subject, origin=origin, subject=subject)
     declared = tree.get("name")
     if declared is not None and declared != name:
         diagnostics.append(
@@ -191,47 +188,28 @@ def _load_plugin(project_dir: Path, folder: Path, diagnostics: list[Diagnostic])
         )
     text_fields: dict[str, str | None] = {}
     for key in ("description", "owner_team"):
-        value = tree.get(key)
-        if value is not None and not isinstance(value, str):
-            diagnostics.append(
-                D(
-                    "SST-PRS003",
-                    origin=origin(key),
-                    subject=subject,
-                    artifact=subject,
-                    field=key,
-                    expected="a string",
-                    found=type(value).__name__,
-                )
-            )
-            value = None
-        text_fields[key] = value.strip() if isinstance(value, str) and value.strip() else None
+        text_fields[key] = checked_text(
+            tree.get(key), diagnostics, field=key, artifact=subject, origin=origin(key), subject=subject
+        )
     if text_fields["description"] is None:
         diagnostics.append(
             D("SST-PRS002", origin=origin("description"), subject=subject, artifact=subject, field="description")
         )
-    members = tree.get("skills")
-    if members is None:
-        members = []
-    if not isinstance(members, list) or any(not isinstance(member, str) for member in members):
-        diagnostics.append(
-            D(
-                "SST-PRS003",
-                origin=origin("skills"),
-                subject=subject,
-                artifact=subject,
-                field="skills",
-                expected="a list of skill names",
-                found=type(members).__name__,
-            )
-        )
-        members = []
+    members = checked_strings(
+        tree.get("skills"),
+        diagnostics,
+        field="skills",
+        artifact=subject,
+        origin=origin("skills"),
+        subject=subject,
+        expected="a list of skill names",
+    )
     return Plugin(
         name=name,
         directory=directory,
         manifest_file=file,
         description=text_fields["description"],
         owner_team=text_fields["owner_team"],
-        members=tuple(members),
+        members=members,
         origin=Origin(file, 1),
     )

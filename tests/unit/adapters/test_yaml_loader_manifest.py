@@ -17,11 +17,11 @@ from snowflake_semantic_tools.adapters.yaml.loader import (
     _legacy_reference_diagnostics,
     _member_name_diagnostics,
     _metric_parse_diagnostics,
-    _parse_yaml_bytes,
     _relationship_parse_diagnostics,
     _verified_query_diagnostics,
     load_semantic_views_result,
 )
+from snowflake_semantic_tools.adapters.yaml.parse import parse_yaml_bytes
 from snowflake_semantic_tools.domain.model.diagnostic import ERROR_REGISTRY
 from tests.helpers.projects import load_views
 
@@ -161,7 +161,7 @@ def test_vq_exclusivity_and_legacy_globals_are_structured_diagnostics(tmp_path: 
         "    expr: \"SUM({{ column('orders', 'total') }})\"\n",
         encoding="utf-8",
     )
-    documents = load_documents(discover_yaml(tmp_path, "semantic_models"), _parse_yaml_bytes)
+    documents = load_documents(discover_yaml(tmp_path, "semantic_models"), parse_yaml_bytes)
     assert [diagnostic.code for diagnostic in _verified_query_diagnostics(documents, tmp_path, "semantic_models")] == [
         "SST-VAL412"
     ]
@@ -202,7 +202,7 @@ def test_vq_sources_and_relationship_conditions_fail_with_registered_codes(tmp_p
         "    relationship_conditions: []\n",
         encoding="utf-8",
     )
-    documents = load_documents(discover_yaml(tmp_path, "semantic_models"), _parse_yaml_bytes)
+    documents = load_documents(discover_yaml(tmp_path, "semantic_models"), parse_yaml_bytes)
 
     assert [diagnostic.code for diagnostic in _verified_query_diagnostics(documents, tmp_path, "semantic_models")] == [
         "SST-VAL412",
@@ -238,7 +238,7 @@ def test_metric_parse_diagnostics_preserve_missing_empty_and_wrong_types(tmp_pat
         "    synonyms: item\n",
         encoding="utf-8",
     )
-    documents = load_documents(discover_yaml(tmp_path, "semantic_models"), _parse_yaml_bytes)
+    documents = load_documents(discover_yaml(tmp_path, "semantic_models"), parse_yaml_bytes)
     diagnostics = _metric_parse_diagnostics(documents, tmp_path, "semantic_models")
     assert [diagnostic.code for diagnostic in diagnostics] == [
         "SST-PRS002",
@@ -297,7 +297,7 @@ def test_every_unread_key_is_reported_and_0_3_spellings_are_errors(tmp_path: Pat
     }.items():
         (root / folder).mkdir(exist_ok=True)
         (root / folder / f"{folder}.yml").write_text(text, encoding="utf-8")
-    documents = load_documents(discover_yaml(tmp_path, "semantic_models"), _parse_yaml_bytes)
+    documents = load_documents(discover_yaml(tmp_path, "semantic_models"), parse_yaml_bytes)
     found = [
         (item.code, item.severity.name, item.subject, item.context["field"], item.context.get("expected"))
         for item in _authored_key_diagnostics(documents)
@@ -358,7 +358,7 @@ def test_nameless_and_duplicate_members_are_reported(tmp_path: Path) -> None:
     (root / "metrics" / "metrics.yml").write_text(
         "snowflake_metrics:\n  - expr: COUNT(*)\n    tables: [products]\n", encoding="utf-8"
     )
-    documents = load_documents(discover_yaml(tmp_path, "semantic_models"), _parse_yaml_bytes)
+    documents = load_documents(discover_yaml(tmp_path, "semantic_models"), parse_yaml_bytes)
     found = sorted(
         (item.code, item.subject, item.context.get("index", item.context.get("name")))
         for item in _member_name_diagnostics(documents)
@@ -418,7 +418,7 @@ def test_non_additive_entries_are_shape_checked(tmp_path: Path) -> None:
         "        null_order: [first]\n",
         encoding="utf-8",
     )
-    documents = load_documents(discover_yaml(tmp_path, "semantic_models"), _parse_yaml_bytes)
+    documents = load_documents(discover_yaml(tmp_path, "semantic_models"), parse_yaml_bytes)
     assert [
         (item.code, item.subject, item.context["field"])
         for item in _metric_parse_diagnostics(documents, tmp_path, "semantic_models")
@@ -449,7 +449,7 @@ def test_window_blocks_are_shape_checked(tmp_path: Path) -> None:
         f"  - name: order_not_a_list\n{head}    window:\n      order_by: product_id\n      frame: 7\n",
         encoding="utf-8",
     )
-    documents = load_documents(discover_yaml(tmp_path, "semantic_models"), _parse_yaml_bytes)
+    documents = load_documents(discover_yaml(tmp_path, "semantic_models"), parse_yaml_bytes)
     found = [
         (item.code, item.subject, item.context.get("field") or item.context.get("value"))
         for item in _metric_parse_diagnostics(documents, tmp_path, "semantic_models")
@@ -510,7 +510,7 @@ def test_window_keys_are_checked_and_0_3_order_spellings_are_errors(tmp_path: Pa
         "          nulls: first\n",
         encoding="utf-8",
     )
-    documents = load_documents(discover_yaml(tmp_path, "semantic_models"), _parse_yaml_bytes)
+    documents = load_documents(discover_yaml(tmp_path, "semantic_models"), parse_yaml_bytes)
     assert [
         (item.code, item.context["field"], item.context.get("expected"))
         for item in _authored_key_diagnostics(documents)

@@ -6,6 +6,7 @@ from dataclasses import replace
 from types import MappingProxyType
 from typing import Mapping
 
+from ..model.artifact_key import split_artifact_key
 from ..model.diagnostic import D, Diagnostic, DiagnosticBag
 from ..model.identifier import QualifiedName, TargetIdentity
 from ..model.lifecycle import (
@@ -277,7 +278,7 @@ def _prunes(
     for key, observed in sorted(observation.artifacts.items()):
         if key in rendered:
             continue
-        artifact_type_name = key.split(":", 1)[0]
+        artifact_type_name = split_artifact_key(key)[0]
         if prune_keys is not None and key not in prune_keys:
             continue
         artifact_type = registry.artifacts.get(artifact_type_name)
@@ -327,7 +328,7 @@ def _require_pinned(change: Change, planned: set[str], registry: Registry, diagn
     missing = [
         D("SST-PLN030", artifact=change.key, value=dependency)
         for dependency in change.depends_on
-        if dependency.split(":", 1)[0] in pinned and dependency not in planned
+        if split_artifact_key(dependency)[0] in pinned and dependency not in planned
     ]
     if not missing:
         return change

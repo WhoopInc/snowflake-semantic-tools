@@ -29,6 +29,7 @@ from ..domain.plan.diff import dependency_waves
 from ..domain.ports.lifecycle import CompositeLifecycleHandler
 from ..domain.ports.snowflake import ClockPort, SnowflakePort, SnowflakePortError, StateStore
 from ..domain.state.model import (
+    APPLIED,
     DEACTIVATED,
     FAILED_AFTER_WRITE,
     SST_VERSION,
@@ -606,7 +607,7 @@ class ApplyArtifacts:
                 qualified_name=change.rendered.target.sql,
                 applied_at=finished,
                 run_id=run_id,
-                outcome=("applied" if outcome.status is OutcomeStatus.APPLIED else FAILED_AFTER_WRITE),
+                outcome=(APPLIED if outcome.status is OutcomeStatus.APPLIED else FAILED_AFTER_WRITE),
                 ddl_sha256=change.rendered.fingerprint,
                 manifest_id=changeset.manifest_id,
                 git_sha=self._git_sha,

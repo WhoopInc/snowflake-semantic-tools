@@ -10,7 +10,7 @@ from typing import Any, Mapping
 from ..domain.model.config_schema import CONFIG_FILE, validate_config
 from ..domain.model.diagnostic import D, DiagnosticBag, Origin
 from .project import ProjectError
-from .yaml.loader import _parse_yaml_bytes
+from .yaml.parse import parse_yaml_bytes
 
 # Blocks and directory keys whose artifacts are compiled from a dbt project.
 DBT_ONLY_KEYS = (
@@ -57,7 +57,7 @@ def load_project_config(project_dir: Path) -> ProjectConfig:
         raw = path.read_bytes()
     except OSError as exc:
         raise ProjectError(f"cannot read {path}: {exc}") from exc
-    parsed = _parse_yaml_bytes(raw, CONFIG_FILE)
+    parsed = parse_yaml_bytes(raw, CONFIG_FILE)
     positions = {
         key: (position.line, position.col) for key, position in parsed.line_index.items() if isinstance(key, tuple)
     }

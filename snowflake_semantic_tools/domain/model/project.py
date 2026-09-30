@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 from types import MappingProxyType
 from typing import Mapping, TypeAlias
 
+from .artifact_key import artifact_key
 from .diagnostic import DiagnosticBag, Origin
 from .reference import TemplateCall
 from .semantic_view import SemanticView
@@ -37,7 +38,7 @@ class ParsedMember:
 
     @property
     def key(self) -> MemberKey:
-        return f"{self.type_name}:{self.name.casefold()}"
+        return artifact_key(self.type_name, self.name.casefold())
 
 
 @dataclass(frozen=True, slots=True)

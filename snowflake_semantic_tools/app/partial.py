@@ -13,6 +13,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from ..domain.model.artifact_key import split_artifact_key
 from ..domain.model.diagnostic import D, Diagnostic, DiagnosticBag, Severity
 from ..domain.model.registry import SEMANTIC_REGISTRY
 from .compile import CompileResult
@@ -32,7 +33,7 @@ class PartialSplit:
 
 
 def _attributable(subject: str | None) -> bool:
-    prefix = subject.split(":", 1)[0] if subject and ":" in subject else ""
+    prefix = split_artifact_key(subject)[0] if subject and ":" in subject else ""
     return prefix in SEMANTIC_REGISTRY.artifacts or prefix in PROFILE_INPUTS
 
 

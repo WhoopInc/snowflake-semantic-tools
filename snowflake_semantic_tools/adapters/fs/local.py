@@ -76,7 +76,15 @@ class ManifestFileStore(JsonStore[Manifest]):
 
 class PlanFileStore(JsonStore[SavedPlan]):
     def __init__(self, path: Path) -> None:
-        super().__init__(path, _saved_plan_from_dict)
+        super().__init__(path, SavedPlan.from_dict)
+
+
+STATE_FILE_GLOB = "state.*.json"
+
+
+def state_file(target_dir: Path, target_name: str) -> Path:
+    """Return the local state file for one target, under the project's SST target directory."""
+    return target_dir / f"state.{target_name}.json"
 
 
 class StateFileStore(JsonStore[State]):
@@ -141,88 +149,6 @@ class StateFileStore(JsonStore[State]):
         holder, _ = self._lock_status(self._now())
         if holder == run_id:
             self._lock_path.unlink(missing_ok=True)
-
-
-def _saved_plan_from_dict(value: object) -> SavedPlan:
-    from ...domain.model.identifier import TargetIdentity
-    from ...domain.state.model import PLAN_SCHEMA_VERSION, SavedChange, content_hash
-
-    if not isinstance(value, dict):
-        raise ValueError("saved plan must be an object")
-    version = value.get("schema_version")
-    if version != PLAN_SCHEMA_VERSION:
-        raise ValueError(f"saved plan schema {version} is not supported")
-    raw_changes = value.get("changes")
-    if not isinstance(raw_changes, list):
-        raise ValueError("saved plan changes must be a list")
-    changes = []
-    for item in raw_changes:
-        if not isinstance(item, dict):
-            raise ValueError("saved plan change must be an object")
-        changes.append(
-            SavedChange(
-                key=str(item["key"]),
-                artifact_type=str(item["artifact_type"]),
-                action=str(item["action"]),
-                reason=str(item["reason"]),
-                target=str(item["target"]) if item.get("target") is not None else None,
-                fingerprint=(str(item["fingerprint"]) if item.get("fingerprint") is not None else None),
-                previous_marker=(str(item["previous_marker"]) if item.get("previous_marker") is not None else None),
-                statement_hashes=tuple(str(element) for element in item.get("statement_hashes", [])),
-                depends_on=tuple(str(element) for element in item.get("depends_on", [])),
-                order=int(item["order"]),
-                component_fingerprints=tuple(
-                    sorted(
-                        (str(key), str(element))
-                        for key, element in _saved_mapping(item.get("component_fingerprints")).items()
-                    )
-                ),
-                physical_resources=tuple(
-                    (str(element["object_type"]), str(element["qualified_name"]))
-                    for element in _saved_resources(item.get("physical_resources"))
-                ),
-                prune_executable=bool(item.get("prune_executable", True)),
-            )
-        )
-    raw_selection = value.get("selection", {})
-    if not isinstance(raw_selection, dict):
-        raise ValueError("saved plan selection must be an object")
-    plan = SavedPlan(
-        schema_version=version,
-        plan_id=str(value.get("plan_id") or ""),
-        manifest_id=str(value.get("manifest_id") or ""),
-        target=TargetIdentity.from_dict(value.get("target")),
-        observation_at=str(value.get("observation_at") or ""),
-        observation_fingerprint=str(value.get("observation_fingerprint") or ""),
-        changes=tuple(changes),
-        selected=tuple(str(item) for item in raw_selection.get("selected", [])),
-        excluded=tuple(str(item) for item in raw_selection.get("excluded", [])),
-        include_prune=bool(raw_selection.get("include_prune", False)),
-        partial=bool(raw_selection.get("partial", False)),
-    )
-    recorded = str(value.get("plan_id") or "")
-    expected_body = dict(value)
-    expected_body.pop("plan_id", None)
-    expected = content_hash(expected_body)
-    if recorded != expected:
-        raise ValueError(f"saved plan id {recorded}, recomputed {expected}")
-    return plan
-
-
-def _saved_mapping(value: object) -> dict[str, object]:
-    if value is None:
-        return {}
-    if not isinstance(value, dict):
-        raise ValueError("saved plan component_fingerprints must be an object")
-    return value
-
-
-def _saved_resources(value: object) -> list[dict[str, object]]:
-    if value is None:
-        return []
-    if not isinstance(value, list) or any(not isinstance(item, dict) for item in value):
-        raise ValueError("saved plan physical_resources must be objects")
-    return value
 
 
 def _shape_problem(exc: Exception) -> str:

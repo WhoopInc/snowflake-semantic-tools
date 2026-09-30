@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from snowflake_semantic_tools.adapters.yaml.documents import discover_yaml, load_documents
-from snowflake_semantic_tools.adapters.yaml.loader import _parse_yaml_bytes
+from snowflake_semantic_tools.adapters.yaml.parse import parse_yaml_bytes
 
 
 def test_discovery_sorts_paths_and_does_not_open_files(tmp_path: Path) -> None:
@@ -32,7 +32,7 @@ def test_load_calls_the_document_reader_once_per_file(tmp_path: Path) -> None:
 
     def counted(raw: bytes, path: str):
         calls.append(Path(path))
-        return _parse_yaml_bytes(raw, path)
+        return parse_yaml_bytes(raw, path)
 
     documents = load_documents(discover_yaml(tmp_path, "semantic_models"), counted)
     assert len(calls) == 2
@@ -46,7 +46,7 @@ def test_root_key_owns_content_even_under_a_misleading_directory(tmp_path: Path)
     root.mkdir(parents=True)
     path = root / "actually_filters.yml"
     path.write_text("snowflake_filters: []\n", encoding="utf-8")
-    documents = load_documents(discover_yaml(tmp_path, "semantic_models"), _parse_yaml_bytes)
+    documents = load_documents(discover_yaml(tmp_path, "semantic_models"), parse_yaml_bytes)
     assert documents.documents[0].hint_root == "metrics"
     assert documents.under(tmp_path / "semantic_models", "snowflake_filters") == documents.documents
     assert documents.under(tmp_path / "semantic_models", "snowflake_metrics") == ()
@@ -66,5 +66,5 @@ def test_load_reads_each_file_once(tmp_path: Path, monkeypatch) -> None:
         return original(self)
 
     monkeypatch.setattr(Path, "read_bytes", counted)
-    load_documents(discover_yaml(tmp_path, "semantic_models"), _parse_yaml_bytes)
+    load_documents(discover_yaml(tmp_path, "semantic_models"), parse_yaml_bytes)
     assert reads == 1

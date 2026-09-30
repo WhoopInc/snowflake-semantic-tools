@@ -7,6 +7,7 @@ from datetime import datetime, timedelta, timezone
 
 from ..domain.model.diagnostic import D, DiagnosticBag
 from ..domain.model.eval import (
+    EVAL_COMPLETED,
     EvalBaselineMetric,
     EvalBaselineRecord,
     EvalGateState,
@@ -35,13 +36,13 @@ def capture_baseline(
 ) -> EvalBaselineRecord:
     if not reason.strip():
         raise ValueError("baseline capture requires a non-empty reason")
-    if any(attempt.terminal_status != "COMPLETED" or attempt.retrieval_error for attempt in result.attempts):
+    if any(attempt.terminal_status != EVAL_COMPLETED or attempt.retrieval_error for attempt in result.attempts):
         raise ValueError("baseline capture refuses partial, cancelled, failed, or unretrievable attempts")
     required = required_attempts or _baseline_runs(compiled)
     completed = tuple(
         attempt
         for attempt in result.attempts
-        if attempt.terminal_status == "COMPLETED" and attempt.retrieval_error is None
+        if attempt.terminal_status == EVAL_COMPLETED and attempt.retrieval_error is None
     )
     if len(completed) < required:
         raise ValueError(f"baseline capture requires {required} completed attempts, found {len(completed)}")
@@ -104,12 +105,12 @@ def evaluate_gate(
     completed = tuple(
         attempt
         for attempt in result.attempts
-        if attempt.terminal_status == "COMPLETED" and attempt.retrieval_error is None
+        if attempt.terminal_status == EVAL_COMPLETED and attempt.retrieval_error is None
     )
     invalid_attempts = tuple(
         attempt
         for attempt in result.attempts
-        if attempt.terminal_status != "COMPLETED" or attempt.retrieval_error is not None
+        if attempt.terminal_status != EVAL_COMPLETED or attempt.retrieval_error is not None
     )
     if invalid_attempts:
         diagnostic = D(
@@ -213,7 +214,7 @@ def _result_agent_version(result: EvalRunResult) -> str:
     completed = tuple(
         attempt
         for attempt in result.attempts
-        if attempt.terminal_status == "COMPLETED" and attempt.retrieval_error is None
+        if attempt.terminal_status == EVAL_COMPLETED and attempt.retrieval_error is None
     )
     if not completed:
         raise ValueError("does not identify one immutable current agent version")

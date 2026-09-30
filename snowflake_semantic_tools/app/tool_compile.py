@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, replace
 
+from ..domain.model.artifact_key import artifact_key
 from ..domain.model.diagnostic import D, DiagnosticBag
 from ..domain.model.identifier import QualifiedName
 from ..domain.model.lifecycle import OwnershipMarker, RenderedArtifact
@@ -114,7 +115,7 @@ class CompileTools:
         compiled: list[CompiledTool] = []
         poisoned = {diagnostic.subject for diagnostic in diagnostics if diagnostic.subject}
         for member in sorted(self._catalog.managed, key=lambda item: item.name.casefold()):
-            if f"tool:{member.name.casefold()}" in poisoned:
+            if artifact_key("tool", member.name.casefold()) in poisoned:
                 continue
             try:
                 effective = _defaults(
@@ -137,7 +138,7 @@ class CompileTools:
                         *diagnostics,
                         D(
                             "SST-INT902",
-                            subject=f"tool:{member.name.casefold()}",
+                            subject=artifact_key("tool", member.name.casefold()),
                             detail=str(exc),
                             origin=member.origin,
                         ),

@@ -5,6 +5,7 @@ from __future__ import annotations
 from types import MappingProxyType
 from typing import Mapping
 
+from ..domain.model.artifact_key import artifact_key
 from ..domain.model.diagnostic import D, Diagnostic, DiagnosticBag
 from ..domain.model.identifier import QualifiedName, SchemaScope, TargetIdentity
 from ..domain.model.lifecycle import (
@@ -66,7 +67,7 @@ def observe(
                     continue
                 for row in rows:
                     desired_artifact = desired.get(row.qualified_name.folded)
-                    key = f"{artifact_type.name}:{row.qualified_name.artifact_component}"
+                    key = artifact_key(artifact_type.name, row.qualified_name.artifact_component)
                     grants: tuple[GrantRow, ...] | None = None
                     # Grants matter only for an object this plan may replace. A prune
                     # candidate or an unrelated object is never replaced, and an

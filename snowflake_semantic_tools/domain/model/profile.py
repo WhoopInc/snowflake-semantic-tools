@@ -15,6 +15,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from hashlib import sha256
 
+from .artifact_key import artifact_key
 from .diagnostic import D, Diagnostic, DiagnosticBag, Origin, Severity
 from .skill import BundleEntry, Plugin, Skill, SkillFile, build_plugin_bundle, bundle_digest
 from .stage_path import ALLOWED_DESCRIPTION, unsafe_segment
@@ -78,7 +79,7 @@ class CommandFile:
 
     @property
     def key(self) -> str:
-        return f"command:{self.name}"
+        return artifact_key("command", self.name)
 
 
 @dataclass(frozen=True, slots=True)
@@ -98,7 +99,7 @@ class DesktopProfile:
 
     @property
     def key(self) -> str:
-        return f"profile:{self.name}"
+        return artifact_key("profile", self.name)
 
 
 @dataclass(frozen=True, slots=True)
@@ -156,7 +157,7 @@ class ProfileRelease:
 
     @property
     def key(self) -> str:
-        return f"profile:{self.name}"
+        return artifact_key("profile", self.name)
 
     def document(self) -> str:
         """Canonical JSON of the row and the trees: the payload plan and goldens compare."""
@@ -215,7 +216,7 @@ def validate_profile_catalog(
                     )
                 )
         for name in catalog.shared.commands:
-            if name not in commands and f"command:{name}" not in broken:
+            if name not in commands and artifact_key("command", name) not in broken:
                 diagnostics.append(
                     D(
                         "SST-VAL858",
@@ -255,7 +256,7 @@ def validate_profile_catalog(
                 )
         for name in profile.commands:
             if name not in commands:
-                if f"command:{name}" not in broken:
+                if artifact_key("command", name) not in broken:
                     diagnostics.append(
                         D("SST-VAL858", origin=profile.origin, subject=subject, artifact=profile.name, name=name)
                     )

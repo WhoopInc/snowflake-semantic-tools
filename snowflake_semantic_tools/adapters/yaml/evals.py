@@ -7,6 +7,7 @@ from types import MappingProxyType
 from typing import Mapping
 
 from ...domain.model.agent import AgentModel
+from ...domain.model.artifact_key import artifact_key
 from ...domain.model.diagnostic import D, Diagnostic, DiagnosticBag, Origin
 from ...domain.model.eval import (
     EVAL_TERMINAL_STATUSES,
@@ -30,9 +31,9 @@ from ...domain.model.eval import (
     validate_eval_catalog,
 )
 from ...domain.model.reference import TemplateSyntaxError, single_template_call
-from ..project import ProjectError
 from .documents import ParsedYaml
-from .loader import _parse_yaml_bytes
+from .fields import checked_strings, optional_int, optional_string, report_unknown_keys
+from .parse import read_yaml_file
 
 _GROUND_TRUTH_KEYS = frozenset(
     (
@@ -86,7 +87,12 @@ def load_eval_catalog(
             metric = metric_index.get(name.casefold())
             if metric is None:
                 diagnostics.append(
-                    D("SST-REF026", name=name, origin=config.origin, subject=f"eval:{agent.name.casefold()}")
+                    D(
+                        "SST-REF026",
+                        name=name,
+                        origin=config.origin,
+                        subject=artifact_key("eval", agent.name.casefold()),
+                    )
                 )
             else:
                 resolved_metrics.append(metric)
@@ -114,7 +120,7 @@ def parse_eval_defaults(value: object) -> tuple[EvalDefaults, DiagnosticBag]:
     diagnostics: list[Diagnostic] = []
     origin = Origin("sst_config.yml")
     metrics = _string_tuple(value.get("+metrics"), "evals.+metrics", origin, diagnostics)
-    eval_tier = _optional_string(value.get("+eval_tier"))
+    eval_tier = optional_string(value.get("+eval_tier"))
     if eval_tier is not None and eval_tier not in {"blocking", "report"}:
         diagnostics.append(
             D(
@@ -130,14 +136,14 @@ def parse_eval_defaults(value: object) -> tuple[EvalDefaults, DiagnosticBag]:
         EvalDefaults(
             eval_tier=eval_tier,
             metrics=metrics,
-            metric_version=_optional_string(value.get("+metric_version")),
-            judge_model=_optional_string(value.get("+judge_model")),
-            agent_version=_optional_string(value.get("+agent_version")),
-            retry=_optional_int(value.get("+retry")),
-            concurrency=_optional_int(value.get("+concurrency")),
-            baseline_runs=_optional_int(value.get("+baseline_runs")),
-            min_dataset_rows=_optional_int(value.get("+min_dataset_rows")),
-            retention=_optional_string(value.get("+retention")),
+            metric_version=optional_string(value.get("+metric_version")),
+            judge_model=optional_string(value.get("+judge_model")),
+            agent_version=optional_string(value.get("+agent_version")),
+            retry=optional_int(value.get("+retry")),
+            concurrency=optional_int(value.get("+concurrency")),
+            baseline_runs=optional_int(value.get("+baseline_runs")),
+            min_dataset_rows=optional_int(value.get("+min_dataset_rows")),
+            retention=optional_string(value.get("+retention")),
         ),
         DiagnosticBag(tuple(diagnostics)),
     )
@@ -154,7 +160,7 @@ def _load_custom_metrics(
     metrics: list[CustomEvalMetric] = []
     for path in sorted(candidate for candidate in root.rglob("*") if candidate.suffix.casefold() in (".yml", ".yaml")):
         relative = path.relative_to(project_dir).as_posix()
-        parsed = _read_yaml(path, relative, diagnostics)
+        parsed = read_yaml_file(path, relative, diagnostics)
         if parsed is None:
             continue
         metric = _parse_custom_metric(relative, parsed, diagnostics)
@@ -171,31 +177,8 @@ def _read_pointer(
 ) -> tuple[str, ParsedYaml] | None:
     if relative is None:
         return None
-    parsed = _read_yaml(project_dir / relative, relative, diagnostics, pointer_origin=origin)
+    parsed = read_yaml_file(project_dir / relative, relative, diagnostics, pointer_origin=origin)
     return None if parsed is None else (relative, parsed)
-
-
-def _read_yaml(
-    path: Path,
-    relative: str,
-    diagnostics: list[Diagnostic],
-    *,
-    pointer_origin: Origin | None = None,
-) -> ParsedYaml | None:
-    try:
-        return _parse_yaml_bytes(path.read_bytes(), relative)
-    except OSError:
-        diagnostics.append(
-            D(
-                "SST-LOD018",
-                file=pointer_origin.file if pointer_origin else relative,
-                path=relative,
-                origin=pointer_origin or Origin(relative),
-            )
-        )
-    except ProjectError as exc:
-        diagnostics.extend(exc.diagnostics)
-    return None
 
 
 def _parse_dataset(loaded: tuple[str, ParsedYaml], diagnostics: list[Diagnostic]) -> EvalDataset:
@@ -434,8 +417,8 @@ def _parse_dataset_config(
             )
         else:
             columns = EvalColumnMapping(
-                _optional_string(mapping.get("query_text")) or "input_query",
-                _optional_string(mapping.get("ground_truth")) or "ground_truth",
+                optional_string(mapping.get("query_text")) or "input_query",
+                optional_string(mapping.get("ground_truth")) or "ground_truth",
             )
     return EvalDatasetConfig(
         _optional_string_field(value, "mint", source_file, parsed, diagnostics, ("dataset",)),
@@ -579,7 +562,7 @@ def _parse_run(
             retention = EvalRetention(
                 _string_tuple(retention_value.get("audit"), "run.retention.audit", origin, diagnostics),
                 _string_tuple(retention_value.get("decision"), "run.retention.decision", origin, diagnostics),
-                _optional_int(retention_value.get("decision_window_days")),
+                optional_int(retention_value.get("decision_window_days")),
             )
     accept_statuses = _string_tuple(value.get("accept_statuses"), "run.accept_statuses", origin, diagnostics)
     for status in accept_statuses:
@@ -660,8 +643,7 @@ def _parse_custom_metric(
     name = _required_string(tree, "name", source_file, parsed, diagnostics)
     if name is None:
         return None
-    for field in sorted(set(tree) - _CUSTOM_METRIC_KEYS):
-        diagnostics.append(D("SST-PRS004", artifact=source_file, field=field, origin=origin))
+    report_unknown_keys(tree, _CUSTOM_METRIC_KEYS, diagnostics, artifact=source_file, origin=origin)
     meta = tree.get("meta")
     if meta is not None and not isinstance(meta, dict):
         diagnostics.append(
@@ -799,7 +781,7 @@ def _optional_string_field(
 ) -> str | None:
     if field not in value:
         return None
-    result = _optional_string(value[field])
+    result = optional_string(value[field])
     if result is None:
         diagnostics.append(
             D(
@@ -839,7 +821,7 @@ def _optional_int_field(
 ) -> int | None:
     if field not in value:
         return None
-    result = _optional_int(value[field])
+    result = optional_int(value[field])
     if result is None:
         diagnostics.append(
             D(
@@ -860,34 +842,12 @@ def _string_tuple(
     origin: Origin,
     diagnostics: list[Diagnostic],
 ) -> tuple[str, ...]:
-    if value is None:
-        return ()
-    if not isinstance(value, list) or any(not isinstance(item, str) for item in value):
-        diagnostics.append(
-            D(
-                "SST-PRS003",
-                artifact=origin.file,
-                field=field,
-                expected="list of strings",
-                found=type(value).__name__,
-                origin=origin,
-            )
-        )
-        return ()
-    return tuple(value)
+    return checked_strings(value, diagnostics, field=field, artifact=origin.file, origin=origin)
 
 
 def _origin(parsed: ParsedYaml, path: tuple[str | int, ...], source_file: str) -> Origin:
     position = parsed.line_index.get(path)
     return Origin(source_file, position.line if position else 1, position.col if position else 1)
-
-
-def _optional_string(value: object) -> str | None:
-    return value.strip() if isinstance(value, str) and value.strip() else None
-
-
-def _optional_int(value: object) -> int | None:
-    return value if isinstance(value, int) and not isinstance(value, bool) else None
 
 
 def _number(value: object) -> float | None:

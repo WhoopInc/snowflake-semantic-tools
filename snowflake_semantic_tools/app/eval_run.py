@@ -25,7 +25,7 @@ from ..domain.model.identifier import SchemaScope
 from ..domain.model.lifecycle import Action
 from ..domain.model.sql import string_literal
 from ..domain.ports.snowflake import ClockPort, SnowflakePort, SnowflakePortError
-from ..domain.state.model import Manifest, State
+from ..domain.state.model import APPLIED, Manifest, State
 from .eval_compile import CompiledEval
 from .eval_lifecycle import EvalLifecycleConfig, EvalLifecycleHandler
 
@@ -424,7 +424,7 @@ def validate_eval_publication(
             or entry.fingerprint != artifact.fingerprint
             or entry.manifest_id != manifest.manifest_id
             or entry.qualified_name.casefold() != artifact.target.sql.casefold()
-            or entry.outcome != "applied"
+            or entry.outcome != APPLIED
         ):
             diagnostics.append(D("SST-APL012", artifact=item.artifact_key, value=artifact.target.sql))
             continue

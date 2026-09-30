@@ -8,7 +8,9 @@ from hashlib import md5, sha256
 from threading import Lock
 from types import MappingProxyType
 
+from ..domain.model.artifact_key import artifact_key, split_artifact_key
 from ..domain.model.diagnostic import D, DiagnosticBag
+from ..domain.model.eval import DEFAULT_EVAL_CONFIG_STAGE
 from ..domain.model.identifier import Identifier, QualifiedName
 from ..domain.model.lifecycle import (
     Action,
@@ -36,7 +38,7 @@ EVAL_STAGE_FILE_FORMAT = (
 
 @dataclass(frozen=True, slots=True)
 class EvalLifecycleConfig:
-    config_stage_name: str = "EVAL_CONFIGS"
+    config_stage_name: str = DEFAULT_EVAL_CONFIG_STAGE
 
 
 class EvalLifecycleHandler:
@@ -439,8 +441,9 @@ class EvalLifecycleHandler:
         if config is None:
             raise ValueError("eval artifact requires a config fingerprint")
         stage = self._config_stage(artifact)
-        dependency = next((key for key in artifact.depends_on if key.startswith("agent:")), artifact.key)
-        agent_name = dependency.split(":", 1)[-1]
+        agent_prefix = artifact_key("agent", "")
+        dependency = next((key for key in artifact.depends_on if key.startswith(agent_prefix)), artifact.key)
+        agent_name = split_artifact_key(dependency)[1]
         segment = _safe_stage_segment(agent_name)
         return f"@{stage.sql}/{segment}/{config}.yaml"
 

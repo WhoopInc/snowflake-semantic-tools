@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from hashlib import sha256
 
+from ..domain.model.artifact_key import artifact_key
 from ..domain.model.diagnostic import D, Diagnostic, DiagnosticBag, Severity
 from ..domain.model.identifier import QualifiedName
 from ..domain.model.lifecycle import RenderedArtifact
@@ -17,7 +18,7 @@ from ..domain.model.profile import (
     validate_profile_catalog,
 )
 from ..domain.model.registry import GrantPreservation
-from ..domain.model.skill import SkillCatalog, build_plugin_bundle, flatten_skill
+from ..domain.model.skill import DEFAULT_VERSION_PREFIX, SkillCatalog, build_plugin_bundle, flatten_skill
 from .compile import CompileResult
 
 
@@ -27,7 +28,7 @@ class DesktopChannel:
 
     stage: QualifiedName
     registry: QualifiedName
-    version_prefix: str = "SST_"
+    version_prefix: str = DEFAULT_VERSION_PREFIX
 
 
 @dataclass(frozen=True, slots=True)
@@ -168,7 +169,7 @@ class CompileProfiles:
                 "profile:shared",
                 *(f"mcp:{name}" for name in profile.mcp_servers),
                 *(f"hook:{name}" for name in profile.hooks),
-                *(f"command:{name}" for name in (*shared_commands, *profile.commands)),
+                *(artifact_key("command", name) for name in (*shared_commands, *profile.commands)),
             }
             if any(item.severity is Severity.ERROR and item.subject in subjects for item in diagnostics):
                 continue
@@ -188,9 +189,9 @@ class CompileProfiles:
                         dict.fromkeys(
                             (
                                 "profile:shared",
-                                *(f"skill:{name}" for name in (*shared_skills, *profile.skills)),
-                                *(f"plugin:{name}" for name in profile.plugins),
-                                *(f"command:{name}" for name in (*shared_commands, *profile.commands)),
+                                *(artifact_key("skill", name) for name in (*shared_skills, *profile.skills)),
+                                *(artifact_key("plugin", name) for name in profile.plugins),
+                                *(artifact_key("command", name) for name in (*shared_commands, *profile.commands)),
                                 *(f"hook:{name}" for name in profile.hooks),
                                 *(f"mcp:{name}" for name in profile.mcp_servers),
                             )

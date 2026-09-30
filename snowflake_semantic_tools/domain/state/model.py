@@ -12,6 +12,7 @@ from typing import Any, Iterable, Iterator, Mapping, cast
 from ..._version import __version__
 from ..model.identifier import TargetIdentity
 from ..model.lifecycle import Change, ChangeSet
+from .codec import optional_object, pairs_from_json, pairs_to_json, resources_from_json, resources_to_json
 
 MANIFEST_SCHEMA_VERSION = 2
 STATE_SCHEMA_VERSION = 2
@@ -81,11 +82,8 @@ class ArtifactEntry:
             },
             "status": self.status,
             "diagnostic_codes": list(self.diagnostic_codes),
-            "component_fingerprints": {key: item for key, item in self.component_fingerprints},
-            "physical_resources": [
-                {"object_type": object_type, "qualified_name": qualified_name}
-                for object_type, qualified_name in self.physical_resources
-            ],
+            "component_fingerprints": pairs_to_json(self.component_fingerprints),
+            "physical_resources": resources_to_json(self.physical_resources),
         }
 
     @classmethod
@@ -100,11 +98,7 @@ class ArtifactEntry:
         resources = value.get("physical_resources", [])
         if not isinstance(components, dict) or not isinstance(resources, list):
             raise ValueError("artifact entry component metadata must be structured")
-        parsed_resources: list[tuple[str, str]] = []
-        for resource in resources:
-            if not isinstance(resource, dict):
-                raise ValueError("artifact physical resource must be an object")
-            parsed_resources.append((str(resource["object_type"]), str(resource["qualified_name"])))
+        parsed_resources = resources_from_json(resources, "artifact physical resource must be an object")
         return cls(
             type=str(value["type"]),
             name=str(value["name"]),
@@ -118,8 +112,8 @@ class ArtifactEntry:
             render_dialect=str(rendered.get("dialect") or "ddl"),
             diagnostic_codes=tuple(str(item) for item in value.get("diagnostic_codes", [])),
             status=str(value.get("status", "ok")),
-            component_fingerprints=tuple(sorted((str(key), str(item)) for key, item in components.items())),
-            physical_resources=tuple(parsed_resources),
+            component_fingerprints=pairs_from_json(components),
+            physical_resources=parsed_resources,
         )
 
 
@@ -327,6 +321,8 @@ def _applied_resources(values: Iterable[AppliedResourceInput]) -> tuple[AppliedR
     return tuple(resources)
 
 
+# The outcome of a publish whose statements and checks all succeeded.
+APPLIED = "applied"
 # An executed prune that deactivates rather than drops leaves this outcome: the
 # object is still SST's, so the entry is kept as a tombstone it can reactivate.
 DEACTIVATED = "deactivated"
@@ -365,7 +361,7 @@ class AppliedEntry:
             "ddl_sha256": self.ddl_sha256,
             "manifest_id": self.manifest_id,
             "git_sha": self.git_sha,
-            "component_fingerprints": {key: item for key, item in self.component_fingerprints},
+            "component_fingerprints": pairs_to_json(self.component_fingerprints),
             "physical_resources": [resource.as_dict() for resource in self.applied_resources],
         }
 
@@ -387,7 +383,7 @@ class AppliedEntry:
             ddl_sha256=str(value.get("ddl_sha256", "")),
             manifest_id=str(value.get("manifest_id", "")),
             git_sha=str(value.get("git_sha", "")),
-            component_fingerprints=tuple(sorted((str(key), str(item)) for key, item in components.items())),
+            component_fingerprints=pairs_from_json(components),
             physical_resources=parsed_resources,
         )
 
@@ -569,6 +565,31 @@ class SavedChange:
             prune_executable=change.prune_executable,
         )
 
+    @classmethod
+    def from_dict(cls, value: object) -> SavedChange:
+        """Read one change of a saved plan, as `as_dict` wrote it."""
+        if not isinstance(value, dict):
+            raise ValueError("saved plan change must be an object")
+        return cls(
+            key=str(value["key"]),
+            artifact_type=str(value["artifact_type"]),
+            action=str(value["action"]),
+            reason=str(value["reason"]),
+            target=_optional_text(value.get("target")),
+            fingerprint=_optional_text(value.get("fingerprint")),
+            previous_marker=_optional_text(value.get("previous_marker")),
+            statement_hashes=tuple(str(element) for element in value.get("statement_hashes", [])),
+            depends_on=tuple(str(element) for element in value.get("depends_on", [])),
+            order=int(value["order"]),
+            component_fingerprints=pairs_from_json(
+                optional_object(
+                    value.get("component_fingerprints"), "saved plan component_fingerprints must be an object"
+                )
+            ),
+            physical_resources=resources_from_json(_saved_resources(value.get("physical_resources")), _RESOURCES),
+            prune_executable=bool(value.get("prune_executable", True)),
+        )
+
     def as_dict(self) -> dict[str, object]:
         return {
             "key": self.key,
@@ -581,11 +602,8 @@ class SavedChange:
             "statement_hashes": list(self.statement_hashes),
             "depends_on": list(self.depends_on),
             "order": self.order,
-            "component_fingerprints": {key: item for key, item in self.component_fingerprints},
-            "physical_resources": [
-                {"object_type": object_type, "qualified_name": qualified_name}
-                for object_type, qualified_name in self.physical_resources
-            ],
+            "component_fingerprints": pairs_to_json(self.component_fingerprints),
+            "physical_resources": resources_to_json(self.physical_resources),
             "prune_executable": self.prune_executable,
         }
 
@@ -664,6 +682,47 @@ class SavedPlan:
     def matches(self, manifest_id: str, target: TargetIdentity) -> bool:
         return self.manifest_id == manifest_id and self.target.key == target.key
 
+    @classmethod
+    def from_dict(cls, value: object) -> SavedPlan:
+        """Read a saved plan written by `as_dict`, refusing one whose recorded id is not its content hash.
+
+        Raises:
+            ValueError: the document is not a saved plan of this schema, or its id does not match.
+            KeyError: a change lacks a required key.
+            TypeError: a value has the wrong type to convert.
+        """
+        if not isinstance(value, dict):
+            raise ValueError("saved plan must be an object")
+        version = value.get("schema_version")
+        if version != PLAN_SCHEMA_VERSION:
+            raise ValueError(f"saved plan schema {version} is not supported")
+        raw_changes = value.get("changes")
+        if not isinstance(raw_changes, list):
+            raise ValueError("saved plan changes must be a list")
+        changes = tuple(SavedChange.from_dict(item) for item in raw_changes)
+        raw_selection = value.get("selection", {})
+        if not isinstance(raw_selection, dict):
+            raise ValueError("saved plan selection must be an object")
+        plan = cls(
+            schema_version=version,
+            plan_id=str(value.get("plan_id") or ""),
+            manifest_id=str(value.get("manifest_id") or ""),
+            target=TargetIdentity.from_dict(value.get("target")),
+            observation_at=str(value.get("observation_at") or ""),
+            observation_fingerprint=str(value.get("observation_fingerprint") or ""),
+            changes=changes,
+            selected=tuple(str(item) for item in raw_selection.get("selected", [])),
+            excluded=tuple(str(item) for item in raw_selection.get("excluded", [])),
+            include_prune=bool(raw_selection.get("include_prune", False)),
+            partial=bool(raw_selection.get("partial", False)),
+        )
+        expected_body = dict(value)
+        expected_body.pop("plan_id", None)
+        expected = content_hash(expected_body)
+        if plan.plan_id != expected:
+            raise ValueError(f"saved plan id {plan.plan_id}, recomputed {expected}")
+        return plan
+
 
 def _selection(
     selected: tuple[str, ...], excluded: tuple[str, ...], include_prune: bool, partial: bool
@@ -675,12 +734,23 @@ def _selection(
     return value
 
 
-def _object_map(value: object) -> dict[str, object]:
+_RESOURCES = "saved plan physical_resources must be objects"
+
+
+def _saved_resources(value: object) -> list[object]:
     if value is None:
-        return {}
-    if not isinstance(value, dict):
-        raise ValueError("expected an object")
-    return {str(key): item for key, item in value.items()}
+        return []
+    if not isinstance(value, list) or any(not isinstance(item, dict) for item in value):
+        raise ValueError(_RESOURCES)
+    return value
+
+
+def _optional_text(value: object) -> str | None:
+    return None if value is None else str(value)
+
+
+def _object_map(value: object) -> dict[str, object]:
+    return optional_object(value, "expected an object")
 
 
 def _string_map(value: object) -> dict[str, str]:

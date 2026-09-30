@@ -17,6 +17,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from hashlib import sha256
 
+from .artifact_key import artifact_key
 from .diagnostic import D, Diagnostic, DiagnosticBag, Origin
 from .stage_path import ALLOWED_DESCRIPTION, unsafe_segment
 
@@ -39,6 +40,8 @@ IGNORE_MARKER = "sst: ignore SST-VAL808"
 
 _KEBAB = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
 _MAX_NAME = 64
+# Every extension version alias starts with this unless `+version_prefix` changes it.
+DEFAULT_VERSION_PREFIX = "SST_"
 _LINK = re.compile(r"!?\[[^\]\n]*\]\(\s*<?([^)\s>]+)>?(?:\s+\"[^\"\n]*\")?\s*\)")
 _DEFINITION = re.compile(r"^[ ]{0,3}\[[^\]\n]+\]:[ \t]*<?([^\s>]+)>?", re.MULTILINE)
 _SEGMENT = r"(?:\.{1,2}|\.?[A-Za-z0-9_][A-Za-z0-9_.-]*)"
@@ -98,7 +101,7 @@ class Skill:
 
     @property
     def key(self) -> str:
-        return f"skill:{self.name}"
+        return artifact_key("skill", self.name)
 
     @property
     def extension_name(self) -> str:
@@ -127,7 +130,7 @@ class Plugin:
 
     @property
     def key(self) -> str:
-        return f"plugin:{self.name}"
+        return artifact_key("plugin", self.name)
 
     @property
     def extension_name(self) -> str:

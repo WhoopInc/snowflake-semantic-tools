@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 
+from ..model.artifact_key import artifact_key
 from ..model.identifier import Identifier, QualifiedName
 from ..model.lifecycle import ProbeKind, RenderedArtifact, SmokeProbe
 from ..model.registry import GrantPreservation
@@ -61,7 +62,7 @@ def _render_search(
     clauses.append(f"  AS {query}")
     ddl = "\n".join(clauses)
     return RenderedArtifact.create(
-        key=f"tool:{member.name.casefold()}",
+        key=artifact_key("tool", member.name.casefold()),
         artifact_type="tool",
         target=target,
         ddl=ddl,
@@ -69,7 +70,7 @@ def _render_search(
         grant_preservation=GrantPreservation.REPLAY,
         smoke=(
             SmokeProbe(
-                f"tool:{member.name.casefold()}:describe",
+                f"{artifact_key('tool', member.name.casefold())}:describe",
                 ProbeKind.DESCRIBE,
                 f"DESCRIBE CORTEX SEARCH SERVICE {target.sql}",
             ),
@@ -118,7 +119,7 @@ def _render_routine(member: ToolMember, target: QualifiedName, *, procedure: boo
     clauses.append(f"  AS {_body(member.body)}")
     ddl = "\n".join(clauses)
     return RenderedArtifact.create(
-        key=f"tool:{member.name.casefold()}",
+        key=artifact_key("tool", member.name.casefold()),
         artifact_type="tool",
         target=target,
         ddl=ddl,
@@ -127,7 +128,7 @@ def _render_routine(member: ToolMember, target: QualifiedName, *, procedure: boo
         routine_signature=tuple(parameter.type for parameter in member.signature),
         smoke=(
             SmokeProbe(
-                f"tool:{member.name.casefold()}:describe",
+                f"{artifact_key('tool', member.name.casefold())}:describe",
                 ProbeKind.DESCRIBE,
                 f"DESCRIBE {object_type} {target.sql}({', '.join(parameter.type for parameter in member.signature)})",
             ),
@@ -140,7 +141,7 @@ def _render_stage(member: ToolMember, target: QualifiedName) -> RenderedArtifact
     if member.description:
         ddl += f" COMMENT = {string_literal(_one_line(member.description))}"
     return RenderedArtifact.create(
-        key=f"tool:{member.name.casefold()}",
+        key=artifact_key("tool", member.name.casefold()),
         artifact_type="tool",
         target=target,
         ddl=ddl,
@@ -148,7 +149,7 @@ def _render_stage(member: ToolMember, target: QualifiedName) -> RenderedArtifact
         grant_preservation=GrantPreservation.NONE,
         smoke=(
             SmokeProbe(
-                f"tool:{member.name.casefold()}:describe",
+                f"{artifact_key('tool', member.name.casefold())}:describe",
                 ProbeKind.DESCRIBE,
                 f"DESCRIBE STAGE {target.sql}",
             ),

@@ -544,7 +544,6 @@ docstring-function snowflake_semantic_tools/domain/state/model.py::content_hash
 docstring-function snowflake_semantic_tools/domain/state/model.py::migrate_manifest
 docstring-function snowflake_semantic_tools/domain/state/model.py::migrate_state
 docstring-private snowflake_semantic_tools/adapters/dbt/manifest.py::_column
-docstring-private snowflake_semantic_tools/adapters/fs/local.py::_saved_plan_from_dict
 docstring-private snowflake_semantic_tools/adapters/profile.py::_checked
 docstring-private snowflake_semantic_tools/adapters/snowflake/connector.py::_extension_uri
 docstring-private snowflake_semantic_tools/adapters/snowflake/connector.py::_validated_stage_path
@@ -581,7 +580,6 @@ docstring-private snowflake_semantic_tools/adapters/yaml/loader.py::_metric_cycl
 docstring-private snowflake_semantic_tools/adapters/yaml/loader.py::_metric_diagnostics
 docstring-private snowflake_semantic_tools/adapters/yaml/loader.py::_metric_parse_diagnostics
 docstring-private snowflake_semantic_tools/adapters/yaml/loader.py::_multipath_diagnostics
-docstring-private snowflake_semantic_tools/adapters/yaml/loader.py::_parse_yaml_bytes
 docstring-private snowflake_semantic_tools/adapters/yaml/loader.py::_relationship_diagnostics
 docstring-private snowflake_semantic_tools/adapters/yaml/loader.py::_resolve_expression
 docstring-private snowflake_semantic_tools/adapters/yaml/loader.py::_synonyms_diagnostics

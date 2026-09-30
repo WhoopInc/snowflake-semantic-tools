@@ -15,6 +15,8 @@ from types import MappingProxyType
 from typing import Any
 
 from .diagnostic import D, Diagnostic, DiagnosticBag, Origin
+from .eval import DEFAULT_EVAL_CONFIG_STAGE
+from .skill import DEFAULT_VERSION_PREFIX
 
 CONFIG_FILE = "sst_config.yml"
 
@@ -252,7 +254,7 @@ CONFIG_SCHEMA: tuple[ConfigKey, ...] = (
         "skills.+version_prefix",
         _S,
         "Prefix of every version alias; the rest is 12 hex characters of the bundle digest.",
-        default="SST_",
+        default=DEFAULT_VERSION_PREFIX,
     ),
     _key(
         "skills.+threads",
@@ -333,7 +335,7 @@ CONFIG_SCHEMA: tuple[ConfigKey, ...] = (
     _key("apply.agent_spec_stage.schema", _S, "Stage schema.", default="the target schema"),
     _key("apply.agent_spec_stage.stage", _S, "Stage name.", default="AGENT_SPECS"),
     _key("apply.eval_config_stage", _BLOCK, "Stage for eval run configs, in each agent's schema."),
-    _key("apply.eval_config_stage.stage", _S, "Stage name.", default="EVAL_CONFIGS"),
+    _key("apply.eval_config_stage.stage", _S, "Stage name.", default=DEFAULT_EVAL_CONFIG_STAGE),
     _removed("apply.fail_fast", "pass --fail-fast to sst apply"),
     _removed("deploy", "renamed to apply:"),
     _key("snowflake", _BLOCK, "Allowlists for Snowflake surfaces the renderer accepts."),

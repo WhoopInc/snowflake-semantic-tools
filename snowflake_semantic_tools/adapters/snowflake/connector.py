@@ -36,6 +36,7 @@ from ...domain.ports.snowflake import (
     StagedFileMetadata,
     StageObservation,
 )
+from ...domain.state.codec import pairs_from_json, pairs_to_json
 from ...domain.state.model import AppliedEntry, AppliedResource
 
 STATE_COLUMNS = (
@@ -881,21 +882,12 @@ def _affected(result: QueryResult) -> int:
 
 
 def _json_components(entry: AppliedEntry) -> str:
-    return json.dumps(dict(entry.component_fingerprints), sort_keys=True, separators=(",", ":"))
+    return json.dumps(pairs_to_json(entry.component_fingerprints), sort_keys=True, separators=(",", ":"))
 
 
 def _json_resources(entry: AppliedEntry) -> str:
     return json.dumps(
-        [
-            {
-                "object_type": resource.object_type,
-                "qualified_name": resource.qualified_name,
-                "status": resource.status.value,
-            }
-            for resource in entry.applied_resources
-        ],
-        sort_keys=True,
-        separators=(",", ":"),
+        [resource.as_dict() for resource in entry.applied_resources], sort_keys=True, separators=(",", ":")
     )
 
 
@@ -903,7 +895,7 @@ def _component_fingerprints(value: object) -> tuple[tuple[str, str], ...]:
     parsed = _variant_value(value, {})
     if not isinstance(parsed, dict):
         raise SnowflakePortError("state COMPONENT_FINGERPRINTS must be an object")
-    return tuple(sorted((str(key), str(item)) for key, item in parsed.items()))
+    return pairs_from_json(parsed)
 
 
 def _physical_resources(value: object) -> tuple[AppliedResource, ...]:
