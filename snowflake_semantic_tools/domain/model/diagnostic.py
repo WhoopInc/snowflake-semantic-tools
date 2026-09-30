@@ -224,9 +224,9 @@ _SPECS = (
     ),
     _spec(
         "SST-PRS020",
-        Severity.WARNING,
-        "Deprecated field spelling",
-        "{artifact}: '{field}' is deprecated; use '{expected}'",
+        Severity.ERROR,
+        "Field was renamed in 1.0",
+        "{artifact}: '{field}' was renamed in 1.0; use '{expected}'",
         "rename the field",
     ),
     _spec(
@@ -276,14 +276,14 @@ _SPECS = (
         Severity.ERROR,
         "Metric expression is not an aggregate",
         "metric '{metric}' is table-scoped and its expr is not an aggregate",
-        "wrap the expression in an aggregate; compute window expressions in the dbt model",
+        "wrap the expression in an aggregate; for a window, move OVER (...) into a window: block",
     ),
     _spec(
         "SST-VAL102",
         Severity.ERROR,
         "Window function in a derived metric",
         "window function {function} in derived metric '{metric}'",
-        "compute the window in the dbt model",
+        "put the window: block on a table-scoped metric; a derived metric cannot carry a window",
         demotable=False,
     ),
     _spec(
@@ -383,18 +383,43 @@ _SPECS = (
         "use public_access or private_access",
     ),
     _spec(
-        "SST-VAL122",
-        Severity.WARNING,
-        "Visibility key is deprecated",
-        "metric '{metric}' uses visibility; the current key is access_modifier",
-        "rename the key",
-    ),
-    _spec(
         "SST-VAL124",
         Severity.WARNING,
         "Duplicate metric expression",
         "metric '{metric}' has the same expression as '{other}'",
         "keep one and synonym the other",
+    ),
+    _spec(
+        "SST-VAL125",
+        Severity.ERROR,
+        "Window entry does not resolve",
+        "metric '{metric}': window {field} names {value}, which is not {expected}",
+        "name a dimension the metric's table can reach, or a metric of the same table",
+        demotable=False,
+    ),
+    _spec(
+        "SST-VAL126",
+        Severity.ERROR,
+        "Window applies to a column",
+        "metric '{metric}': {function} must apply to a metric or an aggregate to be a window metric",
+        "pass {{ metric() }} or an aggregate such as SUM(...); a row-level window belongs in a fact or dimension",
+        demotable=False,
+    ),
+    _spec(
+        "SST-VAL127",
+        Severity.ERROR,
+        "Window frame without an order",
+        "metric '{metric}': window frame '{value}' needs an order_by",
+        "add order_by, or remove the frame",
+        demotable=False,
+    ),
+    _spec(
+        "SST-VAL128",
+        Severity.ERROR,
+        "Metric references a window metric",
+        "metric '{metric}' references '{other}', a window function metric",
+        "reference the metric the window applies to instead; Snowflake does not allow a window metric in another metric",
+        demotable=False,
     ),
     _spec(
         "SST-VAL203",
@@ -534,7 +559,7 @@ _SPECS = (
         Severity.WARNING,
         "Auto-managed field contains a sentinel value",
         "{artifact}: '{member}'.{field} contains '{value}'",
-        "re-run sst enrich; the value came from a pandas round-trip",
+        "delete the value; it is a missing-value placeholder, not data",
     ),
     _spec(
         "SST-VAL209",
@@ -552,11 +577,10 @@ _SPECS = (
     ),
     _spec(
         "SST-DBT005",
-        Severity.WARNING,
+        Severity.ERROR,
         "Key metadata is written in the 0.3 form",
         "model '{model}': meta.sst.{field} is written in the 0.3 form",
-        "write primary_key as a list of columns and unique_keys as a list of column lists; "
-        "the 0.3 forms are read for one more release",
+        "write primary_key as a list of columns and unique_keys as a list of column lists",
     ),
     _spec(
         "SST-DBT030",
@@ -720,14 +744,6 @@ _SPECS = (
         demotable=False,
     ),
     _spec(
-        "SST-PLN900",
-        Severity.ERROR,
-        "Invalid change order",
-        "change order violates {value}",
-        "report this as a bug",
-        demotable=False,
-    ),
-    _spec(
         "SST-APL001",
         Severity.ERROR,
         "DDL execution failed",
@@ -866,8 +882,8 @@ _SPECS = (
     _spec(
         "SST-MAN002",
         Severity.ERROR,
-        "Manifest is invalid JSON",
-        "{path} is not valid JSON: {detail}",
+        "Manifest is unreadable",
+        "{path} is not a readable SST manifest: {detail}",
         "delete it and re-run sst compile",
     ),
     _spec(
@@ -875,13 +891,6 @@ _SPECS = (
         Severity.ERROR,
         "Manifest key missing",
         "{path} omits required key '{key}'",
-        "re-run sst compile",
-    ),
-    _spec(
-        "SST-MAN004",
-        Severity.ERROR,
-        "Impact index incomplete",
-        "{artifact} has no reverse-index entry",
         "re-run sst compile",
     ),
     _spec(
@@ -927,17 +936,10 @@ _SPECS = (
         "the run proceeds from authoritative remote state",
     ),
     _spec(
-        "SST-MAN201",
-        Severity.INFO,
-        "Manifest migrated in memory",
-        "{path} schema {found} migrated to {expected} in memory",
-        None,
-    ),
-    _spec(
         "SST-MAN202",
-        Severity.WARNING,
+        Severity.ERROR,
         "Manifest schema has no migration",
-        "{path} schema {found} has no migration; full recompile",
+        "{path} schema {found} has no migration",
         "re-run sst compile",
     ),
     _spec(
@@ -1036,13 +1038,6 @@ _PARITY_SPECS = (
         "Unsupported template placeholder in a judge prompt",
         "{artifact}: '{placeholder}' is not one of the 12 supported names",
         "use a supported placeholder",
-    ),
-    _spec(
-        "SST-PRS117",
-        Severity.ERROR,
-        "Dataset row has no question or no expected field",
-        "{artifact}: row {index} has {detail}",
-        "give every row a question and at least one expectation",
     ),
     _spec(
         "SST-PRS118",
@@ -1592,13 +1587,6 @@ _PARITY_SPECS = (
         "use a supported scalar or array type",
     ),
     _spec(
-        "SST-DBT002",
-        Severity.ERROR,
-        "Referenced dbt model is absent",
-        "model '{model}' is not in the dbt manifest",
-        "run dbt compile, or correct the name",
-    ),
-    _spec(
         "SST-DBT003",
         Severity.ERROR,
         "Unknown dbt semantic role",
@@ -1627,34 +1615,6 @@ _PARITY_SPECS = (
         "add content, or remove the reference",
     ),
     _spec(
-        "SST-MEM002",
-        Severity.WARNING,
-        "Member tables cannot be inferred",
-        "{member} declares no tables: and none can be inferred",
-        "declare tables explicitly",
-    ),
-    _spec(
-        "SST-MEM008",
-        Severity.ERROR,
-        "Member reaches a table absent from its artifact",
-        "{member} attaches to {artifact}, which lacks table '{name}'",
-        "align the member tables with the view",
-    ),
-    _spec(
-        "SST-MEM011",
-        Severity.INFO,
-        "Member fan-out",
-        "{member} attaches to {count} artifacts",
-        None,
-    ),
-    _spec(
-        "SST-MEM103",
-        Severity.INFO,
-        "Artifact member counts",
-        "{artifact}: {value}",
-        None,
-    ),
-    _spec(
         "SST-PRS006",
         Severity.ERROR,
         "Duplicate name within a type",
@@ -1679,15 +1639,8 @@ _PARITY_SPECS = (
         "SST-PRS027",
         Severity.ERROR,
         "Tags block has the wrong shape",
-        "{artifact}: tags must be a mapping of name to value, found {found}",
-        "correct the tags block",
-    ),
-    _spec(
-        "SST-PRS028",
-        Severity.ERROR,
-        "Constraints block has the wrong shape",
-        "{artifact}: constraints block is invalid: {detail}",
-        "correct the constraints block",
+        "{artifact}: tags must be a list of name and value entries, found {found}",
+        "write tags as a list of {name: ..., value: ...} entries",
     ),
     _spec(
         "SST-PRS101",
@@ -1711,20 +1664,6 @@ _PARITY_SPECS = (
         "name the member",
     ),
     _spec(
-        "SST-VAL010",
-        Severity.ERROR,
-        "Reference graph contains a cycle",
-        "{type} reference cycle: {cycle}",
-        "break the cycle",
-    ),
-    _spec(
-        "SST-VAL012",
-        Severity.WARNING,
-        "Deprecated key spelling in use",
-        "{type} '{name}' uses '{field}'; the current spelling is '{expected}'",
-        "rename the key",
-    ),
-    _spec(
         "SST-VAL118",
         Severity.ERROR,
         "Non-additive dimension does not resolve",
@@ -1746,20 +1685,6 @@ _PARITY_SPECS = (
         "correct the column, or swap the sides",
     ),
     _spec(
-        "SST-VAL205",
-        Severity.ERROR,
-        "Relationship sides share no view",
-        "relationship '{relationship}' joins '{a}' and '{b}', which share no view",
-        "add both tables to one view, or drop the relationship",
-    ),
-    _spec(
-        "SST-VAL213",
-        Severity.ERROR,
-        "Relationship condition is not expressible",
-        "relationship '{relationship}': condition '{value}' spans multiple columns per side",
-        "split it into one condition per column pair",
-    ),
-    _spec(
         "SST-VAL215",
         Severity.ERROR,
         "Relationship graph cycle changes results",
@@ -1769,17 +1694,9 @@ _PARITY_SPECS = (
     _spec(
         "SST-VAL311",
         Severity.ERROR,
-        "Required primary key is absent",
-        "{artifact}: '{name}' declares no primary_key",
-        "declare primary_key in config.meta.sst",
-    ),
-    _spec(
-        "SST-VAL403",
-        Severity.ERROR,
-        "Legacy inline filter syntax",
-        "filter '{member}' uses the legacy inline form",
-        "declare filters as named objects with labels",
-        demotable=False,
+        "Relationship target declares no key",
+        "{artifact}: '{name}' declares neither primary_key nor unique_keys, and a relationship references it",
+        "declare primary_key (or unique_keys) in the model's config.meta.sst",
     ),
     _spec(
         "SST-VAL412",
@@ -1865,17 +1782,10 @@ _PUBLISHING_SPECS = (
     ),
     _spec(
         "SST-CFG044",
-        Severity.INFO,
-        "Config key has no effect",
-        "config key '{key}' is accepted for compatibility and has no effect in this release",
-        "delete the key, or keep it only while 0.3 still reads this file",
-    ),
-    _spec(
-        "SST-CFG045",
-        Severity.WARNING,
-        "Deprecated config key",
-        "config key '{key}' is deprecated; use '{replacement}'",
-        "rename the key",
+        Severity.ERROR,
+        "Config key is not supported in this release",
+        "config key '{key}' is not supported in this release",
+        "delete the key",
     ),
     _spec(
         "SST-CFG046",
@@ -2064,13 +1974,6 @@ _PUBLISHING_SPECS = (
         "list each member once",
     ),
     _spec(
-        "SST-PRS121",
-        Severity.ERROR,
-        "Both spellings of one key are set",
-        "{artifact}: sets both '{field}' and '{expected}'",
-        "delete the 0.3 spelling; sst migrate refs does not rename keys",
-    ),
-    _spec(
         "SST-VAL405",
         Severity.ERROR,
         "Boolean standalone filter",
@@ -2155,6 +2058,13 @@ _PUBLISHING_SPECS = (
         "write each tables: entry as {{ ref('<model>') }}",
     ),
     _spec(
+        "SST-REF045",
+        Severity.ERROR,
+        "Relationship endpoint is written as a ref() call",
+        "{artifact}: {field} is written as {found}; it takes the bare model name",
+        "run sst migrate refs --write, or write the model name",
+    ),
+    _spec(
         "SST-PRS122",
         Severity.ERROR,
         "File is not UTF-8",
@@ -2167,6 +2077,14 @@ _PUBLISHING_SPECS = (
         "Semantic view definition is malformed",
         "{artifact}: {detail}",
         "fix the field the message names; the semantic views guide lists each field's form",
+    ),
+    _spec(
+        "SST-PRS124",
+        Severity.ERROR,
+        "Window frame is not a frame clause",
+        "{artifact}: window frame '{value}' is not ROWS or RANGE BETWEEN <bound> AND <bound>",
+        "write each bound as UNBOUNDED PRECEDING, UNBOUNDED FOLLOWING, CURRENT ROW, or <n> or "
+        "INTERVAL '<n> <unit>' followed by PRECEDING or FOLLOWING",
     ),
     _spec(
         "SST-VAL762",
@@ -2447,68 +2365,6 @@ def _build_registry(specs: tuple[ErrorSpec, ...]) -> Mapping[str, ErrorSpec]:
 
 
 ERROR_REGISTRY = _build_registry((*_SPECS, *_PARITY_SPECS, *_PUBLISHING_SPECS))
-
-LEGACY_ALIASES: Mapping[str, tuple[str, ...]] = MappingProxyType(
-    {
-        "SST-V001": ("SST-PRS002", "SST-PRS107", "SST-VAL201"),
-        "SST-V002": ("SST-DBT002", "SST-MEM003", "SST-REF001"),
-        "SST-V003": ("SST-DBT004", "SST-REF002", "SST-VAL020"),
-        "SST-V004": ("SST-PRS006", "SST-PRS106", "SST-VAL001"),
-        "SST-V005": ("SST-PRS003", "SST-PRS018", "SST-PRS019", "SST-PRS029", "SST-PRS113", "SST-VAL113", "SST-VAL418"),
-        "SST-V006": ("SST-PRS101", "SST-PRS107"),
-        "SST-V007": ("SST-PRS013",),
-        "SST-V008": ("SST-DBT004",),
-        "SST-V010": ("SST-DBT003", "SST-MEM011", "SST-VAL311", "SST-VAL312"),
-        "SST-V011": ("SST-VAL210", "SST-VAL310"),
-        "SST-V012": ("SST-VAL003",),
-        "SST-V013": ("SST-MEM011", "SST-PRS029", "SST-VAL020"),
-        "SST-V014": ("SST-PRS030",),
-        "SST-V015": ("SST-PRS028",),
-        "SST-V016": ("SST-PRS027",),
-        "SST-V020": ("SST-VAL003",),
-        "SST-V021": ("SST-VAL308",),
-        "SST-V022": ("SST-VAL309",),
-        "SST-V023": ("SST-VAL305",),
-        "SST-V024": ("SST-VAL306",),
-        "SST-V025": ("SST-MEM103", "SST-VAL314", "SST-VAL315"),
-        "SST-V032": ("SST-MEM002", "SST-VAL109"),
-        "SST-V033": ("SST-PRS002", "SST-PRS113"),
-        "SST-V034": ("SST-PRS102",),
-        "SST-V035": ("SST-PRS013", "SST-VAL121", "SST-VAL122"),
-        "SST-V036": ("SST-VAL118",),
-        "SST-V037": ("SST-PRS003", "SST-VAL102"),
-        "SST-V038": ("SST-PRS003", "SST-VAL115"),
-        "SST-V039": ("SST-VAL112",),
-        "SST-V040": ("SST-PRS002", "SST-VAL201"),
-        "SST-V041": ("SST-REF001", "SST-VAL205"),
-        "SST-V042": ("SST-VAL203",),
-        "SST-V043": ("SST-REF002", "SST-VAL204"),
-        "SST-V044": ("SST-VAL204", "SST-VAL214"),
-        "SST-V045": ("SST-REF006",),
-        "SST-V046": ("SST-VAL108",),
-        "SST-V047": ("SST-VAL318",),
-        "SST-V048": ("SST-VAL223",),
-        "SST-V049": ("SST-PRS110", "SST-VAL213"),
-        "SST-V050": ("SST-VAL403",),
-        "SST-V051": ("SST-VAL401",),
-        "SST-V052": ("SST-PRS020", "SST-VAL012"),
-        "SST-V060": ("SST-PRS002", "SST-VAL020", "SST-VAL412"),
-        "SST-V061": ("SST-LOD018", "SST-LOD019"),
-        "SST-V062": ("SST-PRS014", "SST-VAL412"),
-        "SST-V070": ("SST-PRS002", "SST-VAL003"),
-        "SST-V071": ("SST-MEM008", "SST-REF001"),
-        "SST-V081": (),
-        "SST-V090": ("SST-PLN005", "SST-REF005", "SST-VAL010", "SST-VAL215"),
-        "SST-V091": ("SST-PRS006", "SST-VAL124"),
-        "SST-V092": ("SST-VAL110",),
-    }
-)
-
-
-def resolve_code(code: str) -> tuple[str, ...]:
-    if code in ERROR_REGISTRY:
-        return (code,)
-    return LEGACY_ALIASES.get(code, ())
 
 
 def D(

@@ -1,44 +1,14 @@
 ---
-# =============================================================================
-# semantic_models/metrics/metrics.yml -- the reference-impl fixture
-# =============================================================================
-# SIXTEEN METRICS, AND THE COUNT IS DRIVEN BY SHAPE RATHER THAN BY REALISM. Each
-# one below is the smallest metric that reaches a distinct rule or rendering path:
-# every aggregation family, both derivation depths, the non-additive case, and
-# both view variables. Twelve are table-scoped and four are derived. Another
-# metric that repeated a shape would add golden DDL a
-# reviewer has to diff and assert nothing new.
-#
-#   TABLE-SCOPED   an `expr:` over `{{ ref(table, column) }}`. Renders into the
-#                  owning table's METRICS clause.
-#   DERIVED        an `expr:` over `{{ metric(...) }}`. Renders at view level.
-#
-# A DERIVED METRIC MAY NOT CONTAIN A WINDOW FUNCTION. `negative/06` proves that
-# refusal. M008 also rejects window-root table-scoped metrics, so window logic is
-# deliberately absent here and belongs in the dbt model where it can be tested.
-#
-# MAX_METRIC_DEPTH IS REACHED ON PURPOSE. `gross_margin_rate` is derived from
-# `gross_margin`, which is itself derived -- two levels. The engine's
-# `expand_metric` guard runs BEFORE descent and returns the `TOO_DEEP` sentinel
-# (`SST-REF900`) past the limit, so a fixture that never nests could not tell a
-# working guard from an absent one.
-#
-# THE DONOR PROJECT HAS 91 METRICS AND THIS HAS 17, WHICH IS NOT A SHORTFALL.
-# Byte-exact goldens have to be diffable by a human; 91 metrics of rendered DDL is
-# not. `D216` records the split -- the repo carries realism, the fixture carries
-# coverage.
-#
-# NO DATA VALUES. The two numeric literals below are a view VARIABLE's default and
-# a percentage, both declared in `semantic_views/`, neither read from a column.
-# =============================================================================
+# Table-scoped metrics declare tables: and render under their table, as
+# ORDERS.TOTAL_REVENUE. Derived metrics combine metric() calls and render
+# unqualified. A window: block makes a table-scoped metric a window function
+# metric; a derived metric cannot carry one (SST-VAL102).
 
 snowflake_metrics:
 
-  # ===========================================================================
-  # TABLE-SCOPED -- jaffle_sales
-  # ===========================================================================
+  # Over orders and customers.
 
-  # COUNT DISTINCT over an identifier. The most common metric in any corpus.
+  # COUNT DISTINCT over an identifier.
   - name: order_count
     tables:
       - orders
@@ -59,6 +29,25 @@ snowflake_metrics:
       - customers
       - buyers
 
+  # A window function metric: a running total of customer_count in order of
+  # each customer's first order. A query that returns it must also return
+  # customers.first_ordered_at, the dimension its window excludes from the
+  # partition and orders by.
+  - name: cumulative_customer_count
+    tables:
+      - customers
+    description: |-
+      Running count of customers, by the date of their first order.
+    expr: "SUM({{ metric('customer_count') }})"
+    window:
+      partition_by_excluding:
+        - "{{ ref('customers', 'first_ordered_at') }}"
+      order_by:
+        - ref: "{{ ref('customers', 'first_ordered_at') }}"
+          sort_direction: ascending
+          null_order: last
+      frame: RANGE BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+
   # SUM over a fact.
   - name: total_revenue
     tables:
@@ -77,7 +66,7 @@ snowflake_metrics:
       Total tax collected across all orders, in cents.
     expr: "SUM({{ ref('orders', 'tax_paid') }})"
 
-  # AVG, so the fixture does not assert that every aggregate renders like SUM.
+  # AVG, a second aggregate.
   - name: avg_order_value
     tables:
       - orders
@@ -88,11 +77,8 @@ snowflake_metrics:
       - AOV
       - average basket
 
-  # THE FIRST VIEW-VARIABLE READER. `large_order_cents` is declared in
-  # jaffle_sales' `variables:` and used here as a BARE IDENTIFIER, which is the
-  # whole point of the clause. V024 WARNS on a declared variable no `expr:`
-  # references, so this metric is what keeps that rule satisfied rather than
-  # merely present.
+  # Reads the NUMBER view variable large_order_cents as a bare identifier; it
+  # renders as LARGE_ORDER_CENTS.
   - name: large_order_count
     tables:
       - orders
@@ -102,8 +88,7 @@ snowflake_metrics:
     synonyms:
       - big orders
 
-  # THE SECOND VIEW-VARIABLE READER, and a BOOLEAN one -- so the fixture does not
-  # assert that a variable is always numeric.
+  # Reads the BOOLEAN view variable tax_inclusive.
   - name: revenue_on_policy
     tables:
       - orders
@@ -111,8 +96,8 @@ snowflake_metrics:
       Revenue measured with or without collected tax, per the view's tax policy.
     expr: "SUM(CASE WHEN tax_inclusive THEN {{ ref('orders', 'order_total') }} ELSE {{ ref('orders', 'subtotal') }} END)"
 
-  # CASE WHEN over an enum column. Reads the closed set `orders.order_state`
-  # declares with `is_enum: true`.
+  # CASE WHEN over the order_state enum; the literal comes from the
+  # returned_state var.
   - name: returned_order_count
     tables:
       - orders
@@ -120,21 +105,17 @@ snowflake_metrics:
       Number of orders that were returned.
     expr: "COUNT(DISTINCT CASE WHEN {{ ref('orders', 'order_state') }} = '{{ var('returned_state') }}' THEN {{ ref('orders', 'order_id') }} END)"
 
-  # ===========================================================================
-  # TABLE-SCOPED -- jaffle_menu
-  # ===========================================================================
+  # Over order_items, products and supplies.
 
-  # PLAIN COUNT, not COUNT DISTINCT, and it carries `using_relationships`.
+  # Plain COUNT, naming its join path: USING (ORDER_ITEMS_TO_ORDERS). SST
+  # requires using_relationships only when two relationships join a metric's
+  # table to the same table (SST-VAL116); here it is optional.
   - name: line_item_count
     tables:
       - order_items
     description: |-
       Number of line items sold.
     expr: "COUNT({{ ref('order_items', 'order_item_id') }})"
-    # WHY THIS ONE NAMES ITS PATH. `order_items` reaches `products` directly and
-    # `orders` by the ASOF relationship. Naming the path makes the metric's join
-    # explicit rather than inferred, which is what M020 asks for once more than one
-    # route exists from a metric's table.
     using_relationships:
       - order_items_to_orders
     synonyms:
@@ -155,11 +136,8 @@ snowflake_metrics:
       Total line-item value, in cents.
     expr: "SUM({{ ref('order_items', 'item_price') }})"
 
-  # THE NON-ADDITIVE CASE (M022), AND THE ONLY METRIC IN THE FIXTURE CARRYING THE
-  # KEY. `supplies` restates cost per product per month, so summing across
-  # `snapshot_month` double-counts while summing across products does not. The
-  # declaration is what tells Snowflake the difference; the dbt composite
-  # uniqueness test on (product_id, snapshot_month) is what makes the claim true.
+  # Rows sort by snapshot_month and only the last month's rows are summed; the
+  # default ascending order makes that the latest month.
   - name: total_supply_cost
     tables:
       - supplies
@@ -168,15 +146,26 @@ snowflake_metrics:
     expr: "SUM({{ ref('supplies', 'supply_cost') }})"
     non_additive_dimensions:
       - dimension: snapshot_month
-        window_function: LAST_VALUE
 
-  # ===========================================================================
-  # DERIVED -- view level. `{{ metric() }}`, never `{{ ref() }}`.
-  # ===========================================================================
+  # The same measure at the EARLIEST month: `descending` puts the earliest month
+  # last in sort order, and `null_order: first` keeps a row with no month from
+  # ever being that last row.
+  - name: opening_supply_cost
+    tables:
+      - supplies
+    description: |-
+      Cost of supplying the products sold, in cents, in the earliest month on
+      record. Not additive across months.
+    expr: "SUM({{ ref('supplies', 'supply_cost') }})"
+    non_additive_dimensions:
+      - table: supplies
+        dimension: snapshot_month
+        sort_direction: descending
+        null_order: first
 
-  # DIV0 RATHER THAN `/`. A derived ratio over a metric whose value can be zero is
-  # the single most common division-by-zero site in a semantic layer, and Snowflake
-  # gives it a total function.
+  # Derived.
+
+  # DIV0 rather than /, so a zero denominator returns zero, not an error.
   - name: revenue_per_order
     derived: true
     description: |-
@@ -191,17 +180,15 @@ snowflake_metrics:
       Mean revenue per customer over the period in scope.
     expr: "DIV0({{ metric('total_revenue') }}, {{ metric('customer_count') }})"
 
-  # DEPTH 1 -- derived from two table-scoped metrics.
+  # Only a derived metric may reference the non-additive total_supply_cost
+  # (SST-VAL107).
   - name: gross_margin
     derived: true
     description: |-
       Line-item revenue less the cost of supplying what was sold, in cents.
     expr: "{{ metric('total_line_item_revenue') }} - {{ metric('total_supply_cost') }}"
 
-  # DEPTH 2 -- derived from a DERIVED metric. This is the metric that makes the
-  # depth guard observable: `expand_metric` checks the stack BEFORE descending, so
-  # without a nested case the difference between a working guard and no guard at
-  # all is invisible.
+  # Derived from gross_margin, itself derived; it renders GROSS_MARGIN by name.
   - name: gross_margin_rate
     derived: true
     description: |-

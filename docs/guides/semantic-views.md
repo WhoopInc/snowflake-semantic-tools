@@ -89,18 +89,103 @@ snowflake_metrics:
 - A `derived: true` metric combines other metrics with `{{ metric() }}`; SST
   infers its tables from the metrics it references. It cannot use window
   functions (`SST-VAL102`), and metric references cannot form a cycle.
-- `non_additive_dimensions:` marks a metric that must not be summed across a
-  dimension, such as a balance across its snapshot date:
-
-  ```yaml
-      non_additive_dimensions:
-        - dimension: snapshot_month
-          window_function: LAST_VALUE
-  ```
-
 - When more than one relationship path joins a metric's table to another table
   in the view, name the path with `using_relationships:`. An ambiguous path is
   an error for the metric (`SST-VAL116`) and a warning for the view (`SST-VAL209`).
+
+### Semi-additive metrics
+
+`non_additive_dimensions:` marks a metric that must not be summed across a
+dimension, such as a balance across its snapshot date. Snowflake sorts the rows by
+the listed dimensions and aggregates only the values in the last rows of that
+order:
+
+```yaml
+  - name: total_supply_cost
+    tables: [supplies]
+    expr: "SUM({{ ref('supplies', 'supply_cost') }})"
+    non_additive_dimensions:
+      - dimension: snapshot_month        # latest month: the default order
+
+  - name: opening_supply_cost
+    tables: [supplies]
+    expr: "SUM({{ ref('supplies', 'supply_cost') }})"
+    non_additive_dimensions:
+      - table: supplies
+        dimension: snapshot_month
+        sort_direction: descending       # earliest month
+        null_order: first
+```
+
+- `dimension` names a dimension of the metric's table, or of `table:` when it is
+  set; a name that is not a dimension there is an error (`SST-VAL118`).
+- `sort_direction` is `ascending` (the default, which takes the latest value of a
+  date) or `descending` (the earliest). `null_order` is `first` or `last`; left
+  unset, Snowflake's default null ordering applies, which sorts nulls last in
+  ascending order. Set `null_order: first` when a row with no date must never be
+  the one that counts.
+- List order matters, as in an `ORDER BY`.
+- Only a derived metric may reference a semi-additive metric (`SST-VAL107`).
+
+These render as `NON ADDITIVE BY (SNAPSHOT_MONTH)` and
+`NON ADDITIVE BY (SUPPLIES.SNAPSHOT_MONTH DESC NULLS FIRST)`.
+
+### Window function metrics
+
+A `window:` block makes a table-scoped metric a window function metric: a running
+total, a moving average, or a value from an earlier row.
+
+```yaml
+  - name: cumulative_customer_count
+    tables: [customers]
+    expr: "SUM({{ metric('customer_count') }})"
+    window:
+      partition_by_excluding:
+        - "{{ ref('customers', 'first_ordered_at') }}"
+      order_by:
+        - ref: "{{ ref('customers', 'first_ordered_at') }}"
+          sort_direction: ascending        # optional
+          null_order: last                 # optional
+      frame: RANGE BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+```
+
+This renders as:
+
+```sql
+CUSTOMERS.CUMULATIVE_CUSTOMER_COUNT AS SUM(CUSTOMERS.CUSTOMER_COUNT) OVER (
+  PARTITION BY EXCLUDING CUSTOMERS.FIRST_ORDERED_AT
+  ORDER BY CUSTOMERS.FIRST_ORDERED_AT ASC NULLS LAST
+  RANGE BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW)
+```
+
+- `expr` is one function call, and its first argument is a metric of the same
+  table (`{{ metric() }}`) or an aggregate such as `SUM(...)`. A window over a raw
+  column is a row-level window; it belongs in a fact or dimension, in the dbt
+  model (`SST-VAL126`). `LAG({{ metric('m') }}, 1)` and `AVG(...)` work the same
+  way as `SUM`.
+- `partition_by` groups rows by the listed entries. `partition_by_excluding`
+  instead partitions by every dimension a query requests except those listed.
+  Set at most one (`SST-PRS014`).
+- `order_by` entries take a reference and, optionally, `sort_direction` and
+  `null_order`, with the same values as a non-additive dimension. A bare
+  reference is shorthand for `ref:`.
+- Each entry is `{{ ref('<model>', '<column>') }}`, naming a dimension the
+  metric's table reaches through the view's relationships, or
+  `{{ metric('<name>') }}`, naming a metric of the same table. EXCLUDING takes
+  dimensions only (`SST-VAL125`).
+- `frame` is `ROWS` or `RANGE BETWEEN <bound> AND <bound>`, where a bound is
+  `UNBOUNDED PRECEDING`, `UNBOUNDED FOLLOWING`, `CURRENT ROW`, or a number or an
+  `INTERVAL '<n> <unit>'` followed by `PRECEDING` or `FOLLOWING`. Anything else is
+  an error (`SST-PRS124`); a frame is never passed through as free SQL. A frame
+  needs an `order_by` (`SST-VAL127`).
+- A window metric cannot also set `using_relationships` or
+  `non_additive_dimensions`, cannot be `derived: true` (`SST-VAL102`), and no
+  other metric may reference it (`SST-VAL128`).
+- Writing `OVER (...)` inside `expr` is an error (`SST-VAL101`); use `window:`.
+
+A query that returns a window metric must also return every dimension in its
+partition and order, or Snowflake rejects the query. `SHOW SEMANTIC DIMENSIONS IN
+<view> FOR METRIC <metric>` marks them `required`.
 
 ## Relationships
 

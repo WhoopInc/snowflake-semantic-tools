@@ -7,15 +7,16 @@ from dataclasses import dataclass, field, replace
 from enum import Enum
 from hashlib import sha256
 from types import MappingProxyType
-from typing import Iterable, Iterator, Mapping, cast
+from typing import Any, Iterable, Iterator, Mapping, cast
 
+from ..._version import __version__
 from ..model.identifier import TargetIdentity
 from ..model.lifecycle import Action, Change, ChangeReason, ChangeSet, RenderedArtifact
 
 MANIFEST_SCHEMA_VERSION = 2
 STATE_SCHEMA_VERSION = 2
 PLAN_SCHEMA_VERSION = 2
-SST_VERSION = "1.0.0.dev0"
+SST_VERSION = __version__
 
 
 def canonical_json(value: object) -> bytes:
@@ -30,6 +31,18 @@ def canonical_json(value: object) -> bytes:
 
 def content_hash(value: object) -> str:
     return sha256(canonical_json(value)).hexdigest()
+
+
+class StoredDocumentError(ValueError):
+    """A stored manifest or state document SST cannot use, and the code that names why.
+
+    The store that read the file adds its path when it turns this into a diagnostic.
+    """
+
+    def __init__(self, code: str, message: str, **context: Any) -> None:
+        super().__init__(message)
+        self.code = code
+        self.context: dict[str, Any] = context
 
 
 @dataclass(frozen=True, slots=True)
@@ -178,22 +191,34 @@ class Manifest:
     @classmethod
     def from_dict(cls, value: object) -> Manifest:
         if not isinstance(value, dict):
-            raise ValueError("manifest must be an object")
+            raise StoredDocumentError(
+                "SST-MAN002", "manifest must be an object", detail="the document is not an object"
+            )
         version = value.get("schema_version")
         if not isinstance(version, int):
-            raise ValueError("manifest schema_version is required")
+            raise StoredDocumentError("SST-MAN003", "manifest schema_version is required", key="schema_version")
         if version > MANIFEST_SCHEMA_VERSION:
-            raise ValueError(f"manifest schema {version} is newer than {MANIFEST_SCHEMA_VERSION}")
+            raise StoredDocumentError(
+                "SST-MAN203",
+                f"manifest schema {version} is newer than {MANIFEST_SCHEMA_VERSION}",
+                found=version,
+                expected=MANIFEST_SCHEMA_VERSION,
+            )
         if version < MANIFEST_SCHEMA_VERSION:
             value = migrate_manifest(value)
             version = MANIFEST_SCHEMA_VERSION
         raw_artifacts = value.get("artifacts")
         if not isinstance(raw_artifacts, dict):
-            raise ValueError("manifest artifacts is required")
+            raise StoredDocumentError("SST-MAN003", "manifest artifacts is required", key="artifacts")
         manifest = _manifest_from_dict_unchecked(value)
         expected = content_hash(manifest.hash_material())
         if manifest.manifest_id != expected:
-            raise ValueError(f"manifest_id {manifest.manifest_id}, recomputed {expected}")
+            raise StoredDocumentError(
+                "SST-MAN005",
+                f"manifest_id {manifest.manifest_id}, recomputed {expected}",
+                found=manifest.manifest_id,
+                expected=expected,
+            )
         return manifest
 
 
@@ -209,7 +234,7 @@ def migrate_manifest(value: Mapping[str, object]) -> dict[str, object]:
         manifest = _manifest_from_dict_unchecked(migrated)
         migrated["manifest_id"] = content_hash(manifest.hash_material())
         return migrated
-    raise ValueError(f"manifest schema {version} has no migration")
+    raise StoredDocumentError("SST-MAN202", f"manifest schema {version} has no migration", found=version)
 
 
 def _manifest_from_dict_unchecked(value: Mapping[str, object]) -> Manifest:
@@ -409,12 +434,10 @@ class State:
     @classmethod
     def from_dict(cls, value: object) -> State:
         if not isinstance(value, dict):
-            raise ValueError("state must be an object")
+            raise StoredDocumentError("SST-MAN022", "state must be an object", detail="the document is not an object")
         version = value.get("schema_version")
-        if version is None or not isinstance(version, int):
-            raise ValueError(f"state schema {version} is not supported")
-        if version > STATE_SCHEMA_VERSION:
-            raise ValueError(f"state schema {version} is not supported")
+        if not isinstance(version, int) or version > STATE_SCHEMA_VERSION:
+            raise StoredDocumentError("SST-MAN023", f"state schema {version} is not supported", found=version)
         if version < STATE_SCHEMA_VERSION:
             value = migrate_state(value)
             version = STATE_SCHEMA_VERSION
@@ -438,7 +461,7 @@ class State:
 def migrate_state(value: Mapping[str, object]) -> dict[str, object]:
     version = value.get("schema_version")
     if version != 1:
-        raise ValueError(f"state schema {version} has no migration")
+        raise StoredDocumentError("SST-MAN023", f"state schema {version} has no migration", found=version)
     migrated = dict(value)
     raw_applied = value.get("applied")
     if not isinstance(raw_applied, dict):

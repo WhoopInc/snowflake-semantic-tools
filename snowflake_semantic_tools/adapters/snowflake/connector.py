@@ -15,6 +15,7 @@ from typing import Any, Mapping, Sequence, cast
 import snowflake.connector
 from snowflake.connector import DictCursor
 
+from ...domain.model.diagnostic import D, Diagnostic
 from ...domain.model.identifier import QualifiedName, SchemaScope
 from ...domain.model.lifecycle import (
     ExecResult,
@@ -74,7 +75,7 @@ class SnowflakeConnector:
                 self._connection = snowflake.connector.connect(**dict(connection_params))
             self._lock = RLock()
         except Exception as exc:
-            raise _port_error(exc) from exc
+            raise _port_error(exc, connecting_to=str(connection_params.get("account") or "Snowflake")) from exc
 
     def close(self) -> None:
         with self._lock:
@@ -337,7 +338,7 @@ class SnowflakeConnector:
         try:
             with open(local_path, "wb") as handle:
                 handle.write(content)
-            # K204: the PUT target is always a directory, so it ends in a separator.
+            # The PUT target is always a directory, so it ends in a separator.
             destination = stage_path.rsplit("/", 1)[0] + "/"
             if destination.startswith("snow://"):
                 destination = f"'{destination}'"
@@ -700,11 +701,24 @@ class SnowflakeConnector:
             raise _port_error(exc) from exc
 
 
-def _port_error(exc: Exception) -> SnowflakePortError:
+def _port_error(exc: Exception, *, connecting_to: str | None = None) -> SnowflakePortError:
+    """The port error for a connector failure, with the diagnostic a command reports for it."""
+    message = str(exc)
+    sqlstate = getattr(exc, "sqlstate", None)
+    state = sqlstate or ""
+    upper = message.upper()
+    diagnostic: Diagnostic | None = None
+    if connecting_to is not None:
+        diagnostic = D("SST-PRT001", value=connecting_to, detail=message)
+    elif state.startswith("08") or state in {"57014", "57P01"} or "TIMEOUT" in upper:
+        diagnostic = D("SST-PRT003", detail=message)
+    elif state.startswith("28") or state == "42501" or "INSUFFICIENT PRIVILEGES" in upper:
+        diagnostic = D("SST-PRT004", value="the statement", detail=message)
     return SnowflakePortError(
-        str(exc),
-        sqlstate=getattr(exc, "sqlstate", None),
+        message,
+        sqlstate=sqlstate,
         errno=getattr(exc, "errno", None),
+        diagnostic=diagnostic,
     )
 
 

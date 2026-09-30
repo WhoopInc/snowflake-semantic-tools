@@ -1,224 +1,74 @@
 # Test Suite for Snowflake Semantic Tools
 
-Comprehensive test suite with organized fixtures and complete coverage.
-
-## Structure
-
-```
-tests/
-├── fixtures/                    # Test data organized by validation severity
-│   ├── errors/                 # ValidationError scenarios
-│   ├── warnings/               # ValidationWarning scenarios
-│   ├── info/                   # ValidationInfo scenarios
-│   ├── success/                # ValidationSuccess scenarios
-│   └── __init__.py            # Fixture loading utilities
-├── unit/                       # Unit tests mirroring source structure
-│   ├── core/
-│   │   ├── models/            # Data model tests
-│   │   ├── parsing/           # Parser tests
-│   │   │   ├── parsers/       # Specialized parser tests
-│   │   │   └── template_engine/ # Template resolution tests
-│   │   ├── validation/        # Validation tests
-│   │   │   └── rules/         # Individual validation rule tests
-│   │   └── generation/        # Generation tests
-│   ├── infrastructure/
-│   │   ├── git/              # Git integration tests
-│   │   └── snowflake/        # Snowflake integration tests
-│   ├── interfaces/
-│   │   ├── api/              # Python API tests
-│   │   └── cli/              # CLI tests
-│   │       └── commands/     # Individual command tests
-│   ├── services/             # Service orchestration tests
-│   └── shared/               # Shared utility tests
-├── integration/                # Integration tests
-└── performance/               # Performance benchmarks
-```
-
-## Fixture Organization
-
-### By Severity
-- **errors/**: Scenarios that should produce `ValidationError`
-- **warnings/**: Scenarios that should produce `ValidationWarning`
-- **info/**: Scenarios that should produce `ValidationInfo`
-- **success/**: Scenarios that should pass validation cleanly
-
-### By Component
-Each severity level contains fixtures for:
-- **metrics/**: Metric validation scenarios
-- **relationships/**: Relationship validation scenarios
-- **filters/**: Filter validation scenarios
-- **custom_instructions/**: Custom instruction scenarios
-- **verified_queries/**: Verified query scenarios
-- **semantic_views/**: Semantic view scenarios
-- **dbt_models/**: dbt model validation scenarios
-- **templates/**: Template resolution scenarios
-
-## Usage Examples
-
-### Loading Fixtures
-
-```python
-from tests.fixtures import load_fixture, get_fixtures_by_severity
-
-# Load specific fixture
-data = load_fixture('errors/metrics/circular_dependency.yml')
-
-# Get all error fixtures
-error_fixtures = get_fixtures_by_severity('errors')
-
-# Get all metric fixtures across severities
-metric_fixtures = get_fixtures_by_component('metrics')
-```
-
-### Writing Tests with Fixtures
-
-```python
-import pytest
-from tests.fixtures import get_fixtures_by_component
-
-class TestMetricValidation:
-    @pytest.mark.parametrize("fixture_path", get_fixtures_by_component('metrics'))
-    def test_metric_scenarios(self, fixture_path, validator):
-        fixture_data = load_fixture(str(fixture_path.relative_to(FIXTURES_DIR)))
-        result = validator.validate(fixture_data)
-        
-        if 'errors' in str(fixture_path):
-            assert not result.is_valid
-        elif 'success' in str(fixture_path):
-            assert result.is_valid
-```
-
-## Test Categories
-
-### Unit Tests
-- Test individual functions and classes in isolation
-- Mock external dependencies
-- Fast execution (< 1 second per test)
-- High coverage of edge cases
-
-### Integration Tests
-- Test component interactions
-- Use real (but minimal) external resources
-- Moderate execution time (1-10 seconds per test)
-- Focus on interface contracts
-
-### Performance Tests
-- Benchmark critical operations
-- Test with large datasets
-- Identify performance regressions
-- Longer execution time acceptable
+The whole suite runs offline. Nothing connects to Snowflake: the Snowflake port is replaced by real in-memory implementations, and the reference project compiles from a vendored dbt manifest instead of running `dbt parse`.
 
 ## Running Tests
 
-### All Tests
 ```bash
-pytest tests/
+poetry run pytest tests/                           # everything
+poetry run pytest tests/unit/domain -q             # one ring
+poetry run pytest tests/unit/test_golden_ddl.py -q # one file
+poetry run pytest tests/ -q -k migrate_refs        # by name
 ```
 
-### By Category
-```bash
-# Unit tests only
-pytest tests/unit/
+Run with the dev dependencies installed (`poetry install`): `test_ring_boundaries.py` calls the `lint-imports` script beside the running interpreter. The coverage floors and the other CI gates are in [CONTRIBUTING.md](../CONTRIBUTING.md#running-the-gates). There are no pytest markers; `pytest tests/` runs every test.
 
-# Integration tests only
-pytest tests/integration/
+## Structure
 
-# Performance tests only
-pytest tests/performance/
+```text
+tests/
+├── unit/
+│   ├── domain/                  # the pure ring (coverage floor 100%)
+│   ├── app/                     # use cases over in-memory ports (conftest.py, helpers.py)
+│   ├── adapters/                # YAML loading, dbt manifest, connector, files, config, eval state
+│   ├── test_cli_*.py            # commands through click's CliRunner
+│   ├── test_golden_*.py         # rendered DDL, agents, tools, and evals against the goldens
+│   ├── test_ring_boundaries.py  # each import-linter contract rejects a crossing
+│   ├── test_dialect_compat.py   # the 0.3 dialect corpus and `sst migrate refs`
+│   ├── test_public_docs.py      # links, examples, and planning identifiers in the docs
+│   ├── test_release_hygiene.py  # nothing environment-specific in committed files
+│   └── test_*.py                # compile use case, manifest, renderer
+├── contract/                    # adapters against their ports: offline Snowflake ports, connector helpers, file stores, profile
+├── fixtures/
+│   ├── reference_project/                # a dbt + SST project that uses every artifact type
+│   ├── reference_project_manifest.json   # its dbt manifest, so it compiles offline
+│   └── v1_dialect/                       # the 0.3 dialect corpus for `sst migrate refs`
+├── golden/
+│   ├── README.md
+│   └── expected/{ddl,agent,tool,eval,skill,plugin,profile}/
+└── helpers/                     # scripts that run `sst` against a recorded Snowflake observation
 ```
 
-### By Component
+## The Reference Project
+
+`fixtures/reference_project/` publishes 14 artifacts: three semantic views, a tool, three agents, an eval, three skills, a plugin, and two CoCo Desktop profiles. Its default `dev` target is the golden target; `dev`, `prod`, and `ci` carry no credentials and cannot connect. From the repository root:
+
 ```bash
-# Core validation tests
-pytest tests/unit/core/validation/
-
-# CLI tests
-pytest tests/unit/interfaces/cli/
-
-# Snowflake integration tests
-pytest tests/integration/infrastructure/snowflake/
+P=tests/fixtures/reference_project
+M=tests/fixtures/reference_project_manifest.json
+poetry run sst validate --project-dir $P --manifest $M --no-strict --no-snowflake-syntax-check
+poetry run sst compile --project-dir $P --manifest $M --emit-ddl "$(mktemp -d)"
+poetry run sst test --suite golden --project-dir $P --manifest $M --golden-dir "$PWD/tests/golden/expected/ddl"
 ```
 
-### With Coverage
-```bash
-# Generate coverage report
-pytest --cov=snowflake_semantic_tools --cov-report=html tests/unit/
+- The fixture sets `validation.strict: true`, and its one warning (`SST-VAL528`) is deliberate, so a clean offline run passes `--no-strict`.
+- A relative `--golden-dir` resolves against `--project-dir`, so pass an absolute path.
+- `sst compile` writes `target/sst/` inside the fixture; git ignores it.
 
-# View coverage
-open htmlcov/index.html
-```
+`fixtures/v1_dialect/` is written in the 0.3 dialect. `expected/converted/` is what `sst migrate refs --write` must turn it into; once its 0.3 key spellings are renamed as well, it renders `expected/ddl/`. Run `--write` only on a copy.
 
-### Specific Fixture Testing
-```bash
-# Test all error scenarios
-pytest tests/unit/core/validation/test_validation_comprehensive.py::TestValidationScenarios::test_error_scenarios
+## Goldens
 
-# Test specific component
-pytest tests/unit/core/validation/test_validation_comprehensive.py::TestValidationScenarios::test_metrics_validation
-```
+`golden/expected/` holds the exact expected output of the reference project under `dev`, one directory per artifact type. The `test_golden_*.py` tests and `sst test --suite golden` compare bytes. A DDL golden starts with a `--` provenance header that is not compared; see [golden/README.md](golden/README.md).
 
-## Test Data Management
+There is no update switch. When a change to rendered output is intended, run the golden suite to see the diff, edit the golden by hand (keeping a DDL golden's header), and say why in the pull request. An unexplained golden change is a regression.
 
-### Fixture Best Practices
-1. **Realistic Data**: Use realistic table/column names and structures
-2. **Focused Scenarios**: Each fixture tests one specific validation rule
-3. **Clear Naming**: Fixture names clearly indicate what they test
-4. **Complete Coverage**: Cover all validation paths (error, warning, success)
+## Writing Tests
 
-### Adding New Fixtures
-1. Identify the validation scenario to test
-2. Choose appropriate severity level (`errors/`, `warnings/`, `success/`)
-3. Choose appropriate component type (`metrics/`, `relationships/`, etc.)
-4. Create YAML file with descriptive name
-5. Add test case to use the new fixture
-
-### Fixture Validation
-```bash
-# Ensure all fixtures are valid YAML
-pytest tests/unit/core/validation/test_validation_comprehensive.py::TestFixtureCompleteness::test_fixtures_are_valid_yaml
-
-# Ensure fixture completeness
-pytest tests/unit/core/validation/test_validation_comprehensive.py::TestFixtureCompleteness
-```
-
-## Continuous Integration
-
-The test suite is designed for CI/CD integration:
-
-### Fast Feedback
-- Unit tests run in < 30 seconds
-- Immediate feedback on code changes
-- Comprehensive coverage of business logic
-
-### Integration Validation
-- Integration tests validate external interfaces
-- Run on merge to main branch
-- Catch integration regressions
-
-### Performance Monitoring
-- Performance tests run nightly
-- Track performance trends over time
-- Alert on significant regressions
-
-## Contributing
-
-When adding new features:
-
-1. **Add Unit Tests**: Test new functions/classes in isolation
-2. **Add Integration Tests**: Test component interactions
-3. **Add Fixtures**: Create test data for new validation scenarios
-4. **Update Documentation**: Keep this README current
-
-When fixing bugs:
-
-1. **Add Regression Test**: Reproduce the bug with a test
-2. **Fix the Code**: Implement the fix
-3. **Verify Fix**: Ensure the test now passes
-4. **Add Fixture**: Add fixture to prevent regression
-
-## Test Quality Metrics
-
-- **Coverage Target**: > 90% line coverage
-- **Test Speed**: Unit tests < 30s total
-- **Test Reliability**: < 1% flaky test rate
-- **Fixture Coverage**: All validation rules have error/success fixtures
+- Put a test beside the ring it exercises: `unit/domain`, `unit/app`, `unit/adapters`, or a `test_cli_*.py` file for command behavior.
+- Domain tests stay pure; `unit/domain/conftest.py` refuses network access.
+- Application tests use real in-memory ports (`unit/app/conftest.py`, `snowflake_semantic_tools/adapters/snowflake/memory.py`), not mocks. There is no mocking library; use pytest's `monkeypatch` for the rest.
+- CLI tests run the reference project through `CliRunner` with `--manifest`, or build a small project in `tmp_path`.
+- A bug fix starts with a test that fails without the fix.
+- Guard any path or collection a test depends on, as `test_fixture_and_goldens_are_present` does, so a wrong path cannot pass vacuously.
+- A new diagnostic, config key, or CLI option also changes a generated page: run `poetry run sst docs`.

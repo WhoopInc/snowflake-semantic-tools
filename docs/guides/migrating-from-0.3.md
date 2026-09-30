@@ -1,23 +1,27 @@
 # Migrating from SST 0.3
 
-SST 1.0 keeps the 0.3 authoring format: the same six YAML root keys, the same
-`config.meta.sst` column metadata in dbt, and the same `sst_config.yml`. What
-changes is the command surface, a handful of spellings, and several checks that
-0.3 skipped. Most of the mechanical work is done by one command.
+SST 1.0 keeps the shape of 0.3's authoring format: the same six YAML root keys,
+`config.meta.sst` column metadata in dbt, and `sst_config.yml`. It reads only the
+1.0 spellings, though. Every 0.3 spelling is an error that names its replacement,
+so nothing written for 0.3 is read differently or silently dropped. Most of the
+mechanical work is done by one command; the rest is renaming keys.
 
 ## The short version
 
 1. Install 1.0 on a branch and put `profiles.yml` in the project root.
 2. Run `sst migrate refs`, review the report, then `sst migrate refs --write`.
-3. Run `sst validate` and fix what it reports.
-4. Point publishing at a new schema, then `sst plan` and `sst apply`.
-5. Replace `sst deploy` and friends in CI with `sst plan` and `sst apply`.
+3. Run `sst validate` and rename the keys it reports (`SST-PRS020`, `SST-DBT005`,
+   `SST-CFG043`).
+4. Point publishing at a new schema, then `sst compile`, `sst plan` and
+   `sst apply`.
+5. Replace `sst deploy` and friends in CI with `sst compile`, `sst plan` and
+   `sst apply`.
 
 ## Commands
 
 | SST 0.3 | SST 1.0 |
 |---|---|
-| `sst deploy`, `sst generate` | `sst plan`, then `sst apply --plan target/sst/plan.json --yes` |
+| `sst deploy`, `sst generate` | `sst compile`, `sst plan`, then `sst apply --plan target/sst/plan.json --yes` |
 | `sst generate --dry-run` | `sst plan`, or `sst compile --emit-ddl <dir>` for DDL files |
 | `sst diff` | `sst plan`, which exits `2` when there are changes |
 | `sst drop` | `sst plan --prune`, then `sst apply --prune` |
@@ -25,8 +29,11 @@ changes is the command surface, a handful of spellings, and several checks that
 | `sst extract` | no replacement: 1.0 compiles from the dbt manifest and records what it published in its state table |
 | `sst enrich`, `sst format`, `sst migrate-meta` | not part of 1.0; author column metadata in the dbt YAML |
 | `sst validate`, `sst compile`, `sst init`, `sst debug`, `sst list`, `sst clean` | still present, with new options |
+| `import snowflake_semantic_tools...` | no Python API: the package exposes only `__version__`, and the `sst` command is the interface |
 
-The [CLI reference](../reference/cli.md) lists every 1.0 command and flag.
+`sst plan` and `sst apply` read the manifest `sst compile` writes, and refuse
+without one (`SST-MAN001`). The [CLI reference](../reference/cli.md) lists every
+1.0 command and flag.
 
 ## `profiles.yml` moves into the project
 
@@ -43,13 +50,14 @@ file in the home directory.
 
 0.3 accepted two global functions that 1.0 rejects: `{{ table('x') }}` and
 `{{ column('x', 'y') }}` (`SST-REF034`, `SST-REF035`). `sst migrate refs`
-rewrites them, and labels boolean filters, in place and without touching
+rewrites them, rewrites `{{ ref('x') }}` relationship endpoints to the bare model
+name (`SST-REF045`), and labels boolean filters, in place and without touching
 anything else in the file:
 
 | 0.3 | 1.0 |
 |---|---|
 | `- "{{ table('orders') }}"` in a `tables:` list | `- "{{ ref('orders') }}"` |
-| `left_table: "{{ table('orders') }}"` | `left_table: orders` |
+| `left_table: "{{ table('orders') }}"` or `"{{ ref('orders') }}"` | `left_table: orders` |
 | `{{ column('orders', 'order_id') }}` | `{{ ref('orders', 'order_id') }}` |
 | a boolean filter with no `labels:` | the same filter with `labels: [filter]` |
 
@@ -65,18 +73,48 @@ hand. Running the command twice changes nothing the second time.
 
 ## Spellings that changed
 
-These 0.3 spellings are still read, with a deprecation warning (`SST-PRS020`),
-for one release. Setting both spellings on one entry is an error (`SST-PRS121`).
+1.0 does not read these 0.3 spellings. Each is an error (`SST-PRS020`) that names
+the 1.0 key, and `sst migrate refs` does not rename them: they are short edits
+that deserve review.
 
 | 0.3 | 1.0 |
 |---|---|
 | `sql_generation` | `ai_sql_generation` |
 | `question_categorization` | `ai_question_categorization` |
-| `relationship_columns` | `relationship_conditions` |
-| `deploy:` in `sst_config.yml` | `apply:` (`SST-CFG045`) |
+| `relationship_columns` pairs | `relationship_conditions`, one `{{ ref('a', 'x') }} = {{ ref('b', 'y') }}` string per pair |
+| `visibility` on a metric | `access_modifier: public_access` or `private_access` |
+| `non_additive_by` on a metric | `non_additive_dimensions` |
+| `order` / `nulls` on a non-additive entry | `sort_direction: ascending \| descending` / `null_order: first \| last` |
+| `column` / `direction` on a window `order_by` entry | `ref` / `sort_direction` |
 
-`sst migrate refs` does not rename these; they are one-line edits that deserve
-review.
+In the dbt YAML, `meta.sst.primary_key` is a list of columns and
+`meta.sst.unique_keys` a list of column lists. The 0.3 forms (a column name, a
+comma-separated string, a flat list of names) are errors (`SST-DBT005`) and are
+not read.
+
+A metric's `window:` block keeps 0.3's structure with 1.0 spellings, and `expr`
+is now the window function itself, applied to a metric or an aggregate; the
+[semantic views guide](semantic-views.md#window-function-metrics) shows the
+shape. A 0.3 `window_function:` key on a non-additive entry was never read; the
+entry's `sort_direction` says which snapshot counts.
+
+## Keys 1.0 does not read
+
+Every key SST does not read is reported, so a setting cannot look as though it
+takes effect when it does not:
+
+- an unknown key on a semantic view, metric, filter, relationship, verified
+  query, or custom instruction, or under a dbt model's `meta.sst`, is a warning
+  (`SST-PRS004`), and an error under `--strict`;
+- a `sst_config.yml` key only 0.3 read is a removed key, an error that says what
+  replaced it (`SST-CFG043`): `deploy:` (now `apply:`), `enrichment`,
+  `generation`, `defer`, `validation.exclude_dirs`, and `apply.fail_fast` (now
+  the `--fail-fast` flag);
+- a key reserved for a later release is an error until SST reads it
+  (`SST-CFG044`).
+
+The [configuration reference](../reference/config.md) lists the unsupported and
+removed keys.
 
 ## Checks 0.3 did not make
 
@@ -95,10 +133,6 @@ was shipping silently:
 - **`validation.snowflake_syntax_check` defaults to `true`,** so `validate`
   compiles expressions against Snowflake unless you pass
   `--no-snowflake-syntax-check` or set the key to `false`.
-- **Configuration keys are checked.** Unknown keys warn, removed keys are errors,
-  and keys only 0.3 read are accepted with an info diagnostic. The
-  [configuration reference](../reference/config.md#removed-keys) lists every
-  removed key and what replaced it.
 
 ## Publishing over a 0.3 deployment
 
@@ -117,7 +151,7 @@ rendered views.
 
 - `--output json` prints one envelope with `schema_version: 2`; see
   [CI/CD](ci-cd.md#json-output).
-- Diagnostic codes changed. The
-  [error code reference](../reference/error-codes.md#codes-from-sst-03) maps
-  every 0.3 code to its 1.0 codes.
+- Diagnostic codes changed, and 0.3's codes are not mapped: tooling that matched
+  a 0.3 code should match the 1.0 code in the
+  [error code reference](../reference/error-codes.md) instead.
 - The SST manifest is written to `target/sst/manifest.json`.

@@ -296,7 +296,8 @@ def test_command_and_plugin_references_are_validated() -> None:
         diagnostics=DiagnosticBag((loader_error,)),
     )
     found = [
-        (item.code, item.subject, item.context.get("name")) for item in validate_profile_catalog(catalog, SKILLS, {"kit": KIT})
+        (item.code, item.subject, item.context.get("name"))
+        for item in validate_profile_catalog(catalog, SKILLS, {"kit": KIT})
     ]
     assert found == [
         ("SST-VAL859", "command:broken", None),

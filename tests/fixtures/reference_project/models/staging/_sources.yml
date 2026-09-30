@@ -1,27 +1,9 @@
 ---
-# =============================================================================
-# models/staging/_sources.yml -- THE SOURCE DECLARATION
-# =============================================================================
-# SOURCES LIVE IN THEIR OWN FILE because a source belongs to NO SINGLE MODEL. The
-# rest of this directory is one `.sql` plus one `.yml` per model, which is the
-# `analytics-dbt` production convention; a source has no `.sql` and is read by
-# several models, so pairing it with one of them would be arbitrary.
-#
-# SOURCES CANNOT BE ALIASED, and source names must be unique across the whole
-# project -- dbt scopes source uniqueness per package, so two projects tolerate a
-# duplicate indefinitely and one merged project fails `dbt parse` outright (B015).
-#
-# See `../README.md` for the cross-cutting reasoning about this directory.
-# =============================================================================
+# The jaffle_service source, in its own file because several models read it.
 
 version: 2
 
 sources:
-  # Declared so `stg_orders.sql` has something to select from, and so the
-  # source rules have a subject. SOURCES CANNOT BE ALIASED, and source names must
-  # be unique across the whole project -- dbt scopes source uniqueness per
-  # package, so two projects tolerate a duplicate indefinitely and one merged
-  # project fails `dbt parse` outright (B015).
   - name: jaffle_service
     description: |-
       Raw relations replicated from the ordering service. Not read by the
@@ -39,22 +21,13 @@ sources:
     database: "{{ 'SST_REF_RAW' if target.name == 'prod' else target.database }}"
     schema: "{{ 'JAFFLE_SERVICE' if target.name == 'prod' else target.schema }}"
     tables:
-      # FRESHNESS IS DECLARED HERE, ON THE ONE TABLE THAT CAN SUPPORT IT, not on
-      # the source. `loaded_at_field: _replicated_at` at source level applies to
-      # ALL SEVEN tables, and only `orders_raw` carries that column -- so
-      # `dbt source freshness` would resolve `_replicated_at` against six
-      # relations that do not have it and fail on invalid identifier. The six
-      # other relations are snapshots and catalogues with no replication
-      # timestamp to check, so the right answer is not to give them a column but
-      # to not claim freshness for them at all.
+      # Freshness is declared on orders_raw alone: it is the only relation with
+      # a _replicated_at column.
       - name: orders_raw
         description: |-
           Append-only replica of the service's order table.
-        # UNDER `config:`, NOT AT TABLE LEVEL. dbt 1.11 emits
-        # `PropertyMovedToConfigDeprecation` for a top-level `freshness` or
-        # `loaded_at_field` on a source table, and a deprecation in 1.11 is the
-        # shape that becomes an error in a later minor. MEASURED 2026-09-24:
-        # `dbt seed` warned twice at table level and is silent under `config:`.
+        # Under config:, where dbt 1.11 reads freshness and loaded_at_field; the
+        # table-level form warns (PropertyMovedToConfigDeprecation).
         config:
           freshness:
             warn_after:
@@ -65,20 +38,9 @@ sources:
               period: hour
           loaded_at_field: _replicated_at
 
-      # ---------------------------------------------------------------------
-      # THE SIX RAW RELATIONS THE MARTS READ DIRECTLY.
-      # ---------------------------------------------------------------------
-      # NO STAGING MODEL SITS IN FRONT OF THESE, and that is a deliberate
-      # asymmetry with `orders_raw`. `stg_orders` exists because its raw relation
-      # needs casting and renaming before anything can join to it; these six need
-      # nothing, and a staging model that only does `SELECT *` is a file to
-      # maintain in exchange for a longer DAG. The fixture therefore shows BOTH
-      # shapes -- a mart on a staging model, and a mart straight on source --
-      # because a real project has both and a reader should see both.
-      #
-      # COLUMNS ARE NOT RESTATED HERE. A source's columns are documented where
-      # they are CONSUMED, on the mart that selects them. Declaring them twice
-      # means two places to update and one of them goes stale.
+      # The marts read these six directly; only orders_raw, an append-only
+      # replica, needs a staging model. Columns are documented on the marts
+      # that select them.
       - name: customers_raw
         description: |-
           Raw customer relation. Consumed by `marts/customers.sql`.

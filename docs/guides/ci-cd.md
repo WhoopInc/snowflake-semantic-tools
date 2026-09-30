@@ -1,21 +1,22 @@
 # CI/CD
 
-The commands a person runs locally are the ones CI runs: `validate` and `plan`
-on every pull request, `apply` from a reviewed plan on merge. This page shows
-the shape of each job and the pieces of SST's output that are built for
-automation.
+The commands a person runs locally are the ones CI runs: `validate`, `compile`
+and `plan` on every pull request, `apply` from a reviewed plan on merge. This
+page shows the shape of each job and the pieces of SST's output that are built
+for automation.
 
 ## On every pull request
 
 ```bash
 sst validate --strict
-sst compile --emit-ddl target/ddl/
+sst compile --target prod --emit-ddl target/ddl/
 sst plan --target prod --output json > plan.json || test $? -eq 2
 ```
 
 - `validate --strict` fails on any warning. Leave `--strict` off to fail on
   errors only.
-- `compile --emit-ddl` writes each semantic view's DDL, a readable artifact to
+- `compile` writes the SST manifest `plan` and `apply` read, for the same target;
+  `--emit-ddl` also writes each semantic view's DDL, a readable artifact to
   attach to the review.
 - `plan` reads production and reports what merging would change without writing
   anything. It exits `2` when there are changes, so a pipeline that should
@@ -28,6 +29,7 @@ rendered DDL and specs with them offline.
 ## On merge
 
 ```bash
+sst compile --target prod
 sst plan --target prod
 sst apply --target prod --plan target/sst/plan.json --yes
 sst test --suite smoke --target prod
@@ -68,6 +70,7 @@ jobs:
       - run: echo "${{ secrets.SNOWFLAKE_PRIVATE_KEY }}" > "$SNOWFLAKE_PRIVATE_KEY_PATH"
       - run: dbt deps
       - run: sst validate --strict
+      - run: sst compile --target prod
       - name: plan
         run: sst plan --target prod || test $? -eq 2
       - name: apply

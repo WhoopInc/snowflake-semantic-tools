@@ -556,7 +556,7 @@ def unreached_skills(
     catalog_channel: bool,
     plugins: Mapping[str, Plugin] | None = None,
 ) -> tuple[Diagnostic, ...]:
-    """`K215`: a skill no channel publishes, when the catalog channel is off."""
+    """SST-VAL830: a skill no channel publishes, when the catalog channel is off."""
     if catalog_channel:
         return ()
     plugins = plugins or {}

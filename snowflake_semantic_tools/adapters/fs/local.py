@@ -9,12 +9,17 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable, Generic, TypeVar
 
-from ...domain.state.model import Manifest, SavedPlan, State, canonical_json
+from ...domain.model.diagnostic import D
+from ...domain.state.model import Manifest, SavedPlan, State, StoredDocumentError, canonical_json
+from ..project import ProjectError
 
 T = TypeVar("T")
 
 
 class JsonStore(Generic[T]):
+    # The code for a file that exists and cannot be used, when the store has one.
+    unreadable_code: str | None = None
+
     def __init__(self, path: Path, parser: Callable[[object], T]) -> None:
         self.path = path
         self._parser = parser
@@ -24,7 +29,15 @@ class JsonStore(Generic[T]):
             raw = self.path.read_bytes()
         except FileNotFoundError:
             return None
-        return self._parser(json.loads(raw))
+        try:
+            return self._parser(json.loads(raw))
+        except StoredDocumentError as exc:
+            diagnostic = D(exc.code, path=str(self.path), **exc.context)
+        except ValueError as exc:
+            if self.unreadable_code is None:
+                raise
+            diagnostic = D(self.unreadable_code, path=str(self.path), detail=str(exc))
+        raise ProjectError(diagnostic.message, diagnostics=(diagnostic,))
 
     def write(self, value: object) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
@@ -48,6 +61,8 @@ class JsonStore(Generic[T]):
 
 
 class ManifestFileStore(JsonStore[Manifest]):
+    unreadable_code = "SST-MAN002"
+
     def __init__(self, path: Path) -> None:
         super().__init__(path, Manifest.from_dict)
 
@@ -59,6 +74,7 @@ class PlanFileStore(JsonStore[SavedPlan]):
 
 class StateFileStore(JsonStore[State]):
     LOCK_TTL_SECONDS = 30 * 60
+    unreadable_code = "SST-MAN022"
 
     def __init__(
         self,

@@ -6,7 +6,7 @@
   - name: orders_to_customers
     left_table: orders
     right_table: customers
-    # The 0.3 pair form. 1.0 reads it as one equality condition and warns.
+    # The 0.3 pair form: 1.0 rejects it (SST-PRS020) for relationship_conditions.
     relationship_columns:
       - left_column: "{{ ref('orders', 'customer_id') }}"
         right_column: "{{ ref('customers', 'customer_id') }}"

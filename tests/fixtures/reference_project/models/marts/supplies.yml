@@ -1,14 +1,6 @@
 ---
-# =============================================================================
-# models/marts/supplies.yml
-# =============================================================================
-# THE SNAPSHOT GRAIN. `snapshot_month` is what makes a non-additive metric
-# authorable, and non-additivity is unreachable without a snapshot table.
-#
-# THE CROSS-CUTTING REASONING -- the seam, the jaffle domain, the one-line
-# `description:` constraint and the `D213` data rule -- IS IN `../README.md`, not
-# repeated here. Read that first if this is the first model file you have opened.
-# =============================================================================
+# supplies: one row per product per month, the snapshot grain the two
+# non-additive supply-cost metrics are written for.
 
 version: 2
 
@@ -17,35 +9,15 @@ models:
     description: |-
       One row per product per month, restating the cost of supplying that product. A snapshot grain.
     config:
-      # =====================================================================
-      # NO CONTRACT ON THIS MODEL, AND THAT IS WHAT MAKES THE NEXT THING LEGAL.
-      # =====================================================================
-      # `contract.enforced: true` REQUIRES a native `data_type:` on every column.
-      # The other six marts enforce a contract and therefore declare one. This
-      # model does not, so its columns can carry `meta.sst.data_type` INSTEAD --
-      # and the two shapes are MUTUALLY EXCLUSIVE PER MODEL, which is exactly why
-      # the fixture needs both.
-      #
-      # WHY THE FIXTURE MUST COVER THIS SHAPE AT ALL, and it is not a curiosity:
-      # MEASURED 2026-09-21 on a large production dbt project (dbt 1.11.2, manifest
-      # schema v12), the native `nodes.<id>.columns.<name>.data_type` is EMPTY on
-      # EVERY MODEL COLUMN, while `meta.sst.data_type` carries a value on nearly
-      # all of them. The reference consumer resolves almost every column
-      # through the fallback, not through the native field.
-      #
-      # So a fixture carrying only the contract shape would exercise the path
-      # production NEVER uses and skip the one it uses on 96% of columns. `D142`
-      # records the resolution order -- warehouse relation, then
-      # `meta.sst.data_type`, then the `"text"` default -- and a rule keyed on the
-      # native field alone "would classify almost nothing in the reference
-      # consumer".
+      # No contract, so dbt does not require data_type and the columns carry
+      # their Snowflake type in meta.sst.data_type instead. SST reads dbt's
+      # data_type first and falls back to meta.sst.data_type; if both are set
+      # and disagree, SST-DBT004 warns.
       contract:
         enforced: false
       on_schema_change: fail
       meta:
         sst:
-          # THE GRAIN OF THIS MODEL, AND THE MODEL IS THE SINGLE SOURCE (`D231`).
-          # A snapshot grain: one row per product per month.
           primary_key:
             - supply_id
     columns:
@@ -80,8 +52,8 @@ models:
         data_tests:
           - not_null
 
-      # THE NON-ADDITIVE DIMENSION. A metric summing `supply_cost` across this
-      # column double-counts, which is precisely what M022 exists to declare.
+      # The non-additive dimension: total_supply_cost and opening_supply_cost
+      # name it so supply cost is never summed across months.
       - name: snapshot_month
         description: |-
           The month this supply cost was restated for.
@@ -98,6 +70,7 @@ models:
                 - "2024-07-01 00:00:00"
                 - "2024-08-01 00:00:00"
 
+      # Boolean sample values render as the strings 'true' and 'false'.
       - name: is_perishable
         description: |-
           Whether the supply spoils and must be reordered on a schedule.
@@ -130,9 +103,7 @@ models:
                 - 250
 
     data_tests:
-      # THE SNAPSHOT GRAIN, ASSERTED. This is the test that makes the
-      # non-additive claim true rather than asserted: if this combination stops
-      # being unique the metric is wrong and nothing else would catch it.
+      # Asserts the snapshot grain the non-additive metrics depend on.
       - dbt_utils.unique_combination_of_columns:
           arguments:
             combination_of_columns:

@@ -48,7 +48,7 @@ class ProjectConfig:
 
 
 def load_project_config(project_dir: Path) -> ProjectConfig:
-    """Parse the config file, apply the deprecated `deploy:` alias, and validate it."""
+    """Parse the config file and validate it."""
     has_dbt_project = (project_dir / "dbt_project.yml").is_file()
     path = project_dir / CONFIG_FILE
     if not path.is_file():
@@ -63,20 +63,6 @@ def load_project_config(project_dir: Path) -> ProjectConfig:
     }
     diagnostics = list(validate_config(parsed.tree, positions=positions))
     tree = dict(parsed.tree)
-    if "deploy" in tree:
-        if "apply" in tree:
-            diagnostics.append(
-                D(
-                    "SST-CFG043",
-                    origin=Origin(CONFIG_FILE, *positions.get(("deploy",), (None, None))),
-                    subject="config:deploy",
-                    key="deploy",
-                    reason="apply: is also set; delete deploy:",
-                )
-            )
-            del tree["deploy"]
-        else:
-            tree["apply"] = tree.pop("deploy")
     project = tree.get("project")
     dbt_only_dirs: set[str] = set()
     if not has_dbt_project:

@@ -10,7 +10,10 @@ import pytest
 from snowflake_semantic_tools.adapters.yaml.loader import (
     FilterDef,
     MetricDef,
+    NonAdditiveDef,
     VerifiedQueryDef,
+    WindowDef,
+    WindowOrderDef,
     _dbt_column_diagnostics,
     _dbt_model_diagnostics,
     _expression_reference_diagnostics,
@@ -18,6 +21,7 @@ from snowflake_semantic_tools.adapters.yaml.loader import (
     _metric_cycles,
     _metric_diagnostics,
     _multipath_diagnostics,
+    _relationship_cycle_diagnostics,
     _relationship_diagnostics,
     load_semantic_views,
 )
@@ -177,6 +181,10 @@ def test_dbt_column_and_key_validation_cover_semantic_metadata() -> None:
     )
     legacy = dataclasses.replace(legacy, legacy_key_fields=("primary_key", "unique_keys"))
     assert [item.code for item in _dbt_model_diagnostics({"legacy": legacy})] == ["SST-DBT005", "SST-DBT005"]
+    # Keys written in the 0.3 form are unread, so the model is keyless -- but that is
+    # the same fault, and reporting it twice would bury the fix.
+    unread = dataclasses.replace(legacy, primary_key=(), legacy_key_fields=("primary_key",))
+    assert [item.code for item in _dbt_model_diagnostics({"legacy": unread})] == ["SST-DBT005"]
     assert _dbt_model_diagnostics({"legacy": legacy}, frozenset()) == ()
 
 
@@ -455,7 +463,7 @@ def test_critical_metric_restrictions_are_non_demotable_diagnostics() -> None:
         ("orders",),
         False,
         (),
-        ("orders.ordered_at",),
+        (NonAdditiveDef("ordered_at", "orders"),),
         True,
     )
     derived = MetricDef("derived", "{{ metric('base') }}", None, (), derived=True)
@@ -480,8 +488,206 @@ def test_critical_metric_restrictions_are_non_demotable_diagnostics() -> None:
     assert {"SST-VAL103", "SST-VAL104", "SST-VAL105", "SST-VAL106", "SST-VAL107"} <= set(codes)
 
 
+def _supplies() -> DbtModel:
+    return DbtModel(
+        unique_id="model.fixture.supplies",
+        name="supplies",
+        relation_name="DB.SCH.SUPPLIES",
+        primary_key=("supply_id",),
+        unique_keys=(),
+        columns=(
+            DbtColumn("supply_id", None, "VARCHAR", "dimension"),
+            DbtColumn("snapshot_month", None, "TIMESTAMP_NTZ", "time_dimension"),
+            DbtColumn("supply_cost", None, "NUMBER", "fact"),
+            DbtColumn("retired_month", None, "TIMESTAMP_NTZ", "dimension", excluded=True),
+        ),
+    )
+
+
+def test_non_additive_dimensions_resolve_to_a_dimension_of_their_table() -> None:
+    def unresolved(*entries: NonAdditiveDef) -> list[object]:
+        metric = MetricDef(
+            "m", "SUM({{ ref('supplies', 'supply_cost') }})", None, (), ("supplies",), non_additive=entries
+        )
+        return [
+            item.context["value"]
+            for item in _metric_diagnostics((metric,), {"supplies": _supplies()})
+            if item.code == "SST-VAL118"
+        ]
+
+    assert unresolved(NonAdditiveDef("snapshot_month"), NonAdditiveDef("SNAPSHOT_MONTH", "supplies", True, True)) == []
+    assert unresolved(NonAdditiveDef("missing")) == ["missing"]
+    # A fact is not a dimension, and an excluded column is not in the view.
+    assert unresolved(NonAdditiveDef("supply_cost"), NonAdditiveDef("retired_month")) == [
+        "supply_cost",
+        "retired_month",
+    ]
+    assert unresolved(NonAdditiveDef("snapshot_month", "calendar")) == ["calendar.snapshot_month"]
+
+
+SUPPLY_COST = "{{ ref('supplies', 'supply_cost') }}"
+SNAPSHOT = "{{ ref('supplies', 'snapshot_month') }}"
+
+
+def _window_codes(*metrics: MetricDef) -> list[tuple[str, str, object]]:
+    other_model = dataclasses.replace(_supplies(), unique_id="model.fixture.products", name="products")
+    diagnostics = _metric_diagnostics(metrics, {"supplies": _supplies(), "products": other_model})
+    window_codes = ("SST-VAL101", "SST-VAL102", "SST-VAL125", "SST-VAL126", "SST-VAL127", "SST-VAL128")
+    return [
+        (item.code, item.context["metric"], item.context.get("field") or item.context.get("function"))
+        for item in diagnostics
+        if item.code in window_codes
+    ]
+
+
+def _supply_metric(name: str, expr: str, window: WindowDef | None = None, **changes: object) -> MetricDef:
+    metric = MetricDef(name, expr, None, (), ("supplies",), window=window)
+    return dataclasses.replace(metric, **changes) if changes else metric
+
+
+def test_a_well_formed_window_metric_is_clean() -> None:
+    base = _supply_metric("supply_total", f"SUM({SUPPLY_COST})")
+    window = WindowDef(
+        partition_excluding=(SNAPSHOT,),
+        order_by=(WindowOrderDef(SNAPSHOT, False, False), WindowOrderDef("{{ metric('supply_total') }}")),
+        frame="ROWS BETWEEN 2 PRECEDING AND CURRENT ROW",
+    )
+    assert _window_codes(base, _supply_metric("running", "AVG({{ metric('supply_total') }})", window)) == []
+    # An aggregate is a valid argument too: SUM(SUM(x)) OVER (...) is a window metric.
+    assert _window_codes(_supply_metric("nested", f"SUM(SUM({SUPPLY_COST}))", WindowDef())) == []
+
+
+def test_a_window_must_apply_to_a_metric_or_an_aggregate() -> None:
+    assert _window_codes(
+        _supply_metric("row_level", f"SUM({SUPPLY_COST})", WindowDef()),
+        _supply_metric("not_a_call", f"SUM({SUPPLY_COST}) / 2", WindowDef()),
+    ) == [("SST-VAL126", "row_level", "SUM"), ("SST-VAL126", "not_a_call", "the expression")]
+
+
+def test_window_entries_resolve_to_a_reachable_dimension_or_a_sibling_metric() -> None:
+    derived = MetricDef("derived_total", "{{ metric('supply_total') }}", None, (), derived=True)
+    elsewhere = MetricDef("product_total", f"SUM({SUPPLY_COST})", None, (), ("products",))
+    windowed = _supply_metric("windowed", "SUM({{ metric('supply_total') }})", WindowDef())
+    window = WindowDef(
+        partition_by=(SUPPLY_COST, "{{ ref('missing', 'x') }}", "{{ ref('supplies', 'retired_month') }}"),
+        partition_excluding=("{{ metric('supply_total') }}", "{{ ref('supplies' }}"),
+        order_by=(
+            WindowOrderDef("{{ metric('derived_total') }}"),
+            WindowOrderDef("{{ metric('product_total') }}"),
+            WindowOrderDef("{{ metric('windowed') }}"),
+            WindowOrderDef("supplies.snapshot_month"),
+        ),
+    )
+    found = _window_codes(
+        _supply_metric("supply_total", f"SUM({SUPPLY_COST})"),
+        derived,
+        elsewhere,
+        windowed,
+        _supply_metric("bad_entries", "SUM({{ metric('supply_total') }})", window),
+    )
+    assert [field for code, metric, field in found if code == "SST-VAL125"] == [
+        "partition_by[0]",
+        "partition_by[1]",
+        "partition_by[2]",
+        "partition_by_excluding[0]",
+        "partition_by_excluding[1]",
+        "order_by[0]",
+        "order_by[1]",
+        "order_by[2]",
+        "order_by[3]",
+    ]
+
+
+def test_window_placement_frame_and_reference_rules() -> None:
+    base = _supply_metric("supply_total", f"SUM({SUPPLY_COST})")
+    running = _supply_metric(
+        "running", "SUM({{ metric('supply_total') }})", WindowDef(order_by=(WindowOrderDef(SNAPSHOT),))
+    )
+    found = _window_codes(
+        base,
+        running,
+        dataclasses.replace(
+            base,
+            name="unordered_frame",
+            expr="SUM({{ metric('supply_total') }})",
+            window=WindowDef(frame="ROWS BETWEEN 1 PRECEDING AND CURRENT ROW"),
+        ),
+        MetricDef("derived_window", "SUM({{ metric('supply_total') }})", None, (), derived=True, window=WindowDef()),
+        dataclasses.replace(running, name="two_tables", tables=("supplies", "products"), window=WindowDef()),
+        MetricDef("uses_window", "{{ metric('running') }} + 1", None, (), derived=True),
+        _supply_metric("regular_uses_window", "SUM({{ metric('running') }})"),
+    )
+    assert found == [
+        ("SST-VAL127", "unordered_frame", None),
+        ("SST-VAL102", "derived_window", "SUM"),
+        ("SST-VAL102", "two_tables", "SUM"),
+        ("SST-VAL128", "uses_window", None),
+        ("SST-VAL128", "regular_uses_window", None),
+    ]
+
+
+def test_two_windows_over_one_expression_are_not_duplicates() -> None:
+    base = _supply_metric("supply_total", f"SUM({SUPPLY_COST})")
+    weekly = _supply_metric(
+        "weekly",
+        "SUM({{ metric('supply_total') }})",
+        WindowDef(order_by=(WindowOrderDef(SNAPSHOT),), frame="ROWS BETWEEN 6 PRECEDING AND CURRENT ROW"),
+    )
+    monthly = dataclasses.replace(
+        weekly,
+        name="monthly",
+        window=WindowDef(order_by=(WindowOrderDef(SNAPSHOT),), frame="ROWS BETWEEN 29 PRECEDING AND CURRENT ROW"),
+    )
+    diagnostics = _metric_diagnostics((base, weekly, monthly), {"supplies": _supplies()})
+    assert [item.code for item in diagnostics if item.code == "SST-VAL124"] == []
+
+
+def test_the_same_sum_at_another_snapshot_is_not_a_duplicate_metric() -> None:
+    latest = MetricDef(
+        "latest",
+        "SUM({{ ref('supplies', 'supply_cost') }})",
+        None,
+        (),
+        ("supplies",),
+        non_additive=(NonAdditiveDef("snapshot_month"),),
+    )
+    earliest = dataclasses.replace(
+        latest, name="earliest", non_additive=(NonAdditiveDef("snapshot_month", descending=True),)
+    )
+    twin = dataclasses.replace(latest, name="twin")
+    diagnostics = _metric_diagnostics((latest, earliest, twin), {"supplies": _supplies()})
+    assert [(item.code, item.context["metric"]) for item in diagnostics if item.code == "SST-VAL124"] == [
+        ("SST-VAL124", "twin")
+    ]
+
+
+def test_relationship_targets_need_a_key_and_the_graph_no_cycle() -> None:
+    keyless = DbtModel("model.fixture.regions", "regions", "DB.SCH.REGIONS", (), (), ())
+    to_regions = Relationship("LOCATIONS_TO_REGIONS", "LOCATIONS", ("REGION_ID",), "REGIONS", ("REGION_ID",))
+    diagnostics = _relationship_diagnostics(
+        (to_regions,), (("semantic_view:geo", frozenset(("locations", "regions"))),), models={"regions": keyless}
+    )
+    assert [(item.code, item.context["name"]) for item in diagnostics] == [("SST-VAL311", "regions")]
+
+    back = Relationship("REGIONS_TO_LOCATIONS", "REGIONS", ("HQ_ID",), "LOCATIONS", ("LOCATION_ID",))
+    itself = Relationship("LOCATIONS_TO_LOCATIONS", "LOCATIONS", ("PARENT_ID",), "LOCATIONS", ("LOCATION_ID",))
+    views = (
+        ("semantic_view:loop", frozenset(("locations", "regions"))),
+        ("semantic_view:self", frozenset(("locations",))),
+        ("semantic_view:acyclic", frozenset(("regions", "orders"))),
+    )
+    cycles = _relationship_cycle_diagnostics((to_regions, back, itself), views)
+    assert [(item.subject, item.context["cycle"]) for item in cycles] == [
+        ("semantic_view:loop", "locations -> locations"),
+        ("semantic_view:self", "locations -> locations"),
+    ]
+    assert _relationship_cycle_diagnostics((to_regions, back), views[:1])[0].context["cycle"] == (
+        "locations -> regions -> locations"
+    )
+
+
 def test_verified_query_tables_skip_ctes_and_string_literals() -> None:
-    from snowflake_semantic_tools.adapters.yaml.loader import _endpoint, _sql_tables
+    from snowflake_semantic_tools.adapters.yaml.loader import _sql_tables
 
     sql = (
         "WITH flow AS (SELECT * FROM orders WHERE source IN ('Join Flow')),\n"
@@ -490,5 +696,3 @@ def test_verified_query_tables_skip_ctes_and_string_literals() -> None:
         "-- FROM commented_out\n"
     )
     assert _sql_tables(sql) == ("orders", "customers")
-    assert _endpoint("{{ ref('orders') }}") == "orders"
-    assert _endpoint(" orders ") == "orders"

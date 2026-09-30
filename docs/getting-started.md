@@ -133,19 +133,22 @@ sst validate
 `validate` runs `dbt parse`, loads every artifact, and checks references, types,
 and the rules each artifact type carries. With a connection it also compiles
 each expression against Snowflake; pass `--no-snowflake-syntax-check` to stay
-offline. Each diagnostic prints its code and a `docs:` link into the
-[error code reference](reference/error-codes.md).
+offline. Each diagnostic prints its code; with `--output json` it also carries
+a `help_url` into the [error code reference](reference/error-codes.md).
 
-## 7. Plan
+## 7. Compile and plan
 
 ```bash
+sst compile
 sst plan
 ```
 
-`plan` renders every artifact, reads what is live in Snowflake, and saves the
-difference to `target/sst/plan.json`. It never writes to Snowflake. It exits
-`2` when there are changes and `0` when there are none, so CI can tell the two
-apart.
+`compile` renders every artifact and writes the SST manifest to
+`target/sst/manifest.json`. `plan` reads that manifest, reads what is live in
+Snowflake, and saves the difference to `target/sst/plan.json`; it refuses a
+manifest compiled for another target or from an older project. It never writes
+to Snowflake. It exits `2` when there are changes and `0` when there are none,
+so CI can tell the two apart.
 
 ## 8. Apply
 

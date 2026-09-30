@@ -62,6 +62,37 @@ def root_function(expression: str) -> str | None:
     return match.group(1).upper()
 
 
+def call_arguments(expression: str) -> tuple[str, ...] | None:
+    """The top-level arguments of the one function call `expression` is, or None if it is not one call."""
+    if root_function(expression) is None:
+        return None
+    text = expression.strip()
+    while outer_parentheses(text):
+        text = text[1:-1].strip()
+    # `root_function` has checked that the call's closing parenthesis ends the text.
+    inner = text[text.index("(") + 1 : -1]
+    arguments: list[str] = []
+    depth = 0
+    quote: str | None = None
+    start = 0
+    for index, character in enumerate(inner):
+        if quote is not None:
+            if character == quote:
+                quote = None
+            continue
+        if character in ("'", '"'):
+            quote = character
+        elif character == "(":
+            depth += 1
+        elif character == ")":
+            depth -= 1
+        elif character == "," and depth == 0:
+            arguments.append(inner[start:index].strip())
+            start = index + 1
+    arguments.append(inner[start:].strip())
+    return tuple(arguments)
+
+
 def is_boolean_expression(expression: str) -> bool:
     text = expression.strip()
     while outer_parentheses(text):

@@ -1,14 +1,6 @@
 ---
-# =============================================================================
-# models/marts/locations.yml
-# =============================================================================
-# THE DIMENSION-ONLY MODEL. No fact, no metric of its own -- it exists to be
-# joined, and it is the only table `jaffle_sales` has that `jaffle_menu` does not.
-#
-# THE CROSS-CUTTING REASONING -- the seam, the jaffle domain, the one-line
-# `description:` constraint and the `D213` data rule -- IS IN `../README.md`, not
-# repeated here. Read that first if this is the first model file you have opened.
-# =============================================================================
+# locations: the target of orders_to_locations. It carries one fact (tax_rate)
+# and no metric of its own, and only jaffle_sales reads it.
 
 version: 2
 
@@ -22,7 +14,6 @@ models:
       on_schema_change: fail
       meta:
         sst:
-          # THE GRAIN OF THIS MODEL, AND THE MODEL IS THE SINGLE SOURCE (`D231`).
           primary_key:
             - location_id
     columns:
@@ -88,17 +79,3 @@ models:
               sample_values:
                 - 0.08
                 - 0.0875
-
-  # ========================================================================
-  # pricing_periods -- the RANGE join target
-  # ========================================================================
-  # THIS TABLE IS THE ONE ASSET TAKEN FROM THE DONOR'S DESIGN. `sst-jaffle-shop`
-  # added `raw_pricing_periods` for exactly one reason: to exercise
-  # `BETWEEN ... EXCLUSIVE` and `CONSTRAINT ... DISTINCT RANGE`. Reusing that idea
-  # is why the range relationship here joins real business grain rather than a
-  # synthetic date spine.
-  #
-  # `UNIQUE` ON THE RANGE PAIR IS NOT REQUIRED BY THE GRAMMAR, and that was
-  # MEASURED rather than assumed: the form below -- `PRIMARY KEY` on the identifier
-  # plus `CONSTRAINT ... DISTINCT RANGE BETWEEN ... EXCLUSIVE` with no key on the
-  # range pair -- parses against Snowflake.

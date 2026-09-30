@@ -12,7 +12,6 @@ from snowflake_semantic_tools.domain.model.diagnostic import (
     Severity,
     dedupe_diagnostics,
     render_diagnostic,
-    resolve_code,
     resolve_severities,
 )
 
@@ -30,26 +29,20 @@ def test_unregistered_code_becomes_an_internal_diagnostic() -> None:
     assert diagnostic.message == "unregistered code SST-NOPE999"
 
 
-def test_legacy_validation_codes_resolve_as_aliases_but_are_never_emitted() -> None:
-    assert resolve_code("SST-V021") == ("SST-VAL308",)
-    assert resolve_code("SST-V005") == (
-        "SST-PRS003",
-        "SST-PRS018",
-        "SST-PRS019",
-        "SST-PRS029",
-        "SST-PRS113",
-        "SST-VAL113",
-        "SST-VAL418",
-    )
-    assert resolve_code("SST-V050") == ("SST-VAL403",)
-    assert resolve_code("SST-REF001") == ("SST-REF001",)
+def test_0_3_codes_are_not_registered_and_never_emitted() -> None:
+    import snowflake_semantic_tools.domain.model.diagnostic as module
+
+    assert not hasattr(module, "LEGACY_ALIASES") and not hasattr(module, "resolve_code")
     assert D("SST-V021").code == "SST-INT900"
+    assert not any(code.split("-")[1].startswith("V0") for code in ERROR_REGISTRY)
 
 
-def test_every_legacy_alias_resolves_to_registered_successors() -> None:
-    from snowflake_semantic_tools.domain.model.diagnostic import LEGACY_ALIASES
-
-    assert all(successor in ERROR_REGISTRY for successors in LEGACY_ALIASES.values() for successor in successors)
+def test_hard_deprecated_input_is_an_error_and_retired_codes_are_gone() -> None:
+    for code in ("SST-PRS020", "SST-DBT005", "SST-CFG044", "SST-REF045"):
+        assert ERROR_REGISTRY[code].severity is Severity.ERROR, code
+    for code in ("SST-PRS121", "SST-VAL122", "SST-CFG045"):
+        assert code not in ERROR_REGISTRY, code
+    assert "sst enrich" not in str(ERROR_REGISTRY["SST-VAL316"].suggestion)
 
 
 def test_static_eval_diagnostics_are_registered_with_catalog_severities() -> None:

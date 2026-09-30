@@ -1,49 +1,11 @@
 ---
-# =============================================================================
-# models/marts/order_items.yml
-# =============================================================================
-# THE FAN-OUT GRAIN. One row per line item, so every metric on it is the
-# case where a naive join would multiply.
+# order_items: one row per line item, finer than orders, which is why
+# order_items_to_orders is an ASOF relationship.
 #
-# =============================================================================
-# *** THIS IS THE ONLY MODEL IN THE FIXTURE WITH NO OPTIONAL COLUMN METADATA,
-# *** AND THE SPARSENESS IS THE ASSERTION. DO NOT FILL IT IN.
-# =============================================================================
-# Every column here carries `column_type` and NOTHING ELSE. No `synonyms`, no
-# `is_enum`, no `sample_values`, no `meta.sst.data_type`. The other six marts are
-# fully populated -- 32 of 37 columns across the directory carry `synonyms` -- so
-# this model is the fixture's negative space at the COLUMN-METADATA level.
-#
-# WHAT IT CATCHES THAT NOTHING ELSE DOES. The renderer gates on whether metadata
-# is present, PER MEMBER, so a member carrying only `column_type` must render MINIMAL:
-# name, expression, `COMMENT`, and NOTHING ELSE -- no `WITH SYNONYMS`, no
-# `SAMPLE_VALUES`, no `IS_ENUM`. A publisher that emitted those clauses
-# UNCONDITIONALLY -- `WITH SYNONYMS ()`, `SAMPLE_VALUES ()`, `IS_ENUM` on every
-# column -- would satisfy a fixture in which every column is populated,
-# because there would be no column whose absence could be checked.
-#
-# THE GATE THIS BLOCK USED TO NAME IS GONE; THE ASSERTION IS NOT. It said
-# `has_any_sample_values` decides whether a `WITH EXTENSION (CA=...)` clause is emitted
-# at all, and that `ORDER_ITEMS` must appear in the `CA=` payload with its member arrays
-# ABSENT rather than present-and-empty. `D220` deletes that clause, so there is no
-# payload and no whole-clause gate left to trip. What survives is the per-member gate,
-# and this model is still the only thing that exercises it.
-#
-# So this model is what makes the difference between OMITTED and EMPTY observable,
-# and that distinction is load-bearing in the DDL goldens: every `ORDER_ITEMS` member
-# reads `ORDER_ITEMS.<COL> AS ORDER_ITEMS.<COL> COMMENT = '...'` and stops there.
-#
-# WHY THIS MODEL AND NOT ANOTHER. It is the fan-out grain, so it is the one table
-# whose columns a reader is least likely to query directly -- every useful number
-# on it is reached through a metric that aggregates it. A model nobody filters on
-# is the honest place for metadata to be genuinely absent rather than artificially
-# withheld, which means the sparseness reads as a design choice in a real project
-# and not as an unfinished file.
-#
-# THE CROSS-CUTTING REASONING -- the seam, the jaffle domain, the one-line
-# `description:` constraint and the `D213` data rule -- IS IN `../README.md`, not
-# repeated here. Read that first if this is the first model file you have opened.
-# =============================================================================
+# Every column carries column_type and nothing else: no synonyms, is_enum or
+# sample_values. Each member therefore renders with only its name, expression
+# and COMMENT, which is what shows those clauses are emitted only when
+# authored. Keep this model sparse.
 
 version: 2
 
@@ -57,8 +19,6 @@ models:
       on_schema_change: fail
       meta:
         sst:
-          # THE GRAIN OF THIS MODEL, AND THE MODEL IS THE SINGLE SOURCE (`D231`).
-          # Finer than `orders`, which is the whole reason the ASOF join exists.
           primary_key:
             - order_item_id
     columns:
@@ -96,9 +56,7 @@ models:
         data_tests:
           - not_null
 
-      # THE ASOF TIME COLUMN on the left side. Paired with `>=` against
-      # `orders.ordered_at`, this is what makes the relationship ASOF rather than
-      # a second equality (R007).
+      # The left side of the ASOF condition occurred_at >= orders.ordered_at.
       - name: occurred_at
         data_type: TIMESTAMP_NTZ
         description: |-
@@ -123,7 +81,3 @@ models:
             combination_of_columns:
               - order_id
               - order_item_id
-
-  # ========================================================================
-  # products -- the menu. Dimensions and facts on one small table.
-  # ========================================================================

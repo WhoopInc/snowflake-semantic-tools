@@ -38,21 +38,35 @@ def test_missing_config_is_empty_and_clean(tmp_path: Path) -> None:
     assert loaded.has_dbt_project is False
 
 
-def test_positions_and_deprecated_deploy_alias(tmp_path: Path) -> None:
-    _write(tmp_path, {"dbt_project.yml": "profile: sst\n", "sst_config.yml": "deploy:\n  bogus: 1\n"})
+def test_positions_and_the_removed_deploy_block(tmp_path: Path) -> None:
+    _write(tmp_path, {"dbt_project.yml": "profile: sst\n", "sst_config.yml": "apply: {}\ndeploy: {bogus: 1}\n"})
     loaded = load_project_config(tmp_path)
-    assert [item.code for item in loaded.diagnostics] == ["SST-CFG045", "SST-CFG003"]
-    origin = loaded.diagnostics[1].origin
+    assert [item.code for item in loaded.diagnostics] == ["SST-CFG043"]
+    assert "renamed to apply:" in loaded.diagnostics[0].message
+    origin = loaded.diagnostics[0].origin
     assert origin is not None and (origin.file, origin.line) == ("sst_config.yml", 2)
-    assert dict(loaded.tree) == {"apply": {"bogus": 1}}
-    assert config_tree(tmp_path) == {"apply": {"bogus": 1}}
+    # deploy: is reported, never read as apply:.
+    assert dict(loaded.tree) == {"apply": {}, "deploy": {"bogus": 1}}
+    assert config_tree(tmp_path) == {"apply": {}, "deploy": {"bogus": 1}}
 
 
-def test_deploy_beside_apply_is_refused_and_dropped(tmp_path: Path) -> None:
-    _write(tmp_path, {"dbt_project.yml": "profile: sst\n", "sst_config.yml": "apply: {}\ndeploy: {}\n"})
+def test_unsupported_and_removed_0_3_keys_are_errors(tmp_path: Path) -> None:
+    config = (
+        "dbt: {}\nvalidation:\n  exclude_dirs: []\nenrichment: {}\ngeneration: {}\ndefer: {}\n"
+        "apply:\n  fail_fast: true\nsnowflake:\n  allow_unknown_keys: true\n"
+    )
+    _write(tmp_path, {"dbt_project.yml": "profile: sst\n", "sst_config.yml": config})
     loaded = load_project_config(tmp_path)
-    assert [item.code for item in loaded.diagnostics] == ["SST-CFG045", "SST-CFG043"]
-    assert dict(loaded.tree) == {"apply": {}}
+    assert [(item.code, item.subject, item.severity.name) for item in loaded.diagnostics] == [
+        ("SST-CFG044", "config:dbt", "ERROR"),
+        ("SST-CFG043", "config:validation.exclude_dirs", "ERROR"),
+        ("SST-CFG043", "config:enrichment", "ERROR"),
+        ("SST-CFG043", "config:generation", "ERROR"),
+        ("SST-CFG043", "config:defer", "ERROR"),
+        ("SST-CFG043", "config:apply.fail_fast", "ERROR"),
+        ("SST-CFG044", "config:snowflake.allow_unknown_keys", "ERROR"),
+    ]
+    assert "--fail-fast" in loaded.diagnostics[5].message
 
 
 def test_dbt_only_configuration_is_refused_without_dbt_project(tmp_path: Path) -> None:

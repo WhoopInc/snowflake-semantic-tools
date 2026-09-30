@@ -65,8 +65,8 @@ def test_dbt_snowflake_fields_map_to_connector_arguments(tmp_path: Path, monkeyp
             "user: \"svc_{{ env_var('SUFFIX') }}\"\n"
             "private_key_path: \"{{ env_var('KEY_DIR') }}/rsa.p8\"\n"
             "private_key_passphrase: secret\n"
-            "connect_timeout: \"30\"\n"
-            "client_session_keep_alive: \"true\"\n"
+            'connect_timeout: "30"\n'
+            'client_session_keep_alive: "true"\n'
             "port: 443\nhost: acct.snowflakecomputing.com\n"
             "threads: \"{{ env_var('UNSET_THREADS') | as_number }}\"\n"
             "retry_all: true\ncolour: blue\n",
@@ -95,7 +95,7 @@ def test_profile_values_sst_cannot_use_are_refused(tmp_path: Path) -> None:
         "SST-CFG049",
         "target 'x': 'port' holds a template other than env_var()",
     )
-    assert refused(tmp_path, "role: \"{% if true %}R{% endif %}\"")[1] == (
+    assert refused(tmp_path, 'role: "{% if true %}R{% endif %}"')[1] == (
         "target 'x': 'role' holds a template other than env_var()"
     )
     assert refused(tmp_path, "port: many")[1] == "target 'x': 'port' must be a whole number"
@@ -138,7 +138,9 @@ def test_an_inline_private_key_becomes_der_bytes_and_is_never_echoed(tmp_path: P
     assert load_profile_target(target_with(tmp_path, f"private_key: {encoded}")).connection_params["private_key"] == der
     # dbt accepts base64 DER wrapped across lines.
     wrapped = "".join(f"  {encoded[index:index + 64]}\n" for index in range(0, len(encoded), 64))
-    assert load_profile_target(target_with(tmp_path, "private_key: |\n" + wrapped)).connection_params["private_key"] == der
+    assert (
+        load_profile_target(target_with(tmp_path, "private_key: |\n" + wrapped)).connection_params["private_key"] == der
+    )
 
     def refused_on_connect(fields: str) -> tuple[str, str]:
         # The key is decoded only when a connection opens, so loading succeeds.

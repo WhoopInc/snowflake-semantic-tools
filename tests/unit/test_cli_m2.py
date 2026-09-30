@@ -11,12 +11,13 @@ from pathlib import Path
 import pytest
 from click.testing import CliRunner
 
+from snowflake_semantic_tools.adapters.project import ProjectError
 from snowflake_semantic_tools.adapters.snowflake.eval_state import InMemoryEvalStateStore
 from snowflake_semantic_tools.adapters.snowflake.memory import PROFILE_REGISTRY_SHAPE, RecordedSnowflake
 from snowflake_semantic_tools.app.eval_compile import CompiledEval
 from snowflake_semantic_tools.app.eval_lifecycle import EVAL_STAGE_FILE_FORMAT
 from snowflake_semantic_tools.app.eval_run import EvalRunResult, EvalSuiteResult
-from snowflake_semantic_tools.cli.main import _build_manifest, _compile_result, cli
+from snowflake_semantic_tools.cli.main import _build_manifest, _compile_result, _compiled_manifest, cli
 from snowflake_semantic_tools.domain.model.diagnostic import D, DiagnosticBag
 from snowflake_semantic_tools.domain.model.eval import (
     EvalBaselineRecord,
@@ -27,8 +28,8 @@ from snowflake_semantic_tools.domain.model.eval import (
 )
 from snowflake_semantic_tools.domain.model.identifier import Identifier, TargetIdentity
 from snowflake_semantic_tools.domain.model.lifecycle import OwnershipMarker, QueryResult, ShowRow
-from snowflake_semantic_tools.domain.ports.snowflake import StagedFileMetadata
-from snowflake_semantic_tools.domain.state.model import AppliedEntry, State
+from snowflake_semantic_tools.domain.ports.snowflake import SnowflakePortError, StagedFileMetadata
+from snowflake_semantic_tools.domain.state.model import AppliedEntry, State, content_hash
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 FIXTURE = REPO_ROOT / "tests" / "fixtures" / "reference_project"
@@ -677,7 +678,9 @@ def test_partial_runs_publish_what_is_healthy_and_still_exit_one(
         executed = original_execute(statements)
         for change in plan_payload["data"]["changes"]:
             if change["artifact_type"] in {"tool", "agent"}:
-                port.markers[change["target"]] = OwnershipMarker(plan_payload["data"]["manifest_id"], change["fingerprint"])
+                port.markers[change["target"]] = OwnershipMarker(
+                    plan_payload["data"]["manifest_id"], change["fingerprint"]
+                )
         return executed
 
     port.execute_script = execute_with_markers  # type: ignore[method-assign]
@@ -789,6 +792,48 @@ def test_apply_refuses_stale_saved_plan(tmp_path: Path, monkeypatch: pytest.Monk
         ["apply", *common(project), "--target", "dev", "--plan", str(path), "--yes", "--output", "json"],
     )
     assert refused.exit_code == 4
+
+
+def test_apply_refuses_a_saved_plan_made_for_another_target(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    project = project_copy(tmp_path)
+    planned = invoke_with_port(
+        monkeypatch,
+        RecordedSnowflake(state={}),
+        ["plan", *common(project), "--target", "dev", "--output", "json"],
+    )
+    path = Path(json.loads(planned.output)["data"]["plan_path"])
+    document = json.loads(path.read_text(encoding="utf-8"))
+    document["target"]["role"] = "SOME_OTHER_ROLE"
+    document["plan_id"] = content_hash({key: value for key, value in document.items() if key != "plan_id"})
+    path.write_text(json.dumps(document), encoding="utf-8")
+    refused = invoke_with_port(
+        monkeypatch,
+        RecordedSnowflake(state={}),
+        ["apply", *common(project), "--target", "dev", "--plan", str(path), "--yes", "--output", "json"],
+    )
+    assert refused.exit_code == 4
+    [diagnostic] = json.loads(refused.output)["diagnostics"]
+    assert diagnostic["code"] == "SST-APL005" and "SOME_OTHER_ROLE" in diagnostic["message"]
+
+
+def test_plan_without_a_compiled_manifest_names_the_missing_file(tmp_path: Path) -> None:
+    with pytest.raises(ProjectError) as raised:
+        _compiled_manifest(tmp_path)
+    assert [item.code for item in raised.value.diagnostics] == ["SST-MAN001"]
+    assert str(tmp_path / "target" / "sst" / "manifest.json") in raised.value.diagnostics[0].message
+
+
+def test_a_recognised_snowflake_failure_is_reported_as_its_diagnostic(monkeypatch: pytest.MonkeyPatch) -> None:
+    def fail(*args: object, **kwargs: object) -> None:
+        raise SnowflakePortError("refused", diagnostic=D("SST-PRT001", value="acme", detail="refused"))
+
+    monkeypatch.setattr("snowflake_semantic_tools.cli.main._compile_result", fail)
+    args = ["compile", "--project-dir", str(FIXTURE), "--manifest", str(DBT_MANIFEST)]
+    as_json = CliRunner().invoke(cli, [*args, "--output", "json"])
+    assert as_json.exit_code == 5
+    assert [item["code"] for item in json.loads(as_json.output)["diagnostics"]] == ["SST-PRT001"]
+    human = CliRunner().invoke(cli, args)
+    assert human.exit_code == 5 and "SST-PRT001" in human.output
 
 
 def test_smoke_suite_is_separate_from_apply(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

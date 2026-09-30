@@ -44,31 +44,30 @@ jobs:
       - name: Install project
         run: poetry install --no-interaction
 
+      # Unit and contract tests. Neither connects to Snowflake.
       - name: Run tests
-        run: poetry run pytest tests/unit/ -v
+        run: poetry run pytest tests/ -v
 
-      - name: Check M2 domain coverage
+      - name: Check domain coverage
         run: >-
           poetry run pytest -q --cov=snowflake_semantic_tools.domain --cov-branch
           --cov-report=term --cov-fail-under=100
           tests/unit/domain tests/unit/test_render_semantic_view.py
 
-      - name: Check M2 application coverage
+      - name: Check application coverage
         run: >-
           poetry run pytest -q --cov=snowflake_semantic_tools.app --cov-branch
           --cov-report=term --cov-fail-under=95
           tests/unit/app tests/unit/test_compile_use_case.py tests/unit/test_manifest_v1.py
 
-      - name: Check M2 CLI coverage
+      - name: Check CLI coverage
         run: >-
           poetry run pytest -q --cov=snowflake_semantic_tools.cli --cov-branch
-          --cov-report=term --cov-fail-under=85
+          --cov-report=term --cov-fail-under=90
           tests/unit/test_cli_v1.py tests/unit/test_cli_m2.py tests/unit/test_cli_m5.py
 
-      - name: Check M2 strict typing
-        run: >-
-          poetry run mypy snowflake_semantic_tools/domain snowflake_semantic_tools/app
-          snowflake_semantic_tools/adapters snowflake_semantic_tools/cli
+      - name: Check strict typing
+        run: poetry run mypy snowflake_semantic_tools
 
       - name: Check code formatting with Black
         run: poetry run black --check snowflake_semantic_tools/
@@ -82,3 +81,7 @@ jobs:
       - name: Check ring boundaries with import-linter
         run: poetry run lint-imports
 
+      # The reference pages under docs/reference are generated from the engine's
+      # registries; a registry change without a regenerated page fails here.
+      - name: Check generated reference pages
+        run: poetry run sst docs --check

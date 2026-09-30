@@ -1,90 +1,107 @@
 ---
 name: sst-test
-description: "Run SST unit tests with pytest. Use when: running tests, checking test coverage, verifying fixes. Triggers: test, pytest, unit test, run tests."
+description: "Run the SST test suite and the CI gates locally. Use when: running tests, checking coverage floors, verifying fixes, checking a branch before a PR. Triggers: test, pytest, unit test, run tests, coverage, gates, mypy, lint-imports."
 ---
 
 # SST Test
 
-Run the SST test suite using pytest.
+Run the SST test suite and the other CI gates. Nothing here connects to Snowflake.
 
 ## Prerequisites
 
-- Conda environment with SST installed via `pip install -e .`
-- Project uses **Poetry** for dependency management (NOT uv)
+- Dependencies installed with Poetry from the repo root: `poetry install` (Poetry, NOT uv)
+- The gates are the `run:` steps of `.github/workflows/test-and-lint.yml`. If they differ from the commands below, the workflow wins.
 
 ## Workflow
 
-### Step 1: Activate environment and navigate to repo
+### Step 1: Choose the environment
 
-First, list the user's conda environments to find the one with SST installed:
+The commands below use Poetry's environment (`poetry run ...`). Another environment works if it has this checkout installed in editable mode plus the dev dependencies from `pyproject.toml`; `test_ring_boundaries.py` needs `lint-imports` beside the interpreter that runs pytest.
+
+**⚠️ MANDATORY STOPPING POINT**: Ask the user whether to use Poetry's environment or another one. Do NOT assume an environment name, and do NOT proceed until the user responds.
+
+Then, from the repo root:
 ```bash
-source "$(conda info --base)/etc/profile.d/conda.sh" && conda env list
-```
-
-**⚠️ MANDATORY STOPPING POINT**: Present the results to the user and ask which environment has SST installed. Highlight any environments whose names contain "sst" as likely matches. Do NOT proceed until user responds.
-
-Then activate the chosen environment:
-```bash
-source "$(conda info --base)/etc/profile.d/conda.sh" && conda activate <env-name>
 cd "$(git rev-parse --show-toplevel)"
+poetry run sst --version    # must print the version in snowflake_semantic_tools/_version.py
 ```
 
-### Step 2: Run all unit tests
+In another environment, drop the `poetry run` prefix from every command.
+
+### Step 2: Run the suite
 
 ```bash
-python -m pytest tests/unit/ -v
+poetry run pytest tests/
 ```
 
-### Step 3: Run specific test file (if targeted testing needed)
+### Step 3: Targeted runs (while iterating)
 
 ```bash
-python -m pytest tests/unit/core/validation/test_relationship_validation.py -v
+poetry run pytest tests/unit/domain -q               # one ring
+poetry run pytest tests/unit/test_golden_ddl.py -q   # one file
+poetry run pytest tests/ -q -k "migrate_refs"        # by name
 ```
 
-### Step 4: Run specific test by name pattern
+### Step 4: Coverage floors (branch coverage)
 
 ```bash
-python -m pytest tests/unit/ -v -k "test_unique_key"
+poetry run pytest -q --cov=snowflake_semantic_tools.domain --cov-branch --cov-report=term --cov-fail-under=100 \
+  tests/unit/domain tests/unit/test_render_semantic_view.py
+poetry run pytest -q --cov=snowflake_semantic_tools.app --cov-branch --cov-report=term --cov-fail-under=95 \
+  tests/unit/app tests/unit/test_compile_use_case.py tests/unit/test_manifest_v1.py
+poetry run pytest -q --cov=snowflake_semantic_tools.cli --cov-branch --cov-report=term --cov-fail-under=90 \
+  tests/unit/test_cli_v1.py tests/unit/test_cli_m2.py tests/unit/test_cli_m5.py
 ```
 
-### Step 5: Run with coverage (optional)
+### Step 5: Static gates
 
 ```bash
-python -m pytest tests/unit/ --cov=snowflake_semantic_tools --cov-report=term-missing
+poetry run mypy snowflake_semantic_tools
+poetry run black --check snowflake_semantic_tools/
+poetry run isort --check snowflake_semantic_tools/
+poetry run lint-imports       # the four ring contracts
+poetry run sst docs --check   # docs/reference/*.md matches the registries
 ```
 
 ### On Failure
 
-**⚠️ MANDATORY STOPPING POINT**: If tests fail, report failures to the user with error messages before taking any corrective action. Do NOT auto-fix without approval.
+**⚠️ MANDATORY STOPPING POINT**: If anything fails, report the failures to the user with their messages before taking any corrective action. Do NOT auto-fix without approval.
+
+What the usual failures mean:
+- **Golden diff**: rendered output changed. Confirm the change is intended before any golden is edited (`tests/README.md`, Goldens).
+- **`lint-imports` or `test_ring_boundaries.py`**: an import crosses a ring; the output names the broken contract.
+- **`sst docs --check`**: a diagnostic, config key, CLI option, or artifact type changed; `poetry run sst docs` regenerates the pages.
+- **black / isort**: `poetry run black snowflake_semantic_tools/` and `poetry run isort snowflake_semantic_tools/` fix them.
+- **`test_release_hygiene.py` / `test_public_docs.py`**: a committed file carries an environment-specific name, a home-directory path, a planning identifier, or a broken docs link; the message names the file and line.
 
 ## Test Structure
 
 ```
 tests/
-  unit/
-    core/
-      validation/
-        test_relationship_validation.py  # Relationship rule tests
-        test_validator.py                # Validator integration tests
-      generation/
-        test_semantic_view_builder.py    # SQL generation tests
-      parsing/
-        test_dbt_parser.py              # dbt manifest parsing tests
+  unit/domain/        # pure ring
+  unit/app/           # use cases over in-memory ports
+  unit/adapters/      # YAML, dbt manifest, connector, files, config
+  unit/test_cli_*.py  # commands through click's CliRunner
+  unit/test_golden_*.py
+  contract/           # adapters against their ports
+  fixtures/           # reference_project (+ its dbt manifest), v1_dialect
+  golden/expected/    # ddl, agent, tool, eval, skill, plugin, profile
 ```
+
+`tests/README.md` has the details.
 
 ## Key Conventions
 
-- Test files: `test_*.py`
-- Test functions: `test_*`
-- Fixtures and helpers at the top of each test file
-- Tests use synthetic data (no Snowflake connection needed)
-- Relationship tests build mock `dbt_data` dicts with `sm_tables` and relationship YAML
+- Test files: `test_*.py`; test functions: `test_*`
+- The suite is offline: no Snowflake connection, and the reference project compiles from `tests/fixtures/reference_project_manifest.json`
+- Tests use real in-memory ports and `monkeypatch`; there is no mocking library and there are no pytest markers
+- CLI tests invoke `snowflake_semantic_tools.cli.main:cli` through `CliRunner`
 
 ## Stopping Points
 
-- ✋ Step 1: After listing conda environments (ask user which to activate)
-- ✋ On Failure: After test failures (report before taking action)
+- ✋ Step 1: Before running anything (ask which environment to use)
+- ✋ On Failure: After test or gate failures (report before taking action)
 
 ## Output
 
-Test results summary: total collected, passed count, failed count, and error messages for any failures.
+A summary per gate (pass/fail), the test counts from `pytest tests/` (passed, failed, errors), coverage per ring against its floor, and the error messages for any failure.

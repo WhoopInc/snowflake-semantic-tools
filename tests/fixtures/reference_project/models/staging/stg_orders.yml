@@ -1,18 +1,7 @@
 ---
-# =============================================================================
-# models/staging/stg_orders.yml
-# =============================================================================
-# THE ONE STAGING MODEL, and the only mart input that needs a staging layer at
-# all: `orders_raw` requires casting and renaming before anything can join to it.
-# The other six raw relations need nothing, so their marts read source directly.
-#
-# IT ALSO DEMONSTRATES THAT THE SEAM IS NARROW. `stg_orders` is in the dbt manifest
-# and in dbt's DAG, and no rule in the semantic layer reports on it at all: no B011
-# contract warning, no B012 test warning, no attachment report. A model the
-# semantic layer does not reference is invisible to it.
-#
-# See `../README.md` for the cross-cutting reasoning about this directory.
-# =============================================================================
+# stg_orders: keeps the latest replicated row per order from the append-only
+# orders_raw. No semantic view reads it, so SST runs no column checks on it
+# even though its columns carry no column_type or data_type.
 
 version: 2
 

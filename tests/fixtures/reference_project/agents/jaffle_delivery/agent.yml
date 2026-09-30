@@ -1,42 +1,23 @@
 ---
 # =============================================================================
-# agents/jaffle_delivery/agent.yml -- the reference-impl fixture
+# agents/jaffle_delivery/agent.yml -- reference project
 # =============================================================================
-# THE DELEGATING AGENT, AND THE ONLY PLACE `A030` IS REACHABLE.
+# The delegating agent. Its one tool is another agent, `partner_delivery_agent`:
+# a `reference:` member of the immutable jaffle_partner tool group, so this repo
+# addresses it without ever creating it. Delegation fits because delivery status
+# lives with the partner, not in any semantic view here.
 #
-# A030: "an `agent` toolset ref resolves, and the agent reference graph is ACYCLIC
-# (a cycle is an infinite delegation at run time)." Two things have to be true
-# before that rule can fire at all:
+#   jaffle_delivery_agent ---> partner_delivery_agent (outside this project)
 #
-#   1. Some agent must reference ANOTHER agent as a tool. One agent in a project
-#      cannot form a graph, so `jaffle_analytics` alone leaves A030 unreachable.
-#   2. The referenced agent must resolve. This one points at
-#      `partner_delivery_agent`, the `type: agent` entry in the IMMUTABLE tool
-#      group -- so the reference also proves an `agent`-kind tool under
-#      `reference:` is addressable without this repo ever creating it.
+# The delegation graph must be acyclic (SST-REF022); this edge leaves the
+# project, so it cannot close a cycle.
 #
-# THE GRAPH HERE IS DELIBERATELY A TWO-NODE CHAIN, NOT A CYCLE:
-#
-#   jaffle_delivery ---> partner_delivery_agent (external, immutable group)
-#
-# `jaffle_analytics` does NOT reference this agent back. The acyclic case is the
-# happy path and belongs here; the CYCLE is an error and belongs in `negative/`,
-# where a fixture that pointed two agents at each other would assert A030 firing.
-# Authoring the cycle here would make the whole project invalid.
-#
-# WHY A DELIVERY AGENT AND NOT A SECOND ANALYTICS ONE. Delegation only makes sense
-# when the delegate knows something the caller does not. Delivery status lives with
-# the partner, not in any semantic view here, so routing to them is the honest
-# shape -- and it keeps this agent's own scope narrow enough that its instructions
-# stay short.
-#
-# NO DATA VALUES.
+# Every agent tool raises SST-VAL528, a warning that the tool surface is no
+# longer fixed by this spec. It is the one warning in the fixture's offline
+# validate.
 # =============================================================================
 
 name: jaffle_delivery_agent
-
-# NO `create_mode` KEY (`D255`) -- the publisher creates if absent and adds a version
-# if present, decided by observation rather than authored.
 
 comment: |-
   Answers questions about the delivery status of a jaffle order by routing to the
@@ -51,24 +32,9 @@ spec:
   models:
     orchestration: claude-sonnet-4-5
 
-  # BOTH INSTRUCTION CHANNELS SIT UNDER `instructions:`, WHICH IS A MAP.
-  #
-  # These two blocks were authored as `spec.orchestration:` and `spec.instructions:`
-  # holding BARE STRINGS, and both were TYPE ERRORS (`SST-PRS003` twice).
-  # `spec.orchestration` is a map of `budget`, `tool_not_accessible` and
-  # `capabilities` -- putting prose there collides with the budget keys
-  # `jaffle_analytics` uses -- and `spec.instructions` is a map of
-  # `orchestration`, `response` and `sample_questions`.
-  #
-  # NO SHORTHAND EXISTS TO RESCUE THE OLD SHAPE, and the plan is pointed about
-  # it: `A045` is an ERROR precisely for `sample_questions` entries written as
-  # bare strings instead of maps. A reader who saw a scalar tolerated here would
-  # reasonably infer a general string-for-map coercion, and there is none.
-  #
-  # INLINE HERE, `{{ file() }}` IN `jaffle_analytics`. That asymmetry is
-  # deliberate: this agent's instructions are short enough to read in place, and
-  # the fixture needs one agent of each kind so a renderer that only handles the
-  # file form, or only the inline form, fails on one of them.
+  # `instructions:` is a map of orchestration, response and sample_questions.
+  # These are inline while jaffle_analytics uses file() sidecars, so both forms
+  # render.
   instructions:
     orchestration: |-
       Decide whether the question is about DELIVERY or about the ORDER ITSELF.
@@ -93,22 +59,15 @@ spec:
       say so rather than guessing which order the user intended.
 
   tools:
-    # THE `agent` TOOLSET REF. This is the edge A030 walks. It resolves into the
-    # `jaffle_partner` group's `reference:` block, which means:
-    #   - no DDL is emitted for it here, ever
-    #   - the group is `immutable: true`, so this repo could not create it even by
-    #     mistake -- X020 would reject a `define:` in that group
+    # Resolved by name through the tool registry to the partner's object for
+    # the current target. No DDL is emitted for it.
     - name: partner_delivery_agent
       type: agent
       description: |-
         The partner's delivery agent. Answers where an order is and when it will
         arrive. Does NOT answer anything about order contents or value.
 
-# `current` WAS THE AUTHORED VALUE AND IT CANNOT BE CREATED -- it is a SQL
-# reserved word, so `SET ALIAS = current` is a syntax error (drift row 30).
-# `"current"` works but is stored case-sensitively lowercase. `promoted` is not
-# reserved and stores as `PROMOTED`; see jaffle_analytics/agent.yml for the full
-# note. Both agents move together because both declared the same bad name.
+# The `agents.+alias` default, restated.
 alias: promoted
 
 enabled: true

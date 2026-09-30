@@ -1,6 +1,0 @@
-snowflake_metrics:
-  - name: revenue_missing_column
-    description: "Metric referencing non-existent column"
-    expr: "SUM({{ column('orders', 'nonexistent_amount') }})"
-    tables:
-      - "{{ table('orders') }}"

@@ -1,117 +1,37 @@
--- =============================================================================
--- expected/ddl/jaffle_menu.sql -- GOLDEN
--- =============================================================================
--- Order line items, the products sold on them, the order they belong to, the
--- pricing period in effect at the time, and the monthly supply cost of each
--- product. Rendered from `project/` on `--target dev`.
+-- jaffle_menu golden: SST_REF_DEV.CORE.JAFFLE_MENU, rendered from
+-- semantic_models/semantic_views/core/semantic_views.yml on the dev target. The
+-- core/ folder route sets the view's schema; its tables stay in JAFFLE. The DDL
+-- below is what SST renders, and tests/unit/test_golden_ddl.py compares it byte
+-- for byte. The statement has been created in Snowflake, in a scratch schema.
 --
--- *** EVERY CLAUSE SHAPE IN THIS FILE WAS PUBLISHED TO SNOWFLAKE BEFORE BEING
--- *** WRITTEN HERE. `TESTED` 2026-09-24 in an isolated scratch schema. This file
--- *** carries the four hardest shapes in the fixture, and each was probed
--- *** individually rather than assumed from the reference.
+-- Tables render in authored order; every member list renders sorted. Notable
+-- clauses:
+--   - PRICING_PERIODS keeps its model name as the logical table; its relation is
+--     the model's alias, PRICING_CALENDAR. Its DISTINCT RANGE constraint comes
+--     from table_config.distinct_range.
+--   - ORDER_ITEMS_TO_ORDERS pairs an equality with a `>=`, which renders as
+--     ASOF (`>=` is the only operator SST turns into ASOF).
+--     ORDERS_TO_PRICING_PERIODS is a BETWEEN range join.
+--   - LINE_ITEM_COUNT names its join path with USING (ORDER_ITEMS_TO_ORDERS),
+--     which must start at the metric's table (SST-VAL114).
+--   - NON ADDITIVE BY renders only what each entry authors: TOTAL_SUPPLY_COST
+--     is bare, while the descending semi-additive SUPPLIES.OPENING_SUPPLY_COST
+--     authors its table, DESC and NULLS FIRST.
+--   - GROSS_MARGIN may use the non-additive TOTAL_SUPPLY_COST because it is
+--     derived; a regular metric may not (SST-VAL107). GROSS_MARGIN_RATE is
+--     derived from GROSS_MARGIN.
+--   - The three LABELS = (FILTER) dimensions and the metrics that read
+--     VARIABLES attach through ORDERS, which this view shares with
+--     jaffle_sales, so the view declares the same variables.
+--   - AI_SQL_GENERATION is jaffle_sql_conventions, jaffle_margin_guidance, then
+--     prose from the unlabeled filter high_value_threshold_cents, with a blank
+--     line between parts. There is no AI_QUESTION_CATEGORIZATION: custom
+--     instructions attach by name, and this view does not name
+--     jaffle_question_scope.
+--   - No MAX_STALENESS or WITH TAG, since the view sets neither. COPY GRANTS is
+--     always rendered.
 --
--- THIS IS THE JOIN-SHAPE GOLDEN. The other two assert member rendering; this one
--- asserts that the relationship grammar works:
---
---   1. AN ASOF JOIN, from a COMPOSITE relationship. `order_items_to_orders`
---      authors TWO conditions -- an equality on `order_id` and a `>=` on
---      `occurred_at` against `ordered_at`. The `>=` half becomes `ASOF`, which
---      Snowflake compiles to `ASOF JOIN ... MATCH_CONDITION(... >= ...)`. Only
---      `>=` is supported; no other operator has an ASOF form.
---
---      > `TESTED` NEGATIVELY TOO, AND THE NEGATIVE CORRECTED A WRONG ADDITION.
---      > The first probe declared `UNIQUE (ORDER_ID, ORDERED_AT)` on `ORDERS`, on
---      > the assumption that an ASOF reference needs its referenced columns to be
---      > unique -- the reference's own ASOF example declares
---      > `customer_address UNIQUE (ca_cust_id, ca_start_date)`, which invites
---      > exactly that inference. A second probe REMOVED the UNIQUE and still
---      > created. So the key is NOT required, the bare `primary_key: [order_id]`
---      > on `orders.yml` (the MODEL -- `D231`) is already correct, and the
---      > golden does not carry a constraint the input never declared. Copying
---      > the example's shape would have put a phantom key in the contract.
---
---   2. A RANGE JOIN, with the CONSTRAINT that makes it legal. `pricing_periods`
---      declares `distinct_range`, which renders as
---      `CONSTRAINT <name> DISTINCT RANGE BETWEEN <start> AND <end> EXCLUSIVE` on
---      the TABLE, and the relationship renders
---      `REFERENCES PRICING_PERIODS (BETWEEN <start> AND <end> EXCLUSIVE)`.
---      Both halves are required: the constraint asserts no two ranges overlap,
---      which is the precondition the join relies on.
---
---   3. `NON ADDITIVE BY`, from `non_additive_dimensions`. `total_supply_cost`
---      restates cost per product per month, so summing it across months
---      double-counts. The clause sits BEFORE `AS`. The authored
---      `window_function: LAST_VALUE` maps to the DEFAULT behaviour and emits
---      NOTHING -- ascending order already takes the last value, which for a time
---      dimension is the latest. `DESC` would be the non-default and would emit.
---
---   4. `USING (...)`, from `using_relationships`. `line_item_count` is the ONLY
---      member in the fixture that pins a relationship path, and the clause sits
---      before `AS`. The relationship named must START from the metric's own
---      table, which `order_items_to_orders` does.
---
---   6. A DERIVED METRIC REFERENCING A SEMI-ADDITIVE ONE. `GROSS_MARGIN` uses
---      `TOTAL_SUPPLY_COST`, which carries `NON ADDITIVE BY`. That is legal ONLY
---      because `GROSS_MARGIN` is derived -- a non-derived metric may not
---      reference a semi-additive metric. `GROSS_MARGIN_RATE` is derived from
---      `GROSS_MARGIN`, which is itself derived: two levels, which is what
---      exercises the depth guard.
---
---   7. THE MODEL ALIAS SURVIVES INTO THE RELATION NAME. `pricing_periods`
---      declares `alias: pricing_calendar`, the only alias in the project. Every
---      semantic-layer reference is written `pricing_periods`; the emitted logical
---      table and relation are `PRICING_CALENDAR`. The alias is resolved from the
---      manifest, not from the semantic layer, which is why no member file
---      mentions it.
---
---   8. ONE `AI_SQL_GENERATION` CLAUSE CARRYING THREE SOURCES, IN A STATED ORDER.
---      This view attaches TWO instruction blocks to the same channel --
---      `jaffle_sql_conventions` then `jaffle_margin_guidance` -- and the
---      standalone filter's prose is appended after both. Snowflake accepts
---      exactly ONE clause per channel.
---
---      > THIS FILE IS WHY THE ORDERING RULE EXISTS. `custom_instructions.md`
---      > section 4 previously said only that blocks are "CONCATENATED with
---      > newlines", naming neither the order nor the number of newlines -- so
---      > this clause had no assertable form and two engines could both be
---      > conformant while emitting different bytes. The rule is now: blocks in
---      > the order THE VIEW lists them, filter prose LAST, separated by exactly
---      > one blank line. Authored order was chosen because it is the only order
---      > visible from the view being edited, and it puts the specific text
---      > (margin) after the general text (conventions), where it reads as a
---      > qualification rather than being qualified.
---
---   9. NO `AI_QUESTION_CATEGORIZATION`, AND THAT IS AN ATTACHMENT FACT.
---      `jaffle_question_scope` is the only block carrying that channel and this
---      view does not list it. Custom instructions are the ONE member type that
---      does NOT attach by table membership -- the view names them explicitly --
---      so this absence cannot be changed by adding a table.
---
---  10. NO `MAX_STALENESS`, NO `VARIABLES`-DRIVEN TAGS, NO `TAG`. This view
---      declares no `max_staleness` and no `tags`, so neither clause is emitted.
---      An absent clause is correct: `METRICS ()` is a syntax error, so an empty
---      clause is never emitted.
---
---  11. `ORDER_ITEMS` CONTRIBUTES FOUR BARE DIMENSIONS AND ONE BARE FACT.
---      Every `order_items` column carries `column_type` and NOTHING else -- no
---      synonyms, no sample values, no enum flag. That sparseness is the
---      assertion, and it now asserts something stronger than it used to: with
---      the `CA=` payload gone, a member with no optional metadata emits a
---      MINIMAL member rather than an absent payload entry.
---
---  12. NO `WITH EXTENSION (CA=...)`. Decision `D220`. The payload previously on
---      this file's last line named `PRODUCTS`, `PRICING_CALENDAR` and omitted
---      `ORDER_ITEMS`; all of it is now native or deleted.
---
--- VARIABLES ARE DECLARED HERE, AND THE ABSENCE USED TO BE A VIEW THAT COULD NOT
--- BE CREATED. `orders` is shared with `jaffle_sales`, so `large_order_count`,
--- `revenue_on_policy` and `is_large_order` all attach here by table membership
--- while reading variables only `jaffle_sales` declared. Snowflake would have
--- rejected the whole statement with `invalid identifier`. `V028` / `SST-VAL326`
--- now catch it locally; decision `D223`.
---
--- *** NOT COMPARABLE RAW TO `GET_DDL` -- drift finding 3a.
--- =============================================================================
+-- Not comparable raw to GET_DDL; see tests/golden/README.md.
 
 CREATE OR REPLACE SEMANTIC VIEW SST_REF_DEV.CORE.JAFFLE_MENU
   TABLES (
@@ -177,6 +97,7 @@ CREATE OR REPLACE SEMANTIC VIEW SST_REF_DEV.CORE.JAFFLE_MENU
     ORDER_ITEMS.LINE_ITEM_COUNT USING (ORDER_ITEMS_TO_ORDERS) AS COUNT(ORDER_ITEMS.ORDER_ITEM_ID) WITH SYNONYMS ('units sold', 'items') COMMENT = 'Number of line items sold.',
     ORDER_ITEMS.TOTAL_LINE_ITEM_REVENUE AS SUM(ORDER_ITEMS.ITEM_PRICE) COMMENT = 'Total line-item value, in cents.',
     PRODUCTS.PRODUCT_COUNT AS COUNT(DISTINCT PRODUCTS.PRODUCT_ID) COMMENT = 'Number of distinct products sold.',
+    SUPPLIES.OPENING_SUPPLY_COST NON ADDITIVE BY (SUPPLIES.SNAPSHOT_MONTH DESC NULLS FIRST) AS SUM(SUPPLIES.SUPPLY_COST) COMMENT = 'Cost of supplying the products sold, in cents, in the earliest month on record. Not additive across months.',
     SUPPLIES.TOTAL_SUPPLY_COST NON ADDITIVE BY (SNAPSHOT_MONTH) AS SUM(SUPPLIES.SUPPLY_COST) COMMENT = 'Cost of supplying the products sold, in cents. Not additive across months.',
     GROSS_MARGIN AS ORDER_ITEMS.TOTAL_LINE_ITEM_REVENUE - SUPPLIES.TOTAL_SUPPLY_COST COMMENT = 'Line-item revenue less the cost of supplying what was sold, in cents.',
     GROSS_MARGIN_RATE AS DIV0(GROSS_MARGIN, ORDER_ITEMS.TOTAL_LINE_ITEM_REVENUE) WITH SYNONYMS ('margin rate', 'margin percentage') COMMENT = 'Gross margin as a share of line-item revenue.',

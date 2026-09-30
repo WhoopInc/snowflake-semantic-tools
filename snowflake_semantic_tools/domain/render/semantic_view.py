@@ -1,7 +1,6 @@
 """Pure `render(view) -> str` for `CREATE SEMANTIC VIEW`.
 
-THE CLAUSE ORDER IS THE CONTRACT, and it is taken from the golden rather than from
-the renderer that review finding 1.1 was raised against:
+THE CLAUSE ORDER IS THE CONTRACT, and it is Snowflake's:
 
     CREATE [OR REPLACE] SEMANTIC VIEW <fqn>
       TABLES (...)
@@ -18,14 +17,11 @@ the renderer that review finding 1.1 was raised against:
       WITH TAG (...)
       COPY GRANTS
 
-WHAT IS DELIBERATELY ABSENT, AND WHY (review finding 1.1). The prior renderer
-emitted `FILTERS (...)`, `VERIFIED QUERIES (...)` and `CUSTOM INSTRUCTIONS (...)`
-as clause heads. None appears in any grammar, and the golden -- which carries
-`VERIFIED AGAINST SNOWFLAKE` -- renders all three differently: filters fold into
-`DIMENSIONS` with `LABELS = (FILTER)`, verified queries become
-`AI_VERIFIED_QUERIES`, and custom instructions become `AI_SQL_GENERATION` and
-`AI_QUESTION_CATEGORIZATION` after `COMMENT`. This module follows the golden. The
-finding is settled by execution against Snowflake, not by this docstring.
+WHAT IS DELIBERATELY ABSENT. `FILTERS (...)`, `VERIFIED QUERIES (...)` and
+`CUSTOM INSTRUCTIONS (...)` appear in no grammar: filters fold into `DIMENSIONS`
+with `LABELS = (FILTER)`, verified queries become `AI_VERIFIED_QUERIES`, and
+custom instructions become `AI_SQL_GENERATION` and `AI_QUESTION_CATEGORIZATION`
+after `COMMENT`. The goldens, each created in Snowflake, hold this shape.
 
 ORDERING. `TABLES` renders in DECLARATION order, because that is the order the
 author wrote and the golden preserves it. Every other member list renders SORTED
@@ -36,7 +32,18 @@ re-render byte-identical when an unrelated column is added.
 
 from __future__ import annotations
 
-from ..model.semantic_view import Column, ColumnKind, Metric, Relationship, SemanticView, Table, Variable, VerifiedQuery
+from ..model.semantic_view import (
+    Column,
+    ColumnKind,
+    Metric,
+    Relationship,
+    SemanticView,
+    SortKey,
+    Table,
+    Variable,
+    VerifiedQuery,
+    Window,
+)
 
 CLAUSE_INDENT = "  "
 MEMBER_INDENT = "    "
@@ -117,13 +124,42 @@ def render_column(col: Column) -> str:
     return out
 
 
+def render_sort_key(key: SortKey) -> str:
+    """`<expr> [ASC | DESC] [NULLS FIRST | NULLS LAST]`, with only what was authored."""
+    out = key.expr
+    if key.descending is not None:
+        out += " DESC" if key.descending else " ASC"
+    if key.nulls_first is not None:
+        out += " NULLS FIRST" if key.nulls_first else " NULLS LAST"
+    return out
+
+
+def render_window(window: Window) -> str:
+    """`OVER ([PARTITION BY [EXCLUDING] ...] [ORDER BY ...] [<frame>])`."""
+    parts: list[str] = []
+    if window.partition_excluding:
+        parts.append(f"PARTITION BY EXCLUDING {', '.join(window.partition_excluding)}")
+    elif window.partition_by:
+        parts.append(f"PARTITION BY {', '.join(window.partition_by)}")
+    if window.order_by:
+        parts.append(f"ORDER BY {', '.join(render_sort_key(key) for key in window.order_by)}")
+    if window.frame:
+        parts.append(window.frame)
+    return f"OVER ({' '.join(parts)})"
+
+
 def render_metric(metric: Metric) -> str:
     prefix = "PRIVATE " if metric.access_modifier == "private_access" else ""
     out = prefix + metric.qualified_name
+    if metric.window is not None:
+        # Snowflake's grammar for a window function metric has no USING or
+        # NON ADDITIVE BY; the loader refuses a metric that sets either.
+        out += f" AS {metric.expr} {render_window(metric.window)}"
+        return out + _synonyms(metric.synonyms) + _comment(metric.comment)
     if metric.using_relationships:
         out += f" USING ({', '.join(metric.using_relationships)})"
     if metric.non_additive_by:
-        out += f" NON ADDITIVE BY ({', '.join(metric.non_additive_by)})"
+        out += f" NON ADDITIVE BY ({', '.join(render_sort_key(key) for key in metric.non_additive_by)})"
     out += f" AS {metric.expr}"
     out += _synonyms(metric.synonyms)
     out += _comment(metric.comment)

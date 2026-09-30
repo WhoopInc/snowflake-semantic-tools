@@ -173,7 +173,10 @@ def test_commands_load_like_a_desktop_command_repository(tmp_path: Path) -> None
         "review",
         "sql/check",
     ]
-    found = [(item.subject, item.code, item.context.get("field") or item.context.get("detail")) for item in catalog.diagnostics]
+    found = [
+        (item.subject, item.code, item.context.get("field") or item.context.get("detail"))
+        for item in catalog.diagnostics
+    ]
     assert found == [
         ("command:bad/binary", "SST-VAL859", "is not UTF-8"),
         ("command:bad/listy", "SST-VAL859", "frontmatter is a list, not a mapping"),
@@ -183,7 +186,11 @@ def test_commands_load_like_a_desktop_command_repository(tmp_path: Path) -> None
         ("command:bad/types", "SST-VAL859", "'hidden' must be true or false"),
         ("command:bad/types", "SST-VAL859", "'allowed-tools' must be a string or a list of strings"),
         ("command:bad/unclosed", "SST-VAL859", "frontmatter opens with --- but never closes"),
-        ("command:bad/yaml", "SST-VAL859", "frontmatter is not valid YAML: expected ',' or ']', but got '<stream end>'"),
+        (
+            "command:bad/yaml",
+            "SST-VAL859",
+            "frontmatter is not valid YAML: expected ',' or ']', but got '<stream end>'",
+        ),
     ]
     profile = catalog.profiles[0]
     assert (profile.commands, profile.plugins) == (("review", "sql/check"), ("kit",))

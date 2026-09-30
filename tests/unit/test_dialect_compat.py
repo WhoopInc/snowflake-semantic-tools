@@ -5,7 +5,8 @@ production content. Assertion numbers follow the compatibility suite contract:
 converted files parse with no errors (1) and render the committed DDL (2); the
 legacy globals are rejected with their specific codes and render nothing (3, 6);
 the codemod is idempotent (4); an indented root key still yields its
-relationships (5); and the deprecated relationship shape parses with a warning (7).
+relationships (5); and the 0.3 key spellings, which the codemod leaves alone, are
+errors naming the 1.0 keys (7).
 """
 
 from __future__ import annotations
@@ -41,6 +42,26 @@ def converted_copy(tmp_path: Path) -> Path:
     return project
 
 
+def rename_0_3_keys(project: Path) -> None:
+    """The hand edit SST-PRS020 asks for after the codemod: the 1.0 key names."""
+    models = project / "semantic_models"
+    instructions = models / "custom_instructions" / "custom_instructions.yml"
+    text = instructions.read_text(encoding="utf-8")
+    text = text.replace("    sql_generation:", "    ai_sql_generation:")
+    instructions.write_text(text.replace("    question_categorization:", "    ai_question_categorization:"), "utf-8")
+    relationships = models / "relationships" / "relationships.yml"
+    relationships.write_text(
+        relationships.read_text(encoding="utf-8").replace(
+            "    relationship_columns:\n"
+            "      - left_column: \"{{ ref('orders', 'customer_id') }}\"\n"
+            "        right_column: \"{{ ref('customers', 'customer_id') }}\"\n",
+            "    relationship_conditions:\n"
+            "      - \"{{ ref('orders', 'customer_id') }} = {{ ref('customers', 'customer_id') }}\"\n",
+        ),
+        encoding="utf-8",
+    )
+
+
 def test_legacy_globals_are_rejected_with_their_codes_and_render_nothing() -> None:
     exit_code, payload = invoke("compile", "--project-dir", str(CORPUS), "--manifest", str(MANIFEST))
     assert exit_code == 1
@@ -49,7 +70,7 @@ def test_legacy_globals_are_rejected_with_their_codes_and_render_nothing() -> No
             ("SST-REF034", "error"): 10,
             ("SST-REF035", "error"): 7,
             ("SST-VAL405", "error"): 1,
-            ("SST-PRS020", "warning"): 3,
+            ("SST-PRS020", "error"): 3,
         }
     )
 
@@ -74,11 +95,22 @@ def test_codemod_converts_idempotently_and_the_result_renders_the_committed_ddl(
     again, report = invoke("migrate", "refs", "--project-dir", str(project))
     assert again == 0 and report["data"]["files"] == []  # type: ignore[index]
 
+    # The codemod rewrites references, not keys: the 0.3 spellings remain, and
+    # each is an error naming its 1.0 key.
+    exit_code, payload = invoke("compile", "--project-dir", str(project), "--manifest", str(MANIFEST))
+    assert exit_code == 1
+    assert codes(payload) == Counter({("SST-PRS020", "error"): 3})
+    renames = {(item["params"]["field"], item["params"]["expected"]) for item in payload["diagnostics"]}  # type: ignore[index]
+    assert renames == {
+        ("sql_generation", "ai_sql_generation"),
+        ("question_categorization", "ai_question_categorization"),
+        ("relationship_columns", "relationship_conditions"),
+    }
+
+    rename_0_3_keys(project)
     exit_code, payload = invoke("compile", "--project-dir", str(project), "--manifest", str(MANIFEST))
     assert exit_code == 0, payload
-    assert codes(payload) == Counter({("SST-PRS020", "warning"): 3})
-    fields = {item["params"]["field"] for item in payload["diagnostics"]}  # type: ignore[index]
-    assert fields == {"sql_generation", "question_categorization", "relationship_columns"}
+    assert codes(payload) == Counter()
     rendered = tmp_path / "ddl"
     CliRunner().invoke(
         cli, ["compile", "--project-dir", str(project), "--manifest", str(MANIFEST), "--emit-ddl", str(rendered)]
@@ -91,16 +123,17 @@ def test_codemod_converts_idempotently_and_the_result_renders_the_committed_ddl(
     assert "AI_SQL_GENERATION 'Monetary columns" in ddl and "AI_QUESTION_CATEGORIZATION 'Decline" in ddl
 
 
-def test_both_spellings_on_one_entry_are_an_error(tmp_path: Path) -> None:
+def test_a_0_3_spelling_beside_its_1_0_key_is_still_an_error(tmp_path: Path) -> None:
     project = converted_copy(tmp_path)
     CliRunner().invoke(cli, ["migrate", "refs", "--project-dir", str(project), "--write"])
+    rename_0_3_keys(project)
     instructions = project / "semantic_models" / "custom_instructions" / "custom_instructions.yml"
     instructions.write_text(
         instructions.read_text(encoding="utf-8").replace(
-            "    sql_generation: |-", "    ai_sql_generation: Newer text.\n    sql_generation: |-"
+            "    ai_sql_generation: |-", "    sql_generation: Older text.\n    ai_sql_generation: |-"
         ),
         encoding="utf-8",
     )
     exit_code, payload = invoke("compile", "--project-dir", str(project), "--manifest", str(MANIFEST))
     assert exit_code == 1
-    assert codes(payload)[("SST-PRS121", "error")] == 1
+    assert codes(payload) == Counter({("SST-PRS020", "error"): 1})

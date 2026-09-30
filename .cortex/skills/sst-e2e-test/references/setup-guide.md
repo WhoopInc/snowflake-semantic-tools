@@ -2,71 +2,51 @@
 
 ## Prerequisites
 
-- Python 3.11+
-- Git access to both repos
-- A valid Snowflake connection configured in `~/.dbt/profiles.yml`
-- pip (for editable install)
+- Python 3.11–3.13 and Poetry
+- The SST repo, with dependencies installed by `poetry install` from its root
+- Nothing else for the offline phases: no Snowflake account, credentials, or dbt
+- For the connected phase only: a dbt + SST project whose `profiles.yml` has a target pointing at a scratch schema, dbt on PATH (or `poetry install --extras dbt`), and a role that can create what the plan creates
 
 ## Locating the SST Repo
 
-The skill assumes you are running from within the `snowflake-semantic-tools` repository. The repo root is identified by the presence of `pyproject.toml` containing `snowflake-semantic-tools`.
+The skill runs from the root of the `snowflake-semantic-tools` repository: the directory with `pyproject.toml` and `snowflake_semantic_tools/`. `git rev-parse --show-toplevel` finds it.
 
 ## Installing SST (Development Mode)
 
-Always use `pip install -e .` from the SST repo root. Do NOT use `poetry install` — that installs into Poetry's own virtualenv, which may not be the active environment.
-
 ```bash
 cd <SST_REPO>
-pip install -e .
+poetry install
+poetry run sst --version   # must print the version in snowflake_semantic_tools/_version.py
 ```
 
-Verify:
-```bash
-sst --version
-```
+If the user keeps SST in another environment (a conda env or virtualenv with this checkout installed in editable mode and the dev dependencies from `pyproject.toml`), ask which one and run the same commands there without `poetry run`. Do not assume an environment name or installation path.
 
-If the user has a conda environment, virtualenv, or other Python environment manager, ask them to activate it first. Do not assume any specific environment name or conda installation path.
-
-## sst-jaffle-shop Test Project
+## The Reference Project
 
 | Property | Value |
 |----------|-------|
-| GitHub   | https://github.com/WhoopInc/sst-jaffle-shop |
-| Branch   | `main` |
-| Location | Sibling directory to SST repo, or cloned during setup |
-| Models   | 15 dbt models (7 staging + 8 marts) |
+| Path | `tests/fixtures/reference_project/` |
+| dbt manifest | `tests/fixtures/reference_project_manifest.json` (dbt 1.11, manifest schema v12) |
+| Artifacts | 14, of all seven types |
+| Goldens | `tests/golden/expected/{ddl,agent,tool,eval,skill,plugin,profile}/` |
+| Targets | `dev` (default, the golden target), `prod`, `ci`: no credentials, offline only; `verify`: reads `SST_VERIFY_*` |
 
-The skill checks for the test project as a sibling directory (`../sst-jaffle-shop`). If not found, it clones from GitHub.
-
-## dbt Target Configuration
-
-The dbt target controls which Snowflake database/schema SST writes to. Targets are defined in `~/.dbt/profiles.yml` under the `sst_jaffle_shop` profile.
-
-Common targets:
-- `dev` — personal development schema (for example, `SCRATCH.<YOUR_SCHEMA>`)
-- `ci` — dedicated CI/CD schema (if configured)
-
-The E2E skill will ask which target to use at runtime. Default: `dev`.
+It is vendored in this repository, so there is nothing to clone.
 
 ## Known Gotchas
 
-1. **sst_config.yml** — The jaffle-shop project uses `sst_config.yml`. It should contain:
-   ```yaml
-   project:
-     semantic_models_dir: "snowflake_semantic_models"
-     dbt_models_dir: "models"
-   ```
+1. **`profiles.yml` lives in the project root.** SST never reads `~/.dbt/profiles.yml`. Never print a `profiles.yml` or the environment variables that hold credentials; `sst debug` shows the resolved target without secrets.
 
-2. **Template syntax** — The project uses both `{{ ref('model_name') }}` (recommended) and legacy `{{ table() }}` / `{{ column() }}` syntax (backward compatibility test).
+2. **Strict fixture.** The fixture sets `validation.strict: true`, and its one warning (`SST-VAL528`) is deliberate, so offline runs pass `--no-strict`.
 
-3. **Never read profiles.yml** — `~/.dbt/profiles.yml` contains secrets. Never cat, read, or log it. SST reads it internally via dbt's profile parser.
+3. **Syntax checks connect.** `validation.snowflake_syntax_check` is true in the fixture and is the default elsewhere; pass `--no-snowflake-syntax-check` to stay offline.
 
-4. **Package manager** — SST uses Poetry for dependency management. Never use `uv` or create `uv.lock`.
+4. **`--golden-dir` is resolved against `--project-dir`** unless it is absolute. From the repo root, pass `"$PWD/tests/golden/expected/ddl"`.
 
-5. **Editable install** — If `sst --version` shows an unexpected version, re-run `pip install -e .` from the SST repo root to ensure the development branch is active.
+5. **Compile before plan.** `plan`, `apply`, and the smoke and eval suites read the manifest `sst compile` wrote for the same `--target`. `SST-MAN001` or `compiled SST manifest is stale` means compile again with that target.
 
-6. **Error fixtures** — The project contains `_error_examples.yml` files with INTENTIONAL errors. These exercise SST's validation error codes. They are expected to fail validation — this is by design. When checking validation output, errors from these files are EXPECTED and should be ignored. Only errors from non-error files indicate real problems.
+6. **Build output.** `sst compile` writes `target/sst/` inside the project; in the fixture, git ignores it. Never run `sst migrate refs --write` on `tests/fixtures/`; use a copy.
 
-7. **Defer config** — `sst_config.yml` has `defer.target: prod`. During E2E testing against dev, SST will use the `--database` flag or the manifest to resolve table locations. This is normal.
+7. **The `verify` target** needs `SST_VERIFY_ACCOUNT`, `SST_VERIFY_USER`, `SST_VERIFY_ROLE`, `SST_VERIFY_SCHEMA`, and `SST_VERIFY_WAREHOUSE`; the database and authenticator have defaults in the fixture's `profiles.yml`. The fixture documents it for building its dbt models in a real account (`dbt deps`, then `dbt build --target verify`). SST itself cannot compile the fixture for `verify`: the tool `relations:` maps cover only `dev` and `prod`, so compile stops with `SST-REF018`, and `--partial` refuses (`SST-PLN033`).
 
-8. **Snowflake syntax check** — The config has `snowflake_syntax_check: true`. For offline-only validation, use `--no-snowflake-check`. For full E2E, let it connect.
+8. **Package manager.** SST uses Poetry. Never use `uv`.

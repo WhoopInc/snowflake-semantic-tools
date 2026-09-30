@@ -7,9 +7,9 @@ and nothing else is read:
 
 - an unknown key is a warning (`SST-CFG003`), or an error when it is a
   misspelled top-level block (`SST-CFG007`);
-- a removed key is an error that says what replaced it;
-- an *inert* key is accepted so a 0.3 file still loads, and has no effect
-  (`SST-CFG044`).
+- an unsupported key is reserved for a later release and is an error until SST
+  reads it (`SST-CFG044`);
+- a removed key is an error that says what replaced it.
 
 Keys that start with `+` set a default that nested folder routes and
 individual artifacts inherit. In a key path, `<route>` stands for a folder
@@ -41,31 +41,6 @@ What blocks a build.
 |---|---|---|---|
 | `validation.strict` | boolean | `false` | Promote every warning to an error. |
 | `validation.snowflake_syntax_check` | boolean | `true` | Compile expressions against Snowflake during validate and plan. |
-| `validation.exclude_dirs` | list |  | Directories to skip during validation. Accepted for compatibility; has no effect. |
-
-## enrichment
-
-Settings for the 0.3 enrichment command, which 1.0 does not ship.
-
-Accepted for compatibility; has no effect.
-
-## generation
-
-Settings for the 0.3 generation path; 1.0 renders DDL directly.
-
-Accepted for compatibility; has no effect.
-
-## dbt
-
-How SST invokes dbt.
-
-Accepted for compatibility; has no effect.
-
-## defer
-
-dbt deferral settings from 0.3.
-
-Accepted for compatibility; has no effect.
 
 ## vars
 
@@ -107,7 +82,6 @@ Defaults for tool backing objects.
 | `tools.+target_lag` | string |  | Target lag for defined search services. |
 | `tools.+embedding_model` | string |  | Embedding model for defined search services. |
 | `tools.+execute_as` | enum: `caller`, `owner` | `caller` | Rights a generic tool runs with. |
-| `tools.<route>` | block |  | Per-group override. Accepted for compatibility; has no effect. |
 
 ## semantic_views
 
@@ -118,8 +92,6 @@ Defaults for semantic views, overridable per folder.
 | `semantic_views.+database` | string | the target database | Database for semantic views. |
 | `semantic_views.+schema` | string | the target schema | Schema for semantic views. |
 | `semantic_views.+enabled` | boolean | `true` | Default for views that do not set `enabled` themselves. |
-| `semantic_views.+tags` | list |  | Default view tags. Accepted for compatibility; has no effect. |
-| `semantic_views.+max_staleness` | integer |  | Default view staleness. Accepted for compatibility; has no effect. |
 | `semantic_views.<route>` | block |  | Folder route: overrides for views under that directory. |
 
 ## agents
@@ -139,9 +111,6 @@ Defaults for Cortex Agents.
 | `agents.+analytical_search` | boolean |  | Enable analytical search. |
 | `agents.+alias` | string |  | Version alias assigned after publication. |
 | `agents.+enabled` | boolean | `true` | Default for agents that do not set `enabled` themselves. |
-| `agents.+secure` | boolean |  | Default agent security flag. Accepted for compatibility; has no effect. |
-| `agents.+tags` | list |  | Default agent tags. Accepted for compatibility; has no effect. |
-| `agents.<route>` | block |  | Folder route. Accepted for compatibility; has no effect. |
 
 ## evals
 
@@ -201,13 +170,6 @@ Stages apply uploads through.
 | `apply.agent_spec_stage.stage` | string | `AGENT_SPECS` | Stage name. |
 | `apply.eval_config_stage` | block |  | Stage for eval run configs, in each agent's schema. |
 | `apply.eval_config_stage.stage` | string | `EVAL_CONFIGS` | Stage name. |
-| `apply.fail_fast` | boolean |  | Use the --fail-fast flag instead. Accepted for compatibility; has no effect. |
-
-## deploy
-
-Deprecated spelling of `apply:`.
-
-Deprecated: use `apply`.
 
 ## snowflake
 
@@ -216,9 +178,24 @@ Allowlists for Snowflake surfaces the renderer accepts.
 | Key | Type | Default | Description |
 |---|---|---|---|
 | `snowflake.orchestration_models` | list | `[auto]` | Orchestration models agents may name. |
-| `snowflake.tool_types` | list |  | Extra agent tool types. Accepted for compatibility; has no effect. |
-| `snowflake.allow_unknown_keys` | boolean |  | Accept unknown agent spec keys. Accepted for compatibility; has no effect. |
-| `snowflake.profile` | block |  | Agent profile allowlists. Accepted for compatibility; has no effect. |
+
+## Unsupported keys
+
+These keys are reserved for a later release. Setting one is an error until SST
+reads it, so a setting cannot look as though it takes effect when it does not.
+
+| Key | Type | Description |
+|---|---|---|
+| `dbt` | block | How SST invokes dbt. |
+| `tools.<route>` | block | Per-group override. |
+| `semantic_views.+tags` | list | Default view tags. |
+| `semantic_views.+max_staleness` | integer | Default view staleness. |
+| `agents.+secure` | boolean | Default agent security flag. |
+| `agents.+tags` | list | Default agent tags. |
+| `agents.<route>` | block | Folder route. |
+| `snowflake.tool_types` | list | Extra agent tool types. |
+| `snowflake.allow_unknown_keys` | boolean | Accept unknown agent spec keys. |
+| `snowflake.profile` | block | Agent profile allowlists. |
 
 ## Removed keys
 
@@ -228,14 +205,13 @@ as though it still does.
 
 | Key | Why it was removed | Code |
 |---|---|---|
+| `validation.exclude_dirs` | every file under the configured directories is read; set enabled: false on a view to skip it | [`SST-CFG043`](error-codes.md#sst-cfg043) |
 | `validation.expression_rules` | the expression rules it disabled are no longer optional | [`SST-CFG043`](error-codes.md#sst-cfg043) |
 | `validation.multipath_check` | multi-path relationship analysis is always on | [`SST-CFG043`](error-codes.md#sst-cfg043) |
 | `validation.smoke_query` | smoke probes run only under sst test --suite smoke | [`SST-CFG043`](error-codes.md#sst-cfg043) |
-| `enrichment.infer_is_enum` | enum inference is not configurable | [`SST-CFG043`](error-codes.md#sst-cfg043) |
-| `generation.publish_via` | DDL is the only publish path | [`SST-CFG043`](error-codes.md#sst-cfg043) |
-| `generation.filters_to_instructions` | filters always render as native clauses | [`SST-CFG043`](error-codes.md#sst-cfg043) |
-| `generation.use_create_or_alter` | the renderer chooses the statement form | [`SST-CFG043`](error-codes.md#sst-cfg043) |
-| `generation.emit_relationship_type` | relationship_type is never emitted | [`SST-CFG043`](error-codes.md#sst-cfg043) |
+| `enrichment` | SST 1.0 has no enrichment command | [`SST-CFG043`](error-codes.md#sst-cfg043) |
+| `generation` | SST 1.0 renders DDL directly | [`SST-CFG043`](error-codes.md#sst-cfg043) |
+| `defer` | SST reads the manifest dbt resolves; configure deferral in dbt | [`SST-CFG043`](error-codes.md#sst-cfg043) |
 | `vars.sha_version` | SST supplies sha_version from the commit being published | [`SST-CFG040`](error-codes.md#sst-cfg040) |
 | `tools.+enabled` | omit the tools instead | [`SST-CFG043`](error-codes.md#sst-cfg043) |
 | `semantic_views.+meta` | put metadata on the view itself | [`SST-CFG043`](error-codes.md#sst-cfg043) |
@@ -251,3 +227,5 @@ as though it still does.
 | `skills.<route>` | the unprefixed keys of skills: are its channel blocks | [`SST-CFG042`](error-codes.md#sst-cfg042) |
 | `skills.catalog.+registry_table` | SST state records every published version | [`SST-CFG043`](error-codes.md#sst-cfg043) |
 | `skills.catalog.+prune_deleted` | every version is built from a complete bundle | [`SST-CFG043`](error-codes.md#sst-cfg043) |
+| `apply.fail_fast` | pass --fail-fast to sst apply | [`SST-CFG043`](error-codes.md#sst-cfg043) |
+| `deploy` | renamed to apply: | [`SST-CFG043`](error-codes.md#sst-cfg043) |

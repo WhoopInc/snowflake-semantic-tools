@@ -47,6 +47,9 @@ def classify_error(message: str, *, sqlstate: str | None = None) -> ClassifiedEr
         return ClassifiedError("SST-SNO004", message, ErrorKind.PRIVILEGE, False, sqlstate)
     if state in {"02000", "42S02"} or "DOES NOT EXIST" in upper:
         return ClassifiedError("SST-SNO003", message, ErrorKind.NOT_FOUND, False, sqlstate)
+    # Checked before the syntax class, which shares the 42 prefix: a name conflict is not a typo.
+    if state == "42710" or "ALREADY EXISTS" in upper:
+        return ClassifiedError("SST-SNO002", message, ErrorKind.UNKNOWN, False, sqlstate)
     if state.startswith("42") or "SYNTAX ERROR" in upper:
         return ClassifiedError("SST-SNO009", message, ErrorKind.SYNTAX, False, sqlstate)
     if state.startswith("08") or state in {"57014", "57P01"} or "TIMEOUT" in upper:

@@ -224,12 +224,12 @@ def _entry_path(entry: BundleEntry) -> str:
 
 
 def flattened_name(path: str) -> str:
-    """`D090`: join the components below the skill folder with a double underscore."""
+    """Join the components below the skill folder with a double underscore."""
     return "__".join(path.split("/"))
 
 
 def scan_references(text: str, file: str) -> tuple[PathReference, ...]:
-    """Every candidate path in one file, in source order (`D179`'s scan forms)."""
+    """Every candidate path in one file, in source order."""
     found: list[PathReference] = []
     claimed: list[tuple[int, int]] = []
     for pattern, form in ((_LINK, "link"), (_DEFINITION, "definition")):
@@ -305,7 +305,7 @@ def _resolve(reference: PathReference, paths: frozenset[str]) -> str | None:
 
 
 def _is_repo_anchored(reference: PathReference, skill_name: str) -> bool:
-    """`D147`: a path that walks down a `skills/` tree to this skill from the repository root."""
+    """A path that walks down a `skills/` tree to this skill from the repository root."""
     parts = posixpath.normpath(reference.text).split("/")
     if reference.text.startswith(("./", "../")) or "skills" not in parts:
         return False
@@ -522,7 +522,7 @@ def _rewrite(text: str, resolutions: list[_Resolution]) -> str:
 
 
 def _recheck(skill: Skill, flattened: tuple[SkillFile, ...]) -> tuple[Diagnostic, ...]:
-    """`K104`: the rewritten Markdown must resolve against the flattened tree."""
+    """SST-VAL810: the rewritten Markdown must resolve against the flattened tree."""
     paths = frozenset(item.path for item in flattened)
     authored_paths = frozenset(item.path for item in skill.files)
     authored = {flattened_name(item.path): item for item in skill.files}
@@ -552,7 +552,7 @@ def _recheck(skill: Skill, flattened: tuple[SkillFile, ...]) -> tuple[Diagnostic
 
 
 def _script_diagnostics(skill: Skill) -> tuple[Diagnostic, ...]:
-    """`K109` and the flattening hazard, both for scripts, which are run and never rewritten.
+    """SST-VAL815 and the flattening hazard, both for scripts, which are run and never rewritten.
 
     A literal credential is reported in any text file. An absolute or home-directory
     path is reported only in a script: in Markdown it is an instruction to the agent

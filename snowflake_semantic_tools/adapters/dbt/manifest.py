@@ -13,6 +13,11 @@ from ..project import ProjectError
 
 SUPPORTED_SCHEMA = "https://schemas.getdbt.com/dbt/manifest/v12.json"
 
+# The `meta.sst` keys SST reads. `database` and `schema` are read only to be
+# refused (SST-DBT030); anything else is reported where a view uses the model.
+MODEL_META_KEYS = frozenset(("primary_key", "unique_keys", "database", "schema"))
+COLUMN_META_KEYS = frozenset(("column_type", "data_type", "synonyms", "sample_values", "is_enum", "exclude"))
+
 
 def _mapping(value: object, *, path: str) -> Mapping[str, Any]:
     if not isinstance(value, dict):
@@ -37,44 +42,30 @@ def _string_value(value: object) -> str:
 def _primary_key(value: object, *, path: str) -> tuple[tuple[str, ...], bool]:
     """The key columns, and whether they were written in the 0.3 string form.
 
-    0.3 read `primary_key` as a list, a single column name, or a comma-separated
-    string, and treated an empty string as absent. 1.0 reads the same forms for
-    one release so a 0.3 project still loads; the string forms are reported
-    where a view uses the model.
+    A 0.3 string (`id`, or `a, b`) is not read: guessing its columns would
+    decide which joins render. It is reported where a view uses the model.
     """
     if isinstance(value, str):
-        return _split(value), bool(value.strip())
+        return (), bool(value.strip())
     return _strings(value, path=path), False
-
-
-def _split(value: str) -> tuple[str, ...]:
-    return tuple(part.strip() for part in value.split(",") if part.strip())
 
 
 def _unique_keys(value: object, *, path: str) -> tuple[tuple[tuple[str, ...], ...], bool]:
     """The unique keys, and whether they were written in a 0.3 form.
 
-    1.0 writes a list of column lists. 0.3 also read a comma-separated string or a
-    flat list of names as ONE composite key, and a bare name inside a nested list
-    as a one-column key; those forms are read for one release, like `primary_key`.
+    1.0 reads a list of column lists. The 0.3 forms -- a comma-separated string,
+    a flat list of names, or a bare name inside the list -- are not read, and are
+    reported like `primary_key`.
     """
     if value is None:
         return (), False
     if isinstance(value, str):
-        return ((_split(value),) if _split(value) else ()), bool(value.strip())
+        return (), bool(value.strip())
     if not isinstance(value, list):
         raise ProjectError(f"dbt manifest {path} must be a list of column lists")
-    if value and not any(isinstance(key, list) for key in value):
-        return (tuple(_string_value(item) for item in value),), True
-    keys: list[tuple[str, ...]] = []
-    legacy = False
-    for index, key in enumerate(value):
-        if isinstance(key, list):
-            keys.append(_strings(key, path=f"{path}[{index}]"))
-        else:
-            keys.append((_string_value(key),))
-            legacy = True
-    return tuple(keys), legacy
+    if any(not isinstance(key, list) for key in value):
+        return (), True
+    return tuple(_strings(key, path=f"{path}[{index}]") for index, key in enumerate(value)), False
 
 
 def _sst_meta(value: object, *, path: str) -> Mapping[str, Any]:
@@ -96,8 +87,14 @@ def _column(name: str, value: object, *, node_path: str) -> DbtColumn:
     node = _mapping(value, path=path)
     meta = _sst_meta(node, path=path)
     description = str(node.get("description") or "").strip() or None
-    data_type = str(node.get("data_type") or meta.get("data_type") or "").strip() or None
+    native_type = str(node.get("data_type") or "").strip() or None
+    declared_type = str(meta.get("data_type") or "").strip() or None
+    data_type = native_type or declared_type
     column_type = str(meta.get("column_type") or "").strip() or None
+    # dbt's own data_type wins; a meta.sst.data_type that says otherwise is reported.
+    disagrees = (
+        native_type is not None and declared_type is not None and _type_key(native_type) != _type_key(declared_type)
+    )
     return DbtColumn(
         name=str(node.get("name") or name),
         description=description,
@@ -107,7 +104,13 @@ def _column(name: str, value: object, *, node_path: str) -> DbtColumn:
         sample_values=_strings(meta.get("sample_values"), path=f"{path}.meta.sst.sample_values"),
         is_enum=bool(meta.get("is_enum", False)),
         excluded=bool(meta.get("exclude", False)),
+        unknown_meta_keys=tuple(sorted(str(key) for key in meta if key not in COLUMN_META_KEYS)),
+        declared_data_type=declared_type if disagrees else None,
     )
+
+
+def _type_key(data_type: str) -> str:
+    return "".join(data_type.upper().split())
 
 
 def _relation_name(node: Mapping[str, Any], *, path: str) -> str:
@@ -166,6 +169,7 @@ def catalog_from_document(document: object) -> DbtCatalog:
                     for field, legacy in (("primary_key", legacy_primary_key), ("unique_keys", legacy_unique_keys))
                     if legacy
                 ),
+                unknown_meta_keys=tuple(sorted(str(key) for key in meta if key not in MODEL_META_KEYS)),
             )
         )
 

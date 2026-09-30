@@ -1,14 +1,7 @@
 ---
-# =============================================================================
-# models/marts/orders.yml
-# =============================================================================
-# THE BUSIEST MODEL IN THE FIXTURE. It is the ASOF join's right side, the
-# range join's probe, and the only model carrying three `sample_values` columns.
-#
-# THE CROSS-CUTTING REASONING -- the seam, the jaffle domain, the one-line
-# `description:` constraint and the `D213` data rule -- IS IN `../README.md`, not
-# repeated here. Read that first if this is the first model file you have opened.
-# =============================================================================
+# orders: one row per order, read by both jaffle_sales and jaffle_menu. It is
+# the left side of the joins to customers, locations and pricing_periods, and
+# the ASOF target of order_items.
 
 version: 2
 
@@ -22,18 +15,9 @@ models:
       on_schema_change: fail
       meta:
         sst:
-          # THE GRAIN OF THIS MODEL, AND THE MODEL IS THE SINGLE SOURCE (`D231`).
-          # Declaring the primary key is the cheapest fan-out protection
-          # available. Omitting it means Snowflake GUESSES cardinality from the
-          # data (`V012`, `R011`). One-to-one is inferred only when both sides
-          # declare the join column.
-          #
-          # IT IS DECLARED ONCE HERE AND REACHES EVERY VIEW THAT READS THIS
-          # MODEL. `orders` is in BOTH `jaffle_sales` and `jaffle_menu`, and
-          # under the earlier `table_config` placement this same key had to be
-          # written twice -- once per view -- because a per-view key cannot
-          # express a property of the model's grain. That duplication is what
-          # settled `D231`.
+          # Declared once on the model, so every view that reads orders renders
+          # PRIMARY KEY (ORDER_ID). A model a view reads with no key warns
+          # (SST-VAL312).
           primary_key:
             - order_id
     columns:
@@ -53,8 +37,7 @@ models:
           - unique
           - not_null
 
-      # THE EQUALITY JOIN KEY. `orders_to_customers` joins on this, and R006
-      # requires both sides to exist in the view's TABLES clause.
+      # The join key of orders_to_customers.
       - name: customer_id
         data_type: VARCHAR
         description: |-
@@ -70,9 +53,7 @@ models:
         data_tests:
           - not_null
           - relationships:
-              # NESTED UNDER `arguments:`. dbt 1.11 deprecates top-level arguments
-              # to a generic test; MEASURED 2026-09-24, six occurrences across four
-              # model YAMLs, silent once nested.
+              # dbt 1.11 expects generic-test arguments under arguments:.
               arguments:
                 to: ref('customers')
                 field: customer_id
@@ -96,10 +77,9 @@ models:
                 to: ref('locations')
                 field: location_id
 
-      # THE ASOF PROBE AND THE RANGE PROBE ARE THE SAME COLUMN. `order_items_to_orders`
-      # uses it as the `>=` time probe; `orders_to_pricing_periods` uses it as the
-      # BETWEEN subject. One column reaching two join kinds is deliberate -- it proves
-      # the kind is inferred from the CONDITION SHAPE and not from the column.
+      # One column in two join kinds: the ASOF column of order_items_to_orders
+      # and the BETWEEN subject of orders_to_pricing_periods. The condition,
+      # not the column, decides the kind.
       - name: ordered_at
         data_type: TIMESTAMP_NTZ
         description: |-
@@ -181,15 +161,9 @@ models:
                 - 1188
 
     data_tests:
-      # THE DECLARED GRAIN, ASSERTED. The single most useful dbt test for
-      # semantic-layer correctness: a model that silently becomes one row per
-      # order per line item breaks every metric arithmetically while every ref
-      # still resolves and every SQL expression still compiles.
+      # Asserts the declared grain. A model that fans out to one row per line
+      # item breaks every metric while every ref still resolves.
       - dbt_utils.unique_combination_of_columns:
           arguments:
             combination_of_columns:
               - order_id
-
-  # ========================================================================
-  # order_items -- the line-item grain. The ASOF SOURCE.
-  # ========================================================================

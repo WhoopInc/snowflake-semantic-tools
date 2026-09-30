@@ -1,9 +1,9 @@
 """Golden test: the renderer's bytes against DDL verified against Snowflake.
 
-THE SUCCESS CONDITION OF THE FIRST VERTICAL SLICE -- one pytest run that fails when
-the renderer and the golden disagree. It is a byte comparison, deliberately: the
-whole reason `domain/` may not read a clock or the environment is so that this
-comparison is stable, and a looser assertion would spend that property for nothing.
+One pytest run fails when the renderer and the golden disagree. It is a byte
+comparison, deliberately: the whole reason `domain/` may not read a clock or the
+environment is so that this comparison is stable, and a looser assertion would
+spend that property for nothing.
 
 THE COMPARISON CONTRACT. A golden is a leading block of `--` provenance comments,
 then a blank line, then DDL to end of file. The golden proper is everything from the
@@ -131,7 +131,7 @@ def test_golden_comparison_detects_a_changed_model(views: dict[str, SemanticView
 
 
 def test_golden_has_no_ungrammatical_clause_heads() -> None:
-    """Review finding 1.1, asserted against the goldens rather than argued.
+    """The clause heads no grammar has, asserted against the goldens rather than argued.
 
     `FILTERS (`, `VERIFIED QUERIES (` and `CUSTOM INSTRUCTIONS (` appear in no
     grammar. The goldens fold filters into DIMENSIONS as LABELS = (FILTER) and use

@@ -9,7 +9,9 @@ from pathlib import Path
 
 from click.testing import CliRunner
 
+from snowflake_semantic_tools import __version__
 from snowflake_semantic_tools.cli.main import cli
+from snowflake_semantic_tools.domain.state.model import SST_VERSION
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 FIXTURE = REPO_ROOT / "tests" / "fixtures" / "reference_project"
@@ -21,6 +23,13 @@ def test_sst_console_script_targets_the_one_point_zero_cli() -> None:
     scripts = project["tool"]["poetry"]["scripts"]
     assert scripts["sst"] == "snowflake_semantic_tools.cli.main:cli"
     assert scripts["snowflake-semantic-tools"] == "snowflake_semantic_tools.cli.main:cli"
+
+
+def test_one_version_string_feeds_the_package_the_cli_and_the_manifest() -> None:
+    project = tomllib.loads((REPO_ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+    assert project["tool"]["poetry"]["version"] == __version__
+    assert SST_VERSION == __version__
+    assert CliRunner().invoke(cli, ["--version"]).output == f"sst, version {__version__}\n"
 
 
 def test_compile_accepts_an_explicit_manifest_without_invoking_dbt() -> None:
@@ -290,20 +299,19 @@ def test_validate_json_emits_one_v2_envelope() -> None:
     envelope = json.loads(result.output)
     assert envelope["tool"] == "sst"
     assert envelope["schema_version"] == 2
-    assert envelope["sst_version"] == "1.0.0.dev0"
+    assert envelope["sst_version"] == __version__
     assert envelope["invocation"]["argv"][1] == "validate"
     assert envelope["invocation"]["project_dir"] == str(FIXTURE.resolve())
     assert envelope["invocation"]["config_file"] == str((FIXTURE / "sst_config.yml").resolve())
     assert envelope["invocation"]["started_at"]
     assert envelope["invocation"]["duration_s"] >= 0
     assert envelope["status"] == "ok"
-    # Seven infos are SST-CFG044, keys the fixture sets that 1.0 reads nowhere, and
-    # one is SST-VAL854: the fixture's profile registry is not Desktop's. The one
-    # warning is SST-VAL528; the plugin has a consumer now, the operator profile.
+    # One info is SST-VAL854: the fixture's profile registry is not Desktop's. The
+    # one warning is SST-VAL528; the plugin has a consumer now, the operator profile.
     assert envelope["summary"] == {
         "error": 0,
         "warning": 1,
-        "info": 12,
+        "info": 5,
         "promoted": 0,
         "suppressed_cascade": 0,
         "baselined": 0,

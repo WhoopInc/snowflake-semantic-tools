@@ -69,3 +69,26 @@ def test_planning_identifier_rule_bites() -> None:
     assert PLANNING_ID.search("(K202)")
     assert not PLANNING_ID.search("SST-VAL856 and SST-V090")
     assert not PLANNING_ID.search("version: VERSION$3 or SST_16D8F6686433")
+
+
+# Files published as content: their bytes are hashed into a bundle, so a golden
+# holds them as they are.
+PUBLISHED_CONTENT = ("skills/", "plugins/", "profiles/", "hooks/", "mcp-servers/", "commands/")
+# Code, the reference fixture, and the goldens, beyond the published pages.
+SOURCES = tuple(
+    path
+    for root in ("snowflake_semantic_tools", "tests/fixtures/reference_project", "tests/golden")
+    for path in sorted((REPO_ROOT / root).rglob("*"))
+    if path.is_file()
+    and path.suffix in {".py", ".yml", ".yaml", ".md", ".sql"}
+    and not any(part in {"target", "logs", "dbt_packages", "__pycache__"} for part in path.parts)
+    and not any(f"reference_project/{prefix}" in path.as_posix() for prefix in PUBLISHED_CONTENT)
+)
+# A planning identifier from any series of the design documents.
+ANY_PLANNING_ID = re.compile(r"(?<![\w$-])[A-Z]\d{3}(?![\w-])")
+
+
+@pytest.mark.parametrize("source", SOURCES, ids=lambda path: path.relative_to(REPO_ROOT).as_posix())
+def test_code_fixture_and_goldens_carry_no_planning_identifiers(source: Path) -> None:
+    hits = [line.strip() for line in source.read_text(encoding="utf-8").splitlines() if ANY_PLANNING_ID.search(line)]
+    assert not hits, f"{source.relative_to(REPO_ROOT)}: {hits}"

@@ -17,6 +17,7 @@ from typing import Any, Mapping, cast
 
 import click
 
+from .._version import __version__ as VERSION
 from ..adapters.clock import SystemClock
 from ..adapters.config import load_project_config
 from ..adapters.dbt.manifest import load_manifest_catalog
@@ -61,7 +62,7 @@ from ..app.tool_compile import CompileTools
 from ..app.validate import ValidateArtifacts
 from ..domain.model.dbt import DbtCatalog
 from ..domain.model.diagnostic import ERROR_REGISTRY, D, Diagnostic, DiagnosticBag, Origin, Severity
-from ..domain.model.identifier import Identifier, QualifiedName
+from ..domain.model.identifier import Identifier, QualifiedName, TargetIdentity
 from ..domain.model.lifecycle import (
     Action,
     ApplyOptions,
@@ -78,7 +79,6 @@ from ..domain.ports.snowflake import SnowflakePortError
 from ..domain.render.reference_docs import CommandDoc, OptionDoc, reference_pages
 from ..domain.state.model import Manifest, SavedPlan, State, canonical_json
 
-VERSION = "1.0.0.dev0"
 OK = 0
 ERROR = 1
 CHANGES = 2
@@ -205,6 +205,20 @@ def _source(project_dir: Path, target_name: str | None, manifest_path: Path | No
 
 def _target_dir(project_dir: Path) -> Path:
     return project_dir / "target" / "sst"
+
+
+def _compiled_manifest(project_dir: Path) -> Manifest:
+    """The manifest `sst compile` wrote; plan, apply, list, and the suites read it."""
+    path = _target_dir(project_dir) / "manifest.json"
+    manifest = ManifestFileStore(path).read()
+    if manifest is None:
+        diagnostic = D("SST-MAN001", path=str(path))
+        raise ProjectError(diagnostic.message, diagnostics=(diagnostic,))
+    return manifest
+
+
+def _target_label(target: TargetIdentity) -> str:
+    return "/".join(part for part in target.key if part)
 
 
 def _compile_result(
@@ -888,17 +902,21 @@ def _guarded(action: Callable[[], None], *, command: str, output: str) -> None:
     except click.UsageError:
         raise
     except SnowflakePortError as exc:
+        diagnostics = DiagnosticBag((exc.diagnostic,) if exc.diagnostic is not None else ())
         if output == "json":
             _emit_json(
                 _json_envelope(
                     command,
-                    DiagnosticBag(),
+                    diagnostics,
                     exit_code=CONNECTION,
                     status="error",
                     data={"error": str(exc)},
                 ),
                 CONNECTION,
             )
+        if diagnostics:
+            _render_diagnostics(diagnostics)
+            raise click.exceptions.Exit(CONNECTION) from exc
         raise click.ClickException(str(exc)) from exc
     except (ProjectError, ValueError, OSError, json.JSONDecodeError) as exc:
         diagnostics = DiagnosticBag(getattr(exc, "diagnostics", ()))
@@ -1102,10 +1120,7 @@ def _plan_runtime(
     # `compile --partial` wrote, so the two agree on the manifest id.
     split = partial_split(full_result) if partial and not full_result.success else None
     source = split.healthy if split is not None else full_result
-    compiled_manifest_store = ManifestFileStore(_target_dir(project_dir) / "manifest.json")
-    compiled_manifest = compiled_manifest_store.read()
-    if compiled_manifest is None:
-        raise ProjectError("no SST manifest; run sst compile before plan or apply")
+    compiled_manifest = _compiled_manifest(project_dir)
     compiled = tuple(
         item
         for item in source.compiled
@@ -1768,8 +1783,16 @@ def apply(
             partial=partial,
         )
         if saved is not None:
+            if saved.target.key != profile.identity.key:
+                diagnostic = D(
+                    "SST-APL005",
+                    artifact=str(plan_path),
+                    found=_target_label(saved.target),
+                    expected=_target_label(profile.identity),
+                )
+                raise ProjectError(diagnostic.message, diagnostics=(diagnostic,))
             if not saved.matches(manifest.manifest_id, profile.identity):
-                raise ProjectError("saved plan target or manifest does not match this apply")
+                raise ProjectError("the saved plan was made from a different manifest; re-run sst plan")
             _saved_plan_guard(saved, current_saved)
         _write_plan_sql(project_dir, changeset, sql_out)
         if changeset.writes and not confirmed:
@@ -1844,9 +1867,7 @@ def list_command(project_dir: Path, output: str) -> None:
     """List compiled artifacts and cached application status."""
 
     def action() -> None:
-        manifest = ManifestFileStore(_target_dir(project_dir) / "manifest.json").read()
-        if manifest is None:
-            raise ProjectError("no SST manifest; run sst compile")
+        manifest = _compiled_manifest(project_dir)
         states = tuple(sorted(_target_dir(project_dir).glob("state.*.json")))
         state = StateFileStore(states[0]).read_local() if len(states) == 1 else None
         summaries = list_artifacts(manifest, state)
@@ -2154,9 +2175,7 @@ def test_command(
             evals = tuple(item for item in result.compiled if isinstance(item, CompiledEval))
             if not evals:
                 raise ProjectError("no eval artifacts matched the project")
-            compiled_manifest = ManifestFileStore(_target_dir(project_dir) / "manifest.json").read()
-            if compiled_manifest is None:
-                raise ProjectError("no SST manifest; run sst compile before evals")
+            compiled_manifest = _compiled_manifest(project_dir)
             current_manifest = _build_manifest(project_dir, result, manifest_path)
             if compiled_manifest.manifest_id != current_manifest.manifest_id:
                 raise ProjectError("compiled SST manifest is stale; run sst compile before evals")
@@ -2302,9 +2321,7 @@ def test_command(
             if exit_code:
                 raise click.exceptions.Exit(exit_code)
             return
-        compiled_manifest = ManifestFileStore(_target_dir(project_dir) / "manifest.json").read()
-        if compiled_manifest is None:
-            raise ProjectError("no SST manifest; run sst compile before smoke")
+        compiled_manifest = _compiled_manifest(project_dir)
         current_manifest = _build_manifest(project_dir, result, manifest_path)
         if compiled_manifest.manifest_id != current_manifest.manifest_id:
             raise ProjectError("compiled SST manifest is stale; run sst compile before smoke")

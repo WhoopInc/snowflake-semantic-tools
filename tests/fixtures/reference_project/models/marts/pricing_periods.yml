@@ -1,14 +1,6 @@
 ---
-# =============================================================================
-# models/marts/pricing_periods.yml
-# =============================================================================
-# THE RANGE-JOIN PARTNER, and the reason `DISTINCT RANGE` is reachable. Its
-# `alias:` diverges from its model name, which is its second assertion.
-#
-# THE CROSS-CUTTING REASONING -- the seam, the jaffle domain, the one-line
-# `description:` constraint and the `D213` data rule -- IS IN `../README.md`, not
-# repeated here. Read that first if this is the first model file you have opened.
-# =============================================================================
+# pricing_periods: the target of the range relationship orders_to_pricing_periods,
+# and the one model whose alias differs from its name.
 
 version: 2
 
@@ -20,41 +12,13 @@ models:
       contract:
         enforced: true
       on_schema_change: fail
-      # =====================================================================
-      # THE ALIAS DIVERGES FROM THE MODEL NAME, AND THAT IS THE ASSERTION.
-      # =====================================================================
-      # The model is `pricing_periods`; the RELATION dbt builds is
-      # `PRICING_CALENDAR`. Every `{{ ref('pricing_periods') }}` in the semantic
-      # layer is written against the MODEL name, and THE RELATION in the emitted
-      # DDL must be the ALIAS -- so a resolver that passes the model name through
-      # produces DDL naming a relation that does not exist.
-      #
-      # ONLY THE RELATION. `D232` corrected an earlier reading of this note that
-      # said "every identifier in the emitted DDL must be the ALIAS", which is
-      # false and put the alias in the LOGICAL name too. The logical table name
-      # is the MODEL name ("the argument
-      # you would pass to `{{ ref() }}`, not the relation it resolves to"), so
-      # this row renders `PRICING_PERIODS AS <db>.<schema>.PRICING_CALENDAR`.
-      # `relationships.yml` writes `right_table: pricing_periods`, which could not
-      # resolve against a logical name of `PRICING_CALENDAR`.
-      #
-      # WHY THIS IS THE RIGHT MODEL TO CARRY IT. `alias:` is most dangerous on a
-      # table something JOINS to, because the failure then lands in a
-      # `RELATIONSHIPS` clause rather than a `TABLES` one, and a reader checking
-      # only the table list would see nothing wrong. `pricing_periods` is the
-      # range join's partner, so the alias has to survive resolution into both
-      # clauses of both DDL goldens.
-      #
-      # IT IS ALSO THE ONE CASE `sst` CANNOT GET RIGHT BY GUESSING: the alias is
-      # in the manifest and nowhere else. A resolver reading YAML instead of
-      # `target/manifest.json` has no way to know this relation is not called
-      # `PRICING_PERIODS`.
+      # dbt builds the relation PRICING_CALENDAR. SST takes the relation from
+      # the manifest's relation_name and the logical table name from the model
+      # name, so the view renders PRICING_PERIODS AS <db>.<schema>.PRICING_CALENDAR
+      # and relationships still name pricing_periods.
       alias: pricing_calendar
       meta:
         sst:
-          # THE GRAIN OF THIS MODEL, AND THE MODEL IS THE SINGLE SOURCE (`D231`).
-          # Declared on the MODEL name, never the `alias:` above -- the key
-          # names columns, and a column list is alias-independent.
           primary_key:
             - pricing_period_id
     columns:
@@ -91,9 +55,11 @@ models:
                 - summer promo
                 - standard
 
-      # THE RANGE BOUNDS. R008 requires both, and the rendered clause is
-      # `BETWEEN effective_start_at AND effective_end_at EXCLUSIVE` -- the upper
-      # bound is open, which is what makes adjacent periods non-overlapping.
+      # The range bounds. jaffle_menu declares them as this table's
+      # distinct_range, which renders CONSTRAINT PRICING_PERIODS_DISTINCT_RANGE
+      # DISTINCT RANGE BETWEEN EFFECTIVE_START_AT AND EFFECTIVE_END_AT EXCLUSIVE:
+      # the start is inclusive and the end exclusive, so adjacent periods do not
+      # overlap.
       - name: effective_start_at
         data_type: TIMESTAMP_NTZ
         description: |-
@@ -159,13 +125,3 @@ models:
           arguments:
             combination_of_columns:
               - pricing_period_id
-
-  # ========================================================================
-  # supplies -- SNAPSHOT grain, and the only home for non_additive_dimensions
-  # ========================================================================
-  # WHY A SEVENTH TABLE EXISTS AT ALL. `non_additive_dimensions` (M022) cannot be
-  # exercised on any of the six above: it describes a fact that must NOT be summed
-  # across one particular dimension, which requires a genuine snapshot grain. Supply
-  # cost restated monthly per product is that grain -- summing cost across months
-  # double-counts, summing across products does not. The metric that reads this is
-  # the only one in the fixture carrying the key.

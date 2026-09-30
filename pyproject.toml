@@ -5,7 +5,7 @@ build-backend = "poetry.core.masonry.api"
 [tool.poetry]
 name = "snowflake-semantic-tools"
 version = "1.0.0.dev0"
-description = "dbt extension for managing Snowflake Semantic Views and Cortex Analyst semantic models"
+description = "Compile and publish Snowflake semantic views, Cortex Agents, skills, and CoCo Desktop profiles from a dbt project"
 readme = "README.md"
 authors = ["Matt Luizzi <matthew.luizzi@whoop.com>"]
 license = "Apache-2.0"
@@ -20,28 +20,19 @@ sst = "snowflake_semantic_tools.cli.main:cli"
 
 [tool.poetry.dependencies]
 python = ">=3.11,<3.14"
-pyyaml = ">=6.0.2,<6.1.0"
-ruamel-yaml = ">=0.18.6,<0.19.0"
-snowflake-connector-python = {extras = ["pandas", "secure-local-storage"], version = ">=3.12.3,<5.0"}
-python-dotenv = ">=1.0.1,<1.1.0"
-rich = ">=13.9.4,<14.0"
+pyyaml = ">=6.0.2,<7.0"
+snowflake-connector-python = {extras = ["secure-local-storage"], version = ">=3.12.3,<5.0"}
 click = ">=8.1.7,<9.0"
-tqdm = ">=4.67.1,<4.68.0"
-packaging = ">=24.2,<25.0"
-certifi = ">=2017.4.17,<2025.4.26"
-questionary = ">=2.0.0,<3.0"
+dbt-snowflake = {version = ">=1.8,<2.0", optional = true}
 
 [tool.poetry.extras]
-# Optional extra for dbt Core users: pip install snowflake-semantic-tools[dbt]
-# Installs dbt-snowflake (dbt Core with Snowflake adapter)
-# Note: dbt Cloud CLI users don't need this extra - install 'dbt' separately
-# SST auto-detects both dbt Core and dbt Cloud CLI
+# pip install snowflake-semantic-tools[dbt] installs dbt Core with the Snowflake
+# adapter. SST runs whichever dbt is on PATH, so a dbt Cloud CLI user skips it.
 dbt = ["dbt-snowflake"]
 
 [tool.poetry.group.dev.dependencies]
 pre-commit = "4.0.1"
 pytest = "8.3.4"
-pytest-mock = "3.14.0"
 pytest-cov = "6.0.0"
 mypy = "1.13.0"
 import-linter = "^2.1"
@@ -100,18 +91,6 @@ python_files = ["test_*.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
 addopts = "-v --tb=short --strict-markers --color=yes --durations=10 --maxfail=5"
-markers = [
-    "unit: Unit tests (fast, no external dependencies)",
-    "integration: Integration tests (may require external services)",
-    "slow: Slow running tests",
-    "snowflake: Tests requiring Snowflake connection",
-    "ci: Tests suitable for CI/CD pipeline",
-    "smoke: Quick smoke tests for basic functionality",
-    "core_models: Tests for core data models and validation",
-    "parsing: Tests for YAML parsing and template resolution",
-    "cli: Tests for command-line interface",
-    "api: Tests for Python API interface",
-]
 log_cli = true
 log_cli_level = "WARNING"
 log_cli_format = "%(asctime)s [%(levelname)s] %(message)s"
@@ -125,9 +104,8 @@ filterwarnings = [
 
 # ---------------------------------------------------------------------------
 # Ring boundaries: cli -> (app | adapters) -> domain. These contracts ARE the
-# enforcement -- an architecture rule that
-# lives only in a README is a comment, and 0.3's layering decayed precisely
-# because nothing checked it.
+# enforcement -- an architecture rule that lives only in a README is a comment.
+# tests/unit/test_ring_boundaries.py proves each contract rejects a crossing.
 #
 # Run with: lint-imports
 # ---------------------------------------------------------------------------
@@ -165,14 +143,8 @@ type = "forbidden"
 source_modules = ["snowflake_semantic_tools.domain"]
 forbidden_modules = [
     "yaml",
-    "ruamel",
     "click",
     "snowflake",
-    "rich",
-    "tqdm",
-    "questionary",
-    "dotenv",
-    "packaging",
     "os",
     "pathlib",
     "datetime",
@@ -192,13 +164,8 @@ type = "forbidden"
 source_modules = ["snowflake_semantic_tools.app"]
 forbidden_modules = [
     "yaml",
-    "ruamel",
     "click",
     "snowflake",
-    "rich",
-    "tqdm",
-    "questionary",
-    "dotenv",
 ]
 
 # An adapter may depend on the ports it implements and the models it returns, but
@@ -208,24 +175,3 @@ name = "adapters use domain ports and models, not domain renderers"
 type = "forbidden"
 source_modules = ["snowflake_semantic_tools.adapters"]
 forbidden_modules = ["snowflake_semantic_tools.domain.render"]
-
-# The 1.0 rings must not lean on 0.3's internals. 0.3's modules still ship on this
-# branch and are deleted per-module as each ring replaces them; without this
-# contract the new engine could quietly inherit the old one's coupling and the
-# rewrite would never actually land.
-[[tool.importlinter.contracts]]
-name = "1.0 rings do not import 0.3 internals"
-type = "forbidden"
-source_modules = [
-    "snowflake_semantic_tools.cli",
-    "snowflake_semantic_tools.app",
-    "snowflake_semantic_tools.domain",
-    "snowflake_semantic_tools.adapters",
-]
-forbidden_modules = [
-    "snowflake_semantic_tools.core",
-    "snowflake_semantic_tools.infrastructure",
-    "snowflake_semantic_tools.interfaces",
-    "snowflake_semantic_tools.services",
-    "snowflake_semantic_tools.shared",
-]

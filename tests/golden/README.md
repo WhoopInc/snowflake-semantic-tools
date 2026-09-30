@@ -1,15 +1,15 @@
 # Goldens
 
-`expected/ddl/*.sql` were copied once from the SST 1.0 design work's hand-derived goldens
-and are **owned by this repo thereafter**. They were hand-derived there, and four different
-`byte_length` pairs ended up in circulation as a direct result (review MEDIUM 14). Deriving
-them from executed DDL is the point of moving them here.
+The files under `expected/` are owned by this repo: each is what SST renders for the
+reference fixture, and each DDL golden was created in Snowflake as written. Regenerate
+one only when a change to the engine or the fixture is meant to change it, and review the
+diff like code.
 
 ## File shape
 
 Each golden is a leading block of `--` comment lines carrying provenance -- what the view
-exercises, what it deliberately omits, which drift findings it records -- then a blank line,
-then the DDL through end of file.
+exercises and what it deliberately omits -- then a blank line, then the DDL through end of
+file.
 
 The comparison contract is therefore: **the golden is everything from the first line that is
 not a comment or blank.** The header is documentation and is not rendered by the engine.

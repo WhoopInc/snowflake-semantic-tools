@@ -13,7 +13,8 @@
 
 - [ ] Bug fix (non-breaking change which fixes an issue)
 - [ ] New feature (non-breaking change which adds functionality)
-- [ ] Breaking change (fix or feature that would cause existing functionality to not work as expected)
+- [ ] Breaking change (changes an exit code, the JSON envelope, a diagnostic code's meaning, or other existing behavior)
+- [ ] 0.3.x maintenance fix (targets the branch cut from `v0.3.1`; never merged into 1.0)
 - [ ] Documentation update
 - [ ] Performance improvement
 - [ ] Code refactoring
@@ -26,20 +27,19 @@
 
 ## Testing
 
-<!-- Describe how you tested your changes -->
+<!-- Describe how you tested your changes. The gates are listed in CONTRIBUTING.md -->
 
-- [ ] Unit tests pass (`pytest tests/unit/`)
-- [ ] All existing tests pass
+- [ ] All tests pass (`poetry run pytest tests/`)
+- [ ] Coverage floors hold (domain 100%, app 95%, cli 90%, branch coverage)
 - [ ] New tests added for new functionality
-- [ ] Tested locally with Python 3.9-3.11
-- [ ] Manual testing completed (if applicable)
-- [ ] Test coverage maintained or improved (target: >90%)
+- [ ] Goldens changed only where rendered output was meant to change, with the reason under Additional Notes
+- [ ] Manual testing completed (if applicable; against a non-production schema)
 
 ### Test Results
 
 ```
-<!-- Paste test output here, or describe test results -->
-<!-- Example: pytest tests/unit/ -v -->
+<!-- Paste the summary lines, or describe test results -->
+<!-- Example: the last line of `poetry run pytest tests/` -->
 ```
 
 ## Checklist
@@ -47,22 +47,17 @@
 <!-- Mark completed items with an 'x' -->
 
 ### Code Quality
-- [ ] Code follows the project's style guidelines (Black, line length 120)
-- [ ] Imports sorted with isort (black profile)
-- [ ] Type hints added for new code (`mypy snowflake_semantic_tools/` passes)
-- [ ] Docstrings added for public functions/classes
-- [ ] No linting errors
+- [ ] Formatted with Black, line length 120 (`poetry run black --check snowflake_semantic_tools/`)
+- [ ] Imports sorted with isort, black profile (`poetry run isort --check snowflake_semantic_tools/`)
+- [ ] Every function is annotated (`poetry run mypy snowflake_semantic_tools` passes)
+- [ ] Ring boundaries hold (`poetry run lint-imports` passes)
 - [ ] Pre-commit hooks pass (if using pre-commit)
 
-### Testing & Validation
-- [ ] All tests pass (`pytest tests/unit/`)
-- [ ] New functionality has test coverage
-- [ ] Test results included above
-
-### Documentation & Compatibility
-- [ ] Documentation updated (if needed)
-- [ ] Backward compatibility maintained (if applicable)
-- [ ] Breaking changes discussed with maintainer first (see CONTRIBUTING.md)
+### Diagnostics & Documentation
+- [ ] Each new problem has a new `SST-` diagnostic code with an actionable suggestion; no code is reused
+- [ ] Reference pages regenerated with `poetry run sst docs` if diagnostics, config keys, CLI options, or artifact types changed (`poetry run sst docs --check` passes)
+- [ ] Guides and README updated (if needed)
+- [ ] Breaking changes discussed with a maintainer first (see CONTRIBUTING.md)
 
 ### Performance
 - [ ] Performance impact considered
@@ -70,7 +65,7 @@
 
 ## Screenshots / Examples
 
-<!-- If applicable, add screenshots or examples to help explain your changes -->
+<!-- If applicable, add examples such as `sst plan` output or rendered DDL -->
 
 ## Additional Notes
 

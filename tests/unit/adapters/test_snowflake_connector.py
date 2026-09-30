@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
+from threading import RLock
 from typing import Sequence
 
 import pytest
@@ -344,3 +345,52 @@ def test_connection_prompts_go_to_stderr_so_json_stdout_stays_one_envelope(
     captured = capsys.readouterr()
     assert captured.out == ""
     assert "Initiating login request" in captured.err
+
+
+class _ConnectorFailure(Exception):
+    def __init__(self, message: str, sqlstate: str | None = None) -> None:
+        super().__init__(message)
+        self.sqlstate = sqlstate
+        self.errno = 250001
+
+
+def test_a_failed_connection_names_the_account(monkeypatch: pytest.MonkeyPatch) -> None:
+    def connect(**params: object) -> object:
+        raise _ConnectorFailure("Could not connect to Snowflake backend", "08001")
+
+    monkeypatch.setattr("snowflake_semantic_tools.adapters.snowflake.connector.snowflake.connector.connect", connect)
+    with pytest.raises(SnowflakePortError) as raised:
+        SnowflakeConnector({"account": "acme-prod"})
+    diagnostic = raised.value.diagnostic
+    assert diagnostic is not None and diagnostic.code == "SST-PRT001"
+    assert diagnostic.message == "connection to acme-prod failed: Could not connect to Snowflake backend"
+    assert raised.value.errno == 250001
+
+
+@pytest.mark.parametrize(
+    ("message", "sqlstate", "code"),
+    [
+        ("Statement reached its statement or warehouse timeout", None, "SST-PRT003"),
+        ("network drop", "08006", "SST-PRT003"),
+        ("SQL access control error: Insufficient privileges to operate on schema 'S'", "42501", "SST-PRT004"),
+        ("Invalid credentials", "28000", "SST-PRT004"),
+        ("SQL compilation error", "42000", None),
+    ],
+)
+def test_query_failures_carry_the_diagnostic_a_command_reports(
+    message: str, sqlstate: str | None, code: str | None
+) -> None:
+    class FailingConnector(SnowflakeConnector):
+        def __init__(self) -> None:
+            self._lock = RLock()
+
+            class Connection:
+                def cursor(self, *args: object) -> object:
+                    raise _ConnectorFailure(message, sqlstate)
+
+            self._connection = Connection()
+
+    with pytest.raises(SnowflakePortError) as raised:
+        FailingConnector().query("SELECT 1")
+    diagnostic = raised.value.diagnostic
+    assert (diagnostic.code if diagnostic is not None else None) == code

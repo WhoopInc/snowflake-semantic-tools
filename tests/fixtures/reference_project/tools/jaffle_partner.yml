@@ -1,52 +1,24 @@
 ---
 # =============================================================================
-# tools/jaffle_partner.yml -- the reference-impl fixture
+# tools/jaffle_partner.yml -- reference project
 # =============================================================================
-# GROUP TWO OF TWO, AND THE ONLY REASON IT EXISTS IS `immutable: true`.
-#
-# X020: "`define:` is absent from any group marked `immutable: true`" is a
-# VALIDATION ERROR, not a runtime failure. That rule cannot be exercised from the
-# sibling group -- `jaffle_platform` must carry `define:` entries to cover the
-# renderable kind and the three unrenderable ones -- so the immutable case needs a
-# group of its own. The fixture was previously recorded as needing
-# "a second group", and this is that group.
-#
-# WHAT `immutable: true` MEANS. The group is a set of objects this repo may READ and
-# may never WRITE. Saying it once on the group is what makes a `define:` inside it
-# an error rather than something that silently creates an object in a namespace the
-# repo does not own.
-#
-# ONE FILE PER GROUP, NAMED FOR THE GROUP. `tools/<group>.yml` is the convention,
-# so this file's name and its `- group:` agree, and a reader looking for
-# `jaffle_partner` knows which file to open without grepping.
-#
-# EVERY ENTRY HERE IS `reference:`, AND EVERY KIND IS LEGAL UNDER IT. Under
-# `reference:` no DDL is emitted for any kind, so `SST-RND040` is unreachable
-# regardless of type -- which is why the two kinds not used in the sibling group's
-# `define:` block are covered here instead.
-#
-# NO DATA VALUES.
+# The immutable tool group: partner-owned objects this repo may read and must
+# never write. `immutable: true` makes any `define:` here an error (SST-VAL606),
+# so every member is a `reference:`: no DDL is emitted, and `relations:` names
+# each member's object per target. The members cover the kinds the mutable
+# group (tools/jaffle_platform.yml) does not use: agent, generic and stage.
 # =============================================================================
 
 tools:
-  # KEY CORRECTED `name:` -> `group:` 2026-09-25 (`D253`). The tools spec
-  # declares `group` as **REQ** and has no `name` key at this level, so this file was
-  # missing a required key and carrying an undeclared one -- it could not have validated
-  # against its own spec. The VALUE is unchanged, so no golden moves: the group name
-  # reaches the goldens as a `tool()` ref argument and as a file path, never as a key.
   - group: jaffle_partner
     description: |-
       Objects owned by delivery and payment partners. This repo reads them and must
       never create, replace or drop any of them.
     owner: partner-integrations
-    # THE KEY THIS WHOLE FILE EXISTS FOR.
     immutable: true
 
-    # =======================================================================
-    # reference: ONLY. A `define:` block here is X020.
-    # =======================================================================
     reference:
-      # ---- the `agent` kind, as a toolset entry -------------------------
+      # ---- agent: the delegate jaffle_delivery_agent routes to -----------
       - name: partner_delivery_agent
         type: agent
         description: |-
@@ -56,7 +28,7 @@ tools:
           dev: SCRATCH.SST_1_REFERENCE_IMPL.DELIVERY_AGENT
           prod: SST_REF_PROD.PARTNER.DELIVERY_AGENT
 
-      # ---- the `generic` kind -------------------------------------------
+      # ---- generic --------------------------------------------------------
       - name: payment_settlement_view
         type: generic
         description: |-
@@ -66,11 +38,8 @@ tools:
           dev: SST_REF_DEV.PARTNER.SETTLEMENTS
           prod: SST_REF_PROD.PARTNER.SETTLEMENTS
 
-      # ---- a `stage` under reference:, where it is legal to render nothing
-      # The sibling group authors a `stage` under `define:`, which is the
-      # RND040 case. The same kind under `reference:` emits nothing and raises
-      # nothing, and having both is what shows the error belongs to the
-      # define/render path rather than to the kind itself.
+      # ---- stage: referenced only; under `define:` SST would emit
+      # CREATE STAGE IF NOT EXISTS for it.
       - name: partner_invoice_stage
         type: stage
         description: |-

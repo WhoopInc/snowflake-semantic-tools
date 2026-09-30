@@ -16,7 +16,7 @@ from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 
 from ..model.config_schema import CONFIG_SCHEMA, ConfigKey, KeyKind, KeyStatus
-from ..model.diagnostic import ERROR_REGISTRY, LEGACY_ALIASES, ErrorSpec, Severity
+from ..model.diagnostic import ERROR_REGISTRY, ErrorSpec, Severity
 from ..model.registry import (
     ARTIFACT_REGISTRY,
     ArtifactLifecycle,
@@ -181,10 +181,7 @@ def _artifact_facts(artifact: ArtifactType) -> list[str]:
 # ------------------------------------------------------------------------- error codes
 
 
-def render_error_codes(
-    registry: Mapping[str, ErrorSpec] = ERROR_REGISTRY,
-    aliases: Mapping[str, tuple[str, ...]] = LEGACY_ALIASES,
-) -> str:
+def render_error_codes(registry: Mapping[str, ErrorSpec] = ERROR_REGISTRY) -> str:
     by_subsystem: dict[str, list[ErrorSpec]] = {}
     for spec in registry.values():
         by_subsystem.setdefault(spec.subsystem, []).append(spec)
@@ -214,26 +211,10 @@ def render_error_codes(
     for prefix in ordered:
         title = f"{SUBSYSTEMS[prefix]} ({prefix})"
         lines.append(f"- [{title}](#{_slug(title)}) -- {len(by_subsystem[prefix])} codes")
-    lines.append("- [Codes from SST 0.3](#codes-from-sst-03)")
     for prefix in ordered:
         lines.extend(("", f"## {SUBSYSTEMS[prefix]} ({prefix})"))
         for spec in sorted(by_subsystem[prefix], key=lambda item: item.code):
             lines.extend(_error_entry(spec))
-    lines.extend(
-        (
-            "",
-            "## Codes from SST 0.3",
-            "",
-            "SST 0.3 used shorter codes. Each maps to the 1.0 codes that cover the same",
-            "failure; tooling that matched a 0.3 code should match these instead.",
-            "",
-            "| 0.3 code | 1.0 codes |",
-            "|---|---|",
-        )
-    )
-    for legacy in sorted(aliases):
-        current = ", ".join(f"[`{code}`](#{error_anchor(code)})" for code in aliases[legacy])
-        lines.append(f"| `{legacy}` | {current} |")
     return "\n".join(lines) + "\n"
 
 
@@ -267,7 +248,8 @@ def _template(spec: ErrorSpec) -> str:
 
 
 def render_config(schema: tuple[ConfigKey, ...] = CONFIG_SCHEMA) -> str:
-    current = [key for key in schema if key.status is not KeyStatus.REMOVED]
+    current = [key for key in schema if key.status is KeyStatus.CURRENT]
+    unsupported = [key for key in schema if key.status is KeyStatus.UNSUPPORTED]
     removed = [key for key in schema if key.status is KeyStatus.REMOVED]
     lines = [
         "# Configuration reference",
@@ -279,9 +261,9 @@ def render_config(schema: tuple[ConfigKey, ...] = CONFIG_SCHEMA) -> str:
         "",
         "- an unknown key is a warning (`SST-CFG003`), or an error when it is a",
         "  misspelled top-level block (`SST-CFG007`);",
-        "- a removed key is an error that says what replaced it;",
-        "- an *inert* key is accepted so a 0.3 file still loads, and has no effect",
-        "  (`SST-CFG044`).",
+        "- an unsupported key is reserved for a later release and is an error until SST",
+        "  reads it (`SST-CFG044`);",
+        "- a removed key is an error that says what replaced it.",
         "",
         "Keys that start with `+` set a default that nested folder routes and",
         "individual artifacts inherit. In a key path, `<route>` stands for a folder",
@@ -305,6 +287,21 @@ def render_config(schema: tuple[ConfigKey, ...] = CONFIG_SCHEMA) -> str:
         for key in rows:
             default = f"`{key.default}`" if key.default and not key.default.startswith("the ") else (key.default or "")
             lines.append(f"| `{_cell(key.path)}` | {_type(key)} | {_cell(default)} | {_cell(_description(key))} |")
+    if unsupported:
+        lines.extend(
+            (
+                "",
+                "## Unsupported keys",
+                "",
+                "These keys are reserved for a later release. Setting one is an error until SST",
+                "reads it, so a setting cannot look as though it takes effect when it does not.",
+                "",
+                "| Key | Type | Description |",
+                "|---|---|---|",
+            )
+        )
+    for key in unsupported:
+        lines.append(f"| `{_cell(key.path)}` | {_type(key)} | {_cell(_description(key))} |")
     lines.extend(
         (
             "",
@@ -327,10 +324,6 @@ def render_config(schema: tuple[ConfigKey, ...] = CONFIG_SCHEMA) -> str:
 
 def _notes(key: ConfigKey) -> list[str]:
     notes = []
-    if key.status is KeyStatus.INERT:
-        notes.append("Accepted for compatibility; has no effect.")
-    if key.status is KeyStatus.DEPRECATED and key.replacement:
-        notes.append(f"Deprecated: use `{key.replacement}`.")
     if key.one_of:
         notes.append("Declare at least one of " + ", ".join(f"`{name}`" for name in key.one_of) + ".")
     return notes

@@ -1,46 +1,13 @@
 ---
-# =============================================================================
-# semantic_models/semantic_views/core/semantic_views.yml -- the reference-impl fixture
-# =============================================================================
-# THIS FILE EXISTS TO EXERCISE FOLDER-BASED ROUTING, AND IT IS THE ONLY POSITIVE
-# ASSERTION OF IT IN THE CORPUS. `D252` added the mechanism -- `sst_config.yml` may
-# declare an UNPREFIXED key inside an artifact block, naming a DIRECTORY, and the
-# `+`-prefixed keys under it apply to every artifact in that directory and below.
-# `D257` added this directory, because the mechanism shipped with a spec, a model
-# change, two config rules and two error codes and NO FIXTURE THAT RESOLVED A ROUTE.
-#
-# WHAT THE ROUTE ASSERTS, AND IT IS THE PER-KEY FOLD RATHER THAN THE ROUTE ALONE.
-# `sst_config.yml` declares, in `semantic_views:`:
-#
-#     +database: "{{ target.database }}"     <- block level
-#     +schema:   JAFFLE                      <- block level
-#     +enabled:  true                        <- block level
-#     core:
-#       +schema: CORE                        <- THIS directory only
-#
-# So `jaffle_menu` lands in `SST_REF_DEV.CORE`, NOT `SST_REF_DEV.JAFFLE`: the deeper
-# `+schema` wins, while `+database` and `+enabled` are still INHERITED from the block.
-# A resolver that replaced the whole config map instead of folding it key by key would
-# lose the database and fail to resolve at all, and one that ignored the route would
-# render `SST_REF_DEV.JAFFLE.JAFFLE_MENU` and match the OLD golden. Both are caught.
-#
-# WHY `jaffle_menu` AND NOT `jaffle_minimal`. `jaffle_minimal` is absent from
-# `expected/plan.txt` and from `expected/manifest.json`, so routing it would move no
-# golden and assert nothing about resolution. `jaffle_menu` appears in both, and its
-# fingerprint is sha256 over its canonical DDL -- which contains the FQN -- so moving
-# it moves the hash too. That is the strongest available assertion: a silently ignored
-# route changes a fingerprint, and a fingerprint is the one thing a reviewer cannot
-# eyeball past.
-#
-# NOTHING ELSE ABOUT THIS VIEW CHANGED. The body below is byte-identical to what
-# `semantic_views.yml` held before the move, comments included.
-# =============================================================================
+# jaffle_menu lives in core/ to exercise folder routing: sst_config.yml sets
+# `+schema: CORE` under `semantic_views.core`, which applies to every view in
+# this directory and below. Config folds one key at a time, so `+database` and
+# `+enabled` still come from the block and the view renders as
+# SST_REF_DEV.CORE.JAFFLE_MENU. Its tables stay in SST_REF_DEV.JAFFLE.
 
 semantic_views:
-  # ===========================================================================
-  # VIEW 2 -- jaffle_menu. The JOIN-VARIETY view: ASOF and RANGE both live here,
-  # plus the snapshot grain the non-additive metric needs.
-  # ===========================================================================
+  # The join-shape view: an ASOF and a RANGE relationship, plus the monthly
+  # `supplies` snapshot behind the non-additive metrics.
   - name: jaffle_menu
     description: |-
       Order line items, the products sold on them, the order they belong to, the
@@ -58,31 +25,9 @@ semantic_views:
       - "{{ ref('pricing_periods') }}"
       - "{{ ref('supplies') }}"
 
-    # -----------------------------------------------------------------------
-    # variables -- DECLARED HERE BECAUSE THIS VIEW HOSTS MEMBERS THAT READ THEM,
-    # ADDED 2026-09-24 (`D223`). THE ABSENCE WAS A FIXTURE THAT COULD NOT PUBLISH.
-    #
-    # `orders` is in BOTH this view and `jaffle_sales`, and attachment is implicit by
-    # table membership -- so three members that read view variables and reference
-    # `orders` land here whether or not this view declared the variables:
-    #   metric  large_order_count     reads `large_order_cents`
-    #   metric  revenue_on_policy     reads `tax_inclusive`
-    #   filter  is_large_order        reads `large_order_cents`
-    # Both variables were declared ONLY on `jaffle_sales`. So this view rendered three
-    # members referencing identifiers nothing declared, and Snowflake would have
-    # rejected the whole CREATE with `invalid identifier` -- the fixture asserted a
-    # view that cannot exist. Nothing caught it because each input file was correct on
-    # its own: the metric legitimately reads a variable, the view legitimately omits
-    # one, and only the ATTACHMENT of the two is wrong. `V028` (`SST-VAL326`) is the
-    # rule that now makes this a local ERROR rather than a create failure.
-    #
-    # THE VALUES ARE DELIBERATELY THE SAME AS `jaffle_sales`, AND THAT IS NOT
-    # REDUNDANCY. A variable is per-view, so the same metric may legally mean
-    # different things in two views. Equal values here keep the two goldens'
-    # `large_order_count` comparable, so a future divergence reads as a real change
-    # rather than as an artifact of per-view policy. A fixture that varied them would
-    # be exercising a different thing, and should say so.
-    # -----------------------------------------------------------------------
+    # The same variables and values as jaffle_sales. large_order_count,
+    # revenue_on_policy and is_large_order read them and reference `orders`,
+    # so they attach to this view too and need the declarations here.
     variables:
       - name: large_order_cents
         data_type: NUMBER
@@ -95,29 +40,17 @@ semantic_views:
           Whether revenue metrics should include collected tax.
         default_value: false
 
-    # NO KEYS HERE EITHER (`D231`). All five of this view's tables render a
-    # `PRIMARY KEY`, every one of them from its model. `orders` used to declare
-    # the SAME key here AND on view 1 above, because a per-view map cannot say
-    # "this model's grain" once -- that duplication is what settled `D231`.
+    # table_config takes only synonyms and distinct_range. Each PRIMARY KEY
+    # comes from the model's config.meta.sst.
     table_config:
       products:
         synonyms:
           - menu item
           - jaffle
       pricing_periods:
-        # REQUIRED ON THE TARGET TABLE BEFORE ANY RANGE RELATIONSHIP CAN POINT AT
-        # IT (V011, R009). Half-open: start inclusive, end exclusive; ranges must
-        # not overlap; NULL means unbounded with at most one NULL per side.
-        #
-        # A range constraint is not a property of a column AND NOT A PROPERTY OF
-        # THE MODEL'S GRAIN EITHER -- it states how THIS VIEW joins to the table.
-        # That is why it stays here while the key left. With `name` and
-        # `synonyms` it is one of the three things `table_config` still carries.
-        #
-        # MEASURED: `UNIQUE` on the range pair is NOT required by the grammar.
-        # `PRIMARY KEY` on the identifier plus this clause parses as written --
-        # and the key now arrives from `pricing_periods.yml`, which does not
-        # change the rendered order: the constraint still FOLLOWS the key.
+        # Renders as a DISTINCT RANGE ... EXCLUSIVE constraint after the
+        # primary key: half-open periods that do not overlap, which the
+        # orders_to_pricing_periods range join relies on.
         distinct_range:
           start: effective_start_at
           end: effective_end_at
@@ -125,16 +58,3 @@ semantic_views:
     custom_instructions:
       - "{{ custom_instructions('jaffle_sql_conventions') }}"
       - "{{ custom_instructions('jaffle_margin_guidance') }}"
-
-  # ===========================================================================
-  # VIEW 3 -- jaffle_minimal. REQUIRED KEYS ONLY. The negative-space assertion.
-  # ===========================================================================
-  # DO NOT ADD ANYTHING TO THIS VIEW. Its entire value is what it does not have.
-  # `expected/ddl/jaffle_minimal.sql` is the only golden that asserts the ABSENCE
-  # of TABLE_CONFIG-derived clauses, of a VARIABLES clause, of a MAX_STALENESS
-  # clause, of a tag ALTER, and of any custom-instruction payload. A renderer that
-  # emits any of those unconditionally is caught here and nowhere else.
-  #
-  # One table, deliberately: with a single table there is no relationship to
-  # satisfy R006 with, so this view also asserts that a view needs no joins to be
-  # valid.

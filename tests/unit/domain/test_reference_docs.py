@@ -68,46 +68,77 @@ def test_every_help_url_names_a_heading_in_the_error_reference() -> None:
         assert _slug(code) == error_anchor(code)
 
 
+# Retired in 1.0: never raised, or reported by another code. Numbers are not reused.
+RETIRED = (
+    "SST-CFG045",
+    "SST-DBT002",
+    "SST-MAN004",
+    "SST-MAN201",
+    "SST-MEM002",
+    "SST-MEM008",
+    "SST-MEM011",
+    "SST-MEM103",
+    "SST-PLN900",
+    "SST-PRS028",
+    "SST-PRS117",
+    "SST-PRS121",
+    "SST-VAL010",
+    "SST-VAL012",
+    "SST-VAL122",
+    "SST-VAL205",
+    "SST-VAL213",
+    "SST-VAL403",
+)
+
+
+def test_retired_codes_are_absent_from_the_registry_and_the_reference() -> None:
+    page = render_error_codes()
+    for code in RETIRED:
+        assert code not in ERROR_REGISTRY, code
+        assert code not in page, code
+
+
 def test_error_entries_show_severity_placeholders_and_fixes() -> None:
     page = render_error_codes()
     assert "**skill() target not declared** (error)\n\n`{{ skill('<name>') }} does not resolve`" in page
     assert _template(ERROR_REGISTRY["SST-REF032"]) == "{{ skill('<name>') }} does not resolve"
     assert "(error, always an error)" in page
-    assert "| `SST-V090` | [`SST-PLN005`](#sst-pln005)" in page
+    assert "Codes from SST 0.3" not in page and "SST-V090" not in page
     bare = ErrorSpec("SST-CFG999", Severity.INFO, "Bare", "no fix", None, "CFG", "cfg", "url")
-    assert "Fix:" not in render_error_codes({bare.code: bare}, {}).split("### SST-CFG999", 1)[1]
+    assert "Fix:" not in render_error_codes({bare.code: bare}).split("### SST-CFG999", 1)[1]
 
 
 def test_error_codes_refuse_a_subsystem_without_a_section() -> None:
     stray = ErrorSpec("SST-ZZZ001", Severity.ERROR, "Stray", "stray", None, "ZZZ", "zzz", "url")
     with pytest.raises(ValueError, match="ZZZ"):
-        render_error_codes({stray.code: stray}, {})
+        render_error_codes({stray.code: stray})
 
 
-def test_config_page_renders_notes_types_and_removed_keys() -> None:
+def test_config_page_renders_notes_types_and_unsupported_and_removed_keys() -> None:
     schema = (
         ConfigKey("orphan.key", KeyKind.STRING, "A key whose block has no row."),
         ConfigKey("bare", KeyKind.BLOCK, "A block with no keys."),
-        ConfigKey("old", KeyKind.BLOCK, "An old block.", status=KeyStatus.DEPRECATED, replacement="new"),
-        ConfigKey("spare", KeyKind.BLOCK, "A 0.3 block.", status=KeyStatus.INERT),
+        ConfigKey("spare", KeyKind.BLOCK, "A reserved block.", status=KeyStatus.UNSUPPORTED),
         ConfigKey("pick", KeyKind.BLOCK, "Pick one.", one_of=("a", "b")),
         ConfigKey("pick.mode", KeyKind.ENUM, "Mode.", default="fast", choices=("fast", "slow"), required=True),
         ConfigKey("pick.count", KeyKind.INTEGER, "How many.", default="the default", minimum=1, maximum=9),
-        ConfigKey("pick.legacy", KeyKind.STRING, "Legacy.", status=KeyStatus.DEPRECATED, replacement="pick.mode"),
+        ConfigKey("pick.later", KeyKind.STRING, "Later.", status=KeyStatus.UNSUPPORTED),
         ConfigKey("pick.gone", KeyKind.ANY, "no longer read", status=KeyStatus.REMOVED),
         ConfigKey("pick.named", KeyKind.ANY, "has its own code", status=KeyStatus.REMOVED, code="SST-CFG040"),
     )
     page = render_config(schema)
     assert "## orphan\n\n| Key |" in page
-    assert "## bare\n\nA block with no keys.\n\n## old" in page
-    assert "An old block.\n\nDeprecated: use `new`." in page
-    assert "A 0.3 block.\n\nAccepted for compatibility; has no effect." in page
+    assert "## bare\n\nA block with no keys.\n\n## pick" in page
     assert "Declare at least one of `a`, `b`." in page
     assert "| `pick.mode` | enum: `fast`, `slow`, required | `fast` | Mode. |" in page
     assert "| `pick.count` | integer, 1 to 9 | the default | How many. |" in page
-    assert "| `pick.legacy` | string |  | Legacy. Deprecated: use `pick.mode`. |" in page
+    unsupported = page.split("## Unsupported keys", 1)[1].split("## Removed keys", 1)[0]
+    assert "| `spare` | block | A reserved block. |" in unsupported
+    assert "| `pick.later` | string | Later. |" in unsupported
+    assert "`pick.later`" not in page.split("## Unsupported keys", 1)[0]
     assert "| `pick.gone` | no longer read | [`SST-CFG043`](error-codes.md#sst-cfg043) |" in page
     assert "| `pick.named` | has its own code | [`SST-CFG040`](error-codes.md#sst-cfg040) |" in page
+    assert "## Unsupported keys" not in render_config(schema[:2])
 
 
 def test_fixed_keys_state_their_value_in_their_summary() -> None:

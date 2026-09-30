@@ -1,56 +1,24 @@
 ---
-# =============================================================================
-# semantic_models/filters/filters.yml -- the reference-impl fixture
-# =============================================================================
-# FOUR FILTERS: THREE ENTITY-LEVEL AND ONE STANDALONE.
+# Three boolean filters carry labels: [filter] and render as LABELS = (FILTER)
+# dimensions on ORDERS. The fourth is not boolean and has no labels, so it
+# renders as a sentence in AI_SQL_GENERATION. A boolean filter without labels
+# is SST-VAL405; a labelled filter that is not boolean is SST-VAL401.
 #
-# THE STANDALONE ONE CLOSES A GAP THE SPEC ASKED FOR BY NAME. Rule F007 records
-# that the fixture
-# "asserts neither that prose path nor the standalone-filter slot in the payload
-# because it authors no standalone filter at all, and the fix is a fixture that
-# authors one -- a NON-BOOLEAN standalone filter clears F007 and exercises both."
-# `high_value_threshold_cents` below is that filter.
-#
-# WHY NON-BOOLEAN MATTERS HERE. F005 requires a BOOLEAN expr only of a filter
-# CARRYING `labels: [filter]` -- the entity-level form -- and section 3 imposes the
-# boolean requirement in that same place and nowhere else. F007 fires only on a
-# BOOLEAN-VALUED standalone filter. So a non-boolean standalone filter is both
-# expressible and warning-free, which is the one authored shape that reaches the
-# `filters_to_instructions` prose path.
-#
-# THE DONOR PROJECT HAS ZERO FILTERS. MEASURED: its
-# `snowflake_semantic_models/filters/` directory exists and is EMPTY, so
-# filter-to-DDL had no happy-path
-# fixture anywhere. Copying the donor would have reintroduced exactly that
-# (`D216`).
-#
-# NO DATA VALUES. The enum literals below are the closed sets the dbt models
-# declare with `is_enum: true`, not samples drawn from a column.
-# =============================================================================
+# Each filter attaches to every view that holds its tables. The order_state
+# literals come from the completed_state and returned_state vars in
+# sst_config.yml.
 
 snowflake_filters:
 
-  # ===========================================================================
-  # ENTITY-LEVEL -- boolean, carries `labels: [filter]`
-  # ===========================================================================
+  # tables: repeats what the ref in expr already implies; only
+  # high_value_threshold_cents needs it.
   - name: is_completed_order
-    # `tables:` IS REQUIRED ON EVERY FILTER, ADDED 2026-09-24 (`D222`). The fixture
-    # previously declared it on NONE of the four, which diverged from both the spec --
-    # "this file declares its own `tables:`, and each member is pulled into every view
-    # containing those tables" -- and from all TEN production filters, every one of which
-    # declares it. For the three boolean filters below this is belt-and-braces, because
-    # their `expr:` already names the table through a `ref()`. For
-    # `high_value_threshold_cents` it is the ONLY attachment route that exists, and
-    # without it that filter reached no view and its prose could never be emitted.
     tables:
       - "{{ ref('orders') }}"
     description: |-
       Restricts to orders that completed, excluding returns and orders still in
       flight. The default lens for any revenue question.
     expr: "{{ ref('orders', 'order_state') }} = '{{ var('completed_state') }}'"
-    # `labels: [filter]` IS WHAT MAKES THIS ENTITY-LEVEL, and it is what brings
-    # F005's boolean requirement with it. Both are asserted in the golden DDL for
-    # jaffle_sales.
     labels:
       - filter
 
@@ -64,13 +32,8 @@ snowflake_filters:
     labels:
       - filter
 
-  # ===========================================================================
-  # ENTITY-LEVEL -- boolean, and it reads a VIEW VARIABLE
-  # ===========================================================================
-  # A filter reading a variable as a bare identifier, the same mechanism the
-  # metrics use. This is the only place in the fixture where a variable is read
-  # from something other than a metric `expr:`, which is what proves the
-  # substitution is not metric-specific.
+  # Reads the view variable large_order_cents as a bare identifier; it renders
+  # as ORDERS.ORDER_TOTAL > LARGE_ORDER_CENTS.
   - name: is_large_order
     tables:
       - "{{ ref('orders') }}"
@@ -80,28 +43,12 @@ snowflake_filters:
     labels:
       - filter
 
-  # ===========================================================================
-  # STANDALONE -- NON-BOOLEAN, and deliberately carries NO `labels:` key
-  # ===========================================================================
-  # DO NOT ADD `labels: [filter]` TO THIS FILTER. Doing so makes it entity-level,
-  # which brings F005's boolean requirement onto an expression that returns a
-  # NUMBER -- and the whole reason this entry exists is to be the standalone,
-  # non-boolean case that the F007 section names as the fix for an uncovered path.
-  #
-  # Its value is read by the `filters_to_instructions` prose path rather than
-  # rendered as a FILTERS clause member, which is why the golden for jaffle_sales
-  # asserts it in the instruction payload and NOT among the filters.
+  # Not boolean and unlabelled, so it renders in AI_SQL_GENERATION as "For
+  # ORDERS, high_value_threshold_cents is large_order_cents." followed by its
+  # description. Adding labels: [filter] would make it SST-VAL401.
   - name: high_value_threshold_cents
-    # THE ONLY ATTACHMENT ROUTE THIS FILTER HAS. Its `expr:` is the bare variable
-    # `large_order_cents` and contains NO `ref()` at all, so table-membership attachment
-    # had nothing to derive a table from and this filter reached ZERO views -- while this
-    # file's own header claimed "the golden for jaffle_sales asserts it in the instruction
-    # payload". Both statements could not be true. `tables:` is what makes the header true.
-    #
-    # THE GENERAL LESSON, AND IT IS A SPEC GAP RATHER THAN A TYPO: implicit-by-table-
-    # membership CANNOT work for a member whose expression references no column. Any such
-    # member needs an explicit `tables:`, and a non-boolean standalone filter is exactly
-    # that shape by construction.
+    # Its expr names no column, so tables: is what attaches it; a filter that
+    # renders as prose needs exactly one declared table.
     tables:
       - "{{ ref('orders') }}"
     description: |-

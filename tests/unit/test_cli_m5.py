@@ -314,7 +314,11 @@ def test_profile_commands_and_plugins_publish_and_every_pointer_resolves(
     ]
     assert port.list_location(commands[0]["snowflake_stage"]) == ("daily.md",)
     assert port.list_location(commands[1]["snowflake_stage"]) == ("sql/check.md",)
-    assert len(plugins) == 1 and plugins[0].startswith("@DB.SCH.PROFILES/plugins/analyst/") and plugins[0].endswith("/kit/")
+    assert (
+        len(plugins) == 1
+        and plugins[0].startswith("@DB.SCH.PROFILES/plugins/analyst/")
+        and plugins[0].endswith("/kit/")
+    )
     assert ".cortex-plugin/plugin.json" in port.list_location(plugins[0])
 
     replanned = invoke_with_port(monkeypatch, port, ["plan", "--project-dir", str(project), "--output", "json"])

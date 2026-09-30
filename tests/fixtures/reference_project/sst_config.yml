@@ -1,68 +1,25 @@
 ---
 # =============================================================================
-# sst_config.yml -- the reference-impl fixture
+# sst_config.yml -- reference project
 # =============================================================================
-# TARGETING AND POLICY ONLY. NEVER CONTENT. Content -- a provider, an owner, a
-# column meaning, a procedure signature -- lives in a spec file.
+# Targeting and policy only; content (descriptions, owners, signatures) lives in
+# the spec files. Every number is a threshold, limit, count or timeout, never
+# member data.
 #
-# NO DATA VALUES. Every number below is a threshold, a limit, a count or a
-# timeout. No value here is or resembles member data.
+# Every database is written `{{ target.database }}`, so each dbt target in
+# profiles.yml publishes to its own database; the goldens resolve against `dev`.
+# A `+` key sets a default that folder routes and individual artifacts inherit.
 #
-# EVERY KEY THAT THE RULESET REQUIRES TO BE SET EXPLICITLY IS SET EXPLICITLY.
-# In particular `validation.snowflake_syntax_check` (C019). In 0.3 the code default
-# was false while the `sst init` template wrote true, so an unset key meant
-# different behaviour depending on how the project was created. 1.0 closes that --
-# D027 fixes the default at true and the template agrees -- so the reason to set
-# it here is no longer the ambiguity: it is that whether expressions are compiled
-# decides what a green validate proves.
-# CORRECTED: an earlier version of this comment said the fixture "asserts that it
-# ran". It asserts the opposite, and that is the point. expected/diagnostics.txt
-# asserts TWO info[SST-VAL020] notices against exit_code 0, because the offline
-# harness stage runs with this key TRUE and no connection. So this fixture is a
-# worked instance of the gap D141 accepts: green at every step, with expression
-# compilation never performed and nothing downstream to say so. Asserting the
-# skip is more valuable than asserting the run, because the skip is the shape
-# that ships.
+# An unknown key is a warning (SST-CFG003) and a misspelled top-level block an
+# error (SST-CFG007). Removed keys are SST-CFG043; keys reserved for a later
+# release are SST-CFG044.
 # =============================================================================
 
 snowflake:
-  # `tool_types` IS DELIBERATELY ABSENT, AND ITS ABSENCE IS THE ASSERTION (`D238`).
-  # This fixture used all 8 shipped types, so it restated the shipped default verbatim
-  # and taught every reader that an EXTENSION POINT was mandatory. The key extends the
-  # default; it does not restate it, and a project needing no extension omits it. What
-  # this fixture now asserts is the DEFAULT PATH -- 8 types accepted with the key unset.
-  # The extending case is exercised in the examples corpus instead, where it is the
-  # point rather than an accident of the fixture being exhaustive.
-
-  # `auto` PLUS EVERY MODEL CONFIRMED TO WORK. NOT an enum in Snowflake and the served
-  # set MOVES, so this list is the gate (C011, A051).
-  #
-  # `auto` IS A REQUIRED MEMBER, NOT AN OPTIONAL ONE (`D240`). It is the Snowflake-side
-  # default and the Snowsight default, so it is the most common inherited value of all --
-  # and the list as authored OMITTED it, which made `A051` fire on the single most likely
-  # spec in existence. It is not a model name and appears in no served model list.
-  #
-  # EVERY ENTRY BELOW WAS INVOKED AND ANSWERED. `MEASURED` 2026-09-25 by ad-hoc
-  # `agent:run`, one call per model, each asked to reply with a single word:
-  #
-  #   23 confirmed working  +  auto  =  24 entries
-  #
-  # THIS IS NOT THE SERVER'S ADVERTISED LIST, AND THE DIFFERENCE IS THE POINT. The agent
-  # runtime advertises 22 in its own error diagnostics; a SEPARATE Cortex-wide list names
-  # 35. Invoking all 35 found only 23 that answer -- so 13 members of the wider list are
-  # served by Cortex and REFUSED by the agent runtime (`claude-4-sonnet`, `llama3.1-8b`,
-  # `mistral-large2`, `glm-5.2`, `qwen3-32b-coder` and friends), while ONE model that
-  # answers, `openai-1p-gpt-5.4`, appears in NEITHER advertised list nor the docs
-  # (drift rows 42-44).
-  #
-  # `openai-1p-gpt-5.4` IS INCLUDED ON MEASUREMENT, NOT ON DOCUMENTATION, and is the one
-  # entry here carrying extra risk: undocumented and unadvertised, so it could be
-  # withdrawn without a deprecation notice. It is listed because it demonstrably works
-  # and this list records what works.
-  #
-  # ACCOUNT- AND REGION-RESOLVED. The server reports "Cross-region setting: no region
-  # restriction" and "Model allowlist: No model RBAC/allowlist restriction" for this
-  # account, so a restricted account will see FEWER than these 23.
+  # The orchestration models agents may name (SST-VAL543). Snowflake's served
+  # set is not an enum and changes, so this list is the gate. `auto` is what an
+  # agent resolves to when neither it nor `agents:` names a model. `tool_types`
+  # is reserved (SST-CFG044).
   orchestration_models:
     - auto
     - claude-haiku-4-5
@@ -89,599 +46,180 @@ snowflake:
     - openai-gpt-5.4
     - openai-gpt-5.5
 
-  # SELECTS BETWEEN THE TWO HALVES OF `A068`'s SPLIT (`D241`): `true` -> warning
-  # `SST-VAL014`, `false` -> error `SST-VAL013`. A key within edit distance 1-2 of a
-  # known key is ALWAYS an error regardless of this setting (A069).
-  #
-  # NOT redundant with `validation.strict`, which promotes EVERY warning uniformly and
-  # so cannot SELECT between a split's halves. Note that `strict: true` IS set below, so
-  # in THIS fixture an unmodelled key would error either way -- the difference is that
-  # `true` reports it as a PROMOTED warning and `false` as a NATIVE error.
-  allow_unknown_keys: true
-
-  profile:
-    # Empty list disables the check. Avatar is NOT an enum in Snowflake, so this
-    # is opt-in consistency only (A057).
-    avatar_allowlist: []
-
 project:
+  # Every value is the default, written out so each root is visible; a root
+  # written here must exist (SST-CFG047). There is no key for dbt models: SST
+  # reads them from dbt's manifest.
   semantic_models_dir: semantic_models
   agents_dir: agents
   tools_dir: tools
   skills_dir: skills
-  # eval_metrics_dir IS NOW DECLARED. It was absent while the fixture carried no
-  # custom judge, which left all 17 `J0xx` custom-metric rules -- the largest
-  # wholly-unexercised rule family -- with no
-  # happy path anywhere. `eval_metrics/answer_grounding.yml` is that judge.
-  #
-  # NOTE WHAT THIS KEY DOES NOT DO. An eval metric compiles to NO Snowflake
-  # object (`D166`); it is inlined into the rendered eval YAML. So this key adds
-  # a discovery root and NOTHING to publish order -- the registry still carries
-  # five artifact types with a `ddl_position` and not six.
+  # Custom LLM-judge metrics. They create no Snowflake object: each is inlined
+  # into the rendered eval config of the agents that use it.
   eval_metrics_dir: eval_metrics
-  #
-  # THE DESKTOP INPUTS. A plugin groups skills into one extension; a profile is
-  # one CoCo Desktop registry row; hooks, MCP configs, and slash commands are what
-  # profiles name. These are the defaults, written out so the reference shows
-  # every root -- and a root written out must exist (`SST-CFG047`).
+  # CoCo Desktop inputs: plugins group skills into one extension, profiles are
+  # registry rows, and hooks, MCP configs and commands are what profiles name.
   plugins_dir: plugins
   profiles_dir: profiles
   hooks_dir: hooks
   mcp_servers_dir: mcp-servers
   commands_dir: commands
-  #
-  # NOT A KEY, BY DESIGN: the dbt models directory. Auto-detected from
-  # dbt_project.yml `model-paths`.
 
-# =============================================================================
-# vars -- THE ONE CONTEXT VALUE THIS FIXTURE CARRIES, AND ITS FIRST COVERAGE
-# =============================================================================
-# `{{ var('<name>') }}` resolves against this block and NOWHERE else. C015 requires
-# every var referenced anywhere to be declared here, and `SST-CFG029` is the ERROR
-# for one that is not -- not an empty substitution, because an empty one produces
-# syntactically valid SQL that means something else.
-#
-# WHY THIS BLOCK EXISTS AT ALL, GIVEN THE FIXTURE RAN WITHOUT IT. `agent.yml` used to
-# pin its skill version with `{{ sha_version }}` -- a bare name, no parentheses, no
-# arguments. `TEMPLATE_RE` matches `{{ fn(args) }}` only, so that token was not an
-# unresolved reference: it never reached the resolver, rendered as literal text, and
-# did not even trip `SST-REF004` for an unknown function, because the regex never
-# produced a function name. `K008 [E]` requires a pinned version and the token made
-# the pin unresolvable while looking resolved.
-#
-# THE ALTERNATIVE WAS A CONTEXT-VARIABLE NAMESPACE -- a second namespace holding
-# `sha_version`, `target.name` and `agent.database`, separate from the function
-# namespace the thirteen resolvers own. It was considered and rejected: `var` is
-# already the resolver for "a project-declared value substituted into a field", and a
-# second namespace would have had to define its own scoping, its own not-found
-# behaviour and its own collision rule against the first -- while `agent` ALREADY
-# collides across the two, being both resolver #8 and the proposed context object.
-# Routing through `var` removes the collision rather than managing it.
-#
-# AND IT CLOSES A MEASURED COVERAGE HOLE. `var` is in EVERY expression-bearing
-# `RefPolicy`, which makes it the most broadly permitted resolver in the set, and
-# its fixture coverage was measured at ZERO.
-# This block is that coverage.
-# `sha_version` IS DELIBERATELY ABSENT FROM `vars:` AND DECLARING IT IS AN ERROR.
-#
-# It used to pin the agent's Cortex Extension reference (`version: "{{
-# var('sha_version') }}"` in agents/jaffle_analytics/agent.yml). M5 retired that
-# pin: a skill version is now named by its CONTENT -- `skills.+version_prefix` plus
-# 12 hex characters of the flattened bundle's digest -- and SST injects that alias
-# into the rendered spec, so the agent authors no version at all. A commit-named
-# pin is SST-VAL839 wherever it appears, and `SST-CFG040` still refuses a declared
-# `sha_version`, because SST records the commit that published each version in
-# its own state and a declared value could only disagree with it.
-#
-# AN EARLIER VERSION OF THIS FILE DECLARED `sha_version: "0000000"`, and the comment
-# on it argued its own case away: *"a committed literal SHA would be stale on the next
-# commit."* That is exactly right, and it is the reason the value cannot be authored
-# here at all. Two failure modes followed, and the second is silent: the SHA disagrees
-# with the commit so traceability is lost with nothing raised; or the SHA names a
-# version that does not exist, which drift row 34 measured is
-# ACCEPTED by `CREATE AGENT` with `DESCRIBE`, `SHOW` and `COMMIT` all passing -- an
-# agent that reports success and silently has no skill. The commit-named pin had the
-# second failure built in -- an unchanged skill publishes nothing, so most commits
-# named a version that was never created -- which is why content aliases replaced it.
-#
-# `0000000` REMAINS THE TOKEN IN THE GOLDENS, and that is unaffected: the golden
-# harness's SHA normalisation replaces the real SHA with a fixed token in `plan.txt`,
-# `plan-nochange.txt`, `agent.json` and the eval object names, because it changes every
-# commit by design. The normalisation is what makes the golden assertable -- it never
-# needed the value to be authored in config.
-
+# `{{ var('<name>') }}` reads this block; an undeclared name is SST-REF038. A var
+# is substituted at compile time, so it means the same in every view. These two
+# name `order_state` values used by filters.yml and metrics.yml. `sha_version`
+# is supplied by SST; declaring it here is SST-CFG040.
 vars:
-  # NO LONGER EMPTY, AND THE REASON IT WAS EMPTY WAS A FALSE CLAIM (`D248`).
-  #
-  # This block used to hold `{}` and justify itself as "the coverage" for the `var`
-  # resolver, citing a coverage measurement. IT WAS NOT THE COVERAGE.
-  # `MEASURED` 2026-09-25: the fixture's ONLY live `{{ var(...) }}` call was
-  # `agent.yml`'s `{{ var('sha_version') }}`, and `sha_version` resolves from
-  # `Provenance.sha` -- DECLARING it here is `SST-CFG040`, an ERROR. So the number of
-  # `var()` calls in this fixture that read this block was ZERO, and an empty block
-  # asserting it was the coverage asserted the opposite of the truth.
-  #
-  # THE TWO VALUES BELOW ARE THE HONEST VERSION. `order_state` is a CLOSED SET -- the
-  # golden renders it `IS_ENUM` with `SAMPLE_VALUES ('completed', 'returned',
-  # 'placed')` -- and its literals were hardcoded in FIVE authored places across
-  # THREE files. That is exactly what this block is for: "a project-declared value
-  # substituted into a field", repo-wide rather than per-view.
-  #
-  # WHY NOT A VIEW VARIABLE, since the fixture has those too and they look similar.
-  # A view variable is PER-VIEW and renders as a declared `VARIABLES` member with a
-  # `default_value` -- `large_order_cents` is one. These are neither: they are
-  # authoring-time substitutions that disappear at render, and they must mean the same
-  # thing in every view because they name states in one upstream service. A per-view
-  # mechanism cannot express a repo-wide constant.
-  #
-  # THE GOLDENS DO NOT MOVE, AND THAT IS THE CHECK. Each var's value is byte-identical
-  # to the literal it replaces, so the rendered DDL is unchanged while the RESOLVED
-  # path is now exercised. A coverage claim that moved a golden would have been
-  # exercising something else.
   completed_state: completed
   returned_state: returned
 
-  # `sha_version` IS STILL DELIBERATELY ABSENT and declaring it is still `SST-CFG040`.
-  # See the note above this block: skill versions are content aliases, and the
-  # publishing commit lives in SST state, not in a variable.
-
-# ---------------------------------------------------------------------------
-# # =============================================================================
-# STATE -- WHERE "DID THIS CONTENT ACTUALLY CHANGE" IS ANSWERED FROM
-# =============================================================================
-# THE POINT OF THIS BLOCK IS THAT A NEW COMMIT WITH UNCHANGED CONTENT PUBLISHES
-# NOTHING. `plan` compares each artifact's fingerprint against the last one
-# applied TO THIS TARGET and reports NOOP when they match, and for the three
-# SHA-bearing types the fingerprint is taken over the PAYLOAD rather than the
-# publish statement (D069) -- so moving a commit forward does not, by itself,
-# look like a change.
-#
-# THAT ONLY WORKS IF THE PRIOR FINGERPRINTS SURVIVE BETWEEN RUNS, AND AS A LOCAL
-# FILE THEY DID NOT. `target/sst/state.json` is gitignored, so a fresh CI
-# workspace has none, `plan` takes the NO_PRIOR_STATE branch, and every artifact
-# reports UPDATE. An UPDATE on an agent mints a new server-assigned VERSION$<n>,
-# so every merge to main would create a new agent version whether or not anything
-# changed -- the exact behaviour this block exists to prevent.
-#
-# KEYED BY TARGET, WHICH IS WHAT MAKES ONE DESIGN COVER BOTH RUN SHAPES:
-#   a developer, --target dev   -> SCRATCH.DBT_<user>, row keyed `dev`
-#   CI on merge,  --target prod -> the production schema, row keyed `prod`
-# The defaults follow the target, so each writer owns the state table in the
-# schema it is ALREADY writing artifacts to and nobody needs write access to
-# anyone else's. That is the whole reason these are not fixed literals.
+# Apply records what it published here, keyed by target, and plan reads it to
+# tell changed artifacts from unchanged ones. These are the defaults: each
+# target keeps its state in its own database and schema.
 state:
   +database: "{{ target.database }}"
   +schema: "{{ target.schema }}"
   +table: SST_STATE
 
-# tags: -- TAG NAMES, WHICH ARE NOT TAG VALUES
-# ---------------------------------------------------------------------------
-# THIS BLOCK WAS MISSING AND ITS ABSENCE WAS AN ERROR, not an omission. The
-# semantic layer authors two tag VALUES, and `A009 [E]` requires every tag NAME
-# to resolve to an existing tag object. With no block here there was nothing for
-# `{{ tag('<ref>') }}` to resolve against, so the fixture declared governance
-# tags that no surface could name -- the exact defect the `tags:` rule (TAG
-# NAMES, WHICH ARE NOT TAG VALUES) was written to prevent.
-#
-# THE DISTINCTION THE BLOCK EXISTS TO MAKE: a NAME is an account-level Snowflake
-# object with a database, a schema and an identifier. A VALUE is a string of at
-# most 256 characters applied under such a name. `semantic_views.+tags` and
-# `agents.+tags` carry values; this block declares names; and `{{ tag('<ref>') }}`
-# resolves against this block only.
-#
-# SST NEVER CREATES A TAG OBJECT. `A009` is an ERROR rather than a warning
-# precisely because the tag is a governance object owned outside this repo -- a
-# renderer that created one on demand would let a typo invent a new governance
-# dimension silently. The three below were created by hand in the reference
-# account.
-#
-# EVERY KEY IS BARE so `default_prefix` covers it. A dotted key is REFUSED
-# rather than discouraged (D119), because standing rule 4 would otherwise read
-# the dot as a path segment.
+# Tag object names for `{{ tag('<name>') }}`; an undeclared name is SST-REF040.
+# A name resolves to default_prefix plus the upper-cased key. SST applies tag
+# values but never creates a tag object, so these must already exist.
 tags:
-  # `{{ target.database }}` for the same reason every other location key uses it
-  # -- see the note at `snowflake:` above. A governance schema that differs per
-  # account routes with this one line instead of a conditional per entry.
   default_prefix: "{{ target.database }}.{{ target.schema }}"
   cost_center:                          # -> <db>.<schema>.COST_CENTER
   data_domain:                          # -> <db>.<schema>.DATA_DOMAIN
   metric_tier:                          # -> <db>.<schema>.METRIC_TIER
 
 validation:
-  # One strictness resolution: flag overrides config, config overrides default,
-  # honoured by validate, plan AND apply (C017). The fixture is authored to be
-  # warning-free, so `true` costs nothing and proves it.
+  # Every warning becomes an error; --strict/--no-strict on validate, plan and
+  # apply overrides this. Offline, the fixture has one warning, SST-VAL528 on
+  # jaffle_delivery's agent tool, so a strict run fails on it; the offline CLI
+  # tests pass --no-strict.
   strict: true
 
-  # SET EXPLICITLY (C019). Needs a connection; the offline harness stage skips it
-  # and reports the skip rather than reporting a pass.
-  # AND NOTHING DOWNSTREAM ACTS ON THAT REPORT -- D141. `apply` may proceed on
-  # this validate and no mechanism refuses it, so this stage is the fixture's
-  # assertion of the accepted gap: green at every step with the view's SQL never
-  # compiled. The two info[SST-VAL020] notices in expected/diagnostics.txt are
-  # the whole of the residue, and in the default human render they collapse to a
-  # count. Setting this key true is a statement of intent, not evidence the
-  # compile happened.
+  # The default: validate and plan compile expressions against Snowflake, which
+  # needs a connection. Offline runs pass --no-snowflake-syntax-check, and
+  # validate reports the skip as SST-VAL020 rather than as a pass.
   snowflake_syntax_check: true
 
-  # NO `expression_rules` KEY. `D247` removed it: the six codes it gated,
-  # `SST-VAL102`-`SST-VAL107`, are `ERROR` **ND** and two are `FORBIDDEN`, and
-  # the model design already states the principle for a different key -- "a
-  # non-demotable rule with a switch is not non-demotable". Snowflake enforces
-  # none of the derived-metric restrictions, so `false` disabled
-  # the only gate that exists. The rules always run, and negative/06 still trips
-  # them.
-
-  # NO `smoke_query` KEY. Decision D016: smoke queries are not part of a deployment, so
-  # there is no behaviour for a key to switch. The per-metric probes run from
-  # `sst test --suite smoke`, as a separate connected stage.
-
-  # NO `multipath_check` KEY. `D247` removed it. The check is STATIC graph
-  # analysis over authored relationships, so it cannot false-positive and `false`
-  # was never an escape hatch from a noisy rule -- the reading that WOULD have
-  # been noisy at scale, transitive, was rejected outright by `D028` rather than
-  # left switchable. `MEASURED`: the narrow reading affects no metric in a large
-  # production project, because every relationship there spans a distinct pair.
-  #
-  # RELIEF, IF A CORPUS EVER DOES CARRY A PARALLEL EDGE, is `using_relationships`
-  # per metric or `severity_overrides: {SST-VAL116: warning}` in bulk -- which is
-  # more auditable than a boolean, being greppable and naming the code it lifts
-  # (`D152`). `SHOW SEMANTIC DIMENSIONS ... FOR METRIC` is still not a multi-path
-  # detector.
-
-  exclude_dirs: []
-
-enrichment:
-  distinct_limit: 25
-  sample_values_display_limit: 10
-  synonym_max_count: 4
-
-  # NO `infer_is_enum` KEY. `D233` removed it: enum inference is opt-in through
-  # the `enums` enrich component, which sits OUTSIDE `--include`'s default of
-  # `column-types data-types`, so the no-data intent is already carried by the
-  # CLI default. `is_enum` stays a hand-authored assertion.
-
-  # THIS KEY IS THE WHOLE REASON THE FIXTURE CARRIES NO *COLLECTED* SAMPLE VALUES.
-  # `sst enrich --include sample-values` queries real columns and writes the values
-  # it finds into tracked YAML. It is the one path this tooling has for moving
-  # member data into a repository. See README section 3.
-  #
-  # NOTE WHAT THE FIXTURE DOES AND DOES NOT CARRY, because this block used to say
-  # it carried none at all. `project/models/marts/*.yml` AUTHORS
-  # `sample_values` on TWENTY-TWO columns, by hand, with synthetic tokens -- authored for
-  # their own sake, because those values are what Cortex Analyst reads to learn a
-  # column's value range. THIS LINE USED TO GIVE A DIFFERENT REASON: that 0.3 gated the
-  # whole `WITH EXTENSION (CA=...)` clause on at least one member carrying the key, so
-  # the values existed to make a clause appear. `D220` deletes that clause in 1.0 and
-  # makes `sample_values` a NATIVE per-member clause; `THE SECOND HALF WAS ALSO WRONG`
-  # below carries the correction in full. None of those values came from a column,
-  # which is the rule that actually matters and the one that is unchanged.
-  #
-  # AND THE KEY THAT WAS MISSING NOW EXISTS, WHICH IS WHAT THIS BLOCK ASSERTS.
-  # Decision `D087` adds a project-level refusal, and this fixture is the first
-  # thing to author it. Two premises of the older note are CORRECTED. First,
-  # collection was already opt-in -- `sample-values` sits outside `sst enrich`'s
-  # default `--include`, so "nothing turns the collection off" overstated it.
-  # Second, the gap was never a limit on how many values get written; it was the
-  # absence of a key that REFUSES the flag outright. That is this one.
-  #
-  # `false` HERE IS LOAD-BEARING, not decoration. It states the intent the goldens
-  # already depend on: running `sst enrich --include sample-values` against this
-  # project would otherwise OVERWRITE twenty-two hand-authored synthetic declarations
-  # with real member data, and both fingerprints would then be taken over member
-  # values rather than over structure. With this key `false`, that invocation is
-  # refused (spec rule `C021`) rather than merely discouraged.
-  #
-  # IT DOES NOT FORBID THE AUTHORED VALUES, and the distinction is the whole
-  # point of the key. It refuses COLLECTION -- enrich reading columns and writing
-  # what it finds.
-  #
-  # THE COUNT IN THIS COMMENT WAS STALE BY FOURTEEN AND IS CORRECTED 2026-09-24. It said
-  # "the eight `sample_values` in `models/marts/*.yml`". MEASURED on disk: TWENTY-TWO
-  # columns carry the key -- customers 3, orders 5, locations 3, products 3,
-  # pricing_periods 5, supplies 3, order_items 0. The figure was written when the fixture
-  # was smaller and nothing recomputed it, which is the same defect class as the stale
-  # goldens and the stale drift tally: a derived number with no instrument behind it.
-  #
-  # THE SECOND HALF WAS ALSO WRONG, AND MORE INTERESTINGLY. It said these values were
-  # authored "because 0.3 gates the whole `WITH EXTENSION (CA=...)` clause on at least one
-  # member carrying the key" -- i.e. the values existed to make a clause appear. That
-  # clause is DELETED in 1.0 (`D220`) and `sample_values` is now a NATIVE per-member
-  # clause, so the values are authored for their own sake: they are what Cortex Analyst
-  # reads to know a column's value range. The reason changed even though the key did not.
-  #
-  # They remain hand-written synthetic tokens. Authored and collected are different things.
-  allow_sample_value_collection: false
-
-generation:
-  # NO `publish_via` KEY. `D247` removed it and DDL is the only path. The old
-  # comment claimed "YAML gives validate-without-create, always-preserved grants,
-  # time_dimensions, standalone filters and authored data_type" -- and every one of
-  # those five is now refuted, deleted or weaker than a check SST already runs.
-  # `time_dimensions` was deleted by `D219`; the standalone-filter shape that needed
-  # YAML was made unauthorable by `D220`; grants are preserved on this path via
-  # COPY GRANTS; `validate_only` is explicitly "NOT A SUFFICIENT GATE"; and
-  # `data_type` is normalised on both paths.
-  #
-  # THE DECIDING FACT WAS THE DEFAULT: it was `yaml`, while
-  # `SYSTEM$CREATE_SEMANTIC_VIEW_FROM_YAML` appears in ONE design document and zero
-  # times in the engine, and the renderer emits `CREATE OR REPLACE` unconditionally.
-  # A default selecting a path nothing renders is the shape `D027` fixed and `C019`
-  # exists to prevent.
-
-  # NO `filters_to_instructions` KEY. `D247` removed it. After `D220` the standalone
-  # filter prose path has exactly ONE destination -- the native `AI_SQL_GENERATION`
-  # clause -- because the `CA=` payload it used to choose against is deleted and
-  # `F007 [E]` makes a boolean standalone filter unauthorable. So `false` routed the
-  # filter nowhere, and NOTHING caught the drop: `F008` fires on ATTACHMENT, and
-  # `D222` gave all four fixture filters a `tables:` entry, so all four attach. A
-  # filter that attaches and is then discarded at render raised no diagnostic at all.
-  #
-  # THE FIXTURE STILL EXERCISES THE PATH, which is what matters and is why this
-  # removal moves no golden byte: `high_value_threshold_cents` carries NO `labels:`
-  # key deliberately, reaches the prose path, and both DDL goldens assert it in
-  # `AI_SQL_GENERATION`. The three entity-level filters keep rendering as
-  # `LABELS = (FILTER)` dimensions and are NOT also appended as prose -- the scoping
-  # is standalone-only, which is what `F009` warns about double-emitting.
-
-  # NO `emit_entity_level_filters` AND NO `emit_relationship_type` KEY. `D233`
-  # removed both. Entity-level emission keys on the PER-MEMBER `labels: [filter]`
-  # and not on config, and `F007 [E]` makes that label mandatory for a boolean
-  # filter. `relationship_type` and `join_type` are never emitted (`R010`), and
-  # `R010` fires on the authored keys unconditionally rather than on a flag.
-
-  # NO `use_create_or_alter` KEY. `D247` removed it -- it had ZERO named consumers:
-  # no CLI flag, no env var, no error code, no `C`-rule, zero sites in the engine.
-  # And two engine design documents already said it must not be a flag:
-  # the semantic-view renderer design -- CREATE OR ALTER "is a different statement with
-  # different privileges, NOT a flag on this one" -- and the model design -- "adding
-  # the field before the branch would create an authored key that changes nothing".
-  #
-  # THE PUBLISHER ALWAYS EMITS `CREATE OR REPLACE ... COPY GRANTS`, and V016 is
-  # satisfied by that clause. `TESTED` 2026-09-19 -- a bare replace destroys every
-  # explicit grant and reports success; with the clause the grant is preserved. See
-  # the note at the end of this file.
-
-  threads: 1
-  view_timeout: 300
-
-# NO `drift:` BLOCK AT ALL, AND THE EMPTINESS IS THE POINT (`D244`).
-#
-# The block held two keys across its life and BOTH were contracts rather than settings:
-# `fail_on_drift`, removed by `D233` -- exiting 2 on drift is a contract (`cli/README.md`)
-# and the only documented escape is the `--no-detailed-exitcode` FLAG, which has no config
-# backing; and `normalize`, removed by `D244` -- every one of its nine entries compensates
-# for something Snowflake does on read-back, so NONE has a correct `false` value and
-# switching one off reports PERMANENT FALSE DRIFT rather than relaxing a check.
-#
-# With its last key gone the block itself is dead, so it is absent rather than empty: an
-# optional block with nothing inside it is a surface that can only be typed wrong. The nine
-# normalisations are compiled in and enumerated in the SST config specification, which is where the
-# auditability the block was written for belongs.
-
-defer:
-  # NAMES A dbt TARGET, and there is no second namespace it could name. `profiles.yml`
-  # declares `dev`, `prod` and `ci`; this key must be one of those three or SST refuses.
-  # That is what makes the defer target and the manifest structurally unable to
-  # disagree: SST resolves both from the same authority, so there is no longer a
-  # `dbt parse --target dev` followed by a prod apply that silently points every view
-  # at a scratch schema.
-  target: prod
-  state_path: target/prev
-  # THE KEY IS NARROWER THAN IT SOUNDS, AND THIS COMMENT WAS RIGHT BEFORE THE SPEC WAS
-  # (`D242`). SST runs `dbt parse --target <t>` itself before reading the manifest, so
-  # "is there a manifest" is no longer a question this key answers. What it still
-  # controls is whether SST produces the DEFER-side state -- the PRIOR target's manifest
-  # under `state_path` -- rather than requiring it to be supplied.
-  #
-  # The config specification called this key SUBSUMED by `dbt.invoke` and slated it for
-  # deprecation. That was wrong: `dbt.invoke` builds the CURRENT target's manifest and
-  # this builds a NON-DEFAULT target's, so neither produces the other's file. `D242`
-  # corrected the spec and the status tag; this comment is what flagged it.
-  #
-  # FALSE is the right value here and puts the fixture on the Core path with the state
-  # supplied, which is what `dbt-coupling.md` 6.3 records as MEASURED.
-  auto_compile: false
+  # Removed (SST-CFG043): `expression_rules` (the derived-metric rules
+  # SST-VAL102 to SST-VAL107 always run), `multipath_check` (always on; a metric
+  # with an ambiguous join path declares using_relationships, SST-VAL116) and
+  # `smoke_query` (smoke probes run under `sst test --suite smoke`).
 
 tools:
-  # Targets ONLY the `define:` members. `reference:` members are never created,
-  # so nothing here applies to them and an override aimed at a reference-only
-  # group is an error (C006a).
-  #
-  # =========================================================================
-  # `target.database`, NOT A CONDITIONAL ON `target.name`. SIX SITES IN THIS
-  # FILE USED TO RE-DERIVE IT.
-  # =========================================================================
-  # Each of the six read
-  #   {{ 'SST_REF_PROD' if target.name == 'prod' else 'SST_REF_DEV' }}
-  # which is A SECOND SOURCE OF TRUTH FOR A FACT profiles.yml ALREADY STATES.
-  # `profiles.yml` declares `database: SST_REF_DEV` on the `dev` block, so for
-  # `dev` and `prod` the conditional and `target.database` are THE SAME STRING --
-  # the expression bought nothing and cost a place to go stale.
-  #
-  # AND IT WAS ALREADY WRONG FOR TWO OF THE FOUR TARGETS. `ci` declares
-  # `SST_REF_CI`, and the conditional sent its tools, skills and agent specs to
-  # `SST_REF_DEV` -- a CI run writing into the database a developer reads, which
-  # is the exact failure the `ci` block exists to prevent. `verify` points at a
-  # real account through the environment, and the conditional ignored that too.
-  #
-  # THE GOLDENS ARE UNAFFECTED, WHICH IS WHY THIS IS SAFE RATHER THAN BRAVE.
-  # They resolve against `dev`, and `target.database` on `dev` IS `SST_REF_DEV`.
+  # Defaults for `define:` members only; `reference:` members are never
+  # created. Per-group routes are reserved (SST-CFG044) and `+enabled` is
+  # removed (SST-CFG043).
   +database: "{{ target.database }}"
   +schema: JAFFLE
 
-  # NO `+enabled` KEY. `D248` removed it, along with the `evals:` and `skills:`
-  # equivalents. No TOOL can set `enabled: false` on itself -- the tools spec
-  # declares no artifact-level `enabled` -- so the key could only ever disable every
-  # tool at once, and nothing states a use case for that. It was also never authored
-  # `false` anywhere in the plan.
-
-  # REQUIRED for a defined search service or procedure: both run on real compute
-  # and there is no caller to inherit from.
+  # Defined search services and procedures run on this warehouse.
   +warehouse: SST_REF_WH
 
   +target_lag: "1 hour"
 
-  # PINNED, not null. Changing the embedding model changes retrieval, therefore
-  # answers, with nothing in a diff to show it (X022). This service backs an
-  # eval-gated agent.
+  # Pinned rather than left to Snowflake's default: the embedding model decides
+  # retrieval, and so the answers built on it.
   +embedding_model: snowflake-arctic-embed-m-v1.5
 
-  # caller is the default and the safe one. `owner` lets a procedure behind an
-  # agent tool read data the calling user cannot (X021).
+  # Defined procedures run with the caller's rights; `owner` would let one read
+  # data the calling user cannot.
   +execute_as: caller
 
 semantic_views:
   +database: "{{ target.database }}"
   +schema: JAFFLE
 
-  # FOLDER-BASED ROUTING (`D252` added the mechanism, `D257` this route). `core` is
-  # UNPREFIXED, so it is a PATH SEGMENT -- the directory
-  # `semantic_models/semantic_views/core/` -- and the `+` keys under it apply to every
-  # artifact in that directory and below. Standing rule 4: unprefixed keys are path
-  # segments, `+`-prefixed keys are artifact config. Same as dbt.
-  #
-  # THE FOLD IS PER KEY, AND THAT IS WHAT THE GOLDENS ASSERT. `jaffle_menu` lives under
-  # `core/`, so it resolves to `SST_REF_DEV.CORE.JAFFLE_MENU` -- the deeper `+schema`
-  # wins while `+database` and `+enabled` are still inherited from this block. A
-  # resolver that replaced the map wholesale would lose the database entirely.
+  # A folder route. An unprefixed key names a directory under
+  # semantic_models/semantic_views/ (SST-CFG041 if it is missing), and its `+`
+  # keys override per key: views in core/ publish to <db>.CORE and still inherit
+  # +database and +enabled from this block.
   core:
     +schema: CORE
   +enabled: true
 
-  # NO `+meta` KEY. `D247` removed it. Its only documented purpose -- in the spec,
-  # not just in this comment -- was to supply values for `meta.sst.database` /
-  # `meta.sst.schema` at render time, citing `B007` and `B008`. `D217` made both of
-  # those dbt keys FORBIDDEN (rejected by `SST-DBT030` at ERROR) and WITHDREW both
-  # rules, so the key's stated job became an error condition and both of its named
-  # consumers became tombstones. `MEASURED`: zero occurrences of `+meta` in the engine.
-  #
-  # THIS WAS `D217`'s THIRD INCOMPLETE PROPAGATION. `D231` found the identical
-  # `B007`/`B008` husk in `customers.yml`; this comment and the spec entry were the
-  # same signature surviving in two more files.
-
-  # max_staleness is ABSENT. It is required before any materialization can be
-  # added, minimum 120, and this fixture adds none. Setting it here with no
-  # materialization would be a value with no effect.
+  # Views publish as CREATE OR REPLACE SEMANTIC VIEW ... COPY GRANTS, so explicit
+  # grants survive a republish. `+tags` and `+max_staleness` are reserved
+  # (SST-CFG044); `+meta` is removed (SST-CFG043).
 
 agents:
-  # THIS ONE LINE IS WHAT MAKES THE ACCESS MODEL USABLE, and `evals:` inherits it
-  # for free -- a scratch agent's evals land in scratch with no second rule.
+  # Evals publish into their agent's schema, so these also place the evals.
+  # Agents are created once and then versioned, so `+create_mode` and
+  # `+copy_grants` are removed (SST-CFG043).
   +database: "{{ target.database }}"
   +schema: JAFFLE
   +enabled: true
 
-  # NO `+create_mode` KEY. `D255` removed it along with the agent-level key. The
-  # publisher CREATES IF ABSENT and ADDS A VERSION IF PRESENT -- `ADD VERSION FROM
-  # @stage` bypasses LIVE, preserves grants implicitly and never drops the object,
-  # and the create leg reads the same stage path. Which one runs is OBSERVED, not
-  # authored: the two former values were the two halves of one sequence.
-
-  # MUST NOT be `auto` -- this agent has a blocking eval, and `auto` can shift
-  # models between runs, making score movement unattributable (A052).
+  # Pinned, not `auto`: `auto` lets Snowflake change the model between runs, so
+  # a blocking eval could not attribute a score change.
   +orchestration_model: claude-sonnet-4-6
 
-  # NULL / EMPTY IS INTENTIONAL AND RECOMMENDED for Analyst tools: Snowflake
-  # falls back to the caller's default warehouse, so compute and cost follow the
-  # user. The `generic` tool overrides it locally, because Snowsight requires a
-  # warehouse for custom tools (A029).
+  # Unset: agent tools run on the target warehouse (SST_REF_WH on dev). A
+  # generic tool must resolve some warehouse (SST-VAL527).
   +warehouse: null
 
   +query_timeout: 60
 
-  # ORCHESTRATION TOKENS ONLY. Excludes tokens spent inside Cortex Analyst,
-  # Cortex Search and other tools. NOT a spend ceiling (A056).
   +budget_seconds: 120
   +budget_tokens: 16000
 
-  # THREE values, not two. `reject` is chosen here so a caller missing a tool
-  # privilege fails loudly instead of the agent silently answering from fewer
-  # tools than intended -- which an eval cannot see unless it runs as the same
-  # role. `accept` is Snowflake's default.
+  # `reject`: a caller who lacks access to a tool gets an error instead of an
+  # answer from fewer tools, which an eval running under another role would miss.
   +tool_not_accessible: reject
 
-  # Requires a cortex_search tool and adds AI function cost (A054).
+  # Needs a cortex_search tool (SST-VAL546) and adds AI function cost.
   +analytical_search: false
 
-  # `current` IS A SQL RESERVED WORD and cannot be used unquoted (drift row 30).
-  # This default is inherited by every agent, so a reserved value here breaks all
-  # of them at once. `promoted` is VERIFIED unquoted and stores as `PROMOTED`.
+  # Moved to each newly published version. LIVE, FIRST, LAST and DEFAULT are
+  # reserved (SST-PRS025); SST writes this one unquoted, as PROMOTED.
   +alias: promoted
 
 evals:
-  # NO +database AND NO +schema, AND THAT IS STRUCTURAL, NOT AN OMISSION.
-  # Results are retrieved THROUGH the agent -- the retrieval function is keyed on
-  # (agent database, agent schema, agent name, run name) -- so an eval placed
-  # anywhere else is unreadable by the only API that reads it. Setting either key
-  # here MUST be a validation error (C002, D148), never a silent no-op.
-  #
-  # THE CITATION WAS `D003` AND IS CORRECTED TO `D148` (2026-09-25). `D003` is about
-  # whether a dbt materialization that rebuilds its relation should warn -- nothing to
-  # do with evals. `D148` is the row that settled this: `apply.eval_config_stage` takes
-  # `stage` ONLY, and the colocation guarantee is *"STRUCTURAL rather than stylistic:
-  # it holds because there IS no location key to get wrong."*
-  #
-  # NO `+enabled` KEY EITHER. `D248` removed it: no eval can set `enabled: false` on
-  # itself, so the key could only disable every eval at once. This block is now what
-  # its own spec heading calls it -- POLICY ONLY.
+  # No +database or +schema: eval objects live in their agent's schema, and
+  # setting either is SST-CFG015. `+enabled` is removed (SST-CFG043).
   +eval_tier: blocking
 
   +metrics:
-    # DETERMINISTIC, no LLM judge: matched / max(expected, actual). The best
-    # gating metric available -- movement means the agent's tool calls changed.
+    # Deterministic (no LLM judge), so it is the metric the eval config gates on.
     - tool_selection_accuracy
-    # Judged, and usually the most stable judged metric. Reported, not gated.
+    # Judged; the eval config reports it without gating.
     - answer_correctness
 
-  # PIN IT. Unversioned metrics roll forward on deprecation and scores shift with
-  # no config change (E007).
+  # Pinned so scores stay comparable across runs; an unpinned system metric is
+  # SST-VAL722.
   +metric_version: v3
 
-  # NEVER `LIVE`. Omitting a version targets the DEFAULT version once two or more
-  # exist, which is silent drift rather than an error (E003).
+  # The last committed version. LIVE, or no version, is SST-VAL719.
   +agent_version: committed
 
   +retry: 1
   +concurrency: 2
 
-  # Runs RE-INVOKE the agent, so thresholds must be RANGES, not single scores.
-  # These runs learn the range before any threshold gates (E019).
+  # Scores vary between runs, so a baseline takes five completed attempts.
   +baseline_runs: 5
 
-  # audit keeps runs indefinitely and their agent versions can never be dropped;
-  # decision runs are reapable past a window. Retention and version lifecycle are
-  # COUPLED (E005, A066).
   +retention: audit
 
 skills:
-  # NO `+enabled` KEY. `D248` removed it. This block already disables by ABSENCE,
-  # which is the better mechanism and the reason the boolean was redundant here
-  # specifically: omitting either channel block below disables that channel, and at
-  # least one must be present. A boolean beside a structural floor is a second and
-  # weaker switch for the same decision.
+  # Omitting a channel block below disables that channel; at least one is
+  # required (SST-VAL817). `+enabled` and `+grant_read_to` are removed
+  # (SST-CFG043): SST issues no grants on extensions.
 
-  # Applied as a TAG on the VERSION, never by moving schemas -- certifying by
-  # schema would change the extension FQN and break every pinned agent reference
-  # (K013). There is NO un-certify path, so this fixture leaves it off.
+  # `true` would tag each new version SNOWFLAKE.CORE.CERTIFICATION_STATUS =
+  # 'CERTIFIED'. SST never un-certifies, so the fixture leaves it off.
   +certified: false
 
-  # Every version alias is this prefix plus 12 hex characters of the flattened
-  # bundle's SHA-256 digest -- a CONTENT hash, never a timestamp (which collides
-  # at one-second granularity under parallel deploys) and never a commit SHA
-  # (which names versions an unchanged skill never publishes). The same content
-  # always yields the same alias, so a revert republishes nothing, and agents
-  # that reference the skill are pinned to it automatically (K007, K210). The
-  # commit that published each version is recorded in SST state instead.
+  # A version alias is this prefix plus 12 hex characters of the bundle digest,
+  # so unchanged content keeps its alias and publishes nothing new. Agents that
+  # reference a skill with skill() or plugin() are pinned to its current alias.
   +version_prefix: "SST_"
 
-  # NO `+grant_read_to`. Access to extensions is managed outside SST, and SST
-  # issues no grants.
   +threads: 4
 
-  # EXTENSIONS THIS PROJECT CONSUMES BUT DOES NOT PUBLISH. `{{ extension('<name>') }}`
-  # resolves only through this map: an entry's `fqn:`, or `default_prefix` plus
-  # the UPPER_SNAKE name. An extension this project publishes is referenced with
-  # `skill()` or `plugin()` instead, and `extension()` on one is an error.
+  # Extensions this project consumes but does not publish. `{{ extension('<name>') }}`
+  # resolves an entry's `fqn:`, or default_prefix plus the UPPER_SNAKE name.
+  # extension() on an extension this project publishes is SST-REF037.
   extensions:
     default_prefix: "{{ target.database }}.PARTNER"
     partner-glossary:
@@ -690,260 +228,41 @@ skills:
     +database: "{{ target.database }}"
     +schema: JAFFLE
 
-    # THE STAGE `ADD VERSION` READS FROM, AND THIS KEY WAS MISSING. A CORTEX
-    # EXTENSION version is created by `ALTER CORTEX EXTENSION ... ADD VERSION
-    # <ALIAS> FROM @<stage>/<path>/`, so the catalog channel needs a stage --
-    # and without this key it had none, which made the channel unpublishable.
-    # `stage.+stage` below is the OTHER channel's and cannot be reused: that tree
-    # is nested and content-addressed per profile.
-    #
-    # ONE ROOT PER VERSION, forced by the server. Drift row 31: a version root
-    # must contain ONLY `skills/`, and `skills/` must contain EXACTLY ONE
-    # subdirectory. So the layout is
-    #   @SKILL_BUNDLE_SRC/<skill-name>/<ALIAS>/skills/<skill-name>/SKILL.md
-    # and ADD VERSION points at `@SKILL_BUNDLE_SRC/<skill-name>/<ALIAS>/`, the
-    # level ABOVE `skills/`. The alias level makes each prefix immutable: new
-    # content gets a new alias and a new prefix, so an upload can never change
-    # the files a published version was built from. A plugin root holds
-    # `.cortex-plugin/plugin.json` beside `skills/`, one subdirectory per member.
+    # The internal stage ADD VERSION reads from, created when absent. Each
+    # version uploads under its own prefix, <stage>/<name>/<ALIAS>/, holding
+    # skills/<name>/SKILL.md, so a published version's files never change.
     +bundle_stage: SKILL_BUNDLE_SRC
 
-    # REQUIRED TRUE. Cortex Agents do not search subdirectories, and two of this
-    # fixture's skills have a reference/ subdirectory (K202).
-    #
-    # FLATTEN APPLIES WITHIN `skills/<name>/`, NOT INSTEAD OF IT. Supporting files
-    # sit beside SKILL.md with no `reference/` directory; the `skills/<name>/`
-    # component ABOVE them is required by the server. An earlier reading of
-    # the skills spec's "FLAT required" row dropped that component and
-    # produced a version the server rejected outright.
+    # Must be true (SST-VAL818): agents read supporting files beside SKILL.md,
+    # so reference/x.md publishes as reference__x.md.
     +flatten: true
-    # No `+registry_table` and no `+prune_deleted`: SST state records every
-    # published version, and each version is built from one complete,
-    # content-addressed bundle, so a deleted file cannot linger (K209).
+    # `+registry_table` and `+prune_deleted` are removed (SST-CFG043).
 
   stage:
     +database: "{{ target.database }}"
     +schema: JAFFLE
     +stage: SKILL_BUNDLES
-    # A REHEARSAL REGISTRY, ON PURPOSE. CoCo Desktop reads exactly one registry,
-    # `CORTEX_CODE.CONFIG.PROFILE_REGISTRY`, and this fixture must never write it.
-    # An unqualified name resolves into this channel's schema, and SST-VAL854
-    # says on every run that Desktop will not see the row. Publishing for real
-    # is pointing this key at Desktop's table. SST creates the table only when it
-    # is absent, with Desktop's 18 columns, and never alters one that exists.
+    # A rehearsal registry in this schema. CoCo Desktop reads only
+    # CORTEX_CODE.CONFIG.PROFILE_REGISTRY, so SST-VAL854 notes on every run that
+    # Desktop will not see these rows. SST creates the table when absent and
+    # refuses one with the wrong shape (SST-PLN029).
     +registry_table: PROFILE_REGISTRY
-    # MUST STAY FALSE. CoCo Desktop supports and EXPECTS nested subdirectories.
-    # `catalog.+flatten: true` beside `stage.+flatten: false` is not an
-    # inconsistency -- it is the two halves of one decision (K202).
+    # Must be false (SST-VAL818): Desktop expects the authored nested layout.
     +flatten: false
-    # MUST BE FALSE. TRUE produced `<file>/<file>.gz` paths, and a directory
-    # cannot share a name with a file, so affected skills became INVISIBLE in
-    # Desktop -- no error, just absent (K203).
+    # Must be false (SST-VAL819): compressed uploads are invisible to Desktop.
     +auto_compress: false
-    # The prefixes prompts/ mcp/ hooks/ skills/ are what Desktop reads and are
-    # NOT configurable (K205).
+    # The only layout (SST-VAL821): trees under skills/, prompts/, mcp/ and hooks/.
     +layout: by_type
 
 apply:
-  # PER-TARGET, like every other database in this file. An earlier draft pinned
-  # `SST_REF_DEV` unconditionally on both keys, which meant a prod deploy staged its
-  # agent spec and eval config into the DEV database -- the exact target leak the
-  # config spec's Rule 2 exists to prevent, sitting in the file that is supposed to
-  # demonstrate the rule. It is worth recording how it survived review: the `+database`
-  # on `tools:`, `semantic_views:` and `agents:` all route correctly, so the pattern
-  # looked established, and these two keys take a whole FQN rather than a `+database`
-  # fragment -- which is enough of a shape difference that the eye skips them.
-  # Line numbers are deliberately not cited: this file is heavily commented, so every
-  # added comment moves every number below it, which is the same reason the golden
-  # harness ignores `line` in a diagnostic.
-  #
-  # TWO THINGS WORTH KNOWING HERE, AND BOTH ARE NOW SETTLED. Item 2 was the last
-  # open one and `D249` closed it on 2026-09-25 by moving the deprecated alias into
-  # `negative/19-deprecated-deploy-alias.yml`; this block is spelled `apply:`.
-  #
-  # THE MARKER-VOCABULARY NOTE IS KEPT BECAUSE IT RECORDS A REAL AUDIT ESCAPE, and it
-  # is worth keeping now that the item it guarded is closed. This pointer used to read
-  # "ONLY ONE OF THEM IS STILL OPEN", and the words "STILL OPEN" match no pattern
-  # `audit/decisions.py` knows -- so both this pointer and the item it pointed at were
-  # invisible to the marker sweep: neither live, nor orphaned, nor stale, but ABSENT.
-  # See that module's `MARKERS` tuple for the recognised vocabulary; it is deliberately
-  # NOT quoted here, because spelling the tokens out in prose CREATES markers --
-  # measured on this very comment, which produced two spurious ones on its first draft.
-  # "STILL OPEN" was deliberately not added to that vocabulary either: it would also
-  # fire on prose that merely reports something is settled. **The same class of escape
-  # was found again in the config specification -- an `OPEN DECISION` that `D209` had
-  # already settled, invisible for the same reason -- so this is a pattern rather than
-  # an incident.**
-  #   1. SETTLED -- THIS CONDITIONAL IS EVALUATED. `sst_config.yml` gets exactly ONE
-  #      new evaluable form: the target-name comparison, written here on
-  #      `agent_spec_stage.database` and on `tools.+database`,
-  #      `semantic_views.+database`, `agents.+database`, `skills.catalog.+database`
-  #      and `skills.stage.+database` -- SIX sites, and
-  #      nothing else. No loops, no includes, no attribute chains, no arbitrary
-  #      expressions. An earlier draft of this note recorded that
-  #      NO CODE PATH RENDERS THIS FILE THROUGH JINJA, which made every per-target
-  #      key in the file inert -- the central targeting mechanism spelled as an
-  #      expression the engine could not evaluate. That is no longer true and the note
-  #      is withdrawn.
-  #
-  #      WHY A BOUNDED FORM RATHER THAN A FULL JINJA PASS, because the alternative was
-  #      argued and lost. A real Jinja render would have been less work and more
-  #      general. Against it: 0.3's defect catalogue is DOMINATED by template handling
-  #      -- five regex passes, three neutralisation round-trips, the
-  #      `__TEMPLATE_{n}__` hack -- so a full pass adds surface exactly where 0.3 bled,
-  #      and the neutraliser's correctness rests on `TEMPLATE_RE` staying narrow. The
-  #      other option, replacing the conditional with per-target keys, would have cost
-  #      the ergonomics this file calls load-bearing and which analytics-dbt already
-  #      uses natively in `generate_custom_schema.sql` and `dbt_project.yml`. One
-  #      enumerable form keeps both properties.
-  #
-  #      `target.name` RESOLVES AGAINST profiles.yml, not against anything declared
-  #      here. SST's `--target` IS a dbt target, so the set of values this conditional
-  #      can ever see is the set of output blocks in profiles.yml -- three in this
-  #      fixture.
-  #
-  #      THE COUNT WAS `seven` AND IS `CORRECTED` TO SIX, because `eval_config_stage`
-  #      no longer carries a conditional -- or any location at all. It is not a site
-  #      that was miscounted; it is a site that the key shape below REMOVES. See the
-  #      note on the two keys.
-  #
-  #   2. SETTLED 2026-09-25 (`D161`, decided in `D249`) -- `apply:` IS NOW THE SPELLING
-  #      HERE, AND THE DEPRECATED `deploy:` ALIAS MOVED TO THE NEGATIVE CORPUS.
-  #
-  #      THE ITEM WAS UNRESOLVED FOR THREE DAYS, and what it discovered is that this file
-  #      could not hold the assertion it was asking for. `deploy:` was a live key here;
-  #      `SST-CFG200` warns on a deprecated key and fires in `validate`; this file sets
-  #      `validation.strict: true`; and `expected/diagnostics.txt` asserts
-  #      `errors 0  warnings 0  promoted 0  exit_code 0` under `--strict`. `--strict`
-  #      promotes EVERY warning with NO EXEMPT SET (`D152`), so the real output was
-  #      `errors 1  promoted 1  exit_code 1`. **THE GOLDEN ASSERTED A RESULT THIS PROJECT
-  #      COULD NOT PRODUCE** -- a wrong assertion, not a missing one, which is why it
-  #      could not be closed by adding a line to the diagnostics golden.
-  #
-  #      THE OWNER CHOSE TO MOVE THE ALIAS rather than drop `strict: true`. The cost is
-  #      the old claim that this file was "the only place the alias is exercised"; the
-  #      gain is that `diagnostics.txt` keeps the strict-clean assertion it exists for.
-  #      `negative/19-deprecated-deploy-alias.yml` is the alias's home now, and the
-  #      negative corpus is the right one on its own merits: it exists for deliberately
-  #      tripped diagnostics, and two of its cases already run with and without
-  #      `--strict`, so a promoted warning is an assertion there rather than a
-  #      contradiction.
-  #
-  #      WHAT THIS LEAVES: `SST-CFG200` is now asserted for the first time. `MEASURED`
-  #      2026-09-22 it had ZERO occurrences anywhere in the reference fixture, so the one
-  #      fixture exercising the alias was silent about it -- a rule with no test rather
-  #      than a rule with no code.
-
-  # EXPLICIT KEYS, NEVER ONE PACKED STRING, AND THE TWO KEYS ARE DELIBERATELY
-  # ASYMMETRIC. The config specification states both shapes:
-  #
-  #   `agent_spec_stage` takes `database` OPT / `schema` OPT / `stage` REQ. A location
-  #   IS legal here, and `database` and `schema` accept the section 3.1 conditional --
-  #   so the per-target routing is carried exactly as it was, on `database`. Omitting
-  #   either key would resolve it to the agent's own location instead.
-  #
-  #   `eval_config_stage` takes `stage` ONLY. There is deliberately NO `database` and
-  #   NO `schema` key: the eval config stage FOLLOWS THE AGENT by the colocation rule,
-  #   and declaring a location for it is the same category error as `evals.+database`
-  #   (C002) -- which must be REPORTED rather than accepted and ignored, because a
-  #   setting that is accepted and ignored teaches the author the opposite of the truth.
-  #   The colocation guarantee is STRUCTURAL rather than stylistic: it holds because
-  #   there IS no location key to get wrong. Decision `D148`.
-  #
-  # AN EARLIER DRAFT PACKED BOTH KEYS AS ONE FQN STRING. For `eval_config_stage` that
-  # was wrong twice over -- it was a string where a block is required, and it declared a
-  # location the spec says must be an error -- so a parser built to the spec could not
-  # have parsed this file. That draft is withdrawn.
-  #
-  # NEITHER RESOLVED VALUE MOVES, and that is checkable rather than asserted. The agent
-  # resolves to `<db>.JAFFLE` from the `agents:` block above (`+database` carrying
-  # this same conditional, `+schema: JAFFLE`), and `expected/manifest.json` asserts
-  # the agent's `publish_target` as `SST_REF_DEV.JAFFLE` on the dev target. So
-  # `agent_spec_stage` is `<db>.JAFFLE.AGENT_SPECS` under either spelling -- the
-  # declared `database` and `schema` are identical to the agent's own -- and
-  # `eval_config_stage` is `<db>.JAFFLE.EVAL_CONFIGS` by colocation.
+  # `agent_spec_stage` takes a location. `eval_config_stage` takes only a stage
+  # name, because eval configs are staged in each agent's own schema. Publish
+  # order is fixed by artifact type (semantic views, tools, skills, plugins,
+  # profiles, agents, evals), not configured. `deploy:` is a removed name for
+  # this block (SST-CFG043).
   agent_spec_stage:
     database: "{{ target.database }}"
     schema: JAFFLE
     stage: AGENT_SPECS_SSE
   eval_config_stage:
     stage: EVAL_CONFIGS
-
-  # REQUIRED for git-SHA-as-identity to stay meaningful: a partial deploy leaves
-  # the account in a state no single SHA describes.
-  fail_fast: true
-
-  # NO `dependency_order` KEY. `D233` removed it. PUBLISH ORDER IS NOT DECLARED
-  # HERE AND NEVER WAS READ FROM HERE: the registry's `ddl_position` is the sole
-  # authority (`D093`), and
-  # `SST-REG010` validates it against the registry's own `dependency_edges` at
-  # REGISTRY FREEZE -- which happens at import, before any config is loaded. The
-  # order is semantic_view 100, tool 200, skill 250, agent 300, eval 400.
-
-# =============================================================================
-# TWO FIXTURE DECISIONS THE RULESET USED TO FLAG -- BOTH NOW MOOT (`D247`)
-# =============================================================================
-# THIS SECTION IS KEPT AS HISTORY, NOT AS LIVE JUSTIFICATION. Both notes existed to
-# defend a value this fixture had CHOSEN. `D247` removed both keys, so there is no
-# longer a choice to defend -- but the measurements underneath them are still the
-# reason the removals were safe, and deleting the section would delete those.
-#
-# 1. `generation.publish_via: ddl` while nothing here uses NON ADDITIVE ALIGNED
-#    BY. THE KEY IS GONE AND DDL IS THE ONLY PATH, so C008 cannot fire on any
-#    fixture. The rule used to fire on `publish_via: ddl` when a view used
-#    time_dimensions or standalone filters, so THIS FIXTURE'S SIX TIME DIMENSIONS
-#    made it warn; `D088` narrowed it to the `yaml` half, and `D247` withdrew it
-#    entirely along with `SST-CFG022`.
-#    THE MEASUREMENT THAT SETTLED IT HAS ITSELF BEEN RESTATED TWICE, and the final
-#    form is the one that matters. This note used to say the `WITH EXTENSION
-#    (CA='{...}')` payload records which dimensions were time_dimensions, so the DDL
-#    path is NOT lossy for them, and that drift finding 3
-#    records the same for standalone filters. THAT REASONING WAS SOUND WHILE THE
-#    PAYLOAD EXISTED. It is deleted in 1.0 (`D220`), and so is the `time_dimensions`
-#    provenance array it carried (`D219`, redundant with `DATA_TYPE`). The conclusion
-#    survives on better grounds: the DDL path is not lossy because THERE IS NOTHING
-#    LEFT FOR A PAYLOAD TO CARRY -- sample values and enum flags are native
-#    per-member clauses, standalone filter prose composes into `AI_SQL_GENERATION`,
-#    and time-ness reads off `DATA_TYPE`. Finding 3 is SCOPED by `D220` rather than
-#    overturned: it was `TESTED`, and the payload it observed was a BOOLEAN
-#    standalone filter -- the one shape `F007` now rejects outright as an ERROR,
-#    which is why the payload stopped being necessary.
-#    DDL therefore stands on its own merits, and now on the stronger ground that
-#    the YAML path had no renderer at all: `SYSTEM$CREATE_SEMANTIC_VIEW_FROM_YAML`
-#    appears in ONE design document and zero times in the engine.
-#
-# 2. `use_create_or_alter: false` while V016 requires the publisher to preserve
-#    grants (CREATE OR ALTER, or COPY GRANTS). *** THIS WAS NEVER A CONTRADICTION, AND
-#    THE KEY IS NOW GONE ENTIRELY (`D247`), SO THE QUESTION CANNOT BE ASKED. *** V016
-#    requires that the
-#    publisher PRESERVE GRANTS. It names two ways to do that, and this fixture uses the
-#    second: the golden DDL is CREATE OR REPLACE ... COPY GRANTS, with the clause last,
-#    per the spec's clause order. THE POSITION USED TO BE GIVEN AS "after WITH
-#    EXTENSION", which is no longer a position at all because `D220` deletes that
-#    clause. The tail is now
-#    `... -> AI_VERIFIED_QUERIES -> MAX_STALENESS -> COPY GRANTS`. COPY GRANTS is still
-#    last and V016 is still satisfied; only the clause it follows changed.
-#
-#    `TESTED` 2026-09-19 in an isolated scratch schema: an explicit GRANT SELECT is GONE after a bare
-#    CREATE OR REPLACE and PRESERVED with COPY GRANTS. Future grants reappear with NEW
-#    TIMESTAMPS, which proves they were re-created rather than preserved -- so the damage
-#    is invisible wherever future grants happen to cover the consumers and total wherever
-#    they do not.
-#
-#    WHY THERE IS NO KEY, WHICH IS A STRONGER STATEMENT THAN THE OLD "WHY NOT `true`".
-#    CREATE OR ALTER preserves grants without the clause and is the spec's RECOMMENDED
-#    path, but it is a DIFFERENT STATEMENT: it needs OWNERSHIP rather than CREATE, and
-#    IT CANNOT SET TAGS, so tags become a separate ALTER. The semantic-view renderer design
-#    draws the conclusion -- it is "a different statement with different privileges,
-#    NOT a flag on this one" -- and the model design adds that adding the model field
-#    before the renderer branch "would create an authored key that changes nothing".
-#    That is exactly what the key was. CREATE OR ALTER is recorded as a
-#    candidate for a later alter-in-place path, which needs a fourth
-#    `grant_preservation` strategy the registry enum cannot currently express --
-#    a registry and model change, closed as a NO for first ship by `D135`.
-#
-#    AND THE PRIVILEGE POINT CUTS THIS WAY, NOT THE OTHER. A role holding CREATE but
-#    not OWNERSHIP can only use the path that is now hardcoded, so removing the choice
-#    costs that role nothing and offering it was offering a statement they cannot run.
-#
-#    The former UNCERTAIN on this is recorded as SETTLED in README section 9.6, was 13.

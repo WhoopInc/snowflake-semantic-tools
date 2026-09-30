@@ -1,125 +1,86 @@
-# Expected Outputs — sst-jaffle-shop (main branch)
+# Expected Outputs — reference project
 
-Baseline counts for the `main` branch. The E2E skill uses these to detect regressions. Update this file when the jaffle-shop project changes.
+Baselines for `tests/fixtures/reference_project` under its default `dev` target, compiled from `tests/fixtures/reference_project_manifest.json`. The E2E skill uses these to detect regressions. Update this file when the fixture or the goldens change.
 
-## dbt Models
+## Artifacts (14)
 
-| Layer   | Count | Models |
-|---------|-------|--------|
-| Staging | 7     | stg_customers, stg_locations, stg_order_items, stg_orders, stg_pricing_periods, stg_products, stg_supplies |
-| Marts   | 8     | customers, locations, metricflow_time_spine, order_items, orders, pricing_periods, products, supplies |
-| Total   | 15    | |
+| Type | Count | Names |
+|------|-------|-------|
+| semantic_view | 3 | jaffle_menu, jaffle_minimal, jaffle_sales |
+| tool | 1 | menu_docs_search |
+| agent | 3 | jaffle_analytics_agent, jaffle_delivery_agent, jaffle_minimal_agent |
+| eval | 1 | jaffle_analytics_agent |
+| skill | 3 | jaffle-catalogue, jaffle-operations, jaffle-semantics |
+| plugin | 1 | jaffle-toolkit |
+| profile | 2 | jaffle-analyst, jaffle-operator |
 
-Note: `sst validate` reports 16 models because it also counts the _error_examples.yml fixtures.
+After a compile, `sst list --project-dir tests/fixtures/reference_project` lists all 14 as `pending`.
 
-## Semantic Model Components (Positive Test Cases Only)
+`jaffle_menu` publishes to `SST_REF_DEV.CORE` through a folder route; the other artifacts publish to `SST_REF_DEV.JAFFLE`.
 
-| Component            | Count | Notes |
-|----------------------|-------|-------|
-| Metrics              | 80+   | Across all 6 core tables + advanced (window, composition, non_additive, etc.) |
-| Relationships        | 11    | Standard (5) + ASOF (2) + Range/BETWEEN EXCLUSIVE (1) + Composite (1) + Expression-based (2) |
-| Semantic Views       | 3     | Sales analytics, menu analytics, complete |
-| Custom Instructions  | 2     | business_rules, menu_analytics_guidance |
-| Filters              | 6     | Equality, date range, numeric, boolean, multi-table, legacy syntax |
-| Verified Queries     | 9     | Inline SQL (6) + sql_file (3), with descriptions and onboarding flags |
+## Validate (offline)
 
-## Error Fixtures (Intentional — Expected to Fail Validation)
+| Check | Expected |
+|-------|----------|
+| Exit code with `--no-strict` | 0 |
+| Last line | `validated 14 artifact(s): 0 errors, 1 warnings` |
+| Warning | `SST-VAL528` on `jaffle_delivery_agent`: its agent tool is deliberate |
+| Infos | `SST-VAL854`, `SST-VAL711`, `SST-VAL712`, `SST-VAL725`, `SST-VAL020` |
+| Exit code without `--no-strict` | 1: the fixture's `validation.strict: true` promotes `SST-VAL528` |
 
-| File | Error Codes Exercised |
-|------|----------------------|
-| `models/marts/_error_examples.yml` | V007, V008, V010, V011, V012, V013, V014, V015, V016, V020, V023, V024, V025 |
-| `snowflake_semantic_models/metrics/_error_examples.yml` | V002, V003, V004, V032, V033, V034, V035, V036, V037, V038, V044, V091 |
-| `snowflake_semantic_models/relationships/_error_examples.yml` | V040, V041, V043, V049 |
-| `snowflake_semantic_models/filters/_error_examples.yml` | V051 |
-| `snowflake_semantic_models/verified_queries/_error_examples.yml` | V060, V061, V062 |
-| `snowflake_semantic_models/_error_semantic_views.yml` | V070, V071 |
+## Compile (`--emit-ddl`)
 
-These files are EXPECTED to produce validation errors. The test passes if:
-- Errors come ONLY from `_error_examples.yml` or `_error_semantic_views.yml` files
-- Zero errors/warnings come from non-error files
+`wrote 14 artifact payload file(s) to <dir>`, exit 0:
 
-## Relationships
+| Files | Artifacts |
+|-------|-----------|
+| `jaffle_menu.sql`, `jaffle_minimal.sql`, `jaffle_sales.sql` | semantic views |
+| `menu_docs_search.sql` | tool |
+| `jaffle_analytics_agent.json`, `jaffle_delivery_agent.json`, `jaffle_minimal_agent.json` | agents |
+| `jaffle_analytics_agent.yaml` | eval |
+| `jaffle-catalogue.json`, `jaffle-operations.json`, `jaffle-semantics.json` | skills |
+| `jaffle-toolkit.json` | plugin |
+| `jaffle-analyst.json`, `jaffle-operator.json` | profiles |
 
-| Name                       | Left Table   | Right Table     | Type              |
-|----------------------------|-------------|-----------------|-------------------|
-| orders_to_customers        | orders      | customers       | Standard equality |
-| orders_to_locations        | orders      | locations       | Standard equality |
-| order_items_to_orders      | order_items | orders          | Standard equality |
-| order_items_to_products    | order_items | products        | Standard equality |
-| supplies_to_products       | supplies    | products        | Standard equality |
-| orders_to_customers_asof   | orders      | customers       | ASOF (temporal)   |
-| orders_to_locations_asof   | orders      | locations       | ASOF (temporal)   |
-| orders_to_pricing_periods  | orders      | pricing_periods | Range/BETWEEN EXCLUSIVE |
-| order_items_composite_join | order_items | orders          | Composite (multi-column) |
-| orders_to_time_spine_daily | orders      | metricflow_time_spine | Expression: DATE(ordered_at) |
-| order_items_to_time_spine_daily | order_items | metricflow_time_spine | Expression: DATE_TRUNC('day', ordered_at) |
+## Golden Suite
 
-## Semantic Views
+`golden suite passed for 14 artifact(s)`, exit 0. The goldens compared, under `tests/golden/expected/`:
 
-| Name                          | Tables | Custom Instructions |
-|-------------------------------|--------|---------------------|
-| jaffle_shop_sales_analytics   | orders, customers, locations | jaffle_shop_business_rules |
-| jaffle_shop_menu_analytics    | order_items, products, supplies | menu_analytics_guidance |
-| jaffle_shop_complete          | orders, order_items, customers, products, locations, supplies, pricing_periods, metricflow_time_spine | jaffle_shop_business_rules, menu_analytics_guidance |
+| Directory | Files |
+|-----------|-------|
+| `ddl/` | `jaffle_menu.sql`, `jaffle_minimal.sql`, `jaffle_sales.sql` |
+| `tool/` | `menu_docs_search.sql` |
+| `agent/` | one `.json` per agent |
+| `eval/` | `jaffle_analytics_agent_repeat.yaml`, `jaffle_analytics_source.sql` |
+| `skill/` | one `.bundle.json` per skill |
+| `plugin/` | `jaffle-toolkit.bundle.json`, `jaffle-toolkit.plugin.json` |
+| `profile/` | one `.profile.json` per profile, and the `jaffle-analyst/` tree |
 
-## Validation (Expected)
+## `sst migrate refs` (`tests/fixtures/v1_dialect`)
 
-| Check              | Expected |
-|--------------------|----------|
-| Errors from non-error files | 0 |
-| Warnings from non-error files | 0 |
-| Errors from _error_examples files | 20+ (intentional) |
-| Warnings from _error_examples files | 10+ (intentional) |
+| Run | Expected |
+|-----|----------|
+| Dry run | exit 2; `would rewrite` for `filters.yml`, `metrics.yml`, `relationships.yml`, `views.yml` |
+| `--write`, on a copy | exit 0; the copy's `semantic_models/` equals `expected/converted/semantic_models/` |
+| Re-run on the copy | `no legacy references found`, exit 0 |
 
-## Unit Tests (SST Repo)
+## Test Suite
 
-| Metric        | Expected |
-|---------------|----------|
-| Total tests   | ~1568    |
-| Failures      | 0        |
-| Errors        | 0        |
+Every gate passes. There is no test-count baseline; the suite grows with each change.
 
-### Known Test Issues
+## Connected Phase
 
-| Test Class | Count | Issue | Blocking? |
-|------------|-------|-------|-----------|
-| TestDeferManifestIntegration | 4 | Collection errors (fixture/import issue) | No |
+No fixed baseline: it depends on the project the user names. Pass criteria:
 
-## SM_* Metadata Tables (After Extract)
+- `sst plan` exits 2 before the first apply, or 0 when the scratch schema already matches
+- `sst apply` exits 0
+- `sst test --suite smoke` ends with `smoke suite passed: N probe(s)`
+- A second `sst plan` exits 0
 
-These tables should be populated in the target schema after `sst extract`:
+## Known Diagnostics (Expected, Non-Blocking)
 
-- SM_TABLES
-- SM_DIMENSIONS
-- SM_FACTS
-- SM_TIME_DIMENSIONS
-- SM_METRICS
-- SM_RELATIONSHIPS
-- SM_RELATIONSHIP_COLUMNS
-- SM_SEMANTIC_VIEWS
-- SM_CUSTOM_INSTRUCTIONS
-- SM_FILTERS
-- SM_VERIFIED_QUERIES
-- SM_TABLE_SUMMARIES (optional, Cortex Search)
-
-## Feature Coverage Exercised
-
-| Category | Features |
-|----------|----------|
-| Templates | `{{ ref() }}`, `{{ ref(table, col) }}`, `{{ table() }}`, `{{ column() }}`, `{{ metric() }}`, `{{ custom_instructions() }}` |
-| Metric types | SUM, COUNT, COUNT DISTINCT, AVG, MIN, MAX, CASE WHEN, PERCENTILE_CONT, VARIANCE, DATEDIFF, compound, window, non_additive_by, using_relationships, metric composition, visibility: private |
-| Column types | dimension, time_dimension, fact |
-| Data types | TEXT, NUMBER, FLOAT, BOOLEAN, DATE, TIMESTAMP_NTZ |
-| Table features | primary_key, unique_keys (single + multi-column), constraints (DISTINCT_RANGE), tags, synonyms, visibility |
-| Column features | data_type, synonyms, sample_values, is_enum, visibility, tags |
-| VQR features | inline sql, sql_file, description, use_as_onboarding_question, verified_by, verified_at, multi-table |
-| Filter features | equality, date range, numeric, boolean, synonyms, legacy syntax |
-| Relationship features | standard equality, ASOF, range/BETWEEN EXCLUSIVE, composite/multi-column, expression-based (DATE, DATE_TRUNC), description |
-
-## Known Warnings (Expected, Non-Blocking)
-
-| Phase | Warning | Reason |
-|-------|---------|--------|
-| Extract | `Cortex Search setup failed: SM_TABLE_SUMMARIES does not exist` | Optional Cortex Search feature, not part of core pipeline |
-| Validate | `Manifest may be outdated` | Manifest was compiled in a different session; pipe `1` to continue |
-| Enrich | `Manifest compiled for 'None' target` | Manifest target doesn't match current target; safe to continue |
+| Phase | Code | Reason |
+|-------|------|--------|
+| Validate | `SST-VAL528` (warning) | Deliberate: `jaffle_delivery_agent` declares an agent tool |
+| Validate | `SST-VAL854` (info) | The fixture publishes profiles to its own registry table, not the one CoCo Desktop reads |
+| Validate | `SST-VAL020` (info) | Connected validation skipped by `--no-snowflake-syntax-check` |

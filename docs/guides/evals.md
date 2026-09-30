@@ -36,7 +36,7 @@ defaults, never a location.
 agent: sales_analyst
 description: Order and revenue questions the agent must route correctly.
 questions:
-  - question: How many orders were placed at each location in Q1 2026?
+  - question: How many orders were placed at each location from January to March 2026?
     ground_truth:
       ground_truth_invocations:
         - tool_name: SALES
@@ -44,7 +44,7 @@ questions:
           tool_output: An order count per location.
       ground_truth_output: |-
         The reply reports an order count for every location and names the
-        quarter it covers.
+        months it covers.
 ```
 
 - Each question needs an expected tool invocation or an expected output.

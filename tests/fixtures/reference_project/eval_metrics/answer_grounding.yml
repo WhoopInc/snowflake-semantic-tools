@@ -1,42 +1,11 @@
 ---
-# =============================================================================
-# eval_metrics/answer_grounding.yml -- the reference-impl fixture
-# =============================================================================
-# THE SINGLE LARGEST GAP THIS FILE CLOSES. The custom-metric rules are 17 rules
-# (`J0xx`), and the fixture previously exercised none of them: the entire
-# artifact shape was ABSENT, because a custom judge metric needs
-# `eval_metrics_dir` and a judge prompt. This is
-# that judge, and `sst_config.yml` now declares `eval_metrics_dir` where it
-# previously carried a comment explaining the omission.
+# A custom LLM judge: is the answer grounded in the semantic view it cites? The
+# SQL and the number can be right while the cited view cannot answer the
+# question, and no system metric scores that.
 #
-# =============================================================================
-# AN EVAL METRIC IS NOT AN ARTIFACT TYPE, AND THAT IS THE POINT
-# =============================================================================
-# It is NOT in the artifact registry. The registry design lists it among the
-# non-artifact globals -- "lives in the `eval_metrics/` tree, not the artifact
-# index" -- and `D166` settled that it compiles to NO SNOWFLAKE OBJECT. It is
-# INLINED into the rendered eval YAML at render time.
-#
-# Two consequences a fixture has to assert:
-#   1. No DDL is ever emitted for this file. `plan` shows nothing for it, because
-#      it has no `object_type` to observe.
-#   2. Removing this file while an eval still references it MUST fail validation.
-#      That is `negative/`'s job, not this file's -- but it is the reason the
-#      reference from `evals/config.yml` is a name and not an inline copy.
-#
-# =============================================================================
-# WHY A GROUNDING JUDGE RATHER THAN A CORRECTNESS ONE
-# =============================================================================
-# `sql_correctness` is a built-in metric and needs no judge. A custom judge earns
-# its place only where the thing being scored is not mechanically checkable, and
-# whether an answer is GROUNDED IN THE VIEW IT CLAIMS TO USE is exactly that: the
-# SQL can be correct, the number can be right, and the narrative can still cite a
-# view that cannot answer the question. The jaffle surface has two views with
-# deliberately non-overlapping scope, so an ungrounded answer is a realistic
-# failure rather than a contrived one.
-#
-# NO DATA VALUES. The prompt describes shapes, never values.
-# =============================================================================
+# It creates no Snowflake object: each eval config that references it inlines
+# its name, model, bands and prompt into the rendered eval YAML. Deleting it
+# while referenced is `SST-REF026`.
 
 name: answer_grounding
 
@@ -44,19 +13,18 @@ description: |-
   Scores whether an answer is grounded in the semantic view it cites, and whether
   it declines cleanly when the question spans two views.
 
-# Explicit so the judge cannot roll forward without a reviewed config diff.
+# Pinned: a missing or `auto` model is `SST-VAL738`, and it must be listed in
+# `snowflake.orchestration_models` in sst_config.yml (`SST-VAL739`).
 model: claude-sonnet-4-6
 
-# REQ, and all three bands are REQ. The bands are what turn a free-text judgement
-# into a number a gate can compare, and a judge without them is a comment.
+# Contiguous integer bands (`SST-PRS114`), so a threshold has a number to compare.
 score_ranges:
   min_score:    [0, 1]
   median_score: [2, 3]
   max_score:    [4, 5]
 
-# REQ. The judge prompt. Multi-line, which is the third place in the fixture where
-# the multi-line body path is exercised -- the others are the custom instructions
-# and the verified-query SQL.
+# Names every band, the output contract `SST-VAL741` checks for, and says what
+# to do when evidence is thin or scores tie (`SST-VAL743`).
 prompt: |-
   You are scoring whether an analytical answer is GROUNDED in the semantic view it
   claims to have used.
@@ -84,13 +52,11 @@ prompt: |-
   Judge only grounding. Do not judge SQL correctness, which is scored separately,
   and do not penalise an answer for being brief.
 
-# OPT. `true` means a run FAILS when the threshold is not met rather than merely
-# reporting. Gating on grounding is deliberate: an ungrounded answer is worse than
-# a slow one, because a reader cannot tell it is wrong.
+# A regression on this metric fails a blocking eval: an ungrounded answer is
+# worse than a slow one, because a reader cannot tell it is wrong.
 gate_default: true
 
-# OPT. Either bound alone is legal; only `min` is set here because there is no such
-# thing as too much grounding.
+# Needs `min`, optionally `max`, inside the bands (`SST-PRS115`). 3 or more passes.
 threshold_default:
   min: 3
 

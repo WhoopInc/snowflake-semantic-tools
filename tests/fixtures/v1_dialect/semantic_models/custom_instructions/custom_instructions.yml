@@ -1,6 +1,6 @@
 snowflake_custom_instructions:
   - name: dialect_conventions
-    # The 0.3 spellings. 1.0 reads both for one release, with a warning.
+    # The 0.3 spellings: 1.0 rejects each (SST-PRS020) and names its ai_ key.
     sql_generation: |-
       Monetary columns are stored in cents; divide by one hundred for currency.
     question_categorization: |-

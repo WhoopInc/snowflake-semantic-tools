@@ -14,10 +14,12 @@ from snowflake_semantic_tools.domain.model.semantic_view import (
     Metric,
     Relationship,
     SemanticView,
+    SortKey,
     Table,
     Tag,
     Variable,
     VerifiedQuery,
+    Window,
 )
 from snowflake_semantic_tools.domain.render.semantic_view import (
     quote,
@@ -128,7 +130,7 @@ class TestColumns:
         assert render_column(col) == ("ORDERS.IS_COMPLETED_ORDER LABELS = (FILTER) AS ORDERS.ORDER_STATE = 'completed'")
 
     def test_filters_render_inside_DIMENSIONS_not_their_own_clause(self) -> None:
-        """Review finding 1.1: there is no `FILTERS (` clause head."""
+        """No grammar has a `FILTERS (` clause head."""
         view = minimal(
             columns=(
                 Column(table="T", name="D", kind=ColumnKind.DIMENSION, expr="T.D"),
@@ -177,9 +179,62 @@ class TestMetrics:
             expr="SUM(T.X)",
             table="T",
             using_relationships=("T_TO_D",),
-            non_additive_by=("SNAPSHOT_MONTH",),
+            non_additive_by=(SortKey("SNAPSHOT_MONTH"),),
         )
         assert render_metric(metric) == ("T.M USING (T_TO_D) NON ADDITIVE BY (SNAPSHOT_MONTH) AS SUM(T.X)")
+
+    def test_non_additive_keys_render_only_the_ordering_authored_in_order(self) -> None:
+        metric = Metric(
+            name="M",
+            expr="SUM(T.X)",
+            table="T",
+            non_additive_by=(
+                SortKey("T.YEAR", descending=True, nulls_first=True),
+                SortKey("T.MONTH", descending=False, nulls_first=False),
+                SortKey("T.DAY", nulls_first=True),
+            ),
+        )
+        assert render_metric(metric) == (
+            "T.M NON ADDITIVE BY (T.YEAR DESC NULLS FIRST, T.MONTH ASC NULLS LAST, T.DAY NULLS FIRST) AS SUM(T.X)"
+        )
+
+    def test_window_metrics_render_every_over_clause_form(self) -> None:
+        excluding = Window(
+            partition_excluding=("T.DAY", "T.YEAR"),
+            order_by=(SortKey("T.DAY", descending=False, nulls_first=False),),
+            frame="RANGE BETWEEN INTERVAL '6 days' PRECEDING AND CURRENT ROW",
+        )
+        assert render_metric(Metric(name="W", expr="AVG(T.M)", table="T", window=excluding)) == (
+            "T.W AS AVG(T.M) OVER (PARTITION BY EXCLUDING T.DAY, T.YEAR ORDER BY T.DAY ASC NULLS LAST "
+            "RANGE BETWEEN INTERVAL '6 days' PRECEDING AND CURRENT ROW)"
+        )
+        partitioned = Window(partition_by=("T.REGION",), order_by=(SortKey("T.M", descending=True),))
+        assert render_metric(Metric(name="W", expr="SUM(T.M)", table="T", window=partitioned)) == (
+            "T.W AS SUM(T.M) OVER (PARTITION BY T.REGION ORDER BY T.M DESC)"
+        )
+        ordered = Window(order_by=(SortKey("T.DAY"),))
+        assert render_metric(Metric(name="W", expr="LAG(T.M, 1)", table="T", window=ordered)) == (
+            "T.W AS LAG(T.M, 1) OVER (ORDER BY T.DAY)"
+        )
+        assert render_metric(Metric(name="W", expr="SUM(T.M)", table="T", window=Window())) == (
+            "T.W AS SUM(T.M) OVER ()"
+        )
+
+    def test_a_window_metric_renders_no_path_or_non_additive_clause(self) -> None:
+        metric = Metric(
+            name="W",
+            expr="SUM(T.M)",
+            table="T",
+            comment="Running total.",
+            synonyms=("running",),
+            using_relationships=("T_TO_D",),
+            non_additive_by=(SortKey("T.DAY"),),
+            access_modifier="private_access",
+            window=Window(order_by=(SortKey("T.DAY"),)),
+        )
+        assert render_metric(metric) == (
+            "PRIVATE T.W AS SUM(T.M) OVER (ORDER BY T.DAY) WITH SYNONYMS ('running') COMMENT = 'Running total.'"
+        )
 
     def test_private_metric_emits_the_non_default_access_modifier(self) -> None:
         metric = Metric(name="M", table="T", expr="COUNT(*)", access_modifier="private_access")

@@ -1,14 +1,6 @@
 ---
-# =============================================================================
-# models/marts/products.yml
-# =============================================================================
-# THE CLOSED CATALOGUE. Ten rows, which is what makes the eval dataset's
-# tier-4 hardcoded count legitimate rather than brittle (`D213`).
-#
-# THE CROSS-CUTTING REASONING -- the seam, the jaffle domain, the one-line
-# `description:` constraint and the `D213` data rule -- IS IN `../README.md`, not
-# repeated here. Read that first if this is the first model file you have opened.
-# =============================================================================
+# products: the menu, a closed catalogue of ten seed rows. The eval dataset's
+# product-count case relies on that count.
 
 version: 2
 
@@ -22,15 +14,8 @@ models:
       on_schema_change: fail
       meta:
         sst:
-          # THE GRAIN OF THIS MODEL, AND THE MODEL IS THE SINGLE SOURCE (`D231`).
-          #
-          # THIS ONE KEY IS ASSERTED BY TWO GOLDENS AND THAT IS DELIBERATE.
-          # `products` is read by `jaffle_menu`, which declares `table_config`,
-          # and by `jaffle_minimal`, which declares NONE. Both goldens render
-          # `PRIMARY KEY (PRODUCT_ID)`, because the key is a property of the
-          # model rather than of a view's treatment of it. A view that declares
-          # nothing still RECEIVES what its models declare -- the distinction
-          # `expected/ddl/jaffle_minimal.sql` already draws for metrics.
+          # jaffle_minimal declares no table_config and still renders
+          # PRIMARY KEY (PRODUCT_ID): keys belong to the model, not the view.
           primary_key:
             - product_id
     columns:
@@ -50,8 +35,7 @@ models:
           - unique
           - not_null
 
-      # A SECOND ESCAPING CASE, and a jaffle-flavoured one. The menu item names in
-      # the donor project genuinely contain apostrophes and punctuation.
+      # The apostrophe renders doubled: 'The menu item''s name ...'.
       - name: product_name
         data_type: VARCHAR
         description: |-
@@ -101,13 +85,3 @@ models:
               sample_values:
                 - 1100
                 - 700
-
-  # ========================================================================
-  # locations -- the store dimension
-  # ========================================================================
-  # ROLE-PLAYING IS NOT EXERCISED, AND THAT IS SETTLED RATHER THAN MISSING.
-  # An earlier plan for this fixture had `locations` appear twice in one view under
-  # `table_config.name`. `D017` DEFERRED ROLE-PLAYING PAST 1.0 and `V009` carries
-  # the withdrawn-rule tombstone, so one physical table cannot appear twice in a
-  # view. The semantic-view rules state the consequence
-  # directly. Building it would have contradicted a settled decision.

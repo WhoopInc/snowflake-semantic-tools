@@ -64,6 +64,12 @@ def test_error_classification(message: str, sqlstate: str | None, kind: ErrorKin
     assert value.kind is kind and value.retryable is retryable
 
 
+def test_a_name_conflict_is_not_classified_as_a_syntax_error() -> None:
+    assert classify_error("Object 'X' already exists.").code == "SST-SNO002"
+    assert classify_error("x", sqlstate="42710").code == "SST-SNO002"
+    assert classify_error("x", sqlstate="42000").code == "SST-SNO009"
+
+
 def test_apply_create_writes_remote_then_local_state() -> None:
     artifact = rendered()
     use_case, port, store, _ = runner()

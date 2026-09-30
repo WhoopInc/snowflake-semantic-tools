@@ -1,6 +1,0 @@
-snowflake_metrics:
-  - name: unresolved_template
-    description: "Metric with unresolved table template"
-    expr: "COUNT(*)"
-    tables:
-      - "{{ table('undefined_table_name') }}"

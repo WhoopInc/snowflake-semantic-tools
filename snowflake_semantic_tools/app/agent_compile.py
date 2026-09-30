@@ -47,7 +47,7 @@ class AgentCompileContext:
     allowed_models: frozenset[str]
     skills: Mapping[str, ExtensionPin] = field(default_factory=lambda: MappingProxyType({}))
     plugins: Mapping[str, ExtensionPin] = field(default_factory=lambda: MappingProxyType({}))
-    # Skills a plugin or profile already consumes, so K010 does not report them.
+    # Skills a plugin or profile already consumes, so SST-VAL804 does not report them.
     consumed: frozenset[str] = frozenset()
     # Declared extensions with no version to pin -- `skill:<name>`, `plugin:<name>`,
     # or `extension:<name>` -- mapped to the reason, so a reference to one names

@@ -2,9 +2,9 @@
 
 Thank you for your interest in contributing to SST! This document outlines the process and guidelines.
 
-## Maintainer
+## Maintainers
 
-This project is maintained by **Matt Luizzi** ([@mluizzi-whoop](https://github.com/mluizzi-whoop)) at WHOOP Inc.
+The maintainers are listed in [CODEOWNERS](CODEOWNERS), and GitHub requests their review on every pull request.
 
 **All external contributions must be reviewed and approved by a maintainer before merging.**
 
@@ -20,114 +20,30 @@ We use GitHub issue templates to help structure your report. When you [create a 
 
 #### What Makes a Great Issue?
 
-**Great issues help us help you faster.** Here's what makes an issue effective:
+1. **A clear problem statement.** "`sst validate` reports `SST-REF001` for a model that `dbt ls` lists" helps; "SST doesn't work" does not.
+2. **Expected versus actual behavior**, with output copied verbatim. Every diagnostic prints its code; `--output json` prints each one with its location and suggestion.
+3. **Minimal reproduction steps**: the files involved, the exact command, and its exit code.
+4. **Environment**: `sst --version`, `python --version`, `dbt --version` if the project uses dbt, the operating system, and the authentication method `sst debug` reports.
+5. **Nothing private**: remove account, user, database, and schema names and every credential before posting.
 
-##### 1. Clear Problem Statement
+**Example:**
 
-Describe what's wrong or what you need. Be specific.
-
-**Good**: "SST deployment fails with 'Table not found' error when creating semantic views for newly added dbt models in CI/CD"
-
-**Poor**: "SST doesn't work"
-
-##### 2. Expected vs Actual Behavior
-
-Show what you expected versus what actually happened.
-
-**Good**:
-```
-Expected: SST should create semantic views after dbt models are materialized
-Actual: SST fails with error "Table 'NEW_TABLE' not found in database 'ANALYTICS'"
-```
-
-##### 3. Reproduction Steps
-
-Provide minimal, step-by-step instructions to reproduce the issue.
-
-**Good**:
-```
-1. Create new dbt model: models/sales/new_table.sql
-2. Add semantic view YAML with meta.sst block
-3. Run `sst deploy --db ANALYTICS --schema SEMANTIC_VIEWS`
-4. Observe error: "Table 'NEW_TABLE' not found"
-```
-
-##### 4. Environment Details
-
-Always include:
-- SST version (`sst --version`)
-- Python version (`python --version`)
-- dbt version (`dbt --version`)
-- Operating system
-- Snowflake/warehouse type
-
-##### 5. Relevant Context
-
-Include logs, error messages, code snippets, or configuration files. Use verbose mode (`--verbose`) when available.
-
-```bash
-# Get detailed output
-sst deploy --db ANALYTICS --schema SEMANTIC_VIEWS --verbose
-```
-
-#### Issue Quality Examples
-
-**Bug Report Example:**
-
-> **Title**: [Bug] SST fails when semantic views reference tables not yet materialized in CI/CD
-> 
-> **Problem**: When dbt models and semantic views are deployed together in CI/CD, SST fails if it runs before dbt completes
-> 
-> **Expected**: SST should either wait or gracefully handle missing tables
-> 
-> **Actual**: Deployment fails with "Table 'TABLE_NAME' not found"
-> 
-> **Steps to Reproduce**:
-> 1. Create PR with new dbt model and semantic view
-> 2. Merge PR (triggers CI/CD)
-> 3. SST and dbt run in parallel
-> 4. SST fails with table not found error
-> 
-> **Environment**: SST 0.1.0, Python 3.11, dbt 1.7, GitHub Actions
-> 
-> **Root Cause**: No job dependency between dbt and SST workflows in GitHub Actions config
-
-**Feature Request Example:**
-
-> **Title**: [Feature] Add graceful handling for missing tables during deployment
-> 
-> **Problem**: SST fails when tables don't exist yet, blocking CI/CD deployments
-> 
-> **Proposed Solution**: Add `--allow-missing-tables` flag to skip semantic views with missing tables instead of failing
-> 
-> **Alternatives**: Configure CI/CD orchestration (requires external changes)
-> 
-> **Impact**: Benefits all users running SST in CI/CD pipelines
-> 
-> **Example Usage**:
-> ```bash
-> sst deploy --db ANALYTICS --schema SEMANTIC_VIEWS --allow-missing-tables
-> ```
-
-**Documentation Issue Example:**
-
-> **Title**: [Docs] Missing CI/CD orchestration guidance
-> 
-> **Location**: docs/deployment-guide.md
-> 
-> **Issue**: No documentation explaining SST must run after dbt in CI/CD
-> 
-> **Suggested Improvement**: Add section on CI/CD pipeline orchestration with GitHub Actions examples
-> 
-> **Target Audience**: All users deploying via CI/CD
+> **Title**: [Bug]: `sst validate` reports SST-REF001 for a model dbt knows
+>
+> **Expected**: `{{ ref('orders') }}` in a view's `tables:` resolves; `dbt ls --select orders` lists the model.
+>
+> **Actual**: `error[SST-REF001]: {{ ref('orders') }} is not a model in the dbt manifest`, exit code 1.
+>
+> **Steps to Reproduce**: 1. Add the view in `semantic_models/semantic_views/sales.yml`. 2. Run `sst validate --no-snowflake-syntax-check`.
+>
+> **Environment**: SST 1.0.0, Python 3.12, dbt 1.11, macOS 15, externalbrowser
 
 #### Before Submitting
 
 - [ ] Search existing issues to avoid duplicates
 - [ ] Use the appropriate issue template
-- [ ] Include all required information
+- [ ] Say which version the issue affects: 1.0, or 0.3.x
 - [ ] Provide clear, concise descriptions
-- [ ] Add relevant labels if you can
 
 ### Proposing Changes
 
@@ -140,15 +56,15 @@ sst deploy --db ANALYTICS --schema SEMANTIC_VIEWS --verbose
 
 ### Pull Request Process
 
-1. **Fork the repository** and create a feature branch
-2. **Make your changes** following the code style below
-3. **Add tests** for new functionality
-4. **Update documentation** if needed
-5. **Run the test suite** and ensure all tests pass
+1. **Fork the repository** and branch from the line you are changing: the 1.0 development branch, or for a 0.3.x fix the maintenance branch (see [Maintaining 0.3.x](#maintaining-03x))
+2. **Make your changes** following the architecture and code style below
+3. **Add tests** for new behavior
+4. **Update documentation**, and regenerate the reference pages if needed
+5. **Run the gates** and ensure they all pass
 6. **Submit a pull request** with:
    - Clear description of changes
-   - Link to related issue
-   - Test results showing everything passes
+   - Link to related issue (`Closes #<number>`)
+   - Gate results showing everything passes
 
 **Pull requests will only be merged after maintainer review and approval.**
 
@@ -156,60 +72,93 @@ sst deploy --db ANALYTICS --schema SEMANTIC_VIEWS --verbose
 
 ### Prerequisites
 
-- Python 3.9-3.11
+- Python 3.11–3.13
 - Poetry for dependency management
-- Snowflake account (for integration tests)
-- dbt project (for testing)
+- Nothing else for the test suite: it needs no Snowflake account and no dbt install
 
 ### Installation
 
 ```bash
-# Clone the repository
 git clone https://github.com/WhoopInc/snowflake-semantic-tools.git
 cd snowflake-semantic-tools
 
-# Install dependencies
-poetry install
+poetry install                  # add --extras dbt to run sst against a dbt project of your own
+poetry run pre-commit install   # optional: black, isort, and file checks on every commit
 
-# Activate virtual environment
-poetry shell
-
-# Verify installation
-sst --version
+poetry run sst --version
 ```
 
-### Running Tests
+### Running the Gates
+
+These are the checks `.github/workflows/test-and-lint.yml` runs on every pull request:
 
 ```bash
-# Run all unit tests
-pytest tests/unit/
+poetry run pytest tests/
 
-# Run with coverage
-pytest --cov=snowflake_semantic_tools tests/unit/
+# Branch-coverage floors, each measured on its own test paths
+poetry run pytest -q --cov=snowflake_semantic_tools.domain --cov-branch --cov-fail-under=100 \
+  tests/unit/domain tests/unit/test_render_semantic_view.py
+poetry run pytest -q --cov=snowflake_semantic_tools.app --cov-branch --cov-fail-under=95 \
+  tests/unit/app tests/unit/test_compile_use_case.py tests/unit/test_manifest_v1.py
+poetry run pytest -q --cov=snowflake_semantic_tools.cli --cov-branch --cov-fail-under=90 \
+  tests/unit/test_cli_v1.py tests/unit/test_cli_m2.py tests/unit/test_cli_m5.py
 
-# Run specific test file
-pytest tests/unit/core/validation/test_relationship_validation.py
-
-# Run in verbose mode
-pytest tests/unit/ -vv
+poetry run mypy snowflake_semantic_tools
+poetry run black --check snowflake_semantic_tools/
+poetry run isort --check snowflake_semantic_tools/
+poetry run lint-imports         # ring boundaries
+poetry run sst docs --check     # generated reference pages are current
 ```
 
-### Code Style
+[tests/README.md](tests/README.md) describes the suite, the reference project, and the goldens.
+
+## Architecture
+
+The CLI is the only interface: the package exports nothing but `__version__`, so new behavior is a command or an option. The package root holds `__init__.py`, `_version.py`, and four rings:
+
+```text
+snowflake_semantic_tools/
+├── cli/        # click commands: the composition root that wires adapters into use cases
+├── app/        # use cases: compile, validate, plan, apply, the test suites, migrate refs
+├── adapters/   # the edges: YAML, the dbt manifest, the Snowflake connector, files, config, profile
+└── domain/     # pure: model, render, resolve, plan, state, and the ports adapters implement
+```
+
+Imports run one way, `cli` → (`app` | `adapters`) → `domain`:
+
+- `app` and `adapters` are independent: a use case receives adapters through the ports in `domain/ports/`, and an adapter never calls a use case.
+- `domain` does no I/O and reads no clock, environment, or randomness, so rendering is a pure function of its input and goldens can compare bytes.
+- `app` never imports an SDK or touches the terminal (`yaml`, `click`, and `snowflake` are forbidden there).
+- `adapters` may use domain models and ports, but not `domain/render`.
+
+`poetry run lint-imports` enforces these as four contracts in `pyproject.toml`, and `tests/unit/test_ring_boundaries.py` proves that each contract rejects a crossing and that the package root holds nothing else.
+
+### Diagnostics
+
+Every problem SST reports is a diagnostic registered in `snowflake_semantic_tools/domain/model/diagnostic.py`: a stable code (`SST-`, a three-letter subsystem, and a number, such as `SST-VAL116`), a severity, a message template, and a suggestion that says how to fix it. Build one with `D("SST-...", ...)`. A new problem gets a new code; codes are never reused, even after the diagnostic that used one is removed.
+
+### Generated Reference Pages
+
+`docs/reference/*.md` is rendered from the engine's registries: the diagnostics, the configuration schema (`snowflake_semantic_tools/domain/model/config_schema.py`, where every `sst_config.yml` key is declared), the CLI's commands and options, and the artifact registry (`snowflake_semantic_tools/domain/model/registry.py`). After changing any of them, run `poetry run sst docs` and commit the pages it rewrites; CI fails on `sst docs --check` otherwise.
+
+### Version
+
+`snowflake_semantic_tools/_version.py` holds the one version string, and it must equal `version` in `pyproject.toml`; a test asserts it. Change both together.
+
+## Code Style
 
 - **Formatting**: Black (line length 120)
 - **Imports**: isort with black profile
-- **Type hints**: Required for new code
-- **Docstrings**: Required for public functions/classes
+- **Type hints**: mypy runs with `disallow_untyped_defs`, so every function is annotated
+- **Error messages**: a diagnostic's suggestion is actionable — it says what is wrong and how to fix it
+- **Tests**: real in-memory ports and pytest's `monkeypatch`, no mocking library
 
 ```bash
 # Format code
-black snowflake_semantic_tools/
+poetry run black snowflake_semantic_tools/
 
 # Sort imports
-isort snowflake_semantic_tools/
-
-# Type checking
-mypy snowflake_semantic_tools/
+poetry run isort snowflake_semantic_tools/
 ```
 
 ## Code Review Criteria
@@ -217,18 +166,18 @@ mypy snowflake_semantic_tools/
 Pull requests will be evaluated on:
 
 - **Functionality**: Does it solve the stated problem?
-- **Tests**: Are there tests covering the changes?
-- **Documentation**: Is documentation updated?
-- **Code quality**: Follows style guidelines, no linting errors
-- **Backward compatibility**: Doesn't break existing functionality
+- **Tests**: Are the changes covered, with the coverage floors intact?
+- **Documentation**: Are the guides updated and the reference pages regenerated?
+- **Code quality**: Do all gates pass, ring boundaries included?
+- **Compatibility**: Exit codes, the `--output json` envelope, and diagnostic codes are contracts that CI pipelines depend on; changing what one means is a breaking change
 - **Performance**: No significant performance regressions
 
 ## What We're Looking For
 
 **Priority areas for contribution:**
 - Bug fixes with reproduction steps
-- Improved error messages
-- Additional validation rules
+- Clearer diagnostics and suggestions
+- New validation rules, each with its own diagnostic code
 - Documentation improvements
 - Performance optimizations
 - Test coverage improvements
@@ -238,11 +187,15 @@ Pull requests will be evaluated on:
 - Breaking changes (discuss first)
 - Features without clear use cases
 
+## Maintaining 0.3.x
+
+SST 1.0 is a new major version. SST 0.3 lives at the tag `v0.3.1`. Maintenance fixes for 0.3.x are made on a branch cut from that tag (for example `release/0.3.x`), released as 0.3.x patch versions, and never merged into 1.0.
+
 ## Questions?
 
 - Open an issue for questions
-- Tag the maintainer (@mluizzi-whoop) for urgent matters
-- Check existing documentation in `docs/` folder
+- Mention a maintainer from [CODEOWNERS](CODEOWNERS) for urgent matters
+- Check the [documentation](docs/index.md)
 - Review existing issues and pull requests
 
 ## License
@@ -252,4 +205,3 @@ By contributing, you agree that your contributions will be licensed under the Ap
 ---
 
 Thank you for helping improve Snowflake Semantic Tools!
-

@@ -33,35 +33,40 @@ gh pr view <number> --repo WhoopInc/snowflake-semantic-tools --json commits --jq
 
 **PR title** — must also match the commit regex (it becomes the merge commit message).
 
+**Base branch** — 1.0 work targets the 1.0 development branch. A 0.3.x fix targets the maintenance branch cut from `v0.3.1`, and 0.3.x changes are never merged into 1.0.
+
 ### Step 3: Code review
 
 Read the diff carefully. Focus on:
 
 **Correctness**
-- Edge cases: null/empty inputs, case sensitivity (column/table names must use `.lower()`)
-- Set operations: set equality vs subset vs superset — wrong choice causes silent bugs
-- Control flow: every error-handling branch needs `continue`/`return` or the next check runs on bad state
-- Off-by-one: composite key checks (all columns vs any column)
+- Edge cases: empty or missing inputs, and identifier case and quoting
+- Determinism: rendering and the manifest must be byte-stable. No clock, environment, or randomness in `domain/`, and no dependence on unordered iteration
+- Selection: `--select`, `--exclude`, and `--partial` must never hide an artifact's dependencies
+- Writes: `plan` never writes to Snowflake; `apply` executes only what the saved plan lists and changes only objects SST published
 
 **Consistency with project conventions**
 - Read `AGENTS.md` and `CONTRIBUTING.md` for current conventions
-- Black formatting (line length 120), isort (black profile), type hints on new code
-- Error messages must be actionable — tell the user what's wrong AND how to fix it
-- Imports at module level, not inside functions
+- Black (line length 120), isort (black profile), and every function annotated for mypy
+- Each new problem is a new diagnostic in `domain/model/diagnostic.py`: a new `SST-` code (never a reused one) with an actionable suggestion
+- A new `sst_config.yml` key is declared in `domain/model/config_schema.py`
+- A change to diagnostics, config keys, CLI options, or artifact types ships the regenerated `docs/reference/*.md` (`sst docs`)
+- `--output json` prints exactly one envelope on stdout; exit codes match `docs/reference/cli.md`
 
 **Architecture**
-- New validation rules belong in `core/validation/rules/` as methods on existing validator classes
-- New CLI options follow Click patterns in `interfaces/cli/commands/`
-- Template references (`{{ ref() }}`) are resolved in `core/parsing/`
-- SM_* table schemas are defined in `core/models/`
+- Rings: `cli` → (`app` | `adapters`) → `domain`, with `app` and `adapters` independent. `lint-imports` catches crossing imports; also look for I/O or SDK use hidden behind a helper in `domain/` or `app/`
+- The package root gains nothing beside `__init__.py`, `_version.py`, and the four rings, and `__init__.py` exports nothing but `__version__`: there is no Python API
+- Where code belongs: commands and options in `cli/`; use cases in `app/`; YAML, dbt, Snowflake, and filesystem access in `adapters/`, behind a port in `domain/ports/`; rules, rendering, reference resolution, plan diffing, and state in `domain/`
+- Tests use real in-memory ports (`adapters/snowflake/memory.py`, `tests/unit/app/conftest.py`), not mocks
+- A golden change is intended and explained in the PR; otherwise it is a regression
 
 ### Step 4: Run tests
 
-Load the `sst-test` skill and follow its workflow to run unit tests against the PR branch.
+Load the `sst-test` skill and follow its workflow to run the suite and the gates against the PR branch.
 
 ### Step 5: Run E2E tests (for code changes)
 
-If the PR modifies Python code under `snowflake_semantic_tools/` or `tests/`, load the `sst-e2e-test` skill and follow its workflow. Skip for docs/config-only changes.
+If the PR modifies Python code under `snowflake_semantic_tools/` or `tests/`, load the `sst-e2e-test` skill and run its offline phases. Its connected phase runs only if the user asks. Skip for docs/config-only changes.
 
 ### Step 6: Present findings
 
@@ -76,6 +81,7 @@ Structure the review as:
 - [ ] Commit messages match regex
 - [ ] Single issue linked with Closes #<number>
 - [ ] PR title matches regex
+- [ ] Base branch matches the line being changed
 
 ## Findings
 
@@ -86,25 +92,26 @@ Structure the review as:
 1. file:line — description → suggestion
 
 ## Test Results
-- Unit tests: X passed, Y failed
+- Suite: X passed, Y failed
+- Gates: coverage floors, mypy, black, isort, lint-imports, sst docs --check
 - E2E: PASS/FAIL/SKIPPED
 
 ## Verdict
 APPROVE / REQUEST CHANGES / COMMENT
 ```
 
-## Bug Patterns Common in This Codebase
+## What to Look For in 1.0 Changes
 
-1. **Missing `continue` after error** — validation loops that add an error but don't skip to the next item, causing cascading false errors
-2. **Case sensitivity** — comparing column names without `.lower()` causes mismatches between YAML (mixed case) and catalog (lowercase)
-3. **Set vs list comparison** — composite key validation must use set equality (order-independent), not list equality
-4. **Scope leaks** — variables computed inside an `if` branch referenced outside it (e.g., `right_columns_used` computed inside `if columns:` but used after)
-5. **Redundant imports** — imports inside functions that already exist at module level
+1. **Vacuous tests** — a check that passes because a path is wrong or a collection is empty. Guard what the test depends on, as `test_fixture_and_goldens_are_present` does
+2. **Nondeterministic output** — ordering, timestamps, or environment leaking into rendered payloads changes goldens and manifest ids
+3. **Stdout noise under `--output json`** — anything printed besides the envelope breaks machine consumers
+4. **Diagnostic drift** — a reused or renumbered code, a new error without a suggestion, or registry changes without regenerated reference pages
+5. **Writes beyond the plan** — anything in `apply` that acts on objects the saved plan does not list, or grants access SST did not already find in place
 
 ## Stopping Points
 
-- ✋ Step 4: Before running tests (ask user which conda environment via `sst-test` skill)
-- ✋ Step 5: Before E2E tests (confirm with user, involves Snowflake compute)
+- ✋ Step 4: Before running tests (ask the user which environment to use, via the `sst-test` skill)
+- ✋ Step 5: Before any connected E2E phase (it runs only on request and uses Snowflake compute)
 - ✋ Step 6: Before submitting review on GitHub (present findings for approval)
 
 ## Output

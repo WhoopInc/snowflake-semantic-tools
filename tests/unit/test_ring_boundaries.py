@@ -1,12 +1,11 @@
 """Proof that the ring contracts in `pyproject.toml` actually FAIL when crossed.
 
-WHY THIS FILE EXISTS. `lint-imports` reports "5 kept" against empty ring packages,
-which proves nothing at all -- a contract that has never rejected anything is
-indistinguishable from a contract that cannot reject anything. 0.3's layering
-decayed with an architecture documented in its README the whole time. So each
-contract here is shown to bite: the test writes a module that deliberately crosses
-one boundary, asserts `lint-imports` reports that specific contract BROKEN, and
-removes the module again.
+WHY THIS FILE EXISTS. `lint-imports` reports every contract kept against empty ring
+packages, which proves nothing at all -- a contract that has never rejected anything
+is indistinguishable from a contract that cannot reject anything, and an architecture
+that is only written down decays. So each contract here is shown to bite: the test
+writes a module that deliberately crosses one boundary, asserts `lint-imports`
+reports that specific contract BROKEN, and removes the module again.
 
 A test asserting the linter passes would be the weaker test. These assert it fails.
 """
@@ -72,13 +71,10 @@ CROSSINGS = [
         "adapters use domain ports and models",
         id="adapter-may-not-use-domain-renderers",
     ),
-    pytest.param(
-        "cli/_boundary_probe.py",
-        "from snowflake_semantic_tools import services\n",
-        "1.0 rings do not import 0.3 internals",
-        id="ring-may-not-lean-on-0.3-internals",
-    ),
 ]
+
+# Everything the package root may hold: the four rings and the version module.
+PACKAGE_ROOT = frozenset(("__init__.py", "_version.py", "cli", "app", "adapters", "domain"))
 
 
 def _lint_imports() -> subprocess.CompletedProcess[str]:
@@ -117,7 +113,13 @@ def test_contracts_hold_on_the_real_tree() -> None:
     """
     result = _lint_imports()
     assert result.returncode == 0, f"contracts already broken before probing:\n{result.stdout}"
-    assert "Contracts: 5 kept, 0 broken." in result.stdout, result.stdout
+    assert "Contracts: 4 kept, 0 broken." in result.stdout, result.stdout
+
+
+def test_package_root_holds_only_the_rings() -> None:
+    """No module outside the four rings: a new top-level package would sit outside every contract."""
+    entries = {entry.name for entry in PKG.iterdir() if not entry.name.startswith(".")} - {"__pycache__"}
+    assert entries == PACKAGE_ROOT, f"unexpected package-root entries: {sorted(entries - PACKAGE_ROOT)}"
 
 
 @pytest.mark.parametrize(("probe_path", "body", "contract"), CROSSINGS)

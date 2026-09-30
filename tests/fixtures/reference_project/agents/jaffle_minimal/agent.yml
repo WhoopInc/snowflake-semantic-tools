@@ -1,40 +1,14 @@
 ---
 # =============================================================================
-# agents/jaffle_minimal/agent.yml -- the reference-impl fixture
+# agents/jaffle_minimal/agent.yml -- reference project
 # =============================================================================
-# THE MINIMAL AGENT. `name:` IS THE ONLY REQUIRED KEY IN THE WHOLE AGENT SPEC, and
-# this file declares it and almost nothing else.
+# The minimal agent: `name:` is the only required key and the only one authored.
+# Its golden, tests/golden/expected/agent/jaffle_minimal_agent.json, holds only
+# what the `agents:` defaults in sst_config.yml supply (model, budget,
+# tool_not_accessible, analytical_search), so a renderer that emits any other
+# key unconditionally, or invents a default, fails against it.
 #
-# ITS VALUE IS THE ABSENCE, and this is the third negative-space assertion in the
-# fixture -- `jaffle_minimal` among the views, `total_revenue_all_time` among the
-# verified queries, `jaffle-catalogue` among the skills. `agents/agent.md` is the
-# heaviest spec in the plan at 76 rules, and every one of the OPT keys it defines is
-# exercised by `jaffle_analytics`. Without this file every rendered agent in every
-# golden would carry `profile`, `orchestration`, `instructions`, `tools`, `skills`,
-# `alias`, `meta` and `evals` -- so a publisher that emits any of those
-# unconditionally, or that defaults one silently, would pass.
-#
-# DO NOT ADD KEYS TO THIS FILE.
-#
-# THIS FILE NOW DECLARES EXACTLY ONE KEY, AND THAT IS THE STRONGEST FORM OF THE
-# ASSERTION IT EXISTS TO MAKE. It carried `create_mode: or_alter` until `D255`
-# removed the key.
-#
-# THE JUSTIFICATION FOR KEEPING IT DIED IN TWO STEPS, WHICH IS WORTH RECORDING.
-# It originally argued that "an agent with no tools and no instructions is the one
-# case where a publisher might reasonably choose `CREATE OR REPLACE` instead --
-# there is nothing to preserve." `D250` removed `or_replace` and refuted that: an
-# empty spec still accumulates committed VERSIONS and an ALIAS, and drift row 35
-# `TESTED` that `CREATE OR REPLACE AGENT` destroys both while reporting success.
-# The fallback justification was that stating the mode "means the golden asserts a
-# CHOSEN path rather than a defaulted one" -- and `D255` removed the choice, so
-# there is no longer a defaulted path to distinguish it from.
-#
-# WITH THE KEY GONE, `name:` IS THE ONLY LINE. That makes this fixture assert
-# precisely what its header claims: a renderer that emits keys unconditionally, or
-# defaults one silently, fails against a one-key input.
-#
-# NO DATA VALUES.
+# Do not add keys to this file.
 # =============================================================================
 
 name: jaffle_minimal_agent

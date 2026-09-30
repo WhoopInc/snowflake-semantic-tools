@@ -1,47 +1,18 @@
 ---
-# =============================================================================
-# semantic_models/relationships/relationships.yml -- the reference-impl fixture
-# =============================================================================
-# SIX RELATIONSHIPS, AND EVERY JOIN KIND APPEARS. equality appears four times
-# because four pairs genuinely join that way; ASOF and RANGE appear once each,
-# which is all the grammar has.
+# Six relationships: four equality, one ASOF and one range. Each condition is a
+# SQL string over ref() columns, and its operator sets the join kind:
 #
-# SST uses a DIFFERENT MODEL FROM SNOWFLAKE, deliberately:
-#   SST        `relationship_conditions` -- a list of SQL condition STRINGS
-#   Snowflake  `relationship_columns`    -- a list of {left_column, right_column}
-# SST parses the strings to derive the column pairs and INFERS THE JOIN KIND FROM
-# THE OPERATOR. Keep the dialect: it reads better for composite joins and the
-# operator-inference is more expressive than a bare column pair.
+#   a = b               equality  REFERENCES t (key)
+#   a >= b              ASOF      REFERENCES t (key, ASOF col)
+#   a BETWEEN s AND e   range     REFERENCES t (BETWEEN s AND e EXCLUSIVE)
 #
-#   =                              equality
-#   >= paired with a time column   ASOF    -> REFERENCES t(key, ASOF <col>)
-#   BETWEEN <start> AND <end>      RANGE   -> REFERENCES t(BETWEEN s AND e EXCLUSIVE)
-#
-# left_table  holds the FOREIGN key -- the MANY side.
-# right_table holds the PRIMARY or unique key -- the ONE side.
-#
-# *** left_table / right_table ARE NOT REFS. *** `D157` settled them as LITERAL
-# logical table names: the left-hand side of the table's row in the view's
-# `TABLES` clause, which is `table_config.<entry>.name` if the view overrides it
-# and otherwise the dbt MODEL name, written lowercase and uppercased by render.
-# Under the ref reading the value is the target-qualified relation, which
-# `MEASURED` 2026-09-21 is a Snowflake SYNTAX error in this position.
-#
-# Condition strings are QUOTED because YAML requires it. The two table fields are
-# UNQUOTED, which is the visible difference between a literal identifier and a
-# template.
-#
-# THE DONOR PROJECT AUTHORS ALL ELEVEN OF ITS RELATIONSHIPS AS PLAIN EQUALITY
-# CONDITIONS (MEASURED), so none of the typed kinds below came from
-# it. `D216` records that the domain was borrowed and the coverage was not.
-#
-# NO DATA VALUES.
-# =============================================================================
+# left_table is the many side and right_table the one side, written as bare
+# model names; a ref() call there is SST-REF045. A relationship attaches to
+# every view that holds both its tables.
 
 snowflake_relationships:
-  # ===========================================================================
-  # 1. EQUALITY -- the fact-to-dimension case
-  # ===========================================================================
+  # Attaches to jaffle_sales, the one view holding both tables. A relationship
+  # that fits no view is SST-VAL203.
   - name: orders_to_customers
     description: |-
       Each order belongs to exactly one customer. Many orders to one customer, so
@@ -50,20 +21,9 @@ snowflake_relationships:
     right_table: customers
     relationship_conditions:
       - "{{ ref('orders', 'customer_id') }} = {{ ref('customers', 'customer_id') }}"
-    # BOTH TABLES APPEAR TOGETHER IN jaffle_sales (R002). A relationship whose two
-    # tables never co-occur in any view attaches to nothing and is
-    # authored-and-connected-to-nothing, which reads as working (R017).
-    #
-    # `cardinality:` is NOT declared. It is a LINT ASSERTION rather than a
-    # passthrough -- declaring `many_to_one` asks validation to spot-check that
-    # the right-side key is unique against the DATA, which needs a connection.
-    # The equivalent guarantee is already here without one:
-    # `customers.primary_key: [customer_id]` in table_config, plus the dbt
-    # `unique` test on that column. Cardinality comes from KEYS.
 
-  # ===========================================================================
-  # 2. EQUALITY -- a second one, so the clause is a LIST rather than a singleton
-  # ===========================================================================
+  # The second relationship in jaffle_sales, so its RELATIONSHIPS clause holds
+  # more than one entry.
   - name: orders_to_locations
     description: |-
       Each order is placed at exactly one store location. Many orders to one
@@ -72,14 +32,10 @@ snowflake_relationships:
     right_table: locations
     relationship_conditions:
       - "{{ ref('orders', 'location_id') }} = {{ ref('locations', 'location_id') }}"
-    # WHY A SECOND EQUALITY EARNS ITS PLACE: with one relationship per view the
-    # rendered RELATIONSHIPS clause is a single row, and a renderer that emits a
-    # scalar instead of a one-element list is indistinguishable. jaffle_sales
-    # carries two, so the golden asserts list shape.
 
-  # ===========================================================================
-  # 3. ASOF -- the fan-out fix, and it is modelling rather than linting
-  # ===========================================================================
+  # Renders ORDER_ITEMS (ORDER_ID, OCCURRED_AT) REFERENCES ORDERS (ORDER_ID,
+  # ASOF ORDERED_AT): each line item matches its order as of when the item was
+  # recorded.
   - name: order_items_to_orders
     description: |-
       Each line item is attributed to the order state in effect when the item was
@@ -87,20 +43,15 @@ snowflake_relationships:
     left_table: order_items
     right_table: orders
     relationship_conditions:
-      # The equality half. Composite ASOF: the entity key AND the time probe.
+      # The key equality, then the ASOF comparison. >= is the only ASOF
+      # operator SST parses, and Snowflake allows one ASOF column per
+      # relationship.
       - "{{ ref('order_items', 'order_id') }} = {{ ref('orders', 'order_id') }}"
-      # The ASOF half. `>=` paired with a time column is what makes this ASOF
-      # rather than a second equality. AT MOST ONE ASOF CONDITION PER
-      # RELATIONSHIP (R007), and ASOF produces MATCH_CONDITION with `>=` only.
       - "{{ ref('order_items', 'occurred_at') }} >= {{ ref('orders', 'ordered_at') }}"
-    # WHY ASOF AND NOT EQUALITY. A line item and its order are not the same grain:
-    # joining them on the key alone is correct here only because order state is
-    # immutable in this fixture. ASOF states the intent that the item is matched to
-    # the order as it was, which is what makes a later state change non-breaking.
 
-  # ===========================================================================
-  # 4. RANGE -- BETWEEN, and the only relationship needing distinct_range
-  # ===========================================================================
+  # BETWEEN makes this a range relationship. Snowflake requires a DISTINCT
+  # RANGE constraint on the target, which jaffle_menu declares as the
+  # distinct_range of pricing_periods. The end bound renders EXCLUSIVE.
   - name: orders_to_pricing_periods
     description: |-
       Each order falls inside exactly one pricing period, determined by when it was
@@ -108,18 +59,8 @@ snowflake_relationships:
     left_table: orders
     right_table: pricing_periods
     relationship_conditions:
-      # BETWEEN <start> AND <end> is what makes this RANGE. R008 requires the two
-      # bounds, and R009 requires `distinct_range` on the TARGET table's
-      # table_config before any range relationship may point at it -- which
-      # jaffle_menu declares on `pricing_periods`.
       - "{{ ref('orders', 'ordered_at') }} BETWEEN {{ ref('pricing_periods', 'effective_start_at') }} AND {{ ref('pricing_periods', 'effective_end_at') }}"
-    # THE UPPER BOUND RENDERS AS EXCLUSIVE. That is what makes adjacent periods
-    # non-overlapping, and it is why the dbt model names the column
-    # `effective_end_at` rather than anything suggesting an inclusive last day.
 
-  # ===========================================================================
-  # 5. EQUALITY -- line item to the product sold
-  # ===========================================================================
   - name: order_items_to_products
     description: |-
       Each line item sells exactly one product. Many line items to one product, so
@@ -129,9 +70,9 @@ snowflake_relationships:
     relationship_conditions:
       - "{{ ref('order_items', 'product_id') }} = {{ ref('products', 'product_id') }}"
 
-  # ===========================================================================
-  # 6. EQUALITY -- the snapshot table's only join
-  # ===========================================================================
+  # The only relationship of the snapshot table. With it, jaffle_menu's five
+  # tables and four relationships form a tree: one path between any two
+  # tables, so no ambiguous path (SST-VAL209) and no cycle (SST-VAL215).
   - name: supplies_to_products
     description: |-
       Each supply-cost snapshot row belongs to exactly one product. Many monthly
@@ -140,15 +81,3 @@ snowflake_relationships:
     right_table: products
     relationship_conditions:
       - "{{ ref('supplies', 'product_id') }} = {{ ref('products', 'product_id') }}"
-    # THIS RELATIONSHIP EXISTS SO `supplies` IS NOT A DISCONNECTED TABLE in
-    # jaffle_menu. A table listed in a view with no relationship to anything else
-    # in it contributes dimensions and facts that no join can reach, which is a
-    # more subtle failure than a missing table: every ref resolves and the DDL is
-    # valid, but no question spanning it can be answered.
-    #
-    # NOTE WHAT THIS DOES NOT CREATE. `supplies -> products` and
-    # `order_items -> products` both terminate at `products`, but they do not form
-    # a MULTI-PATH: multi-path is more than one distinct path between the SAME
-    # PAIR, and there is still exactly one route from any table here to any other.
-    # R015 is therefore covered in `negative/` rather than here -- see
-    # `semantic_views/semantic_views.yml`'s closing note.

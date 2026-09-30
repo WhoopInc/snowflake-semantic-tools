@@ -35,6 +35,7 @@ pip install snowflake-semantic-tools
 cd your-dbt-project        # profiles.yml lives here
 sst init
 sst validate
+sst compile                # writes the manifest plan and apply read
 sst plan                   # exit 2 means there are changes to apply
 sst apply --plan target/sst/plan.json --yes
 ```

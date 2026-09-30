@@ -7,13 +7,14 @@ body:
     attributes:
       value: |
         Thanks for taking the time to report a bug! Please fill out the sections below to help us diagnose and fix the issue.
+        Remove account, user, database, and schema names and any credentials before submitting.
 
   - type: textarea
     id: description
     attributes:
       label: Problem Description
       description: A clear and concise description of what the bug is
-      placeholder: "Example: sst deploy fails with 'Table not found' error when creating semantic views"
+      placeholder: "Example: sst validate reports SST-REF001 for a model that dbt ls lists"
     validations:
       required: true
 
@@ -22,7 +23,7 @@ body:
     attributes:
       label: Expected Behavior
       description: What you expected to happen
-      placeholder: "Example: SST should create semantic views successfully after dbt models are materialized"
+      placeholder: "Example: {{ ref('orders') }} in the view's tables: resolves, because orders is a model in the dbt project"
     validations:
       required: true
 
@@ -30,13 +31,13 @@ body:
     id: actual
     attributes:
       label: Actual Behavior
-      description: What actually happened (include error messages)
+      description: What actually happened (include the diagnostics verbatim and the exit code)
       placeholder: |
         Example:
         ```
-        Error: Table 'NEW_SALES_TABLE' not found in database 'ANALYTICS'
-        Please ensure the table exists and metadata is properly extracted.
+        error[SST-REF001]: {{ ref('orders') }} is not a model in the dbt manifest
         ```
+        Exit code 1.
     validations:
       required: true
 
@@ -46,9 +47,9 @@ body:
       label: Steps to Reproduce
       description: Minimal steps to reproduce the issue
       placeholder: |
-        1. Create new dbt model `models/new_sales_table.sql`
-        2. Add semantic view YAML with `meta.sst` block
-        3. Run `sst deploy --db ANALYTICS --schema SEMANTIC_VIEWS`
+        1. `dbt ls --select orders` lists the model
+        2. Add `{{ ref('orders') }}` to a view's `tables:` in `semantic_models/semantic_views/sales.yml`
+        3. Run `sst validate --no-snowflake-syntax-check`
         4. See error
     validations:
       required: true
@@ -59,11 +60,11 @@ body:
       label: Environment
       description: Your environment details
       value: |
-        - SST version: [e.g., 1.4.447]
-        - Python version: [e.g., 3.11.9]
-        - dbt version: [e.g., 1.7.0]
-        - Snowflake warehouse: [e.g., Snowflake, Databricks]
-        - Operating System: [e.g., macOS 14, Ubuntu 22.04]
+        - SST version (`sst --version`): [e.g., 1.0.0]
+        - Python version: [e.g., 3.12.4]
+        - dbt version (`dbt --version`), if the project uses dbt: [e.g., 1.11.2]
+        - Authentication method (the `authentication` line of `sst debug`): [e.g., externalbrowser]
+        - Operating System: [e.g., macOS 15, Ubuntu 24.04]
     validations:
       required: true
 
@@ -71,8 +72,8 @@ body:
     id: logs
     attributes:
       label: Relevant Logs
-      description: Any relevant log output (use verbose mode `--verbose` if available)
-      placeholder: "Paste relevant logs here"
+      description: Any relevant output. `--output json` prints every diagnostic with its code, location, and suggestion.
+      placeholder: "Paste relevant output here"
       render: shell
 
   - type: textarea

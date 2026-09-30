@@ -27,8 +27,7 @@ def test_schema_rows_are_unique_registered_and_self_describing() -> None:
         assert ".".join((*key.segments[:-1], key.name)) == key.path
         if key.code is not None:
             assert key.code in ERROR_REGISTRY
-        if key.status is KeyStatus.DEPRECATED:
-            assert key.replacement in CONFIG_KEYS
+    assert {key.status for key in CONFIG_SCHEMA} == set(KeyStatus)
     assert CONFIG_KEYS["skills.catalog.+bundle_stage"].parent == "skills.catalog"
     assert CONFIG_KEYS["skills"].children is ChildPolicy.ROUTES
 
@@ -86,19 +85,28 @@ def test_removed_keys_carry_a_reason_or_a_dedicated_code() -> None:
     ]
 
 
-def test_inert_blocks_inform_once_and_are_not_descended() -> None:
-    diagnostics = validate_config({"enrichment": {"distinct_limit": 25, "anything": True}})
-    assert [(item.code, item.severity) for item in diagnostics] == [("SST-CFG044", Severity.INFO)]
+def test_unsupported_keys_are_errors_and_are_not_descended() -> None:
+    diagnostics = validate_config({"dbt": {"invoke": True, "anything": True}})
+    assert [(item.code, item.severity) for item in diagnostics] == [("SST-CFG044", Severity.ERROR)]
+    assert diagnostics[0].message == "config key 'dbt' is not supported in this release"
     assert _codes({"agents": {"finance": {"+schema": "X"}}}) == [("SST-CFG044", "config:agents.finance")]
-    assert _codes({"validation": {"exclude_dirs": []}}) == [("SST-CFG044", "config:validation.exclude_dirs")]
-
-
-def test_deprecated_deploy_is_validated_as_apply() -> None:
-    assert _codes({"deploy": {"agent_spec_stage": {"stage": "S"}}}) == [("SST-CFG045", "config:deploy")]
-    assert _codes({"deploy": {"bogus": 1}}) == [
-        ("SST-CFG045", "config:deploy"),
-        ("SST-CFG003", "config:deploy.bogus"),
+    assert _codes({"tools": {"finance": {}}}) == [("SST-CFG044", "config:tools.finance")]
+    assert _codes({"semantic_views": {"+tags": [], "+max_staleness": 60}}) == [
+        ("SST-CFG044", "config:semantic_views.+tags"),
+        ("SST-CFG044", "config:semantic_views.+max_staleness"),
     ]
+
+
+def test_0_3_blocks_and_deploy_are_removed_with_their_reasons() -> None:
+    assert _codes({"enrichment": {"distinct_limit": 25}, "generation": {"threads": 1}, "defer": {}}) == [
+        ("SST-CFG043", "config:enrichment"),
+        ("SST-CFG043", "config:generation"),
+        ("SST-CFG043", "config:defer"),
+    ]
+    assert _codes({"validation": {"exclude_dirs": []}}) == [("SST-CFG043", "config:validation.exclude_dirs")]
+    assert _codes({"deploy": {"agent_spec_stage": {"stage": "S"}}}) == [("SST-CFG043", "config:deploy")]
+    message = validate_config({"apply": {"fail_fast": True}})[0].message
+    assert message == "config key 'apply.fail_fast' was removed: pass --fail-fast to sst apply"
 
 
 def test_types_domains_bounds_and_fixed_values() -> None:

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from snowflake_semantic_tools.domain.model.expression import is_aggregate_expression
+from snowflake_semantic_tools.domain.model.expression import call_arguments, is_aggregate_expression
 
 COLUMN = "{{ ref('orders', 'amount') }}"
 
@@ -44,3 +44,22 @@ def test_columns_outside_every_aggregate_and_windows_are_not(expression: str) ->
 def test_an_unclosed_call_is_left_to_the_syntax_check() -> None:
     # The span runs to the end of the text; Snowflake's compile reports the imbalance.
     assert is_aggregate_expression(f"SUM({COLUMN}")
+
+
+@pytest.mark.parametrize(
+    ("expression", "arguments"),
+    [
+        ("SUM({{ metric('revenue') }})", ("{{ metric('revenue') }}",)),
+        (f"LAG({COLUMN}, 1)", (COLUMN, "1")),
+        (f"(AVG(SUM({COLUMN})))", (f"SUM({COLUMN})",)),
+        ("CONCAT('a,b', \"c,d\", F(x, y))", ("'a,b'", '"c,d"', "F(x, y)")),
+        ("COUNT(*)", ("*",)),
+        ("F()", ("",)),
+        (f"SUM({COLUMN}) / 2", None),
+        (COLUMN, None),
+    ],
+)
+def test_call_arguments_are_the_root_calls_top_level_arguments(
+    expression: str, arguments: tuple[str, ...] | None
+) -> None:
+    assert call_arguments(expression) == arguments

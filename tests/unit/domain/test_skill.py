@@ -271,7 +271,9 @@ def test_file_names_a_stage_rejects_fail_validation_at_the_file() -> None:
     diagnostics = validate_skill_catalog(SkillCatalog((unsafe,)))
     assert codes(diagnostics) == ["SST-VAL857", "SST-VAL857"]
     first, second = diagnostics
-    assert first.subject == "skill:month-close" and first.origin == Origin("skills/finance/month-close/bad dir/notes.md")
+    assert first.subject == "skill:month-close" and first.origin == Origin(
+        "skills/finance/month-close/bad dir/notes.md"
+    )
     assert "'bad dir' is not made only of letters" in first.message
     assert second.message.startswith("skill:month-close: reference/q1+q2.md cannot be staged, because 'q1+q2.md'")
 

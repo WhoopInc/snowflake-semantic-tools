@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 
 from snowflake_semantic_tools.adapters.yaml.loader import load_semantic_views
-from snowflake_semantic_tools.domain.model.semantic_view import SemanticView
+from snowflake_semantic_tools.domain.model.semantic_view import SemanticView, SortKey
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 FIXTURE = REPO_ROOT / "tests" / "fixtures" / "reference_project"
@@ -40,7 +40,10 @@ def test_loads_asof_and_range_relationships(menu: SemanticView) -> None:
 def test_loads_path_pinning_and_non_additive_dimension(menu: SemanticView) -> None:
     metrics = {metric.name: metric for metric in menu.metrics}
     assert metrics["LINE_ITEM_COUNT"].using_relationships == ("ORDER_ITEMS_TO_ORDERS",)
-    assert metrics["TOTAL_SUPPLY_COST"].non_additive_by == ("SNAPSHOT_MONTH",)
+    assert metrics["TOTAL_SUPPLY_COST"].non_additive_by == (SortKey("SNAPSHOT_MONTH"),)
+    assert metrics["OPENING_SUPPLY_COST"].non_additive_by == (
+        SortKey("SUPPLIES.SNAPSHOT_MONTH", descending=True, nulls_first=True),
+    )
 
 
 def test_loads_sql_sidecar_without_its_comment_header(menu: SemanticView) -> None:

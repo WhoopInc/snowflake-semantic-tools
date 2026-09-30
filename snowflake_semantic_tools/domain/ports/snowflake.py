@@ -5,16 +5,26 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Mapping, Protocol, Sequence
 
+from ..model.diagnostic import Diagnostic
 from ..model.identifier import QualifiedName, SchemaScope
 from ..model.lifecycle import ExecResult, GrantRow, OwnershipMarker, QueryResult, ShowRow
 from ..state.model import AppliedEntry, Manifest, SavedPlan, State
 
 
 class SnowflakePortError(RuntimeError):
-    def __init__(self, message: str, *, sqlstate: str | None = None, errno: int | None = None) -> None:
+    def __init__(
+        self,
+        message: str,
+        *,
+        sqlstate: str | None = None,
+        errno: int | None = None,
+        diagnostic: Diagnostic | None = None,
+    ) -> None:
         super().__init__(message)
         self.sqlstate = sqlstate
         self.errno = errno
+        # What the command reports, when the adapter recognised the failure.
+        self.diagnostic = diagnostic
 
 
 @dataclass(frozen=True, slots=True)

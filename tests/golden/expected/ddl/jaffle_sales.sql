@@ -1,106 +1,32 @@
--- =============================================================================
--- expected/ddl/jaffle_sales.sql -- GOLDEN
--- =============================================================================
--- Orders, the customers who placed them, and the locations they were placed at.
--- Rendered from `project/` on `--target dev`, so every relation resolves under
--- `SST_REF_DEV.JAFFLE` (`profiles.yml` sets `target: dev`).
+-- jaffle_sales golden: SST_REF_DEV.JAFFLE.JAFFLE_SALES, rendered from
+-- semantic_models/semantic_views/semantic_views.yml on the dev target. The DDL
+-- below is what SST renders, and tests/unit/test_golden_ddl.py compares it byte
+-- for byte. The statement has been created in Snowflake, in a scratch schema.
 --
--- *** EVERY CLAUSE SHAPE IN THIS FILE WAS PUBLISHED TO SNOWFLAKE BEFORE BEING
--- *** WRITTEN HERE. `TESTED` 2026-09-24 in an isolated scratch schema against
--- *** stand-in tables of the same shape. Three of those probes FAILED FIRST;
--- *** they are recorded as drift findings 3a-3c.
+-- The view sets every view-level key; it is the only golden with MAX_STALENESS
+-- and WITH TAG. Notable clauses:
+--   - PRIMARY KEY and UNIQUE (CUSTOMER_NAME) come from the models'
+--     config.meta.sst; a column in both is an error (SST-VAL223).
+--   - VARIABLES take COMMENT = '...'; AI_SQL_GENERATION and
+--     AI_QUESTION_CATEGORIZATION take no `=`.
+--   - SAMPLE_VALUES renders on facts and dimensions. IS_ENUM follows it, and
+--     only where is_enum is true.
+--   - Three LABELS = (FILTER) dimensions, one per filter with labels: [filter].
+--     IS_LARGE_ORDER reads the view variable LARGE_ORDER_CENTS. A boolean
+--     filter without labels is an error (SST-VAL405).
+--   - CUSTOMERS.CUMULATIVE_CUSTOMER_COUNT is a window function metric: the
+--     OVER (...) built from its window: block follows the expression.
+--   - Derived metrics sort after table-scoped ones and carry no table prefix;
+--     REVENUE_PER_CUSTOMER combines metrics from two tables.
+--   - AI_SQL_GENERATION is jaffle_sql_conventions, a blank line, then prose
+--     from high_value_threshold_cents, a filter without labels whose
+--     expression is not boolean. AI_QUESTION_CATEGORIZATION is
+--     jaffle_question_scope.
+--   - VERIFIED_AT is epoch seconds whether authored as an integer or as a
+--     date string. TOTAL_REVENUE_ALL_TIME carries only QUESTION and SQL.
+--   - COPY GRANTS is always rendered.
 --
--- CLAUSE ORDER IS FIXED AND VERIFIED:
---   TABLES -> RELATIONSHIPS -> VARIABLES -> FACTS -> DIMENSIONS -> METRICS
---   -> COMMENT -> AI_SQL_GENERATION -> AI_QUESTION_CATEGORIZATION
---   -> AI_VERIFIED_QUERIES -> MAX_STALENESS -> COPY GRANTS
---
---   `VARIABLES` SITS BETWEEN `RELATIONSHIPS` AND `FACTS`. That is not a guess;
---   it is the documented position and it is what created. An earlier draft of
---   this plan assumed `MAX_STALENESS` followed `COMMENT` -- it does not, it comes
---   after `AI_QUESTION_CATEGORIZATION`, and only executing the statement settled
---   which of the two orderings was real.
---
--- WHAT THIS FILE ASSERTS
---
---   1. NO `WITH EXTENSION (CA=...)` CLAUSE. Decision `D220` deletes it. Sample
---      values and enum flags are NATIVE clauses below; the `time_dimensions`
---      provenance array is gone as redundant with DATA_TYPE (`D219`); and a
---      boolean standalone filter -- the one shape that needed the payload -- is
---      now an ERROR under `F007`. Drift finding 3 is SCOPED
---      by that decision, NOT overturned: it was `TESTED`, and its observed
---      payload was a BOOLEAN standalone filter, which is exactly the shape
---      `F007` now forbids.
---
---   2. THREE `LABELS = (FILTER)` DIMENSIONS, one of which READS A VIEW VARIABLE.
---      This is the native, Snowflake-recommended filter form, and it is what
---      every boolean filter compiles to. `IS_LARGE_ORDER` reads
---      `LARGE_ORDER_CENTS`, which proves variable substitution reaches a filter
---      and not only a metric.
---
---      > PREVIOUSLY THIS FILE WAS WRONG ABOUT ALL THREE. It asserted
---      > `IS_COMPLETED_ORDER AS ORDERS.ENDED_AT IS NOT NULL` and
---      > `IS_RETURNED_ORDER AS ORDERS.STATUS = 'STATUS_PLACEHOLDER_A'` -- naming
---      > two columns that NO LONGER EXIST and a pre-`D213` placeholder value --
---      > and omitted `IS_LARGE_ORDER` entirely. The input declares
---      > `order_state = 'completed'` and `= 'returned'`. The payload on the last
---      > line had ALREADY been rebuilt to the new column while the DIMENSIONS
---      > clause had not, so one file disagreed with itself.
---
---   3. NATIVE `SAMPLE_VALUES` ON FACTS AS WELL AS DIMENSIONS. `SAMPLE_VALUES` is
---      valid on both; `IS_ENUM` is DIMENSIONS-ONLY, takes no value, and must
---      FOLLOW `SAMPLE_VALUES`. `is_enum: false` emits NOTHING -- which is why
---      `CUSTOMER_TYPE` and `ORDER_STATE` carry `IS_ENUM` and the seven
---      `is_enum: false` columns do not.
---
---   4. `VARIABLES` WITH `COMMENT = `, AND THE `=` IS THE ASSERTION. The published
---      `variableDef` grammar shows `COMMENT '<description>'` with NO equals sign,
---      and that form is a SYNTAX ERROR -- drift finding 3b. Note the inconsistency
---      this file therefore contains and must contain: `VARIABLES` needs
---      `COMMENT = `, while `AI_SQL_GENERATION` and `AI_QUESTION_CATEGORIZATION`
---      take NO `=` and are a syntax error with one. Three clauses, two
---      conventions.
---
---   5. TWO DERIVED METRICS, RENDERED WITHOUT A TABLE PREFIX.
---      `REVENUE_PER_CUSTOMER` combines metrics from two different logical tables,
---      which is the case a table-scoped metric cannot express.
---
---   6. `UNIQUE (CUSTOMER_NAME)` ALONGSIDE `PRIMARY KEY (CUSTOMER_ID)` on one
---      table, from `customers.yml`'s `config.meta.sst.unique_keys` -- the MODEL,
---      not this view. `D231`. `V026` is what forbids the two lists overlapping.
---
---   7. ONE `AI_SQL_GENERATION` CLAUSE CARRYING TWO SOURCES. The view attaches
---      `jaffle_sql_conventions`, and the standalone filter's prose is appended
---      after it. Snowflake accepts exactly ONE clause per channel, so
---      composition happens before emit: blocks first in the order the view lists
---      them, filter prose LAST, separated by exactly one blank line.
---
---   8. THE STANDALONE FILTER'S PROSE IN ITS 1.0 FORM. `high_value_threshold_cents`
---      is NON-boolean, carries no `labels:`, and reaches `AI_SQL_GENERATION`
---      because `filters_to_instructions` is true. The 0.3 template -- "apply X
---      unless the user explicitly requests unfiltered data" -- is DEAD: it is
---      written for a predicate, and after `F007` became an ERROR no boolean
---      standalone filter can exist, so only non-predicates reach this path.
---      `D225` replaces it with the value-stating form below.
---
---   9. TWO `verified_at` INPUT FORMS CONVERGING ON INTEGERS. The input authors a
---      bare integer `1769904000` on one query and the string `"2026-01-01"` on
---      another; both emit as epoch seconds. `TESTED`: `1769904000` is
---      2026-02-01 and `2026-01-01` is `1767225600`.
---
---  10. A MINIMAL VERIFIED QUERY. `TOTAL_REVENUE_ALL_TIME` omits `VERIFIED_AT`,
---      `VERIFIED_BY` and `ONBOARDING_QUESTION` -- all three keys are ABSENT in
---      the input, not false -- and `TESTED` confirms a verified query carrying
---      only `QUESTION` and `SQL` is accepted. `VERIFIED_BY` also takes a BARE
---      string here; the reference shows only the `'(purpose = contact)'` form.
---
---  11. SINGLE-QUOTE DOUBLING, in three member comments and one instruction
---      channel: `customer''s`, `store''s`, `view''s`.
---
--- *** NOT COMPARABLE RAW TO `GET_DDL`. Finding 3a: read-back lowercases every
--- *** keyword, rewrites `WITH SYNONYMS ('a', 'b')` to `with synonyms=('a','b')`
--- *** while leaving `sample_values ('x', 'y')` spaced, and omits `COPY GRANTS`.
--- =============================================================================
+-- Not comparable raw to GET_DDL; see tests/golden/README.md.
 
 CREATE OR REPLACE SEMANTIC VIEW SST_REF_DEV.JAFFLE.JAFFLE_SALES
   TABLES (
@@ -141,6 +67,7 @@ CREATE OR REPLACE SEMANTIC VIEW SST_REF_DEV.JAFFLE.JAFFLE_SALES
     ORDERS.ORDER_STATE AS ORDERS.ORDER_STATE WITH SYNONYMS ('order status', 'fulfilment state') COMMENT = 'Fulfilment state of the order. A closed set.' SAMPLE_VALUES ('completed', 'returned', 'placed') IS_ENUM
   )
   METRICS (
+    CUSTOMERS.CUMULATIVE_CUSTOMER_COUNT AS SUM(CUSTOMERS.CUSTOMER_COUNT) OVER (PARTITION BY EXCLUDING CUSTOMERS.FIRST_ORDERED_AT ORDER BY CUSTOMERS.FIRST_ORDERED_AT ASC NULLS LAST RANGE BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) COMMENT = 'Running count of customers, by the date of their first order.',
     CUSTOMERS.CUSTOMER_COUNT AS COUNT(DISTINCT CUSTOMERS.CUSTOMER_ID) WITH SYNONYMS ('customers', 'buyers') COMMENT = 'Number of distinct customers who placed at least one order.',
     ORDERS.AVG_ORDER_VALUE AS AVG(ORDERS.ORDER_TOTAL) WITH SYNONYMS ('AOV', 'average basket') COMMENT = 'Mean order value including tax, in cents.',
     ORDERS.LARGE_ORDER_COUNT AS COUNT(DISTINCT CASE WHEN ORDERS.ORDER_TOTAL > LARGE_ORDER_CENTS THEN ORDERS.ORDER_ID END) WITH SYNONYMS ('big orders') COMMENT = 'Number of orders whose value exceeds the large-order threshold.',

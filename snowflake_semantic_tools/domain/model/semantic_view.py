@@ -61,8 +61,8 @@ class Table:
 
     `logical_name` is the name members qualify against; `fqn` is the physical table
     it resolves to. They differ in case only for now -- role-playing, which would
-    let one physical table appear under two logical names, is DEFERRED past 1.0 by
-    D017, so a view cannot contain the same physical table twice.
+    let one physical table appear under two logical names, is not supported in 1.0,
+    so a view cannot contain the same physical table twice.
     """
 
     logical_name: str
@@ -103,6 +103,34 @@ class Variable:
 
 
 @dataclass(frozen=True, slots=True)
+class SortKey:
+    """One ordered expression: a `NON ADDITIVE BY` dimension or a window `ORDER BY` entry.
+
+    `descending` and `nulls_first` are None when the author left them unstated, so
+    the DDL says exactly what was written and Snowflake's defaults decide the rest.
+    """
+
+    expr: str
+    descending: bool | None = None
+    nulls_first: bool | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class Window:
+    """The `OVER (...)` of a window function metric.
+
+    At most one of `partition_by` and `partition_excluding` is set: EXCLUDING
+    partitions by every dimension a query requests except those named. `frame` is a
+    frame clause the loader has already checked against Snowflake's grammar.
+    """
+
+    partition_by: tuple[str, ...] = ()
+    partition_excluding: tuple[str, ...] = ()
+    order_by: tuple[SortKey, ...] = ()
+    frame: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
 class Metric:
     """One entry inside `METRICS (...)`.
 
@@ -116,8 +144,11 @@ class Metric:
     comment: str | None = None
     synonyms: tuple[str, ...] = ()
     using_relationships: tuple[str, ...] = ()
-    non_additive_by: tuple[str, ...] = ()
+    # Order is significant: rows sort by these keys and the last row's value counts.
+    non_additive_by: tuple[SortKey, ...] = ()
     access_modifier: str = "public_access"
+    # Set for a window function metric, whose `expr` is the call the window applies to.
+    window: Window | None = None
 
     @property
     def qualified_name(self) -> str:

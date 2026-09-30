@@ -1,25 +1,24 @@
 """Load a dbt + SST project into `domain` models.
 
-THE ONLY MODULE PERMITTED TO IMPORT `yaml`, and the only one that touches the
-filesystem. Everything it produces is fully resolved: `{{ ref('products') }}` has
-become `SST_REF_DEV.JAFFLE.PRODUCTS` and `{{ target.database }}` has been replaced
-from the dbt profile, so `domain` never needs to know either exists.
+Everything it produces is fully resolved: `{{ ref('products') }}` has become
+`SST_REF_DEV.JAFFLE.PRODUCTS` and `{{ target.database }}` has been replaced from the
+dbt profile, so `domain` never needs to know either exists.
 
-SCOPE. This is the first vertical slice: enough to load `jaffle_minimal` -- tables,
-their keys, their columns, and the metrics attached to them. Relationships,
-variables, verified queries, tags and staleness are modelled and rendered already
-but are not yet read from YAML; they arrive with the `jaffle_sales` rung.
+WHERE THE INFORMATION LIVES. A view declares its name, tables, and a few view-level
+keys. Everything else in the rendered DDL arrives by ATTACHMENT from elsewhere in the
+project:
 
-WHERE THE INFORMATION LIVES, which is the part worth knowing. A view's own
-declaration is three keys -- `name`, `description`, `tables`. Everything else in the
-rendered DDL arrives by ATTACHMENT from elsewhere in the project:
-
-    semantic_models/semantic_views/**/*.yml   the view: name, description, tables
+    semantic_models/semantic_views/**/*.yml   the view
     target/manifest.json                      physical relation, model grain and
                                               resolved column metadata
-    semantic_models/metrics/*.yml             metrics, attached by which tables
-                                              their expr refs
+    semantic_models/<member>/*.yml            metrics, filters, relationships,
+                                              verified queries and custom
+                                              instructions, attached by the tables
+                                              they reference
     profiles.yml + dbt_project.yml            the target database and schema
+
+Every authored key the loader does not read is reported (`AUTHORED_KEYS`), so no
+setting is dropped silently.
 """
 
 from __future__ import annotations
@@ -38,7 +37,7 @@ import yaml
 from ...domain.model.compiler import FILTER_EXPR, METRIC_EXPR, VQR_SQL, ResolveContext, resolve_scalar
 from ...domain.model.dbt import DbtCatalog, DbtModel
 from ...domain.model.diagnostic import D, Diagnostic, DiagnosticBag, Origin, Severity
-from ...domain.model.expression import is_aggregate_expression
+from ...domain.model.expression import call_arguments, is_aggregate_expression
 from ...domain.model.expression import is_boolean_expression as _is_boolean_expression
 from ...domain.model.expression import outer_parentheses as _outer_parentheses
 from ...domain.model.expression import root_function as _root_function
@@ -57,10 +56,12 @@ from ...domain.model.semantic_view import (
     Metric,
     Relationship,
     SemanticView,
+    SortKey,
     Table,
     Tag,
     Variable,
     VerifiedQuery,
+    Window,
 )
 from ...domain.resolve.members import attach_view_members
 from ..dbt.manifest import load_manifest_catalog
@@ -77,6 +78,8 @@ from .documents import (
 )
 
 PLACEHOLDER = "__SST_TPL_%d__"
+# The column types a NON ADDITIVE BY entry or a window may sort or partition by.
+DIMENSION_TYPES = frozenset((ColumnKind.DIMENSION.value, ColumnKind.TIME_DIMENSION.value))
 NUMERIC_TYPES = frozenset(
     (
         "BIGINT",
@@ -324,6 +327,10 @@ def _parse_yaml_bytes(raw: bytes, path: str) -> ParsedYaml:
         detail = str(getattr(exc, "problem", exc))
         diagnostic = D("SST-LOD001", file=str(path), line=line, col=col, detail=detail)
         raise ProjectError(diagnostic.message, diagnostics=(diagnostic,)) from exc
+    if not nodes:
+        # Only whitespace or comments: nothing to load, and nothing wrong enough to stop a build.
+        diagnostic = D("SST-LOD003", file=str(path))
+        raise ProjectError(diagnostic.message, diagnostics=(diagnostic,))
     if len(nodes) != 1:
         diagnostic = D("SST-LOD008", file=str(path), count=len(nodes))
         raise ProjectError(diagnostic.message, diagnostics=(diagnostic,))
@@ -479,6 +486,112 @@ def load_models(
 
 
 @dataclass(frozen=True, slots=True)
+class NonAdditiveDef:
+    """One `non_additive_dimensions` entry as authored: a dimension, its table, and its sort."""
+
+    dimension: str
+    table: str | None = None
+    descending: bool | None = None
+    nulls_first: bool | None = None
+
+    @property
+    def key(self) -> SortKey:
+        name = self.dimension.upper()
+        return SortKey(f"{self.table.upper()}.{name}" if self.table else name, self.descending, self.nulls_first)
+
+
+SORT_DIRECTIONS: Mapping[str, bool] = MappingProxyType({"ascending": False, "descending": True})
+NULL_ORDERS: Mapping[str, bool] = MappingProxyType({"first": True, "last": False})
+
+
+def _non_additive(entry: Mapping[str, Any]) -> NonAdditiveDef:
+    table = entry.get("table")
+    return NonAdditiveDef(
+        dimension=str(entry["dimension"]).strip(),
+        table=table.strip() if isinstance(table, str) and table.strip() else None,
+        descending=SORT_DIRECTIONS.get(str(entry.get("sort_direction"))),
+        nulls_first=NULL_ORDERS.get(str(entry.get("null_order"))),
+    )
+
+
+@dataclass(frozen=True, slots=True)
+class WindowOrderDef:
+    """One `window.order_by` entry: a `{{ ref() }}` or `{{ metric() }}` call and its sort."""
+
+    ref: str
+    descending: bool | None = None
+    nulls_first: bool | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class WindowDef:
+    """A metric's `window:` block as authored, with its references unresolved."""
+
+    partition_by: tuple[str, ...] = ()
+    partition_excluding: tuple[str, ...] = ()
+    order_by: tuple[WindowOrderDef, ...] = ()
+    # The canonical frame clause; None when absent or not a frame (SST-PRS124).
+    frame: str | None = None
+    has_frame: bool = False
+
+    def references(self) -> tuple[tuple[str, str], ...]:
+        """Every entry, with the field label a diagnostic names it by."""
+        return (
+            *((f"partition_by[{index}]", text) for index, text in enumerate(self.partition_by)),
+            *((f"partition_by_excluding[{index}]", text) for index, text in enumerate(self.partition_excluding)),
+            *((f"order_by[{index}]", entry.ref) for index, entry in enumerate(self.order_by)),
+        )
+
+
+# Snowflake's window frame grammar, which is all a frame may be: it is never passed
+# through as free SQL.
+_FRAME_BOUND = (
+    r"(?:UNBOUNDED\s+(?:PRECEDING|FOLLOWING)|CURRENT\s+ROW|(?:\d+|INTERVAL\s+'[^']*')\s+(?:PRECEDING|FOLLOWING))"
+)
+_FRAME = re.compile(rf"(ROWS|RANGE)\s+BETWEEN\s+({_FRAME_BOUND})\s+AND\s+({_FRAME_BOUND})", re.IGNORECASE)
+
+
+def _frame(value: object) -> str | None:
+    """The frame clause in canonical spelling, or None when `value` is not one."""
+    match = _FRAME.fullmatch(value.strip()) if isinstance(value, str) else None
+    if match is None:
+        return None
+    return f"{match.group(1).upper()} BETWEEN {_frame_bound(match.group(2))} AND {_frame_bound(match.group(3))}"
+
+
+def _frame_bound(bound: str) -> str:
+    return " ".join(token if token.startswith("'") else token.upper() for token in re.findall(r"'[^']*'|\S+", bound))
+
+
+def _window(value: object) -> WindowDef | None:
+    if not isinstance(value, dict):
+        return None
+
+    def strings(field: str) -> tuple[str, ...]:
+        return tuple(item for item in _list_of(value.get(field)) if isinstance(item, str))
+
+    order_by: list[WindowOrderDef] = []
+    for entry in _list_of(value.get("order_by")):
+        if isinstance(entry, str):
+            order_by.append(WindowOrderDef(entry))
+        elif isinstance(entry, dict) and isinstance(entry.get("ref"), str):
+            order_by.append(
+                WindowOrderDef(
+                    entry["ref"],
+                    SORT_DIRECTIONS.get(str(entry.get("sort_direction"))),
+                    NULL_ORDERS.get(str(entry.get("null_order"))),
+                )
+            )
+    return WindowDef(
+        partition_by=strings("partition_by"),
+        partition_excluding=strings("partition_by_excluding"),
+        order_by=tuple(order_by),
+        frame=_frame(value.get("frame")),
+        has_frame=value.get("frame") is not None,
+    )
+
+
+@dataclass(frozen=True, slots=True)
 class MetricDef:
     """A metric as authored, with its `ref()`s still unresolved."""
 
@@ -489,12 +602,13 @@ class MetricDef:
     tables: tuple[str, ...] = ()
     derived: bool = False
     using_relationships: tuple[str, ...] = ()
-    non_additive_by: tuple[str, ...] = ()
+    non_additive: tuple[NonAdditiveDef, ...] = ()
     access_modifier: str = "public_access"
     has_tables_key: bool = False
     origin: Origin | None = None
     template_calls: tuple[TemplateCall, ...] = ()
     poisoned: bool = False
+    window: WindowDef | None = None
 
     @property
     def calls(self) -> tuple[TemplateCall, ...]:
@@ -544,16 +658,19 @@ def load_metrics(documents: RawDocuments, project_dir: Path, semantic_models_dir
                 tables=_safe_table_refs(node.get("tables")),
                 derived=bool(node.get("derived", False)),
                 using_relationships=tuple(str(value).upper() for value in node.get("using_relationships") or []),
-                non_additive_by=tuple(
-                    str(value["dimension"]).upper()
-                    for value in node.get("non_additive_dimensions") or []
-                    if isinstance(value, dict) and value.get("dimension")
+                non_additive=tuple(
+                    _non_additive(value)
+                    for value in _list_of(node.get("non_additive_dimensions"))
+                    if isinstance(value, dict)
+                    and isinstance(value.get("dimension"), str)
+                    and value["dimension"].strip()
                 ),
                 access_modifier=str(node.get("access_modifier") or "public_access"),
                 has_tables_key="tables" in node,
                 origin=_node_origin(document, _member_root("metric"), index),
                 template_calls=template_calls,
                 poisoned=_table_refs_poisoned(node.get("tables")),
+                window=_window(node.get("window")),
             )
         )
     return tuple(out)
@@ -571,16 +688,6 @@ def _metric_parse_diagnostics(
         name = str(node.get("name") or "<unnamed>")
         subject = f"metric:{name}"
         origin = _node_origin(document, _member_root("metric"), index)
-        if not node.get("name"):
-            diagnostics.append(
-                D(
-                    "SST-PRS002",
-                    artifact=subject,
-                    field="name",
-                    subject=subject,
-                    origin=origin,
-                )
-            )
         if "expr" not in node:
             diagnostics.append(
                 D(
@@ -640,9 +747,151 @@ def _metric_parse_diagnostics(
                     origin=origin,
                 )
             )
-        if "visibility" in node:
-            diagnostics.append(D("SST-VAL122", metric=name, subject=subject, origin=origin))
+        diagnostics.extend(_non_additive_parse_diagnostics(node.get("non_additive_dimensions"), subject, origin))
+        diagnostics.extend(_window_parse_diagnostics(node, subject, origin))
         diagnostics.extend(_synonyms_diagnostics(node.get("synonyms"), artifact=subject, subject=subject))
+    return tuple(diagnostics)
+
+
+def _window_parse_diagnostics(node: Mapping[str, Any], subject: str, origin: Origin) -> tuple[Diagnostic, ...]:
+    """The shape of a metric's `window:` block; whether each entry resolves is checked with the models."""
+    value = node.get("window")
+    if value is None:
+        return ()
+
+    def wrong_type(field: str, expected: str, found: object) -> Diagnostic:
+        return D(
+            "SST-PRS003",
+            artifact=subject,
+            field=field,
+            expected=expected,
+            found=type(found).__name__,
+            subject=subject,
+            origin=origin,
+        )
+
+    if not isinstance(value, dict):
+        return (wrong_type("window", "a mapping", value),)
+    diagnostics: list[Diagnostic] = [
+        # Snowflake's window metric grammar has neither clause.
+        D("SST-PRS014", artifact=subject, field="window", other=other, subject=subject, origin=origin)
+        for other in ("using_relationships", "non_additive_dimensions")
+        if node.get(other)
+    ]
+    for field in ("partition_by", "partition_by_excluding"):
+        entries = value.get(field)
+        if entries is not None and (not isinstance(entries, list) or not all(isinstance(e, str) for e in entries)):
+            diagnostics.append(wrong_type(f"window.{field}", "a list of references", entries))
+    if value.get("partition_by") and value.get("partition_by_excluding"):
+        diagnostics.append(
+            D(
+                "SST-PRS014",
+                artifact=subject,
+                field="window.partition_by",
+                other="window.partition_by_excluding",
+                subject=subject,
+                origin=origin,
+            )
+        )
+    order_by = value.get("order_by")
+    if order_by is not None and not isinstance(order_by, list):
+        diagnostics.append(wrong_type("window.order_by", "a list", order_by))
+    for position, entry in enumerate(order_by if isinstance(order_by, list) else ()):
+        field = f"window.order_by[{position}]"
+        if isinstance(entry, str):
+            continue
+        if not isinstance(entry, dict):
+            diagnostics.append(wrong_type(field, "a reference or a mapping", entry))
+            continue
+        if not isinstance(entry.get("ref"), str):
+            diagnostics.append(D("SST-PRS002", artifact=subject, field=f"{field}.ref", subject=subject, origin=origin))
+        for key, allowed in (("sort_direction", SORT_DIRECTIONS), ("null_order", NULL_ORDERS)):
+            if key in entry and (not isinstance(entry[key], str) or entry[key] not in allowed):
+                diagnostics.append(
+                    D(
+                        "SST-PRS013",
+                        artifact=subject,
+                        field=f"{field}.{key}",
+                        found=entry[key],
+                        expected=", ".join(allowed),
+                        subject=subject,
+                        origin=origin,
+                    )
+                )
+    frame = value.get("frame")
+    if frame is not None and _frame(frame) is None:
+        diagnostics.append(D("SST-PRS124", artifact=subject, value=frame, subject=subject, origin=origin))
+    return tuple(diagnostics)
+
+
+def _list_of(value: object) -> list[Any]:
+    return value if isinstance(value, list) else []
+
+
+def _non_additive_parse_diagnostics(value: object, subject: str, origin: Origin) -> tuple[Diagnostic, ...]:
+    """The shape of `non_additive_dimensions`; whether each entry resolves is checked with the models."""
+    if value is None:
+        return ()
+    if not isinstance(value, list):
+        return (
+            D(
+                "SST-PRS003",
+                artifact=subject,
+                field="non_additive_dimensions",
+                expected="a list",
+                found=type(value).__name__,
+                subject=subject,
+                origin=origin,
+            ),
+        )
+    diagnostics: list[Diagnostic] = []
+    for position, entry in enumerate(value):
+        field = f"non_additive_dimensions[{position}]"
+        if not isinstance(entry, dict):
+            found = type(entry).__name__
+            diagnostics.append(
+                D(
+                    "SST-PRS003",
+                    artifact=subject,
+                    field=field,
+                    expected="a mapping",
+                    found=found,
+                    subject=subject,
+                    origin=origin,
+                )
+            )
+            continue
+        dimension = entry.get("dimension")
+        if not isinstance(dimension, str) or not dimension.strip():
+            diagnostics.append(
+                D("SST-PRS002", artifact=subject, field=f"{field}.dimension", subject=subject, origin=origin)
+            )
+        table = entry.get("table")
+        if "table" in entry and (not isinstance(table, str) or not table.strip() or "{{" in table):
+            diagnostics.append(
+                D(
+                    "SST-PRS003",
+                    artifact=subject,
+                    field=f"{field}.table",
+                    expected="a bare model name",
+                    found=repr(table),
+                    subject=subject,
+                    origin=origin,
+                )
+            )
+        for key, allowed in (("sort_direction", SORT_DIRECTIONS), ("null_order", NULL_ORDERS)):
+            if key in entry and (not isinstance(entry[key], str) or entry[key] not in allowed):
+                diagnostics.append(
+                    D(
+                        "SST-PRS013",
+                        artifact=subject,
+                        field=f"{field}.{key}",
+                        found=entry[key],
+                        expected=", ".join(allowed),
+                        subject=subject,
+                        origin=origin,
+                    )
+                )
     return tuple(diagnostics)
 
 
@@ -729,7 +978,25 @@ def _metric_diagnostics(
                     subject=f"metric:{metric.name}",
                 )
             )
-        if not metric.derived and metric.tables and not is_aggregate_expression(metric.expr):
+        referenced_tables = metric.tables or metric.referenced_models
+        owner = referenced_tables[0] if len(referenced_tables) == 1 else None
+        for entry in metric.non_additive:
+            # Without `table:` the dimension belongs to the metric's own table.
+            model = models.get((entry.table or owner or "").casefold())
+            column = model.column(entry.dimension) if model is not None else None
+            if column is None or column.excluded or column.column_type not in DIMENSION_TYPES:
+                diagnostics.append(
+                    D(
+                        "SST-VAL118",
+                        metric=metric.name,
+                        value=f"{entry.table}.{entry.dimension}" if entry.table else entry.dimension,
+                        subject=f"metric:{metric.name}",
+                        origin=metric.origin,
+                    )
+                )
+        if not metric.derived and metric.window is not None:
+            diagnostics.extend(_window_diagnostics(metric, metric_by_name, models))
+        elif not metric.derived and metric.tables and not is_aggregate_expression(metric.expr):
             diagnostics.append(
                 D(
                     "SST-VAL101",
@@ -744,11 +1011,11 @@ def _metric_diagnostics(
                 metric.expr,
                 re.IGNORECASE,
             )
-            if window:
+            if window or metric.window is not None:
                 diagnostics.append(
                     D(
                         "SST-VAL102",
-                        function=window.group(1).upper(),
+                        function=window.group(1).upper() if window else _root_function(metric.expr) or "window",
                         metric=metric.name,
                         subject=f"metric:{metric.name}",
                     )
@@ -805,7 +1072,7 @@ def _metric_diagnostics(
                             subject=f"metric:{metric.name}",
                         )
                     )
-                if referenced.non_additive_by:
+                if referenced.non_additive:
                     diagnostics.append(
                         D(
                             "SST-VAL107",
@@ -822,6 +1089,16 @@ def _metric_diagnostics(
                         origin=metric.origin,
                         subject=f"metric:{metric.name}",
                         name=referenced_metric,
+                    )
+                )
+            elif metric_by_name[referenced_metric].window is not None:
+                diagnostics.append(
+                    D(
+                        "SST-VAL128",
+                        metric=metric.name,
+                        other=metric_by_name[referenced_metric].name,
+                        subject=f"metric:{metric.name}",
+                        origin=metric.origin,
                     )
                 )
         try:
@@ -914,12 +1191,17 @@ def _metric_diagnostics(
                 )
             )
             break
-    expressions: dict[tuple[str, tuple[str, ...], bool], str] = {}
+    expressions: dict[tuple[str, tuple[str, ...], bool, tuple[SortKey, ...], WindowDef | None], str] = {}
     for metric in metrics:
+        # The non-additive ordering and the window are part of what a metric
+        # computes: the same SUM at the latest and at the earliest snapshot, or over
+        # two windows, is two metrics, not one.
         canonical = (
             " ".join(metric.expr.split()).casefold(),
             tuple(sorted(metric.tables)),
             metric.derived,
+            tuple(entry.key for entry in metric.non_additive),
+            metric.window,
         )
         previous = expressions.get(canonical)
         if previous is not None and previous.casefold() != metric.name.casefold() and metric.tables:
@@ -935,6 +1217,88 @@ def _metric_diagnostics(
         else:
             expressions[canonical] = metric.name
     return tuple(diagnostics)
+
+
+def _metric_owner(metric: MetricDef) -> str | None:
+    """The one table a metric belongs to, casefolded; None for a cross-table metric."""
+    tables = metric.tables or metric.referenced_models
+    return tables[0] if len(tables) == 1 else None
+
+
+def _window_diagnostics(
+    metric: MetricDef,
+    metric_by_name: Mapping[str, MetricDef],
+    models: Mapping[str, DbtModel],
+) -> list[Diagnostic]:
+    """Snowflake's rules for a window function metric that its own compile does not report plainly."""
+    window = metric.window
+    assert window is not None
+    subject = f"metric:{metric.name}"
+    diagnostics: list[Diagnostic] = []
+    arguments = call_arguments(metric.expr)
+    # The window must apply to a metric or an aggregate: over a raw column it is a
+    # row-level window, which Snowflake allows only in a fact or dimension.
+    if not arguments or not is_aggregate_expression(arguments[0]):
+        diagnostics.append(
+            D(
+                "SST-VAL126",
+                metric=metric.name,
+                function=_root_function(metric.expr) or "the expression",
+                subject=subject,
+                origin=metric.origin,
+            )
+        )
+    owner = _metric_owner(metric)
+    if owner is None:
+        # Without exactly one table the metric renders at view level, as a derived
+        # metric does, and cannot carry a window either.
+        diagnostics.append(
+            D(
+                "SST-VAL102",
+                function=_root_function(metric.expr) or "window",
+                metric=metric.name,
+                subject=subject,
+                origin=metric.origin,
+            )
+        )
+    for field, text in window.references():
+        dimensions_only = field.startswith("partition_by_excluding")
+        try:
+            column_call = single_template_call(text, "ref")
+            metric_call = single_template_call(text, "metric")
+        except TemplateSyntaxError:
+            column_call = metric_call = None
+        resolves = False
+        if column_call is not None and len(column_call.args) == 2:
+            model = models.get(column_call.args[0].casefold())
+            column = model.column(column_call.args[1]) if model is not None else None
+            resolves = column is not None and not column.excluded and column.column_type in DIMENSION_TYPES
+        elif metric_call is not None and len(metric_call.args) == 1 and not dimensions_only:
+            other = metric_by_name.get(metric_call.args[0].casefold())
+            resolves = (
+                other is not None
+                and not other.derived
+                and other.window is None
+                and owner is not None
+                and _metric_owner(other) == owner
+            )
+        if not resolves:
+            diagnostics.append(
+                D(
+                    "SST-VAL125",
+                    metric=metric.name,
+                    field=field,
+                    value=text,
+                    expected="a dimension" if dimensions_only else "a dimension or a metric of the same table",
+                    subject=subject,
+                    origin=metric.origin,
+                )
+            )
+    if window.frame is not None and not window.order_by:
+        diagnostics.append(
+            D("SST-VAL127", metric=metric.name, value=window.frame, subject=subject, origin=metric.origin)
+        )
+    return diagnostics
 
 
 def _expression_reference_diagnostics(
@@ -1186,6 +1550,22 @@ def _dbt_column_diagnostics(
                         subject=subject,
                     )
                 )
+            if is_referenced:
+                diagnostics.extend(
+                    D("SST-PRS004", artifact=subject, field=f"meta.sst.{key}", subject=subject)
+                    for key in column.unknown_meta_keys
+                )
+            if is_referenced and column.declared_data_type is not None:
+                diagnostics.append(
+                    D(
+                        "SST-DBT004",
+                        model=model.name,
+                        column=column.name,
+                        found=column.data_type,
+                        expected=column.declared_data_type,
+                        subject=subject,
+                    )
+                )
             for value in column.sample_values:
                 if value.casefold() in sentinels:
                     diagnostics.append(
@@ -1216,7 +1596,11 @@ def _dbt_model_diagnostics(
         diagnostics.extend(
             D("SST-DBT005", model=model.name, field=field, subject=subject) for field in model.legacy_key_fields
         )
-        if not model.primary_key and not model.unique_keys:
+        diagnostics.extend(
+            D("SST-PRS004", artifact=subject, field=f"meta.sst.{key}", subject=subject)
+            for key in model.unknown_meta_keys
+        )
+        if not model.primary_key and not model.unique_keys and not model.legacy_key_fields:
             diagnostics.append(
                 D(
                     "SST-VAL312",
@@ -1334,7 +1718,18 @@ def _relationship_diagnostics(
             continue
         join_columns = {column.casefold() for column in relationship.to_columns}
         keys = tuple(key for key in (target.primary_key, *target.unique_keys) if key)
-        if not any({column.casefold() for column in key}.issubset(join_columns) for key in keys):
+        if not keys:
+            # Snowflake refuses a REFERENCES target that declares no key at all.
+            diagnostics.append(
+                D(
+                    "SST-VAL311",
+                    artifact=subject,
+                    name=target.name,
+                    subject=subject,
+                    origin=origin,
+                )
+            )
+        elif not any({column.casefold() for column in key}.issubset(join_columns) for key in keys):
             diagnostics.append(
                 D(
                     "SST-VAL210",
@@ -1348,6 +1743,49 @@ def _relationship_diagnostics(
     return tuple(diagnostics)
 
 
+def _relationship_cycle_diagnostics(
+    relationships: tuple[Relationship, ...],
+    view_table_sets: tuple[tuple[str, frozenset[str]], ...],
+) -> tuple[Diagnostic, ...]:
+    """Snowflake refuses a view whose relationships form a cycle, a self-reference included."""
+    diagnostics: list[Diagnostic] = []
+    for artifact, tables in view_table_sets:
+        edges: dict[str, set[str]] = {}
+        for relationship in relationships:
+            left, right = relationship.from_table.casefold(), relationship.to_table.casefold()
+            if left in tables and right in tables:
+                edges.setdefault(left, set()).add(right)
+        cycle = _first_cycle({node: tuple(sorted(targets)) for node, targets in edges.items()})
+        if cycle is not None:
+            diagnostics.append(D("SST-VAL215", artifact=artifact, cycle=" -> ".join(cycle), subject=artifact))
+    return tuple(diagnostics)
+
+
+def _first_cycle(edges: Mapping[str, tuple[str, ...]]) -> tuple[str, ...] | None:
+    visiting: list[str] = []
+    done: set[str] = set()
+
+    def visit(node: str) -> tuple[str, ...] | None:
+        visiting.append(node)
+        for target in edges.get(node, ()):
+            if target in visiting:
+                return (*visiting[visiting.index(target) :], target)
+            if target not in done:
+                found = visit(target)
+                if found is not None:
+                    return found
+        visiting.pop()
+        done.add(node)
+        return None
+
+    for node in sorted(edges):
+        if node not in done:
+            found = visit(node)
+            if found is not None:
+                return found
+    return None
+
+
 def _relationship_parse_diagnostics(
     documents: RawDocuments,
     project_dir: Path,
@@ -1359,7 +1797,8 @@ def _relationship_parse_diagnostics(
         if not node.get("name"):
             continue
         conditions = node.get("relationship_conditions")
-        if not isinstance(conditions, list) or not conditions:
+        # The 0.3 `relationship_columns` spelling is reported as renamed instead.
+        if (not isinstance(conditions, list) or not conditions) and "relationship_columns" not in node:
             name = str(node["name"])
             diagnostics.append(
                 D(
@@ -1573,77 +2012,204 @@ class VerifiedQueryDef:
     poisoned: bool = False
 
 
-# 0.3 spellings accepted for one release: (member type, old key, 1.0 key).
-LEGACY_SPELLINGS = (
-    ("custom_instruction", "sql_generation", "ai_sql_generation"),
-    ("custom_instruction", "question_categorization", "ai_question_categorization"),
+# The keys the loader reads, per semantic-model node. Anything else is reported,
+# because a key the loader skips changes nothing in the DDL and would otherwise
+# pass review looking as though it does.
+AUTHORED_KEYS: Mapping[str, frozenset[str]] = MappingProxyType(
+    {
+        "semantic_view": frozenset(
+            (
+                "name",
+                "description",
+                "tables",
+                "table_config",
+                "custom_instructions",
+                "variables",
+                "tags",
+                "max_staleness",
+                "enabled",
+            )
+        ),
+        "metric": frozenset(
+            (
+                "name",
+                "expr",
+                "description",
+                "synonyms",
+                "tables",
+                "derived",
+                "using_relationships",
+                "non_additive_dimensions",
+                "access_modifier",
+                "window",
+            )
+        ),
+        "filter": frozenset(("name", "expr", "description", "tables", "labels")),
+        # Snowflake has no clause for a description on the next three: it documents
+        # the YAML for its readers and is never published.
+        "custom_instruction": frozenset(("name", "description", "ai_sql_generation", "ai_question_categorization")),
+        "verified_query": frozenset(
+            (
+                "name",
+                "description",
+                "question",
+                "sql",
+                "sql_file",
+                "tables",
+                "verified_at",
+                "verified_by",
+                "use_as_onboarding_question",
+            )
+        ),
+        "relationship": frozenset(("name", "description", "left_table", "right_table", "relationship_conditions")),
+    }
+)
+# Mappings below a node, by the scope that holds them: a block, each item of a list
+# field, or each value of a name map.
+NESTED_KEYS: Mapping[tuple[str, str], frozenset[str]] = MappingProxyType(
+    {
+        ("semantic_view", "table_config"): frozenset(("synonyms", "distinct_range")),
+        ("semantic_view", "variables"): frozenset(("name", "data_type", "default_value", "description")),
+        ("semantic_view", "tags"): frozenset(("name", "value")),
+        ("metric", "non_additive_dimensions"): frozenset(("dimension", "table", "sort_direction", "null_order")),
+        ("metric", "window"): frozenset(("partition_by", "partition_by_excluding", "order_by", "frame")),
+        ("metric.window", "order_by"): frozenset(("ref", "sort_direction", "null_order")),
+    }
+)
+NAME_MAPS = frozenset((("semantic_view", "table_config"),))
+# Fields whose value is one mapping; every other nested field is a list.
+BLOCKS = frozenset((("metric", "window"),))
+# 0.3 spellings, by the node or entry that carries them. Each is an error naming
+# the 1.0 key: reading the old spelling would keep two dialects alive.
+RENAMED_KEYS: Mapping[tuple[str, str], str] = MappingProxyType(
+    {
+        ("custom_instruction", "sql_generation"): "ai_sql_generation",
+        ("custom_instruction", "question_categorization"): "ai_question_categorization",
+        ("relationship", "relationship_columns"): "relationship_conditions",
+        ("metric", "visibility"): "access_modifier",
+        ("metric", "non_additive_by"): "non_additive_dimensions",
+        ("metric.non_additive_dimensions", "order"): "sort_direction",
+        ("metric.non_additive_dimensions", "nulls"): "null_order",
+        ("metric.window.order_by", "column"): "ref",
+        ("metric.window.order_by", "direction"): "sort_direction",
+    }
 )
 
 
-def normalize_legacy_spellings(documents: RawDocuments) -> RawDocuments:
-    """Read the 0.3 spellings into the 1.0 model with a deprecation warning.
-
-    Setting both spellings on one entry is an error: which one wins would be a
-    guess, and a guess here changes rendered DDL.
-    """
-    diagnostics: list[Diagnostic] = list(documents.diagnostics)
-    rewritten: list[RawDocument] = []
+def _authored_key_diagnostics(documents: RawDocuments) -> tuple[Diagnostic, ...]:
+    """Every key the loader does not read: SST-PRS020 for a 0.3 spelling, SST-PRS004 otherwise."""
+    diagnostics: list[Diagnostic] = []
     for document in documents.documents:
-        tree = dict(document.tree)
-        changed = False
-        for member_type in ("custom_instruction", "relationship"):
-            root_key = _member_root(member_type)
-            nodes = tree.get(root_key)
-            if not isinstance(nodes, list):
-                continue
-            updated: list[object] = []
-            for index, node in enumerate(nodes):
-                if not isinstance(node, dict):
-                    updated.append(node)
-                    continue
-                entry = dict(node)
-                subject = f"{member_type}:{entry.get('name') or index}"
-                renames = [(old, new) for kind, old, new in LEGACY_SPELLINGS if kind == member_type]
-                if member_type == "relationship":
-                    renames = [("relationship_columns", "relationship_conditions")]
-                for old, new in renames:
-                    if old not in entry:
-                        continue
-                    origin = _node_origin(document, root_key, index, old)
-                    if new in entry:
-                        diagnostics.append(
-                            D("SST-PRS121", origin=origin, subject=subject, artifact=subject, field=old, expected=new)
-                        )
-                        del entry[old]
-                        continue
-                    value = entry.pop(old)
-                    entry[new] = _relationship_columns(value) if old == "relationship_columns" else value
+        for node_type, allowed in AUTHORED_KEYS.items():
+            root_key = _node_root(node_type)
+            nodes = document.tree.get(root_key) if root_key in document.root_keys else None
+            for index, node in enumerate(nodes if isinstance(nodes, list) else ()):
+                if isinstance(node, dict):
+                    subject = f"{node_type}:{node.get('name') or index}"
+                    diagnostics.extend(_unread_keys(document, subject, node_type, (root_key, index), "", node, allowed))
+    return tuple(diagnostics)
+
+
+# Types whose duplicates SST-VAL001 already reports.
+_NAMED_ELSEWHERE = frozenset(("semantic_view", "metric"))
+
+
+def _member_name_diagnostics(documents: RawDocuments) -> tuple[Diagnostic, ...]:
+    """A node with no name (SST-PRS107) or a name its type already uses (SST-PRS106).
+
+    Either would otherwise be skipped or overwritten without a word.
+    """
+    diagnostics: list[Diagnostic] = []
+    seen: set[tuple[str, str]] = set()
+    for document in documents.documents:
+        for node_type in AUTHORED_KEYS:
+            root_key = _node_root(node_type)
+            nodes = document.tree.get(root_key) if root_key in document.root_keys else None
+            for index, node in enumerate(nodes if isinstance(nodes, list) else ()):
+                origin = _node_origin(document, root_key, index)
+                if not isinstance(node, dict) or not node.get("name"):
                     diagnostics.append(
-                        D("SST-PRS020", origin=origin, subject=subject, artifact=subject, field=old, expected=new)
+                        D(
+                            "SST-PRS107",
+                            artifact=document.path,
+                            member_type=node_type,
+                            index=index,
+                            subject=f"{node_type}:{index}",
+                            origin=origin,
+                        )
                     )
-                changed = changed or entry != node
-                updated.append(entry)
-            tree[root_key] = updated
-        rewritten.append(dataclasses.replace(document, tree=MappingProxyType(tree)) if changed else document)
-    by_path = MappingProxyType({document.path: document for document in rewritten})
-    return RawDocuments(tuple(rewritten), by_path, documents.failed, tuple(diagnostics))
+                    continue
+                name = str(node["name"])
+                if node_type in _NAMED_ELSEWHERE:
+                    continue
+                if (node_type, name.casefold()) in seen:
+                    diagnostics.append(
+                        D(
+                            "SST-PRS106",
+                            artifact=document.path,
+                            member_type=node_type,
+                            name=name,
+                            subject=f"{node_type}:{name}",
+                            origin=origin,
+                        )
+                    )
+                seen.add((node_type, name.casefold()))
+    return tuple(diagnostics)
 
 
-def _relationship_columns(value: object) -> object:
-    """`relationship_columns` pairs become `relationship_conditions` equality strings."""
-    if not isinstance(value, list):
-        return value
-    conditions: list[object] = []
-    for item in value:
-        if (
-            isinstance(item, dict)
-            and isinstance(item.get("left_column"), str)
-            and isinstance(item.get("right_column"), str)
-        ):
-            conditions.append(f"{item['left_column']} = {item['right_column']}")
+def _unread_keys(
+    document: RawDocument,
+    subject: str,
+    scope: str,
+    path: NodePath,
+    prefix: str,
+    mapping: Mapping[Any, Any],
+    allowed: frozenset[str],
+) -> list[Diagnostic]:
+    diagnostics = [
+        _unread_key(document, (*path, str(key)), scope, f"{prefix}{key}", subject)
+        for key in mapping
+        if str(key) not in allowed
+    ]
+    for (owner, field), keys in NESTED_KEYS.items():
+        value = mapping.get(field) if owner == scope else None
+        if isinstance(value, list):
+            entries: tuple[tuple[str | int | None, object, str], ...] = tuple(
+                (key, entry, f"{prefix}{field}[{key}].") for key, entry in enumerate(value)
+            )
+        elif isinstance(value, dict) and (owner, field) in NAME_MAPS:
+            entries = tuple((str(key), entry, f"{prefix}{field}.{key}.") for key, entry in value.items())
+        elif isinstance(value, dict) and (owner, field) in BLOCKS:
+            entries = ((None, value, f"{prefix}{field}."),)
         else:
-            conditions.append(item)
-    return conditions
+            # Absent, or the wrong shape, which the field's own check reports.
+            entries = ()
+        for key, entry, label in entries:
+            if isinstance(entry, dict):
+                where: NodePath = (*path, field) if key is None else (*path, field, key)
+                diagnostics.extend(_unread_keys(document, subject, f"{owner}.{field}", where, label, entry, keys))
+    return diagnostics
+
+
+def _node_root(node_type: str) -> str:
+    if node_type == "semantic_view":
+        root_key = SEMANTIC_REGISTRY.artifacts[node_type].root_key
+        assert root_key is not None
+        return root_key
+    return _member_root(node_type)
+
+
+def _unread_key(document: RawDocument, path: NodePath, scope: str, field: str, subject: str) -> Diagnostic:
+    position = document.position(path)
+    origin = Origin(
+        document.path,
+        position.line if position is not None else None,
+        position.col if position is not None else None,
+    )
+    renamed = RENAMED_KEYS.get((scope, str(path[-1])))
+    if renamed is not None:
+        return D("SST-PRS020", origin=origin, subject=subject, artifact=subject, field=field, expected=renamed)
+    return D("SST-PRS004", origin=origin, subject=subject, artifact=subject, field=field)
 
 
 def _uses_legacy_globals(value: object) -> bool:
@@ -1938,11 +2504,13 @@ def _verified_query_diagnostics(
 _ENDPOINT_REF = re.compile(r"^\{\{\s*ref\(\s*['\"]([^'\"]+)['\"]\s*\)\s*\}\}$")
 
 
-def _endpoint(value: object) -> str:
-    """A relationship endpoint's model name; a 0.3 `{{ ref('x') }}` endpoint reads as `x`."""
-    text = str(value).strip()
-    match = _ENDPOINT_REF.fullmatch(text)
-    return match.group(1) if match else text
+def _endpoint_diagnostics(node: Mapping[str, Any], subject: str, origin: Origin) -> tuple[Diagnostic, ...]:
+    """A 0.3 `{{ ref('x') }}` endpoint: `left_table` and `right_table` take the bare model name."""
+    return tuple(
+        D("SST-REF045", origin=origin, subject=subject, artifact=subject, field=field, found=str(node[field]).strip())
+        for field in ("left_table", "right_table")
+        if _ENDPOINT_REF.fullmatch(str(node.get(field) or "").strip())
+    )
 
 
 def load_relationships(
@@ -1988,7 +2556,12 @@ def load_relationships(
         range_bounds: tuple[str, str] | None = None
         origin = _node_origin(document, _member_root("relationship"), index)
         subject = f"relationship:{node['name']}"
-        left_endpoint, right_endpoint = _endpoint(node.get("left_table")), _endpoint(node.get("right_table"))
+        endpoint_problems = _endpoint_diagnostics(node, subject, origin)
+        if endpoint_problems:
+            diagnostics.extend(endpoint_problems)
+            continue
+        left_endpoint = str(node.get("left_table")).strip()
+        right_endpoint = str(node.get("right_table")).strip()
         problem: Diagnostic | None = None
         for condition in raw_conditions:
             match = equality.fullmatch(str(condition))
@@ -2231,9 +2804,7 @@ def load_semantic_views_result(
     """Load healthy views while collecting view-local failures."""
     config = _read_yaml(project_dir / "sst_config.yml")
     semantic_models_dir = str((config.get("project") or {}).get("semantic_models_dir") or "semantic_models")
-    documents = normalize_legacy_spellings(
-        load_documents(discover_yaml(project_dir, semantic_models_dir), _parse_yaml_bytes)
-    )
+    documents = load_documents(discover_yaml(project_dir, semantic_models_dir), _parse_yaml_bytes)
     target = resolve_target(project_dir, target_name)
     models = load_models(
         project_dir,
@@ -2322,6 +2893,8 @@ def load_semantic_views_result(
         table for view in parsed.views if not view.poisoned for table in view.declared_tables if table in models
     )
     diagnostics.extend(_folder_route_diagnostics(config, views_dir))
+    diagnostics.extend(_authored_key_diagnostics(documents))
+    diagnostics.extend(_member_name_diagnostics(documents))
     diagnostics.extend(_description_diagnostics(parsed.views, metrics))
     diagnostics.extend(_metric_parse_diagnostics(documents, project_dir, semantic_models_dir))
     diagnostics.extend(_relationship_parse_diagnostics(documents, project_dir, semantic_models_dir))
@@ -2422,6 +2995,7 @@ def load_semantic_views_result(
         models,
     )
     diagnostics.extend(relationship_diagnostics)
+    diagnostics.extend(_relationship_cycle_diagnostics(relationships, tuple(view_table_sets)))
     diagnostics.extend(_multipath_diagnostics(relationships, healthy_metrics, tuple(view_table_sets)))
     poisoned_relationships = {
         diagnostic.subject
@@ -2670,8 +3244,8 @@ def _build_view(
             raise ProjectError(diagnostic.message, diagnostics=(diagnostic,))
         logical = model_name.upper()
         if logical in logical_by_model.values():
-            # D017 defers role-playing past 1.0, so one physical table cannot
-            # appear twice under two logical names.
+            # Role-playing tables are not supported in 1.0, so one physical table
+            # cannot appear twice under two logical names.
             diagnostic = D("SST-PRS006", type="table", name=model_name)
             raise ProjectError(diagnostic.message, diagnostics=(diagnostic,))
         logical_by_model[model_name.lower()] = logical
@@ -2730,6 +3304,18 @@ def _build_view(
     for metric in metrics:
         referenced = metric.tables or metric.referenced_models
         owner = logical_by_model[referenced[0]] if len(referenced) == 1 else None
+        outside = next(
+            (entry for entry in metric.non_additive if entry.table and entry.table.casefold() not in logical_by_model),
+            None,
+        )
+        if outside is not None:
+            diagnostic = D(
+                "SST-VAL118",
+                metric=metric.name,
+                value=f"{outside.table}.{outside.dimension}",
+                subject=f"semantic_view:{name}",
+            )
+            raise ProjectError(diagnostic.message, diagnostics=(diagnostic,))
         expr = _resolve_expression(
             metric.expr,
             policy=METRIC_EXPR,
@@ -2741,6 +3327,31 @@ def _build_view(
             variables=project_variables,
             field="metric.expression",
         )
+        window: Window | None = None
+        if metric.window is not None and owner is not None:
+            _require_reachable(metric, owner, relationships, logical_by_model, f"semantic_view:{name}")
+
+            def resolve(text: str, metric: MetricDef = metric) -> str:
+                return _resolve_expression(
+                    text,
+                    policy=METRIC_EXPR,
+                    origin=metric.origin or Origin(str(path)),
+                    catalog=catalog,
+                    logical_by_model=logical_by_model,
+                    metric_names=resolved_metric_names,
+                    instruction_names=frozenset(instructions),
+                    variables=project_variables,
+                    field="metric.window",
+                )
+
+            window = Window(
+                partition_by=tuple(resolve(text) for text in metric.window.partition_by),
+                partition_excluding=tuple(resolve(text) for text in metric.window.partition_excluding),
+                order_by=tuple(
+                    SortKey(resolve(entry.ref), entry.descending, entry.nulls_first) for entry in metric.window.order_by
+                ),
+                frame=metric.window.frame,
+            )
         attached.append(
             Metric(
                 name=metric.name.upper(),
@@ -2749,8 +3360,9 @@ def _build_view(
                 comment=metric.description,
                 synonyms=metric.synonyms,
                 using_relationships=metric.using_relationships,
-                non_additive_by=metric.non_additive_by,
+                non_additive_by=tuple(entry.key for entry in metric.non_additive),
                 access_modifier=metric.access_modifier,
+                window=window,
             )
         )
 
@@ -2812,9 +3424,11 @@ def _build_view(
         entity_filters = [
             _replace_column_variable_name(entity_filter, variable.name) for entity_filter in entity_filters
         ]
-    tags = tuple(
-        _tag(value, config=config, target=target, path=path, view_name=name) for value in node.get("tags") or []
-    )
+    raw_tags = node.get("tags")
+    if raw_tags is not None and not isinstance(raw_tags, list):
+        diagnostic = D("SST-PRS027", artifact=f"semantic_view:{name}", found=type(raw_tags).__name__)
+        raise ProjectError(diagnostic.message, diagnostics=(diagnostic,))
+    tags = tuple(_tag(value, config=config, target=target, path=path, view_name=name) for value in raw_tags or [])
     max_staleness = node.get("max_staleness")
 
     source_path = path.resolve().relative_to(project_dir.resolve()).as_posix()
@@ -2843,6 +3457,39 @@ def _build_view(
         source_files=tuple(sorted(source_files)),
         referenced_models=tuple(sorted(logical_by_model)),
     )
+
+
+def _require_reachable(
+    metric: MetricDef,
+    owner: str,
+    relationships: tuple[Relationship, ...],
+    logical_by_model: Mapping[str, str],
+    subject: str,
+) -> None:
+    """A window's dimensions must be ones the metric's table reaches through the view's relationships."""
+    reached = {owner}
+    frontier = [owner]
+    while frontier:
+        table = frontier.pop()
+        for relationship in relationships:
+            if relationship.from_table == table and relationship.to_table not in reached:
+                reached.add(relationship.to_table)
+                frontier.append(relationship.to_table)
+    assert metric.window is not None
+    for field, text in metric.window.references():
+        call = single_template_call(text, "ref")
+        if call is None or len(call.args) != 2:
+            continue
+        if logical_by_model.get(call.args[0].casefold()) not in reached:
+            diagnostic = D(
+                "SST-VAL125",
+                metric=metric.name,
+                field=field,
+                value=text,
+                expected=f"a dimension {owner} reaches in this view",
+                subject=subject,
+            )
+            raise ProjectError(diagnostic.message, diagnostics=(diagnostic,))
 
 
 def _config_var(config: dict[str, Any], name: str) -> str:

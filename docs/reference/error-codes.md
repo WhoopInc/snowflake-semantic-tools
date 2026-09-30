@@ -15,21 +15,20 @@ cannot be downgraded by any setting.
 
 ## Contents
 
-- [Configuration (CFG)](#configuration-cfg) -- 19 codes
-- [Parsing (PRS)](#parsing-prs) -- 35 codes
+- [Configuration (CFG)](#configuration-cfg) -- 18 codes
+- [Parsing (PRS)](#parsing-prs) -- 33 codes
 - [Loading (LOD)](#loading-lod) -- 8 codes
-- [References (REF)](#references-ref) -- 28 codes
-- [Membership (MEM)](#membership-mem) -- 6 codes
-- [Validation (VAL)](#validation-val) -- 159 codes
-- [dbt (DBT)](#dbt-dbt) -- 5 codes
+- [References (REF)](#references-ref) -- 29 codes
+- [Membership (MEM)](#membership-mem) -- 2 codes
+- [Validation (VAL)](#validation-val) -- 157 codes
+- [dbt (DBT)](#dbt-dbt) -- 4 codes
 - [Rendering (RND)](#rendering-rnd) -- 2 codes
-- [Manifest and state (MAN)](#manifest-and-state-man) -- 13 codes
-- [Planning (PLN)](#planning-pln) -- 19 codes
+- [Manifest and state (MAN)](#manifest-and-state-man) -- 11 codes
+- [Planning (PLN)](#planning-pln) -- 18 codes
 - [Apply (APL)](#apply-apl) -- 20 codes
 - [Snowflake (SNO)](#snowflake-sno) -- 6 codes
 - [External systems (PRT)](#external-systems-prt) -- 5 codes
 - [Internal (INT)](#internal-int) -- 3 codes
-- [Codes from SST 0.3](#codes-from-sst-03)
 
 ## Configuration (CFG)
 
@@ -131,19 +130,11 @@ Fix: delete the key
 
 ### SST-CFG044
 
-**Config key has no effect** (info)
+**Config key is not supported in this release** (error)
 
-`config key '<key>' is accepted for compatibility and has no effect in this release`
+`config key '<key>' is not supported in this release`
 
-Fix: delete the key, or keep it only while 0.3 still reads this file
-
-### SST-CFG045
-
-**Deprecated config key** (warning)
-
-`config key '<key>' is deprecated; use '<replacement>'`
-
-Fix: rename the key
+Fix: delete the key
 
 ### SST-CFG046
 
@@ -277,9 +268,9 @@ Fix: use true or false
 
 ### SST-PRS020
 
-**Deprecated field spelling** (warning)
+**Field was renamed in 1.0** (error)
 
-`<artifact>: '<field>' is deprecated; use '<expected>'`
+`<artifact>: '<field>' was renamed in 1.0; use '<expected>'`
 
 Fix: rename the field
 
@@ -295,17 +286,9 @@ Fix: choose a non-reserved alias
 
 **Tags block has the wrong shape** (error)
 
-`<artifact>: tags must be a mapping of name to value, found <found>`
+`<artifact>: tags must be a list of name and value entries, found <found>`
 
-Fix: correct the tags block
-
-### SST-PRS028
-
-**Constraints block has the wrong shape** (error)
-
-`<artifact>: constraints block is invalid: <detail>`
-
-Fix: correct the constraints block
+Fix: write tags as a list of {name: ..., value: ...} entries
 
 ### SST-PRS029
 
@@ -419,14 +402,6 @@ Fix: declare min, optionally max, with min &lt;= max and both inside max_score
 
 Fix: use a supported placeholder
 
-### SST-PRS117
-
-**Dataset row has no question or no expected field** (error)
-
-`<artifact>: row <index> has <detail>`
-
-Fix: give every row a question and at least one expectation
-
 ### SST-PRS118
 
 **Sample question entry has the wrong shape** (error)
@@ -443,14 +418,6 @@ Fix: use {question: ...} mappings
 
 Fix: move the nested skill beside its parent; one skill per folder
 
-### SST-PRS121
-
-**Both spellings of one key are set** (error)
-
-`<artifact>: sets both '<field>' and '<expected>'`
-
-Fix: delete the 0.3 spelling; sst migrate refs does not rename keys
-
 ### SST-PRS122
 
 **File is not UTF-8** (error)
@@ -466,6 +433,14 @@ Fix: save the file as UTF-8
 `<artifact>: <detail>`
 
 Fix: fix the field the message names; the semantic views guide lists each field's form
+
+### SST-PRS124
+
+**Window frame is not a frame clause** (error)
+
+`<artifact>: window frame '<value>' is not ROWS or RANGE BETWEEN <bound> AND <bound>`
+
+Fix: write each bound as UNBOUNDED PRECEDING, UNBOUNDED FOLLOWING, CURRENT ROW, or &lt;n&gt; or INTERVAL '&lt;n&gt; &lt;unit&gt;' followed by PRECEDING or FOLLOWING
 
 ## Loading (LOD)
 
@@ -759,15 +734,15 @@ Fix: add the model to the view's tables:, or reference one of them
 
 Fix: write each tables: entry as {{ ref('&lt;model&gt;') }}
 
+### SST-REF045
+
+**Relationship endpoint is written as a ref() call** (error)
+
+`<artifact>: <field> is written as <found>; it takes the bare model name`
+
+Fix: run sst migrate refs --write, or write the model name
+
 ## Membership (MEM)
-
-### SST-MEM002
-
-**Member tables cannot be inferred** (warning)
-
-`<member> declares no tables: and none can be inferred`
-
-Fix: declare tables explicitly
 
 ### SST-MEM003
 
@@ -784,26 +759,6 @@ Fix: use a dbt model name the manifest knows
 `<member> attaches to no <type>`
 
 Fix: add its tables to a view, or delete the member
-
-### SST-MEM008
-
-**Member reaches a table absent from its artifact** (error)
-
-`<member> attaches to <artifact>, which lacks table '<name>'`
-
-Fix: align the member tables with the view
-
-### SST-MEM011
-
-**Member fan-out** (info)
-
-`<member> attaches to <count> artifacts`
-
-### SST-MEM103
-
-**Artifact member counts** (info)
-
-`<artifact>: <value>`
 
 ## Validation (VAL)
 
@@ -823,22 +778,6 @@ Fix: rename one of them
 
 Fix: add a description; it is how Analyst chooses between objects
 
-### SST-VAL010
-
-**Reference graph contains a cycle** (error)
-
-`<type> reference cycle: <cycle>`
-
-Fix: break the cycle
-
-### SST-VAL012
-
-**Deprecated key spelling in use** (warning)
-
-`<type> '<name>' uses '<field>'; the current spelling is '<expected>'`
-
-Fix: rename the key
-
 ### SST-VAL020
 
 **Connected validation unavailable** (info)
@@ -853,7 +792,7 @@ Fix: connect to Snowflake to run connected checks
 
 `metric '<metric>' is table-scoped and its expr is not an aggregate`
 
-Fix: wrap the expression in an aggregate; compute window expressions in the dbt model
+Fix: wrap the expression in an aggregate; for a window, move OVER (...) into a window: block
 
 ### SST-VAL102
 
@@ -861,7 +800,7 @@ Fix: wrap the expression in an aggregate; compute window expressions in the dbt 
 
 `window function <function> in derived metric '<metric>'`
 
-Fix: compute the window in the dbt model
+Fix: put the window: block on a table-scoped metric; a derived metric cannot carry a window
 
 ### SST-VAL103
 
@@ -983,14 +922,6 @@ Fix: correct the table and dimension names
 
 Fix: use public_access or private_access
 
-### SST-VAL122
-
-**Visibility key is deprecated** (warning)
-
-`metric '<metric>' uses visibility; the current key is access_modifier`
-
-Fix: rename the key
-
 ### SST-VAL124
 
 **Duplicate metric expression** (warning)
@@ -998,6 +929,38 @@ Fix: rename the key
 `metric '<metric>' has the same expression as '<other>'`
 
 Fix: keep one and synonym the other
+
+### SST-VAL125
+
+**Window entry does not resolve** (error, always an error)
+
+`metric '<metric>': window <field> names <value>, which is not <expected>`
+
+Fix: name a dimension the metric's table can reach, or a metric of the same table
+
+### SST-VAL126
+
+**Window applies to a column** (error, always an error)
+
+`metric '<metric>': <function> must apply to a metric or an aggregate to be a window metric`
+
+Fix: pass {{ metric() }} or an aggregate such as SUM(...); a row-level window belongs in a fact or dimension
+
+### SST-VAL127
+
+**Window frame without an order** (error, always an error)
+
+`metric '<metric>': window frame '<value>' needs an order_by`
+
+Fix: add order_by, or remove the frame
+
+### SST-VAL128
+
+**Metric references a window metric** (error, always an error)
+
+`metric '<metric>' references '<other>', a window function metric`
+
+Fix: reference the metric the window applies to instead; Snowflake does not allow a window metric in another metric
 
 ### SST-VAL201
 
@@ -1023,14 +986,6 @@ Fix: add the table to the view, or drop the relationship
 
 Fix: correct the column, or swap the sides
 
-### SST-VAL205
-
-**Relationship sides share no view** (error)
-
-`relationship '<relationship>' joins '<a>' and '<b>', which share no view`
-
-Fix: add both tables to one view, or drop the relationship
-
 ### SST-VAL209
 
 **Ambiguous join path between two tables** (warning)
@@ -1046,14 +1001,6 @@ Fix: declare using_relationships on the affected metrics
 `relationship '<relationship>': '<name>' declares neither primary_key nor unique_keys over <value>`
 
 Fix: declare the key; it is the cheapest fan-out protection
-
-### SST-VAL213
-
-**Relationship condition is not expressible** (error)
-
-`relationship '<relationship>': condition '<value>' spans multiple columns per side`
-
-Fix: split it into one condition per column pair
 
 ### SST-VAL214
 
@@ -1121,11 +1068,11 @@ Fix: correct the primary_key or unique_keys list
 
 ### SST-VAL311
 
-**Required primary key is absent** (error)
+**Relationship target declares no key** (error)
 
-`<artifact>: '<name>' declares no primary_key`
+`<artifact>: '<name>' declares neither primary_key nor unique_keys, and a relationship references it`
 
-Fix: declare primary_key in config.meta.sst
+Fix: declare primary_key (or unique_keys) in the model's config.meta.sst
 
 ### SST-VAL312
 
@@ -1157,7 +1104,7 @@ Fix: set is_enum if the set is genuinely closed
 
 `<artifact>: '<member>'.<field> contains '<value>'`
 
-Fix: re-run sst enrich; the value came from a pandas round-trip
+Fix: delete the value; it is a missing-value placeholder, not data
 
 ### SST-VAL318
 
@@ -1174,14 +1121,6 @@ Fix: un-exclude the column or change the expression
 `filter '<member>' carries labels: [filter] and its expr is not boolean`
 
 Fix: make the expression boolean
-
-### SST-VAL403
-
-**Legacy inline filter syntax** (error, always an error)
-
-`filter '<member>' uses the legacy inline form`
-
-Fix: declare filters as named objects with labels
 
 ### SST-VAL405
 
@@ -2073,14 +2012,6 @@ Fix: name a plugin folder that has a plugin.yml
 
 ## dbt (DBT)
 
-### SST-DBT002
-
-**Referenced dbt model is absent** (error)
-
-`model '<model>' is not in the dbt manifest`
-
-Fix: run dbt compile, or correct the name
-
 ### SST-DBT003
 
 **Unknown dbt semantic role** (error)
@@ -2099,11 +2030,11 @@ Fix: reconcile the two types, or add a dbt contract
 
 ### SST-DBT005
 
-**Key metadata is written in the 0.3 form** (warning)
+**Key metadata is written in the 0.3 form** (error)
 
 `model '<model>': meta.sst.<field> is written in the 0.3 form`
 
-Fix: write primary_key as a list of columns and unique_keys as a list of column lists; the 0.3 forms are read for one more release
+Fix: write primary_key as a list of columns and unique_keys as a list of column lists
 
 ### SST-DBT030
 
@@ -2143,9 +2074,9 @@ Fix: run sst compile
 
 ### SST-MAN002
 
-**Manifest is invalid JSON** (error)
+**Manifest is unreadable** (error)
 
-`<path> is not valid JSON: <detail>`
+`<path> is not a readable SST manifest: <detail>`
 
 Fix: delete it and re-run sst compile
 
@@ -2154,14 +2085,6 @@ Fix: delete it and re-run sst compile
 **Manifest key missing** (error)
 
 `<path> omits required key '<key>'`
-
-Fix: re-run sst compile
-
-### SST-MAN004
-
-**Impact index incomplete** (error)
-
-`<artifact> has no reverse-index entry`
 
 Fix: re-run sst compile
 
@@ -2213,17 +2136,11 @@ Fix: upgrade SST or explicitly clear the state
 
 Fix: the run proceeds from authoritative remote state
 
-### SST-MAN201
-
-**Manifest migrated in memory** (info)
-
-`<path> schema <found> migrated to <expected> in memory`
-
 ### SST-MAN202
 
-**Manifest schema has no migration** (warning)
+**Manifest schema has no migration** (error)
 
-`<path> schema <found> has no migration; full recompile`
+`<path> schema <found> has no migration`
 
 Fix: re-run sst compile
 
@@ -2380,14 +2297,6 @@ Fix: fix the errors reported for it; what is live stays as it is, and state keep
 `--partial publishes nothing: <found> on <value> cannot be traced to the artifacts it would change`
 
 Fix: fix that error first; a configuration error, or an error in a semantic view member such as a metric, stops every run, because the views it belongs to would otherwise publish without it
-
-### SST-PLN900
-
-**Invalid change order** (error, always an error)
-
-`change order violates <value>`
-
-Fix: report this as a bug
 
 ## Apply (APL)
 
@@ -2666,62 +2575,3 @@ Fix: report this as a bug
 `domain invariant violated: <detail>`
 
 Fix: report this as a bug
-
-## Codes from SST 0.3
-
-SST 0.3 used shorter codes. Each maps to the 1.0 codes that cover the same
-failure; tooling that matched a 0.3 code should match these instead.
-
-| 0.3 code | 1.0 codes |
-|---|---|
-| `SST-V001` | [`SST-PRS002`](#sst-prs002), [`SST-PRS107`](#sst-prs107), [`SST-VAL201`](#sst-val201) |
-| `SST-V002` | [`SST-DBT002`](#sst-dbt002), [`SST-MEM003`](#sst-mem003), [`SST-REF001`](#sst-ref001) |
-| `SST-V003` | [`SST-DBT004`](#sst-dbt004), [`SST-REF002`](#sst-ref002), [`SST-VAL020`](#sst-val020) |
-| `SST-V004` | [`SST-PRS006`](#sst-prs006), [`SST-PRS106`](#sst-prs106), [`SST-VAL001`](#sst-val001) |
-| `SST-V005` | [`SST-PRS003`](#sst-prs003), [`SST-PRS018`](#sst-prs018), [`SST-PRS019`](#sst-prs019), [`SST-PRS029`](#sst-prs029), [`SST-PRS113`](#sst-prs113), [`SST-VAL113`](#sst-val113), [`SST-VAL418`](#sst-val418) |
-| `SST-V006` | [`SST-PRS101`](#sst-prs101), [`SST-PRS107`](#sst-prs107) |
-| `SST-V007` | [`SST-PRS013`](#sst-prs013) |
-| `SST-V008` | [`SST-DBT004`](#sst-dbt004) |
-| `SST-V010` | [`SST-DBT003`](#sst-dbt003), [`SST-MEM011`](#sst-mem011), [`SST-VAL311`](#sst-val311), [`SST-VAL312`](#sst-val312) |
-| `SST-V011` | [`SST-VAL210`](#sst-val210), [`SST-VAL310`](#sst-val310) |
-| `SST-V012` | [`SST-VAL003`](#sst-val003) |
-| `SST-V013` | [`SST-MEM011`](#sst-mem011), [`SST-PRS029`](#sst-prs029), [`SST-VAL020`](#sst-val020) |
-| `SST-V014` | [`SST-PRS030`](#sst-prs030) |
-| `SST-V015` | [`SST-PRS028`](#sst-prs028) |
-| `SST-V016` | [`SST-PRS027`](#sst-prs027) |
-| `SST-V020` | [`SST-VAL003`](#sst-val003) |
-| `SST-V021` | [`SST-VAL308`](#sst-val308) |
-| `SST-V022` | [`SST-VAL309`](#sst-val309) |
-| `SST-V023` | [`SST-VAL305`](#sst-val305) |
-| `SST-V024` | [`SST-VAL306`](#sst-val306) |
-| `SST-V025` | [`SST-MEM103`](#sst-mem103), [`SST-VAL314`](#sst-val314), [`SST-VAL315`](#sst-val315) |
-| `SST-V032` | [`SST-MEM002`](#sst-mem002), [`SST-VAL109`](#sst-val109) |
-| `SST-V033` | [`SST-PRS002`](#sst-prs002), [`SST-PRS113`](#sst-prs113) |
-| `SST-V034` | [`SST-PRS102`](#sst-prs102) |
-| `SST-V035` | [`SST-PRS013`](#sst-prs013), [`SST-VAL121`](#sst-val121), [`SST-VAL122`](#sst-val122) |
-| `SST-V036` | [`SST-VAL118`](#sst-val118) |
-| `SST-V037` | [`SST-PRS003`](#sst-prs003), [`SST-VAL102`](#sst-val102) |
-| `SST-V038` | [`SST-PRS003`](#sst-prs003), [`SST-VAL115`](#sst-val115) |
-| `SST-V039` | [`SST-VAL112`](#sst-val112) |
-| `SST-V040` | [`SST-PRS002`](#sst-prs002), [`SST-VAL201`](#sst-val201) |
-| `SST-V041` | [`SST-REF001`](#sst-ref001), [`SST-VAL205`](#sst-val205) |
-| `SST-V042` | [`SST-VAL203`](#sst-val203) |
-| `SST-V043` | [`SST-REF002`](#sst-ref002), [`SST-VAL204`](#sst-val204) |
-| `SST-V044` | [`SST-VAL204`](#sst-val204), [`SST-VAL214`](#sst-val214) |
-| `SST-V045` | [`SST-REF006`](#sst-ref006) |
-| `SST-V046` | [`SST-VAL108`](#sst-val108) |
-| `SST-V047` | [`SST-VAL318`](#sst-val318) |
-| `SST-V048` | [`SST-VAL223`](#sst-val223) |
-| `SST-V049` | [`SST-PRS110`](#sst-prs110), [`SST-VAL213`](#sst-val213) |
-| `SST-V050` | [`SST-VAL403`](#sst-val403) |
-| `SST-V051` | [`SST-VAL401`](#sst-val401) |
-| `SST-V052` | [`SST-PRS020`](#sst-prs020), [`SST-VAL012`](#sst-val012) |
-| `SST-V060` | [`SST-PRS002`](#sst-prs002), [`SST-VAL020`](#sst-val020), [`SST-VAL412`](#sst-val412) |
-| `SST-V061` | [`SST-LOD018`](#sst-lod018), [`SST-LOD019`](#sst-lod019) |
-| `SST-V062` | [`SST-PRS014`](#sst-prs014), [`SST-VAL412`](#sst-val412) |
-| `SST-V070` | [`SST-PRS002`](#sst-prs002), [`SST-VAL003`](#sst-val003) |
-| `SST-V071` | [`SST-MEM008`](#sst-mem008), [`SST-REF001`](#sst-ref001) |
-| `SST-V081` |  |
-| `SST-V090` | [`SST-PLN005`](#sst-pln005), [`SST-REF005`](#sst-ref005), [`SST-VAL010`](#sst-val010), [`SST-VAL215`](#sst-val215) |
-| `SST-V091` | [`SST-PRS006`](#sst-prs006), [`SST-VAL124`](#sst-val124) |
-| `SST-V092` | [`SST-VAL110`](#sst-val110) |

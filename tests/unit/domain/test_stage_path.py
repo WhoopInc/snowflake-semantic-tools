@@ -7,7 +7,9 @@ import pytest
 from snowflake_semantic_tools.domain.model.stage_path import unsafe_segment
 
 
-@pytest.mark.parametrize("path", ["SKILL.md", "reference/steps_v2.md", "scripts/run-$1.py", ".cortex-plugin/plugin.json"])
+@pytest.mark.parametrize(
+    "path", ["SKILL.md", "reference/steps_v2.md", "scripts/run-$1.py", ".cortex-plugin/plugin.json"]
+)
 def test_safe_paths_have_no_unsafe_segment(path: str) -> None:
     assert unsafe_segment(path) is None
 

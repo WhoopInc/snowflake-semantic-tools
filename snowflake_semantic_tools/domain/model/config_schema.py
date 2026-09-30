@@ -1,7 +1,7 @@
 """The declared shape of `sst_config.yml`.
 
 One table serves two consumers. Validation turns an unknown, removed, mistyped, or
-inert key into a diagnostic instead of a silent no-op, and the generated
+unsupported key into a diagnostic instead of a silent no-op, and the generated
 configuration reference renders the same rows, so the documentation cannot drift
 from what the engine accepts.
 """
@@ -32,8 +32,8 @@ class KeyKind(Enum):
 
 class KeyStatus(Enum):
     CURRENT = "current"
-    INERT = "inert"
-    DEPRECATED = "deprecated"
+    # Reserved for a later release: setting it is an error until SST reads it.
+    UNSUPPORTED = "unsupported"
     REMOVED = "removed"
 
 
@@ -86,8 +86,8 @@ def _removed(path: str, reason: str, *, code: str | None = None) -> ConfigKey:
     return ConfigKey(path, KeyKind.ANY, reason, status=KeyStatus.REMOVED, replacement=reason, code=code)
 
 
-def _inert(path: str, kind: KeyKind, summary: str) -> ConfigKey:
-    return ConfigKey(path, kind, summary, status=KeyStatus.INERT)
+def _unsupported(path: str, kind: KeyKind, summary: str) -> ConfigKey:
+    return ConfigKey(path, kind, summary, status=KeyStatus.UNSUPPORTED)
 
 
 _S = KeyKind.STRING
@@ -132,19 +132,17 @@ CONFIG_SCHEMA: tuple[ConfigKey, ...] = (
         "Compile expressions against Snowflake during validate and plan.",
         default="true",
     ),
-    _inert("validation.exclude_dirs", _L, "Directories to skip during validation."),
+    _removed(
+        "validation.exclude_dirs",
+        "every file under the configured directories is read; set enabled: false on a view to skip it",
+    ),
     _removed("validation.expression_rules", "the expression rules it disabled are no longer optional"),
     _removed("validation.multipath_check", "multi-path relationship analysis is always on"),
     _removed("validation.smoke_query", "smoke probes run only under sst test --suite smoke"),
-    _inert("enrichment", _BLOCK, "Settings for the 0.3 enrichment command, which 1.0 does not ship."),
-    _removed("enrichment.infer_is_enum", "enum inference is not configurable"),
-    _inert("generation", _BLOCK, "Settings for the 0.3 generation path; 1.0 renders DDL directly."),
-    _removed("generation.publish_via", "DDL is the only publish path"),
-    _removed("generation.filters_to_instructions", "filters always render as native clauses"),
-    _removed("generation.use_create_or_alter", "the renderer chooses the statement form"),
-    _removed("generation.emit_relationship_type", "relationship_type is never emitted"),
-    _inert("dbt", _BLOCK, "How SST invokes dbt."),
-    _inert("defer", _BLOCK, "dbt deferral settings from 0.3."),
+    _removed("enrichment", "SST 1.0 has no enrichment command"),
+    _removed("generation", "SST 1.0 renders DDL directly"),
+    _unsupported("dbt", _BLOCK, "How SST invokes dbt."),
+    _removed("defer", "SST reads the manifest dbt resolves; configure deferral in dbt"),
     _key(
         "vars",
         KeyKind.MAP,
@@ -180,7 +178,7 @@ CONFIG_SCHEMA: tuple[ConfigKey, ...] = (
         choices=("caller", "owner"),
     ),
     _removed("tools.+enabled", "omit the tools instead"),
-    _inert("tools.<route>", _BLOCK, "Per-group override."),
+    _unsupported("tools.<route>", _BLOCK, "Per-group override."),
     _key(
         "semantic_views",
         _BLOCK,
@@ -195,8 +193,8 @@ CONFIG_SCHEMA: tuple[ConfigKey, ...] = (
         "Default for views that do not set `enabled` themselves.",
         default="true",
     ),
-    _inert("semantic_views.+tags", _L, "Default view tags."),
-    _inert("semantic_views.+max_staleness", _I, "Default view staleness."),
+    _unsupported("semantic_views.+tags", _L, "Default view tags."),
+    _unsupported("semantic_views.+max_staleness", _I, "Default view staleness."),
     _removed("semantic_views.+meta", "put metadata on the view itself"),
     _key("semantic_views.<route>", _BLOCK, "Folder route: overrides for views under that directory."),
     _key("agents", _BLOCK, "Defaults for Cortex Agents.", children=ChildPolicy.ROUTES),
@@ -216,12 +214,12 @@ CONFIG_SCHEMA: tuple[ConfigKey, ...] = (
     _key("agents.+analytical_search", _B, "Enable analytical search."),
     _key("agents.+alias", _S, "Version alias assigned after publication."),
     _key("agents.+enabled", _B, "Default for agents that do not set `enabled` themselves.", default="true"),
-    _inert("agents.+secure", _B, "Default agent security flag."),
-    _inert("agents.+tags", _L, "Default agent tags."),
+    _unsupported("agents.+secure", _B, "Default agent security flag."),
+    _unsupported("agents.+tags", _L, "Default agent tags."),
     _removed("agents.+copy_grants", "agents are never replaced, so there are no grants to copy"),
     _removed("agents.+meta", "put metadata on the agent itself"),
     _removed("agents.+create_mode", "agents are created once and versioned"),
-    _inert("agents.<route>", _BLOCK, "Folder route."),
+    _unsupported("agents.<route>", _BLOCK, "Folder route."),
     _key("evals", _BLOCK, "Defaults for agent evaluations.", children=ChildPolicy.ROUTES),
     _key("evals.+eval_tier", KeyKind.ENUM, "Whether a regression blocks.", choices=("blocking", "report")),
     _key("evals.+metrics", _L, "Default system metrics."),
@@ -336,19 +334,13 @@ CONFIG_SCHEMA: tuple[ConfigKey, ...] = (
     _key("apply.agent_spec_stage.stage", _S, "Stage name.", default="AGENT_SPECS"),
     _key("apply.eval_config_stage", _BLOCK, "Stage for eval run configs, in each agent's schema."),
     _key("apply.eval_config_stage.stage", _S, "Stage name.", default="EVAL_CONFIGS"),
-    _inert("apply.fail_fast", _B, "Use the --fail-fast flag instead."),
-    ConfigKey(
-        "deploy",
-        _BLOCK,
-        "Deprecated spelling of `apply:`.",
-        status=KeyStatus.DEPRECATED,
-        replacement="apply",
-    ),
+    _removed("apply.fail_fast", "pass --fail-fast to sst apply"),
+    _removed("deploy", "renamed to apply:"),
     _key("snowflake", _BLOCK, "Allowlists for Snowflake surfaces the renderer accepts."),
     _key("snowflake.orchestration_models", _L, "Orchestration models agents may name.", default="[auto]"),
-    _inert("snowflake.tool_types", _L, "Extra agent tool types."),
-    _inert("snowflake.allow_unknown_keys", _B, "Accept unknown agent spec keys."),
-    _inert("snowflake.profile", _BLOCK, "Agent profile allowlists."),
+    _unsupported("snowflake.tool_types", _L, "Extra agent tool types."),
+    _unsupported("snowflake.allow_unknown_keys", _B, "Accept unknown agent spec keys."),
+    _unsupported("snowflake.profile", _BLOCK, "Agent profile allowlists."),
 )
 
 CONFIG_KEYS: Mapping[str, ConfigKey] = MappingProxyType({key.path: key for key in CONFIG_SCHEMA})
@@ -473,13 +465,8 @@ def _check(
         else:
             diagnostics.append(_diagnostic("SST-CFG043", path, positions, key=key, reason=spec.replacement))
         return
-    if spec.status is KeyStatus.INERT:
+    if spec.status is KeyStatus.UNSUPPORTED:
         diagnostics.append(_diagnostic("SST-CFG044", path, positions, key=key))
-        return
-    if spec.status is KeyStatus.DEPRECATED:
-        diagnostics.append(_diagnostic("SST-CFG045", path, positions, key=key, replacement=spec.replacement))
-        replacement = CONFIG_KEYS[str(spec.replacement)]
-        _check(replacement, value, path, positions, diagnostics, route_of=None)
         return
     if value is None:
         # An empty YAML value means unset: a scalar keeps its default, and a block

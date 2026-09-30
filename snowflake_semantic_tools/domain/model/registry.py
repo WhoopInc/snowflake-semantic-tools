@@ -338,6 +338,5 @@ ARTIFACT_REGISTRY = build_registry(
     ),
 )
 
-# Kept as the public name used by the M1/M2 compiler while the registry itself
-# now describes every M3 artifact family.
+# The name the semantic-view compiler uses; the registry describes every artifact type.
 SEMANTIC_REGISTRY = ARTIFACT_REGISTRY

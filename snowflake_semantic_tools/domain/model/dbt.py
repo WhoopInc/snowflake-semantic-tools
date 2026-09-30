@@ -17,6 +17,10 @@ class DbtColumn:
     sample_values: tuple[str, ...] = ()
     is_enum: bool = False
     excluded: bool = False
+    # `meta.sst` keys SST does not read, reported where a view uses the model.
+    unknown_meta_keys: tuple[str, ...] = ()
+    # A meta.sst.data_type that disagrees with dbt's own; `data_type` holds dbt's.
+    declared_data_type: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -33,8 +37,10 @@ class DbtModel:
     patch_path: str | None = None
     forbidden_location_keys: tuple[str, ...] = ()
     description: str | None = None
-    # Key fields written in a 0.3 form rather than the 1.0 lists.
+    # Key fields written in a 0.3 form. They are reported, not read.
     legacy_key_fields: tuple[str, ...] = ()
+    # `meta.sst` keys SST does not read, reported where a view uses the model.
+    unknown_meta_keys: tuple[str, ...] = ()
 
     def column(self, name: str) -> DbtColumn | None:
         """Return a column case-insensitively."""

@@ -147,6 +147,31 @@ def test_forbidden_model_location_keys_are_retained_for_validation() -> None:
     projected = catalog_from_document(document).model("products")
     assert projected is not None
     assert projected.forbidden_location_keys == ("database", "schema")
+    assert projected.unknown_meta_keys == ()
+
+
+def test_unknown_meta_sst_keys_are_retained_for_validation() -> None:
+    document = manifest_document()
+    model = document["nodes"]["model.fixture.products"]  # type: ignore[index]
+    model["config"]["meta"]["sst"].update({"synonyms": ["catalogue"], "cortex_searchable": True})
+    model["columns"]["product_id"]["meta"]["sst"]["privacy_category"] = "none"
+    projected = catalog_from_document(document).model("products")
+    assert projected is not None
+    assert projected.unknown_meta_keys == ("cortex_searchable", "synonyms")
+    column = projected.column("product_id")
+    assert column is not None and column.unknown_meta_keys == ("privacy_category",)
+
+
+def test_a_meta_sst_data_type_is_recorded_only_when_it_disagrees_with_dbt() -> None:
+    document = manifest_document()
+    column = document["nodes"]["model.fixture.products"]["columns"]["product_id"]  # type: ignore[index]
+    column["meta"]["sst"]["data_type"] = " varchar "
+    projected = catalog_from_document(document).model("products")
+    assert projected is not None and projected.columns[0].declared_data_type is None
+    column["meta"]["sst"]["data_type"] = "NUMBER"
+    projected = catalog_from_document(document).model("products")
+    assert projected is not None
+    assert (projected.columns[0].data_type, projected.columns[0].declared_data_type) == ("VARCHAR", "NUMBER")
 
 
 @pytest.mark.parametrize(
@@ -154,13 +179,15 @@ def test_forbidden_model_location_keys_are_retained_for_validation() -> None:
     [
         (["product_id"], ("product_id",), False),
         (None, (), False),
-        ("product_id", ("product_id",), True),
-        ("calendar_date, user_id", ("calendar_date", "user_id"), True),
+        ("product_id", (), True),
+        ("calendar_date, user_id", (), True),
         ("", (), False),
         ("  ", (), False),
     ],
 )
-def test_primary_key_reads_the_03_string_forms(value: object, expected: tuple[str, ...], legacy: bool) -> None:
+def test_primary_key_03_string_forms_are_reported_not_read(
+    value: object, expected: tuple[str, ...], legacy: bool
+) -> None:
     document = manifest_document()
     sst = document["nodes"]["model.fixture.products"]["config"]["meta"]["sst"]  # type: ignore[index]
     sst["primary_key"] = value
@@ -174,13 +201,15 @@ def test_primary_key_reads_the_03_string_forms(value: object, expected: tuple[st
     [
         ([["a", "b"], ["c"]], (("a", "b"), ("c",)), False),
         ([], (), False),
-        (["a", "b"], (("a", "b"),), True),
-        ([["a", "b"], "c"], (("a", "b"), ("c",)), True),
-        ("a, b", (("a", "b"),), True),
+        (["a", "b"], (), True),
+        ([["a", "b"], "c"], (), True),
+        ("a, b", (), True),
         ("", (), False),
     ],
 )
-def test_unique_keys_read_the_03_forms(value: object, expected: tuple[tuple[str, ...], ...], legacy: bool) -> None:
+def test_unique_keys_03_forms_are_reported_not_read(
+    value: object, expected: tuple[tuple[str, ...], ...], legacy: bool
+) -> None:
     document = manifest_document()
     sst = document["nodes"]["model.fixture.products"]["config"]["meta"]["sst"]  # type: ignore[index]
     sst["unique_keys"] = value

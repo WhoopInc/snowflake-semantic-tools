@@ -42,7 +42,7 @@ jobs:
       - name: Install build and test tooling
         # "build" uses pyproject.toml to create source and wheel distributions.
         # "twine" validates the distributions' metadata before upload.
-        # Install the package and pytest for basic tests.
+        # The tests need pytest, and import-linter for the ring-boundary tests.
         #
         # Note: Poetry CLI is not required here. The project uses poetry-core
         # as the build backend (PEP 517/518 compliant), which is automatically
@@ -53,7 +53,7 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install build
           python -m pip install .
-          python -m pip install pytest pytest-mock
+          python -m pip install "pytest==8.3.4" "import-linter>=2.1,<3"
           python -m pip install twine
 
       - name: Verify tag and pyproject.toml version match
@@ -83,19 +83,9 @@ jobs:
 
           echo "Tag and pyproject.toml versions match."
 
-      - name: Run basic tests
-        # Run unit tests only (matching CircleCI behavior).
-        # Integration tests require external services and are excluded from CI.
-        # PYTHONPATH is set so tests can import from tests.fixtures.
-        # Otherwise, at least verify that the package can be imported.
-        run: |
-          if [ -d "tests/unit" ]; then
-            PYTHONPATH=. pytest tests/unit/
-          elif [ -d "tests" ]; then
-            PYTHONPATH=. pytest -m "not snowflake"
-          else
-            python -c "import snowflake_semantic_tools"
-          fi
+      - name: Run the tests
+        # Unit and contract tests; neither connects to Snowflake.
+        run: python -m pytest tests/
 
       - name: Clean previous build artifacts if any
         # Ensure we are starting from a clean state.
