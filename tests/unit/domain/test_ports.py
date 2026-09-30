@@ -7,8 +7,6 @@ from snowflake_semantic_tools.domain.ports.lifecycle import CompositeLifecycleHa
 from snowflake_semantic_tools.domain.ports.semantic_view_source import SemanticViewSource
 from snowflake_semantic_tools.domain.ports.snowflake import (
     ClockPort,
-    ManifestStore,
-    PlanStore,
     SnowflakePort,
     SnowflakePortError,
     StateStore,
@@ -17,7 +15,6 @@ from snowflake_semantic_tools.domain.ports.snowflake import (
 
 def test_semantic_view_source_protocol_methods_are_declarations_only() -> None:
     source = object()
-    assert SemanticViewSource.load_semantic_views(source) is None  # type: ignore[arg-type]
     assert SemanticViewSource.load_project(source) is None  # type: ignore[arg-type]
 
 
@@ -46,10 +43,6 @@ def test_lifecycle_port_protocol_methods_are_declarations_only() -> None:
     assert StateStore.write_local(source, object()) is None  # type: ignore[arg-type]
     assert StateStore.acquire_lock(source, "x", break_stale=False) is None  # type: ignore[arg-type]
     assert StateStore.release_lock(source, "x") is None  # type: ignore[arg-type]
-    assert ManifestStore.read(source) is None  # type: ignore[arg-type]
-    assert ManifestStore.write(source, object()) is None  # type: ignore[arg-type]
-    assert PlanStore.read(source) is None  # type: ignore[arg-type]
-    assert PlanStore.write(source, object()) is None  # type: ignore[arg-type]
     error = SnowflakePortError("x", sqlstate="42", errno=1)
     assert (str(error), error.sqlstate, error.errno) == ("x", "42", 1)
 

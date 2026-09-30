@@ -91,7 +91,10 @@ class CompiledProfile:
 
 
 class CompileProfiles:
-    """One registry row per profile; a profile whose skills, plugins, or commands have errors does not publish."""
+    """Compile one registry row per profile.
+
+    A profile whose skills, plugins, or commands have errors does not publish.
+    """
 
     def __init__(
         self,

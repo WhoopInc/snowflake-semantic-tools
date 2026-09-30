@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from snowflake_semantic_tools.adapters.yaml.loader import load_semantic_views
+from tests.helpers.projects import load_views
 from snowflake_semantic_tools.domain.model.semantic_view import SemanticView, SortKey
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -16,7 +16,7 @@ MANIFEST = REPO_ROOT / "tests" / "fixtures" / "reference_project_manifest.json"
 
 @pytest.fixture(scope="module")
 def menu() -> SemanticView:
-    views = load_semantic_views(FIXTURE, manifest_path=MANIFEST, invoke_dbt=False)
+    views = load_views(FIXTURE, manifest_path=MANIFEST)
     return next(view for view in views if view.fqn.endswith(".JAFFLE_MENU"))
 
 

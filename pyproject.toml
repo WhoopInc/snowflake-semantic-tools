@@ -87,6 +87,8 @@ line_length = 120
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# The repository root, so test modules can import shared test support as `tests.helpers.*`.
+pythonpath = ["."]
 python_files = ["test_*.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
@@ -175,3 +177,43 @@ name = "adapters use domain ports and models, not domain renderers"
 type = "forbidden"
 source_modules = ["snowflake_semantic_tools.adapters"]
 forbidden_modules = ["snowflake_semantic_tools.domain.render"]
+
+# An adapter subpackage never imports another, so each stays replaceable and testable
+# alone. Top-level adapter modules outside these four may compose them.
+# The ignore_imports entries are the crossings still being removed; import-linter fails
+# on an entry that no longer matches, so each one must go when its crossing does.
+[[tool.importlinter.contracts]]
+name = "adapter subpackages are independent"
+type = "independence"
+modules = [
+    "snowflake_semantic_tools.adapters.yaml",
+    "snowflake_semantic_tools.adapters.dbt",
+    "snowflake_semantic_tools.adapters.snowflake",
+    "snowflake_semantic_tools.adapters.fs",
+]
+ignore_imports = [
+    "snowflake_semantic_tools.adapters.yaml.loader -> snowflake_semantic_tools.adapters.dbt.manifest",
+    "snowflake_semantic_tools.adapters.yaml.project_source -> snowflake_semantic_tools.adapters.dbt.manifest",
+]
+
+# YAML is parsed only at the edge that owns the file: adapters.yaml for SST's own files,
+# adapters.dbt for dbt's. Only direct imports count here -- everything above reaches
+# yaml indirectly through those two, which is the point.
+[[tool.importlinter.contracts]]
+name = "only the yaml and dbt adapters parse YAML"
+type = "forbidden"
+source_modules = [
+    "snowflake_semantic_tools.cli",
+    "snowflake_semantic_tools.adapters.snowflake",
+    "snowflake_semantic_tools.adapters.fs",
+    "snowflake_semantic_tools.adapters.clock",
+    "snowflake_semantic_tools.adapters.config",
+    "snowflake_semantic_tools.adapters.profile",
+    "snowflake_semantic_tools.adapters.project",
+]
+forbidden_modules = ["yaml"]
+allow_indirect_imports = true
+ignore_imports = [
+    "snowflake_semantic_tools.cli.main -> yaml",
+    "snowflake_semantic_tools.adapters.profile -> yaml",
+]

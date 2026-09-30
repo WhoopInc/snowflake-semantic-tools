@@ -95,8 +95,3 @@ def load_project_config(project_dir: Path) -> ProjectConfig:
                     )
                 )
     return ProjectConfig(MappingProxyType(tree), DiagnosticBag(diagnostics), has_dbt_project)
-
-
-def config_tree(project_dir: Path) -> dict[str, Any]:
-    """The normalized config mapping, for callers that only read values."""
-    return dict(load_project_config(project_dir).tree)

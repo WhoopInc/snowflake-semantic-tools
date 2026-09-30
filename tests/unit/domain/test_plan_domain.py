@@ -25,8 +25,8 @@ from snowflake_semantic_tools.domain.state.model import (
     AppliedEntry,
     ImpactIndex,
     State,
-    build_minimal_manifest,
 )
+from tests.helpers.manifests import build_minimal_manifest
 
 
 def target() -> TargetIdentity:

@@ -152,6 +152,7 @@ Every problem SST reports is a diagnostic registered in `snowflake_semantic_tool
 - **Type hints**: mypy runs with `disallow_untyped_defs`, so every function is annotated
 - **Error messages**: a diagnostic's suggestion is actionable — it says what is wrong and how to fix it
 - **Tests**: real in-memory ports and pytest's `monkeypatch`, no mocking library
+- **Size**: a module holds at most 800 lines and a function at most 100, with a decision count of at most 25; a function defined inside another holds at most 25 lines. Aim well below: about 500 lines per module and 60 per function. `tests/unit/test_structure.py` enforces the limits.
 
 ```bash
 # Format code
@@ -160,6 +161,50 @@ poetry run black snowflake_semantic_tools/
 # Sort imports
 poetry run isort snowflake_semantic_tools/
 ```
+
+### Docstrings and comments
+
+Annotations already say what types flow where, so a docstring never restates them. It says what the code is for and what a caller or maintainer must know that the signature cannot show: invariants, sentinels, ordering, failure behavior, and the diagnostics it reports. `tests/unit/test_docstrings.py` checks the rules below.
+
+1. **Every module** opens with what it owns and, where it matters, what it must not do.
+2. **Every public class** has a summary line, then its invariants. A dataclass documents, in an `Attributes:` section, each field whose meaning the name and type do not settle: a sentinel (`None` versus `()` versus `""`), a unit, casefolding, or "overridden by".
+3. **Every public function and method** opens with a one-line summary in the imperative, at most 100 characters, ending in a period, and a blank line before anything more. Add a section only when it carries information:
+   - `Args:` for a parameter that is not obvious from its name and type;
+   - `Returns:` when the value has structure or sentinels;
+   - `Raises:` for every exception that escapes;
+   - `Diagnostics:` for every `SST-` code the function reports, one per line. The test checks each code is registered, so the registry and the code that raises each entry stay linked.
+4. **A `Protocol` method documents the contract**: what it promises, what it returns on failure, whether it raises, and whether it is idempotent. An implementation that overrides a documented method of a base class in this package inherits that docstring and adds one only to say how it differs.
+5. **A private function** needs a docstring once it is 25 lines or longer, scores 10 or more on the decision count, or depends on an ordering, poisoning, or casefolding rule a reader could break.
+6. **Comments say why, not what.** Mark ordering dependencies where they bite (for example, "runs after the view checks: poisoning reads their diagnostics"). Never cite a design document or planning identifier.
+7. **A renderer** shows an `Example:` of input and output when the grammar it produces is not obvious.
+
+A protocol method and a validator, written to these rules:
+
+```python
+def execute_script(self, statements: Sequence[str]) -> ExecResult:
+    """Run statements in order on one session, stopping at the first failure.
+
+    Never raises for a SQL error; the result carries it.
+
+    Args:
+        statements: Complete statements, each executed separately (never split on ``;``).
+
+    Returns:
+        ``ok=True`` with one query id per statement, or ``ok=False`` with the error and the
+        ids of the statements that already ran, which the caller must treat as a partial write.
+    """
+
+
+def window_diagnostics(metric: MetricDef, models: Mapping[str, DbtModel]) -> list[Diagnostic]:
+    """Check a window-function metric against rules Snowflake reports only at query time.
+
+    Diagnostics:
+        SST-VAL102: the window appears inside a derived metric.
+        SST-VAL126: the window applies to a raw column, not a metric or an aggregate.
+    """
+```
+
+Known gaps are listed in `tests/unit/ratchets/docstrings.txt`. The list only shrinks: document what you write, and what you touch.
 
 ## Code Review Criteria
 

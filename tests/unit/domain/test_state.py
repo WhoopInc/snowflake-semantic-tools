@@ -24,12 +24,12 @@ from snowflake_semantic_tools.domain.state.model import (
     State,
     _manifest_from_dict_unchecked,
     _object_map,
-    build_minimal_manifest,
     canonical_json,
     content_hash,
     migrate_manifest,
     migrate_state,
 )
+from tests.helpers.manifests import build_minimal_manifest
 
 
 def target() -> TargetIdentity:

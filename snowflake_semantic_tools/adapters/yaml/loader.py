@@ -39,16 +39,9 @@ from ...domain.model.dbt import DbtCatalog, DbtModel
 from ...domain.model.diagnostic import D, Diagnostic, DiagnosticBag, Origin, Severity
 from ...domain.model.expression import call_arguments, is_aggregate_expression
 from ...domain.model.expression import is_boolean_expression as _is_boolean_expression
-from ...domain.model.expression import outer_parentheses as _outer_parentheses
 from ...domain.model.expression import root_function as _root_function
 from ...domain.model.project import ParsedMember, ParsedProject, ParsedView, ResolvedProject, SemanticViewProject
-from ...domain.model.reference import (
-    TemplateCall,
-    TemplateSyntaxError,
-    replace_template_calls,
-    scan_template_calls,
-    single_template_call,
-)
+from ...domain.model.reference import TemplateCall, TemplateSyntaxError, scan_template_calls, single_template_call
 from ...domain.model.registry import SEMANTIC_REGISTRY
 from ...domain.model.semantic_view import (
     Column,
@@ -355,26 +348,6 @@ def _read_yaml(path: Path) -> dict[str, Any]:
     except OSError as exc:
         raise ProjectError(f"cannot read {path}: {exc}") from exc
     return dict(_parse_yaml_bytes(raw, str(path)).tree)
-
-
-def _sst_meta(node: dict[str, Any]) -> dict[str, Any]:
-    """Pull `config.meta.sst` from a dbt model or column node.
-
-    dbt accepts this under `config.meta` and, historically, bare `meta`. Both are
-    read so a project that predates the move is not silently ignored -- silently is
-    the operative word: a missed `meta.sst` block does not error, it just produces a
-    view with no columns.
-    """
-    for container in (node.get("config") or {}, node):
-        meta = container.get("meta") if isinstance(container, dict) else None
-        if isinstance(meta, dict):
-            sst = meta.get("sst")
-            if isinstance(sst, dict):
-                # Rebuilt rather than returned directly: yaml.safe_load gives Any, and
-                # narrowing it here is what lets --strict hold at the ring boundary
-                # instead of leaking Any into the loader's callers.
-                return {str(k): v for k, v in sst.items()}
-    return {}
 
 
 def _as_str_tuple(value: Any) -> tuple[str, ...]:
@@ -1860,42 +1833,6 @@ def _multipath_diagnostics(
     return tuple(diagnostics)
 
 
-def _resolve_refs(expr: str, models_in_view: dict[str, str]) -> str:
-    """Replace every `ref()` in an expression with `LOGICAL.COLUMN`.
-
-    A two-argument ref renders `TABLE.COLUMN`; a one-argument ref renders the
-    logical table name alone.
-    """
-
-    def sub(call: TemplateCall) -> str:
-        if len(call.args) not in (1, 2):
-            diagnostic = D(
-                "SST-REF042",
-                artifact="expression",
-                detail=f"ref() takes one or two arguments, found {len(call.args)} in {call.raw}",
-            )
-            raise ProjectError(diagnostic.message, diagnostics=(diagnostic,))
-        model = call.args[0]
-        column = call.args[1] if len(call.args) == 2 else None
-        logical = models_in_view.get(model.casefold())
-        if logical is None:
-            diagnostic = D("SST-REF043", artifact="expression", model=model)
-            raise ProjectError(diagnostic.message, diagnostics=(diagnostic,))
-        return f"{logical}.{column.upper()}" if column else logical
-
-    try:
-        return replace_template_calls(expr, "ref", sub)
-    except TemplateSyntaxError as exc:
-        diagnostic = D(
-            "SST-LOD004",
-            file="<expression>",
-            line=exc.line,
-            col=exc.col,
-            reason=exc.reason,
-        )
-        raise ProjectError(diagnostic.message, diagnostics=(diagnostic,)) from exc
-
-
 def _resolve_expression(
     text: str,
     *,
@@ -2646,28 +2583,6 @@ def load_relationships(
                 )
             )
     return tuple(out), tuple(diagnostics)
-
-
-def load_semantic_views(
-    project_dir: Path,
-    *,
-    target_name: str | None = None,
-    manifest_path: Path | None = None,
-    invoke_dbt: bool = True,
-) -> tuple[SemanticView, ...]:
-    """Load every enabled semantic view, refusing project errors."""
-    project = load_semantic_views_result(
-        project_dir,
-        target_name=target_name,
-        manifest_path=manifest_path,
-        invoke_dbt=invoke_dbt,
-    )
-    if project.diagnostics.has_errors:
-        raise ProjectError(
-            "; ".join(diagnostic.message for diagnostic in project.diagnostics),
-            diagnostics=tuple(project.diagnostics),
-        )
-    return project.views
 
 
 def parse_semantic_project(
@@ -3490,14 +3405,6 @@ def _require_reachable(
                 subject=subject,
             )
             raise ProjectError(diagnostic.message, diagnostics=(diagnostic,))
-
-
-def _config_var(config: dict[str, Any], name: str) -> str:
-    variables = config.get("vars") or {}
-    if not isinstance(variables, dict) or name not in variables:
-        diagnostic = D("SST-REF038", artifact="semantic view", name=name)
-        raise ProjectError(diagnostic.message, diagnostics=(diagnostic,))
-    return str(variables[name])
 
 
 def _var_diagnostic(call: TemplateCall, origin: Origin | None, subject: str) -> Diagnostic:

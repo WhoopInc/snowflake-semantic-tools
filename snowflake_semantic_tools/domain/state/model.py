@@ -11,7 +11,7 @@ from typing import Any, Iterable, Iterator, Mapping, cast
 
 from ..._version import __version__
 from ..model.identifier import TargetIdentity
-from ..model.lifecycle import Action, Change, ChangeReason, ChangeSet, RenderedArtifact
+from ..model.lifecycle import Change, ChangeSet
 
 MANIFEST_SCHEMA_VERSION = 2
 STATE_SCHEMA_VERSION = 2
@@ -685,46 +685,3 @@ def _object_map(value: object) -> dict[str, object]:
 
 def _string_map(value: object) -> dict[str, str]:
     return {key: str(item) for key, item in _object_map(value).items()}
-
-
-def build_minimal_manifest(
-    artifacts: Mapping[str, RenderedArtifact],
-    *,
-    project: Mapping[str, object],
-    sources: Mapping[str, object],
-    members: Mapping[str, object],
-    files: Mapping[str, object],
-    impact: ImpactIndex,
-    diagnostics_summary: Mapping[str, int],
-) -> Manifest:
-    entries = {
-        key: ArtifactEntry(
-            type=artifact.artifact_type,
-            name=artifact.target.name.folded.casefold(),
-            fingerprint=artifact.fingerprint,
-            source_files=(),
-            member_keys=(),
-            depends_on=artifact.depends_on,
-            publish_target=artifact.target.sql,
-            byte_length=len(artifact.ddl.encode("utf-8")),
-            object_type=artifact.object_type,
-            render_dialect=artifact.render_dialect,
-            component_fingerprints=artifact.component_fingerprints,
-            physical_resources=tuple((object_type, name.sql) for object_type, name in artifact.physical_resources),
-        )
-        for key, artifact in artifacts.items()
-    }
-    manifest = Manifest(
-        schema_version=MANIFEST_SCHEMA_VERSION,
-        manifest_id="",
-        generator=MappingProxyType({"name": "sst", "version": SST_VERSION}),
-        project=MappingProxyType(dict(project)),
-        sources=MappingProxyType(dict(sources)),
-        artifacts=MappingProxyType(entries),
-        members=MappingProxyType(dict(members)),
-        dbt_models=MappingProxyType({}),
-        files=MappingProxyType(dict(files)),
-        impact=impact,
-        diagnostics_summary=MappingProxyType(dict(diagnostics_summary)),
-    )
-    return manifest.with_computed_id()

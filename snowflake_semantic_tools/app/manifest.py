@@ -108,8 +108,3 @@ def build_manifest(
         ),
     )
     return manifest.with_computed_id()
-
-
-def manifest_document(result: CompileResult) -> dict[str, object]:
-    """Compatibility wrapper for callers that only need JSON-ready output."""
-    return build_manifest(result).as_dict()

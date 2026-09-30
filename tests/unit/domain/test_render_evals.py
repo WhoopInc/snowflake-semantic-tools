@@ -25,9 +25,7 @@ from snowflake_semantic_tools.domain.render.eval import (
     _emit_yaml,
     render_create_dataset_sql,
     render_dataset_payload,
-    render_eval,
     render_eval_config,
-    render_eval_config_with_metrics,
     render_source_table_sql,
 )
 
@@ -133,7 +131,7 @@ def test_create_dataset_sql_uses_expected_tools_mapping() -> None:
 
 
 def test_repeat_run_yaml_has_closed_schema_and_inlines_custom_metric() -> None:
-    rendered = render_eval_config_with_metrics(
+    rendered = render_eval_config(
         config(),
         (metric(),),
         agent_target=QualifiedName.parse("DB.S.A"),
@@ -150,7 +148,7 @@ def test_repeat_run_yaml_has_closed_schema_and_inlines_custom_metric() -> None:
 
 
 def test_alias_and_explicit_version_are_preserved_in_repeat_run_yaml() -> None:
-    alias = render_eval_config_with_metrics(
+    alias = render_eval_config(
         EvalConfig(
             ORIGIN,
             "config.yml",
@@ -168,25 +166,6 @@ def test_alias_and_explicit_version_are_preserved_in_repeat_run_yaml() -> None:
     explicit = alias.replace('agent_version: "promoted"', 'agent_version: "VERSION$4"')
     assert 'agent_version: "promoted"' in alias
     assert 'agent_version: "VERSION$4"' in explicit
-
-
-def test_render_eval_returns_all_publication_outputs_and_fingerprints() -> None:
-    rendered = render_eval(
-        dataset(),
-        config(),
-        agent_target=QualifiedName.parse("DB.S.A"),
-        source_table=QualifiedName.parse("DB.S.EVAL_SRC"),
-        dataset_target=QualifiedName.parse("DB.S.EVAL_DATASET"),
-    )
-    assert rendered.dataset_payload == render_dataset_payload(dataset())
-    assert rendered.config_yaml == render_eval_config(
-        config(),
-        agent_target=QualifiedName.parse("DB.S.A"),
-        dataset_target=QualifiedName.parse("DB.S.EVAL_DATASET"),
-    )
-    assert "CREATE TABLE DB.S.EVAL_SRC" in rendered.source_table_sql
-    assert "SYSTEM$CREATE_EVALUATION_DATASET" in rendered.create_dataset_sql
-    assert len(rendered.dataset_fingerprint) == len(rendered.config_fingerprint) == 64
 
 
 def test_eval_rendering_covers_empty_dataset_ground_truth_and_optional_metric_values() -> None:
@@ -236,7 +215,7 @@ def test_eval_rendering_covers_empty_dataset_ground_truth_and_optional_metric_va
     )
     disabled = replace(metric(), name="disabled", enabled=False)
     no_run = replace(config(), run=EvalRunConfig(), system_metrics=(EvalSystemMetric(ORIGIN, None),))
-    rendered = render_eval_config_with_metrics(
+    rendered = render_eval_config(
         no_run,
         (custom, disabled),
         agent_target=QualifiedName.parse("DB.S.A"),
@@ -248,14 +227,14 @@ def test_eval_rendering_covers_empty_dataset_ground_truth_and_optional_metric_va
     assert "disabled" not in rendered
 
     with pytest.raises(ValueError, match="immutable agent version"):
-        render_eval_config_with_metrics(
+        render_eval_config(
             replace(config(), agent_version=None),
             (),
             agent_target=QualifiedName.parse("DB.S.A"),
             dataset_target=QualifiedName.parse("DB.S.D"),
         )
 
-    explicit = render_eval_config_with_metrics(
+    explicit = render_eval_config(
         replace(config(), agent_version="VERSION$4"),
         (),
         agent_target=QualifiedName.parse("DB.S.A"),

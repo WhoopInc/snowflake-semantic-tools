@@ -3,7 +3,7 @@ from __future__ import annotations
 import pytest
 
 from snowflake_semantic_tools.app.compile import CompileArtifacts, CompiledView, CompileResult
-from snowflake_semantic_tools.app.manifest import build_manifest, manifest_document
+from snowflake_semantic_tools.app.manifest import build_manifest
 from snowflake_semantic_tools.domain.model.diagnostic import D, DiagnosticBag
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
 from snowflake_semantic_tools.domain.model.lifecycle import RenderedArtifact
@@ -91,7 +91,7 @@ def test_manifest_builder_records_sources_members_impact_and_diagnostics() -> No
     assert manifest.impact.by_dbt_model["t"] == ("semantic_view:v",)
     assert manifest.dbt_models["t"]["relation"] == "DB.S.T"  # type: ignore[index]
     assert manifest.sources["semantic_file_count"] == 1
-    assert manifest_document(result)["manifest_id"] == build_manifest(result).manifest_id
+    assert build_manifest(result).as_dict()["manifest_id"] == build_manifest(result).manifest_id
 
 
 class _CompiledTool:

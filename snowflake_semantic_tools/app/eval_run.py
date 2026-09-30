@@ -303,7 +303,7 @@ class RunEvalSuite:
             row = _single_row(result.columns, result.rows, _STATUS_COLUMNS, "evaluation status")
             if _required_text(row, "RUN_NAME") != run_name:
                 raise SnowflakePortError(f"evaluation status returned run {_required_text(row, 'RUN_NAME')!r}")
-            if _required_text(row, "AGENT_NAME").casefold() != compiled.agent_target.name.folded.casefold():
+            if _required_text(row, "AGENT_NAME").casefold() != compiled.agent_target.artifact_name:
                 raise SnowflakePortError("evaluation status returned a different agent")
             if _required_text(row, "AGENT_TYPE").upper() != "CORTEX AGENT":
                 raise SnowflakePortError("evaluation status returned a different agent type")
@@ -481,16 +481,6 @@ def _required_text(row: Mapping[str, object], name: str) -> str:
     return str(value)
 
 
-def _question_key(row: Mapping[str, object]) -> str:
-    input_query = str(row.get("INPUT") or "")
-    if not input_query:
-        raise ValueError("evaluation row omitted INPUT")
-    ground_truth = _variant(row.get("GROUND_TRUTH"))
-    if not isinstance(ground_truth, dict):
-        raise ValueError("evaluation GROUND_TRUTH must be a JSON object")
-    return _question_identity(input_query, ground_truth)
-
-
 def _result_question_key(
     row: Mapping[str, object],
     expected_questions: Mapping[str, tuple[str, Mapping[str, object]]],
@@ -533,14 +523,6 @@ def _expected_question_map(compiled: CompiledEval) -> dict[str, tuple[str, Mappi
             raise ValueError("compiled evaluation dataset contains duplicate question inputs")
         values[input_query] = (_question_identity(input_query, ground_truth), ground_truth)
     return values
-
-
-def _expected_question_keys(compiled: CompiledEval) -> frozenset[str]:
-    values = _expected_question_map(compiled)
-    question_keys = tuple(question_key for question_key, _ in values.values())
-    if len(question_keys) != len(set(question_keys)):
-        raise ValueError("compiled evaluation dataset contains duplicate question identities")
-    return frozenset(question_keys)
 
 
 def _question_identity(input_query: str, ground_truth: Mapping[str, object]) -> str:

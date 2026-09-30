@@ -113,7 +113,7 @@ def _render_routine(member: ToolMember, target: QualifiedName, *, procedure: boo
         )
     if procedure:
         clauses.append(f"  EXECUTE AS {(member.execute_as or 'caller').upper()}")
-    clauses.append(f"  AS {_body(member.body, member.language)}")
+    clauses.append(f"  AS {_body(member.body)}")
     ddl = "\n".join(clauses)
     return RenderedArtifact.create(
         key=f"tool:{member.name.casefold()}",
@@ -166,9 +166,7 @@ def _one_line(value: str) -> str:
     return re.sub(r"\s+", " ", value).strip()
 
 
-def _body(value: str, language: str) -> str:
+def _body(value: str) -> str:
     if "$$" in value:
         raise ValueError("routine body contains unsupported dollar-quote delimiter")
-    if language.casefold() == "sql":
-        return f"$$\n{value.rstrip()}\n$$"
     return f"$$\n{value.rstrip()}\n$$"

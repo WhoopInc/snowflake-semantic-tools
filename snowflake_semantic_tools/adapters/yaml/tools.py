@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from pathlib import Path
 from types import MappingProxyType
-from typing import Any, Mapping
 
 from ...domain.model.dbt import DbtCatalog
 from ...domain.model.diagnostic import D, Diagnostic, DiagnosticBag, Origin

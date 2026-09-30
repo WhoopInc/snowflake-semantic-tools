@@ -14,7 +14,7 @@ from ..domain.render.eval import (
     RenderedEval,
     render_create_dataset_sql,
     render_dataset_payload,
-    render_eval_config_with_metrics,
+    render_eval_config,
     render_source_table_sql,
 )
 from .compile import CompileResult
@@ -144,7 +144,7 @@ def _render(
     source_table = QualifiedName(
         agent_target.database, agent_target.schema, QualifiedName.from_parts("X", "X", source_name).name
     )
-    config_yaml = render_eval_config_with_metrics(
+    config_yaml = render_eval_config(
         resolved.config,
         resolved.custom_metrics,
         agent_target=agent_target,

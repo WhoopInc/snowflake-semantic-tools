@@ -20,7 +20,7 @@ from pathlib import Path
 import pytest
 from _pytest.outcomes import Failed
 
-from snowflake_semantic_tools.adapters.yaml.loader import load_semantic_views
+from tests.helpers.projects import load_views
 from snowflake_semantic_tools.app.compile import CompiledView
 from snowflake_semantic_tools.domain.model.semantic_view import SemanticView
 from snowflake_semantic_tools.domain.render.semantic_view import render
@@ -42,7 +42,7 @@ def golden_ddl(name: str) -> str:
 @pytest.fixture(scope="module")
 def views() -> dict[str, SemanticView]:
     manifest = REPO_ROOT / "tests" / "fixtures" / "reference_project_manifest.json"
-    loaded = load_semantic_views(FIXTURE, manifest_path=manifest, invoke_dbt=False)
+    loaded = load_views(FIXTURE, manifest_path=manifest)
     return {view.fqn.rsplit(".", 1)[-1]: view for view in loaded}
 
 
@@ -112,7 +112,7 @@ def test_rendering_is_deterministic(views: dict[str, SemanticView]) -> None:
     assert render(view) == render(view)
     manifest = REPO_ROOT / "tests" / "fixtures" / "reference_project_manifest.json"
     reloaded = {
-        v.fqn.rsplit(".", 1)[-1]: v for v in load_semantic_views(FIXTURE, manifest_path=manifest, invoke_dbt=False)
+        v.fqn.rsplit(".", 1)[-1]: v for v in load_views(FIXTURE, manifest_path=manifest)
     }
     assert render(reloaded["JAFFLE_MINIMAL"]) == render(view)
 

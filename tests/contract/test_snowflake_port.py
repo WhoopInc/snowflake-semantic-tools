@@ -7,7 +7,7 @@ from types import MappingProxyType
 
 import pytest
 
-from snowflake_semantic_tools.adapters.snowflake.memory import ReadOnlySnowflake, RecordedSnowflake, ScriptedSnowflake
+from tests.helpers.recorded_snowflake import ReadOnlySnowflake, RecordedSnowflake, ScriptedSnowflake
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName, SchemaScope
 from snowflake_semantic_tools.domain.model.lifecycle import (
     ExecResult,

@@ -69,33 +69,6 @@ class Registry:
     artifacts: Mapping[str, ArtifactType]
     members: Mapping[str, MemberType]
 
-    @property
-    def semantic_root_keys(self) -> frozenset[str]:
-        return frozenset(
-            [artifact.root_key for artifact in self.artifacts.values() if artifact.root_key is not None]
-            + [member.root_key for member in self.members.values() if member.source is MemberSource.FILES]
-        )
-
-    def owner_of(self, root_key: str) -> ArtifactType | MemberType | None:
-        for artifact in self.artifacts.values():
-            if artifact.root_key == root_key:
-                return artifact
-        for member in self.members.values():
-            if member.root_key == root_key:
-                return member
-        return None
-
-    @property
-    def ref_functions(self) -> Mapping[str, ArtifactType | MemberType]:
-        functions: dict[str, ArtifactType | MemberType] = {}
-        for artifact in self.artifacts.values():
-            if artifact.ref_function is not None:
-                functions[artifact.ref_function] = artifact
-        for member in self.members.values():
-            if member.ref_function is not None:
-                functions[member.ref_function] = member
-        return MappingProxyType(functions)
-
 
 class RegistryIntegrityError(RuntimeError):
     pass

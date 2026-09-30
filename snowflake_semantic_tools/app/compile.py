@@ -286,11 +286,6 @@ class CompileSemanticViews:
     def __init__(self, source: SemanticViewSource) -> None:
         self._source = source
 
-    def run(self) -> tuple[CompiledView, ...]:
-        """Compile all views, ordered by FQN so output is stable run to run."""
-        views = sorted(self._source.load_semantic_views(), key=lambda v: v.fqn)
-        return tuple(CompiledView(view=v, ddl=render(v)) for v in views)
-
     def run_result(self) -> CompileResult:
         """Compile without turning one rendering invariant into process failure."""
         project = self._source.load_project()

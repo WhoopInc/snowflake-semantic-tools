@@ -8,7 +8,7 @@ from typing import Mapping, Protocol, Sequence
 from ..model.diagnostic import Diagnostic
 from ..model.identifier import QualifiedName, SchemaScope
 from ..model.lifecycle import ExecResult, GrantRow, OwnershipMarker, QueryResult, ShowRow
-from ..state.model import AppliedEntry, Manifest, SavedPlan, State
+from ..state.model import AppliedEntry, State
 
 
 class SnowflakePortError(RuntimeError):
@@ -188,15 +188,3 @@ class StateStore(Protocol):
     def acquire_lock(self, run_id: str, *, break_stale: bool) -> tuple[bool, str | None, bool]: ...
 
     def release_lock(self, run_id: str) -> None: ...
-
-
-class ManifestStore(Protocol):
-    def read(self) -> Manifest | None: ...
-
-    def write(self, value: Manifest) -> None: ...
-
-
-class PlanStore(Protocol):
-    def read(self) -> SavedPlan | None: ...
-
-    def write(self, value: SavedPlan) -> None: ...

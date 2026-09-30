@@ -68,7 +68,7 @@ def test_permanent_agent_update_commits_live_before_add_version_alias_and_tags()
 
 
 def test_recorded_port_reports_live_agent_versions() -> None:
-    from snowflake_semantic_tools.adapters.snowflake.memory import RecordedSnowflake
+    from tests.helpers.recorded_snowflake import RecordedSnowflake
 
     port = RecordedSnowflake()
     name = QualifiedName.parse("DB.S.AGENT")

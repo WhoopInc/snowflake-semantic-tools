@@ -19,12 +19,11 @@ from snowflake_semantic_tools.adapters.yaml.loader import (
     _metric_parse_diagnostics,
     _parse_yaml_bytes,
     _relationship_parse_diagnostics,
-    _resolve_refs,
     _verified_query_diagnostics,
-    load_semantic_views,
     load_semantic_views_result,
 )
 from snowflake_semantic_tools.domain.model.diagnostic import ERROR_REGISTRY
+from tests.helpers.projects import load_views
 
 
 def write_project(root: Path) -> Path:
@@ -84,7 +83,7 @@ def write_project(root: Path) -> Path:
 
 def test_uses_relation_grain_and_columns_from_manifest(tmp_path: Path) -> None:
     manifest = write_project(tmp_path)
-    view = load_semantic_views(tmp_path, manifest_path=manifest, invoke_dbt=False)[0]
+    view = load_views(tmp_path, manifest_path=manifest)[0]
     assert view.fqn == "DB.SCH.CATALOG"
     assert view.tables[0].fqn == "PHYSICAL_DB.PHYSICAL_SCHEMA.PRODUCT_CATALOG"
     assert view.tables[0].primary_key == ("PRODUCT_ID",)
@@ -105,18 +104,9 @@ def test_semantic_views_enabled_default_follows_folder_routes(tmp_path: Path) ->
         encoding="utf-8",
     )
     names = [
-        view.fqn.rsplit(".", 1)[-1] for view in load_semantic_views(tmp_path, manifest_path=manifest, invoke_dbt=False)
+        view.fqn.rsplit(".", 1)[-1] for view in load_views(tmp_path, manifest_path=manifest)
     ]
     assert sorted(names) == ["CATALOG", "KEPT"]
-
-
-def test_malformed_expression_carries_a_structured_load_diagnostic() -> None:
-    with pytest.raises(ProjectError) as exc_info:
-        _resolve_refs("{{ ref('products')", {"products": "PRODUCTS"})
-    diagnostic = exc_info.value.diagnostics[0]
-    assert diagnostic.code == "SST-LOD004"
-    assert diagnostic.context["line"] == 1
-    assert "unterminated template expression" in diagnostic.message
 
 
 def test_unknown_view_model_isolated_from_healthy_views(tmp_path: Path) -> None:
@@ -132,7 +122,7 @@ def test_unknown_view_model_isolated_from_healthy_views(tmp_path: Path) -> None:
         "    tables: [\"{{ ref('missing') }}\"]\n",
         encoding="utf-8",
     )
-    project = load_semantic_views_result(tmp_path, manifest_path=manifest, invoke_dbt=False)
+    project = load_semantic_views_result(tmp_path, manifest_path=manifest)
     assert [view.fqn for view in project.views] == ["DB.SCH.HEALTHY"]
     assert [diagnostic.code for diagnostic in project.diagnostics] == ["SST-REF001"]
     assert project.diagnostics[0].subject == "semantic_view:poisoned"
@@ -147,7 +137,7 @@ def test_duplicate_view_names_are_diagnosed_and_not_manifest_candidates(tmp_path
         "  - name: DUPLICATE\n    description: Duplicate two.\n    tables: [\"{{ ref('products') }}\"]\n",
         encoding="utf-8",
     )
-    project = load_semantic_views_result(tmp_path, manifest_path=manifest, invoke_dbt=False)
+    project = load_semantic_views_result(tmp_path, manifest_path=manifest)
     assert project.views == ()
     assert [diagnostic.code for diagnostic in project.diagnostics] == ["SST-VAL001"]
 
@@ -392,7 +382,7 @@ def test_view_tags_must_be_a_list_and_an_empty_file_only_warns(tmp_path: Path) -
         encoding="utf-8",
     )
     (views / "empty.yml").write_text("# nothing here yet\n", encoding="utf-8")
-    project = load_semantic_views_result(tmp_path, manifest_path=manifest, invoke_dbt=False)
+    project = load_semantic_views_result(tmp_path, manifest_path=manifest)
     assert project.views == ()
     assert [(item.code, item.severity.name) for item in project.diagnostics] == [
         ("SST-LOD003", "WARNING"),
@@ -406,7 +396,7 @@ def test_a_meta_sst_data_type_that_disagrees_with_dbt_warns(tmp_path: Path) -> N
     column = manifest["nodes"]["model.fixture.products"]["columns"]["product_id"]
     column["meta"]["sst"]["data_type"] = "number(38, 0)"
     manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
-    project = load_semantic_views_result(tmp_path, manifest_path=manifest_path, invoke_dbt=False)
+    project = load_semantic_views_result(tmp_path, manifest_path=manifest_path)
     assert [(item.code, item.message) for item in project.diagnostics] == [
         (
             "SST-DBT004",
@@ -567,7 +557,7 @@ def test_a_window_dimension_the_metric_cannot_reach_fails_the_view(tmp_path: Pat
         "    window:\n      order_by: [\"{{ ref('calendar', 'month') }}\"]\n",
         encoding="utf-8",
     )
-    project = load_semantic_views_result(tmp_path, manifest_path=manifest_path, invoke_dbt=False)
+    project = load_semantic_views_result(tmp_path, manifest_path=manifest_path)
     assert project.views == ()
     assert [(item.code, item.subject, item.context["field"]) for item in project.diagnostics] == [
         ("SST-VAL125", "semantic_view:catalog", "order_by[0]")
@@ -605,7 +595,7 @@ def test_a_non_additive_table_outside_the_view_fails_the_view(tmp_path: Path) ->
         "        dimension: month\n",
         encoding="utf-8",
     )
-    project = load_semantic_views_result(tmp_path, manifest_path=manifest_path, invoke_dbt=False)
+    project = load_semantic_views_result(tmp_path, manifest_path=manifest_path)
     assert project.views == ()
     assert [(item.code, item.subject, item.context["value"]) for item in project.diagnostics] == [
         ("SST-VAL118", "semantic_view:catalog", "calendar.month")
@@ -625,7 +615,7 @@ def test_a_ref_relationship_endpoint_is_an_error_naming_the_codemod(tmp_path: Pa
         "      - \"{{ ref('products', 'product_id') }} = {{ ref('products', 'product_id') }}\"\n",
         encoding="utf-8",
     )
-    project = load_semantic_views_result(tmp_path, manifest_path=manifest, invoke_dbt=False)
+    project = load_semantic_views_result(tmp_path, manifest_path=manifest)
     endpoint = [item for item in project.diagnostics if item.code == "SST-REF045"]
     assert [(item.subject, item.context["field"]) for item in endpoint] == [("relationship:self", "left_table")]
     assert endpoint[0].severity.name == "ERROR" and "sst migrate refs" in str(ERROR_REGISTRY["SST-REF045"].suggestion)
@@ -638,7 +628,7 @@ def test_0_3_key_forms_and_unknown_meta_keys_are_reported_where_a_view_uses_the_
     node["config"]["meta"]["sst"] = {"primary_key": "product_id", "cortex_searchable": True}
     node["columns"]["product_id"]["meta"]["sst"]["privacy_category"] = "none"
     manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
-    project = load_semantic_views_result(tmp_path, manifest_path=manifest_path, invoke_dbt=False)
+    project = load_semantic_views_result(tmp_path, manifest_path=manifest_path)
     assert [(item.code, item.severity.name, item.subject) for item in project.diagnostics] == [
         ("SST-DBT005", "ERROR", "dbt_model:products"),
         ("SST-PRS004", "WARNING", "dbt_model:products"),

@@ -12,8 +12,8 @@ import pytest
 from click.testing import CliRunner
 
 from snowflake_semantic_tools.adapters.project import ProjectError
-from snowflake_semantic_tools.adapters.snowflake.eval_state import InMemoryEvalStateStore
-from snowflake_semantic_tools.adapters.snowflake.memory import PROFILE_REGISTRY_SHAPE, RecordedSnowflake
+from tests.helpers.eval_state_store import InMemoryEvalStateStore
+from tests.helpers.recorded_snowflake import PROFILE_REGISTRY_SHAPE, RecordedSnowflake
 from snowflake_semantic_tools.app.eval_compile import CompiledEval
 from snowflake_semantic_tools.app.eval_lifecycle import EVAL_STAGE_FILE_FORMAT
 from snowflake_semantic_tools.app.eval_run import EvalRunResult, EvalSuiteResult

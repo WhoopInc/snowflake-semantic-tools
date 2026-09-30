@@ -87,7 +87,6 @@ def test_bundle_digest_alias_and_manifest_are_deterministic() -> None:
     bundle = SkillBundle("SKILL", "a", entries, (("reference/b.md", "reference__b.md"),))
     assert bundle.digest == bundle_digest(tuple(reversed(entries)))
     assert bundle.alias("SST_") == "SST_" + bundle.digest[:12].upper()
-    assert bundle.total_bytes == 2
     manifest = json.loads(bundle.manifest(alias=bundle.alias("SST_"), target="DB.S.A", comment="c"))
     assert manifest["type"] == "SKILL" and manifest["extension"] == "DB.S.A"
     assert manifest["alias"] == bundle.alias("SST_") and "certified" not in manifest

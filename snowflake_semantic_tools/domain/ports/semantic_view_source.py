@@ -14,15 +14,10 @@ from __future__ import annotations
 from typing import Protocol
 
 from ..model.project import SemanticViewProject
-from ..model.semantic_view import SemanticView
 
 
 class SemanticViewSource(Protocol):
     """Anything that can produce fully-resolved semantic views."""
-
-    def load_semantic_views(self) -> tuple[SemanticView, ...]:
-        """Return every enabled semantic view, with refs and target resolved."""
-        ...
 
     def load_project(self) -> SemanticViewProject:
         """Return healthy views plus every collected compiler diagnostic."""

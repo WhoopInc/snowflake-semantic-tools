@@ -47,17 +47,6 @@ def test_registry_has_m4_artifacts_and_all_seven_semantic_member_types() -> None
         "verified_query",
         "custom_instruction",
     )
-    assert SEMANTIC_REGISTRY.semantic_root_keys == frozenset(
-        {
-            "semantic_views",
-            "tools",
-            "snowflake_relationships",
-            "snowflake_metrics",
-            "snowflake_filters",
-            "snowflake_verified_queries",
-            "snowflake_custom_instructions",
-        }
-    )
 
 
 def test_registry_ref_functions_are_unique_when_present() -> None:
@@ -85,28 +74,6 @@ def test_registry_refuses_duplicate_ref_functions() -> None:
     )
     with pytest.raises(RegistryIntegrityError, match="duplicate ref function"):
         build_registry((artifact,), (member,))
-
-
-def test_registry_resolves_owners_and_ref_functions() -> None:
-    assert SEMANTIC_REGISTRY.owner_of("snowflake_metrics") is SEMANTIC_REGISTRY.members["metric"]
-    assert SEMANTIC_REGISTRY.owner_of("semantic_views") is SEMANTIC_REGISTRY.artifacts["semantic_view"]
-    assert SEMANTIC_REGISTRY.owner_of("tools") is SEMANTIC_REGISTRY.artifacts["tool"]
-    assert SEMANTIC_REGISTRY.owner_of("unknown") is None
-    assert SEMANTIC_REGISTRY.ref_functions["semantic_view"] is SEMANTIC_REGISTRY.artifacts["semantic_view"]
-    custom = build_registry(
-        (ArtifactType("semantic_view", "semantic_views", 100, "semantic_view", ("fact",), "SEMANTIC VIEW"),),
-        (MemberType("fact", "facts", MemberSource.DBT_META, 10, AttachRule.TABLE_MEMBERSHIP, "semantic_view", None),),
-    )
-    assert custom.ref_functions == {"semantic_view": custom.artifacts["semantic_view"]}
-    custom_without_artifact_ref = build_registry(
-        (ArtifactType("semantic_view", "semantic_views", 100, None, ("metric",), "SEMANTIC VIEW"),),
-        (
-            MemberType(
-                "metric", "metrics", MemberSource.FILES, 10, AttachRule.TABLE_MEMBERSHIP, "semantic_view", "metric"
-            ),
-        ),
-    )
-    assert custom_without_artifact_ref.ref_functions == {"metric": custom_without_artifact_ref.members["metric"]}
 
 
 def test_registry_refuses_duplicate_artifacts_members_roots_and_positions() -> None:
@@ -161,8 +128,8 @@ def test_registry_allows_reused_clause_positions_across_owners_and_singleton_roo
     one = MemberType("one", "ones", MemberSource.FILES, 10, AttachRule.TABLE_MEMBERSHIP, "first", None)
     two = MemberType("two", "twos", MemberSource.FILES, 10, AttachRule.TABLE_MEMBERSHIP, "second", None)
     registry = build_registry((first, second), (one, two))
-    assert registry.owner_of("firsts") is first
-    assert registry.owner_of("twos") is two
+    assert registry.artifacts["first"] is first
+    assert registry.members["two"] is two
 
 
 def test_registry_refuses_dependency_order_inversion() -> None:

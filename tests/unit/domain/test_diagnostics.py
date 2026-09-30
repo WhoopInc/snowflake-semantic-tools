@@ -10,7 +10,6 @@ from snowflake_semantic_tools.domain.model.diagnostic import (
     DiagnosticBag,
     Origin,
     Severity,
-    dedupe_diagnostics,
     render_diagnostic,
     resolve_severities,
 )
@@ -144,11 +143,6 @@ def test_human_render_omits_help_when_registry_has_no_suggestion() -> None:
         assert "help:" not in render_diagnostic(D("SST-LOD003", file="empty.yml"))
     finally:
         module.ERROR_REGISTRY = original
-
-
-def test_diagnostics_dedupe_by_identity() -> None:
-    diagnostic = D("SST-REF001", model="missing", subject="semantic_view:test")
-    assert dedupe_diagnostics(DiagnosticBag((diagnostic, diagnostic))) == (diagnostic,)
 
 
 def test_registry_integrity_checks_invalid_codes_and_duplicates() -> None:

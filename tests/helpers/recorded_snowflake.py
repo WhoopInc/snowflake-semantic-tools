@@ -1,4 +1,10 @@
-"""Recorded, scripted, and read-only Snowflake adapters."""
+"""Recorded, scripted, and read-only Snowflake test doubles.
+
+These implement `SnowflakePort` in memory for the unit and contract tests and for the
+`run_recorded_*` scripts beside this module, which the reference project runs to plan and
+apply offline. They are test support: nothing in the package imports them, so they do not
+ship in the wheel.
+"""
 
 from __future__ import annotations
 
@@ -7,9 +13,16 @@ from hashlib import md5
 from types import MappingProxyType
 from typing import Mapping, Sequence
 
-from ...domain.model.identifier import QualifiedName, SchemaScope
-from ...domain.model.lifecycle import ExecResult, ExecutionError, GrantRow, OwnershipMarker, QueryResult, ShowRow
-from ...domain.ports.snowflake import (
+from snowflake_semantic_tools.domain.model.identifier import QualifiedName, SchemaScope
+from snowflake_semantic_tools.domain.model.lifecycle import (
+    ExecResult,
+    ExecutionError,
+    GrantRow,
+    OwnershipMarker,
+    QueryResult,
+    ShowRow,
+)
+from snowflake_semantic_tools.domain.ports.snowflake import (
     ExtensionObservation,
     ExtensionVersion,
     SnowflakePort,
@@ -17,7 +30,7 @@ from ...domain.ports.snowflake import (
     StagedFileMetadata,
     StageObservation,
 )
-from ...domain.state.model import AppliedEntry
+from snowflake_semantic_tools.domain.state.model import AppliedEntry
 
 
 class RecordedSnowflake:

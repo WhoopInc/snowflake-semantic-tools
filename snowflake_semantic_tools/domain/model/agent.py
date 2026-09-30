@@ -54,9 +54,12 @@ class AgentTool:
 
 @dataclass(frozen=True, slots=True)
 class AgentSkill:
-    """One `skills:` entry. `ref` names the resolver its `source.path` used:
-    `skill` or `plugin` for extensions this project publishes, `extension` for a
-    consumed one. `name` is empty when omitted, which only a plugin allows."""
+    """One `skills:` entry of an agent.
+
+    `ref` names the resolver its `source.path` used: `skill` or `plugin` for extensions this
+    project publishes, `extension` for a consumed one. `name` is empty when omitted, which only
+    a plugin allows.
+    """
 
     name: str
     source_type: str

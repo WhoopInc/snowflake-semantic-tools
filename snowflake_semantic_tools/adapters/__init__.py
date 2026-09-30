@@ -2,8 +2,9 @@
 
 MAY IMPORT: `domain/ports/`, `domain/model/`, third-party SDKs.
 
-MAY NOT IMPORT: `app/`, `cli/`, or another adapter.
+MAY NOT IMPORT: `app/`, `cli/`, or `domain/render/`.
 
-The no-sibling-imports rule is what keeps an adapter replaceable: if the YAML loader
-imported the Snowflake adapter, neither could be swapped or tested alone.
+The four subpackages -- `yaml`, `dbt`, `snowflake`, `fs` -- never import one another, so
+each stays replaceable and testable alone. A top-level module here may compose them.
+`pyproject.toml` enforces both rules as import-linter contracts.
 """

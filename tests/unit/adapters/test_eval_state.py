@@ -3,7 +3,6 @@ from __future__ import annotations
 from dataclasses import replace
 
 from snowflake_semantic_tools.adapters.snowflake.eval_state import (
-    InMemoryEvalStateStore,
     _baseline_from_payload,
     _baseline_payload,
     _gate_from_payload,
@@ -15,6 +14,7 @@ from snowflake_semantic_tools.domain.model.eval import (
     EvalGateState,
     EvalRegression,
 )
+from tests.helpers.eval_state_store import InMemoryEvalStateStore
 
 
 def baseline() -> EvalBaselineRecord:

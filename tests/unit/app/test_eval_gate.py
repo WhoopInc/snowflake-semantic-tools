@@ -4,7 +4,7 @@ from dataclasses import replace
 
 import pytest
 
-from snowflake_semantic_tools.adapters.snowflake.eval_state import InMemoryEvalStateStore
+from tests.helpers.eval_state_store import InMemoryEvalStateStore
 from snowflake_semantic_tools.app.eval_gate import capture_baseline, evaluate_gate, persist_gate
 from snowflake_semantic_tools.app.eval_run import EvalRunResult
 from snowflake_semantic_tools.domain.model.diagnostic import DiagnosticBag

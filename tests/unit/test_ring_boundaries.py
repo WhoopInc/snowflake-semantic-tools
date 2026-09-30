@@ -71,6 +71,24 @@ CROSSINGS = [
         "adapters use domain ports and models",
         id="adapter-may-not-use-domain-renderers",
     ),
+    pytest.param(
+        "adapters/yaml/_boundary_probe.py",
+        "from snowflake_semantic_tools.adapters.snowflake import connector\n",
+        "adapter subpackages are independent",
+        id="adapter-subpackage-may-not-import-a-sibling",
+    ),
+    pytest.param(
+        "adapters/snowflake/_boundary_probe.py",
+        "import yaml\n",
+        "only the yaml and dbt adapters parse YAML",
+        id="snowflake-adapter-may-not-parse-yaml",
+    ),
+    pytest.param(
+        "cli/_boundary_probe.py",
+        "import yaml\n",
+        "only the yaml and dbt adapters parse YAML",
+        id="cli-may-not-parse-yaml",
+    ),
 ]
 
 # Everything the package root may hold: the four rings and the version module.
@@ -113,7 +131,7 @@ def test_contracts_hold_on_the_real_tree() -> None:
     """
     result = _lint_imports()
     assert result.returncode == 0, f"contracts already broken before probing:\n{result.stdout}"
-    assert "Contracts: 4 kept, 0 broken." in result.stdout, result.stdout
+    assert "Contracts: 6 kept, 0 broken." in result.stdout, result.stdout
 
 
 def test_package_root_holds_only_the_rings() -> None:

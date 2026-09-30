@@ -456,8 +456,11 @@ def _recorded_target(entry: AppliedEntry, release: ExtensionRelease) -> bool:
 
 
 def _certified(extension: ExtensionObservation | None, version: ExtensionVersion) -> bool:
-    """Either signal counts: some versions tagged by the extensions pipeline report an
-    empty per-version status while the extension names them its latest certified one."""
+    """Whether a version is certified, by its own status or as the extension's latest certified version.
+
+    Either signal counts: some versions tagged by the extensions pipeline report an empty
+    per-version status while the extension names them its latest certified one.
+    """
     if (version.certification_status or "").upper() == CERTIFIED:
         return True
     latest = extension.latest_certified_version if extension is not None else None

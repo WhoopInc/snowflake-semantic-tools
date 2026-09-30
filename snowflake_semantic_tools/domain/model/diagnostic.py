@@ -2408,18 +2408,6 @@ def resolve_severities(diagnostics: DiagnosticBag, *, strict: bool) -> tuple[Dia
     )
 
 
-def dedupe_diagnostics(diagnostics: DiagnosticBag) -> DiagnosticBag:
-    """Keep one deterministic copy of every diagnostic identity."""
-    seen: set[str] = set()
-    unique: list[Diagnostic] = []
-    for diagnostic in diagnostics:
-        if diagnostic.fingerprint in seen:
-            continue
-        seen.add(diagnostic.fingerprint)
-        unique.append(diagnostic)
-    return DiagnosticBag(unique)
-
-
 def render_diagnostic(diagnostic: Diagnostic) -> str:
     location = ""
     if diagnostic.origin is not None:

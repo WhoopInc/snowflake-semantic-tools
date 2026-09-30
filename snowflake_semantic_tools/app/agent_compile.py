@@ -2,14 +2,12 @@
 
 from __future__ import annotations
 
-import re
 from dataclasses import dataclass, field, replace
 from hashlib import sha256
 from types import MappingProxyType
 from typing import Mapping
 
 from ..domain.model.agent import (
-    BUILTIN_AGENT_TOOLS,
     KNOWN_AGENT_TOOL_TYPES,
     RESERVED_AGENT_ALIASES,
     AgentModel,
@@ -488,7 +486,7 @@ def _resolve_tool(
         if authored.agent_ref:
             target = context.agents.get(authored.agent_ref.casefold())
             if target is not None:
-                name = name or target.name.folded.casefold()
+                name = name or target.artifact_name
                 resources = {"identifier": target.sql, "type": "agent"}
                 depends_on = (f"agent:{authored.agent_ref.casefold()}",)
             else:

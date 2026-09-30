@@ -12,13 +12,12 @@ from ...domain.model.agent import AgentModel
 from ...domain.model.diagnostic import DiagnosticBag
 from ...domain.model.eval import EvalCatalog
 from ...domain.model.project import SemanticViewProject
-from ...domain.model.semantic_view import SemanticView
 from ...domain.model.tool import ToolCatalog
 from ..dbt.manifest import load_manifest_catalog
 from ..profile import resolve_profile_name
 from .agents import load_agents
 from .evals import load_eval_catalog, parse_eval_defaults
-from .loader import _read_yaml, _run_dbt_parse, _target_path, load_semantic_views, load_semantic_views_result
+from .loader import _read_yaml, _run_dbt_parse, _target_path, load_semantic_views_result
 from .tools import load_tool_catalog
 
 
@@ -46,16 +45,6 @@ class YamlProjectSource:
     @property
     def project_dir(self) -> Path:
         return self._project_dir
-
-    def load_semantic_views(self) -> tuple[SemanticView, ...]:
-        return tuple(
-            load_semantic_views(
-                self._project_dir,
-                target_name=self._target_name,
-                manifest_path=self._manifest_path,
-                invoke_dbt=self._invoke_dbt,
-            )
-        )
 
     def load_project(self) -> SemanticViewProject:
         return load_semantic_views_result(

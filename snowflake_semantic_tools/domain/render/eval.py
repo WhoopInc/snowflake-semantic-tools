@@ -4,18 +4,9 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
-from hashlib import sha256
 from typing import Mapping, Sequence
 
-from ..model.eval import (
-    CustomEvalMetric,
-    EvalConfig,
-    EvalDataset,
-    EvalGroundTruth,
-    EvalScoreRanges,
-    EvalSystemMetric,
-    ThresholdRange,
-)
+from ..model.eval import CustomEvalMetric, EvalConfig, EvalDataset, EvalGroundTruth, EvalScoreRanges, EvalSystemMetric
 from ..model.identifier import QualifiedName
 
 
@@ -27,28 +18,6 @@ class RenderedEval:
     config_yaml: str
     dataset_fingerprint: str
     config_fingerprint: str
-
-
-def render_eval(
-    dataset: EvalDataset,
-    config: EvalConfig,
-    *,
-    agent_target: QualifiedName,
-    source_table: QualifiedName,
-    dataset_target: QualifiedName,
-) -> RenderedEval:
-    """Render content-addressed dataset and repeat-run config outputs."""
-
-    payload = render_dataset_payload(dataset)
-    config_yaml = render_eval_config(config, agent_target=agent_target, dataset_target=dataset_target)
-    return RenderedEval(
-        dataset_payload=payload,
-        source_table_sql=render_source_table_sql(payload, source_table),
-        create_dataset_sql=render_create_dataset_sql(config, source_table, dataset_target),
-        config_yaml=config_yaml,
-        dataset_fingerprint=_fingerprint(payload),
-        config_fingerprint=_fingerprint(config_yaml),
-    )
 
 
 def render_dataset_payload(dataset: EvalDataset) -> str:
@@ -116,27 +85,12 @@ def render_create_dataset_sql(
 
 def render_eval_config(
     config: EvalConfig,
+    custom_metrics: tuple[CustomEvalMetric, ...] = (),
     *,
     agent_target: QualifiedName,
     dataset_target: QualifiedName,
 ) -> str:
-    """Emit only Snowflake's closed evaluation and metrics schema."""
-
-    return render_eval_config_with_metrics(
-        config,
-        (),
-        agent_target=agent_target,
-        dataset_target=dataset_target,
-    )
-
-
-def render_eval_config_with_metrics(
-    config: EvalConfig,
-    custom_metrics: tuple[CustomEvalMetric, ...],
-    *,
-    agent_target: QualifiedName,
-    dataset_target: QualifiedName,
-) -> str:
+    """Emit only Snowflake's closed evaluation and metrics schema; disabled custom metrics are left out."""
     evaluation: dict[str, object] = {
         "agent_params": {
             "agent_name": agent_target.sql,
@@ -214,10 +168,6 @@ def _agent_version(value: str | None) -> str:
     if value.startswith("alias:"):
         return value.split(":", 1)[1]
     return value
-
-
-def _fingerprint(value: str) -> str:
-    return sha256(value.encode("utf-8")).hexdigest()
 
 
 def _sql_string(value: str) -> str:

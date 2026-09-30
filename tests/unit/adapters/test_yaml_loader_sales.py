@@ -23,11 +23,11 @@ from snowflake_semantic_tools.adapters.yaml.loader import (
     _multipath_diagnostics,
     _relationship_cycle_diagnostics,
     _relationship_diagnostics,
-    load_semantic_views,
 )
 from snowflake_semantic_tools.domain.model.dbt import DbtColumn, DbtModel
 from snowflake_semantic_tools.domain.model.expression import is_aggregate_expression
 from snowflake_semantic_tools.domain.model.semantic_view import Relationship, SemanticView
+from tests.helpers.projects import load_views
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 FIXTURE = REPO_ROOT / "tests" / "fixtures" / "reference_project"
@@ -36,7 +36,7 @@ MANIFEST = REPO_ROOT / "tests" / "fixtures" / "reference_project_manifest.json"
 
 @pytest.fixture(scope="module")
 def sales() -> SemanticView:
-    views = load_semantic_views(FIXTURE, manifest_path=MANIFEST, invoke_dbt=False)
+    views = load_views(FIXTURE, manifest_path=MANIFEST)
     return next(view for view in views if view.fqn.endswith(".JAFFLE_SALES"))
 
 

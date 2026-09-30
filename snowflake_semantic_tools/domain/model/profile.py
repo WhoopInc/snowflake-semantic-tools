@@ -80,10 +80,6 @@ class CommandFile:
     def key(self) -> str:
         return f"command:{self.name}"
 
-    @property
-    def desktop_name(self) -> str:
-        return "/" + self.name.replace("/", ":")
-
 
 @dataclass(frozen=True, slots=True)
 class DesktopProfile:

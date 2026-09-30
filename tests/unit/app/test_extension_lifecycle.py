@@ -7,7 +7,7 @@ from collections.abc import Sequence
 from dataclasses import replace
 from types import MappingProxyType
 
-from snowflake_semantic_tools.adapters.snowflake.memory import RecordedSnowflake
+from tests.helpers.recorded_snowflake import RecordedSnowflake
 from snowflake_semantic_tools.app.apply import ApplyArtifacts
 from snowflake_semantic_tools.app.extension_lifecycle import (
     ExtensionLifecycleHandler,

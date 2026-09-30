@@ -189,10 +189,6 @@ class SkillBundle:
     def alias(self, prefix: str) -> str:
         return f"{prefix}{self.digest[:ALIAS_HEX_CHARACTERS].upper()}"
 
-    @property
-    def total_bytes(self) -> int:
-        return sum(entry.size for entry in self.entries)
-
     def manifest(self, *, alias: str, target: str, comment: str, certified: bool = False) -> str:
         """Canonical JSON describing the version: the payload plan and goldens compare."""
         document: dict[str, object] = {

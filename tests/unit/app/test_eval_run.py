@@ -15,11 +15,11 @@ from snowflake_semantic_tools.app.eval_run import (
     EvalSuiteResult,
     RunEvalSuite,
     _compact_timestamp,
-    _expected_question_keys,
+    _expected_question_map,
     _metric_passed,
     _nonnegative_int,
     _optional_float,
-    _question_key,
+    _question_identity,
     _result_question_key,
     _row_cost,
     _single_row,
@@ -454,21 +454,12 @@ def test_question_key_is_stable_across_snowflake_input_ids() -> None:
 
 def test_result_question_key_accepts_exact_flattened_output_and_rejects_drift() -> None:
     compiled = compile_eval().compiled[0]
-    expected = {
-        "Question": (
-            _question_key(
-                {
-                    "INPUT": "Question",
-                    "GROUND_TRUTH": {"ground_truth_invocations": [], "ground_truth_output": "Answer"},
-                }
-            ),
-            {"ground_truth_invocations": [], "ground_truth_output": "Answer"},
-        )
-    }
+    ground_truth = {"ground_truth_invocations": [], "ground_truth_output": "Answer"}
+    expected = {"Question": (_question_identity("Question", ground_truth), ground_truth)}
 
-    assert _result_question_key({"INPUT": "Question", "GROUND_TRUTH": "Answer"}, expected) in _expected_question_keys(
-        compiled
-    )
+    assert _result_question_key({"INPUT": "Question", "GROUND_TRUTH": "Answer"}, expected) in {
+        key for key, _ in _expected_question_map(compiled).values()
+    }
     with pytest.raises(ValueError, match="unrecognized flattened ground truth"):
         _result_question_key({"INPUT": "Question", "GROUND_TRUTH": "Different"}, expected)
 
@@ -814,18 +805,6 @@ def test_eval_runner_rejects_question_and_metric_set_mismatches() -> None:
 
 
 @pytest.mark.parametrize(
-    ("row", "message"),
-    (
-        ({"INPUT": "", "GROUND_TRUTH": {}}, "omitted INPUT"),
-        ({"INPUT": "Question", "GROUND_TRUTH": "[]"}, "must be a JSON object"),
-    ),
-)
-def test_question_key_rejects_missing_input_and_non_object_ground_truth(row, message) -> None:
-    with pytest.raises(ValueError, match=message):
-        _question_key(row)
-
-
-@pytest.mark.parametrize(
     ("payload", "message"),
     (
         (json.dumps({"input_query": "Question"}), "must be an array"),
@@ -842,12 +821,12 @@ def test_question_key_rejects_missing_input_and_non_object_ground_truth(row, mes
         ),
     ),
 )
-def test_expected_question_keys_rejects_malformed_compiled_payloads(payload, message) -> None:
+def test_expected_question_map_rejects_malformed_compiled_payloads(payload, message) -> None:
     compiled = compile_eval().compiled[0]
     compiled = replace(compiled, rendered=replace(compiled.rendered, dataset_payload=payload))
 
     with pytest.raises(ValueError, match=message):
-        _expected_question_keys(compiled)
+        _expected_question_map(compiled)
 
 
 def test_metric_passed_fails_closed_for_errors_status_codes_and_missing_scores() -> None:

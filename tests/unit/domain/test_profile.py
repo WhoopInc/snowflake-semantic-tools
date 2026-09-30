@@ -275,7 +275,6 @@ def test_commands_and_plugins_publish_as_trees_named_by_the_row() -> None:
     ]
     assert release.row["PLUGINS"] == [f"@DB.S.PROFILES/{plugin_tree.prefix}kit/"]
     assert {"commands/daily.md", "commands/sql/check.md", "plugins/kit/plugin.yml"} <= set(release.source_files)
-    assert command("sql/check.md").desktop_name == "/sql:check"
 
     plain = build_profile(profile(), ProfileCatalog(), SKILLS, stage="DB.S.PROFILES", version_prefix="SST_")
     assert (plain.row["PLUGINS"], plain.row["COMMAND_REPOS"]) == ([], [])

@@ -1,4 +1,4 @@
-"""System and deterministic clock adapters."""
+"""The system clock: the one place outside the connector that reads time or makes run ids."""
 
 from __future__ import annotations
 
@@ -19,23 +19,3 @@ class SystemClock:
 
     def new_run_id(self) -> str:
         return str(uuid.uuid4())
-
-
-class FixedClock:
-    def __init__(self, instant: str = "2026-01-01T00:00:00Z") -> None:
-        self.instant = instant
-        self.milliseconds = 0
-        self.sleeps: list[int] = []
-
-    def now_iso(self) -> str:
-        return self.instant
-
-    def monotonic_ms(self) -> int:
-        return self.milliseconds
-
-    def sleep(self, milliseconds: int) -> None:
-        self.sleeps.append(milliseconds)
-        self.milliseconds += milliseconds
-
-    def new_run_id(self) -> str:
-        return "00000000-0000-0000-0000-000000000001"

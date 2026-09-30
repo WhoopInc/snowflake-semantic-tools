@@ -7,7 +7,7 @@ from dataclasses import replace
 from types import MappingProxyType
 from typing import Mapping
 
-from snowflake_semantic_tools.adapters.snowflake.memory import PROFILE_REGISTRY_SHAPE, RecordedSnowflake
+from tests.helpers.recorded_snowflake import PROFILE_REGISTRY_SHAPE, RecordedSnowflake
 from snowflake_semantic_tools.app.apply import ApplyArtifacts
 from snowflake_semantic_tools.app.desktop_contract import desktop_view, is_pointer, stage_pointers
 from snowflake_semantic_tools.app.manifest import build_manifest

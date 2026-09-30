@@ -1,5 +1,7 @@
-"""Snowflake Semantic Tools: a dbt-native compiler and publisher for Snowflake semantic views,
-Cortex Agents, agent tools, evaluations, skills, plugins, and CoCo Desktop profiles.
+"""Snowflake Semantic Tools: a dbt-native compiler and publisher for a Snowflake semantic layer.
+
+It publishes semantic views, Cortex Agents, agent tools, evaluations, skills, plugins, and CoCo
+Desktop profiles.
 
 The command line (`sst`) is the interface; the package exposes no Python API beyond its version.
 """

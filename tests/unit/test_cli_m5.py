@@ -9,7 +9,7 @@ import click
 import pytest
 from click.testing import CliRunner
 
-from snowflake_semantic_tools.adapters.snowflake.memory import RecordedSnowflake
+from tests.helpers.recorded_snowflake import RecordedSnowflake
 from snowflake_semantic_tools.cli.main import _compile_publishing, _consumed_extensions, cli
 from snowflake_semantic_tools.domain.model.identifier import Identifier, QualifiedName, TargetIdentity
 

@@ -63,15 +63,7 @@ from ..app.validate import ValidateArtifacts
 from ..domain.model.dbt import DbtCatalog
 from ..domain.model.diagnostic import ERROR_REGISTRY, D, Diagnostic, DiagnosticBag, Origin, Severity
 from ..domain.model.identifier import Identifier, QualifiedName, TargetIdentity
-from ..domain.model.lifecycle import (
-    Action,
-    ApplyOptions,
-    Change,
-    ChangeSet,
-    FailurePolicy,
-    OutcomeStatus,
-    OwnershipMarker,
-)
+from ..domain.model.lifecycle import Action, ApplyOptions, Change, ChangeSet, FailurePolicy, OwnershipMarker
 from ..domain.model.registry import SEMANTIC_REGISTRY
 from ..domain.model.skill import SkillCatalog, extension_identifier
 from ..domain.ports.lifecycle import CompositeLifecycleHandler

@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from snowflake_semantic_tools.adapters.config import config_tree, load_project_config
+from snowflake_semantic_tools.adapters.config import load_project_config
 from snowflake_semantic_tools.adapters.profile import load_profile_target, resolve_profile_name
 from snowflake_semantic_tools.adapters.project import ProjectError
 
@@ -47,7 +47,6 @@ def test_positions_and_the_removed_deploy_block(tmp_path: Path) -> None:
     assert origin is not None and (origin.file, origin.line) == ("sst_config.yml", 2)
     # deploy: is reported, never read as apply:.
     assert dict(loaded.tree) == {"apply": {}, "deploy": {"bogus": 1}}
-    assert config_tree(tmp_path) == {"apply": {}, "deploy": {"bogus": 1}}
 
 
 def test_unsupported_and_removed_0_3_keys_are_errors(tmp_path: Path) -> None:
