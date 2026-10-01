@@ -63,7 +63,6 @@ def load_profile_catalog(
 
     Raises:
         OSError: A manifest, script, prompt, rule or command file cannot be read.
-        UnicodeDecodeError: An `AGENTS.md` prompt or a shared rule is not UTF-8.
 
     Diagnostics:
         SST-VAL801: when a profile folder holds no manifest or both spellings, or its manifest's
@@ -75,7 +74,8 @@ def load_profile_catalog(
         SST-VAL853: when an MCP config folder has no `mcp.json` or an unusable one.
         SST-VAL859: when a command is not UTF-8, or its frontmatter is malformed or holds a value
             of the wrong type.
-        SST-PRS122: when a manifest is not UTF-8.
+        SST-PRS122: when a manifest, an `AGENTS.md` prompt or a shared rule is not UTF-8; the
+            prompt or rule is left out.
         SST-LOD001: when a manifest is not valid YAML.
         SST-LOD004: when a template in a manifest is malformed.
         SST-LOD005: when a manifest writes a key twice in one mapping.
@@ -142,8 +142,18 @@ def _text(value: object, field: str, subject: str, origin: Origin, diagnostics: 
     return checked_text(value, diagnostics, field=field, artifact=subject, origin=origin, subject=subject)
 
 
-def _prompt(path: Path) -> str | None:
-    return path.read_text(encoding="utf-8") if path.is_file() else None
+def _prompt(project_dir: Path, path: Path, subject: str, diagnostics: list[Diagnostic]) -> str | None:
+    return _read_text(project_dir, path, subject, diagnostics) if path.is_file() else None
+
+
+def _read_text(project_dir: Path, path: Path, subject: str, diagnostics: list[Diagnostic]) -> str | None:
+    """Return a file's UTF-8 text; None, reporting SST-PRS122 against `subject`, when it is not UTF-8."""
+    try:
+        return path.read_text(encoding="utf-8")
+    except UnicodeDecodeError as exc:
+        file = project_relative(project_dir, path)
+        diagnostics.append(D("SST-PRS122", origin=Origin(file), subject=subject, file=file, offset=exc.start))
+        return None
 
 
 def _load_profile(project_dir: Path, folder: Path, diagnostics: list[Diagnostic]) -> DesktopProfile | None:
@@ -156,7 +166,6 @@ def _load_profile(project_dir: Path, folder: Path, diagnostics: list[Diagnostic]
 
     Raises:
         OSError: The manifest or `AGENTS.md` cannot be read.
-        UnicodeDecodeError: `AGENTS.md` is not UTF-8.
 
     Diagnostics:
         SST-VAL801: when the folder holds no `profile.yml` or both spellings, or the manifest's
@@ -164,6 +173,7 @@ def _load_profile(project_dir: Path, folder: Path, diagnostics: list[Diagnostic]
         SST-VAL851: when an unread key is one SST refuses, which names the reason.
         SST-PRS004: when any other key is not one SST reads.
         SST-PRS003: when a text field is not a string, or a name list not a list of strings.
+        SST-PRS122: when `AGENTS.md` is not UTF-8; the profile then has no prompt.
     """
     subject = artifact_key("profile", folder.name)
     manifest, problem = _manifest(folder, PROFILE_FILES)
@@ -220,7 +230,7 @@ def _load_profile(project_dir: Path, folder: Path, diagnostics: list[Diagnostic]
         skills=_names(tree.get("skills"), "skills", subject, origin, diagnostics),
         mcp_servers=_names(tree.get("mcp_servers"), "mcp_servers", subject, origin, diagnostics),
         hooks=_names(tree.get("hooks"), "hooks", subject, origin, diagnostics),
-        prompt=_prompt(prompt_path),
+        prompt=_prompt(project_dir, prompt_path, subject, diagnostics),
         origin=origin,
         source_files=tuple(sources),
         commands=_names(tree.get("commands"), "commands", subject, origin, diagnostics),
@@ -238,12 +248,12 @@ def _load_shared(project_dir: Path, folder: Path, diagnostics: list[Diagnostic])
 
     Raises:
         OSError: A file of the layer cannot be read.
-        UnicodeDecodeError: `AGENTS.md` or a rule is not UTF-8.
 
     Diagnostics:
         SST-VAL801: when the folder holds both `profile.yml` and `profile.yaml`.
         SST-PRS004: when the manifest holds a key other than `skills` and `commands`.
         SST-PRS003: when `skills` or `commands` is not a list of strings.
+        SST-PRS122: when `AGENTS.md` or a rule is not UTF-8; it is left out of the layer.
     """
     subject = "profile:shared"
     origin = Origin(project_relative(project_dir, folder))
@@ -267,12 +277,15 @@ def _load_shared(project_dir: Path, folder: Path, diagnostics: list[Diagnostic])
         sources.append(project_relative(project_dir, prompt_path))
     rules_dir = folder / "rules"
     rules = tuple(
-        (path.name, path.read_text(encoding="utf-8"))
+        (path.name, text)
         for path in sorted(rules_dir.glob("*.md"))
         if path.is_file() and _published(path, rules_dir)
+        if (text := _read_text(project_dir, path, subject, diagnostics)) is not None
     )
     sources.extend(project_relative(project_dir, rules_dir / name) for name, _ in rules)
-    return SharedProfile(_prompt(prompt_path), rules, skills, origin, tuple(sources), commands)
+    return SharedProfile(
+        _prompt(project_dir, prompt_path, subject, diagnostics), rules, skills, origin, tuple(sources), commands
+    )
 
 
 def _load_commands(project_dir: Path, root: Path, diagnostics: list[Diagnostic]) -> tuple[CommandFile, ...]:

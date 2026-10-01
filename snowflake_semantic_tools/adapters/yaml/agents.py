@@ -8,7 +8,13 @@ from types import MappingProxyType
 from typing import Any, Mapping
 
 from snowflake_semantic_tools.adapters.errors import ProjectError
-from snowflake_semantic_tools.adapters.yaml.fields import mapping, optional_int, optional_string
+from snowflake_semantic_tools.adapters.yaml.fields import (
+    checked_list,
+    checked_mapping,
+    mapping,
+    optional_int,
+    optional_string,
+)
 from snowflake_semantic_tools.adapters.yaml.parse import parse_yaml_bytes
 from snowflake_semantic_tools.domain.model.agent import AgentEvalFiles, AgentModel, AgentProfile, AgentSkill, AgentTool
 from snowflake_semantic_tools.domain.model.artifact_key import artifact_key
@@ -24,14 +30,9 @@ def load_agents(project_dir: Path, *, agents_dir: str = "agents") -> tuple[tuple
     agent kept without what could not be read. Sidecars and eval files resolve against the
     agent's own folder.
 
-    Raises:
-        UnicodeDecodeError: An instruction sidecar is not UTF-8.
-        ValueError: A field read as a mapping, such as `meta` or a tool's `filter`, holds text.
-        TypeError: A field read as a list or a mapping, such as `spec.tools`, holds a number.
-
     Diagnostics:
         SST-LOD004: when a file cannot be read, or a template in it is malformed.
-        SST-PRS122: when a file is not UTF-8.
+        SST-PRS122: when a file or an instruction sidecar is not UTF-8.
         SST-LOD001: when a file is not valid YAML.
         SST-LOD005: when a file writes a key twice in one mapping.
         SST-LOD003: when a file holds only whitespace or comments.
@@ -39,7 +40,10 @@ def load_agents(project_dir: Path, *, agents_dir: str = "agents") -> tuple[tuple
         SST-LOD002: when a file's root is not a mapping.
         SST-PRS002: when the agent has no `name`, a tool no `type`, a skill no `source.type`, or
             `evals:` no `dataset` or `config`.
-        SST-PRS003: when `evals:` is not a mapping, or one of its paths not a non-empty string.
+        SST-PRS003: when `evals:` is not a mapping, or one of its paths not a non-empty string;
+            when `spec.tools`, `spec.skills`, `tags` or the sample questions are not a list; or
+            when `meta`, `spec.passthrough` or a tool's mapping field, such as `filter`, is not a
+            mapping. The agent is kept back, and the field reads as empty.
         SST-PRS018: when a `spec.tools` or `spec.skills` entry has the wrong shape.
         SST-PRS118: when a sample question is not a mapping with a string `question`.
         SST-REF014: when an instruction holds templates other than one whole `{{ file() }}` call.
@@ -81,6 +85,14 @@ def _parse_agent(
     name = tree.get("name")
     if not isinstance(name, str) or not name:
         return None, (D("SST-PRS002", artifact=relative, field="name", origin=origin),)
+    subject = artifact_key("agent", name.casefold())
+
+    def listed(value: object, field: str) -> list[Any]:
+        return checked_list(value, diagnostics, field=field, artifact=relative, origin=origin, subject=subject)
+
+    def mapped(value: object, field: str) -> dict[Any, Any]:
+        return checked_mapping(value, diagnostics, field=field, artifact=relative, origin=origin, subject=subject)
+
     profile_node = mapping(tree.get("profile"))
     spec = mapping(tree.get("spec"))
     models = mapping(spec.get("models"))
@@ -107,20 +119,23 @@ def _parse_agent(
     )
     tools = tuple(
         tool
-        for index, value in enumerate(spec.get("tools") or [])
-        if (tool := _parse_tool(relative, index, value, diagnostics)) is not None
+        for index, value in enumerate(listed(spec.get("tools"), "spec.tools"))
+        if (tool := _parse_tool(relative, index, value, diagnostics, subject)) is not None
     )
     skills = tuple(
         skill
-        for index, value in enumerate(spec.get("skills") or [])
+        for index, value in enumerate(listed(spec.get("skills"), "spec.skills"))
         if (skill := _parse_skill(relative, index, value, diagnostics)) is not None
     )
-    sample_questions = _sample_questions(instructions.get("sample_questions"), name, origin, diagnostics)
+    questions = listed(instructions.get("sample_questions"), "spec.instructions.sample_questions")
+    sample_questions = _sample_questions(questions, name, origin, diagnostics)
     tags = tuple(
         (str(value.get("name")), str(value.get("value")))
-        for value in tree.get("tags") or []
+        for value in listed(tree.get("tags"), "tags")
         if isinstance(value, dict) and value.get("name") is not None and value.get("value") is not None
     )
+    meta = mapped(tree.get("meta"), "meta")
+    passthrough = mapped(spec.get("passthrough"), "spec.passthrough")
     eval_files = _parse_eval_files(project_dir, agent_dir, relative, tree.get("evals"), diagnostics)
     return (
         AgentModel(
@@ -148,9 +163,9 @@ def _parse_agent(
             skills=skills,
             alias=optional_string(tree.get("alias")),
             enabled=bool(tree.get("enabled", True)),
-            meta=MappingProxyType(dict(tree.get("meta") or {})),
+            meta=MappingProxyType(meta),
             tags=tags,
-            passthrough=MappingProxyType(dict(spec.get("passthrough") or {})),
+            passthrough=MappingProxyType(passthrough),
             evals=eval_files,
         ),
         tuple(diagnostics),
@@ -253,14 +268,12 @@ def _instruction(
     Returns:
         The instruction; None when `value` is not a string or a sidecar problem was reported.
 
-    Raises:
-        UnicodeDecodeError: The sidecar is not UTF-8.
-
     Diagnostics:
         SST-LOD004: when a template in the text is malformed.
         SST-REF014: when the text holds templates other than one `file()` call that is all of it.
         SST-REF027: when the sidecar resolves outside the project root.
         SST-LOD018: when the sidecar cannot be read.
+        SST-PRS122: when the sidecar is not UTF-8.
         SST-LOD019: when the sidecar holds only whitespace.
     """
     if not isinstance(value, str):
@@ -287,6 +300,9 @@ def _instruction(
     except OSError:
         diagnostics.append(D("SST-LOD018", file=source_file, path=requested, origin=Origin(source_file)))
         return None
+    except UnicodeDecodeError as exc:
+        diagnostics.append(D("SST-PRS122", origin=Origin(relative), file=relative, offset=exc.start))
+        return None
     if not content.strip():
         diagnostics.append(D("SST-LOD019", path=requested, file=source_file, origin=Origin(source_file)))
         return None
@@ -299,6 +315,7 @@ def _parse_tool(
     index: int,
     value: object,
     diagnostics: list[Diagnostic],
+    subject: str,
 ) -> AgentTool | None:
     """Read one `spec.tools` entry; None when it is not a mapping or declares no string `type`.
 
@@ -307,13 +324,13 @@ def _parse_tool(
     `{{ tool() }}` call, and `semantic_view` and `agent` as the one argument of a call of that
     name; any other value of those fields reads as empty.
 
-    Raises:
-        ValueError: A mapping field, such as `filter` or `input_schema`, holds text.
-        TypeError: A mapping field holds a number.
+    Args:
+        subject: The agent's key, which a mapping field of the wrong type reports against.
 
     Diagnostics:
         SST-PRS018: when the entry is not a mapping.
         SST-PRS002: when it declares no string `type`.
+        SST-PRS003: when a mapping field, such as `filter` or `input_schema`, holds another type.
         SST-LOD004: when a template in a reference field is malformed.
     """
     origin = Origin(source_file, index + 1, 1)
@@ -333,6 +350,15 @@ def _parse_tool(
     if not isinstance(type_name, str):
         diagnostics.append(D("SST-PRS002", artifact=source_file, field=f"tools[{index}].type", origin=origin))
         return None
+    entry: Mapping[str, Any] = value
+
+    def mapped(key: str) -> Mapping[Any, Any]:
+        field = f"tools[{index}].{key}"
+        read = checked_mapping(
+            entry.get(key), diagnostics, field=field, artifact=source_file, origin=origin, subject=subject
+        )
+        return MappingProxyType(read)
+
     backing_value = value.get("search_service", value.get("identifier"))
     backing = _template_args(backing_value, "tool", diagnostics, origin)
     semantic = _single_template_arg(value.get("semantic_view"), "semantic_view", diagnostics, origin)
@@ -352,11 +378,11 @@ def _parse_tool(
         id_column=optional_string(value.get("id_column")),
         stage_path=optional_string(value.get("stage_path")),
         relative_path_column=optional_string(value.get("relative_path_column")),
-        filter=MappingProxyType(dict(value.get("filter") or {})),
-        columns_and_descriptions=MappingProxyType(dict(value.get("columns_and_descriptions") or {})),
-        input_schema=MappingProxyType(dict(value.get("input_schema") or {})),
-        passthrough=MappingProxyType(dict(value.get("passthrough") or {})),
-        tool_spec_passthrough=MappingProxyType(dict(value.get("tool_spec_passthrough") or {})),
+        filter=mapped("filter"),
+        columns_and_descriptions=mapped("columns_and_descriptions"),
+        input_schema=mapped("input_schema"),
+        passthrough=mapped("passthrough"),
+        tool_spec_passthrough=mapped("tool_spec_passthrough"),
     )
 
 

@@ -2,9 +2,10 @@
 
 A plain reader (`optional_string`, `optional_int`, `strings`, `mapping`) reads a value of
 the wrong type as its empty sentinel without a word. A checked reader (`checked_text`,
-`checked_strings`) does the same and also reports the value (SST-PRS003) into the caller's
-diagnostics list, and `report_unknown_keys` reports the keys a parser does not read
-(SST-PRS004). No reader raises. `project_relative` is the path a diagnostic names a file by.
+`checked_strings`, `checked_list`, `checked_mapping`) does the same and also reports the value
+(SST-PRS003) into the caller's diagnostics list, and `report_unknown_keys` reports the keys a
+parser does not read (SST-PRS004). No reader raises. `project_relative` is the path a
+diagnostic names a file by.
 """
 
 from __future__ import annotations
@@ -56,17 +57,7 @@ def checked_text(
     if value is None:
         return None
     if not isinstance(value, str):
-        sink.append(
-            D(
-                "SST-PRS003",
-                origin=origin,
-                subject=subject,
-                artifact=artifact,
-                field=field,
-                expected="a string",
-                found=type(value).__name__,
-            )
-        )
+        sink.append(_wrong_type(value, "a string", field=field, artifact=artifact, origin=origin, subject=subject))
         return None
     return value.strip() or None
 
@@ -92,19 +83,71 @@ def checked_strings(
     if value is None:
         return ()
     if not isinstance(value, list) or any(not isinstance(item, str) for item in value):
-        sink.append(
-            D(
-                "SST-PRS003",
-                origin=origin,
-                subject=subject,
-                artifact=artifact,
-                field=field,
-                expected=expected,
-                found=type(value).__name__,
-            )
-        )
+        sink.append(_wrong_type(value, expected, field=field, artifact=artifact, origin=origin, subject=subject))
         return ()
     return tuple(value)
+
+
+def checked_list(
+    value: object,
+    sink: list[Diagnostic],
+    *,
+    field: str,
+    artifact: str,
+    origin: Origin,
+    subject: str | None = None,
+) -> list[Any]:
+    """Return a list field as written, or `[]` when it is absent or empty; report any other value.
+
+    The items are not checked; each caller reads them as it needs.
+
+    Diagnostics:
+        SST-PRS003: `value` is present and not a list; it reads as `[]`.
+    """
+    if not value:
+        return []
+    if not isinstance(value, list):
+        sink.append(_wrong_type(value, "a list", field=field, artifact=artifact, origin=origin, subject=subject))
+        return []
+    return value
+
+
+def checked_mapping(
+    value: object,
+    sink: list[Diagnostic],
+    *,
+    field: str,
+    artifact: str,
+    origin: Origin,
+    subject: str | None = None,
+) -> dict[Any, Any]:
+    """Return a copy of a mapping field, or `{}` when it is absent or empty; report any other value.
+
+    Keys are kept as written, unlike `mapping`, which turns each into text.
+
+    Diagnostics:
+        SST-PRS003: `value` is present and not a mapping; it reads as `{}`.
+    """
+    if not value:
+        return {}
+    if not isinstance(value, dict):
+        sink.append(_wrong_type(value, "a mapping", field=field, artifact=artifact, origin=origin, subject=subject))
+        return {}
+    return dict(value)
+
+
+def _wrong_type(
+    value: object, expected: str, *, field: str, artifact: str, origin: Origin, subject: str | None
+) -> Diagnostic:
+    return D(
+        "SST-PRS003",
+        origin=origin,
+        subject=subject,
+        artifact=artifact,
+        field=field,
+        expected=expected,
+        found=type(value).__name__,
+    )
 
 
 def unknown_keys(keys: Iterable[Any], allowed: frozenset[str]) -> list[Any]:

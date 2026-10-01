@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import posixpath
 from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import Any
@@ -345,6 +346,7 @@ def _verified_query_diagnostics(
         SST-VAL412: when an entry declares both `sql` and `sql_file`, or neither.
         SST-LOD018: when the `sql_file:` is not a file.
         SST-LOD019: when the `sql_file:` holds no bytes.
+        SST-PRS122: when the `sql_file:` is not UTF-8.
     """
     root = project_dir / semantic_models_dir / "verified_queries"
     diagnostics: list[Diagnostic] = []
@@ -377,7 +379,7 @@ def _verified_query_diagnostics(
                         origin=origin,
                     )
                 )
-            elif not sql_path.read_bytes():
+            elif not (content := sql_path.read_bytes()):
                 diagnostics.append(
                     D(
                         "SST-LOD019",
@@ -387,4 +389,18 @@ def _verified_query_diagnostics(
                         origin=origin,
                     )
                 )
+            else:
+                diagnostics.extend(_utf8_diagnostics(content, document.path, str(node["sql_file"]), subject, origin))
     return tuple(diagnostics)
+
+
+def _utf8_diagnostics(
+    content: bytes, document_path: str, sql_file: str, subject: str, origin: Origin
+) -> tuple[Diagnostic, ...]:
+    """Report SST-PRS122 when `content` is not UTF-8, naming the file as its document's sibling path."""
+    try:
+        content.decode("utf-8")
+    except UnicodeDecodeError as exc:
+        file = posixpath.normpath(posixpath.join(posixpath.dirname(document_path), sql_file))
+        return (D("SST-PRS122", file=file, offset=exc.start, subject=subject, origin=origin),)
+    return ()

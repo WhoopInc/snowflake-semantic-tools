@@ -87,7 +87,6 @@ class YamlProjectSource:
         Raises:
             ProjectError: `sst_config.yml`, the semantic-models directory or a member cannot be
                 read at all, the dbt target cannot be resolved, or dbt or its manifest fails.
-            UnicodeDecodeError: A verified query's `sql_file:` is not UTF-8.
         """
         # SST's own files first, then the dbt target and models: a problem in either is
         # reported in that order, and before dbt is run.

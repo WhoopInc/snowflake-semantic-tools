@@ -7,6 +7,8 @@ from pathlib import Path
 import pytest
 
 from snowflake_semantic_tools.adapters.yaml.fields import (
+    checked_list,
+    checked_mapping,
     checked_strings,
     checked_text,
     mapping,
@@ -139,6 +141,50 @@ def test_checked_strings_names_the_expected_type_as_the_caller_words_it(expected
         found="str",
     )
     assert sink[0] == D("SST-LOD003", file="earlier.yml")
+
+
+def test_checked_list_returns_a_list_as_written_and_reads_absence_or_emptiness_as_empty() -> None:
+    sink: list[Diagnostic] = []
+    items = [{"type": "generic"}, "text"]
+    assert checked_list(items, sink, field="spec.tools", artifact="a", origin=ORIGIN) is items
+    assert checked_list(None, sink, field="spec.tools", artifact="a", origin=ORIGIN) == []
+    assert checked_list("", sink, field="spec.tools", artifact="a", origin=ORIGIN) == []
+    assert sink == []
+
+
+@pytest.mark.parametrize(("value", "found"), ((5, "int"), ("text", "str"), ({"a": 1}, "dict")))
+def test_checked_list_reports_anything_else_against_its_subject(value: object, found: str) -> None:
+    sink: list[Diagnostic] = []
+    read = checked_list(value, sink, field="spec.tools", artifact="a.yml", origin=ORIGIN, subject="agent:a")
+    assert read == []
+    assert sink == [
+        D(
+            "SST-PRS003",
+            origin=ORIGIN,
+            subject="agent:a",
+            artifact="a.yml",
+            field="spec.tools",
+            expected="a list",
+            found=found,
+        )
+    ]
+
+
+def test_checked_mapping_copies_a_mapping_keeping_its_keys_and_reads_absence_as_empty() -> None:
+    sink: list[Diagnostic] = []
+    written = {1: "one", "b": [2]}
+    read = checked_mapping(written, sink, field="meta", artifact="a", origin=ORIGIN)
+    assert read == {1: "one", "b": [2]} and read is not written
+    assert checked_mapping(None, sink, field="meta", artifact="a", origin=ORIGIN) == {}
+    assert checked_mapping([], sink, field="meta", artifact="a", origin=ORIGIN) == {}
+    assert sink == []
+
+
+@pytest.mark.parametrize(("value", "found"), (("text", "str"), (3, "int"), ([["a", 1]], "list")))
+def test_checked_mapping_reports_anything_else_instead_of_raising(value: object, found: str) -> None:
+    sink: list[Diagnostic] = []
+    assert checked_mapping(value, sink, field="meta", artifact="a.yml", origin=ORIGIN) == {}
+    assert sink == [D("SST-PRS003", origin=ORIGIN, artifact="a.yml", field="meta", expected="a mapping", found=found)]
 
 
 def test_unknown_keys_sort_by_their_text_whatever_type_yaml_gave_them() -> None:

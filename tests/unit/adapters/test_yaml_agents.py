@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from snowflake_semantic_tools.adapters.yaml.agents import load_agents
 
 
@@ -83,3 +85,75 @@ spec:
     )
     _, diagnostics = load_agents(tmp_path)
     assert {diagnostic.code for diagnostic in diagnostics} == {"SST-LOD018", "SST-PRS118"}
+
+
+# (YAML after `name: typed`, the field reported, what it expects, what it found)
+WRONG_TYPES = [
+    pytest.param("spec:\n  tools: 5\n", "spec.tools", "a list", "int", id="tools"),
+    pytest.param("spec:\n  skills: {a: 1}\n", "spec.skills", "a list", "dict", id="skills"),
+    pytest.param("tags: 5\n", "tags", "a list", "int", id="tags"),
+    pytest.param(
+        "spec:\n  instructions:\n    sample_questions: What is revenue?\n",
+        "spec.instructions.sample_questions",
+        "a list",
+        "str",
+        id="sample-questions",
+    ),
+    pytest.param("meta: text\n", "meta", "a mapping", "str", id="meta"),
+    pytest.param("spec:\n  passthrough: [1]\n", "spec.passthrough", "a mapping", "list", id="passthrough"),
+    pytest.param(
+        "spec:\n  tools:\n    - type: generic\n      filter: text\n",
+        "tools[0].filter",
+        "a mapping",
+        "str",
+        id="tool-filter",
+    ),
+    pytest.param(
+        "spec:\n  tools:\n    - type: generic\n      input_schema: 3\n",
+        "tools[0].input_schema",
+        "a mapping",
+        "int",
+        id="tool-input-schema",
+    ),
+]
+
+
+@pytest.mark.parametrize(("body", "field", "expected", "found"), WRONG_TYPES)
+def test_a_field_of_the_wrong_type_is_reported_and_holds_the_agent_back(
+    tmp_path: Path, body: str, field: str, expected: str, found: str
+) -> None:
+    root = tmp_path / "agents" / "typed"
+    root.mkdir(parents=True)
+    (root / "agent.yml").write_text("name: typed\n" + body, encoding="utf-8")
+
+    agents, diagnostics = load_agents(tmp_path)
+
+    [diagnostic] = diagnostics
+    assert diagnostic.code == "SST-PRS003"
+    assert dict(diagnostic.context) == {
+        "artifact": "agents/typed/agent.yml",
+        "field": field,
+        "expected": expected,
+        "found": found,
+    }
+    # The error names the agent, so compile keeps it back rather than publish it without the field.
+    assert diagnostic.subject == "agent:typed"
+    assert [agent.name for agent in agents] == ["typed"]
+
+
+def test_a_sidecar_that_is_not_utf8_is_reported_instead_of_raising(tmp_path: Path) -> None:
+    root = tmp_path / "agents" / "sales"
+    root.mkdir(parents=True)
+    (root / "instructions.md").write_bytes(b"Route \xff sales questions.\n")
+    (root / "agent.yml").write_text(
+        "name: sales\nspec:\n  instructions:\n    orchestration: \"{{ file('instructions.md') }}\"\n",
+        encoding="utf-8",
+    )
+
+    agents, diagnostics = load_agents(tmp_path)
+
+    assert [(item.code, dict(item.context)) for item in diagnostics] == [
+        ("SST-PRS122", {"file": "agents/sales/instructions.md", "offset": 6})
+    ]
+    assert agents[0].orchestration_instructions is None
+    assert agents[0].source_files == ("agents/sales/agent.yml",)

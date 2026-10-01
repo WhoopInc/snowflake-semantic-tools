@@ -214,6 +214,37 @@ def test_vq_sources_and_relationship_conditions_fail_with_registered_codes(tmp_p
     ] == ["SST-VAL201"]
 
 
+def test_a_vq_sql_file_that_is_not_utf8_is_reported_instead_of_raising(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    manifest = write_project(tmp_path)
+    verified = tmp_path / "semantic_models" / "verified_queries"
+    verified.mkdir()
+    (verified / "queries.yml").write_text(
+        "snowflake_verified_queries:\n"
+        "  - name: latin1\n"
+        "    question: q\n"
+        "    tables: [products]\n"
+        "    sql_file: latin1.sql\n"
+        "  - name: plain\n"
+        "    question: q2\n"
+        "    tables: [products]\n"
+        "    sql_file: sql/plain.sql\n",
+        encoding="utf-8",
+    )
+    (verified / "latin1.sql").write_bytes(b"SELECT 'caf\xe9'\n")
+    (verified / "sql").mkdir()
+    (verified / "sql" / "plain.sql").write_text("SELECT 1\n", encoding="utf-8")
+    # From inside the project, as `sst` runs, the project directory is relative.
+    monkeypatch.chdir(tmp_path)
+
+    project = load_project(Path("."), manifest_path=manifest)
+
+    assert [(item.subject, dict(item.context)) for item in project.diagnostics if item.code == "SST-PRS122"] == [
+        ("verified_query:latin1", {"file": "semantic_models/verified_queries/latin1.sql", "offset": 11})
+    ]
+
+
 def test_missing_folder_route_is_a_config_diagnostic(tmp_path: Path) -> None:
     views_dir = tmp_path / "semantic_models" / "semantic_views"
     views_dir.mkdir(parents=True)

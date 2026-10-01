@@ -162,12 +162,11 @@ def load_verified_queries(
     A file in any folder is read. The SQL is `sql:`, or the `sql_file:` it names relative to the
     entry's own file. An entry is skipped here when it is not a mapping, has no `name` or no
     `question`, declares both or neither of `sql` and `sql_file`, or names a file that cannot be
-    read or holds only whitespace.
+    read, is not UTF-8, or holds only whitespace; the shape checks report those files.
 
     Raises:
         ProjectError: An entry's `verified_at` is neither an integer nor a `YYYY-MM-DD` string; an
             unquoted date, which YAML reads as a date, is refused too.
-        UnicodeDecodeError: A `sql_file:` is not UTF-8.
     """
     root = project_dir / semantic_models_dir / "verified_queries"
     out: list[VerifiedQueryDef] = []
@@ -183,7 +182,7 @@ def load_verified_queries(
             sql_path = document.abs_path.parent / str(node["sql_file"])
             try:
                 sql = sql_path.read_text(encoding="utf-8").rstrip("\n")
-            except OSError:
+            except (OSError, UnicodeDecodeError):
                 continue
             if not sql.strip():
                 continue
