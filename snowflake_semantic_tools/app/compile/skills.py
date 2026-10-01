@@ -1,4 +1,8 @@
-"""Compile skills and plugins into content-addressed Cortex Extension versions."""
+"""Compile skills and plugins into content-addressed Cortex Extension versions.
+
+`CompileSkills` compiles the catalog; `extension_pins` and `unpublished_reasons` project its
+result for the agents that reference the extensions.
+"""
 
 from __future__ import annotations
 
@@ -8,7 +12,7 @@ from hashlib import sha256
 from typing import Mapping
 
 from ...domain.model.artifact_key import artifact_key, split_artifact_key
-from ...domain.model.diagnostic import D, Diagnostic, DiagnosticBag, Origin
+from ...domain.model.diagnostic import D, Diagnostic, DiagnosticBag, Origin, Severity
 from ...domain.model.identifier import QualifiedName
 from ...domain.model.lifecycle import CompositeFacts, PublishShape, RenderedArtifact, StatementPlan
 from ...domain.model.registry import GrantPreservation
@@ -22,6 +26,7 @@ from ...domain.model.skill import (
     build_skill_bundle,
     validate_skill_catalog,
 )
+from .agents import ExtensionPin
 from .base import CompileResult, StandaloneArtifact, has_error
 
 _ALIAS_PREFIX = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
@@ -218,3 +223,55 @@ class CompileSkills:
             certified=channel.certified,
             bundle=bundle,
         )
+
+
+def unpublished_reasons(catalog: SkillCatalog, skills: CompileResult, channel_problem: str | None) -> dict[str, str]:
+    """Say why each declared skill and plugin produced no extension version, by artifact key.
+
+    One an error names "has errors"; any other is held back by `channel_problem`, or, when the
+    channel is configured, by the channel itself.
+
+    Returns:
+        The reason by artifact key, the skills in catalog order and then the plugins; a skill
+        or plugin that compiled has no entry.
+    """
+    compiled = {item.artifact_key for item in skills.compiled}
+    failed = {item.subject for item in skills.diagnostics if item.severity is Severity.ERROR}
+    return {
+        key: "it has errors" if key in failed else channel_problem or "the catalog channel cannot publish it"
+        for key in (*(item.key for item in catalog.skills), *(item.key for item in catalog.plugins))
+        if key not in compiled
+    }
+
+
+def extension_pins(skills: CompileResult) -> tuple[dict[str, ExtensionPin], dict[str, ExtensionPin], frozenset[str]]:
+    """Return what `skill()` and `plugin()` references pin to, and the skills plugins carry.
+
+    A plugin's members are the skill folders its bundle carries, in bundle order.
+
+    Returns:
+        The skill pins and the plugin pins, each by extension name, and the artifact key of
+        every skill some plugin carries.
+    """
+    skill_pins: dict[str, ExtensionPin] = {}
+    plugin_pins: dict[str, ExtensionPin] = {}
+    consumed: set[str] = set()
+    for item in skills.compiled:
+        if not isinstance(item, CompiledExtension):
+            continue
+        release = item.release
+        if item.artifact_type == "skill":
+            skill_pins[item.name] = ExtensionPin(
+                item.artifact_key, release.target, release.alias, (item.name,), item.has_scripts
+            )
+            continue
+        members = tuple(
+            dict.fromkeys(
+                entry.path.split("/")[1] for entry in release.bundle.entries if entry.path.startswith("skills/")
+            )
+        )
+        plugin_pins[item.name] = ExtensionPin(
+            item.artifact_key, release.target, release.alias, members, item.has_scripts
+        )
+        consumed.update(artifact_key("skill", member) for member in members)
+    return skill_pins, plugin_pins, frozenset(consumed)

@@ -1,29 +1,42 @@
-"""A `SemanticViewSource` backed by YAML files on disk.
+"""The project directory on disk as `SemanticViewSource` and `ProjectInputs`.
 
-Thin by design: it binds a project directory to the loader functions so `app/` can
-hold a source without holding a path. All the reading lives in the loaders it calls.
-It is also where the dbt side meets the semantic layer: it loads the dbt target and
-models through `dbt.project` and passes them to the semantic pipeline, which reads no
-dbt file itself.
+Thin by design: `YamlProjectSource` binds a project directory to the loader functions so
+`app/` can hold a source without holding a path, and `YamlProjectInputs` adds everything
+else a use case reads -- the config, the target, the catalogs, the commit, and what a
+manifest records about the files. All the reading lives in the loaders they call. It is
+also where the dbt side meets the semantic layer: the dbt target and models are loaded
+through `dbt.project` and passed to the semantic pipeline, which reads no dbt file itself.
 """
 
 from __future__ import annotations
 
+from hashlib import sha256
 from pathlib import Path
+from typing import Callable
 
 from ..domain.model.agent import AgentModel
+from ..domain.model.config_schema import config_block, configured_dir, skills_configured
+from ..domain.model.dbt import DbtCatalog
 from ..domain.model.diagnostic import DiagnosticBag
 from ..domain.model.eval import EvalCatalog
+from ..domain.model.profile import ProfileCatalog
 from ..domain.model.project import SemanticViewProject
+from ..domain.model.skill import SkillCatalog
 from ..domain.model.tool import ToolCatalog
+from ..domain.ports.project import ManifestSources, ProjectConfig, ProjectInputs, ProjectTarget, ValidationDefaults
+from ..domain.state import canonical_json
 from .dbt.manifest import load_manifest_catalog
-from .dbt.profiles import resolve_profile_name
-from .dbt.project import load_models, resolve_target, run_dbt_parse, target_path
+from .dbt.profiles import load_profile_target, resolve_profile_name
+from .dbt.project import dbt_project_name, load_models, resolve_target, run_dbt_parse, target_path
 from .yaml.agents import load_agents
+from .yaml.config import load_project_config, read_config_document
+from .yaml.documents import discover_yaml, load_documents
 from .yaml.evals import load_eval_catalog, parse_eval_defaults
 from .yaml.fields import strings
-from .yaml.parse import read_yaml_mapping
+from .yaml.parse import parse_yaml_bytes, read_yaml_mapping
+from .yaml.profiles import load_profile_catalog
 from .yaml.semantic import load_semantic_views_result, read_semantic_inputs
+from .yaml.skills import _published, load_skill_catalog
 from .yaml.tools import load_tool_catalog
 
 
@@ -117,3 +130,193 @@ class YamlProjectSource:
             agent_tool_names=agent_tool_names,
             allowed_models=allowed_models,
         )
+
+
+class YamlProjectInputs(ProjectInputs):
+    """Everything a use case reads from a project directory, read from disk when asked.
+
+    Implements `domain.ports.project.ProjectInputs`, whose methods document the contract.
+    Without a dbt manifest path, the semantic views and tools run `dbt parse` first. The
+    commit comes from `git_sha`, which the CLI supplies, so the CLI decides how git is asked.
+    """
+
+    def __init__(
+        self,
+        project_dir: Path,
+        *,
+        target_name: str | None,
+        manifest_path: Path | None,
+        git_sha: Callable[[], str],
+    ) -> None:
+        self._project_dir = project_dir
+        self._target_name = target_name
+        self._manifest_path = manifest_path
+        self._source = YamlProjectSource(
+            project_dir,
+            target_name=target_name,
+            manifest_path=manifest_path,
+            invoke_dbt=manifest_path is None,
+        )
+        self._git_sha = git_sha
+
+    def config(self) -> ProjectConfig:
+        return load_project_config(self._project_dir)
+
+    def target(self) -> ProjectTarget:
+        profile = load_profile_target(self._project_dir, self._target_name)
+        return ProjectTarget(profile.identity, profile.diagnostics)
+
+    def load_project(self) -> SemanticViewProject:
+        return self._source.load_project()
+
+    def skill_catalog(self, *, skills_dir: str, plugins_dir: str) -> SkillCatalog:
+        return load_skill_catalog(self._project_dir, skills_dir=skills_dir, plugins_dir=plugins_dir)
+
+    def profile_catalog(
+        self, *, profiles_dir: str, hooks_dir: str, mcp_servers_dir: str, commands_dir: str
+    ) -> ProfileCatalog:
+        return load_profile_catalog(
+            self._project_dir,
+            profiles_dir=profiles_dir,
+            hooks_dir=hooks_dir,
+            mcp_servers_dir=mcp_servers_dir,
+            commands_dir=commands_dir,
+        )
+
+    def dbt_catalog(self) -> DbtCatalog:
+        return load_manifest_catalog(self._dbt_manifest())
+
+    def tool_catalog(self) -> ToolCatalog:
+        return self._source.load_tools()
+
+    def agents(self, *, agents_dir: str) -> tuple[tuple[AgentModel, ...], DiagnosticBag]:
+        return load_agents(self._project_dir, agents_dir=agents_dir)
+
+    def eval_catalog(
+        self,
+        agents: tuple[AgentModel, ...] | None = None,
+        agent_diagnostics: DiagnosticBag = DiagnosticBag(),
+        agent_tool_names: dict[str, tuple[str, ...]] | None = None,
+    ) -> EvalCatalog:
+        return self._source.load_evals(agents, agent_diagnostics, agent_tool_names)
+
+    def git_sha(self) -> str:
+        return self._git_sha()
+
+    def validation_defaults(self) -> ValidationDefaults:
+        config = read_config_document(self._project_dir)
+        validation = config.get("validation") if isinstance(config, dict) else None
+        if not isinstance(validation, dict):
+            return ValidationDefaults()
+        return ValidationDefaults(
+            bool(validation.get("strict", False)), bool(validation.get("snowflake_syntax_check", True))
+        )
+
+    def manifest_sources(self) -> ManifestSources:
+        # The reads run in this order on every run, so a broken input is reported at one point.
+        dbt_name, catalog, dbt_path = self._dbt_sources()
+        config_checksum, semantic_path = self._config_sources()
+        projection = _dbt_projection(catalog)
+        return ManifestSources(
+            semantic_path=semantic_path,
+            dbt_project_name=dbt_name,
+            config_checksum=config_checksum,
+            dbt_manifest_path=dbt_path,
+            dbt_schema_version=catalog.schema_version,
+            dbt_digest=sha256(canonical_json(projection)).hexdigest(),
+            model_count=len(catalog.models),
+            file_checksums=_file_checksums(self._project_dir),
+        )
+
+    def _dbt_manifest(self) -> Path:
+        return self._manifest_path or self._project_dir / "target" / "manifest.json"
+
+    def _dbt_sources(self) -> tuple[str, DbtCatalog, str]:
+        """Read the dbt project's name and manifest; empty values for a project without dbt.
+
+        The manifest path is recorded relative to the project, or as given when it lies outside.
+        """
+        dbt_path = self._dbt_manifest()
+        if not (self._project_dir / "dbt_project.yml").is_file():
+            return "", DbtCatalog(schema_version="", dbt_version=None, project_name=None, models=()), ""
+        name = dbt_project_name(self._project_dir)
+        catalog = load_manifest_catalog(dbt_path)
+        try:
+            recorded = dbt_path.resolve().relative_to(self._project_dir.resolve()).as_posix()
+        except ValueError:
+            recorded = str(dbt_path)
+        return name, catalog, recorded
+
+    def _config_sources(self) -> tuple[str, str]:
+        """Read `sst_config.yml` as written: its checksum, and the semantic models path it names."""
+        config_value = read_config_document(self._project_dir)
+        if config_value is None:
+            return "", "semantic_models"
+        semantic_path = "semantic_models"
+        if isinstance(config_value, dict) and isinstance(config_value.get("project"), dict):
+            semantic_path = str(config_value["project"].get("semantic_models_dir") or semantic_path)
+        return sha256(canonical_json(config_value)).hexdigest(), semantic_path
+
+
+def _dbt_projection(catalog: DbtCatalog) -> list[dict[str, object]]:
+    """The dbt models as the manifest digests them: by casefolded name, with their keys and columns."""
+    return [
+        {
+            "name": model.name,
+            "relation": model.relation_name,
+            "primary_key": list(model.primary_key),
+            "unique_keys": [list(key) for key in model.unique_keys],
+            "columns": [
+                {
+                    "name": column.name,
+                    "data_type": column.data_type,
+                    "column_type": column.column_type,
+                }
+                for column in model.columns
+            ],
+        }
+        for model in sorted(catalog.models, key=lambda item: item.name.casefold())
+    ]
+
+
+def _file_checksums(project_dir: Path) -> dict[str, str]:
+    """Checksum every input file the manifest records, by project-relative path.
+
+    With a dbt project, each semantic model document; then every file under the tools,
+    agents, and eval metric roots; then, when a channel publishes them, the skill and plugin
+    roots, and with the stage channel the profile, hook, and MCP server roots. Those bundled
+    roots skip what publication skips: hidden entries and caches.
+    """
+    config = dict(load_project_config(project_dir).tree)
+    checksums: dict[str, str] = {}
+    if (project_dir / "dbt_project.yml").is_file():
+        semantic_models_dir = configured_dir(config, "semantic_models_dir", "semantic_models")
+        documents = load_documents(discover_yaml(project_dir, semantic_models_dir), parse_yaml_bytes)
+        checksums.update({document.path: document.checksum for document in documents.documents})
+    directories = [
+        configured_dir(config, "tools_dir", "tools"),
+        configured_dir(config, "agents_dir", "agents"),
+        configured_dir(config, "eval_metrics_dir", "eval_metrics"),
+    ]
+    bundled: tuple[str, ...] = (
+        (configured_dir(config, "skills_dir", "skills"), configured_dir(config, "plugins_dir", "plugins"))
+        if skills_configured(config)
+        else ()
+    )
+    if isinstance(config_block(config.get("skills")).get("stage"), dict):
+        bundled = (
+            *bundled,
+            configured_dir(config, "profiles_dir", "profiles"),
+            configured_dir(config, "hooks_dir", "hooks"),
+            configured_dir(config, "mcp_servers_dir", "mcp-servers"),
+        )
+    for directory in (*directories, *bundled):
+        root = project_dir / directory
+        if not root.is_dir():
+            continue
+        for path in sorted(root.rglob("*")):
+            if directory in bundled and not _published(path, root):
+                continue
+            if path.is_file():
+                checksums[path.relative_to(project_dir).as_posix()] = sha256(path.read_bytes()).hexdigest()
+    return checksums

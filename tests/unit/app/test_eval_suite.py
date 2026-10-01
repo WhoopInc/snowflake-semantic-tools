@@ -1,0 +1,203 @@
+"""The eval gate over in-memory ports: the lock, the publication check, capture, and gating."""
+
+from __future__ import annotations
+
+from dataclasses import replace
+from types import MappingProxyType
+
+import pytest
+
+from snowflake_semantic_tools.app.compile import CompileResult
+from snowflake_semantic_tools.app.evals.run import empty_eval_suite_json
+from snowflake_semantic_tools.app.evals.suite import (
+    EvalGateOutcome,
+    EvalGateRefused,
+    EvalGateRequest,
+    RunEvalGate,
+    compiled_evals,
+)
+from snowflake_semantic_tools.app.manifest import build_manifest
+from snowflake_semantic_tools.domain.model.diagnostic import DiagnosticBag
+from snowflake_semantic_tools.domain.model.eval import (
+    EvalCatalog,
+    EvalDefaults,
+    EvalRunConfig,
+    EvalSystemMetric,
+    ThresholdRange,
+)
+from snowflake_semantic_tools.domain.model.identifier import QualifiedName
+from snowflake_semantic_tools.domain.ports.snowflake import SnowflakePortError
+from snowflake_semantic_tools.domain.state import AppliedEntry
+from tests.helpers.eval_state_store import InMemoryEvalStateStore
+from tests.helpers.project_inputs import InMemoryProjectInputs
+
+from .conftest import FixedClock, InMemoryStateStore
+from .helpers import target
+from .test_eval_compile import compile_eval, resolved_eval
+from .test_eval_run import EvalSnowflake, result_rows, status_result
+
+STATE_TABLE = QualifiedName.parse("DB.S.SST_STATE")
+
+
+@pytest.fixture(autouse=True)
+def published(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Treat every eval as published, unless a test restores the real check."""
+    monkeypatch.setattr(
+        "snowflake_semantic_tools.app.evals.suite.validate_eval_publication", lambda *args: DiagnosticBag()
+    )
+    monkeypatch.setattr("snowflake_semantic_tools.app.evals.run._compact_timestamp", lambda: "20260928T010203Z")
+
+
+def completed_attempt() -> list[object]:
+    return [status_result("COMPLETED"), result_rows()]
+
+
+def gate(
+    port: EvalSnowflake,
+    *,
+    request: EvalGateRequest = EvalGateRequest(),
+    result: CompileResult | None = None,
+    inputs: InMemoryProjectInputs | None = None,
+    store: InMemoryEvalStateStore | None = None,
+    state_store: InMemoryStateStore | None = None,
+) -> tuple[EvalGateOutcome | EvalGateRefused, InMemoryEvalStateStore, InMemoryStateStore, InMemoryProjectInputs]:
+    compiled = result or compile_eval()
+    project = inputs or InMemoryProjectInputs(revision="abcdef0", evals=EvalCatalog((), (), EvalDefaults()))
+    eval_store = store if store is not None else InMemoryEvalStateStore()
+    lock = state_store or InMemoryStateStore()
+    use_case = RunEvalGate(port, project, lock, eval_store, FixedClock())
+    outcome = use_case.run(
+        compiled_evals(compiled), build_manifest(compiled), request, target=target(), state_table=STATE_TABLE
+    )
+    return outcome, eval_store, lock, project
+
+
+def test_the_run_is_refused_while_another_operation_holds_the_target_lock() -> None:
+    held = InMemoryStateStore()
+    held.acquire_lock("apply-run", break_stale=False)
+    port = EvalSnowflake([])
+
+    outcome, _, lock, inputs = gate(port, state_store=held)
+
+    assert outcome == EvalGateRefused("cannot run evals while apply-run holds the target lock")
+    assert lock.holder == "apply-run" and port.queries == []
+    assert inputs.reads == ["config", "eval_catalog"]
+    unnamed = InMemoryStateStore()
+    unnamed.locked = True
+    refused, _, _, _ = gate(EvalSnowflake([]), state_store=unnamed)
+    assert refused == EvalGateRefused("cannot run evals while another operation holds the target lock")
+
+
+def test_an_unpublished_eval_stops_before_any_run_and_releases_the_lock(monkeypatch: pytest.MonkeyPatch) -> None:
+    from snowflake_semantic_tools.app.evals.run import validate_eval_publication
+
+    monkeypatch.setattr("snowflake_semantic_tools.app.evals.suite.validate_eval_publication", validate_eval_publication)
+    port = EvalSnowflake([])
+
+    outcome, _, lock, _ = gate(port)
+
+    assert isinstance(outcome, EvalGateOutcome)
+    assert (outcome.passed, outcome.suite) == (False, None)
+    assert [item.code for item in outcome.diagnostics] == ["SST-APL012"]
+    assert dict(outcome.data) == {"suite": "evals", **empty_eval_suite_json()}
+    assert not lock.locked and port.scripts == []
+
+
+def test_a_gate_without_a_baseline_has_no_signal_and_records_the_gate() -> None:
+    outcome, store, lock, inputs = gate(EvalSnowflake(completed_attempt()))
+
+    assert isinstance(outcome, EvalGateOutcome) and not outcome.passed
+    assert [item.code for item in outcome.diagnostics] == ["SST-VAL758"]
+    assert (outcome.data["gate_verdict"], outcome.data["gate_reasons"]) == ("no_signal", ["baseline_absent"])
+    assert ("verify", "eval:sales_agent") in store.gates and not lock.locked
+    assert inputs.reads == ["config", "eval_catalog", "git_sha"]
+
+
+def gated_eval() -> CompileResult:
+    """The sales eval with `answer_correctness` gating at a score of 0.5."""
+    resolved = resolved_eval()
+    metric = EvalSystemMetric(
+        resolved.config.system_metrics[0].origin, "answer_correctness", "v3", True, ThresholdRange(0.5)
+    )
+    return compile_eval(replace(resolved, config=replace(resolved.config, system_metrics=(metric,))))
+
+
+def test_a_captured_baseline_lets_the_next_gate_pass_then_report_a_regression() -> None:
+    store = InMemoryEvalStateStore()
+    capture = EvalGateRequest(capture_baseline=True, reason="initial")
+    result = gated_eval()
+
+    captured, _, _, _ = gate(EvalSnowflake(completed_attempt()), request=capture, store=store, result=result)
+    passing, _, _, _ = gate(EvalSnowflake(completed_attempt()), store=store, result=result)
+    failing_rows = result_rows()
+    worse = replace(failing_rows, rows=tuple((*row[:10], 0.0, *row[11:]) for row in failing_rows.rows))
+    regressed, _, _, _ = gate(EvalSnowflake([status_result("COMPLETED"), worse]), store=store, result=result)
+
+    assert isinstance(captured, EvalGateOutcome) and captured.passed
+    assert (captured.data["gate_verdict"], captured.data["captured_baselines"]) == ("captured", ["eval:sales_agent"])
+    assert store.baselines[("verify", "eval:sales_agent")].reason == "initial"
+    assert isinstance(passing, EvalGateOutcome) and passing.passed and passing.data["gate_verdict"] == "passed"
+    assert isinstance(regressed, EvalGateOutcome)
+    assert regressed.data["gate_verdict"] == "regressed" and regressed.data["regression_count"] == 1
+    [regression] = regressed.data["regressions"]  # type: ignore[misc]
+    assert regression["metric_name"] == "answer_correctness"
+    # A regression adds no diagnostic, so the run itself still passes.
+    assert regressed.passed
+
+
+def test_a_capture_takes_the_baseline_runs_of_the_eval_before_the_default() -> None:
+    resolved = resolved_eval()
+    eval_with_runs = replace(resolved, config=replace(resolved.config, run=EvalRunConfig(label="ci", baseline_runs=2)))
+    result = compile_eval(eval_with_runs)
+    capture = EvalGateRequest(capture_baseline=True, reason="initial")
+    second = status_result("COMPLETED", "EVAL_SALES_AGENT_abcdef0_ci_20260928T010203Z_R2")
+
+    outcome, store, _, _ = gate(
+        EvalSnowflake([*completed_attempt(), second, result_rows()]), request=capture, result=result
+    )
+
+    assert isinstance(outcome, EvalGateOutcome) and outcome.passed
+    assert len(store.baselines[("verify", "eval:sales_agent")].run_names) == 2
+
+
+def test_a_staged_config_whose_digest_state_trusts_is_not_staged_again() -> None:
+    result = compile_eval()
+    item = compiled_evals(result)[0]
+    content = item.rendered.config_yaml.encode("utf-8")
+    port = EvalSnowflake(completed_attempt())
+    config_path = (
+        "@DB.S.EVAL_CONFIGS/sales_agent/" + dict(item.rendered_artifact.component_fingerprints)["config"] + ".yaml"
+    )
+    port.upload(config_path, content)
+    port.uploads.clear()
+    digest = port.staged_file_md5s[config_path]
+    entry = AppliedEntry(
+        "f", "DB.S.X", "now", "run", "applied", "f", "m", component_fingerprints=(("config_stage_md5", digest),)
+    )
+    other = AppliedEntry("f", "DB.S.Y", "now", "run", "applied", "f", "m")
+    port.remote_state = MappingProxyType({item.artifact_key: entry, "eval:other": other})
+
+    outcome, _, _, _ = gate(port, result=result)
+
+    assert isinstance(outcome, EvalGateOutcome)
+    assert port.uploads == []
+
+
+def test_the_eval_config_stage_comes_from_the_apply_block() -> None:
+    inputs = InMemoryProjectInputs(revision="abcdef0", tree={"apply": {"eval_config_stage": {"stage": "MY_CONFIGS"}}})
+    port = EvalSnowflake(completed_attempt())
+
+    gate(port, inputs=inputs)
+
+    assert [path.split("/")[0] for path, _ in port.uploads] == ["@DB.S.MY_CONFIGS"]
+
+
+def test_the_lock_is_released_when_the_run_raises() -> None:
+    class Dropped(EvalSnowflake):
+        def read_state(self, state_table, target_name):  # type: ignore[no-untyped-def]
+            raise SnowflakePortError("connection reset while reading state")
+
+    lock = InMemoryStateStore()
+    with pytest.raises(SnowflakePortError, match="connection reset"):
+        gate(Dropped([]), state_store=lock)
+    assert not lock.locked

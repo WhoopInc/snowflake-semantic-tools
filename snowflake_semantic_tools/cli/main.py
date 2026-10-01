@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import dataclasses
-import difflib
 import inspect
 import json
 import shutil
@@ -11,69 +10,45 @@ import sys
 import time
 from collections.abc import Callable, Iterator, Sequence
 from contextlib import contextmanager
-from hashlib import sha256
 from pathlib import Path
-from types import MappingProxyType
 from typing import Any, Mapping, NoReturn, cast
 
 import click
 
 from .._version import __version__ as VERSION
 from ..adapters.clock import SystemClock
-from ..adapters.dbt.manifest import load_manifest_catalog
 from ..adapters.dbt.profiles import ProfileTarget, load_profile_target
-from ..adapters.dbt.project import dbt_project_name as read_dbt_project_name
 from ..adapters.errors import ProjectError
+from ..adapters.fs.golden import GoldenFileStore
 from ..adapters.fs.local import STATE_FILE_GLOB, ManifestFileStore, PlanFileStore, StateFileStore, state_file
-from ..adapters.project_source import YamlProjectSource
+from ..adapters.project_source import YamlProjectInputs
 from ..adapters.snowflake.connector import SnowflakeConnector
 from ..adapters.snowflake.eval_state import SnowflakeEvalStateStore
-from ..adapters.yaml.agents import load_agents
-from ..adapters.yaml.config import load_project_config, read_config_document
-from ..adapters.yaml.documents import discover_yaml, load_documents
+from ..adapters.yaml.config import load_project_config
 from ..adapters.yaml.migrate import filter_sites, semantic_files, write_file
-from ..adapters.yaml.parse import parse_yaml_bytes
-from ..adapters.yaml.profiles import load_profile_catalog
-from ..adapters.yaml.skills import _published, load_skill_catalog
 from ..app.apply import ApplyArtifacts
-from ..app.compile import CompileArtifacts, CompileResult, CompileSemanticViews
-from ..app.compile.agents import AgentCompileContext, CompileAgents, CompiledAgent, ExtensionPin, for_publication
-from ..app.compile.evals import CompiledEval, CompileEvals
-from ..app.compile.profiles import CompiledProfile, CompileProfiles, DesktopChannel
-from ..app.compile.skills import CatalogChannel, CompiledExtension, CompileSkills
-from ..app.compile.tools import CompileTools
-from ..app.evals.gate import capture_baseline, evaluate_gate, persist_gate
-from ..app.evals.run import (
-    EvalRunOptions,
-    EvalSuiteResult,
-    RunEvalSuite,
-    empty_eval_suite_json,
-    eval_suite_json,
-    validate_eval_publication,
-)
-from ..app.lifecycle.evals import EvalLifecycleConfig, EvalLifecycleHandler
-from ..app.lifecycle.extensions import ExtensionLifecycleHandler
-from ..app.lifecycle.profiles import ProfileLifecycleHandler
+from ..app.compile import CompileResult
+from ..app.compile.project import CompileProject
+from ..app.evals.run import EvalSuiteResult, eval_suite_json
+from ..app.evals.suite import EvalGateOutcome, EvalGateRefused, EvalGateRequest, RunEvalGate, compiled_evals
+from ..app.golden import CompareGoldens
 from ..app.listing import list_artifacts
-from ..app.manifest import build_manifest
+from ..app.manifest import manifest_for, stale_manifest
 from ..app.migrate_refs import MigrateRefs
 from ..app.partial import partial_refusal, partial_split
-from ..app.plan import PlanArtifacts
-from ..app.smoke import RunSmokeSuite
-from ..app.state import read_state
+from ..app.plan import PlanReady, PlanRefused, PlanScope, PreparePlan
+from ..app.smoke import SmokePublished
 from ..app.validate import ValidateArtifacts
 from ..domain.model.artifact_key import artifact_key, split_artifact_key
-from ..domain.model.dbt import DbtCatalog
-from ..domain.model.diagnostic import ERROR_REGISTRY, D, Diagnostic, DiagnosticBag, Origin, Severity, render_diagnostic
-from ..domain.model.eval import DEFAULT_EVAL_CONFIG_STAGE
-from ..domain.model.identifier import Identifier, QualifiedName, TargetIdentity
-from ..domain.model.lifecycle import Action, ApplyOptions, Change, ChangeSet, FailurePolicy, OwnershipMarker
+from ..domain.model.config_schema import config_block, config_int
+from ..domain.model.config_schema import configured_dir as _project_dir_value
+from ..domain.model.diagnostic import ERROR_REGISTRY, D, Diagnostic, DiagnosticBag, Severity, render_diagnostic
+from ..domain.model.identifier import Identifier, QualifiedName
+from ..domain.model.lifecycle import Action, ApplyOptions, ApplyOutcome, Change, ChangeSet, FailurePolicy
 from ..domain.model.registry import SEMANTIC_REGISTRY
-from ..domain.model.skill import DEFAULT_VERSION_PREFIX, SkillCatalog, extension_identifier
-from ..domain.ports.lifecycle import CompositeLifecycleHandler
 from ..domain.ports.snowflake import SnowflakePortError
 from ..domain.render.reference_docs import CommandDoc, OptionDoc, reference_pages
-from ..domain.state import Manifest, SavedPlan, State, canonical_json
+from ..domain.state import Manifest, SavedPlan
 
 OK = 0
 ERROR = 1
@@ -198,15 +173,6 @@ for _click_error in (
     _click_error.exit_code = USAGE
 
 
-def _source(project_dir: Path, target_name: str | None, manifest_path: Path | None) -> YamlProjectSource:
-    return YamlProjectSource(
-        project_dir,
-        target_name=target_name,
-        manifest_path=manifest_path,
-        invoke_dbt=manifest_path is None,
-    )
-
-
 def _target_dir(project_dir: Path) -> Path:
     return project_dir / "target" / "sst"
 
@@ -221,8 +187,18 @@ def _compiled_manifest(project_dir: Path) -> Manifest:
     return manifest
 
 
-def _target_label(target: TargetIdentity) -> str:
-    return "/".join(part for part in target.key if part)
+def _project_inputs(project_dir: Path, target_name: str | None, manifest_path: Path | None) -> YamlProjectInputs:
+    """Bind the project's files as the inputs every use case reads.
+
+    The commit is asked for through this module's `_git_sha`, looked up when a use case
+    needs it, so replacing `_git_sha` here changes the commit every use case sees.
+    """
+    return YamlProjectInputs(
+        project_dir,
+        target_name=target_name,
+        manifest_path=manifest_path,
+        git_sha=lambda: _git_sha(project_dir),
+    )
 
 
 def _compile_result(
@@ -231,319 +207,9 @@ def _compile_result(
     manifest_path: Path | None,
     selected: str | None = None,
 ) -> CompileResult:
-    project_config = load_project_config(project_dir)
-    config = dict(project_config.tree)
-    profile = load_profile_target(project_dir, target_name)
-    consumed, consumed_diagnostics = _consumed_extensions(config, profile)
-    skills, profiles, desktop_skills, unpublished = _compile_publishing(project_dir, config, profile)
-    unpublished.update(
-        (f"extension:{str(item.context['name']).casefold()}", "its skills.extensions entry cannot be qualified")
-        for item in consumed_diagnostics
-        if item.code == "SST-CFG036"
-    )
-    compilers: list[_StaticCompiler] = [
-        _StaticCompiler(
-            CompileResult((), DiagnosticBag((*project_config.diagnostics, *profile.diagnostics, *consumed_diagnostics)))
-        ),
-        _StaticCompiler(skills),
-        _StaticCompiler(profiles),
-    ]
-    if project_config.has_dbt_project:
-        compilers.extend(
-            _StaticCompiler(item)
-            for item in _compile_dbt_artifacts(
-                project_dir, target_name, manifest_path, config, profile, skills, consumed, desktop_skills, unpublished
-            )
-        )
-    result = CompileArtifacts(
-        tuple(compilers),
-        {name: value.ddl_position for name, value in SEMANTIC_REGISTRY.artifacts.items()},
-    ).run_result()
+    """Compile the project from its files; with `selected`, keep only what that one selector names."""
+    result = CompileProject(_project_inputs(project_dir, target_name, manifest_path)).run()
     return _selected_result(project_dir, result, selected)
-
-
-def _skills_configured(config: dict[str, object]) -> bool:
-    skills = _config_map(config.get("skills"))
-    return "catalog" in skills or "stage" in skills
-
-
-def _channel_location(block: Mapping[str, object], profile: ProfileTarget) -> tuple[str, str]:
-    database = (
-        _target_config_text(block.get("+database"), profile, profile.identity.database.folded)
-        or profile.identity.database.folded
-    )
-    schema = (
-        _target_config_text(block.get("+schema"), profile, profile.identity.schema.folded)
-        or profile.identity.schema.folded
-    )
-    return database, schema
-
-
-def _object_in(name: str, database: str, schema: str) -> QualifiedName:
-    return QualifiedName.parse(name) if "." in name else QualifiedName.from_parts(database, schema, name)
-
-
-def _compile_publishing(
-    project_dir: Path, config: dict[str, object], profile: ProfileTarget
-) -> tuple[CompileResult, CompileResult, frozenset[str], dict[str, str]]:
-    """Skills, plugins, and Desktop profiles, loaded only when a channel is configured.
-
-    The last value maps each declared skill and plugin that produced no version
-    to the reason, for agents that reference one.
-    """
-    skills_config = _config_map(config.get("skills"))
-    catalog = load_skill_catalog(
-        project_dir,
-        skills_dir=_project_dir_value(config, "skills_dir", "skills"),
-        plugins_dir=_project_dir_value(config, "plugins_dir", "plugins"),
-    )
-    if not _skills_configured(config):
-        empty = CompileResult(())
-        return empty, empty, frozenset(), _unpublished(catalog, empty, "skills.catalog is not configured")
-    prefix = _config_text(skills_config.get("+version_prefix"), DEFAULT_VERSION_PREFIX) or DEFAULT_VERSION_PREFIX
-    channel = None
-    catalog_config = skills_config.get("catalog")
-    if isinstance(catalog_config, dict) and isinstance(catalog_config.get("+bundle_stage"), str):
-        database, schema = _channel_location(catalog_config, profile)
-        channel = CatalogChannel(
-            database=database,
-            schema=schema,
-            bundle_stage=_object_in(str(catalog_config["+bundle_stage"]), database, schema),
-            version_prefix=prefix,
-            certified=_config_bool(skills_config.get("+certified")) or False,
-        )
-    skills = CompileSkills(catalog, channel).run_result()
-    if not isinstance(catalog_config, dict):
-        channel_problem: str | None = "skills.catalog is not configured"
-    elif channel is None:
-        channel_problem = "skills.catalog sets no +bundle_stage"
-    else:
-        channel_problem = None
-    unpublished = _unpublished(catalog, skills, channel_problem)
-    stage_config = skills_config.get("stage")
-    if not isinstance(stage_config, dict):
-        return skills, CompileResult(()), frozenset(), unpublished
-    profiles_catalog = load_profile_catalog(
-        project_dir,
-        profiles_dir=_project_dir_value(config, "profiles_dir", "profiles"),
-        hooks_dir=_project_dir_value(config, "hooks_dir", "hooks"),
-        mcp_servers_dir=_project_dir_value(config, "mcp_servers_dir", "mcp-servers"),
-        commands_dir=_project_dir_value(config, "commands_dir", "commands"),
-    )
-    desktop = None
-    if isinstance(stage_config.get("+stage"), str):
-        database, schema = _channel_location(stage_config, profile)
-        desktop = DesktopChannel(
-            stage=_object_in(str(stage_config["+stage"]), database, schema),
-            registry=_object_in(str(stage_config.get("+registry_table") or "PROFILE_REGISTRY"), database, schema),
-            version_prefix=prefix,
-        )
-
-    def blocked_names(kind: str) -> frozenset[str]:
-        prefix = artifact_key(kind, "")
-        return frozenset(
-            split_artifact_key(str(item.subject))[1]
-            for item in skills.diagnostics
-            if item.severity is Severity.ERROR and str(item.subject or "").startswith(prefix)
-        )
-
-    profiles = CompileProfiles(
-        profiles_catalog,
-        catalog,
-        desktop,
-        catalog_channel=channel is not None,
-        blocked_skills=blocked_names("skill"),
-        blocked_plugins=blocked_names("plugin"),
-    ).run_result()
-    reached = {
-        *(profiles_catalog.shared.skills if profiles_catalog.shared is not None else ()),
-        *(name for item in profiles_catalog.profiles for name in item.skills),
-    }
-    plugins_reached = {name for item in profiles_catalog.profiles for name in item.plugins}
-    consumed = frozenset(
-        (
-            *(artifact_key("skill", name) for name in reached),
-            *(artifact_key("plugin", name) for name in plugins_reached),
-        )
-    )
-    return skills, profiles, consumed, unpublished
-
-
-def _unpublished(catalog: SkillCatalog, skills: CompileResult, channel_problem: str | None) -> dict[str, str]:
-    """Why each declared skill and plugin produced no extension version."""
-    compiled = {item.artifact_key for item in skills.compiled}
-    failed = {item.subject for item in skills.diagnostics if item.severity is Severity.ERROR}
-    return {
-        key: "it has errors" if key in failed else channel_problem or "the catalog channel cannot publish it"
-        for key in (*(item.key for item in catalog.skills), *(item.key for item in catalog.plugins))
-        if key not in compiled
-    }
-
-
-def _consumed_extensions(
-    config: dict[str, object], profile: ProfileTarget
-) -> tuple[dict[str, QualifiedName], tuple[Diagnostic, ...]]:
-    """`skills.extensions`: extensions agents consume and this project does not publish."""
-    block = _config_map(_config_map(config.get("skills")).get("extensions"))
-    prefix = _target_config_text(block.get("default_prefix"), profile, None)
-    resolved: dict[str, QualifiedName] = {}
-    diagnostics: list[Diagnostic] = []
-    for name, entry in block.items():
-        if name == "default_prefix":
-            continue
-        fqn = _target_config_text(entry.get("fqn"), profile, None) if isinstance(entry, dict) else None
-        try:
-            if fqn:
-                resolved[name.casefold()] = QualifiedName.parse(fqn)
-                continue
-            if prefix and "." not in name:
-                resolved[name.casefold()] = QualifiedName.parse(f"{prefix}.{extension_identifier(name)}")
-                continue
-        except ValueError as exc:
-            diagnostics.append(
-                D(
-                    "SST-CFG036",
-                    origin=Origin("sst_config.yml"),
-                    subject=f"config:skills.extensions.{name}",
-                    block="skills.extensions",
-                    name=name,
-                    reason=f"its name does not parse ({exc})",
-                )
-            )
-            continue
-        diagnostics.append(
-            D(
-                "SST-CFG036",
-                origin=Origin("sst_config.yml"),
-                subject=f"config:skills.extensions.{name}",
-                block="skills.extensions",
-                name=name,
-                reason="the block sets no default_prefix" if not prefix else "the key is not a single identifier",
-            )
-        )
-    return resolved, tuple(diagnostics)
-
-
-def _extension_pins(skills: CompileResult) -> tuple[dict[str, ExtensionPin], dict[str, ExtensionPin], frozenset[str]]:
-    skill_pins: dict[str, ExtensionPin] = {}
-    plugin_pins: dict[str, ExtensionPin] = {}
-    consumed: set[str] = set()
-    for item in skills.compiled:
-        if not isinstance(item, CompiledExtension):
-            continue
-        release = item.release
-        if item.artifact_type == "skill":
-            skill_pins[item.name] = ExtensionPin(
-                item.artifact_key, release.target, release.alias, (item.name,), item.has_scripts
-            )
-            continue
-        members = tuple(
-            dict.fromkeys(
-                entry.path.split("/")[1] for entry in release.bundle.entries if entry.path.startswith("skills/")
-            )
-        )
-        plugin_pins[item.name] = ExtensionPin(
-            item.artifact_key, release.target, release.alias, members, item.has_scripts
-        )
-        consumed.update(artifact_key("skill", member) for member in members)
-    return skill_pins, plugin_pins, frozenset(consumed)
-
-
-def _compile_dbt_artifacts(
-    project_dir: Path,
-    target_name: str | None,
-    manifest_path: Path | None,
-    config: dict[str, object],
-    profile: ProfileTarget,
-    skills: CompileResult,
-    consumed_extensions: dict[str, QualifiedName],
-    desktop_skills: frozenset[str] = frozenset(),
-    unpublished: Mapping[str, str] = MappingProxyType({}),
-) -> tuple[CompileResult, ...]:
-    source = _source(project_dir, target_name, manifest_path)
-    semantic = CompileSemanticViews(source).run_result()
-    dbt_path = manifest_path or project_dir / "target" / "manifest.json"
-    dbt = load_manifest_catalog(dbt_path)
-    tool_catalog = source.load_tools()
-    tool_defaults = _config_map(config.get("tools"))
-    tools = CompileTools(
-        tool_catalog,
-        database=_target_config_text(tool_defaults.get("+database"), profile, profile.identity.database.folded)
-        or profile.identity.database.folded,
-        schema=_target_config_text(tool_defaults.get("+schema"), profile, profile.identity.schema.folded)
-        or profile.identity.schema.folded,
-        warehouse=_target_config_text(tool_defaults.get("+warehouse"), profile, profile.identity.warehouse),
-        target_lag=_config_text(tool_defaults.get("+target_lag"), None),
-        embedding_model=_config_text(tool_defaults.get("+embedding_model"), None),
-        execute_as=_config_text(tool_defaults.get("+execute_as"), "caller"),
-        dbt_relations={model.name: model.relation_name for model in dbt.models},
-    ).run_result()
-    agent_models, agent_diagnostics = load_agents(
-        project_dir, agents_dir=_project_dir_value(config, "agents_dir", "agents")
-    )
-    agent_defaults = _config_map(config.get("agents"))
-    snowflake_config = _config_map(config.get("snowflake"))
-    raw_models = snowflake_config.get("orchestration_models")
-    allowed_models = (
-        frozenset(str(value) for value in raw_models) if isinstance(raw_models, list) else frozenset(("auto",))
-    )
-    skill_pins, plugin_pins, consumed = _extension_pins(skills)
-    semantic_targets = {item.name.casefold(): item.rendered_artifact.target for item in semantic.compiled}
-    agent_targets = {
-        model.name.casefold(): QualifiedName.from_parts(
-            _target_config_text(agent_defaults.get("+database"), profile, profile.identity.database.folded)
-            or profile.identity.database.folded,
-            _target_config_text(agent_defaults.get("+schema"), profile, profile.identity.schema.folded)
-            or profile.identity.schema.folded,
-            model.name,
-        )
-        for model in agent_models
-        if model.enabled and agent_defaults.get("+enabled", True) is not False
-    }
-    agents = CompileAgents(
-        tuple(model for model in agent_models if model.enabled and agent_defaults.get("+enabled", True) is not False),
-        agent_diagnostics,
-        AgentCompileContext(
-            semantic_targets,
-            tool_catalog,
-            agent_targets,
-            consumed_extensions,
-            {"sha_version": _git_sha(project_dir)},
-            _target_config_text(agent_defaults.get("+database"), profile, profile.identity.database.folded)
-            or profile.identity.database.folded,
-            _target_config_text(agent_defaults.get("+schema"), profile, profile.identity.schema.folded)
-            or profile.identity.schema.folded,
-            _target_config_text(agent_defaults.get("+warehouse"), profile, profile.identity.warehouse),
-            _config_int(agent_defaults.get("+query_timeout")),
-            _config_text(agent_defaults.get("+orchestration_model"), "auto") or "auto",
-            _config_int(agent_defaults.get("+budget_seconds")),
-            _config_int(agent_defaults.get("+budget_tokens")),
-            _config_text(agent_defaults.get("+tool_not_accessible"), None),
-            _config_bool(agent_defaults.get("+analytical_search")),
-            _config_text(agent_defaults.get("+alias"), None),
-            allowed_models,
-            skills=skill_pins,
-            plugins=plugin_pins,
-            consumed=consumed | desktop_skills,
-            unpublished=MappingProxyType(dict(unpublished)),
-        ),
-    ).run_result()
-    resolved_agent_tools = {
-        item.resolved.model.name.casefold(): tuple(sorted(item.resolved.agent_facing_tool_names))
-        for item in agents.compiled
-        if isinstance(item, CompiledAgent)
-    }
-    evals = CompileEvals(
-        source.load_evals(
-            tuple(
-                model for model in agent_models if model.enabled and agent_defaults.get("+enabled", True) is not False
-            ),
-            agent_diagnostics,
-            resolved_agent_tools,
-        ),
-        agent_targets=agent_targets,
-    ).run_result()
-    return semantic, tools, agents, evals
 
 
 def _selected_result(project_dir: Path, result: CompileResult, selected: str | None) -> CompileResult:
@@ -561,63 +227,8 @@ def _selected_result(project_dir: Path, result: CompileResult, selected: str | N
     return dataclasses.replace(result, compiled=compiled)
 
 
-class _StaticCompiler:
-    def __init__(self, result: CompileResult) -> None:
-        self._result = result
-
-    def run_result(self) -> CompileResult:
-        return self._result
-
-
 def _config(project_dir: Path) -> dict[str, object]:
     return dict(load_project_config(project_dir).tree)
-
-
-def _project_dir_value(config: dict[str, object], key: str, default: str) -> str:
-    project = config.get("project")
-    return str(project.get(key) or default) if isinstance(project, dict) else default
-
-
-def _config_map(value: object) -> dict[str, object]:
-    return {str(key): item for key, item in value.items()} if isinstance(value, dict) else {}
-
-
-def _config_text(value: object, default: str | None) -> str | None:
-    if value is None:
-        return default
-    if not isinstance(value, str):
-        return str(value)
-    replacements = {
-        "{{ target.database }}": default or "",
-        "{{ target.schema }}": default or "",
-        "{{ target.warehouse }}": default or "",
-    }
-    for raw, resolved in replacements.items():
-        value = value.replace(raw, resolved)
-    return value or default
-
-
-def _target_config_text(
-    value: object,
-    profile: ProfileTarget,
-    default: str | None,
-) -> str | None:
-    if not isinstance(value, str):
-        return default if value is None else str(value)
-    return (
-        value.replace("{{ target.database }}", profile.identity.database.folded)
-        .replace("{{ target.schema }}", profile.identity.schema.folded)
-        .replace("{{ target.warehouse }}", profile.identity.warehouse or "")
-        or default
-    )
-
-
-def _config_int(value: object) -> int | None:
-    return value if isinstance(value, int) and not isinstance(value, bool) else None
-
-
-def _config_bool(value: object) -> bool | None:
-    return value if isinstance(value, bool) else None
 
 
 def _git_sha(project_dir: Path) -> str:
@@ -656,104 +267,9 @@ def _selection(values: tuple[str, ...]) -> tuple[frozenset[str] | None, frozense
     return (frozenset(types) if types else None), (frozenset(keys) if keys else None)
 
 
-def _file_checksums(project_dir: Path) -> dict[str, str]:
-    config = _config(project_dir)
-    checksums: dict[str, str] = {}
-    if (project_dir / "dbt_project.yml").is_file():
-        semantic_models_dir = _project_dir_value(config, "semantic_models_dir", "semantic_models")
-        documents = load_documents(discover_yaml(project_dir, semantic_models_dir), parse_yaml_bytes)
-        checksums.update({document.path: document.checksum for document in documents.documents})
-    directories = [
-        _project_dir_value(config, "tools_dir", "tools"),
-        _project_dir_value(config, "agents_dir", "agents"),
-        _project_dir_value(config, "eval_metrics_dir", "eval_metrics"),
-    ]
-    bundled: tuple[str, ...] = (
-        (_project_dir_value(config, "skills_dir", "skills"), _project_dir_value(config, "plugins_dir", "plugins"))
-        if _skills_configured(config)
-        else ()
-    )
-    if isinstance(_config_map(config.get("skills")).get("stage"), dict):
-        bundled = (
-            *bundled,
-            _project_dir_value(config, "profiles_dir", "profiles"),
-            _project_dir_value(config, "hooks_dir", "hooks"),
-            _project_dir_value(config, "mcp_servers_dir", "mcp-servers"),
-        )
-    for directory in (*directories, *bundled):
-        root = project_dir / directory
-        if not root.is_dir():
-            continue
-        for path in sorted(root.rglob("*")):
-            # Skill folders skip what publication skips: hidden entries and caches.
-            if directory in bundled and not _published(path, root):
-                continue
-            if path.is_file():
-                checksums[path.relative_to(project_dir).as_posix()] = sha256(path.read_bytes()).hexdigest()
-    return checksums
-
-
 def _build_manifest(project_dir: Path, result: CompileResult, manifest_path: Path | None) -> Manifest:
-    dbt_project_name = ""
-    dbt_project = project_dir / "dbt_project.yml"
-    dbt_path = manifest_path or project_dir / "target" / "manifest.json"
-    if dbt_project.is_file():
-        dbt_project_name = read_dbt_project_name(project_dir)
-        catalog = load_manifest_catalog(dbt_path)
-    else:
-        catalog = DbtCatalog(schema_version="", dbt_version=None, project_name=None, models=())
-    dbt_projection = [
-        {
-            "name": model.name,
-            "relation": model.relation_name,
-            "primary_key": list(model.primary_key),
-            "unique_keys": [list(key) for key in model.unique_keys],
-            "columns": [
-                {
-                    "name": column.name,
-                    "data_type": column.data_type,
-                    "column_type": column.column_type,
-                }
-                for column in model.columns
-            ],
-        }
-        for model in sorted(catalog.models, key=lambda item: item.name.casefold())
-    ]
-    try:
-        recorded_dbt_path = (
-            dbt_path.resolve().relative_to(project_dir.resolve()).as_posix() if dbt_project.is_file() else ""
-        )
-    except ValueError:
-        recorded_dbt_path = str(dbt_path)
-    config_checksum = ""
-    semantic_path = "semantic_models"
-    config_value = read_config_document(project_dir)
-    if config_value is not None:
-        config_checksum = sha256(canonical_json(config_value)).hexdigest()
-        if isinstance(config_value, dict) and isinstance(config_value.get("project"), dict):
-            semantic_path = str(config_value["project"].get("semantic_models_dir") or semantic_path)
-    return build_manifest(
-        result,
-        project_root=".",
-        semantic_path=semantic_path,
-        dbt_project_name=dbt_project_name,
-        config_checksum=config_checksum,
-        dbt_manifest_path=recorded_dbt_path,
-        dbt_schema_version=catalog.schema_version,
-        dbt_digest=sha256(canonical_json(dbt_projection)).hexdigest(),
-        model_count=len(catalog.models),
-        file_checksums=_file_checksums(project_dir),
-    )
-
-
-def _validation_settings(project_dir: Path) -> tuple[bool, bool]:
-    config = read_config_document(project_dir)
-    if config is None:
-        return False, True
-    validation = config.get("validation") if isinstance(config, dict) else None
-    if not isinstance(validation, dict):
-        return False, True
-    return bool(validation.get("strict", False)), bool(validation.get("snowflake_syntax_check", True))
+    """Build the manifest `result` publishes, reading what it records about the project's files now."""
+    return manifest_for(result, _project_inputs(project_dir, None, manifest_path).manifest_sources())
 
 
 def _effective_validation_settings(
@@ -762,11 +278,7 @@ def _effective_validation_settings(
     strict: bool | None,
     connected: bool | None,
 ) -> tuple[bool, bool]:
-    configured_strict, configured_connected = _validation_settings(project_dir)
-    return (
-        configured_strict if strict is None else strict,
-        configured_connected if connected is None else connected,
-    )
+    return _project_inputs(project_dir, None, None).validation_defaults().resolve(strict, connected)
 
 
 def _diagnostic_json(value: Diagnostic) -> dict[str, object]:
@@ -1106,173 +618,111 @@ def _write_plan_sql(project_dir: Path, changeset: ChangeSet, sql_out: Path | Non
     return output
 
 
-def _plan_runtime(
-    project_dir: Path,
-    target_name: str | None,
-    manifest_path: Path | None,
-    selected: tuple[str, ...],
-    excluded: tuple[str, ...],
-    include_prune: bool,
-    strict: bool | None,
-    connected: bool | None,
-    *,
-    partial: bool = False,
-) -> tuple[
-    CompileResult,
-    Manifest | None,
-    ProfileTarget | None,
-    SnowflakeConnector | None,
-    tuple[StateFileStore, State, ChangeSet, dict[str, CompositeLifecycleHandler]] | None,
-]:
-    prune_types, prune_keys = _selection(selected)
-    excluded_types, excluded_keys = _selection(excluded)
+@dataclasses.dataclass(frozen=True)
+class _PlanRequest:
+    """What `sst plan` or `sst apply` was asked to plan, as the command line gave it.
+
+    Attributes:
+        strict, connected: `--strict` and `--snowflake-syntax-check`; None defers to `validation:`.
+    """
+
+    project_dir: Path
+    target_name: str | None
+    manifest_path: Path | None
+    selected: tuple[str, ...]
+    excluded: tuple[str, ...]
+    prune: bool
+    partial: bool
+    strict: bool | None
+    connected: bool | None
+
+    def following(self, saved: SavedPlan | None) -> _PlanRequest:
+        """Return the request with a saved plan's selection in place of the flags'; itself without one."""
+        if saved is None:
+            return self
+        return dataclasses.replace(self, selected=saved.selected, excluded=saved.excluded, prune=saved.include_prune)
+
+
+@dataclasses.dataclass(frozen=True)
+class _PlanSession:
+    """A ready plan and what the CLI wired for it: the live target, the open connection, the state file.
+
+    Whoever holds the session closes `port`.
+    """
+
+    ready: PlanReady
+    profile: ProfileTarget
+    port: SnowflakeConnector
+    state_store: StateFileStore
+
+
+def _plan_scope(request: _PlanRequest) -> PlanScope:
+    """Resolve `--select`, `--exclude`, and `--prune` into what a plan covers and may prune.
+
+    An excluded type leaves the selected types, or every type when none is selected. With
+    `--prune`, an excluded key leaves the selected keys, which must then be given.
+
+    Raises:
+        SstUsageError: a selector does not parse, or `--prune` excludes keys without `--select`.
+    """
+    prune_types, prune_keys = _selection(request.selected)
+    excluded_types, excluded_keys = _selection(request.excluded)
     if excluded_types is not None:
         prune_types = (
             frozenset(SEMANTIC_REGISTRY.artifacts) - excluded_types
             if prune_types is None
             else frozenset(prune_types - excluded_types)
         )
-    if include_prune and excluded_keys is not None:
+    if request.prune and excluded_keys is not None:
         if prune_keys is None:
             raise SstUsageError("--prune with --exclude requires --select so the prune scope is explicit")
         prune_keys = frozenset(prune_keys - excluded_keys)
-    full_result = _compile_result(project_dir, target_name, manifest_path)
-    # `--partial` plans only what can publish; the manifest is built from the same set
-    # `compile --partial` wrote, so the two agree on the manifest id.
-    split = partial_split(full_result) if partial and not full_result.success else None
-    source = split.healthy if split is not None else full_result
-    compiled_manifest = _compiled_manifest(project_dir)
-    compiled = tuple(
-        item
-        for item in source.compiled
-        if (
-            (prune_types is None and prune_keys is None)
-            or (prune_types is not None and item.artifact_type in prune_types)
-            or (prune_keys is not None and item.artifact_key in prune_keys)
-        )
-        and (excluded_types is None or item.artifact_type not in excluded_types)
-        and (excluded_keys is None or item.artifact_key not in excluded_keys)
+    return PlanScope(request.selected, prune_types, prune_keys, excluded_types, excluded_keys, request.prune)
+
+
+def _plan_runtime(request: _PlanRequest) -> _PlanSession | PlanRefused:
+    """Compile and decide what to plan offline, then connect and plan; a refusal when nothing can be.
+
+    A ready plan comes with its open connection, which the caller closes. Once connected, the
+    connection is closed here whenever planning raises or is refused.
+
+    Raises:
+        SstUsageError: the selectors cannot be resolved, as `_plan_scope` says.
+        ProjectError: the selectors matched nothing, or the compiled manifest is stale.
+    """
+    scope = _plan_scope(request)
+    project_dir = request.project_dir
+    full_result = _compile_result(project_dir, request.target_name, request.manifest_path)
+    prepare = PreparePlan(_project_inputs(project_dir, request.target_name, request.manifest_path), SystemClock())
+    candidates = prepare.select(
+        full_result,
+        _compiled_manifest(project_dir),
+        scope,
+        partial=request.partial,
+        strict=request.strict,
+        connected=request.connected,
+        project=str(project_dir),
     )
-    if selected and not compiled and not include_prune:
-        raise ProjectError(f"selectors {selected!r} matched no artifact in {project_dir}")
-    result = dataclasses.replace(source, compiled=compiled)
-    if not result.success and split is None:
-        refusal = partial_refusal(full_result) if partial else None
-        if refusal is not None:
-            result = dataclasses.replace(result, diagnostics=DiagnosticBag((*result.diagnostics, refusal)))
-        return result, None, None, None, None
-    effective_strict, effective_connected = _effective_validation_settings(
-        project_dir,
-        strict=strict,
-        connected=connected,
-    )
-    manifest = _build_manifest(project_dir, source, manifest_path)
-    if compiled_manifest.manifest_id != manifest.manifest_id:
-        raise ProjectError("compiled SST manifest is stale; run sst compile before plan or apply")
-    profile, port = _connect(project_dir, target_name)
+    if isinstance(candidates, PlanRefused):
+        if candidates.reason is not None:
+            raise ProjectError(candidates.reason)
+        return candidates
+    profile, port = _connect(project_dir, request.target_name)
     with _closed_on_error(port):
-        validation = ValidateArtifacts(port if effective_connected else None).run(
-            result,
-            strict=effective_strict,
-            connected=effective_connected,
-        )
-        # The split walks the whole healthy set, so a selection cannot hide a dependency;
-        # its result is then narrowed back to what was selected.
-        validated = partial_split(dataclasses.replace(source, diagnostics=validation.diagnostics)) if partial else None
-        if validated is not None:
-            # Strict promotion or a connected check can exclude more; the notices name
-            # everything left out, including what the compile split already excluded.
-            left_out = dict.fromkeys((*(split.excluded if split is not None else ()), *validated.excluded))
-            notices = tuple(D("SST-PLN032", subject=key, artifact=key) for key in left_out)
-            still_healthy = {item.artifact_key for item in validated.healthy.compiled}
-            result = dataclasses.replace(
-                result,
-                compiled=tuple(item for item in result.compiled if item.artifact_key in still_healthy),
-                diagnostics=DiagnosticBag((*validation.diagnostics, *notices)),
-            )
-        elif not validation.success:
-            port.close()
-            refusal = (
-                partial_refusal(dataclasses.replace(result, diagnostics=validation.diagnostics)) if partial else None
-            )
-            failed_result = dataclasses.replace(
-                result, diagnostics=DiagnosticBag((*validation.diagnostics, *((refusal,) if refusal else ())))
-            )
-            return failed_result, None, None, None, None
         state_store = StateFileStore(state_file(_target_dir(project_dir), profile.target_name))
-        state, state_diagnostics = read_state(
-            state_store,
-            port,
-            state_table=profile.state_table,
-            target=profile.identity,
-        )
-        config = _config(project_dir)
-        apply_config = _config_map(config.get("apply"))
-        stage_config = _config_map(apply_config.get("agent_spec_stage"))
-        stage = QualifiedName.from_parts(
-            _config_text(stage_config.get("database"), profile.identity.database.folded)
-            or profile.identity.database.folded,
-            _config_text(stage_config.get("schema"), profile.identity.schema.folded) or profile.identity.schema.folded,
-            str(stage_config.get("stage") or "AGENT_SPECS"),
-        )
-        publication_compiled = tuple(
-            (
-                for_publication(
-                    item,
-                    stage=stage,
-                    git_sha=_git_sha(project_dir),
-                )
-                if isinstance(item, CompiledAgent)
-                else item
-            )
-            for item in result.compiled
-        )
-        publication_result = dataclasses.replace(result, compiled=publication_compiled)
-        publish = {artifact.key: artifact for artifact in publication_result.rendered_for_publish(manifest.manifest_id)}
-        eval_stage_config = _config_map(apply_config.get("eval_config_stage"))
-        releases = {
-            item.artifact_key: item.release for item in full_result.compiled if isinstance(item, CompiledExtension)
-        }
-        lifecycle_handlers: dict[str, CompositeLifecycleHandler] = {
-            "eval": EvalLifecycleHandler(
-                port,
-                EvalLifecycleConfig(str(eval_stage_config.get("stage") or DEFAULT_EVAL_CONFIG_STAGE)),
-            ),
-            "skill": ExtensionLifecycleHandler(port, releases, "skill"),
-            "plugin": ExtensionLifecycleHandler(port, releases, "plugin"),
-            "profile": ProfileLifecycleHandler(
-                port, {item.artifact_key: item for item in full_result.compiled if isinstance(item, CompiledProfile)}
-            ),
-        }
-        observation_targets = tuple(
-            dict.fromkeys(
-                (
-                    *(artifact.target for artifact in full_result.rendered),
-                    *(
-                        QualifiedName.parse(entry.qualified_name)
-                        for entry in state.applied.values()
-                        if entry.qualified_name
-                    ),
-                )
-            )
-        )
-        changeset = PlanArtifacts(port, lifecycle_handlers=lifecycle_handlers).run(
-            publish,
-            manifest,
-            state,
-            profile.identity,
-            fetched_at=SystemClock().now_iso(),
-            include_prune=include_prune,
-            prune_types=prune_types,
-            prune_keys=prune_keys,
-            observation_targets=observation_targets,
-        )
-        if state_diagnostics:
-            changeset = dataclasses.replace(
-                changeset,
-                diagnostics=DiagnosticBag((*state_diagnostics, *changeset.diagnostics)),
-            )
-        return result, manifest, profile, port, (state_store, state, changeset, lifecycle_handlers)
+        outcome = prepare.run(candidates, port, state_store, target=profile.identity, state_table=profile.state_table)
+    if isinstance(outcome, PlanRefused):
+        port.close()
+        return outcome
+    return _PlanSession(outcome, profile, port, state_store)
+
+
+def _fail(command: str, diagnostics: DiagnosticBag, output: str) -> NoReturn:
+    """Report the errors that stopped a command, and exit 1."""
+    if output == "json":
+        _emit_json(_json_envelope(command, diagnostics, exit_code=ERROR), ERROR)
+    _render_diagnostics(diagnostics)
+    raise click.exceptions.Exit(ERROR)
 
 
 @cli.command()
@@ -1595,67 +1045,90 @@ def plan(
     if plan_out is not None and no_plan_out:
         raise SstUsageError("--plan-out and --no-plan-out are mutually exclusive")
     _refuse_partial_prune(partial, prune)
+    request = _PlanRequest(
+        project_dir, target_name, manifest_path, selected, excluded, prune, partial, strict, snowflake_syntax_check
+    )
 
     def action() -> None:
-        result, manifest, _, port, runtime = _plan_runtime(
-            project_dir,
-            target_name,
-            manifest_path,
-            selected,
-            excluded,
-            prune,
-            strict,
-            snowflake_syntax_check,
-            partial=partial,
-        )
-        if runtime is None or manifest is None or port is None:
-            if output == "json":
-                _emit_json(_json_envelope("plan", result.diagnostics, exit_code=ERROR), ERROR)
-            _render_diagnostics(result.diagnostics)
-            raise click.exceptions.Exit(ERROR)
-        _, _, changeset, _ = runtime
-        try:
-            saved = SavedPlan.from_changeset(
-                changeset,
-                selected=selected,
-                excluded=excluded,
-                include_prune=prune,
-                partial=partial,
-            )
-            destination = plan_out or _target_dir(project_dir) / "plan.json"
-            if not no_plan_out:
-                PlanFileStore(destination).write(saved)
-            sql_path = _write_plan_sql(project_dir, changeset, sql_out)
-        finally:
-            port.close()
-        shown = DiagnosticBag((*result.diagnostics, *changeset.diagnostics)) if partial else changeset.diagnostics
-        if changeset.blocked or shown.has_errors:
-            exit_code = ERROR
-        elif changeset.writes:
-            exit_code = OK if no_detailed_exitcode else CHANGES
-        else:
-            exit_code = OK
-        if output == "json":
-            data: dict[str, object] = {
-                "manifest_id": manifest.manifest_id,
-                "plan_id": saved.plan_id,
-                "plan_path": None if no_plan_out else str(destination),
-                "sql_path": str(sql_path),
-                "changes": [_change_json(change) for change in changeset.changes],
-                "report_only": [change.key for change in changeset.report_only],
-            }
-            if partial:
-                data["partial"] = {"excluded": _partial_excluded(result.diagnostics)}
-            _emit_json(
-                _json_envelope("plan", shown, exit_code=exit_code, artifact_count=len(changeset.changes), data=data),
-                exit_code,
-            )
-        _render_diagnostics(shown)
-        _print_plan(changeset)
-        if exit_code:
-            raise click.exceptions.Exit(exit_code)
+        session = _plan_runtime(request)
+        if isinstance(session, PlanRefused):
+            _fail("plan", session.diagnostics, output)
+        saved, destination, sql_path = _save_plan(request, session, plan_out, no_plan_out, sql_out)
+        plan_path = None if no_plan_out else destination
+        _report_plan(request, session.ready, saved, plan_path, sql_path, no_detailed_exitcode, output)
 
     _guarded(action, command="plan", output=output)
+
+
+def _save_plan(
+    request: _PlanRequest, session: _PlanSession, plan_out: Path | None, no_plan_out: bool, sql_out: Path | None
+) -> tuple[SavedPlan, Path, Path]:
+    """Save the plan unless `--no-plan-out`, write each change's statements, then close the connection.
+
+    Returns:
+        The saved plan, the path it is saved at or would have been, and the statements' directory.
+    """
+    changeset = session.ready.changeset
+    try:
+        saved = SavedPlan.from_changeset(
+            changeset,
+            selected=request.selected,
+            excluded=request.excluded,
+            include_prune=request.prune,
+            partial=request.partial,
+        )
+        destination = plan_out or _target_dir(request.project_dir) / "plan.json"
+        if not no_plan_out:
+            PlanFileStore(destination).write(saved)
+        sql_path = _write_plan_sql(request.project_dir, changeset, sql_out)
+    finally:
+        session.port.close()
+    return saved, destination, sql_path
+
+
+def _report_plan(
+    request: _PlanRequest,
+    ready: PlanReady,
+    saved: SavedPlan,
+    plan_path: Path | None,
+    sql_path: Path,
+    no_detailed_exitcode: bool,
+    output: str,
+) -> None:
+    """Report a plan and exit: 1 on an error or a blocked change, 2 with writes pending, else 0.
+
+    With `--no-detailed-exitcode`, pending writes exit 0. With `--partial`, what was left out
+    is reported ahead of the plan's own diagnostics.
+    """
+    changeset = ready.changeset
+    shown = (
+        DiagnosticBag((*ready.result.diagnostics, *changeset.diagnostics)) if request.partial else changeset.diagnostics
+    )
+    if changeset.blocked or shown.has_errors:
+        exit_code = ERROR
+    elif changeset.writes:
+        exit_code = OK if no_detailed_exitcode else CHANGES
+    else:
+        exit_code = OK
+    if output == "json":
+        data: dict[str, object] = {
+            "manifest_id": ready.manifest.manifest_id,
+            "plan_id": saved.plan_id,
+            "plan_path": None if plan_path is None else str(plan_path),
+            "sql_path": str(sql_path),
+            "changes": [_change_json(change) for change in changeset.changes],
+            "report_only": [change.key for change in changeset.report_only],
+        }
+        if request.partial:
+            data["partial"] = {"excluded": _partial_excluded(ready.result.diagnostics)}
+        _emit_json(
+            _json_envelope("plan", shown, exit_code=exit_code, artifact_count=len(changeset.changes), data=data),
+            exit_code,
+        )
+    _render_diagnostics(shown)
+    _print_plan(changeset)
+    if exit_code:
+        raise click.exceptions.Exit(exit_code)
 
 
 def _refuse_partial_prune(partial: bool, prune: bool) -> None:
@@ -1667,49 +1140,6 @@ def _refuse_partial_prune(partial: bool, prune: bool) -> None:
 
 def _partial_excluded(diagnostics: DiagnosticBag) -> list[str]:
     return [str(item.subject) for item in diagnostics if item.code == "SST-PLN032"]
-
-
-def _saved_plan_guard(saved: SavedPlan, current: SavedPlan) -> None:
-    if saved.observation_fingerprint != current.observation_fingerprint:
-        raise ProjectError("saved plan is stale; the live Snowflake observation changed")
-    saved_changes = tuple(
-        (
-            item.key,
-            item.artifact_type,
-            item.action,
-            item.reason,
-            item.target,
-            item.fingerprint,
-            item.previous_marker,
-            item.statement_hashes,
-            item.depends_on,
-            item.order,
-            item.component_fingerprints,
-            item.physical_resources,
-            item.prune_executable,
-        )
-        for item in saved.changes
-    )
-    current_changes = tuple(
-        (
-            item.key,
-            item.artifact_type,
-            item.action,
-            item.reason,
-            item.target,
-            item.fingerprint,
-            item.previous_marker,
-            item.statement_hashes,
-            item.depends_on,
-            item.order,
-            item.component_fingerprints,
-            item.physical_resources,
-            item.prune_executable,
-        )
-        for item in current.changes
-    )
-    if saved_changes != current_changes:
-        raise ProjectError("saved plan is stale; the ordered changes or statement hashes changed")
 
 
 @cli.command()
@@ -1760,127 +1190,153 @@ def apply(
     if prune and not confirmed:
         raise SstUsageError("--prune requires --yes")
     _refuse_partial_prune(partial, prune)
+    request = _PlanRequest(
+        project_dir, target_name, manifest_path, selected, excluded, prune, partial, strict, snowflake_syntax_check
+    )
 
     def action() -> None:
-        saved = None
-        effective_selected = selected
-        effective_excluded = excluded
-        effective_prune = prune
-        if plan_path is not None:
-            saved = PlanFileStore(plan_path).read()
-            if saved is None:
-                raise ProjectError(f"no saved plan at {plan_path}")
-            if selected and selected != saved.selected:
-                raise SstUsageError("--select conflicts with the saved plan selection")
-            if excluded and excluded != saved.excluded:
-                raise SstUsageError("--exclude conflicts with the saved plan selection")
-            if prune and not saved.include_prune:
-                raise SstUsageError("--prune conflicts with a non-pruning saved plan")
-            # Publishing a partial result is always explicit, in both directions.
-            if saved.partial and not partial:
-                raise SstUsageError("the saved plan is partial; apply it with --partial")
-            if partial and not saved.partial:
-                raise SstUsageError("--partial conflicts with a saved plan that is not partial")
-            effective_selected = saved.selected
-            effective_excluded = saved.excluded
-            effective_prune = saved.include_prune
-        result, manifest, profile, port, runtime = _plan_runtime(
-            project_dir,
-            target_name,
-            manifest_path,
-            effective_selected,
-            effective_excluded,
-            effective_prune,
-            strict,
-            snowflake_syntax_check,
-            partial=partial,
-        )
-        if runtime is None or manifest is None or profile is None or port is None:
-            if output == "json":
-                _emit_json(_json_envelope("apply", result.diagnostics, exit_code=ERROR), ERROR)
-            _render_diagnostics(result.diagnostics)
-            raise click.exceptions.Exit(ERROR)
-        state_store, previous, changeset, lifecycle_handlers = runtime
-        with _closed_on_error(port):
-            current_saved = SavedPlan.from_changeset(
-                changeset,
-                selected=effective_selected,
-                excluded=effective_excluded,
-                include_prune=effective_prune,
-                partial=partial,
-            )
-            if saved is not None:
-                if saved.target.key != profile.identity.key:
-                    diagnostic = D(
-                        "SST-APL005",
-                        artifact=str(plan_path),
-                        found=_target_label(saved.target),
-                        expected=_target_label(profile.identity),
-                    )
-                    raise ProjectError(diagnostic.message, diagnostics=(diagnostic,))
-                if not saved.matches(manifest.manifest_id, profile.identity):
-                    raise ProjectError("the saved plan was made from a different manifest; re-run sst plan")
-                _saved_plan_guard(saved, current_saved)
-            _write_plan_sql(project_dir, changeset, sql_out)
-            if changeset.writes and not confirmed:
-                _print_plan(changeset)
-                click.confirm("Apply this plan?", abort=True)
-            options = ApplyOptions(
-                # skills.+threads bounds each wave's concurrency (1..16, default 4).
-                parallelism=_config_int(_config_map(_config(project_dir).get("skills")).get("+threads")) or 4,
-                on_failure=(FailurePolicy.STOP_ALL if fail_fast else FailurePolicy.STOP_DEPENDENTS),
-                allow_prune=effective_prune,
+        saved = _saved_plan(plan_path, request)
+        planned = request.following(saved)
+        session = _plan_runtime(planned)
+        if isinstance(session, PlanRefused):
+            _fail("apply", session.diagnostics, output)
+        with _closed_on_error(session.port):
+            options = _confirmed_options(
+                planned,
+                session,
+                saved,
+                plan_path,
+                sql_out=sql_out,
+                confirmed=confirmed,
+                fail_fast=fail_fast,
                 break_stale_lock=break_stale_lock,
             )
-        try:
-            apply_result = ApplyArtifacts(
-                port,
-                state_store,
-                SystemClock(),
-                state_table=profile.state_table,
-                git_sha=_git_sha(project_dir),
-                actor=profile.identity.role or "",
-                lifecycle_handlers=lifecycle_handlers,
-            ).run(changeset, previous, options)
-        finally:
-            port.close()
-        # A partial apply publishes the healthy changes and still fails while errors remain.
-        left_out = result.diagnostics if partial else DiagnosticBag()
-        shown = DiagnosticBag((*left_out, *apply_result.diagnostics))
-        exit_code = OK if apply_result.success and not left_out.has_errors else ERROR
-        if output == "json":
-            data: dict[str, object] = {
-                "run_id": apply_result.run_id,
-                "state_written": apply_result.state_written,
-                "outcomes": [
-                    {
-                        "artifact_key": outcome.key,
-                        "action": outcome.action.value,
-                        "status": outcome.status.value,
-                        "attempts": outcome.attempts,
-                        "duration_ms": outcome.duration_ms,
-                        "grant_check": outcome.grants.value,
-                        "error": (outcome.error.message if outcome.error else None),
-                        "component_fingerprints": dict(outcome.component_fingerprints),
-                    }
-                    for outcome in apply_result.outcomes
-                ],
-            }
-            if partial:
-                data["partial"] = {"excluded": _partial_excluded(result.diagnostics)}
-            _emit_json(
-                _json_envelope(
-                    "apply", shown, exit_code=exit_code, artifact_count=len(apply_result.outcomes), data=data
-                ),
-                exit_code,
-            )
-        _render_diagnostics(shown)
-        for outcome in apply_result.outcomes:
-            click.echo(f"{outcome.status.value}: {outcome.key} ({outcome.action.value})")
-        if exit_code:
-            raise click.exceptions.Exit(exit_code)
+        _apply_and_report(planned, session, options, output)
 
     _guarded(action, command="apply", output=output)
+
+
+def _saved_plan(plan_path: Path | None, request: _PlanRequest) -> SavedPlan | None:
+    """Read the plan `--plan` names, refusing selection flags that disagree with it; None without one.
+
+    Raises:
+        ProjectError: no saved plan is at the path.
+        SstUsageError: `--select`, `--exclude`, `--prune`, or `--partial` disagrees with the saved plan.
+    """
+    if plan_path is None:
+        return None
+    saved = PlanFileStore(plan_path).read()
+    if saved is None:
+        raise ProjectError(f"no saved plan at {plan_path}")
+    if request.selected and request.selected != saved.selected:
+        raise SstUsageError("--select conflicts with the saved plan selection")
+    if request.excluded and request.excluded != saved.excluded:
+        raise SstUsageError("--exclude conflicts with the saved plan selection")
+    if request.prune and not saved.include_prune:
+        raise SstUsageError("--prune conflicts with a non-pruning saved plan")
+    # Publishing a partial result is always explicit, in both directions.
+    if saved.partial and not request.partial:
+        raise SstUsageError("the saved plan is partial; apply it with --partial")
+    if request.partial and not saved.partial:
+        raise SstUsageError("--partial conflicts with a saved plan that is not partial")
+    return saved
+
+
+def _confirmed_options(
+    request: _PlanRequest,
+    session: _PlanSession,
+    saved: SavedPlan | None,
+    plan_path: Path | None,
+    *,
+    sql_out: Path | None,
+    confirmed: bool,
+    fail_fast: bool,
+    break_stale_lock: bool,
+) -> ApplyOptions:
+    """Check a saved plan still applies, write the statements, and confirm; return how to apply.
+
+    Asks before applying a plan that writes, unless `--yes` was given.
+
+    Raises:
+        ProjectError: the saved plan cannot be applied, as `SavedPlan.check_applicable` says.
+        click.exceptions.Abort: the user declined to apply.
+    """
+    changeset = session.ready.changeset
+    current = SavedPlan.from_changeset(
+        changeset,
+        selected=request.selected,
+        excluded=request.excluded,
+        include_prune=request.prune,
+        partial=request.partial,
+    )
+    if saved is not None:
+        mismatch = saved.check_applicable(current, source=str(plan_path))
+        if mismatch is not None:
+            raise ProjectError(mismatch.message, diagnostics=mismatch.diagnostics)
+    _write_plan_sql(request.project_dir, changeset, sql_out)
+    if changeset.writes and not confirmed:
+        _print_plan(changeset)
+        click.confirm("Apply this plan?", abort=True)
+    return ApplyOptions(
+        # skills.+threads bounds each wave's concurrency (1..16, default 4).
+        parallelism=config_int(config_block(_config(request.project_dir).get("skills")).get("+threads")) or 4,
+        on_failure=(FailurePolicy.STOP_ALL if fail_fast else FailurePolicy.STOP_DEPENDENTS),
+        allow_prune=request.prune,
+        break_stale_lock=break_stale_lock,
+    )
+
+
+def _apply_and_report(request: _PlanRequest, session: _PlanSession, options: ApplyOptions, output: str) -> None:
+    """Apply the plan, close the connection, and report each outcome; exit 1 unless everything applied.
+
+    A partial apply publishes the healthy changes and still exits 1 while errors remain.
+    """
+    ready = session.ready
+    try:
+        apply_result = ApplyArtifacts(
+            session.port,
+            session.state_store,
+            SystemClock(),
+            state_table=session.profile.state_table,
+            git_sha=_git_sha(request.project_dir),
+            actor=session.profile.identity.role or "",
+            lifecycle_handlers=ready.lifecycle_handlers,
+        ).run(ready.changeset, ready.state, options)
+    finally:
+        session.port.close()
+    left_out = ready.result.diagnostics if request.partial else DiagnosticBag()
+    shown = DiagnosticBag((*left_out, *apply_result.diagnostics))
+    exit_code = OK if apply_result.success and not left_out.has_errors else ERROR
+    if output == "json":
+        data: dict[str, object] = {
+            "run_id": apply_result.run_id,
+            "state_written": apply_result.state_written,
+            "outcomes": [_outcome_json(outcome) for outcome in apply_result.outcomes],
+        }
+        if request.partial:
+            data["partial"] = {"excluded": _partial_excluded(ready.result.diagnostics)}
+        _emit_json(
+            _json_envelope("apply", shown, exit_code=exit_code, artifact_count=len(apply_result.outcomes), data=data),
+            exit_code,
+        )
+    _render_diagnostics(shown)
+    for outcome in apply_result.outcomes:
+        click.echo(f"{outcome.status.value}: {outcome.key} ({outcome.action.value})")
+    if exit_code:
+        raise click.exceptions.Exit(exit_code)
+
+
+def _outcome_json(outcome: ApplyOutcome) -> dict[str, object]:
+    return {
+        "artifact_key": outcome.key,
+        "action": outcome.action.value,
+        "status": outcome.status.value,
+        "attempts": outcome.attempts,
+        "duration_ms": outcome.duration_ms,
+        "grant_check": outcome.grants.value,
+        "error": (outcome.error.message if outcome.error else None),
+        "component_fingerprints": dict(outcome.component_fingerprints),
+    }
 
 
 @cli.command(name="list")
@@ -2021,87 +1477,6 @@ def migrate_refs_command(project_dir: Path, write_files: bool, output: str) -> N
     _guarded(action, command="migrate refs", output=output)
 
 
-def _golden_payloads(item: object, resolved: Path) -> tuple[tuple[Path, str, str, bool], ...]:
-    """Where each artifact type's golden lives: one explicit route per registered type."""
-    name = str(getattr(item, "name", "")).casefold()
-    artifact_type = str(getattr(item, "artifact_type", ""))
-    root = resolved.parent
-    if isinstance(item, CompiledEval):
-        return (
-            (root / "eval" / f"{name}_repeat.yaml", item.rendered.config_yaml, f"compiled/{name}_repeat.yaml", False),
-            (
-                root / "eval" / f"{name.removesuffix('_agent')}_source.sql",
-                item.rendered.source_table_sql,
-                f"compiled/{name}_source.sql",
-                False,
-            ),
-        )
-    if isinstance(item, CompiledExtension):
-        payloads = [
-            (
-                root / artifact_type / f"{name}.bundle.json",
-                item.rendered_artifact.content,
-                f"compiled/{artifact_type}/{name}.bundle.json",
-                False,
-            )
-        ]
-        # Optional goldens: compared when committed, so a reference project can
-        # pin the flattened SKILL.md or the plugin manifest it cares about.
-        optional = {
-            "skill": (root / "skill" / f"{name}-flattened.md", f"skills/{name}/SKILL.md"),
-            "plugin": (root / "plugin" / f"{name}.plugin.json", ".cortex-plugin/plugin.json"),
-        }
-        golden, member = optional[artifact_type]
-        entry = next((entry for entry in item.release.bundle.entries if entry.path == member), None)
-        if golden.is_file() and entry is not None:
-            payloads.append((golden, entry.content.decode("utf-8"), f"compiled/{artifact_type}/{member}", False))
-        return tuple(payloads)
-    rendered = getattr(item, "rendered_artifact")
-    if isinstance(item, CompiledProfile):
-        profile_payloads = [
-            (
-                root / "profile" / f"{name}.profile.json",
-                rendered.content,
-                f"compiled/profile/{name}.profile.json",
-                False,
-            )
-        ]
-        for tree in item.release.trees:
-            for tree_entry in tree.entries:
-                golden = root / "profile" / name / tree_entry.path
-                if tree.kind in ("prompts", "mcp") and golden.is_file():
-                    profile_payloads.append(
-                        (
-                            golden,
-                            tree_entry.content.decode("utf-8"),
-                            f"compiled/profile/{name}/{tree_entry.path}",
-                            False,
-                        )
-                    )
-        return tuple(profile_payloads)
-    if artifact_type == "semantic_view":
-        return ((resolved / f"{name}.sql", rendered.content, f"compiled/{name}.sql", True),)
-    if artifact_type == "tool":
-        return ((root / "tool" / f"{name}.sql", rendered.content, f"compiled/{name}.sql", True),)
-    if artifact_type == "agent":
-        return ((root / "agent" / f"{name}.json", rendered.content, f"compiled/{name}.json", False),)
-    raise ProjectError(f"no golden route for artifact type {artifact_type!r}")
-
-
-def _golden_ddl(path: Path) -> str:
-    lines = path.read_text(encoding="utf-8").splitlines()
-    for index, line in enumerate(lines):
-        if line.strip() and not line.lstrip().startswith("--"):
-            return "\n".join(lines[index:]).rstrip("\n")
-    raise ProjectError(f"golden {path} contains no DDL")
-
-
-def _normalized_payload(value: str, *, git_sha: str) -> str:
-    if git_sha and git_sha != "WORKTREE":
-        return value.replace(f"GIT_{git_sha}", "GIT_0000000")
-    return value
-
-
 @cli.command(name="test")
 @click.option(
     "--project-dir",
@@ -2140,292 +1515,160 @@ def test_command(
     def action() -> None:
         result = _compile_result(project_dir, target_name, manifest_path)
         if not result.success:
-            if output == "json":
-                _emit_json(_json_envelope("test", result.diagnostics, exit_code=ERROR), ERROR)
-            _render_diagnostics(result.diagnostics)
-            raise click.exceptions.Exit(ERROR)
+            _fail("test", result.diagnostics, output)
+        inputs = _project_inputs(project_dir, target_name, manifest_path)
         if suite == "golden":
-            resolved = golden_dir if golden_dir.is_absolute() else project_dir / golden_dir
-            failures: list[str] = []
-            for item in result.compiled:
-                payloads = _golden_payloads(item, resolved)
-                for path, content, compiled_path, is_ddl in payloads:
-                    if not path.is_file():
-                        failures.append(f"missing golden {path}")
-                        continue
-                    expected = (
-                        _golden_ddl(path).rstrip() + "\n"
-                        if is_ddl
-                        else path.read_text(encoding="utf-8").rstrip() + "\n"
-                    )
-                    actual = (
-                        _normalized_payload(
-                            content,
-                            git_sha=_git_sha(project_dir),
-                        ).rstrip()
-                        + "\n"
-                    )
-                    if expected != actual:
-                        failures.append(
-                            "\n".join(
-                                difflib.unified_diff(
-                                    expected.splitlines(),
-                                    actual.splitlines(),
-                                    fromfile=str(path),
-                                    tofile=compiled_path,
-                                    lineterm="",
-                                )
-                            )
-                        )
-            exit_code = ERROR if failures else OK
-            if output == "json":
-                _emit_json(
-                    _json_envelope(
-                        "test",
-                        DiagnosticBag(),
-                        exit_code=exit_code,
-                        artifact_count=len(result.compiled),
-                        data={"suite": "golden", "failures": failures},
-                    ),
-                    exit_code,
-                )
-            if failures:
-                click.echo("golden suite failed:\n" + "\n\n".join(failures), err=True)
-                raise click.exceptions.Exit(ERROR)
-            click.echo(f"golden suite passed for {len(result.compiled)} artifact(s)")
-            return
-        if suite == "evals":
-            if capture_baseline_requested and not reason:
-                raise SstUsageError("--capture-baseline requires --reason")
-            if reason and not capture_baseline_requested:
-                raise SstUsageError("--reason requires --capture-baseline")
-            evals = tuple(item for item in result.compiled if isinstance(item, CompiledEval))
-            if not evals:
-                raise ProjectError("no eval artifacts matched the project")
-            compiled_manifest = _compiled_manifest(project_dir)
-            current_manifest = _build_manifest(project_dir, result, manifest_path)
-            if compiled_manifest.manifest_id != current_manifest.manifest_id:
-                raise ProjectError("compiled SST manifest is stale; run sst compile before evals")
-            profile, port = _connect(project_dir, target_name)
-            with _closed_on_error(port):
-                config = _config(project_dir)
-                eval_defaults = _source(project_dir, target_name, manifest_path).load_evals().defaults
-                eval_stage = _config_map(_config_map(config.get("apply")).get("eval_config_stage"))
-                lifecycle_config = EvalLifecycleConfig(str(eval_stage.get("stage") or DEFAULT_EVAL_CONFIG_STAGE))
-                handler = EvalLifecycleHandler(port, lifecycle_config)
-                state_store = StateFileStore(state_file(_target_dir(project_dir), profile.target_name))
-                eval_lock_id = f"eval-{SystemClock().new_run_id()}"
-                locked, holder, _ = state_store.acquire_lock(eval_lock_id, break_stale=False)
-                if not locked:
-                    raise ProjectError(f"cannot run evals while {holder or 'another operation'} holds the target lock")
-            try:
-                state, state_diagnostics = read_state(
-                    state_store,
-                    port,
-                    state_table=profile.state_table,
-                    target=profile.identity,
-                )
-                publication_diagnostics = validate_eval_publication(evals, current_manifest, state, handler)
-                preflight = DiagnosticBag((*state_diagnostics, *publication_diagnostics))
-                if preflight.has_errors:
-                    eval_result = None
-                    data = {"suite": "evals", **empty_eval_suite_json()}
-                    exit_code = ERROR
-                else:
-                    config_digests = {
-                        item.artifact_key: digest
-                        for item in evals
-                        if (entry := state.applied.get(item.artifact_key)) is not None
-                        if (digest := dict(entry.component_fingerprints).get("config_stage_md5")) is not None
-                    }
-                    eval_result = RunEvalSuite(port, SystemClock(), lifecycle_config).run(
-                        evals,
-                        defaults=eval_defaults,
-                        options=EvalRunOptions(_git_sha(project_dir)),
-                        fail_fast=fail_fast,
-                        config_digests=config_digests,
-                        baseline_capture=capture_baseline_requested,
-                    )
-                    preflight = DiagnosticBag((*preflight, *eval_result.diagnostics))
-                    eval_state_table = QualifiedName(
-                        profile.state_table.database,
-                        profile.state_table.schema,
-                        Identifier.parse(f"{profile.state_table.name.folded}_EVALS"),
-                    )
-                    eval_store = SnowflakeEvalStateStore(port, eval_state_table)
-                    gate_verdicts = []
-                    captured_records = []
-                    for item, item_result in zip(evals, eval_result.evals):
-                        if capture_baseline_requested:
-                            captured_baseline = capture_baseline(
-                                item,
-                                item_result,
-                                reason=reason or "",
-                                captured_at=SystemClock().now_iso(),
-                                default_tier=eval_defaults.eval_tier,
-                                required_attempts=(
-                                    item.resolved.config.run.baseline_runs
-                                    if item.resolved.config.run is not None
-                                    and item.resolved.config.run.baseline_runs is not None
-                                    else eval_defaults.baseline_runs
-                                ),
-                            )
-                            captured_records.append(captured_baseline)
-                            continue
-                        stored_baseline = eval_store.read_baseline(profile.target_name, item.artifact_key)
-                        verdict, gate_diagnostics = evaluate_gate(
-                            item,
-                            item_result,
-                            stored_baseline,
-                            now=SystemClock().now_iso(),
-                            default_tier=eval_defaults.eval_tier,
-                        )
-                        preflight = DiagnosticBag((*preflight, *gate_diagnostics))
-                        persist_gate(
-                            eval_store,
-                            profile.target_name,
-                            item,
-                            item_result,
-                            verdict,
-                            evaluated_at=SystemClock().now_iso(),
-                        )
-                        gate_verdicts.append(verdict)
-                    if capture_baseline_requested:
-                        eval_store.write_baselines(profile.target_name, tuple(captured_records))
-                    captured = [record.eval_key for record in captured_records]
-                    if capture_baseline_requested:
-                        exit_code = OK if eval_result.success and not preflight.has_errors else ERROR
-                    else:
-                        score_regression_only = (
-                            preflight.count(Severity.ERROR) == 0
-                            and bool(gate_verdicts)
-                            and all(
-                                verdict.reason is None and verdict.regression_count > 0 for verdict in gate_verdicts
-                            )
-                        )
-                        exit_code = (
-                            OK if eval_result.success and (not preflight.has_errors or score_regression_only) else ERROR
-                        )
-                    gate_status = (
-                        "captured"
-                        if capture_baseline_requested
-                        else (
-                            "no_signal"
-                            if any(verdict.reason is not None for verdict in gate_verdicts)
-                            else "regressed" if any(verdict.regression_count for verdict in gate_verdicts) else "passed"
-                        )
-                    )
-                    data = {
-                        "suite": "evals",
-                        **eval_suite_json(eval_result),
-                        "captured_baselines": captured,
-                        "regression_count": sum(verdict.regression_count for verdict in gate_verdicts),
-                        "gate_verdict": gate_status,
-                        "gate_reasons": [verdict.reason for verdict in gate_verdicts if verdict.reason is not None],
-                        "regressions": [
-                            {"question_key": regression.question_key, "metric_name": regression.metric_name}
-                            for verdict in gate_verdicts
-                            for regression in verdict.regressions
-                        ],
-                    }
-            finally:
-                state_store.release_lock(eval_lock_id)
-                port.close()
-            if output == "json":
-                _emit_json(
-                    _json_envelope(
-                        "test",
-                        preflight,
-                        exit_code=exit_code,
-                        artifact_count=len(evals),
-                        data=data,
-                    ),
-                    exit_code,
-                )
-            _render_diagnostics(preflight)
-            if eval_result is not None:
-                _print_eval_results(eval_result)
-            if exit_code:
-                raise click.exceptions.Exit(exit_code)
-            return
-        compiled_manifest = _compiled_manifest(project_dir)
-        current_manifest = _build_manifest(project_dir, result, manifest_path)
-        if compiled_manifest.manifest_id != current_manifest.manifest_id:
-            raise ProjectError("compiled SST manifest is stale; run sst compile before smoke")
-        profile, port = _connect(project_dir, target_name)
-        try:
-            state_store = StateFileStore(state_file(_target_dir(project_dir), profile.target_name))
-            state, state_diagnostics = read_state(
-                state_store,
-                port,
-                state_table=profile.state_table,
-                target=profile.identity,
-            )
-            ownership_errors = list(state_diagnostics)
-            if state.manifest_id != current_manifest.manifest_id:
-                ownership_errors.append(
-                    D(
-                        "SST-APL012",
-                        artifact="manifest",
-                        value="authoritative state does not match the compiled manifest",
-                    )
-                )
-            published = {
-                artifact.key: artifact for artifact in result.rendered_for_publish(current_manifest.manifest_id)
-            }
-            # Ownership is proven for what smoke probes: composite artifacts carry
-            # no COMMENT marker and have no probe, so they are not asked for one.
-            for artifact in (item for item in result.rendered if item.smoke):
-                entry = state.applied.get(artifact.key)
-                expected_marker = OwnershipMarker(
-                    current_manifest.manifest_id,
-                    artifact.fingerprint,
-                )
-                if (
-                    entry is None
-                    or entry.fingerprint != artifact.fingerprint
-                    or entry.manifest_id != current_manifest.manifest_id
-                    or QualifiedName.parse(entry.qualified_name).folded != artifact.target.folded
-                    or port.describe_marker(artifact.target) != expected_marker
-                ):
-                    ownership_errors.append(
-                        D(
-                            "SST-APL012",
-                            artifact=artifact.key,
-                            value=artifact.target.sql,
-                        )
-                    )
-            smoke = (
-                dataclasses.replace(
-                    RunSmokeSuite(port).run(()),
-                    diagnostics=DiagnosticBag(tuple(ownership_errors)),
-                )
-                if ownership_errors
-                else RunSmokeSuite(port).run(
-                    tuple(published.values()),
-                    fail_fast=fail_fast,
-                )
-            )
-        finally:
-            port.close()
-        exit_code = OK if smoke.success else ERROR
-        if output == "json":
-            _emit_json(
-                _json_envelope(
-                    "test",
-                    smoke.diagnostics,
-                    exit_code=exit_code,
-                    artifact_count=len(result.compiled),
-                    data={"suite": "smoke", "attempted": len(smoke.attempted)},
-                ),
-                exit_code,
-            )
-        _render_diagnostics(smoke.diagnostics)
-        if exit_code:
-            raise click.exceptions.Exit(exit_code)
-        click.echo(f"smoke suite passed: {len(smoke.attempted)} probe(s)")
+            _run_golden(project_dir, golden_dir, result, inputs, output)
+        elif suite == "evals":
+            request = EvalGateRequest(fail_fast, capture_baseline_requested, reason)
+            _run_evals(project_dir, target_name, result, inputs, request, output)
+        else:
+            _run_smoke(project_dir, target_name, result, inputs, fail_fast, output)
 
     _guarded(action, command="test", output=output)
+
+
+def _run_golden(
+    project_dir: Path, golden_dir: Path, result: CompileResult, inputs: YamlProjectInputs, output: str
+) -> None:
+    """Compare every compiled payload with its committed golden, offline; exit 1 on any failure.
+
+    A relative `--golden-dir` is taken from the project directory.
+    """
+    resolved = golden_dir if golden_dir.is_absolute() else project_dir / golden_dir
+    report = CompareGoldens(GoldenFileStore(resolved), inputs.git_sha).run(result)
+    exit_code = OK if report.passed else ERROR
+    if output == "json":
+        _emit_json(
+            _json_envelope(
+                "test",
+                DiagnosticBag(),
+                exit_code=exit_code,
+                artifact_count=len(result.compiled),
+                data={"suite": "golden", "failures": list(report.failures)},
+            ),
+            exit_code,
+        )
+    if not report.passed:
+        click.echo("golden suite failed:\n" + "\n\n".join(report.failures), err=True)
+        raise click.exceptions.Exit(ERROR)
+    click.echo(f"golden suite passed for {len(result.compiled)} artifact(s)")
+
+
+def _current_manifest(project_dir: Path, result: CompileResult, inputs: YamlProjectInputs, before: str) -> Manifest:
+    """Return the manifest `result` publishes, refusing the run when `sst compile` wrote another.
+
+    Raises:
+        ProjectError: no compiled manifest exists (SST-MAN001), or it is stale.
+    """
+    compiled = _compiled_manifest(project_dir)
+    current = manifest_for(result, inputs.manifest_sources())
+    stale = stale_manifest(compiled, current, before=before)
+    if stale is not None:
+        raise ProjectError(stale)
+    return current
+
+
+def _run_smoke(
+    project_dir: Path,
+    target_name: str | None,
+    result: CompileResult,
+    inputs: YamlProjectInputs,
+    fail_fast: bool,
+    output: str,
+) -> None:
+    """Probe the published objects once SST is proven to own them; exit 1 when a check or probe fails."""
+    manifest = _current_manifest(project_dir, result, inputs, before="smoke")
+    profile, port = _connect(project_dir, target_name)
+    try:
+        state_store = StateFileStore(state_file(_target_dir(project_dir), profile.target_name))
+        smoke = SmokePublished(port, state_store).run(
+            result,
+            manifest,
+            target=profile.identity,
+            state_table=profile.state_table,
+            fail_fast=fail_fast,
+        )
+    finally:
+        port.close()
+    exit_code = OK if smoke.success else ERROR
+    if output == "json":
+        _emit_json(
+            _json_envelope(
+                "test",
+                smoke.diagnostics,
+                exit_code=exit_code,
+                artifact_count=len(result.compiled),
+                data={"suite": "smoke", "attempted": len(smoke.attempted)},
+            ),
+            exit_code,
+        )
+    _render_diagnostics(smoke.diagnostics)
+    if exit_code:
+        raise click.exceptions.Exit(exit_code)
+    click.echo(f"smoke suite passed: {len(smoke.attempted)} probe(s)")
+
+
+def _run_evals(
+    project_dir: Path,
+    target_name: str | None,
+    result: CompileResult,
+    inputs: YamlProjectInputs,
+    request: EvalGateRequest,
+    output: str,
+) -> None:
+    """Run the evals against their published agents and gate them; exit 1 unless the run passes.
+
+    Raises:
+        SstUsageError: `--capture-baseline` and `--reason` are not given together.
+        ProjectError: the project compiles no eval, its compiled manifest is stale, or another
+            operation holds the target's state lock.
+    """
+    if request.capture_baseline and not request.reason:
+        raise SstUsageError("--capture-baseline requires --reason")
+    if request.reason and not request.capture_baseline:
+        raise SstUsageError("--reason requires --capture-baseline")
+    evals = compiled_evals(result)
+    if not evals:
+        raise ProjectError("no eval artifacts matched the project")
+    manifest = _current_manifest(project_dir, result, inputs, before="evals")
+    profile, port = _connect(project_dir, target_name)
+    with _closed_on_error(port):
+        state_store = StateFileStore(state_file(_target_dir(project_dir), profile.target_name))
+        eval_store = SnowflakeEvalStateStore(port, _eval_state_table(profile.state_table))
+        outcome = RunEvalGate(port, inputs, state_store, eval_store, SystemClock()).run(
+            evals, manifest, request, target=profile.identity, state_table=profile.state_table
+        )
+    port.close()
+    if isinstance(outcome, EvalGateRefused):
+        raise ProjectError(outcome.reason)
+    _report_evals(outcome, len(evals), output)
+
+
+def _eval_state_table(state_table: QualifiedName) -> QualifiedName:
+    """Name the table eval baselines and gates are kept in: beside the state table, suffixed `_EVALS`."""
+    return QualifiedName(state_table.database, state_table.schema, Identifier.parse(f"{state_table.name.folded}_EVALS"))
+
+
+def _report_evals(outcome: EvalGateOutcome, artifact_count: int, output: str) -> None:
+    """Report an eval run, its diagnostics and then every attempt; exit 1 unless it passed."""
+    exit_code = OK if outcome.passed else ERROR
+    if output == "json":
+        _emit_json(
+            _json_envelope(
+                "test",
+                outcome.diagnostics,
+                exit_code=exit_code,
+                artifact_count=artifact_count,
+                data=dict(outcome.data),
+            ),
+            exit_code,
+        )
+    _render_diagnostics(outcome.diagnostics)
+    if outcome.suite is not None:
+        _print_eval_results(outcome.suite)
+    if exit_code:
+        raise click.exceptions.Exit(exit_code)
 
 
 @cli.command()

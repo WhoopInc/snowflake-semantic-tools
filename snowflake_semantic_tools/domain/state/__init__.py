@@ -25,7 +25,7 @@ from .applied import (
 from .codec import optional_object, pairs_from_json, pairs_to_json, resources_from_json, resources_to_json
 from .documents import SST_VERSION, StoredDocumentError, canonical_json, content_hash
 from .manifest import MANIFEST_SCHEMA_VERSION, ArtifactEntry, ImpactIndex, Manifest, migrate_manifest
-from .saved_plan import PLAN_SCHEMA_VERSION, SavedChange, SavedPlan
+from .saved_plan import PLAN_SCHEMA_VERSION, PlanMismatch, SavedChange, SavedPlan
 
 __all__ = [
     "APPLIED",
@@ -40,6 +40,7 @@ __all__ = [
     "MANIFEST_SCHEMA_VERSION",
     "Manifest",
     "PLAN_SCHEMA_VERSION",
+    "PlanMismatch",
     "ResourceStatus",
     "SST_VERSION",
     "STATE_SCHEMA_VERSION",

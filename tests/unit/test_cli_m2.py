@@ -1021,7 +1021,7 @@ def test_eval_suite_uses_common_json_envelope(tmp_path: Path, monkeypatch: pytes
     store = InMemoryEvalStateStore()
     monkeypatch.setattr("snowflake_semantic_tools.cli.main.SnowflakeEvalStateStore", lambda *args: store)
     monkeypatch.setattr(
-        "snowflake_semantic_tools.cli.main.capture_baseline",
+        "snowflake_semantic_tools.app.evals.suite.capture_baseline",
         lambda item, item_result, **kwargs: EvalBaselineRecord(
             item.artifact_key,
             item.rendered.dataset_fingerprint,
@@ -1109,17 +1109,20 @@ def test_eval_suite_reports_every_attempt_in_human_output(
     suite = EvalSuiteResult(
         (EvalRunResult(eval_item.artifact_key, (attempt,), DiagnosticBag(), True),), DiagnosticBag()
     )
-    monkeypatch.setattr("snowflake_semantic_tools.cli.main.RunEvalSuite.run", lambda *args, **kwargs: suite)
-    monkeypatch.setattr("snowflake_semantic_tools.cli.main.validate_eval_publication", lambda *args: DiagnosticBag())
+    monkeypatch.setattr("snowflake_semantic_tools.app.evals.run.RunEvalSuite.run", lambda *args, **kwargs: suite)
     monkeypatch.setattr(
-        "snowflake_semantic_tools.cli.main.read_state", lambda *args, **kwargs: (State.empty(target()), DiagnosticBag())
+        "snowflake_semantic_tools.app.evals.suite.validate_eval_publication", lambda *args: DiagnosticBag()
+    )
+    monkeypatch.setattr(
+        "snowflake_semantic_tools.app.evals.suite.read_state",
+        lambda *args, **kwargs: (State.empty(target()), DiagnosticBag()),
     )
     monkeypatch.setattr(
         "snowflake_semantic_tools.cli.main.ManifestFileStore.read",
         lambda self: _build_manifest(project, compiled_eval, DBT_MANIFEST),
     )
     monkeypatch.setattr(
-        "snowflake_semantic_tools.cli.main.capture_baseline",
+        "snowflake_semantic_tools.app.evals.suite.capture_baseline",
         lambda item, item_result, **kwargs: EvalBaselineRecord(
             item.artifact_key,
             item.rendered.dataset_fingerprint,

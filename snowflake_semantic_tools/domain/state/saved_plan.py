@@ -3,7 +3,8 @@
 `SavedPlan.plan_id` is the `content_hash` of the document without the id, so
 `SavedPlan.from_dict` refuses an edited plan. Each change also records what plan observed --
 an ownership marker, or the hash of a composite handler's observation -- and apply re-plans
-and refuses a saved plan whose observations or changes no longer match.
+and refuses a saved plan whose observations or changes no longer match: `check_applicable`
+says why, as a `PlanMismatch`.
 """
 
 from __future__ import annotations
@@ -11,6 +12,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from hashlib import sha256
 
+from ..model.diagnostic import D, Diagnostic
 from ..model.identifier import TargetIdentity
 from ..model.lifecycle import Change, ChangeSet
 from .codec import optional_object, pairs_from_json, pairs_to_json, resources_from_json, resources_to_json
@@ -245,6 +247,41 @@ class SavedPlan:
         """Report whether the plan was made for this manifest and this target."""
         return self.manifest_id == manifest_id and self.target.key == target.key
 
+    def check_applicable(self, current: SavedPlan, *, source: str) -> PlanMismatch | None:
+        """Return why this saved plan cannot be applied in place of `current`; None when it can.
+
+        `current` is a fresh plan of the same selection, made just now from the compiled
+        project and the live target. The checks run in this order, and the first that fails is
+        the one returned:
+
+        1. The saved plan was made for the fresh plan's target.
+        2. It was made from the fresh plan's manifest.
+        3. What it observed in Snowflake is what the fresh plan observes.
+        4. Its ordered changes, every statement hash included, are the fresh plan's: every
+           recorded field of every change, in order.
+
+        Args:
+            source: How a report names the saved plan, such as its file path.
+
+        Diagnostics:
+            SST-APL005: the saved plan was made for another target; the mismatch carries it.
+        """
+        if self.target.key != current.target.key:
+            diagnostic = D(
+                "SST-APL005",
+                artifact=source,
+                found=_target_label(self.target),
+                expected=_target_label(current.target),
+            )
+            return PlanMismatch(diagnostic.message, (diagnostic,))
+        if not self.matches(current.manifest_id, current.target):
+            return PlanMismatch("the saved plan was made from a different manifest; re-run sst plan")
+        if self.observation_fingerprint != current.observation_fingerprint:
+            return PlanMismatch("saved plan is stale; the live Snowflake observation changed")
+        if self.changes != current.changes:
+            return PlanMismatch("saved plan is stale; the ordered changes or statement hashes changed")
+        return None
+
     @classmethod
     def from_dict(cls, value: object) -> SavedPlan:
         """Read a saved plan written by `as_dict`, refusing one whose recorded id is not its content hash.
@@ -295,6 +332,24 @@ def _selection(
     if partial:
         value["partial"] = True
     return value
+
+
+@dataclass(frozen=True, slots=True)
+class PlanMismatch:
+    """Why a saved plan cannot be applied: what to report, and the diagnostic that names it.
+
+    Attributes:
+        message: The text to report the refusal with.
+        diagnostics: The diagnostic behind the message; empty when the refusal has no code.
+    """
+
+    message: str
+    diagnostics: tuple[Diagnostic, ...] = ()
+
+
+def _target_label(target: TargetIdentity) -> str:
+    """Name a target by its identity key, leaving out the parts it does not set."""
+    return "/".join(part for part in target.key if part)
 
 
 _RESOURCES = "saved plan physical_resources must be objects"

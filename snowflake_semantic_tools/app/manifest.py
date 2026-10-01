@@ -1,12 +1,46 @@
-"""Build the deterministic compiled manifest from one compile result."""
+"""Build the deterministic compiled manifest from one compile result.
+
+`manifest_for` builds it from what `ProjectInputs.manifest_sources` read about the project's
+files; `stale_manifest` says why a run must not start when `sst compile` wrote another one.
+"""
 
 from __future__ import annotations
 
 from types import MappingProxyType
 
 from ..domain.model.diagnostic import Severity
+from ..domain.ports.project import ManifestSources
 from ..domain.state import SST_VERSION, ArtifactEntry, ImpactIndex, Manifest
 from .compile import CompileResult
+
+
+def manifest_for(result: CompileResult, sources: ManifestSources) -> Manifest:
+    """Build the manifest of `result`, recording what `sources` read about the project's files."""
+    return build_manifest(
+        result,
+        project_root=".",
+        semantic_path=sources.semantic_path,
+        dbt_project_name=sources.dbt_project_name,
+        config_checksum=sources.config_checksum,
+        dbt_manifest_path=sources.dbt_manifest_path,
+        dbt_schema_version=sources.dbt_schema_version,
+        dbt_digest=sources.dbt_digest,
+        model_count=sources.model_count,
+        file_checksums=dict(sources.file_checksums),
+    )
+
+
+def stale_manifest(compiled: Manifest, current: Manifest, *, before: str) -> str | None:
+    """Say why a run must not start from a compile that no longer matches the project; None if it does.
+
+    Args:
+        compiled: The manifest `sst compile` wrote.
+        current: The manifest of the project as it compiles now.
+        before: The run that must wait for a fresh compile, as the message names it.
+    """
+    if compiled.manifest_id != current.manifest_id:
+        return f"compiled SST manifest is stale; run sst compile before {before}"
+    return None
 
 
 def build_manifest(

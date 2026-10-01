@@ -10,8 +10,8 @@ import pytest
 from click.testing import CliRunner
 
 from tests.helpers.recorded_snowflake import RecordedSnowflake
-from snowflake_semantic_tools.cli.main import _compile_publishing, _consumed_extensions, cli
-from snowflake_semantic_tools.domain.model.identifier import Identifier, QualifiedName, TargetIdentity
+from snowflake_semantic_tools.cli.main import cli
+from snowflake_semantic_tools.domain.model.identifier import QualifiedName
 
 PROFILES = """
 skills:
@@ -178,60 +178,6 @@ def test_a_configured_directory_that_does_not_exist_is_an_error(tmp_path: Path) 
     dbt_only = skills_only_project(tmp_path / "other", "project:\n  target_profile: skills\n  agents_dir: nowhere\n")
     result = CliRunner().invoke(cli, ["compile", "--project-dir", str(dbt_only), "--output", "json"])
     assert [item["code"] for item in json.loads(result.output)["diagnostics"]] == ["SST-CFG046"]
-
-
-def test_consumed_extensions_resolve_from_fqn_or_default_prefix() -> None:
-    class Profile:
-        identity = TargetIdentity("dev", "acct", Identifier.parse("DB"), Identifier.parse("SCH"))
-
-    config: dict[str, object] = {
-        "skills": {
-            "extensions": {
-                "default_prefix": "{{ target.database }}.SHARED",
-                "vendor-pack": None,
-                "pinned": {"fqn": "OTHER.EXT.PINNED"},
-                "dotted.name": None,
-                "broken": {"fqn": "not a name"},
-            }
-        }
-    }
-    resolved, diagnostics = _consumed_extensions(config, Profile())  # type: ignore[arg-type]
-    assert {key: value.sql for key, value in resolved.items()} == {
-        "vendor-pack": "DB.SHARED.VENDOR_PACK",
-        "pinned": "OTHER.EXT.PINNED",
-    }
-    assert [(item.code, item.context["name"]) for item in diagnostics] == [
-        ("SST-CFG036", "dotted.name"),
-        ("SST-CFG036", "broken"),
-    ]
-    without_prefix, diagnostics = _consumed_extensions({"skills": {"extensions": {"x": None}}}, Profile())  # type: ignore[arg-type]
-    assert without_prefix == {}
-    assert "no default_prefix" in diagnostics[0].message
-
-
-def test_declared_skills_that_cannot_publish_carry_the_reason(tmp_path: Path) -> None:
-    class Profile:
-        identity = TargetIdentity("dev", "acct", Identifier.parse("DB"), Identifier.parse("SCH"))
-
-    project = tmp_path / "project"
-    for name, frontmatter in (("draft", "description: Draft.\n"), ("broken", "")):
-        path = project / "skills" / name / "SKILL.md"
-        path.parent.mkdir(parents=True)
-        path.write_text(f"---\nname: {name}\n{frontmatter}---\nBody.\n", encoding="utf-8")
-
-    def reasons(config: dict[str, object]) -> dict[str, str]:
-        return _compile_publishing(project, config, Profile())[3]  # type: ignore[arg-type]
-
-    missing = "skills.catalog is not configured"
-    assert reasons({}) == {"skill:draft": missing, "skill:broken": missing}
-    assert reasons({"skills": {"stage": {"+stage": "P"}}}) == {"skill:draft": missing, "skill:broken": "it has errors"}
-    assert reasons({"skills": {"catalog": {}}}) == {
-        "skill:draft": "skills.catalog sets no +bundle_stage",
-        "skill:broken": "it has errors",
-    }
-    assert reasons({"skills": {"catalog": {"+bundle_stage": "B"}}}) == {"skill:broken": "it has errors"}
-    bad_prefix = {"skills": {"+version_prefix": "1", "catalog": {"+bundle_stage": "B"}}}
-    assert reasons(bad_prefix)["skill:draft"] == "the catalog channel cannot publish it"
 
 
 PROFILE_CONFIG = """

@@ -8,7 +8,8 @@ Compilation owns rendering only. Planning, applying and connecting remain
 separate use cases over the rendered values.
 
 `base` holds what every typed compiler shares, and this module re-exports it; the
-other typed compilers live in `tools`, `skills`, `profiles`, `agents`, and `evals`.
+other typed compilers live in `tools`, `skills`, `profiles`, `agents`, and `evals`, and
+`project` runs them all over a project's inputs.
 """
 
 from __future__ import annotations
@@ -16,6 +17,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, replace
 from hashlib import sha256
+from typing import Iterable, Mapping
 
 from ...domain.model.artifact_key import artifact_key
 from ...domain.model.diagnostic import D, Diagnostic, DiagnosticBag
@@ -236,20 +238,29 @@ class CompileArtifacts:
         self._positions = positions
 
     def run_result(self) -> CompileResult:
-        """Run each compiler in order, then sort the artifacts by type position and key.
+        """Run each compiler in order, then merge their results as `merge` does."""
+        return self.merge((compiler.run_result() for compiler in self._compilers), self._positions)
 
-        Diagnostics keep the compilers' order, followed by one SST-VAL843 per shared target.
+    @staticmethod
+    def merge(results: Iterable[CompileResult], positions: Mapping[str, int]) -> CompileResult:
+        """Merge compile results into one stream, sorted by type position and then by key.
+
+        `results` is consumed in order, so a generator runs each compiler only when the one
+        before it has finished. Diagnostics keep the results' order, followed by one
+        SST-VAL843 per shared target.
+
+        Args:
+            positions: Each artifact type's position in the stream, by type name.
 
         Diagnostics:
             SST-VAL843: two artifacts of different types publish to one Snowflake name.
         """
         compiled: list[CompiledArtifact] = []
         diagnostics = DiagnosticBag()
-        for compiler in self._compilers:
-            result = compiler.run_result()
+        for result in results:
             compiled.extend(result.compiled)
             diagnostics = DiagnosticBag((*diagnostics, *result.diagnostics))
-        ordered = tuple(sorted(compiled, key=lambda item: (self._positions[item.artifact_type], item.artifact_key)))
+        ordered = tuple(sorted(compiled, key=lambda item: (positions[item.artifact_type], item.artifact_key)))
         return CompileResult(ordered, DiagnosticBag((*diagnostics, *_shared_targets(ordered))))
 
 

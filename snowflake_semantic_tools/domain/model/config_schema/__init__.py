@@ -1,9 +1,10 @@
-"""The declared shape of `sst_config.yml`.
+"""The declared shape of `sst_config.yml`, and how the engine reads values out of it.
 
 `keys` holds the key table: every key, block, and wildcard slot SST reads, which the
 generated configuration reference renders row by row. `validate` checks a parsed
-configuration tree against that table. This module re-exports both public surfaces,
-so importers never reach into the submodules.
+configuration tree against that table, and `values` reads the values the engine uses out
+of one. This module re-exports their public surfaces, so importers never reach into the
+submodules.
 """
 
 from __future__ import annotations
@@ -20,6 +21,7 @@ from .keys import (
     KeyStatus,
 )
 from .validate import Positions, validate_config
+from .values import config_block, config_bool, config_int, config_text, configured_dir, skills_configured, target_text
 
 __all__ = [
     "CHILDREN",
@@ -32,5 +34,12 @@ __all__ = [
     "KeyKind",
     "KeyStatus",
     "Positions",
+    "config_block",
+    "config_bool",
+    "config_int",
+    "config_text",
+    "configured_dir",
+    "skills_configured",
+    "target_text",
     "validate_config",
 ]

@@ -2,15 +2,14 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from pathlib import Path
 from types import MappingProxyType
-from typing import Any, Mapping
 
 import yaml
 
 from ...domain.model.config_schema import CONFIG_FILE, validate_config
 from ...domain.model.diagnostic import D, DiagnosticBag, Origin
+from ...domain.ports.project import ProjectConfig
 from ..errors import ProjectError
 from .parse import parse_yaml_bytes
 
@@ -40,13 +39,6 @@ PROJECT_DIR_KEYS = (
     "mcp_servers_dir",
     "commands_dir",
 )
-
-
-@dataclass(frozen=True, slots=True)
-class ProjectConfig:
-    tree: Mapping[str, Any]
-    diagnostics: DiagnosticBag
-    has_dbt_project: bool
 
 
 def load_project_config(project_dir: Path) -> ProjectConfig:
