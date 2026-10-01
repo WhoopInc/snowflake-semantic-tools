@@ -1,11 +1,14 @@
-"""An offline `EnrichPort`: relations, their values, and Cortex answers given up front."""
+"""Offline enrich ports: relations, values and Cortex answers given up front, and in-memory files."""
 
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping, Sequence
 
-from snowflake_semantic_tools.domain.model.enrich import WarehouseColumn
+from snowflake_semantic_tools.adapters.dbt.yaml_writer import write_model_updates
+from snowflake_semantic_tools.adapters.yaml.view_writer import write_table_synonyms
+from snowflake_semantic_tools.domain.model.enrich import ColumnUpdate, TableSynonymEdit, WarehouseColumn
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
+from snowflake_semantic_tools.domain.ports.enrich import WrittenFile
 from snowflake_semantic_tools.domain.ports.snowflake import SnowflakePortError
 
 Answer = Callable[[str, Mapping[str, object]], object]
@@ -62,3 +65,24 @@ class ScriptedEnrich:
         if self._cortex_failure is not None:
             raise self._cortex_failure
         return self._answer(prompt, schema)
+
+
+class InMemoryFiles:
+    """Project files held as text by path, edited by the production writers, written in memory."""
+
+    def __init__(self, texts: Mapping[str, str] | None = None) -> None:
+        self.texts = dict(texts or {})
+        self.written: list[str] = []
+
+    def read(self, path: str) -> str | None:
+        return self.texts.get(path)
+
+    def edit_models(self, text: str | None, path: str, updates: Mapping[str, Sequence[ColumnUpdate]]) -> WrittenFile:
+        return write_model_updates(text, path, updates)
+
+    def edit_views(self, text: str, path: str, edits: Sequence[TableSynonymEdit]) -> WrittenFile:
+        return write_table_synonyms(text, path, edits)
+
+    def write(self, path: str, text: str) -> None:
+        self.texts[path] = text
+        self.written.append(path)

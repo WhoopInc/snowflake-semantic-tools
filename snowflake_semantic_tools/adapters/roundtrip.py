@@ -18,6 +18,7 @@ from ruamel.yaml.scalarstring import SingleQuotedScalarString
 from ruamel.yaml.util import load_yaml_guess_indent
 
 from snowflake_semantic_tools.adapters.errors import ProjectError
+from snowflake_semantic_tools.domain.ports.enrich import WrittenFile
 
 __all__ = [
     "CommentedMap",
@@ -51,19 +52,6 @@ def _yaml(indent: tuple[int, int, int], *, explicit_start: bool) -> YAML:
     yaml.indent(mapping=mapping, sequence=sequence, offset=offset)
     yaml.explicit_start = explicit_start
     return yaml
-
-
-@dataclass(frozen=True, slots=True)
-class WrittenFile:
-    """A file's text after enrich's edits.
-
-    Attributes:
-        text: The whole file as it is written.
-        reformatted: Writing it changes lines enrich did not edit (SST-PRS125).
-    """
-
-    text: str
-    reformatted: bool
 
 
 @dataclass
