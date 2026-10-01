@@ -20,7 +20,7 @@ cannot be downgraded by any setting.
 - [Loading (LOD)](#loading-lod) -- 8 codes
 - [References (REF)](#references-ref) -- 29 codes
 - [Membership (MEM)](#membership-mem) -- 2 codes
-- [Validation (VAL)](#validation-val) -- 157 codes
+- [Validation (VAL)](#validation-val) -- 158 codes
 - [dbt (DBT)](#dbt-dbt) -- 4 codes
 - [Rendering (RND)](#rendering-rnd) -- 2 codes
 - [Manifest and state (MAN)](#manifest-and-state-man) -- 11 codes
@@ -1665,6 +1665,14 @@ Fix: capture a replacement baseline with a reason
 `eval '<artifact>': dataset.<field> is not set`
 
 Fix: set dataset.name_template and dataset.source_table_template in the eval's config.yml
+
+### SST-VAL763
+
+**Blocking eval regressed** (error, always an error)
+
+`eval '<artifact>' regressed on <count> question/metric pair(s): <detail>`
+
+Fix: fix what regressed, or capture a new baseline with a reason if the change is intended
 
 ### SST-VAL801
 

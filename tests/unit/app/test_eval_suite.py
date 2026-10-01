@@ -111,13 +111,16 @@ def test_a_gate_without_a_baseline_has_no_signal_and_records_the_gate() -> None:
     assert inputs.reads == ["config", "eval_catalog", "git_sha"]
 
 
-def gated_eval() -> CompileResult:
-    """The sales eval with `answer_correctness` gating at a score of 0.5."""
+def gated_eval(tier: str | None = None) -> CompileResult:
+    """The sales eval with `answer_correctness` gating at a score of 0.5, in `tier` when one is given."""
     resolved = resolved_eval()
     metric = EvalSystemMetric(
         resolved.config.system_metrics[0].origin, "answer_correctness", "v3", True, ThresholdRange(0.5)
     )
-    return compile_eval(replace(resolved, config=replace(resolved.config, system_metrics=(metric,))))
+    config = replace(resolved.config, system_metrics=(metric,))
+    if tier is not None and config.run is not None:
+        config = replace(config, run=replace(config.run, tier=tier))
+    return compile_eval(replace(resolved, config=config))
 
 
 def test_a_captured_baseline_lets_the_next_gate_pass_then_report_a_regression() -> None:
@@ -139,8 +142,24 @@ def test_a_captured_baseline_lets_the_next_gate_pass_then_report_a_regression() 
     assert regressed.data["gate_verdict"] == "regressed" and regressed.data["regression_count"] == 1
     [regression] = regressed.data["regressions"]  # type: ignore[misc]
     assert regression["metric_name"] == "answer_correctness"
-    # A regression adds no diagnostic, so the run itself still passes.
+    # A report-tier regression adds no diagnostic, so the run itself still passes.
     assert regressed.passed
+
+
+def test_a_blocking_regression_fails_the_run_and_leaves_the_gate_unresolved() -> None:
+    store = InMemoryEvalStateStore()
+    result = gated_eval("blocking")
+    capture = EvalGateRequest(capture_baseline=True, reason="initial")
+    gate(EvalSnowflake(completed_attempt()), request=capture, store=store, result=result)
+    failing_rows = result_rows()
+    worse = replace(failing_rows, rows=tuple((*row[:10], 0.0, *row[11:]) for row in failing_rows.rows))
+
+    regressed, _, _, _ = gate(EvalSnowflake([status_result("COMPLETED"), worse]), store=store, result=result)
+
+    assert isinstance(regressed, EvalGateOutcome) and not regressed.passed
+    assert [item.code for item in regressed.diagnostics] == ["SST-VAL763"]
+    assert (regressed.data["gate_verdict"], regressed.data["regression_count"]) == ("regressed", 1)
+    assert store.gates[("verify", "eval:sales_agent")].unresolved
 
 
 def test_a_capture_takes_the_baseline_runs_of_the_eval_before_the_default() -> None:

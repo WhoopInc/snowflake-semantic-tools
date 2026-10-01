@@ -209,6 +209,14 @@ SPECS: tuple[ErrorSpec, ...] = (
         demotable=False,
     ),
     spec(
+        "SST-VAL763",
+        Severity.ERROR,
+        "Blocking eval regressed",
+        "eval '{artifact}' regressed on {count} question/metric pair(s): {detail}",
+        "fix what regressed, or capture a new baseline with a reason if the change is intended",
+        demotable=False,
+    ),
+    spec(
         "SST-VAL737",
         Severity.ERROR,
         "Custom metric shadows a system metric name",

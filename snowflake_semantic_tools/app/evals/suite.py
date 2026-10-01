@@ -178,8 +178,9 @@ class RunEvalGate:
         )
         verdicts, captured, gate_diagnostics = self._gate(evals, suite, defaults, request, target_name)
         diagnostics = DiagnosticBag((*preflight, *suite.diagnostics, *gate_diagnostics))
-        # A regression adds no diagnostic: it reaches the caller through the verdict in `data`
-        # and the gate state recorded for it.
+        # A report-tier regression adds no diagnostic: it reaches the caller through the
+        # verdict in `data` and the gate state recorded for it. A blocking one is SST-VAL763,
+        # an error, so the run fails.
         passed = suite.success and not diagnostics.has_errors
         return EvalGateOutcome(diagnostics, suite, passed, _gate_data(suite, verdicts, captured, request))
 

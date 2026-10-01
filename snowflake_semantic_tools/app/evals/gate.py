@@ -93,9 +93,9 @@ def evaluate_gate(
     """Decide whether a run regressed against its baseline, or say why the gate cannot tell.
 
     A metric regresses on a question when it is gated, passed in every baseline attempt and
-    failed in some current one. Only a blocking tier fails on a regression; a report tier
-    passes and lists it. Without a usable baseline or a clean current run the verdict has no
-    signal: it does not pass, and its reason says why -- `baseline_absent`,
+    failed in some current one. Only a blocking tier fails on a regression, and reports it as
+    SST-VAL763; a report tier passes and lists it. Without a usable baseline or a clean current
+    run the verdict has no signal: it does not pass, and its reason says why -- `baseline_absent`,
     `current_no_signal`, `baseline_incompatible`, `baseline_expired` or `retrieval_no_signal`.
 
     Raises:
@@ -108,6 +108,7 @@ def evaluate_gate(
             metric set or question/metric vector.
         SST-VAL760: the baseline expires within `BASELINE_WARNING_DAYS`.
         SST-VAL761: the baseline has expired.
+        SST-VAL763: a blocking eval regressed; the error fails the run.
         SST-SNO001: the current run has no immutable agent version, or has a partial,
             unretrievable or no completed attempt.
     """
@@ -130,8 +131,11 @@ def evaluate_gate(
         diagnostic = D("SST-VAL759", artifact=compiled.artifact_key, detail="question/metric vector differs")
         return EvalGateVerdict(tier, (), False, "baseline_incompatible"), DiagnosticBag((*warnings, diagnostic))
     regressions = _regressions(compiled, baseline_vectors, current_vectors)
-    passed = tier != "blocking" or not regressions
-    return EvalGateVerdict(tier, regressions, passed, None), DiagnosticBag(warnings)
+    if tier != "blocking" or not regressions:
+        return EvalGateVerdict(tier, regressions, True, None), DiagnosticBag(warnings)
+    metrics = ", ".join(sorted({item.metric_name for item in regressions}))
+    regressed = D("SST-VAL763", artifact=compiled.artifact_key, count=len(regressions), detail=metrics)
+    return EvalGateVerdict(tier, regressions, False, None), DiagnosticBag((*warnings, regressed))
 
 
 def persist_gate(

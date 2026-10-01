@@ -103,10 +103,13 @@ def test_gate_counts_only_all_pass_baseline_to_any_fail_current() -> None:
 
     verdict, diagnostics = evaluate_gate(compiled, current, baseline, now="2026-09-10T00:00:00Z")
 
-    assert not diagnostics.has_errors
     assert verdict.regression_count == 1
     assert verdict.regressions[0].metric_name == "answer_correctness"
     assert not verdict.passed
+    # The eval is blocking, so the regression is an error that fails the run.
+    [regressed] = diagnostics
+    assert regressed.code == "SST-VAL763"
+    assert regressed.message.endswith("regressed on 1 question/metric pair(s): answer_correctness")
 
 
 def test_ungated_metric_failure_is_not_a_regression() -> None:
