@@ -7,7 +7,7 @@ from pathlib import Path
 from click.testing import CliRunner
 
 from snowflake_semantic_tools.cli.main import cli
-from tests.helpers.cli_projects import FIXTURE, MANIFEST
+from tests.helpers.cli_projects import FIXTURE, MANIFEST, project_copy
 
 
 def test_validate_accepts_the_recorded_manifest_offline() -> None:
@@ -79,3 +79,16 @@ def test_validate_reports_view_error_but_compile_fails_closed(tmp_path: Path) ->
     compiled = CliRunner().invoke(cli, ["compile", *common])
     assert compiled.exit_code != 0
     assert "ref('missing')" in compiled.output
+
+
+def test_validate_reports_an_agent_loader_error_once(tmp_path: Path) -> None:
+    project = project_copy(tmp_path)
+    broken = project / "agents" / "broken"
+    broken.mkdir(parents=True)
+    (broken / "agent.yml").write_text("name: broken_agent\nmeta: text\n", encoding="utf-8")
+
+    result = CliRunner().invoke(cli, ["validate", "--project-dir", str(project), "--manifest", str(MANIFEST)])
+
+    assert result.exit_code == 1, result.output
+    # The eval catalog once carried the agent loader's diagnostics too, so each was reported twice.
+    assert result.output.count("'meta' expects a mapping, found str") == 1

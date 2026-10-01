@@ -191,7 +191,7 @@ class CompileProject:
         """Compile the semantic views, tools, agents, and evals of a dbt project, in that order.
 
         Tools read the dbt relations, agents the views and tools that compiled, and evals the
-        tools each agent resolved.
+        tools each agent resolved. The agents' load diagnostics are reported once, by the agents.
         """
         semantic = CompileSemanticViews(self._inputs).run_result()
         dbt = self._inputs.dbt_catalog()
@@ -210,7 +210,7 @@ class CompileProject:
             if isinstance(item, CompiledAgent)
         }
         evals = CompileEvals(
-            self._inputs.eval_catalog(enabled, agent_diagnostics, resolved_tools),
+            self._inputs.eval_catalog(enabled, agent_tool_names=resolved_tools),
             agent_targets=dict(context.agents),
         ).run_result()
         return semantic, tools, agents, evals

@@ -95,11 +95,10 @@ class InMemoryProjectInputs:
     def eval_catalog(
         self,
         agents: tuple[AgentModel, ...] | None = None,
-        agent_diagnostics: DiagnosticBag = DiagnosticBag(),
         agent_tool_names: dict[str, tuple[str, ...]] | None = None,
     ) -> EvalCatalog:
         self.reads.append("eval_catalog")
-        self.eval_requests.append((agents, agent_diagnostics, agent_tool_names))
+        self.eval_requests.append((agents, agent_tool_names))
         return self.evals
 
     def git_sha(self) -> str:

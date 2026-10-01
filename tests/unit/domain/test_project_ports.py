@@ -13,7 +13,6 @@ from snowflake_semantic_tools.domain.model.config_schema import (
     skills_configured,
     target_text,
 )
-from snowflake_semantic_tools.domain.model.diagnostic import DiagnosticBag
 from snowflake_semantic_tools.domain.model.identifier import Identifier, TargetIdentity
 from snowflake_semantic_tools.domain.ports.golden import GoldenPath, GoldenStore
 from snowflake_semantic_tools.domain.ports.project import ProjectInputs, ValidationDefaults
@@ -76,7 +75,7 @@ def test_project_and_golden_port_methods_are_declarations_only() -> None:
     assert ProjectInputs.dbt_catalog(source) is None  # type: ignore[arg-type]
     assert ProjectInputs.tool_catalog(source) is None  # type: ignore[arg-type]
     assert ProjectInputs.agents(source, agents_dir="a") is None  # type: ignore[arg-type]
-    assert ProjectInputs.eval_catalog(source, (), DiagnosticBag(), None) is None  # type: ignore[arg-type]
+    assert ProjectInputs.eval_catalog(source, (), None) is None  # type: ignore[arg-type]
     assert ProjectInputs.git_sha(source) is None  # type: ignore[arg-type]
     assert ProjectInputs.validation_defaults(source) is None  # type: ignore[arg-type]
     assert ProjectInputs.manifest_sources(source) is None  # type: ignore[arg-type]

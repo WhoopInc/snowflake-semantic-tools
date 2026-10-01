@@ -176,14 +176,15 @@ class ProjectInputs(SemanticViewSource, Protocol):
     def eval_catalog(
         self,
         agents: tuple[AgentModel, ...] | None = None,
-        agent_diagnostics: DiagnosticBag = DiagnosticBag(),
         agent_tool_names: dict[str, tuple[str, ...]] | None = None,
     ) -> EvalCatalog:
         """Return the evals of `agents`, with the `evals:` defaults and the custom metrics they use.
 
+        The diagnostics of loading `agents` stay with the agents; only agents read here, when
+        `agents` is None, bring theirs.
+
         Args:
             agents: The agents whose evals to load; None loads every agent again.
-            agent_diagnostics: What loading `agents` reported, which eval checks read.
             agent_tool_names: Each agent's tool names, by casefolded agent name, which an
                 eval's expected tools must be among.
 

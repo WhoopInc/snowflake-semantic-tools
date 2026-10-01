@@ -138,7 +138,6 @@ class YamlProjectSource:
     def load_evals(
         self,
         agents: tuple[AgentModel, ...] | None = None,
-        agent_diagnostics: DiagnosticBag = DiagnosticBag(),
         agent_tool_names: dict[str, tuple[str, ...]] | None = None,
     ) -> EvalCatalog:
         """Load the evals of `agents`, reading every agent again when `agents` is None.
@@ -146,10 +145,10 @@ class YamlProjectSource:
         The agents and the custom metrics come from `project.agents_dir` and
         `project.eval_metrics_dir`, the defaults from `evals:`, and the judge models a custom
         metric may name from `snowflake.orchestration_models`. Agents read here bring their own
-        diagnostics, in place of `agent_diagnostics`, and raise what `load_agents` raises.
+        diagnostics, ahead of the eval diagnostics, and raise what `load_agents` raises; agents
+        passed in do not, since whoever loaded them reports theirs.
 
         Args:
-            agent_diagnostics: What loading `agents` reported, placed ahead of the eval diagnostics.
             agent_tool_names: Each agent's tool names, by casefolded agent name.
 
         Raises:
@@ -161,6 +160,7 @@ class YamlProjectSource:
         metrics_dir = (
             str(project.get("eval_metrics_dir") or "eval_metrics") if isinstance(project, dict) else "eval_metrics"
         )
+        agent_diagnostics = DiagnosticBag()
         if agents is None:
             agents, agent_diagnostics = load_agents(self._project_dir, agents_dir=agents_dir)
         defaults, default_diagnostics = parse_eval_defaults(config.get("evals"))
@@ -241,10 +241,9 @@ class YamlProjectInputs(ProjectInputs):
     def eval_catalog(
         self,
         agents: tuple[AgentModel, ...] | None = None,
-        agent_diagnostics: DiagnosticBag = DiagnosticBag(),
         agent_tool_names: dict[str, tuple[str, ...]] | None = None,
     ) -> EvalCatalog:
-        return self._source.load_evals(agents, agent_diagnostics, agent_tool_names)
+        return self._source.load_evals(agents, agent_tool_names)
 
     def git_sha(self) -> str:
         return self._git_sha()

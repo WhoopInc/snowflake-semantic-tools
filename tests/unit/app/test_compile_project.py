@@ -184,7 +184,7 @@ def test_agents_follow_the_agents_block_and_disabled_agents_are_left_out() -> No
     [compiled] = [item for item in result.compiled if isinstance(item, CompiledAgent)]
     assert compiled.rendered_artifact.target.sql == "DB_AGENTS.BOTS.HELPER"
     assert '"orchestration": "fast"' in compiled.payload
-    agents, _, tool_names = inputs.eval_requests[0]
+    agents, tool_names = inputs.eval_requests[0]
     assert agents == (agent("helper"),) and tool_names == {"helper": ()}
     assert "SST-VAL543" not in {item.code for item in result.diagnostics}
 

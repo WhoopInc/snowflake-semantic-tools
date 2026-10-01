@@ -14,6 +14,7 @@ EXPECTED = ROOT / "golden" / "expected" / "eval"
 
 def test_reference_eval_matches_exact_source_sql_and_repeat_yaml_goldens() -> None:
     agents, diagnostics = load_agents(FIXTURE)
+    assert not diagnostics.has_errors
     source = YamlProjectSource(
         FIXTURE,
         target_name="dev",
@@ -22,7 +23,6 @@ def test_reference_eval_matches_exact_source_sql_and_repeat_yaml_goldens() -> No
     )
     catalog = source.load_evals(
         agents,
-        diagnostics,
         {
             "jaffle_analytics_agent": (
                 "JAFFLE_MENU",
