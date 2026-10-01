@@ -40,8 +40,8 @@ Branch naming: `fix/<description>` or `feature/<description>`
 
 Load the `sst-test` skill and run its workflow. It covers the suite, the coverage floors, mypy, black, isort, `lint-imports`, and `sst docs --check`. To format before committing:
 ```bash
-poetry run black snowflake_semantic_tools/
-poetry run isort snowflake_semantic_tools/
+poetry run black snowflake_semantic_tools/ tests/
+poetry run isort snowflake_semantic_tools/ tests/
 ```
 
 If the change touches diagnostics, `sst_config.yml` keys, CLI options, or artifact types, run `poetry run sst docs` and include the regenerated `docs/reference/*.md`.

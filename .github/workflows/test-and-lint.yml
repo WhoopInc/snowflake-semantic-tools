@@ -70,10 +70,10 @@ jobs:
         run: poetry run mypy snowflake_semantic_tools
 
       - name: Check code formatting with Black
-        run: poetry run black --check snowflake_semantic_tools/
+        run: poetry run black --check snowflake_semantic_tools/ tests/
 
       - name: Check import sorting with isort
-        run: poetry run isort --check snowflake_semantic_tools/
+        run: poetry run isort --check snowflake_semantic_tools/ tests/
 
       # The four-ring boundaries (cli -> app | adapters -> domain). This step IS the
       # enforcement; tests/unit/test_ring_boundaries.py separately proves the

@@ -61,4 +61,3 @@ def test_complexity_counts_boolean_operands_and_comprehension_clauses() -> None:
     assert isinstance(function, ast.FunctionDef)
     # 1 + comprehension (1) + its `if` (1) + `or` (1) + `and` (1)
     assert structure_rules.complexity(function) == 5
-

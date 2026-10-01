@@ -5,8 +5,8 @@ from pathlib import Path
 import yaml
 
 from snowflake_semantic_tools.adapters.dbt.manifest import load_manifest_catalog
-from snowflake_semantic_tools.adapters.yaml.agents import load_agents
 from snowflake_semantic_tools.adapters.project_source import YamlProjectSource
+from snowflake_semantic_tools.adapters.yaml.agents import load_agents
 from snowflake_semantic_tools.adapters.yaml.skills import load_skill_catalog
 from snowflake_semantic_tools.app.compile.agents import AgentCompileContext, CompileAgents, ExtensionPin
 from snowflake_semantic_tools.app.compile.skills import CatalogChannel, CompiledExtension, CompileSkills

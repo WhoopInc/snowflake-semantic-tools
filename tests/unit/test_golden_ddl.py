@@ -20,10 +20,10 @@ from pathlib import Path
 import pytest
 from _pytest.outcomes import Failed
 
-from tests.helpers.projects import load_views
 from snowflake_semantic_tools.app.compile import CompiledView
 from snowflake_semantic_tools.domain.model.semantic_view import SemanticView
 from snowflake_semantic_tools.domain.render.semantic_view import render
+from tests.helpers.projects import load_views
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 FIXTURE = REPO_ROOT / "tests" / "fixtures" / "reference_project"

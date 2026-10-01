@@ -104,8 +104,8 @@ poetry run pytest -q --cov=snowflake_semantic_tools.cli --cov-branch --cov-fail-
   tests/unit/cli
 
 poetry run mypy snowflake_semantic_tools
-poetry run black --check snowflake_semantic_tools/
-poetry run isort --check snowflake_semantic_tools/
+poetry run black --check snowflake_semantic_tools/ tests/
+poetry run isort --check snowflake_semantic_tools/ tests/
 poetry run lint-imports         # ring boundaries
 poetry run sst docs --check     # generated reference pages are current
 ```
@@ -130,8 +130,10 @@ Imports run one way, `cli` → (`app` | `adapters`) → `domain`:
 - `domain` does no I/O and reads no clock, environment, or randomness, so rendering is a pure function of its input and goldens can compare bytes.
 - `app` never imports an SDK or touches the terminal (`yaml`, `click`, and `snowflake` are forbidden there).
 - `adapters` may use domain models and ports, but not `domain/render`.
+- The adapter subpackages `yaml`, `dbt`, `snowflake`, and `fs` never import one another, so each can be replaced and tested alone; a top-level adapter module such as `project_source.py` composes them.
+- Only `adapters/yaml` (SST's own files) and `adapters/dbt` (dbt's) import `yaml`; everything else reaches YAML through them.
 
-`poetry run lint-imports` enforces these as four contracts in `pyproject.toml`, and `tests/unit/test_ring_boundaries.py` proves that each contract rejects a crossing and that the package root holds nothing else.
+`poetry run lint-imports` enforces these as six contracts in `pyproject.toml`, and `tests/unit/test_ring_boundaries.py` proves that each contract rejects a crossing and that the package root holds nothing else.
 
 ### Diagnostics
 
@@ -156,10 +158,10 @@ Every problem SST reports is a diagnostic registered in `snowflake_semantic_tool
 
 ```bash
 # Format code
-poetry run black snowflake_semantic_tools/
+poetry run black snowflake_semantic_tools/ tests/
 
 # Sort imports
-poetry run isort snowflake_semantic_tools/
+poetry run isort snowflake_semantic_tools/ tests/
 ```
 
 ### Docstrings and comments

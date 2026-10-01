@@ -31,10 +31,10 @@ SST is a command-line compiler and publisher for a Snowflake semantic layer kept
 |------|-------|--------------|
 | `cli/` | click commands; the composition root | may import every ring |
 | `app/` | use cases (compile, validate, plan, apply, test suites, migrate refs) | `domain` only, never `adapters`; no `yaml`, `click`, or `snowflake` |
-| `adapters/` | YAML, dbt manifest, Snowflake connector, filesystem, config, profile | `domain` models and ports, never `domain.render` or `app` |
+| `adapters/` | YAML, dbt manifest, Snowflake connector, filesystem, config, profile | `domain` models and ports, never `domain.render` or `app`; the `yaml`, `dbt`, `snowflake`, and `fs` subpackages never import each other, and only `yaml` and `dbt` import `yaml` |
 | `domain/` | pure: model, render, resolve, plan, state, ports | no I/O, clock, environment, randomness, logging, or SDKs |
 
-`poetry run lint-imports` enforces these as the four contracts in `pyproject.toml`; `tests/unit/test_ring_boundaries.py` proves each one rejects a crossing.
+`poetry run lint-imports` enforces these as the six contracts in `pyproject.toml`; `tests/unit/test_ring_boundaries.py` proves each one rejects a crossing.
 
 ## Gates
 
@@ -43,8 +43,8 @@ What `.github/workflows/test-and-lint.yml` runs; the exact coverage commands are
 ```bash
 poetry run pytest tests/          # plus branch-coverage floors: domain 100%, app 95%, cli 90%
 poetry run mypy snowflake_semantic_tools
-poetry run black --check snowflake_semantic_tools/
-poetry run isort --check snowflake_semantic_tools/
+poetry run black --check snowflake_semantic_tools/ tests/
+poetry run isort --check snowflake_semantic_tools/ tests/
 poetry run lint-imports
 poetry run sst docs --check
 ```

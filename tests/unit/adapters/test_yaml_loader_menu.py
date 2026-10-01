@@ -6,8 +6,8 @@ from pathlib import Path
 
 import pytest
 
-from tests.helpers.projects import load_views
 from snowflake_semantic_tools.domain.model.semantic_view import SemanticView, SortKey
+from tests.helpers.projects import load_views
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 FIXTURE = REPO_ROOT / "tests" / "fixtures" / "reference_project"

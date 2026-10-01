@@ -125,7 +125,7 @@ include_external_packages = true
 # The delimiter is load-bearing and the two are near-opposites: "|" makes siblings
 # INDEPENDENT (neither may import the other), ":" makes them non-independent (both
 # may). An earlier draft used ":" here, which licensed the exact crossing this
-# contract exists to forbid -- caught by tests/test_ring_boundaries.py.
+# contract exists to forbid -- caught by tests/unit/test_ring_boundaries.py.
 [[tool.importlinter.contracts]]
 name = "Rings are layered: cli above (app | adapters) above domain"
 type = "layers"

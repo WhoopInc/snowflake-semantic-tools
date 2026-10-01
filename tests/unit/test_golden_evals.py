@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from snowflake_semantic_tools.adapters.yaml.agents import load_agents
 from snowflake_semantic_tools.adapters.project_source import YamlProjectSource
+from snowflake_semantic_tools.adapters.yaml.agents import load_agents
 from snowflake_semantic_tools.app.compile.evals import CompileEvals
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
 

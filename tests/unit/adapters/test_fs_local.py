@@ -8,8 +8,8 @@ from pathlib import Path
 
 import pytest
 
-from snowflake_semantic_tools.adapters.fs.local import ManifestFileStore, PlanFileStore, StateFileStore
 from snowflake_semantic_tools.adapters.errors import ProjectError
+from snowflake_semantic_tools.adapters.fs.local import ManifestFileStore, PlanFileStore, StateFileStore
 from snowflake_semantic_tools.domain.state import MANIFEST_SCHEMA_VERSION, PLAN_SCHEMA_VERSION, STATE_SCHEMA_VERSION
 
 

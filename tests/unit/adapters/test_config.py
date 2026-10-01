@@ -6,9 +6,9 @@ from pathlib import Path
 
 import pytest
 
-from snowflake_semantic_tools.adapters.yaml.config import load_project_config
 from snowflake_semantic_tools.adapters.dbt.profiles import load_profile_target, resolve_profile_name
 from snowflake_semantic_tools.adapters.errors import ProjectError
+from snowflake_semantic_tools.adapters.yaml.config import load_project_config
 
 PROFILES = """
 sst:

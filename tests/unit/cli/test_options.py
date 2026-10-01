@@ -41,7 +41,13 @@ def test_the_option_groups_expand_in_the_order_the_commands_list_them() -> None:
         "--snowflake-syntax-check",
         "--output",
     ]
-    assert [param.name for param in declared][:5] == ["project_dir", "target_name", "manifest_path", "selected", "excluded"]
+    assert [param.name for param in declared][:5] == [
+        "project_dir",
+        "target_name",
+        "manifest_path",
+        "selected",
+        "excluded",
+    ]
 
 
 def test_the_project_directory_must_exist_unless_the_command_creates_it() -> None:
