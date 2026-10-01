@@ -77,10 +77,18 @@ class Identifier:
 
     @classmethod
     def shown(cls, raw: str) -> Identifier:
-        """A name as SHOW prints it: unquoted when it can be, else the exact name it was created with."""
+        """A name as SHOW prints it: unquoted when it can be, else the exact name it was created with.
+
+        Snowflake stores an unquoted name upper-cased, so a shown name with a lowercase letter,
+        like one with a character an unquoted name cannot hold, was created quoted.
+
+        Raises:
+            ValueError: `raw` is empty.
+        """
         if not raw:
             raise ValueError("empty identifier")
-        return cls.parse(raw) if _UNQUOTED.fullmatch(raw.strip()) else cls(raw, quoted=True)
+        unquoted = _UNQUOTED.fullmatch(raw) is not None and raw == raw.upper()
+        return cls(raw, quoted=not unquoted)
 
     @property
     def folded(self) -> str:

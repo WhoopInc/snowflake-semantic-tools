@@ -73,7 +73,7 @@ def test_grants_show_rows_and_observations_keep_three_states() -> None:
     inherited = GrantRow("SELECT", "DATABASE_ROLE", "db.reader")
     assert explicit.is_explicit
     assert not ownership.is_explicit and inherited.is_explicit
-    row = ShowRow("v", "db", "sch", "owner", "now", "comment")
+    row = ShowRow("V", "DB", "SCH", "owner", "now", "comment")
     assert row.qualified_name.sql == "DB.SCH.V"
     observed = SnowflakeObservation(
         MappingProxyType(
@@ -261,10 +261,14 @@ def test_retry_policy_apply_results_and_transport_values() -> None:
 
 
 def test_a_shown_name_that_cannot_be_unquoted_is_the_exact_quoted_name() -> None:
-    assert ShowRow("v", "db", "sch", "owner", "now").qualified_name.sql == "DB.SCH.V"
+    assert ShowRow("V", "DB", "SCH", "owner", "now").qualified_name.sql == "DB.SCH.V"
     operator = ShowRow("!=", "DB", "SCH", "", "now").qualified_name
     assert (operator.name.value, operator.name.quoted, operator.sql) == ("!=", True, 'DB.SCH."!="')
     assert ShowRow("my view", "Mixed Db", "SCH", "", "now").qualified_name.sql == '"Mixed Db".SCH."my view"'
-    assert Identifier.shown("Sales") == Identifier("SALES")
+    assert Identifier.shown("SALES") == Identifier("SALES")
+    # Snowflake upper-cases an unquoted name, so a shown name in any other case was created quoted.
+    assert Identifier.shown("Sales") == Identifier("Sales", quoted=True)
+    assert ShowRow("v", "db", "SCH", "", "now").qualified_name.sql == '"db".SCH."v"'
+    assert Identifier.shown(" V ") == Identifier(" V ", quoted=True)
     with pytest.raises(ValueError, match="empty identifier"):
         Identifier.shown("")
