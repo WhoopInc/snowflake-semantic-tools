@@ -21,7 +21,7 @@ tests/
 │   ├── domain/                  # the pure ring (coverage floor 100%)
 │   ├── app/                     # use cases over in-memory ports (conftest.py, helpers.py)
 │   ├── adapters/                # YAML loading, dbt manifest, connector, files, config, eval state
-│   ├── test_cli_*.py            # commands through click's CliRunner
+│   ├── cli/                     # commands through click's CliRunner, one module per command (helpers.py)
 │   ├── test_golden_*.py         # rendered DDL, agents, tools, and evals against the goldens
 │   ├── test_ring_boundaries.py  # each import-linter contract rejects a crossing
 │   ├── test_structure.py        # size and complexity budgets, ratcheted by ratchets/structure.txt
@@ -72,7 +72,7 @@ There is no update switch. When a change to rendered output is intended, run the
 
 ## Writing Tests
 
-- Put a test beside the ring it exercises: `unit/domain`, `unit/app`, `unit/adapters`, or a `test_cli_*.py` file for command behavior.
+- Put a test beside the ring it exercises: `unit/domain`, `unit/app`, `unit/adapters`, or `unit/cli/test_<command>.py` for command behavior.
 - Domain tests stay pure; `unit/domain/conftest.py` refuses network access.
 - Application tests use real in-memory ports (`unit/app/conftest.py`, `tests/helpers/recorded_snowflake.py`), not mocks. There is no mocking library; use pytest's `monkeypatch` for the rest. Test doubles live under `tests/`, never in the package, so they do not ship.
 - CLI tests run the reference project through `CliRunner` with `--manifest`, or build a small project in `tmp_path`.

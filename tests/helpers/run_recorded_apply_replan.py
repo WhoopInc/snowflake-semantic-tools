@@ -13,6 +13,7 @@ from run_recorded_plan import recorded
 
 from snowflake_semantic_tools.app.compile.evals import CompiledEval
 from snowflake_semantic_tools.cli import main as cli_module
+from snowflake_semantic_tools.cli.wiring.compile import compile_result
 from snowflake_semantic_tools.domain.model.lifecycle import OwnershipMarker, QueryResult, ShowRow
 
 OBJECT_TYPES = {
@@ -85,7 +86,7 @@ def main() -> None:
         if not isinstance(changes, list) or not isinstance(manifest_id, str):
             raise RuntimeError("create plan omitted changes or manifest identity")
 
-        compiled = cli_module._compile_result(project_dir, args.target, manifest_path)
+        compiled = compile_result(project_dir, args.target, manifest_path)
         port.existing = {
             relation.sql for item in compiled.compiled for relation in item.rendered_artifact.required_relations
         }

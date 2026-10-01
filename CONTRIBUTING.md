@@ -101,7 +101,7 @@ poetry run pytest -q --cov=snowflake_semantic_tools.domain --cov-branch --cov-fa
 poetry run pytest -q --cov=snowflake_semantic_tools.app --cov-branch --cov-fail-under=95 \
   tests/unit/app tests/unit/test_compile_use_case.py tests/unit/test_manifest_v1.py
 poetry run pytest -q --cov=snowflake_semantic_tools.cli --cov-branch --cov-fail-under=90 \
-  tests/unit/test_cli_v1.py tests/unit/test_cli_m2.py tests/unit/test_cli_m5.py
+  tests/unit/cli
 
 poetry run mypy snowflake_semantic_tools
 poetry run black --check snowflake_semantic_tools/

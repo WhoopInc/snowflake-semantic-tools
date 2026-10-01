@@ -21,8 +21,6 @@ docstring-class snowflake_semantic_tools/app/migrate_refs.py::MigrationReport
 docstring-class snowflake_semantic_tools/app/partial.py::PartialSplit
 docstring-class snowflake_semantic_tools/app/validate.py::ValidateArtifacts
 docstring-class snowflake_semantic_tools/app/validate.py::ValidationResult
-docstring-class snowflake_semantic_tools/cli/main.py::SstGroup
-docstring-class snowflake_semantic_tools/cli/main.py::SstUsageError
 docstring-class snowflake_semantic_tools/domain/model/agent.py::AgentEvalFiles
 docstring-class snowflake_semantic_tools/domain/model/agent.py::AgentModel
 docstring-class snowflake_semantic_tools/domain/model/agent.py::AgentProfile
@@ -110,8 +108,6 @@ docstring-function snowflake_semantic_tools/app/partial.py::partial_split
 docstring-function snowflake_semantic_tools/app/state.py::read_state
 docstring-function snowflake_semantic_tools/app/validate.py::ValidateArtifacts.run
 docstring-function snowflake_semantic_tools/app/validate.py::ValidationResult.success
-docstring-function snowflake_semantic_tools/cli/main.py::SstGroup.main
-docstring-function snowflake_semantic_tools/cli/main.py::SstGroup.parse_args
 docstring-function snowflake_semantic_tools/domain/model/agent.py::AgentModel.key
 docstring-function snowflake_semantic_tools/domain/model/agent.py::ResolvedAgent.agent_facing_tool_names
 docstring-function snowflake_semantic_tools/domain/model/agent.py::ResolvedAgent.depends_on
@@ -212,19 +208,6 @@ docstring-private snowflake_semantic_tools/adapters/yaml/tools.py::_on_fields
 docstring-private snowflake_semantic_tools/adapters/yaml/tools.py::_parse_group
 docstring-private snowflake_semantic_tools/adapters/yaml/tools.py::_parse_member
 docstring-private snowflake_semantic_tools/adapters/yaml/tools.py::_signature
-docstring-private snowflake_semantic_tools/cli/main.py::_change_json
-docstring-private snowflake_semantic_tools/cli/main.py::_connect
-docstring-private snowflake_semantic_tools/cli/main.py::_diagnostic_json
-docstring-private snowflake_semantic_tools/cli/main.py::_guarded
-docstring-private snowflake_semantic_tools/cli/main.py::_json_envelope
-docstring-private snowflake_semantic_tools/cli/main.py::_option_docs
-docstring-private snowflake_semantic_tools/cli/main.py::_print_eval_results
-docstring-private snowflake_semantic_tools/cli/main.py::_print_plan
-docstring-private snowflake_semantic_tools/cli/main.py::_selection
-docstring-private snowflake_semantic_tools/cli/main.py::compile.action
-docstring-private snowflake_semantic_tools/cli/main.py::docs.action
-docstring-private snowflake_semantic_tools/cli/main.py::migrate_refs_command.action
-docstring-private snowflake_semantic_tools/cli/main.py::validate.action
 docstring-private snowflake_semantic_tools/domain/model/identifier.py::_split_qualified
 docstring-private snowflake_semantic_tools/domain/model/reference.py::_parse_body
 docstring-private snowflake_semantic_tools/domain/render/reference_docs.py::_artifact_facts

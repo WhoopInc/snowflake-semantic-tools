@@ -50,7 +50,7 @@ poetry run pytest -q --cov=snowflake_semantic_tools.domain --cov-branch --cov-re
 poetry run pytest -q --cov=snowflake_semantic_tools.app --cov-branch --cov-report=term --cov-fail-under=95 \
   tests/unit/app tests/unit/test_compile_use_case.py tests/unit/test_manifest_v1.py
 poetry run pytest -q --cov=snowflake_semantic_tools.cli --cov-branch --cov-report=term --cov-fail-under=90 \
-  tests/unit/test_cli_v1.py tests/unit/test_cli_m2.py tests/unit/test_cli_m5.py
+  tests/unit/cli
 ```
 
 ### Step 5: Static gates
@@ -81,7 +81,7 @@ tests/
   unit/domain/        # pure ring
   unit/app/           # use cases over in-memory ports
   unit/adapters/      # YAML, dbt manifest, connector, files, config
-  unit/test_cli_*.py  # commands through click's CliRunner
+  unit/cli/           # commands through click's CliRunner, one module per command
   unit/test_golden_*.py
   contract/           # adapters against their ports
   fixtures/           # reference_project (+ its dbt manifest), v1_dialect

@@ -1,8 +1,1 @@
 # Known violations; the list may only shrink. Regenerate: python -m tests.helpers.ratchet
-function-complexity snowflake_semantic_tools/cli/main.py::compile 31
-function-complexity snowflake_semantic_tools/cli/main.py::compile.action 31
-function-lines snowflake_semantic_tools/cli/main.py::compile 106
-module-lines snowflake_semantic_tools/cli/main.py 1839
-nested-function-lines snowflake_semantic_tools/cli/main.py::compile.action 90
-nested-function-lines snowflake_semantic_tools/cli/main.py::migrate_refs_command.action 56
-nested-function-lines snowflake_semantic_tools/cli/main.py::validate.action 39
