@@ -13,6 +13,7 @@ from snowflake_semantic_tools.cli.commands import (
     compile,
     debug,
     docs,
+    enrich,
     init,
     list,
     migrate,
@@ -34,6 +35,7 @@ for _command in (
     list.list_command,
     clean.clean,
     migrate.migrate,
+    enrich.enrich,
     test.test_command,
     docs.docs,
 ):

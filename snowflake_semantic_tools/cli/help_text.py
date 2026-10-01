@@ -53,6 +53,19 @@ _COMMAND_OPTION_HELP: Mapping[tuple[str, str], str] = {
     ("sst compile", "--select"): "Only this artifact: a semantic view name, `type:<type>`, or `<type>:<name>`.",
     ("sst debug", "--test-connection"): "Also connect to Snowflake and report the session's role and account.",
     ("sst docs", "--check"): "Write nothing; exit 1 when a committed reference page is out of date.",
+    ("sst enrich", "--select"): "Only these dbt models: `model:<name>` or a bare name; globs such as `fct_*` work.",
+    ("sst enrich", "--exclude"): "Leave these dbt models out; same forms as `--select`.",
+    ("sst enrich", "--include"): (
+        "Components to fill, repeatable or comma-separated: column-types, data-types, sample-values, enums, "
+        "column-synonyms, table-synonyms, synonyms, all. Defaults to column-types and data-types."
+    ),
+    ("sst enrich", "--force"): "Components to derive again over values already written; forcing one includes it.",
+    ("sst enrich", "--database"): "Read every relation from this database instead of the manifest's.",
+    ("sst enrich", "--schema"): "Read every relation from this schema instead of the manifest's.",
+    ("sst enrich", "--check"): "Write nothing; exit 2 when a file would change.",
+    ("sst enrich", "--dry-run"): "Write nothing; print each file's change as a diff.",
+    ("sst enrich", "--no-detailed-exitcode"): "With `--check`, exit 0 when files would change, instead of 2.",
+    ("sst enrich", "--fail-fast"): "Stop at the first model that fails, and write nothing.",
     ("sst plan", "--plan-out"): "Write the saved plan here instead of `target/sst/plan.json`.",
     ("sst plan", "--no-plan-out"): "Do not write a saved plan.",
     ("sst plan", "--no-detailed-exitcode"): "Exit 0 when changes are pending, instead of 2.",

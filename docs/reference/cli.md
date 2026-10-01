@@ -15,6 +15,7 @@ versioned JSON envelope on stdout and nothing else.
 | [`sst compile`](#sst-compile) | Compile semantic views and write the canonical manifest. |
 | [`sst debug`](#sst-debug) | Show resolved project, profile, target, and optional connection identity. |
 | [`sst docs`](#sst-docs) | Write the generated reference pages under docs/reference/. |
+| [`sst enrich`](#sst-enrich) | Fill dbt model column metadata from the warehouse, editing the model YAML in place. |
 | [`sst init`](#sst-init) | Create a minimal SST project scaffold without overwriting files. |
 | [`sst list`](#sst-list) | List compiled artifacts and cached application status. |
 | [`sst migrate`](#sst-migrate) | Rewrite a 0.3 project into the 1.0 dialect. |
@@ -136,6 +137,38 @@ sst docs [OPTIONS]
 |---|---|---|---|
 | `--project-dir` | DIRECTORY | `.` | Project root: the directory that holds `sst_config.yml`. |
 | `--check` | flag |  | Write nothing; exit 1 when a committed reference page is out of date. |
+| `--output` | human\|json | `human` | `human` for readable text, or `json` for one machine-readable envelope. |
+
+## sst enrich
+
+Fill dbt model column metadata from the warehouse, editing the model YAML in place.
+
+Reads each selected model's relation for its columns and types, and fills what the
+model YAML leaves out: column types and data types by default, and sample values,
+enums, and synonyms with --include. Values already written are kept unless --force
+names their component. PATH selects the models whose SQL or YAML file is under it.
+
+Exit 0 when done, 1 when a model failed, and 2 under --check when files would change.
+
+```text
+sst enrich [OPTIONS]
+```
+
+| Option | Value | Default | Description |
+|---|---|---|---|
+| `--project-dir` | DIRECTORY | `.` | Project root: the directory that holds `sst_config.yml`. |
+| `--target` | TEXT |  | Target from `profiles.yml`; defaults to the profile's own default target. |
+| `--manifest` | FILE |  | Read this dbt `manifest.json` instead of running `dbt parse`. |
+| `--select` | TEXT, repeatable |  | Only these dbt models: `model:<name>` or a bare name; globs such as `fct_*` work. |
+| `--exclude` | TEXT, repeatable |  | Leave these dbt models out; same forms as `--select`. |
+| `--include` | TEXT, repeatable |  | Components to fill, repeatable or comma-separated: column-types, data-types, sample-values, enums, column-synonyms, table-synonyms, synonyms, all. Defaults to column-types and data-types. |
+| `--force` | TEXT, repeatable |  | Components to derive again over values already written; forcing one includes it. |
+| `--database` | TEXT |  | Read every relation from this database instead of the manifest's. |
+| `--schema` | TEXT |  | Read every relation from this schema instead of the manifest's. |
+| `--check` | flag |  | Write nothing; exit 2 when a file would change. |
+| `--dry-run` | flag |  | Write nothing; print each file's change as a diff. |
+| `--no-detailed-exitcode` | flag |  | With `--check`, exit 0 when files would change, instead of 2. |
+| `--fail-fast` | flag |  | Stop at the first model that fails, and write nothing. |
 | `--output` | human\|json | `human` | `human` for readable text, or `json` for one machine-readable envelope. |
 
 ## sst init
