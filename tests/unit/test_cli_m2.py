@@ -15,9 +15,9 @@ from snowflake_semantic_tools.adapters.fs.local import StateFileStore
 from snowflake_semantic_tools.adapters.errors import ProjectError
 from tests.helpers.eval_state_store import InMemoryEvalStateStore
 from tests.helpers.recorded_snowflake import PROFILE_REGISTRY_SHAPE, RecordedSnowflake
-from snowflake_semantic_tools.app.eval_compile import CompiledEval
-from snowflake_semantic_tools.app.eval_lifecycle import EVAL_STAGE_FILE_FORMAT
-from snowflake_semantic_tools.app.eval_run import EvalRunResult, EvalSuiteResult
+from snowflake_semantic_tools.app.compile.evals import CompiledEval
+from snowflake_semantic_tools.app.lifecycle.evals import EVAL_STAGE_FILE_FORMAT
+from snowflake_semantic_tools.app.evals.run import EvalRunResult, EvalSuiteResult
 from snowflake_semantic_tools.cli.main import _build_manifest, _compile_result, _compiled_manifest, cli
 from snowflake_semantic_tools.domain.model.diagnostic import D, DiagnosticBag
 from snowflake_semantic_tools.domain.model.eval import (
@@ -262,10 +262,9 @@ def test_unknown_references_name_their_own_code(tmp_path: Path, file: str, befor
 
 # INT902 means SST broke an invariant; every user-caused condition has its own code.
 INT902_ALLOWLIST = {
-    "snowflake_semantic_tools/app/apply.py": 1,  # an APL028 outcome the plan never recorded
-    "snowflake_semantic_tools/app/compile.py": 1,  # rendering a view that validated
-    "snowflake_semantic_tools/app/eval_compile.py": 1,  # rendering an eval that validated (VAL762 guards templates)
-    "snowflake_semantic_tools/app/tool_compile.py": 1,  # rendering a tool that validated
+    "snowflake_semantic_tools/app/apply/errors.py": 1,  # an APL028 outcome the plan never recorded
+    # compile_each: rendering a view, tool, or eval that validated (VAL762 guards eval templates)
+    "snowflake_semantic_tools/app/compile/base.py": 1,
     "snowflake_semantic_tools/cli/main.py": 1,  # the catch-all for an unexpected exception
 }
 
@@ -900,7 +899,7 @@ def test_smoke_suite_is_separate_from_apply(tmp_path: Path, monkeypatch: pytest.
 def test_eval_suite_uses_common_json_envelope(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     project = project_copy(tmp_path)
     monkeypatch.setattr("snowflake_semantic_tools.cli.main._git_sha", lambda path: "0000000")
-    monkeypatch.setattr("snowflake_semantic_tools.app.eval_run._compact_timestamp", lambda: "20260928T010203Z")
+    monkeypatch.setattr("snowflake_semantic_tools.app.evals.run._compact_timestamp", lambda: "20260928T010203Z")
     compile_project(project)
     compiled = _compile_result(project, "dev", DBT_MANIFEST)
     compiled_eval = next(item for item in compiled.compiled if isinstance(item, CompiledEval))

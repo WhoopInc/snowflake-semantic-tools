@@ -6,6 +6,9 @@ test drives this class with an in-memory source and needs no patching.
 
 Compilation owns rendering only. Planning, applying and connecting remain
 separate use cases over the rendered values.
+
+`base` holds what every typed compiler shares, and this module re-exports it; the
+other typed compilers live in `tools`, `skills`, `profiles`, `agents`, and `evals`.
 """
 
 from __future__ import annotations
@@ -13,49 +16,40 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, replace
 from hashlib import sha256
-from typing import Protocol
 
-from ..domain.model.artifact_key import artifact_key
-from ..domain.model.diagnostic import D, Diagnostic, DiagnosticBag
-from ..domain.model.identifier import QualifiedName
-from ..domain.model.lifecycle import OwnershipMarker, ProbeKind, RenderedArtifact, SmokeProbe
-from ..domain.model.semantic_view import SemanticView
-from ..domain.ports.semantic_view_source import SemanticViewSource
-from ..domain.render.semantic_view import render
+from ...domain.model.artifact_key import artifact_key
+from ...domain.model.diagnostic import D, Diagnostic, DiagnosticBag
+from ...domain.model.identifier import QualifiedName
+from ...domain.model.lifecycle import OwnershipMarker, ProbeKind, RenderedArtifact, SmokeProbe
+from ...domain.model.semantic_view import SemanticView
+from ...domain.ports.semantic_view_source import SemanticViewSource
+from ...domain.render.semantic_view import render
+from .base import (
+    RENDER_ERRORS,
+    ArtifactCompiler,
+    CompiledArtifact,
+    CompileResult,
+    StandaloneArtifact,
+    compile_each,
+    has_error,
+)
 
-
-class CompiledArtifact(Protocol):
-    """Manifest and lifecycle projection shared by compiled artifact types."""
-
-    @property
-    def name(self) -> str: ...
-
-    @property
-    def artifact_key(self) -> str: ...
-
-    @property
-    def artifact_type(self) -> str: ...
-
-    @property
-    def source_files(self) -> tuple[str, ...]: ...
-
-    @property
-    def member_keys(self) -> tuple[str, ...]: ...
-
-    @property
-    def referenced_models(self) -> tuple[str, ...]: ...
-
-    @property
-    def dbt_relations(self) -> tuple[tuple[str, str], ...]: ...
-
-    @property
-    def rendered_artifact(self) -> RenderedArtifact: ...
-
-    def rendered_for_publish(self, manifest_id: str) -> RenderedArtifact: ...
+__all__ = [
+    "RENDER_ERRORS",
+    "ArtifactCompiler",
+    "CompileArtifacts",
+    "CompiledArtifact",
+    "CompiledView",
+    "CompileResult",
+    "CompileSemanticViews",
+    "StandaloneArtifact",
+    "compile_each",
+    "has_error",
+]
 
 
 @dataclass(frozen=True)
-class CompiledView:
+class CompiledView(CompiledArtifact):
     """One rendered view, paired with the model it came from.
 
     Both are kept because the caller needs the name for output and the DDL for
@@ -78,10 +72,12 @@ class CompiledView:
 
     @property
     def byte_length(self) -> int:
+        """Return the size of `canonical_ddl` in UTF-8 bytes."""
         return len(self.canonical_ddl.encode("utf-8"))
 
     @property
     def fingerprint(self) -> str:
+        """Return the SHA-256 hex digest of `canonical_ddl`, which the marked DDL keeps as its own."""
         return sha256(self.canonical_ddl.encode("utf-8")).hexdigest()
 
     @property
@@ -98,6 +94,11 @@ class CompiledView:
 
     @property
     def member_keys(self) -> tuple[str, ...]:
+        """Return the view's member keys, grouped by kind in the order the manifest lists them.
+
+        Relationships, facts, filters, dimensions, and metrics, each sorted by name, then
+        verified queries and custom instructions in authored order.
+        """
         keys: list[str] = []
         keys.extend(
             artifact_key("relationship", value.name.casefold())
@@ -139,6 +140,7 @@ class CompiledView:
         return self._rendered_artifact(self.ddl)
 
     def rendered_for_publish(self, manifest_id: str) -> RenderedArtifact:
+        """Render the view again with the ownership marker in its DDL, keeping the unmarked fingerprint."""
         marked_view = replace(
             self.view,
             ownership_marker=OwnershipMarker(manifest_id, self.fingerprint).text,
@@ -148,6 +150,15 @@ class CompiledView:
         return replace(artifact, fingerprint=self.fingerprint)
 
     def _rendered_artifact(self, ddl: str) -> RenderedArtifact:
+        """Wrap `ddl` as this view's artifact, with a smoke probe for the view and each public member.
+
+        The probes are the view itself, then each metric that is not private, then each
+        verified query, in authored order.
+
+        Raises:
+            ValueError: the FQN does not parse, or the view has no public dimension or metric
+                for its view probe.
+        """
         target = QualifiedName.parse(self.view.fqn)
         view_probe = _view_probe(self.view, target)
         probes = [
@@ -217,29 +228,6 @@ def _required_dimension_clause(expression: str) -> str:
     return f" DIMENSIONS {match.group(1)}" if match else ""
 
 
-@dataclass(frozen=True)
-class CompileResult:
-    """Rendered views plus compiler diagnostics that callers can format once."""
-
-    compiled: tuple[CompiledArtifact, ...]
-    diagnostics: DiagnosticBag = DiagnosticBag()
-
-    @property
-    def success(self) -> bool:
-        return not self.diagnostics.has_errors
-
-    @property
-    def rendered(self) -> tuple[RenderedArtifact, ...]:
-        return tuple(compiled.rendered_artifact for compiled in self.compiled)
-
-    def rendered_for_publish(self, manifest_id: str) -> tuple[RenderedArtifact, ...]:
-        return tuple(compiled.rendered_for_publish(manifest_id) for compiled in self.compiled)
-
-
-class ArtifactCompiler(Protocol):
-    def run_result(self) -> CompileResult: ...
-
-
 class CompileArtifacts:
     """Combine typed compilers into one stable artifact stream."""
 
@@ -248,6 +236,13 @@ class CompileArtifacts:
         self._positions = positions
 
     def run_result(self) -> CompileResult:
+        """Run each compiler in order, then sort the artifacts by type position and key.
+
+        Diagnostics keep the compilers' order, followed by one SST-VAL843 per shared target.
+
+        Diagnostics:
+            SST-VAL843: two artifacts of different types publish to one Snowflake name.
+        """
         compiled: list[CompiledArtifact] = []
         diagnostics = DiagnosticBag()
         for compiler in self._compilers:
@@ -288,16 +283,24 @@ class CompileSemanticViews:
         self._source = source
 
     def run_result(self) -> CompileResult:
-        """Compile without turning one rendering invariant into process failure."""
+        """Compile without turning one rendering invariant into process failure.
+
+        Every view renders, in FQN order, whatever the source reported about it; only
+        TypeError and ValueError are caught.
+
+        Diagnostics:
+            SST-INT902: rendering a view raised TypeError or ValueError.
+        """
         project = self._source.load_project()
-        views = sorted(project.views, key=lambda view: view.fqn)
-        compiled: list[CompiledView] = []
-        diagnostics = project.diagnostics
-        for view in views:
-            try:
-                compiled.append(CompiledView(view=view, ddl=render(view)))
-            except (TypeError, ValueError) as exc:
-                diagnostics = DiagnosticBag(
-                    (*diagnostics, D("SST-INT902", subject=artifact_key("semantic_view", view.fqn), detail=str(exc)))
-                )
-        return CompileResult(tuple(item for item in compiled), diagnostics)
+        return compile_each(
+            sorted(project.views, key=lambda view: view.fqn),
+            key=lambda view: artifact_key("semantic_view", view.fqn),
+            render=_compiled_view,
+            diagnostics=project.diagnostics,
+            skip=None,
+            errors=(TypeError, ValueError),
+        )
+
+
+def _compiled_view(view: SemanticView) -> CompiledView:
+    return CompiledView(view=view, ddl=render(view))

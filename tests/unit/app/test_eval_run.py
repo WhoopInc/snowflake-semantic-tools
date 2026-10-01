@@ -8,13 +8,7 @@ from types import MappingProxyType
 
 import pytest
 
-from snowflake_semantic_tools.app.eval_lifecycle import EVAL_STAGE_FILE_FORMAT, EvalLifecycleHandler
-from snowflake_semantic_tools.app.eval_run import (
-    EvalRunOptions,
-    EvalRunResult,
-    EvalSuiteResult,
-    RunEvalSuite,
-    _compact_timestamp,
+from snowflake_semantic_tools.app.evals.retrieve import (
     _expected_question_map,
     _metric_passed,
     _nonnegative_int,
@@ -25,10 +19,19 @@ from snowflake_semantic_tools.app.eval_run import (
     _single_row,
     _status_details,
     _variant,
+)
+from snowflake_semantic_tools.app.evals.run import (
+    EvalRunOptions,
+    EvalRunResult,
+    EvalSuiteResult,
+    RunEvalSuite,
+    _compact_timestamp,
+    _suite_concurrency,
     empty_eval_suite_json,
     eval_suite_json,
     validate_eval_publication,
 )
+from snowflake_semantic_tools.app.lifecycle.evals import EVAL_STAGE_FILE_FORMAT, EvalLifecycleHandler
 from snowflake_semantic_tools.app.manifest import build_manifest
 from snowflake_semantic_tools.domain.model.diagnostic import DiagnosticBag
 from snowflake_semantic_tools.domain.model.eval import (
@@ -1166,3 +1169,76 @@ def test_eval_suite_json_normalizes_metrics_costs_and_empty_results() -> None:
         "regression_count": 0,
         "gate_verdict": "not_evaluated",
     }
+
+
+def test_suite_concurrency_prefers_the_project_setting_then_the_largest_request() -> None:
+    first = compile_eval().compiled[0]
+    run = first.resolved.config.run
+    assert run is not None and run.concurrency is None
+    requesting = replace(
+        first,
+        resolved=replace(first.resolved, config=replace(first.resolved.config, run=replace(run, concurrency=3))),
+    )
+    without_run = replace(first, resolved=replace(first.resolved, config=replace(first.resolved.config, run=None)))
+
+    assert _suite_concurrency((first, requesting), EvalDefaults(concurrency=5)) == 5
+    assert _suite_concurrency((first, requesting), EvalDefaults(concurrency=-2)) == 1
+    assert _suite_concurrency((first, requesting, without_run), EvalDefaults()) == 3
+    assert _suite_concurrency((first, without_run), EvalDefaults()) == 1
+
+
+class FixedReadbackSnowflake(ConfigReadbackSnowflake):
+    def __init__(self, readback: bytes | None) -> None:
+        observed = StagedFileMetadata("@config", "config", 6, "digest")
+        super().__init__([observed, observed])
+        self.readback = readback
+
+    def read_staged_file(self, stage_path: str) -> bytes | None:
+        del stage_path
+        return self.readback
+
+
+@pytest.mark.parametrize(
+    ("readback", "message"),
+    (
+        (None, "is unreadable"),
+        (b"conf", "has 4 bytes, expected 6"),
+        (b"CONFIG", "bytes do not match rendered config"),
+    ),
+)
+def test_ensure_config_rejects_a_readback_that_is_missing_short_or_different(readback, message) -> None:
+    port = FixedReadbackSnowflake(readback)
+
+    with pytest.raises(SnowflakePortError, match=message):
+        RunEvalSuite(port, FixedClock())._ensure_config("@config", b"config", None)
+
+    assert port.uploads == [("@config", b"config")]
+
+
+def test_result_question_key_rejects_a_missing_input_and_different_whole_ground_truth() -> None:
+    ground_truth = {"ground_truth_invocations": [], "ground_truth_output": "Answer"}
+    expected = {"Question": (_question_identity("Question", ground_truth), ground_truth)}
+
+    with pytest.raises(ValueError, match="omitted INPUT"):
+        _result_question_key({"INPUT": None, "GROUND_TRUTH": "Answer"}, expected)
+    with pytest.raises(ValueError, match="returned different ground truth"):
+        _result_question_key(
+            {"INPUT": "Question", "GROUND_TRUTH": json.dumps({"ground_truth_output": "Other"})}, expected
+        )
+    assert _result_question_key({"INPUT": "Question", "GROUND_TRUTH": json.dumps(ground_truth)}, expected) == (
+        expected["Question"][0]
+    )
+
+
+def test_eval_runner_rejects_a_record_answering_two_questions_and_an_unanswered_question() -> None:
+    compiled = compile_eval().compiled[0]
+    dataset = json.loads(compiled.rendered.dataset_payload)
+    dataset.append(
+        {"input_query": "Other", "ground_truth": {"ground_truth_invocations": [], "ground_truth_output": "Answer"}}
+    )
+    compiled = replace(compiled, rendered=replace(compiled.rendered, dataset_payload=json.dumps(dataset)))
+    first = result_row(input_query="Question", record_id="record-1").rows[0]
+    second = result_row(input_query="Other", record_id="record-1").rows[0]
+
+    assert "maps to multiple questions" in retrieval_error((first, second), compiled)
+    assert "question set differs from the authored dataset" in retrieval_error(result_rows().rows, compiled)

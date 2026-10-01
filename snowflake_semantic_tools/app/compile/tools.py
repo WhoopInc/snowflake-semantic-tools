@@ -4,18 +4,19 @@ from __future__ import annotations
 
 from dataclasses import dataclass, replace
 
-from ..domain.model.artifact_key import artifact_key
-from ..domain.model.diagnostic import D, DiagnosticBag
-from ..domain.model.identifier import QualifiedName
-from ..domain.model.lifecycle import OwnershipMarker, RenderedArtifact
-from ..domain.model.sql import string_literal
-from ..domain.model.tool import ToolCatalog, ToolKind, ToolMember
-from ..domain.render.tool import render_tool
-from .compile import CompileResult
+from ...domain.model.artifact_key import artifact_key
+from ...domain.model.identifier import QualifiedName
+from ...domain.model.lifecycle import OwnershipMarker, RenderedArtifact
+from ...domain.model.sql import string_literal
+from ...domain.model.tool import ToolCatalog, ToolKind, ToolMember
+from ...domain.render.tool import render_tool
+from .base import CompileResult, StandaloneArtifact, compile_each
 
 
 @dataclass(frozen=True, slots=True)
-class CompiledTool:
+class CompiledTool(StandaloneArtifact):
+    """One `define:` tool member, with its configured defaults applied, and the object it renders to."""
+
     member: ToolMember
     rendered: RenderedArtifact
 
@@ -39,15 +40,13 @@ class CompiledTool:
         return tuple(dict.fromkeys(files))
 
     @property
-    def member_keys(self) -> tuple[str, ...]:
-        return ()
-
-    @property
     def referenced_models(self) -> tuple[str, ...]:
+        """Return the model a search service reads, if the member names one."""
         return (self.member.on_model,) if self.member.on_model else ()
 
     @property
     def dbt_relations(self) -> tuple[tuple[str, str], ...]:
+        """Return the model with the relation the search service renders over; empty without one."""
         if not self.member.on_model or not self.rendered.required_relations:
             return ()
         return ((self.member.on_model, self.rendered.required_relations[0].sql),)
@@ -57,6 +56,12 @@ class CompiledTool:
         return self.rendered
 
     def rendered_for_publish(self, manifest_id: str) -> RenderedArtifact:
+        """Carry the ownership marker, then the member's description, in the object's COMMENT.
+
+        A search service takes the comment inside its CREATE statement; a procedure, a
+        function, or a stage gets one more statement that sets it. Any other object type
+        keeps its statements. Apply expects the marker either way.
+        """
         marker = OwnershipMarker(manifest_id, self.rendered.fingerprint).text
         statements = self.rendered.statements
         if self.rendered.object_type == "CORTEX SEARCH SERVICE":
@@ -89,6 +94,12 @@ class CompiledTool:
 
 
 class CompileTools:
+    """Compile each `define:` member of a tool catalog; `reference:` members compile to nothing.
+
+    The `tools:` defaults fill what a member leaves unset: warehouse, target lag and
+    embedding model for a search service, warehouse and `execute_as` for a procedure.
+    """
+
     def __init__(
         self,
         catalog: ToolCatalog,
@@ -111,40 +122,41 @@ class CompileTools:
         self._dbt_relations = dbt_relations
 
     def run_result(self) -> CompileResult:
-        diagnostics = self._catalog.diagnostics
-        compiled: list[CompiledTool] = []
-        poisoned = {diagnostic.subject for diagnostic in diagnostics if diagnostic.subject}
-        for member in sorted(self._catalog.managed, key=lambda item: item.name.casefold()):
-            if artifact_key("tool", member.name.casefold()) in poisoned:
-                continue
-            try:
-                effective = _defaults(
-                    member,
-                    warehouse=self._warehouse,
-                    target_lag=self._target_lag,
-                    embedding_model=self._embedding_model,
-                    execute_as=self._execute_as,
-                )
-                target = QualifiedName.from_parts(self._database, self._schema, member.name)
-                source = (
-                    QualifiedName.parse(self._dbt_relations[member.on_model])
-                    if member.on_model in self._dbt_relations
-                    else None
-                )
-                compiled.append(CompiledTool(effective, render_tool(effective, target, source)))
-            except (KeyError, TypeError, ValueError) as exc:
-                diagnostics = DiagnosticBag(
-                    (
-                        *diagnostics,
-                        D(
-                            "SST-INT902",
-                            subject=artifact_key("tool", member.name.casefold()),
-                            detail=str(exc),
-                            origin=member.origin,
-                        ),
-                    )
-                )
-        return CompileResult(tuple(compiled), diagnostics)
+        """Compile the managed members in casefolded name order.
+
+        The diagnostics are the catalog's, then any SST-INT902. A member that any catalog
+        diagnostic names, whatever its severity, is not compiled.
+
+        Diagnostics:
+            SST-INT902: rendering a member raised KeyError, TypeError or ValueError.
+        """
+        poisoned = {diagnostic.subject for diagnostic in self._catalog.diagnostics if diagnostic.subject}
+        return compile_each(
+            sorted(self._catalog.managed, key=lambda item: item.name.casefold()),
+            key=lambda member: artifact_key("tool", member.name.casefold()),
+            render=self._compile,
+            diagnostics=self._catalog.diagnostics,
+            # Not the default rule: a warning poisons a member too, and only the catalog's
+            # diagnostics count, so a rendering failure never skips a later member.
+            skip=lambda subject, _: subject in poisoned,
+            origin=lambda member: member.origin,
+        )
+
+    def _compile(self, member: ToolMember) -> CompiledTool:
+        effective = _defaults(
+            member,
+            warehouse=self._warehouse,
+            target_lag=self._target_lag,
+            embedding_model=self._embedding_model,
+            execute_as=self._execute_as,
+        )
+        target = QualifiedName.from_parts(self._database, self._schema, member.name)
+        source = (
+            QualifiedName.parse(self._dbt_relations[member.on_model])
+            if member.on_model in self._dbt_relations
+            else None
+        )
+        return CompiledTool(effective, render_tool(effective, target, source))
 
 
 def _defaults(
@@ -155,8 +167,6 @@ def _defaults(
     embedding_model: str | None,
     execute_as: str | None,
 ) -> ToolMember:
-    from dataclasses import replace
-
     if member.type == ToolKind.CORTEX_SEARCH_SERVICE.value:
         return replace(
             member,

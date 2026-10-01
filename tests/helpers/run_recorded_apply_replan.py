@@ -11,7 +11,7 @@ import tempfile
 from click.testing import CliRunner
 from run_recorded_plan import recorded
 
-from snowflake_semantic_tools.app.eval_compile import CompiledEval
+from snowflake_semantic_tools.app.compile.evals import CompiledEval
 from snowflake_semantic_tools.cli import main as cli_module
 from snowflake_semantic_tools.domain.model.lifecycle import OwnershipMarker, QueryResult, ShowRow
 

@@ -5,7 +5,7 @@ from types import MappingProxyType
 
 import pytest
 
-from snowflake_semantic_tools.app.eval_compile import CompileEvals
+from snowflake_semantic_tools.app.compile.evals import CompileEvals
 from snowflake_semantic_tools.app.manifest import build_manifest
 from snowflake_semantic_tools.domain.model.agent import AgentModel
 from snowflake_semantic_tools.domain.model.diagnostic import D, DiagnosticBag, Origin
@@ -194,7 +194,7 @@ def test_compile_turns_render_type_error_into_invariant_diagnostic(monkeypatch: 
         raise TypeError("bad eval payload")
 
     monkeypatch.setattr(
-        "snowflake_semantic_tools.app.eval_compile._render",
+        "snowflake_semantic_tools.app.compile.evals._render",
         raise_type_error,
     )
 

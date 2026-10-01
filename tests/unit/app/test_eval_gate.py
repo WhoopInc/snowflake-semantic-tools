@@ -4,11 +4,11 @@ from dataclasses import replace
 
 import pytest
 
-from tests.helpers.eval_state_store import InMemoryEvalStateStore
-from snowflake_semantic_tools.app.eval_gate import capture_baseline, evaluate_gate, persist_gate
-from snowflake_semantic_tools.app.eval_run import EvalRunResult
+from snowflake_semantic_tools.app.evals.gate import capture_baseline, evaluate_gate, persist_gate
+from snowflake_semantic_tools.app.evals.run import EvalRunResult
 from snowflake_semantic_tools.domain.model.diagnostic import DiagnosticBag
 from snowflake_semantic_tools.domain.model.eval import EvalMetricResult, EvalResultRow, EvalRunAttempt, ThresholdRange
+from tests.helpers.eval_state_store import InMemoryEvalStateStore
 
 from .test_eval_compile import compile_eval
 
@@ -424,8 +424,8 @@ def test_gate_without_attempts_has_no_retrieval_signal_after_version_resolution(
         attempt("base-2", (("q", "answer_correctness", True),)),
     )
     baseline = capture_baseline(compiled, baseline_result, reason="initial", captured_at="2026-09-01T00:00:00Z")
-    monkeypatch.setattr("snowflake_semantic_tools.app.eval_gate._result_agent_version", lambda _: "VERSION$1")
-    monkeypatch.setattr("snowflake_semantic_tools.app.eval_gate._incompatibility", lambda *args: None)
+    monkeypatch.setattr("snowflake_semantic_tools.app.evals.gate._result_agent_version", lambda _: "VERSION$1")
+    monkeypatch.setattr("snowflake_semantic_tools.app.evals.gate._incompatibility", lambda *args: None)
 
     verdict, diagnostics = evaluate_gate(compiled, result(), baseline, now="2026-09-10T00:00:00Z")
 
@@ -449,7 +449,7 @@ def test_gate_rejects_changed_question_metric_vector(monkeypatch: pytest.MonkeyP
         attempt("current-1", (("q", "answer_correctness", True),)),
         attempt("current-2", (("q", "answer_correctness", True),)),
     )
-    monkeypatch.setattr("snowflake_semantic_tools.app.eval_gate._incompatibility", lambda *args: None)
+    monkeypatch.setattr("snowflake_semantic_tools.app.evals.gate._incompatibility", lambda *args: None)
 
     verdict, diagnostics = evaluate_gate(compiled, current, baseline, now="2026-09-01T00:00:00Z")
 

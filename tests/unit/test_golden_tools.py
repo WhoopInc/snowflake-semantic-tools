@@ -4,7 +4,7 @@ from pathlib import Path
 
 from snowflake_semantic_tools.adapters.dbt.manifest import load_manifest_catalog
 from snowflake_semantic_tools.adapters.project_source import YamlProjectSource
-from snowflake_semantic_tools.app.tool_compile import CompileTools
+from snowflake_semantic_tools.app.compile.tools import CompileTools
 
 ROOT = Path(__file__).parents[2]
 FIXTURE = ROOT / "tests" / "fixtures" / "reference_project"

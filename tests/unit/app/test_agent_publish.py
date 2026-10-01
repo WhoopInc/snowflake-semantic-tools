@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import replace
 
-from snowflake_semantic_tools.app.agent_compile import CompiledAgent, for_publication
+from snowflake_semantic_tools.app.compile.agents import CompiledAgent, for_publication
 from snowflake_semantic_tools.domain.model.agent import AgentModel, AgentProfile, ResolvedAgent
 from snowflake_semantic_tools.domain.model.diagnostic import Origin
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName

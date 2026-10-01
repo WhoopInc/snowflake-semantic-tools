@@ -1,14 +1,4 @@
 # Known violations; the list may only shrink. Regenerate: python -m tests.helpers.ratchet
-function-complexity snowflake_semantic_tools/app/agent_compile.py::_resolve_skills 30
-function-complexity snowflake_semantic_tools/app/agent_compile.py::_resolve_tool 48
-function-complexity snowflake_semantic_tools/app/apply.py::ApplyArtifacts._apply_one_guarded 35
-function-complexity snowflake_semantic_tools/app/apply.py::ApplyArtifacts._finish_state 32
-function-complexity snowflake_semantic_tools/app/apply.py::ApplyArtifacts.run 37
-function-complexity snowflake_semantic_tools/app/desktop_contract.py::stage_pointers 26
-function-complexity snowflake_semantic_tools/app/eval_lifecycle.py::EvalLifecycleHandler.apply 41
-function-complexity snowflake_semantic_tools/app/extension_lifecycle.py::_Run._publish 26
-function-complexity snowflake_semantic_tools/app/plan.py::PlanArtifacts.run 28
-function-complexity snowflake_semantic_tools/app/profile_compile.py::CompileProfiles.run_result 35
 function-complexity snowflake_semantic_tools/cli/main.py::_plan_runtime 54
 function-complexity snowflake_semantic_tools/cli/main.py::apply 39
 function-complexity snowflake_semantic_tools/cli/main.py::apply.action 35
@@ -16,12 +6,6 @@ function-complexity snowflake_semantic_tools/cli/main.py::compile 31
 function-complexity snowflake_semantic_tools/cli/main.py::compile.action 31
 function-complexity snowflake_semantic_tools/cli/main.py::test_command 74
 function-complexity snowflake_semantic_tools/cli/main.py::test_command.action 74
-function-lines snowflake_semantic_tools/app/agent_compile.py::_resolve_tool 167
-function-lines snowflake_semantic_tools/app/apply.py::ApplyArtifacts._apply_one_guarded 132
-function-lines snowflake_semantic_tools/app/apply.py::ApplyArtifacts._finish_state 104
-function-lines snowflake_semantic_tools/app/apply.py::ApplyArtifacts.run 150
-function-lines snowflake_semantic_tools/app/eval_lifecycle.py::EvalLifecycleHandler.apply 228
-function-lines snowflake_semantic_tools/app/eval_run.py::RunEvalSuite._run_eval 102
 function-lines snowflake_semantic_tools/cli/main.py::_plan_runtime 167
 function-lines snowflake_semantic_tools/cli/main.py::apply 145
 function-lines snowflake_semantic_tools/cli/main.py::apply.action 118

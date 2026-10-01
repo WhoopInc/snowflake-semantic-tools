@@ -7,9 +7,9 @@ from collections.abc import Sequence
 from dataclasses import replace
 from types import MappingProxyType
 
-from tests.helpers.recorded_snowflake import RecordedSnowflake
 from snowflake_semantic_tools.app.apply import ApplyArtifacts
-from snowflake_semantic_tools.app.extension_lifecycle import (
+from snowflake_semantic_tools.app.compile.skills import CatalogChannel, CompiledExtension, CompileSkills
+from snowflake_semantic_tools.app.lifecycle.extensions import (
     ExtensionLifecycleHandler,
     _difference,
     _recorded_target,
@@ -18,13 +18,13 @@ from snowflake_semantic_tools.app.extension_lifecycle import (
 )
 from snowflake_semantic_tools.app.manifest import build_manifest
 from snowflake_semantic_tools.app.plan import PlanArtifacts
-from snowflake_semantic_tools.app.skill_compile import CatalogChannel, CompiledExtension, CompileSkills
 from snowflake_semantic_tools.domain.model.diagnostic import Origin
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
 from snowflake_semantic_tools.domain.model.lifecycle import Action, ApplyOptions, ChangeReason, OutcomeStatus
 from snowflake_semantic_tools.domain.model.skill import Plugin, Skill, SkillCatalog, SkillFile
 from snowflake_semantic_tools.domain.ports.snowflake import ExecResult, ExtensionVersion, SnowflakePortError
 from snowflake_semantic_tools.domain.state import FAILED_AFTER_WRITE, STATE_SCHEMA_VERSION, AppliedEntry, State
+from tests.helpers.recorded_snowflake import RecordedSnowflake
 
 from .conftest import FixedClock, InMemoryStateStore
 from .helpers import target
@@ -416,6 +416,63 @@ def test_stale_plan_prune_report_and_resource_merge() -> None:
     assert handler.merge_physical_resources((("STAGE", "DB.S.X"),), entry) == (("STAGE", "DB.S.X"),)
     assert _stale((("stage_type", ""),), (("stage_type", "INTERNAL NO CSE"),)) is False
     assert _stale((("stage_type", ""),), (("stage_type", "INTERNAL"),)) is True
+
+
+def test_prunes_and_changes_without_an_artifact_are_skipped() -> None:
+    compiled = compile_catalog(SkillCatalog((skill(),)))
+    port = RecordedSnowflake(existing=())
+    handler = ExtensionLifecycleHandler(port, {key: item.release for key, item in compiled.items()}, "skill")
+    artifact = compiled["skill:month-close"].rendered_artifact
+    prune = handler.report_prune(
+        "skill:month-close", AppliedEntry("f", "DB.S.MONTH_CLOSE", "now", "run", "a", "f", "m")
+    )
+    for change, ddl in (
+        (prune, ""),
+        # A prune never carries an artifact; if one does, its text is reported.
+        (replace(prune, rendered=artifact), artifact.ddl),
+        (replace(prune, action=Action.CREATE), ""),
+    ):
+        outcome = handler.apply(change, ApplyOptions(allow_prune=True))
+        assert (outcome.status, outcome.attempts, outcome.ddl) == (OutcomeStatus.SKIPPED, 0, ddl)
+    assert port.scripts == [] and port.uploads == []
+
+
+class SiblingStage(RecordedSnowflake):
+    """A sibling artifact creates the shared bundle stage just after this one's apply observes it.
+
+    The first two stage reads are the plan's observation and the apply's; the third is
+    the apply's, under the stage lock.
+    """
+
+    def __init__(self) -> None:
+        super().__init__(existing=())
+        self.reads = 0
+
+    def stage_type(self, qualified_name: QualifiedName) -> str | None:
+        self.reads += 1
+        if self.reads == 3:
+            self.stage_types[qualified_name.sql] = "INTERNAL NO CSE"
+        return super().stage_type(qualified_name)
+
+
+def test_a_bundle_stage_a_sibling_creates_during_apply_is_not_created_again() -> None:
+    port = SiblingStage()
+    _, result, after = publish(port, compile_catalog(SkillCatalog((skill(),))), state())
+    assert result.success, result.outcomes
+    assert [statement for script in port.scripts for statement in script if "CREATE STAGE" in statement] == []
+    entry = after.applied["skill:month-close"]
+    assert ("STAGE", "DB.S.SKILL_BUNDLES") in {tuple(resource) for resource in entry.applied_resources}
+
+
+def test_a_certified_release_not_yet_published_predicts_no_other_served_version() -> None:
+    port = RecordedSnowflake(existing=())
+    _, _, after = publish(port, compile_catalog(SkillCatalog((skill(),))), state())
+    certified = compile_catalog(
+        SkillCatalog((skill(body="Read reference/steps.md twice.\n"),)), replace(CHANNEL, certified=True)
+    )
+    changeset, result, _ = publish(port, certified, after)
+    assert [change.action for change in changeset.changes] == [Action.UPDATE]
+    assert result.success and served_warnings(changeset) == []
 
 
 def _plugin_catalog() -> SkillCatalog:

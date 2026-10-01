@@ -9,7 +9,7 @@ can, and treats an object as a pointer when it carries a `snowflake_stage` or
 from __future__ import annotations
 
 import json
-from collections.abc import Mapping
+from collections.abc import Iterable, Iterator, Mapping
 
 DESKTOP_COLUMNS = (
     "CONFIG_NAME",
@@ -38,11 +38,17 @@ def desktop_value(value: object) -> object:
 
 
 def desktop_view(row: Mapping[str, object]) -> dict[str, object]:
+    """Return the twelve columns Desktop maps from a row, matched in any case and parsed as it parses them."""
     upper = {str(key).upper(): value for key, value in row.items()}
     return {column: desktop_value(upper.get(column)) for column in DESKTOP_COLUMNS}
 
 
 def is_pointer(value: object) -> bool:
+    """Report whether Desktop treats the value as a pointer it follows.
+
+    A pointer is an object carrying a `source` or `snowflake_stage` string whose `ref`,
+    when present, is a string too.
+    """
     if not isinstance(value, Mapping):
         return False
     source = isinstance(value.get("source"), str)
@@ -53,30 +59,53 @@ def is_pointer(value: object) -> bool:
 
 def stage_pointers(view: Mapping[str, object]) -> tuple[str, ...]:
     """Every stage location a Desktop client follows for one profile."""
-    found: list[str] = []
+    return (*_repo_stages(view), *_plugin_stages(view), *_single_stages(view), *_hook_stages(view))
+
+
+def _repo_stages(view: Mapping[str, object]) -> Iterator[str]:
     for column in ("SKILL_REPOS", "COMMAND_REPOS"):
-        values = view.get(column)
-        for item in values if isinstance(values, list) else ():
-            if is_pointer(item) and isinstance(item.get("snowflake_stage"), str):
-                found.append(str(item["snowflake_stage"]))
+        for item in _listed(view.get(column)):
+            stage = _pointer_stage(item)
+            if stage is not None:
+                yield stage
+
+
+def _plugin_stages(view: Mapping[str, object]) -> Iterator[str]:
     # PLUGINS holds plain strings; Desktop fetches the ones naming a stage path.
-    plugins = view.get("PLUGINS")
-    found.extend(
-        str(item)
-        for item in (plugins if isinstance(plugins, list) else ())
-        if isinstance(item, str) and item.startswith("@")
-    )
+    return (str(item) for item in _listed(view.get("PLUGINS")) if isinstance(item, str) and item.startswith("@"))
+
+
+def _single_stages(view: Mapping[str, object]) -> Iterator[str]:
     for column in ("SYSTEM_PROMPT_REPO", "MCP_SERVERS"):
-        value = view.get(column)
-        if is_pointer(value) and isinstance(value, Mapping) and isinstance(value.get("snowflake_stage"), str):
-            found.append(str(value["snowflake_stage"]))
+        stage = _pointer_stage(view.get(column))
+        if stage is not None:
+            yield stage
+
+
+def _hook_stages(view: Mapping[str, object]) -> Iterator[str]:
     hooks = view.get("HOOKS")
     for groups in hooks.values() if isinstance(hooks, Mapping) else ():
-        for group in groups if isinstance(groups, list) else ():
-            entries = group.get("hooks") if isinstance(group, Mapping) else None
-            for hook in entries if isinstance(entries, list) else ():
-                source = hook.get("source") if isinstance(hook, Mapping) else None
-                if isinstance(hook, Mapping) and hook.get("type") == "command" and isinstance(source, Mapping):
-                    if isinstance(source.get("snowflake_stage"), str):
-                        found.append(str(source["snowflake_stage"]))
-    return tuple(found)
+        for group in _listed(groups):
+            for hook in _listed(group.get("hooks") if isinstance(group, Mapping) else None):
+                stage = _command_stage(hook)
+                if stage is not None:
+                    yield stage
+
+
+def _pointer_stage(value: object) -> str | None:
+    if is_pointer(value) and isinstance(value, Mapping) and isinstance(value.get("snowflake_stage"), str):
+        return str(value["snowflake_stage"])
+    return None
+
+
+def _command_stage(hook: object) -> str | None:
+    if not isinstance(hook, Mapping) or hook.get("type") != "command":
+        return None
+    source = hook.get("source")
+    if isinstance(source, Mapping) and isinstance(source.get("snowflake_stage"), str):
+        return str(source["snowflake_stage"])
+    return None
+
+
+def _listed(value: object) -> Iterable[object]:
+    return value if isinstance(value, list) else ()

@@ -5,7 +5,13 @@ from types import MappingProxyType
 
 import pytest
 
-from snowflake_semantic_tools.app.agent_compile import AgentCompileContext, CompileAgents, ExtensionPin, for_publication
+from snowflake_semantic_tools.app.compile.agents import (
+    AgentCompileContext,
+    CompileAgents,
+    ExtensionPin,
+    for_publication,
+)
+from snowflake_semantic_tools.app.compile.agents.resolve_tools import resolve_tool
 from snowflake_semantic_tools.domain.model.agent import (
     AgentModel,
     AgentProfile,
@@ -802,3 +808,46 @@ def test_unreferenced_extensions_are_reported_only_in_projects_with_agents() -> 
     consumed = replace(context(), consumed=frozenset(("skill:semantics",)))
     diagnostics = CompileAgents((lonely,), DiagnosticBag(), consumed).run_result().diagnostics
     assert [(item.code, item.subject) for item in diagnostics] == [("SST-VAL804", "plugin:toolkit")]
+
+
+def test_agent_tools_resolve_by_type_and_unknown_types_resolve_to_nothing() -> None:
+    origin = Origin("agent.yml", 4, 1)
+    model = AgentModel("router", origin, ("agent.yml",))
+
+    unknown, unknown_diagnostics = resolve_tool(model, AgentTool("telepathy", origin, name="x"), context())
+    assert unknown is None
+    assert [(item.code, item.origin) for item in unknown_diagnostics] == [("SST-RND012", origin)]
+
+    chart, chart_diagnostics = resolve_tool(model, AgentTool("data_to_chart", origin, description="Charts."), context())
+    assert chart_diagnostics == ()
+    assert chart is not None and (chart.name, dict(chart.resources)) == ("data_to_chart", {})
+
+    mcp, _ = resolve_tool(
+        model,
+        AgentTool("mcp", origin, name="docs", description="Docs.", passthrough=MappingProxyType({"url": "u"})),
+        context(),
+    )
+    assert mcp is not None and dict(mcp.resources) == {"url": "u"}
+
+
+def test_agent_tools_without_a_reference_or_a_resolving_member_are_dropped() -> None:
+    origin = Origin("agent.yml")
+    model = AgentModel("delegates", origin, ("agent.yml",))
+
+    assert resolve_tool(model, AgentTool("agent", origin, description="Neither."), context()) == (None, ())
+    ghost, diagnostics = resolve_tool(model, AgentTool("agent", origin, name="ghost", description="Gone."), context())
+    assert ghost is None
+    assert [item.code for item in diagnostics] == ["SST-REF010"]
+
+
+def test_analyst_environment_carries_a_warehouse_without_a_timeout() -> None:
+    origin = Origin("agent.yml")
+    model = AgentModel("analyst", origin, ("agent.yml",))
+    authored = AgentTool("cortex_analyst_text_to_sql", origin, description="Sales.", semantic_view="SALES")
+
+    tool, diagnostics = resolve_tool(model, authored, replace(context(), query_timeout=None))
+
+    assert diagnostics == ()
+    assert tool is not None
+    assert tool.resources["execution_environment"] == {"type": "warehouse", "warehouse": "WH"}
+    assert (tool.name, tool.depends_on) == ("SALES", ("semantic_view:sales",))

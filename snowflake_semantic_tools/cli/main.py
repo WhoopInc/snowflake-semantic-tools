@@ -35,13 +35,15 @@ from ..adapters.yaml.migrate import filter_sites, semantic_files, write_file
 from ..adapters.yaml.parse import parse_yaml_bytes
 from ..adapters.yaml.profiles import load_profile_catalog
 from ..adapters.yaml.skills import _published, load_skill_catalog
-from ..app.agent_compile import AgentCompileContext, CompileAgents, CompiledAgent, ExtensionPin, for_publication
 from ..app.apply import ApplyArtifacts
 from ..app.compile import CompileArtifacts, CompileResult, CompileSemanticViews
-from ..app.eval_compile import CompiledEval, CompileEvals
-from ..app.eval_gate import capture_baseline, evaluate_gate, persist_gate
-from ..app.eval_lifecycle import EvalLifecycleConfig, EvalLifecycleHandler
-from ..app.eval_run import (
+from ..app.compile.agents import AgentCompileContext, CompileAgents, CompiledAgent, ExtensionPin, for_publication
+from ..app.compile.evals import CompiledEval, CompileEvals
+from ..app.compile.profiles import CompiledProfile, CompileProfiles, DesktopChannel
+from ..app.compile.skills import CatalogChannel, CompiledExtension, CompileSkills
+from ..app.compile.tools import CompileTools
+from ..app.evals.gate import capture_baseline, evaluate_gate, persist_gate
+from ..app.evals.run import (
     EvalRunOptions,
     EvalSuiteResult,
     RunEvalSuite,
@@ -49,18 +51,16 @@ from ..app.eval_run import (
     eval_suite_json,
     validate_eval_publication,
 )
-from ..app.extension_lifecycle import ExtensionLifecycleHandler
+from ..app.lifecycle.evals import EvalLifecycleConfig, EvalLifecycleHandler
+from ..app.lifecycle.extensions import ExtensionLifecycleHandler
+from ..app.lifecycle.profiles import ProfileLifecycleHandler
 from ..app.listing import list_artifacts
 from ..app.manifest import build_manifest
 from ..app.migrate_refs import MigrateRefs
 from ..app.partial import partial_refusal, partial_split
 from ..app.plan import PlanArtifacts
-from ..app.profile_compile import CompiledProfile, CompileProfiles, DesktopChannel
-from ..app.profile_lifecycle import ProfileLifecycleHandler
-from ..app.skill_compile import CatalogChannel, CompiledExtension, CompileSkills
 from ..app.smoke import RunSmokeSuite
 from ..app.state import read_state
-from ..app.tool_compile import CompileTools
 from ..app.validate import ValidateArtifacts
 from ..domain.model.artifact_key import artifact_key, split_artifact_key
 from ..domain.model.dbt import DbtCatalog

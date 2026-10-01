@@ -6,6 +6,7 @@ from types import MappingProxyType
 import pytest
 
 from snowflake_semantic_tools.app.apply import ApplyArtifacts, classify_error, preserves_grants
+from snowflake_semantic_tools.app.apply.errors import _outcome_diagnostic
 from snowflake_semantic_tools.app.plan import PlanArtifacts
 from snowflake_semantic_tools.domain.model.diagnostic import D, DiagnosticBag
 from snowflake_semantic_tools.domain.model.lifecycle import (
@@ -752,7 +753,7 @@ def test_apply_lifecycle_handler_merges_resources_and_dispatches_diagnostic() ->
             status=OutcomeStatus.FAILED,
             error=ClassifiedError(code, "detail", ErrorKind.UNKNOWN),
         )
-        diagnostic = use_case._outcome_diagnostic(value, outcome)
+        diagnostic = _outcome_diagnostic(value, outcome)
         assert diagnostic.code == code
 
     authored = replace(
@@ -764,8 +765,8 @@ def test_apply_lifecycle_handler_merges_resources_and_dispatches_diagnostic() ->
         status=OutcomeStatus.FAILED,
         error=ClassifiedError("SST-APL028", "detail", ErrorKind.UNKNOWN),
     )
-    assert use_case._outcome_diagnostic(authored, outcome) is authored.diagnostics[0]
-    assert use_case._outcome_diagnostic(value, outcome).code == "SST-INT902"
+    assert _outcome_diagnostic(authored, outcome) is authored.diagnostics[0]
+    assert _outcome_diagnostic(value, outcome).code == "SST-INT902"
 
 
 def test_apply_upload_failure_and_empty_grant_replay() -> None:
@@ -918,6 +919,47 @@ def test_finish_state_prunes_applied_entry_and_preserves_prior_failed_entry() ->
         "start",
     )
     assert retained.applied[artifact.key] == entry
+
+
+def test_a_report_only_prune_without_an_entry_records_the_object_it_observed() -> None:
+    artifact = rendered()
+    ownership = marker(artifact)
+    report_only = replace(
+        change(artifact, Action.PRUNE, live=observed(artifact, ownership=ownership)), prune_executable=False
+    )
+    use_case, port, store, _ = runner()
+
+    result = use_case.run(changeset(report_only), state(), ApplyOptions(allow_prune=True))
+
+    assert result.state_written and port.scripts == []
+    assert store.state is not None
+    recorded = store.state.applied[artifact.key]
+    assert (recorded.outcome, recorded.manifest_id) == ("observed", ownership.manifest_id)
+
+
+def test_outcomes_that_do_not_account_for_every_change_report_apl900() -> None:
+    artifact = rendered()
+    use_case, port, _, _ = runner()
+
+    # The waves key changes by artifact key, so a repeated key runs once.
+    result = use_case.run(changeset(change(artifact), change(artifact)), state())
+
+    assert len(result.outcomes) == 1 and port.scripts == [artifact.statements]
+    assert [item.code for item in result.diagnostics] == ["SST-APL900"]
+    assert not result.success
+
+
+def test_a_retry_policy_without_attempts_fails_the_change_without_running_it() -> None:
+    artifact = rendered()
+    use_case, port, store, clock = runner()
+
+    result = use_case.run(changeset(change(artifact)), state(), ApplyOptions(retry=RetryPolicy(0, ())))
+
+    outcome = result.outcomes[0]
+    assert (outcome.status, outcome.attempts, outcome.write_succeeded) == (OutcomeStatus.FAILED, 0, False)
+    assert outcome.error is not None and outcome.error.code == "SST-SNO001"
+    assert port.scripts == [] and clock.sleeps == []
+    assert store.state is not None and artifact.key not in store.state.applied
 
 
 class _LifecycleHandler:

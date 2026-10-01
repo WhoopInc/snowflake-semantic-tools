@@ -1,0 +1,47 @@
+"""Skill and plugin compile: a plugin is blocked by its members' errors and by its own bundle."""
+
+from __future__ import annotations
+
+from snowflake_semantic_tools.app.compile.skills import CatalogChannel, CompileSkills
+from snowflake_semantic_tools.domain.model.diagnostic import Origin
+from snowflake_semantic_tools.domain.model.identifier import QualifiedName
+from snowflake_semantic_tools.domain.model.skill import SCAN_MAX_FILES, Plugin, Skill, SkillCatalog, SkillFile
+
+CHANNEL = CatalogChannel("DB", "S", QualifiedName.parse("DB.S.BUNDLES"))
+
+
+def skill(name: str, references: int = 0) -> Skill:
+    paths = [f"reference/page-{index}.md" for index in range(references)]
+    body = "".join(f"See {path}.\n" for path in paths) or "Body.\n"
+    files = (
+        SkillFile("SKILL.md", f"---\nname: {name}\ndescription: D.\n---\n{body}".encode()),
+        *(SkillFile(path, b"page\n") for path in paths),
+    )
+    return Skill(name, f"skills/{name}", name, "D.", body, files, Origin(f"skills/{name}/SKILL.md"))
+
+
+def plugin(name: str, *members: str) -> Plugin:
+    manifest = f"plugins/{name}/plugin.yml"
+    return Plugin(name, f"plugins/{name}", manifest, "Kit.", "Data", members, Origin(manifest))
+
+
+def test_a_plugin_over_the_scan_limits_is_blocked_while_its_members_publish() -> None:
+    # Each member is within the file-count limit alone; bundled together they are not.
+    half = SCAN_MAX_FILES // 2 + 1
+    catalog = SkillCatalog((skill("first", half), skill("second", half)), (plugin("kit", "first", "second"),))
+
+    result = CompileSkills(catalog, CHANNEL).run_result()
+
+    assert [item.artifact_key for item in result.compiled] == ["skill:first", "skill:second"]
+    assert [(item.code, item.subject) for item in result.diagnostics] == [("SST-VAL834", "plugin:kit")]
+
+
+def test_a_healthy_plugin_carries_its_members_sources_and_scripts() -> None:
+    catalog = SkillCatalog((skill("first"), skill("second")), (plugin("kit", "first", "second", "first"),))
+
+    result = CompileSkills(catalog, CHANNEL).run_result()
+
+    kit = next(item for item in result.compiled if item.artifact_key == "plugin:kit")
+    assert kit.source_files == ("plugins/kit/plugin.yml", "skills/first/SKILL.md", "skills/second/SKILL.md")
+    assert kit.contained_keys == ("skill:first", "skill:second")
+    assert kit.has_scripts is False

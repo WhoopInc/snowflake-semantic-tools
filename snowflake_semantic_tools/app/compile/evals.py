@@ -5,23 +5,33 @@ from __future__ import annotations
 from dataclasses import dataclass, replace
 from hashlib import sha256
 
-from ..domain.model.diagnostic import D, DiagnosticBag, Severity
-from ..domain.model.eval import EvalCatalog, EvalDefaults, ResolvedEval, render_eval_name_template
-from ..domain.model.identifier import QualifiedName
-from ..domain.model.lifecycle import CompositeFacts, PublishShape, RenderedArtifact, StatementPlan
-from ..domain.model.registry import GrantPreservation
-from ..domain.render.eval import (
+from ...domain.model.eval import EvalCatalog, EvalDefaults, ResolvedEval, render_eval_name_template
+from ...domain.model.identifier import QualifiedName
+from ...domain.model.lifecycle import CompositeFacts, PublishShape, RenderedArtifact, StatementPlan
+from ...domain.model.registry import GrantPreservation
+from ...domain.render.eval import (
     RenderedEval,
     render_create_dataset_sql,
     render_dataset_payload,
     render_eval_config,
     render_source_table_sql,
 )
-from .compile import CompileResult
+from .base import CompileResult, StandaloneArtifact, compile_each
 
 
 @dataclass(frozen=True, slots=True)
-class CompiledEval:
+class CompiledEval(StandaloneArtifact):
+    """One agent's evaluation: a dataset over a source table, and the config that runs it.
+
+    The eval publishes into its agent's schema. Its fingerprint combines the dataset's and
+    the config's, so a change to either is a change.
+
+    Attributes:
+        resolved: The eval with its effective agent version applied.
+        source_table: The table the dataset payload is loaded into.
+        dataset_target: The dataset created over `source_table`; the artifact publishes here.
+    """
+
     resolved: ResolvedEval
     agent_target: QualifiedName
     source_table: QualifiedName
@@ -43,18 +53,6 @@ class CompiledEval:
     @property
     def source_files(self) -> tuple[str, ...]:
         return self.resolved.source_files
-
-    @property
-    def member_keys(self) -> tuple[str, ...]:
-        return ()
-
-    @property
-    def referenced_models(self) -> tuple[str, ...]:
-        return ()
-
-    @property
-    def dbt_relations(self) -> tuple[tuple[str, str], ...]:
-        return ()
 
     @property
     def rendered_artifact(self) -> RenderedArtifact:
@@ -80,6 +78,7 @@ class CompiledEval:
         return replace(artifact, fingerprint=combined)
 
     def rendered_for_publish(self, manifest_id: str) -> RenderedArtifact:
+        """Add the statements that create the source table and then the dataset; nothing is marked."""
         del manifest_id
         artifact = self.rendered_artifact
         return replace(
@@ -92,31 +91,36 @@ class CompiledEval:
 
 
 class CompileEvals:
+    """Compile each eval into its agent's schema.
+
+    `agent_targets` maps each enabled agent's casefolded name to the name it publishes
+    under; an eval whose agent is not in it reports SST-INT902.
+    """
+
     def __init__(self, catalog: EvalCatalog, *, agent_targets: dict[str, QualifiedName]) -> None:
         self._catalog = catalog
         self._agent_targets = agent_targets
 
     def run_result(self) -> CompileResult:
-        diagnostics = self._catalog.diagnostics
-        compiled: list[CompiledEval] = []
-        for resolved in sorted(self._catalog.evals, key=lambda item: item.key):
-            if any(
-                diagnostic.severity is Severity.ERROR and diagnostic.subject == resolved.key
-                for diagnostic in diagnostics
-            ):
-                continue
-            try:
-                agent_target = self._agent_targets[resolved.agent.name.casefold()]
-                rendered = _render(resolved, agent_target, self._catalog.defaults)
-                compiled.append(rendered)
-            except (KeyError, TypeError, ValueError) as exc:
-                diagnostics = DiagnosticBag(
-                    (
-                        *diagnostics,
-                        D("SST-INT902", subject=resolved.key, detail=str(exc), origin=resolved.config.origin),
-                    )
-                )
-        return CompileResult(tuple(compiled), diagnostics)
+        """Compile the evals in key order, skipping each one an error already names.
+
+        The diagnostics are the catalog's, then any SST-INT902.
+
+        Diagnostics:
+            SST-INT902: rendering an eval raised KeyError, TypeError or ValueError, such as one
+                whose agent has no target.
+        """
+        return compile_each(
+            sorted(self._catalog.evals, key=lambda item: item.key),
+            key=lambda resolved: resolved.key,
+            render=self._compile,
+            diagnostics=self._catalog.diagnostics,
+            origin=lambda resolved: resolved.config.origin,
+        )
+
+    def _compile(self, resolved: ResolvedEval) -> CompiledEval:
+        agent_target = self._agent_targets[resolved.agent.name.casefold()]
+        return _render(resolved, agent_target, self._catalog.defaults)
 
 
 def _render(
@@ -124,6 +128,15 @@ def _render(
     agent_target: QualifiedName,
     defaults: EvalDefaults,
 ) -> CompiledEval:
+    """Render one eval's dataset and config into `agent_target`'s schema.
+
+    The dataset and source table names come from the config's templates, filled with the
+    agent name and the first seven characters of the dataset payload's digest, so a new
+    dataset publishes under a new name.
+
+    Raises:
+        ValueError: the config has no dataset name or source table template.
+    """
     effective_agent_version = resolved.config.agent_version or defaults.agent_version
     resolved = replace(
         resolved,

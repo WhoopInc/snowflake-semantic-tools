@@ -7,14 +7,13 @@ from dataclasses import replace
 from types import MappingProxyType
 from typing import Mapping
 
-from tests.helpers.recorded_snowflake import PROFILE_REGISTRY_SHAPE, RecordedSnowflake
 from snowflake_semantic_tools.app.apply import ApplyArtifacts
+from snowflake_semantic_tools.app.compile.profiles import CompiledProfile, CompileProfiles, DesktopChannel
+from snowflake_semantic_tools.app.compile.skills import CatalogChannel, CompileSkills
 from snowflake_semantic_tools.app.desktop_contract import desktop_view, is_pointer, stage_pointers
+from snowflake_semantic_tools.app.lifecycle.profiles import ProfileLifecycleHandler, _shape_problem, _stale
 from snowflake_semantic_tools.app.manifest import build_manifest
 from snowflake_semantic_tools.app.plan import PlanArtifacts
-from snowflake_semantic_tools.app.profile_compile import CompiledProfile, CompileProfiles, DesktopChannel
-from snowflake_semantic_tools.app.profile_lifecycle import ProfileLifecycleHandler, _shape_problem, _stale
-from snowflake_semantic_tools.app.skill_compile import CatalogChannel, CompileSkills
 from snowflake_semantic_tools.domain.model.diagnostic import DiagnosticBag, Origin, Severity
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
 from snowflake_semantic_tools.domain.model.lifecycle import Action, ApplyOptions, ChangeReason, OutcomeStatus
@@ -34,6 +33,7 @@ from snowflake_semantic_tools.domain.state import (
     AppliedEntry,
     State,
 )
+from tests.helpers.recorded_snowflake import PROFILE_REGISTRY_SHAPE, RecordedSnowflake
 
 from .conftest import FixedClock, InMemoryStateStore
 from .helpers import target
@@ -339,6 +339,8 @@ def test_stale_plan_and_desktop_pointer_rules() -> None:
         is False
     )
     assert _stale((("row_version", ""),), (("row_version", "X"),)) is True
+    # Trees are content-addressed and re-verified on apply, so a changed listing is not staleness.
+    assert _stale((("complete_trees", ""),), (("complete_trees", "skills/analyst/H/"),)) is False
     assert is_pointer({"source": "github:x", "ref": "main"}) and not is_pointer({"source": "x", "ref": 1})
     assert not is_pointer("text") and desktop_view({"version": "1.0"})["VERSION"] == 1.0
     assert (
@@ -350,6 +352,13 @@ def test_stale_plan_and_desktop_pointer_rules() -> None:
         "@DB.S.P/plugins/a/H/kit/",
     )
     assert stage_pointers({"PLUGINS": "not a list"}) == ()
+    # A pointer without a stage path, and a command hook whose source is no stage, are not followed.
+    assert stage_pointers(
+        {
+            "SKILL_REPOS": [{"source": "github:x"}, {"snowflake_stage": "@DB.S.P/a/"}],
+            "HOOKS": {"Stop": [{"hooks": [{"type": "command", "source": {"source": "github:x"}}]}]},
+        }
+    ) == ("@DB.S.P/a/",)
 
 
 class FlakyProfilePort(RecordedSnowflake):
@@ -470,3 +479,30 @@ def test_deactivating_a_row_that_is_gone_retires_it() -> None:
     port.profile_rows.clear()
     _, result, pruned = publish(port, {}, after, prune=True)
     assert result.success and pruned.applied["profile:analyst"].outcome == DEACTIVATED
+
+
+class NarrowRegistry(RecordedSnowflake):
+    """Creating the registry leaves a table without the columns SST writes."""
+
+    def ensure_profile_registry(self, qualified_name: QualifiedName) -> None:
+        super().ensure_profile_registry(qualified_name)
+        self.tables[qualified_name.sql] = (("CONFIG_NAME", "VARCHAR"),)
+
+
+def test_a_registry_or_stage_that_cannot_be_created_fails_before_any_row_is_written() -> None:
+    compiled = compile_profiles(catalog())
+    narrow = NarrowRegistry(existing=())
+    _, result, after = publish(narrow, compiled, state())
+    outcome = result.outcomes[0]
+    assert outcome.error is not None and outcome.error.code == "SST-APL016"
+    assert "lacks" in outcome.error.message and "after creation" in outcome.error.message
+    assert (outcome.attempts, outcome.write_succeeded, after.applied) == (1, False, {})
+
+    refusing = RecordedSnowflake(existing=())
+    refusing.refused = ("CREATE STAGE",)
+    _, result, after = publish(refusing, compiled, state())
+    outcome = result.outcomes[0]
+    assert outcome.error is not None and outcome.error.code == "SST-APL001"
+    assert outcome.error.message.startswith("recorded refusal: CREATE STAGE")
+    assert (outcome.attempts, outcome.write_succeeded, after.applied) == (2, False, {})
+    assert refusing.uploads == []

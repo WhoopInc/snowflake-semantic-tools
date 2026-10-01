@@ -3,9 +3,12 @@ from __future__ import annotations
 from dataclasses import replace
 from types import MappingProxyType
 
-from snowflake_semantic_tools.app.tool_compile import CompileTools
-from snowflake_semantic_tools.domain.model.diagnostic import Origin
+from snowflake_semantic_tools.app.compile import CompileResult
+from snowflake_semantic_tools.app.compile.tools import CompileTools
+from snowflake_semantic_tools.domain.model.diagnostic import D, Diagnostic, DiagnosticBag, Origin
 from snowflake_semantic_tools.domain.model.tool import ToolCatalog, ToolGroup, ToolMember, ToolOwnership, ToolParameter
+
+from .helpers import rendered
 
 
 def test_tool_compiler_applies_config_defaults_and_emits_only_managed_members() -> None:
@@ -342,3 +345,76 @@ def test_compiled_tool_publication_covers_routine_without_signature() -> None:
     compiled = result.compiled[0]
     published = compiled.rendered_for_publish("d" * 64)
     assert published.statements[-1].startswith("ALTER PROCEDURE DB.S.PROCEDURE SET COMMENT")
+
+
+def compile_stage(*diagnostics: Diagnostic) -> CompileResult:
+    stage = ToolMember(
+        "platform", "landing", "stage", ToolOwnership.DEFINE, Origin("tools.yml"), "tools.yml", description="Landing."
+    )
+    catalog = ToolCatalog(
+        (ToolGroup("platform", Origin("tools.yml"), "tools.yml", members=(stage,)),),
+        "dev",
+        frozenset(("dev",)),
+        DiagnosticBag(diagnostics),
+    )
+    return CompileTools(
+        catalog,
+        database="DB",
+        schema="S",
+        warehouse=None,
+        target_lag=None,
+        embedding_model=None,
+        execute_as=None,
+        dbt_relations={},
+    ).run_result()
+
+
+def test_a_tool_over_no_dbt_model_reads_no_relation() -> None:
+    compiled = compile_stage().compiled[0]
+    assert (compiled.member_keys, compiled.referenced_models, compiled.dbt_relations) == ((), (), ())
+
+
+def test_a_search_service_reports_the_dbt_model_it_reads_with_its_relation() -> None:
+    search = ToolMember(
+        "platform",
+        "search",
+        "cortex_search_service",
+        ToolOwnership.DEFINE,
+        Origin("tools.yml"),
+        "tools.yml",
+        on_model="docs",
+        search_column="body",
+    )
+    catalog = ToolCatalog(
+        (ToolGroup("platform", Origin("tools.yml"), "tools.yml", members=(search,)),), "dev", frozenset(("dev",))
+    )
+    compiled = (
+        CompileTools(
+            catalog,
+            database="DB",
+            schema="S",
+            warehouse="WH",
+            target_lag="1 hour",
+            embedding_model=None,
+            execute_as=None,
+            dbt_relations={"docs": "DB.S.DOCS"},
+        )
+        .run_result()
+        .compiled[0]
+    )
+    assert (compiled.referenced_models, compiled.dbt_relations) == (("docs",), (("docs", "DB.S.DOCS"),))
+
+
+def test_an_object_type_without_a_comment_keeps_its_statements_and_still_expects_the_marker() -> None:
+    compiled = compile_stage().compiled[0]
+    other = replace(compiled, rendered=rendered("OTHER"))
+    published = other.rendered_for_publish("e" * 64)
+    assert published.statements == other.rendered.statements
+    assert published.expected_marker is not None and published.expected_marker.manifest_id == "e" * 64
+
+
+def test_any_catalog_diagnostic_that_names_a_member_keeps_it_back_even_a_warning() -> None:
+    warning = D("SST-REF023", ref_function="tool", name="landing", value="DB.S.LANDING", subject="tool:landing")
+    result = compile_stage(warning)
+    assert result.compiled == ()
+    assert list(result.diagnostics) == [warning]

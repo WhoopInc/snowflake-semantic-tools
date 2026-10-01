@@ -8,8 +8,8 @@ from types import MappingProxyType
 import pytest
 
 from snowflake_semantic_tools.app.apply import ApplyArtifacts
-from snowflake_semantic_tools.app.eval_compile import CompileEvals
-from snowflake_semantic_tools.app.eval_lifecycle import EVAL_STAGE_FILE_FORMAT, EvalLifecycleHandler
+from snowflake_semantic_tools.app.compile.evals import CompileEvals
+from snowflake_semantic_tools.app.lifecycle.evals import EVAL_STAGE_FILE_FORMAT, EvalLifecycleHandler
 from snowflake_semantic_tools.app.manifest import build_manifest
 from snowflake_semantic_tools.app.plan import PlanArtifacts
 from snowflake_semantic_tools.domain.model.diagnostic import D, DiagnosticBag, Origin
