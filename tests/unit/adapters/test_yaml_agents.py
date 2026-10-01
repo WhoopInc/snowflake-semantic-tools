@@ -157,3 +157,32 @@ def test_a_sidecar_that_is_not_utf8_is_reported_instead_of_raising(tmp_path: Pat
     ]
     assert agents[0].orchestration_instructions is None
     assert agents[0].source_files == ("agents/sales/agent.yml",)
+
+
+def test_each_tool_is_placed_where_its_entry_starts(tmp_path: Path) -> None:
+    root = tmp_path / "agents" / "placed"
+    root.mkdir(parents=True)
+    (root / "agent.yml").write_text(
+        "name: placed\n"
+        "spec:\n"
+        "  tools:\n"
+        "    - type: generic\n"
+        "      name: first\n"
+        "\n"
+        "    - type: generic\n"
+        "      name: second\n"
+        "    - just text\n",
+        encoding="utf-8",
+    )
+
+    agents, diagnostics = load_agents(tmp_path)
+
+    # Lines 4 and 7, where each entry is written, not 1 and 2, its place in the list.
+    assert [(tool.name, tool.origin.line, tool.origin.col) for tool in agents[0].tools] == [
+        ("first", 4, 7),
+        ("second", 7, 7),
+    ]
+    [not_a_mapping] = diagnostics
+    assert not_a_mapping.code == "SST-PRS018"
+    assert not_a_mapping.origin is not None
+    assert (not_a_mapping.origin.file, not_a_mapping.origin.line) == ("agents/placed/agent.yml", 9)

@@ -8,6 +8,7 @@ from types import MappingProxyType
 from typing import Any, Mapping
 
 from snowflake_semantic_tools.adapters.errors import ProjectError
+from snowflake_semantic_tools.adapters.yaml.documents import NodePath, SourcePosition
 from snowflake_semantic_tools.adapters.yaml.fields import (
     checked_list,
     checked_mapping,
@@ -59,14 +60,14 @@ def load_agents(project_dir: Path, *, agents_dir: str = "agents") -> tuple[tuple
     for path in sorted(root.glob("*/agent.y*ml")):
         relative = path.relative_to(project_dir).as_posix()
         try:
-            tree = dict(parse_yaml_bytes(path.read_bytes(), relative).tree)
+            parsed = parse_yaml_bytes(path.read_bytes(), relative)
         except ProjectError as exc:
             diagnostics.extend(exc.diagnostics)
             continue
         except OSError as exc:
             diagnostics.append(D("SST-LOD004", file=relative, line=1, col=1, reason=str(exc)))
             continue
-        agent, problems = _parse_agent(project_dir, path.parent, relative, tree)
+        agent, problems = _parse_agent(project_dir, path.parent, relative, dict(parsed.tree), parsed.line_index)
         diagnostics.extend(problems)
         if agent is not None:
             agents.append(agent)
@@ -78,8 +79,13 @@ def _parse_agent(
     agent_dir: Path,
     relative: str,
     tree: Mapping[str, Any],
+    lines: Mapping[NodePath, SourcePosition],
 ) -> tuple[AgentModel | None, tuple[Diagnostic, ...]]:
-    """Build one agent, reporting each problem; None, with SST-PRS002, only when it has no name."""
+    """Build one agent, reporting each problem; None, with SST-PRS002, only when it has no name.
+
+    Args:
+        lines: Where each node of the agent file starts, which places each tool.
+    """
     origin = Origin(relative, 1, 1)
     diagnostics: list[Diagnostic] = []
     name = tree.get("name")
@@ -117,11 +123,7 @@ def _parse_agent(
         source_files,
         diagnostics,
     )
-    tools = tuple(
-        tool
-        for index, value in enumerate(listed(spec.get("tools"), "spec.tools"))
-        if (tool := _parse_tool(relative, index, value, diagnostics, subject)) is not None
-    )
+    tools = _parse_tools(relative, listed(spec.get("tools"), "spec.tools"), lines, diagnostics, subject)
     skills = tuple(
         skill
         for index, value in enumerate(listed(spec.get("skills"), "spec.skills"))
@@ -310,22 +312,41 @@ def _instruction(
     return content.rstrip()
 
 
+def _parse_tools(
+    relative: str,
+    entries: list[Any],
+    lines: Mapping[NodePath, SourcePosition],
+    diagnostics: list[Diagnostic],
+    subject: str,
+) -> tuple[AgentTool, ...]:
+    """Read the `spec.tools` entries in order, each placed where it starts; an unreadable one is left out."""
+    tools: list[AgentTool] = []
+    for index, value in enumerate(entries):
+        position = lines.get(("spec", "tools", index))
+        origin = Origin(relative, position.line, position.col) if position is not None else Origin(relative, 1, 1)
+        tool = _parse_tool(relative, index, value, diagnostics, subject, origin)
+        if tool is not None:
+            tools.append(tool)
+    return tuple(tools)
+
+
 def _parse_tool(
     source_file: str,
     index: int,
     value: object,
     diagnostics: list[Diagnostic],
     subject: str,
+    origin: Origin,
 ) -> AgentTool | None:
     """Read one `spec.tools` entry; None when it is not a mapping or declares no string `type`.
 
-    The tool's origin is line `index + 1` of the agent file: its place in the list, not where it
-    is written. `search_service`, else `identifier`, is read as the arguments of one
-    `{{ tool() }}` call, and `semantic_view` and `agent` as the one argument of a call of that
-    name; any other value of those fields reads as empty.
+    `search_service`, else `identifier`, is read as the arguments of one `{{ tool() }}` call,
+    and `semantic_view` and `agent` as the one argument of a call of that name; any other value
+    of those fields reads as empty.
 
     Args:
         subject: The agent's key, which a mapping field of the wrong type reports against.
+        origin: Where the entry starts in the agent file, which the tool and its reports name.
 
     Diagnostics:
         SST-PRS018: when the entry is not a mapping.
@@ -333,11 +354,11 @@ def _parse_tool(
         SST-PRS003: when a mapping field, such as `filter` or `input_schema`, holds another type.
         SST-LOD004: when a template in a reference field is malformed.
     """
-    origin = Origin(source_file, index + 1, 1)
     if not isinstance(value, dict):
         diagnostics.append(
             D(
                 "SST-PRS018",
+                origin=origin,
                 artifact=source_file,
                 field="tools",
                 index=index,
