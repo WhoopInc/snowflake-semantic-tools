@@ -27,7 +27,8 @@ class DbtColumn:
     column_type: str | None
     synonyms: tuple[str, ...] = ()
     sample_values: tuple[str, ...] = ()
-    is_enum: bool = False
+    # None when the column declares no `is_enum`: nobody has said whether its values are complete.
+    is_enum: bool | None = None
     excluded: bool = False
     # `meta.sst` keys SST does not read, reported where a view uses the model.
     unknown_meta_keys: tuple[str, ...] = ()

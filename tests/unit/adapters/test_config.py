@@ -56,16 +56,16 @@ def test_unsupported_and_removed_0_3_keys_are_errors(tmp_path: Path) -> None:
     )
     _write(tmp_path, {"dbt_project.yml": "profile: sst\n", "sst_config.yml": config})
     loaded = load_project_config(tmp_path)
+    # enrichment: is read again; the 0.3 blocks around it are not.
     assert [(item.code, item.subject, item.severity.name) for item in loaded.diagnostics] == [
         ("SST-CFG044", "config:dbt", "ERROR"),
         ("SST-CFG043", "config:validation.exclude_dirs", "ERROR"),
-        ("SST-CFG043", "config:enrichment", "ERROR"),
         ("SST-CFG043", "config:generation", "ERROR"),
         ("SST-CFG043", "config:defer", "ERROR"),
         ("SST-CFG043", "config:apply.fail_fast", "ERROR"),
         ("SST-CFG044", "config:snowflake.allow_unknown_keys", "ERROR"),
     ]
-    assert "--fail-fast" in loaded.diagnostics[5].message
+    assert "--fail-fast" in loaded.diagnostics[4].message
 
 
 def test_dbt_only_configuration_is_refused_without_dbt_project(tmp_path: Path) -> None:
@@ -74,13 +74,14 @@ def test_dbt_only_configuration_is_refused_without_dbt_project(tmp_path: Path) -
         {
             "sst_config.yml": (
                 "project:\n  target_profile: sst\n  agents_dir: agents\n"
-                "semantic_views:\n  +schema: X\nskills:\n  stage:\n    +stage: S\n"
+                "semantic_views:\n  +schema: X\nenrichment: {}\nskills:\n  stage:\n    +stage: S\n"
             )
         },
     )
     loaded = load_project_config(tmp_path)
     assert [(item.code, item.subject) for item in loaded.diagnostics] == [
         ("SST-CFG046", "config:semantic_views"),
+        ("SST-CFG046", "config:enrichment"),
         ("SST-CFG046", "config:project.agents_dir"),
     ]
 

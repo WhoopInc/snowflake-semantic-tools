@@ -98,8 +98,7 @@ def test_unsupported_keys_are_errors_and_are_not_descended() -> None:
 
 
 def test_0_3_blocks_and_deploy_are_removed_with_their_reasons() -> None:
-    assert _codes({"enrichment": {"distinct_limit": 25}, "generation": {"threads": 1}, "defer": {}}) == [
-        ("SST-CFG043", "config:enrichment"),
+    assert _codes({"generation": {"threads": 1}, "defer": {}}) == [
         ("SST-CFG043", "config:generation"),
         ("SST-CFG043", "config:defer"),
     ]
@@ -153,3 +152,44 @@ def test_empty_values_mean_unset() -> None:
 def test_every_kind_has_a_representative_key() -> None:
     kinds = {key.kind for key in CONFIG_SCHEMA}
     assert kinds == set(KeyKind)
+
+
+def test_the_enrichment_block_is_read_and_its_limits_are_checked() -> None:
+    accepted = {
+        "enrichment": {
+            "distinct_limit": 25,
+            "sample_values_display_limit": 10,
+            "synonym_model": "claude-sonnet-4-6",
+            "synonym_max_count": 4,
+            "allow_sample_value_collection": False,
+        }
+    }
+    assert _codes(accepted) == []
+    assert _codes({"enrichment": {"distinct_limit": 0, "synonym_max_count": 21}}) == [
+        ("SST-CFG008", "config:enrichment.distinct_limit"),
+        ("SST-CFG008", "config:enrichment.synonym_max_count"),
+    ]
+    assert _codes({"enrichment": {"allow_sample_value_collection": "no", "infer_is_enum": True}}) == [
+        ("SST-CFG004", "config:enrichment.allow_sample_value_collection"),
+        ("SST-CFG003", "config:enrichment.infer_is_enum"),
+    ]
+
+
+def test_the_display_limit_cannot_exceed_the_distinct_limit() -> None:
+    above = validate_config({"enrichment": {"distinct_limit": 5, "sample_values_display_limit": 6}})
+    assert [(item.code, item.subject) for item in above] == [
+        ("SST-CFG008", "config:enrichment.sample_values_display_limit")
+    ]
+    assert "outside 1..5 (enrichment.distinct_limit)" in above[0].message
+    # The default distinct limit is 25, so 26 alone is too many; 25 is not.
+    assert _codes({"enrichment": {"sample_values_display_limit": 26}}) == [
+        ("SST-CFG008", "config:enrichment.sample_values_display_limit")
+    ]
+    assert _codes({"enrichment": {"sample_values_display_limit": 25}}) == []
+    # A limit of the wrong type is reported on its own, not compared.
+    assert _codes({"enrichment": {"distinct_limit": "5", "sample_values_display_limit": 6}}) == [
+        ("SST-CFG004", "config:enrichment.distinct_limit")
+    ]
+    assert _codes({"enrichment": {"distinct_limit": 5, "sample_values_display_limit": True}}) == [
+        ("SST-CFG004", "config:enrichment.sample_values_display_limit")
+    ]

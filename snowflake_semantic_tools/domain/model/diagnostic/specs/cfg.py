@@ -137,4 +137,12 @@ SPECS: tuple[ErrorSpec, ...] = (
         "{block}: '{name}' cannot be qualified -- no fqn: and {reason}",
         "set fqn: on the entry, or set default_prefix on the block",
     ),
+    spec(
+        "SST-CFG038",
+        Severity.ERROR,
+        "Sample-value collection is disabled",
+        "--include {components} reads row data, and enrichment.allow_sample_value_collection is false",
+        "leave sample-values and enums out of --include; authored sample_values are still read",
+        demotable=False,
+    ),
 )

@@ -92,6 +92,13 @@ SPECS: tuple[ErrorSpec, ...] = (
         "reconcile the two types, or add a dbt contract",
     ),
     spec(
+        "SST-DBT031",
+        Severity.WARNING,
+        "Model has no relation to enrich",
+        "model '{model}' has no relation, so sst enrich has no columns to read",
+        "materialize the model as a table or a view; an ephemeral model has nothing to enrich",
+    ),
+    spec(
         "SST-LOD018",
         Severity.ERROR,
         "Referenced sidecar is missing",

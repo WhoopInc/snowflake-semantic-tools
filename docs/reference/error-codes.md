@@ -15,18 +15,18 @@ cannot be downgraded by any setting.
 
 ## Contents
 
-- [Configuration (CFG)](#configuration-cfg) -- 18 codes
-- [Parsing (PRS)](#parsing-prs) -- 33 codes
+- [Configuration (CFG)](#configuration-cfg) -- 19 codes
+- [Parsing (PRS)](#parsing-prs) -- 34 codes
 - [Loading (LOD)](#loading-lod) -- 8 codes
 - [References (REF)](#references-ref) -- 29 codes
 - [Membership (MEM)](#membership-mem) -- 2 codes
-- [Validation (VAL)](#validation-val) -- 158 codes
-- [dbt (DBT)](#dbt-dbt) -- 4 codes
+- [Validation (VAL)](#validation-val) -- 161 codes
+- [dbt (DBT)](#dbt-dbt) -- 5 codes
 - [Rendering (RND)](#rendering-rnd) -- 2 codes
 - [Manifest and state (MAN)](#manifest-and-state-man) -- 11 codes
 - [Planning (PLN)](#planning-pln) -- 18 codes
 - [Apply (APL)](#apply-apl) -- 20 codes
-- [Snowflake (SNO)](#snowflake-sno) -- 6 codes
+- [Snowflake (SNO)](#snowflake-sno) -- 8 codes
 - [External systems (PRT)](#external-systems-prt) -- 5 codes
 - [Internal (INT)](#internal-int) -- 3 codes
 
@@ -95,6 +95,14 @@ Fix: remove +database and +schema from evals:; eval objects resolve to the agent
 `<block>: '<name>' cannot be qualified -- no fqn: and <reason>`
 
 Fix: set fqn: on the entry, or set default_prefix on the block
+
+### SST-CFG038
+
+**Sample-value collection is disabled** (error, always an error)
+
+`--include <components> reads row data, and enrichment.allow_sample_value_collection is false`
+
+Fix: leave sample-values and enums out of --include; authored sample_values are still read
 
 ### SST-CFG040
 
@@ -441,6 +449,14 @@ Fix: fix the field the message names; the semantic views guide lists each field'
 `<artifact>: window frame '<value>' is not ROWS or RANGE BETWEEN <bound> AND <bound>`
 
 Fix: write each bound as UNBOUNDED PRECEDING, UNBOUNDED FOLLOWING, CURRENT ROW, or &lt;n&gt; or INTERVAL '&lt;n&gt; &lt;unit&gt;' followed by PRECEDING or FOLLOWING
+
+### SST-PRS125
+
+**File formatting is not preserved** (warning)
+
+`<file>: writing it changes lines sst enrich did not edit`
+
+Fix: review the change with sst enrich --dry-run; once the file is written, later runs keep its formatting exactly
 
 ## Loading (LOD)
 
@@ -1048,7 +1064,7 @@ Fix: use a date or timestamp column, or change column_type
 
 `<artifact>: column '<member>' declares no column_type`
 
-Fix: declare dimension, time_dimension or fact
+Fix: declare dimension, time_dimension or fact, or run sst enrich to derive it from the column's type
 
 ### SST-VAL309
 
@@ -1056,7 +1072,7 @@ Fix: declare dimension, time_dimension or fact
 
 `<artifact>: column '<member>' declares no data_type`
 
-Fix: declare the Snowflake type
+Fix: declare the Snowflake type, or run sst enrich to read it from the relation
 
 ### SST-VAL310
 
@@ -1096,7 +1112,7 @@ Fix: populate sample_values or clear is_enum
 
 `<artifact>: '<member>' declares <count> sample_values and is not is_enum`
 
-Fix: set is_enum if the set is genuinely closed
+Fix: set is_enum: true if the set is complete, or is_enum: false if it is a sample; sst enrich --include enums decides from the data
 
 ### SST-VAL316
 
@@ -1104,7 +1120,7 @@ Fix: set is_enum if the set is genuinely closed
 
 `<artifact>: '<member>'.<field> contains '<value>'`
 
-Fix: delete the value; it is a missing-value placeholder, not data
+Fix: delete the value; it is a missing-value placeholder, not data. sst enrich --force sample-values collects the column again
 
 ### SST-VAL318
 
@@ -1113,6 +1129,30 @@ Fix: delete the value; it is a missing-value placeholder, not data
 `<artifact>: '<member>' references excluded column '<column>'`
 
 Fix: un-exclude the column or change the expression
+
+### SST-VAL325
+
+**Described column is absent from the relation** (warning)
+
+`model '<model>': column '<column>' is described in YAML and absent from the relation`
+
+Fix: delete the column from the model YAML, or rebuild the model; sst enrich never deletes it
+
+### SST-VAL327
+
+**Declared data type differs from the relation** (warning)
+
+`model '<model>': column '<column>' declares data_type <declared>, and the relation has <found>`
+
+Fix: correct data_type, or run sst enrich --force data-types
+
+### SST-VAL328
+
+**PII-tagged column carries sample values** (warning)
+
+`model '<model>': column '<column>' carries pii_tags and <count> sample_values`
+
+Fix: delete the sample_values; sst enrich never samples a column with pii_tags
 
 ### SST-VAL401
 
@@ -2052,6 +2092,14 @@ Fix: write primary_key as a list of columns and unique_keys as a list of column 
 
 Fix: delete the key; relation location comes from dbt's resolved manifest
 
+### SST-DBT031
+
+**Model has no relation to enrich** (warning)
+
+`model '<model>' has no relation, so sst enrich has no columns to read`
+
+Fix: materialize the model as a table or a view; an ephemeral model has nothing to enrich
+
 ## Rendering (RND)
 
 ### SST-RND012
@@ -2515,6 +2563,22 @@ Fix: fix the statement
 `lock timeout on <value>`
 
 Fix: retry or serialise publishers
+
+### SST-SNO030
+
+**Relation is missing or not visible** (error)
+
+`model '<model>': <relation> does not exist, or the role cannot see it`
+
+Fix: build the model in this target, or grant the role access to it
+
+### SST-SNO031
+
+**Enrichment step failed** (error)
+
+`model '<model>': <step> failed: <detail>`
+
+Fix: fix the cause the message names, then run sst enrich again
 
 ## External systems (PRT)
 

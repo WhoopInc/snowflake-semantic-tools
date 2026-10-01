@@ -41,7 +41,24 @@ def test_hard_deprecated_input_is_an_error_and_retired_codes_are_gone() -> None:
         assert ERROR_REGISTRY[code].severity is Severity.ERROR, code
     for code in ("SST-PRS121", "SST-VAL122", "SST-CFG045"):
         assert code not in ERROR_REGISTRY, code
-    assert "sst enrich" not in str(ERROR_REGISTRY["SST-VAL316"].suggestion)
+
+
+def test_enrich_codes_are_registered_and_the_collection_refusal_cannot_be_demoted() -> None:
+    expected = {
+        "SST-CFG038": Severity.ERROR,
+        "SST-VAL325": Severity.WARNING,
+        "SST-VAL327": Severity.WARNING,
+        "SST-VAL328": Severity.WARNING,
+        "SST-DBT031": Severity.WARNING,
+        "SST-PRS125": Severity.WARNING,
+        "SST-SNO030": Severity.ERROR,
+        "SST-SNO031": Severity.ERROR,
+    }
+    assert {code: ERROR_REGISTRY[code].severity for code in expected} == expected
+    assert not ERROR_REGISTRY["SST-CFG038"].demotable
+    # The checks on what enrich writes point at the command that writes it.
+    for code in ("SST-VAL308", "SST-VAL309", "SST-VAL315", "SST-VAL316"):
+        assert "sst enrich" in str(ERROR_REGISTRY[code].suggestion), code
 
 
 def test_static_eval_diagnostics_are_registered_with_catalog_severities() -> None:

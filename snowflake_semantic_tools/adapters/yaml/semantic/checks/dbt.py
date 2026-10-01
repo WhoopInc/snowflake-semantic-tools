@@ -2,50 +2,12 @@
 
 from __future__ import annotations
 
-import re
-
 from snowflake_semantic_tools.adapters.yaml.semantic.defs import MetricDef
 from snowflake_semantic_tools.domain.model.artifact_key import artifact_key
+from snowflake_semantic_tools.domain.model.column_metadata import is_numeric, is_sentinel, is_temporal
 from snowflake_semantic_tools.domain.model.dbt import DbtColumn, DbtModel
 from snowflake_semantic_tools.domain.model.diagnostic import D, Diagnostic
 from snowflake_semantic_tools.domain.model.project import ParsedView
-
-NUMERIC_TYPES = frozenset(
-    (
-        "BIGINT",
-        "BYTEINT",
-        "DECIMAL",
-        "DOUBLE",
-        "DOUBLE PRECISION",
-        "FLOAT",
-        "INT",
-        "INTEGER",
-        "NUMBER",
-        "NUMERIC",
-        "REAL",
-        "SMALLINT",
-        "TINYINT",
-    )
-)
-TEMPORAL_TYPES = frozenset(
-    (
-        "DATE",
-        "DATETIME",
-        "TIME",
-        "TIMESTAMP",
-        "TIMESTAMP_LTZ",
-        "TIMESTAMP_NTZ",
-        "TIMESTAMP_TZ",
-    )
-)
-
-
-def _base_type(data_type: str | None) -> str:
-    return re.sub(r"\s*\(.*\)\s*$", "", (data_type or "").strip().upper())
-
-
-# A sample value that is really a missing value, written out as text.
-_SENTINELS = frozenset(("nan", "none", "null", "<na>"))
 
 
 def _dbt_column_diagnostics(
@@ -102,24 +64,28 @@ def _data_type_diagnostics(model: DbtModel, column: DbtColumn) -> list[Diagnosti
     artifact, subject = _column_keys(model, column)
     if column.data_type is None:
         return [D("SST-VAL309", artifact=artifact, member=column.name, subject=subject)]
-    if column.column_type == "fact" and _base_type(column.data_type) not in NUMERIC_TYPES:
+    if column.column_type == "fact" and not is_numeric(column.data_type):
         return [D("SST-VAL305", artifact=artifact, member=column.name, found=column.data_type, subject=subject)]
-    if column.column_type == "time_dimension" and _base_type(column.data_type) not in TEMPORAL_TYPES:
+    if column.column_type == "time_dimension" and not is_temporal(column.data_type):
         return [D("SST-VAL306", artifact=artifact, member=column.name, found=column.data_type, subject=subject)]
     return []
 
 
 def _sample_value_diagnostics(model: DbtModel, column: DbtColumn) -> list[Diagnostic]:
-    """Report an enum without sample values, or sample values that look like an enum's.
+    """Report an enum without sample values, or sample values whose completeness nobody declared.
+
+    An explicit `is_enum: false` declares the values a sample, so it is not reported; nor is a
+    fact, which cannot be an enum.
 
     Diagnostics:
         SST-VAL314: when an `is_enum` column declares no sample values.
-        SST-VAL315: when a column that is not `is_enum` declares five or more sample values.
+        SST-VAL315: when a column that is not a fact declares five or more sample values and no
+            `is_enum`.
     """
     artifact, subject = _column_keys(model, column)
     if column.is_enum and not column.sample_values:
         return [D("SST-VAL314", artifact=artifact, member=column.name, subject=subject)]
-    if not column.is_enum and len(column.sample_values) >= 5:
+    if column.is_enum is None and column.column_type != "fact" and len(column.sample_values) >= 5:
         return [
             D(
                 "SST-VAL315",
@@ -194,7 +160,7 @@ def _sentinel_diagnostics(model: DbtModel, column: DbtColumn) -> list[Diagnostic
             subject=subject,
         )
         for value in column.sample_values
-        if value.casefold() in _SENTINELS
+        if is_sentinel(value)
     ]
 
 

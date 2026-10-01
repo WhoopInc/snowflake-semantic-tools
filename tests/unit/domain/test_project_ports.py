@@ -5,11 +5,13 @@ from __future__ import annotations
 from dataclasses import replace
 
 from snowflake_semantic_tools.domain.model.config_schema import (
+    EnrichmentConfig,
     config_block,
     config_bool,
     config_int,
     config_text,
     configured_dir,
+    enrichment_config,
     skills_configured,
     target_text,
 )
@@ -154,3 +156,29 @@ def test_a_stale_saved_plan_says_what_changed_in_order() -> None:
     found = [saved.check_applicable(current, source="plan.json") for saved, _ in cases]
 
     assert found == [PlanMismatch(message) for _, message in cases]
+
+
+def test_the_enrichment_block_reads_each_key_or_its_default() -> None:
+    assert enrichment_config({}) == EnrichmentConfig(25, 10, "mistral-large2", 4, True)
+    written = {
+        "enrichment": {
+            "distinct_limit": 30,
+            "sample_values_display_limit": 12,
+            "synonym_model": " claude-sonnet-4-6 ",
+            "synonym_max_count": 6,
+            "allow_sample_value_collection": False,
+        }
+    }
+    assert enrichment_config(written) == EnrichmentConfig(30, 12, "claude-sonnet-4-6", 6, False)
+    # Validation reports each of these; the reader falls back to the default instead.
+    mistyped = {
+        "enrichment": {
+            "distinct_limit": 0,
+            "sample_values_display_limit": True,
+            "synonym_model": "  ",
+            "synonym_max_count": "4",
+            "allow_sample_value_collection": "no",
+        }
+    }
+    assert enrichment_config(mistyped) == EnrichmentConfig()
+    assert enrichment_config({"enrichment": "off"}) == EnrichmentConfig()

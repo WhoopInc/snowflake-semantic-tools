@@ -11,6 +11,7 @@ from snowflake_semantic_tools.adapters.yaml.documents import RawDocuments
 from snowflake_semantic_tools.adapters.yaml.semantic.defs import NULL_ORDERS, SORT_DIRECTIONS, _frame
 from snowflake_semantic_tools.adapters.yaml.semantic.nodes import _load_nodes, _member_root, _node_origin
 from snowflake_semantic_tools.domain.model.artifact_key import artifact_key
+from snowflake_semantic_tools.domain.model.column_metadata import synonym_problem
 from snowflake_semantic_tools.domain.model.diagnostic import D, Diagnostic, Origin
 
 
@@ -41,13 +42,14 @@ def _synonyms_diagnostics(
         )
     diagnostics = []
     for synonym in value:
-        if any(character in synonym for character in ("'", '"')):
+        problem = synonym_problem(synonym)
+        if problem is not None:
             diagnostics.append(
                 D(
                     "SST-PRS030",
                     artifact=artifact,
                     value=synonym,
-                    detail="quotes",
+                    detail=problem,
                     subject=subject,
                 )
             )

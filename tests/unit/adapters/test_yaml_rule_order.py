@@ -139,3 +139,17 @@ def test_a_view_reports_its_verified_query_failure_before_a_bad_variable(tmp_pat
         "SST_REF_DEV.CORE.JAFFLE_MENU",
         "SST_REF_DEV.JAFFLE.JAFFLE_MINIMAL",
     ]
+
+
+def test_an_explicit_is_enum_or_a_fact_silences_the_exhaustive_sample_warning() -> None:
+    values = ("a", "b", "c", "d", "e")
+    undecided = DbtColumn("u", "d", "TEXT", "dimension", sample_values=values)
+    sample = DbtColumn("s", "d", "TEXT", "dimension", sample_values=values, is_enum=False)
+    fact = DbtColumn("f", "d", "NUMBER", "fact", sample_values=values)
+    enum = DbtColumn("e", "d", "TEXT", "dimension", is_enum=True)
+    model = DbtModel("model.fixture.m", "m", "DB.SCH.M", ("u",), (), (undecided, sample, fact, enum))
+    diagnostics = _dbt_column_diagnostics({"m": model})
+    assert [(diagnostic.code, diagnostic.subject) for diagnostic in diagnostics] == [
+        ("SST-VAL315", "dbt_column:m.u"),
+        ("SST-VAL314", "dbt_column:m.e"),
+    ]

@@ -42,6 +42,18 @@ What blocks a build.
 | `validation.strict` | boolean | `false` | Promote every warning to an error. |
 | `validation.snowflake_syntax_check` | boolean | `true` | Compile expressions against Snowflake during validate and plan. |
 
+## enrichment
+
+What `sst enrich` collects from the warehouse, and how much.
+
+| Key | Type | Default | Description |
+|---|---|---|---|
+| `enrichment.distinct_limit` | integer, 1 to 1000 | `25` | Distinct values sampled per column. A column with no more than this many is an enum. |
+| `enrichment.sample_values_display_limit` | integer, 1 to 1000 | `10` | Sample values written for a column that is not an enum. At most `distinct_limit`. |
+| `enrichment.synonym_model` | string | `mistral-large2` | Cortex model that writes synonyms. |
+| `enrichment.synonym_max_count` | integer, 1 to 20 | `4` | Synonyms written per column and per table. |
+| `enrichment.allow_sample_value_collection` | boolean | `true` | False refuses every run that reads row data: `--include sample-values` and `enums` (SST-CFG038). |
+
 ## vars
 
 Values read by `{{ var('<name>') }}`.
@@ -209,7 +221,6 @@ as though it still does.
 | `validation.expression_rules` | the expression rules it disabled are no longer optional | [`SST-CFG043`](error-codes.md#sst-cfg043) |
 | `validation.multipath_check` | multi-path relationship analysis is always on | [`SST-CFG043`](error-codes.md#sst-cfg043) |
 | `validation.smoke_query` | smoke probes run only under sst test --suite smoke | [`SST-CFG043`](error-codes.md#sst-cfg043) |
-| `enrichment` | SST 1.0 has no enrichment command | [`SST-CFG043`](error-codes.md#sst-cfg043) |
 | `generation` | SST 1.0 renders DDL directly | [`SST-CFG043`](error-codes.md#sst-cfg043) |
 | `defer` | SST reads the manifest dbt resolves; configure deferral in dbt | [`SST-CFG043`](error-codes.md#sst-cfg043) |
 | `vars.sha_version` | SST supplies sha_version from the commit being published | [`SST-CFG040`](error-codes.md#sst-cfg040) |

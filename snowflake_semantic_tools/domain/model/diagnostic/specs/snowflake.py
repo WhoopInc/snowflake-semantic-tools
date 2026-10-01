@@ -72,4 +72,18 @@ SPECS: tuple[ErrorSpec, ...] = (
         "lock timeout on {value}",
         "retry or serialise publishers",
     ),
+    spec(
+        "SST-SNO030",
+        Severity.ERROR,
+        "Relation is missing or not visible",
+        "model '{model}': {relation} does not exist, or the role cannot see it",
+        "build the model in this target, or grant the role access to it",
+    ),
+    spec(
+        "SST-SNO031",
+        Severity.ERROR,
+        "Enrichment step failed",
+        "model '{model}': {step} failed: {detail}",
+        "fix the cause the message names, then run sst enrich again",
+    ),
 )

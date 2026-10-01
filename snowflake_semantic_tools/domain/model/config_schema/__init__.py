@@ -22,11 +22,13 @@ from snowflake_semantic_tools.domain.model.config_schema.keys import (
 )
 from snowflake_semantic_tools.domain.model.config_schema.validate import Positions, validate_config
 from snowflake_semantic_tools.domain.model.config_schema.values import (
+    EnrichmentConfig,
     config_block,
     config_bool,
     config_int,
     config_text,
     configured_dir,
+    enrichment_config,
     skills_configured,
     target_text,
 )
@@ -39,6 +41,7 @@ __all__ = [
     "TOP_LEVEL_KEYS",
     "ChildPolicy",
     "ConfigKey",
+    "EnrichmentConfig",
     "KeyKind",
     "KeyStatus",
     "Positions",
@@ -47,6 +50,7 @@ __all__ = [
     "config_int",
     "config_text",
     "configured_dir",
+    "enrichment_config",
     "skills_configured",
     "target_text",
     "validate_config",

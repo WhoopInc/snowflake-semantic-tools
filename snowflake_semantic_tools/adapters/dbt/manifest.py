@@ -107,7 +107,7 @@ def _column(name: str, value: object, *, node_path: str) -> DbtColumn:
         column_type=column_type,
         synonyms=_strings(meta.get("synonyms"), path=f"{path}.meta.sst.synonyms"),
         sample_values=_strings(meta.get("sample_values"), path=f"{path}.meta.sst.sample_values"),
-        is_enum=bool(meta.get("is_enum", False)),
+        is_enum=None if meta.get("is_enum") is None else bool(meta.get("is_enum")),
         excluded=bool(meta.get("exclude", False)),
         unknown_meta_keys=tuple(sorted(str(key) for key in meta if key not in COLUMN_META_KEYS)),
         declared_data_type=declared_type if disagrees else None,

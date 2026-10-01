@@ -240,4 +240,12 @@ SPECS: tuple[ErrorSpec, ...] = (
         "write each bound as UNBOUNDED PRECEDING, UNBOUNDED FOLLOWING, CURRENT ROW, or <n> or "
         "INTERVAL '<n> <unit>' followed by PRECEDING or FOLLOWING",
     ),
+    spec(
+        "SST-PRS125",
+        Severity.WARNING,
+        "File formatting is not preserved",
+        "{file}: writing it changes lines sst enrich did not edit",
+        "review the change with sst enrich --dry-run; once the file is written, later runs keep its "
+        "formatting exactly",
+    ),
 )

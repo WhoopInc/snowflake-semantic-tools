@@ -54,7 +54,8 @@ def validate_config(tree: Mapping[Any, object], *, positions: Positions | None =
         SST-CFG004: a value has the wrong type.
         SST-CFG006: a required key is absent or empty.
         SST-CFG007: an unknown top-level key is within two edits of a declared one.
-        SST-CFG008: a value is outside its choices or bounds, or is not its fixed value.
+        SST-CFG008: a value is outside its choices or bounds, or is not its fixed value; or
+            `enrichment.sample_values_display_limit` exceeds `enrichment.distinct_limit`.
         SST-CFG015: `evals` sets `+database` or `+schema`.
         SST-CFG040: `vars` declares `sha_version`, which SST supplies.
         SST-CFG042: `evals` or `skills` declares a folder route.
@@ -132,7 +133,40 @@ def _block_problems(
     block = CONFIG_KEYS.get(entry_path)
     if block is not None and block.one_of and not any(name in present for name in block.one_of):
         problems.append(_diagnostic("SST-VAL817", actual, positions, key=entry_path))
+    if entry_path == "enrichment":
+        problems.extend(_enrichment_limit_problems(value, actual, positions))
     return problems
+
+
+def _enrichment_limit_problems(
+    value: Mapping[Any, object], actual: tuple[str, ...], positions: Positions
+) -> list[Diagnostic]:
+    """Diagnose a display limit above the distinct limit: no more values than that are sampled.
+
+    An absent limit takes its default. A limit that is not an integer, or is outside its own
+    bounds, is reported on its own and not compared.
+    """
+    limits = []
+    for name in ("distinct_limit", "sample_values_display_limit"):
+        spec = CHILDREN["enrichment"][name]
+        written = value.get(name, int(spec.default or 0))
+        if not isinstance(written, int) or isinstance(written, bool) or _out_of_bounds(spec, written):
+            return []
+        limits.append(written)
+    distinct, display = limits
+    if display <= distinct:
+        return []
+    path = (*actual, "sample_values_display_limit")
+    return [
+        _diagnostic(
+            "SST-CFG008",
+            path,
+            positions,
+            key=".".join(path),
+            found=str(display),
+            expected=f"1..{distinct} (enrichment.distinct_limit)",
+        )
+    ]
 
 
 def _unknown(path: tuple[str, ...], positions: Positions) -> Diagnostic:

@@ -8,8 +8,10 @@ the same keys through these functions, so they agree on what a configuration mea
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import Mapping
 
+from snowflake_semantic_tools.domain.model.config_schema.keys import CONFIG_KEYS
 from snowflake_semantic_tools.domain.model.identifier import TargetIdentity
 
 
@@ -84,3 +86,49 @@ def config_int(value: object) -> int | None:
 def config_bool(value: object) -> bool | None:
     """Return a boolean value; None for anything else."""
     return value if isinstance(value, bool) else None
+
+
+def _enrichment_default(name: str) -> str:
+    return CONFIG_KEYS[f"enrichment.{name}"].default or ""
+
+
+@dataclass(frozen=True, slots=True)
+class EnrichmentConfig:
+    """The `enrichment:` block as `sst enrich` reads it, each key at its default when unset.
+
+    Attributes:
+        distinct_limit: Distinct values sampled per column; no more than this many is an enum.
+        display_limit: Sample values written for a column that is not an enum.
+        synonym_model: The Cortex model that writes synonyms.
+        synonym_max_count: Synonyms written per column and per table.
+        allow_sample_value_collection: False refuses every run that reads row data.
+    """
+
+    distinct_limit: int = int(_enrichment_default("distinct_limit"))
+    display_limit: int = int(_enrichment_default("sample_values_display_limit"))
+    synonym_model: str = _enrichment_default("synonym_model")
+    synonym_max_count: int = int(_enrichment_default("synonym_max_count"))
+    allow_sample_value_collection: bool = _enrichment_default("allow_sample_value_collection") == "true"
+
+
+def enrichment_config(config: Mapping[str, object]) -> EnrichmentConfig:
+    """Read the `enrichment:` block; a key that is absent or of the wrong type reads as its default.
+
+    An integer below 1 reads as its default too: validation reports it, and no limit can be zero.
+    """
+    block = config_block(config.get("enrichment"))
+    defaults = EnrichmentConfig()
+
+    def limit(name: str, default: int) -> int:
+        value = config_int(block.get(name))
+        return value if value is not None and value >= 1 else default
+
+    model = block.get("synonym_model")
+    allowed = config_bool(block.get("allow_sample_value_collection"))
+    return EnrichmentConfig(
+        distinct_limit=limit("distinct_limit", defaults.distinct_limit),
+        display_limit=limit("sample_values_display_limit", defaults.display_limit),
+        synonym_model=model.strip() if isinstance(model, str) and model.strip() else defaults.synonym_model,
+        synonym_max_count=limit("synonym_max_count", defaults.synonym_max_count),
+        allow_sample_value_collection=defaults.allow_sample_value_collection if allowed is None else allowed,
+    )

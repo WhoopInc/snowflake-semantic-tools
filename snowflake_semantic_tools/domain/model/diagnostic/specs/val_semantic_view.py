@@ -222,14 +222,14 @@ SPECS: tuple[ErrorSpec, ...] = (
         Severity.ERROR,
         "Column type metadata is absent",
         "{artifact}: column '{member}' declares no column_type",
-        "declare dimension, time_dimension or fact",
+        "declare dimension, time_dimension or fact, or run sst enrich to derive it from the column's type",
     ),
     spec(
         "SST-VAL309",
         Severity.ERROR,
         "Data type metadata is absent",
         "{artifact}: column '{member}' declares no data_type",
-        "declare the Snowflake type",
+        "declare the Snowflake type, or run sst enrich to read it from the relation",
     ),
     spec(
         "SST-VAL310",
@@ -257,7 +257,8 @@ SPECS: tuple[ErrorSpec, ...] = (
         Severity.WARNING,
         "Non-enum sample values look exhaustive",
         "{artifact}: '{member}' declares {count} sample_values and is not is_enum",
-        "set is_enum if the set is genuinely closed",
+        "set is_enum: true if the set is complete, or is_enum: false if it is a sample; "
+        "sst enrich --include enums decides from the data",
     ),
     spec(
         "SST-VAL318",
@@ -278,7 +279,29 @@ SPECS: tuple[ErrorSpec, ...] = (
         Severity.WARNING,
         "Auto-managed field contains a sentinel value",
         "{artifact}: '{member}'.{field} contains '{value}'",
-        "delete the value; it is a missing-value placeholder, not data",
+        "delete the value; it is a missing-value placeholder, not data. "
+        "sst enrich --force sample-values collects the column again",
+    ),
+    spec(
+        "SST-VAL325",
+        Severity.WARNING,
+        "Described column is absent from the relation",
+        "model '{model}': column '{column}' is described in YAML and absent from the relation",
+        "delete the column from the model YAML, or rebuild the model; sst enrich never deletes it",
+    ),
+    spec(
+        "SST-VAL327",
+        Severity.WARNING,
+        "Declared data type differs from the relation",
+        "model '{model}': column '{column}' declares data_type {declared}, and the relation has {found}",
+        "correct data_type, or run sst enrich --force data-types",
+    ),
+    spec(
+        "SST-VAL328",
+        Severity.WARNING,
+        "PII-tagged column carries sample values",
+        "model '{model}': column '{column}' carries pii_tags and {count} sample_values",
+        "delete the sample_values; sst enrich never samples a column with pii_tags",
     ),
     spec(
         "SST-VAL209",

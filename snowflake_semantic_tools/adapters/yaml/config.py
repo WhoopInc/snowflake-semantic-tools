@@ -19,6 +19,7 @@ DBT_ONLY_KEYS = (
     "agents",
     "tools",
     "evals",
+    "enrichment",
     "project.semantic_models_dir",
     "project.agents_dir",
     "project.tools_dir",

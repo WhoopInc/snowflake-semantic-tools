@@ -306,7 +306,7 @@ def _view_column(model: DbtModel, column: DbtColumn, logical: str) -> Column:
         comment=column.description,
         synonyms=column.synonyms,
         sample_values=column.sample_values,
-        is_enum=column.is_enum,
+        is_enum=column.is_enum is True,
     )
 
 
