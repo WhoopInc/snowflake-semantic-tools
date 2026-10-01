@@ -131,12 +131,22 @@ dmypy.json
 # Pyre type checker
 .pyre/
 
+# Ruff
+.ruff_cache/
+
+# import-linter (lint-imports)
+.import_linter_cache/
+
 # Project-specific ignores
 # Secrets and configuration
 .env*
 *.env
 secrets/
 config/secrets/
+
+# Private keys (Snowflake key-pair authentication)
+*.p8
+*.pem
 
 # Cloned repositories
 analytics-dbt/
@@ -166,6 +176,10 @@ Thumbs.db
 # dbt-generated anonymous user id
 .user.yml
 
+# dbt package installs (dbt deps)
+dbt_packages/
+dbt_internal_packages/
+
 # The project is managed with Poetry; a uv lockfile is local-only
 uv.lock
 
@@ -183,6 +197,7 @@ temp/
 # Snowflake connection files (if any)
 snowflake_config.json
 connections.json
+connections.toml
 
 # Local testing artifacts
 test_data/
