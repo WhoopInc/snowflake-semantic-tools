@@ -84,6 +84,18 @@ CROSSINGS = [
         id="snowflake-adapter-may-not-parse-yaml",
     ),
     pytest.param(
+        "app/_boundary_probe.py",
+        "import ruamel.yaml\n",
+        "only the roundtrip, dbt and yaml adapters edit YAML",
+        id="app-may-not-edit-yaml",
+    ),
+    pytest.param(
+        "adapters/snowflake/_boundary_probe.py",
+        "from ruamel.yaml import YAML\n",
+        "only the roundtrip, dbt and yaml adapters edit YAML",
+        id="snowflake-adapter-may-not-edit-yaml",
+    ),
+    pytest.param(
         "cli/_boundary_probe.py",
         "import yaml\n",
         "only the yaml and dbt adapters parse YAML",
@@ -131,7 +143,7 @@ def test_contracts_hold_on_the_real_tree() -> None:
     """
     result = _lint_imports()
     assert result.returncode == 0, f"contracts already broken before probing:\n{result.stdout}"
-    assert "Contracts: 6 kept, 0 broken." in result.stdout, result.stdout
+    assert "Contracts: 7 kept, 0 broken." in result.stdout, result.stdout
 
 
 def test_package_root_holds_only_the_rings() -> None:

@@ -16,6 +16,42 @@ from snowflake_semantic_tools.domain.state import Manifest, SavedPlan, State, St
 T = TypeVar("T")
 
 
+def write_bytes_atomic(path: Path, data: bytes) -> None:
+    """Replace a file with `data` in one rename, so a reader sees the old bytes or the new ones.
+
+    The bytes go to a hidden temporary file beside the target, are synced, and replace the
+    target; the directory is synced after. Missing parent directories are created.
+
+    Raises:
+        OSError: The directory or the file cannot be written; the temporary file is removed.
+    """
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, raw_path = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent)
+    temp = Path(raw_path)
+    try:
+        with os.fdopen(fd, "wb") as stream:
+            stream.write(data)
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(temp, path)
+        directory_fd = os.open(path.parent, os.O_RDONLY)
+        try:
+            os.fsync(directory_fd)
+        finally:
+            os.close(directory_fd)
+    finally:
+        temp.unlink(missing_ok=True)
+
+
+def write_text_atomic(path: Path, text: str) -> None:
+    """Replace a file with `text` encoded as UTF-8, atomically, as `write_bytes_atomic` does.
+
+    Raises:
+        OSError: The directory or the file cannot be written.
+    """
+    write_bytes_atomic(path, text.encode("utf-8"))
+
+
 class JsonStore(Generic[T]):
     """One JSON document on disk, read through `parser` and replaced atomically in canonical form.
 
@@ -75,24 +111,8 @@ class JsonStore(Generic[T]):
             TypeError: The value holds something JSON cannot encode.
             ValueError: The value holds NaN or an infinity.
         """
-        self.path.parent.mkdir(parents=True, exist_ok=True)
         payload = value.as_dict() if hasattr(value, "as_dict") else value
-        data = canonical_json(payload) + b"\n"
-        fd, raw_path = tempfile.mkstemp(prefix=f".{self.path.name}.", dir=self.path.parent)
-        temp = Path(raw_path)
-        try:
-            with os.fdopen(fd, "wb") as stream:
-                stream.write(data)
-                stream.flush()
-                os.fsync(stream.fileno())
-            os.replace(temp, self.path)
-            directory_fd = os.open(self.path.parent, os.O_RDONLY)
-            try:
-                os.fsync(directory_fd)
-            finally:
-                os.close(directory_fd)
-        finally:
-            temp.unlink(missing_ok=True)
+        write_bytes_atomic(self.path, canonical_json(payload) + b"\n")
 
 
 class ManifestFileStore(JsonStore[Manifest]):
