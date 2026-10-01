@@ -389,6 +389,32 @@ def test_dependencies_block_and_order_or_report_cycles() -> None:
     assert topological_order((malformed,))[0] == (malformed,)
 
 
+def test_blocking_reaches_every_change_down_a_dependency_chain() -> None:
+    top = rendered("top")
+    middle = rendered("middle", depends_on=(top.key,))
+    bottom = rendered("bottom", depends_on=(middle.key,))
+    unrelated = rendered("unrelated")
+    artifacts = {item.key: item for item in (top, middle, bottom, unrelated)}
+    manifest, state = context(artifacts, {})
+
+    result = build_changeset(
+        artifacts,
+        SnowflakeObservation(fetched_at="now"),
+        manifest,
+        state,
+        SEMANTIC_REGISTRY,
+        target(),
+        blocked={top.key: DiagnosticBag((D("SST-REF001", model="x"),))},
+    )
+
+    by_key = {change.key: change for change in result.changes}
+    assert by_key[top.key].action is Action.BLOCKED
+    assert by_key[middle.key].reason is ChangeReason.DEPENDENCY_BLOCKED
+    # Two links below the blocked view, so a single pass over direct dependents misses it.
+    assert by_key[bottom.key].reason is ChangeReason.DEPENDENCY_BLOCKED
+    assert by_key[unrelated.key].action is Action.CREATE
+
+
 def test_plan_returns_cycle_diagnostic_and_skips_declared_or_unknown_prunes() -> None:
     first = rendered("a", depends_on=("semantic_view:b",))
     second = rendered("b", depends_on=("semantic_view:a",))

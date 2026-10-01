@@ -111,11 +111,11 @@ def _prunable_type(
 
 
 def block_unsafe(changes: tuple[Change, ...], registry: Registry) -> tuple[tuple[Change, ...], tuple[Diagnostic, ...]]:
-    """Block each write that pins an unplanned version, then each change depending on a blocked one.
+    """Block each write that pins an unplanned version, then everything depending on a blocked one.
 
     Runs once every change is decided: a pinned version counts as planned only when a change
-    for its key is in `changes`. Dependents are blocked in one pass, so only a change that
-    depends directly on a blocked one is blocked with it.
+    for its key is in `changes`. Blocking follows the dependency graph all the way down, so a
+    change that depends on a blocked one is blocked, and so is whatever depends on it.
 
     Returns:
         The changes in their given order, and the diagnostics for the unplanned pins.
@@ -130,8 +130,14 @@ def block_unsafe(changes: tuple[Change, ...], registry: Registry) -> tuple[tuple
         checked, missing = _require_pinned(change, planned, registry)
         pinned.append(checked)
         diagnostics.extend(missing)
-    blocked = {change.key for change in pinned if change.action is Action.BLOCKED}
-    return tuple(_block_dependents(change, blocked) for change in pinned), tuple(diagnostics)
+    decided = tuple(pinned)
+    blocked = {change.key for change in decided if change.action is Action.BLOCKED}
+    while True:
+        decided = tuple(_block_dependents(change, blocked) for change in decided)
+        reached = {change.key for change in decided if change.action is Action.BLOCKED}
+        if reached == blocked:
+            return decided, tuple(diagnostics)
+        blocked = reached
 
 
 def _require_pinned(change: Change, planned: set[str], registry: Registry) -> tuple[Change, tuple[Diagnostic, ...]]:

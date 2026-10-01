@@ -5,7 +5,7 @@ decided:
 
 1. `classify` decides each rendered artifact, in DDL order;
 2. `plan_prunes` adds the orphans SST may drop, when prune is asked for;
-3. `block_unsafe` blocks a write that pins an unplanned version, and what depends on a
+3. `block_unsafe` blocks a write that pins an unplanned version, and everything that depends on a
    blocked change -- after prune, so every change it checks against is decided;
 4. `topological_order` orders the changes, whose decisions hash into the plan id.
 
