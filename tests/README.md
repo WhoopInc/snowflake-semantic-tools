@@ -38,7 +38,7 @@ tests/
 │   └── v1_dialect/                       # the 0.3 dialect corpus for `sst migrate refs`
 ├── golden/
 │   ├── README.md
-│   └── expected/{ddl,agent,tool,eval,skill,plugin,profile}/
+│   └── expected/{ddl,agent,tool,eval,skill,plugin,profile,enrich}/
 └── helpers/                     # shared test support, imported as tests.helpers.<module>:
                                  #   app_ports.py -- in-memory Snowflake, clock, and state store for use cases
                                  #   recorded_snowflake.py, eval_state_store.py, golden_store.py -- more ports

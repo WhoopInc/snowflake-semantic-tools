@@ -27,7 +27,8 @@ mechanical work is done by one command; the rest is renaming keys.
 | `sst drop` | `sst plan --prune`, then `sst apply --prune` |
 | `--models` / `-m` | `--select`, with `--exclude` |
 | `sst extract` | no replacement: 1.0 compiles from the dbt manifest and records what it published in its state table |
-| `sst enrich`, `sst format`, `sst migrate-meta` | not part of 1.0; author column metadata in the dbt YAML |
+| `sst enrich` | `sst enrich`, with components named by `--include` and `--force`; see [Enriching models](enrich.md#coming-from-03) |
+| `sst format`, `sst migrate-meta` | not part of 1.0; author column metadata in the dbt YAML |
 | `sst validate`, `sst compile`, `sst init`, `sst debug`, `sst list`, `sst clean` | still present, with new options |
 | `import snowflake_semantic_tools...` | no Python API: the package exposes only `__version__`, and the `sst` command is the interface |
 
@@ -107,7 +108,7 @@ takes effect when it does not:
   query, or custom instruction, or under a dbt model's `meta.sst`, is a warning
   (`SST-PRS004`), and an error under `--strict`;
 - a `sst_config.yml` key only 0.3 read is a removed key, an error that says what
-  replaced it (`SST-CFG043`): `deploy:` (now `apply:`), `enrichment`,
+  replaced it (`SST-CFG043`): `deploy:` (now `apply:`),
   `generation`, `defer`, `validation.exclude_dirs`, and `apply.fail_fast` (now
   the `--fail-fast` flag);
 - a key reserved for a later release is an error until SST reads it

@@ -15,7 +15,7 @@ from snowflake_semantic_tools.app.enrich import (
     view_tables,
 )
 from snowflake_semantic_tools.domain.model.dbt import DbtCatalog, DbtColumn, DbtModel
-from snowflake_semantic_tools.domain.model.diagnostic import D, Severity
+from snowflake_semantic_tools.domain.model.diagnostic import D, DiagnosticBag, Severity
 from snowflake_semantic_tools.domain.model.enrich import COLUMNS_PER_PROMPT, Component, resolve_options
 from snowflake_semantic_tools.domain.model.identifier import Identifier
 from snowflake_semantic_tools.domain.model.project import SemanticViewProject
@@ -296,3 +296,25 @@ def test_view_tables_describe_only_views_that_use_the_model() -> None:
 def test_an_empty_report_has_nothing_to_write() -> None:
     report = EnrichReport(files=(EditedFile("a.yml", "x", "x"),))
     assert report.changed == () and report.writable == ()
+
+
+def test_the_enrichment_blocks_own_config_problems_are_reported_and_its_errors_stop_the_run() -> None:
+    bad_limit = D(
+        "SST-CFG008",
+        subject="config:enrichment.distinct_limit",
+        key="enrichment.distinct_limit",
+        found="0",
+        expected="1..1000",
+    )
+    unknown = D("SST-CFG003", subject="config:enrichment.infer", key="enrichment.infer")
+    elsewhere = D("SST-CFG003", subject="config:generation", key="generation")
+    inputs = InMemoryProjectInputs(
+        dbt=_catalog(_model()), config_diagnostics=DiagnosticBag((bad_limit, unknown, elsewhere))
+    )
+    port = ScriptedEnrich(columns={"DB.SCH.ORDERS": ORDERS_COLUMNS})
+    stopped = EnrichProject(inputs, port, InMemoryFiles({"models/orders.yml": ORDERS_YML})).run(_request())
+    assert [item.code for item in stopped.diagnostics] == ["SST-CFG008", "SST-CFG003"]
+    assert stopped.stopped and port.calls == []
+    warned = InMemoryProjectInputs(dbt=_catalog(_model()), config_diagnostics=DiagnosticBag((unknown, elsewhere)))
+    report = EnrichProject(warned, port, InMemoryFiles({"models/orders.yml": ORDERS_YML})).run(_request())
+    assert [item.code for item in report.diagnostics] == ["SST-CFG003"] and not report.stopped

@@ -1,0 +1,89 @@
+---
+# Semantic views for the reference project. SST reads every YAML file under
+# semantic_models/semantic_views/, at any depth; jaffle_menu is in core/.
+#
+# A view names its tables and a few view-level keys. Dimensions and facts come
+# from the dbt models' columns. Metrics, relationships, filters and verified
+# queries attach to every view that holds all the tables they reference; custom
+# instructions attach only to views that name them.
+#
+# Templates are quoted so the file parses as plain YAML in any tool. SST also
+# accepts them unquoted (tests/unit/adapters/test_yaml_documents.py).
+
+semantic_views:
+  # Sets every view-level key. Equality joins only.
+  - name: jaffle_sales
+    description: |-
+      Orders, the customers who placed them, and the locations they were placed at.
+      Use this view for questions about order volume, order value, tax collected,
+      and how revenue and customer counts break down by location or by whether a
+      customer is new or returning.
+
+      Does NOT cover what was ON an order -- line items, products and supply costs
+      live in `jaffle_menu`. Does not cover menu catalogue detail at all.
+    enabled: true
+    tables:
+      - "{{ ref('orders') }}"
+      - "{{ ref('customers') }}"
+      - "{{ ref('locations') }}"
+
+    # Names an `expr:` may use as bare identifiers: large_order_count and
+    # is_large_order read large_order_cents; revenue_on_policy reads
+    # tax_inclusive.
+    variables:
+      - name: large_order_cents
+        data_type: NUMBER
+        description: |-
+          Threshold above which an order counts as large.
+        default_value: 1000
+      - name: tax_inclusive
+        data_type: BOOLEAN
+        description: |-
+          Whether revenue metrics should include collected tax.
+        default_value: false
+
+    # In seconds; renders as MAX_STALENESS = '300 seconds'.
+    max_staleness: 300
+
+    # Each `name:` is a tag() call resolved against the top-level `tags:` block
+    # in sst_config.yml (SST-REF040 if it names no tag there). Tags render
+    # inline as WITH TAG (...) in the CREATE statement.
+    tags:
+      - name: "{{ tag('cost_center') }}"
+        value: analytics
+      - name: "{{ tag('data_domain') }}"
+        value: jaffle_sales
+
+    # Per-view table settings; only synonyms here. PRIMARY KEY and UNIQUE come
+    # from each model's config.meta.sst, not from table_config.
+    table_config:
+      orders:
+        synonyms:
+          - sale
+          - transaction
+      customers:
+        synonyms:
+          - buyer
+          - guest
+
+      locations:
+        synonyms:
+          - store
+          - shop
+          - branch
+    custom_instructions:
+      - "{{ custom_instructions('jaffle_sql_conventions') }}"
+      - "{{ custom_instructions('jaffle_question_scope') }}"
+
+  # Only name, description and one table. Its golden checks that nothing
+  # optional renders beyond what attaches through `products`; keep it minimal.
+  - name: jaffle_minimal
+    description: |-
+      Menu products only. The smallest valid semantic view in this fixture.
+    tables:
+      - "{{ ref('products') }}"
+
+# Not covered here: role-playing tables (one model under two logical names) are
+# not supported in 1.0, and a model listed twice in `tables:` is rejected
+# (SST-PRS006). Multi-path joins are covered in
+# tests/unit/adapters/test_yaml_loader_sales.py (SST-VAL209, SST-VAL116).

@@ -66,6 +66,7 @@ Every command takes `--output json` for one machine-readable result on stdout.
 - [Documentation index](docs/index.md)
 - [Getting started](docs/getting-started.md) and [concepts](docs/concepts.md)
 - Guides: [semantic views](docs/guides/semantic-views.md),
+  [enriching models](docs/guides/enrich.md),
   [agents](docs/guides/agents.md), [evals](docs/guides/evals.md),
   [skills](docs/guides/skills.md),
   [plugins and profiles](docs/guides/plugins-and-profiles.md),

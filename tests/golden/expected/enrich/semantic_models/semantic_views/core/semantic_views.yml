@@ -1,0 +1,64 @@
+---
+# jaffle_menu lives in core/ to exercise folder routing: sst_config.yml sets
+# `+schema: CORE` under `semantic_views.core`, which applies to every view in
+# this directory and below. Config folds one key at a time, so `+database` and
+# `+enabled` still come from the block and the view renders as
+# SST_REF_DEV.CORE.JAFFLE_MENU. Its tables stay in SST_REF_DEV.JAFFLE.
+
+semantic_views:
+  # The join-shape view: an ASOF and a RANGE relationship, plus the monthly
+  # `supplies` snapshot behind the non-additive metrics.
+  - name: jaffle_menu
+    description: |-
+      Order line items, the products sold on them, the order they belong to, the
+      pricing period in effect at the time, and the monthly supply cost of each
+      product. Use this view for questions about product mix, units sold, line-item
+      revenue, margin against supply cost, and how pricing periods affected price.
+
+      Does NOT cover customer attributes -- there is no join to customers here, so
+      a question about new versus returning belongs in `jaffle_sales`.
+    enabled: true
+    tables:
+      - "{{ ref('order_items') }}"
+      - "{{ ref('products') }}"
+      - "{{ ref('orders') }}"
+      - "{{ ref('pricing_periods') }}"
+      - "{{ ref('supplies') }}"
+
+    # The same variables and values as jaffle_sales. large_order_count,
+    # revenue_on_policy and is_large_order read them and reference `orders`,
+    # so they attach to this view too and need the declarations here.
+    variables:
+      - name: large_order_cents
+        data_type: NUMBER
+        description: |-
+          Threshold above which an order counts as large.
+        default_value: 1000
+      - name: tax_inclusive
+        data_type: BOOLEAN
+        description: |-
+          Whether revenue metrics should include collected tax.
+        default_value: false
+
+    # table_config takes only synonyms and distinct_range. Each PRIMARY KEY
+    # comes from the model's config.meta.sst.
+    table_config:
+      products:
+        synonyms:
+          - menu item
+          - jaffle
+      pricing_periods:
+        # Renders as a DISTINCT RANGE ... EXCLUSIVE constraint after the
+        # primary key: half-open periods that do not overlap, which the
+        # orders_to_pricing_periods range join relies on.
+        distinct_range:
+          start: effective_start_at
+          end: effective_end_at
+
+      order_items:
+        synonyms:
+          - line items
+          - order lines
+    custom_instructions:
+      - "{{ custom_instructions('jaffle_sql_conventions') }}"
+      - "{{ custom_instructions('jaffle_margin_guidance') }}"

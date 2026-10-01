@@ -5,6 +5,11 @@ reference fixture, and each DDL golden was created in Snowflake as written. Rege
 one only when a change to the engine or the fixture is meant to change it, and review the
 diff like code.
 
+`expected/enrich/` is different: it holds whole YAML files, as `sst enrich --include all`
+leaves the reference project's files under the warehouse and Cortex answers that
+`unit/test_golden_enrich.py` scripts by hand. Each file sits at its path in the project and
+is compared byte for byte; none carries a header.
+
 ## File shape
 
 Each golden is a leading block of `--` comment lines carrying provenance -- what the view

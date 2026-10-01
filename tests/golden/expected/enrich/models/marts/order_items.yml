@@ -1,0 +1,168 @@
+---
+# order_items: one row per line item, finer than orders, which is why
+# order_items_to_orders is an ASOF relationship.
+#
+# Every column carries column_type and nothing else: no synonyms, is_enum or
+# sample_values. Each member therefore renders with only its name, expression
+# and COMMENT, which is what shows those clauses are emitted only when
+# authored. Keep this model sparse.
+
+version: 2
+
+models:
+  - name: order_items
+    description: |-
+      One row per line item on an order. Finer grain than orders, which is why the ASOF join exists.
+    config:
+      contract:
+        enforced: true
+      on_schema_change: fail
+      meta:
+        sst:
+          primary_key:
+            - order_item_id
+    columns:
+      - name: order_item_id
+        data_type: VARCHAR
+        description: |-
+          Surrogate key for the line item. An identifier, therefore a dimension.
+        config:
+          meta:
+            sst:
+              column_type: dimension
+              synonyms:
+                - line item id
+                - order line
+              sample_values:
+                - OI-001
+                - OI-002
+                - OI-003
+                - OI-004
+                - OI-005
+                - OI-006
+                - OI-007
+                - OI-008
+                - OI-009
+                - OI-010
+              is_enum: false
+        data_tests:
+          - unique
+          - not_null
+
+      - name: order_id
+        data_type: VARCHAR
+        description: |-
+          The order this line item belongs to.
+        config:
+          meta:
+            sst:
+              column_type: dimension
+              synonyms:
+                - order number
+              sample_values:
+                - O-001
+                - O-002
+                - O-003
+                - O-004
+                - O-005
+                - O-006
+                - O-007
+                - O-008
+                - O-009
+                - O-010
+              is_enum: false
+        data_tests:
+          - not_null
+
+      - name: product_id
+        data_type: VARCHAR
+        description: |-
+          The product sold on this line item.
+        config:
+          meta:
+            sst:
+              column_type: dimension
+              synonyms:
+                - sku
+                - product code
+              sample_values:
+                - JAF-001
+                - JAF-002
+                - BEV-001
+                - BEV-002
+              is_enum: true
+        data_tests:
+          - not_null
+
+      # The left side of the ASOF condition occurred_at >= orders.ordered_at.
+      - name: occurred_at
+        data_type: TIMESTAMP_NTZ
+        description: |-
+          When the line item was recorded.
+        config:
+          meta:
+            sst:
+              column_type: dimension
+
+              synonyms:
+                - sold at
+                - sale time
+              sample_values:
+                - '2024-07-01 12:00:00.000'
+                - '2024-07-02 12:00:00.000'
+                - '2024-07-03 12:00:00.000'
+                - '2024-07-04 12:00:00.000'
+                - '2024-07-05 12:00:00.000'
+                - '2024-07-06 12:00:00.000'
+                - '2024-07-07 12:00:00.000'
+                - '2024-07-08 12:00:00.000'
+                - '2024-07-09 12:00:00.000'
+                - '2024-07-10 12:00:00.000'
+              is_enum: false
+      - name: item_price
+        data_type: NUMBER(38,2)
+        description: |-
+          Price charged for this line item, in cents.
+        config:
+          meta:
+            sst:
+              column_type: fact
+
+              synonyms:
+                - unit price
+              sample_values:
+                - '7.50'
+                - '3.00'
+                - '12.00'
+                - '5.00'
+      - name: quantity
+        config:
+          meta:
+            sst:
+              column_type: fact
+              data_type: NUMBER
+              synonyms:
+                - units
+                - qty
+              sample_values:
+                - '1'
+                - '2'
+                - '3'
+      - name: line_status
+        config:
+          meta:
+            sst:
+              column_type: dimension
+              data_type: TEXT
+              synonyms:
+                - status
+              sample_values:
+                - fulfilled
+                - refunded
+              is_enum: false
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns:
+              - order_id
+              - order_item_id

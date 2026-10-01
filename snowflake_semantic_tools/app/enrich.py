@@ -244,17 +244,25 @@ class EnrichProject:
             ProjectError: The manifest, the semantic views, or a YAML file cannot be read.
 
         Diagnostics:
+            SST-CFG003, SST-CFG004, SST-CFG008: the `enrichment:` block has an unknown key, a value
+                of the wrong type, or one out of bounds; an error stops the run before any read.
             SST-CFG038: the run reads row data and the project forbids collecting it.
             SST-DBT031: a model selected by name has no relation.
             SST-SNO030: a model's relation is missing or not visible.
             SST-SNO031: reading a model's values or asking Cortex failed.
             SST-PRS125: a file enrich writes is also reformatted.
         """
-        settings = enrichment_config(self._inputs.config().tree)
+        config = self._inputs.config()
+        # Only the enrichment block decides what enrich does; the rest is validate's to report.
+        problems = [item for item in config.diagnostics if (item.subject or "").startswith("config:enrichment")]
+        if DiagnosticBag(problems).has_errors:
+            return EnrichReport(diagnostics=DiagnosticBag(problems), stopped=True)
+        settings = enrichment_config(config.tree)
         refusal = collection_refusal(request.options, allowed=settings.allow_sample_value_collection)
         if refusal is not None:
-            return EnrichReport(diagnostics=DiagnosticBag((refusal,)), stopped=True)
+            return EnrichReport(diagnostics=DiagnosticBag((*problems, refusal)), stopped=True)
         models, diagnostics = select_models(self._inputs.dbt_catalog(), request)
+        diagnostics[:0] = problems
         views = self._inputs.load_project().views if request.options.includes(Component.TABLE_SYNONYMS) else ()
         reports: list[ModelReport] = []
         stopped = False

@@ -17,6 +17,7 @@ a reviewed plan.
 | Guide | Covers |
 |---|---|
 | [Semantic views](guides/semantic-views.md) | views, metrics, relationships, filters, verified queries, custom instructions |
+| [Enriching models](guides/enrich.md) | `sst enrich`: column types, data types, sample values, and synonyms from the warehouse |
 | [Agents](guides/agents.md) | agent specs, tool groups, and skills an agent loads |
 | [Evals](guides/evals.md) | question sets, run configuration, judges, and baselines |
 | [Skills](guides/skills.md) | `SKILL.md` folders, bundled files, flattening, and versions |
