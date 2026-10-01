@@ -34,6 +34,7 @@ It publishes seven artifact types from one project:
 pip install snowflake-semantic-tools
 cd your-dbt-project        # profiles.yml lives here
 sst init
+sst enrich models/marts    # fill column metadata from the warehouse
 sst validate
 sst compile                # writes the manifest plan and apply read
 sst plan                   # exit 2 means there are changes to apply
@@ -49,6 +50,7 @@ semantic view end to end.
 |---------|---------|
 | `sst init` | Create a minimal project scaffold without overwriting files |
 | `sst debug` | Show the resolved profile, target, and locations; optionally test the connection |
+| `sst enrich` | Fill missing column types, sample values, and synonyms from the warehouse, editing the YAML in place |
 | `sst validate` | Check every artifact, offline or with Snowflake syntax checks |
 | `sst compile` | Render every artifact and write the SST manifest; `--emit-ddl` writes DDL files |
 | `sst plan` | Compare the project with Snowflake and save a reviewable plan |
