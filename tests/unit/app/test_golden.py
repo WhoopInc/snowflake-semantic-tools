@@ -15,11 +15,10 @@ from snowflake_semantic_tools.domain.model.profile import DesktopProfile, Profil
 from snowflake_semantic_tools.domain.model.project import SemanticViewProject
 from snowflake_semantic_tools.domain.model.skill import SkillCatalog
 from snowflake_semantic_tools.domain.ports.golden import GoldenPath
+from tests.helpers.compile_builders import CHANNELS, agent, plugin, skill, view
+from tests.helpers.eval_builders import resolved_eval
 from tests.helpers.golden_store import InMemoryGoldenStore
 from tests.helpers.project_inputs import InMemoryProjectInputs
-
-from .test_compile_project import CHANNELS, agent, plugin, skill, view
-from .test_eval_compile import resolved_eval
 
 
 def project() -> CompileResult:

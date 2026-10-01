@@ -13,8 +13,7 @@ from snowflake_semantic_tools import __version__
 from snowflake_semantic_tools.cli.group import SstGroup
 from snowflake_semantic_tools.cli.main import cli
 from snowflake_semantic_tools.domain.state import SST_VERSION
-
-from .helpers import FIXTURE, MANIFEST, REPO_ROOT
+from tests.helpers.cli_projects import FIXTURE, MANIFEST, REPO_ROOT
 
 
 def test_sst_console_script_targets_the_one_point_zero_cli() -> None:

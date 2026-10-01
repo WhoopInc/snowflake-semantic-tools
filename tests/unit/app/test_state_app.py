@@ -5,9 +5,8 @@ from types import MappingProxyType
 
 from snowflake_semantic_tools.app.state import read_state
 from snowflake_semantic_tools.domain.state import AppliedEntry, AppliedResource, ResourceStatus, State
-
-from .conftest import InMemorySnowflake, InMemoryStateStore
-from .helpers import rendered, target
+from tests.helpers.app_ports import InMemorySnowflake, InMemoryStateStore
+from tests.helpers.artifact_builders import rendered, target
 
 
 def test_state_reconciliation_uses_remote_and_warns_on_cache_drift() -> None:

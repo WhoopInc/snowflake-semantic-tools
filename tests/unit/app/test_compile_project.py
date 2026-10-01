@@ -20,40 +20,10 @@ from snowflake_semantic_tools.domain.model.diagnostic import D, DiagnosticBag, O
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
 from snowflake_semantic_tools.domain.model.profile import DesktopProfile, ProfileCatalog, SharedProfile
 from snowflake_semantic_tools.domain.model.project import SemanticViewProject
-from snowflake_semantic_tools.domain.model.semantic_view import Column, ColumnKind, SemanticView, Table
-from snowflake_semantic_tools.domain.model.skill import Plugin, Skill, SkillCatalog, SkillFile
+from snowflake_semantic_tools.domain.model.skill import Plugin, SkillCatalog
 from snowflake_semantic_tools.domain.model.tool import ToolCatalog, ToolGroup, ToolMember, ToolOwnership
+from tests.helpers.compile_builders import CHANNELS, agent, plugin, skill, view
 from tests.helpers.project_inputs import InMemoryProjectInputs, dev_target
-
-CHANNELS = {"catalog": {"+bundle_stage": "BUNDLES"}, "stage": {"+stage": "PROFILES"}}
-
-
-def skill(name: str, description: str | None = "Close the month.") -> Skill:
-    frontmatter = f"name: {name}\n" + (f"description: {description}\n" if description else "")
-    content = f"---\n{frontmatter}---\nBody.\n".encode()
-    return Skill(
-        name, f"skills/{name}", name, description, "Body.\n", (SkillFile("SKILL.md", content),), Origin("SKILL.md")
-    )
-
-
-def plugin(name: str, *members: str) -> Plugin:
-    manifest = f"plugins/{name}/plugin.yml"
-    return Plugin(name, f"plugins/{name}", manifest, "Kit.", "Data", members, Origin(manifest))
-
-
-def view(name: str) -> SemanticView:
-    return SemanticView(
-        fqn=f"DB.SCH.{name}",
-        tables=(Table(logical_name="T", fqn="DB.SCH.T", primary_key=("ID",)),),
-        columns=(Column(table="T", name="C", kind=ColumnKind.DIMENSION, expr="T.C"),),
-    )
-
-
-def agent(name: str, *skills: str, enabled: bool = True, model: str = "auto") -> AgentModel:
-    references = tuple(AgentSkill(item, "CORTEX_EXTENSION", item, "", ref="skill") for item in skills)
-    return AgentModel(
-        name, Origin("agent.yml"), ("agent.yml",), skills=references, enabled=enabled, orchestration_model=model
-    )
 
 
 def reasons(result: CompileResult) -> dict[str, str]:

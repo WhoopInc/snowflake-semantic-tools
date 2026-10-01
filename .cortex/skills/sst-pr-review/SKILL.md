@@ -57,7 +57,7 @@ Read the diff carefully. Focus on:
 - Rings: `cli` → (`app` | `adapters`) → `domain`, with `app` and `adapters` independent. `lint-imports` catches crossing imports; also look for I/O or SDK use hidden behind a helper in `domain/` or `app/`
 - The package root gains nothing beside `__init__.py`, `_version.py`, and the four rings, and `__init__.py` exports nothing but `__version__`: there is no Python API
 - Where code belongs: commands and options in `cli/`; use cases in `app/`; YAML, dbt, Snowflake, and filesystem access in `adapters/`, behind a port in `domain/ports/`; rules, rendering, reference resolution, plan diffing, and state in `domain/`
-- Tests use real in-memory ports (`tests/helpers/recorded_snowflake.py`, `tests/unit/app/conftest.py`), not mocks
+- Tests use real in-memory ports (`tests/helpers/recorded_snowflake.py`, `tests/helpers/app_ports.py`), not mocks
 - A golden change is intended and explained in the PR; otherwise it is a regression
 
 ### Step 4: Run tests

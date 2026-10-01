@@ -10,10 +10,9 @@ from snowflake_semantic_tools.app.smoke import SmokePublished
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
 from snowflake_semantic_tools.domain.model.lifecycle import OwnershipMarker
 from snowflake_semantic_tools.domain.state import AppliedEntry, Manifest, State
+from tests.helpers.app_ports import InMemorySnowflake, InMemoryStateStore
+from tests.helpers.compile_builders import compiled
 from tests.helpers.project_inputs import EMPTY_SOURCES, dev_target
-
-from .conftest import InMemorySnowflake, InMemoryStateStore
-from .test_prepare_plan import compiled
 
 STATE_TABLE = QualifiedName.parse("DB.SCH.SST_STATE")
 

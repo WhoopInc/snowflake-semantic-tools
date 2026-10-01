@@ -7,9 +7,8 @@ from pathlib import Path
 
 import pytest
 
+from tests.helpers.cli_projects import common, invoke_with_port, project_copy
 from tests.helpers.recorded_snowflake import RecordedSnowflake
-
-from .helpers import common, invoke_with_port, project_copy
 
 
 def test_debug_connection_and_human_apply_prompt(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

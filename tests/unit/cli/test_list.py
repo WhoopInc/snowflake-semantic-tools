@@ -8,8 +8,7 @@ from pathlib import Path
 from click.testing import CliRunner
 
 from snowflake_semantic_tools.cli.main import cli
-
-from .helpers import common, project_copy
+from tests.helpers.cli_projects import common, project_copy
 
 
 def test_list_without_manifest_and_failed_compile_json(tmp_path: Path) -> None:

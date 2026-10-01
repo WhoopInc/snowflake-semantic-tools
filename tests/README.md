@@ -19,9 +19,9 @@ Run with the dev dependencies installed (`poetry install`): `test_ring_boundarie
 tests/
 ├── unit/
 │   ├── domain/                  # the pure ring (coverage floor 100%)
-│   ├── app/                     # use cases over in-memory ports (conftest.py, helpers.py)
+│   ├── app/                     # use cases over in-memory ports
 │   ├── adapters/                # YAML loading, dbt manifest, connector, files, config, eval state
-│   ├── cli/                     # commands through click's CliRunner, one module per command (helpers.py)
+│   ├── cli/                     # commands through click's CliRunner, one module per command
 │   ├── test_golden_*.py         # rendered DDL, agents, tools, and evals against the goldens
 │   ├── test_ring_boundaries.py  # each import-linter contract rejects a crossing
 │   ├── test_structure.py        # size and complexity budgets, with no exceptions
@@ -38,10 +38,13 @@ tests/
 ├── golden/
 │   ├── README.md
 │   └── expected/{ddl,agent,tool,eval,skill,plugin,profile}/
-└── helpers/                     # shared test support, imported as tests.helpers.*:
-                                 #   recorded_snowflake.py, eval_state_store.py -- in-memory ports
-                                 #   manifests.py, projects.py -- small manifests and project loading
-                                 #   code_metrics.py, structure_rules.py, docstring_rules.py
+└── helpers/                     # shared test support, imported as tests.helpers.<module>:
+                                 #   app_ports.py -- in-memory Snowflake, clock, and state store for use cases
+                                 #   recorded_snowflake.py, eval_state_store.py, golden_store.py -- more ports
+                                 #   project_inputs.py, projects.py, manifests.py -- project inputs and manifests
+                                 #   artifact_builders.py, compile_builders.py, eval_builders.py -- test values
+                                 #   cli_projects.py -- the reference fixture, project copies, CLI invocations
+                                 #   code_metrics.py, structure_rules.py, docstring_rules.py -- the gates
                                  #   run_recorded_*.py -- run `sst` against a recorded Snowflake observation
 ```
 
@@ -73,7 +76,7 @@ There is no update switch. When a change to rendered output is intended, run the
 
 - Put a test beside the ring it exercises: `unit/domain`, `unit/app`, `unit/adapters`, or `unit/cli/test_<command>.py` for command behavior.
 - Domain tests stay pure; `unit/domain/conftest.py` refuses network access.
-- Application tests use real in-memory ports (`unit/app/conftest.py`, `tests/helpers/recorded_snowflake.py`), not mocks. There is no mocking library; use pytest's `monkeypatch` for the rest. Test doubles live under `tests/`, never in the package, so they do not ship.
+- Application tests use real in-memory ports (`tests/helpers/app_ports.py`, `tests/helpers/recorded_snowflake.py`), not mocks. There is no mocking library; use pytest's `monkeypatch` for the rest. Test doubles live under `tests/`, never in the package, so they do not ship.
 - CLI tests run the reference project through `CliRunner` with `--manifest`, or build a small project in `tmp_path`.
 - A bug fix starts with a test that fails without the fix.
 - Guard any path or collection a test depends on, as `test_fixture_and_goldens_are_present` does, so a wrong path cannot pass vacuously.

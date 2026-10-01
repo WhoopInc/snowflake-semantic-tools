@@ -6,69 +6,16 @@ import pytest
 
 from snowflake_semantic_tools.app.compile.evals import CompileEvals
 from snowflake_semantic_tools.app.manifest import build_manifest
-from snowflake_semantic_tools.domain.model.agent import AgentModel
-from snowflake_semantic_tools.domain.model.diagnostic import D, DiagnosticBag, Origin
+from snowflake_semantic_tools.domain.model.diagnostic import D, DiagnosticBag
 from snowflake_semantic_tools.domain.model.eval import (
-    CustomEvalMetric,
     EvalCatalog,
-    EvalConfig,
-    EvalDataset,
-    EvalDatasetConfig,
     EvalDefaults,
     EvalGroundTruth,
     EvalQuestion,
     EvalRunConfig,
-    EvalScoreRanges,
-    EvalSystemMetric,
-    ResolvedEval,
 )
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
-
-ORIGIN = Origin("agent.yml", 1, 1)
-
-
-def resolved_eval() -> ResolvedEval:
-    agent = AgentModel("sales_agent", ORIGIN, ("agent.yml",))
-    dataset = EvalDataset(
-        ORIGIN,
-        "agents/sales/evals/dataset.yml",
-        "sales_agent",
-        None,
-        (EvalQuestion(ORIGIN, "Question", EvalGroundTruth(ORIGIN, (), "Answer")),),
-    )
-    config = EvalConfig(
-        ORIGIN,
-        "agents/sales/evals/config.yml",
-        "sales_agent",
-        "committed",
-        EvalDatasetConfig(
-            "auto",
-            "EVAL_{{ agent | upper }}_{{ sha7 }}",
-            "EVAL_SRC_{{ agent | upper }}_{{ sha7 }}",
-        ),
-        (EvalSystemMetric(ORIGIN, "answer_correctness", "v3"),),
-        ("grounding",),
-        EvalRunConfig(label="ci"),
-    )
-    metric = CustomEvalMetric(
-        ORIGIN,
-        "eval_metrics/grounding.yml",
-        "grounding",
-        None,
-        "claude-sonnet-4-6",
-        EvalScoreRanges((0, 1), (2, 3), (4, 5)),
-        "Score from 0 to 5. If tied, choose the lower score.",
-    )
-    return ResolvedEval(agent, dataset, config, (metric,))
-
-
-def compile_eval(resolved: ResolvedEval | None = None):
-    value = resolved or resolved_eval()
-    catalog = EvalCatalog((value,), value.custom_metrics, diagnostics=DiagnosticBag())
-    return CompileEvals(
-        catalog,
-        agent_targets={"sales_agent": QualifiedName.parse("DB.S.SALES_AGENT")},
-    ).run_result()
+from tests.helpers.eval_builders import ORIGIN, compile_eval, resolved_eval
 
 
 def test_compile_eval_projects_composite_metadata_and_manifest_impact() -> None:

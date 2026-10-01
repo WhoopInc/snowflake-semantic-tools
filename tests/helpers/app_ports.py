@@ -1,4 +1,9 @@
-"""Real in-memory ports used by application tests."""
+"""In-memory doubles of the ports the application use cases take: Snowflake, the clock, and the state file.
+
+They are real implementations that record what a use case did, not mocks. `InMemorySnowflake`
+answers from the attributes a test sets (`rows`, `markers`, `remote_state`, the `*_error` hooks)
+and records every query, script and upload.
+"""
 
 from __future__ import annotations
 

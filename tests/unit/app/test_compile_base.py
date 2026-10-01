@@ -9,8 +9,7 @@ import pytest
 from snowflake_semantic_tools.app.compile import CompileResult, StandaloneArtifact, compile_each, has_error
 from snowflake_semantic_tools.domain.model.diagnostic import D, Diagnostic, DiagnosticBag, Origin, Severity
 from snowflake_semantic_tools.domain.model.lifecycle import RenderedArtifact
-
-from .helpers import rendered
+from tests.helpers.artifact_builders import rendered
 
 
 @dataclass(frozen=True, slots=True)

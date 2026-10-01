@@ -29,10 +29,7 @@ from snowflake_semantic_tools.domain.model.identifier import Identifier, TargetI
 from snowflake_semantic_tools.domain.model.lifecycle import QueryResult
 from snowflake_semantic_tools.domain.ports.snowflake import StagedFileMetadata
 from snowflake_semantic_tools.domain.state import AppliedEntry, State
-from tests.helpers.eval_state_store import InMemoryEvalStateStore
-from tests.helpers.recorded_snowflake import RecordedSnowflake
-
-from .helpers import (
+from tests.helpers.cli_projects import (
     DBT_MANIFEST,
     FIXTURE,
     MANIFEST,
@@ -43,6 +40,8 @@ from .helpers import (
     invoke_with_port,
     project_copy,
 )
+from tests.helpers.eval_state_store import InMemoryEvalStateStore
+from tests.helpers.recorded_snowflake import RecordedSnowflake
 
 
 def test_golden_suite_compares_every_compiled_view() -> None:

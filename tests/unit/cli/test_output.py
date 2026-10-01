@@ -10,9 +10,8 @@ from click.testing import CliRunner
 
 from snowflake_semantic_tools import __version__
 from snowflake_semantic_tools.cli.main import cli
+from tests.helpers.cli_projects import FIXTURE, MANIFEST, common, invoke_with_port, project_copy
 from tests.helpers.recorded_snowflake import RecordedSnowflake
-
-from .helpers import FIXTURE, MANIFEST, common, invoke_with_port, project_copy
 
 
 def test_validate_json_emits_one_v2_envelope() -> None:

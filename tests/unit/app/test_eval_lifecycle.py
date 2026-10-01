@@ -33,10 +33,9 @@ from snowflake_semantic_tools.domain.state import (
     ResourceStatus,
     State,
 )
-
-from .conftest import FixedClock, InMemorySnowflake, InMemoryStateStore
-from .helpers import changeset, target
-from .test_eval_compile import compile_eval, resolved_eval
+from tests.helpers.app_ports import FixedClock, InMemorySnowflake, InMemoryStateStore
+from tests.helpers.artifact_builders import changeset, target
+from tests.helpers.eval_builders import compile_eval, resolved_eval
 
 ORIGIN = Origin("dataset.yml", 1, 1)
 

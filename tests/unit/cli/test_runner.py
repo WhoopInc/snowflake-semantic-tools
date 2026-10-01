@@ -17,9 +17,8 @@ from snowflake_semantic_tools.cli.options import output_option
 from snowflake_semantic_tools.cli.runner import CommandResult, command_body
 from snowflake_semantic_tools.domain.model.diagnostic import D, DiagnosticBag
 from snowflake_semantic_tools.domain.ports.snowflake import SnowflakePortError
+from tests.helpers.cli_projects import DBT_MANIFEST, FIXTURE, REPO_ROOT, common, invoke_with_port, project_copy
 from tests.helpers.recorded_snowflake import RecordedSnowflake
-
-from .helpers import DBT_MANIFEST, FIXTURE, REPO_ROOT, common, invoke_with_port, project_copy
 
 # INT902 means SST broke an invariant; every user-caused condition has its own code.
 INT902_ALLOWLIST = {

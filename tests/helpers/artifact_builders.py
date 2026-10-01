@@ -1,4 +1,4 @@
-"""Shared immutable application test values."""
+"""Rendered artifacts, live observations, changes, states and manifests the plan and apply tests build on."""
 
 from __future__ import annotations
 

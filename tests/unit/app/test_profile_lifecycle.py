@@ -33,10 +33,9 @@ from snowflake_semantic_tools.domain.state import (
     AppliedEntry,
     State,
 )
+from tests.helpers.app_ports import FixedClock, InMemoryStateStore
+from tests.helpers.artifact_builders import target
 from tests.helpers.recorded_snowflake import PROFILE_REGISTRY_SHAPE, RecordedSnowflake
-
-from .conftest import FixedClock, InMemoryStateStore
-from .helpers import target
 
 STAGE = QualifiedName.parse("DB.S.PROFILES")
 REGISTRY = QualifiedName.parse("DB.S.PROFILE_REGISTRY")

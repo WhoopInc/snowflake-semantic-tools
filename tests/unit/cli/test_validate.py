@@ -7,8 +7,7 @@ from pathlib import Path
 from click.testing import CliRunner
 
 from snowflake_semantic_tools.cli.main import cli
-
-from .helpers import FIXTURE, MANIFEST
+from tests.helpers.cli_projects import FIXTURE, MANIFEST
 
 
 def test_validate_accepts_the_recorded_manifest_offline() -> None:

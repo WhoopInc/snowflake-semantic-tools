@@ -19,9 +19,7 @@ from snowflake_semantic_tools.domain.model.identifier import QualifiedName
 from snowflake_semantic_tools.domain.model.lifecycle import QueryResult, ShowRow
 from snowflake_semantic_tools.domain.ports.snowflake import SnowflakePortError, StagedFileMetadata
 from snowflake_semantic_tools.domain.state import AppliedEntry
-from tests.helpers.recorded_snowflake import PROFILE_REGISTRY_SHAPE, RecordedSnowflake
-
-from .helpers import (
+from tests.helpers.cli_projects import (
     FIXTURE,
     MANIFEST,
     common,
@@ -31,6 +29,7 @@ from .helpers import (
     project_copy,
     skill_project,
 )
+from tests.helpers.recorded_snowflake import PROFILE_REGISTRY_SHAPE, RecordedSnowflake
 
 
 def test_plan_requires_live_snowflake_observation() -> None:

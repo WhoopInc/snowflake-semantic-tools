@@ -13,9 +13,8 @@ from snowflake_semantic_tools.domain.model.registry import (
     Registry,
 )
 from snowflake_semantic_tools.domain.ports.snowflake import SnowflakePortError
-
-from .conftest import InMemorySnowflake
-from .helpers import change, manifest, rendered, state, target
+from tests.helpers.app_ports import InMemorySnowflake
+from tests.helpers.artifact_builders import change, manifest, rendered, state, target
 
 
 def test_observe_collects_markers_grants_and_errors() -> None:

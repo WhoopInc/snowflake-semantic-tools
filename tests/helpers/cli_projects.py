@@ -11,7 +11,7 @@ from click.testing import CliRunner, Result
 from snowflake_semantic_tools.cli.main import cli
 from tests.helpers.recorded_snowflake import RecordedSnowflake
 
-REPO_ROOT = Path(__file__).resolve().parents[3]
+REPO_ROOT = Path(__file__).resolve().parents[2]
 FIXTURE = REPO_ROOT / "tests" / "fixtures" / "reference_project"
 DBT_MANIFEST = REPO_ROOT / "tests" / "fixtures" / "reference_project_manifest.json"
 # The command-level checks call the same recorded dbt manifest by its shorter name.

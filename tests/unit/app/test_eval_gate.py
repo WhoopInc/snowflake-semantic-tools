@@ -8,9 +8,8 @@ from snowflake_semantic_tools.app.evals.gate import capture_baseline, evaluate_g
 from snowflake_semantic_tools.app.evals.run import EvalRunResult
 from snowflake_semantic_tools.domain.model.diagnostic import DiagnosticBag
 from snowflake_semantic_tools.domain.model.eval import EvalMetricResult, EvalResultRow, EvalRunAttempt, ThresholdRange
+from tests.helpers.eval_builders import compile_eval
 from tests.helpers.eval_state_store import InMemoryEvalStateStore
-
-from .test_eval_compile import compile_eval
 
 
 def attempt(name: str, values: tuple[tuple[str, str, bool], ...]) -> EvalRunAttempt:

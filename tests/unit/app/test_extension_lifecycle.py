@@ -24,10 +24,9 @@ from snowflake_semantic_tools.domain.model.lifecycle import Action, ApplyOptions
 from snowflake_semantic_tools.domain.model.skill import Plugin, Skill, SkillCatalog, SkillFile
 from snowflake_semantic_tools.domain.ports.snowflake import ExecResult, ExtensionVersion, SnowflakePortError
 from snowflake_semantic_tools.domain.state import FAILED_AFTER_WRITE, STATE_SCHEMA_VERSION, AppliedEntry, State
+from tests.helpers.app_ports import FixedClock, InMemoryStateStore
+from tests.helpers.artifact_builders import target
 from tests.helpers.recorded_snowflake import RecordedSnowflake
-
-from .conftest import FixedClock, InMemoryStateStore
-from .helpers import target
 
 STAGE = QualifiedName.parse("DB.S.SKILL_BUNDLES")
 CHANNEL = CatalogChannel("DB", "S", STAGE)

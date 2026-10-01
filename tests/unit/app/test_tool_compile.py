@@ -7,8 +7,7 @@ from snowflake_semantic_tools.app.compile import CompileResult
 from snowflake_semantic_tools.app.compile.tools import CompileTools
 from snowflake_semantic_tools.domain.model.diagnostic import D, Diagnostic, DiagnosticBag, Origin
 from snowflake_semantic_tools.domain.model.tool import ToolCatalog, ToolGroup, ToolMember, ToolOwnership, ToolParameter
-
-from .helpers import rendered
+from tests.helpers.artifact_builders import rendered
 
 
 def test_tool_compiler_applies_config_defaults_and_emits_only_managed_members() -> None:
