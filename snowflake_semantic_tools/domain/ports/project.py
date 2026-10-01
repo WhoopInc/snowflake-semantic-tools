@@ -151,8 +151,11 @@ class ProjectInputs(SemanticViewSource, Protocol):
     def dbt_catalog(self) -> DbtCatalog:
         """Return the models of the dbt manifest the compile reads.
 
+        Without a manifest path, `dbt parse` runs first, at most once for everything these
+        inputs read.
+
         Raises:
-            ProjectError: the manifest is absent or unreadable.
+            ProjectError: dbt fails, or the manifest is absent or unreadable.
         """
         ...
 

@@ -72,11 +72,43 @@ class YamlProjectSource:
         self._target_name = target_name
         self._manifest_path = manifest_path
         self._invoke_dbt = invoke_dbt
+        self._parsed = False
 
     @property
     def project_dir(self) -> Path:
         """Return the project directory this source reads, as it was given, unresolved."""
         return self._project_dir
+
+    def manifest_file(self) -> Path:
+        """Return the manifest this source reads: the one given, else dbt's under its `target-path`.
+
+        Raises:
+            ProjectError: `dbt_project.yml` cannot be read.
+        """
+        return self._manifest_path or target_path(self._project_dir, read_yaml_mapping)
+
+    def _parsed_manifest(self) -> Path:
+        """Return the manifest to read, running `dbt parse` first the first time dbt may be run.
+
+        The manifest path is resolved before dbt runs, and dbt runs at most once per source, so a
+        command that reads both the models and the tools parses the project once.
+
+        Raises:
+            ProjectError: `dbt_project.yml` cannot be read, or dbt fails.
+        """
+        path = self.manifest_file()
+        if self._manifest_path is None and self._invoke_dbt and not self._parsed:
+            run_dbt_parse(self._project_dir, self._target_name)
+            self._parsed = True
+        return path
+
+    def dbt_catalog(self) -> DbtCatalog:
+        """Return the dbt manifest's models, running `dbt parse` first as `load_project` does.
+
+        Raises:
+            ProjectError: dbt fails, or the manifest is absent, unreadable, or of another schema.
+        """
+        return load_manifest_catalog(self._parsed_manifest())
 
     def load_project(self) -> SemanticViewProject:
         """Load the semantic views, with every diagnostic the semantic load collected.
@@ -96,8 +128,8 @@ class YamlProjectSource:
             self._project_dir,
             read_yaml=read_yaml_mapping,
             target_name=self._target_name,
-            manifest_path=self._manifest_path,
-            invoke_dbt=self._invoke_dbt,
+            manifest_path=self._parsed_manifest(),
+            invoke_dbt=False,
         )
         return load_semantic_views_result(self._project_dir, inputs, target=target, models=models)
 
@@ -112,10 +144,7 @@ class YamlProjectSource:
                 `profiles.yml` cannot be read.
             ValueError: The profile cannot be resolved, or `profiles.yml` does not declare the target.
         """
-        if self._invoke_dbt and self._manifest_path is None:
-            run_dbt_parse(self._project_dir, self._target_name)
-        manifest_path = self._manifest_path or target_path(self._project_dir, read_yaml_mapping)
-        dbt = load_manifest_catalog(manifest_path)
+        dbt = load_manifest_catalog(self._parsed_manifest())
         config = read_yaml_mapping(self._project_dir / "sst_config.yml")
         project = config.get("project")
         tools_dir = str(project.get("tools_dir") or "tools") if isinstance(project, dict) else "tools"
@@ -196,7 +225,6 @@ class YamlProjectInputs(ProjectInputs):
     ) -> None:
         self._project_dir = project_dir
         self._target_name = target_name
-        self._manifest_path = manifest_path
         self._source = YamlProjectSource(
             project_dir,
             target_name=target_name,
@@ -230,7 +258,7 @@ class YamlProjectInputs(ProjectInputs):
         )
 
     def dbt_catalog(self) -> DbtCatalog:
-        return load_manifest_catalog(self._dbt_manifest())
+        return self._source.dbt_catalog()
 
     def tool_catalog(self) -> ToolCatalog:
         return self._source.load_tools()
@@ -273,17 +301,14 @@ class YamlProjectInputs(ProjectInputs):
             file_checksums=_file_checksums(self._project_dir),
         )
 
-    def _dbt_manifest(self) -> Path:
-        return self._manifest_path or self._project_dir / "target" / "manifest.json"
-
     def _dbt_sources(self) -> tuple[str, DbtCatalog, str]:
         """Read the dbt project's name and manifest; empty values for a project without dbt.
 
         The manifest path is recorded relative to the project, or as given when it lies outside.
         """
-        dbt_path = self._dbt_manifest()
         if not (self._project_dir / "dbt_project.yml").is_file():
             return "", DbtCatalog(schema_version="", dbt_version=None, project_name=None, models=()), ""
+        dbt_path = self._source.manifest_file()
         name = dbt_project_name(self._project_dir)
         catalog = load_manifest_catalog(dbt_path)
         try:

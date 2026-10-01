@@ -298,3 +298,89 @@ def test_models_keep_unique_id_order_and_a_malformed_model_reports_its_first_pro
     broken["config"] = {"meta": {"sst": {"primary_key": ["x"]}}}
     with pytest.raises(ProjectError, match="relation_name is required"):
         catalog_from_document(document)
+
+
+def _enrich_document() -> dict[str, object]:
+    document = manifest_document()
+    nodes = document["nodes"]
+    assert isinstance(nodes, dict)
+    product = nodes["model.fixture.products"]
+    assert isinstance(product, dict)
+    product["package_name"] = "fixture"
+    product["columns"] = {
+        "product_id": {"name": "product_id", "data_type": "VARCHAR", "meta": {}},
+        "email": {
+            "name": "email",
+            "meta": {"pii_tags": {"privacy_category": "direct_identifier"}},
+            "config": {"meta": {"sst": {"sample_values": [], "synonyms": []}}},
+        },
+        "notes": {"name": "notes", "config": {"meta": {"pii_tags": {}}}},
+    }
+    nodes["model.fixture.helper"] = {
+        "resource_type": "model",
+        "name": "helper",
+        "config": {"materialized": "ephemeral"},
+    }
+    nodes["test.fixture.unique_products_product_id"] = {
+        "resource_type": "test",
+        "attached_node": "model.fixture.products",
+        "column_name": "Product_Id",
+        "test_metadata": {"name": "unique", "kwargs": {"column_name": "product_id"}},
+    }
+    nodes["test.fixture.combo"] = {
+        "resource_type": "test",
+        "attached_node": "model.fixture.products",
+        "column_name": None,
+        "test_metadata": {
+            "name": "unique_combination_of_columns",
+            "namespace": "dbt_utils",
+            "kwargs": {"combination_of_columns": ["region", " sku "], "model": "{{ ref('products') }}"},
+        },
+    }
+    nodes["test.fixture.not_null"] = {
+        "resource_type": "test",
+        "attached_node": "model.fixture.products",
+        "column_name": "price",
+        "test_metadata": {"name": "not_null", "kwargs": {"column_name": "price"}},
+    }
+    nodes["test.fixture.detached"] = {"resource_type": "test", "test_metadata": {"name": "unique"}}
+    nodes["test.fixture.bad_kwargs"] = {
+        "resource_type": "test",
+        "attached_node": "model.fixture.products",
+        "test_metadata": {"name": "relationships", "kwargs": "not a mapping"},
+    }
+    return document
+
+
+def test_enrich_inputs_are_read_from_columns_tests_and_the_model_node() -> None:
+    catalog = catalog_from_document(_enrich_document())
+    model = catalog.model("products")
+    assert model is not None
+    assert model.key_test_columns == {"product_id", "region", "sku"}
+    assert model.is_key_column("SKU") and not model.is_key_column("price")
+    assert (model.package_name, model.raw_relation_name, model.patch_file) == (
+        "fixture",
+        "db.sch.product_catalog",
+        "models/products.yml",
+    )
+    product_id, email, notes = model.columns
+    assert (product_id.native_data_type, product_id.declared_keys, product_id.pii_tagged) == ("VARCHAR", set(), False)
+    assert email.pii_tagged and email.declared_keys == {"sample_values", "synonyms"}
+    assert email.is_enum is None
+    # An empty pii_tags block names no category, so the column is not gated.
+    assert not notes.pii_tagged
+    assert catalog.relationless_models == ("helper",)
+
+
+def test_a_patch_path_without_a_package_prefix_is_kept_as_written() -> None:
+    document = manifest_document()
+    nodes = document["nodes"]
+    assert isinstance(nodes, dict)
+    product = nodes["model.fixture.products"]
+    assert isinstance(product, dict)
+    product["patch_path"] = "models/products.yml"
+    model = catalog_from_document(document).model("products")
+    assert model is not None and model.patch_file == "models/products.yml"
+    del product["patch_path"]
+    model = catalog_from_document(document).model("products")
+    assert model is not None and model.patch_file is None

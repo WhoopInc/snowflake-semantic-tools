@@ -18,6 +18,10 @@ SUPPORTED_SCHEMA = "https://schemas.getdbt.com/dbt/manifest/v12.json"
 MODEL_META_KEYS = frozenset(("primary_key", "unique_keys", "database", "schema"))
 COLUMN_META_KEYS = frozenset(("column_type", "data_type", "synonyms", "sample_values", "is_enum", "exclude"))
 
+# Tests whose columns hold keys. A numeric column one of them names is an identifier, so
+# enrich derives it as a dimension, not as a fact to sum.
+KEY_TESTS = frozenset(("unique", "unique_combination_of_columns", "relationships"))
+
 
 def _mapping(value: object, *, path: str) -> Mapping[str, Any]:
     if not isinstance(value, dict):
@@ -68,18 +72,28 @@ def _unique_keys(value: object, *, path: str) -> tuple[tuple[tuple[str, ...], ..
     return tuple(_strings(key, path=f"{path}[{index}]") for index, key in enumerate(value)), False
 
 
+def _metas(node: Mapping[str, Any]) -> tuple[object, object]:
+    """Return a node's bare `meta` and its `config.meta`, either None when absent."""
+    config = node.get("config")
+    return node.get("meta"), config.get("meta") if isinstance(config, dict) else None
+
+
 def _sst_meta(value: object, *, path: str) -> Mapping[str, Any]:
     node = _mapping(value, path=path)
-    config = node.get("config")
     # dbt can write `meta` both bare and under `config`, one of them without `sst` (often
     # `meta: {}`), so a place without it must not hide the other. The bare `sst` wins over config's.
-    for meta in (node.get("meta"), config.get("meta") if isinstance(config, dict) else None):
+    for meta in _metas(node):
         if meta is None:
             continue
         sst = _mapping(meta, path=f"{path}.meta").get("sst")
         if sst is not None:
             return _mapping(sst, path=f"{path}.meta.sst")
     return {}
+
+
+def _pii_tagged(node: Mapping[str, Any]) -> bool:
+    """Report whether a column carries `pii_tags` beside `sst`, bare or under config, of any category."""
+    return any(isinstance(meta, dict) and bool(meta.get("pii_tags")) for meta in _metas(node))
 
 
 def _column(name: str, value: object, *, node_path: str) -> DbtColumn:
@@ -111,6 +125,9 @@ def _column(name: str, value: object, *, node_path: str) -> DbtColumn:
         excluded=bool(meta.get("exclude", False)),
         unknown_meta_keys=tuple(sorted(str(key) for key in meta if key not in COLUMN_META_KEYS)),
         declared_data_type=declared_type if disagrees else None,
+        declared_keys=frozenset(str(key) for key in meta),
+        native_data_type=native_type,
+        pii_tagged=_pii_tagged(node),
     )
 
 
@@ -130,11 +147,47 @@ def _relation_name(node: Mapping[str, Any], *, path: str) -> str:
     return relation.upper()
 
 
-def _model(unique_id: object, raw_node: object) -> DbtModel | None:
-    """Project one manifest node, or return None for a node SST does not read.
+def _patch_file(patch_path: str | None) -> str | None:
+    """Return `patch_path` relative to the project root: dbt writes it as `<package>://<path>`."""
+    if patch_path is None:
+        return None
+    _, separator, path = patch_path.partition("://")
+    return path if separator else patch_path
+
+
+def _test_columns(node: Mapping[str, Any], metadata: Mapping[str, Any]) -> tuple[str, ...]:
+    """Return the columns one key test names, casefolded: its column, or its combination of columns."""
+    kwargs = metadata.get("kwargs")
+    arguments = kwargs if isinstance(kwargs, dict) else {}
+    combination = arguments.get("combination_of_columns")
+    named = [node.get("column_name"), arguments.get("column_name")]
+    named.extend(combination if isinstance(combination, list) else ())
+    return tuple(column.strip().casefold() for column in named if isinstance(column, str) and column.strip())
+
+
+def _key_test_columns(nodes: Mapping[str, Any]) -> dict[str, frozenset[str]]:
+    """Return the casefolded columns key tests name, by the unique id of the model each tests.
+
+    A test that is attached to no model, or is not one of `KEY_TESTS`, is ignored; a node that is
+    not a mapping is left for the model pass to report.
+    """
+    found: dict[str, set[str]] = {}
+    for node in nodes.values():
+        if not isinstance(node, dict) or node.get("resource_type") != "test":
+            continue
+        metadata = node.get("test_metadata")
+        model = node.get("attached_node")
+        if not isinstance(metadata, dict) or metadata.get("name") not in KEY_TESTS or not isinstance(model, str):
+            continue
+        found.setdefault(model, set()).update(_test_columns(node, metadata))
+    return {model: frozenset(columns) for model, columns in found.items()}
+
+
+def _model(unique_id: object, raw_node: object, key_columns: frozenset[str]) -> DbtModel | str | None:
+    """Project one manifest node; the name of a model with nothing to read; None for any other node.
 
     Every node must be a mapping; only a model is read, and a model with neither a relation
-    nor SST metadata is left out.
+    nor SST metadata is left out, its name returned so the catalog can say it has no relation.
 
     Raises:
         ProjectError: The node is not a mapping, or the model has no name or a malformed part.
@@ -150,12 +203,18 @@ def _model(unique_id: object, raw_node: object) -> DbtModel | None:
     if not meta and not str(node.get("relation_name") or "").strip():
         # An ephemeral model has no relation to query and, without SST
         # metadata, nothing to validate; a view that names it gets SST-MEM003.
-        return None
-    return _build_model(unique_id, name, node, meta, path=path)
+        return name
+    return _build_model(unique_id, name, node, meta, path=path, key_columns=key_columns)
 
 
 def _build_model(
-    unique_id: object, name: str, node: Mapping[str, Any], meta: Mapping[str, Any], *, path: str
+    unique_id: object,
+    name: str,
+    node: Mapping[str, Any],
+    meta: Mapping[str, Any],
+    *,
+    path: str,
+    key_columns: frozenset[str] = frozenset(),
 ) -> DbtModel:
     """Read a model's columns, keys and relation, in that order, into its domain value.
 
@@ -186,6 +245,10 @@ def _build_model(
             if legacy
         ),
         unknown_meta_keys=tuple(sorted(str(key) for key in meta if key not in MODEL_META_KEYS)),
+        key_test_columns=key_columns,
+        package_name=_text(node.get("package_name")),
+        raw_relation_name=_text(node.get("relation_name")),
+        patch_file=_patch_file(_text(node.get("patch_path"))),
     )
 
 
@@ -209,17 +272,22 @@ def catalog_from_document(document: object) -> DbtCatalog:
         raise ProjectError(diagnostic.message, diagnostics=(diagnostic,))
 
     nodes = _mapping(root.get("nodes"), path="nodes")
+    key_tests = _key_test_columns(nodes)
     models: list[DbtModel] = []
+    relationless: list[str] = []
     for unique_id, raw_node in sorted(nodes.items()):
-        model = _model(unique_id, raw_node)
-        if model is not None:
+        model = _model(unique_id, raw_node, key_tests.get(str(unique_id), frozenset()))
+        if isinstance(model, DbtModel):
             models.append(model)
+        elif model is not None:
+            relationless.append(model)
 
     return DbtCatalog(
         schema_version=schema_version,
         dbt_version=_text(metadata.get("dbt_version")),
         project_name=_text(metadata.get("project_name")),
         models=tuple(models),
+        relationless_models=tuple(relationless),
     )
 
 
