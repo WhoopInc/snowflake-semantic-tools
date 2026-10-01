@@ -1,5 +1,7 @@
-"""Static code metrics shared by the structure and docstring gates, using only `ast`.
+"""Static code metrics shared by the structure, docstring and import gates, using only `ast`.
 
+`package_modules` and `python_modules` parse the code each gate reads: the package alone, or
+the package and the test suite (not its fixtures or goldens, which are data).
 `definitions` walks a module and yields every class and function with its dotted
 qualified name. `complexity` is a McCabe-style count: 1, plus one per `if`/`elif`,
 conditional expression, loop, `except` handler, `match` case and comprehension
@@ -16,6 +18,8 @@ from typing import Iterator
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 PACKAGE = REPO_ROOT / "snowflake_semantic_tools"
+TESTS = REPO_ROOT / "tests"
+TEST_DATA = (TESTS / "fixtures", TESTS / "golden")
 
 FunctionNode = ast.FunctionDef | ast.AsyncFunctionDef
 DefinitionNode = FunctionNode | ast.ClassDef
@@ -43,8 +47,18 @@ class Definition:
 
 def package_modules() -> Iterator[tuple[str, ast.Module, str]]:
     """Every package module as (repository-relative path, parsed tree, source text)."""
-    for path in sorted(PACKAGE.rglob("*.py")):
-        if "__pycache__" in path.parts:
+    yield from _modules(PACKAGE)
+
+
+def python_modules() -> Iterator[tuple[str, ast.Module, str]]:
+    """Every module in the package and the test suite, the package first, as `package_modules` yields them."""
+    yield from _modules(PACKAGE)
+    yield from _modules(TESTS)
+
+
+def _modules(root: Path) -> Iterator[tuple[str, ast.Module, str]]:
+    for path in sorted(root.rglob("*.py")):
+        if "__pycache__" in path.parts or any(path.is_relative_to(data) for data in TEST_DATA):
             continue
         text = path.read_text(encoding="utf-8")
         yield path.relative_to(REPO_ROOT).as_posix(), ast.parse(text), text

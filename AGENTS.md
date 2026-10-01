@@ -53,6 +53,7 @@ poetry run sst docs --check
 
 - **Package manager**: Poetry (NOT uv). Python 3.11–3.13.
 - **Style**: black and isort (black profile), line length 120; mypy requires every function to be annotated.
+- **Imports**: absolute, by full dotted path (`from snowflake_semantic_tools.domain.model.dbt import DbtCatalog`, never `from .dbt import ...`); tests share code only through `tests.helpers`. `tests/unit/test_import_style.py` enforces both.
 - **Docstrings and size**: follow "Docstrings and comments" in `CONTRIBUTING.md`; `tests/unit/test_docstrings.py` and `tests/unit/test_structure.py` enforce it with no exceptions.
 - **Diagnostics**: every problem is registered in `snowflake_semantic_tools/domain/model/diagnostic/specs/` (one module per code family) with a stable `SST-XXXnnn` code and an actionable suggestion (what is wrong AND how to fix it). Codes are never reused.
 - **Config keys** are declared in `snowflake_semantic_tools/domain/model/config_schema/keys.py`.

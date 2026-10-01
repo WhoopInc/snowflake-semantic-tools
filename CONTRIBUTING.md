@@ -150,7 +150,7 @@ Every problem SST reports is a diagnostic registered in `snowflake_semantic_tool
 ## Code Style
 
 - **Formatting**: Black (line length 120)
-- **Imports**: isort with black profile
+- **Imports**: absolute, naming each module by its full dotted path: `from snowflake_semantic_tools.domain.model.dbt import DbtCatalog`, never `from ..model.dbt import DbtCatalog`. A search for a module's name then finds every module that imports it. Tests share code only through `tests/helpers/`, imported as `tests.helpers.<module>`, never from a conftest or another test module. isort (black profile) sorts imports, and `tests/unit/test_import_style.py` enforces both rules.
 - **Type hints**: mypy runs with `disallow_untyped_defs`, so every function is annotated
 - **Error messages**: a diagnostic's suggestion is actionable — it says what is wrong and how to fix it
 - **Tests**: real in-memory ports and pytest's `monkeypatch`, no mocking library

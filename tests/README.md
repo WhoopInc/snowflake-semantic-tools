@@ -26,6 +26,7 @@ tests/
 │   ├── test_ring_boundaries.py  # each import-linter contract rejects a crossing
 │   ├── test_structure.py        # size and complexity budgets, with no exceptions
 │   ├── test_docstrings.py       # docstring rules, with no exceptions
+│   ├── test_import_style.py     # absolute imports; tests share code only through tests.helpers
 │   ├── test_dialect_compat.py   # the 0.3 dialect corpus and `sst migrate refs`
 │   ├── test_public_docs.py      # links, examples, and planning identifiers in the docs
 │   ├── test_release_hygiene.py  # nothing environment-specific in committed files
@@ -44,7 +45,7 @@ tests/
                                  #   project_inputs.py, projects.py, manifests.py -- project inputs and manifests
                                  #   artifact_builders.py, compile_builders.py, eval_builders.py -- test values
                                  #   cli_projects.py -- the reference fixture, project copies, CLI invocations
-                                 #   code_metrics.py, structure_rules.py, docstring_rules.py -- the gates
+                                 #   code_metrics.py, structure_rules.py, docstring_rules.py, import_rules.py -- the gates
                                  #   run_recorded_*.py -- run `sst` against a recorded Snowflake observation
 ```
 
@@ -76,12 +77,13 @@ There is no update switch. When a change to rendered output is intended, run the
 
 - Put a test beside the ring it exercises: `unit/domain`, `unit/app`, `unit/adapters`, or `unit/cli/test_<command>.py` for command behavior.
 - Domain tests stay pure; `unit/domain/conftest.py` refuses network access.
+- Code that more than one test module uses goes in `tests/helpers/`, imported as `tests.helpers.<module>`. Never import a conftest or another test module: pytest has already imported it under a name of its own, so the import loads a second copy.
 - Application tests use real in-memory ports (`tests/helpers/app_ports.py`, `tests/helpers/recorded_snowflake.py`), not mocks. There is no mocking library; use pytest's `monkeypatch` for the rest. Test doubles live under `tests/`, never in the package, so they do not ship.
 - CLI tests run the reference project through `CliRunner` with `--manifest`, or build a small project in `tmp_path`.
 - A bug fix starts with a test that fails without the fix.
 - Guard any path or collection a test depends on, as `test_fixture_and_goldens_are_present` does, so a wrong path cannot pass vacuously.
 - A new diagnostic, config key, or CLI option also changes a generated page: run `poetry run sst docs`.
 
-## Structure and docstring gates
+## Structure, docstring, and import gates
 
-`test_structure.py` and `test_docstrings.py` hold all package code to the size budgets and docstring rules in [CONTRIBUTING.md](../CONTRIBUTING.md#docstrings-and-comments). The package meets them today and the gates allow no exception, so a new module or function that breaks one fails the suite with its location and measure.
+`test_structure.py` and `test_docstrings.py` hold all package code to the size budgets and docstring rules in [CONTRIBUTING.md](../CONTRIBUTING.md#docstrings-and-comments), and `test_import_style.py` holds the package and the tests to the import rules under Code Style there. The package meets them today and the gates allow no exception, so a new module or function that breaks one fails the suite with its location and measure.

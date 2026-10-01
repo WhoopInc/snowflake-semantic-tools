@@ -72,6 +72,7 @@ What the usual failures mean:
 - **`lint-imports` or `test_ring_boundaries.py`**: an import crosses a ring; the output names the broken contract.
 - **`sst docs --check`**: a diagnostic, config key, CLI option, or artifact type changed; `poetry run sst docs` regenerates the pages.
 - **black / isort**: `poetry run black snowflake_semantic_tools/ tests/` and `poetry run isort snowflake_semantic_tools/ tests/` fix them.
+- **`test_import_style.py`**: a relative import, or a test importing a conftest or another test module; the message names the file and line. Write the full dotted path, and move shared test code into `tests/helpers/`.
 - **`test_release_hygiene.py` / `test_public_docs.py`**: a committed file carries an environment-specific name, a home-directory path, a planning identifier, or a broken docs link; the message names the file and line.
 
 ## Test Structure
@@ -86,6 +87,7 @@ tests/
   contract/           # adapters against their ports
   fixtures/           # reference_project (+ its dbt manifest), v1_dialect
   golden/expected/    # ddl, agent, tool, eval, skill, plugin, profile
+  helpers/            # shared test support, imported as tests.helpers.<module>
 ```
 
 `tests/README.md` has the details.
