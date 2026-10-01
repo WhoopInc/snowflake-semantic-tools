@@ -73,8 +73,9 @@ class SemanticMembers:
     """The parsed members the checks read, by type, and the cycles among the metrics.
 
     Attributes:
-        cycles: Each cycle of `metric()` references once, as casefolded metric names of
-            which the last repeats the first.
+        cycles: The cycles of `metric()` references `_metric_cycles` lists, each once, as
+            casefolded metric names of which the last repeats the first; every metric on a
+            cycle is in at least one.
         instruction_names: Casefolded names of every custom instruction.
         relationship_records: Each relationship with the origin it was read from.
     """

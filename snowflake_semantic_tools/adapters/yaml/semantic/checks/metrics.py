@@ -34,8 +34,9 @@ def _metric_cycles(metrics: tuple[MetricDef, ...]) -> tuple[tuple[str, ...], ...
 
     A depth-first walk starts from each metric in name order; a reference to an unknown metric
     ends there. Each cycle is rotated to start at its smallest name and listed once, in the order
-    the walk finds them. The walk never re-enters a metric it has finished, so a further cycle
-    through one is missed: a metric can sit on a cycle and appear in none of those listed.
+    the walk finds them. The walk never re-enters a metric it has finished, so it can miss a
+    cycle through one; each metric on a cycle that no listed cycle names then adds the shortest
+    cycle through it, in name order, so every metric on a cycle is in at least one.
     """
     graph = {metric.name.casefold(): metric.referenced_metrics for metric in metrics}
     cycles: list[tuple[str, ...]] = []
@@ -45,11 +46,7 @@ def _metric_cycles(metrics: tuple[MetricDef, ...]) -> tuple[tuple[str, ...], ...
     def visit(name: str) -> None:
         if name in active:
             start = active.index(name)
-            cycle = tuple(active[start:] + [name])
-            variants = [tuple(cycle[index:-1] + cycle[:index] + (cycle[index],)) for index in range(len(cycle) - 1)]
-            canonical = min(variants)
-            if canonical not in cycles:
-                cycles.append(canonical)
+            _add_cycle(cycles, tuple(active[start:] + [name]))
             return
         if name in visited or name not in graph:
             return
@@ -61,7 +58,45 @@ def _metric_cycles(metrics: tuple[MetricDef, ...]) -> tuple[tuple[str, ...], ...
 
     for metric_name in sorted(graph):
         visit(metric_name)
+    for metric_name in sorted(graph):
+        if any(metric_name in cycle for cycle in cycles):
+            continue
+        shortest = _shortest_cycle(graph, metric_name)
+        if shortest is not None:
+            _add_cycle(cycles, shortest)
     return tuple(cycles)
+
+
+def _add_cycle(cycles: list[tuple[str, ...]], cycle: tuple[str, ...]) -> None:
+    """Append `cycle` rotated to start at its smallest name, unless that rotation is listed."""
+    variants = [tuple(cycle[index:-1] + cycle[:index] + (cycle[index],)) for index in range(len(cycle) - 1)]
+    canonical = min(variants)
+    if canonical not in cycles:
+        cycles.append(canonical)
+
+
+def _shortest_cycle(graph: Mapping[str, tuple[str, ...]], start: str) -> tuple[str, ...] | None:
+    """Return the shortest path of references from `start` back to it, or None when there is none.
+
+    Breadth-first, following references in the order each metric names them, so the path is
+    the same on every run.
+    """
+    parents: dict[str, str] = {}
+    frontier = [start]
+    while frontier:
+        following: list[str] = []
+        for name in frontier:
+            for dependency in graph.get(name, ()):
+                if dependency == start:
+                    path = [name]
+                    while path[-1] != start:
+                        path.append(parents[path[-1]])
+                    return (start, *reversed(path[:-1]), start)
+                if dependency in graph and dependency not in parents:
+                    parents[dependency] = name
+                    following.append(dependency)
+        frontier = following
+    return None
 
 
 def _metric_diagnostics(

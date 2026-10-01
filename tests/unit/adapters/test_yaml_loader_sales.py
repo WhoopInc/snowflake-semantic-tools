@@ -103,6 +103,23 @@ def test_metric_cycle_is_reported_once_with_a_stable_path() -> None:
     assert _metric_cycles(metrics) == (("cycle_a", "cycle_b", "cycle_c", "cycle_a"),)
 
 
+def test_every_metric_on_a_cycle_is_in_a_reported_cycle() -> None:
+    # The walk finishes cyc_b inside cyc_a -> cyc_b -> cyc_a and never re-enters it from cyc_c,
+    # which sits only on cyc_a -> cyc_c -> cyc_b -> cyc_a; tail reaches a cycle without being on one.
+    metrics = (
+        MetricDef("cyc_a", "{{ metric('cyc_b') }} + {{ metric('cyc_c') }}", None, ()),
+        MetricDef("cyc_b", "{{ metric('cyc_a') }}", None, ()),
+        MetricDef("cyc_c", "{{ metric('cyc_b') }}", None, ()),
+        MetricDef("self_ref", "{{ metric('self_ref') }}", None, ()),
+        MetricDef("tail", "{{ metric('cyc_a') }} + {{ metric('missing') }}", None, ()),
+    )
+    assert _metric_cycles(metrics) == (
+        ("cyc_a", "cyc_b", "cyc_a"),
+        ("self_ref", "self_ref"),
+        ("cyc_a", "cyc_c", "cyc_b", "cyc_a"),
+    )
+
+
 def test_metric_diagnostics_cover_unknown_columns_empty_tables_and_duplicates() -> None:
     model = DbtModel(
         unique_id="model.fixture.orders",
