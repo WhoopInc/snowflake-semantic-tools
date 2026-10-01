@@ -15,7 +15,7 @@ from snowflake_semantic_tools.app.compile.agents import ExtensionPin
 from snowflake_semantic_tools.app.compile.base import CompileResult, StandaloneArtifact, has_error
 from snowflake_semantic_tools.domain.model.artifact_key import artifact_key, split_artifact_key
 from snowflake_semantic_tools.domain.model.diagnostic import D, Diagnostic, DiagnosticBag, Origin, Severity
-from snowflake_semantic_tools.domain.model.identifier import QualifiedName
+from snowflake_semantic_tools.domain.model.identifier import Identifier, QualifiedName
 from snowflake_semantic_tools.domain.model.lifecycle import (
     CompositeFacts,
     PublishShape,
@@ -137,12 +137,14 @@ class CompileSkills:
     def run_result(self) -> CompileResult:
         """Validate the catalog, then compile each skill and then each plugin; the result is sorted by key.
 
-        Diagnostics come in that order: `validate_skill_catalog`'s, then each bundle's. Without
-        a channel, or with a version prefix no alias can start with, nothing compiles. Skills
-        compile first, so a plugin sees what its members reported.
+        Diagnostics come in that order: `validate_skill_catalog`'s, then each bundle's and its
+        extension name's. Without a channel, or with a version prefix no alias can start with,
+        nothing compiles. Skills compile first, so a plugin sees what its members reported.
 
         Diagnostics:
             SST-CFG008: `skills.+version_prefix` cannot start an alias.
+            SST-VAL801: a skill or plugin's extension name starts with a digit, so it cannot
+                name a Snowflake object; it does not compile.
             SST-VAL836: a plugin member has errors, so the plugin is blocked.
         """
         diagnostics: list[Diagnostic] = list(validate_skill_catalog(self._catalog))
@@ -178,6 +180,10 @@ class CompileSkills:
         diagnostics.extend(bundle_diagnostics)
         if bundle is None or has_error(skill.key, diagnostics):
             return None
+        unnamed = _extension_name_diagnostics(skill.key, "folder", skill.name, skill.extension_name, skill.origin)
+        if unnamed:
+            diagnostics.extend(unnamed)
+            return None
         release = self._release(skill.key, "SKILL", skill.extension_name, skill.description or "", bundle)
         return CompiledExtension(release, skill.source_files, has_scripts=bool(skill.scripts))
 
@@ -202,6 +208,10 @@ class CompileSkills:
         bundle, bundle_diagnostics = build_plugin_bundle(plugin, members)
         diagnostics.extend(bundle_diagnostics)
         if bundle is None or has_error(plugin.key, diagnostics):
+            return None
+        unnamed = _extension_name_diagnostics(plugin.key, "plugin", plugin.name, plugin.extension_name, plugin.origin)
+        if unnamed:
+            diagnostics.extend(unnamed)
             return None
         carried = [members[name] for name in plugin.members if name in members]
         sources = tuple(
@@ -228,6 +238,28 @@ class CompileSkills:
             certified=channel.certified,
             bundle=bundle,
         )
+
+
+def _extension_name_diagnostics(
+    subject: str, label: str, name: str, extension_name: str, origin: Origin
+) -> tuple[Diagnostic, ...]:
+    """Report SST-VAL801 when a skill or plugin's extension name cannot be an unquoted object name.
+
+    Only a name that passed the naming rule is checked, and a kebab-case name converts to
+    letters, digits and underscores, so the one way it fails is a leading digit, which the
+    naming rule allows.
+
+    Args:
+        label: What the name is in the report, such as `folder` or `plugin`.
+    """
+    try:
+        Identifier.parse(extension_name)
+    except ValueError:
+        detail = (
+            f"{label} name '{name}' publishes as {extension_name}, which must start with a letter to name an extension"
+        )
+        return (D("SST-VAL801", origin=origin, subject=subject, artifact=name, detail=detail),)
+    return ()
 
 
 def unpublished_reasons(catalog: SkillCatalog, skills: CompileResult, channel_problem: str | None) -> dict[str, str]:

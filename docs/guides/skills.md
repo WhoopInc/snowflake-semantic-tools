@@ -46,7 +46,8 @@ Read [the join paths](reference/join-paths.md) before combining views.
 
 - `name` is lowercase kebab-case and matches the folder name (`SST-VAL801`).
   It becomes the extension name in UPPER_SNAKE form, so `sales-semantics`
-  publishes `SALES_SEMANTICS`; that name must be unique across the project's
+  publishes `SALES_SEMANTICS`. To publish to the catalog that name must start
+  with a letter (`SST-VAL801`), and it must be unique across the project's
   skills and plugins (`SST-VAL832`).
 - `description` is required (`SST-PRS034`). An agent decides whether to load the
   skill from the description alone, so say when to use it and when not to.

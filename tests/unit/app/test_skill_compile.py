@@ -45,3 +45,24 @@ def test_a_healthy_plugin_carries_its_members_sources_and_scripts() -> None:
     assert kit.source_files == ("plugins/kit/plugin.yml", "skills/first/SKILL.md", "skills/second/SKILL.md")
     assert kit.contained_keys == ("skill:first", "skill:second")
     assert kit.has_scripts is False
+
+
+def test_a_name_that_cannot_name_an_extension_is_reported_instead_of_raising() -> None:
+    # The naming rule allows a leading digit; an unquoted Snowflake name does not.
+    catalog = SkillCatalog((skill("9lives"), skill("first")), (plugin("9kit", "first"),))
+
+    result = CompileSkills(catalog, CHANNEL).run_result()
+
+    assert [item.artifact_key for item in result.compiled] == ["skill:first"]
+    assert [(item.code, item.subject, item.message) for item in result.diagnostics] == [
+        (
+            "SST-VAL801",
+            "skill:9lives",
+            "'9lives': folder name '9lives' publishes as 9LIVES, which must start with a letter to name an extension",
+        ),
+        (
+            "SST-VAL801",
+            "plugin:9kit",
+            "'9kit': plugin name '9kit' publishes as 9KIT, which must start with a letter to name an extension",
+        ),
+    ]
