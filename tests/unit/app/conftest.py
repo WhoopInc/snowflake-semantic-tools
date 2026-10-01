@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from hashlib import md5
 from types import MappingProxyType
 from typing import Mapping, Sequence

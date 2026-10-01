@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from types import MappingProxyType
 
-from snowflake_semantic_tools.domain.model.agent import AgentModel, AgentSkill, AgentTool, ResolvedAgentTool
+from snowflake_semantic_tools.domain.model.agent import AgentModel, AgentSkill, ResolvedAgentTool
 from snowflake_semantic_tools.domain.model.diagnostic import Origin
 from snowflake_semantic_tools.domain.render.agent import desired_agent_definition, render_agent_json, render_agent_spec
 

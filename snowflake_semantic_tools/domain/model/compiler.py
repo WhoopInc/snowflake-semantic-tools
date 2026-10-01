@@ -79,7 +79,6 @@ class RefPolicy:
 METRIC_EXPR = RefPolicy(frozenset(("ref", "metric", "var")))
 FILTER_EXPR = RefPolicy(frozenset(("ref", "var")))
 VQR_SQL = RefPolicy(frozenset(("ref", "metric", "var")))
-TABLE_ITEM = RefPolicy(frozenset(("ref", "table")), required=True, multi=False)
 CUSTOM_INSTRUCTION_ITEM = RefPolicy(frozenset(("custom_instructions",)), required=True, multi=False)
 TAG_NAME = RefPolicy(frozenset(("tag",)), required=True, multi=False)
 DESCRIPTION = RefPolicy(frozenset())

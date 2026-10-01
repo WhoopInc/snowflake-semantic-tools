@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from types import MappingProxyType
 from typing import Mapping
 
 from ..model.agent import BUILTIN_AGENT_TOOLS, AgentModel, ResolvedAgentTool
@@ -124,6 +123,3 @@ def _tool_entry(tool: ResolvedAgentTool) -> dict[str, object]:
         spec["input_schema"] = dict(tool.input_schema)
     spec.update(tool.tool_spec_passthrough)
     return {"tool_spec": spec}
-
-
-EMPTY_MAP: Mapping[str, object] = MappingProxyType({})

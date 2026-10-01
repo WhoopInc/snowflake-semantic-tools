@@ -122,7 +122,6 @@ def test_smoke_suite_runs_each_probe_and_supports_fail_fast() -> None:
 
 
 def test_listing_projects_pending_and_applied_artifacts() -> None:
-    artifact = rendered()
     manifest = build_manifest(compile_result())
     pending = list_artifacts(manifest)
     assert pending[0].status == "pending"

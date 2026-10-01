@@ -13,7 +13,6 @@ from snowflake_semantic_tools.domain.model.lifecycle import (
     Action,
     ApplyOptions,
     ApplyOutcome,
-    ChangeReason,
     ClassifiedError,
     ErrorKind,
     ExecResult,
@@ -28,7 +27,7 @@ from snowflake_semantic_tools.domain.model.lifecycle import (
 )
 from snowflake_semantic_tools.domain.model.registry import GrantPreservation
 from snowflake_semantic_tools.domain.ports.snowflake import SnowflakePortError
-from snowflake_semantic_tools.domain.state import FAILED_AFTER_WRITE, State
+from snowflake_semantic_tools.domain.state import FAILED_AFTER_WRITE
 
 from .conftest import FixedClock, InMemorySnowflake, InMemoryStateStore, failed
 from .helpers import change, changeset, manifest, marker, observed, rendered, state, target
