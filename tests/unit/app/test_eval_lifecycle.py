@@ -443,6 +443,45 @@ def test_eval_partial_dataset_failure_records_only_written_source_table() -> Non
     assert store.state.applied[artifact.key].outcome == "failed_after_write"
 
 
+def test_a_port_error_after_the_dataset_is_created_keeps_what_the_run_created_in_state() -> None:
+    manifest, artifact, port, handler = setup_eval()
+    change = planned_change(artifact, manifest, port, handler, state_with(None, ""))
+    exists = port.object_exists
+
+    def drop_connection_reading_back_the_dataset(object_type, name):
+        created = any(
+            "SYSTEM$CREATE_EVALUATION_DATASET" in statement.upper() for script in port.scripts for statement in script
+        )
+        if object_type == "DATASET" and created:
+            raise SnowflakePortError("connection reset")
+        return exists(object_type, name)
+
+    port.object_exists = drop_connection_reading_back_the_dataset  # type: ignore[method-assign]
+    store = InMemoryStateStore()
+
+    result = ApplyArtifacts(
+        port,
+        store,
+        FixedClock(),
+        state_table=artifact.target,
+        lifecycle_handlers={"eval": handler},
+    ).run(replace(changeset(change), manifest_id=manifest.manifest_id), state_with(None, ""))
+
+    [outcome] = result.outcomes
+    assert outcome.status is OutcomeStatus.FAILED and outcome.write_succeeded
+    assert outcome.error is not None
+    assert (outcome.error.code, outcome.error.message) == ("SST-APL016", "connection reset")
+    names = {kind: name.sql for kind, name in artifact.physical_resources}
+    assert outcome.physical_resources == (("TABLE", names["TABLE"]), ("DATASET", names["DATASET"]))
+    assert store.state is not None
+    assert store.state.applied[artifact.key].outcome == "failed_after_write"
+    # State owns what the run created, so the next plan retries it instead of calling it unmanaged.
+    port.object_exists = exists  # type: ignore[method-assign]
+    retry = planned_change(artifact, manifest, port, handler, store.state)
+    assert retry.action is not Action.BLOCKED
+    assert "SST-PLN024" not in [item.code for item in retry.diagnostics]
+
+
 def test_eval_prune_is_report_only_even_when_prune_is_allowed() -> None:
     manifest, artifact, port, handler = setup_eval()
     entry = applied_entry(artifact, manifest.manifest_id)

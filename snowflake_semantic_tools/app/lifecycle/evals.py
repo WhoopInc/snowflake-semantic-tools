@@ -300,7 +300,7 @@ class _EvalRun(PublicationRun):
     The steps run in order: the source table, its row count, the dataset, the config
     stage and its file format, then the config file and its read-back. Resources are
     recorded as each is verified; a failure reports those, or the table alone once its
-    statements ran.
+    statements ran. A port error that interrupts the run also reports what it created.
     """
 
     def __init__(self, handler: EvalLifecycleHandler, change: Change, artifact: RenderedArtifact) -> None:
@@ -313,21 +313,39 @@ class _EvalRun(PublicationRun):
         self._table_exists = False
         self._dataset_exists = False
         self._statements: tuple[str, ...] = ()
+        # What this run's CREATE statements made, verified or not: SST's once created.
+        self._created: list[tuple[str, str]] = []
 
     def publish(self) -> ApplyOutcome:
-        """Publish the eval as the class describes; a port error it does not expect propagates."""
-        # Both are read before any write, so what this run creates is verified, not found.
-        self._dataset_exists = self._port.object_exists("DATASET", self._dataset)
-        self._table_exists = self._port.object_exists("TABLE", self._table)
-        self._statements = self._handler._source_statements(self._artifact)
-        failure = self._run_steps(
-            self._create_source_table,
-            self._verify_source_rows,
-            self._create_dataset,
-            self._ensure_config_stage,
-            self._verify_stage_format,
+        """Publish the eval as the class describes; a port error fails it, keeping what it wrote."""
+        # A read-back error after a CREATE must still report what the run created, or
+        # state would forget it and every later plan would call it unmanaged.
+        try:
+            # Both are read before any write, so what this run creates is verified, not found.
+            self._dataset_exists = self._port.object_exists("DATASET", self._dataset)
+            self._table_exists = self._port.object_exists("TABLE", self._table)
+            self._statements = self._handler._source_statements(self._artifact)
+            failure = self._run_steps(
+                self._create_source_table,
+                self._verify_source_rows,
+                self._create_dataset,
+                self._ensure_config_stage,
+                self._verify_stage_format,
+            )
+            return failure if failure is not None else self._upload_config()
+        except SnowflakePortError as exc:
+            return self._interrupted(exc)
+
+    def _interrupted(self, error: SnowflakePortError) -> ApplyOutcome:
+        """Fail on a port error with each resource verified or created so far, partial once it wrote."""
+        return failed(
+            self._change,
+            f"{error}",
+            code="SST-APL016" if self._written else "SST-APL001",
+            write_succeeded=self._written,
+            attempts=self._attempts,
+            physical_resources=tuple(dict.fromkeys((*self._verified, *self._created))),
         )
-        return failure if failure is not None else self._upload_config()
 
     def _create_source_table(self) -> ApplyOutcome | None:
         if self._table_exists:
@@ -336,8 +354,10 @@ class _EvalRun(PublicationRun):
             result = self._run_statement(statement)
             if not result.ok:
                 return self._source_failure(index, result)
-            if index == 0 and not self._port.object_exists("TABLE", self._table):
-                return self.fail(f"source table {self._table.sql} is absent after publication", "SST-APL016")
+            if index == 0:
+                self._created.append(("TABLE", self._table.sql))
+                if not self._port.object_exists("TABLE", self._table):
+                    return self.fail(f"source table {self._table.sql} is absent after publication", "SST-APL016")
         return None
 
     def _source_failure(self, index: int, result: ExecResult) -> ApplyOutcome:
@@ -387,6 +407,7 @@ class _EvalRun(PublicationRun):
                     result.error.message if result.error else "dataset publication failed",
                     "SST-APL016" if self._written else "SST-APL001",
                 )
+            self._created.append(("DATASET", self._dataset.sql))
             if not self._port.object_exists("DATASET", self._dataset):
                 return self.fail(f"dataset {self._dataset.sql} is absent after publication", "SST-APL016")
         self._verified.append(("DATASET", self._dataset.sql))
@@ -409,6 +430,7 @@ class _EvalRun(PublicationRun):
                     attempts=self._attempts,
                     physical_resources=self._recorded_resources(),
                 )
+            self._created.append(("STAGE", stage.sql))
             if not self._port.object_exists("STAGE", stage):
                 return self.fail(f"config stage {stage.sql} is absent after creation", "SST-APL016")
             self._handler._created_stages.add(stage.folded)
