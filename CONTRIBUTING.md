@@ -177,6 +177,7 @@ Annotations already say what types flow where, so a docstring never restates the
 5. **A private function** needs a docstring once it is 25 lines or longer, scores 10 or more on the decision count, or depends on an ordering, poisoning, or casefolding rule a reader could break.
 6. **Comments say why, not what.** Mark ordering dependencies where they bite (for example, "runs after the view checks: poisoning reads their diagnostics"). Never cite a design document or planning identifier.
 7. **A renderer** shows an `Example:` of input and output when the grammar it produces is not obvious.
+8. **Use the shared vocabulary** (key, subject, origin, fingerprint, poisoned, ownership marker) in the sense [docs/concepts.md](docs/concepts.md#terms-used-in-the-code) defines.
 
 A protocol method and a validator, written to these rules:
 
@@ -204,7 +205,7 @@ def window_diagnostics(metric: MetricDef, models: Mapping[str, DbtModel]) -> lis
     """
 ```
 
-Known gaps are listed in `tests/unit/ratchets/docstrings.txt`. The list only shrinks: document what you write, and what you touch.
+The package meets every rule above, and `tests/unit/test_docstrings.py` allows no exception: document what you write.
 
 ## Code Review Criteria
 

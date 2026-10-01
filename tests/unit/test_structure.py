@@ -1,10 +1,7 @@
-"""Package code stays inside its size and complexity budgets; known excesses may only shrink.
+"""Package code stays inside its size and complexity budgets, with no exceptions.
 
-The budgets live in tests/helpers/structure_rules.py. tests/unit/ratchets/structure.txt lists
-the code that exceeds them today, with the measured value: an entry may improve or be
-removed, never grow, and a new excess fails here. Splitting a module moves its keys, so
-regenerate the list after a deliberate move (`python -m tests.helpers.ratchet`) and check
-that the diff only shrinks.
+The budgets live in tests/helpers/structure_rules.py and are listed under "Size" in
+CONTRIBUTING.md. Every module and function meets them, so a new excess fails here.
 """
 
 from __future__ import annotations
@@ -13,12 +10,12 @@ import ast
 
 import pytest
 
-from tests.helpers import ratchet, structure_rules
+from tests.helpers import structure_rules
 
 
-def test_structure_budgets_hold_or_shrink() -> None:
-    found = ratchet.problems("structure", structure_rules.violations())
-    assert not found, "\n".join(found) + f"\nAfter a deliberate move, regenerate: {ratchet.REGENERATE}"
+def test_package_code_stays_inside_every_budget() -> None:
+    found = [f"{key} ({value})" for key, value in sorted(structure_rules.violations().items())]
+    assert not found, "size or complexity budget exceeded (see CONTRIBUTING.md, Size):\n" + "\n".join(found)
 
 
 def _branches(count: int) -> str:
@@ -65,15 +62,3 @@ def test_complexity_counts_boolean_operands_and_comprehension_clauses() -> None:
     # 1 + comprehension (1) + its `if` (1) + `or` (1) + `and` (1)
     assert structure_rules.complexity(function) == 5
 
-
-def test_a_ratchet_reports_new_worse_and_fixed_entries(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
-    monkeypatch.setattr(ratchet, "RATCHETS", tmp_path)
-    ratchet.write("demo", {"function-lines a.py::f": 120, "docstring-class a.py::C": None})
-    assert ratchet.problems("demo", {"function-lines a.py::f": 120, "docstring-class a.py::C": None}) == []
-    assert ratchet.problems("demo", {"function-lines a.py::f": 110, "docstring-class a.py::C": None}) == []
-    found = ratchet.problems("demo", {"function-lines a.py::f": 130, "docstring-class a.py::D": None})
-    assert found == [
-        "new violation: docstring-class a.py::D",
-        "worse than allowed: function-lines a.py::f is 130, allowlist says 120",
-        "fixed or moved, remove from tests/unit/ratchets/demo.txt: docstring-class a.py::C",
-    ]

@@ -19,6 +19,18 @@ from ..state import AppliedEntry, State
 
 
 class SnowflakePortError(RuntimeError):
+    """A port operation Snowflake refused or could not be reached for, or whose answer SST cannot use.
+
+    A command that lets one escape exits as a connection failure, reporting `diagnostic`
+    when there is one and the message otherwise.
+
+    Attributes:
+        sqlstate: The SQLSTATE of the driver failure behind the error; None when there is none.
+        errno: The driver's error number for that failure; None when there is none.
+        diagnostic: What the command reports for the failure; None when the adapter did not
+            recognise it.
+    """
+
     def __init__(
         self,
         message: str,
@@ -36,12 +48,29 @@ class SnowflakePortError(RuntimeError):
 
 @dataclass(frozen=True, slots=True)
 class StageObservation:
+    """Whether a stage exists and, when it does, the file format it declares.
+
+    Attributes:
+        file_format: The format as `CatalogPort.describe_stage_file_format` returns it; None
+            when the stage does not exist or declares none.
+    """
+
     exists: bool
     file_format: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
 class StagedFileMetadata:
+    """What LIST reports for the one file at a stage path.
+
+    Attributes:
+        stage_path: The path observed, exactly as the caller gave it.
+        name: The path without its leading `@`, whatever form LIST printed the name in.
+        size: The file's size in bytes; 0 when LIST reports none.
+        md5: The MD5 LIST reports; None when it reports none.
+        last_modified: The modification time as LIST prints it; None when it reports none.
+    """
+
     stage_path: str
     name: str
     size: int
@@ -555,23 +584,86 @@ class SnowflakePort(CatalogPort, ExecutionPort, StagePort, ProfileRegistryPort, 
 
 
 class ClockPort(Protocol):
-    def now_iso(self) -> str: ...
+    """The time and run ids a use case reads, injected so that a test can fix them.
 
-    def monotonic_ms(self) -> int: ...
+    Wall time stamps what state and eval records store; monotonic time measures durations.
+    """
 
-    def sleep(self, milliseconds: int) -> None: ...
+    def now_iso(self) -> str:
+        """Return the current time in UTC as ISO 8601 text ending in `Z`.
 
-    def new_run_id(self) -> str: ...
+        State and eval records store their timestamps in this form, and the state table reads
+        its timestamps back in it, so an entry compares equal to the one SST wrote.
+        """
+        ...
+
+    def monotonic_ms(self) -> int:
+        """Return a monotonic clock reading in whole milliseconds, for measuring a duration.
+
+        Only the difference between two readings means anything, and a later reading is
+        never smaller.
+        """
+        ...
+
+    def sleep(self, milliseconds: int) -> None:
+        """Block the caller for `milliseconds`: a retry's backoff, or the wait between two polls."""
+        ...
+
+    def new_run_id(self) -> str:
+        """Return a new identifier, unique to one run, which names it in state and as the lock holder."""
+        ...
 
 
 class StateStore(Protocol):
+    """The local cache of one target's state, and the lock that lets one run at a time use it.
+
+    The state table is authoritative; the cache only mirrors it. The lock is held by run id,
+    and only its holder releases it.
+    """
+
     @property
-    def config_path(self) -> str: ...
+    def config_path(self) -> str:
+        """Return the configuration path recorded in each `State` a use case builds for this store."""
+        ...
 
-    def read_local(self) -> State | None: ...
+    def read_local(self) -> State | None:
+        """Return the cached state; None when there is no cache.
 
-    def write_local(self, value: State) -> None: ...
+        Never writes. A cache that exists and cannot be used raises rather than reading as absent.
 
-    def acquire_lock(self, run_id: str, *, break_stale: bool) -> tuple[bool, str | None, bool]: ...
+        Raises:
+            ProjectError: the cache is unreadable (SST-MAN022) or declares a schema SST does not
+                support (SST-MAN023).
+            OSError: the cache exists and cannot be opened.
+        """
+        ...
 
-    def release_lock(self, run_id: str) -> None: ...
+    def write_local(self, value: State) -> None:
+        """Replace the cache with `value` atomically, so a reader sees the old state or the new one.
+
+        Creates the cache's directory when it is missing.
+
+        Raises:
+            OSError: the cache or its directory cannot be written.
+        """
+        ...
+
+    def acquire_lock(self, run_id: str, *, break_stale: bool) -> tuple[bool, str | None, bool]:
+        """Take the lock for `run_id` unless another run holds it, without waiting.
+
+        A lock older than the store's time limit is stale, and `break_stale` takes it over; a
+        lock whose holder or age cannot be read is never stale.
+
+        Returns:
+            `(acquired, holder, broke_stale)`: whether `run_id` now holds the lock; the run
+            that held it, None when the lock was free or its holder is unreadable; and whether
+            a stale lock was taken over.
+        """
+        ...
+
+    def release_lock(self, run_id: str) -> None:
+        """Release the lock when `run_id` holds it, and otherwise leave it alone.
+
+        Idempotent: releasing a lock that is absent or held by another run does nothing.
+        """
+        ...

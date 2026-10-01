@@ -13,6 +13,12 @@ from .reference import TemplateCall, TemplateSyntaxError, scan_template_calls
 
 
 class RefKind(Enum):
+    """What a resolved template call refers to.
+
+    A one-argument `ref()` is a TABLE and a two-argument one a COLUMN; a call to any function
+    other than `ref`, `metric`, `custom_instructions`, and `var` is a TAG.
+    """
+
     TABLE = auto()
     COLUMN = auto()
     METRIC = auto()
@@ -23,6 +29,14 @@ class RefKind(Enum):
 
 @dataclass(frozen=True, slots=True)
 class RefOrigin:
+    """One template call a scalar resolved, as `Resolved.origins` records it.
+
+    Attributes:
+        raw: The call exactly as written, braces included.
+        model_name: The model a `ref()` names; None for any other function.
+        column_name: The column a two-argument `ref()` names; None otherwise.
+    """
+
     kind: RefKind
     raw: str
     model_name: str | None = None
@@ -32,6 +46,14 @@ class RefOrigin:
 
 @dataclass(frozen=True, slots=True)
 class Resolved:
+    """A scalar with its template calls replaced by their values.
+
+    Attributes:
+        text: The scalar with each call that resolved replaced; one that did not stays as written.
+        origins: The calls that resolved, in source order.
+        poisoned: Resolving it reported a diagnostic, so `text` may still hold unresolved calls.
+    """
+
     text: str
     origins: tuple[RefOrigin, ...] = ()
     poisoned: bool = False
@@ -39,6 +61,16 @@ class Resolved:
 
 @dataclass(frozen=True, slots=True)
 class RefPolicy:
+    """Which template calls one kind of field accepts, and how many.
+
+    A `table()` or `column()` call is rejected as legacy whatever `allowed` says.
+
+    Attributes:
+        allowed: The template functions the field may call.
+        required: The field must hold at least one call.
+        multi: False lets the field hold at most one call.
+    """
+
     allowed: frozenset[str]
     required: bool = False
     multi: bool = True
@@ -55,6 +87,19 @@ DESCRIPTION = RefPolicy(frozenset())
 
 @dataclass(frozen=True, slots=True)
 class ResolveContext:
+    """What `resolve_scalar` resolves template calls against.
+
+    Attributes:
+        catalog: The dbt models `ref()` may name.
+        metric_names: The casefolded names `metric()` may name.
+        metric_values: By casefolded name, the text a `metric()` call becomes; a declared metric
+            missing here becomes its upper-cased name.
+        instruction_names: The casefolded names `custom_instructions()` may name.
+        variables: The project variables `var()` may name, by exact name; a call becomes `str()`
+            of the value.
+        tags: By exact name, the object name a tag call becomes.
+    """
+
     catalog: DbtCatalog
     metric_names: frozenset[str] = frozenset()
     metric_values: Mapping[str, str] = field(default_factory=lambda: MappingProxyType({}))

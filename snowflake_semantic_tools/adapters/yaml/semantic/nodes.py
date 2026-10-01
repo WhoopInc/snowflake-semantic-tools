@@ -35,6 +35,19 @@ def _list_of(value: object) -> list[Any]:
 
 
 def _table_refs(value: object) -> tuple[str, ...]:
+    """Read a `tables:` list as the models it names, casefolded and in order.
+
+    Each entry is a `{{ ref('<model>') }}` call, a legacy `{{ table('<model>') }}` call, or a
+    bare model name; a value that is not a list names none. Both callers swallow the error:
+    `_safe_table_refs` reads it as no tables, and `_table_refs_poisoned` as poison.
+
+    Raises:
+        ProjectError: An entry is a `ref()` without exactly one argument, is neither a call nor
+            a model name, or holds a malformed template; only the last carries a diagnostic.
+
+    Diagnostics:
+        SST-LOD004: when an entry's template is malformed, positioned within the entry's own text.
+    """
     refs: list[str] = []
     for raw in value if isinstance(value, list) else []:
         try:

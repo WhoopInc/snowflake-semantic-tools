@@ -24,6 +24,21 @@ def _relationship_diagnostics(
     origins: Mapping[str, Origin] | None = None,
     models: Mapping[str, DbtModel] | None = None,
 ) -> tuple[Diagnostic, ...]:
+    """Check each relationship against the views that hold its tables and the keys of its right table.
+
+    A relationship whose two tables no one view holds is reported against the view holding the
+    most of them (the first such view, or `semantic_view:<none>` without views), naming the
+    first table in name order that view lacks, and is checked no further. Otherwise, when
+    `models` has its right table and it is neither an ASOF nor a range join, that table's keys
+    are checked. Names compare casefolded; each subject is the relationship's casefolded key,
+    and each origin is the one `origins` holds under its casefolded name.
+
+    Diagnostics:
+        SST-VAL203: when no view holds both of the relationship's tables.
+        SST-MEM005: with each SST-VAL203, since the relationship then attaches to no view.
+        SST-VAL311: when the right table declares neither `primary_key` nor `unique_keys`.
+        SST-VAL210: when no key of the right table lies within the join's right-hand columns.
+    """
     diagnostics: list[Diagnostic] = []
     for relationship in relationships:
         origin = (origins or {}).get(relationship.name.casefold())
@@ -165,6 +180,15 @@ def _multipath_diagnostics(
     metrics: tuple[MetricDef, ...],
     view_table_sets: tuple[tuple[str, frozenset[str]], ...],
 ) -> tuple[Diagnostic, ...]:
+    """Report each table pair two or more relationships join, and a metric those paths leave ambiguous.
+
+    Pairs are unordered and casefolded, and are reported in sorted order.
+
+    Diagnostics:
+        SST-VAL209: for each view that holds both tables of such a pair.
+        SST-VAL116: for the first metric, in order, whose first table is in the pair and that
+            declares no `using_relationships`; no other metric is reported for that pair.
+    """
     pair_counts: dict[tuple[str, str], int] = {}
     for relationship in relationships:
         first, second = sorted((relationship.from_table.casefold(), relationship.to_table.casefold()))

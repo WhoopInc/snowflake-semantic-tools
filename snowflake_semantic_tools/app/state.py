@@ -17,6 +17,30 @@ def read_state(
     state_table: QualifiedName,
     target: TargetIdentity,
 ) -> tuple[State, DiagnosticBag]:
+    """Return the state a run starts from: the state table's, or offline the local cache's.
+
+    The local cache is read first, online too. Online, the state table is authoritative: a
+    cache whose entries disagree with it is rewritten, while a missing cache stays missing,
+    and the state's manifest is the one the active entries name, empty when they name none
+    or several.
+
+    Args:
+        port: The connection; None reads offline, from the local cache alone.
+
+    Returns:
+        The state, with what reading it reported. Offline it is the cache as stored; online
+        it has no `last_run`. It is empty when offline there is no cache, or online the state
+        table is absent or cannot be read.
+
+    Raises:
+        ProjectError: the local cache exists and cannot be used, as `StateStore.read_local` raises.
+        SnowflakePortError: checking for the state table failed, or an entry it holds does not decode.
+
+    Diagnostics:
+        SST-MAN020: offline, there is no local cache; every artifact reads as new.
+        SST-PLN001: the state table exists and cannot be read.
+        SST-MAN027: the local cache disagreed with the state table, and was rewritten.
+    """
     diagnostics = []
     cached = store.read_local()
     if port is None:

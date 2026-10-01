@@ -53,6 +53,21 @@ def load_skill_catalog(project_dir: Path, *, skills_dir: str, plugins_dir: str) 
 
 
 def _load_skill(project_dir: Path, folder: Path, nested: tuple[Path, ...], diagnostics: list[Diagnostic]) -> Skill:
+    """Read one skill folder: every published file in it, and the frontmatter of its `SKILL.md`.
+
+    The skill is named after its folder. Each skill folder in `nested` is reported, and its files
+    are left out of this skill; the caller does not load it as a skill either. The files are in
+    path order, relative to the folder, `SKILL.md` among them.
+
+    Raises:
+        OSError: A file in the folder cannot be read.
+
+    Diagnostics:
+        SST-PRS119: once per skill folder nested inside this one.
+        SST-LOD001: when `SKILL.md` is not UTF-8, or its frontmatter is not valid YAML.
+        SST-LOD002: when the frontmatter is not a mapping.
+        SST-PRS034: when the frontmatter has no `name` or no `description`, once for each.
+    """
     name = folder.name
     directory = project_relative(project_dir, folder)
     skill_md = posixpath.join(directory, SKILL_FILE)
@@ -88,6 +103,23 @@ def _load_skill(project_dir: Path, folder: Path, nested: tuple[Path, ...], diagn
 def _frontmatter(
     raw: bytes, file: str, subject: str, diagnostics: list[Diagnostic]
 ) -> tuple[str | None, str | None, str]:
+    """Split a `SKILL.md` into its frontmatter's `name` and `description`, and the body after it.
+
+    The frontmatter runs from a first line that is exactly `---` to the next such line, and is
+    read with `yaml.safe_load`. Without one, the whole text is the body.
+
+    Returns:
+        `(name, description, body)`: the name as written and the description stripped, each
+        None when it is absent, blank or not a string, or the frontmatter cannot be read; the
+        body is empty when the file is not UTF-8.
+
+    Diagnostics:
+        SST-LOD001: when the file is not UTF-8, at its first line, or the frontmatter is not valid
+            YAML, at the offending line of the file.
+        SST-LOD002: when the frontmatter is not a mapping.
+        SST-PRS034: for `name` and for `description`, each that is missing or not a non-blank
+            string; for both when there is no frontmatter.
+    """
     try:
         text = raw.decode("utf-8")
     except UnicodeDecodeError as exc:
@@ -144,6 +176,23 @@ def _frontmatter(
 
 
 def _load_plugin(project_dir: Path, folder: Path, diagnostics: list[Diagnostic]) -> Plugin | None:
+    """Read one plugin folder's manifest; None when it has no single manifest or it does not parse.
+
+    The manifest is `plugin.yml` or `plugin.yaml`, and the plugin is named after its folder. A
+    manifest that does not parse reports the codes `parse_yaml_bytes` lists, with the plugin as
+    their subject. `skills` are kept as listed, in order and with any repeats.
+
+    Raises:
+        OSError: The manifest cannot be read.
+
+    Diagnostics:
+        SST-VAL801: when the folder holds no manifest or both spellings, or the manifest's
+            `name` is not the folder's.
+        SST-PRS004: when the manifest holds a key SST does not read, at that key.
+        SST-PRS003: when `description` or `owner_team` is not a string, or `skills` is not a list
+            of strings.
+        SST-PRS002: when there is no non-blank `description`.
+    """
     name = folder.name
     subject = artifact_key("plugin", name)
     manifests = [folder / candidate for candidate in PLUGIN_FILES if (folder / candidate).is_file()]

@@ -9,28 +9,74 @@ from typing import Mapping
 
 
 class MemberSource(Enum):
+    """Where a member type is authored.
+
+    FILES members are declared in SST's own YAML files, under their type's root key. DBT_META
+    members are read from the `config.meta.sst` block of dbt model columns.
+    """
+
     FILES = auto()
     DBT_META = auto()
 
 
 class AttachRule(Enum):
+    """How a member finds the semantic views it belongs to.
+
+    TABLE_MEMBERSHIP attaches it to every view that holds all the tables it needs. VIEW_NAME
+    attaches it to each view that names it.
+    """
+
     TABLE_MEMBERSHIP = auto()
     VIEW_NAME = auto()
 
 
 class GrantPreservation(Enum):
+    """How an artifact type's grants survive an update.
+
+    CLAUSE keeps them across a replace with `COPY GRANTS`; REPLAY re-applies them after a
+    replace; NONE leaves them alone, because the object is never replaced.
+    """
+
     CLAUSE = auto()
     REPLAY = auto()
     NONE = auto()
 
 
 class ArtifactLifecycle(Enum):
+    """How plan and apply reconcile an artifact type.
+
+    An OBJECT type is one Snowflake object, listed by its object type and planned generically.
+    A COMPOSITE type is several objects, planned and applied together by its own lifecycle
+    handler.
+    """
+
     OBJECT = auto()
     COMPOSITE = auto()
 
 
 @dataclass(frozen=True, slots=True)
 class ArtifactType:
+    """One kind of artifact SST publishes, and how plan and apply treat it.
+
+    `build_registry` refuses a set of types that contradict one another; it states the rules.
+
+    Attributes:
+        name: The type's name, which is the kind part of its artifacts' keys.
+        root_key: The YAML key its declarations are listed under; None for a type authored some
+            other way, such as one folder per artifact.
+        ddl_position: Where its changes fall in plan order, lowest first; it is higher than the
+            position of every type it depends on.
+        ref_function: The template function another artifact names it with; None when none can.
+        member_types: The member types it owns: exactly those whose `owner_type` names it.
+        object_type: The Snowflake object type its objects are listed by; "" for a composite
+            type, or for one that lists several `object_types` instead.
+        prunable: Whether `--prune` drops its object once the object's source is deleted.
+        replaces_on_update: Whether an update replaces the object rather than altering it in place.
+        dependency_types: The types it may depend on, which it is planned after.
+        pins_versions_of: The dependency types whose published version its payload names.
+        object_types: The object types its objects may be, when there are several.
+    """
+
     name: str
     root_key: str | None
     ddl_position: int
@@ -55,6 +101,16 @@ class ArtifactType:
 
 @dataclass(frozen=True, slots=True)
 class MemberType:
+    """One kind of semantic member, and how it is authored and attached to its owner's artifacts.
+
+    Attributes:
+        name: The type's name, which is the kind part of its members' keys.
+        root_key: The YAML key its declarations are listed under; unique across the registry.
+        clause_position: Orders its owner's member types, lowest first; unique per owner.
+        owner_type: The artifact type whose artifacts it attaches to.
+        ref_function: The template function that names a member of this type; None when none can.
+    """
+
     name: str
     root_key: str
     source: MemberSource
@@ -66,11 +122,19 @@ class MemberType:
 
 @dataclass(frozen=True, slots=True)
 class Registry:
+    """The artifact and member types, each map keyed by type name.
+
+    A registry `build_registry` returns has passed every integrity check, and its maps are
+    read-only.
+    """
+
     artifacts: Mapping[str, ArtifactType]
     members: Mapping[str, MemberType]
 
 
 class RegistryIntegrityError(RuntimeError):
+    """Artifact and member types that contradict one another, as `build_registry` finds them."""
+
     pass
 
 

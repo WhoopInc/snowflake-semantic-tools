@@ -1,4 +1,11 @@
-"""Pure member attachment for Milestone 1 semantic views."""
+"""Attach semantic members to the views they belong to: pure functions, with no I/O.
+
+`attach_members` attaches by table membership alone: a member that needs tables belongs
+to every view that holds all of them. `attach_view_members` then places the members a
+view names, and attaches a member that depends on others only where all of them are
+attached. A member's tables are casefolded, so each view's must be too, and a member's
+views are listed in artifact-key order.
+"""
 
 from __future__ import annotations
 
@@ -10,6 +17,12 @@ from ..model.registry import AttachRule, Registry
 
 
 def effective_tables(member: ParsedMember) -> frozenset[str]:
+    """Return the tables a member needs, casefolded.
+
+    Declared tables win, even an empty declaration; without one, the tables are the first
+    argument of each `ref()` the member's templates call. Empty when the member names none,
+    which attaches it to no view by table membership.
+    """
     if member.declared_tables is not None:
         return frozenset(table.casefold() for table in member.declared_tables)
     return frozenset(call.args[0].casefold() for call in member.template_calls if call.function == "ref" and call.args)
@@ -20,6 +33,21 @@ def attach_members(
     members: Iterable[ParsedMember],
     registry: Registry,
 ) -> Mapping[MemberKey, tuple[ArtifactKey, ...]]:
+    """Attach each member to every view that holds all the tables it needs, by table membership alone.
+
+    A poisoned member, a member that needs no table, and a member of a type the registry
+    attaches by view name attach to no view here; `attach_view_members` places the last.
+
+    Args:
+        view_tables: Each view's tables, casefolded, by the view's artifact key.
+
+    Returns:
+        A read-only mapping with an entry for every member's key: the keys of the views it
+        attaches to, in artifact-key order; empty when it attaches to none.
+
+    Raises:
+        KeyError: a member's type is not in the registry.
+    """
     attached: dict[MemberKey, tuple[ArtifactKey, ...]] = {}
     for member in members:
         descriptor = registry.members[member.type_name]

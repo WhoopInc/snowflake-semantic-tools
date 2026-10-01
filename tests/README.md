@@ -24,9 +24,8 @@ tests/
 │   ├── cli/                     # commands through click's CliRunner, one module per command (helpers.py)
 │   ├── test_golden_*.py         # rendered DDL, agents, tools, and evals against the goldens
 │   ├── test_ring_boundaries.py  # each import-linter contract rejects a crossing
-│   ├── test_structure.py        # size and complexity budgets, ratcheted by ratchets/structure.txt
-│   ├── test_docstrings.py       # docstring rules, ratcheted by ratchets/docstrings.txt
-│   ├── ratchets/                # known violations of the two gates above; the lists only shrink
+│   ├── test_structure.py        # size and complexity budgets, with no exceptions
+│   ├── test_docstrings.py       # docstring rules, with no exceptions
 │   ├── test_dialect_compat.py   # the 0.3 dialect corpus and `sst migrate refs`
 │   ├── test_public_docs.py      # links, examples, and planning identifiers in the docs
 │   ├── test_release_hygiene.py  # nothing environment-specific in committed files
@@ -42,7 +41,7 @@ tests/
 └── helpers/                     # shared test support, imported as tests.helpers.*:
                                  #   recorded_snowflake.py, eval_state_store.py -- in-memory ports
                                  #   manifests.py, projects.py -- small manifests and project loading
-                                 #   code_metrics.py, structure_rules.py, docstring_rules.py, ratchet.py
+                                 #   code_metrics.py, structure_rules.py, docstring_rules.py
                                  #   run_recorded_*.py -- run `sst` against a recorded Snowflake observation
 ```
 
@@ -80,10 +79,6 @@ There is no update switch. When a change to rendered output is intended, run the
 - Guard any path or collection a test depends on, as `test_fixture_and_goldens_are_present` does, so a wrong path cannot pass vacuously.
 - A new diagnostic, config key, or CLI option also changes a generated page: run `poetry run sst docs`.
 
-## Ratchets
+## Structure and docstring gates
 
-`test_structure.py` and `test_docstrings.py` hold package code to the budgets and docstring rules in [CONTRIBUTING.md](../CONTRIBUTING.md#docstrings-and-comments). What the package carries today is listed in `unit/ratchets/`: an entry may be fixed, never added, and a fixed entry must be removed, so each list only shrinks. Code that moves changes its key; after a deliberate move, regenerate both lists and check the diff only shrinks:
-
-```bash
-poetry run python -m tests.helpers.ratchet
-```
+`test_structure.py` and `test_docstrings.py` hold all package code to the size budgets and docstring rules in [CONTRIBUTING.md](../CONTRIBUTING.md#docstrings-and-comments). The package meets them today and the gates allow no exception, so a new module or function that breaks one fails the suite with its location and measure.

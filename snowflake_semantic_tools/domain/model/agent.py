@@ -25,6 +25,8 @@ RESERVED_AGENT_ALIASES = frozenset(("LIVE", "FIRST", "LAST", "DEFAULT"))
 
 @dataclass(frozen=True, slots=True)
 class AgentProfile:
+    """An agent's `profile:` block: its display name, avatar, and color, each None when unset."""
+
     display_name: str | None = None
     avatar: str | None = None
     color: str | None = None
@@ -32,6 +34,21 @@ class AgentProfile:
 
 @dataclass(frozen=True, slots=True)
 class AgentTool:
+    """One `spec.tools:` entry of an agent, as authored, before it resolves.
+
+    Attributes:
+        type: The tool type as written; resolution reports one it does not know.
+        name: None when unset, as an Analyst tool must leave it.
+        semantic_view: The name an Analyst tool's `{{ semantic_view('<name>') }}` gives.
+        backing: The arguments of the `{{ tool(...) }}` call that is the whole of
+            `search_service:` or `identifier:`: a group and a member name, or a member name
+            alone; () when there is no such call.
+        agent_ref: The name a delegating tool's `{{ agent('<name>') }}` gives.
+        passthrough: Keys added last to a search or generic tool's resources, so they override
+            the computed ones; an MCP tool's resources are exactly these.
+        tool_spec_passthrough: Keys added last to the rendered `tool_spec`, so they override it.
+    """
+
     type: str
     origin: Origin
     name: str | None = None
@@ -72,6 +89,14 @@ class AgentSkill:
 
 @dataclass(frozen=True, slots=True)
 class AgentEvalFiles:
+    """An agent's `evals:` block: where its eval dataset and config files are.
+
+    Attributes:
+        dataset: The dataset file, relative to the project root; None when it is missing or
+            cannot be used, which loading reports.
+        config: The config file, relative to the project root; None as for `dataset`.
+    """
+
     origin: Origin
     dataset: str | None = None
     config: str | None = None
@@ -79,6 +104,26 @@ class AgentEvalFiles:
 
 @dataclass(frozen=True, slots=True)
 class AgentModel:
+    """One agent as its `agent.yml` declares it, before its tools and skills resolve.
+
+    Compile fills what the agent leaves unset from the `agents:` defaults: the orchestration
+    model, budget, `tool_not_accessible`, `analytical_search`, and alias.
+
+    Attributes:
+        source_files: The `agent.yml` and each instruction file it reads, relative to the
+            project root, in the order they were read.
+        orchestration_model: "auto" when unset.
+        analytical_search: None when unset, which is not the same as False.
+        orchestration_instructions: The instruction text, or the content of the file its
+            `{{ file('<path>') }}` names; None when unset or the file cannot be used.
+        response_instructions: As `orchestration_instructions`, for the response instructions.
+        enabled: False leaves the agent out of the compiled project.
+        meta: Free-form metadata; it counts toward the agent's definition fingerprint.
+        tags: `(tag name, value)` pairs, in authored order.
+        passthrough: Keys added last to the rendered spec, so they override the computed ones.
+        evals: None when the agent declares no `evals:`.
+    """
+
     name: str
     origin: Origin
     source_files: tuple[str, ...]
@@ -104,11 +149,23 @@ class AgentModel:
 
     @property
     def key(self) -> str:
+        """The agent's artifact key: `agent:` and its casefolded name."""
         return artifact_key("agent", self.name.casefold())
 
 
 @dataclass(frozen=True, slots=True)
 class ResolvedAgentTool:
+    """One agent tool after resolution, ready to render into the spec's `tools` and `tool_resources`.
+
+    Attributes:
+        name: The name the agent calls the tool by.
+        resources: The tool's `tool_resources` entry; never rendered for a built-in tool, nor
+            when empty.
+        depends_on: The artifact keys of the project artifacts it uses, such as the semantic
+            view an Analyst tool queries; a referenced tool member adds none.
+        tool_spec_passthrough: Keys added last to the rendered `tool_spec`, so they override it.
+    """
+
     type: str
     name: str
     description: str
@@ -120,6 +177,15 @@ class ResolvedAgentTool:
 
 @dataclass(frozen=True, slots=True)
 class ResolvedAgent:
+    """An agent whose tools and skills have resolved, with what resolving them reported.
+
+    Attributes:
+        model: The agent with its inherited defaults filled and its skills resolved.
+        tools: The tools that resolved, in authored order; one that could not is absent.
+        skill_dependencies: The artifact keys of this project's skills and plugins it pins,
+            first reference first, each once.
+    """
+
     model: AgentModel
     tools: tuple[ResolvedAgentTool, ...]
     diagnostics: DiagnosticBag = DiagnosticBag()
@@ -128,6 +194,10 @@ class ResolvedAgent:
 
     @property
     def depends_on(self) -> tuple[str, ...]:
+        """The artifact keys the agent publishes after: its tools' dependencies, then its skills'.
+
+        Each key appears once, where it first occurs; `external_dependencies` is not included.
+        """
         return tuple(
             dict.fromkeys(
                 (
@@ -139,4 +209,5 @@ class ResolvedAgent:
 
     @property
     def agent_facing_tool_names(self) -> frozenset[str]:
+        """The names the agent knows its resolved tools by."""
         return frozenset(tool.name for tool in self.tools)

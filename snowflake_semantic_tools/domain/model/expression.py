@@ -12,6 +12,10 @@ import re
 
 
 def outer_parentheses(text: str) -> bool:
+    """Return whether one pair of parentheses encloses all of `text`: `(a + b)`, not `(a) + (b)`.
+
+    The text is not stripped first, and a parenthesis inside quotes does not count.
+    """
     if not text.startswith("(") or not text.endswith(")"):
         return False
     depth = 0
@@ -33,6 +37,11 @@ def outer_parentheses(text: str) -> bool:
 
 
 def root_function(expression: str) -> str | None:
+    """Return the upper-cased name of the function call that is the whole expression, else None.
+
+    Surrounding whitespace and redundant outer parentheses are ignored, so `(COUNT(x))` gives
+    `COUNT`, while `COUNT(x) + 1` and a windowed `SUM(x) OVER (...)` give None.
+    """
     text = expression.strip()
     while outer_parentheses(text):
         text = text[1:-1].strip()
@@ -94,6 +103,13 @@ def call_arguments(expression: str) -> tuple[str, ...] | None:
 
 
 def is_boolean_expression(expression: str) -> bool:
+    """Return whether an expression reads as a predicate, judged by its shape alone.
+
+    It does when, outer parentheses aside, it is TRUE or FALSE, starts with NOT or EXISTS,
+    calls one of a few functions at its root (BOOLAND or COALESCE, for example), or holds a
+    comparison, BETWEEN, IN (...), IS [NOT] NULL, LIKE, or RLIKE anywhere. That last test errs
+    toward a predicate: a comparison inside a CASE, or inside a string literal, counts too.
+    """
     text = expression.strip()
     while outer_parentheses(text):
         text = text[1:-1].strip()

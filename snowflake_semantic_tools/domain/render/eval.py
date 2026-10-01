@@ -13,6 +13,17 @@ from ..model.sql import string_literal
 
 @dataclass(frozen=True, slots=True)
 class RenderedEval:
+    """Everything one eval publishes, rendered, with the fingerprints that identify it.
+
+    Attributes:
+        dataset_payload: The canonical question payload `render_dataset_payload` returns.
+        source_table_sql: The script that creates the source table and loads the payload into it.
+        create_dataset_sql: The call that creates the evaluation dataset over the source table.
+        config_yaml: The evaluation config that runs against the agent.
+        dataset_fingerprint: The hex SHA-256 of `dataset_payload`.
+        config_fingerprint: The hex SHA-256 of `config_yaml`.
+    """
+
     dataset_payload: str
     source_table_sql: str
     create_dataset_sql: str
@@ -35,6 +46,30 @@ def render_dataset_payload(dataset: EvalDataset) -> str:
 
 
 def render_source_table_sql(dataset_payload: str, source_table: QualifiedName) -> str:
+    """Render the script that creates the source table and loads one row per question into it.
+
+    The table is created, never replaced, and loaded only when there are questions. Statements
+    end with `;` and are separated by a blank line, which is where the caller splits them.
+
+    Args:
+        dataset_payload: The payload `render_dataset_payload` returned; each ground truth is
+            re-encoded compactly with sorted keys.
+
+    Raises:
+        ValueError: the payload is not JSON.
+        KeyError: a row lacks `input_query` or `ground_truth`.
+
+    Example:
+        CREATE TABLE DB.S.SRC (
+            INPUT_QUERY VARCHAR NOT NULL
+          , GROUND_TRUTH VARIANT NOT NULL
+        );
+
+        INSERT INTO DB.S.SRC (INPUT_QUERY, GROUND_TRUTH)
+        SELECT
+            'How many orders?'::VARCHAR AS INPUT_QUERY
+          , PARSE_JSON('{"ground_truth_output":"42"}')         AS GROUND_TRUTH;
+    """
     rows = json.loads(dataset_payload)
     statements = [
         f"CREATE TABLE {source_table.sql} (\n"
@@ -64,6 +99,26 @@ def render_create_dataset_sql(
     source_table: QualifiedName,
     dataset_target: QualifiedName,
 ) -> str:
+    """Render the call that creates the evaluation dataset over the source table.
+
+    The source table's question column maps to `query_text`, and its ground truth column to
+    `expected_tools`.
+
+    Raises:
+        ValueError: the config maps its columns to anything but `input_query` and `ground_truth`
+            (in any case), the only columns the source table has.
+
+    Example:
+        CALL SYSTEM$CREATE_EVALUATION_DATASET(
+            'Cortex Agent'
+          , 'DB.S.SRC'
+          , 'DB.S.DATASET'
+          , OBJECT_CONSTRUCT(
+                'query_text', 'INPUT_QUERY'
+              , 'expected_tools', 'GROUND_TRUTH'
+            )
+        );
+    """
     columns = config.dataset.column_mapping if config.dataset is not None else None
     if columns is not None and (
         columns.query_text.casefold() != "input_query" or columns.ground_truth.casefold() != "ground_truth"

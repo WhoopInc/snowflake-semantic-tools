@@ -1,7 +1,7 @@
 """Size and complexity rules for package code, measured with `tests.helpers.code_metrics`.
 
 Each violation is keyed `<rule> <path>[::<qualname>]` and carries the measured value,
-so a ratchet can tell a new violation from a known one that got worse.
+so a failure names how far past its budget the code is.
 """
 
 from __future__ import annotations

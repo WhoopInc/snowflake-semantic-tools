@@ -63,6 +63,16 @@ def _comment(text: str | None) -> str:
 
 
 def render_table(table: Table) -> str:
+    """Render one TABLES entry.
+
+    Modifier order is fixed, and an absent part renders nothing:
+        <logical_name> AS <fqn> [PRIMARY KEY (...)] [UNIQUE (...)]...
+        [CONSTRAINT <logical_name>_DISTINCT_RANGE DISTINCT RANGE BETWEEN <start> AND <end> EXCLUSIVE]
+        [WITH SYNONYMS (...)] [COMMENT = '...']
+
+    Example:
+        P AS DB.S.P PRIMARY KEY (ID) CONSTRAINT P_DISTINCT_RANGE DISTINCT RANGE BETWEEN A AND B EXCLUSIVE
+    """
     out = f"{table.logical_name} AS {table.fqn}"
     if table.primary_key:
         out += f" PRIMARY KEY ({', '.join(table.primary_key)})"
@@ -77,6 +87,14 @@ def render_table(table: Table) -> str:
 
 
 def render_relationship(rel: Relationship) -> str:
+    """Render one RELATIONSHIPS entry: `<name> AS <from> (<columns>) REFERENCES <to> (<columns>)`.
+
+    An ASOF relationship prefixes the referenced column at `asof_index` with `ASOF`; a range
+    relationship replaces the referenced columns with `BETWEEN <start> AND <end> EXCLUSIVE`.
+
+    Example:
+        ORDER_ITEMS_TO_ORDERS AS ORDER_ITEMS (ORDER_ID, OCCURRED_AT) REFERENCES ORDERS (ORDER_ID, ASOF ORDERED_AT)
+    """
     to_columns = list(rel.to_columns)
     if rel.asof_index is not None:
         to_columns[rel.asof_index] = f"ASOF {to_columns[rel.asof_index]}"
@@ -90,6 +108,10 @@ def render_relationship(rel: Relationship) -> str:
 
 
 def render_variable(var: Variable) -> str:
+    """Render one VARIABLES entry: `<name> <data_type> DEFAULT <default> [COMMENT = '...']`.
+
+    The default renders verbatim: the loader has already made it a SQL literal.
+    """
     return f"{var.name} {var.data_type} DEFAULT {var.default}{_comment(var.comment)}"
 
 
@@ -140,6 +162,17 @@ def render_window(window: Window) -> str:
 
 
 def render_metric(metric: Metric) -> str:
+    """Render one METRICS entry.
+
+    Modifier order is fixed, and an absent part renders nothing:
+        [PRIVATE] <qualified> [USING (...)] [NON ADDITIVE BY (...)] AS <expr> [WITH SYNONYMS] [COMMENT]
+
+    A window function metric renders `AS <expr> OVER (...)` instead, and never USING or NON
+    ADDITIVE BY. PRIVATE marks a metric whose access modifier is `private_access`.
+
+    Example:
+        SUPPLIES.TOTAL_SUPPLY_COST NON ADDITIVE BY (SNAPSHOT_MONTH) AS SUM(SUPPLIES.SUPPLY_COST)
+    """
     prefix = "PRIVATE " if metric.access_modifier == "private_access" else ""
     out = prefix + metric.qualified_name
     if metric.window is not None:

@@ -31,6 +31,16 @@ _CALL_NAME = re.compile(r"^\{\{(\s*)(table|column)(\s*)\(")
 
 @dataclass(frozen=True, slots=True)
 class Rewrite:
+    """One change the migration made, located in the text it was given.
+
+    Attributes:
+        line: The 1-based line of the change.
+        col: The 1-based column where the change starts.
+        before: The text replaced; "" for an insertion.
+        after: The replacement; for an inserted `labels:` block, a summary of the block.
+        kind: `column`, `ref`, or `bare` for a rewritten call; `labels` for an added filter label.
+    """
+
     line: int
     col: int
     before: str
@@ -40,6 +50,15 @@ class Rewrite:
 
 @dataclass(frozen=True, slots=True)
 class Untouched:
+    """A `table()` call the migration left alone, because rewriting it would be a guess.
+
+    Attributes:
+        line: The 1-based line of the call.
+        col: The 1-based column where the call starts.
+        text: The call as written, braces included.
+        reason: Why it was left alone.
+    """
+
     line: int
     col: int
     text: str
@@ -59,12 +78,21 @@ class FilterSite:
 
 @dataclass(frozen=True, slots=True)
 class MigrationResult:
+    """One file's migrated text, every change made to it, and every call left alone.
+
+    Attributes:
+        text: The migrated text; byte for byte the input when nothing changed.
+        rewrites: The changes, sorted by line and then column.
+        untouched: The `table()` calls left alone, in source order.
+    """
+
     text: str
     rewrites: tuple[Rewrite, ...] = ()
     untouched: tuple[Untouched, ...] = ()
 
     @property
     def changed(self) -> bool:
+        """Whether anything was rewritten; a call left untouched does not count."""
         return bool(self.rewrites)
 
 
@@ -94,6 +122,12 @@ def _renamed(span: str) -> str:
 
 
 def migrate_refs(text: str) -> MigrationResult:
+    """Rewrite one YAML file's legacy reference calls as the module describes, keeping every other byte.
+
+    Each line is read on its own, so a template that spans lines is never seen. A template that
+    does not parse, and a `table()` or `column()` call with the wrong number of arguments, is
+    left as written and not reported. Filter labels are added separately, by `add_filter_labels`.
+    """
     lines = text.splitlines(keepends=True)
     rewrites: list[Rewrite] = []
     untouched: list[Untouched] = []

@@ -202,6 +202,20 @@ def _dbt_model_diagnostics(
     models: dict[str, DbtModel],
     referenced_models: frozenset[str] | None = None,
 ) -> tuple[Diagnostic, ...]:
+    """Check the `meta.sst` keys and the key metadata of every dbt model, in name order.
+
+    A forbidden location key is reported on every model; the other rules run only on a model a
+    view uses: `referenced_models` holds their casefolded names, and None means every model.
+    Key columns compare casefolded.
+
+    Diagnostics:
+        SST-DBT030: when `meta.sst` holds a forbidden location key, once per key.
+        SST-DBT005: when the model writes key metadata in the 0.3 form, once per field.
+        SST-PRS004: when `meta.sst` holds a key SST does not read, once per key.
+        SST-VAL312: when the model declares neither `primary_key` nor `unique_keys`, in either form.
+        SST-VAL310: when a declared key column is not a column of the model.
+        SST-VAL223: when a column is in both `primary_key` and `unique_keys`.
+    """
     diagnostics: list[Diagnostic] = []
     for model in sorted(models.values(), key=lambda item: item.name):
         subject = f"dbt_model:{model.name}"
@@ -260,6 +274,11 @@ def _description_diagnostics(
     views: tuple[ParsedView, ...],
     metrics: tuple[MetricDef, ...],
 ) -> tuple[Diagnostic, ...]:
+    """Report each view, then each metric, that has no description.
+
+    Diagnostics:
+        SST-VAL003: when a view's `description` is absent or blank, or a metric has none.
+    """
     diagnostics: list[Diagnostic] = []
     for view in views:
         if not str(view.source.get("description") or "").strip():

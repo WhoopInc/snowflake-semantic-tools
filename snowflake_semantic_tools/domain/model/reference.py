@@ -41,6 +41,20 @@ def _syntax(text: str, offset: int, reason: str) -> TemplateSyntaxError:
 
 
 def _parse_body(body: str, *, text: str, body_offset: int) -> tuple[str, tuple[str, ...]]:
+    """Parse what lies between one call's braces as `name('arg', ...)`; return the name and arguments.
+
+    The name is a letter or underscore followed by letters, digits, or underscores. Each argument
+    is a single- or double-quoted string in which a backslash escapes the next character, and it
+    is returned unquoted and unescaped. Whitespace may surround any token, `name()` takes no
+    arguments, and nothing may follow the closing parenthesis.
+
+    Args:
+        text: The whole scalar the call is in, so an error can give its line and column.
+        body_offset: Where `body` starts in `text`.
+
+    Raises:
+        TemplateSyntaxError: the body breaks that grammar; the error points where it breaks.
+    """
     cursor = 0
     length = len(body)
 

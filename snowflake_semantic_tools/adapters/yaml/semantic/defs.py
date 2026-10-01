@@ -26,6 +26,11 @@ class NonAdditiveDef:
 
     @property
     def key(self) -> SortKey:
+        """Return the entry's `NON ADDITIVE BY` sort key, with its sort as written.
+
+        The expression is the dimension uppercased, as `TABLE.DIMENSION` when the entry names a
+        table.
+        """
         name = self.dimension.upper()
         return SortKey(f"{self.table.upper()}.{name}" if self.table else name, self.descending, self.nulls_first)
 
@@ -93,6 +98,13 @@ def _frame_bound(bound: str) -> str:
 
 
 def _window(value: object) -> WindowDef | None:
+    """Read a metric's `window:` block as written; None when it is absent or not a mapping.
+
+    Entries of the wrong type are dropped here, and an `order_by` entry is kept only when it is
+    a reference or a mapping with a string `ref`; the shape check reports the rest. An unknown
+    `sort_direction` or `null_order` reads as unset, and a `frame` that is not a frame clause
+    as None, with `has_frame` still True.
+    """
     if not isinstance(value, dict):
         return None
 
@@ -122,7 +134,24 @@ def _window(value: object) -> WindowDef | None:
 
 @dataclass(frozen=True, slots=True)
 class MetricDef:
-    """A metric as authored, with its `ref()`s still unresolved."""
+    """A metric as authored, with its `ref()`s still unresolved.
+
+    Attributes:
+        name, expr: As written; `expr` keeps its templates.
+        description: On one line and stripped; None when absent or blank.
+        synonyms: Each as text, a lone scalar as one synonym; `()` when absent.
+        tables: The models `tables:` names, casefolded, in order; `()` when it is absent or
+            cannot be read.
+        derived: Whether the metric is derived, built from other metrics, rather than table-scoped.
+        using_relationships: The relationship names, uppercased.
+        non_additive: The `non_additive_dimensions` entries that name a dimension.
+        access_modifier: As written; `public_access` when absent.
+        has_tables_key: Whether the entry has a `tables:` key at all, which `tables` cannot tell.
+        origin: Where the entry starts; None only for a record not read from a file.
+        template_calls: The calls in `expr`, as read; `()` when it has none or one is malformed.
+        poisoned: Whether `tables:` cannot be read, which keeps the metric out of every view.
+        window: The `window:` block; None when absent or not a mapping.
+    """
 
     name: str
     expr: str
@@ -141,6 +170,11 @@ class MetricDef:
 
     @property
     def calls(self) -> tuple[TemplateCall, ...]:
+        """List the template calls in `expr`, in source order; empty when a template is malformed.
+
+        The calls read with the metric are used when there are any; otherwise `expr` is scanned
+        again, so a record built without them still finds its calls.
+        """
         if self.template_calls:
             return self.template_calls
         try:
@@ -159,6 +193,10 @@ class MetricDef:
 
     @property
     def referenced_metrics(self) -> tuple[str, ...]:
+        """Name the metrics `expr` calls `metric()` on, casefolded, each once in first-seen order.
+
+        A `metric()` call with other than one argument names none.
+        """
         return tuple(
             dict.fromkeys(
                 call.args[0].casefold() for call in self.calls if call.function == "metric" and len(call.args) == 1
@@ -168,6 +206,19 @@ class MetricDef:
 
 @dataclass(frozen=True, slots=True)
 class FilterDef:
+    """A filter as authored, with its `ref()`s still unresolved.
+
+    Attributes:
+        name, expr: As written; `expr` keeps its templates.
+        description: On one line and stripped; None when absent or blank.
+        tables: The models `tables:` names, casefolded, in order; `()` when it is absent or
+            cannot be read.
+        entity_level: Whether `labels:` holds `filter`, in any case: such a filter is built as a
+            filter column of its table, and any other filter as prose in the view's instructions.
+        origin, template_calls, poisoned: As `MetricDef` reads them.
+        labeled: Whether the entry has a `labels:` key at all, even an empty one.
+    """
+
     name: str
     expr: str
     description: str | None
@@ -181,6 +232,15 @@ class FilterDef:
 
 @dataclass(frozen=True, slots=True)
 class InstructionDef:
+    """A custom instruction as authored, which views attach by name.
+
+    Attributes:
+        name: As written.
+        ai_sql_generation, ai_question_categorization: Stripped; None when absent or blank.
+        origin: Where the entry starts; None only for a record not read from a file.
+        poisoned: Never set by the reader: an instruction declares no tables to be malformed.
+    """
+
     name: str
     ai_sql_generation: str | None
     ai_question_categorization: str | None
@@ -190,6 +250,21 @@ class InstructionDef:
 
 @dataclass(frozen=True, slots=True)
 class VerifiedQueryDef:
+    """A verified query as authored, with its SQL's templates still unresolved.
+
+    Attributes:
+        name, question: As written.
+        sql: From `sql:` or the `sql_file:` it names, without its leading blank and `--` lines
+            or trailing whitespace.
+        tables: The models `tables:` names, casefolded, in order; `()` when it is absent or
+            cannot be read.
+        verified_at: In seconds since the epoch: an integer as written, or a `YYYY-MM-DD`
+            date's midnight UTC; None when absent.
+        verified_by: Stripped; None when absent or blank.
+        onboarding_question: `use_as_onboarding_question` as a truth value; None when absent.
+        origin, template_calls, poisoned: As `MetricDef` reads them, with `sql` for `expr`.
+    """
+
     name: str
     question: str
     sql: str

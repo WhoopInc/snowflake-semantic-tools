@@ -24,11 +24,25 @@ PROFILE_INPUTS = frozenset(("command", "hook", "mcp"))
 
 @dataclass(frozen=True, slots=True)
 class PartialSplit:
+    """A compile result split for `--partial`: what can publish, and what is left out.
+
+    Attributes:
+        healthy: The healthy artifacts, in compile order, with every diagnostic of the whole
+            result, the left-out artifacts' errors included, so it fails whenever the result did.
+        excluded: Every subject an error names and every artifact left out, each once whatever
+            its case, sorted casefolded.
+    """
+
     healthy: CompileResult
     excluded: tuple[str, ...]
 
     @property
     def notices(self) -> DiagnosticBag:
+        """Return one notice per excluded key, in `excluded` order.
+
+        Diagnostics:
+            SST-PLN032: the key is left out of this partial run.
+        """
         return DiagnosticBag(tuple(D("SST-PLN032", subject=key, artifact=key) for key in self.excluded))
 
 
@@ -46,6 +60,16 @@ def partial_refusal(result: CompileResult) -> Diagnostic | None:
 
 
 def partial_split(result: CompileResult) -> PartialSplit | None:
+    """Split a compile result into the artifacts `--partial` may publish and those it leaves out.
+
+    An artifact is healthy when no error names it or anything it contains, and when everything
+    it depends on, and everything it contains that publishes on its own, is healthy too. Keys
+    compare casefolded, and only errors count: a warning leaves out nothing.
+
+    Returns:
+        The split; None when an error cannot be traced to the artifacts it would change, which
+        `partial_refusal` reports.
+    """
     errors = [item for item in result.diagnostics if item.severity is Severity.ERROR]
     if any(not _attributable(item.subject) for item in errors):
         return None

@@ -52,6 +52,7 @@ class Column:
 
     @property
     def qualified_name(self) -> str:
+        """`TABLE.NAME`: how the DDL names the column, and what columns sort by when rendered."""
         return f"{self.table}.{self.name}"
 
 
@@ -152,6 +153,7 @@ class Metric:
 
     @property
     def qualified_name(self) -> str:
+        """`TABLE.NAME`, or the bare name of a cross-table metric: how the DDL names the metric."""
         return self.name if self.table is None else f"{self.table}.{self.name}"
 
 

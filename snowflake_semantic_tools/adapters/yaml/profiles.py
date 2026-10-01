@@ -45,6 +45,37 @@ def load_profile_catalog(
     mcp_servers_dir: str,
     commands_dir: str = "commands",
 ) -> ProfileCatalog:
+    """Read a project's Desktop profiles, the shared layer, and the hooks, MCP configs and commands.
+
+    Each published folder directly under `profiles_dir` is a profile, except `shared/`, the
+    layer every profile carries; each folder under `hooks_dir` or `mcp_servers_dir` is one hook
+    or MCP config; and every `*.md` at any depth below `commands_dir` is a command. Folders and
+    files are read in name order, hidden entries and caches are skipped, and a missing
+    directory contributes nothing. A profile, hook or MCP config that cannot be read is
+    reported and left out.
+
+    Raises:
+        OSError: A manifest, script, prompt, rule or command file cannot be read.
+        UnicodeDecodeError: An `AGENTS.md` prompt or a shared rule is not UTF-8.
+
+    Diagnostics:
+        SST-VAL801: when a profile folder holds no manifest or both spellings, or its manifest's
+            `name` is not the folder's; or `shared/` holds both spellings.
+        SST-VAL851: when a profile declares a key SST refuses.
+        SST-PRS004: when a manifest, or a command's frontmatter, holds a key SST does not read.
+        SST-PRS003: when a profile or `shared/` field has the wrong type.
+        SST-VAL852: when a hook folder is incomplete or ambiguous.
+        SST-VAL853: when an MCP config folder has no `mcp.json` or an unusable one.
+        SST-VAL859: when a command is not UTF-8, or its frontmatter is malformed or holds a value
+            of the wrong type.
+        SST-PRS122: when a manifest is not UTF-8.
+        SST-LOD001: when a manifest is not valid YAML.
+        SST-LOD004: when a template in a manifest is malformed.
+        SST-LOD005: when a manifest writes a key twice in one mapping.
+        SST-LOD003: when a manifest holds only whitespace or comments.
+        SST-LOD008: when a manifest holds more than one document.
+        SST-LOD002: when a manifest's root is not a mapping.
+    """
     diagnostics: list[Diagnostic] = []
     profiles: list[DesktopProfile] = []
     shared: SharedProfile | None = None
@@ -109,6 +140,24 @@ def _prompt(path: Path) -> str | None:
 
 
 def _load_profile(project_dir: Path, folder: Path, diagnostics: list[Diagnostic]) -> DesktopProfile | None:
+    """Read one profile folder; None when it has no single manifest or the manifest does not parse.
+
+    The profile is named after its folder, whatever its manifest's `name` says. A problem in the
+    manifest is reported at its first line, and one that stops it parsing with the codes
+    `parse_yaml_bytes` lists. `prompt` is the folder's `AGENTS.md`, and the source files are the
+    manifest, then that prompt when there is one.
+
+    Raises:
+        OSError: The manifest or `AGENTS.md` cannot be read.
+        UnicodeDecodeError: `AGENTS.md` is not UTF-8.
+
+    Diagnostics:
+        SST-VAL801: when the folder holds no `profile.yml` or both spellings, or the manifest's
+            `name` is not the folder's.
+        SST-VAL851: when an unread key is one SST refuses, which names the reason.
+        SST-PRS004: when any other key is not one SST reads.
+        SST-PRS003: when a text field is not a string, or a name list not a list of strings.
+    """
     subject = artifact_key("profile", folder.name)
     manifest, problem = _manifest(folder, PROFILE_FILES)
     directory = project_relative(project_dir, folder)
@@ -173,6 +222,22 @@ def _load_profile(project_dir: Path, folder: Path, diagnostics: list[Diagnostic]
 
 
 def _load_shared(project_dir: Path, folder: Path, diagnostics: list[Diagnostic]) -> SharedProfile:
+    """Read the `shared/` layer every profile carries: its prompt, rules, skills and commands.
+
+    The manifest is optional: with none, both spellings, or one that does not parse, the layer
+    lists no skills or commands. The rules are its published `rules/*.md` files, by file name
+    in name order. The source files are the manifest, `AGENTS.md`, then the rules, each when
+    present.
+
+    Raises:
+        OSError: A file of the layer cannot be read.
+        UnicodeDecodeError: `AGENTS.md` or a rule is not UTF-8.
+
+    Diagnostics:
+        SST-VAL801: when the folder holds both `profile.yml` and `profile.yaml`.
+        SST-PRS004: when the manifest holds a key other than `skills` and `commands`.
+        SST-PRS003: when `skills` or `commands` is not a list of strings.
+    """
     subject = "profile:shared"
     origin = Origin(project_relative(project_dir, folder))
     sources: list[str] = []
@@ -277,6 +342,20 @@ def _check_command(command: CommandFile, diagnostics: list[Diagnostic]) -> None:
 
 
 def _load_hook(project_dir: Path, folder: Path, diagnostics: list[Diagnostic]) -> HookDefinition | None:
+    """Read one hook folder into a command hook and the script it runs; None when that cannot be done.
+
+    The manifest is `hook.yml` or `hook.yaml`. Its `script:` names the script among the folder's
+    other published files; without it, the folder must hold exactly one such file. A `script`,
+    `matcher`, `timeout`, `interactive` or `description` of the wrong type is ignored, unreported.
+
+    Raises:
+        OSError: The manifest or the script cannot be read.
+
+    Diagnostics:
+        SST-VAL852: when the folder holds no manifest or both spellings, the hook is not of type
+            `command`, it declares no `event` or `command`, or its script is absent or ambiguous.
+        SST-PRS004: when the manifest holds a key SST does not read.
+    """
     name = folder.name
     subject = f"hook:{name}"
     directory = project_relative(project_dir, folder)
@@ -346,6 +425,18 @@ def _load_hook(project_dir: Path, folder: Path, diagnostics: list[Diagnostic]) -
 
 
 def _load_mcp(project_dir: Path, folder: Path, diagnostics: list[Diagnostic]) -> McpConfig | None:
+    """Read one MCP config folder's `mcp.json`; None when it is absent or cannot be used.
+
+    The document must be one JSON object whose only key is `mcpServers`, an object of server
+    definitions, which are kept as written.
+
+    Raises:
+        OSError: `mcp.json` exists and cannot be read.
+
+    Diagnostics:
+        SST-VAL853: when the folder has no `mcp.json`, it is not UTF-8 JSON, or it is not one
+            `mcpServers` object.
+    """
     name = folder.name
     subject = f"mcp:{name}"
     path = folder / "mcp.json"

@@ -1,9 +1,8 @@
-"""Package code carries the docstrings CONTRIBUTING.md asks for; known gaps may only shrink.
+"""Package code carries the docstrings CONTRIBUTING.md asks for, with no exceptions.
 
 The rules live in tests/helpers/docstring_rules.py and are described in "Docstrings and
-comments" in CONTRIBUTING.md. tests/unit/ratchets/docstrings.txt lists today's gaps: an
-entry may be removed, never added, so new code is documented as it is written and old code
-as it is touched. Regenerate after a deliberate move: `python -m tests.helpers.ratchet`.
+comments" in CONTRIBUTING.md. The package meets every rule, so the gate allows nothing:
+new code is documented as it is written.
 """
 
 from __future__ import annotations
@@ -12,12 +11,12 @@ import ast
 
 import pytest
 
-from tests.helpers import docstring_rules, ratchet
+from tests.helpers import docstring_rules
 
 
-def test_docstrings_hold_or_shrink() -> None:
-    found = ratchet.problems("docstrings", docstring_rules.violations())
-    assert not found, "\n".join(found) + f"\nAfter a deliberate move, regenerate: {ratchet.REGENERATE}"
+def test_package_code_meets_every_docstring_rule() -> None:
+    found = sorted(docstring_rules.violations())
+    assert not found, "docstring rules broken (see CONTRIBUTING.md, Docstrings and comments):\n" + "\n".join(found)
 
 
 def _violations(source: str) -> set[str]:

@@ -14,16 +14,30 @@ from .compile import CompiledView, CompileResult
 
 @dataclass(frozen=True, slots=True)
 class ValidationResult:
+    """What validation found: the compile's rendered artifacts and every diagnostic, strictness applied.
+
+    Attributes:
+        rendered: Every rendered artifact of the compile, in compile order, whatever was found.
+        diagnostics: The compile's diagnostics, then validation's own, after strict promotion.
+        promoted: How many warnings strict mode made errors; 0 without it.
+    """
+
     rendered: tuple[RenderedArtifact, ...]
     diagnostics: DiagnosticBag
     promoted: int = 0
 
     @property
     def success(self) -> bool:
+        """Report whether validation passed: no diagnostic is an error once strict promotion applied."""
         return not self.diagnostics.has_errors
 
 
 class ValidateArtifacts:
+    """Validate a compile result offline or, with a port, against Snowflake.
+
+    The connected checks only EXPLAIN, so they never write.
+    """
+
     def __init__(self, port: SnowflakePort | None = None) -> None:
         self._port = port
 
@@ -34,6 +48,22 @@ class ValidateArtifacts:
         strict: bool,
         connected: bool,
     ) -> ValidationResult:
+        """Validate a compile result, asking Snowflake to compile each semantic view's SQL when connected.
+
+        Connected, each compiled semantic view's metrics, its dimensions (time dimensions and
+        filters included, facts not), and its verified queries are EXPLAINed: an expression
+        over a projection of NULL columns, with qualified references, variables, and metric
+        names replaced by NULL; a verified query as written. No other artifact type gets a
+        connected check. Strict mode then promotes every warning to an error.
+
+        Args:
+            strict: Promote every warning, the compile's included, to an error.
+            connected: Run the Snowflake checks; False skips them even with a port.
+
+        Diagnostics:
+            SST-VAL020: the Snowflake checks were skipped: disabled, or no port was given.
+            SST-VAL418: Snowflake would not compile an expression or a verified query.
+        """
         diagnostics = compiled.diagnostics
         if not connected:
             diagnostics = DiagnosticBag(

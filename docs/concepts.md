@@ -160,3 +160,21 @@ Every problem SST reports is a **diagnostic** with a stable code, such as
 Some errors stop other checks from running on the same artifact, so fixing one
 error can reveal the next. The [error code reference](reference/error-codes.md)
 describes every code and its fix.
+
+## Terms used in the code
+
+The engine's docstrings and diagnostics use a few words in one sense each:
+
+- **key**: an artifact's or member's identity, written `<type>:<name>`, such as
+  `semantic_view:jaffle_menu` or `metric:order_count`. Keys are stored in the
+  state table and the manifest, and `--select` matches them.
+- **subject**: the key a diagnostic is about. `--partial` and the error reports
+  use it to tell which artifact an error belongs to.
+- **origin**: the file, line, and column a diagnostic points at.
+- **fingerprint**: a SHA-256 digest of what an artifact renders. `plan` compares
+  it with the fingerprint recorded in state to decide whether an object changed.
+- **poisoned**: a member or view that has an error is poisoned. It is still
+  checked, so every error is reported at once, but it is not attached to views
+  or built; this is why fixing one error can reveal the next.
+- **ownership marker**: the `[sst:<manifest id>:<fingerprint>]` tag SST writes in
+  an object's comment, which `plan` reads to prove that SST published it.

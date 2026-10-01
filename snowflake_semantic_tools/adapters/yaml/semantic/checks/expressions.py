@@ -223,6 +223,15 @@ def _bare_column_identifiers(
     models: Mapping[str, DbtModel],
     variables: Mapping[str, object],
 ) -> tuple[str, ...]:
+    """Find the columns of `tables` that `expression` names as bare identifiers, not by `ref()`.
+
+    Template calls, string literals and double-quoted identifiers are masked first, and an
+    identifier is left out when the expression also calls a function of that name or it names
+    a project variable. Names compare casefolded; a table that is not a dbt model has no columns.
+
+    Returns:
+        Each identifier as written, once per spelling, in first-seen order.
+    """
     text = re.sub(r"\{\{.*?\}\}", " ", expression)
     text = re.sub(r"'(?:''|[^'])*'|\"(?:\"\"|[^\"])*\"", " ", text)
     functions = {match.group(1).casefold() for match in re.finditer(r"\b([A-Za-z_][A-Za-z0-9_$]*)\s*\(", text)}

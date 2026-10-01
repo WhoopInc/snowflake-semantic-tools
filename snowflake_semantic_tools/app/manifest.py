@@ -2,6 +2,10 @@
 
 `manifest_for` builds it from what `ProjectInputs.manifest_sources` read about the project's
 files; `stale_manifest` says why a run must not start when `sst compile` wrote another one.
+`build_manifest` does the building: every index lists its artifact keys sorted, and the id
+hashes the canonical document, so the order of the compiled artifacts never changes the id,
+while the SST version and each recorded checksum do. Artifact names are recorded casefolded,
+and each artifact lists, sorted, the codes of the diagnostics whose subject is its key.
 """
 
 from __future__ import annotations
@@ -56,6 +60,7 @@ def build_manifest(
     model_count: int = 0,
     file_checksums: dict[str, str] | None = None,
 ) -> Manifest:
+    """Build the manifest of `result`, with what the keyword arguments say about the project."""
     artifacts: dict[str, ArtifactEntry] = {}
     by_file: dict[str, tuple[str, ...]] = {}
     by_dbt_model: dict[str, tuple[str, ...]] = {}

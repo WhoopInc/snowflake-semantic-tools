@@ -6,8 +6,16 @@ import time
 import uuid
 from datetime import datetime, timezone
 
+from ..domain.ports.snowflake import ClockPort
 
-class SystemClock:
+
+class SystemClock(ClockPort):
+    """`ClockPort` on the real system: UTC wall time, `time.monotonic`, and real sleeps.
+
+    `now_iso` carries microseconds, which `datetime.isoformat` leaves out when they are zero,
+    and a run id is a random UUID in its 36-character hyphenated form. It holds no state.
+    """
+
     def now_iso(self) -> str:
         return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
 

@@ -21,6 +21,13 @@ from .windows import DIMENSION_TYPES, _metric_owner, _window_diagnostics
 
 
 def _metric_cycles(metrics: tuple[MetricDef, ...]) -> tuple[tuple[str, ...], ...]:
+    """Find cycles of `metric()` references, each as casefolded names whose last repeats the first.
+
+    A depth-first walk starts from each metric in name order; a reference to an unknown metric
+    ends there. Each cycle is rotated to start at its smallest name and listed once, in the order
+    the walk finds them. The walk never re-enters a metric it has finished, so a further cycle
+    through one is missed: a metric can sit on a cycle and appear in none of those listed.
+    """
     graph = {metric.name.casefold(): metric.referenced_metrics for metric in metrics}
     cycles: list[tuple[str, ...]] = []
     visited: set[str] = set()

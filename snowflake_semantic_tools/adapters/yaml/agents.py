@@ -17,6 +17,36 @@ from .parse import parse_yaml_bytes
 
 
 def load_agents(project_dir: Path, *, agents_dir: str = "agents") -> tuple[tuple[AgentModel, ...], DiagnosticBag]:
+    """Read each `agent.yml` or `agent.yaml` one folder below `agents_dir` into an agent, in path order.
+
+    A missing `agents_dir` holds no agents. A file that cannot be read or parsed, or names no
+    agent, contributes its diagnostics and no agent; any other problem is reported and the
+    agent kept without what could not be read. Sidecars and eval files resolve against the
+    agent's own folder.
+
+    Raises:
+        UnicodeDecodeError: An instruction sidecar is not UTF-8.
+        ValueError: A field read as a mapping, such as `meta` or a tool's `filter`, holds text.
+        TypeError: A field read as a list or a mapping, such as `spec.tools`, holds a number.
+
+    Diagnostics:
+        SST-LOD004: when a file cannot be read, or a template in it is malformed.
+        SST-PRS122: when a file is not UTF-8.
+        SST-LOD001: when a file is not valid YAML.
+        SST-LOD005: when a file writes a key twice in one mapping.
+        SST-LOD003: when a file holds only whitespace or comments.
+        SST-LOD008: when a file holds more than one document.
+        SST-LOD002: when a file's root is not a mapping.
+        SST-PRS002: when the agent has no `name`, a tool no `type`, a skill no `source.type`, or
+            `evals:` no `dataset` or `config`.
+        SST-PRS003: when `evals:` is not a mapping, or one of its paths not a non-empty string.
+        SST-PRS018: when a `spec.tools` or `spec.skills` entry has the wrong shape.
+        SST-PRS118: when a sample question is not a mapping with a string `question`.
+        SST-REF014: when an instruction holds templates other than one whole `{{ file() }}` call.
+        SST-REF027: when a sidecar or an eval file resolves outside the project root.
+        SST-LOD018: when a sidecar cannot be read.
+        SST-LOD019: when a sidecar holds only whitespace.
+    """
     root = project_dir / agents_dir
     if not root.is_dir():
         return (), DiagnosticBag()
@@ -45,6 +75,7 @@ def _parse_agent(
     relative: str,
     tree: Mapping[str, Any],
 ) -> tuple[AgentModel | None, tuple[Diagnostic, ...]]:
+    """Build one agent, reporting each problem; None, with SST-PRS002, only when it has no name."""
     origin = Origin(relative, 1, 1)
     diagnostics: list[Diagnostic] = []
     name = tree.get("name")
@@ -146,6 +177,19 @@ def _parse_eval_files(
     value: object,
     diagnostics: list[Diagnostic],
 ) -> AgentEvalFiles | None:
+    """Resolve an agent's `evals:` dataset and config against its folder, as project-relative paths.
+
+    Whether the files exist is not checked here.
+
+    Returns:
+        None when the agent declares no `evals:`; otherwise both paths, each None when it is
+        absent, of the wrong type, or outside the project root.
+
+    Diagnostics:
+        SST-PRS003: when `evals:` is not a mapping, or a path is not a non-empty string.
+        SST-PRS002: when `dataset` or `config` is absent.
+        SST-REF027: when a path resolves outside the project root.
+    """
     if value is None:
         return None
     origin = Origin(source_file)
@@ -195,6 +239,24 @@ def _instruction(
     source_files: list[str],
     diagnostics: list[Diagnostic],
 ) -> str | None:
+    """Read one instruction: its text as written, or the `{{ file('<path>') }}` sidecar it names.
+
+    A sidecar resolves against the agent's folder, is read as UTF-8 without trailing whitespace,
+    and is appended to `source_files`. A malformed template is reported and the text kept.
+
+    Returns:
+        The instruction; None when `value` is not a string or a sidecar problem was reported.
+
+    Raises:
+        UnicodeDecodeError: The sidecar is not UTF-8.
+
+    Diagnostics:
+        SST-LOD004: when a template in the text is malformed.
+        SST-REF014: when the text holds templates other than one `file()` call that is all of it.
+        SST-REF027: when the sidecar resolves outside the project root.
+        SST-LOD018: when the sidecar cannot be read.
+        SST-LOD019: when the sidecar holds only whitespace.
+    """
     if not isinstance(value, str):
         return None
     try:
@@ -232,6 +294,22 @@ def _parse_tool(
     value: object,
     diagnostics: list[Diagnostic],
 ) -> AgentTool | None:
+    """Read one `spec.tools` entry; None when it is not a mapping or declares no string `type`.
+
+    The tool's origin is line `index + 1` of the agent file: its place in the list, not where it
+    is written. `search_service`, else `identifier`, is read as the arguments of one
+    `{{ tool() }}` call, and `semantic_view` and `agent` as the one argument of a call of that
+    name; any other value of those fields reads as empty.
+
+    Raises:
+        ValueError: A mapping field, such as `filter` or `input_schema`, holds text.
+        TypeError: A mapping field holds a number.
+
+    Diagnostics:
+        SST-PRS018: when the entry is not a mapping.
+        SST-PRS002: when it declares no string `type`.
+        SST-LOD004: when a template in a reference field is malformed.
+    """
     origin = Origin(source_file, index + 1, 1)
     if not isinstance(value, dict):
         diagnostics.append(
@@ -282,6 +360,18 @@ def _parse_skill(
     value: object,
     diagnostics: list[Diagnostic],
 ) -> AgentSkill | None:
+    """Read one `spec.skills` entry; None when it cannot hold a skill.
+
+    `source.path` names a project skill (`{{ skill() }}`), a project plugin (`{{ plugin() }}`)
+    or a consumed extension (`{{ extension() }}`), tried in that order, and `ref` records which.
+    A `{{ var() }}` version is kept as the variable's name, else the version as written. An
+    absent name, path or version reads as `""`.
+
+    Diagnostics:
+        SST-PRS018: when the entry is not a mapping with a `source:` mapping.
+        SST-PRS002: when `source.type` is not a string, or `name` is present and not one.
+        SST-LOD004: when a template in `source.path` or `source.version` is malformed, once each.
+    """
     if not isinstance(value, dict) or not isinstance(value.get("source"), dict):
         diagnostics.append(
             D(

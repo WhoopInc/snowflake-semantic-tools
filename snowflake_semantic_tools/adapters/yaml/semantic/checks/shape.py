@@ -19,6 +19,14 @@ def _synonyms_diagnostics(
     artifact: str,
     subject: str,
 ) -> tuple[Diagnostic, ...]:
+    """Check a `synonyms:` value: a list of strings, none of which holds a quote.
+
+    An absent value is fine.
+
+    Diagnostics:
+        SST-PRS029: when the value is not a list of strings.
+        SST-PRS030: when a synonym holds a single or double quote, once per synonym.
+    """
     if value is None:
         return ()
     if not isinstance(value, list) or any(not isinstance(item, str) for item in value):
@@ -50,6 +58,26 @@ def _metric_parse_diagnostics(
     project_dir: Path,
     semantic_models_dir: str,
 ) -> tuple[Diagnostic, ...]:
+    """Check the shape of every `snowflake_metrics:` entry, so a key of the wrong type is reported.
+
+    Entries come from files in any folder, in document order; one with no name is called
+    `<unnamed>`. Each runs its checks in order: `expr`, `tables`, `using_relationships`,
+    `access_modifier`, `non_additive_dimensions`, `window`, then `synonyms`.
+
+    Diagnostics:
+        SST-PRS002: when there is no `expr`, a non-additive entry names no dimension, or a
+            window `order_by` mapping has no string `ref`.
+        SST-PRS113: when `expr` is not a string.
+        SST-PRS003: when `tables`, `using_relationships`, `non_additive_dimensions`, `window`
+            or a part of either block has the wrong type.
+        SST-PRS013: when `access_modifier`, a `sort_direction` or a `null_order` is not an
+            allowed value.
+        SST-PRS014: when a window comes with `using_relationships` or `non_additive_dimensions`,
+            or declares both `partition_by` and `partition_by_excluding`.
+        SST-PRS124: when the window's `frame` is not a frame clause.
+        SST-PRS029: when `synonyms` is not a list of strings.
+        SST-PRS030: when a synonym holds a quote.
+    """
     metrics_dir = project_dir / semantic_models_dir / "metrics"
     diagnostics: list[Diagnostic] = []
     allowed_access = ("private_access", "public_access")
@@ -294,6 +322,19 @@ def _non_additive_parse_diagnostics(value: object, subject: str, origin: Origin)
 def _verified_query_diagnostics(
     documents: RawDocuments, project_dir: Path, semantic_models_dir: str
 ) -> tuple[Diagnostic, ...]:
+    """Check that each `snowflake_verified_queries:` entry has exactly one SQL source, and a usable one.
+
+    Entries come from files in any folder; one with no name is called `<unnamed>`. A
+    `sql_file:` is resolved against the entry's own file.
+
+    Raises:
+        OSError: A `sql_file:` exists and cannot be read.
+
+    Diagnostics:
+        SST-VAL412: when an entry declares both `sql` and `sql_file`, or neither.
+        SST-LOD018: when the `sql_file:` is not a file.
+        SST-LOD019: when the `sql_file:` holds no bytes.
+    """
     root = project_dir / semantic_models_dir / "verified_queries"
     diagnostics: list[Diagnostic] = []
     for document, index, node in _load_nodes(documents, root, _member_root("verified_query")):

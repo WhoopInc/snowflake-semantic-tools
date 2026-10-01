@@ -13,6 +13,18 @@ from ..model.tool import ToolKind, ToolMember
 
 
 def render_tool(member: ToolMember, target: QualifiedName, source_relation: QualifiedName | None) -> RenderedArtifact:
+    """Render a `define:` member as the one object it publishes: a search service, routine, or stage.
+
+    Args:
+        target: The name the object is created under.
+        source_relation: The relation a search service's `on:` model resolves to, which only a
+            search service reads; None when there is none.
+
+    Raises:
+        ValueError: the member's type is not publishable; a search service or routine lacks a
+            field it needs; a routine body holds `$$`; or a name it renders as an identifier
+            or a three-part name is not one.
+    """
     if member.type == ToolKind.CORTEX_SEARCH_SERVICE.value:
         return _render_search(member, target, source_relation)
     if member.type == ToolKind.PROCEDURE.value:
@@ -29,6 +41,24 @@ def _render_search(
     target: QualifiedName,
     source_relation: QualifiedName | None,
 ) -> RenderedArtifact:
+    """Render `CREATE OR REPLACE CORTEX SEARCH SERVICE`, whose grants are replayed after a replace.
+
+    The query selects the member's declared columns, then its attribute columns, then its search
+    column, each once, from `source_relation`, and appends `where:` verbatim. The comment is the
+    description with each run of whitespace collapsed to one space.
+
+    Raises:
+        ValueError: there is no source relation, search column, warehouse, or target lag, or a
+            column or the warehouse is not a valid identifier.
+
+    Example:
+        CREATE OR REPLACE CORTEX SEARCH SERVICE DB.S.DOCS_SEARCH
+          ON BODY
+          ATTRIBUTES CATEGORY
+          WAREHOUSE = WH
+          TARGET_LAG = '1 hour'
+          AS SELECT CATEGORY, BODY FROM DB.S.DOCS WHERE IS_PUBLIC
+    """
     if source_relation is None or not member.search_column or not member.warehouse or not member.target_lag:
         raise ValueError(f"search service {member.name!r} is missing required render fields")
     selected = tuple(
@@ -79,6 +109,33 @@ def _render_search(
 
 
 def _render_routine(member: ToolMember, target: QualifiedName, *, procedure: bool) -> RenderedArtifact:
+    """Render `CREATE OR REPLACE PROCEDURE` or `FUNCTION` with `COPY GRANTS`, its body dollar-quoted.
+
+    The clauses come in a fixed order: the signature, COPY GRANTS, RETURNS, and LANGUAGE; then,
+    when set, RUNTIME_VERSION and HANDLER (which any language but SQL requires), PACKAGES,
+    IMPORTS, EXTERNAL_ACCESS_INTEGRATIONS, and SECRETS sorted by name; then a procedure's
+    EXECUTE AS, CALLER by default; then the body. A procedure also requires `warehouse`,
+    which the DDL itself does not name.
+
+    Args:
+        procedure: Render a procedure rather than a function.
+
+    Raises:
+        ValueError: the language, body, or return type is missing, or a procedure has no
+            warehouse; a language other than SQL lacks a runtime version or handler; the body
+            holds `$$`; a parameter or integration name is not an identifier; or a secret is
+            not a three-part name.
+
+    Example:
+        CREATE OR REPLACE PROCEDURE DB.S.LOOKUP(ORDER_ID NUMBER)
+          COPY GRANTS
+          RETURNS NUMBER
+          LANGUAGE SQL
+          EXECUTE AS CALLER
+          AS $$
+        <body>
+        $$
+    """
     if not member.language or member.body is None or not member.returns or (procedure and not member.warehouse):
         raise ValueError(f"routine {member.name!r} is missing required render fields")
     object_type = "PROCEDURE" if procedure else "FUNCTION"

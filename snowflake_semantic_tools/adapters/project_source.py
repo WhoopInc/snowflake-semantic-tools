@@ -63,9 +63,20 @@ class YamlProjectSource:
 
     @property
     def project_dir(self) -> Path:
+        """Return the project directory this source reads, as it was given, unresolved."""
         return self._project_dir
 
     def load_project(self) -> SemanticViewProject:
+        """Load the semantic views, with every diagnostic the semantic load collected.
+
+        Without a manifest path, and when dbt may be invoked, `dbt parse` runs before the models
+        are read.
+
+        Raises:
+            ProjectError: `sst_config.yml`, the semantic-models directory or a member cannot be
+                read at all, the dbt target cannot be resolved, or dbt or its manifest fails.
+            UnicodeDecodeError: A verified query's `sql_file:` is not UTF-8.
+        """
         # SST's own files first, then the dbt target and models: a problem in either is
         # reported in that order, and before dbt is run.
         inputs = read_semantic_inputs(self._project_dir)
@@ -80,6 +91,16 @@ class YamlProjectSource:
         return load_semantic_views_result(self._project_dir, inputs, target=target, models=models)
 
     def load_tools(self) -> ToolCatalog:
+        """Load the tool groups under `project.tools_dir`, checked against the dbt manifest and target.
+
+        Without a manifest path, and when dbt may be invoked, `dbt parse` runs first. The target
+        is the one this source was given, else the profile's default `target`.
+
+        Raises:
+            ProjectError: dbt fails, or the dbt manifest, `dbt_project.yml`, `sst_config.yml` or
+                `profiles.yml` cannot be read.
+            ValueError: The profile cannot be resolved, or `profiles.yml` does not declare the target.
+        """
         if self._invoke_dbt and self._manifest_path is None:
             run_dbt_parse(self._project_dir, self._target_name)
         manifest_path = self._manifest_path or target_path(self._project_dir, read_yaml_mapping)
@@ -109,6 +130,20 @@ class YamlProjectSource:
         agent_diagnostics: DiagnosticBag = DiagnosticBag(),
         agent_tool_names: dict[str, tuple[str, ...]] | None = None,
     ) -> EvalCatalog:
+        """Load the evals of `agents`, reading every agent again when `agents` is None.
+
+        The agents and the custom metrics come from `project.agents_dir` and
+        `project.eval_metrics_dir`, the defaults from `evals:`, and the judge models a custom
+        metric may name from `snowflake.orchestration_models`. Agents read here bring their own
+        diagnostics, in place of `agent_diagnostics`, and raise what `load_agents` raises.
+
+        Args:
+            agent_diagnostics: What loading `agents` reported, placed ahead of the eval diagnostics.
+            agent_tool_names: Each agent's tool names, by casefolded agent name.
+
+        Raises:
+            ProjectError: `sst_config.yml` cannot be read.
+        """
         config = read_yaml_mapping(self._project_dir / "sst_config.yml")
         project = config.get("project")
         agents_dir = str(project.get("agents_dir") or "agents") if isinstance(project, dict) else "agents"

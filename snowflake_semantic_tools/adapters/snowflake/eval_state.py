@@ -12,11 +12,30 @@ from ...domain.ports.snowflake import SnowflakePort, SnowflakePortError
 
 
 class SnowflakeEvalStateStore:
+    """Eval baselines and gate states in one Snowflake table: one row per target, eval and kind.
+
+    A row is keyed by `TARGET_NAME`, `EVAL_KEY` and `RECORD_KIND` (`baseline` or `gate`) and
+    holds its record as a JSON `PAYLOAD` of metadata only. A read never creates the table, so a
+    read-only role can read and a missing table reads as no record; a write creates the table
+    first and upserts its rows. Snowflake does not enforce the key, so a read that finds two
+    rows raises.
+    """
+
     def __init__(self, port: SnowflakePort, table: QualifiedName) -> None:
         self._port = port
         self._table = table
 
     def read_baseline(self, target_name: str, eval_key: str) -> EvalBaselineRecord | None:
+        """Return the baseline recorded for one eval on one target; None when there is none.
+
+        Never writes: a missing table reads as None.
+
+        Raises:
+            SnowflakePortError: The lookup or the query failed, more than one row matched, or the
+                stored payload does not have a baseline's shape.
+            ValueError: A stored `score_range` bound is text that is not a number.
+            TypeError: A stored `score_range` bound is an array or an object.
+        """
         # Reads never create the table, so a read-only role can read; no table means no record.
         if not self._port.object_exists("TABLE", self._table):
             return None
@@ -32,9 +51,22 @@ class SnowflakeEvalStateStore:
         return _baseline_from_payload(result.rows[0][0])
 
     def write_baseline(self, target_name: str, baseline: EvalBaselineRecord) -> None:
+        """Insert or replace one eval's baseline on one target, creating the table when it is absent.
+
+        Raises:
+            SnowflakePortError: Creating the table or the MERGE failed.
+        """
         self._write(target_name, baseline.eval_key, "baseline", _baseline_payload(baseline))
 
     def write_baselines(self, target_name: str, baselines: tuple[EvalBaselineRecord, ...]) -> None:
+        """Insert or replace several baselines on one target in one transaction, so a failure commits none.
+
+        An empty batch runs nothing and does not create the table.
+
+        Raises:
+            SnowflakePortError: Creating the table or the transaction failed; a ROLLBACK is sent
+                first, and its own failure is not reported.
+        """
         if not baselines:
             return
         self._ensure_table()
@@ -48,6 +80,15 @@ class SnowflakeEvalStateStore:
             raise SnowflakePortError(result.error.message if result.error else "eval baseline batch write failed")
 
     def read_gate(self, target_name: str, eval_key: str) -> EvalGateState | None:
+        """Return the gate state recorded for one eval on one target; None when there is none.
+
+        Never writes: a missing table reads as None.
+
+        Raises:
+            SnowflakePortError: The lookup or the query failed, more than one row matched, or the
+                stored payload does not have a gate state's shape.
+            ValueError: A stored `regression_count` is text that is not an integer.
+        """
         if not self._port.object_exists("TABLE", self._table):
             return None
         result = self._port.query(
@@ -62,6 +103,11 @@ class SnowflakeEvalStateStore:
         return _gate_from_payload(result.rows[0][0])
 
     def write_gate(self, target_name: str, gate: EvalGateState) -> None:
+        """Insert or replace one eval's gate state on one target, creating the table when it is absent.
+
+        Raises:
+            SnowflakePortError: Creating the table or the MERGE failed.
+        """
         self._write(target_name, gate.eval_key, "gate", _gate_payload(gate))
 
     def _ensure_table(self) -> None:
@@ -122,6 +168,19 @@ def _baseline_payload(value: EvalBaselineRecord) -> dict[str, object]:
 
 
 def _baseline_from_payload(value: object) -> EvalBaselineRecord:
+    """Decode a stored baseline payload, given as a mapping or as its JSON text.
+
+    A missing field reads as empty: `""`, no metrics or run names, and `report` for the tier.
+    Metric versions and the gate policy are sorted by name, so the record does not depend on
+    the order the payload holds them in; a `score_range` bound of null stays None.
+
+    Raises:
+        SnowflakePortError: The payload, a metric, the metric versions or the gate policy is not
+            an object; `metrics` or `run_names` is not an array; `passed_attempts` holds a
+            non-boolean; or a `score_range` does not hold two values.
+        ValueError: A `score_range` bound is text that is not a number.
+        TypeError: A `score_range` bound is an array or an object.
+    """
     payload = _mapping(value, "baseline")
     metrics = payload.get("metrics", [])
     run_names = payload.get("run_names", [])
@@ -181,6 +240,16 @@ def _gate_payload(value: EvalGateState) -> dict[str, object]:
 
 
 def _gate_from_payload(value: object) -> EvalGateState:
+    """Decode a stored gate payload, given as a mapping or as its JSON text.
+
+    A missing field reads as empty: `""`, no regressions or run names, a count of 0, and not
+    unresolved. `regression_count` may be stored as a number or as numeric text.
+
+    Raises:
+        SnowflakePortError: The payload or a regression is not an object, `regressions` or
+            `run_names` is not an array, or `regression_count` is a boolean or not a number.
+        ValueError: `regression_count` is text that is not an integer.
+    """
     payload = _mapping(value, "gate")
     regressions = payload.get("regressions", [])
     run_names = payload.get("run_names", [])

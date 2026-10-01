@@ -94,6 +94,11 @@ def error_anchor(code: str) -> str:
 
 
 def render_artifacts(registry: Registry = ARTIFACT_REGISTRY) -> str:
+    """Render the artifact reference page from the registry.
+
+    A table of the artifact types and a section for each come first, both in DDL-position
+    order, then a table of the member types in clause-position order.
+    """
     artifacts = sorted(registry.artifacts.values(), key=lambda item: item.ddl_position)
     lines = [
         "# Artifact reference",
@@ -140,6 +145,11 @@ def render_artifacts(registry: Registry = ARTIFACT_REGISTRY) -> str:
 
 
 def _artifact_facts(artifact: ArtifactType) -> list[str]:
+    """List an artifact type's facts as the Markdown bullets of its section.
+
+    Position, lifecycle, update behavior, grants, and `--prune` always appear; dependencies,
+    version pins, and member types appear only when the type has them.
+    """
     composite = artifact.lifecycle is ArtifactLifecycle.COMPOSITE
     facts = [
         f"- Position: {artifact.ddl_position}",
@@ -166,6 +176,15 @@ def _artifact_facts(artifact: ArtifactType) -> list[str]:
 
 
 def render_error_codes(registry: Mapping[str, ErrorSpec] = ERROR_REGISTRY) -> str:
+    """Render the error code reference page: every code under its subsystem, with its message and any fix.
+
+    Subsystems appear in `SUBSYSTEMS` order, each with its codes sorted; a subsystem with no
+    codes is left out.
+
+    Raises:
+        ValueError: a code belongs to a subsystem `SUBSYSTEMS` does not list, so the page would
+            have no section for it.
+    """
     by_subsystem: dict[str, list[ErrorSpec]] = {}
     for spec in registry.values():
         by_subsystem.setdefault(spec.subsystem, []).append(spec)
@@ -232,6 +251,13 @@ def _template(spec: ErrorSpec) -> str:
 
 
 def render_config(schema: tuple[ConfigKey, ...] = CONFIG_SCHEMA) -> str:
+    """Render the configuration reference page from the configuration schema.
+
+    Current keys are grouped by top-level block, in schema order, and a block's own key gives
+    its summary and notes. A table of unsupported keys follows when there are any, then one of
+    removed keys, where a key that names no code links SST-CFG043. A default that starts with
+    "the " is prose and shown as written; any other default is shown as code.
+    """
     current = [key for key in schema if key.status is KeyStatus.CURRENT]
     unsupported = [key for key in schema if key.status is KeyStatus.UNSUPPORTED]
     removed = [key for key in schema if key.status is KeyStatus.REMOVED]
@@ -336,6 +362,17 @@ def render_cli(
     global_options: tuple[OptionDoc, ...],
     exit_codes: tuple[tuple[int, str, str], ...],
 ) -> str:
+    """Render the CLI reference page from the command tree the CLI describes.
+
+    A table of each command's first paragraph, the global options, and the exit codes come
+    first, then a section per command: a group lists its subcommands, and any other command
+    shows its usage and options.
+
+    Args:
+        commands: Every command and group, in the order the page lists them.
+        global_options: The options that go before the command name.
+        exit_codes: `(code, name, meaning)` for each exit code, in the order the page lists them.
+    """
     lines = [
         "# CLI reference",
         "",

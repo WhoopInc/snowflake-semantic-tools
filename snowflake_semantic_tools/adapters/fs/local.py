@@ -17,6 +17,13 @@ T = TypeVar("T")
 
 
 class JsonStore(Generic[T]):
+    """One JSON document on disk, read through `parser` and replaced atomically in canonical form.
+
+    A file that exists and cannot be used raises `ProjectError` with the code that names why:
+    the one a `StoredDocumentError` carries, else the store's `unreadable_code`. Without such a
+    code it raises `ValueError` instead.
+    """
+
     # The code for a file that exists and cannot be used, when the store has one.
     unreadable_code: str | None = None
 
@@ -25,6 +32,16 @@ class JsonStore(Generic[T]):
         self._parser = parser
 
     def read(self) -> T | None:
+        """Read and parse the file; None when it does not exist.
+
+        Raises:
+            ProjectError: The file cannot be used and the store can name why, with one diagnostic:
+                the code of a `StoredDocumentError` the parser raised, else `unreadable_code` for
+                bytes that are not JSON or a document the parser cannot read.
+            ValueError: The file cannot be used and the store has no code for it; a document of the
+                wrong shape is reported as `<path> has the wrong shape: <detail>`.
+            OSError: The file exists and cannot be opened.
+        """
         try:
             raw = self.path.read_bytes()
         except FileNotFoundError:
@@ -47,6 +64,17 @@ class JsonStore(Generic[T]):
         raise ProjectError(diagnostic.message, diagnostics=(diagnostic,))
 
     def write(self, value: object) -> None:
+        """Replace the file atomically with `value` as canonical JSON and a trailing newline.
+
+        A value with `as_dict()` is written as what that returns. The bytes go to a hidden
+        temporary file beside the target, are synced, and replace the target in one rename, so a
+        reader sees the old document or the new one; missing parent directories are created.
+
+        Raises:
+            OSError: The directory or the file cannot be written; the temporary file is removed.
+            TypeError: The value holds something JSON cannot encode.
+            ValueError: The value holds NaN or an infinity.
+        """
         self.path.parent.mkdir(parents=True, exist_ok=True)
         payload = value.as_dict() if hasattr(value, "as_dict") else value
         data = canonical_json(payload) + b"\n"
@@ -68,6 +96,18 @@ class JsonStore(Generic[T]):
 
 
 class ManifestFileStore(JsonStore[Manifest]):
+    """The compiled manifest file, read as a `Manifest` whose id must be the hash of its content.
+
+    `read` raises `ProjectError` for a manifest that exists and cannot be used.
+
+    Diagnostics:
+        SST-MAN002: when the file is not JSON, not an object, or not a manifest's shape.
+        SST-MAN003: when it lacks an integer `schema_version` or an `artifacts` object.
+        SST-MAN203: when its schema is newer than this binary reads.
+        SST-MAN202: when its older schema has no migration.
+        SST-MAN005: when its `manifest_id` is not the hash of its content.
+    """
+
     unreadable_code = "SST-MAN002"
 
     def __init__(self, path: Path) -> None:
@@ -75,6 +115,12 @@ class ManifestFileStore(JsonStore[Manifest]):
 
 
 class PlanFileStore(JsonStore[SavedPlan]):
+    """A saved plan file, read as a `SavedPlan` whose `plan_id` must be the hash of its content.
+
+    No registered code names an unusable plan, so `read` raises `ValueError` for a plan that
+    exists and cannot be used, never `ProjectError`.
+    """
+
     def __init__(self, path: Path) -> None:
         super().__init__(path, SavedPlan.from_dict)
 
@@ -88,6 +134,13 @@ def state_file(target_dir: Path, target_name: str) -> Path:
 
 
 class StateFileStore(JsonStore[State]):
+    """One target's local state file, which caches the state table, and the apply lock beside it.
+
+    The lock is the sibling file `<state file>.lock`, created exclusively and holding the run id
+    and the time it was taken; it goes stale `LOCK_TTL_SECONDS` (30 minutes) after that time, by
+    the `now` clock, which is UTC by default. `config_path` is only reported back, never read.
+    """
+
     LOCK_TTL_SECONDS = 30 * 60
     unreadable_code = "SST-MAN022"
 
@@ -105,15 +158,42 @@ class StateFileStore(JsonStore[State]):
 
     @property
     def config_path(self) -> str:
+        """Return the configuration path this store was given, which the states built for it record."""
         return self._config_path
 
     def read_local(self) -> State | None:
+        """Read the state file; None when there is none.
+
+        Raises:
+            ProjectError: The file exists and cannot be used; its one diagnostic is listed below.
+            OSError: The file exists and cannot be opened.
+
+        Diagnostics:
+            SST-MAN022: when the file is not JSON, not an object, or not a state document's shape.
+            SST-MAN023: when its schema is not an integer, is newer, or has no migration.
+        """
         return self.read()
 
     def write_local(self, value: State) -> None:
+        """Replace the state file with `value` atomically, as `JsonStore.write` does."""
         self.write(value)
 
     def acquire_lock(self, run_id: str, *, break_stale: bool) -> tuple[bool, str | None, bool]:
+        """Take the apply lock for `run_id` unless another run holds it, without waiting.
+
+        The lock file is created exclusively, so of two runs racing for a free lock one wins. With
+        `break_stale`, a stale lock is deleted and taken over; a lock file that cannot be read, or
+        records no time, is never stale.
+
+        Returns:
+            `(True, None, False)` when the lock was free; `(True, holder, True)` when a stale lock
+            was taken over; `(False, holder, False)` otherwise. `holder` is the run id the lock
+            file records, None when it records none or cannot be read.
+
+        Raises:
+            OSError: The lock file cannot be created or written, including `FileExistsError` when
+                another run takes the lock between this one deleting a stale lock and taking it.
+        """
         self._lock_path.parent.mkdir(parents=True, exist_ok=True)
         now = self._now()
         payload = canonical_json({"run_id": run_id, "created_at": now.isoformat()})
@@ -146,6 +226,7 @@ class StateFileStore(JsonStore[State]):
         return holder if isinstance(holder, str) else None, stale
 
     def release_lock(self, run_id: str) -> None:
+        """Delete the lock file when `run_id` holds the lock; otherwise leave it as it is."""
         holder, _ = self._lock_status(self._now())
         if holder == run_id:
             self._lock_path.unlink(missing_ok=True)

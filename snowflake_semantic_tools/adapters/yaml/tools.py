@@ -32,6 +32,35 @@ def load_tool_catalog(
     declared_targets: frozenset[str],
     tools_dir: str = "tools",
 ) -> ToolCatalog:
+    """Read every tool group of each `*.yml` or `*.yaml` directly under `tools_dir`, then validate them.
+
+    Files are read in name order. A missing `tools_dir` gives an empty catalog, unvalidated. A
+    file that cannot be read or parsed, or has no `tools:` list, contributes its diagnostics
+    and no groups.
+
+    Args:
+        dbt: The dbt models each defined search service's `on:` must name.
+        target_name: The target every reference's `relations` must cover.
+        declared_targets: Every target `profiles.yml` declares.
+
+    Returns:
+        The groups in file order, with every loading diagnostic and every finding of
+        `validate_tool_catalog`, sorted by origin file (none first), then code.
+
+    Diagnostics:
+        SST-LOD004: when a file cannot be read, or a template in it or in an `on:` is malformed.
+        SST-PRS122: when a file is not UTF-8.
+        SST-LOD001: when a file is not valid YAML.
+        SST-LOD005: when a file writes a key twice in one mapping.
+        SST-LOD003: when a file holds only whitespace or comments.
+        SST-LOD008: when a file holds more than one document.
+        SST-LOD002: when a file's root is not a mapping.
+        SST-PRS003: when `tools:` is absent or not a list, or a group, member or field of one has
+            the wrong type.
+        SST-PRS002: when a group has no `group`, or a member no `name` or no `type`.
+        SST-VAL608: when a member's `on:` is not one `{{ ref('<model>') }}` call.
+        Every code `validate_tool_catalog` lists, for the groups that load.
+    """
     groups: list[ToolGroup] = []
     diagnostics: list[Diagnostic] = []
     root = project_dir / tools_dir
@@ -80,6 +109,19 @@ def _parse_group(
     index: int,
     value: object,
 ) -> tuple[ToolGroup | None, tuple[Diagnostic, ...]]:
+    """Read one `tools:` entry into a group and its members, `define:` before `reference:`.
+
+    The group and what it reports point at line `index + 1` of the file: its place in the
+    list, not where it is written. Its name is kept as written.
+
+    Returns:
+        The group, None when the entry is not a mapping or names no group; with what reading the
+        group and each of its members reported.
+
+    Diagnostics:
+        SST-PRS003: when the entry is not a mapping, or its `define:` or `reference:` not a list.
+        SST-PRS002: when the entry has no non-blank `group`.
+    """
     origin = Origin(source_file, index + 1, 1)
     if not isinstance(value, dict):
         return None, (
@@ -147,6 +189,21 @@ def _parse_member(
     index: int,
     value: object,
 ) -> tuple[ToolMember | None, tuple[Diagnostic, ...]]:
+    """Read one member of a group's `define:` or `reference:` list; None when it lacks a name or type.
+
+    It points at line `index + 1` of the file: its place in its list. YAML 1.1 reads an unquoted
+    `on:` key as `true`, so that key counts as `on:`. `body_file:` is read relative to the
+    project root; a body outside it or unreadable is None, which `validate_tool_catalog` reports
+    for a `define:` member. An explicit `search_column` or `attribute_columns` wins over the one
+    `on:` gives.
+
+    Diagnostics:
+        SST-PRS003: when the entry is not a mapping, or `on:`, `relations`, `secrets`,
+            `signature` or `columns_and_descriptions` has the wrong type.
+        SST-PRS002: when the entry has no non-blank `name`, or no non-blank `type`.
+        SST-LOD004: when the template in `on:` is malformed.
+        SST-VAL608: when `on:` is not one single-argument `ref()` call.
+    """
     origin = Origin(source_file, index + 1, 1)
     if not isinstance(value, dict):
         return None, (
@@ -227,6 +284,18 @@ def _on_fields(
     name: str,
     diagnostics: list[Diagnostic],
 ) -> tuple[str | None, str | None, tuple[str, ...]]:
+    """Read `on:`, either a `ref()` string or a mapping of `table`, `search_column` and `attributes`.
+
+    Returns:
+        `(model, search_column, attributes)`: the model as the `ref()` names it, None when
+        `on:` is absent or cannot be read; and the mapping's search column, stripped, and its
+        attributes, else None and `()`.
+
+    Diagnostics:
+        SST-PRS003: when `on:` is neither a string nor a mapping, or its `table` is set and not text.
+        SST-LOD004: when its template is malformed.
+        SST-VAL608: when it is not exactly one single-argument `ref()` call.
+    """
     raw: object = value
     search_column: str | None = None
     attributes: tuple[str, ...] = ()
@@ -262,6 +331,15 @@ def _on_fields(
 
 
 def _signature(value: object, name: str, origin: Origin, diagnostics: list[Diagnostic]) -> tuple[ToolParameter, ...]:
+    """Read `signature:` as the routine's parameters, in order, skipping each malformed entry.
+
+    A parameter needs a string `name` and `type`; `required` is read as a truth value, False
+    when absent.
+
+    Diagnostics:
+        SST-PRS003: when `signature:` is not a list, or an entry is not a mapping with a string
+            `name` and `type`, once per entry.
+    """
     if value is None:
         return ()
     if not isinstance(value, list):
@@ -295,6 +373,14 @@ def _signature(value: object, name: str, origin: Origin, diagnostics: list[Diagn
 
 
 def _columns(value: object, name: str, origin: Origin, diagnostics: list[Diagnostic]) -> tuple[ToolColumn, ...]:
+    """Read `columns_and_descriptions:`, each column name to its settings, in authored order.
+
+    An absent `description` or `type` reads as `""`, and `searchable` and `filterable` as truth
+    values, False when absent.
+
+    Diagnostics:
+        SST-PRS003: when the value is not a mapping, or a column's settings are not, once per column.
+    """
     if value is None:
         return ()
     if not isinstance(value, dict):

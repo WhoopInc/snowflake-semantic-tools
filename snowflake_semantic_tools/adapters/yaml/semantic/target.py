@@ -42,6 +42,15 @@ def _semantic_view_target(config: dict[str, Any], path: Path, views_dir: Path, t
 
 
 def _folder_route_diagnostics(config: dict[str, Any], views_dir: Path) -> tuple[Diagnostic, ...]:
+    """Report each folder route under `semantic_views:` that names no directory under `views_dir`.
+
+    A route is a key whose value is a mapping; a `+` key is a setting, not a route. Routes nest
+    as folders do and are walked depth first, and none below a missing directory is checked.
+    Nothing is reported when the block is not a mapping.
+
+    Diagnostics:
+        SST-CFG041: when a route names no directory; the subject is `config_route:<dotted route>`.
+    """
     block = config.get("semantic_views") or {}
     if not isinstance(block, dict):
         return ()

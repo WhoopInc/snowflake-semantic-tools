@@ -166,6 +166,18 @@ def _unread_keys(
     mapping: Mapping[Any, Any],
     allowed: frozenset[str],
 ) -> list[Diagnostic]:
+    """Report each key of `mapping`, and of the mappings nested in it, that the loader does not read.
+
+    `scope` is the node type, or `<type>.<field>` for a nested mapping, and picks both the nested
+    fields to descend into and the 0.3 spellings to name. A key is labelled `prefix` plus its
+    name, such as `window.order_by[0].column`, and located by its node path. The mapping's own
+    keys come first, in authored order, then each nested field's, in `NESTED_KEYS` order; a
+    nested field of the wrong shape is left to its own check.
+
+    Diagnostics:
+        SST-PRS020: when a key is the 0.3 spelling of a 1.0 key in its scope.
+        SST-PRS004: when any other key is not one `allowed` lists.
+    """
     diagnostics = [
         _unread_key(document, (*path, str(key)), scope, f"{prefix}{key}", subject)
         for key in mapping

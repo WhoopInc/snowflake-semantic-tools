@@ -20,7 +20,15 @@ from .nodes import (
 
 
 def load_metrics(documents: RawDocuments, project_dir: Path, semantic_models_dir: str) -> tuple[MetricDef, ...]:
-    """Read `<semantic_models_dir>/metrics/*.yml` under the `snowflake_metrics:` key."""
+    """Read every document's `snowflake_metrics:` entries into records, in document order.
+
+    A file in any folder is read: the `metrics/` directory the arguments name is not consulted.
+    An entry that is not a mapping, or has no `name` or no `expr`, is skipped here, for the checks
+    to report.
+
+    Raises:
+        ProjectError: An entry's `synonyms` is a mapping, which cannot be read as text.
+    """
     metrics_dir = project_dir / semantic_models_dir / "metrics"
     out: list[MetricDef] = []
     for document, index, node in _load_nodes(documents, metrics_dir, _member_root("metric")):
@@ -59,6 +67,12 @@ def load_metrics(documents: RawDocuments, project_dir: Path, semantic_models_dir
 
 
 def load_filters(documents: RawDocuments, project_dir: Path, semantic_models_dir: str) -> tuple[FilterDef, ...]:
+    """Read every document's `snowflake_filters:` entries into records, in document order.
+
+    A file in any folder is read: the `filters/` directory the arguments name is not consulted.
+    An entry that is not a mapping, or has no `name` or no `expr`, is skipped here. `labels`
+    compare casefolded, and a `labels:` value that is not a list holds none.
+    """
     out: list[FilterDef] = []
     root = project_dir / semantic_models_dir / "filters"
     for document, index, node in _load_nodes(documents, root, _member_root("filter")):
@@ -90,6 +104,12 @@ def load_filters(documents: RawDocuments, project_dir: Path, semantic_models_dir
 def load_instructions(
     documents: RawDocuments, project_dir: Path, semantic_models_dir: str
 ) -> dict[str, InstructionDef]:
+    """Read every document's `snowflake_custom_instructions:` entries into records, by casefolded name.
+
+    A file in any folder is read, and an entry that is not a mapping or has no `name` is skipped.
+    Of two entries whose names casefold alike the later is kept; the name checks report the
+    repeat (SST-PRS106).
+    """
     root = project_dir / semantic_models_dir / "custom_instructions"
     out: dict[str, InstructionDef] = {}
     for document, index, node in _load_nodes(documents, root, _member_root("custom_instruction")):
@@ -130,6 +150,18 @@ def _verified_at(value: object, *, path: Path, name: str) -> int | None:
 def load_verified_queries(
     documents: RawDocuments, project_dir: Path, semantic_models_dir: str
 ) -> tuple[VerifiedQueryDef, ...]:
+    """Read every document's `snowflake_verified_queries:` entries into records, in document order.
+
+    A file in any folder is read. The SQL is `sql:`, or the `sql_file:` it names relative to the
+    entry's own file. An entry is skipped here when it is not a mapping, has no `name` or no
+    `question`, declares both or neither of `sql` and `sql_file`, or names a file that cannot be
+    read or holds only whitespace.
+
+    Raises:
+        ProjectError: An entry's `verified_at` is neither an integer nor a `YYYY-MM-DD` string; an
+            unquoted date, which YAML reads as a date, is refused too.
+        UnicodeDecodeError: A `sql_file:` is not UTF-8.
+    """
     root = project_dir / semantic_models_dir / "verified_queries"
     out: list[VerifiedQueryDef] = []
     for document, index, node in _load_nodes(documents, root, _member_root("verified_query")):
