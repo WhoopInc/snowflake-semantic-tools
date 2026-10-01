@@ -82,25 +82,8 @@ def _parse_body(body: str, *, text: str, body_offset: int) -> tuple[str, tuple[s
         cursor += 1
     else:
         while True:
-            if cursor >= length or body[cursor] not in ("'", '"'):
-                raise _syntax(text, body_offset + cursor, "template arguments must be quoted strings")
-            quote = body[cursor]
-            cursor += 1
-            value: list[str] = []
-            while cursor < length:
-                char = body[cursor]
-                if char == "\\" and cursor + 1 < length:
-                    value.append(body[cursor + 1])
-                    cursor += 2
-                    continue
-                if char == quote:
-                    cursor += 1
-                    break
-                value.append(char)
-                cursor += 1
-            else:
-                raise _syntax(text, body_offset + cursor, "unterminated quoted template argument")
-            args.append("".join(value))
+            value, cursor = _quoted(body, cursor, text=text, body_offset=body_offset)
+            args.append(value)
             skip_space()
             if cursor < length and body[cursor] == ",":
                 cursor += 1
@@ -115,6 +98,31 @@ def _parse_body(body: str, *, text: str, body_offset: int) -> tuple[str, tuple[s
     if cursor != length:
         raise _syntax(text, body_offset + cursor, "unexpected text after template call")
     return function, tuple(args)
+
+
+def _quoted(body: str, cursor: int, *, text: str, body_offset: int) -> tuple[str, int]:
+    """Read the quoted argument that opens at `cursor`; return it unescaped, and the offset just past it.
+
+    Raises:
+        TemplateSyntaxError: `cursor` is not at a quote, or the string never closes.
+    """
+    length = len(body)
+    if cursor >= length or body[cursor] not in ("'", '"'):
+        raise _syntax(text, body_offset + cursor, "template arguments must be quoted strings")
+    quote = body[cursor]
+    cursor += 1
+    value: list[str] = []
+    while cursor < length:
+        char = body[cursor]
+        if char == "\\" and cursor + 1 < length:
+            value.append(body[cursor + 1])
+            cursor += 2
+            continue
+        if char == quote:
+            return "".join(value), cursor + 1
+        value.append(char)
+        cursor += 1
+    raise _syntax(text, body_offset + cursor, "unterminated quoted template argument")
 
 
 def scan_template_calls(text: str) -> tuple[TemplateCall, ...]:

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import Any
 
@@ -225,31 +225,42 @@ def _window_parse_diagnostics(node: Mapping[str, Any], subject: str, origin: Ori
     if order_by is not None and not isinstance(order_by, list):
         diagnostics.append(wrong_type("window.order_by", "a list", order_by))
     for position, entry in enumerate(order_by if isinstance(order_by, list) else ()):
-        field = f"window.order_by[{position}]"
-        if isinstance(entry, str):
-            continue
-        if not isinstance(entry, dict):
-            diagnostics.append(wrong_type(field, "a reference or a mapping", entry))
-            continue
-        if not isinstance(entry.get("ref"), str):
-            diagnostics.append(D("SST-PRS002", artifact=subject, field=f"{field}.ref", subject=subject, origin=origin))
-        for key, allowed in (("sort_direction", SORT_DIRECTIONS), ("null_order", NULL_ORDERS)):
-            if key in entry and (not isinstance(entry[key], str) or entry[key] not in allowed):
-                diagnostics.append(
-                    D(
-                        "SST-PRS013",
-                        artifact=subject,
-                        field=f"{field}.{key}",
-                        found=entry[key],
-                        expected=", ".join(allowed),
-                        subject=subject,
-                        origin=origin,
-                    )
-                )
+        diagnostics.extend(_order_by_entry(entry, f"window.order_by[{position}]", subject, origin, wrong_type))
     frame = value.get("frame")
     if frame is not None and _frame(frame) is None:
         diagnostics.append(D("SST-PRS124", artifact=subject, value=frame, subject=subject, origin=origin))
     return tuple(diagnostics)
+
+
+def _order_by_entry(
+    entry: object,
+    field: str,
+    subject: str,
+    origin: Origin,
+    wrong_type: Callable[[str, str, object], Diagnostic],
+) -> list[Diagnostic]:
+    """The shape of one `window.order_by` entry: a reference, or a mapping with a `ref` and sort keys."""
+    if isinstance(entry, str):
+        return []
+    if not isinstance(entry, dict):
+        return [wrong_type(field, "a reference or a mapping", entry)]
+    diagnostics: list[Diagnostic] = []
+    if not isinstance(entry.get("ref"), str):
+        diagnostics.append(D("SST-PRS002", artifact=subject, field=f"{field}.ref", subject=subject, origin=origin))
+    for key, allowed in (("sort_direction", SORT_DIRECTIONS), ("null_order", NULL_ORDERS)):
+        if key in entry and (not isinstance(entry[key], str) or entry[key] not in allowed):
+            diagnostics.append(
+                D(
+                    "SST-PRS013",
+                    artifact=subject,
+                    field=f"{field}.{key}",
+                    found=entry[key],
+                    expected=", ".join(allowed),
+                    subject=subject,
+                    origin=origin,
+                )
+            )
+    return diagnostics
 
 
 def _non_additive_parse_diagnostics(value: object, subject: str, origin: Origin) -> tuple[Diagnostic, ...]:

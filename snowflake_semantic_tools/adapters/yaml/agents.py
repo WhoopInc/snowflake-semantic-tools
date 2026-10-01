@@ -115,20 +115,7 @@ def _parse_agent(
         for index, value in enumerate(spec.get("skills") or [])
         if (skill := _parse_skill(relative, index, value, diagnostics)) is not None
     )
-    sample_questions: list[str] = []
-    for index, value in enumerate(instructions.get("sample_questions") or []):
-        if not isinstance(value, dict) or not isinstance(value.get("question"), str):
-            diagnostics.append(
-                D(
-                    "SST-PRS118",
-                    artifact=artifact_key("agent", name),
-                    index=index,
-                    origin=origin,
-                    subject=artifact_key("agent", name.casefold()),
-                )
-            )
-            continue
-        sample_questions.append(str(value["question"]))
+    sample_questions = _sample_questions(instructions.get("sample_questions"), name, origin, diagnostics)
     tags = tuple(
         (str(value.get("name")), str(value.get("value")))
         for value in tree.get("tags") or []
@@ -168,6 +155,25 @@ def _parse_agent(
         ),
         tuple(diagnostics),
     )
+
+
+def _sample_questions(values: Any, name: str, origin: Origin, diagnostics: list[Diagnostic]) -> list[str]:
+    """Each `question` of `instructions.sample_questions`, reporting SST-PRS118 for an entry without one."""
+    questions: list[str] = []
+    for index, value in enumerate(values or []):
+        if not isinstance(value, dict) or not isinstance(value.get("question"), str):
+            diagnostics.append(
+                D(
+                    "SST-PRS118",
+                    artifact=artifact_key("agent", name),
+                    index=index,
+                    origin=origin,
+                    subject=artifact_key("agent", name.casefold()),
+                )
+            )
+            continue
+        questions.append(str(value["question"]))
+    return questions
 
 
 def _parse_eval_files(

@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from types import MappingProxyType
 
-from snowflake_semantic_tools.app.compile import CompileResult
+from snowflake_semantic_tools.app.compile import CompiledArtifact, CompileResult
 from snowflake_semantic_tools.domain.model.diagnostic import Severity
 from snowflake_semantic_tools.domain.ports.project import ManifestSources
 from snowflake_semantic_tools.domain.state import SST_VERSION, ArtifactEntry, ImpactIndex, Manifest
@@ -67,28 +67,9 @@ def build_manifest(
     by_member: dict[str, tuple[str, ...]] = {}
     dbt_models: dict[str, object] = {}
     for compiled in result.compiled:
-        rendered = compiled.rendered_artifact
         source_files = compiled.source_files
         members = compiled.member_keys
-        artifacts[compiled.artifact_key] = ArtifactEntry(
-            type=compiled.artifact_type,
-            name=compiled.name.casefold(),
-            fingerprint=rendered.fingerprint,
-            source_files=source_files,
-            member_keys=members,
-            depends_on=rendered.depends_on,
-            publish_target=rendered.target.sql,
-            byte_length=len(rendered.content.encode("utf-8")),
-            object_type=rendered.object_type,
-            render_dialect=rendered.render_dialect,
-            diagnostic_codes=tuple(
-                sorted(
-                    diagnostic.code for diagnostic in result.diagnostics if diagnostic.subject == compiled.artifact_key
-                )
-            ),
-            component_fingerprints=rendered.component_fingerprints,
-            physical_resources=tuple((object_type, name.sql) for object_type, name in rendered.physical_resources),
-        )
+        artifacts[compiled.artifact_key] = _artifact_entry(compiled, result)
         for source_file in source_files:
             by_file[source_file] = tuple(sorted({*by_file.get(source_file, ()), compiled.artifact_key}))
         relation_by_model = dict(compiled.dbt_relations)
@@ -147,3 +128,25 @@ def build_manifest(
         ),
     )
     return manifest.with_computed_id()
+
+
+def _artifact_entry(compiled: CompiledArtifact, result: CompileResult) -> ArtifactEntry:
+    """The manifest entry of one compiled artifact, listing the codes of the diagnostics about it."""
+    rendered = compiled.rendered_artifact
+    return ArtifactEntry(
+        type=compiled.artifact_type,
+        name=compiled.name.casefold(),
+        fingerprint=rendered.fingerprint,
+        source_files=compiled.source_files,
+        member_keys=compiled.member_keys,
+        depends_on=rendered.depends_on,
+        publish_target=rendered.target.sql,
+        byte_length=len(rendered.content.encode("utf-8")),
+        object_type=rendered.object_type,
+        render_dialect=rendered.render_dialect,
+        diagnostic_codes=tuple(
+            sorted(diagnostic.code for diagnostic in result.diagnostics if diagnostic.subject == compiled.artifact_key)
+        ),
+        component_fingerprints=rendered.component_fingerprints,
+        physical_resources=tuple((object_type, name.sql) for object_type, name in rendered.physical_resources),
+    )

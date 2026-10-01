@@ -193,27 +193,7 @@ def _baseline_from_payload(value: object) -> EvalBaselineRecord:
         raise SnowflakePortError("eval baseline metrics must be an array")
     metric_versions = _mapping(payload.get("metric_versions", {}), "metric versions")
     gate_policy = _mapping(payload.get("gate_policy", {}), "gate policy")
-    parsed_metrics = []
-    for item in metrics:
-        metric = _mapping(item, "baseline metric")
-        passed_attempts = metric.get("passed_attempts", [])
-        score_range = metric.get("score_range")
-        if not isinstance(passed_attempts, list) or any(not isinstance(flag, bool) for flag in passed_attempts):
-            raise SnowflakePortError("eval baseline passed_attempts must be booleans")
-        if score_range is not None:
-            if not isinstance(score_range, list) or len(score_range) != 2:
-                raise SnowflakePortError("eval baseline score_range must have two values")
-            parsed_range = tuple(float(item) if item is not None else None for item in score_range)
-        else:
-            parsed_range = None
-        parsed_metrics.append(
-            EvalBaselineMetric(
-                str(metric.get("question_key") or ""),
-                str(metric.get("metric_name") or ""),
-                tuple(passed_attempts),
-                parsed_range,  # type: ignore[arg-type]
-            )
-        )
+    parsed_metrics = [_baseline_metric(item) for item in metrics]
     return EvalBaselineRecord(
         eval_key=str(payload.get("eval_key") or ""),
         dataset_fingerprint=str(payload.get("dataset_fingerprint") or ""),
@@ -227,6 +207,27 @@ def _baseline_from_payload(value: object) -> EvalBaselineRecord:
         reason=str(payload.get("reason") or ""),
         tier=str(payload.get("tier") or "report"),
         gate_policy=tuple(sorted((str(key), bool(item)) for key, item in gate_policy.items())),
+    )
+
+
+def _baseline_metric(value: object) -> EvalBaselineMetric:
+    """Decode one metric of a stored baseline; `_baseline_from_payload` lists what it rejects."""
+    metric = _mapping(value, "baseline metric")
+    passed_attempts = metric.get("passed_attempts", [])
+    score_range = metric.get("score_range")
+    if not isinstance(passed_attempts, list) or any(not isinstance(flag, bool) for flag in passed_attempts):
+        raise SnowflakePortError("eval baseline passed_attempts must be booleans")
+    if score_range is not None:
+        if not isinstance(score_range, list) or len(score_range) != 2:
+            raise SnowflakePortError("eval baseline score_range must have two values")
+        parsed_range = tuple(float(item) if item is not None else None for item in score_range)
+    else:
+        parsed_range = None
+    return EvalBaselineMetric(
+        str(metric.get("question_key") or ""),
+        str(metric.get("metric_name") or ""),
+        tuple(passed_attempts),
+        parsed_range,  # type: ignore[arg-type]
     )
 
 
