@@ -8,14 +8,14 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from ....domain.model.artifact_key import artifact_key
-from ....domain.model.dbt import DbtModel
-from ....domain.model.diagnostic import D, Diagnostic, Origin
-from ....domain.model.reference import TemplateSyntaxError, scan_template_calls
-from ....domain.model.semantic_view import Relationship
-from ..documents import RawDocuments
-from .defs import MetricDef
-from .nodes import _load_nodes, _member_root, _node_origin
+from snowflake_semantic_tools.adapters.yaml.documents import RawDocuments
+from snowflake_semantic_tools.adapters.yaml.semantic.defs import MetricDef
+from snowflake_semantic_tools.adapters.yaml.semantic.nodes import _load_nodes, _member_root, _node_origin
+from snowflake_semantic_tools.domain.model.artifact_key import artifact_key
+from snowflake_semantic_tools.domain.model.dbt import DbtModel
+from snowflake_semantic_tools.domain.model.diagnostic import D, Diagnostic, Origin
+from snowflake_semantic_tools.domain.model.reference import TemplateSyntaxError, scan_template_calls
+from snowflake_semantic_tools.domain.model.semantic_view import Relationship
 
 
 def _relationship_diagnostics(

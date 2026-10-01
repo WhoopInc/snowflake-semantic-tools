@@ -14,11 +14,21 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
 
-from ....domain.model.compiler import FILTER_EXPR, METRIC_EXPR, VQR_SQL, RefPolicy, ResolveContext, resolve_scalar
-from ....domain.model.dbt import DbtCatalog
-from ....domain.model.diagnostic import D, Origin
-from ....domain.model.reference import scan_template_calls, single_template_call
-from ....domain.model.semantic_view import (
+from snowflake_semantic_tools.adapters.errors import ProjectError
+from snowflake_semantic_tools.adapters.yaml.fields import mapping
+from snowflake_semantic_tools.adapters.yaml.semantic.defs import FilterDef, InstructionDef, MetricDef, VerifiedQueryDef
+from snowflake_semantic_tools.domain.model.compiler import (
+    FILTER_EXPR,
+    METRIC_EXPR,
+    VQR_SQL,
+    RefPolicy,
+    ResolveContext,
+    resolve_scalar,
+)
+from snowflake_semantic_tools.domain.model.dbt import DbtCatalog
+from snowflake_semantic_tools.domain.model.diagnostic import D, Origin
+from snowflake_semantic_tools.domain.model.reference import scan_template_calls, single_template_call
+from snowflake_semantic_tools.domain.model.semantic_view import (
     Column,
     ColumnKind,
     Metric,
@@ -28,9 +38,6 @@ from ....domain.model.semantic_view import (
     VerifiedQuery,
     Window,
 )
-from ...errors import ProjectError
-from ..fields import mapping
-from .defs import FilterDef, InstructionDef, MetricDef, VerifiedQueryDef
 
 
 def _resolve_expression(

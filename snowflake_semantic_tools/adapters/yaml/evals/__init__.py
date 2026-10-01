@@ -8,7 +8,7 @@ re-exports the public names, so importers never reach into the submodules.
 
 from __future__ import annotations
 
-from .catalog import load_eval_catalog
-from .config import parse_eval_defaults
+from snowflake_semantic_tools.adapters.yaml.evals.catalog import load_eval_catalog
+from snowflake_semantic_tools.adapters.yaml.evals.config import parse_eval_defaults
 
 __all__ = ["load_eval_catalog", "parse_eval_defaults"]

@@ -5,10 +5,15 @@ from __future__ import annotations
 import json
 from typing import Mapping
 
-from ...domain.model.eval import EvalBaselineMetric, EvalBaselineRecord, EvalGateState, EvalRegression
-from ...domain.model.identifier import QualifiedName
-from ...domain.model.sql import string_literal
-from ...domain.ports.snowflake import SnowflakePort, SnowflakePortError
+from snowflake_semantic_tools.domain.model.eval import (
+    EvalBaselineMetric,
+    EvalBaselineRecord,
+    EvalGateState,
+    EvalRegression,
+)
+from snowflake_semantic_tools.domain.model.identifier import QualifiedName
+from snowflake_semantic_tools.domain.model.sql import string_literal
+from snowflake_semantic_tools.domain.ports.snowflake import SnowflakePort, SnowflakePortError
 
 
 class SnowflakeEvalStateStore:

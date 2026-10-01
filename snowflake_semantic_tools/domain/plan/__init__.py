@@ -8,7 +8,7 @@ reach into the submodules.
 
 from __future__ import annotations
 
-from .changeset import build_changeset
-from .order import dependency_waves, topological_order
+from snowflake_semantic_tools.domain.plan.changeset import build_changeset
+from snowflake_semantic_tools.domain.plan.order import dependency_waves, topological_order
 
 __all__ = ["build_changeset", "dependency_waves", "topological_order"]

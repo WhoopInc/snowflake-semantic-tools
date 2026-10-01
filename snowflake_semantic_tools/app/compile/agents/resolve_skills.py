@@ -10,10 +10,10 @@ from __future__ import annotations
 
 from dataclasses import replace
 
-from ....domain.model.agent import AgentModel, AgentSkill
-from ....domain.model.artifact_key import artifact_key
-from ....domain.model.diagnostic import D, Diagnostic
-from .context import AgentCompileContext, ExtensionPin
+from snowflake_semantic_tools.app.compile.agents.context import AgentCompileContext, ExtensionPin
+from snowflake_semantic_tools.domain.model.agent import AgentModel, AgentSkill
+from snowflake_semantic_tools.domain.model.artifact_key import artifact_key
+from snowflake_semantic_tools.domain.model.diagnostic import D, Diagnostic
 
 
 def resolve_skills(

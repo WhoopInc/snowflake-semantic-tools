@@ -12,12 +12,18 @@ import re
 from collections.abc import Callable, Container, Iterable, Mapping
 from dataclasses import dataclass
 
-from ..artifact_key import artifact_key
-from ..diagnostic import D, Diagnostic, DiagnosticBag, Severity
-from ..skill import Plugin, Skill
-from ..stage_path import ALLOWED_DESCRIPTION, unsafe_segment
-from ..validation import PROFILE_NAMES, Emitter
-from .model import SHARED_PROFILE, DesktopProfile, McpConfig, ProfileCatalog, SharedProfile
+from snowflake_semantic_tools.domain.model.artifact_key import artifact_key
+from snowflake_semantic_tools.domain.model.diagnostic import D, Diagnostic, DiagnosticBag, Severity
+from snowflake_semantic_tools.domain.model.profile.model import (
+    SHARED_PROFILE,
+    DesktopProfile,
+    McpConfig,
+    ProfileCatalog,
+    SharedProfile,
+)
+from snowflake_semantic_tools.domain.model.skill import Plugin, Skill
+from snowflake_semantic_tools.domain.model.stage_path import ALLOWED_DESCRIPTION, unsafe_segment
+from snowflake_semantic_tools.domain.model.validation import PROFILE_NAMES, Emitter
 
 _PLACEHOLDER = re.compile(r"^\$\{[A-Za-z_][A-Za-z0-9_]*\}$")
 _CREDENTIAL_KEY = re.compile(r"(?i)(token|secret|password|passwd|api[_-]?key|private[_-]?key)")

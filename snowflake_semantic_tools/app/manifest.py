@@ -12,10 +12,10 @@ from __future__ import annotations
 
 from types import MappingProxyType
 
-from ..domain.model.diagnostic import Severity
-from ..domain.ports.project import ManifestSources
-from ..domain.state import SST_VERSION, ArtifactEntry, ImpactIndex, Manifest
-from .compile import CompileResult
+from snowflake_semantic_tools.app.compile import CompileResult
+from snowflake_semantic_tools.domain.model.diagnostic import Severity
+from snowflake_semantic_tools.domain.ports.project import ManifestSources
+from snowflake_semantic_tools.domain.state import SST_VERSION, ArtifactEntry, ImpactIndex, Manifest
 
 
 def manifest_for(result: CompileResult, sources: ManifestSources) -> Manifest:

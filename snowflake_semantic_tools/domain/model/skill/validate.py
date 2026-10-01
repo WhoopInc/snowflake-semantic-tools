@@ -9,10 +9,10 @@ from __future__ import annotations
 
 from collections.abc import Container, Sequence
 
-from ..diagnostic import Diagnostic, DiagnosticBag
-from ..stage_path import ALLOWED_DESCRIPTION, unsafe_segment
-from ..validation import SKILL_NAMES, Emitter, duplicates
-from .model import Plugin, Skill, SkillCatalog
+from snowflake_semantic_tools.domain.model.diagnostic import Diagnostic, DiagnosticBag
+from snowflake_semantic_tools.domain.model.skill.model import Plugin, Skill, SkillCatalog
+from snowflake_semantic_tools.domain.model.stage_path import ALLOWED_DESCRIPTION, unsafe_segment
+from snowflake_semantic_tools.domain.model.validation import SKILL_NAMES, Emitter, duplicates
 
 
 def validate_skill_catalog(catalog: SkillCatalog) -> DiagnosticBag:

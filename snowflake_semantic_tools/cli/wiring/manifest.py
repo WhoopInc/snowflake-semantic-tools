@@ -4,14 +4,14 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from ...adapters.errors import ProjectError
-from ...adapters.fs.local import ManifestFileStore
-from ...adapters.project_source import YamlProjectInputs
-from ...app.compile import CompileResult
-from ...app.manifest import manifest_for, stale_manifest
-from ...domain.model.diagnostic import D
-from ...domain.state import Manifest
-from .project import project_inputs, target_dir
+from snowflake_semantic_tools.adapters.errors import ProjectError
+from snowflake_semantic_tools.adapters.fs.local import ManifestFileStore
+from snowflake_semantic_tools.adapters.project_source import YamlProjectInputs
+from snowflake_semantic_tools.app.compile import CompileResult
+from snowflake_semantic_tools.app.manifest import manifest_for, stale_manifest
+from snowflake_semantic_tools.cli.wiring.project import project_inputs, target_dir
+from snowflake_semantic_tools.domain.model.diagnostic import D
+from snowflake_semantic_tools.domain.state import Manifest
 
 
 def build_manifest(project_dir: Path, result: CompileResult, manifest_path: Path | None) -> Manifest:

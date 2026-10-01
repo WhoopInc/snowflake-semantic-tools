@@ -6,14 +6,14 @@ from pathlib import Path
 
 import click
 
-from ...app.validate import ValidateArtifacts, ValidationResult
-from ...domain.model.diagnostic import Severity
-from ..exit_codes import ERROR, OK
-from ..options import output_option, project_options, validation_options
-from ..runner import CommandResult, command_body
-from ..settings import validation_settings
-from ..wiring import compile as compiling
-from ..wiring.project import connect
+from snowflake_semantic_tools.app.validate import ValidateArtifacts, ValidationResult
+from snowflake_semantic_tools.cli.exit_codes import ERROR, OK
+from snowflake_semantic_tools.cli.options import output_option, project_options, validation_options
+from snowflake_semantic_tools.cli.runner import CommandResult, command_body
+from snowflake_semantic_tools.cli.settings import validation_settings
+from snowflake_semantic_tools.cli.wiring import compile as compiling
+from snowflake_semantic_tools.cli.wiring.project import connect
+from snowflake_semantic_tools.domain.model.diagnostic import Severity
 
 
 @click.command()

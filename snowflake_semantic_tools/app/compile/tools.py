@@ -4,13 +4,13 @@ from __future__ import annotations
 
 from dataclasses import dataclass, replace
 
-from ...domain.model.artifact_key import artifact_key
-from ...domain.model.identifier import QualifiedName
-from ...domain.model.lifecycle import OwnershipMarker, RenderedArtifact
-from ...domain.model.sql import string_literal
-from ...domain.model.tool import ToolCatalog, ToolKind, ToolMember
-from ...domain.render.tool import render_tool
-from .base import CompileResult, StandaloneArtifact, compile_each
+from snowflake_semantic_tools.app.compile.base import CompileResult, StandaloneArtifact, compile_each
+from snowflake_semantic_tools.domain.model.artifact_key import artifact_key
+from snowflake_semantic_tools.domain.model.identifier import QualifiedName
+from snowflake_semantic_tools.domain.model.lifecycle import OwnershipMarker, RenderedArtifact
+from snowflake_semantic_tools.domain.model.sql import string_literal
+from snowflake_semantic_tools.domain.model.tool import ToolCatalog, ToolKind, ToolMember
+from snowflake_semantic_tools.domain.render.tool import render_tool
 
 
 @dataclass(frozen=True, slots=True)

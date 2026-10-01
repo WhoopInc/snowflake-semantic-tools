@@ -9,7 +9,7 @@ into the submodules.
 
 from __future__ import annotations
 
-from .model import (
+from snowflake_semantic_tools.domain.model.eval.model import (
     DEFAULT_EVAL_CONFIG_STAGE,
     EVAL_COMPLETED,
     EVAL_CONCURRENCY_MIN,
@@ -37,8 +37,8 @@ from .model import (
     ResolvedEval,
     ThresholdRange,
 )
-from .naming import render_eval_name_template
-from .results import (
+from snowflake_semantic_tools.domain.model.eval.naming import render_eval_name_template
+from snowflake_semantic_tools.domain.model.eval.results import (
     EvalBaselineMetric,
     EvalBaselineRecord,
     EvalCostSummary,
@@ -49,7 +49,7 @@ from .results import (
     EvalResultRow,
     EvalRunAttempt,
 )
-from .validate import validate_eval_catalog
+from snowflake_semantic_tools.domain.model.eval.validate import validate_eval_catalog
 
 __all__ = [
     "CustomEvalMetric",

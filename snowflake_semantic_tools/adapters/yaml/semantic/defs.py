@@ -8,11 +8,11 @@ from dataclasses import dataclass
 from types import MappingProxyType
 from typing import Any
 
-from ....domain.model.diagnostic import Origin
-from ....domain.model.reference import TemplateCall, TemplateSyntaxError, scan_template_calls
-from ....domain.model.semantic_view import SortKey
-from ..fields import optional_string
-from .nodes import _list_of
+from snowflake_semantic_tools.adapters.yaml.fields import optional_string
+from snowflake_semantic_tools.adapters.yaml.semantic.nodes import _list_of
+from snowflake_semantic_tools.domain.model.diagnostic import Origin
+from snowflake_semantic_tools.domain.model.reference import TemplateCall, TemplateSyntaxError, scan_template_calls
+from snowflake_semantic_tools.domain.model.semantic_view import SortKey
 
 
 @dataclass(frozen=True, slots=True)

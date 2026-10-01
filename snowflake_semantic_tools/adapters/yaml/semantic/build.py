@@ -12,16 +12,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, NoReturn, TypeVar
 
-from ....domain.model.artifact_key import artifact_key
-from ....domain.model.dbt import DbtCatalog, DbtColumn, DbtModel, DbtTarget
-from ....domain.model.diagnostic import D
-from ....domain.model.project import ParsedMember
-from ....domain.model.reference import single_template_call
-from ....domain.model.semantic_view import Column, ColumnKind, Relationship, SemanticView, Table, Tag, Variable
-from ....domain.model.sql import string_literal
-from ...errors import ProjectError
-from ..fields import mapping
-from .build_members import (
+from snowflake_semantic_tools.adapters.errors import ProjectError
+from snowflake_semantic_tools.adapters.yaml.fields import mapping
+from snowflake_semantic_tools.adapters.yaml.semantic.build_members import (
     _instruction_parts,
     _metric_names,
     _Resolver,
@@ -30,8 +23,23 @@ from .build_members import (
     _view_verified_queries,
     _with_variable_names,
 )
-from .defs import FilterDef, InstructionDef, MetricDef, VerifiedQueryDef
-from .nodes import _as_str_tuple
+from snowflake_semantic_tools.adapters.yaml.semantic.defs import FilterDef, InstructionDef, MetricDef, VerifiedQueryDef
+from snowflake_semantic_tools.adapters.yaml.semantic.nodes import _as_str_tuple
+from snowflake_semantic_tools.domain.model.artifact_key import artifact_key
+from snowflake_semantic_tools.domain.model.dbt import DbtCatalog, DbtColumn, DbtModel, DbtTarget
+from snowflake_semantic_tools.domain.model.diagnostic import D
+from snowflake_semantic_tools.domain.model.project import ParsedMember
+from snowflake_semantic_tools.domain.model.reference import single_template_call
+from snowflake_semantic_tools.domain.model.semantic_view import (
+    Column,
+    ColumnKind,
+    Relationship,
+    SemanticView,
+    Table,
+    Tag,
+    Variable,
+)
+from snowflake_semantic_tools.domain.model.sql import string_literal
 
 
 def _build_view(

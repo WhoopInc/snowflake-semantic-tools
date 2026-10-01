@@ -8,8 +8,19 @@ from __future__ import annotations
 
 from typing import Mapping
 
-from ....domain.model.diagnostic import D, Diagnostic, DiagnosticBag, Origin
-from ....domain.model.eval import (
+from snowflake_semantic_tools.adapters.yaml.documents import ParsedYaml
+from snowflake_semantic_tools.adapters.yaml.evals.readers import (
+    optional_bool_field,
+    optional_int_field,
+    optional_string_field,
+    origin_at,
+    parse_threshold,
+    required_string,
+    string_tuple,
+)
+from snowflake_semantic_tools.adapters.yaml.fields import optional_int, optional_string
+from snowflake_semantic_tools.domain.model.diagnostic import D, Diagnostic, DiagnosticBag, Origin
+from snowflake_semantic_tools.domain.model.eval import (
     EVAL_TERMINAL_STATUSES,
     EvalColumnMapping,
     EvalConfig,
@@ -20,18 +31,7 @@ from ....domain.model.eval import (
     EvalSweepConfig,
     EvalSystemMetric,
 )
-from ....domain.model.reference import TemplateSyntaxError, single_template_call
-from ..documents import ParsedYaml
-from ..fields import optional_int, optional_string
-from .readers import (
-    optional_bool_field,
-    optional_int_field,
-    optional_string_field,
-    origin_at,
-    parse_threshold,
-    required_string,
-    string_tuple,
-)
+from snowflake_semantic_tools.domain.model.reference import TemplateSyntaxError, single_template_call
 
 
 def parse_eval_defaults(value: object) -> tuple[EvalDefaults, DiagnosticBag]:

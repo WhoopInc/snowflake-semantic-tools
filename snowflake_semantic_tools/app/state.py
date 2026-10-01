@@ -4,10 +4,10 @@ from __future__ import annotations
 
 from types import MappingProxyType
 
-from ..domain.model.diagnostic import D, DiagnosticBag
-from ..domain.model.identifier import QualifiedName, TargetIdentity
-from ..domain.ports.snowflake import SnowflakePort, StateStore
-from ..domain.state import DEACTIVATED, STATE_SCHEMA_VERSION, State
+from snowflake_semantic_tools.domain.model.diagnostic import D, DiagnosticBag
+from snowflake_semantic_tools.domain.model.identifier import QualifiedName, TargetIdentity
+from snowflake_semantic_tools.domain.ports.snowflake import SnowflakePort, StateStore
+from snowflake_semantic_tools.domain.state import DEACTIVATED, STATE_SCHEMA_VERSION, State
 
 
 def read_state(

@@ -13,10 +13,10 @@ import math
 from hashlib import sha256
 from typing import Mapping
 
-from ...domain.model.eval import EvalCostSummary, EvalMetricResult, EvalResultRow, ThresholdRange
-from ...domain.model.identifier import SchemaScope
-from ...domain.ports.snowflake import SnowflakePort, SnowflakePortError
-from ..compile.evals import CompiledEval
+from snowflake_semantic_tools.app.compile.evals import CompiledEval
+from snowflake_semantic_tools.domain.model.eval import EvalCostSummary, EvalMetricResult, EvalResultRow, ThresholdRange
+from snowflake_semantic_tools.domain.model.identifier import SchemaScope
+from snowflake_semantic_tools.domain.ports.snowflake import SnowflakePort, SnowflakePortError
 
 _STATUS_COLUMNS = ("RUN_NAME", "AGENT_NAME", "AGENT_TYPE", "STATUS", "STATUS_DETAILS")
 _RESULT_COLUMNS = (

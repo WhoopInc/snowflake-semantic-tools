@@ -6,7 +6,7 @@ column metadata and keys (3xx), and filters, verified queries, and compiled expr
 
 from __future__ import annotations
 
-from ..core import ErrorSpec, Severity, spec
+from snowflake_semantic_tools.domain.model.diagnostic.core import ErrorSpec, Severity, spec
 
 TITLE: str = "Validation"
 

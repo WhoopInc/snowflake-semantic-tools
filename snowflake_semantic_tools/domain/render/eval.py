@@ -6,9 +6,16 @@ import json
 from dataclasses import dataclass
 from typing import Mapping, Sequence
 
-from ..model.eval import CustomEvalMetric, EvalConfig, EvalDataset, EvalGroundTruth, EvalScoreRanges, EvalSystemMetric
-from ..model.identifier import QualifiedName
-from ..model.sql import string_literal
+from snowflake_semantic_tools.domain.model.eval import (
+    CustomEvalMetric,
+    EvalConfig,
+    EvalDataset,
+    EvalGroundTruth,
+    EvalScoreRanges,
+    EvalSystemMetric,
+)
+from snowflake_semantic_tools.domain.model.identifier import QualifiedName
+from snowflake_semantic_tools.domain.model.sql import string_literal
 
 
 @dataclass(frozen=True, slots=True)

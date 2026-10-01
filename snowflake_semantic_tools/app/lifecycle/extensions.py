@@ -14,9 +14,20 @@ from threading import Lock
 from types import MappingProxyType
 from typing import Mapping
 
-from ...domain.model.diagnostic import D, DiagnosticBag
-from ...domain.model.identifier import QualifiedName
-from ...domain.model.lifecycle import (
+from snowflake_semantic_tools.app.compile.skills import ExtensionRelease
+from snowflake_semantic_tools.app.lifecycle.composite import (
+    SSE_STAGE_TYPE,
+    CompositeHandler,
+    PublicationRun,
+    blocked,
+    create_sse_stage_sql,
+    details_stale,
+    failed,
+    skipped,
+)
+from snowflake_semantic_tools.domain.model.diagnostic import D, DiagnosticBag
+from snowflake_semantic_tools.domain.model.identifier import QualifiedName
+from snowflake_semantic_tools.domain.model.lifecycle import (
     Action,
     ApplyOptions,
     ApplyOutcome,
@@ -27,20 +38,14 @@ from ...domain.model.lifecycle import (
     PhysicalResource,
     RenderedArtifact,
 )
-from ...domain.model.sql import string_literal
-from ...domain.ports.snowflake import ExtensionObservation, ExtensionVersion, SnowflakePort, SnowflakePortError
-from ...domain.state import FAILED_AFTER_WRITE, AppliedEntry
-from ..compile.skills import ExtensionRelease
-from .composite import (
-    SSE_STAGE_TYPE,
-    CompositeHandler,
-    PublicationRun,
-    blocked,
-    create_sse_stage_sql,
-    details_stale,
-    failed,
-    skipped,
+from snowflake_semantic_tools.domain.model.sql import string_literal
+from snowflake_semantic_tools.domain.ports.snowflake import (
+    ExtensionObservation,
+    ExtensionVersion,
+    SnowflakePort,
+    SnowflakePortError,
 )
+from snowflake_semantic_tools.domain.state import FAILED_AFTER_WRITE, AppliedEntry
 
 CERTIFIED = "CERTIFIED"
 

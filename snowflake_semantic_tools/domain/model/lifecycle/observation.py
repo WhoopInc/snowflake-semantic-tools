@@ -12,9 +12,9 @@ from dataclasses import dataclass, field
 from types import MappingProxyType
 from typing import Mapping, TypeAlias
 
-from ..diagnostic import DiagnosticBag
-from ..identifier import Identifier, QualifiedName
-from .marker import OwnershipMarker
+from snowflake_semantic_tools.domain.model.diagnostic import DiagnosticBag
+from snowflake_semantic_tools.domain.model.identifier import Identifier, QualifiedName
+from snowflake_semantic_tools.domain.model.lifecycle.marker import OwnershipMarker
 
 # The `<kind>:<name>` key every lifecycle value is indexed by; see `artifact_key`.
 ArtifactKey: TypeAlias = str

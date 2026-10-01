@@ -4,11 +4,17 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from ....domain.model.reference import TemplateSyntaxError, scan_template_calls
-from ...errors import ProjectError
-from ..documents import RawDocuments
-from .defs import FilterDef, InstructionDef, MetricDef, VerifiedQueryDef, _non_additive, _window
-from .nodes import (
+from snowflake_semantic_tools.adapters.errors import ProjectError
+from snowflake_semantic_tools.adapters.yaml.documents import RawDocuments
+from snowflake_semantic_tools.adapters.yaml.semantic.defs import (
+    FilterDef,
+    InstructionDef,
+    MetricDef,
+    VerifiedQueryDef,
+    _non_additive,
+    _window,
+)
+from snowflake_semantic_tools.adapters.yaml.semantic.nodes import (
     _as_str_tuple,
     _list_of,
     _load_nodes,
@@ -17,6 +23,7 @@ from .nodes import (
     _safe_table_refs,
     _table_refs_poisoned,
 )
+from snowflake_semantic_tools.domain.model.reference import TemplateSyntaxError, scan_template_calls
 
 
 def load_metrics(documents: RawDocuments, project_dir: Path, semantic_models_dir: str) -> tuple[MetricDef, ...]:

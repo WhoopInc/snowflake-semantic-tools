@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-from ....domain.model.artifact_key import artifact_key
-from ....domain.model.diagnostic import D, Diagnostic
-from ....domain.model.project import ParsedView
-from ....domain.model.reference import TemplateCall, TemplateSyntaxError, scan_template_calls
+from snowflake_semantic_tools.domain.model.artifact_key import artifact_key
+from snowflake_semantic_tools.domain.model.diagnostic import D, Diagnostic
+from snowflake_semantic_tools.domain.model.project import ParsedView
+from snowflake_semantic_tools.domain.model.reference import TemplateCall, TemplateSyntaxError, scan_template_calls
 
 
 def _view_instructions(

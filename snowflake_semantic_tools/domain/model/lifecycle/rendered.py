@@ -14,11 +14,11 @@ from dataclasses import dataclass, replace
 from enum import Enum
 from hashlib import sha256
 
-from ..identifier import Identifier, QualifiedName
-from ..registry import GrantPreservation
-from .action import Action
-from .marker import OwnershipMarker
-from .observation import ArtifactKey, ObservedArtifact
+from snowflake_semantic_tools.domain.model.identifier import Identifier, QualifiedName
+from snowflake_semantic_tools.domain.model.lifecycle.action import Action
+from snowflake_semantic_tools.domain.model.lifecycle.marker import OwnershipMarker
+from snowflake_semantic_tools.domain.model.lifecycle.observation import ArtifactKey, ObservedArtifact
+from snowflake_semantic_tools.domain.model.registry import GrantPreservation
 
 
 class ProbeKind(Enum):

@@ -7,11 +7,11 @@ from enum import Enum
 from types import MappingProxyType
 from typing import Mapping
 
-from .artifact_key import artifact_key
-from .dbt import DbtCatalog
-from .diagnostic import D, Diagnostic, DiagnosticBag, Origin
-from .identifier import QualifiedName
-from .validation import Emitter
+from snowflake_semantic_tools.domain.model.artifact_key import artifact_key
+from snowflake_semantic_tools.domain.model.dbt import DbtCatalog
+from snowflake_semantic_tools.domain.model.diagnostic import D, Diagnostic, DiagnosticBag, Origin
+from snowflake_semantic_tools.domain.model.identifier import QualifiedName
+from snowflake_semantic_tools.domain.model.validation import Emitter
 
 
 class ToolOwnership(Enum):

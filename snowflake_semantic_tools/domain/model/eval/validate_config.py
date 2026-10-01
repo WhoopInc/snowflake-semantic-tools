@@ -9,9 +9,8 @@ from __future__ import annotations
 
 import re
 
-from ..diagnostic import D, Diagnostic
-from ..validation import Emitter
-from .model import (
+from snowflake_semantic_tools.domain.model.diagnostic import D, Diagnostic
+from snowflake_semantic_tools.domain.model.eval.model import (
     EVAL_COMPLETED,
     EVAL_CONCURRENCY_MIN,
     EVAL_PASS_STATUSES,
@@ -24,7 +23,8 @@ from .model import (
     ResolvedEval,
     ThresholdRange,
 )
-from .naming import NAME_LIMIT, PROBE_SHA7, probe_name
+from snowflake_semantic_tools.domain.model.eval.naming import NAME_LIMIT, PROBE_SHA7, probe_name
+from snowflake_semantic_tools.domain.model.validation import Emitter
 
 _PINNED_VERSION = re.compile(r"VERSION\$[1-9]\d*")
 _BASELINE_RUNS_MIN = 1

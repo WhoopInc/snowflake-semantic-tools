@@ -15,10 +15,10 @@ import re
 from collections.abc import Iterable, Iterator
 from dataclasses import dataclass
 
-from ..diagnostic import D, Diagnostic, DiagnosticBag
-from ..validation import Emitter
-from .model import SKILL_FILE, Skill, SkillFile
-from .references import PathReference, scan_references
+from snowflake_semantic_tools.domain.model.diagnostic import D, Diagnostic, DiagnosticBag
+from snowflake_semantic_tools.domain.model.skill.model import SKILL_FILE, Skill, SkillFile
+from snowflake_semantic_tools.domain.model.skill.references import PathReference, scan_references
+from snowflake_semantic_tools.domain.model.validation import Emitter
 
 # Directories an author conventionally bundles. A bare path starting with one of
 # them is a bundle reference even when the directory is absent, which is what

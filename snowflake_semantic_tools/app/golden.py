@@ -13,11 +13,11 @@ import difflib
 from dataclasses import dataclass
 from typing import Callable
 
-from ..domain.ports.golden import GoldenPath, GoldenStore
-from .compile import CompiledArtifact, CompileResult
-from .compile.evals import CompiledEval
-from .compile.profiles import CompiledProfile
-from .compile.skills import CompiledExtension
+from snowflake_semantic_tools.app.compile import CompiledArtifact, CompileResult
+from snowflake_semantic_tools.app.compile.evals import CompiledEval
+from snowflake_semantic_tools.app.compile.profiles import CompiledProfile
+from snowflake_semantic_tools.app.compile.skills import CompiledExtension
+from snowflake_semantic_tools.domain.ports.golden import GoldenPath, GoldenStore
 
 # Optional goldens a reference project may commit for an extension: where each lives, and
 # the bundle member it pins.

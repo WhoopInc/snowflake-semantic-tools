@@ -7,9 +7,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from ..adapters.yaml.config import load_project_config
-from ..domain.model.config_schema import config_block, config_int, configured_dir
-from .wiring.project import project_inputs
+from snowflake_semantic_tools.adapters.yaml.config import load_project_config
+from snowflake_semantic_tools.cli.wiring.project import project_inputs
+from snowflake_semantic_tools.domain.model.config_schema import config_block, config_int, configured_dir
 
 
 def project_config(project_dir: Path) -> dict[str, object]:

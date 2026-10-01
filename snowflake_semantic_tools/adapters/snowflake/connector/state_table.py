@@ -12,10 +12,16 @@ from datetime import datetime, timezone
 from types import MappingProxyType
 from typing import Mapping, NamedTuple
 
-from ....domain.model.identifier import QualifiedName
-from ....domain.ports.snowflake import CatalogPort, SnowflakePortError, StatePort
-from ....domain.state import AppliedEntry, AppliedResource, pairs_from_json, pairs_to_json
-from .session import Session, _as_port_errors, _json_text, _require_ok, _variant_value
+from snowflake_semantic_tools.adapters.snowflake.connector.session import (
+    Session,
+    _as_port_errors,
+    _json_text,
+    _require_ok,
+    _variant_value,
+)
+from snowflake_semantic_tools.domain.model.identifier import QualifiedName
+from snowflake_semantic_tools.domain.ports.snowflake import CatalogPort, SnowflakePortError, StatePort
+from snowflake_semantic_tools.domain.state import AppliedEntry, AppliedResource, pairs_from_json, pairs_to_json
 
 
 class _StateColumn(NamedTuple):

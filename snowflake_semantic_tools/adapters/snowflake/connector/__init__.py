@@ -8,10 +8,10 @@ assembles them into the one class importers construct.
 
 from __future__ import annotations
 
-from .catalog import CatalogMethods
-from .profile_registry import ProfileRegistryMethods
-from .stage import StageMethods
-from .state_table import StateTableMethods
+from snowflake_semantic_tools.adapters.snowflake.connector.catalog import CatalogMethods
+from snowflake_semantic_tools.adapters.snowflake.connector.profile_registry import ProfileRegistryMethods
+from snowflake_semantic_tools.adapters.snowflake.connector.stage import StageMethods
+from snowflake_semantic_tools.adapters.snowflake.connector.state_table import StateTableMethods
 
 
 class SnowflakeConnector(CatalogMethods, StageMethods, ProfileRegistryMethods, StateTableMethods):

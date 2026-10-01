@@ -12,9 +12,21 @@ from dataclasses import dataclass
 from types import MappingProxyType
 from typing import Mapping
 
-from ...domain.model.agent import AgentModel
-from ...domain.model.artifact_key import artifact_key, split_artifact_key
-from ...domain.model.config_schema import (
+from snowflake_semantic_tools.app.compile import CompileArtifacts, CompileSemanticViews
+from snowflake_semantic_tools.app.compile.agents import AgentCompileContext, CompileAgents, CompiledAgent
+from snowflake_semantic_tools.app.compile.base import CompileResult
+from snowflake_semantic_tools.app.compile.evals import CompileEvals
+from snowflake_semantic_tools.app.compile.profiles import CompileProfiles, DesktopChannel
+from snowflake_semantic_tools.app.compile.skills import (
+    CatalogChannel,
+    CompileSkills,
+    extension_pins,
+    unpublished_reasons,
+)
+from snowflake_semantic_tools.app.compile.tools import CompileTools
+from snowflake_semantic_tools.domain.model.agent import AgentModel
+from snowflake_semantic_tools.domain.model.artifact_key import artifact_key, split_artifact_key
+from snowflake_semantic_tools.domain.model.config_schema import (
     config_block,
     config_bool,
     config_int,
@@ -23,21 +35,14 @@ from ...domain.model.config_schema import (
     skills_configured,
     target_text,
 )
-from ...domain.model.dbt import DbtCatalog
-from ...domain.model.diagnostic import D, Diagnostic, DiagnosticBag, Origin, Severity
-from ...domain.model.identifier import QualifiedName, TargetIdentity
-from ...domain.model.profile import ProfileCatalog
-from ...domain.model.registry import SEMANTIC_REGISTRY
-from ...domain.model.skill import DEFAULT_VERSION_PREFIX, extension_identifier
-from ...domain.model.tool import ToolCatalog
-from ...domain.ports.project import ProjectInputs
-from . import CompileArtifacts, CompileSemanticViews
-from .agents import AgentCompileContext, CompileAgents, CompiledAgent
-from .base import CompileResult
-from .evals import CompileEvals
-from .profiles import CompileProfiles, DesktopChannel
-from .skills import CatalogChannel, CompileSkills, extension_pins, unpublished_reasons
-from .tools import CompileTools
+from snowflake_semantic_tools.domain.model.dbt import DbtCatalog
+from snowflake_semantic_tools.domain.model.diagnostic import D, Diagnostic, DiagnosticBag, Origin, Severity
+from snowflake_semantic_tools.domain.model.identifier import QualifiedName, TargetIdentity
+from snowflake_semantic_tools.domain.model.profile import ProfileCatalog
+from snowflake_semantic_tools.domain.model.registry import SEMANTIC_REGISTRY
+from snowflake_semantic_tools.domain.model.skill import DEFAULT_VERSION_PREFIX, extension_identifier
+from snowflake_semantic_tools.domain.model.tool import ToolCatalog
+from snowflake_semantic_tools.domain.ports.project import ProjectInputs
 
 # Where each artifact type sits in the merged stream, which is also the order apply publishes in.
 POSITIONS: Mapping[str, int] = MappingProxyType(

@@ -11,9 +11,15 @@ import re
 from types import MappingProxyType
 from typing import Mapping
 
-from ..diagnostic import Diagnostic
-from ..validation import Emitter
-from .model import SUPPORTED_JUDGE_PLACEHOLDERS, SYSTEM_EVAL_METRICS, CustomEvalMetric, EvalScoreRanges, ThresholdRange
+from snowflake_semantic_tools.domain.model.diagnostic import Diagnostic
+from snowflake_semantic_tools.domain.model.eval.model import (
+    SUPPORTED_JUDGE_PLACEHOLDERS,
+    SYSTEM_EVAL_METRICS,
+    CustomEvalMetric,
+    EvalScoreRanges,
+    ThresholdRange,
+)
+from snowflake_semantic_tools.domain.model.validation import Emitter
 
 _JUDGE_PLACEHOLDER = re.compile(r"{{\s*([A-Za-z_][A-Za-z0-9_]*)\s*}}")
 _SCALE = re.compile(r"(-?\d+(?:\.\d+)?)\s+(?:to|and|through|-)\s+(-?\d+(?:\.\d+)?)", re.IGNORECASE)

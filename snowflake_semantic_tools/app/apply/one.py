@@ -11,8 +11,9 @@ from __future__ import annotations
 from dataclasses import replace
 from typing import Mapping
 
-from ...domain.model.identifier import Identifier
-from ...domain.model.lifecycle import (
+from snowflake_semantic_tools.app.apply.errors import _exception_error, _failed, _rendered_ddl, _script_error, _skipped
+from snowflake_semantic_tools.domain.model.identifier import Identifier
+from snowflake_semantic_tools.domain.model.lifecycle import (
     Action,
     ApplyOptions,
     ApplyOutcome,
@@ -27,10 +28,9 @@ from ...domain.model.lifecycle import (
     RenderedArtifact,
     RetryPolicy,
 )
-from ...domain.model.registry import GrantPreservation
-from ...domain.ports.lifecycle import CompositeLifecycleHandler
-from ...domain.ports.snowflake import ClockPort, SnowflakePort, SnowflakePortError
-from .errors import _exception_error, _failed, _rendered_ddl, _script_error, _skipped
+from snowflake_semantic_tools.domain.model.registry import GrantPreservation
+from snowflake_semantic_tools.domain.ports.lifecycle import CompositeLifecycleHandler
+from snowflake_semantic_tools.domain.ports.snowflake import ClockPort, SnowflakePort, SnowflakePortError
 
 
 def preserves_grants(change: Change) -> bool:

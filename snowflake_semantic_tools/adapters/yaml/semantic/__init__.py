@@ -29,6 +29,10 @@ built, as one frozen value); `phases` and `view_instructions` (the load's phases
 `pipeline` (the whole load, phase by phase).
 """
 
-from .pipeline import SemanticInputs, load_semantic_views_result, read_semantic_inputs
+from snowflake_semantic_tools.adapters.yaml.semantic.pipeline import (
+    SemanticInputs,
+    load_semantic_views_result,
+    read_semantic_inputs,
+)
 
 __all__ = ["SemanticInputs", "load_semantic_views_result", "read_semantic_inputs"]

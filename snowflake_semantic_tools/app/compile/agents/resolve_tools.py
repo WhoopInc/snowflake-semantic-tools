@@ -14,12 +14,12 @@ from dataclasses import dataclass, field
 from types import MappingProxyType
 from typing import Callable, Mapping
 
-from ....domain.model.agent import KNOWN_AGENT_TOOL_TYPES, AgentModel, AgentTool, ResolvedAgentTool
-from ....domain.model.artifact_key import artifact_key
-from ....domain.model.diagnostic import D, Diagnostic
-from ....domain.model.identifier import QualifiedName
-from ....domain.model.tool import ToolKind, ToolMember
-from .context import AgentCompileContext
+from snowflake_semantic_tools.app.compile.agents.context import AgentCompileContext
+from snowflake_semantic_tools.domain.model.agent import KNOWN_AGENT_TOOL_TYPES, AgentModel, AgentTool, ResolvedAgentTool
+from snowflake_semantic_tools.domain.model.artifact_key import artifact_key
+from snowflake_semantic_tools.domain.model.diagnostic import D, Diagnostic
+from snowflake_semantic_tools.domain.model.identifier import QualifiedName
+from snowflake_semantic_tools.domain.model.tool import ToolKind, ToolMember
 
 _SEARCH_SERVICES = (ToolKind.CORTEX_SEARCH_SERVICE.value,)
 _ROUTINES = (ToolKind.PROCEDURE.value, ToolKind.FUNCTION.value)

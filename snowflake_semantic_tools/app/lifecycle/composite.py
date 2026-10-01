@@ -14,9 +14,10 @@ from abc import abstractmethod
 from types import MappingProxyType
 from typing import Callable, Collection, Generic, Iterable, Mapping, TypeVar
 
-from ...domain.model.diagnostic import D, Diagnostic, DiagnosticBag
-from ...domain.model.identifier import QualifiedName
-from ...domain.model.lifecycle import (
+from snowflake_semantic_tools.app.apply import classify_error
+from snowflake_semantic_tools.domain.model.diagnostic import D, Diagnostic, DiagnosticBag
+from snowflake_semantic_tools.domain.model.identifier import QualifiedName
+from snowflake_semantic_tools.domain.model.lifecycle import (
     Action,
     ApplyOptions,
     ApplyOutcome,
@@ -29,11 +30,10 @@ from ...domain.model.lifecycle import (
     OutcomeStatus,
     RenderedArtifact,
 )
-from ...domain.model.skill import BundleEntry
-from ...domain.ports.lifecycle import CompositeLifecycleHandler
-from ...domain.ports.snowflake import SnowflakePort, SnowflakePortError
-from ...domain.state import AppliedEntry, AppliedResourceInput, Manifest
-from ..apply import classify_error
+from snowflake_semantic_tools.domain.model.skill import BundleEntry
+from snowflake_semantic_tools.domain.ports.lifecycle import CompositeLifecycleHandler
+from snowflake_semantic_tools.domain.ports.snowflake import SnowflakePort, SnowflakePortError
+from snowflake_semantic_tools.domain.state import AppliedEntry, AppliedResourceInput, Manifest
 
 # The type Snowflake reports for an internal stage with server-side encryption only.
 SSE_STAGE_TYPE = "INTERNAL NO CSE"

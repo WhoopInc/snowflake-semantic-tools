@@ -12,15 +12,15 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Mapping, Protocol
 
-from ..model.agent import AgentModel
-from ..model.dbt import DbtCatalog
-from ..model.diagnostic import Diagnostic, DiagnosticBag
-from ..model.eval import EvalCatalog
-from ..model.identifier import TargetIdentity
-from ..model.profile import ProfileCatalog
-from ..model.skill import SkillCatalog
-from ..model.tool import ToolCatalog
-from .semantic_view_source import SemanticViewSource
+from snowflake_semantic_tools.domain.model.agent import AgentModel
+from snowflake_semantic_tools.domain.model.dbt import DbtCatalog
+from snowflake_semantic_tools.domain.model.diagnostic import Diagnostic, DiagnosticBag
+from snowflake_semantic_tools.domain.model.eval import EvalCatalog
+from snowflake_semantic_tools.domain.model.identifier import TargetIdentity
+from snowflake_semantic_tools.domain.model.profile import ProfileCatalog
+from snowflake_semantic_tools.domain.model.skill import SkillCatalog
+from snowflake_semantic_tools.domain.model.tool import ToolCatalog
+from snowflake_semantic_tools.domain.ports.semantic_view_source import SemanticViewSource
 
 
 @dataclass(frozen=True, slots=True)

@@ -13,20 +13,10 @@ from dataclasses import dataclass, field
 from types import MappingProxyType
 from typing import Mapping
 
-from ...domain.model.config_schema import config_block
-from ...domain.model.diagnostic import Diagnostic, DiagnosticBag
-from ...domain.model.eval import DEFAULT_EVAL_CONFIG_STAGE, EvalBaselineRecord, EvalDefaults, EvalGateVerdict
-from ...domain.model.identifier import QualifiedName, TargetIdentity
-from ...domain.ports.eval_state import EvalStateStore
-from ...domain.ports.project import ProjectInputs
-from ...domain.ports.snowflake import ClockPort, SnowflakePort, StateStore
-from ...domain.state import Manifest, State
-from ..compile import CompileResult
-from ..compile.evals import CompiledEval
-from ..lifecycle.evals import EvalLifecycleConfig, EvalLifecycleHandler
-from ..state import read_state
-from .gate import capture_baseline, evaluate_gate, persist_gate
-from .run import (
+from snowflake_semantic_tools.app.compile import CompileResult
+from snowflake_semantic_tools.app.compile.evals import CompiledEval
+from snowflake_semantic_tools.app.evals.gate import capture_baseline, evaluate_gate, persist_gate
+from snowflake_semantic_tools.app.evals.run import (
     EvalRunOptions,
     EvalSuiteResult,
     RunEvalSuite,
@@ -34,6 +24,21 @@ from .run import (
     eval_suite_json,
     validate_eval_publication,
 )
+from snowflake_semantic_tools.app.lifecycle.evals import EvalLifecycleConfig, EvalLifecycleHandler
+from snowflake_semantic_tools.app.state import read_state
+from snowflake_semantic_tools.domain.model.config_schema import config_block
+from snowflake_semantic_tools.domain.model.diagnostic import Diagnostic, DiagnosticBag
+from snowflake_semantic_tools.domain.model.eval import (
+    DEFAULT_EVAL_CONFIG_STAGE,
+    EvalBaselineRecord,
+    EvalDefaults,
+    EvalGateVerdict,
+)
+from snowflake_semantic_tools.domain.model.identifier import QualifiedName, TargetIdentity
+from snowflake_semantic_tools.domain.ports.eval_state import EvalStateStore
+from snowflake_semantic_tools.domain.ports.project import ProjectInputs
+from snowflake_semantic_tools.domain.ports.snowflake import ClockPort, SnowflakePort, StateStore
+from snowflake_semantic_tools.domain.state import Manifest, State
 
 
 @dataclass(frozen=True, slots=True)

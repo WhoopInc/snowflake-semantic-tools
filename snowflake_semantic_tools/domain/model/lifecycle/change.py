@@ -9,11 +9,15 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from ..diagnostic import DiagnosticBag
-from ..identifier import TargetIdentity
-from .action import Action, ChangeReason
-from .observation import ArtifactKey, CompositeObservation, ObservedArtifact
-from .rendered import RenderedArtifact
+from snowflake_semantic_tools.domain.model.diagnostic import DiagnosticBag
+from snowflake_semantic_tools.domain.model.identifier import TargetIdentity
+from snowflake_semantic_tools.domain.model.lifecycle.action import Action, ChangeReason
+from snowflake_semantic_tools.domain.model.lifecycle.observation import (
+    ArtifactKey,
+    CompositeObservation,
+    ObservedArtifact,
+)
+from snowflake_semantic_tools.domain.model.lifecycle.rendered import RenderedArtifact
 
 
 @dataclass(frozen=True, slots=True)

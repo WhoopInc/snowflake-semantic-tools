@@ -11,12 +11,19 @@ from dataclasses import dataclass, field
 from hashlib import sha256
 from typing import Mapping
 
-from ...domain.model.artifact_key import artifact_key, split_artifact_key
-from ...domain.model.diagnostic import D, Diagnostic, DiagnosticBag, Origin, Severity
-from ...domain.model.identifier import QualifiedName
-from ...domain.model.lifecycle import CompositeFacts, PublishShape, RenderedArtifact, StatementPlan
-from ...domain.model.registry import GrantPreservation
-from ...domain.model.skill import (
+from snowflake_semantic_tools.app.compile.agents import ExtensionPin
+from snowflake_semantic_tools.app.compile.base import CompileResult, StandaloneArtifact, has_error
+from snowflake_semantic_tools.domain.model.artifact_key import artifact_key, split_artifact_key
+from snowflake_semantic_tools.domain.model.diagnostic import D, Diagnostic, DiagnosticBag, Origin, Severity
+from snowflake_semantic_tools.domain.model.identifier import QualifiedName
+from snowflake_semantic_tools.domain.model.lifecycle import (
+    CompositeFacts,
+    PublishShape,
+    RenderedArtifact,
+    StatementPlan,
+)
+from snowflake_semantic_tools.domain.model.registry import GrantPreservation
+from snowflake_semantic_tools.domain.model.skill import (
     DEFAULT_VERSION_PREFIX,
     Plugin,
     Skill,
@@ -26,8 +33,6 @@ from ...domain.model.skill import (
     build_skill_bundle,
     validate_skill_catalog,
 )
-from .agents import ExtensionPin
-from .base import CompileResult, StandaloneArtifact, has_error
 
 _ALIAS_PREFIX = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
 

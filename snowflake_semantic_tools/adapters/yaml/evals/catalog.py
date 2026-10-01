@@ -10,10 +10,15 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Mapping
 
-from ....domain.model.agent import AgentModel
-from ....domain.model.artifact_key import artifact_key
-from ....domain.model.diagnostic import D, Diagnostic, DiagnosticBag, Origin
-from ....domain.model.eval import (
+from snowflake_semantic_tools.adapters.yaml.documents import ParsedYaml
+from snowflake_semantic_tools.adapters.yaml.evals.config import parse_config
+from snowflake_semantic_tools.adapters.yaml.evals.dataset import parse_dataset
+from snowflake_semantic_tools.adapters.yaml.evals.metrics import load_custom_metrics
+from snowflake_semantic_tools.adapters.yaml.parse import read_yaml_file
+from snowflake_semantic_tools.domain.model.agent import AgentModel
+from snowflake_semantic_tools.domain.model.artifact_key import artifact_key
+from snowflake_semantic_tools.domain.model.diagnostic import D, Diagnostic, DiagnosticBag, Origin
+from snowflake_semantic_tools.domain.model.eval import (
     CustomEvalMetric,
     EvalCatalog,
     EvalConfig,
@@ -21,11 +26,6 @@ from ....domain.model.eval import (
     ResolvedEval,
     validate_eval_catalog,
 )
-from ..documents import ParsedYaml
-from ..parse import read_yaml_file
-from .config import parse_config
-from .dataset import parse_dataset
-from .metrics import load_custom_metrics
 
 
 def load_eval_catalog(

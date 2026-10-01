@@ -11,18 +11,25 @@ from pathlib import Path
 
 import click
 
-from ...adapters.fs.local import ManifestFileStore
-from ...app.compile import CompileResult
-from ...app.partial import partial_refusal, partial_split
-from ...domain.model.diagnostic import DiagnosticBag
-from ...domain.state import Manifest
-from ..exit_codes import ERROR, OK
-from ..options import manifest_option, output_option, partial_option, project_dir_option, select_option, target_option
-from ..plan_output import artifact_suffix
-from ..runner import CommandResult, command_body
-from ..wiring import compile as compiling
-from ..wiring.manifest import build_manifest
-from ..wiring.project import target_dir
+from snowflake_semantic_tools.adapters.fs.local import ManifestFileStore
+from snowflake_semantic_tools.app.compile import CompileResult
+from snowflake_semantic_tools.app.partial import partial_refusal, partial_split
+from snowflake_semantic_tools.cli.exit_codes import ERROR, OK
+from snowflake_semantic_tools.cli.options import (
+    manifest_option,
+    output_option,
+    partial_option,
+    project_dir_option,
+    select_option,
+    target_option,
+)
+from snowflake_semantic_tools.cli.plan_output import artifact_suffix
+from snowflake_semantic_tools.cli.runner import CommandResult, command_body
+from snowflake_semantic_tools.cli.wiring import compile as compiling
+from snowflake_semantic_tools.cli.wiring.manifest import build_manifest
+from snowflake_semantic_tools.cli.wiring.project import target_dir
+from snowflake_semantic_tools.domain.model.diagnostic import DiagnosticBag
+from snowflake_semantic_tools.domain.state import Manifest
 
 
 @click.command()

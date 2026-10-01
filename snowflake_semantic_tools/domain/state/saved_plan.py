@@ -12,11 +12,17 @@ from __future__ import annotations
 from dataclasses import dataclass
 from hashlib import sha256
 
-from ..model.diagnostic import D, Diagnostic
-from ..model.identifier import TargetIdentity
-from ..model.lifecycle import Change, ChangeSet
-from .codec import optional_object, pairs_from_json, pairs_to_json, resources_from_json, resources_to_json
-from .documents import content_hash
+from snowflake_semantic_tools.domain.model.diagnostic import D, Diagnostic
+from snowflake_semantic_tools.domain.model.identifier import TargetIdentity
+from snowflake_semantic_tools.domain.model.lifecycle import Change, ChangeSet
+from snowflake_semantic_tools.domain.state.codec import (
+    optional_object,
+    pairs_from_json,
+    pairs_to_json,
+    resources_from_json,
+    resources_to_json,
+)
+from snowflake_semantic_tools.domain.state.documents import content_hash
 
 PLAN_SCHEMA_VERSION = 2
 

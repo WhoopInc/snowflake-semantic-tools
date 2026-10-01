@@ -8,8 +8,8 @@ change: re-checking the plan, executing with retries, verifying the write), `err
 
 from __future__ import annotations
 
-from .errors import classify_error
-from .one import preserves_grants
-from .run import ApplyArtifacts
+from snowflake_semantic_tools.app.apply.errors import classify_error
+from snowflake_semantic_tools.app.apply.one import preserves_grants
+from snowflake_semantic_tools.app.apply.run import ApplyArtifacts
 
 __all__ = ["ApplyArtifacts", "classify_error", "preserves_grants"]

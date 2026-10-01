@@ -8,16 +8,25 @@ from __future__ import annotations
 import re
 from collections.abc import Mapping
 
-from .....domain.model.artifact_key import artifact_key
-from .....domain.model.dbt import DbtModel
-from .....domain.model.diagnostic import D, Diagnostic
-from .....domain.model.expression import is_aggregate_expression
-from .....domain.model.expression import root_function as _root_function
-from .....domain.model.reference import TemplateCall
-from .....domain.model.semantic_view import SortKey
-from ..defs import MetricDef, WindowDef
-from .expressions import _bare_column_identifiers, _is_bad_var, _scan_expression, _var_diagnostic
-from .windows import DIMENSION_TYPES, _metric_owner, _window_diagnostics
+from snowflake_semantic_tools.adapters.yaml.semantic.checks.expressions import (
+    _bare_column_identifiers,
+    _is_bad_var,
+    _scan_expression,
+    _var_diagnostic,
+)
+from snowflake_semantic_tools.adapters.yaml.semantic.checks.windows import (
+    DIMENSION_TYPES,
+    _metric_owner,
+    _window_diagnostics,
+)
+from snowflake_semantic_tools.adapters.yaml.semantic.defs import MetricDef, WindowDef
+from snowflake_semantic_tools.domain.model.artifact_key import artifact_key
+from snowflake_semantic_tools.domain.model.dbt import DbtModel
+from snowflake_semantic_tools.domain.model.diagnostic import D, Diagnostic
+from snowflake_semantic_tools.domain.model.expression import is_aggregate_expression
+from snowflake_semantic_tools.domain.model.expression import root_function as _root_function
+from snowflake_semantic_tools.domain.model.reference import TemplateCall
+from snowflake_semantic_tools.domain.model.semantic_view import SortKey
 
 
 def _metric_cycles(metrics: tuple[MetricDef, ...]) -> tuple[tuple[str, ...], ...]:

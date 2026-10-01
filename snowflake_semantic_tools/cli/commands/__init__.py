@@ -7,9 +7,21 @@ description, so `--help` and the generated CLI reference agree.
 
 from __future__ import annotations
 
-from ..group import cli
-from ..help_text import document_options
-from . import apply, clean, compile, debug, docs, init, list, migrate, plan, test, validate
+from snowflake_semantic_tools.cli.commands import (
+    apply,
+    clean,
+    compile,
+    debug,
+    docs,
+    init,
+    list,
+    migrate,
+    plan,
+    test,
+    validate,
+)
+from snowflake_semantic_tools.cli.group import cli
+from snowflake_semantic_tools.cli.help_text import document_options
 
 # The submodules stay bound under their own names, so `commands.apply` is a module to patch.
 for _command in (

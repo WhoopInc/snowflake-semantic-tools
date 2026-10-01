@@ -13,9 +13,9 @@ from enum import Enum
 from types import MappingProxyType
 from typing import Iterable, Iterator, Mapping, cast
 
-from ..model.identifier import TargetIdentity
-from .codec import pairs_from_json, pairs_to_json
-from .documents import StoredDocumentError
+from snowflake_semantic_tools.domain.model.identifier import TargetIdentity
+from snowflake_semantic_tools.domain.state.codec import pairs_from_json, pairs_to_json
+from snowflake_semantic_tools.domain.state.documents import StoredDocumentError
 
 STATE_SCHEMA_VERSION = 2
 

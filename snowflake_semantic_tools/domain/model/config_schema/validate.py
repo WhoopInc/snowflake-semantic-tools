@@ -11,8 +11,17 @@ from collections.abc import Mapping
 from types import MappingProxyType
 from typing import Any
 
-from ..diagnostic import D, Diagnostic, DiagnosticBag, Origin
-from .keys import CHILDREN, CONFIG_FILE, CONFIG_KEYS, TOP_LEVEL_KEYS, ChildPolicy, ConfigKey, KeyKind, KeyStatus
+from snowflake_semantic_tools.domain.model.config_schema.keys import (
+    CHILDREN,
+    CONFIG_FILE,
+    CONFIG_KEYS,
+    TOP_LEVEL_KEYS,
+    ChildPolicy,
+    ConfigKey,
+    KeyKind,
+    KeyStatus,
+)
+from snowflake_semantic_tools.domain.model.diagnostic import D, Diagnostic, DiagnosticBag, Origin
 
 _TYPES: Mapping[KeyKind, tuple[type, ...]] = MappingProxyType(
     {

@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from typing import Protocol
 
-from ..model.project import SemanticViewProject
+from snowflake_semantic_tools.domain.model.project import SemanticViewProject
 
 
 class SemanticViewSource(Protocol):

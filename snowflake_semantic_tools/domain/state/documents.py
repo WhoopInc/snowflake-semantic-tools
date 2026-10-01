@@ -12,7 +12,7 @@ import json
 from hashlib import sha256
 from typing import Any
 
-from ..._version import __version__
+from snowflake_semantic_tools._version import __version__
 
 # The version every document records as its writer: a manifest's generator, a run's state.
 SST_VERSION = __version__

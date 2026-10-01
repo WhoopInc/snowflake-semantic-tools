@@ -8,11 +8,12 @@ from hashlib import md5, sha256
 from threading import Lock
 from types import MappingProxyType
 
-from ...domain.model.artifact_key import artifact_key, split_artifact_key
-from ...domain.model.diagnostic import D, Diagnostic, DiagnosticBag
-from ...domain.model.eval import DEFAULT_EVAL_CONFIG_STAGE
-from ...domain.model.identifier import Identifier, QualifiedName
-from ...domain.model.lifecycle import (
+from snowflake_semantic_tools.app.lifecycle.composite import CompositeHandler, PublicationRun, blocked, failed
+from snowflake_semantic_tools.domain.model.artifact_key import artifact_key, split_artifact_key
+from snowflake_semantic_tools.domain.model.diagnostic import D, Diagnostic, DiagnosticBag
+from snowflake_semantic_tools.domain.model.eval import DEFAULT_EVAL_CONFIG_STAGE
+from snowflake_semantic_tools.domain.model.identifier import Identifier, QualifiedName
+from snowflake_semantic_tools.domain.model.lifecycle import (
     Action,
     ApplyOutcome,
     Change,
@@ -26,9 +27,8 @@ from ...domain.model.lifecycle import (
     PhysicalResource,
     RenderedArtifact,
 )
-from ...domain.ports.snowflake import SnowflakePort, SnowflakePortError
-from ...domain.state import AppliedEntry, ResourceStatus
-from .composite import CompositeHandler, PublicationRun, blocked, failed
+from snowflake_semantic_tools.domain.ports.snowflake import SnowflakePort, SnowflakePortError
+from snowflake_semantic_tools.domain.state import AppliedEntry, ResourceStatus
 
 EVAL_STAGE_FILE_FORMAT = (
     "TYPE='CSV' FIELD_DELIMITER=NONE RECORD_DELIMITER='\\n' SKIP_HEADER=0 "

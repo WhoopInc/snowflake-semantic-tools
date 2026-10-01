@@ -7,9 +7,9 @@ from pathlib import Path
 
 import click
 
-from ..options import output_option, project_dir_option
-from ..runner import CommandResult, command_body
-from ..wiring.project import target_dir
+from snowflake_semantic_tools.cli.options import output_option, project_dir_option
+from snowflake_semantic_tools.cli.runner import CommandResult, command_body
+from snowflake_semantic_tools.cli.wiring.project import target_dir
 
 
 @click.command()

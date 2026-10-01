@@ -6,11 +6,11 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
-from .....domain.model.artifact_key import artifact_key
-from .....domain.model.diagnostic import D, Diagnostic, Origin
-from ...documents import RawDocuments
-from ..defs import NULL_ORDERS, SORT_DIRECTIONS, _frame
-from ..nodes import _load_nodes, _member_root, _node_origin
+from snowflake_semantic_tools.adapters.yaml.documents import RawDocuments
+from snowflake_semantic_tools.adapters.yaml.semantic.defs import NULL_ORDERS, SORT_DIRECTIONS, _frame
+from snowflake_semantic_tools.adapters.yaml.semantic.nodes import _load_nodes, _member_root, _node_origin
+from snowflake_semantic_tools.domain.model.artifact_key import artifact_key
+from snowflake_semantic_tools.domain.model.diagnostic import D, Diagnostic, Origin
 
 
 def _synonyms_diagnostics(

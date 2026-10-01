@@ -13,10 +13,10 @@ from typing import cast
 
 import click
 
-from ..app.evals.run import EvalSuiteResult, eval_suite_json
-from ..domain.model.artifact_key import split_artifact_key
-from ..domain.model.lifecycle import Action, ApplyOutcome, Change, ChangeSet
-from .wiring.project import target_dir
+from snowflake_semantic_tools.app.evals.run import EvalSuiteResult, eval_suite_json
+from snowflake_semantic_tools.cli.wiring.project import target_dir
+from snowflake_semantic_tools.domain.model.artifact_key import split_artifact_key
+from snowflake_semantic_tools.domain.model.lifecycle import Action, ApplyOutcome, Change, ChangeSet
 
 
 def change_json(change: Change) -> dict[str, object]:

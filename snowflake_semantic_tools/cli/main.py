@@ -9,9 +9,9 @@ project do -- runs every command against a double.
 
 from __future__ import annotations
 
-from ..adapters.snowflake.connector import SnowflakeConnector
-from . import commands  # imported for its effect: registering every command on `cli`
-from .group import cli
+from snowflake_semantic_tools.adapters.snowflake.connector import SnowflakeConnector
+from snowflake_semantic_tools.cli import commands  # imported for its effect: registering every command on `cli`
+from snowflake_semantic_tools.cli.group import cli
 
 __all__ = ["SnowflakeConnector", "cli", "main"]
 

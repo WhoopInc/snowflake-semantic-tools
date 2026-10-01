@@ -9,10 +9,10 @@ from __future__ import annotations
 
 from typing import Mapping
 
-from ....domain.model.diagnostic import D, Diagnostic, Origin
-from ....domain.model.eval import ThresholdRange
-from ..documents import ParsedYaml
-from ..fields import checked_strings, optional_int, optional_string
+from snowflake_semantic_tools.adapters.yaml.documents import ParsedYaml
+from snowflake_semantic_tools.adapters.yaml.fields import checked_strings, optional_int, optional_string
+from snowflake_semantic_tools.domain.model.diagnostic import D, Diagnostic, Origin
+from snowflake_semantic_tools.domain.model.eval import ThresholdRange
 
 
 def parse_threshold(

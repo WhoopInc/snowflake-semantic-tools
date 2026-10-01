@@ -15,8 +15,15 @@ from hashlib import sha256
 from types import MappingProxyType
 from typing import Any, Mapping
 
-from .core import ERROR_REFERENCE_URL, ErrorSpec, Origin, RegistryIntegrityError, Severity, _placeholders
-from .specs import (
+from snowflake_semantic_tools.domain.model.diagnostic.core import (
+    ERROR_REFERENCE_URL,
+    ErrorSpec,
+    Origin,
+    RegistryIntegrityError,
+    Severity,
+    _placeholders,
+)
+from snowflake_semantic_tools.domain.model.diagnostic.specs import (
     apl,
     cfg,
     internal,

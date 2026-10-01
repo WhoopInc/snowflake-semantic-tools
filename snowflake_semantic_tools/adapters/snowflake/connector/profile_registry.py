@@ -8,10 +8,10 @@ from __future__ import annotations
 
 from typing import Mapping
 
-from ....domain.model.identifier import QualifiedName
-from ....domain.model.lifecycle import QueryResult
-from ....domain.ports.snowflake import ProfileRegistryPort, SnowflakePortError
-from .session import Session, _json_text, _require_ok
+from snowflake_semantic_tools.adapters.snowflake.connector.session import Session, _json_text, _require_ok
+from snowflake_semantic_tools.domain.model.identifier import QualifiedName
+from snowflake_semantic_tools.domain.model.lifecycle import QueryResult
+from snowflake_semantic_tools.domain.ports.snowflake import ProfileRegistryPort, SnowflakePortError
 
 # The 18 columns of CoCo Desktop's profile registry, as the production table
 # declares them. Desktop reads 12; the rest belong to other writers and are

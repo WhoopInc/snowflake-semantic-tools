@@ -12,8 +12,14 @@ from dataclasses import dataclass, field, replace
 from types import MappingProxyType
 from typing import Mapping
 
-from .codec import optional_object, pairs_from_json, pairs_to_json, resources_from_json, resources_to_json
-from .documents import StoredDocumentError, content_hash
+from snowflake_semantic_tools.domain.state.codec import (
+    optional_object,
+    pairs_from_json,
+    pairs_to_json,
+    resources_from_json,
+    resources_to_json,
+)
+from snowflake_semantic_tools.domain.state.documents import StoredDocumentError, content_hash
 
 MANIFEST_SCHEMA_VERSION = 2
 

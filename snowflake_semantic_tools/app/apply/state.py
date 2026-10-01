@@ -12,7 +12,7 @@ from __future__ import annotations
 from dataclasses import dataclass, replace
 from typing import Mapping
 
-from ...domain.model.lifecycle import (
+from snowflake_semantic_tools.domain.model.lifecycle import (
     Action,
     ApplyOutcome,
     Change,
@@ -21,8 +21,15 @@ from ...domain.model.lifecycle import (
     OutcomeStatus,
     OwnershipMarker,
 )
-from ...domain.ports.lifecycle import CompositeLifecycleHandler
-from ...domain.state import APPLIED, DEACTIVATED, FAILED_AFTER_WRITE, AppliedEntry, AppliedResourceInput, State
+from snowflake_semantic_tools.domain.ports.lifecycle import CompositeLifecycleHandler
+from snowflake_semantic_tools.domain.state import (
+    APPLIED,
+    DEACTIVATED,
+    FAILED_AFTER_WRITE,
+    AppliedEntry,
+    AppliedResourceInput,
+    State,
+)
 
 
 @dataclass(frozen=True, slots=True)

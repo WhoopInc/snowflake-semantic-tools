@@ -13,7 +13,7 @@ import re
 from dataclasses import dataclass
 from typing import Any, Callable, Hashable, Iterable, TypeVar
 
-from .diagnostic import D, Diagnostic, Origin
+from snowflake_semantic_tools.domain.model.diagnostic import D, Diagnostic, Origin
 
 T = TypeVar("T")
 K = TypeVar("K", bound=Hashable)

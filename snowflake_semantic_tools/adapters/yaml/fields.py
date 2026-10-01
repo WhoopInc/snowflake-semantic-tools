@@ -13,7 +13,7 @@ from collections.abc import Callable, Iterable
 from pathlib import Path
 from typing import Any
 
-from ...domain.model.diagnostic import D, Diagnostic, Origin
+from snowflake_semantic_tools.domain.model.diagnostic import D, Diagnostic, Origin
 
 
 def optional_string(value: object) -> str | None:

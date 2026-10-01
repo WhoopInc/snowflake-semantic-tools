@@ -6,10 +6,10 @@ from dataclasses import dataclass, field
 from types import MappingProxyType
 from typing import Mapping, TypeAlias
 
-from .artifact_key import artifact_key
-from .diagnostic import DiagnosticBag, Origin
-from .reference import TemplateCall
-from .semantic_view import SemanticView
+from snowflake_semantic_tools.domain.model.artifact_key import artifact_key
+from snowflake_semantic_tools.domain.model.diagnostic import DiagnosticBag, Origin
+from snowflake_semantic_tools.domain.model.reference import TemplateCall
+from snowflake_semantic_tools.domain.model.semantic_view import SemanticView
 
 ArtifactKey: TypeAlias = str
 MemberKey: TypeAlias = str

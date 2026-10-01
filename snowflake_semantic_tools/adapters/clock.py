@@ -6,7 +6,7 @@ import time
 import uuid
 from datetime import datetime, timezone
 
-from ..domain.ports.snowflake import ClockPort
+from snowflake_semantic_tools.domain.ports.snowflake import ClockPort
 
 
 class SystemClock(ClockPort):

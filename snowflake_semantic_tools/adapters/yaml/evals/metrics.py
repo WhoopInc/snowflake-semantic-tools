@@ -10,12 +10,18 @@ from __future__ import annotations
 from pathlib import Path
 from types import MappingProxyType
 
-from ....domain.model.diagnostic import D, Diagnostic
-from ....domain.model.eval import CustomEvalMetric, EvalScoreRanges
-from ..documents import ParsedYaml
-from ..fields import report_unknown_keys
-from ..parse import read_yaml_file
-from .readers import optional_bool_field, optional_string_field, origin_at, parse_threshold, required_string
+from snowflake_semantic_tools.adapters.yaml.documents import ParsedYaml
+from snowflake_semantic_tools.adapters.yaml.evals.readers import (
+    optional_bool_field,
+    optional_string_field,
+    origin_at,
+    parse_threshold,
+    required_string,
+)
+from snowflake_semantic_tools.adapters.yaml.fields import report_unknown_keys
+from snowflake_semantic_tools.adapters.yaml.parse import read_yaml_file
+from snowflake_semantic_tools.domain.model.diagnostic import D, Diagnostic
+from snowflake_semantic_tools.domain.model.eval import CustomEvalMetric, EvalScoreRanges
 
 _CUSTOM_METRIC_KEYS = frozenset(
     (

@@ -10,24 +10,36 @@ from pathlib import Path
 
 import click
 
-from ...adapters.clock import SystemClock
-from ...adapters.errors import ProjectError
-from ...adapters.fs.golden import GoldenFileStore
-from ...adapters.project_source import YamlProjectInputs
-from ...adapters.snowflake.eval_state import SnowflakeEvalStateStore
-from ...app.compile import CompileResult
-from ...app.evals.suite import EvalGateOutcome, EvalGateRefused, EvalGateRequest, RunEvalGate, compiled_evals
-from ...app.golden import CompareGoldens, GoldenReport
-from ...app.smoke import SmokePublished
-from ...domain.model.identifier import Identifier, QualifiedName
-from ..exit_codes import ERROR, OK
-from ..group import SstUsageError
-from ..options import fail_fast_option, manifest_option, output_option, project_dir_option, target_option
-from ..plan_output import print_eval_results
-from ..runner import CommandResult, command_body
-from ..wiring import compile as compiling
-from ..wiring.manifest import current_manifest
-from ..wiring.project import closed_on_error, connect, project_inputs, state_store
+from snowflake_semantic_tools.adapters.clock import SystemClock
+from snowflake_semantic_tools.adapters.errors import ProjectError
+from snowflake_semantic_tools.adapters.fs.golden import GoldenFileStore
+from snowflake_semantic_tools.adapters.project_source import YamlProjectInputs
+from snowflake_semantic_tools.adapters.snowflake.eval_state import SnowflakeEvalStateStore
+from snowflake_semantic_tools.app.compile import CompileResult
+from snowflake_semantic_tools.app.evals.suite import (
+    EvalGateOutcome,
+    EvalGateRefused,
+    EvalGateRequest,
+    RunEvalGate,
+    compiled_evals,
+)
+from snowflake_semantic_tools.app.golden import CompareGoldens, GoldenReport
+from snowflake_semantic_tools.app.smoke import SmokePublished
+from snowflake_semantic_tools.cli.exit_codes import ERROR, OK
+from snowflake_semantic_tools.cli.group import SstUsageError
+from snowflake_semantic_tools.cli.options import (
+    fail_fast_option,
+    manifest_option,
+    output_option,
+    project_dir_option,
+    target_option,
+)
+from snowflake_semantic_tools.cli.plan_output import print_eval_results
+from snowflake_semantic_tools.cli.runner import CommandResult, command_body
+from snowflake_semantic_tools.cli.wiring import compile as compiling
+from snowflake_semantic_tools.cli.wiring.manifest import current_manifest
+from snowflake_semantic_tools.cli.wiring.project import closed_on_error, connect, project_inputs, state_store
+from snowflake_semantic_tools.domain.model.identifier import Identifier, QualifiedName
 
 
 @click.command(name="test")

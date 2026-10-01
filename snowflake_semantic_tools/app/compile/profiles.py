@@ -6,11 +6,17 @@ from dataclasses import dataclass
 from hashlib import sha256
 from typing import Mapping
 
-from ...domain.model.artifact_key import artifact_key
-from ...domain.model.diagnostic import D, Diagnostic, DiagnosticBag, Severity
-from ...domain.model.identifier import QualifiedName
-from ...domain.model.lifecycle import CompositeFacts, PublishShape, RenderedArtifact, StatementPlan
-from ...domain.model.profile import (
+from snowflake_semantic_tools.app.compile.base import CompileResult, StandaloneArtifact
+from snowflake_semantic_tools.domain.model.artifact_key import artifact_key
+from snowflake_semantic_tools.domain.model.diagnostic import D, Diagnostic, DiagnosticBag, Severity
+from snowflake_semantic_tools.domain.model.identifier import QualifiedName
+from snowflake_semantic_tools.domain.model.lifecycle import (
+    CompositeFacts,
+    PublishShape,
+    RenderedArtifact,
+    StatementPlan,
+)
+from snowflake_semantic_tools.domain.model.profile import (
     DESKTOP_REGISTRY,
     DesktopProfile,
     ProfileCatalog,
@@ -19,8 +25,8 @@ from ...domain.model.profile import (
     unreached_skills,
     validate_profile_catalog,
 )
-from ...domain.model.registry import GrantPreservation
-from ...domain.model.skill import (
+from snowflake_semantic_tools.domain.model.registry import GrantPreservation
+from snowflake_semantic_tools.domain.model.skill import (
     DEFAULT_VERSION_PREFIX,
     Plugin,
     Skill,
@@ -28,7 +34,6 @@ from ...domain.model.skill import (
     build_plugin_bundle,
     flatten_skill,
 )
-from .base import CompileResult, StandaloneArtifact
 
 
 @dataclass(frozen=True, slots=True)

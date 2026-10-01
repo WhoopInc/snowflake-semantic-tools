@@ -7,9 +7,9 @@ from enum import Enum, auto
 from types import MappingProxyType
 from typing import Callable, Mapping
 
-from .dbt import DbtCatalog
-from .diagnostic import D, Diagnostic, DiagnosticBag, Origin
-from .reference import TemplateCall, TemplateSyntaxError, scan_template_calls
+from snowflake_semantic_tools.domain.model.dbt import DbtCatalog
+from snowflake_semantic_tools.domain.model.diagnostic import D, Diagnostic, DiagnosticBag, Origin
+from snowflake_semantic_tools.domain.model.reference import TemplateCall, TemplateSyntaxError, scan_template_calls
 
 
 class RefKind(Enum):

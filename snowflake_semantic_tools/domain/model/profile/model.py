@@ -12,9 +12,9 @@ import json
 from collections.abc import Mapping
 from dataclasses import dataclass
 
-from ..artifact_key import artifact_key
-from ..diagnostic import DiagnosticBag, Origin
-from ..skill import BundleEntry, SkillFile, bundle_digest
+from snowflake_semantic_tools.domain.model.artifact_key import artifact_key
+from snowflake_semantic_tools.domain.model.diagnostic import DiagnosticBag, Origin
+from snowflake_semantic_tools.domain.model.skill import BundleEntry, SkillFile, bundle_digest
 
 SHARED_PROFILE = "shared"
 DESKTOP_REGISTRY = "CORTEX_CODE.CONFIG.PROFILE_REGISTRY"

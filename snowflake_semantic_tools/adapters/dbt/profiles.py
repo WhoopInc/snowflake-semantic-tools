@@ -12,9 +12,9 @@ from typing import Any, NoReturn
 
 import yaml
 
-from ...domain.model.diagnostic import D, Diagnostic, Origin
-from ...domain.model.identifier import Identifier, QualifiedName, TargetIdentity
-from ..errors import ProjectError
+from snowflake_semantic_tools.adapters.errors import ProjectError
+from snowflake_semantic_tools.domain.model.diagnostic import D, Diagnostic, Origin
+from snowflake_semantic_tools.domain.model.identifier import Identifier, QualifiedName, TargetIdentity
 
 _ENV_VAR = re.compile(
     r"\{\{\s*env_var\(\s*['\"]([^'\"]+)['\"](?:\s*,\s*['\"]([^'\"]*)['\"])?\s*\)"

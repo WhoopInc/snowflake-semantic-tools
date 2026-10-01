@@ -6,13 +6,11 @@ from pathlib import Path
 
 import click
 
-from ...adapters.fs.local import PlanFileStore
-from ...app.plan import PlanReady, PlanRefused
-from ...domain.model.diagnostic import DiagnosticBag
-from ...domain.state import SavedPlan
-from ..exit_codes import CHANGES, ERROR, OK
-from ..group import SstUsageError
-from ..options import (
+from snowflake_semantic_tools.adapters.fs.local import PlanFileStore
+from snowflake_semantic_tools.app.plan import PlanReady, PlanRefused
+from snowflake_semantic_tools.cli.exit_codes import CHANGES, ERROR, OK
+from snowflake_semantic_tools.cli.group import SstUsageError
+from snowflake_semantic_tools.cli.options import (
     output_option,
     partial_option,
     project_options,
@@ -21,10 +19,18 @@ from ..options import (
     sql_out_option,
     validation_options,
 )
-from ..plan_output import change_json, print_plan, write_plan_sql
-from ..runner import CommandResult, command_body
-from ..wiring.plan import PlanRequest, PlanSession, partial_excluded, plan_runtime, refuse_partial_prune
-from ..wiring.project import target_dir
+from snowflake_semantic_tools.cli.plan_output import change_json, print_plan, write_plan_sql
+from snowflake_semantic_tools.cli.runner import CommandResult, command_body
+from snowflake_semantic_tools.cli.wiring.plan import (
+    PlanRequest,
+    PlanSession,
+    partial_excluded,
+    plan_runtime,
+    refuse_partial_prune,
+)
+from snowflake_semantic_tools.cli.wiring.project import target_dir
+from snowflake_semantic_tools.domain.model.diagnostic import DiagnosticBag
+from snowflake_semantic_tools.domain.state import SavedPlan
 
 
 @click.command()

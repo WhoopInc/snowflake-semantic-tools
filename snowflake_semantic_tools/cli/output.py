@@ -14,12 +14,18 @@ from typing import NoReturn
 
 import click
 
-from .._version import __version__ as VERSION
-from ..adapters.clock import SystemClock
-from ..domain.model.artifact_key import split_artifact_key
-from ..domain.model.diagnostic import ERROR_REGISTRY, Diagnostic, DiagnosticBag, Severity, render_diagnostic
-from ..domain.model.registry import SEMANTIC_REGISTRY
-from .exit_codes import CHANGES, ERROR, INTERRUPTED, OK
+from snowflake_semantic_tools._version import __version__ as VERSION
+from snowflake_semantic_tools.adapters.clock import SystemClock
+from snowflake_semantic_tools.cli.exit_codes import CHANGES, ERROR, INTERRUPTED, OK
+from snowflake_semantic_tools.domain.model.artifact_key import split_artifact_key
+from snowflake_semantic_tools.domain.model.diagnostic import (
+    ERROR_REGISTRY,
+    Diagnostic,
+    DiagnosticBag,
+    Severity,
+    render_diagnostic,
+)
+from snowflake_semantic_tools.domain.model.registry import SEMANTIC_REGISTRY
 
 _INVOCATION: dict[str, object] = {}
 _ARTIFACT_SUBJECTS = frozenset(SEMANTIC_REGISTRY.artifacts) | {"profile"}

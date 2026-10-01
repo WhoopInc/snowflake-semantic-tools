@@ -14,10 +14,10 @@ import shutil
 import tempfile
 from pathlib import PurePosixPath
 
-from ....domain.model.identifier import QualifiedName
-from ....domain.model.stage_path import SAFE_SEGMENT_CHARACTERS as _SAFE_SEGMENT
-from ....domain.ports.snowflake import SnowflakePortError, StagedFileMetadata, StagePort
-from .session import Session, _require_ok
+from snowflake_semantic_tools.adapters.snowflake.connector.session import Session, _require_ok
+from snowflake_semantic_tools.domain.model.identifier import QualifiedName
+from snowflake_semantic_tools.domain.model.stage_path import SAFE_SEGMENT_CHARACTERS as _SAFE_SEGMENT
+from snowflake_semantic_tools.domain.ports.snowflake import SnowflakePortError, StagedFileMetadata, StagePort
 
 _EXTENSION_URI = re.compile(
     r"snow://cortex_extension/(?P<name>[A-Za-z0-9_$.]+)/versions/(?P<version>version\$[0-9]+|live)/(?P<path>.*)",

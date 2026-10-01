@@ -5,11 +5,11 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
-from ..domain.model.diagnostic import D, DiagnosticBag, resolve_severities
-from ..domain.model.lifecycle import RenderedArtifact
-from ..domain.model.semantic_view import SemanticView
-from ..domain.ports.snowflake import SnowflakePort, SnowflakePortError
-from .compile import CompiledView, CompileResult
+from snowflake_semantic_tools.app.compile import CompiledView, CompileResult
+from snowflake_semantic_tools.domain.model.diagnostic import D, DiagnosticBag, resolve_severities
+from snowflake_semantic_tools.domain.model.lifecycle import RenderedArtifact
+from snowflake_semantic_tools.domain.model.semantic_view import SemanticView
+from snowflake_semantic_tools.domain.ports.snowflake import SnowflakePort, SnowflakePortError
 
 
 @dataclass(frozen=True, slots=True)

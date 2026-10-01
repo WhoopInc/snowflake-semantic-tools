@@ -9,7 +9,7 @@ submodules.
 
 from __future__ import annotations
 
-from .keys import (
+from snowflake_semantic_tools.domain.model.config_schema.keys import (
     CHILDREN,
     CONFIG_FILE,
     CONFIG_KEYS,
@@ -20,8 +20,16 @@ from .keys import (
     KeyKind,
     KeyStatus,
 )
-from .validate import Positions, validate_config
-from .values import config_block, config_bool, config_int, config_text, configured_dir, skills_configured, target_text
+from snowflake_semantic_tools.domain.model.config_schema.validate import Positions, validate_config
+from snowflake_semantic_tools.domain.model.config_schema.values import (
+    config_block,
+    config_bool,
+    config_int,
+    config_text,
+    configured_dir,
+    skills_configured,
+    target_text,
+)
 
 __all__ = [
     "CHILDREN",

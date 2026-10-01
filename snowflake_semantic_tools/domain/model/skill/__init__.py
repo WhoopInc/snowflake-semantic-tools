@@ -15,7 +15,7 @@ re-exports their public names.
 
 from __future__ import annotations
 
-from .bundle import (
+from snowflake_semantic_tools.domain.model.skill.bundle import (
     BUNDLE_BUDGET_BYTES,
     PLUGIN_MANIFEST,
     SCAN_MAX_FILE_BYTES,
@@ -26,8 +26,8 @@ from .bundle import (
     build_skill_bundle,
     plugin_manifest_json,
 )
-from .flatten import CONVENTIONAL_DIRS, flatten_skill, flattened_name
-from .model import (
+from snowflake_semantic_tools.domain.model.skill.flatten import CONVENTIONAL_DIRS, flatten_skill, flattened_name
+from snowflake_semantic_tools.domain.model.skill.model import (
     ALIAS_HEX_CHARACTERS,
     DEFAULT_VERSION_PREFIX,
     MARKDOWN_SUFFIXES,
@@ -41,8 +41,8 @@ from .model import (
     bundle_digest,
     extension_identifier,
 )
-from .references import IGNORE_MARKER, PathReference, scan_references
-from .validate import validate_skill_catalog
+from snowflake_semantic_tools.domain.model.skill.references import IGNORE_MARKER, PathReference, scan_references
+from snowflake_semantic_tools.domain.model.skill.validate import validate_skill_catalog
 
 __all__ = [
     "ALIAS_HEX_CHARACTERS",

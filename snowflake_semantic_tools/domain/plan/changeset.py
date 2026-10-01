@@ -18,14 +18,20 @@ from __future__ import annotations
 from types import MappingProxyType
 from typing import Mapping
 
-from ..model.diagnostic import D, Diagnostic, DiagnosticBag
-from ..model.identifier import TargetIdentity
-from ..model.lifecycle import Change, ChangeSet, CompositePlan, RenderedArtifact, SnowflakeObservation
-from ..model.registry import Registry
-from ..state import Manifest, State, content_hash
-from .classify import classify
-from .order import render_order, topological_order
-from .prune import block_unsafe, plan_prunes
+from snowflake_semantic_tools.domain.model.diagnostic import D, Diagnostic, DiagnosticBag
+from snowflake_semantic_tools.domain.model.identifier import TargetIdentity
+from snowflake_semantic_tools.domain.model.lifecycle import (
+    Change,
+    ChangeSet,
+    CompositePlan,
+    RenderedArtifact,
+    SnowflakeObservation,
+)
+from snowflake_semantic_tools.domain.model.registry import Registry
+from snowflake_semantic_tools.domain.plan.classify import classify
+from snowflake_semantic_tools.domain.plan.order import render_order, topological_order
+from snowflake_semantic_tools.domain.plan.prune import block_unsafe, plan_prunes
+from snowflake_semantic_tools.domain.state import Manifest, State, content_hash
 
 
 def build_changeset(

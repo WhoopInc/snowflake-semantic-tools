@@ -12,10 +12,10 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Mapping, Protocol, Sequence
 
-from ..model.diagnostic import Diagnostic
-from ..model.identifier import QualifiedName, SchemaScope
-from ..model.lifecycle import ExecResult, GrantRow, OwnershipMarker, QueryResult, ShowRow
-from ..state import AppliedEntry, State
+from snowflake_semantic_tools.domain.model.diagnostic import Diagnostic
+from snowflake_semantic_tools.domain.model.identifier import QualifiedName, SchemaScope
+from snowflake_semantic_tools.domain.model.lifecycle import ExecResult, GrantRow, OwnershipMarker, QueryResult, ShowRow
+from snowflake_semantic_tools.domain.state import AppliedEntry, State
 
 
 class SnowflakePortError(RuntimeError):

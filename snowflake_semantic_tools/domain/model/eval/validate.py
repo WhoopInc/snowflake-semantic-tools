@@ -11,11 +11,17 @@ from __future__ import annotations
 from collections import Counter
 from typing import Iterable, Mapping
 
-from ..diagnostic import D, Diagnostic, DiagnosticBag
-from .model import EvalCatalog, EvalConfig, EvalDataset, EvalDefaults, ResolvedEval
-from .validate_config import validate_eval_config
-from .validate_dataset import validate_eval_dataset
-from .validate_metric import validate_custom_metric
+from snowflake_semantic_tools.domain.model.diagnostic import D, Diagnostic, DiagnosticBag
+from snowflake_semantic_tools.domain.model.eval.model import (
+    EvalCatalog,
+    EvalConfig,
+    EvalDataset,
+    EvalDefaults,
+    ResolvedEval,
+)
+from snowflake_semantic_tools.domain.model.eval.validate_config import validate_eval_config
+from snowflake_semantic_tools.domain.model.eval.validate_dataset import validate_eval_dataset
+from snowflake_semantic_tools.domain.model.eval.validate_metric import validate_custom_metric
 
 
 def validate_eval_catalog(

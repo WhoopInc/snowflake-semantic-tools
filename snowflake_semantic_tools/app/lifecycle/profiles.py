@@ -14,9 +14,22 @@ from threading import Lock
 from types import MappingProxyType
 from typing import Mapping
 
-from ...domain.model.diagnostic import D
-from ...domain.model.identifier import QualifiedName
-from ...domain.model.lifecycle import (
+from snowflake_semantic_tools.app.apply import classify_error
+from snowflake_semantic_tools.app.compile.profiles import CompiledProfile, DesktopChannel
+from snowflake_semantic_tools.app.desktop_contract import desktop_view, stage_pointers
+from snowflake_semantic_tools.app.lifecycle.composite import (
+    SSE_STAGE_TYPE,
+    CompositeHandler,
+    PublicationRun,
+    blocked,
+    create_sse_stage_sql,
+    details_stale,
+    failed,
+    skipped,
+)
+from snowflake_semantic_tools.domain.model.diagnostic import D
+from snowflake_semantic_tools.domain.model.identifier import QualifiedName
+from snowflake_semantic_tools.domain.model.lifecycle import (
     Action,
     ApplyOptions,
     ApplyOutcome,
@@ -29,22 +42,9 @@ from ...domain.model.lifecycle import (
     PhysicalResource,
     RenderedArtifact,
 )
-from ...domain.model.skill import BundleEntry
-from ...domain.ports.snowflake import SnowflakePort, SnowflakePortError
-from ...domain.state import DEACTIVATED, FAILED_AFTER_WRITE, AppliedEntry
-from ..apply import classify_error
-from ..compile.profiles import CompiledProfile, DesktopChannel
-from ..desktop_contract import desktop_view, stage_pointers
-from .composite import (
-    SSE_STAGE_TYPE,
-    CompositeHandler,
-    PublicationRun,
-    blocked,
-    create_sse_stage_sql,
-    details_stale,
-    failed,
-    skipped,
-)
+from snowflake_semantic_tools.domain.model.skill import BundleEntry
+from snowflake_semantic_tools.domain.ports.snowflake import SnowflakePort, SnowflakePortError
+from snowflake_semantic_tools.domain.state import DEACTIVATED, FAILED_AFTER_WRITE, AppliedEntry
 
 # The columns SST writes and the type family each must have.
 REQUIRED_COLUMNS: Mapping[str, str] = MappingProxyType(

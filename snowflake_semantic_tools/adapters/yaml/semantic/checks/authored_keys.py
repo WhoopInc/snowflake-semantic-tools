@@ -6,11 +6,11 @@ from collections.abc import Iterator, Mapping
 from types import MappingProxyType
 from typing import Any
 
-from .....domain.model.artifact_key import artifact_key
-from .....domain.model.diagnostic import D, Diagnostic, Origin
-from .....domain.model.reference import TemplateSyntaxError, scan_template_calls
-from ...documents import NodePath, RawDocument, RawDocuments
-from ..nodes import _node_origin, _node_root
+from snowflake_semantic_tools.adapters.yaml.documents import NodePath, RawDocument, RawDocuments
+from snowflake_semantic_tools.adapters.yaml.semantic.nodes import _node_origin, _node_root
+from snowflake_semantic_tools.domain.model.artifact_key import artifact_key
+from snowflake_semantic_tools.domain.model.diagnostic import D, Diagnostic, Origin
+from snowflake_semantic_tools.domain.model.reference import TemplateSyntaxError, scan_template_calls
 
 # The keys the loader reads, per semantic-model node. Anything else is reported,
 # because a key the loader skips changes nothing in the DDL and would otherwise

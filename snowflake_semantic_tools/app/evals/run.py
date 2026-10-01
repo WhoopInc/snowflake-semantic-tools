@@ -14,8 +14,11 @@ from datetime import datetime, timezone
 from hashlib import md5
 from typing import Callable, Mapping, Sequence
 
-from ...domain.model.diagnostic import D, Diagnostic, DiagnosticBag
-from ...domain.model.eval import (
+from snowflake_semantic_tools.app.compile.evals import CompiledEval
+from snowflake_semantic_tools.app.evals.retrieve import _read_results, _read_status, _sum_costs
+from snowflake_semantic_tools.app.lifecycle.evals import EvalLifecycleConfig, EvalLifecycleHandler
+from snowflake_semantic_tools.domain.model.diagnostic import D, Diagnostic, DiagnosticBag
+from snowflake_semantic_tools.domain.model.eval import (
     EVAL_PASS_STATUSES,
     EVAL_TERMINAL_STATUSES,
     EvalCostSummary,
@@ -26,13 +29,15 @@ from ...domain.model.eval import (
     EvalRunConfig,
     render_eval_name_template,
 )
-from ...domain.model.lifecycle import Action
-from ...domain.model.sql import string_literal
-from ...domain.ports.snowflake import ClockPort, SnowflakePort, SnowflakePortError, StagedFileMetadata
-from ...domain.state import APPLIED, Manifest, State
-from ..compile.evals import CompiledEval
-from ..lifecycle.evals import EvalLifecycleConfig, EvalLifecycleHandler
-from .retrieve import _read_results, _read_status, _sum_costs
+from snowflake_semantic_tools.domain.model.lifecycle import Action
+from snowflake_semantic_tools.domain.model.sql import string_literal
+from snowflake_semantic_tools.domain.ports.snowflake import (
+    ClockPort,
+    SnowflakePort,
+    SnowflakePortError,
+    StagedFileMetadata,
+)
+from snowflake_semantic_tools.domain.state import APPLIED, Manifest, State
 
 _PARTIAL_STATUSES = frozenset(("INVOCATION_PARTIALLY_COMPLETED", "PARTIALLY_COMPLETED"))
 _DEFAULT_RUN_NAME_TEMPLATE = "EVAL_{{ agent | upper }}_{{ sha7 }}_{{ variant }}_{{ ts }}"

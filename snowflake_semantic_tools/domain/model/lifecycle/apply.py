@@ -11,9 +11,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import Enum
 
-from ..diagnostic import DiagnosticBag
-from .action import Action
-from .observation import ArtifactKey
+from snowflake_semantic_tools.domain.model.diagnostic import DiagnosticBag
+from snowflake_semantic_tools.domain.model.lifecycle.action import Action
+from snowflake_semantic_tools.domain.model.lifecycle.observation import ArtifactKey
 
 
 class FailurePolicy(Enum):

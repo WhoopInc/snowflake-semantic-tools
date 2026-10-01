@@ -9,9 +9,20 @@ from typing import Any
 
 import yaml
 
-from ...domain.model.artifact_key import artifact_key
-from ...domain.model.diagnostic import D, Diagnostic, DiagnosticBag, Origin
-from ...domain.model.profile import (
+from snowflake_semantic_tools.adapters.errors import ProjectError
+from snowflake_semantic_tools.adapters.yaml.fields import (
+    checked_strings,
+    checked_text,
+    optional_int,
+    project_relative,
+    report_unknown_keys,
+    unknown_keys,
+)
+from snowflake_semantic_tools.adapters.yaml.parse import parse_yaml_bytes
+from snowflake_semantic_tools.adapters.yaml.skills import _published
+from snowflake_semantic_tools.domain.model.artifact_key import artifact_key
+from snowflake_semantic_tools.domain.model.diagnostic import D, Diagnostic, DiagnosticBag, Origin
+from snowflake_semantic_tools.domain.model.profile import (
     COMMAND_FRONTMATTER_KEYS,
     REJECTED_PROFILE_KEYS,
     SHARED_PROFILE,
@@ -22,11 +33,7 @@ from ...domain.model.profile import (
     ProfileCatalog,
     SharedProfile,
 )
-from ...domain.model.skill import SkillFile
-from ..errors import ProjectError
-from .fields import checked_strings, checked_text, optional_int, project_relative, report_unknown_keys, unknown_keys
-from .parse import parse_yaml_bytes
-from .skills import _published
+from snowflake_semantic_tools.domain.model.skill import SkillFile
 
 PROFILE_KEYS = frozenset(("name", "description", "owner_team", "skills", "mcp_servers", "hooks", "commands", "plugins"))
 SHARED_KEYS = frozenset(("skills", "commands"))

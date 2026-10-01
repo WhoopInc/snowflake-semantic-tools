@@ -7,9 +7,9 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
-from ...domain.model.dbt import DbtCatalog, DbtColumn, DbtModel
-from ...domain.model.diagnostic import D
-from ..errors import ProjectError
+from snowflake_semantic_tools.adapters.errors import ProjectError
+from snowflake_semantic_tools.domain.model.dbt import DbtCatalog, DbtColumn, DbtModel
+from snowflake_semantic_tools.domain.model.diagnostic import D
 
 SUPPORTED_SCHEMA = "https://schemas.getdbt.com/dbt/manifest/v12.json"
 

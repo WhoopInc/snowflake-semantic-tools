@@ -14,30 +14,42 @@ from hashlib import sha256
 from pathlib import Path
 from typing import Callable
 
-from ..domain.model.agent import AgentModel
-from ..domain.model.config_schema import config_block, configured_dir, skills_configured
-from ..domain.model.dbt import DbtCatalog
-from ..domain.model.diagnostic import DiagnosticBag
-from ..domain.model.eval import EvalCatalog
-from ..domain.model.profile import ProfileCatalog
-from ..domain.model.project import SemanticViewProject
-from ..domain.model.skill import SkillCatalog
-from ..domain.model.tool import ToolCatalog
-from ..domain.ports.project import ManifestSources, ProjectConfig, ProjectInputs, ProjectTarget, ValidationDefaults
-from ..domain.state import canonical_json
-from .dbt.manifest import load_manifest_catalog
-from .dbt.profiles import load_profile_target, resolve_profile_name
-from .dbt.project import dbt_project_name, load_models, resolve_target, run_dbt_parse, target_path
-from .yaml.agents import load_agents
-from .yaml.config import load_project_config, read_config_document
-from .yaml.documents import discover_yaml, load_documents
-from .yaml.evals import load_eval_catalog, parse_eval_defaults
-from .yaml.fields import strings
-from .yaml.parse import parse_yaml_bytes, read_yaml_mapping
-from .yaml.profiles import load_profile_catalog
-from .yaml.semantic import load_semantic_views_result, read_semantic_inputs
-from .yaml.skills import _published, load_skill_catalog
-from .yaml.tools import load_tool_catalog
+from snowflake_semantic_tools.adapters.dbt.manifest import load_manifest_catalog
+from snowflake_semantic_tools.adapters.dbt.profiles import load_profile_target, resolve_profile_name
+from snowflake_semantic_tools.adapters.dbt.project import (
+    dbt_project_name,
+    load_models,
+    resolve_target,
+    run_dbt_parse,
+    target_path,
+)
+from snowflake_semantic_tools.adapters.yaml.agents import load_agents
+from snowflake_semantic_tools.adapters.yaml.config import load_project_config, read_config_document
+from snowflake_semantic_tools.adapters.yaml.documents import discover_yaml, load_documents
+from snowflake_semantic_tools.adapters.yaml.evals import load_eval_catalog, parse_eval_defaults
+from snowflake_semantic_tools.adapters.yaml.fields import strings
+from snowflake_semantic_tools.adapters.yaml.parse import parse_yaml_bytes, read_yaml_mapping
+from snowflake_semantic_tools.adapters.yaml.profiles import load_profile_catalog
+from snowflake_semantic_tools.adapters.yaml.semantic import load_semantic_views_result, read_semantic_inputs
+from snowflake_semantic_tools.adapters.yaml.skills import _published, load_skill_catalog
+from snowflake_semantic_tools.adapters.yaml.tools import load_tool_catalog
+from snowflake_semantic_tools.domain.model.agent import AgentModel
+from snowflake_semantic_tools.domain.model.config_schema import config_block, configured_dir, skills_configured
+from snowflake_semantic_tools.domain.model.dbt import DbtCatalog
+from snowflake_semantic_tools.domain.model.diagnostic import DiagnosticBag
+from snowflake_semantic_tools.domain.model.eval import EvalCatalog
+from snowflake_semantic_tools.domain.model.profile import ProfileCatalog
+from snowflake_semantic_tools.domain.model.project import SemanticViewProject
+from snowflake_semantic_tools.domain.model.skill import SkillCatalog
+from snowflake_semantic_tools.domain.model.tool import ToolCatalog
+from snowflake_semantic_tools.domain.ports.project import (
+    ManifestSources,
+    ProjectConfig,
+    ProjectInputs,
+    ProjectTarget,
+    ValidationDefaults,
+)
+from snowflake_semantic_tools.domain.state import canonical_json
 
 
 class YamlProjectSource:

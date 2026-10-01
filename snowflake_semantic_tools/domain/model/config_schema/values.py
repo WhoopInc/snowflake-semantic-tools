@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from typing import Mapping
 
-from ..identifier import TargetIdentity
+from snowflake_semantic_tools.domain.model.identifier import TargetIdentity
 
 
 def config_block(value: object) -> dict[str, object]:

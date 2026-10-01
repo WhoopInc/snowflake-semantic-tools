@@ -5,12 +5,12 @@ from __future__ import annotations
 import re
 from collections.abc import Mapping
 
-from .....domain.model.artifact_key import artifact_key
-from .....domain.model.dbt import DbtModel
-from .....domain.model.diagnostic import D, Diagnostic, Origin
-from .....domain.model.expression import is_boolean_expression as _is_boolean_expression
-from .....domain.model.reference import TemplateCall, TemplateSyntaxError, scan_template_calls
-from ..defs import FilterDef, VerifiedQueryDef
+from snowflake_semantic_tools.adapters.yaml.semantic.defs import FilterDef, VerifiedQueryDef
+from snowflake_semantic_tools.domain.model.artifact_key import artifact_key
+from snowflake_semantic_tools.domain.model.dbt import DbtModel
+from snowflake_semantic_tools.domain.model.diagnostic import D, Diagnostic, Origin
+from snowflake_semantic_tools.domain.model.expression import is_boolean_expression as _is_boolean_expression
+from snowflake_semantic_tools.domain.model.reference import TemplateCall, TemplateSyntaxError, scan_template_calls
 
 
 def _expression_reference_diagnostics(

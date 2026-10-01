@@ -12,8 +12,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Callable, Iterable, Protocol, TypeVar
 
-from ...domain.model.diagnostic import D, Diagnostic, DiagnosticBag, Origin, Severity
-from ...domain.model.lifecycle import RenderedArtifact
+from snowflake_semantic_tools.domain.model.diagnostic import D, Diagnostic, DiagnosticBag, Origin, Severity
+from snowflake_semantic_tools.domain.model.lifecycle import RenderedArtifact
 
 # What rendering an input that validated may still raise; anything else escapes.
 RENDER_ERRORS: tuple[type[Exception], ...] = (KeyError, TypeError, ValueError)

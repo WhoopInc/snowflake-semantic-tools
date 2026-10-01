@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from ..core import ErrorSpec, Severity, spec
+from snowflake_semantic_tools.domain.model.diagnostic.core import ErrorSpec, Severity, spec
 
 TITLE: str = "References"
 

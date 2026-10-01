@@ -9,9 +9,9 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable, Generic, TypeVar
 
-from ...domain.model.diagnostic import D
-from ...domain.state import Manifest, SavedPlan, State, StoredDocumentError, canonical_json
-from ..errors import ProjectError
+from snowflake_semantic_tools.adapters.errors import ProjectError
+from snowflake_semantic_tools.domain.model.diagnostic import D
+from snowflake_semantic_tools.domain.state import Manifest, SavedPlan, State, StoredDocumentError, canonical_json
 
 T = TypeVar("T")
 

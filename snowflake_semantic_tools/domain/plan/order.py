@@ -10,8 +10,8 @@ from __future__ import annotations
 
 from typing import Mapping
 
-from ..model.lifecycle import Action, Change, RenderedArtifact
-from ..model.registry import Registry
+from snowflake_semantic_tools.domain.model.lifecycle import Action, Change, RenderedArtifact
+from snowflake_semantic_tools.domain.model.registry import Registry
 
 
 def render_order(artifact: RenderedArtifact, registry: Registry) -> tuple[int, str]:

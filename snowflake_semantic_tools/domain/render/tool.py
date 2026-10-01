@@ -4,12 +4,12 @@ from __future__ import annotations
 
 import re
 
-from ..model.artifact_key import artifact_key
-from ..model.identifier import Identifier, QualifiedName
-from ..model.lifecycle import ProbeKind, PublishShape, RenderedArtifact, SmokeProbe
-from ..model.registry import GrantPreservation
-from ..model.sql import string_literal
-from ..model.tool import ToolKind, ToolMember
+from snowflake_semantic_tools.domain.model.artifact_key import artifact_key
+from snowflake_semantic_tools.domain.model.identifier import Identifier, QualifiedName
+from snowflake_semantic_tools.domain.model.lifecycle import ProbeKind, PublishShape, RenderedArtifact, SmokeProbe
+from snowflake_semantic_tools.domain.model.registry import GrantPreservation
+from snowflake_semantic_tools.domain.model.sql import string_literal
+from snowflake_semantic_tools.domain.model.tool import ToolKind, ToolMember
 
 
 def render_tool(member: ToolMember, target: QualifiedName, source_relation: QualifiedName | None) -> RenderedArtifact:

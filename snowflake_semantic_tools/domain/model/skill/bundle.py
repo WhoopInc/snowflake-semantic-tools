@@ -10,10 +10,10 @@ from __future__ import annotations
 import json
 from collections.abc import Mapping
 
-from ..diagnostic import D, Diagnostic, DiagnosticBag, Origin
-from ..validation import Emitter
-from .flatten import flatten_skill
-from .model import SKILL_FILE, BundleEntry, Plugin, Skill, SkillBundle
+from snowflake_semantic_tools.domain.model.diagnostic import D, Diagnostic, DiagnosticBag, Origin
+from snowflake_semantic_tools.domain.model.skill.flatten import flatten_skill
+from snowflake_semantic_tools.domain.model.skill.model import SKILL_FILE, BundleEntry, Plugin, Skill, SkillBundle
+from snowflake_semantic_tools.domain.model.validation import Emitter
 
 PLUGIN_MANIFEST = ".cortex-plugin/plugin.json"
 # Snowflake scans an extension version only within these limits.

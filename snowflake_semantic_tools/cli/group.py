@@ -15,10 +15,10 @@ from typing import Any
 
 import click
 
-from .._version import __version__ as VERSION
-from ..domain.model.diagnostic import DiagnosticBag
-from .exit_codes import INTERRUPTED, OK, USAGE
-from .output import json_envelope, print_envelope, start_invocation
+from snowflake_semantic_tools._version import __version__ as VERSION
+from snowflake_semantic_tools.cli.exit_codes import INTERRUPTED, OK, USAGE
+from snowflake_semantic_tools.cli.output import json_envelope, print_envelope, start_invocation
+from snowflake_semantic_tools.domain.model.diagnostic import DiagnosticBag
 
 
 class SstUsageError(click.UsageError):

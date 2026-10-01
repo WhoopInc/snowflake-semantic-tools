@@ -21,11 +21,18 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Callable
 
-from ..model.diagnostic import D, Diagnostic, DiagnosticBag
-from ..model.identifier import QualifiedName
-from ..model.lifecycle import Action, Change, ChangeReason, CompositePlan, ObservedArtifact, RenderedArtifact
-from ..model.registry import Registry
-from ..state import AppliedEntry
+from snowflake_semantic_tools.domain.model.diagnostic import D, Diagnostic, DiagnosticBag
+from snowflake_semantic_tools.domain.model.identifier import QualifiedName
+from snowflake_semantic_tools.domain.model.lifecycle import (
+    Action,
+    Change,
+    ChangeReason,
+    CompositePlan,
+    ObservedArtifact,
+    RenderedArtifact,
+)
+from snowflake_semantic_tools.domain.model.registry import Registry
+from snowflake_semantic_tools.domain.state import AppliedEntry
 
 
 @dataclass(frozen=True, slots=True)

@@ -4,8 +4,14 @@ from __future__ import annotations
 
 from typing import Protocol
 
-from ..model.lifecycle import ApplyOptions, ApplyOutcome, Change, CompositePlan, RenderedArtifact
-from ..state import AppliedEntry, AppliedResourceInput, Manifest
+from snowflake_semantic_tools.domain.model.lifecycle import (
+    ApplyOptions,
+    ApplyOutcome,
+    Change,
+    CompositePlan,
+    RenderedArtifact,
+)
+from snowflake_semantic_tools.domain.state import AppliedEntry, AppliedResourceInput, Manifest
 
 
 class CompositeLifecycleHandler(Protocol):

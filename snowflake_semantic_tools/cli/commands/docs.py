@@ -6,12 +6,12 @@ from pathlib import Path
 
 import click
 
-from ...domain.render.reference_docs import reference_pages
-from ..exit_codes import ERROR, EXIT_CODE_DOCS, OK
-from ..group import cli
-from ..help_text import command_docs, option_docs
-from ..options import output_option, project_dir_option
-from ..runner import CommandResult, command_body
+from snowflake_semantic_tools.cli.exit_codes import ERROR, EXIT_CODE_DOCS, OK
+from snowflake_semantic_tools.cli.group import cli
+from snowflake_semantic_tools.cli.help_text import command_docs, option_docs
+from snowflake_semantic_tools.cli.options import output_option, project_dir_option
+from snowflake_semantic_tools.cli.runner import CommandResult, command_body
+from snowflake_semantic_tools.domain.render.reference_docs import reference_pages
 
 
 @click.command()

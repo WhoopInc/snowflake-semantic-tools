@@ -9,13 +9,13 @@ from __future__ import annotations
 import dataclasses
 from pathlib import Path
 
-from ...adapters.errors import ProjectError
-from ...app.compile import CompileResult
-from ...app.compile.project import CompileProject
-from ...domain.model.artifact_key import artifact_key, split_artifact_key
-from ...domain.model.registry import SEMANTIC_REGISTRY
-from ..group import SstUsageError
-from .project import project_inputs
+from snowflake_semantic_tools.adapters.errors import ProjectError
+from snowflake_semantic_tools.app.compile import CompileResult
+from snowflake_semantic_tools.app.compile.project import CompileProject
+from snowflake_semantic_tools.cli.group import SstUsageError
+from snowflake_semantic_tools.cli.wiring.project import project_inputs
+from snowflake_semantic_tools.domain.model.artifact_key import artifact_key, split_artifact_key
+from snowflake_semantic_tools.domain.model.registry import SEMANTIC_REGISTRY
 
 
 def compile_result(project_dir: Path, target_name: str | None, manifest_path: Path | None) -> CompileResult:

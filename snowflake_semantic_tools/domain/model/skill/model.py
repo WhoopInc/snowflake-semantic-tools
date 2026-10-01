@@ -13,8 +13,8 @@ import posixpath
 from dataclasses import dataclass
 from hashlib import sha256
 
-from ..artifact_key import artifact_key
-from ..diagnostic import DiagnosticBag, Origin
+from snowflake_semantic_tools.domain.model.artifact_key import artifact_key
+from snowflake_semantic_tools.domain.model.diagnostic import DiagnosticBag, Origin
 
 SKILL_FILE = "SKILL.md"
 MARKDOWN_SUFFIXES = (".md", ".markdown")

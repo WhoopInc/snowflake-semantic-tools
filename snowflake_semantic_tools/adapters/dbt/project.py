@@ -14,10 +14,10 @@ from typing import Any
 
 import yaml
 
-from ...domain.model.dbt import DbtCatalog, DbtModel, DbtTarget
-from ..errors import ProjectError
-from .manifest import load_manifest_catalog
-from .profiles import profile_output
+from snowflake_semantic_tools.adapters.dbt.manifest import load_manifest_catalog
+from snowflake_semantic_tools.adapters.dbt.profiles import profile_output
+from snowflake_semantic_tools.adapters.errors import ProjectError
+from snowflake_semantic_tools.domain.model.dbt import DbtCatalog, DbtModel, DbtTarget
 
 YamlReader = Callable[[Path], Mapping[str, Any]]
 

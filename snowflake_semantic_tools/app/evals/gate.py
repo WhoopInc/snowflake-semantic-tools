@@ -5,8 +5,10 @@ from __future__ import annotations
 import re
 from datetime import datetime, timedelta, timezone
 
-from ...domain.model.diagnostic import D, Diagnostic, DiagnosticBag
-from ...domain.model.eval import (
+from snowflake_semantic_tools.app.compile.evals import CompiledEval
+from snowflake_semantic_tools.app.evals.run import EvalRunResult
+from snowflake_semantic_tools.domain.model.diagnostic import D, Diagnostic, DiagnosticBag
+from snowflake_semantic_tools.domain.model.eval import (
     EVAL_COMPLETED,
     EvalBaselineMetric,
     EvalBaselineRecord,
@@ -15,9 +17,7 @@ from ...domain.model.eval import (
     EvalRegression,
     EvalRunAttempt,
 )
-from ...domain.ports.eval_state import EvalStateStore
-from ..compile.evals import CompiledEval
-from .run import EvalRunResult
+from snowflake_semantic_tools.domain.ports.eval_state import EvalStateStore
 
 BASELINE_TTL_DAYS = 30
 # SST-VAL760 fires in the last week of a baseline's life: long enough to capture a

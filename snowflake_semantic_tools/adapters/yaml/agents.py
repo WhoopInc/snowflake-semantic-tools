@@ -7,13 +7,13 @@ from pathlib import Path
 from types import MappingProxyType
 from typing import Any, Mapping
 
-from ...domain.model.agent import AgentEvalFiles, AgentModel, AgentProfile, AgentSkill, AgentTool
-from ...domain.model.artifact_key import artifact_key
-from ...domain.model.diagnostic import D, Diagnostic, DiagnosticBag, Origin
-from ...domain.model.reference import TemplateSyntaxError, scan_template_calls
-from ..errors import ProjectError
-from .fields import mapping, optional_int, optional_string
-from .parse import parse_yaml_bytes
+from snowflake_semantic_tools.adapters.errors import ProjectError
+from snowflake_semantic_tools.adapters.yaml.fields import mapping, optional_int, optional_string
+from snowflake_semantic_tools.adapters.yaml.parse import parse_yaml_bytes
+from snowflake_semantic_tools.domain.model.agent import AgentEvalFiles, AgentModel, AgentProfile, AgentSkill, AgentTool
+from snowflake_semantic_tools.domain.model.artifact_key import artifact_key
+from snowflake_semantic_tools.domain.model.diagnostic import D, Diagnostic, DiagnosticBag, Origin
+from snowflake_semantic_tools.domain.model.reference import TemplateSyntaxError, scan_template_calls
 
 
 def load_agents(project_dir: Path, *, agents_dir: str = "agents") -> tuple[tuple[AgentModel, ...], DiagnosticBag]:

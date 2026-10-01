@@ -13,10 +13,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from ..domain.model.artifact_key import split_artifact_key
-from ..domain.model.diagnostic import D, Diagnostic, DiagnosticBag, Severity
-from ..domain.model.registry import SEMANTIC_REGISTRY
-from .compile import CompileResult
+from snowflake_semantic_tools.app.compile import CompileResult
+from snowflake_semantic_tools.domain.model.artifact_key import split_artifact_key
+from snowflake_semantic_tools.domain.model.diagnostic import D, Diagnostic, DiagnosticBag, Severity
+from snowflake_semantic_tools.domain.model.registry import SEMANTIC_REGISTRY
 
 # Inputs only a profile carries: an error in one blocks the profiles that list it.
 PROFILE_INPUTS = frozenset(("command", "hook", "mcp"))

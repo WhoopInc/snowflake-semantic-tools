@@ -12,15 +12,20 @@ from dataclasses import replace
 from hashlib import sha256
 from typing import Mapping, Sequence
 
-from ....domain.model.agent import RESERVED_AGENT_ALIASES, AgentModel, ResolvedAgent, ResolvedAgentTool
-from ....domain.model.diagnostic import D, Diagnostic, DiagnosticBag
-from ....domain.model.identifier import QualifiedName
-from ....domain.render.agent import desired_agent_definition, render_agent_json, render_agent_spec
-from ..base import CompileResult, has_error
-from .compiled import CompiledAgent, for_publication
-from .context import AgentCompileContext, ExtensionPin
-from .resolve_skills import resolve_skills
-from .resolve_tools import resolve_tool
+from snowflake_semantic_tools.app.compile.agents.compiled import CompiledAgent, for_publication
+from snowflake_semantic_tools.app.compile.agents.context import AgentCompileContext, ExtensionPin
+from snowflake_semantic_tools.app.compile.agents.resolve_skills import resolve_skills
+from snowflake_semantic_tools.app.compile.agents.resolve_tools import resolve_tool
+from snowflake_semantic_tools.app.compile.base import CompileResult, has_error
+from snowflake_semantic_tools.domain.model.agent import (
+    RESERVED_AGENT_ALIASES,
+    AgentModel,
+    ResolvedAgent,
+    ResolvedAgentTool,
+)
+from snowflake_semantic_tools.domain.model.diagnostic import D, Diagnostic, DiagnosticBag
+from snowflake_semantic_tools.domain.model.identifier import QualifiedName
+from snowflake_semantic_tools.domain.render.agent import desired_agent_definition, render_agent_json, render_agent_spec
 
 __all__ = ["AgentCompileContext", "CompileAgents", "CompiledAgent", "ExtensionPin", "for_publication"]
 

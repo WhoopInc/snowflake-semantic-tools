@@ -7,17 +7,22 @@ from pathlib import Path
 from types import MappingProxyType
 from typing import Any
 
-from ....domain.model.dbt import DbtModel
-from ....domain.model.diagnostic import DiagnosticBag, Origin
-from ....domain.model.project import ParsedMember, ParsedProject, ParsedView
-from ....domain.model.reference import TemplateCall, TemplateSyntaxError, scan_template_calls
-from ....domain.model.registry import SEMANTIC_REGISTRY
-from ....domain.model.semantic_view import ColumnKind, Relationship
-from ..documents import RawDocument, RawDocuments
-from .defs import FilterDef, InstructionDef, MetricDef, VerifiedQueryDef
-from .nodes import _node_origin, _safe_table_refs
-from .readers import load_filters, load_instructions, load_metrics, load_verified_queries
-from .relationships import load_relationships
+from snowflake_semantic_tools.adapters.yaml.documents import RawDocument, RawDocuments
+from snowflake_semantic_tools.adapters.yaml.semantic.defs import FilterDef, InstructionDef, MetricDef, VerifiedQueryDef
+from snowflake_semantic_tools.adapters.yaml.semantic.nodes import _node_origin, _safe_table_refs
+from snowflake_semantic_tools.adapters.yaml.semantic.readers import (
+    load_filters,
+    load_instructions,
+    load_metrics,
+    load_verified_queries,
+)
+from snowflake_semantic_tools.adapters.yaml.semantic.relationships import load_relationships
+from snowflake_semantic_tools.domain.model.dbt import DbtModel
+from snowflake_semantic_tools.domain.model.diagnostic import DiagnosticBag, Origin
+from snowflake_semantic_tools.domain.model.project import ParsedMember, ParsedProject, ParsedView
+from snowflake_semantic_tools.domain.model.reference import TemplateCall, TemplateSyntaxError, scan_template_calls
+from snowflake_semantic_tools.domain.model.registry import SEMANTIC_REGISTRY
+from snowflake_semantic_tools.domain.model.semantic_view import ColumnKind, Relationship
 
 
 def parse_semantic_project(

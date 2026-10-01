@@ -10,20 +10,20 @@ from __future__ import annotations
 import dataclasses
 from pathlib import Path
 
-from ...adapters.clock import SystemClock
-from ...adapters.dbt.profiles import ProfileTarget
-from ...adapters.errors import ProjectError
-from ...adapters.fs.local import StateFileStore
-from ...adapters.snowflake.connector import SnowflakeConnector
-from ...app.plan import PlanReady, PlanRefused, PlanScope, PreparePlan
-from ...domain.model.diagnostic import DiagnosticBag
-from ...domain.model.registry import SEMANTIC_REGISTRY
-from ...domain.state import SavedPlan
-from ..group import SstUsageError
-from . import compile as compiling
-from .compile import selection
-from .manifest import compiled_manifest
-from .project import closed_on_error, connect, project_inputs, state_store
+from snowflake_semantic_tools.adapters.clock import SystemClock
+from snowflake_semantic_tools.adapters.dbt.profiles import ProfileTarget
+from snowflake_semantic_tools.adapters.errors import ProjectError
+from snowflake_semantic_tools.adapters.fs.local import StateFileStore
+from snowflake_semantic_tools.adapters.snowflake.connector import SnowflakeConnector
+from snowflake_semantic_tools.app.plan import PlanReady, PlanRefused, PlanScope, PreparePlan
+from snowflake_semantic_tools.cli.group import SstUsageError
+from snowflake_semantic_tools.cli.wiring import compile as compiling
+from snowflake_semantic_tools.cli.wiring.compile import selection
+from snowflake_semantic_tools.cli.wiring.manifest import compiled_manifest
+from snowflake_semantic_tools.cli.wiring.project import closed_on_error, connect, project_inputs, state_store
+from snowflake_semantic_tools.domain.model.diagnostic import DiagnosticBag
+from snowflake_semantic_tools.domain.model.registry import SEMANTIC_REGISTRY
+from snowflake_semantic_tools.domain.state import SavedPlan
 
 
 @dataclasses.dataclass(frozen=True)

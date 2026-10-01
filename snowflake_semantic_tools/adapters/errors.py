@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from ..domain.model.diagnostic import Diagnostic
+from snowflake_semantic_tools.domain.model.diagnostic import Diagnostic
 
 
 class ProjectError(Exception):

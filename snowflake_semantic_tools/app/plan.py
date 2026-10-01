@@ -12,12 +12,23 @@ from dataclasses import dataclass, replace
 from types import MappingProxyType
 from typing import Mapping
 
-from ..domain.model.artifact_key import artifact_key
-from ..domain.model.config_schema import config_block, config_text
-from ..domain.model.diagnostic import D, Diagnostic, DiagnosticBag
-from ..domain.model.eval import DEFAULT_EVAL_CONFIG_STAGE
-from ..domain.model.identifier import QualifiedName, SchemaScope, TargetIdentity
-from ..domain.model.lifecycle import (
+from snowflake_semantic_tools.app.compile import CompiledArtifact, CompileResult
+from snowflake_semantic_tools.app.compile.agents import CompiledAgent, for_publication
+from snowflake_semantic_tools.app.compile.profiles import CompiledProfile
+from snowflake_semantic_tools.app.compile.skills import CompiledExtension
+from snowflake_semantic_tools.app.lifecycle.evals import EvalLifecycleConfig, EvalLifecycleHandler
+from snowflake_semantic_tools.app.lifecycle.extensions import ExtensionLifecycleHandler
+from snowflake_semantic_tools.app.lifecycle.profiles import ProfileLifecycleHandler
+from snowflake_semantic_tools.app.manifest import manifest_for, stale_manifest
+from snowflake_semantic_tools.app.partial import PartialSplit, partial_refusal, partial_split
+from snowflake_semantic_tools.app.state import read_state
+from snowflake_semantic_tools.app.validate import ValidateArtifacts
+from snowflake_semantic_tools.domain.model.artifact_key import artifact_key
+from snowflake_semantic_tools.domain.model.config_schema import config_block, config_text
+from snowflake_semantic_tools.domain.model.diagnostic import D, Diagnostic, DiagnosticBag
+from snowflake_semantic_tools.domain.model.eval import DEFAULT_EVAL_CONFIG_STAGE
+from snowflake_semantic_tools.domain.model.identifier import QualifiedName, SchemaScope, TargetIdentity
+from snowflake_semantic_tools.domain.model.lifecycle import (
     Change,
     ChangeSet,
     CompositePlan,
@@ -28,23 +39,12 @@ from ..domain.model.lifecycle import (
     SnowflakeObservation,
     extract_marker,
 )
-from ..domain.model.registry import SEMANTIC_REGISTRY, ArtifactType, Registry
-from ..domain.plan import build_changeset
-from ..domain.ports.lifecycle import CompositeLifecycleHandler
-from ..domain.ports.project import ProjectInputs
-from ..domain.ports.snowflake import ClockPort, SnowflakePort, SnowflakePortError, StateStore
-from ..domain.state import DEACTIVATED, Manifest, State
-from .compile import CompiledArtifact, CompileResult
-from .compile.agents import CompiledAgent, for_publication
-from .compile.profiles import CompiledProfile
-from .compile.skills import CompiledExtension
-from .lifecycle.evals import EvalLifecycleConfig, EvalLifecycleHandler
-from .lifecycle.extensions import ExtensionLifecycleHandler
-from .lifecycle.profiles import ProfileLifecycleHandler
-from .manifest import manifest_for, stale_manifest
-from .partial import PartialSplit, partial_refusal, partial_split
-from .state import read_state
-from .validate import ValidateArtifacts
+from snowflake_semantic_tools.domain.model.registry import SEMANTIC_REGISTRY, ArtifactType, Registry
+from snowflake_semantic_tools.domain.plan import build_changeset
+from snowflake_semantic_tools.domain.ports.lifecycle import CompositeLifecycleHandler
+from snowflake_semantic_tools.domain.ports.project import ProjectInputs
+from snowflake_semantic_tools.domain.ports.snowflake import ClockPort, SnowflakePort, SnowflakePortError, StateStore
+from snowflake_semantic_tools.domain.state import DEACTIVATED, Manifest, State
 
 _FoldedName = tuple[str, str, str]
 

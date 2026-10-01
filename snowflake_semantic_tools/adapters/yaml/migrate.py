@@ -6,10 +6,10 @@ from pathlib import Path
 
 import yaml
 
-from ...domain.model.migrate import FilterSite
-from ..errors import ProjectError
-from .documents import YAML_SUFFIXES
-from .parse import _neutralize_templates, _restore_templates
+from snowflake_semantic_tools.adapters.errors import ProjectError
+from snowflake_semantic_tools.adapters.yaml.documents import YAML_SUFFIXES
+from snowflake_semantic_tools.adapters.yaml.parse import _neutralize_templates, _restore_templates
+from snowflake_semantic_tools.domain.model.migrate import FilterSite
 
 
 def semantic_files(project_dir: Path, semantic_models_dir: str) -> dict[str, str]:

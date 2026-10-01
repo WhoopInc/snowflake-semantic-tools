@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from typing import Mapping
 
-from ..model.agent import BUILTIN_AGENT_TOOLS, AgentModel, ResolvedAgentTool
-from ..state import canonical_json
+from snowflake_semantic_tools.domain.model.agent import BUILTIN_AGENT_TOOLS, AgentModel, ResolvedAgentTool
+from snowflake_semantic_tools.domain.state import canonical_json
 
 
 def render_agent_spec(model: AgentModel, tools: tuple[ResolvedAgentTool, ...]) -> dict[str, object]:

@@ -6,11 +6,11 @@ import re
 from pathlib import Path
 from typing import Any
 
-from ....domain.model.diagnostic import D, Origin
-from ....domain.model.reference import TemplateSyntaxError, single_template_call
-from ....domain.model.registry import SEMANTIC_REGISTRY
-from ...errors import ProjectError
-from ..documents import NodePath, RawDocument, RawDocuments
+from snowflake_semantic_tools.adapters.errors import ProjectError
+from snowflake_semantic_tools.adapters.yaml.documents import NodePath, RawDocument, RawDocuments
+from snowflake_semantic_tools.domain.model.diagnostic import D, Origin
+from snowflake_semantic_tools.domain.model.reference import TemplateSyntaxError, single_template_call
+from snowflake_semantic_tools.domain.model.registry import SEMANTIC_REGISTRY
 
 
 def _as_str_tuple(value: Any) -> tuple[str, ...]:

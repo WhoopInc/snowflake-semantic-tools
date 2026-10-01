@@ -6,12 +6,12 @@ from pathlib import Path
 
 import click
 
-from ...adapters.yaml.migrate import filter_sites, semantic_files, write_file
-from ...app.migrate_refs import MigrateRefs, MigrationReport
-from ..exit_codes import CHANGES, ERROR, OK
-from ..options import output_option, project_dir_option
-from ..runner import CommandResult, command_body
-from ..settings import semantic_models_dir
+from snowflake_semantic_tools.adapters.yaml.migrate import filter_sites, semantic_files, write_file
+from snowflake_semantic_tools.app.migrate_refs import MigrateRefs, MigrationReport
+from snowflake_semantic_tools.cli.exit_codes import CHANGES, ERROR, OK
+from snowflake_semantic_tools.cli.options import output_option, project_dir_option
+from snowflake_semantic_tools.cli.runner import CommandResult, command_body
+from snowflake_semantic_tools.cli.settings import semantic_models_dir
 
 
 @click.group()

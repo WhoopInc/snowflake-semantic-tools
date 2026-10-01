@@ -13,7 +13,7 @@ from pathlib import Path
 
 import click
 
-from ..domain.render.reference_docs import CommandDoc, OptionDoc
+from snowflake_semantic_tools.domain.render.reference_docs import CommandDoc, OptionDoc
 
 # One description per flag, shared by every command that takes it, so `--help`
 # and the generated CLI reference say the same thing everywhere. A command whose

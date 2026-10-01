@@ -6,8 +6,8 @@ from dataclasses import dataclass, field
 from types import MappingProxyType
 from typing import Mapping
 
-from ....domain.model.identifier import QualifiedName
-from ....domain.model.tool import ToolCatalog
+from snowflake_semantic_tools.domain.model.identifier import QualifiedName
+from snowflake_semantic_tools.domain.model.tool import ToolCatalog
 
 
 @dataclass(frozen=True, slots=True)

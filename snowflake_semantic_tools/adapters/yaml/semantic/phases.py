@@ -13,26 +13,41 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from ....domain.model.artifact_key import artifact_key
-from ....domain.model.dbt import DbtModel, DbtTarget
-from ....domain.model.diagnostic import D, Diagnostic, Origin
-from ....domain.model.project import ParsedProject, ParsedView
-from ....domain.model.semantic_view import Relationship
-from ..documents import RawDocuments
-from ..fields import mapping
-from .checks.authored_keys import _authored_key_diagnostics, _legacy_reference_diagnostics, _member_name_diagnostics
-from .checks.dbt import _dbt_column_diagnostics, _dbt_model_diagnostics, _description_diagnostics
-from .checks.expressions import _expression_reference_diagnostics, _filter_diagnostics
-from .checks.metrics import _metric_cycles, _metric_diagnostics
-from .checks.shape import _filter_parse_diagnostics, _metric_parse_diagnostics, _verified_query_diagnostics
-from .defs import FilterDef, InstructionDef, MetricDef, VerifiedQueryDef
-from .relationships import (
+from snowflake_semantic_tools.adapters.yaml.documents import RawDocuments
+from snowflake_semantic_tools.adapters.yaml.fields import mapping
+from snowflake_semantic_tools.adapters.yaml.semantic.checks.authored_keys import (
+    _authored_key_diagnostics,
+    _legacy_reference_diagnostics,
+    _member_name_diagnostics,
+)
+from snowflake_semantic_tools.adapters.yaml.semantic.checks.dbt import (
+    _dbt_column_diagnostics,
+    _dbt_model_diagnostics,
+    _description_diagnostics,
+)
+from snowflake_semantic_tools.adapters.yaml.semantic.checks.expressions import (
+    _expression_reference_diagnostics,
+    _filter_diagnostics,
+)
+from snowflake_semantic_tools.adapters.yaml.semantic.checks.metrics import _metric_cycles, _metric_diagnostics
+from snowflake_semantic_tools.adapters.yaml.semantic.checks.shape import (
+    _filter_parse_diagnostics,
+    _metric_parse_diagnostics,
+    _verified_query_diagnostics,
+)
+from snowflake_semantic_tools.adapters.yaml.semantic.defs import FilterDef, InstructionDef, MetricDef, VerifiedQueryDef
+from snowflake_semantic_tools.adapters.yaml.semantic.relationships import (
     _multipath_diagnostics,
     _relationship_cycle_diagnostics,
     _relationship_diagnostics,
     _relationship_parse_diagnostics,
 )
-from .target import _folder_route_diagnostics, _stray_view_diagnostics
+from snowflake_semantic_tools.adapters.yaml.semantic.target import _folder_route_diagnostics, _stray_view_diagnostics
+from snowflake_semantic_tools.domain.model.artifact_key import artifact_key
+from snowflake_semantic_tools.domain.model.dbt import DbtModel, DbtTarget
+from snowflake_semantic_tools.domain.model.diagnostic import D, Diagnostic, Origin
+from snowflake_semantic_tools.domain.model.project import ParsedProject, ParsedView
+from snowflake_semantic_tools.domain.model.semantic_view import Relationship
 
 
 @dataclass(frozen=True, slots=True)

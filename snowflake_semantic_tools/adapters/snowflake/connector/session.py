@@ -19,10 +19,10 @@ from snowflake.connector import DictCursor
 from snowflake.connector.cursor import SnowflakeCursor
 from snowflake.connector.errors import Error as DriverError
 
-from ....domain.model.diagnostic import D, Diagnostic
-from ....domain.model.identifier import SchemaScope
-from ....domain.model.lifecycle import ExecResult, ExecutionError, QueryResult
-from ....domain.ports.snowflake import ExecutionPort, SnowflakePortError
+from snowflake_semantic_tools.domain.model.diagnostic import D, Diagnostic
+from snowflake_semantic_tools.domain.model.identifier import SchemaScope
+from snowflake_semantic_tools.domain.model.lifecycle import ExecResult, ExecutionError, QueryResult
+from snowflake_semantic_tools.domain.ports.snowflake import ExecutionPort, SnowflakePortError
 
 # What a statement or fetch raises when Snowflake or the network fails: the driver's own
 # errors, and the OSError family (its vendored `requests` errors, socket timeouts) that it

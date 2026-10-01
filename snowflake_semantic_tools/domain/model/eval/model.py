@@ -14,9 +14,9 @@ from dataclasses import dataclass, field
 from types import MappingProxyType
 from typing import Mapping
 
-from ..agent import AgentModel
-from ..artifact_key import artifact_key
-from ..diagnostic import DiagnosticBag, Origin
+from snowflake_semantic_tools.domain.model.agent import AgentModel
+from snowflake_semantic_tools.domain.model.artifact_key import artifact_key
+from snowflake_semantic_tools.domain.model.diagnostic import DiagnosticBag, Origin
 
 SYSTEM_EVAL_METRICS = frozenset(
     ("tool_selection_accuracy", "tool_execution_accuracy", "answer_correctness", "logical_consistency")

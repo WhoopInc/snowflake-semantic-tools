@@ -5,11 +5,14 @@ from __future__ import annotations
 from pathlib import Path
 from types import MappingProxyType
 
-from ...domain.model.artifact_key import artifact_key
-from ...domain.model.dbt import DbtCatalog
-from ...domain.model.diagnostic import D, Diagnostic, DiagnosticBag, Origin
-from ...domain.model.reference import TemplateSyntaxError, scan_template_calls
-from ...domain.model.tool import (
+from snowflake_semantic_tools.adapters.errors import ProjectError
+from snowflake_semantic_tools.adapters.yaml.fields import optional_string, strings
+from snowflake_semantic_tools.adapters.yaml.parse import parse_yaml_bytes
+from snowflake_semantic_tools.domain.model.artifact_key import artifact_key
+from snowflake_semantic_tools.domain.model.dbt import DbtCatalog
+from snowflake_semantic_tools.domain.model.diagnostic import D, Diagnostic, DiagnosticBag, Origin
+from snowflake_semantic_tools.domain.model.reference import TemplateSyntaxError, scan_template_calls
+from snowflake_semantic_tools.domain.model.tool import (
     CREATION_KEYS,
     ToolCatalog,
     ToolColumn,
@@ -19,9 +22,6 @@ from ...domain.model.tool import (
     ToolParameter,
     validate_tool_catalog,
 )
-from ..errors import ProjectError
-from .fields import optional_string, strings
-from .parse import parse_yaml_bytes
 
 
 def load_tool_catalog(

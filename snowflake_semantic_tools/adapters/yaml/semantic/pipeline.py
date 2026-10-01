@@ -13,20 +13,13 @@ from pathlib import Path
 from types import MappingProxyType
 from typing import Any
 
-from ....domain.model.artifact_key import artifact_key
-from ....domain.model.dbt import DbtModel, DbtTarget
-from ....domain.model.diagnostic import D, Diagnostic, DiagnosticBag, Origin
-from ....domain.model.project import ParsedMember, ResolvedProject, SemanticViewProject
-from ....domain.model.registry import SEMANTIC_REGISTRY
-from ....domain.model.semantic_view import SemanticView
-from ....domain.resolve.members import attach_view_members
-from ...errors import ProjectError
-from ..documents import RawDocuments, discover_yaml, load_documents
-from ..parse import parse_yaml_bytes, read_yaml_mapping
-from .build import _build_view
-from .collect import parse_semantic_project
-from .defs import MetricDef
-from .phases import (
+from snowflake_semantic_tools.adapters.errors import ProjectError
+from snowflake_semantic_tools.adapters.yaml.documents import RawDocuments, discover_yaml, load_documents
+from snowflake_semantic_tools.adapters.yaml.parse import parse_yaml_bytes, read_yaml_mapping
+from snowflake_semantic_tools.adapters.yaml.semantic.build import _build_view
+from snowflake_semantic_tools.adapters.yaml.semantic.collect import parse_semantic_project
+from snowflake_semantic_tools.adapters.yaml.semantic.defs import MetricDef
+from snowflake_semantic_tools.adapters.yaml.semantic.phases import (
     LoadContext,
     _relationship_checks,
     _semantic_checks,
@@ -35,9 +28,16 @@ from .phases import (
     _using_checks,
     _view_tables,
 )
-from .poison import Poison, _member_poison, _view_poison
-from .target import _semantic_view_defaults, _semantic_view_target
-from .view_instructions import _view_instructions
+from snowflake_semantic_tools.adapters.yaml.semantic.poison import Poison, _member_poison, _view_poison
+from snowflake_semantic_tools.adapters.yaml.semantic.target import _semantic_view_defaults, _semantic_view_target
+from snowflake_semantic_tools.adapters.yaml.semantic.view_instructions import _view_instructions
+from snowflake_semantic_tools.domain.model.artifact_key import artifact_key
+from snowflake_semantic_tools.domain.model.dbt import DbtModel, DbtTarget
+from snowflake_semantic_tools.domain.model.diagnostic import D, Diagnostic, DiagnosticBag, Origin
+from snowflake_semantic_tools.domain.model.project import ParsedMember, ResolvedProject, SemanticViewProject
+from snowflake_semantic_tools.domain.model.registry import SEMANTIC_REGISTRY
+from snowflake_semantic_tools.domain.model.semantic_view import SemanticView
+from snowflake_semantic_tools.domain.resolve.members import attach_view_members
 
 
 @dataclass(frozen=True, slots=True)

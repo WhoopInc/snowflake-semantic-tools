@@ -19,14 +19,7 @@ from dataclasses import dataclass, replace
 from hashlib import sha256
 from typing import Iterable, Mapping
 
-from ...domain.model.artifact_key import artifact_key
-from ...domain.model.diagnostic import D, Diagnostic, DiagnosticBag
-from ...domain.model.identifier import QualifiedName
-from ...domain.model.lifecycle import OwnershipMarker, ProbeKind, RenderedArtifact, SmokeProbe
-from ...domain.model.semantic_view import SemanticView
-from ...domain.ports.semantic_view_source import SemanticViewSource
-from ...domain.render.semantic_view import render
-from .base import (
+from snowflake_semantic_tools.app.compile.base import (
     RENDER_ERRORS,
     ArtifactCompiler,
     CompiledArtifact,
@@ -35,6 +28,13 @@ from .base import (
     compile_each,
     has_error,
 )
+from snowflake_semantic_tools.domain.model.artifact_key import artifact_key
+from snowflake_semantic_tools.domain.model.diagnostic import D, Diagnostic, DiagnosticBag
+from snowflake_semantic_tools.domain.model.identifier import QualifiedName
+from snowflake_semantic_tools.domain.model.lifecycle import OwnershipMarker, ProbeKind, RenderedArtifact, SmokeProbe
+from snowflake_semantic_tools.domain.model.semantic_view import SemanticView
+from snowflake_semantic_tools.domain.ports.semantic_view_source import SemanticViewSource
+from snowflake_semantic_tools.domain.render.semantic_view import render
 
 __all__ = [
     "RENDER_ERRORS",

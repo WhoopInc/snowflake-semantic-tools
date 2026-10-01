@@ -11,12 +11,18 @@ from __future__ import annotations
 from dataclasses import replace
 from typing import Mapping
 
-from ..model.artifact_key import split_artifact_key
-from ..model.diagnostic import D, Diagnostic, DiagnosticBag
-from ..model.identifier import QualifiedName
-from ..model.lifecycle import Action, Change, ChangeReason, RenderedArtifact, SnowflakeObservation
-from ..model.registry import ArtifactType, Registry
-from ..state import State
+from snowflake_semantic_tools.domain.model.artifact_key import split_artifact_key
+from snowflake_semantic_tools.domain.model.diagnostic import D, Diagnostic, DiagnosticBag
+from snowflake_semantic_tools.domain.model.identifier import QualifiedName
+from snowflake_semantic_tools.domain.model.lifecycle import (
+    Action,
+    Change,
+    ChangeReason,
+    RenderedArtifact,
+    SnowflakeObservation,
+)
+from snowflake_semantic_tools.domain.model.registry import ArtifactType, Registry
+from snowflake_semantic_tools.domain.state import State
 
 
 def plan_prunes(

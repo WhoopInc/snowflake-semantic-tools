@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Protocol
 
-from ..model.eval import EvalBaselineRecord, EvalGateState
+from snowflake_semantic_tools.domain.model.eval import EvalBaselineRecord, EvalGateState
 
 
 class EvalStateStore(Protocol):

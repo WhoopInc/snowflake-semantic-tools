@@ -9,10 +9,10 @@ from __future__ import annotations
 
 import re
 
-from ..diagnostic import D, Diagnostic
-from ..validation import Emitter
-from .model import EvalDefaults, EvalGroundTruth, EvalQuestion, ResolvedEval
-from .naming import NAME_LIMIT, has_agent_token, probe_name
+from snowflake_semantic_tools.domain.model.diagnostic import D, Diagnostic
+from snowflake_semantic_tools.domain.model.eval.model import EvalDefaults, EvalGroundTruth, EvalQuestion, ResolvedEval
+from snowflake_semantic_tools.domain.model.eval.naming import NAME_LIMIT, has_agent_token, probe_name
+from snowflake_semantic_tools.domain.model.validation import Emitter
 
 _RELATIVE_DATE = re.compile(
     r"\b(?:last|this|current|recent)\s+(?:day|week|month|quarter|year)\b|"

@@ -10,17 +10,17 @@ from __future__ import annotations
 
 from typing import Any, Callable, Mapping
 
-from ....domain.model.identifier import QualifiedName, SchemaScope
-from ....domain.model.lifecycle import GrantRow, OwnershipMarker, ShowRow, extract_marker
-from ....domain.model.sql import string_literal
-from ....domain.ports.snowflake import (
+from snowflake_semantic_tools.adapters.snowflake.connector.session import Session, _variant_value
+from snowflake_semantic_tools.domain.model.identifier import QualifiedName, SchemaScope
+from snowflake_semantic_tools.domain.model.lifecycle import GrantRow, OwnershipMarker, ShowRow, extract_marker
+from snowflake_semantic_tools.domain.model.sql import string_literal
+from snowflake_semantic_tools.domain.ports.snowflake import (
     CatalogPort,
     ExtensionObservation,
     ExtensionVersion,
     SnowflakePortError,
     StageObservation,
 )
-from .session import Session, _variant_value
 
 # The object types SST observes, each spelled as SHOW spells it once pluralized with an S.
 OBJECT_TYPES = frozenset(

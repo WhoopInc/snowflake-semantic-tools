@@ -12,11 +12,11 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
 
-from ...adapters.dbt.profiles import ProfileTarget, load_profile_target
-from ...adapters.fs.local import StateFileStore, state_file
-from ...adapters.project_source import YamlProjectInputs
-from ...adapters.snowflake.connector import SnowflakeConnector
-from ...domain.ports.snowflake import SnowflakePortError
+from snowflake_semantic_tools.adapters.dbt.profiles import ProfileTarget, load_profile_target
+from snowflake_semantic_tools.adapters.fs.local import StateFileStore, state_file
+from snowflake_semantic_tools.adapters.project_source import YamlProjectInputs
+from snowflake_semantic_tools.adapters.snowflake.connector import SnowflakeConnector
+from snowflake_semantic_tools.domain.ports.snowflake import SnowflakePortError
 
 
 def target_dir(project_dir: Path) -> Path:
@@ -58,7 +58,8 @@ def open_connector(connection_params: dict[str, object]) -> SnowflakeConnector:
     The recorded-Snowflake helpers and the reference project replace that one attribute to
     run every command against a double, so the class is looked up on each call.
     """
-    from .. import main as entry  # not at import: `cli.main` imports the commands that import this module
+    # Imported here, not at module level: `cli.main` imports the commands that import this module.
+    from snowflake_semantic_tools.cli import main as entry
 
     return entry.SnowflakeConnector(connection_params)
 

@@ -14,8 +14,7 @@ from collections.abc import Iterable, Iterator, Mapping
 from dataclasses import dataclass, field
 from hashlib import sha256
 
-from ..skill import BundleEntry, Plugin, Skill, build_plugin_bundle
-from .model import (
+from snowflake_semantic_tools.domain.model.profile.model import (
     SHARED_PROFILE,
     TREE_HASH_CHARACTERS,
     CommandFile,
@@ -27,6 +26,7 @@ from .model import (
     SharedProfile,
     StageTree,
 )
+from snowflake_semantic_tools.domain.model.skill import BundleEntry, Plugin, Skill, build_plugin_bundle
 
 
 def assemble_prompt(shared: SharedProfile | None, profile: DesktopProfile) -> str | None:

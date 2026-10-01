@@ -5,18 +5,28 @@ from __future__ import annotations
 from dataclasses import dataclass, replace
 from hashlib import sha256
 
-from ...domain.model.eval import EvalCatalog, EvalDefaults, ResolvedEval, render_eval_name_template
-from ...domain.model.identifier import QualifiedName
-from ...domain.model.lifecycle import CompositeFacts, PublishShape, RenderedArtifact, StatementPlan
-from ...domain.model.registry import GrantPreservation
-from ...domain.render.eval import (
+from snowflake_semantic_tools.app.compile.base import CompileResult, StandaloneArtifact, compile_each
+from snowflake_semantic_tools.domain.model.eval import (
+    EvalCatalog,
+    EvalDefaults,
+    ResolvedEval,
+    render_eval_name_template,
+)
+from snowflake_semantic_tools.domain.model.identifier import QualifiedName
+from snowflake_semantic_tools.domain.model.lifecycle import (
+    CompositeFacts,
+    PublishShape,
+    RenderedArtifact,
+    StatementPlan,
+)
+from snowflake_semantic_tools.domain.model.registry import GrantPreservation
+from snowflake_semantic_tools.domain.render.eval import (
     RenderedEval,
     render_create_dataset_sql,
     render_dataset_payload,
     render_eval_config,
     render_source_table_sql,
 )
-from .base import CompileResult, StandaloneArtifact, compile_each
 
 
 @dataclass(frozen=True, slots=True)

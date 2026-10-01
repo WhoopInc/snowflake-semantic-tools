@@ -32,7 +32,7 @@ re-render byte-identical when an unrelated column is added.
 
 from __future__ import annotations
 
-from ..model.semantic_view import (
+from snowflake_semantic_tools.domain.model.semantic_view import (
     Column,
     ColumnKind,
     Metric,
@@ -44,7 +44,7 @@ from ..model.semantic_view import (
     VerifiedQuery,
     Window,
 )
-from ..model.sql import string_literal
+from snowflake_semantic_tools.domain.model.sql import string_literal
 
 CLAUSE_INDENT = "  "
 MEMBER_INDENT = "    "

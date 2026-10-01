@@ -4,11 +4,11 @@ from __future__ import annotations
 
 import re
 
-from .....domain.model.artifact_key import artifact_key
-from .....domain.model.dbt import DbtColumn, DbtModel
-from .....domain.model.diagnostic import D, Diagnostic
-from .....domain.model.project import ParsedView
-from ..defs import MetricDef
+from snowflake_semantic_tools.adapters.yaml.semantic.defs import MetricDef
+from snowflake_semantic_tools.domain.model.artifact_key import artifact_key
+from snowflake_semantic_tools.domain.model.dbt import DbtColumn, DbtModel
+from snowflake_semantic_tools.domain.model.diagnostic import D, Diagnostic
+from snowflake_semantic_tools.domain.model.project import ParsedView
 
 NUMERIC_TYPES = frozenset(
     (

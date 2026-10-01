@@ -5,9 +5,10 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass, replace
 
-from ....domain.model.agent import AgentModel, ResolvedAgent
-from ....domain.model.identifier import Identifier, QualifiedName
-from ....domain.model.lifecycle import (
+from snowflake_semantic_tools.app.compile.base import StandaloneArtifact
+from snowflake_semantic_tools.domain.model.agent import AgentModel, ResolvedAgent
+from snowflake_semantic_tools.domain.model.identifier import Identifier, QualifiedName
+from snowflake_semantic_tools.domain.model.lifecycle import (
     DesiredMetadata,
     OwnershipMarker,
     ProbeKind,
@@ -17,9 +18,8 @@ from ....domain.model.lifecycle import (
     StatementPlan,
     Upload,
 )
-from ....domain.model.registry import GrantPreservation
-from ....domain.model.sql import string_literal
-from ..base import StandaloneArtifact
+from snowflake_semantic_tools.domain.model.registry import GrantPreservation
+from snowflake_semantic_tools.domain.model.sql import string_literal
 
 
 @dataclass(frozen=True, slots=True)

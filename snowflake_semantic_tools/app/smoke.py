@@ -9,13 +9,13 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from ..domain.model.diagnostic import D, Diagnostic, DiagnosticBag
-from ..domain.model.identifier import QualifiedName, TargetIdentity
-from ..domain.model.lifecycle import OwnershipMarker, RenderedArtifact, SmokeProbe
-from ..domain.ports.snowflake import SnowflakePort, SnowflakePortError, StateStore
-from ..domain.state import Manifest, State
-from .compile import CompileResult
-from .state import read_state
+from snowflake_semantic_tools.app.compile import CompileResult
+from snowflake_semantic_tools.app.state import read_state
+from snowflake_semantic_tools.domain.model.diagnostic import D, Diagnostic, DiagnosticBag
+from snowflake_semantic_tools.domain.model.identifier import QualifiedName, TargetIdentity
+from snowflake_semantic_tools.domain.model.lifecycle import OwnershipMarker, RenderedArtifact, SmokeProbe
+from snowflake_semantic_tools.domain.ports.snowflake import SnowflakePort, SnowflakePortError, StateStore
+from snowflake_semantic_tools.domain.state import Manifest, State
 
 
 @dataclass(frozen=True, slots=True)

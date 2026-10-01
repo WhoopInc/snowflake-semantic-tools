@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from ...domain.ports.golden import GoldenPath, GoldenStore
+from snowflake_semantic_tools.domain.ports.golden import GoldenPath, GoldenStore
 
 
 class GoldenFileStore(GoldenStore):

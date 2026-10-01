@@ -10,17 +10,14 @@ from pathlib import Path
 
 import click
 
-from ...adapters.clock import SystemClock
-from ...adapters.errors import ProjectError
-from ...adapters.fs.local import PlanFileStore
-from ...app.apply import ApplyArtifacts
-from ...app.plan import PlanRefused
-from ...domain.model.diagnostic import DiagnosticBag
-from ...domain.model.lifecycle import ApplyOptions, ApplyOutcome, FailurePolicy
-from ...domain.state import SavedPlan
-from ..exit_codes import ERROR, OK
-from ..group import SstUsageError
-from ..options import (
+from snowflake_semantic_tools.adapters.clock import SystemClock
+from snowflake_semantic_tools.adapters.errors import ProjectError
+from snowflake_semantic_tools.adapters.fs.local import PlanFileStore
+from snowflake_semantic_tools.app.apply import ApplyArtifacts
+from snowflake_semantic_tools.app.plan import PlanRefused
+from snowflake_semantic_tools.cli.exit_codes import ERROR, OK
+from snowflake_semantic_tools.cli.group import SstUsageError
+from snowflake_semantic_tools.cli.options import (
     fail_fast_option,
     output_option,
     partial_option,
@@ -30,12 +27,21 @@ from ..options import (
     sql_out_option,
     validation_options,
 )
-from ..plan_output import outcome_json, print_plan, write_plan_sql
-from ..runner import CommandResult, command_body
-from ..settings import apply_parallelism
-from ..wiring import project
-from ..wiring.plan import PlanRequest, PlanSession, partial_excluded, plan_runtime, refuse_partial_prune
-from ..wiring.project import closed_on_error
+from snowflake_semantic_tools.cli.plan_output import outcome_json, print_plan, write_plan_sql
+from snowflake_semantic_tools.cli.runner import CommandResult, command_body
+from snowflake_semantic_tools.cli.settings import apply_parallelism
+from snowflake_semantic_tools.cli.wiring import project
+from snowflake_semantic_tools.cli.wiring.plan import (
+    PlanRequest,
+    PlanSession,
+    partial_excluded,
+    plan_runtime,
+    refuse_partial_prune,
+)
+from snowflake_semantic_tools.cli.wiring.project import closed_on_error
+from snowflake_semantic_tools.domain.model.diagnostic import DiagnosticBag
+from snowflake_semantic_tools.domain.model.lifecycle import ApplyOptions, ApplyOutcome, FailurePolicy
+from snowflake_semantic_tools.domain.state import SavedPlan
 
 
 @click.command()

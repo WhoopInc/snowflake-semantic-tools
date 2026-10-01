@@ -9,8 +9,8 @@ holds each stage's values -- `marker`, `observation`, `action`, `rendered`, `cha
 
 from __future__ import annotations
 
-from .action import Action, ChangeReason
-from .apply import (
+from snowflake_semantic_tools.domain.model.lifecycle.action import Action, ChangeReason
+from snowflake_semantic_tools.domain.model.lifecycle.apply import (
     ApplyOptions,
     ApplyOutcome,
     ApplyResult,
@@ -21,9 +21,9 @@ from .apply import (
     OutcomeStatus,
     RetryPolicy,
 )
-from .change import Change, ChangeSet, CompositePlan
-from .marker import OwnershipMarker, extract_marker
-from .observation import (
+from snowflake_semantic_tools.domain.model.lifecycle.change import Change, ChangeSet, CompositePlan
+from snowflake_semantic_tools.domain.model.lifecycle.marker import OwnershipMarker, extract_marker
+from snowflake_semantic_tools.domain.model.lifecycle.observation import (
     ArtifactKey,
     CompositeObservation,
     ExecResult,
@@ -35,7 +35,7 @@ from .observation import (
     ShowRow,
     SnowflakeObservation,
 )
-from .rendered import (
+from snowflake_semantic_tools.domain.model.lifecycle.rendered import (
     CompositeFacts,
     DesiredMetadata,
     ProbeKind,

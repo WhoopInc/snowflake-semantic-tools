@@ -25,9 +25,9 @@ from typing import Any, NoReturn
 
 import yaml
 
-from ...domain.model.diagnostic import D, Diagnostic, Origin
-from ..errors import ProjectError
-from .documents import NodePath, ParsedYaml, SourcePosition, TemplateSource
+from snowflake_semantic_tools.adapters.errors import ProjectError
+from snowflake_semantic_tools.adapters.yaml.documents import NodePath, ParsedYaml, SourcePosition, TemplateSource
+from snowflake_semantic_tools.domain.model.diagnostic import D, Diagnostic, Origin
 
 _PLACEHOLDER = "__SST_TPL_%d__"
 

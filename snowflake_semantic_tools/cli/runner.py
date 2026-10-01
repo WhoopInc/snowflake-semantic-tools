@@ -24,11 +24,11 @@ from typing import Any, NoReturn
 
 import click
 
-from ..adapters.errors import ProjectError
-from ..domain.model.diagnostic import D, DiagnosticBag
-from ..domain.ports.snowflake import SnowflakePortError
-from .exit_codes import CONFIG, CONNECTION, ERROR, OK
-from .output import emit_json, interrupted, json_envelope, render_diagnostics
+from snowflake_semantic_tools.adapters.errors import ProjectError
+from snowflake_semantic_tools.cli.exit_codes import CONFIG, CONNECTION, ERROR, OK
+from snowflake_semantic_tools.cli.output import emit_json, interrupted, json_envelope, render_diagnostics
+from snowflake_semantic_tools.domain.model.diagnostic import D, DiagnosticBag
+from snowflake_semantic_tools.domain.ports.snowflake import SnowflakePortError
 
 
 @dataclasses.dataclass(frozen=True)

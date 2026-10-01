@@ -12,8 +12,8 @@ profile's release. This module only re-exports their public names.
 
 from __future__ import annotations
 
-from .build import assemble_prompt, build_profile
-from .model import (
+from snowflake_semantic_tools.domain.model.profile.build import assemble_prompt, build_profile
+from snowflake_semantic_tools.domain.model.profile.model import (
     COMMAND_FRONTMATTER_KEYS,
     DESKTOP_REGISTRY,
     REJECTED_PROFILE_KEYS,
@@ -28,7 +28,7 @@ from .model import (
     SharedProfile,
     StageTree,
 )
-from .validate import unreached_skills, validate_profile_catalog
+from snowflake_semantic_tools.domain.model.profile.validate import unreached_skills, validate_profile_catalog
 
 __all__ = [
     "COMMAND_FRONTMATTER_KEYS",

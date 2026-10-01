@@ -6,8 +6,8 @@ from dataclasses import dataclass, field
 from types import MappingProxyType
 from typing import Mapping
 
-from .artifact_key import artifact_key
-from .diagnostic import DiagnosticBag, Origin
+from snowflake_semantic_tools.domain.model.artifact_key import artifact_key
+from snowflake_semantic_tools.domain.model.diagnostic import DiagnosticBag, Origin
 
 BUILTIN_AGENT_TOOLS = frozenset(("data_to_chart", "web_search", "code_execution"))
 KNOWN_AGENT_TOOL_TYPES = frozenset(
