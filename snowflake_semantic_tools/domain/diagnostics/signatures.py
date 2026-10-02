@@ -1,0 +1,189 @@
+"""The Snowflake signature table: which SNO code a driver error is, and the diagnostic that reports it.
+
+`SIGNATURES` is the table, one row per signature; `match_signature` is the one function
+that consults it. Matching is most specific first: a row whose `errno` equals the error's
+number, then a row whose `sqlstate` equals its SQLSTATE, then a row whose `pattern`
+searches its message, each pass in table order. An error no row matches is `UNRECOGNISED`,
+SST-SNO001, and never a specific code. A row with neither a number nor a SQLSTATE matches
+on Snowflake's wording alone, so it is `fragile`, and `fragile_signatures` lists those rows
+so the set stays visible and can shrink as numbers are observed.
+
+`snowflake_diagnostic` reports a classified error, filling the code's placeholders from the
+message: the first quoted name for `{value}`, the message without its number and heading
+for `{detail}`.
+"""
+
+from __future__ import annotations
+
+import re
+from dataclasses import dataclass
+from string import Formatter
+from typing import Any
+
+from snowflake_semantic_tools.domain.diagnostics import ERROR_REGISTRY, D, Diagnostic
+from snowflake_semantic_tools.domain.model.lifecycle import ErrorKind
+
+
+@dataclass(frozen=True, slots=True)
+class Signature:
+    """One way Snowflake reports a failure, and the SNO code it maps to.
+
+    Attributes:
+        errno: The driver error number that identifies it; None when none was observed.
+        sqlstate: The SQLSTATE that identifies it; None when it is shared or unobserved.
+        pattern: The wording that identifies it when the error carries no matching number.
+        kind: The class apply records for the failure.
+        retryable: Whether running the same statement again may succeed.
+        extract: Where the code's `{detail}` or `{found}` comes from in the message: the
+            first group of this pattern; None takes the whole message.
+    """
+
+    code: str
+    errno: int | None = None
+    sqlstate: str | None = None
+    pattern: re.Pattern[str] | None = None
+    kind: ErrorKind = ErrorKind.UNKNOWN
+    retryable: bool = False
+    extract: re.Pattern[str] | None = None
+
+    @property
+    def fragile(self) -> bool:
+        """Report whether the row matches on wording alone, with no number or SQLSTATE."""
+        return self.errno is None and self.sqlstate is None
+
+
+def _words(pattern: str) -> re.Pattern[str]:
+    return re.compile(pattern, re.IGNORECASE | re.DOTALL)
+
+
+_PRIVILEGE = ErrorKind.PRIVILEGE
+_NOT_FOUND = ErrorKind.NOT_FOUND
+_SYNTAX = ErrorKind.SYNTAX
+_TRANSIENT = ErrorKind.TRANSIENT
+_DURATION = _words(r"(\d+\s*(?:seconds?|minutes?|hours?|s|ms))")
+
+# The table. Specific rows come before general ones that share their wording, so the
+# message pass reads a missing schema as a schema before it reads it as an object.
+SIGNATURES: tuple[Signature, ...] = (
+    Signature("SST-SNO002", 2002, "42710", _words(r"\balready exists\b")),
+    Signature("SST-SNO005", 2043, None, _words(r"\bschema\s+'[^']*'\s+does not exist"), _NOT_FOUND),
+    Signature("SST-SNO006", None, None, _words(r"\bdatabase\s+'[^']*'\s+does not exist"), _NOT_FOUND),
+    Signature("SST-SNO007", None, None, _words(r"\bwarehouse\s+'[^']*'\s+does not exist"), _NOT_FOUND),
+    Signature("SST-SNO008", None, None, _words(r"\bno active warehouse\b"), _NOT_FOUND),
+    Signature("SST-SNO003", 2003, "02000", _words(r"\bdoes not exist\b"), _NOT_FOUND),
+    Signature("SST-SNO003", None, "42S02", None, _NOT_FOUND),
+    Signature("SST-SNO017", None, None, _words(r"\bCREATE AGENT\b.*\b(?:privilege|required)\b"), _PRIVILEGE),
+    Signature("SST-SNO018", None, None, _words(r"\bCREATE DATASET\b.*\b(?:privilege|required)\b"), _PRIVILEGE),
+    Signature("SST-SNO004", 3001, "42501", _words(r"\binsufficient privileges?\b|\bnot authori[sz]ed\b"), _PRIVILEGE),
+    Signature("SST-SNO004", None, "28000", None, _PRIVILEGE),
+    Signature("SST-SNO012", 93932, None, _words(r"\bsecure\b.*\bshare\b|\bshare\b.*\bsecure\b"), _PRIVILEGE),
+    Signature(
+        "SST-SNO013",
+        250001,
+        None,
+        _words(r"\bincorrect username or password\b|\bauthentication (?:failed|token)"),
+        _PRIVILEGE,
+    ),
+    Signature("SST-SNO011", 630, "57014", _words(r"\bstatement or warehouse timeout\b"), extract=_DURATION),
+    Signature("SST-SNO015", None, None, _words(r"\bmax_staleness\b"), extract=_words(r"max_staleness\D*?(\d+\s*\w*)")),
+    Signature(
+        "SST-SNO016",
+        None,
+        None,
+        _words(r"\bunsupported feature\b.*\bsemantic view|\bsemantic views?\b.*\bnot (?:enabled|available)\b"),
+    ),
+    Signature("SST-SNO019", None, None, _words(r"\bduplicate synonym\b")),
+    Signature("SST-SNO020", None, None, _words(r"\bidentifier\b.*\btoo long\b|\bexceeds? the maximum length\b")),
+    Signature("SST-SNO023", None, None, _words(r"\bresult (?:set )?(?:is )?too large\b")),
+    Signature(
+        "SST-SNO024",
+        None,
+        None,
+        _words(r"\bqueued\b.*\b(?:beyond|exceed|timeout)|\bstatement_queued_timeout"),
+        _TRANSIENT,
+        extract=_DURATION,
+    ),
+    Signature(
+        "SST-SNO022", None, None, _words(r"\block\b.*\b(?:timeout|wait)|\bdeadlock\b|\bconcurrent\b"), _TRANSIENT, True
+    ),
+    Signature("SST-SNO010", None, None, _words(r"\bSQL execution internal error\b|\bincident\s+\d+")),
+    Signature("SST-SNO009", 1003, "42000", _words(r"\bsyntax error\b|\bSQL compilation error\b"), _SYNTAX),
+    Signature("SST-SNO009", None, "42601", None, _SYNTAX),
+    Signature(
+        "SST-SNO014",
+        None,
+        "08001",
+        _words(
+            r"\btime(?:d)? ?out\b|\bconnection (?:aborted|reset|refused)\b|\bfailed to (?:connect|execute request)\b"
+        ),
+        _TRANSIENT,
+        True,
+    ),
+)
+
+UNRECOGNISED = Signature("SST-SNO001")
+
+_NUMBER_PREFIX = re.compile(r"^\s*\d{3,6}\s*(?:\([0-9A-Z]{5}\))?\s*:\s*")
+_HEADING = _words(r"^\s*(?:SQL compilation error|SQL execution internal error)\s*:\s*")
+_QUOTED = re.compile(r"'([^']+)'")
+
+
+def match_signature(message: str, *, errno: int | None = None, sqlstate: str | None = None) -> Signature:
+    """Return the most specific row matching a driver error; `UNRECOGNISED` when none does.
+
+    The number is tried first, then the SQLSTATE, then the wording, each in table order.
+    """
+    if errno is not None:
+        for row in SIGNATURES:
+            if row.errno == errno:
+                return row
+    if sqlstate:
+        for row in SIGNATURES:
+            if row.sqlstate == sqlstate:
+                return row
+    for row in SIGNATURES:
+        if row.pattern is not None and row.pattern.search(message):
+            return row
+    return UNRECOGNISED
+
+
+def fragile_signatures() -> tuple[Signature, ...]:
+    """Return the rows that match on wording alone, in table order."""
+    return tuple(row for row in SIGNATURES if row.fragile)
+
+
+def detail_of(message: str) -> str:
+    """Return a driver message without its leading error number and its SQL error heading."""
+    return _HEADING.sub("", _NUMBER_PREFIX.sub("", message), count=1).strip()
+
+
+def signature_codes() -> frozenset[str]:
+    """Return every code a driver error can map to, SST-SNO001 included."""
+    return frozenset((UNRECOGNISED.code, *(row.code for row in SIGNATURES)))
+
+
+def snowflake_diagnostic(code: str, message: str, *, value: str, subject: str | None = None) -> Diagnostic:
+    """Report a driver error under the SNO code it was classified as.
+
+    Args:
+        code: A code of `signature_codes`, as `match_signature` chose it.
+        value: What `{value}` names when the message quotes no name: the object the failed
+            statement addressed.
+        subject: The artifact key the failure belongs to; None when there is none.
+
+    Raises:
+        KeyError: `code` is not a code of `signature_codes`.
+
+    Diagnostics:
+        Any SNO code of `SIGNATURES`, or SST-SNO001 for `UNRECOGNISED`.
+    """
+    if code not in signature_codes():
+        raise KeyError(code)
+    extract = next((row.extract for row in SIGNATURES if row.code == code and row.extract is not None), None)
+    quoted = _QUOTED.search(message)
+    extracted = extract.search(message) if extract is not None else None
+    specific = extracted.group(1).strip() if extracted is not None else detail_of(message)
+    filled = {"value": quoted.group(1) if quoted is not None else value, "detail": specific, "found": specific}
+    fields = {field for _, field, _, _ in Formatter().parse(ERROR_REGISTRY[code].template) if field}
+    context: dict[str, Any] = {key: text for key, text in filled.items() if key in fields}
+    return D(code, subject=subject, **context)

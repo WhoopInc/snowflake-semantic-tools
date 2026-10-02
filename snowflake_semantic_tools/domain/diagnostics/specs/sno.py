@@ -1,4 +1,4 @@
-"""Snowflake codes (SNO): an error Snowflake returned for a statement, classified."""
+"""Snowflake codes (SNO): an error Snowflake returned for a statement, classified by its signature."""
 
 from __future__ import annotations
 
@@ -7,14 +7,27 @@ from snowflake_semantic_tools.domain.diagnostics.core import ErrorSpec, Severity
 TITLE: str = "Snowflake"
 
 SPECS: tuple[ErrorSpec, ...] = (
-    spec("SST-SNO001", Severity.ERROR, "Unrecognised Snowflake refusal", "Snowflake refused: {detail}", None),
-    spec("SST-SNO002", Severity.ERROR, "Object already exists", "{value} already exists", "choose another name"),
+    spec(
+        "SST-SNO001",
+        Severity.ERROR,
+        "Snowflake refused and SST does not recognise the refusal",
+        "Snowflake refused: {detail}",
+        "read internal_detail; if this recurs, add a signature",
+    ),
+    spec(
+        "SST-SNO002",
+        Severity.ERROR,
+        "Object already exists",
+        "{value} already exists",
+        "choose another name; a semantic view is created with CREATE OR REPLACE, and an agent takes "
+        "create_mode: or_alter (to add a version) or if_not_exists",
+    ),
     spec(
         "SST-SNO003",
         Severity.ERROR,
         "Object does not exist or is not authorised",
         "{value} does not exist or is not authorised",
-        "publish the object or grant access",
+        "publish the object, or grant access",
     ),
     spec(
         "SST-SNO004",
@@ -23,13 +36,127 @@ SPECS: tuple[ErrorSpec, ...] = (
         "insufficient privileges for {value}",
         "grant the privilege to the deploying role",
     ),
+    spec(
+        "SST-SNO005",
+        Severity.ERROR,
+        "Schema does not exist or is not authorised",
+        "schema {value} does not exist or is not authorised",
+        "create the schema, or correct the target",
+    ),
+    spec(
+        "SST-SNO006",
+        Severity.ERROR,
+        "Database does not exist or is not authorised",
+        "database {value} does not exist or is not authorised",
+        "create the database, or correct the target",
+    ),
+    spec(
+        "SST-SNO007",
+        Severity.ERROR,
+        "Warehouse does not exist or is not authorised",
+        "warehouse {value} does not exist or is not authorised",
+        "grant USAGE, or name an existing warehouse",
+    ),
+    spec(
+        "SST-SNO008",
+        Severity.ERROR,
+        "No active warehouse in the session",
+        "no active warehouse in the session",
+        "set a default warehouse for the connecting user",
+    ),
     spec("SST-SNO009", Severity.ERROR, "SQL compilation error", "SQL compilation error: {detail}", "fix the statement"),
+    spec(
+        "SST-SNO010",
+        Severity.ERROR,
+        "SQL execution internal error",
+        "SQL execution internal error: {detail}",
+        "this is the query-time class the derived-metric restrictions exist to prevent",
+    ),
+    spec(
+        "SST-SNO011",
+        Severity.ERROR,
+        "Statement timeout",
+        "statement timed out after {detail}",
+        "raise the timeout, or reduce the statement",
+    ),
+    spec(
+        "SST-SNO012",
+        Severity.ERROR,
+        "Secure-object share restriction",
+        "{value}: share restriction",
+        "keep the object secure, or revoke the share grant",
+    ),
+    spec(
+        "SST-SNO013",
+        Severity.ERROR,
+        "Authentication failed",
+        "authentication failed for {value}",
+        "refresh the credential",
+    ),
+    spec("SST-SNO014", Severity.ERROR, "Driver network failure", "network failure: {detail}", "retry"),
+    spec(
+        "SST-SNO015",
+        Severity.ERROR,
+        "max_staleness rejected",
+        "max_staleness {found} rejected",
+        "raise it to at least 120",
+    ),
+    spec(
+        "SST-SNO016",
+        Severity.ERROR,
+        "Semantic view feature not enabled",
+        "semantic views are not enabled on this account",
+        "ask an account administrator to enable the feature",
+    ),
+    spec(
+        "SST-SNO017",
+        Severity.ERROR,
+        "CREATE AGENT privilege required",
+        "CREATE AGENT required on {value}",
+        "grant CREATE AGENT on the schema",
+    ),
+    spec(
+        "SST-SNO018",
+        Severity.ERROR,
+        "CREATE DATASET privilege required",
+        "CREATE DATASET required on {value}",
+        "grant CREATE DATASET on the schema",
+    ),
+    spec(
+        "SST-SNO019",
+        Severity.ERROR,
+        "Duplicate synonym",
+        "duplicate synonym {value}",
+        "make synonyms unique within the view",
+    ),
+    spec("SST-SNO020", Severity.ERROR, "Identifier too long", "identifier {value} is too long", "shorten the name"),
     spec(
         "SST-SNO022",
         Severity.ERROR,
         "Concurrent DDL or lock timeout",
         "lock timeout on {value}",
-        "retry or serialise publishers",
+        "retry, or serialise the publishers",
+    ),
+    spec(
+        "SST-SNO023",
+        Severity.ERROR,
+        "Result set too large",
+        "result set too large for {value}",
+        "narrow the query",
+    ),
+    spec(
+        "SST-SNO024",
+        Severity.ERROR,
+        "Query queued beyond the wait limit",
+        "query queued beyond {detail}",
+        "raise the queue limit, or use a larger warehouse",
+    ),
+    spec(
+        "SST-SNO025",
+        Severity.ERROR,
+        "Unexpected DESCRIBE output shape",
+        "DESCRIBE {value} returned an unexpected shape",
+        "report this as a Snowflake drift finding",
     ),
     spec(
         "SST-SNO030",
