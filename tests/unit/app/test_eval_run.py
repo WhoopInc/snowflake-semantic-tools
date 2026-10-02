@@ -31,6 +31,7 @@ from snowflake_semantic_tools.app.evals.run import (
     _suite_concurrency,
     empty_eval_suite_json,
     eval_suite_json,
+    retention_class,
     validate_eval_publication,
 )
 from snowflake_semantic_tools.app.lifecycle.evals import EVAL_STAGE_FILE_FORMAT, EvalLifecycleHandler
@@ -41,6 +42,7 @@ from snowflake_semantic_tools.domain.model.eval import (
     EvalDefaults,
     EvalMetricResult,
     EvalResultRow,
+    EvalRetention,
     EvalRunAttempt,
     ThresholdRange,
 )
@@ -1148,3 +1150,33 @@ def test_eval_runner_rejects_a_record_answering_two_questions_and_an_unanswered_
 
     assert "maps to multiple questions" in retrieval_error((first, second), compiled)
     assert "question set differs from the authored dataset" in retrieval_error(result_rows().rows, compiled)
+
+
+def test_each_run_reports_its_retention_class_for_whoever_reaps_decision_runs() -> None:
+    compiled = compiled_eval_of()
+    run = compiled.resolved.config.run
+    assert run is not None
+    retention = EvalRetention(("ci",), ("sweep",), 30)
+    assert retention_class(replace(run, retention=retention), None) == "audit"
+    assert retention_class(replace(run, variant="sweep", retention=retention), None) == "decision"
+    assert retention_class(replace(run, variant="adhoc", retention=retention), "audit") == "audit"
+    assert retention_class(run, None) is None
+
+    sweep = replace(compiled.resolved.config, run=replace(run, variant="sweep", retention=retention))
+    port = EvalSnowflake([status_result("COMPLETED", "EVAL_SALES_AGENT_abcdef0_sweep_20260928T010203Z"), result_rows()])
+    result = RunEvalSuite(port, FixedClock()).run(
+        (replace(compiled, resolved=replace(compiled.resolved, config=sweep)),),
+        options=EvalRunOptions("abcdef0", timestamp="20260928T010203Z"),
+    )
+    payload = eval_suite_json(result)["evals"]
+    assert isinstance(payload, list)
+    assert payload[0]["retention"] == {"class": "decision", "decision_window_days": 30}
+
+
+def test_a_config_without_a_run_block_takes_the_project_retention_class() -> None:
+    compiled = compiled_eval_of()
+    bare = replace(compiled, resolved=replace(compiled.resolved, config=replace(compiled.resolved.config, run=None)))
+    result = RunEvalSuite(EvalSnowflake([]), FixedClock()).run(
+        (bare,), defaults=EvalDefaults(retention="audit"), options=EvalRunOptions("abcdef0")
+    )
+    assert (result.evals[0].retention, result.evals[0].decision_window_days) == ("audit", None)

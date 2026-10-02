@@ -24,7 +24,8 @@ dataset:
   # Datasets are content-addressed. Apply creates the source table and DATASET
   # only when the hash-named objects are absent, and the rendered run YAML never
   # carries a `dataset:` block, so a repeat run reuses the existing dataset.
-  # `mint` is parsed but does not change this.
+  # `mint: auto` is that behaviour; `never` creates nothing and requires the
+  # dataset to exist, publishing only the run config.
   mint: auto
   # `sha7` here hashes the questions and their expectations, not the commit, so
   # an unchanged question set keeps its dataset and old runs keep resolving. The
@@ -82,8 +83,9 @@ run:
   # Why the run happened; fills the variant token in the run name.
   variant: ci
   # Retention classes by variant: `ci` runs are the audit trail, `sweep` runs
-  # are disposable after `decision_window_days`. SST validates this block's
-  # shape and never deletes eval runs or eval objects.
+  # are disposable after `decision_window_days`. SST validates this block,
+  # reports each run's class in its results, and never deletes eval runs or
+  # eval objects.
   retention:
     audit:
       - ci
@@ -105,7 +107,8 @@ run:
   accept_statuses:
     - COMPLETED
 
-# No `sweep:` block: SST parses one but does not run model sweeps.
+# No `sweep:` block: this release runs no model sweeps and refuses one
+# (`SST-CFG044`).
 #
 # Outside this file:
 # - The config stage (`apply.eval_config_stage` in sst_config.yml) always sits

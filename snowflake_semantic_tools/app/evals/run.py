@@ -69,12 +69,18 @@ class EvalRunResult:
 
     Attributes:
         accepted: Whether some attempt completed and its results were read.
+        retention: The run's retention class, `audit` or `decision`, from its variant and
+            `run.retention`, else `evals.+retention`; None when neither classifies it. SST never
+            deletes a run, so this is reported for whoever reaps decision runs.
+        decision_window_days: How long a decision run is kept; None for any other class.
     """
 
     eval_key: str
     attempts: tuple[EvalRunAttempt, ...]
     diagnostics: DiagnosticBag
     accepted: bool = False
+    retention: str | None = None
+    decision_window_days: int | None = None
 
     @property
     def success(self) -> bool:
@@ -189,8 +195,13 @@ class RunEvalSuite:
         """
         setup = self._setup(compiled, defaults, options, config_digest, baseline_capture, default_baseline_runs)
         if isinstance(setup, Diagnostic):
-            return EvalRunResult(compiled.artifact_key, (), DiagnosticBag((setup,)))
-        return self._attempts(compiled, options, setup, baseline_capture)
+            result = EvalRunResult(compiled.artifact_key, (), DiagnosticBag((setup,)))
+        else:
+            result = self._attempts(compiled, options, setup, baseline_capture)
+        run = compiled.resolved.config.run
+        retention = retention_class(run, defaults.retention) if run is not None else defaults.retention
+        window = run.retention.decision_window_days if run is not None and retention == "decision" else None
+        return replace(result, retention=retention, decision_window_days=window)
 
     def _setup(
         self,
@@ -441,6 +452,10 @@ def eval_suite_json(result: EvalSuiteResult) -> dict[str, object]:
         "evals": [
             {
                 "eval_key": eval_result.eval_key,
+                "retention": {
+                    "class": eval_result.retention,
+                    "decision_window_days": eval_result.decision_window_days,
+                },
                 "attempts": [
                     {
                         "run_name": attempt.run_name,
@@ -511,6 +526,20 @@ def _run_name(compiled: CompiledEval, setup: _RunSetup, options: EvalRunOptions,
         ts=setup.timestamp,
     )
     return base_name if attempt_number == 1 else f"{base_name}_R{attempt_number}"
+
+
+def retention_class(run: EvalRunConfig, default: str | None) -> str | None:
+    """Classify a run by its variant: `audit` or `decision` as `run.retention` lists it, else `default`.
+
+    The variant defaults to `ci`, as it does in the run name. A variant both lists name is
+    rejected by validation; here the audit list, which keeps the run, wins.
+    """
+    variant = run.variant or "ci"
+    if variant in run.retention.audit:
+        return "audit"
+    if variant in run.retention.decision:
+        return "decision"
+    return default
 
 
 def _partial_status(compiled: CompiledEval, run: EvalRunConfig, terminal_status: str) -> tuple[Diagnostic, ...]:

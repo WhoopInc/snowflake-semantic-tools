@@ -1048,3 +1048,31 @@ def test_an_eval_recorded_under_another_manifest_is_rerecorded_then_unchanged() 
     assert store.state is not None and store.state.applied[artifact.key].manifest_id == manifest.manifest_id
     assert not [script for script in port.scripts if script and script[0].startswith("CREATE")]
     assert planned_change(artifact, manifest, port, handler, store.state).action is Action.NOOP
+
+
+def test_an_eval_that_does_not_mint_requires_its_dataset_and_publishes_only_its_config() -> None:
+    resolved = resolved_eval()
+    assert resolved.config.dataset is not None
+    never = replace(resolved, config=replace(resolved.config, dataset=replace(resolved.config.dataset, mint="never")))
+    result = compile_eval(never)
+    manifest = build_manifest(result)
+    artifact = compiled_as(result, CompiledEval).rendered_for_publish(manifest.manifest_id)
+    assert artifact.create_statements == () and [kind for kind, _ in artifact.physical_resources] == ["DATASET"]
+    port = InMemorySnowflake()
+    port.existing = set()
+    handler = EvalLifecycleHandler(port)
+
+    absent = handler.plan(artifact, None, manifest)
+    assert absent.action is Action.BLOCKED and [item.code for item in absent.diagnostics] == ["SST-SNO003"]
+
+    existing(port).add(artifact.physical_resources[0][1].sql)
+    change = planned_change(artifact, manifest, port, handler, state_with(None, ""))
+    assert change.action is Action.CREATE
+    store = InMemoryStateStore()
+    outcome = ApplyArtifacts(
+        port, store, FixedClock(), state_table=artifact.target, lifecycle_handlers={"eval": handler}
+    ).run(replace(changeset(change), manifest_id=manifest.manifest_id), state_with(None, ""))
+    assert outcome.success
+    assert [script[0].split(" ", 2)[:2] for script in port.scripts] == [["CREATE", "STAGE"]]
+    assert store.state is not None and store.state.applied[artifact.key].applied_resources == ()
+    assert planned_change(artifact, manifest, port, handler, store.state).action is Action.NOOP

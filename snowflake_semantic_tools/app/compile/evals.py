@@ -7,7 +7,7 @@ from hashlib import sha256
 
 from snowflake_semantic_tools.app.compile.base import CompileResult, StandaloneArtifact, compile_each
 from snowflake_semantic_tools.domain.diagnostics import DiagnosticBag
-from snowflake_semantic_tools.domain.model.eval import EvalCatalog, EvalDefaults, ResolvedEval
+from snowflake_semantic_tools.domain.model.eval import EVAL_MINT_NEVER, EvalCatalog, EvalDefaults, ResolvedEval
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
 from snowflake_semantic_tools.domain.model.lifecycle import (
     CompositeFacts,
@@ -78,17 +78,30 @@ class CompiledEval(StandaloneArtifact):
                 component_fingerprints=(
                     ("dataset", self.rendered.dataset_fingerprint),
                     ("config", self.rendered.config_fingerprint),
+                    *((("mint", EVAL_MINT_NEVER),) if not self.mints else ()),
                 ),
-                physical_resources=(("TABLE", self.source_table), ("DATASET", self.dataset_target)),
+                physical_resources=(
+                    (("TABLE", self.source_table), ("DATASET", self.dataset_target))
+                    if self.mints
+                    else (("DATASET", self.dataset_target),)
+                ),
             ),
             depends_on=self.resolved.depends_on,
         )
         return replace(artifact, fingerprint=combined)
 
+    @property
+    def mints(self) -> bool:
+        """Report whether SST creates the eval's source table and dataset, which `dataset.mint: never` forbids."""
+        dataset = self.resolved.config.dataset
+        return dataset is None or dataset.mint != EVAL_MINT_NEVER
+
     def rendered_for_publish(self, manifest_id: str) -> RenderedArtifact:
-        """Add the statements that create the source table and then the dataset; nothing is marked."""
+        """Add the statements that create the source table and then the dataset when SST mints them."""
         del manifest_id
         artifact = self.rendered_artifact
+        if not self.mints:
+            return artifact
         return replace(
             artifact,
             create_statements=(*self.rendered.source_table_statements, self.rendered.create_dataset_statement),

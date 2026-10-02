@@ -45,6 +45,10 @@ SUPPORTED_JUDGE_PLACEHOLDERS = frozenset(
         "status",
     )
 )
+# How a config's dataset is minted: `auto` creates it when absent, `never` requires it to exist.
+EVAL_MINT_AUTO = "auto"
+EVAL_MINT_NEVER = "never"
+EVAL_MINT_POLICIES = frozenset((EVAL_MINT_AUTO, EVAL_MINT_NEVER))
 EVAL_TERMINAL_STATUSES = frozenset(
     (EVAL_COMPLETED, "PARTIALLY_COMPLETED", "INVOCATION_PARTIALLY_COMPLETED", "CANCELLED")
 )
@@ -145,7 +149,8 @@ class EvalDatasetConfig:
     """How an eval's dataset objects are named, from the config's `dataset:` block.
 
     Attributes:
-        mint: Parsed and carried, but it does not change how datasets are created.
+        mint: `auto`, the default, creates the source table and dataset when the dataset is
+            absent; `never` creates nothing and requires the dataset to exist already.
         name_template: The DATASET name template; None when unset, which validation rejects.
         source_table_template: The source table name template; None when unset, likewise.
     """
@@ -212,17 +217,6 @@ class EvalRunConfig:
 
 
 @dataclass(frozen=True, slots=True)
-class EvalSweepConfig:
-    """A model sweep block; SST parses it but does not run sweeps."""
-
-    enabled: bool = False
-    models: tuple[str, ...] = ()
-    target: str | None = None
-    hold_constant: tuple[str, ...] = ()
-    cost_reporting: bool = False
-
-
-@dataclass(frozen=True, slots=True)
 class EvalConfig:
     """An agent's eval run configuration, as authored in its config file.
 
@@ -230,7 +224,7 @@ class EvalConfig:
         agent_version: `committed`, `alias:<name>` or `VERSION$<n>`; None falls back to
             `evals.+agent_version`.
         dataset: None when the `dataset:` block is absent or not a mapping; likewise `run`
-            and `sweep` for theirs.
+            for its block.
         custom_metric_names: The names the `eval_metric()` references give, as written.
         forbidden_keys: Which of `database`, `schema` and `enabled` the file sets.
     """
@@ -243,7 +237,6 @@ class EvalConfig:
     system_metrics: tuple[EvalSystemMetric, ...]
     custom_metric_names: tuple[str, ...]
     run: EvalRunConfig | None
-    sweep: EvalSweepConfig | None = None
     forbidden_keys: tuple[str, ...] = ()
 
 

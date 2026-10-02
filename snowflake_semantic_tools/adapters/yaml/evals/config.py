@@ -21,6 +21,7 @@ from snowflake_semantic_tools.adapters.yaml.evals.readers import (
 from snowflake_semantic_tools.adapters.yaml.fields import optional_int, optional_string
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, DiagnosticBag, Origin
 from snowflake_semantic_tools.domain.model.eval import (
+    EVAL_MINT_POLICIES,
     EVAL_TERMINAL_STATUSES,
     EvalColumnMapping,
     EvalConfig,
@@ -28,7 +29,6 @@ from snowflake_semantic_tools.domain.model.eval import (
     EvalDefaults,
     EvalRetention,
     EvalRunConfig,
-    EvalSweepConfig,
     EvalSystemMetric,
 )
 from snowflake_semantic_tools.domain.parse.template import TemplateSyntaxError, single_template_call
@@ -101,6 +101,7 @@ def parse_config(loaded: tuple[str, ParsedYaml], diagnostics: list[Diagnostic]) 
         SST-PRS018: an entry of `metrics.system` or `metrics.custom` has the wrong type.
         SST-PRS019: a boolean field, such as a system metric's `gate`, is not a boolean.
         SST-LOD004: a `metrics.custom` entry is not exactly one `eval_metric()` reference.
+        SST-CFG044: the file declares a `sweep:` block, which this release does not run.
     """
     source_file, parsed = loaded
     tree = parsed.tree
@@ -128,6 +129,8 @@ def parse_config(loaded: tuple[str, ParsedYaml], diagnostics: list[Diagnostic]) 
     else:
         system_metrics = _parse_system_metrics(source_file, parsed, metrics.get("system"), diagnostics)
         custom_metric_names = _parse_custom_refs(source_file, parsed, metrics.get("custom"), diagnostics)
+    run = _parse_run(source_file, parsed, tree.get("run"), diagnostics)
+    _reject_sweep(source_file, parsed, tree.get("sweep"), diagnostics)
     return EvalConfig(
         origin,
         source_file,
@@ -136,8 +139,7 @@ def parse_config(loaded: tuple[str, ParsedYaml], diagnostics: list[Diagnostic]) 
         dataset,
         system_metrics,
         custom_metric_names,
-        _parse_run(source_file, parsed, tree.get("run"), diagnostics),
-        _parse_sweep(source_file, parsed, tree.get("sweep"), diagnostics),
+        run,
         tuple(key for key in ("database", "schema", "enabled") if key in tree),
     )
 
@@ -156,6 +158,7 @@ def _parse_dataset_config(
     Diagnostics:
         SST-PRS003: the block or its `column_mapping` is not a mapping, or `mint` or a template
             is not a non-empty string.
+        SST-PRS013: `mint` is neither `auto` nor `never`.
     """
     origin = origin_at(parsed, ("dataset",), source_file)
     if value is None:
@@ -191,8 +194,20 @@ def _parse_dataset_config(
                 optional_string(mapping.get("query_text")) or "input_query",
                 optional_string(mapping.get("ground_truth")) or "ground_truth",
             )
+    mint = optional_string_field(value, "mint", source_file, parsed, diagnostics, ("dataset",))
+    if mint is not None and mint not in EVAL_MINT_POLICIES:
+        diagnostics.append(
+            D(
+                "SST-PRS013",
+                artifact=source_file,
+                field="dataset.mint",
+                found=mint,
+                expected=", ".join(sorted(EVAL_MINT_POLICIES)),
+                origin=origin,
+            )
+        )
     return EvalDatasetConfig(
-        optional_string_field(value, "mint", source_file, parsed, diagnostics, ("dataset",)),
+        mint,
         optional_string_field(value, "name_template", source_file, parsed, diagnostics, ("dataset",)),
         optional_string_field(value, "source_table_template", source_file, parsed, diagnostics, ("dataset",)),
         columns,
@@ -450,40 +465,11 @@ def _parse_tier(
     return tier
 
 
-def _parse_sweep(
-    source_file: str,
-    parsed: ParsedYaml,
-    value: object,
-    diagnostics: list[Diagnostic],
-) -> EvalSweepConfig | None:
-    """Parse the `sweep:` block, which SST parses but does not run.
-
-    `enabled` and `cost_reporting` read as false when absent or not a boolean.
+def _reject_sweep(source_file: str, parsed: ParsedYaml, value: object, diagnostics: list[Diagnostic]) -> None:
+    """Refuse a `sweep:` block: SST 1.0 runs no model sweeps, so accepting one would do nothing.
 
     Diagnostics:
-        SST-PRS003: the block is not a mapping, `models` or `hold_constant` is not a list of
-            strings, or `target` is not a non-empty string.
-        SST-PRS019: `enabled` or `cost_reporting` is not a boolean.
+        SST-CFG044: the config declares a `sweep:` block.
     """
-    origin = origin_at(parsed, ("sweep",), source_file)
-    if value is None:
-        return None
-    if not isinstance(value, dict):
-        diagnostics.append(
-            D(
-                "SST-PRS003",
-                artifact=source_file,
-                field="sweep",
-                expected="mapping",
-                found=type(value).__name__,
-                origin=origin,
-            )
-        )
-        return None
-    return EvalSweepConfig(
-        optional_bool_field(value, "enabled", source_file, origin, diagnostics) or False,
-        string_tuple(value.get("models"), "sweep.models", origin, diagnostics),
-        optional_string_field(value, "target", source_file, parsed, diagnostics, ("sweep",)),
-        string_tuple(value.get("hold_constant"), "sweep.hold_constant", origin, diagnostics),
-        optional_bool_field(value, "cost_reporting", source_file, origin, diagnostics) or False,
-    )
+    if value is not None:
+        diagnostics.append(D("SST-CFG044", key="sweep", origin=origin_at(parsed, ("sweep",), source_file)))

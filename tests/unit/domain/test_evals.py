@@ -19,6 +19,7 @@ from snowflake_semantic_tools.domain.model.eval import (
     EvalInvocation,
     EvalQuestion,
     EvalRegression,
+    EvalRetention,
     EvalRunConfig,
     EvalScoreRanges,
     EvalSystemMetric,
@@ -625,3 +626,21 @@ def test_eval_placement_accepts_bare_and_same_schema_names_and_reports_any_other
     assert placed(None, "{{ unknown }}") == []
     assert placed("A.B.C.EVAL_{{ agent }}", None) == []
     assert eval_placement(replace(value, config=replace(value.config, dataset=None)), target) == ()
+
+
+def test_a_variant_belongs_to_one_retention_class_and_a_decision_window_is_a_day_or_more() -> None:
+    value = _resolved_eval()
+    run = value.config.run
+    assert run is not None
+
+    def found(retention: EvalRetention) -> list[tuple[str, object]]:
+        config = replace(value.config, run=replace(run, retention=retention))
+        diagnostics = validate_eval_catalog(EvalCatalog((replace(value, config=config),), value.custom_metrics))
+        return [
+            (item.code, item.context["found"])
+            for item in diagnostics
+            if str(item.context.get("field", "")).startswith("run.retention")
+        ]
+
+    assert found(EvalRetention(("ci",), ("sweep",), 30)) == []
+    assert found(EvalRetention(("ci", "sweep"), ("sweep",), 0)) == [("SST-PRS013", "sweep"), ("SST-PRS016", 0)]
