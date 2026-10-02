@@ -35,6 +35,10 @@ class ProjectPaths:
         profiles_dir: The directory `--profiles-dir` or `$SST_PROFILES_DIR` named; None searches.
         allow_unsupported_manifest_schema: Read a dbt manifest of an unsupported schema version
             for this run instead of refusing it, as `--allow-unsupported-manifest-schema` asks.
+        semantic_models_dir: The semantic models directory `--semantic` names, relative to the
+            project, in place of `project.semantic_models_dir`; None keeps the configured one.
+        model_paths: The dbt model paths `--dbt` names, relative to the project, in place of
+            `dbt_project.yml`'s `model-paths`; None keeps dbt's.
     """
 
     project_dir: Path
@@ -43,6 +47,8 @@ class ProjectPaths:
     shadowed: tuple[Path, ...] = ()
     profiles_dir: Path | None = None
     allow_unsupported_manifest_schema: bool = False
+    semantic_models_dir: str | None = None
+    model_paths: tuple[str, ...] | None = None
 
     @property
     def config_name(self) -> str:

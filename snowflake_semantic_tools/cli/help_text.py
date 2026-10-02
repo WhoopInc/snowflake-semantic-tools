@@ -62,6 +62,8 @@ _OPTION_HELP: Mapping[str, str] = {
     ),
     "--sql-out": "Also write the statements for each change into this directory.",
     "--fail-fast": "Stop at the first failure instead of continuing.",
+    "--dbt": "Read the dbt models from this directory instead of `dbt_project.yml`'s `model-paths`.",
+    "--semantic": "Read the semantic models from this directory instead of `project.semantic_models_dir`.",
 }
 _COMMAND_OPTION_HELP: Mapping[tuple[str, str], str] = {
     ("sst apply", "--fail-fast"): "Stop at the first failure instead of continuing. Defaults to `apply.fail_fast`.",
@@ -103,14 +105,63 @@ _COMMAND_OPTION_HELP: Mapping[tuple[str, str], str] = {
         "Directory holding the previous run's `manifest.json`, which `--select state:modified` compares with."
     ),
     ("sst test", "--suite"): (
-        "`golden` compares outputs with committed goldens offline; `smoke` probes deployed "
-        "objects; `evals` runs agent evaluations."
+        "Repeatable. `golden` compares outputs with committed goldens offline; `smoke` probes deployed "
+        "objects; `evals` runs agent evaluations. Defaults to every suite that applies."
     ),
     ("sst test", "--golden-dir"): "Directory of the semantic view DDL goldens; the other goldens sit beside it.",
     ("sst test", "--capture-baseline"): "Record this eval run as the new baseline. Requires `--reason`.",
     ("sst test", "--reason"): "Why the baseline is changing; stored with it.",
     ("sst test", "--fail-fast"): "Stop at the first failing golden, probe, or eval.",
+    ("sst validate", "--verify-schema"): "Connects: confirm each column a semantic view reads exists in the warehouse.",
+    ("sst list", "--no-manifest"): "Compile the project's files in memory instead of reading the compiled manifest.",
     ("sst validate", "--show-info"): "Also report which registered type owns each semantic-model file.",
+    ("sst baseline add", "--all-warnings"): "Baseline every current warning; prints the count and needs `--yes`.",
+    ("sst baseline add", "--expires-in"): (
+        "Days, 1 to 365, until a new baseline expires; an existing one keeps its date until `renew`."
+    ),
+    ("sst baseline add", "--note"): "Written into each entry; defaults to `pre-existing at adoption of <code>`.",
+    ("sst baseline add", "--yes"): "Baseline every warning without asking; required off a terminal.",
+    ("sst baseline add", "--select"): "Baseline only the diagnostics of these artifacts.",
+    ("sst baseline add", "--exclude"): "Leave the diagnostics of these artifacts out.",
+    ("sst baseline prune", "--select"): "Prune only the entries of these artifacts.",
+    ("sst baseline prune", "--exclude"): "Leave the entries of these artifacts as they are.",
+    ("sst baseline show", "--code"): "Show only the entries of this code.",
+    ("sst baseline show", "--expired"): "Show the entries only once the baseline has expired.",
+    ("sst baseline renew", "--reason"): "Required. Why the baseline is renewed; written into the file.",
+    ("sst baseline renew", "--expires-in"): "Days until the renewed baseline expires, at most 365.",
+    ("sst diff", "--from"): "The state compared from: `local` (default), a dbt target, or a saved plan's `.json` path.",
+    (
+        "sst diff",
+        "--to",
+    ): "The state compared with: `local`, a dbt target (default: the resolved one), or a saved plan.",
+    (
+        "sst diff",
+        "--target",
+    ): "Target from `profiles.yml` that `--to` defaults to, else `$SST_TARGET`, else the profile's.",
+    ("sst diff", "--full"): "Also name which recorded fields of a modified artifact differ.",
+    ("sst diff", "--names-only"): "Print the name of each differing artifact, one per line, and nothing else.",
+    ("sst diff", "--no-detailed-exitcode"): "Exit 0 when the states differ, instead of 2.",
+    (
+        "sst drop",
+        "--type",
+    ): "Required. The registered type of the object, which picks the DROP: agent or semantic_view.",
+    (
+        "sst drop",
+        "--target",
+    ): "Required. Target from `profiles.yml`; there is no default, and `$SST_TARGET` is not read.",
+    (
+        "sst drop",
+        "--profile",
+    ): "Profile in `profiles.yml`; else `dbt_project.yml`'s `profile:`. Needed outside a project.",
+    ("sst drop", "--yes"): "Required on every invocation: it is the confirmation, and there is no prompt.",
+    ("sst explain", "--aliases"): "Also list the SST 0.3 codes that resolve to the code, and what each became.",
+    ("sst format", "--check"): "Write nothing; exit 2 when a file would change.",
+    ("sst format", "--dry-run"): "Write nothing; print each file's change as a diff.",
+    ("sst format", "--force"): "Rewrite every file, even one already in canonical form.",
+    ("sst format", "--sanitize"): (
+        "Also repair apostrophes in synonyms and sample values, and Jinja delimiters in descriptions."
+    ),
+    ("sst format", "--no-detailed-exitcode"): "With `--check`, exit 0 when files would change, instead of 2.",
 }
 
 

@@ -160,6 +160,8 @@ class YamlProjectSource:
         found = [*self._parse_warnings, *catalog.diagnostics, *empty_catalog(catalog)]
         if self._manifest_path is not None and (self._project_dir / "dbt_project.yml").is_file():
             paths, unreadable = model_paths(self._project_dir, read_yaml_mapping)
+            if self._files.model_paths is not None:
+                paths, unreadable = self._files.model_paths, ()
             found.extend((*unreadable, *stale_models(self._project_dir, catalog, paths)))
         return tuple(found)
 
@@ -401,6 +403,7 @@ class YamlProjectInputs(ProjectInputs):
         semantic_path = "semantic_models"
         if isinstance(config_value, dict) and isinstance(config_value.get("project"), dict):
             semantic_path = str(config_value["project"].get("semantic_models_dir") or semantic_path)
+        semantic_path = self._files.semantic_models_dir or semantic_path
         return sha256(canonical_json(config_value)).hexdigest(), semantic_path
 
 

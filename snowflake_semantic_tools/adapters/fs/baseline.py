@@ -1,7 +1,9 @@
-"""Read the baseline file: the committed record of warnings a project knows about.
+"""Read and render the baseline file: the committed record of warnings a project knows about.
 
-Only reading lives here; writing it is `sst baseline`. The file is JSON, version 1, with a
-mandatory `expires_on` and one entry per recorded diagnostic, keyed on its stable fingerprint.
+The file is JSON, version 1, with a mandatory `expires_on` and one entry per recorded diagnostic,
+keyed on its stable fingerprint. `sst baseline` writes the text `baseline_text` renders: when and
+by which SST it was first written, every renewal and its reason, and the entries, sorted so a
+change to the file reviews as a diff of the entries it touched.
 """
 
 from __future__ import annotations
@@ -12,7 +14,7 @@ from typing import NoReturn
 
 from snowflake_semantic_tools.adapters.errors import ProjectError
 from snowflake_semantic_tools.domain.diagnostics import D
-from snowflake_semantic_tools.domain.diagnostics.baseline import Baseline, BaselineEntry
+from snowflake_semantic_tools.domain.diagnostics.baseline import Baseline, BaselineEntry, Renewal
 
 BASELINE_FILE = Path(".sst") / "baseline.json"
 
@@ -50,7 +52,52 @@ def read_baseline(path: Path, name: str) -> Baseline:
                 note=str(entry.get("note") or ""),
             )
         )
-    return Baseline(name, expires_on, tuple(parsed))
+    return Baseline(
+        name,
+        expires_on,
+        tuple(parsed),
+        generated_at=str(document.get("generated_at") or ""),
+        generated_by=str(document.get("generated_by_sst") or ""),
+        renewals=_renewals(document.get("renewals")),
+    )
+
+
+def _renewals(value: object) -> tuple[Renewal, ...]:
+    """Read the renewal record; a malformed one is kept as far as it reads, never refused."""
+    if not isinstance(value, list):
+        return ()
+    return tuple(
+        Renewal(str(item.get("renewed_on") or ""), str(item.get("reason") or ""), str(item.get("expires_on") or ""))
+        for item in value
+        if isinstance(item, dict)
+    )
+
+
+def baseline_text(baseline: Baseline) -> str:
+    """Render `baseline` as the file's JSON text, entries sorted by code, artifact and fingerprint."""
+    entries = sorted(baseline.entries, key=lambda entry: (entry.code, entry.artifact, entry.fingerprint))
+    document: dict[str, object] = {
+        "version": 1,
+        "generated_at": baseline.generated_at,
+        "generated_by_sst": baseline.generated_by,
+        "expires_on": baseline.expires_on,
+    }
+    if baseline.renewals:
+        document["renewals"] = [
+            {"renewed_on": item.renewed_on, "reason": item.reason, "expires_on": item.expires_on}
+            for item in baseline.renewals
+        ]
+    document["entries"] = [
+        {
+            "fingerprint": entry.fingerprint,
+            "code": entry.code,
+            "artifact": entry.artifact,
+            "file": entry.file,
+            "note": entry.note,
+        }
+        for entry in entries
+    ]
+    return json.dumps(document, indent=2, ensure_ascii=False) + "\n"
 
 
 def _refuse(name: str, detail: str) -> NoReturn:

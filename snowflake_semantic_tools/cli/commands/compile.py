@@ -17,7 +17,14 @@ from snowflake_semantic_tools.adapters.locations import ProjectPaths
 from snowflake_semantic_tools.app.compile import CompileResult
 from snowflake_semantic_tools.app.partial import partial_refusal, partial_split
 from snowflake_semantic_tools.cli.exit_codes import ERROR, OK
-from snowflake_semantic_tools.cli.options import database_option, partial_option, select_option, target_option
+from snowflake_semantic_tools.cli.options import (
+    database_option,
+    model_path_options,
+    partial_option,
+    select_option,
+    target_option,
+    with_model_paths,
+)
 from snowflake_semantic_tools.cli.plan_output import artifact_suffix
 from snowflake_semantic_tools.cli.runner import CommandResult, command_body, project_path, write_text
 from snowflake_semantic_tools.cli.wiring import compile as compiling
@@ -32,6 +39,7 @@ _DIRECTORY = click.Path(file_okay=False, path_type=Path)
 @click.command()
 @target_option()
 @database_option()
+@model_path_options()
 @click.option("--emit-ddl", "emit_ddl_dir", type=_DIRECTORY)
 @click.option("--emit-agent-spec", "agent_spec_dir", type=_DIRECTORY)
 @select_option(multiple=False)
@@ -46,6 +54,8 @@ def compile(
     selected: str | None,
     partial: bool,
     manifest_path: Path | None,
+    dbt_dir: Path | None,
+    semantic_dir: Path | None,
 ) -> CommandResult:
     """Compile every artifact and write the canonical manifest, offline.
 
@@ -53,6 +63,7 @@ def compile(
         SST-MAN008: the compile failed, so no manifest was written.
         SST-MAN007: the canonical manifest could not be written.
     """
+    paths = with_model_paths(paths, dbt_dir, semantic_dir)
     full_result = compiling.compile_result(paths, target_name, manifest_path, database=database)
     split = partial_split(full_result) if partial and not full_result.success else None
     if not full_result.success and split is None:

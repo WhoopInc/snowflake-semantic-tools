@@ -14,6 +14,7 @@ from dataclasses import dataclass, replace
 
 from snowflake_semantic_tools.app.compile import CompiledView, CompileResult
 from snowflake_semantic_tools.app.compile.agents.observe import ObserveLiveObjects
+from snowflake_semantic_tools.app.verify_schema import verify_columns
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, DiagnosticBag, resolve_severities
 from snowflake_semantic_tools.domain.model.identifier import Identifier, QualifiedName, SchemaScope
 from snowflake_semantic_tools.domain.model.lifecycle import RenderedArtifact
@@ -88,6 +89,7 @@ class ValidateArtifacts:
         *,
         strict: bool,
         connected: bool,
+        verify_schema: bool = False,
     ) -> ValidationResult:
         """Validate a compile result, asking Snowflake to check each semantic view when connected.
 
@@ -104,6 +106,8 @@ class ValidateArtifacts:
         Args:
             strict: Promote every warning, the compile's included, to an error.
             connected: Run the Snowflake checks; False skips them even with a port.
+            verify_schema: With a catalog, also look each column a view reads up in the
+                warehouse, as `verify_columns` does.
 
         Diagnostics:
             SST-VAL010: the compiled artifacts depend on one another in a cycle.
@@ -114,6 +118,7 @@ class ValidateArtifacts:
             SST-VAL212: a relationship's target holds more than one row for a join key.
             SST-VAL218: a distinct range's rows overlap.
             Those of `ObserveLiveObjects`, with a catalog.
+            Those of `verify_columns`, with `verify_schema` and a catalog.
         """
         found = [*compiled.diagnostics, *_cycle_diagnostics(compiled.rendered)]
         if not connected or self._port is None:
@@ -128,6 +133,8 @@ class ValidateArtifacts:
                     found.extend(self._data_checks(compiled_view))
             if self._catalog is not None:
                 found.extend(ObserveLiveObjects(self._catalog, target=self._target).run(compiled))
+        if verify_schema and self._catalog is not None:
+            found.extend(verify_columns(self._catalog, compiled))
         resolved, promoted = resolve_severities(DiagnosticBag(found), strict=strict)
         return ValidationResult(compiled.rendered, resolved, promoted)
 

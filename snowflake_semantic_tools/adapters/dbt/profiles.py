@@ -297,11 +297,13 @@ def declared_targets(files: ProjectPaths) -> tuple[str, frozenset[str], str | No
     return profile_name, targets, default if isinstance(default, str) else None
 
 
-def profile_output(files: ProjectPaths, target_name: str | None = None) -> tuple[str, str, dict[str, object]]:
+def profile_output(
+    files: ProjectPaths, target_name: str | None = None, *, profile: str | None = None
+) -> tuple[str, str, dict[str, object]]:
     """Return the profile name, target name, and fields of one output, with `env_var()` rendered.
 
     A field SST ignores is left as written, so an unset variable or a dbt-only
-    filter there cannot stop a run.
+    filter there cannot stop a run. `profile` names the profile instead of the project.
 
     Raises:
         ProjectError: the target is not declared, is not a Snowflake target, or holds a value
@@ -315,16 +317,16 @@ def profile_output(files: ProjectPaths, target_name: str | None = None) -> tuple
         SST-CFG049: a field SST reads holds a template other than `env_var()`; raised.
         SST-PRT011: a credential written for the target renders empty; raised.
     """
-    profile_name = resolve_profile_name(files)
+    profile_name = profile or resolve_profile_name(files)
     profiles = _read_profiles(files.profiles_file())
-    profile = profiles.get(profile_name)
-    if not isinstance(profile, dict):
+    declared = profiles.get(profile_name)
+    if not isinstance(declared, dict):
         diagnostic = D(
             "SST-CFG010", subject="config:profiles.yml", target=target_name or "(default)", profile=profile_name
         )
         raise ProjectError(diagnostic.message, diagnostics=(diagnostic,))
-    selected = target_name or profile.get("target")
-    outputs = profile.get("outputs")
+    selected = target_name or declared.get("target")
+    outputs = declared.get("outputs")
     output = outputs.get(selected) if isinstance(outputs, dict) else None
     if not isinstance(selected, str) or not isinstance(output, dict):
         diagnostic = D("SST-CFG010", target=selected, profile=profile_name)
@@ -500,10 +502,13 @@ def _inline_key(target: str, present: Mapping[str, object]) -> tuple[str, object
     return (key_value, present.get("private_key_passphrase"))
 
 
-def load_profile_target(files: ProjectPaths, target_name: str | None = None) -> ProfileTarget:
+def load_profile_target(
+    files: ProjectPaths, target_name: str | None = None, *, profile: str | None = None
+) -> ProfileTarget:
     """Resolve one profiles.yml target into its connection arguments, identity, and state table.
 
-    `target_name` None selects the profile's default target. The state table is `SST_STATE` in
+    `target_name` None selects the profile's default target, and `profile` None the profile the
+    project names. The state table is `SST_STATE` in
     the target's database and schema unless `state:` in `sst_config.yml` overrides a part.
 
     Raises:
@@ -519,7 +524,7 @@ def load_profile_target(files: ProjectPaths, target_name: str | None = None) -> 
         SST-CFG050: the target's authentication cannot be used; raised.
         SST-CFG048: a field SST does not read; carried on the target.
     """
-    profile_name, selected, resolved = profile_output(files, target_name)
+    profile_name, selected, resolved = profile_output(files, target_name, profile=profile)
     database = resolved.get("database")
     schema = resolved.get("schema")
     if not isinstance(database, str) or not isinstance(schema, str):

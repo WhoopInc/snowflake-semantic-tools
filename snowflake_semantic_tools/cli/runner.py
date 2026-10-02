@@ -67,10 +67,15 @@ _EXPIRY_WARNING_DAYS = 30
 
 
 class ConfigNeed(Enum):
-    """Whether a command needs a configuration file: `init`, `debug`, and `docs` run without one."""
+    """Whether a command needs a configuration file: `init`, `debug`, and `docs` run without one.
+
+    NONE never looks for one, nor for a baseline: `explain` and `drop` must work when the project
+    itself is what is broken.
+    """
 
     REQUIRED = "required"
     OPTIONAL = "optional"
+    NONE = "none"
 
 
 @dataclasses.dataclass(frozen=True)
@@ -106,6 +111,7 @@ def command_body(
     outputs: Collection[str] = DEFAULT_OUTPUTS,
     config: ConfigNeed = ConfigNeed.REQUIRED,
     refusals: Callable[..., None] | None = None,
+    applies_baseline: bool = True,
 ) -> Callable[[Callable[..., CommandResult]], Callable[..., None]]:
     """Make the click callback for the body of `sst <name>`, which returns a `CommandResult`.
 
@@ -120,6 +126,8 @@ def command_body(
         refusals: Checks the command line alone, before anything is resolved, so a usage error
             exits 3 even in a directory that is not a project. It takes the parameters it names,
             as the body does.
+        applies_baseline: False for a command that reads and writes the baseline itself, as
+            `sst baseline` does, so the runner neither reads it first nor marks what it holds.
     """
 
     def decorate(body: Callable[..., CommandResult]) -> Callable[..., None]:
@@ -129,7 +137,7 @@ def command_body(
         def callback(**params: Any) -> None:
             options = GlobalOptions.from_params(params)
             given = {key: value for key, value in params.items() if key not in GLOBAL_NAMES}
-            run = _Run(name, body, wanted, options, given, frozenset(outputs), config, refusals)
+            run = _Run(name, body, wanted, options, given, frozenset(outputs), config, refusals, applies_baseline)
             guarded(run.execute, command=name, output=options.output)
 
         declared = command_global_options()(callback)
@@ -176,6 +184,7 @@ class _Run:
     outputs: frozenset[str]
     config: ConfigNeed
     refusals: Callable[..., None] | None
+    applies_baseline: bool = True
 
     def execute(self) -> None:
         """Check the command line, resolve the project, run the body, and report it."""
@@ -190,22 +199,15 @@ class _Run:
             self.refusals(**{key: value for key, value in {**self.given, **supplied}.items() if key in names})
         logging.basicConfig(level=_LOG_LEVELS[options.log_level], stream=sys.stderr)
         use_render_policy(_render_policy(options))
-        files = dataclasses.replace(
-            locate_project(
-                options.project_dir,
-                options.config,
-                profiles_dir=options.profiles_dir,
-                required=self.config is ConfigNeed.REQUIRED,
-            ),
-            allow_unsupported_manifest_schema=options.allow_unsupported_manifest_schema,
-        )
+        files = self._files()
         resolve_invocation(
             project_dir=options.project_dir,
             config_file=files.config_file,
             target=self.given.get("target_name"),
             overrides=options.overrides,
         )
-        baseline = _baseline(options)
+        reads = self.applies_baseline and self.config is not ConfigNeed.NONE
+        baseline = _baseline(options) if reads else None
         result = self.body(**self._arguments(files))
         diagnostics, exit_code = with_policy(
             self.name,
@@ -218,6 +220,21 @@ class _Run:
         )
         result = dataclasses.replace(result, diagnostics=diagnostics, exit_code=exit_code)
         _report(self.name, options, _with_baseline(result, baseline, files))
+
+    def _files(self) -> ProjectPaths:
+        """Resolve the project's files; a command that needs no configuration looks for none."""
+        options = self.options
+        if self.config is ConfigNeed.NONE:
+            return ProjectPaths(options.project_dir, None, profiles_dir=options.profiles_dir)
+        return dataclasses.replace(
+            locate_project(
+                options.project_dir,
+                options.config,
+                profiles_dir=options.profiles_dir,
+                required=self.config is ConfigNeed.REQUIRED,
+            ),
+            allow_unsupported_manifest_schema=options.allow_unsupported_manifest_schema,
+        )
 
     def _arguments(self, files: ProjectPaths) -> dict[str, Any]:
         """Return the body's arguments: its own parameters, and the resolved values it names."""

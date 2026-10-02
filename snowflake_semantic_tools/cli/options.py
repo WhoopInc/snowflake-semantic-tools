@@ -10,11 +10,14 @@ options -- `--output`, `--project-dir`, `--manifest`, and the rest -- live in `c
 
 from __future__ import annotations
 
+import dataclasses
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
 import click
+
+from snowflake_semantic_tools.adapters.locations import ProjectPaths
 
 Decorator = Callable[[Callable[..., Any]], Callable[..., Any]]
 
@@ -128,3 +131,31 @@ def threads_option() -> Decorator:
 def no_detailed_exitcode_option() -> Decorator:
     """The `--no-detailed-exitcode` flag, which turns exit 2 into exit 0."""
     return click.option("--no-detailed-exitcode", is_flag=True)
+
+
+def model_path_options() -> Decorator:
+    """`--dbt` and `--semantic`, existing paths standing in for the dbt and semantic models paths."""
+    existing = click.Path(exists=True, file_okay=False, path_type=Path)
+    return stacked(
+        click.option("--dbt", "dbt_dir", type=existing),
+        click.option("--semantic", "semantic_dir", type=existing),
+    )
+
+
+def with_model_paths(files: ProjectPaths, dbt_dir: Path | None, semantic_dir: Path | None) -> ProjectPaths:
+    """Return `files` reading `--dbt` and `--semantic` in place of the configured paths, when given."""
+    return dataclasses.replace(
+        files,
+        model_paths=(_project_relative(files, dbt_dir),) if dbt_dir is not None else files.model_paths,
+        semantic_models_dir=(
+            _project_relative(files, semantic_dir) if semantic_dir is not None else files.semantic_models_dir
+        ),
+    )
+
+
+def _project_relative(files: ProjectPaths, path: Path) -> str:
+    """Name a path as the configuration would: relative to the project, else in full."""
+    try:
+        return path.resolve().relative_to(files.project_dir.resolve()).as_posix()
+    except ValueError:
+        return str(path.resolve())

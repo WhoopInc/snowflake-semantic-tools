@@ -9,11 +9,16 @@ from __future__ import annotations
 
 from snowflake_semantic_tools.cli.commands import (
     apply,
+    baseline,
     clean,
     compile,
     debug,
+    diff,
     docs,
+    drop,
     enrich,
+    explain,
+    format,
     init,
     list,
     migrate,
@@ -38,6 +43,11 @@ for _command in (
     enrich.enrich,
     test.test_command,
     docs.docs,
+    explain.explain_command,
+    format.format_command,
+    baseline.baseline,
+    diff.diff,
+    drop.drop,
 ):
     cli.add_command(_command)
 document_options(cli)

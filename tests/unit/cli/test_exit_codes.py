@@ -15,6 +15,7 @@ import pytest
 from click.testing import CliRunner, Result
 
 from snowflake_semantic_tools.cli.main import cli
+from snowflake_semantic_tools.domain.model.lifecycle import OwnershipMarker
 from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
 from tests.helpers.cli_projects import (
     REPO_ROOT,
@@ -41,8 +42,15 @@ EXIT_CODES = {
     "docs": {0, 1, 2, 3, 4},
     "clean": {0, 1, 3, 4},
     "migrate": {0, 1, 2, 3, 4},
+    "explain": {0, 3},
+    "drop": {0, 1, 3, 4, 5, 130},
+    "diff": {0, 1, 2, 3, 4, 5},
+    "baseline": {0, 1, 3, 4},
+    "format": {0, 1, 2, 3, 4},
 }
 GOLDEN = REPO_ROOT / "tests" / "golden" / "expected" / "ddl"
+DROP = ("DB.S.V", "--type", "semantic_view", "--target", "dev", "--yes")
+PROFILES_FIXTURE = REPO_ROOT / "tests" / "fixtures" / "reference_project" / "profiles.yml"
 Scenario = Callable[[Path, pytest.MonkeyPatch], Result]
 
 
@@ -70,6 +78,13 @@ def _dbt_project(root: Path) -> Path:
     return root
 
 
+def _yaml_project(root: Path, text: str) -> Path:
+    (root / "sst_config.yml").write_text("project:\n  semantic_models_dir: semantic_models\n", encoding="utf-8")
+    (root / "semantic_models").mkdir()
+    (root / "semantic_models" / "views.yml").write_text(text, encoding="utf-8")
+    return root
+
+
 def _broken(tmp: Path) -> Path:
     project = project_copy(tmp)
     break_menu_view(project)
@@ -88,6 +103,7 @@ SCENARIOS: dict[tuple[str, int], Scenario] = {
     ("init", 1): lambda tmp, _: _run("init", "--project-dir", str(_dbt_project(tmp / "p")), "--check-only"),
     ("init", 3): lambda tmp, _: _run("init", "-s"),
     ("init", 4): lambda tmp, _: _run("init", "--project-dir", str(tmp / "not-dbt")),
+    ("debug", 1): lambda tmp, _: _debug_invalid(tmp),
     ("debug", 0): lambda tmp, _: _run("debug", "--project-dir", str(project_copy(tmp)), "--no-connect"),
     ("debug", 3): lambda tmp, _: _run("debug", "--select", "x"),
     ("debug", 4): lambda tmp, _: _run("debug", "--project-dir", str(tmp)),
@@ -123,7 +139,7 @@ SCENARIOS: dict[tuple[str, int], Scenario] = {
         "test", *common(project_copy(tmp)), "--suite", "golden", "--golden-dir", str(GOLDEN)
     ),
     ("test", 1): lambda tmp, _: _run("test", *common(project_copy(tmp)), "--suite", "golden", "--golden-dir", str(tmp)),
-    ("test", 3): lambda tmp, _: _run("test"),
+    ("test", 3): lambda tmp, _: _run("test", "--suite", "every"),
     ("test", 4): lambda tmp, _: _run("test", "--project-dir", str(tmp), "--suite", "golden"),
     ("test", 5): lambda tmp, mp: _connected(tmp, mp, "test", "--suite", "smoke"),
     ("docs", 0): lambda tmp, _: _run("docs", "--project-dir", str(REPO_ROOT), "--check"),
@@ -134,10 +150,42 @@ SCENARIOS: dict[tuple[str, int], Scenario] = {
     ("clean", 1): lambda tmp, mp: _clean_refused(tmp, mp),
     ("clean", 3): lambda tmp, _: _run("clean", "--force"),
     ("clean", 4): lambda tmp, _: _run("clean", "--project-dir", str(tmp)),
+    ("baseline", 0): lambda tmp, _: _run("baseline", "show", *common(project_copy(tmp))),
+    ("baseline", 1): lambda tmp, _: _run("baseline", "add", "SST-VAL116", *common(project_copy(tmp))),
+    ("baseline", 3): lambda tmp, _: _run("baseline", "renew"),
+    ("baseline", 4): lambda tmp, _: _run("baseline", "add", "SST-CFG018", "--project-dir", str(tmp)),
+    ("diff", 0): lambda tmp, mp: _diff(tmp, mp, "--from", "dev", "--to", "prod"),
+    ("diff", 1): lambda tmp, _: _run("diff", *common(project_copy(tmp)), "--to", "saved.json"),
+    ("diff", 2): lambda tmp, mp: _diff(tmp, mp),
+    ("diff", 3): lambda tmp, _: _run("diff", "--select", "a,b"),
+    ("diff", 4): lambda tmp, _: _run("diff", "--project-dir", str(tmp)),
+    ("diff", 5): lambda tmp, mp: _connected(tmp, mp, "diff"),
+    ("drop", 0): lambda tmp, mp: _drop(tmp, mp, exists=True),
+    ("drop", 1): lambda tmp, mp: _drop(tmp, mp, exists=False),
+    ("drop", 3): lambda tmp, _: _run("drop", "DB.S.V", "--type", "semantic_view", "--target", "dev"),
+    ("drop", 4): lambda tmp, _: _run("drop", *DROP, "--project-dir", str(tmp)),
+    ("drop", 5): lambda tmp, mp: _drop_without_snowflake(tmp, mp, _unreachable),
+    ("drop", 130): lambda tmp, mp: _drop_without_snowflake(tmp, mp, _interrupt),
+    ("explain", 0): lambda tmp, _: _run("explain", "SST-VAL009", "--project-dir", str(tmp)),
+    ("explain", 3): lambda tmp, _: _run("explain", "SST-NOPE01"),
+    ("format", 0): lambda tmp, _: _run("format", "--project-dir", str(_yaml_project(tmp, "a: 1\n"))),
+    ("format", 1): lambda tmp, _: _run("format", "--project-dir", str(_yaml_project(tmp, "a: [1,\n"))),
+    ("format", 2): lambda tmp, _: _run("format", "--project-dir", str(_yaml_project(tmp, "a:   1\n")), "--check"),
+    ("format", 3): lambda tmp, _: _run("format", "--project-dir", str(_yaml_project(tmp, "a: 1\n")), "nothing.yml"),
+    ("format", 4): lambda tmp, _: _run("format", "--project-dir", str(tmp)),
     ("migrate", 0): lambda tmp, _: _run("migrate", "refs", "--project-dir", str(project_copy(tmp))),
     ("migrate", 3): lambda tmp, _: _run("migrate", "refs", "--bogus"),
     ("migrate", 4): lambda tmp, _: _run("migrate", "refs", "--project-dir", str(tmp)),
 }
+
+
+def _debug_invalid(tmp: Path) -> Result:
+    project = project_copy(tmp)
+    config = project / "sst_config.yml"
+    config.write_text(
+        config.read_text(encoding="utf-8") + "diagnostics:\n  severity_overrides:\n    SST-REG001: warning\n"
+    )
+    return _run("debug", "--project-dir", str(project), "--no-connect")
 
 
 def _debug_unreachable(tmp: Path, monkeypatch: pytest.MonkeyPatch) -> Result:
@@ -149,6 +197,33 @@ def _debug_unreachable(tmp: Path, monkeypatch: pytest.MonkeyPatch) -> Result:
 def _plan(tmp: Path, monkeypatch: pytest.MonkeyPatch, *flags: str) -> Result:
     project = project_copy(tmp)
     return invoke_with_port(monkeypatch, RecordedSnowflake(state={}), ["plan", *common(project), *flags])
+
+
+def _diff(tmp: Path, monkeypatch: pytest.MonkeyPatch, *flags: str) -> Result:
+    project = project_copy(tmp)
+    compile_project(project)
+    return invoke_with_port(monkeypatch, RecordedSnowflake(state={}), ["diff", *common(project), *flags])
+
+
+def _drop_project(tmp: Path) -> Path:
+    project = _dbt_project(tmp / "p")
+    (project / "profiles.yml").write_text(PROFILES_FIXTURE.read_text(encoding="utf-8"), encoding="utf-8")
+    (project / "dbt_project.yml").write_text("name: p\nprofile: sst_reference_impl\n", encoding="utf-8")
+    return project
+
+
+def _drop(tmp: Path, monkeypatch: pytest.MonkeyPatch, *, exists: bool) -> Result:
+    marker = OwnershipMarker("a" * 64, "b" * 64)
+    port = RecordedSnowflake(existing=("DB.S.V",) if exists else (), markers={"DB.S.V": marker})
+    return invoke_with_port(monkeypatch, port, ["drop", *DROP, "--project-dir", str(_drop_project(tmp))])
+
+
+def _drop_without_snowflake(
+    tmp: Path, monkeypatch: pytest.MonkeyPatch, broken: Callable[[pytest.MonkeyPatch], None]
+) -> Result:
+    project = _drop_project(tmp)
+    broken(monkeypatch)
+    return _run("drop", *DROP, "--project-dir", str(project))
 
 
 def _plan_broken(tmp: Path, monkeypatch: pytest.MonkeyPatch) -> Result:
