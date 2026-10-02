@@ -187,6 +187,8 @@ def unreferenced_tool_members(catalog: ToolCatalog, referenced: Iterable[tuple[s
 def config_tool_references(tree: Mapping[str, Any], catalog: ToolCatalog, *, file: str = CONFIG_FILE) -> DiagnosticBag:
     """Report each `{{ tool(...) }}` in a configuration value that names no declared group and member.
 
+    Values inside lists are read too; an item's subject is its list's key with the index, `key[0]`.
+
     Diagnostics:
         SST-CFG017: a configuration value's `tool()` names a group or member that is not declared.
     """
@@ -197,6 +199,10 @@ def config_tool_references(tree: Mapping[str, Any], catalog: ToolCatalog, *, fil
         if isinstance(value, Mapping):
             for key, item in value.items():
                 walk((*path, str(key)), item)
+        elif isinstance(value, (list, tuple)):
+            # The root is a mapping, so a list always sits below a key.
+            for index, item in enumerate(value):
+                walk((*path[:-1], f"{path[-1]}[{index}]"), item)
         elif isinstance(value, str):
             for group, name in _TOOL_CALL.findall(value):
                 if (group.casefold(), name.casefold()) not in declared:
