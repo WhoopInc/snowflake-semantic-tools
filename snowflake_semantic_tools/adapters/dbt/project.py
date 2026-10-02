@@ -17,7 +17,9 @@ import yaml
 from snowflake_semantic_tools.adapters.dbt.manifest import load_manifest_catalog
 from snowflake_semantic_tools.adapters.dbt.profiles import profile_output
 from snowflake_semantic_tools.adapters.errors import ProjectError
+from snowflake_semantic_tools.adapters.paths import resolve_within
 from snowflake_semantic_tools.domain.model.dbt import DbtCatalog, DbtModel, DbtTarget
+from snowflake_semantic_tools.domain.model.diagnostic import D, Origin
 
 YamlReader = Callable[[Path], Mapping[str, Any]]
 
@@ -40,8 +42,24 @@ def resolve_target(project_dir: Path, target_name: str | None = None) -> DbtTarg
 
 
 def target_path(project_dir: Path, read_yaml: YamlReader) -> Path:
-    """The `manifest.json` dbt writes for this project, under dbt_project.yml's `target-path`."""
+    """The `manifest.json` dbt writes for this project, under dbt_project.yml's `target-path`.
+
+    Raises:
+        ProjectError: `target-path` resolves outside the project directory (SST-PRT009).
+
+    Diagnostics:
+        SST-PRT009: `target-path` resolves outside the project; raised.
+    """
     target_path = str(read_yaml(project_dir / "dbt_project.yml").get("target-path") or "target")
+    if resolve_within(project_dir, project_dir / target_path) is None:
+        diagnostic = D(
+            "SST-PRT009",
+            origin=Origin("dbt_project.yml"),
+            subject="config:dbt_project.yml",
+            path=f"target-path {target_path!r}",
+            detail="it resolves outside the project",
+        )
+        raise ProjectError(diagnostic.message, diagnostics=(diagnostic,))
     return project_dir / target_path / "manifest.json"
 
 

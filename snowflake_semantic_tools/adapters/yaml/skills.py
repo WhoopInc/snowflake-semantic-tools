@@ -10,11 +10,13 @@ from typing import Any
 import yaml
 
 from snowflake_semantic_tools.adapters.errors import ProjectError
+from snowflake_semantic_tools.adapters.paths import walk_refusal
 from snowflake_semantic_tools.adapters.yaml.fields import (
     checked_strings,
     checked_text,
     optional_string,
     project_relative,
+    refused,
     report_unknown_keys,
 )
 from snowflake_semantic_tools.adapters.yaml.parse import parse_yaml_bytes
@@ -33,12 +35,23 @@ def _published(path: Path, root: Path) -> bool:
 
 
 def load_skill_catalog(project_dir: Path, *, skills_dir: str, plugins_dir: str) -> SkillCatalog:
-    """Every `SKILL.md` folder under `skills_dir`, at any grouping depth, plus plugin manifests."""
+    """Every `SKILL.md` folder under `skills_dir`, at any grouping depth, plus plugin manifests.
+
+    Nothing reached through a symbolic link is read: a linked file or folder under `skills_dir`,
+    a linked plugin folder, or a linked plugin manifest is reported and left out. Each skill and
+    plugin also reports the codes `_load_skill` and `_load_plugin` list.
+
+    Diagnostics:
+        SST-PRT009: once per symbolic link under `skills_dir` or `plugins_dir` that would be read.
+    """
     diagnostics: list[Diagnostic] = []
     skills: list[Skill] = []
     root = project_dir / skills_dir
     if root.is_dir():
-        folders = sorted(path.parent for path in root.rglob(SKILL_FILE) if path.is_file() and _published(path, root))
+        # One walk reports every link under the root, so a skill folder's own walk need not.
+        walked = [path for path in sorted(root.rglob("*")) if _published(path, root)]
+        readable = [path for path in walked if not refused(project_dir, path, diagnostics)]
+        folders = sorted(path.parent for path in readable if path.name == SKILL_FILE and path.is_file())
         nested = {
             folder: tuple(other for other in folders if other != folder and other.is_relative_to(folder))
             for folder in folders
@@ -51,7 +64,11 @@ def load_skill_catalog(project_dir: Path, *, skills_dir: str, plugins_dir: str) 
     plugins: list[Plugin] = []
     plugin_root = project_dir / plugins_dir
     if plugin_root.is_dir():
-        for folder in sorted(path for path in plugin_root.iterdir() if path.is_dir() and _published(path, plugin_root)):
+        for folder in sorted(path for path in plugin_root.iterdir() if _published(path, plugin_root)):
+            if not folder.is_dir() or refused(
+                project_dir, folder, diagnostics, subject=artifact_key("plugin", folder.name)
+            ):
+                continue
             plugin = _load_plugin(project_dir, folder, diagnostics)
             if plugin is not None:
                 plugins.append(plugin)
@@ -88,10 +105,14 @@ def _load_skill(project_dir: Path, folder: Path, nested: tuple[Path, ...], diagn
                 path=project_relative(project_dir, child / SKILL_FILE),
             )
         )
+    # A linked file was reported by the catalog's walk of the skills root; here it is only left out.
     files = tuple(
         SkillFile(path.relative_to(folder).as_posix(), path.read_bytes())
         for path in sorted(folder.rglob("*"))
-        if path.is_file() and _published(path, folder) and not any(path.is_relative_to(child) for child in nested)
+        if path.is_file()
+        and _published(path, folder)
+        and not any(path.is_relative_to(child) for child in nested)
+        and walk_refusal(project_dir, path) is None
     )
     raw = next(item.content for item in files if item.path == SKILL_FILE)
     declared_name, description, body = _frontmatter(raw, skill_md, subject, diagnostics)
@@ -194,6 +215,7 @@ def _load_plugin(project_dir: Path, folder: Path, diagnostics: list[Diagnostic])
     Diagnostics:
         SST-VAL801: when the folder holds no manifest or both spellings, or the manifest's
             `name` is not the folder's.
+        SST-PRT009: when the manifest is a symbolic link; the plugin is left out.
         SST-PRS004: when the manifest holds a key SST does not read, at that key.
         SST-PRS003: when `description` or `owner_team` is not a string, or `skills` is not a list
             of strings.
@@ -216,6 +238,8 @@ def _load_plugin(project_dir: Path, folder: Path, diagnostics: list[Diagnostic])
         )
         return None
     manifest = manifests[0]
+    if refused(project_dir, manifest, diagnostics, subject=subject):
+        return None
     file = project_relative(project_dir, manifest)
     try:
         parsed = parse_yaml_bytes(manifest.read_bytes(), file)

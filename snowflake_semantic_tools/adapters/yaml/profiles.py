@@ -15,6 +15,7 @@ from snowflake_semantic_tools.adapters.yaml.fields import (
     checked_text,
     optional_int,
     project_relative,
+    refused,
     report_unknown_keys,
     unknown_keys,
 )
@@ -59,7 +60,7 @@ def load_profile_catalog(
     or MCP config; and every `*.md` at any depth below `commands_dir` is a command. Folders and
     files are read in name order, hidden entries and caches are skipped, and a missing
     directory contributes nothing. A profile, hook or MCP config that cannot be read is
-    reported and left out.
+    reported and left out, and so is anything reached through a symbolic link.
 
     Raises:
         OSError: A manifest, script, prompt, rule or command file cannot be read.
@@ -82,12 +83,14 @@ def load_profile_catalog(
         SST-LOD003: when a manifest holds only whitespace or comments.
         SST-LOD008: when a manifest holds more than one document.
         SST-LOD002: when a manifest's root is not a mapping.
+        SST-PRT009: when a folder or file that would be read is a symbolic link, or lies in a
+            linked folder; it is left out.
     """
     diagnostics: list[Diagnostic] = []
     profiles: list[DesktopProfile] = []
     shared: SharedProfile | None = None
     root = project_dir / profiles_dir
-    for folder in _folders(root):
+    for folder in _folders(project_dir, root, diagnostics):
         if folder.name == SHARED_PROFILE:
             shared = _load_shared(project_dir, folder, diagnostics)
             continue
@@ -96,22 +99,27 @@ def load_profile_catalog(
             profiles.append(profile)
     hooks = [
         hook
-        for folder in _folders(project_dir / hooks_dir)
+        for folder in _folders(project_dir, project_dir / hooks_dir, diagnostics)
         if (hook := _load_hook(project_dir, folder, diagnostics)) is not None
     ]
     configs = [
         config
-        for folder in _folders(project_dir / mcp_servers_dir)
+        for folder in _folders(project_dir, project_dir / mcp_servers_dir, diagnostics)
         if (config := _load_mcp(project_dir, folder, diagnostics)) is not None
     ]
     commands = _load_commands(project_dir, project_dir / commands_dir, diagnostics)
     return ProfileCatalog(tuple(profiles), shared, tuple(hooks), tuple(configs), DiagnosticBag(diagnostics), commands)
 
 
-def _folders(root: Path) -> tuple[Path, ...]:
+def _folders(project_dir: Path, root: Path, diagnostics: list[Diagnostic]) -> tuple[Path, ...]:
+    """Return the published folders directly under `root`, in name order; a linked one is reported."""
     if not root.is_dir():
         return ()
-    return tuple(sorted(path for path in root.iterdir() if path.is_dir() and _published(path, root)))
+    return tuple(
+        path
+        for path in sorted(root.iterdir())
+        if path.is_dir() and _published(path, root) and not refused(project_dir, path, diagnostics)
+    )
 
 
 def _manifest(folder: Path, names: tuple[str, ...]) -> tuple[Path | None, str | None]:
@@ -122,6 +130,8 @@ def _manifest(folder: Path, names: tuple[str, ...]) -> tuple[Path | None, str | 
 
 
 def _parse(project_dir: Path, path: Path, subject: str, diagnostics: list[Diagnostic]) -> dict[str, Any] | None:
+    if refused(project_dir, path, diagnostics, subject=subject):
+        return None
     file = project_relative(project_dir, path)
     try:
         parsed = parse_yaml_bytes(path.read_bytes(), file)
@@ -147,7 +157,9 @@ def _prompt(project_dir: Path, path: Path, subject: str, diagnostics: list[Diagn
 
 
 def _read_text(project_dir: Path, path: Path, subject: str, diagnostics: list[Diagnostic]) -> str | None:
-    """Return a file's UTF-8 text; None, reporting SST-PRS122 against `subject`, when it is not UTF-8."""
+    """Return a file's UTF-8 text; None, reporting SST-PRT009 or SST-PRS122, if linked or not UTF-8."""
+    if refused(project_dir, path, diagnostics, subject=subject):
+        return None
     try:
         return path.read_text(encoding="utf-8")
     except UnicodeDecodeError as exc:
@@ -294,7 +306,7 @@ def _load_commands(project_dir: Path, root: Path, diagnostics: list[Diagnostic])
         return ()
     commands: list[CommandFile] = []
     for path in sorted(root.rglob("*.md")):
-        if not path.is_file() or not _published(path, root):
+        if not _published(path, root) or refused(project_dir, path, diagnostics) or not path.is_file():
             continue
         relative = path.relative_to(root).as_posix()
         file = project_relative(project_dir, path)
@@ -374,6 +386,7 @@ def _load_hook(project_dir: Path, folder: Path, diagnostics: list[Diagnostic]) -
     Diagnostics:
         SST-VAL852: when the folder holds no manifest or both spellings, the hook is not of type
             `command`, it declares no `event` or `command`, or its script is absent or ambiguous.
+        SST-PRT009: when the manifest or a script is a symbolic link; it is left out.
         SST-PRS004: when the manifest holds a key SST does not read.
     """
     name = folder.name
@@ -411,7 +424,10 @@ def _load_hook(project_dir: Path, folder: Path, diagnostics: list[Diagnostic]) -
     scripts = [
         path
         for path in sorted(folder.iterdir())
-        if path.is_file() and path.name not in HOOK_FILES and _published(path, folder)
+        if path.name not in HOOK_FILES
+        and _published(path, folder)
+        and path.is_file()
+        and not refused(project_dir, path, diagnostics, subject=subject)
     ]
     declared = tree.get("script")
     if isinstance(declared, str):
@@ -456,6 +472,7 @@ def _load_mcp(project_dir: Path, folder: Path, diagnostics: list[Diagnostic]) ->
     Diagnostics:
         SST-VAL853: when the folder has no `mcp.json`, it is not UTF-8 JSON, or it is not one
             `mcpServers` object.
+        SST-PRT009: when `mcp.json` is a symbolic link; the config is left out.
     """
     name = folder.name
     subject = f"mcp:{name}"
@@ -472,6 +489,8 @@ def _load_mcp(project_dir: Path, folder: Path, diagnostics: list[Diagnostic]) ->
                 detail="folder has no mcp.json",
             )
         )
+        return None
+    if refused(project_dir, path, diagnostics, subject=subject):
         return None
     try:
         document = json.loads(path.read_text(encoding="utf-8"))

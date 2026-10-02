@@ -125,3 +125,42 @@ def test_plugin_manifests_are_parsed_and_checked(tmp_path: Path) -> None:
         ("plugin:odd", "SST-PRS003", "skills"),
         ("plugin:twice", "SST-VAL801", None),
     ]
+
+
+def test_linked_skills_files_folders_and_plugins_are_refused(tmp_path: Path) -> None:
+    project = tmp_path / "project"
+    outside = write(
+        tmp_path / "outside",
+        {
+            "skill/SKILL.md": GOOD.format(name="linked"),
+            "SKILL.md": GOOD.format(name="file"),
+            "plugin/plugin.yml": "description: Outside.\n",
+            "plugin.yml": "description: Outside.\n",
+        },
+    )
+    write(project, {"skills/kept/SKILL.md": GOOD.format(name="kept"), "plugins/local/README.md": "x"})
+    (project / "skills/linked").symlink_to(outside / "skill")
+    (project / "skills/file").mkdir()
+    (project / "skills/file/SKILL.md").symlink_to(outside / "SKILL.md")
+    (project / "plugins/linked").symlink_to(outside / "plugin")
+    (project / "plugins/local/plugin.yml").symlink_to(outside / "plugin.yml")
+    catalog = load_skill_catalog(project, skills_dir="skills", plugins_dir="plugins")
+    assert [skill.name for skill in catalog.skills] == ["kept"]
+    assert catalog.plugins == ()
+    assert [(item.code, item.context["path"]) for item in catalog.diagnostics] == [
+        ("SST-PRT009", "skills/file/SKILL.md"),
+        ("SST-PRT009", "skills/linked"),
+        ("SST-PRT009", "plugins/linked"),
+        ("SST-PRT009", "plugins/local/plugin.yml"),
+    ]
+
+
+def test_a_skills_root_reached_through_a_link_inside_the_project_is_refused(tmp_path: Path) -> None:
+    write(tmp_path, {"real/kept/SKILL.md": GOOD.format(name="kept")})
+    (tmp_path / "skills").symlink_to(tmp_path / "real")
+    catalog = load_skill_catalog(tmp_path, skills_dir="skills", plugins_dir="plugins")
+    assert catalog.skills == ()
+    assert {item.message for item in catalog.diagnostics} == {
+        "could not read skills/kept: skills is a symbolic link, which SST does not follow",
+        "could not read skills/kept/SKILL.md: skills is a symbolic link, which SST does not follow",
+    }

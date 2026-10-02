@@ -215,7 +215,6 @@
   "SST-PRT006": "declared by the catalog, not registered",
   "SST-PRT007": "template: catalog \"manifest schema '{found}' is unsupported\", engine \"manifest schema '{found}' is unsupported; expected '{expected}'\"",
   "SST-PRT008": "declared by the catalog, not registered",
-  "SST-PRT009": "declared by the catalog, not registered",
   "SST-PRT010": "declared by the catalog, not registered",
   "SST-PRT011": "declared by the catalog, not registered",
   "SST-PRT012": "declared by the catalog, not registered",

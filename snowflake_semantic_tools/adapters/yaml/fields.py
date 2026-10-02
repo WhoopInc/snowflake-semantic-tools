@@ -5,7 +5,7 @@ the wrong type as its empty sentinel without a word. A checked reader (`checked_
 `checked_strings`, `checked_list`, `checked_mapping`) does the same and also reports the value
 (SST-PRS003) into the caller's diagnostics list, and `report_unknown_keys` reports the keys a
 parser does not read (SST-PRS004). No reader raises. `project_relative` is the path a
-diagnostic names a file by.
+diagnostic names a file by, and `refused` reports a file a folder walk must not read.
 """
 
 from __future__ import annotations
@@ -14,6 +14,7 @@ from collections.abc import Callable, Iterable
 from pathlib import Path
 from typing import Any
 
+from snowflake_semantic_tools.adapters.paths import walk_refusal
 from snowflake_semantic_tools.domain.model.diagnostic import D, Diagnostic, Origin
 
 
@@ -191,3 +192,18 @@ def project_relative(project_dir: Path, path: Path) -> str:
         ValueError: `path` is not under `project_dir`.
     """
     return path.relative_to(project_dir).as_posix()
+
+
+def refused(project_dir: Path, path: Path, diagnostics: list[Diagnostic], *, subject: str | None = None) -> bool:
+    """Report a file or folder a project walk must not read, and return True; False when it may be read.
+
+    Diagnostics:
+        SST-PRT009: when `path`, or a folder between the project and it, is a symbolic link, or
+            it resolves outside the project.
+    """
+    reason = walk_refusal(project_dir, path)
+    if reason is None:
+        return False
+    file = project_relative(project_dir, path)
+    diagnostics.append(D("SST-PRT009", origin=Origin(file), subject=subject, path=file, detail=reason))
+    return True
