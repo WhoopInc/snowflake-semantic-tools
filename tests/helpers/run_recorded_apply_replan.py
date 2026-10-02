@@ -7,6 +7,7 @@ import argparse
 import json
 import pathlib
 import tempfile
+from collections.abc import Callable, Sequence
 
 from click.testing import CliRunner
 from run_recorded_plan import recorded
@@ -14,7 +15,7 @@ from run_recorded_plan import recorded
 from snowflake_semantic_tools.app.compile.evals import CompiledEval
 from snowflake_semantic_tools.cli import main as cli_module
 from snowflake_semantic_tools.cli.wiring.compile import compile_result
-from snowflake_semantic_tools.domain.model.lifecycle import OwnershipMarker, QueryResult, ShowRow
+from snowflake_semantic_tools.domain.model.lifecycle import ExecResult, OwnershipMarker, QueryResult, ShowRow
 
 OBJECT_TYPES = {
     "semantic_view": "SEMANTIC VIEW",
@@ -49,8 +50,9 @@ def main() -> None:
     project_dir = args.project_dir.resolve()
     manifest_path = args.manifest.resolve()
     port = recorded(args.observation)
-    port.close = lambda: None  # type: ignore[attr-defined]
-    cli_module.SnowflakeConnector = lambda params: port  # type: ignore[assignment]
+    port.close = lambda: None
+    # Swap the connector class for a factory returning the recorded double.
+    cli_module.SnowflakeConnector = lambda params: port  # type: ignore[assignment, misc]
     common = [
         "--project-dir",
         str(project_dir),
@@ -95,19 +97,19 @@ def main() -> None:
             for item in compiled.compiled
             if isinstance(item, CompiledEval)
         }
-        original_query = port.query
+        original_query: Callable[[str, object], QueryResult] = port.query
 
-        def query(sql: str, params=None):
+        def query(sql: str, params: object = None) -> QueryResult:
             prefix = "SELECT COUNT(*) AS ROW_COUNT FROM "
             if sql.startswith(prefix) and sql[len(prefix) :] in row_counts:
                 port.queries.append((sql, params))
                 return QueryResult(("ROW_COUNT",), ((row_counts[sql[len(prefix) :]],),))
             return original_query(sql, params)
 
-        port.query = query  # type: ignore[method-assign]
-        original_execute = port.execute_script
+        port.query = query
+        original_execute: Callable[[Sequence[str]], ExecResult] = port.execute_script
 
-        def execute_with_markers(statements):
+        def execute_with_markers(statements: Sequence[str]) -> ExecResult:
             result = original_execute(statements)
             if not result.ok:
                 return result
@@ -123,7 +125,7 @@ def main() -> None:
                     )
             return result
 
-        port.execute_script = execute_with_markers  # type: ignore[method-assign]
+        port.execute_script = execute_with_markers
         applied = invoke(
             runner,
             [

@@ -8,8 +8,8 @@ the outcome reports the write even if checking it then failed, so state keeps th
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import replace
-from typing import Mapping
 
 from snowflake_semantic_tools.app.apply.errors import _exception_error, _failed, _rendered_ddl, _script_error, _skipped
 from snowflake_semantic_tools.domain.model.identifier import Identifier

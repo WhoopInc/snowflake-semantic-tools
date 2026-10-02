@@ -4,7 +4,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from snowflake_semantic_tools.adapters.yaml.documents import discover_yaml, load_documents
+import pytest
+
+from snowflake_semantic_tools.adapters.yaml.documents import ParsedYaml, discover_yaml, load_documents
 from snowflake_semantic_tools.adapters.yaml.parse import parse_yaml_bytes
 
 
@@ -30,7 +32,7 @@ def test_load_calls_the_document_reader_once_per_file(tmp_path: Path) -> None:
     (root / "two.yml").write_text("snowflake_metrics: []\n", encoding="utf-8")
     calls: list[Path] = []
 
-    def counted(raw: bytes, path: str):
+    def counted(raw: bytes, path: str) -> ParsedYaml:
         calls.append(Path(path))
         return parse_yaml_bytes(raw, path)
 
@@ -52,7 +54,7 @@ def test_root_key_owns_content_even_under_a_misleading_directory(tmp_path: Path)
     assert documents.under(tmp_path / "semantic_models", "snowflake_metrics") == ()
 
 
-def test_load_reads_each_file_once(tmp_path: Path, monkeypatch) -> None:
+def test_load_reads_each_file_once(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     root = tmp_path / "semantic_models" / "metrics"
     root.mkdir(parents=True)
     path = root / "one.yml"

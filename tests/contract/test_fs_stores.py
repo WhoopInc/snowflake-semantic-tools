@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -43,7 +43,7 @@ def test_plan_store_detects_tampering_and_shape_errors(tmp_path: Path) -> None:
 
 
 def test_state_lock_enforces_exclusivity_and_stale_break(tmp_path: Path) -> None:
-    now = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    now = datetime(2026, 1, 1, tzinfo=UTC)
     store = StateFileStore(tmp_path / "state.json", now=lambda: now)
     assert store.acquire_lock("one", break_stale=False) == (True, None, False)
     assert store.acquire_lock("two", break_stale=False) == (False, "one", False)

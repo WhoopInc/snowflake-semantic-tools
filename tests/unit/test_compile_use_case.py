@@ -15,6 +15,7 @@ from snowflake_semantic_tools.app.compile import CompiledView, CompileResult, Co
 from snowflake_semantic_tools.domain.model.diagnostic import D, DiagnosticBag
 from snowflake_semantic_tools.domain.model.project import SemanticViewProject
 from snowflake_semantic_tools.domain.model.semantic_view import Column, ColumnKind, SemanticView, Table
+from tests.helpers.compile_builders import compiled_as
 
 
 class InMemorySource:
@@ -65,7 +66,7 @@ def test_the_source_is_consulted_once_per_run() -> None:
 
 
 def test_name_is_the_unqualified_tail_of_the_fqn() -> None:
-    compiled = CompileSemanticViews(InMemorySource(view("ALPHA"))).run_result().compiled[0]
+    compiled = compiled_as(CompileSemanticViews(InMemorySource(view("ALPHA"))).run_result(), CompiledView)
     assert compiled.view.fqn == "DB.SCH.ALPHA"
     assert compiled.name == "ALPHA"
 
@@ -73,18 +74,21 @@ def test_name_is_the_unqualified_tail_of_the_fqn() -> None:
 def test_model_and_ddl_are_both_retained() -> None:
     """The caller needs the name from the model and the bytes from the DDL."""
     columns = (Column(table="T", name="C", kind=ColumnKind.DIMENSION, expr="T.C"),)
-    compiled = CompileSemanticViews(InMemorySource(view("ALPHA", columns=columns))).run_result().compiled[0]
+    compiled = compiled_as(
+        CompileSemanticViews(InMemorySource(view("ALPHA", columns=columns))).run_result(), CompiledView
+    )
     assert compiled.view.dimensions == columns
     assert "T.C AS T.C" in compiled.ddl
 
 
 def test_compiled_artifact_metadata_is_deterministic() -> None:
-    compiled = CompileSemanticViews(InMemorySource(view("ALPHA"))).run_result().compiled[0]
+    compiled = compiled_as(CompileSemanticViews(InMemorySource(view("ALPHA"))).run_result(), CompiledView)
     assert compiled.artifact_key == "semantic_view:alpha"
     assert compiled.byte_length == len(compiled.canonical_ddl.encode("utf-8"))
     assert len(compiled.fingerprint) == 64
     assert (
-        compiled.fingerprint == CompileSemanticViews(InMemorySource(view("ALPHA"))).run_result().compiled[0].fingerprint
+        compiled.fingerprint
+        == compiled_as(CompileSemanticViews(InMemorySource(view("ALPHA"))).run_result(), CompiledView).fingerprint
     )
 
 

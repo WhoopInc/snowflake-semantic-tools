@@ -172,7 +172,8 @@ SPECS: tuple[ErrorSpec, ...] = (
         Severity.ERROR,
         "Metric references a window metric",
         "metric '{metric}' references '{other}', a window function metric",
-        "reference the metric the window applies to instead; Snowflake does not allow a window metric in another metric",
+        "reference the metric the window applies to instead; "
+        "Snowflake does not allow a window metric in another metric",
         demotable=False,
     ),
     spec(

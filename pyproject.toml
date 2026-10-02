@@ -39,24 +39,46 @@ pytest-cov = "6.0.0"
 mypy = "1.13.0"
 import-linter = "^2.1"
 types-PyYAML = "^6.0.12"
-isort = "5.13.2"
-black = "24.10.0"
+ruff = ">=0.16"
+hypothesis = ">=6.100"
+pytest-xdist = ">=3.6"
+mutmut = ">=3.2"
+bandit = ">=1.8"
+pip-audit = ">=2.7"
 
-[tool.black]
+[tool.ruff]
 line-length = 120
-exclude = '''
-/(
-    \.git
-    | \.hg
-    | \.mypy_cache
-    | \.tox
-    | \.venv
-    | _build
-    | buck-out
-    | build
-    | dist
-)/
-'''
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "C4", "SIM", "PIE", "T10", "LOG", "G", "ICN", "TID", "PGH"]
+
+# Absolute imports only; tests/unit/test_import_style.py enforces the same rule with its own scan.
+[tool.ruff.lint.flake8-tidy-imports]
+ban-relative-imports = "all"
+
+# cli/main.py imports `cli.commands` only for its side effect -- registering every command on
+# `cli` -- so the import is unused by name. The package's planning-identifier scan rejects a
+# rule code in source, so the exemption lives here rather than as an inline comment.
+[tool.ruff.lint.per-file-ignores]
+"snowflake_semantic_tools/cli/main.py" = ["F401"]
+
+# Frozen dataclasses (and DiagnosticBag, a tuple) are immutable, so sharing one instance as a
+# default argument is safe; B008 cannot tell them from mutable calls without this list.
+[tool.ruff.lint.flake8-bugbear]
+extend-immutable-calls = [
+    "snowflake_semantic_tools.app.evals.suite.EvalGateRequest",
+    "snowflake_semantic_tools.app.lifecycle.evals.EvalLifecycleConfig",
+    "snowflake_semantic_tools.domain.model.diagnostic.DiagnosticBag",
+    "snowflake_semantic_tools.domain.model.eval.EvalDefaults",
+    "snowflake_semantic_tools.domain.model.lifecycle.ApplyOptions",
+    "snowflake_semantic_tools.domain.model.lifecycle.rendered.DesiredMetadata",
+    "snowflake_semantic_tools.domain.model.lifecycle.rendered.PublishShape",
+    "snowflake_semantic_tools.domain.model.lifecycle.rendered.StatementPlan",
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["snowflake_semantic_tools", "tests"]
 
 [tool.coverage.run]
 branch = true
@@ -64,6 +86,7 @@ source = [
     "snowflake_semantic_tools/domain",
     "snowflake_semantic_tools/app",
     "snowflake_semantic_tools/cli",
+    "snowflake_semantic_tools/adapters",
 ]
 omit = ["tests/*"]
 
@@ -76,17 +99,13 @@ skip_covered = true
 output = "test-coverage-results/coverage.xml"
 
 [tool.mypy]
+strict = true
 ignore_missing_imports = true
 namespace_packages = true
 explicit_package_bases = true
 disallow_untyped_defs = true
 exclude = [
 ]
-
-[tool.isort]
-profile = "black"
-line_length = 120
-
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 # The repository root, so test modules can import shared test support as `tests.helpers.*`.
@@ -94,7 +113,7 @@ pythonpath = ["."]
 python_files = ["test_*.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
-addopts = "-v --tb=short --strict-markers --color=yes --durations=10 --maxfail=5"
+addopts = "-v --tb=short --strict-markers --color=yes --durations=10"
 log_cli = true
 log_cli_level = "WARNING"
 log_cli_format = "%(asctime)s [%(levelname)s] %(message)s"

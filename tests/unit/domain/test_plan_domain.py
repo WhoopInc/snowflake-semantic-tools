@@ -22,7 +22,7 @@ from snowflake_semantic_tools.domain.model.lifecycle import (
 )
 from snowflake_semantic_tools.domain.model.registry import SEMANTIC_REGISTRY
 from snowflake_semantic_tools.domain.plan import build_changeset, dependency_waves, topological_order
-from snowflake_semantic_tools.domain.state import STATE_SCHEMA_VERSION, AppliedEntry, ImpactIndex, State
+from snowflake_semantic_tools.domain.state import STATE_SCHEMA_VERSION, AppliedEntry, ImpactIndex, Manifest, State
 from tests.helpers.manifests import build_minimal_manifest
 
 
@@ -61,7 +61,9 @@ def observed(
     )
 
 
-def context(artifacts: dict[str, RenderedArtifact], applied: dict[str, AppliedEntry], manifest_id: str | None = None):
+def context(
+    artifacts: dict[str, RenderedArtifact], applied: dict[str, AppliedEntry], manifest_id: str | None = None
+) -> tuple[Manifest, State]:
     manifest = build_minimal_manifest(
         artifacts,
         project={},

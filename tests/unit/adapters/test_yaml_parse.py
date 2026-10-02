@@ -10,7 +10,7 @@ import pytest
 from snowflake_semantic_tools.adapters.errors import ProjectError
 from snowflake_semantic_tools.adapters.yaml.documents import ParsedYaml, SourcePosition, TemplateSource
 from snowflake_semantic_tools.adapters.yaml.parse import parse_yaml_bytes, read_yaml_file, read_yaml_mapping
-from snowflake_semantic_tools.domain.model.diagnostic import D, Origin
+from snowflake_semantic_tools.domain.model.diagnostic import D, Diagnostic, Origin
 
 
 def _raised(raw: bytes, path: str = "f.yml") -> ProjectError:
@@ -135,7 +135,7 @@ def test_read_yaml_file_collects_parse_diagnostics_after_what_the_sink_holds(tmp
 
 
 def test_an_unreadable_file_is_lod018_at_the_file_itself(tmp_path: Path) -> None:
-    sink: list = []
+    sink: list[Diagnostic] = []
     assert read_yaml_file(tmp_path / "gone.yml", "eval_metrics/gone.yml", sink) is None
     assert sink == [
         D(
@@ -148,7 +148,7 @@ def test_an_unreadable_file_is_lod018_at_the_file_itself(tmp_path: Path) -> None
 
 
 def test_an_unreadable_pointed_to_file_is_lod018_at_the_pointer(tmp_path: Path) -> None:
-    sink: list = []
+    sink: list[Diagnostic] = []
     pointer = Origin("agents/a/agent.yml", 1, 1)
     assert read_yaml_file(tmp_path / "gone.yml", "agents/a/evals/dataset.yml", sink, pointer_origin=pointer) is None
     assert sink == [D("SST-LOD018", file="agents/a/agent.yml", path="agents/a/evals/dataset.yml", origin=pointer)]

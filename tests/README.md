@@ -31,6 +31,9 @@ tests/
 │   ├── test_public_docs.py      # links, examples, and planning identifiers in the docs
 │   ├── test_release_hygiene.py  # nothing environment-specific in committed files
 │   └── test_*.py                # compile use case, manifest, renderer
+├── codes/                       # diagnostic codes against the 1.0 catalog: parity, emitted, tested (README.md)
+│   ├── catalog.json, allowlist/ # the catalog's declaration rows; shrink-only allowlists
+│   └── <area>/test_<code>.py    # a code's fires/silent pair
 ├── contract/                    # adapters against their ports: offline Snowflake ports, connector helpers, file stores, profile
 ├── fixtures/
 │   ├── reference_project/                # a dbt + SST project that uses every artifact type
@@ -46,6 +49,7 @@ tests/
                                  #   artifact_builders.py, compile_builders.py, eval_builders.py -- test values
                                  #   cli_projects.py -- the reference fixture, project copies, CLI invocations
                                  #   code_metrics.py, structure_rules.py, docstring_rules.py, import_rules.py -- the gates
+                                 #   code_guards.py -- the diagnostic-code guards and the catalog projection
                                  #   run_recorded_*.py -- run `sst` against a recorded Snowflake observation
 ```
 

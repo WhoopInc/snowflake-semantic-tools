@@ -42,9 +42,8 @@ def test_relative_links_and_anchors_resolve(page: Path) -> None:
             continue
         path, _, fragment = target.partition("#")
         destination = (page.parent / path).resolve() if path else page
-        if not destination.exists():
-            broken.append(target)
-        elif fragment and destination.suffix == ".md" and fragment not in _anchors(destination):
+        anchored = destination.suffix == ".md" and fragment
+        if not destination.exists() or (anchored and fragment not in _anchors(destination)):
             broken.append(target)
     assert not broken, f"{page.relative_to(REPO_ROOT)}: {broken}"
 

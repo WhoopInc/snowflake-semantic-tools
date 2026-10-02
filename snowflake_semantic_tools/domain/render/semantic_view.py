@@ -80,7 +80,7 @@ def render_table(table: Table) -> str:
         out += f" UNIQUE ({', '.join(unique_key)})"
     if table.distinct_range:
         start, end = table.distinct_range
-        out += f" CONSTRAINT {table.logical_name}_DISTINCT_RANGE DISTINCT RANGE " f"BETWEEN {start} AND {end} EXCLUSIVE"
+        out += f" CONSTRAINT {table.logical_name}_DISTINCT_RANGE DISTINCT RANGE BETWEEN {start} AND {end} EXCLUSIVE"
     out += _synonyms(table.synonyms)
     out += _comment(table.comment)
     return out

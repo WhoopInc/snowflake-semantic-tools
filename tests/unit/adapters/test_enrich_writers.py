@@ -99,7 +99,8 @@ def test_column_updates_edit_each_sst_block_where_it_is_and_append_new_columns()
             "        description: 'it''s free text'\n        config:\n          meta:\n            sst:\n"
             "              synonyms:\n                - remark\n                - 'no'\n"
             "      - name: added\n        config:\n          meta:\n            sst:\n"
-            "              data_type: TEXT\n              sample_values:\n                - 'on'\n                - x\n",
+            "              data_type: TEXT\n              sample_values:\n"
+            "                - 'on'\n                - x\n",
         )
     )
     assert written.text == expected

@@ -1,4 +1,7 @@
-"""The whole-project compile, driven by an in-memory `ProjectInputs`: what it reads, in what order, and what it builds."""
+"""The whole-project compile, driven by an in-memory `ProjectInputs`.
+
+What it reads, in what order, and what it builds.
+"""
 
 from __future__ import annotations
 

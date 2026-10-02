@@ -7,9 +7,9 @@ and records every query, script and upload.
 
 from __future__ import annotations
 
+from collections.abc import Mapping, Sequence
 from hashlib import md5
 from types import MappingProxyType
-from typing import Mapping, Sequence
 
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName, SchemaScope
 from snowflake_semantic_tools.domain.model.lifecycle import (
@@ -20,7 +20,12 @@ from snowflake_semantic_tools.domain.model.lifecycle import (
     QueryResult,
     ShowRow,
 )
-from snowflake_semantic_tools.domain.ports.snowflake import StagedFileMetadata
+from snowflake_semantic_tools.domain.ports.snowflake import (
+    ExtensionObservation,
+    ExtensionVersion,
+    StagedFileMetadata,
+    StageObservation,
+)
 from snowflake_semantic_tools.domain.state import AppliedEntry, State
 
 
@@ -166,6 +171,47 @@ class InMemorySnowflake:
         if selector.upper().startswith("VERSION$"):
             return selector.upper()
         return self.agent_versions.get((qualified_name.sql, selector.casefold()), "VERSION$1")
+
+    # The rest of `SnowflakePort`, which no test of this double reaches: each refuses loudly, so a use
+    # case that starts relying on one fails here rather than reading an invented answer. A test that
+    # needs one subclasses this double and answers it.
+    def dataset_exists(self, qualified_name: QualifiedName) -> bool:
+        raise NotImplementedError(f"InMemorySnowflake does not model dataset_exists({qualified_name.sql})")
+
+    def table_columns(self, qualified_name: QualifiedName) -> tuple[tuple[str, str], ...] | None:
+        raise NotImplementedError(f"InMemorySnowflake does not model table_columns({qualified_name.sql})")
+
+    def observe_stage(self, qualified_name: QualifiedName) -> StageObservation:
+        raise NotImplementedError(f"InMemorySnowflake does not model observe_stage({qualified_name.sql})")
+
+    def stage_type(self, qualified_name: QualifiedName) -> str | None:
+        raise NotImplementedError(f"InMemorySnowflake does not model stage_type({qualified_name.sql})")
+
+    def observe_extension(self, qualified_name: QualifiedName) -> ExtensionObservation | None:
+        raise NotImplementedError(f"InMemorySnowflake does not model observe_extension({qualified_name.sql})")
+
+    def extension_versions(self, qualified_name: QualifiedName) -> tuple[ExtensionVersion, ...]:
+        raise NotImplementedError(f"InMemorySnowflake does not model extension_versions({qualified_name.sql})")
+
+    def list_location(self, location: str) -> tuple[str, ...]:
+        raise NotImplementedError(f"InMemorySnowflake does not model list_location({location})")
+
+    def ensure_profile_registry(self, qualified_name: QualifiedName) -> None:
+        raise NotImplementedError(f"InMemorySnowflake does not model ensure_profile_registry({qualified_name.sql})")
+
+    def read_profile_row(self, registry: QualifiedName, name: str) -> Mapping[str, object] | None:
+        raise NotImplementedError(f"InMemorySnowflake does not model read_profile_row({registry.sql}, {name})")
+
+    def merge_profile_row(
+        self, registry: QualifiedName, row: Mapping[str, object], *, expected_version: str | None
+    ) -> int:
+        raise NotImplementedError(f"InMemorySnowflake does not model merge_profile_row({registry.sql})")
+
+    def deactivate_profile_row(self, registry: QualifiedName, name: str, *, expected_version: str) -> int:
+        raise NotImplementedError(f"InMemorySnowflake does not model deactivate_profile_row({registry.sql}, {name})")
+
+    def desktop_profile_rows(self, registry: QualifiedName) -> tuple[Mapping[str, object], ...]:
+        raise NotImplementedError(f"InMemorySnowflake does not model desktop_profile_rows({registry.sql})")
 
     def read_state(self, state_table: QualifiedName, target_name: str) -> Mapping[str, AppliedEntry] | None:
         del state_table, target_name

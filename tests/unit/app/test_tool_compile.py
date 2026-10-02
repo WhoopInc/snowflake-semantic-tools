@@ -4,10 +4,11 @@ from dataclasses import replace
 from types import MappingProxyType
 
 from snowflake_semantic_tools.app.compile import CompileResult
-from snowflake_semantic_tools.app.compile.tools import CompileTools
+from snowflake_semantic_tools.app.compile.tools import CompiledTool, CompileTools
 from snowflake_semantic_tools.domain.model.diagnostic import D, Diagnostic, DiagnosticBag, Origin
 from snowflake_semantic_tools.domain.model.tool import ToolCatalog, ToolGroup, ToolMember, ToolOwnership, ToolParameter
 from tests.helpers.artifact_builders import rendered
+from tests.helpers.compile_builders import compiled_as
 
 
 def test_tool_compiler_applies_config_defaults_and_emits_only_managed_members() -> None:
@@ -51,7 +52,7 @@ def test_tool_compiler_applies_config_defaults_and_emits_only_managed_members() 
     assert "WAREHOUSE = WH" in rendered.ddl
     assert "TARGET_LAG = '1 hour'" in rendered.ddl
     assert rendered.required_relations[0].sql == "DB.S.DOCS"
-    published = result.compiled[0].rendered_for_publish("a" * 64)
+    published = compiled_as(result, CompiledTool).rendered_for_publish("a" * 64)
     assert f"[sst:{'a' * 64}:{rendered.fingerprint}]" in published.statements[0]
 
 
@@ -84,7 +85,7 @@ def test_compiled_tool_projections_cover_sidecars_relations_and_routine_markers(
         execute_as=None,
         dbt_relations={},
     ).run_result()
-    compiled = result.compiled[0]
+    compiled = compiled_as(result, CompiledTool)
     assert compiled.source_files == ("tools.yml", "routine.sql")
     assert compiled.member_keys == ()
     assert compiled.referenced_models == ()
@@ -196,7 +197,7 @@ def test_compiled_tool_publication_replaces_existing_search_comment() -> None:
         execute_as=None,
         dbt_relations={"docs": "DB.S.DOCS"},
     ).run_result()
-    compiled = result.compiled[0]
+    compiled = compiled_as(result, CompiledTool)
     published = compiled.rendered_for_publish("a" * 64)
     assert published.statements[0].count("COMMENT =") == 1
     assert "Owner''s search" in published.statements[0]
@@ -217,7 +218,7 @@ def test_compiled_tool_publication_covers_stage_and_empty_projections() -> None:
         "dev",
         frozenset(("dev",)),
     )
-    compiled = (
+    compiled = compiled_as(
         CompileTools(
             catalog,
             database="DB",
@@ -227,9 +228,8 @@ def test_compiled_tool_publication_covers_stage_and_empty_projections() -> None:
             embedding_model=None,
             execute_as=None,
             dbt_relations={},
-        )
-        .run_result()
-        .compiled[0]
+        ).run_result(),
+        CompiledTool,
     )
     assert compiled.source_files == ("tools.yml",)
     assert compiled.referenced_models == ()
@@ -255,7 +255,7 @@ def test_compiled_tool_omits_dbt_relation_without_required_relation() -> None:
         "dev",
         frozenset(("dev",)),
     )
-    compiled = (
+    compiled = compiled_as(
         CompileTools(
             catalog,
             database="DB",
@@ -265,9 +265,8 @@ def test_compiled_tool_omits_dbt_relation_without_required_relation() -> None:
             embedding_model=None,
             execute_as=None,
             dbt_relations={},
-        )
-        .run_result()
-        .compiled[0]
+        ).run_result(),
+        CompiledTool,
     )
     assert compiled.referenced_models == ("docs",)
     assert compiled.dbt_relations == ()
@@ -289,7 +288,7 @@ def test_compiled_tool_publication_adds_search_comment_when_missing() -> None:
         "dev",
         frozenset(("dev",)),
     )
-    compiled = (
+    compiled = compiled_as(
         CompileTools(
             catalog,
             database="DB",
@@ -299,9 +298,8 @@ def test_compiled_tool_publication_adds_search_comment_when_missing() -> None:
             embedding_model="model",
             execute_as=None,
             dbt_relations={"docs": "DB.S.DOCS"},
-        )
-        .run_result()
-        .compiled[0]
+        ).run_result(),
+        CompiledTool,
     )
     without_comment = replace(
         compiled, rendered=replace(compiled.rendered, ddl=compiled.rendered.ddl.replace("\n  COMMENT = ''", ""))
@@ -341,7 +339,7 @@ def test_compiled_tool_publication_covers_routine_without_signature() -> None:
         dbt_relations={},
     ).run_result()
     assert result.compiled
-    compiled = result.compiled[0]
+    compiled = compiled_as(result, CompiledTool)
     published = compiled.rendered_for_publish("d" * 64)
     assert published.statements[-1].startswith("ALTER PROCEDURE DB.S.PROCEDURE SET COMMENT")
 
@@ -369,7 +367,7 @@ def compile_stage(*diagnostics: Diagnostic) -> CompileResult:
 
 
 def test_a_tool_over_no_dbt_model_reads_no_relation() -> None:
-    compiled = compile_stage().compiled[0]
+    compiled = compiled_as(compile_stage(), CompiledTool)
     assert (compiled.member_keys, compiled.referenced_models, compiled.dbt_relations) == ((), (), ())
 
 
@@ -387,7 +385,7 @@ def test_a_search_service_reports_the_dbt_model_it_reads_with_its_relation() -> 
     catalog = ToolCatalog(
         (ToolGroup("platform", Origin("tools.yml"), "tools.yml", members=(search,)),), "dev", frozenset(("dev",))
     )
-    compiled = (
+    compiled = compiled_as(
         CompileTools(
             catalog,
             database="DB",
@@ -397,15 +395,14 @@ def test_a_search_service_reports_the_dbt_model_it_reads_with_its_relation() -> 
             embedding_model=None,
             execute_as=None,
             dbt_relations={"docs": "DB.S.DOCS"},
-        )
-        .run_result()
-        .compiled[0]
+        ).run_result(),
+        CompiledTool,
     )
     assert (compiled.referenced_models, compiled.dbt_relations) == (("docs",), (("docs", "DB.S.DOCS"),))
 
 
 def test_an_object_type_without_a_comment_keeps_its_statements_and_still_expects_the_marker() -> None:
-    compiled = compile_stage().compiled[0]
+    compiled = compiled_as(compile_stage(), CompiledTool)
     other = replace(compiled, rendered=rendered("OTHER"))
     published = other.rendered_for_publish("e" * 64)
     assert published.statements == other.rendered.statements

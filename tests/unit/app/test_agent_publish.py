@@ -48,7 +48,7 @@ def test_permanent_agent_update_commits_live_before_add_version_alias_and_tags()
     ).rendered_artifact
     assert value.update_live_statements[0] == "ALTER AGENT DB.S.AGENT COMMIT"
     assert value.update_live_statements[1] == (
-        "ALTER AGENT DB.S.AGENT\n  ADD VERSION FROM @DB.S.AGENT_SPECS/agent/abc1234/\n" "  COMMENT = 'git:abc1234'"
+        "ALTER AGENT DB.S.AGENT\n  ADD VERSION FROM @DB.S.AGENT_SPECS/agent/abc1234/\n  COMMENT = 'git:abc1234'"
     )
     assert value.update_live_statements[2].endswith("ALIAS = PROMOTED")
     assert value.update_live_statements[3].endswith("DOMAIN = 'sales'")
@@ -93,7 +93,7 @@ def test_temporary_agent_is_inline_and_has_no_upload() -> None:
 def test_agent_publish_appends_profile_comment_marker_and_secure_metadata() -> None:
     value = compiled()
     model = value.resolved.model
-    value = for_publication(
+    published = for_publication(
         replace(
             value,
             resolved=ResolvedAgent(
@@ -109,9 +109,11 @@ def test_agent_publish_appends_profile_comment_marker_and_secure_metadata() -> N
         stage=QualifiedName.parse("DB.S.AGENT_SPECS"),
         git_sha="abc1234",
     ).rendered_for_publish("b" * 64)
-    assert any("SET PROFILE" in statement for statement in value.statements)
-    assert any(f"[sst:{'b' * 64}:{value.fingerprint}] Scope comment" in statement for statement in value.statements)
-    assert value.statements[-1] == "ALTER AGENT DB.S.AGENT SET SECURE = TRUE"
+    assert any("SET PROFILE" in statement for statement in published.statements)
+    assert any(
+        f"[sst:{'b' * 64}:{published.fingerprint}] Scope comment" in statement for statement in published.statements
+    )
+    assert published.statements[-1] == "ALTER AGENT DB.S.AGENT SET SECURE = TRUE"
 
 
 def test_agent_update_unsets_removed_aliases_and_tags_and_clears_profile() -> None:

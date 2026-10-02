@@ -14,7 +14,8 @@ error to its diagnostic.
 
 from __future__ import annotations
 
-from typing import Any, Iterable, Mapping
+from collections.abc import Iterable, Mapping
+from typing import Any
 
 
 def optional_object(value: object, message: str) -> dict[str, Any]:
@@ -37,7 +38,7 @@ def pairs_from_json(value: Mapping[Any, object]) -> tuple[tuple[str, str], ...]:
 
 def pairs_to_json(pairs: Iterable[tuple[str, str]]) -> dict[str, str]:
     """Return `(key, value)` pairs as the JSON object `pairs_from_json` reads back."""
-    return {key: item for key, item in pairs}
+    return dict(pairs)
 
 
 def resources_from_json(values: Iterable[object], message: str) -> tuple[tuple[str, str], ...]:

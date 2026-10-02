@@ -89,7 +89,8 @@ def test_connected_validation_skips_non_views_and_projects_columns() -> None:
     validated = ValidateArtifacts(port).run(result, strict=False, connected=True)
     assert validated.success
     assert [query for query, _params in port.queries] == [
-        "EXPLAIN SELECT SUM(NULL) + NULL + NULL FROM (SELECT NULL AS ACTIVE, NULL AS CATEGORY WHERE FALSE) AS SST_VALIDATE",
+        "EXPLAIN SELECT SUM(NULL) + NULL + NULL "
+        "FROM (SELECT NULL AS ACTIVE, NULL AS CATEGORY WHERE FALSE) AS SST_VALIDATE",
         "EXPLAIN SELECT NULL FROM (SELECT NULL AS ACTIVE, NULL AS CATEGORY WHERE FALSE) AS SST_VALIDATE",
         "EXPLAIN SELECT NULL = TRUE FROM (SELECT NULL AS ACTIVE, NULL AS CATEGORY WHERE FALSE) AS SST_VALIDATE",
     ]

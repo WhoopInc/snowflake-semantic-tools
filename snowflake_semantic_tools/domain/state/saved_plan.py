@@ -67,7 +67,9 @@ class SavedChange:
             target=(
                 change.rendered.target.sql
                 if change.rendered is not None
-                else change.observed.qualified_name.sql if change.observed is not None else None
+                else change.observed.qualified_name.sql
+                if change.observed is not None
+                else None
             ),
             fingerprint=change.rendered.fingerprint if change.rendered else None,
             previous_marker=(

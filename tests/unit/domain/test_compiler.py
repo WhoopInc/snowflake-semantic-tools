@@ -41,7 +41,7 @@ def test_resolver_retains_origins_and_poisoned_state() -> None:
         "COUNT({{ ref('orders', 'id') }})",
         METRIC_EXPR,
         Origin("metrics.yml", 3, 11),
-        ResolveContext(catalog(), frozenset(), frozenset()),
+        ResolveContext(catalog(), frozenset(), {}),
         field="expression",
     )
     assert resolved.text == "COUNT(ORDERS.ID)"

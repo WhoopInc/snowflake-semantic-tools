@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from enum import Enum, auto
 from types import MappingProxyType
-from typing import Mapping
 
 
 class MemberSource(Enum):
@@ -134,8 +134,6 @@ class Registry:
 
 class RegistryIntegrityError(RuntimeError):
     """Artifact and member types that contradict one another, as `build_registry` finds them."""
-
-    pass
 
 
 def build_registry(artifact_types: tuple[ArtifactType, ...], member_types: tuple[MemberType, ...]) -> Registry:

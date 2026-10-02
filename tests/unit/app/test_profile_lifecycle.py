@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Mapping
 from dataclasses import replace
 from types import MappingProxyType
-from typing import Mapping
 
 from snowflake_semantic_tools.app.apply import ApplyArtifacts
 from snowflake_semantic_tools.app.compile.profiles import CompiledProfile, CompileProfiles, DesktopChannel
@@ -16,7 +16,14 @@ from snowflake_semantic_tools.app.manifest import build_manifest
 from snowflake_semantic_tools.app.plan import PlanArtifacts
 from snowflake_semantic_tools.domain.model.diagnostic import DiagnosticBag, Origin, Severity
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
-from snowflake_semantic_tools.domain.model.lifecycle import Action, ApplyOptions, ChangeReason, OutcomeStatus
+from snowflake_semantic_tools.domain.model.lifecycle import (
+    Action,
+    ApplyOptions,
+    ApplyResult,
+    ChangeReason,
+    ChangeSet,
+    OutcomeStatus,
+)
 from snowflake_semantic_tools.domain.model.profile import (
     DesktopProfile,
     HookDefinition,
@@ -88,7 +95,9 @@ def state(applied: dict[str, AppliedEntry] | None = None) -> State:
     return State(STATE_SCHEMA_VERSION, target(), "", "cfg", None, MappingProxyType(dict(applied or {})))
 
 
-def publish(port: RecordedSnowflake, compiled: dict[str, CompiledProfile], previous: State, *, prune: bool = False):
+def publish(
+    port: RecordedSnowflake, compiled: dict[str, CompiledProfile], previous: State, *, prune: bool = False
+) -> tuple[ChangeSet, ApplyResult, State]:
     handler = ProfileLifecycleHandler(port, compiled)
     rendered = {key: item.rendered_artifact for key, item in compiled.items()}
     manifest = build_manifest(CompileSkills(SkillCatalog(), None).run_result())
@@ -231,7 +240,7 @@ def test_lost_race_bad_pointer_and_merge_failure_are_reported() -> None:
     race = RecordedSnowflake(existing=())
     original = race.merge_profile_row
 
-    def rival_first(registry, row, *, expected_version):
+    def rival_first(registry: QualifiedName, row: Mapping[str, object], *, expected_version: str | None) -> int:
         original(registry, {"CONFIG_NAME": "analyst", "VERSION": "RIVAL"}, expected_version=None)
         return original(registry, row, expected_version=expected_version)
 
@@ -242,7 +251,7 @@ def test_lost_race_bad_pointer_and_merge_failure_are_reported() -> None:
     dangling = RecordedSnowflake(existing=())
     original_rows = dangling.desktop_profile_rows
 
-    def broken_pointer(registry):
+    def broken_pointer(registry: QualifiedName) -> tuple[Mapping[str, object], ...]:
         rows = [dict(row) for row in original_rows(registry)]
         for row in rows:
             row["SYSTEM_PROMPT_REPO"] = json.dumps({"snowflake_stage": "@DB.S.PROFILES/prompts/analyst/NOPE/AGENTS.md"})
@@ -263,7 +272,7 @@ def test_lost_race_bad_pointer_and_merge_failure_are_reported() -> None:
     assert result.outcomes[0].error is not None and result.outcomes[0].error.code == "SST-APL018"
 
     tampered = RecordedSnowflake(existing=())
-    tampered.read_staged_file = lambda path: b"x"  # type: ignore[method-assign]
+    tampered.read_staged_file = lambda stage_path: b"x"  # type: ignore[method-assign]
     _, result, _ = publish(tampered, compiled, state())
     assert result.outcomes[0].error is not None and "byte for byte" in result.outcomes[0].error.message
 
@@ -296,7 +305,9 @@ def test_prune_deactivates_only_under_prune_and_only_the_recorded_version() -> N
     entry = after.applied["profile:analyst"]
     change = handler.report_prune("profile:analyst", entry)
     assert handler.apply(change, ApplyOptions()).status is OutcomeStatus.SKIPPED
-    port.deactivate_profile_row(REGISTRY, "analyst", expected_version=port.desktop_profile_rows(REGISTRY)[0]["VERSION"])
+    port.deactivate_profile_row(
+        REGISTRY, "analyst", expected_version=str(port.desktop_profile_rows(REGISTRY)[0]["VERSION"])
+    )
     failed = handler.apply(change, ApplyOptions(allow_prune=True))
     assert failed.status is OutcomeStatus.FAILED and failed.error is not None and failed.error.code == "SST-APL012"
     unversioned = handler.report_prune("profile:analyst", replace(entry, component_fingerprints=()))

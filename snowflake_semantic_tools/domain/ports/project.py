@@ -9,8 +9,9 @@ reported at the same point on every run. An adapter satisfies the protocol struc
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Any, Mapping, Protocol
+from typing import Any, Protocol
 
 from snowflake_semantic_tools.domain.model.agent import AgentModel
 from snowflake_semantic_tools.domain.model.dbt import DbtCatalog

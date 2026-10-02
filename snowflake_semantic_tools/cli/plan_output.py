@@ -89,7 +89,9 @@ def print_plan(changeset: ChangeSet) -> None:
         target = (
             change.rendered.target.sql
             if change.rendered
-            else change.observed.qualified_name.sql if change.observed else "-"
+            else change.observed.qualified_name.sql
+            if change.observed
+            else "-"
         )
         alias = dict(change.rendered.component_fingerprints).get("alias") if change.rendered else None
         click.echo(

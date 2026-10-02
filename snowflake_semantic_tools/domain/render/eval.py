@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from typing import Mapping, Sequence
 
 from snowflake_semantic_tools.domain.model.eval import (
     CustomEvalMetric,
@@ -79,10 +79,7 @@ def render_source_table_sql(dataset_payload: str, source_table: QualifiedName) -
     """
     rows = json.loads(dataset_payload)
     statements = [
-        f"CREATE TABLE {source_table.sql} (\n"
-        "    INPUT_QUERY VARCHAR NOT NULL\n"
-        "  , GROUND_TRUTH VARIANT NOT NULL\n"
-        ")"
+        f"CREATE TABLE {source_table.sql} (\n    INPUT_QUERY VARCHAR NOT NULL\n  , GROUND_TRUTH VARIANT NOT NULL\n)"
     ]
     if rows:
         row_selects = []

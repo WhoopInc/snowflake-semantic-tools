@@ -51,9 +51,8 @@ def test_registry_has_m4_artifacts_and_all_seven_semantic_member_types() -> None
 
 def test_registry_ref_functions_are_unique_when_present() -> None:
     functions = [
-        value.ref_function
-        for value in (*SEMANTIC_REGISTRY.artifacts.values(), *SEMANTIC_REGISTRY.members.values())
-        if value.ref_function is not None
+        *(value.ref_function for value in SEMANTIC_REGISTRY.artifacts.values() if value.ref_function is not None),
+        *(value.ref_function for value in SEMANTIC_REGISTRY.members.values() if value.ref_function is not None),
     ]
     assert len(functions) == len(set(functions))
 

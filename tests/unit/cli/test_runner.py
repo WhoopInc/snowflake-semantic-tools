@@ -41,7 +41,7 @@ def test_int902_is_emitted_only_at_the_invariant_allowlist() -> None:
 
 
 def test_unexpected_json_failure_emits_one_error_document(monkeypatch: pytest.MonkeyPatch) -> None:
-    def fail(*args, **kwargs):
+    def fail(*args: object, **kwargs: object) -> None:
         del args, kwargs
         raise RuntimeError("unexpected failure")
 

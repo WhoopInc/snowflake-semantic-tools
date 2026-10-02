@@ -97,7 +97,7 @@ def test_reading_eval_state_never_creates_the_table_so_a_read_only_role_can_read
         query_results=(_payload_row(_baseline_payload(baseline())), _payload_row(_gate_payload(gate()))),
         existing=(TABLE.sql,),
     )
-    store = SnowflakeEvalStateStore(ReadOnlySnowflake(recorded), TABLE)  # type: ignore[arg-type]
+    store = SnowflakeEvalStateStore(ReadOnlySnowflake(recorded), TABLE)
 
     assert store.read_baseline("dev", "eval:a") == baseline()
     assert store.read_gate("dev", "eval:a") == gate()
@@ -107,7 +107,7 @@ def test_reading_eval_state_never_creates_the_table_so_a_read_only_role_can_read
 
 def test_a_missing_eval_state_table_reads_as_no_baseline_and_no_gate() -> None:
     recorded = RecordedSnowflake(existing=())
-    store = SnowflakeEvalStateStore(ReadOnlySnowflake(recorded), TABLE)  # type: ignore[arg-type]
+    store = SnowflakeEvalStateStore(ReadOnlySnowflake(recorded), TABLE)
 
     assert store.read_baseline("dev", "eval:a") is None
     assert store.read_gate("dev", "eval:a") is None
@@ -126,4 +126,4 @@ def test_writing_eval_state_still_ensures_the_table_first() -> None:
     assert port.scripts[1][0].startswith(f"MERGE INTO {TABLE.sql} AS target")
     assert port.scripts[3][0] == "BEGIN" and port.scripts[3][-1] == "COMMIT"
     with pytest.raises(SnowflakePortError, match="read-only"):
-        SnowflakeEvalStateStore(ReadOnlySnowflake(port), TABLE).write_gate("dev", gate())  # type: ignore[arg-type]
+        SnowflakeEvalStateStore(ReadOnlySnowflake(port), TABLE).write_gate("dev", gate())

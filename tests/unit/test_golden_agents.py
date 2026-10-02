@@ -7,7 +7,7 @@ import yaml
 from snowflake_semantic_tools.adapters.project_source import YamlProjectSource
 from snowflake_semantic_tools.adapters.yaml.agents import load_agents
 from snowflake_semantic_tools.adapters.yaml.skills import load_skill_catalog
-from snowflake_semantic_tools.app.compile.agents import AgentCompileContext, CompileAgents, ExtensionPin
+from snowflake_semantic_tools.app.compile.agents import AgentCompileContext, CompileAgents, CompiledAgent, ExtensionPin
 from snowflake_semantic_tools.app.compile.skills import CatalogChannel, CompiledExtension, CompileSkills
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
 
@@ -74,7 +74,7 @@ def test_reference_agents_match_complete_json_goldens() -> None:
         ),
     ).run_result()
     assert not result.diagnostics.has_errors
-    by_name = {compiled.name: compiled for compiled in result.compiled}
+    by_name = {compiled.name: compiled for compiled in result.compiled if isinstance(compiled, CompiledAgent)}
     for name in ("jaffle_analytics_agent", "jaffle_delivery_agent", "jaffle_minimal_agent"):
         expected = ROOT / "tests" / "golden" / "expected" / "agent" / f"{name}.json"
         assert by_name[name].payload == expected.read_text(encoding="utf-8").rstrip() + "\n", name

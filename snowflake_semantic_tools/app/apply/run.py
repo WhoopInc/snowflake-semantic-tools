@@ -7,9 +7,9 @@ what the state table does not hold.
 
 from __future__ import annotations
 
+from collections.abc import Callable, Mapping
 from concurrent.futures import ThreadPoolExecutor
 from types import MappingProxyType
-from typing import Callable, Mapping
 
 from snowflake_semantic_tools.app.apply.errors import _failed, _outcome_diagnostic, _rendered_ddl, _skipped
 from snowflake_semantic_tools.app.apply.one import ChangeApplier
@@ -292,7 +292,7 @@ class _WaveRun:
 
     def _record(self, runnable: list[Change], wave_outcomes: tuple[ApplyOutcome, ...]) -> None:
         """Record the wave's outcomes with their diagnostics; a failure under STOP_ALL skips the rest."""
-        for change, outcome in zip(runnable, wave_outcomes):
+        for change, outcome in zip(runnable, wave_outcomes, strict=False):
             self._outcomes.append(outcome)
             if outcome.grants is GrantCheck.UNREADABLE:
                 self._diagnostics.append(D("SST-APL008", artifact=change.key))

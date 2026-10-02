@@ -47,8 +47,9 @@ def recorded(path: pathlib.Path) -> RecordedSnowflake:
 def main() -> None:
     observation = pathlib.Path(sys.argv[1])
     port = recorded(observation)
-    port.close = lambda: None  # type: ignore[attr-defined]
-    cli_module.SnowflakeConnector = lambda params: port  # type: ignore[assignment]
+    port.close = lambda: None
+    # Swap the connector class for a factory returning the recorded double.
+    cli_module.SnowflakeConnector = lambda params: port  # type: ignore[assignment, misc]
     cli_module.cli.main(args=sys.argv[2:], prog_name="sst", standalone_mode=True)
 
 

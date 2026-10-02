@@ -6,7 +6,7 @@ value the config sets from one it inherits.
 
 from __future__ import annotations
 
-from typing import Mapping
+from collections.abc import Mapping
 
 from snowflake_semantic_tools.adapters.yaml.documents import ParsedYaml
 from snowflake_semantic_tools.adapters.yaml.evals.readers import (

@@ -8,7 +8,8 @@ stages, and extensions. The two differ only for names outside ASCII.
 
 from __future__ import annotations
 
-from typing import Any, Callable, Mapping
+from collections.abc import Callable, Mapping
+from typing import Any
 
 from snowflake_semantic_tools.adapters.snowflake.connector.session import Session, _variant_value
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName, SchemaScope

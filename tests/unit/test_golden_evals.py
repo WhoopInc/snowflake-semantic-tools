@@ -4,8 +4,9 @@ from pathlib import Path
 
 from snowflake_semantic_tools.adapters.project_source import YamlProjectSource
 from snowflake_semantic_tools.adapters.yaml.agents import load_agents
-from snowflake_semantic_tools.app.compile.evals import CompileEvals
+from snowflake_semantic_tools.app.compile.evals import CompiledEval, CompileEvals
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
+from tests.helpers.compile_builders import compiled_as
 
 ROOT = Path(__file__).parents[1]
 FIXTURE = ROOT / "fixtures" / "reference_project"
@@ -38,7 +39,7 @@ def test_reference_eval_matches_exact_source_sql_and_repeat_yaml_goldens() -> No
     ).run_result()
     assert not result.diagnostics.has_errors
     assert len(result.compiled) == 1
-    rendered = result.compiled[0].rendered
+    rendered = compiled_as(result, CompiledEval).rendered
     assert rendered.source_table_sql == (EXPECTED / "jaffle_analytics_source.sql").read_text(encoding="utf-8") + "\n"
     assert rendered.config_yaml == (EXPECTED / "jaffle_analytics_agent_repeat.yaml").read_text(encoding="utf-8")
     assert rendered.dataset_fingerprint == "dce1f8a88134aee78594fd507dd7679774bea07445fd2b68ab73975e80847b23"

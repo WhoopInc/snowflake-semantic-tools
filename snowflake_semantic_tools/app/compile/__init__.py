@@ -15,9 +15,9 @@ other typed compilers live in `tools`, `skills`, `profiles`, `agents`, and `eval
 from __future__ import annotations
 
 import re
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, replace
 from hashlib import sha256
-from typing import Iterable, Mapping
 
 from snowflake_semantic_tools.app.compile.base import (
     RENDER_ERRORS,

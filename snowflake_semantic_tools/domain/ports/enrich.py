@@ -1,14 +1,16 @@
 """The warehouse reads, the Cortex call, and the file edits `sst enrich` makes.
 
 Enrich reads a relation's columns, a few of their distinct values, and asks Cortex for
-synonyms; it never writes to Snowflake, only to the project's YAML files. These ports are separate from `SnowflakePort`, which
-the publishing commands use, so the doubles of one need not implement the other.
+synonyms; it never writes to Snowflake, only to the project's YAML files. These ports are
+separate from `SnowflakePort`, which the publishing commands use, so the doubles of one need
+not implement the other.
 """
 
 from __future__ import annotations
 
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from typing import Mapping, Protocol, Sequence
+from typing import Protocol
 
 from snowflake_semantic_tools.domain.model.enrich import ColumnUpdate, TableSynonymEdit, WarehouseColumn
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName

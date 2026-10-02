@@ -9,8 +9,9 @@ compilers of views, tools, and evals share.
 
 from __future__ import annotations
 
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
-from typing import Callable, Iterable, Protocol, TypeVar
+from typing import Protocol, TypeVar
 
 from snowflake_semantic_tools.domain.model.diagnostic import D, Diagnostic, DiagnosticBag, Origin, Severity
 from snowflake_semantic_tools.domain.model.lifecycle import RenderedArtifact

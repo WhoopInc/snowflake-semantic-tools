@@ -8,9 +8,9 @@ and merges their results in DDL order.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from types import MappingProxyType
-from typing import Mapping
 
 from snowflake_semantic_tools.app.compile import CompileArtifacts, CompileSemanticViews
 from snowflake_semantic_tools.app.compile.agents import AgentCompileContext, CompileAgents, CompiledAgent

@@ -21,7 +21,7 @@ from snowflake_semantic_tools.domain.state import AppliedEntry
 from tests.helpers.recorded_snowflake import ReadOnlySnowflake, RecordedSnowflake, ScriptedSnowflake
 
 
-def values():
+def values() -> tuple[QualifiedName, SchemaScope, OwnershipMarker, ShowRow, GrantRow, AppliedEntry]:
     name = QualifiedName.from_parts("db", "sch", "v")
     scope = SchemaScope(name.database, name.schema)
     marker = OwnershipMarker("a" * 64, "b" * 64)
@@ -32,7 +32,7 @@ def values():
 
 
 @pytest.mark.parametrize("adapter_type", [RecordedSnowflake, ScriptedSnowflake])
-def test_offline_adapters_implement_the_full_read_write_contract(adapter_type) -> None:
+def test_offline_adapters_implement_the_full_read_write_contract(adapter_type: type[RecordedSnowflake]) -> None:
     name, scope, marker, row, grant, entry = values()
     port = adapter_type(
         objects={("SEMANTIC VIEW", scope.sql): (row,)},

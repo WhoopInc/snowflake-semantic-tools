@@ -245,7 +245,6 @@ SPECS: tuple[ErrorSpec, ...] = (
         Severity.WARNING,
         "File formatting is not preserved",
         "{file}: writing it changes lines sst enrich did not edit",
-        "review the change with sst enrich --dry-run; once the file is written, later runs keep its "
-        "formatting exactly",
+        "review the change with sst enrich --dry-run; once the file is written, later runs keep its formatting exactly",
     ),
 )

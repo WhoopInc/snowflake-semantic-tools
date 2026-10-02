@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import dataclasses
 import json
+from collections.abc import Mapping, Sequence
 from hashlib import md5
 from pathlib import Path
+from typing import Any
 
 import pytest
 from click.testing import CliRunner
@@ -80,7 +82,7 @@ def configure_eval_as_applied(
     port.stage_formats["SST_REF_DEV.JAFFLE.EVAL_CONFIGS"] = EVAL_STAGE_FILE_FORMAT
     components = eval_change["component_fingerprints"]
     assert isinstance(components, dict)
-    config_path = "@SST_REF_DEV.JAFFLE.EVAL_CONFIGS/jaffle_analytics_agent/" f"{components['config']}.yaml"
+    config_path = f"@SST_REF_DEV.JAFFLE.EVAL_CONFIGS/jaffle_analytics_agent/{components['config']}.yaml"
     port.stage_files = {config_path}
     port.staged_file_metadata = {
         config_path: StagedFileMetadata(
@@ -98,7 +100,7 @@ def configure_eval_as_applied(
     )
     original_query = port.query
 
-    def query(sql: str, params=None):
+    def query(sql: str, params: Sequence[object] | Mapping[str, object] | None = None) -> QueryResult:
         if sql == f"SELECT COUNT(*) AS ROW_COUNT FROM {source_table}":
             port.queries.append((sql, params))
             return QueryResult(("ROW_COUNT",), ((2,),))
@@ -231,7 +233,7 @@ def test_plan_noop_uses_remote_state_not_a_prior_manifest(tmp_path: Path, monkey
         )
         for item in payload["data"]["changes"]
     }
-    objects = {}
+    objects: dict[tuple[str, str], list[ShowRow]] = {}
     for item in payload["data"]["changes"]:
         if item["artifact_type"] in ("eval", "skill", "plugin", "profile"):
             continue
@@ -467,7 +469,7 @@ def test_plan_honors_configured_strict_validation(tmp_path: Path, monkeypatch: p
     )
     original = __import__("snowflake_semantic_tools.cli.wiring.compile", fromlist=["compile_result"]).compile_result
 
-    def with_warning(*args, **kwargs):
+    def with_warning(*args: Any, **kwargs: Any) -> Any:
         result = original(*args, **kwargs)
         return dataclasses.replace(result, diagnostics=DiagnosticBag((D("SST-LOD003", file="warning.yml"),)))
 

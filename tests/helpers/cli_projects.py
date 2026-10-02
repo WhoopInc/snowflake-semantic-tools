@@ -32,7 +32,7 @@ def project_copy(tmp_path: Path) -> Path:
     return project
 
 
-def invoke_with_port(monkeypatch: pytest.MonkeyPatch, port: RecordedSnowflake, args: list[str]):
+def invoke_with_port(monkeypatch: pytest.MonkeyPatch, port: RecordedSnowflake, args: list[str]) -> Result:
     if "--project-dir" in args and args[0] in ("plan", "apply"):
         project = Path(args[args.index("--project-dir") + 1])
         if not (project / "target" / "sst" / "manifest.json").is_file():

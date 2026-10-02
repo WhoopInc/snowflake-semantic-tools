@@ -26,6 +26,7 @@ from snowflake_semantic_tools.domain.model.eval import (
     ThresholdRange,
 )
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
+from snowflake_semantic_tools.domain.model.lifecycle import QueryResult
 from snowflake_semantic_tools.domain.ports.snowflake import SnowflakePortError
 from snowflake_semantic_tools.domain.state import AppliedEntry
 from tests.helpers.app_ports import FixedClock, InMemoryStateStore
@@ -46,7 +47,7 @@ def published(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr("snowflake_semantic_tools.app.evals.run._compact_timestamp", lambda: "20260928T010203Z")
 
 
-def completed_attempt() -> list[object]:
+def completed_attempt() -> list[QueryResult | Exception]:
     return [status_result("COMPLETED"), result_rows()]
 
 
@@ -140,7 +141,9 @@ def test_a_captured_baseline_lets_the_next_gate_pass_then_report_a_regression() 
     assert isinstance(passing, EvalGateOutcome) and passing.passed and passing.data["gate_verdict"] == "passed"
     assert isinstance(regressed, EvalGateOutcome)
     assert regressed.data["gate_verdict"] == "regressed" and regressed.data["regression_count"] == 1
-    [regression] = regressed.data["regressions"]  # type: ignore[misc]
+    regressions = regressed.data["regressions"]
+    assert isinstance(regressions, list)
+    [regression] = regressions
     assert regression["metric_name"] == "answer_correctness"
     # A report-tier regression adds no diagnostic, so the run itself still passes.
     assert regressed.passed
@@ -188,6 +191,7 @@ def test_a_staged_config_whose_digest_state_trusts_is_not_staged_again() -> None
     port.upload(config_path, content)
     port.uploads.clear()
     digest = port.staged_file_md5s[config_path]
+    assert digest is not None
     entry = AppliedEntry(
         "f", "DB.S.X", "now", "run", "applied", "f", "m", component_fingerprints=(("config_stage_md5", digest),)
     )

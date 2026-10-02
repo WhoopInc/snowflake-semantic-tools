@@ -41,10 +41,10 @@ SST is a command-line compiler and publisher for a Snowflake semantic layer kept
 What `.github/workflows/test-and-lint.yml` runs; the exact coverage commands are in `CONTRIBUTING.md`.
 
 ```bash
-poetry run pytest tests/          # plus branch-coverage floors: domain 100%, app 95%, cli 90%
-poetry run mypy snowflake_semantic_tools
-poetry run black --check snowflake_semantic_tools/ tests/
-poetry run isort --check snowflake_semantic_tools/ tests/
+poetry run pytest tests/ -n auto  # plus branch-coverage floors: domain 100%, app 95%, cli 90%, adapters 90%
+poetry run mypy snowflake_semantic_tools tests   # strict
+poetry run ruff format --check snowflake_semantic_tools/ tests/
+poetry run ruff check snowflake_semantic_tools/ tests/
 poetry run lint-imports
 poetry run sst docs --check
 ```
@@ -52,10 +52,10 @@ poetry run sst docs --check
 ## Conventions
 
 - **Package manager**: Poetry (NOT uv). Python 3.11–3.13.
-- **Style**: black and isort (black profile), line length 120; mypy requires every function to be annotated.
+- **Style**: ruff formats, sorts imports, and lints, line length 120; mypy runs in strict mode over the package and the tests.
 - **Imports**: absolute, by full dotted path (`from snowflake_semantic_tools.domain.model.dbt import DbtCatalog`, never `from .dbt import ...`); tests share code only through `tests.helpers`. `tests/unit/test_import_style.py` enforces both.
 - **Docstrings and size**: follow "Docstrings and comments" in `CONTRIBUTING.md`; `tests/unit/test_docstrings.py` and `tests/unit/test_structure.py` enforce it with no exceptions.
-- **Diagnostics**: every problem is registered in `snowflake_semantic_tools/domain/model/diagnostic/specs/` (one module per code family) with a stable `SST-XXXnnn` code and an actionable suggestion (what is wrong AND how to fix it). Codes are never reused.
+- **Diagnostics**: every problem is registered in `snowflake_semantic_tools/domain/model/diagnostic/specs/` (one module per code family) with a stable `SST-XXXnnn` code and an actionable suggestion (what is wrong AND how to fix it). Codes are never reused. `tests/codes/` holds each code to the 1.0 catalog and requires it to be emitted and tested both ways; its allowlists only shrink (`tests/codes/README.md`).
 - **Config keys** are declared in `snowflake_semantic_tools/domain/model/config_schema/keys.py`.
 - **Generated pages**: after changing diagnostics, the config schema, CLI options, or the artifact registry, run `poetry run sst docs` and commit `docs/reference/*.md`.
 - **Version**: `snowflake_semantic_tools/_version.py` must equal the version in `pyproject.toml` (a test asserts it).

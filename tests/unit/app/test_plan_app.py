@@ -4,7 +4,16 @@ from dataclasses import replace
 from types import MappingProxyType
 
 from snowflake_semantic_tools.app.plan import PlanArtifacts, observe
-from snowflake_semantic_tools.domain.model.lifecycle import Action, GrantRow, ShowRow
+from snowflake_semantic_tools.domain.model.lifecycle import (
+    Action,
+    ApplyOptions,
+    ApplyOutcome,
+    Change,
+    CompositePlan,
+    GrantRow,
+    RenderedArtifact,
+    ShowRow,
+)
 from snowflake_semantic_tools.domain.model.registry import (
     SEMANTIC_REGISTRY,
     ArtifactLifecycle,
@@ -13,6 +22,7 @@ from snowflake_semantic_tools.domain.model.registry import (
     Registry,
 )
 from snowflake_semantic_tools.domain.ports.snowflake import SnowflakePortError
+from snowflake_semantic_tools.domain.state import AppliedEntry, AppliedResourceInput, Manifest
 from tests.helpers.app_ports import InMemorySnowflake
 from tests.helpers.artifact_builders import change, manifest, rendered, state, target
 
@@ -190,7 +200,19 @@ def test_plan_reports_composite_prune_when_generic_observation_has_no_change() -
 class _CompositeHandler:
     artifact_type = "virtual"
 
-    def report_prune(self, artifact_key, state_entry):
+    # Plan reaches a handler only to report a prune, so this double answers nothing else.
+    def plan(self, artifact: RenderedArtifact, state_entry: AppliedEntry | None, manifest: Manifest) -> CompositePlan:
+        raise NotImplementedError
+
+    def apply(self, change: Change, options: ApplyOptions) -> ApplyOutcome:
+        raise NotImplementedError
+
+    def merge_physical_resources(
+        self, current: tuple[tuple[str, str], ...], previous: AppliedEntry | None
+    ) -> tuple[AppliedResourceInput, ...]:
+        raise NotImplementedError
+
+    def report_prune(self, artifact_key: str, state_entry: AppliedEntry) -> Change:
         del state_entry
         artifact = replace(rendered("OLD"), key=artifact_key, artifact_type="virtual")
         return replace(change(artifact, Action.PRUNE), artifact_type="virtual")

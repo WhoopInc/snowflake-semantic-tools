@@ -9,8 +9,10 @@ from __future__ import annotations
 
 import json
 from collections import deque
+from collections.abc import Sequence
 
-from snowflake_semantic_tools.app.compile.evals import CompileEvals
+from snowflake_semantic_tools.app.compile.base import CompileResult
+from snowflake_semantic_tools.app.compile.evals import CompiledEval, CompileEvals
 from snowflake_semantic_tools.domain.model.agent import AgentModel
 from snowflake_semantic_tools.domain.model.diagnostic import DiagnosticBag, Origin
 from snowflake_semantic_tools.domain.model.eval import (
@@ -26,7 +28,7 @@ from snowflake_semantic_tools.domain.model.eval import (
     EvalSystemMetric,
     ResolvedEval,
 )
-from snowflake_semantic_tools.domain.model.identifier import QualifiedName
+from snowflake_semantic_tools.domain.model.identifier import QualifiedName, SchemaScope
 from snowflake_semantic_tools.domain.model.lifecycle import ExecResult, QueryResult
 from tests.helpers.app_ports import InMemorySnowflake
 
@@ -68,13 +70,20 @@ def resolved_eval() -> ResolvedEval:
     return ResolvedEval(agent, dataset, config, (metric,))
 
 
-def compile_eval(resolved: ResolvedEval | None = None):
+def compile_eval(resolved: ResolvedEval | None = None) -> CompileResult:
     value = resolved or resolved_eval()
     catalog = EvalCatalog((value,), value.custom_metrics, diagnostics=DiagnosticBag())
     return CompileEvals(
         catalog,
         agent_targets={"sales_agent": QualifiedName.parse("DB.S.SALES_AGENT")},
     ).run_result()
+
+
+def compiled_eval_of(resolved: ResolvedEval | None = None) -> CompiledEval:
+    """Compile one eval, `resolved_eval()` unless given, and return it as a `CompiledEval`."""
+    compiled = compile_eval(resolved).compiled[0]
+    assert isinstance(compiled, CompiledEval)
+    return compiled
 
 
 STATUS_COLUMNS = ("RUN_NAME", "AGENT_NAME", "AGENT_TYPE", "STATUS", "STATUS_DETAILS")
@@ -105,7 +114,7 @@ class EvalSnowflake(InMemorySnowflake):
         self.results = deque(results)
         self.start_results: deque[ExecResult] = deque()
 
-    def execute_script(self, statements) -> ExecResult:
+    def execute_script(self, statements: Sequence[str]) -> ExecResult:
         self.scripts.append(tuple(statements))
         return self.start_results.popleft() if self.start_results else ExecResult(True)
 
@@ -118,7 +127,7 @@ class EvalSnowflake(InMemorySnowflake):
             raise result
         return result
 
-    def query_in_context(self, scope, sql: str, params: object = None) -> QueryResult:
+    def query_in_context(self, scope: SchemaScope, sql: str, params: object = None) -> QueryResult:
         del scope
         return self.query(sql, params)
 

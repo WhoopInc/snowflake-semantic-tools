@@ -7,7 +7,7 @@ raises. `origin_at` finds where a node was written, falling back to the file's f
 
 from __future__ import annotations
 
-from typing import Mapping
+from collections.abc import Mapping
 
 from snowflake_semantic_tools.adapters.yaml.documents import ParsedYaml
 from snowflake_semantic_tools.adapters.yaml.fields import checked_strings, optional_int, optional_string

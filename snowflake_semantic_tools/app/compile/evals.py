@@ -67,7 +67,7 @@ class CompiledEval(StandaloneArtifact):
     @property
     def rendered_artifact(self) -> RenderedArtifact:
         combined = sha256(
-            f"dataset:{self.rendered.dataset_fingerprint}\nconfig:{self.rendered.config_fingerprint}\n".encode("utf-8")
+            f"dataset:{self.rendered.dataset_fingerprint}\nconfig:{self.rendered.config_fingerprint}\n".encode()
         ).hexdigest()
         artifact = RenderedArtifact.create(
             key=self.artifact_key,

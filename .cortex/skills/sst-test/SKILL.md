@@ -51,14 +51,16 @@ poetry run pytest -q --cov=snowflake_semantic_tools.app --cov-branch --cov-repor
   tests/unit/app tests/unit/test_compile_use_case.py tests/unit/test_manifest_v1.py
 poetry run pytest -q --cov=snowflake_semantic_tools.cli --cov-branch --cov-report=term --cov-fail-under=90 \
   tests/unit/cli
+poetry run pytest -q -n auto --cov=snowflake_semantic_tools.adapters --cov-branch --cov-report=term --cov-fail-under=90 \
+  tests/
 ```
 
 ### Step 5: Static gates
 
 ```bash
-poetry run mypy snowflake_semantic_tools
-poetry run black --check snowflake_semantic_tools/ tests/
-poetry run isort --check snowflake_semantic_tools/ tests/
+poetry run mypy snowflake_semantic_tools tests   # strict
+poetry run ruff format --check snowflake_semantic_tools/ tests/
+poetry run ruff check snowflake_semantic_tools/ tests/
 poetry run lint-imports       # the six import contracts
 poetry run sst docs --check   # docs/reference/*.md matches the registries
 ```
@@ -71,7 +73,7 @@ What the usual failures mean:
 - **Golden diff**: rendered output changed. Confirm the change is intended before any golden is edited (`tests/README.md`, Goldens).
 - **`lint-imports` or `test_ring_boundaries.py`**: an import crosses a ring; the output names the broken contract.
 - **`sst docs --check`**: a diagnostic, config key, CLI option, or artifact type changed; `poetry run sst docs` regenerates the pages.
-- **black / isort**: `poetry run black snowflake_semantic_tools/ tests/` and `poetry run isort snowflake_semantic_tools/ tests/` fix them.
+- **ruff**: `poetry run ruff format snowflake_semantic_tools/ tests/` and `poetry run ruff check --fix snowflake_semantic_tools/ tests/` fix most findings; the rest name the file and line.
 - **`test_import_style.py`**: a relative import, or a test importing a conftest or another test module; the message names the file and line. Write the full dotted path, and move shared test code into `tests/helpers/`.
 - **`test_release_hygiene.py` / `test_public_docs.py`**: a committed file carries an environment-specific name, a home-directory path, a planning identifier, or a broken docs link; the message names the file and line.
 

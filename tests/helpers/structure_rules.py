@@ -7,7 +7,7 @@ so a failure names how far past its budget the code is.
 from __future__ import annotations
 
 import ast
-from typing import Iterator
+from collections.abc import Iterator
 
 from tests.helpers.code_metrics import Definition, complexity, definitions, package_modules
 

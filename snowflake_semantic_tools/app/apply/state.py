@@ -9,8 +9,8 @@ when no entry names it yet.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass, replace
-from typing import Mapping
 
 from snowflake_semantic_tools.domain.model.lifecycle import (
     Action,

@@ -9,8 +9,9 @@ it uses. `ClockPort` and `StateStore` are the clock and the local state file.
 
 from __future__ import annotations
 
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from typing import Mapping, Protocol, Sequence
+from typing import Protocol
 
 from snowflake_semantic_tools.domain.model.diagnostic import Diagnostic
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName, SchemaScope

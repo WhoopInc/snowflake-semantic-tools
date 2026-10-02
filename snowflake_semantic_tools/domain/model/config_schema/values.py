@@ -8,8 +8,8 @@ the same keys through these functions, so they agree on what a configuration mea
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Mapping
 
 from snowflake_semantic_tools.domain.model.config_schema.keys import CONFIG_KEYS
 from snowflake_semantic_tools.domain.model.identifier import TargetIdentity

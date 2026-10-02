@@ -1,7 +1,7 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import FrozenInstanceError, replace
-from typing import Mapping
 
 import pytest
 
@@ -288,6 +288,7 @@ def test_dataset_name_template_bounds_and_collisions_are_checked_when_renderable
     # An over-long dataset name is VAL702 alone, never PRS010 as well.
     assert "SST-PRS010" not in codes
 
+    assert first_config.dataset is not None
     long_source = replace(first_config, dataset=replace(first_config.dataset, source_table_template="SRC_" + "X" * 130))
     source_codes = _codes(
         EvalCatalog((ResolvedEval(first.agent, first.dataset, long_source, first.custom_metrics),), ()),

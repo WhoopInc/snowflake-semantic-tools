@@ -4,16 +4,17 @@ from dataclasses import replace
 
 import pytest
 
+from snowflake_semantic_tools.app.compile.evals import CompiledEval
 from snowflake_semantic_tools.app.evals.gate import capture_baseline, evaluate_gate, persist_gate
 from snowflake_semantic_tools.app.evals.run import EvalRunResult
 from snowflake_semantic_tools.domain.model.diagnostic import DiagnosticBag
 from snowflake_semantic_tools.domain.model.eval import EvalMetricResult, EvalResultRow, EvalRunAttempt, ThresholdRange
-from tests.helpers.eval_builders import compile_eval
+from tests.helpers.eval_builders import compiled_eval_of
 from tests.helpers.eval_state_store import InMemoryEvalStateStore
 
 
 def attempt(name: str, values: tuple[tuple[str, str, bool], ...]) -> EvalRunAttempt:
-    rows = {}
+    rows: dict[str, list[EvalMetricResult]] = {}
     for question, metric, passed in values:
         rows.setdefault(question, []).append(EvalMetricResult(question, metric, 1.0 if passed else 0.0, passed))
     return EvalRunAttempt(
@@ -25,8 +26,8 @@ def attempt(name: str, values: tuple[tuple[str, str, bool], ...]) -> EvalRunAtte
     )
 
 
-def compiled_eval():
-    compiled = compile_eval().compiled[0]
+def compiled_eval() -> CompiledEval:
+    compiled = compiled_eval_of()
     run = compiled.resolved.config.run
     assert run is not None
     return replace(
@@ -194,11 +195,13 @@ def test_report_tier_does_not_block_and_gate_state_is_retrospective() -> None:
         attempt("current-1", (("q", "answer_correctness", False), ("q", "grounding", True))),
         attempt("current-2", (("q", "answer_correctness", False), ("q", "grounding", True))),
     )
+    run = compiled.resolved.config.run
+    assert run is not None
     report_compiled = replace(
         compiled,
         resolved=replace(
             compiled.resolved,
-            config=replace(compiled.resolved.config, run=replace(compiled.resolved.config.run, tier="report")),
+            config=replace(compiled.resolved.config, run=replace(run, tier="report")),
         ),
     )
     report_baseline = capture_baseline(

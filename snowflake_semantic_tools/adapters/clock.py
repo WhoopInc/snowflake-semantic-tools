@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import time
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from snowflake_semantic_tools.domain.ports.snowflake import ClockPort
 
@@ -17,7 +17,7 @@ class SystemClock(ClockPort):
     """
 
     def now_iso(self) -> str:
-        return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+        return datetime.now(UTC).isoformat().replace("+00:00", "Z")
 
     def monotonic_ms(self) -> int:
         return int(time.monotonic() * 1000)

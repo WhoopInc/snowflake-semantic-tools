@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import replace
 from types import MappingProxyType
+from typing import Any
 
 import pytest
 
@@ -254,7 +255,7 @@ def test_applied_resource_defaults_old_v2_documents_to_verified_and_rejects_bad_
     resource = AppliedResource("table", "DB.S.V")
     assert tuple(resource) == ("TABLE", "DB.S.V")
     with pytest.raises(ValueError, match="two or three values"):
-        replace(entry, physical_resources=(("TABLE",),))
+        replace(entry, physical_resources=(("TABLE",),))  # type: ignore[arg-type]  # deliberately malformed
     malformed = entry.as_dict()
     malformed["component_fingerprints"] = []
     with pytest.raises(ValueError, match="component metadata"):
@@ -262,7 +263,7 @@ def test_applied_resource_defaults_old_v2_documents_to_verified_and_rejects_bad_
 
 
 def test_state_v1_migrates_composite_metadata_without_losing_the_legacy_target() -> None:
-    legacy = {
+    legacy: dict[str, Any] = {
         "schema_version": 1,
         "target": target().as_dict(),
         "manifest_id": "m",
@@ -280,8 +281,8 @@ def test_state_v1_migrates_composite_metadata_without_losing_the_legacy_target()
             ).as_dict()
         },
     }
-    legacy["applied"]["semantic_view:v"].pop("component_fingerprints")  # type: ignore[index]
-    legacy["applied"]["semantic_view:v"].pop("physical_resources")  # type: ignore[index]
+    legacy["applied"]["semantic_view:v"].pop("component_fingerprints")
+    legacy["applied"]["semantic_view:v"].pop("physical_resources")
     migrated = migrate_state(legacy)
     parsed = State.from_dict(legacy)
     assert migrated["schema_version"] == STATE_SCHEMA_VERSION
@@ -290,7 +291,7 @@ def test_state_v1_migrates_composite_metadata_without_losing_the_legacy_target()
         AppliedResource("", "DB.S.V", ResourceStatus.VERIFIED),
     )
     assert legacy["schema_version"] == 1
-    assert "component_fingerprints" not in legacy["applied"]["semantic_view:v"]  # type: ignore[operator]
+    assert "component_fingerprints" not in legacy["applied"]["semantic_view:v"]
 
 
 def test_state_and_migration_reject_invalid_schema_and_applied_shapes() -> None:
@@ -342,14 +343,14 @@ def test_saved_plan_is_content_addressed_and_target_guarded() -> None:
     assert partial.plan_id != saved.plan_id
 
 
-def _saved_plan_document() -> dict[str, object]:
+def _saved_plan_document() -> dict[str, Any]:
     rendered = artifact()
     change = Change(rendered.key, "semantic_view", Action.CREATE, ChangeReason.NOT_PRESENT, rendered, None, (), 100)
     saved = SavedPlan.from_changeset(ChangeSet("m", target(), (change,), DiagnosticBag(), "now"), selected=("v",))
     return saved.as_dict()
 
 
-def _rehash(document: dict[str, object]) -> dict[str, object]:
+def _rehash(document: dict[str, Any]) -> dict[str, Any]:
     body = {key: value for key, value in document.items() if key != "plan_id"}
     return {**body, "plan_id": content_hash(body)}
 
@@ -359,7 +360,7 @@ def test_a_saved_plan_reads_back_what_it_wrote() -> None:
     restored = SavedPlan.from_dict(document)
     assert restored.as_dict() == document
     assert restored.selected == ("v",) and restored.changes[0].target is not None
-    change = {**document["changes"][0], "target": None, "fingerprint": None}  # type: ignore[dict-item]
+    change = {**document["changes"][0], "target": None, "fingerprint": None}
     del change["component_fingerprints"], change["physical_resources"]
     sparse = SavedPlan.from_dict(_rehash({**document, "changes": [change]}))
     assert sparse.changes[0].target is None and sparse.changes[0].component_fingerprints == ()
@@ -392,6 +393,6 @@ def test_a_saved_plan_that_is_not_one_is_refused(patch: dict[str, object], messa
 )
 def test_a_saved_change_refuses_mistyped_metadata(field: str, value: object, message: str) -> None:
     document = _saved_plan_document()
-    change = {**document["changes"][0], field: value}  # type: ignore[dict-item]
+    change = {**document["changes"][0], field: value}
     with pytest.raises(ValueError, match=message):
         SavedPlan.from_dict({**document, "changes": [change]})

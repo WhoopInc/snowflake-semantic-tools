@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from typing import Mapping
+from collections.abc import Mapping
 
 from snowflake_semantic_tools.domain.model.eval import (
     EvalBaselineMetric,
@@ -97,8 +97,7 @@ class SnowflakeEvalStateStore:
         if not self._port.object_exists("TABLE", self._table):
             return None
         result = self._port.query(
-            f"SELECT PAYLOAD FROM {self._table.sql} "
-            "WHERE TARGET_NAME = %s AND EVAL_KEY = %s AND RECORD_KIND = 'gate'",
+            f"SELECT PAYLOAD FROM {self._table.sql} WHERE TARGET_NAME = %s AND EVAL_KEY = %s AND RECORD_KIND = 'gate'",
             (target_name, eval_key),
         )
         if not result.rows:
@@ -137,7 +136,8 @@ class SnowflakeEvalStateStore:
         return (
             f"MERGE INTO {self._table.sql} AS target USING (SELECT "
             f"{string_literal(target_name)} TARGET_NAME, {string_literal(eval_key)} EVAL_KEY, "
-            f"{string_literal(kind)} RECORD_KIND, PARSE_JSON({string_literal(json.dumps(payload, sort_keys=True, separators=(',', ':')))}) PAYLOAD, "
+            f"{string_literal(kind)} RECORD_KIND, "
+            f"PARSE_JSON({string_literal(json.dumps(payload, sort_keys=True, separators=(',', ':')))}) PAYLOAD, "
             "CURRENT_TIMESTAMP() UPDATED_AT) source "
             "ON target.TARGET_NAME = source.TARGET_NAME AND target.EVAL_KEY = source.EVAL_KEY "
             "AND target.RECORD_KIND = source.RECORD_KIND "

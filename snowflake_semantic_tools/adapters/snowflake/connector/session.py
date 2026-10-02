@@ -11,8 +11,9 @@ from __future__ import annotations
 import contextlib
 import json
 import sys
+from collections.abc import Iterator, Mapping, Sequence
 from threading import RLock
-from typing import Any, Iterator, Mapping, Sequence, cast
+from typing import Any, cast
 
 import snowflake.connector
 from snowflake.connector import DictCursor

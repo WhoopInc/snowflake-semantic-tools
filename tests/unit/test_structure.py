@@ -10,7 +10,7 @@ import ast
 
 import pytest
 
-from tests.helpers import structure_rules
+from tests.helpers import code_metrics, structure_rules
 
 
 def test_package_code_stays_inside_every_budget() -> None:
@@ -60,4 +60,4 @@ def test_complexity_counts_boolean_operands_and_comprehension_clauses() -> None:
     function = ast.parse(source).body[0]
     assert isinstance(function, ast.FunctionDef)
     # 1 + comprehension (1) + its `if` (1) + `or` (1) + `and` (1)
-    assert structure_rules.complexity(function) == 5
+    assert code_metrics.complexity(function) == 5

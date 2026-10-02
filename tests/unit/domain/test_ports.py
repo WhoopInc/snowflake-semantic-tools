@@ -64,13 +64,13 @@ def test_execution_and_stage_port_methods_are_declarations_only() -> None:
     assert StagePort.observe_staged_file(source, "@x") is None  # type: ignore[arg-type]
     assert StagePort.stage_file_exists(source, "@x") is None  # type: ignore[arg-type]
     assert StagePort.read_staged_file(source, "@x") is None  # type: ignore[arg-type]
-    assert StagePort.upload(source, "@x", b"") is None  # type: ignore[arg-type]
+    StagePort.upload(source, "@x", b"")  # type: ignore[arg-type]
     assert StagePort.list_location(source, "@x/") is None  # type: ignore[arg-type]
 
 
 def test_profile_registry_and_state_port_methods_are_declarations_only() -> None:
     source = object()
-    assert ProfileRegistryPort.ensure_profile_registry(source, object()) is None  # type: ignore[arg-type]
+    ProfileRegistryPort.ensure_profile_registry(source, object())  # type: ignore[arg-type]
     assert ProfileRegistryPort.read_profile_row(source, object(), "x") is None  # type: ignore[arg-type]
     assert (
         ProfileRegistryPort.merge_profile_row(source, object(), {}, expected_version=None) is None  # type: ignore[arg-type]
@@ -80,8 +80,8 @@ def test_profile_registry_and_state_port_methods_are_declarations_only() -> None
     )
     assert ProfileRegistryPort.desktop_profile_rows(source, object()) is None  # type: ignore[arg-type]
     assert StatePort.read_state(source, object(), "x") is None  # type: ignore[arg-type]
-    assert StatePort.write_state(source, object(), "x", "m", {}) is None  # type: ignore[arg-type]
-    assert StatePort.ensure_state_table(source, object()) is None  # type: ignore[arg-type]
+    StatePort.write_state(source, object(), "x", "m", {})  # type: ignore[arg-type]
+    StatePort.ensure_state_table(source, object())  # type: ignore[arg-type]
     assert StatePort.delete_state(source, object(), "x", "k") is None  # type: ignore[arg-type]
     assert StatePort.upsert_state(source, object(), "x", "k", object()) is None  # type: ignore[arg-type]
 
@@ -90,13 +90,13 @@ def test_clock_and_state_store_protocol_methods_are_declarations_only() -> None:
     source = object()
     assert ClockPort.now_iso(source) is None  # type: ignore[arg-type]
     assert ClockPort.monotonic_ms(source) is None  # type: ignore[arg-type]
-    assert ClockPort.sleep(source, 1) is None  # type: ignore[arg-type]
+    ClockPort.sleep(source, 1)  # type: ignore[arg-type]
     assert ClockPort.new_run_id(source) is None  # type: ignore[arg-type]
-    assert StateStore.config_path.fget(source) is None  # type: ignore[arg-type,union-attr]
+    assert vars(StateStore)["config_path"].fget(source) is None
     assert StateStore.read_local(source) is None  # type: ignore[arg-type]
-    assert StateStore.write_local(source, object()) is None  # type: ignore[arg-type]
+    StateStore.write_local(source, object())  # type: ignore[arg-type]
     assert StateStore.acquire_lock(source, "x", break_stale=False) is None  # type: ignore[arg-type]
-    assert StateStore.release_lock(source, "x") is None  # type: ignore[arg-type]
+    StateStore.release_lock(source, "x")  # type: ignore[arg-type]
     error = SnowflakePortError("x", sqlstate="42", errno=1)
     assert (str(error), error.sqlstate, error.errno) == ("x", "42", 1)
 
@@ -104,10 +104,10 @@ def test_clock_and_state_store_protocol_methods_are_declarations_only() -> None:
 def test_eval_and_composite_lifecycle_protocol_methods_are_declarations_only() -> None:
     source = object()
     assert EvalStateStore.read_baseline(source, "target", "eval:a") is None  # type: ignore[arg-type]
-    assert EvalStateStore.write_baseline(source, "target", object()) is None  # type: ignore[arg-type]
-    assert EvalStateStore.write_baselines(source, "target", ()) is None  # type: ignore[arg-type]
+    EvalStateStore.write_baseline(source, "target", object())  # type: ignore[arg-type]
+    EvalStateStore.write_baselines(source, "target", ())  # type: ignore[arg-type]
     assert EvalStateStore.read_gate(source, "target", "eval:a") is None  # type: ignore[arg-type]
-    assert EvalStateStore.write_gate(source, "target", object()) is None  # type: ignore[arg-type]
+    EvalStateStore.write_gate(source, "target", object())  # type: ignore[arg-type]
     assert CompositeLifecycleHandler.plan(source, object(), None, object()) is None  # type: ignore[arg-type]
     assert CompositeLifecycleHandler.apply(source, object(), object()) is None  # type: ignore[arg-type]
     assert CompositeLifecycleHandler.merge_physical_resources(source, (), None) is None  # type: ignore[arg-type]

@@ -5,9 +5,10 @@ from __future__ import annotations
 import json
 import os
 import tempfile
-from datetime import datetime, timezone
+from collections.abc import Callable
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Callable, Generic, TypeVar
+from typing import Generic, TypeVar
 
 from snowflake_semantic_tools.adapters.errors import ProjectError
 from snowflake_semantic_tools.domain.model.diagnostic import D
@@ -174,7 +175,7 @@ class StateFileStore(JsonStore[State]):
         super().__init__(path, State.from_dict)
         self._config_path = config_path
         self._lock_path = path.with_suffix(path.suffix + ".lock")
-        self._now = now or (lambda: datetime.now(timezone.utc))
+        self._now = now or (lambda: datetime.now(UTC))
 
     @property
     def config_path(self) -> str:

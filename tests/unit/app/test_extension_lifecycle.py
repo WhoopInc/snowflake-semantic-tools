@@ -20,9 +20,17 @@ from snowflake_semantic_tools.app.manifest import build_manifest
 from snowflake_semantic_tools.app.plan import PlanArtifacts
 from snowflake_semantic_tools.domain.model.diagnostic import Origin
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
-from snowflake_semantic_tools.domain.model.lifecycle import Action, ApplyOptions, ChangeReason, OutcomeStatus
+from snowflake_semantic_tools.domain.model.lifecycle import (
+    Action,
+    ApplyOptions,
+    ApplyResult,
+    ChangeReason,
+    ChangeSet,
+    ExecResult,
+    OutcomeStatus,
+)
 from snowflake_semantic_tools.domain.model.skill import Plugin, Skill, SkillCatalog, SkillFile
-from snowflake_semantic_tools.domain.ports.snowflake import ExecResult, ExtensionVersion, SnowflakePortError
+from snowflake_semantic_tools.domain.ports.snowflake import ExtensionObservation, ExtensionVersion, SnowflakePortError
 from snowflake_semantic_tools.domain.state import FAILED_AFTER_WRITE, STATE_SCHEMA_VERSION, AppliedEntry, State
 from tests.helpers.app_ports import FixedClock, InMemoryStateStore
 from tests.helpers.artifact_builders import target
@@ -51,7 +59,9 @@ def state(applied: dict[str, AppliedEntry] | None = None) -> State:
     return State(STATE_SCHEMA_VERSION, target(), "", "cfg", None, MappingProxyType(dict(applied or {})))
 
 
-def publish(port: RecordedSnowflake, compiled: dict[str, CompiledExtension], previous: State):
+def publish(
+    port: RecordedSnowflake, compiled: dict[str, CompiledExtension], previous: State
+) -> tuple[ChangeSet, ApplyResult, State]:
     releases = {key: item.release for key, item in compiled.items()}
     handlers = {kind: ExtensionLifecycleHandler(port, releases, kind) for kind in ("skill", "plugin")}
     rendered = {key: item.rendered_artifact for key, item in compiled.items()}
@@ -219,12 +229,12 @@ def test_unmanaged_type_mismatch_stage_and_damaged_alias_block() -> None:
 def test_empty_version_and_upload_failures_are_partial_writes() -> None:
     compiled = compile_catalog(SkillCatalog((skill(),)))
     empty = RecordedSnowflake(existing=())
-    original = empty._record_extension_statement
+    record = empty._record_extension_statement
 
-    def swallow_files(normalized: str, statement: str | None = None) -> None:
+    def swallow_files(normalized: str, original: str | None = None) -> None:
         # Reproduce the measured defect: ADD VERSION accepts a wrong path and
         # creates an empty version.
-        original(normalized.replace("FROM @DB.S.SKILL_BUNDLES/", "FROM @DB.S.NOWHERE/"), statement)
+        record(normalized.replace("FROM @DB.S.SKILL_BUNDLES/", "FROM @DB.S.NOWHERE/"), original)
 
     empty._record_extension_statement = swallow_files  # type: ignore[method-assign]
     _, result, after = publish(empty, compiled, state())
@@ -234,7 +244,7 @@ def test_empty_version_and_upload_failures_are_partial_writes() -> None:
     assert after.applied["skill:month-close"].outcome == "failed_after_write"
 
     unreadable = RecordedSnowflake(existing=())
-    unreadable.read_staged_file = lambda path: b"tampered"  # type: ignore[method-assign]
+    unreadable.read_staged_file = lambda stage_path: b"tampered"  # type: ignore[method-assign]
     _, result, _ = publish(unreadable, compiled, state())
     assert result.outcomes[0].error is not None and "byte for byte" in result.outcomes[0].error.message
 
@@ -260,18 +270,25 @@ def test_comment_drift_and_certification_with_readback() -> None:
 
     silent = RecordedSnowflake(existing=())
     silent.refused = ()
-    original = silent._record_extension_statement
+    record = silent._record_extension_statement
 
-    def ignore_tags(normalized: str, statement: str | None = None) -> None:
+    def ignore_tags(normalized: str, original: str | None = None) -> None:
         if "SET TAG" not in normalized:
-            original(normalized, statement)
+            record(normalized, original)
 
     silent._record_extension_statement = ignore_tags  # type: ignore[method-assign]
     _, result, _ = publish(silent, certified, state())
     assert result.outcomes[0].error is not None and "reports certification" in result.outcomes[0].error.message
 
 
-def served_warnings(changeset) -> list[str]:
+def observation(port: RecordedSnowflake, name: QualifiedName) -> ExtensionObservation:
+    """Return what `port` reports for the extension `name`, which the test has published."""
+    observed = port.observe_extension(name)
+    assert observed is not None
+    return observed
+
+
+def served_warnings(changeset: ChangeSet) -> list[str]:
     return [item.message for item in changeset.diagnostics if item.code == "SST-VAL841"]
 
 
@@ -282,7 +299,7 @@ def test_the_catalog_keeps_serving_a_certified_version_over_an_uncertified_one()
     changeset, result, after = publish(port, first, state())
     assert result.success and served_warnings(changeset) == []
     target = QualifiedName.parse("DB.S.MONTH_CLOSE")
-    assert port.observe_extension(target).latest_certified_version == "VERSION$2"
+    assert observation(port, target).latest_certified_version == "VERSION$2"
 
     uncertified = compile_catalog(SkillCatalog((skill(body="Read reference/steps.md twice.\n"),)))
     changeset, result, after_change = publish(port, uncertified, after)
@@ -292,7 +309,7 @@ def test_the_catalog_keeps_serving_a_certified_version_over_an_uncertified_one()
         f"skill:month-close: the catalog will serve VERSION$2 of DB.S.MONTH_CLOSE, not {alias}, "
         "because it is the latest certified version"
     ]
-    observed = port.observe_extension(target)
+    observed = observation(port, target)
     assert (observed.effective_version, observed.latest_certified_version) == ("VERSION$2", "VERSION$2")
 
     # Certifying the newer version makes it the one the catalog serves.
@@ -300,7 +317,7 @@ def test_the_catalog_keeps_serving_a_certified_version_over_an_uncertified_one()
     changeset, result, _ = publish(port, newer, after_change)
     assert [change.action for change in changeset.changes] == [Action.UPDATE]
     assert result.success and served_warnings(changeset) == []
-    assert port.observe_extension(target).effective_version == "VERSION$3"
+    assert observation(port, target).effective_version == "VERSION$3"
 
     # Reverting to the older version cannot outrank the later certified one.
     changeset, _, _ = publish(port, first, after_change)
@@ -342,7 +359,7 @@ def test_served_version_prediction_edges() -> None:
     certified = compile_catalog(SkillCatalog((skill(),)), replace(CHANNEL, certified=True))
     changeset, result, _ = publish(port, certified, after_change)
     assert result.success and served_warnings(changeset) == []
-    assert port.observe_extension(QualifiedName.parse("DB.S.MONTH_CLOSE")).effective_version == "VERSION$2"
+    assert observation(port, QualifiedName.parse("DB.S.MONTH_CLOSE")).effective_version == "VERSION$2"
     assert _version_number("VERSION$12") == 12 and _version_number("LIVE") == -1
 
 
@@ -500,7 +517,7 @@ def test_observation_failure_blocks_the_plan() -> None:
     def unreachable(qualified_name: QualifiedName) -> None:
         raise SnowflakePortError("SHOW failed")
 
-    port.observe_extension = unreachable  # type: ignore[assignment,method-assign]
+    port.observe_extension = unreachable  # type: ignore[method-assign]
     changeset, _, _ = publish(port, compiled, state())
     assert changeset.changes[0].action is Action.BLOCKED
     assert [item.code for item in changeset.changes[0].diagnostics] == ["SST-PLN001"]
@@ -523,7 +540,7 @@ def test_each_publish_step_fails_closed() -> None:
         return execute(statements)
 
     client_side.execute_script = create_client_side  # type: ignore[method-assign]
-    client_side.stage_type = lambda stage: "INTERNAL" if created else None  # type: ignore[method-assign]
+    client_side.stage_type = lambda qualified_name: "INTERNAL" if created else None  # type: ignore[method-assign]
     assert "is INTERNAL after creation" in _failure(publish(client_side, compiled, state())[1])
 
     upload_refused = RecordedSnowflake(existing=())

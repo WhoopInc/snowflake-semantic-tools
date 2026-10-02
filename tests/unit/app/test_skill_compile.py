@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from snowflake_semantic_tools.app.compile.skills import CatalogChannel, CompileSkills
+from snowflake_semantic_tools.app.compile.skills import CatalogChannel, CompiledExtension, CompileSkills
 from snowflake_semantic_tools.domain.model.diagnostic import Origin
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
 from snowflake_semantic_tools.domain.model.skill import SCAN_MAX_FILES, Plugin, Skill, SkillCatalog, SkillFile
@@ -42,6 +42,7 @@ def test_a_healthy_plugin_carries_its_members_sources_and_scripts() -> None:
     result = CompileSkills(catalog, CHANNEL).run_result()
 
     kit = next(item for item in result.compiled if item.artifact_key == "plugin:kit")
+    assert isinstance(kit, CompiledExtension)
     assert kit.source_files == ("plugins/kit/plugin.yml", "skills/first/SKILL.md", "skills/second/SKILL.md")
     assert kit.contained_keys == ("skill:first", "skill:second")
     assert kit.has_scripts is False

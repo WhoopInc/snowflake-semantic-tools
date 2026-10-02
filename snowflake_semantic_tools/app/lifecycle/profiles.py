@@ -9,10 +9,10 @@ a time. Nothing is ever deleted: prune deactivates a row, and only under --prune
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from threading import Lock
 from types import MappingProxyType
-from typing import Mapping
 
 from snowflake_semantic_tools.app.apply import classify_error
 from snowflake_semantic_tools.app.compile.profiles import CompiledProfile, DesktopChannel
@@ -55,9 +55,8 @@ REQUIRED_COLUMNS: Mapping[str, str] = MappingProxyType(
         "VERSION": "VARCHAR",
         "ACTIVE": "BOOLEAN",
         "UPDATED_AT": "TIMESTAMP_NTZ",
-        **{
-            column: "VARIANT"
-            for column in (
+        **dict.fromkeys(
+            (
                 "SKILL_REPOS",
                 "MCP_SERVERS",
                 "COMMAND_REPOS",
@@ -66,8 +65,9 @@ REQUIRED_COLUMNS: Mapping[str, str] = MappingProxyType(
                 "PLUGINS",
                 "ENV_VARS",
                 "SETTINGS_OVERRIDES",
-            )
-        },
+            ),
+            "VARIANT",
+        ),
     }
 )
 

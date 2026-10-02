@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+from collections.abc import Sequence
 from dataclasses import replace
 from hashlib import md5, sha256
 from types import MappingProxyType
@@ -8,7 +9,7 @@ from types import MappingProxyType
 import pytest
 
 from snowflake_semantic_tools.app.apply import ApplyArtifacts
-from snowflake_semantic_tools.app.compile.evals import CompileEvals
+from snowflake_semantic_tools.app.compile.evals import CompiledEval, CompileEvals
 from snowflake_semantic_tools.app.lifecycle.evals import EVAL_STAGE_FILE_FORMAT, EvalLifecycleHandler
 from snowflake_semantic_tools.app.manifest import build_manifest
 from snowflake_semantic_tools.app.plan import PlanArtifacts
@@ -18,32 +19,36 @@ from snowflake_semantic_tools.domain.model.identifier import QualifiedName
 from snowflake_semantic_tools.domain.model.lifecycle import (
     Action,
     ApplyOptions,
+    Change,
     ChangeReason,
     CompositeObservation,
     ExecResult,
     ExecutionError,
     OutcomeStatus,
     QueryResult,
+    RenderedArtifact,
 )
 from snowflake_semantic_tools.domain.ports.snowflake import SnowflakePortError
 from snowflake_semantic_tools.domain.state import (
     STATE_SCHEMA_VERSION,
     AppliedEntry,
     AppliedResource,
+    Manifest,
     ResourceStatus,
     State,
 )
 from tests.helpers.app_ports import FixedClock, InMemorySnowflake, InMemoryStateStore
 from tests.helpers.artifact_builders import changeset, target
+from tests.helpers.compile_builders import compiled_as
 from tests.helpers.eval_builders import compile_eval, resolved_eval
 
 ORIGIN = Origin("dataset.yml", 1, 1)
 
 
-def setup_eval():
+def setup_eval() -> tuple[Manifest, RenderedArtifact, InMemorySnowflake, EvalLifecycleHandler]:
     result = compile_eval()
     manifest = build_manifest(result)
-    compiled = result.compiled[0]
+    compiled = compiled_as(result, CompiledEval)
     artifact = compiled.rendered_for_publish(manifest.manifest_id)
     port = InMemorySnowflake()
     port.existing = set()
@@ -51,7 +56,13 @@ def setup_eval():
     return manifest, artifact, port, handler
 
 
-def applied_entry(artifact, manifest_id: str) -> AppliedEntry:
+def existing(port: InMemorySnowflake) -> set[str]:
+    """Return the objects `port` reports as existing; `setup_eval` starts it empty, never None."""
+    assert port.existing is not None
+    return port.existing
+
+
+def applied_entry(artifact: RenderedArtifact, manifest_id: str) -> AppliedEntry:
     return AppliedEntry(
         artifact.fingerprint,
         artifact.target.sql,
@@ -80,7 +91,13 @@ def state_with(entry: AppliedEntry | None, manifest_id: str) -> State:
     )
 
 
-def planned_change(artifact, manifest, port, handler, prior: State):
+def planned_change(
+    artifact: RenderedArtifact,
+    manifest: Manifest,
+    port: InMemorySnowflake,
+    handler: EvalLifecycleHandler,
+    prior: State,
+) -> Change:
     return (
         PlanArtifacts(port, lifecycle_handlers={"eval": handler})
         .run(
@@ -94,9 +111,9 @@ def planned_change(artifact, manifest, port, handler, prior: State):
     )
 
 
-def seed_existing_resources(artifact, port) -> None:
+def seed_existing_resources(artifact: RenderedArtifact, port: InMemorySnowflake) -> None:
     for _, name in artifact.physical_resources:
-        port.existing.add(name.sql)
+        existing(port).add(name.sql)
     port.table_row_counts[artifact.physical_resources[0][1].sql] = 1
 
 
@@ -106,8 +123,8 @@ def test_eval_plan_uses_component_fingerprints_and_live_resources() -> None:
 
     entry = applied_entry(artifact, manifest.manifest_id)
     for _, name in artifact.physical_resources:
-        port.existing.add(name.sql)
-    port.existing.add("DB.S.EVAL_CONFIGS")
+        existing(port).add(name.sql)
+    existing(port).add("DB.S.EVAL_CONFIGS")
     port.stage_formats["DB.S.EVAL_CONFIGS"] = EVAL_STAGE_FILE_FORMAT
     config_path = handler._config_path(artifact)
     port.stage_files.add(config_path)
@@ -171,9 +188,9 @@ def test_eval_ignores_encrypted_stage_size_when_readback_bytes_match() -> None:
     manifest, artifact, port, handler = setup_eval()
     entry = applied_entry(artifact, manifest.manifest_id)
     for _, name in artifact.physical_resources:
-        port.existing.add(name.sql)
+        existing(port).add(name.sql)
     port.table_row_counts[artifact.physical_resources[0][1].sql] = 1
-    port.existing.add("DB.S.EVAL_CONFIGS")
+    existing(port).add("DB.S.EVAL_CONFIGS")
     port.stage_formats["DB.S.EVAL_CONFIGS"] = EVAL_STAGE_FILE_FORMAT
     config_path = handler._config_path(artifact)
     port.stage_files.add(config_path)
@@ -193,9 +210,9 @@ def test_eval_same_size_wrong_staged_config_is_overwritten() -> None:
     manifest, artifact, port, handler = setup_eval()
     entry = applied_entry(artifact, manifest.manifest_id)
     for _, name in artifact.physical_resources:
-        port.existing.add(name.sql)
+        existing(port).add(name.sql)
     port.table_row_counts[artifact.physical_resources[0][1].sql] = 1
-    port.existing.add("DB.S.EVAL_CONFIGS")
+    existing(port).add("DB.S.EVAL_CONFIGS")
     port.stage_formats["DB.S.EVAL_CONFIGS"] = EVAL_STAGE_FILE_FORMAT
     config_path = handler._config_path(artifact)
     port.stage_files.add(config_path)
@@ -233,9 +250,9 @@ def test_eval_config_only_update_uploads_no_dataset_sql() -> None:
     manifest, artifact, port, handler = setup_eval()
     entry = applied_entry(artifact, manifest.manifest_id)
     for _, name in artifact.physical_resources:
-        port.existing.add(name.sql)
+        existing(port).add(name.sql)
     port.table_row_counts[artifact.physical_resources[0][1].sql] = 1
-    port.existing.add("DB.S.EVAL_CONFIGS")
+    existing(port).add("DB.S.EVAL_CONFIGS")
     port.stage_formats["DB.S.EVAL_CONFIGS"] = EVAL_STAGE_FILE_FORMAT
     changed = replace(
         artifact,
@@ -279,10 +296,11 @@ def test_eval_dataset_revision_retains_prior_immutable_resources_in_state() -> N
     )
 
     assert result.success
+    assert port.remote_state is not None
     saved = port.remote_state[artifact.key]
     assert saved.physical_resources[-2:] == tuple(
         AppliedResource(resource.object_type, resource.qualified_name, ResourceStatus.RETAINED)
-        for resource in previous_entry.physical_resources
+        for resource in previous_entry.applied_resources
     )
 
 
@@ -298,7 +316,7 @@ def test_eval_dataset_revision_blocks_unmanaged_desired_resource() -> None:
     )
     changed_result = compile_eval(changed_eval)
     changed = changed_result.compiled[0].rendered_for_publish(build_manifest(changed_result).manifest_id)
-    port.existing.add(changed.physical_resources[0][1].sql)
+    existing(port).add(changed.physical_resources[0][1].sql)
 
     planned = handler.plan(changed, previous_entry, manifest)
 
@@ -315,7 +333,7 @@ def test_eval_partial_source_state_repairs_missing_dataset() -> None:
         outcome="failed_after_write",
         physical_resources=((source_type, source_table.sql),),
     )
-    port.existing.add(source_table.sql)
+    existing(port).add(source_table.sql)
     port.table_row_counts[source_table.sql] = 1
 
     planned = handler.plan(artifact, partial, manifest)
@@ -326,7 +344,7 @@ def test_eval_partial_source_state_repairs_missing_dataset() -> None:
 
 def test_eval_wrong_stage_format_blocks_without_altering_or_uploading() -> None:
     manifest, artifact, port, handler = setup_eval()
-    port.existing.add("DB.S.EVAL_CONFIGS")
+    existing(port).add("DB.S.EVAL_CONFIGS")
     port.stage_formats["DB.S.EVAL_CONFIGS"] = "TYPE='CSV' FIELD_DELIMITER=','"
     planned = handler.plan(artifact, None, manifest)
     assert planned.action is Action.BLOCKED
@@ -336,7 +354,7 @@ def test_eval_wrong_stage_format_blocks_without_altering_or_uploading() -> None:
 
 def test_eval_stage_format_accepts_connector_describe_values() -> None:
     manifest, artifact, port, handler = setup_eval()
-    port.existing.add("DB.S.EVAL_CONFIGS")
+    existing(port).add("DB.S.EVAL_CONFIGS")
     port.stage_formats["DB.S.EVAL_CONFIGS"] = (
         "TYPE=CSV FIELD_DELIMITER=NONE RECORD_DELIMITER=\\n SKIP_HEADER=0 "
         "FIELD_OPTIONALLY_ENCLOSED_BY=NONE ESCAPE_UNENCLOSED_FIELD=NONE"
@@ -350,7 +368,7 @@ def test_eval_stage_format_accepts_connector_describe_values() -> None:
 def test_eval_stage_format_drift_after_plan_is_rejected_as_observation_drift() -> None:
     manifest, artifact, port, handler = setup_eval()
     change = planned_change(artifact, manifest, port, handler, state_with(None, ""))
-    port.existing.add("DB.S.EVAL_CONFIGS")
+    existing(port).add("DB.S.EVAL_CONFIGS")
     port.stage_formats["DB.S.EVAL_CONFIGS"] = "TYPE='CSV' FIELD_DELIMITER=','"
     outcome = handler.apply(change, ApplyOptions())
 
@@ -359,7 +377,7 @@ def test_eval_stage_format_drift_after_plan_is_rejected_as_observation_drift() -
     assert outcome.error.code == "SST-APL012"
 
 
-def two_evals_in_one_schema():
+def two_evals_in_one_schema() -> tuple[Manifest, dict[str, RenderedArtifact]]:
     first = resolved_eval()
     second = replace(
         first,
@@ -448,13 +466,13 @@ def test_a_port_error_after_the_dataset_is_created_keeps_what_the_run_created_in
     change = planned_change(artifact, manifest, port, handler, state_with(None, ""))
     exists = port.object_exists
 
-    def drop_connection_reading_back_the_dataset(object_type, name):
+    def drop_connection_reading_back_the_dataset(object_type: str, qualified_name: QualifiedName) -> bool:
         created = any(
             "SYSTEM$CREATE_EVALUATION_DATASET" in statement.upper() for script in port.scripts for statement in script
         )
         if object_type == "DATASET" and created:
             raise SnowflakePortError("connection reset")
-        return exists(object_type, name)
+        return exists(object_type, qualified_name)
 
     port.object_exists = drop_connection_reading_back_the_dataset  # type: ignore[method-assign]
     store = InMemoryStateStore()
@@ -511,7 +529,8 @@ def test_eval_prune_is_report_only_even_when_prune_is_allowed() -> None:
 def test_eval_plan_blocks_snowflake_observation_errors() -> None:
     manifest, artifact, port, handler = setup_eval()
 
-    def fail_observation(_object_type, _qualified_name):
+    def fail_observation(object_type: str, qualified_name: QualifiedName) -> bool:
+        del object_type, qualified_name
         raise SnowflakePortError("observation failed")
 
     port.object_exists = fail_observation  # type: ignore[method-assign]
@@ -580,6 +599,7 @@ def test_eval_apply_skips_non_writing_actions(action: Action) -> None:
 def test_eval_apply_surfaces_planned_composite_diagnostics() -> None:
     manifest, artifact, port, handler = setup_eval()
     change = planned_change(artifact, manifest, port, handler, state_with(None, ""))
+    assert change.composite_observation is not None
     observation = replace(
         change.composite_observation,
         diagnostics=DiagnosticBag((D("SST-APL028", value="DB.S.EVAL_CONFIGS", found="wrong", expected="right"),)),
@@ -624,7 +644,7 @@ def test_eval_source_table_must_exist_after_create() -> None:
     change = planned_change(artifact, manifest, port, handler, state_with(None, ""))
     original_execute = port.execute_script
 
-    def omit_source_create(statements):
+    def omit_source_create(statements: Sequence[str]) -> ExecResult:
         if statements[0].lstrip().upper().startswith("CREATE TABLE "):
             port.scripts.append(tuple(statements))
             return ExecResult(True)
@@ -693,7 +713,8 @@ def test_eval_source_row_count_rejects_unusable_query_results(
 ) -> None:
     _manifest, artifact, port, handler = setup_eval()
 
-    def return_result(_sql, _params=None):
+    def return_result(sql: str, params: object = None) -> QueryResult:
+        del sql, params
         return query_result
 
     port.query = return_result  # type: ignore[method-assign]
@@ -724,7 +745,7 @@ def test_eval_dataset_execution_failure_without_prior_write_is_not_partial() -> 
         applied_entry(artifact, manifest.manifest_id),
         physical_resources=((source_type, source_table.sql),),
     )
-    port.existing.add(source_table.sql)
+    existing(port).add(source_table.sql)
     port.table_row_counts[source_table.sql] = 1
     port.execute_results = [ExecResult(False, error=ExecutionError("dataset denied", "28000"))]
     change = planned_change(artifact, manifest, port, handler, state_with(partial_entry, manifest.manifest_id))
@@ -743,7 +764,7 @@ def test_eval_dataset_must_exist_after_successful_creation() -> None:
     change = planned_change(artifact, manifest, port, handler, state_with(None, ""))
     original_execute = port.execute_script
 
-    def omit_dataset_create(statements):
+    def omit_dataset_create(statements: Sequence[str]) -> ExecResult:
         if "SYSTEM$CREATE_EVALUATION_DATASET" in statements[0].upper():
             port.scripts.append(tuple(statements))
             return ExecResult(True)
@@ -785,7 +806,7 @@ def test_eval_stage_must_exist_after_successful_creation() -> None:
     change = planned_change(artifact, manifest, port, handler, prior)
     original_execute = port.execute_script
 
-    def omit_stage_create(statements):
+    def omit_stage_create(statements: Sequence[str]) -> ExecResult:
         if statements[0].lstrip().upper().startswith("CREATE STAGE "):
             port.scripts.append(tuple(statements))
             return ExecResult(True)
@@ -808,7 +829,7 @@ def test_eval_stage_format_is_verified_after_creation() -> None:
     change = planned_change(artifact, manifest, port, handler, prior)
     original_execute = port.execute_script
 
-    def create_wrong_stage(statements):
+    def create_wrong_stage(statements: Sequence[str]) -> ExecResult:
         result = original_execute(statements)
         if statements[0].lstrip().upper().startswith("CREATE STAGE "):
             port.stage_formats["DB.S.EVAL_CONFIGS"] = "TYPE='CSV' FIELD_DELIMITER=','"
@@ -830,7 +851,8 @@ def test_eval_upload_port_error_is_reported() -> None:
     prior = state_with(applied_entry(artifact, manifest.manifest_id), manifest.manifest_id)
     change = planned_change(artifact, manifest, port, handler, prior)
 
-    def fail_upload(_stage_path, _content):
+    def fail_upload(stage_path: str, content: bytes) -> None:
+        del stage_path, content
         raise SnowflakePortError("upload denied")
 
     port.upload = fail_upload  # type: ignore[method-assign]
@@ -857,7 +879,7 @@ def test_eval_uploaded_config_readback_is_verified(failure_mode: str, expected_m
     prior = state_with(applied_entry(artifact, manifest.manifest_id), manifest.manifest_id)
     change = planned_change(artifact, manifest, port, handler, prior)
 
-    def broken_upload(stage_path, content):
+    def broken_upload(stage_path: str, content: bytes) -> None:
         port.uploads.append((stage_path, content))
         if failure_mode == "absent":
             return
@@ -880,7 +902,7 @@ def test_eval_uploaded_config_readback_is_verified(failure_mode: str, expected_m
 def test_eval_apply_defensively_rejects_missing_config_fingerprint() -> None:
     manifest, artifact, port, handler = setup_eval()
     seed_existing_resources(artifact, port)
-    port.existing.add("DB.S.EVAL_CONFIGS")
+    existing(port).add("DB.S.EVAL_CONFIGS")
     port.stage_formats["DB.S.EVAL_CONFIGS"] = EVAL_STAGE_FILE_FORMAT
     artifact = replace(
         artifact,
@@ -894,7 +916,8 @@ def test_eval_apply_defensively_rejects_missing_config_fingerprint() -> None:
         config_path="@DB.S.EVAL_CONFIGS/sales_agent/config.yaml",
     )
 
-    def fixed_config_path(_artifact):
+    def fixed_config_path(artifact: RenderedArtifact) -> str:
+        del artifact
         return "@DB.S.EVAL_CONFIGS/sales_agent/config.yaml"
 
     handler._config_path = fixed_config_path  # type: ignore[method-assign]

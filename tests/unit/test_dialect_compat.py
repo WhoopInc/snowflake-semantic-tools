@@ -15,6 +15,7 @@ import json
 import shutil
 from collections import Counter
 from pathlib import Path
+from typing import Any
 
 from click.testing import CliRunner
 
@@ -25,7 +26,7 @@ CORPUS = ROOT / "tests" / "fixtures" / "v1_dialect"
 MANIFEST = ROOT / "tests" / "fixtures" / "reference_project_manifest.json"
 
 
-def invoke(*args: str) -> tuple[int, dict[str, object]]:
+def invoke(*args: str) -> tuple[int, dict[str, Any]]:
     result = CliRunner().invoke(cli, [*args, "--output", "json"])
     return result.exit_code, json.loads(result.output)
 
@@ -79,7 +80,7 @@ def test_codemod_converts_idempotently_and_the_result_renders_the_committed_ddl(
     project = converted_copy(tmp_path)
     pending, report = invoke("migrate", "refs", "--project-dir", str(project))
     assert pending == 2
-    files = report["data"]["files"]  # type: ignore[index]
+    files = report["data"]["files"]
     assert {item["path"]: item["rewrites"] for item in files} == {
         "semantic_models/filters/filters.yml": {"ref": 1, "bare": 0, "column": 1, "labels": 1},
         "semantic_models/metrics/metrics.yml": {"ref": 2, "bare": 0, "column": 2, "labels": 0},
@@ -93,14 +94,14 @@ def test_codemod_converts_idempotently_and_the_result_renders_the_committed_ddl(
         relative = path.relative_to(expected)
         assert (project / relative).read_bytes() == path.read_bytes(), relative
     again, report = invoke("migrate", "refs", "--project-dir", str(project))
-    assert again == 0 and report["data"]["files"] == []  # type: ignore[index]
+    assert again == 0 and report["data"]["files"] == []
 
     # The codemod rewrites references, not keys: the 0.3 spellings remain, and
     # each is an error naming its 1.0 key.
     exit_code, payload = invoke("compile", "--project-dir", str(project), "--manifest", str(MANIFEST))
     assert exit_code == 1
     assert codes(payload) == Counter({("SST-PRS020", "error"): 3})
-    renames = {(item["params"]["field"], item["params"]["expected"]) for item in payload["diagnostics"]}  # type: ignore[index]
+    renames = {(item["params"]["field"], item["params"]["expected"]) for item in payload["diagnostics"]}
     assert renames == {
         ("sql_generation", "ai_sql_generation"),
         ("question_categorization", "ai_question_categorization"),

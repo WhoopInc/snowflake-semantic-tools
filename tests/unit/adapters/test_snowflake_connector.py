@@ -1,8 +1,8 @@
 from __future__ import annotations
 
+from collections.abc import Callable, Mapping, Sequence
 from datetime import datetime, timedelta, timezone
 from threading import RLock
-from typing import Callable, Mapping, Sequence
 
 import pytest
 from snowflake.connector.errors import Error as DriverError
@@ -168,8 +168,7 @@ def test_upload_rejects_unsafe_paths_before_touching_the_file_system() -> None:
 def test_upload_accepts_safe_arbitrary_basename_and_disables_compression() -> None:
     connector = RecordingUploadConnector()
 
-    result = connector.upload("@DB.SCH.STAGE/evals/agent/config-v2.yml", b"content")
-    assert result is None
+    connector.upload("@DB.SCH.STAGE/evals/agent/config-v2.yml", b"content")
     statement = connector.statements[0]
     assert "config-v2.yml' @DB.SCH.STAGE/evals/agent/" in statement
     assert statement.endswith("OVERWRITE=TRUE AUTO_COMPRESS=FALSE")
@@ -268,7 +267,7 @@ class StateRowsConnector(SnowflakeConnector):
     def _dict_rows(self, sql: str) -> tuple[dict[str, object], ...]:
         return ({"name": "COMPONENT_FINGERPRINTS"}, {"name": "PHYSICAL_RESOURCES"})
 
-    def query(self, sql: str, params: object = None) -> QueryResult:  # type: ignore[override]
+    def query(self, sql: str, params: object = None) -> QueryResult:
         return QueryResult(
             (),
             tuple(
@@ -355,7 +354,8 @@ def test_connection_prompts_go_to_stderr_so_json_stdout_stays_one_envelope(
 class _ConnectorFailure(DriverError):
     def __init__(self, message: str, sqlstate: str | None = None) -> None:
         super().__init__(message)
-        self.sqlstate = sqlstate
+        # A driver error may carry no SQLSTATE at all, which the stub's `str` cannot express.
+        self.sqlstate = sqlstate  # type: ignore[assignment]
         self.errno = 250001
 
 
@@ -395,7 +395,7 @@ def test_query_failures_carry_the_diagnostic_a_command_reports(
                 def cursor(self, *args: object) -> object:
                     raise _ConnectorFailure(message, sqlstate)
 
-            self._connection = Connection()
+            self._connection = Connection()  # type: ignore[assignment]  # a double, not a driver connection
 
     with pytest.raises(SnowflakePortError) as raised:
         FailingConnector().query("SELECT 1")
@@ -432,7 +432,7 @@ class _Session:
 class SessionConnector(SnowflakeConnector):
     def __init__(self, session: _Session) -> None:
         self._lock = RLock()
-        self._connection = session
+        self._connection = session  # type: ignore[assignment]  # a double, not a driver connection
 
 
 STATE_TABLE = QualifiedName.parse("DB.S.SST_STATE")

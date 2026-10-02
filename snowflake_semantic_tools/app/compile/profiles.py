@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from hashlib import sha256
-from typing import Mapping
 
 from snowflake_semantic_tools.app.compile.base import CompileResult, StandaloneArtifact
 from snowflake_semantic_tools.domain.model.artifact_key import artifact_key

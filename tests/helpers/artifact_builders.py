@@ -13,7 +13,7 @@ from snowflake_semantic_tools.domain.model.lifecycle import (
     OwnershipMarker,
     RenderedArtifact,
 )
-from snowflake_semantic_tools.domain.state import ImpactIndex, State
+from snowflake_semantic_tools.domain.state import ImpactIndex, Manifest, State
 from tests.helpers.manifests import build_minimal_manifest
 
 
@@ -76,7 +76,7 @@ def state() -> State:
     return State.empty(target())
 
 
-def manifest(artifacts: dict[str, RenderedArtifact]):
+def manifest(artifacts: dict[str, RenderedArtifact]) -> Manifest:
     return build_minimal_manifest(
         artifacts,
         project={},

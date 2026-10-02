@@ -11,8 +11,9 @@ failure part-way reports exactly what state may take ownership of.
 from __future__ import annotations
 
 from abc import abstractmethod
+from collections.abc import Callable, Collection, Iterable, Mapping
 from types import MappingProxyType
-from typing import Callable, Collection, Generic, Iterable, Mapping, TypeVar
+from typing import Generic, TypeVar
 
 from snowflake_semantic_tools.app.apply import classify_error
 from snowflake_semantic_tools.domain.model.diagnostic import D, Diagnostic, DiagnosticBag

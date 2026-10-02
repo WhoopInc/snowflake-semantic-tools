@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from snowflake_semantic_tools.adapters.yaml.profiles import load_profile_catalog
+from snowflake_semantic_tools.domain.model.profile import ProfileCatalog
 
 
 def write(root: Path, files: dict[str, str]) -> Path:
@@ -15,7 +16,7 @@ def write(root: Path, files: dict[str, str]) -> Path:
     return root
 
 
-def load(root: Path):
+def load(root: Path) -> ProfileCatalog:
     return load_profile_catalog(root, profiles_dir="profiles", hooks_dir="hooks", mcp_servers_dir="mcp-servers")
 
 
@@ -147,13 +148,17 @@ def test_commands_load_like_a_desktop_command_repository(tmp_path: Path) -> None
             "profiles/analyst/profile.yml": "name: analyst\ncommands: [review, sql/check]\nplugins: [kit]\n",
             "profiles/shared/profile.yml": "skills: []\ncommands: [daily]\n",
             "commands/daily.md": "Summarise yesterday.\n",
-            "commands/review.md": "---\ndescription: Review a PR.\nallowed-tools: [Read, Grep]\nhidden: false\n---\nGo.\n",
+            "commands/review.md": (
+                "---\ndescription: Review a PR.\nallowed-tools: [Read, Grep]\nhidden: false\n---\nGo.\n"
+            ),
             "commands/sql/check.md": "---\nskill: sql-author\nallowed-tools: Bash\n---\nCheck it.\n",
             "commands/notes.txt": "not a command",
             "commands/.drafts/wip.md": "hidden",
             "commands/bad/unclosed.md": "---\ndescription: x\n",
             "commands/bad/listy.md": "---\n- a\n---\n",
-            "commands/bad/types.md": "---\ndescription: 3\nhidden: maybe\nallowed-tools: [1]\nskill: [x]\ncolour: red\n---\n",
+            "commands/bad/types.md": (
+                "---\ndescription: 3\nhidden: maybe\nallowed-tools: [1]\nskill: [x]\ncolour: red\n---\n"
+            ),
             "commands/bad/yaml.md": "---\ndescription: [unclosed\n---\n",
             "commands/bad/empty.md": "---\n---\nBody only.\n",
         },

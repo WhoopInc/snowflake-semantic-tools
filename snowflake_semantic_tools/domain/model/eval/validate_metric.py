@@ -8,8 +8,8 @@ the judge model allowlist.
 from __future__ import annotations
 
 import re
+from collections.abc import Mapping
 from types import MappingProxyType
-from typing import Mapping
 
 from snowflake_semantic_tools.domain.model.diagnostic import Diagnostic
 from snowflake_semantic_tools.domain.model.eval.model import (

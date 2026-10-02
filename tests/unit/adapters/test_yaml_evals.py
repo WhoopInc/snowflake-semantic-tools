@@ -4,6 +4,8 @@ from pathlib import Path
 
 from snowflake_semantic_tools.adapters.yaml.agents import load_agents
 from snowflake_semantic_tools.adapters.yaml.evals import load_eval_catalog, parse_eval_defaults
+from snowflake_semantic_tools.domain.model.agent import AgentModel
+from snowflake_semantic_tools.domain.model.diagnostic import DiagnosticBag
 from snowflake_semantic_tools.domain.model.eval import EvalDefaults
 
 
@@ -12,7 +14,7 @@ def _write(path: Path, text: str) -> None:
     path.write_text(text.strip(), encoding="utf-8")
 
 
-def _project(tmp_path: Path, *, metric_ref: str = "judge") -> tuple:
+def _project(tmp_path: Path, *, metric_ref: str = "judge") -> tuple[tuple[AgentModel, ...], DiagnosticBag]:
     _write(
         tmp_path / "agents" / "sales" / "agent.yml",
         """

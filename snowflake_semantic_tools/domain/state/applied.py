@@ -8,10 +8,11 @@ schema-1 document in memory and refuses a newer one.
 
 from __future__ import annotations
 
+from collections.abc import Iterable, Iterator, Mapping
 from dataclasses import dataclass
 from enum import Enum
 from types import MappingProxyType
-from typing import Iterable, Iterator, Mapping, cast
+from typing import cast
 
 from snowflake_semantic_tools.domain.model.identifier import TargetIdentity
 from snowflake_semantic_tools.domain.state.codec import pairs_from_json, pairs_to_json

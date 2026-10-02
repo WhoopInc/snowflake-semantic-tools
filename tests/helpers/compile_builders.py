@@ -6,6 +6,8 @@ publishes through both channels, the catalog and a stage.
 
 from __future__ import annotations
 
+from typing import TypeVar
+
 from snowflake_semantic_tools.app.compile import CompileResult
 from snowflake_semantic_tools.app.compile.project import CompileProject
 from snowflake_semantic_tools.domain.model.agent import AgentModel, AgentSkill
@@ -14,6 +16,20 @@ from snowflake_semantic_tools.domain.model.project import SemanticViewProject
 from snowflake_semantic_tools.domain.model.semantic_view import Column, ColumnKind, SemanticView, Table
 from snowflake_semantic_tools.domain.model.skill import Plugin, Skill, SkillFile
 from tests.helpers.project_inputs import InMemoryProjectInputs
+
+_Compiled = TypeVar("_Compiled")
+
+
+def compiled_as(result: CompileResult, kind: type[_Compiled], index: int = 0) -> _Compiled:
+    """Return the compiled artifact at `index`, asserted to be a `kind`.
+
+    `CompileResult.compiled` holds the `CompiledArtifact` protocol; a test reading a kind's own
+    fields narrows it here instead of casting, so a compile that built the wrong kind fails.
+    """
+    compiled = result.compiled[index]
+    assert isinstance(compiled, kind), f"compiled[{index}] is {type(compiled).__name__}, not {kind.__name__}"
+    return compiled
+
 
 CHANNELS = {"catalog": {"+bundle_stage": "BUNDLES"}, "stage": {"+stage": "PROFILES"}}
 

@@ -103,7 +103,7 @@ def test_filter_labels_are_added_only_to_unlabelled_boolean_filters() -> None:
 
 def test_expression_classifier_shapes() -> None:
     assert outer_parentheses("(a)") and not outer_parentheses("(a) + (b)") and not outer_parentheses("a")
-    assert not outer_parentheses("(')')") is False or True
+    assert outer_parentheses("(')')") is not False or True
     assert outer_parentheses("(')')")
     assert not outer_parentheses("(a")
     assert root_function("((COUNT(x)))") == "COUNT"

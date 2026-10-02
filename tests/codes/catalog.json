@@ -1,0 +1,6752 @@
+[
+ {
+  "code": "SST-APL001",
+  "area": "APL",
+  "number": 1,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "DDL execution failed",
+  "message": "{artifact}: {value} failed: {detail}",
+  "precheck": "runtime"
+ },
+ {
+  "code": "SST-APL002",
+  "area": "APL",
+  "number": 2,
+  "severity": "WARNING",
+  "non_demotable": false,
+  "title": "Skipped: a dependency failed",
+  "message": "{artifact} skipped: {blocker} failed",
+  "precheck": "runtime"
+ },
+ {
+  "code": "SST-APL003",
+  "area": "APL",
+  "number": 3,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Refused: artifact is blocked",
+  "message": "{artifact} is BLOCKED by {count} errors",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-APL004",
+  "area": "APL",
+  "number": 4,
+  "severity": "ERROR",
+  "non_demotable": true,
+  "title": "Refused: replace would run without COPY GRANTS",
+  "message": "{artifact}: replace statement omits COPY GRANTS",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-APL005",
+  "area": "APL",
+  "number": 5,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Refused: plan was not computed for this target",
+  "message": "{artifact}: plan target '{found}' differs from the apply target '{expected}'",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-APL006",
+  "area": "APL",
+  "number": 6,
+  "severity": "ERROR",
+  "non_demotable": true,
+  "title": "Verification gate failed",
+  "message": "{count} published metrics failed their smoke query",
+  "precheck": "runtime"
+ },
+ {
+  "code": "SST-APL007",
+  "area": "APL",
+  "number": 7,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Tag application failed after a successful create",
+  "message": "{artifact}: tags could not be applied: {detail}",
+  "precheck": "runtime"
+ },
+ {
+  "code": "SST-APL008",
+  "area": "APL",
+  "number": 8,
+  "severity": "WARNING",
+  "non_demotable": false,
+  "title": "Grants could not be re-read after a replace",
+  "message": "{artifact}: grants could not be verified after replace",
+  "precheck": "runtime"
+ },
+ {
+  "code": "SST-APL009",
+  "area": "APL",
+  "number": 9,
+  "severity": "ERROR",
+  "non_demotable": true,
+  "title": "Explicit grant did not survive a replace",
+  "message": "{artifact}: grant {value} was present before replace and is absent after",
+  "precheck": "runtime"
+ },
+ {
+  "code": "SST-APL010",
+  "area": "APL",
+  "number": 10,
+  "severity": "WARNING",
+  "non_demotable": false,
+  "title": "Stale lock broken",
+  "message": "broke a stale lock held by {value}",
+  "precheck": "runtime"
+ },
+ {
+  "code": "SST-APL011",
+  "area": "APL",
+  "number": 11,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Lock held by a live run",
+  "message": "{value} holds the apply lock",
+  "precheck": "runtime"
+ },
+ {
+  "code": "SST-APL012",
+  "area": "APL",
+  "number": 12,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Object changed between plan and apply",
+  "message": "{artifact}: {value} changed since the plan",
+  "precheck": "runtime"
+ },
+ {
+  "code": "SST-APL013",
+  "area": "APL",
+  "number": 13,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Write refused: target is a production-like environment under --temporary",
+  "message": "{artifact}: --temporary against target '{target}' is not permitted",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-APL014",
+  "area": "APL",
+  "number": 14,
+  "severity": "WARNING",
+  "non_demotable": false,
+  "title": "Temporary artifact shadows a permanent one",
+  "message": "{artifact} shadows a permanent object of the same name for this session",
+  "precheck": "runtime"
+ },
+ {
+  "code": "SST-APL015",
+  "area": "APL",
+  "number": 15,
+  "severity": "WARNING",
+  "non_demotable": false,
+  "title": "alias ignored under --temporary",
+  "message": "{artifact}: alias is meaningless under --temporary and was ignored",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-APL016",
+  "area": "APL",
+  "number": 16,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Partial write left the artifact in an unusable state",
+  "message": "{artifact}: {detail}",
+  "precheck": "runtime"
+ },
+ {
+  "code": "SST-APL017",
+  "area": "APL",
+  "number": 17,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Per-channel publish reported aggregate success",
+  "message": "{artifact}: {detail}",
+  "precheck": "runtime"
+ },
+ {
+  "code": "SST-APL018",
+  "area": "APL",
+  "number": 18,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Registry pointer write failed after an upload",
+  "message": "{artifact}: uploaded {path}, pointer write failed",
+  "precheck": "runtime"
+ },
+ {
+  "code": "SST-APL019",
+  "area": "APL",
+  "number": 19,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Deletion of a removed bundle file failed",
+  "message": "{artifact}: '{path}' could not be removed from the published version",
+  "precheck": "runtime"
+ },
+ {
+  "code": "SST-APL020",
+  "area": "APL",
+  "number": 20,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Version name collided under a parallel deploy",
+  "message": "{artifact}: version '{value}' was minted twice",
+  "precheck": "runtime"
+ },
+ {
+  "code": "SST-APL021",
+  "area": "APL",
+  "number": 21,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Grant issued before certification completed",
+  "message": "{artifact}: grants were issued and certification did not succeed",
+  "precheck": "runtime"
+ },
+ {
+  "code": "SST-APL022",
+  "area": "APL",
+  "number": 22,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Dataset version could not be added",
+  "message": "dataset '{artifact}': ADD VERSION failed: {detail}",
+  "precheck": "runtime"
+ },
+ {
+  "code": "SST-APL023",
+  "area": "APL",
+  "number": 23,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Eval run could not be started",
+  "message": "eval '{artifact}': {detail}",
+  "precheck": "runtime"
+ },
+ {
+  "code": "SST-APL024",
+  "area": "APL",
+  "number": 24,
+  "severity": "WARNING",
+  "non_demotable": false,
+  "title": "Eval run reported a partial terminal status",
+  "message": "eval '{artifact}': status '{found}'",
+  "precheck": "runtime"
+ },
+ {
+  "code": "SST-APL027",
+  "area": "APL",
+  "number": 27,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Metadata table absent or the wrong shape",
+  "message": "{value}: {detail}",
+  "precheck": "runtime"
+ },
+ {
+  "code": "SST-APL028",
+  "area": "APL",
+  "number": 28,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Eval config stage has the wrong FILE FORMAT",
+  "message": "eval config stage '{value}': FILE FORMAT is {found}, expected {expected}",
+  "precheck": "observe"
+ },
+ {
+  "code": "SST-APL100",
+  "area": "APL",
+  "number": 100,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Smoke query failed",
+  "message": "{artifact}: smoke query for metric '{member}' failed: {detail}",
+  "precheck": "runtime"
+ },
+ {
+  "code": "SST-APL101",
+  "area": "APL",
+  "number": 101,
+  "severity": "RETIRED",
+  "non_demotable": false,
+  "title": "Rolled back after a smoke failure -- number burned, never reused",
+  "message": "--",
+  "precheck": "--"
+ },
+ {
+  "code": "SST-APL102",
+  "area": "APL",
+  "number": 102,
+  "severity": "RETIRED",
+  "non_demotable": false,
+  "title": "Smoke failed and the prior definition was not recoverable -- number burned, never reused",
+  "message": "--",
+  "precheck": "--"
+ },
+ {
+  "code": "SST-APL900",
+  "area": "APL",
+  "number": 900,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Outcome count does not match change count",
+  "message": "applied {found} outcomes for {expected} changes",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-CFG001",
+  "area": "CFG",
+  "number": 1,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "No config file found",
+  "message": "no sst_config.yml at {path}",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-CFG002",
+  "area": "CFG",
+  "number": 2,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Config is not valid YAML",
+  "message": "{path} is not valid YAML: {detail}",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-CFG003",
+  "area": "CFG",
+  "number": 3,
+  "severity": "WARNING",
+  "non_demotable": false,
+  "title": "Unknown config key",
+  "message": "unknown config key '{key}'",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-CFG004",
+  "area": "CFG",
+  "number": 4,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Config value has the wrong type",
+  "message": "config key '{key}' expects {expected}, found {found}",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-CFG005",
+  "area": "CFG",
+  "number": 5,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Multiple config files discoverable",
+  "message": "{count} candidate config files found; used {used}, shadowed {shadowed}",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-CFG006",
+  "area": "CFG",
+  "number": 6,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Required config key missing",
+  "message": "required config key '{key}' is absent",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-CFG007",
+  "area": "CFG",
+  "number": 7,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Unknown top-level key near a known key",
+  "message": "unknown top-level key '{key}'; did you mean '{suggestion}'?",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-CFG008",
+  "area": "CFG",
+  "number": 8,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Config value outside its allowed domain",
+  "message": "config key '{key}' value {found} is outside {expected}",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-CFG009",
+  "area": "CFG",
+  "number": 9,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "profiles.yml not found",
+  "message": "no profiles.yml at any searched location",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-CFG010",
+  "area": "CFG",
+  "number": 10,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Profile or target not found",
+  "message": "target '{target}' is absent from profile '{profile}'",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-CFG011",
+  "area": "CFG",
+  "number": 11,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Profile type is not snowflake",
+  "message": "profile '{profile}' declares type '{found}'",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-CFG012",
+  "area": "CFG",
+  "number": 12,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Credential field missing from the resolved profile",
+  "message": "profile '{profile}' has no {field}",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-CFG013",
+  "area": "CFG",
+  "number": 13,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "env_var() resolved to an empty string",
+  "message": "env_var('{var}') is unset and has no default",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-CFG014",
+  "area": "CFG",
+  "number": 14,
+  "severity": "WARNING",
+  "non_demotable": false,
+  "title": "Profile field silently empty",
+  "message": "profile '{profile}' leaves {field} empty",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-CFG015",
+  "area": "CFG",
+  "number": 15,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "evals block declares a database or schema",
+  "message": "evals: declares +{key}, which is structurally invalid",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-CFG016",
+  "area": "CFG",
+  "number": 16,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Targeting value does not resolve for the current target",
+  "message": "+{key} does not resolve for target '{target}'",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-CFG017",
+  "area": "CFG",
+  "number": 17,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "tool() reference does not resolve from config",
+  "message": "{{ tool('{group}','{name}') }} does not resolve",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-CFG018",
+  "area": "CFG",
+  "number": 18,
+  "severity": "WARNING",
+  "non_demotable": false,
+  "title": "Declared tool member referenced by nothing",
+  "message": "tool member '{group}.{name}' is referenced by nothing",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-CFG019",
+  "area": "CFG",
+  "number": 19,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Tool member declared under both define and reference",
+  "message": "'{name}' appears under both define: and reference:",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-CFG020",
+  "area": "CFG",
+  "number": 20,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Per-group tools override names an unknown or reference-only group",
+  "message": "tools: override names group '{group}', which {reason}",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-CFG021",
+  "area": "CFG",
+  "number": 21,
+  "severity": "RETIRED",
+  "non_demotable": false,
+  "title": "publish_via is not yaml or ddl -- number burned, never reused",
+  "message": "--",
+  "precheck": "--"
+ },
+ {
+  "code": "SST-CFG022",
+  "area": "CFG",
+  "number": 22,
+  "severity": "RETIRED",
+  "non_demotable": false,
+  "title": "publish_via incompatible with a declared feature -- number burned, never reused",
+  "message": "--",
+  "precheck": "--"
+ },
+ {
+  "code": "SST-CFG023",
+  "area": "CFG",
+  "number": 23,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "max_staleness below the accepted floor",
+  "message": "+max_staleness is {found}; the minimum is 120",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-CFG024",
+  "area": "CFG",
+  "number": 24,
+  "severity": "RETIRED",
+  "non_demotable": false,
+  "title": "spec_version is not recognised -- number burned, never reused",
+  "message": "--",
+  "precheck": "--"
+ },
+ {
+  "code": "SST-CFG025",
+  "area": "CFG",
+  "number": 25,
+  "severity": "WARNING",
+  "non_demotable": false,
+  "title": "Value absent from an allowlist",
+  "message": "{kind} '{found}' is absent from {key}",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-CFG026",
+  "area": "CFG",
+  "number": 26,
+  "severity": "RETIRED",
+  "non_demotable": false,
+  "title": "dependency_order is incomplete or has unknown entries -- number burned, never reused",
+  "message": "--",
+  "precheck": "--"
+ },
+ {
+  "code": "SST-CFG027",
+  "area": "CFG",
+  "number": 27,
+  "severity": "RETIRED",
+  "non_demotable": false,
+  "title": "Smoke queries disabled -- number burned, never reused",
+  "message": "--",
+  "precheck": "--"
+ },
+ {
+  "code": "SST-CFG028",
+  "area": "CFG",
+  "number": 28,
+  "severity": "RETIRED",
+  "non_demotable": false,
+  "title": "emit_relationship_type is enabled -- number burned, never reused",
+  "message": "--",
+  "precheck": "--"
+ },
+ {
+  "code": "SST-CFG029",
+  "area": "CFG",
+  "number": 29,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "var() reference has no declaration",
+  "message": "{{ var('{var}') }} is not declared in config",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-CFG030",
+  "area": "CFG",
+  "number": 30,
+  "severity": "RETIRED",
+  "non_demotable": false,
+  "title": "infer_is_enum is enabled -- number burned, never reused",
+  "message": "--",
+  "precheck": "--"
+ },
+ {
+  "code": "SST-CFG031",
+  "area": "CFG",
+  "number": 31,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "snowflake_syntax_check is not set explicitly",
+  "message": "validation.snowflake_syntax_check is unset",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-CFG032",
+  "area": "CFG",
+  "number": 32,
+  "severity": "WARNING",
+  "non_demotable": false,
+  "title": "Config file shadows another config file",
+  "message": "using {used}; shadowed {shadowed}",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-CFG033",
+  "area": "CFG",
+  "number": 33,
+  "severity": "ERROR",
+  "non_demotable": true,
+  "title": "Illegal severity override",
+  "message": "severity_overrides {code}: {found} is not permitted ({reason})",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-CFG034",
+  "area": "CFG",
+  "number": 34,
+  "severity": "WARNING",
+  "non_demotable": false,
+  "title": "Strict flag and config key disagree",
+  "message": "--strict {flag} disagrees with diagnostics.strict {config}; the flag wins",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-CFG035",
+  "area": "CFG",
+  "number": 35,
+  "severity": "WARNING",
+  "non_demotable": false,
+  "title": "Baseline nearing expiry",
+  "message": "baseline expires on {date}; {count} entries remain",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-CFG036",
+  "area": "CFG",
+  "number": 36,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Name-map entry cannot be qualified",
+  "message": "{block}: '{name}' cannot be qualified -- no fqn: and {reason}",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-CFG037",
+  "area": "CFG",
+  "number": 37,
+  "severity": "WARNING",
+  "non_demotable": false,
+  "title": "validation.strict is enforced from 1.0 and no baseline exists",
+  "message": "validation.strict: true is enforced from 1.0; {count} warnings now block",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-CFG038",
+  "area": "CFG",
+  "number": 38,
+  "severity": "ERROR",
+  "non_demotable": true,
+  "title": "Sample-value collection requested but the project refuses it",
+  "message": "sample-value collection is disabled by enrichment.allow_sample_value_collection: false",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-CFG039",
+  "area": "CFG",
+  "number": 39,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Baseline is past its expiry",
+  "message": "baseline expired on {date}; {count} entries resume blocking",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-CFG040",
+  "area": "CFG",
+  "number": 40,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "`sha_version` is declared in `vars:`",
+  "message": "vars.sha_version is supplied by SST and must not be declared",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-CFG041",
+  "area": "CFG",
+  "number": 41,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Folder route names a directory that does not exist",
+  "message": "config key '{key}' in block '{block}' names no directory under '{root}'",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-CFG042",
+  "area": "CFG",
+  "number": 42,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Folder route declared under `evals:` or `skills:`",
+  "message": "{block}: declares a folder route '{key}'",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-CFG200",
+  "area": "CFG",
+  "number": 200,
+  "severity": "WARNING",
+  "non_demotable": false,
+  "title": "Deprecated config key",
+  "message": "config key '{key}' is deprecated; use '{expected}'",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-DBT001",
+  "area": "DBT",
+  "number": 1,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "dbt manifest absent or empty",
+  "message": "no dbt models available",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-DBT002",
+  "area": "DBT",
+  "number": 2,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "dbt model referenced but absent from the manifest",
+  "message": "model '{model}' is not in the dbt manifest",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-DBT003",
+  "area": "DBT",
+  "number": 3,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "config.meta.sst names an unknown role",
+  "message": "model '{model}': meta.sst role '{found}' is not a known role",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-DBT004",
+  "area": "DBT",
+  "number": 4,
+  "severity": "WARNING",
+  "non_demotable": false,
+  "title": "Column type in dbt disagrees with the declared type",
+  "message": "model '{model}': column '{column}' is {found} in dbt and {expected} in the semantic layer",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-DBT005",
+  "area": "DBT",
+  "number": 5,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "dbt manifest is stale relative to the models on disk",
+  "message": "manifest is older than {value}",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-DBT006",
+  "area": "DBT",
+  "number": 6,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Resolved relation differs from the model name",
+  "message": "model '{model}' resolves to relation '{value}'",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-DBT007",
+  "area": "DBT",
+  "number": 7,
+  "severity": "RETIRED",
+  "non_demotable": false,
+  "title": "meta.sst location disagrees with the dbt config -- number burned, never reused",
+  "message": "--",
+  "precheck": ""
+ },
+ {
+  "code": "SST-DBT008",
+  "area": "DBT",
+  "number": 8,
+  "severity": "RETIRED",
+  "non_demotable": false,
+  "title": "meta.sst location is hardcoded -- number burned, never reused",
+  "message": "--",
+  "precheck": ""
+ },
+ {
+  "code": "SST-DBT009",
+  "area": "DBT",
+  "number": 9,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Consumed model is disabled or ephemeral",
+  "message": "model '{model}' is {found} and produces no relation",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-DBT010",
+  "area": "DBT",
+  "number": 10,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Collapse safety rule violated",
+  "message": "models {a} and {b} collapse to '{value}' and differ in {column}",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-DBT011",
+  "area": "DBT",
+  "number": 11,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Source referenced by the semantic layer is not declared in dbt",
+  "message": "source '{value}' is not declared in dbt",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-DBT012",
+  "area": "DBT",
+  "number": 12,
+  "severity": "WARNING",
+  "non_demotable": false,
+  "title": "Duplicate source name or source.table pair",
+  "message": "source '{value}' is declared more than once",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-DBT013",
+  "area": "DBT",
+  "number": 13,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Model node has no name",
+  "message": "dbt node {value} has no name and was skipped",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-DBT014",
+  "area": "DBT",
+  "number": 14,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Model node has no database or schema",
+  "message": "model '{model}' has empty {key}",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-DBT015",
+  "area": "DBT",
+  "number": 15,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Model checksum absent on both sides of a comparison",
+  "message": "model '{model}' has no checksum; change detection is unusable",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-DBT016",
+  "area": "DBT",
+  "number": 16,
+  "severity": "INFO",
+  "non_demotable": false,
+  "title": "Model to artifact fan-out",
+  "message": "model '{model}' feeds {count} artifacts",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-DBT017",
+  "area": "DBT",
+  "number": 17,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "dbt manifest schema version is unsupported",
+  "message": "manifest schema '{found}'; supported: {expected}",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-DBT018",
+  "area": "DBT",
+  "number": 18,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "dbt manifest schema version key is absent or unparseable",
+  "message": "manifest schema version is {found}",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-DBT019",
+  "area": "DBT",
+  "number": 19,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "dbt profile could not be parsed",
+  "message": "{path}: {detail}",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-DBT020",
+  "area": "DBT",
+  "number": 20,
+  "severity": "WARNING",
+  "non_demotable": false,
+  "title": "dbt installation type could not be determined",
+  "message": "dbt type detection returned {found}",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-DBT021",
+  "area": "DBT",
+  "number": 21,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "auto_compile requested under an installation that cannot compile a non-default target",
+  "message": "defer.auto_compile is true under {found}",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-DBT022",
+  "area": "DBT",
+  "number": 22,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "model-paths is unreadable and defaulted",
+  "message": "model-paths could not be read; defaulted to {expected}",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-DBT023",
+  "area": "DBT",
+  "number": 23,
+  "severity": "WARNING",
+  "non_demotable": false,
+  "title": "dbt model referenced with no tests at all",
+  "message": "model '{model}' has no tests",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-DBT024",
+  "area": "DBT",
+  "number": 24,
+  "severity": "WARNING",
+  "non_demotable": false,
+  "title": "dbt model feeding an artifact has no contract",
+  "message": "model '{model}' has no contract",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-DBT025",
+  "area": "DBT",
+  "number": 25,
+  "severity": "INFO",
+  "non_demotable": false,
+  "title": "dbt seam summary",
+  "message": "{value}",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-DBT026",
+  "area": "DBT",
+  "number": 26,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "dbt packages are not installed",
+  "message": "{count} package(s) in packages.yml are not installed",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-DBT027",
+  "area": "DBT",
+  "number": 27,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "dbt could not be invoked",
+  "message": "dbt could not be executed: {detail}",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-DBT028",
+  "area": "DBT",
+  "number": 28,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "`dbt parse` exited non-zero",
+  "message": "dbt parse exited {found}",
+  "precheck": "runtime"
+ },
+ {
+  "code": "SST-DBT029",
+  "area": "DBT",
+  "number": 29,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "`dbt parse` reported success but wrote no manifest",
+  "message": "dbt parse exited 0 and {path} was not written",
+  "precheck": "runtime"
+ },
+ {
+  "code": "SST-DBT030",
+  "area": "DBT",
+  "number": 30,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Forbidden `meta.sst` location key",
+  "message": "model '{model}': meta.sst.{key} is forbidden -- delete it",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-DIS001",
+  "area": "DIS",
+  "number": 1,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Semantic path does not exist",
+  "message": "{path} does not exist",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-DIS002",
+  "area": "DIS",
+  "number": 2,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Semantic path is not a directory",
+  "message": "{path} is not a directory",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-DIS003",
+  "area": "DIS",
+  "number": 3,
+  "severity": "WARNING",
+  "non_demotable": false,
+  "title": "No candidate files found",
+  "message": "no candidate files under {path}",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-DIS004",
+  "area": "DIS",
+  "number": 4,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "File not readable",
+  "message": "{path} is not readable",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-DIS005",
+  "area": "DIS",
+  "number": 5,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Symlink loop or depth limit exceeded",
+  "message": "{path} exceeds the traversal depth limit",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-DIS006",
+  "area": "DIS",
+  "number": 6,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Two paths collide under case folding",
+  "message": "{a} and {b} collide under case folding",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-DIS007",
+  "area": "DIS",
+  "number": 7,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "File claimed by two artifact types",
+  "message": "{path} is claimed by {types}",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-DIS008",
+  "area": "DIS",
+  "number": 8,
+  "severity": "WARNING",
+  "non_demotable": false,
+  "title": "File matches no artifact type",
+  "message": "{path} matches no registered artifact type",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-DIS009",
+  "area": "DIS",
+  "number": 9,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "model-paths directory does not exist",
+  "message": "dbt model-paths entry {path} does not exist",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-DIS010",
+  "area": "DIS",
+  "number": 10,
+  "severity": "WARNING",
+  "non_demotable": false,
+  "title": "Selector matched nothing",
+  "message": "--select {selector} matched no artifact",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-DIS200",
+  "area": "DIS",
+  "number": 200,
+  "severity": "INFO",
+  "non_demotable": false,
+  "title": "Artifact ownership assigned",
+  "message": "{path} assigned to {type}",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-DIS201",
+  "area": "DIS",
+  "number": 201,
+  "severity": "INFO",
+  "non_demotable": false,
+  "title": "Files excluded by selector",
+  "message": "{count} files excluded by --exclude",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-INT001",
+  "area": "INT",
+  "number": 1,
+  "severity": "ERROR",
+  "non_demotable": true,
+  "title": "Unhandled internal exception",
+  "message": "internal error: {detail}",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-INT002",
+  "area": "INT",
+  "number": 2,
+  "severity": "ERROR",
+  "non_demotable": true,
+  "title": "Pure function attempted I/O",
+  "message": "{value} attempted I/O from a pure ring",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-INT003",
+  "area": "INT",
+  "number": 3,
+  "severity": "ERROR",
+  "non_demotable": true,
+  "title": "Phase produced an output that violates its contract",
+  "message": "{value} returned {found}, expected {expected}",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-INT004",
+  "area": "INT",
+  "number": 4,
+  "severity": "ERROR",
+  "non_demotable": true,
+  "title": "Diagnostic constructed outside the emit function",
+  "message": "diagnostic for {value} was constructed directly",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-INT005",
+  "area": "INT",
+  "number": 5,
+  "severity": "ERROR",
+  "non_demotable": true,
+  "title": "Diagnostic has no location where one is required",
+  "message": "{value} emitted with no location",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-INT006",
+  "area": "INT",
+  "number": 6,
+  "severity": "ERROR",
+  "non_demotable": true,
+  "title": "Fingerprint is not stable across identical runs",
+  "message": "fingerprint for {value} changed between identical runs",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-INT007",
+  "area": "INT",
+  "number": 7,
+  "severity": "ERROR",
+  "non_demotable": true,
+  "title": "Effective severity computed outside the diagnostics module",
+  "message": "{value} resolved severity outside diagnostics/",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-INT008",
+  "area": "INT",
+  "number": 8,
+  "severity": "ERROR",
+  "non_demotable": true,
+  "title": "Cascade attribution produced a dangling cause chain",
+  "message": "{value} carries a caused_by naming no diagnostic in the run",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-INT009",
+  "area": "INT",
+  "number": 9,
+  "severity": "ERROR",
+  "non_demotable": true,
+  "title": "Baseline entry matched more than one diagnostic",
+  "message": "baseline entry {value} matched {count} diagnostics",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-INT900",
+  "area": "INT",
+  "number": 900,
+  "severity": "ERROR",
+  "non_demotable": true,
+  "title": "Unregistered code passed to the emit function",
+  "message": "unregistered code {value}",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-INT901",
+  "area": "INT",
+  "number": 901,
+  "severity": "ERROR",
+  "non_demotable": true,
+  "title": "Diagnostic context missing a required template placeholder",
+  "message": "{value} template needs {placeholder}, which was not supplied",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-INT902",
+  "area": "INT",
+  "number": 902,
+  "severity": "ERROR",
+  "non_demotable": true,
+  "title": "Domain invariant violated",
+  "message": "domain invariant violated: {detail}",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-LOD001",
+  "area": "LOD",
+  "number": 1,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "YAML syntax error",
+  "message": "{file}:{line}:{col}: {detail}",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-LOD002",
+  "area": "LOD",
+  "number": 2,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Document root is not a mapping",
+  "message": "{file} root is {found}, expected a mapping",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-LOD003",
+  "area": "LOD",
+  "number": 3,
+  "severity": "WARNING",
+  "non_demotable": false,
+  "title": "File is empty",
+  "message": "{file} is empty",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-LOD004",
+  "area": "LOD",
+  "number": 4,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Template expression is malformed",
+  "message": "{file}:{line}:{col}: malformed template: {reason}",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-LOD005",
+  "area": "LOD",
+  "number": 5,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Duplicate key in a YAML mapping",
+  "message": "{file}:{line}: duplicate key '{key}'",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-LOD006",
+  "area": "LOD",
+  "number": 6,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "File is not valid UTF-8",
+  "message": "{file}: invalid UTF-8 at byte {offset}",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-LOD007",
+  "area": "LOD",
+  "number": 7,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "File exceeds the size limit",
+  "message": "{file} is {size} bytes, over the {expected} limit",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-LOD008",
+  "area": "LOD",
+  "number": 8,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Multi-document YAML stream",
+  "message": "{file} contains {count} documents",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-LOD009",
+  "area": "LOD",
+  "number": 9,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Unquoted colon inside a plain scalar",
+  "message": "{file}:{line}: '{key}' value contains an unquoted ':'",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-LOD010",
+  "area": "LOD",
+  "number": 10,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Tab character used for indentation",
+  "message": "{file}:{line}: tab used for indentation",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-LOD011",
+  "area": "LOD",
+  "number": 11,
+  "severity": "WARNING",
+  "non_demotable": false,
+  "title": "Folded scalar used for a multi-line value",
+  "message": "{file}:{line}: '{key}' uses a folded scalar",
+  "precheck": "a"
+ },
+ {
+  "code": "SST-LOD012",
+  "area": "LOD",
+  "number": 12,
+  "severity": "WARNING",
+  "non_demotable": false,
+  "title": "Trailing whitespace or CRLF line endings",
+  "message": "{file}: {detail}",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-LOD013",
+  "area": "LOD",
+  "number": 13,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Anchor or alias used",
+  "message": "{file}:{line}: YAML anchors are not supported",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-LOD014",
+  "area": "LOD",
+  "number": 14,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Merge key used",
+  "message": "{file}:{line}: merge keys are not supported",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-LOD015",
+  "area": "LOD",
+  "number": 15,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Non-string mapping key",
+  "message": "{file}:{line}: mapping key {found} is not a string",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-LOD016",
+  "area": "LOD",
+  "number": 16,
+  "severity": "WARNING",
+  "non_demotable": false,
+  "title": "Implicit boolean or null coercion",
+  "message": "{file}:{line}: '{key}' value {found} coerced to {expected}",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-LOD017",
+  "area": "LOD",
+  "number": 17,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Byte-order mark present",
+  "message": "{file} begins with a BOM",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-LOD018",
+  "area": "LOD",
+  "number": 18,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Sidecar file referenced by a document is missing",
+  "message": "{file} references {path}, which does not exist",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-LOD019",
+  "area": "LOD",
+  "number": 19,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Sidecar file is empty",
+  "message": "{path}, referenced by {file}, is empty",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-LOD020",
+  "area": "LOD",
+  "number": 20,
+  "severity": "WARNING",
+  "non_demotable": false,
+  "title": "Unrecognised file extension accepted",
+  "message": "{file} uses '{found}'",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-LOD021",
+  "area": "LOD",
+  "number": 21,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Document declares no recognised root key",
+  "message": "{file} declares no recognised root key",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-LOD200",
+  "area": "LOD",
+  "number": 200,
+  "severity": "INFO",
+  "non_demotable": false,
+  "title": ".yaml extension accepted",
+  "message": "{file} uses .yaml; accepted",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-LOD201",
+  "area": "LOD",
+  "number": 201,
+  "severity": "INFO",
+  "non_demotable": false,
+  "title": "File loaded from cache",
+  "message": "{file} served from the load cache",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-LOD202",
+  "area": "LOD",
+  "number": 202,
+  "severity": "INFO",
+  "non_demotable": false,
+  "title": "Line-ending normalisation applied on read",
+  "message": "{file} normalised {count} line endings on read",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-MAN001",
+  "area": "MAN",
+  "number": 1,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "manifest.json not found where expected",
+  "message": "no SST manifest at {path}",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-MAN002",
+  "area": "MAN",
+  "number": 2,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "manifest.json is not valid JSON",
+  "message": "{path} is not valid JSON: {detail}",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-MAN003",
+  "area": "MAN",
+  "number": 3,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Required manifest key missing",
+  "message": "{path} omits required key '{key}'",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-MAN004",
+  "area": "MAN",
+  "number": 4,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Impact index incomplete",
+  "message": "{artifact} has no reverse-index entry",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-MAN005",
+  "area": "MAN",
+  "number": 5,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "manifest_id does not match the recomputed hash",
+  "message": "manifest_id {found}, recomputed {expected}",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-MAN006",
+  "area": "MAN",
+  "number": 6,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Manifest written for a different target",
+  "message": "manifest target '{found}', current target '{expected}'",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-MAN007",
+  "area": "MAN",
+  "number": 7,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Manifest write failed",
+  "message": "could not write {path}: {detail}",
+  "precheck": "runtime"
+ },
+ {
+  "code": "SST-MAN008",
+  "area": "MAN",
+  "number": 8,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Compile failed before a manifest could be written",
+  "message": "compile failed: {detail}",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-MAN020",
+  "area": "MAN",
+  "number": 20,
+  "severity": "WARNING",
+  "non_demotable": false,
+  "title": "state.json absent",
+  "message": "no state file; treating every artifact as new",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-MAN021",
+  "area": "MAN",
+  "number": 21,
+  "severity": "WARNING",
+  "non_demotable": false,
+  "title": "state.manifest_id does not match the current manifest",
+  "message": "state was recorded against manifest {found}; current is {expected}",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-MAN022",
+  "area": "MAN",
+  "number": 22,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "state.json present but unreadable",
+  "message": "{path} is present and unreadable: {detail}",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-MAN023",
+  "area": "MAN",
+  "number": 23,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "State file schema is unrecognised",
+  "message": "{path} declares schema {found}",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-MAN024",
+  "area": "MAN",
+  "number": 24,
+  "severity": "WARNING",
+  "non_demotable": false,
+  "title": "State written by a newer SST",
+  "message": "{path} was written by SST {found}; this is {expected}",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-MAN025",
+  "area": "MAN",
+  "number": 25,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Two writers produced one state filename",
+  "message": "{path} was written by {value}",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-MAN026",
+  "area": "MAN",
+  "number": 26,
+  "severity": "INFO",
+  "non_demotable": false,
+  "title": "Change detection summary",
+  "message": "{value}",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-MAN027",
+  "area": "MAN",
+  "number": 27,
+  "severity": "WARNING",
+  "non_demotable": false,
+  "title": "Local state cache disagrees with the state table",
+  "message": "local state.json for target {value} disagrees with {detail}; the table wins",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-MAN030",
+  "area": "MAN",
+  "number": 30,
+  "severity": "WARNING",
+  "non_demotable": false,
+  "title": "Cached Snowflake observation past its TTL",
+  "message": "observation for {value} is {detail} old; ignored",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-MAN031",
+  "area": "MAN",
+  "number": 31,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "dbt manifest digest changed mid-run",
+  "message": "dbt manifest digest changed during the run",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-MAN201",
+  "area": "MAN",
+  "number": 201,
+  "severity": "INFO",
+  "non_demotable": false,
+  "title": "Older manifest schema migrated in memory",
+  "message": "{path} schema {found} migrated to {expected} in memory",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-MAN202",
+  "area": "MAN",
+  "number": 202,
+  "severity": "WARNING",
+  "non_demotable": false,
+  "title": "Older manifest schema with no migration",
+  "message": "{path} schema {found} has no migration; full recompile",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-MAN203",
+  "area": "MAN",
+  "number": 203,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Manifest schema newer than this binary supports",
+  "message": "{path} schema {found}; this binary supports {expected}",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-MEM001",
+  "area": "MEM",
+  "number": 1,
+  "severity": "WARNING",
+  "non_demotable": false,
+  "title": "Member declares a table present in no artifact",
+  "message": "{member} declares table '{name}', which no {type} lists",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-MEM002",
+  "area": "MEM",
+  "number": 2,
+  "severity": "WARNING",
+  "non_demotable": false,
+  "title": "tables absent and nothing inferable",
+  "message": "{member} declares no tables: and none can be inferred",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-MEM003",
+  "area": "MEM",
+  "number": 3,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Declared table does not name a known dbt model",
+  "message": "{member} declares table '{name}', which is not a known dbt model",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-MEM004",
+  "area": "MEM",
+  "number": 4,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Member declares one table twice",
+  "message": "{member} lists table '{name}' more than once",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-MEM005",
+  "area": "MEM",
+  "number": 5,
+  "severity": "WARNING",
+  "non_demotable": false,
+  "title": "Member attached to zero artifacts",
+  "message": "{member} attaches to no {type}",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-MEM006",
+  "area": "MEM",
+  "number": 6,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Derived member declares tables",
+  "message": "{member} is derived and declares tables:",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-MEM007",
+  "area": "MEM",
+  "number": 7,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Composed member reaches outside its declared tables",
+  "message": "{member}: transitive tables {outside} are not in its own tables:",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-MEM008",
+  "area": "MEM",
+  "number": 8,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Member attaches to an artifact lacking a declared table",
+  "message": "{member} attaches to {artifact}, which lacks table '{name}'",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-MEM009",
+  "area": "MEM",
+  "number": 9,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Duplicate synonym within an artifact",
+  "message": "{artifact}: synonym '{value}' is claimed by {a} and {b}",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-MEM010",
+  "area": "MEM",
+  "number": 10,
+  "severity": "WARNING",
+  "non_demotable": false,
+  "title": "Member declares a table the artifact reaches only by relationship",
+  "message": "{member} declares '{name}', reachable from {artifact} only through a join",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-MEM011",
+  "area": "MEM",
+  "number": 11,
+  "severity": "INFO",
+  "non_demotable": false,
+  "title": "Member fan-out",
+  "message": "{member} attaches to {count} artifacts",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-MEM012",
+  "area": "MEM",
+  "number": 12,
+  "severity": "INFO",
+  "non_demotable": false,
+  "title": "Tables inferred for a member",
+  "message": "{member}: tables inferred as {value}",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-MEM013",
+  "area": "MEM",
+  "number": 13,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Attachment differs between two membership calls",
+  "message": "{member} attached to {a} then {b}",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-MEM014",
+  "area": "MEM",
+  "number": 14,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Member would be dropped at render after passing attachment",
+  "message": "{member} passed attachment for {artifact} and would be dropped at render",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-MEM015",
+  "area": "MEM",
+  "number": 15,
+  "severity": "WARNING",
+  "non_demotable": false,
+  "title": "Private member referenced from outside the view",
+  "message": "{member} is private and is referenced by {artifact}",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-MEM016",
+  "area": "MEM",
+  "number": 16,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Member attaches to two artifacts with contradictory scoping",
+  "message": "{member} attaches to {a} and {b} with conflicting scope",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-MEM100",
+  "area": "MEM",
+  "number": 100,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Member attached to a type that accepts no members",
+  "message": "{type} accepts no members; {member} was attached",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-MEM101",
+  "area": "MEM",
+  "number": 101,
+  "severity": "WARNING",
+  "non_demotable": false,
+  "title": "Inferred tables exceed declared tables",
+  "message": "{member}: expression reaches {outside}, beyond its declared tables:",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-MEM102",
+  "area": "MEM",
+  "number": 102,
+  "severity": "RETIRED",
+  "non_demotable": false,
+  "title": "Member attached only through a legacy reference -- number burned, never reused",
+  "message": "--",
+  "precheck": ""
+ },
+ {
+  "code": "SST-MEM103",
+  "area": "MEM",
+  "number": 103,
+  "severity": "INFO",
+  "non_demotable": false,
+  "title": "Artifact member counts",
+  "message": "{artifact}: {value}",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-MEM104",
+  "area": "MEM",
+  "number": 104,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Artifact has no members and its type requires at least one",
+  "message": "{artifact} resolves no members",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-MEM105",
+  "area": "MEM",
+  "number": 105,
+  "severity": "WARNING",
+  "non_demotable": false,
+  "title": "Two artifacts attach contradictory custom instructions to one table",
+  "message": "{a} and {b} share table '{name}' with conflicting instructions",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-MEM106",
+  "area": "MEM",
+  "number": 106,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Verified query attaches through a different membership rule",
+  "message": "{member} used a verified-query-specific attachment path",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-MEM107",
+  "area": "MEM",
+  "number": 107,
+  "severity": "INFO",
+  "non_demotable": false,
+  "title": "Attachment skipped for a poisoned member",
+  "message": "{member} skipped: {count} unresolved references",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-MEM900",
+  "area": "MEM",
+  "number": 900,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Attachment not idempotent",
+  "message": "attachment for {member} changed on a second pass",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-PLN001",
+  "area": "PLN",
+  "number": 1,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Observation query failed",
+  "message": "observation of {value} failed: {detail}",
+  "precheck": "observe"
+ },
+ {
+  "code": "SST-PLN002",
+  "area": "PLN",
+  "number": 2,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "An object of a different type exists at the target name",
+  "message": "{artifact}: {value} exists as a {found}",
+  "precheck": "observe"
+ },
+ {
+  "code": "SST-PLN003",
+  "area": "PLN",
+  "number": 3,
+  "severity": "WARNING",
+  "non_demotable": false,
+  "title": "Prune candidate has no ownership marker",
+  "message": "{value} has no SST ownership marker; skipped",
+  "precheck": "observe"
+ },
+ {
+  "code": "SST-PLN004",
+  "area": "PLN",
+  "number": 4,
+  "severity": "WARNING",
+  "non_demotable": false,
+  "title": "Marked prune candidate is absent from local state",
+  "message": "{value} carries an SST marker and is absent from state; skipped",
+  "precheck": "observe"
+ },
+ {
+  "code": "SST-PLN005",
+  "area": "PLN",
+  "number": 5,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Dependency cycle among artifacts",
+  "message": "artifact dependency cycle: {cycle}",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-PLN006",
+  "area": "PLN",
+  "number": 6,
+  "severity": "WARNING",
+  "non_demotable": false,
+  "title": "Impact-scoped plan requested with no previous manifest",
+  "message": "no previous manifest; a full plan was computed",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-PLN007",
+  "area": "PLN",
+  "number": 7,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Referenced object does not exist in the target",
+  "message": "{artifact} references {value}, absent from target '{target}'",
+  "precheck": "observe"
+ },
+ {
+  "code": "SST-PLN008",
+  "area": "PLN",
+  "number": 8,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Deploying role lacks a required privilege",
+  "message": "{value} lacks {detail} on {target}",
+  "precheck": "observe"
+ },
+ {
+  "code": "SST-PLN009",
+  "area": "PLN",
+  "number": 9,
+  "severity": "WARNING",
+  "non_demotable": false,
+  "title": "An object already exists at the target name",
+  "message": "{artifact}: {value} already exists",
+  "precheck": "observe"
+ },
+ {
+  "code": "SST-PLN010",
+  "area": "PLN",
+  "number": 10,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Target schema does not exist",
+  "message": "schema {value} does not exist or is not authorised",
+  "precheck": "observe"
+ },
+ {
+  "code": "SST-PLN011",
+  "area": "PLN",
+  "number": 11,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Target database does not exist",
+  "message": "database {value} does not exist or is not authorised",
+  "precheck": "observe"
+ },
+ {
+  "code": "SST-PLN012",
+  "area": "PLN",
+  "number": 12,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Warehouse does not exist or is not authorised",
+  "message": "warehouse {value} does not exist or is not authorised",
+  "precheck": "observe"
+ },
+ {
+  "code": "SST-PLN013",
+  "area": "PLN",
+  "number": 13,
+  "severity": "WARNING",
+  "non_demotable": false,
+  "title": "Live object carries grants that a replace would drop",
+  "message": "{artifact}: {count} explicit grants exist on {value}",
+  "precheck": "observe"
+ },
+ {
+  "code": "SST-PLN014",
+  "area": "PLN",
+  "number": 14,
+  "severity": "WARNING",
+  "non_demotable": false,
+  "title": "Live definition differs from the last recorded state",
+  "message": "{artifact} was changed out of band",
+  "precheck": "observe"
+ },
+ {
+  "code": "SST-PLN015",
+  "area": "PLN",
+  "number": 15,
+  "severity": "INFO",
+  "non_demotable": false,
+  "title": "No change for an artifact",
+  "message": "{artifact}: NOOP",
+  "precheck": "observe"
+ },
+ {
+  "code": "SST-PLN016",
+  "area": "PLN",
+  "number": 16,
+  "severity": "INFO",
+  "non_demotable": false,
+  "title": "Plan summary",
+  "message": "{value}",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-PLN017",
+  "area": "PLN",
+  "number": 17,
+  "severity": "WARNING",
+  "non_demotable": false,
+  "title": "Prune would remove an object a consumer references by name",
+  "message": "{value} is referenced outside this project",
+  "precheck": "observe"
+ },
+ {
+  "code": "SST-PLN018",
+  "area": "PLN",
+  "number": 18,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Plan computed against a stale observation",
+  "message": "observation for {value} is {detail}",
+  "precheck": "observe"
+ },
+ {
+  "code": "SST-PLN019",
+  "area": "PLN",
+  "number": 19,
+  "severity": "WARNING",
+  "non_demotable": false,
+  "title": "Concurrent DDL detected on the target",
+  "message": "{value} is being modified by another session",
+  "precheck": "observe"
+ },
+ {
+  "code": "SST-PLN020",
+  "area": "PLN",
+  "number": 20,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Smoke query could not be constructed",
+  "message": "{artifact}: no smoke query can be built for metric '{member}'",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-PLN021",
+  "area": "PLN",
+  "number": 21,
+  "severity": "WARNING",
+  "non_demotable": false,
+  "title": "Prune reconciliation found objects the repo does not declare",
+  "message": "{count} objects in {value} are not declared here",
+  "precheck": "observe"
+ },
+ {
+  "code": "SST-PLN022",
+  "area": "PLN",
+  "number": 22,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Change order is not computable",
+  "message": "change order could not be computed: {detail}",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-PLN023",
+  "area": "PLN",
+  "number": 23,
+  "severity": "WARNING",
+  "non_demotable": false,
+  "title": "Declared name differs from the live object only by case",
+  "message": "{artifact}: declared '{value}', live object is '{found}'",
+  "precheck": "observe"
+ },
+ {
+  "code": "SST-PLN100",
+  "area": "PLN",
+  "number": 100,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Smoke query failed",
+  "message": "{artifact}: smoke query for metric '{member}' failed: {detail}",
+  "precheck": "observe"
+ },
+ {
+  "code": "SST-PLN101",
+  "area": "PLN",
+  "number": 101,
+  "severity": "INFO",
+  "non_demotable": false,
+  "title": "Smoke check skipped",
+  "message": "{artifact}: smoke check skipped ({detail})",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-PLN900",
+  "area": "PLN",
+  "number": 900,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Change order is not a valid topological order",
+  "message": "change order violates {value}",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-PRS001",
+  "area": "PRS",
+  "number": 1,
+  "severity": "WARNING",
+  "non_demotable": false,
+  "title": "Unknown top-level key",
+  "message": "no registered type owns root key '{key}'",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-PRS002",
+  "area": "PRS",
+  "number": 2,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Required field missing",
+  "message": "{artifact}: required field '{field}' is missing",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-PRS003",
+  "area": "PRS",
+  "number": 3,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Field has the wrong type",
+  "message": "{artifact}: '{field}' expects {expected}, found {found}",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-PRS004",
+  "area": "PRS",
+  "number": 4,
+  "severity": "WARNING",
+  "non_demotable": false,
+  "title": "Unknown field in a known block",
+  "message": "{artifact}: unknown field '{field}'",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-PRS005",
+  "area": "PRS",
+  "number": 5,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Name is not a valid identifier",
+  "message": "{artifact}: '{value}' is not a valid identifier",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-PRS006",
+  "area": "PRS",
+  "number": 6,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Duplicate name within a type",
+  "message": "{type} '{name}' is declared more than once",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-PRS007",
+  "area": "PRS",
+  "number": 7,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Name is not unique across the artifact set",
+  "message": "{type} '{name}' collides with {other}",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-PRS008",
+  "area": "PRS",
+  "number": 8,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Name collides with a derived member name",
+  "message": "metric '{name}' collides with a derived metric name",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-PRS009",
+  "area": "PRS",
+  "number": 9,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Name is not a valid tool identifier",
+  "message": "'{name}' does not resolve to a 1-64 char tool identifier",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-PRS010",
+  "area": "PRS",
+  "number": 10,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Identifier exceeds the object name limit",
+  "message": "'{name}' is {size} chars, over the {expected} limit",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-PRS011",
+  "area": "PRS",
+  "number": 11,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Identifier requires quoting and quoting is not declared",
+  "message": "'{name}' needs quoting to render safely",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-PRS012",
+  "area": "PRS",
+  "number": 12,
+  "severity": "WARNING",
+  "non_demotable": false,
+  "title": "Non-ASCII identifier",
+  "message": "'{name}' contains non-ASCII characters",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-PRS013",
+  "area": "PRS",
+  "number": 13,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Value outside the allowed set for a closed field",
+  "message": "{artifact}: '{field}' is '{found}', expected one of {expected}",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-PRS014",
+  "area": "PRS",
+  "number": 14,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Mutually exclusive fields both present",
+  "message": "{artifact}: '{field}' and '{other}' are mutually exclusive",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-PRS015",
+  "area": "PRS",
+  "number": 15,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Paired fields not declared together",
+  "message": "{artifact}: '{field}' requires '{other}'",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-PRS016",
+  "area": "PRS",
+  "number": 16,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Numeric value out of range",
+  "message": "{artifact}: '{field}' is {found}, expected {expected}",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-PRS017",
+  "area": "PRS",
+  "number": 17,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Unparseable timestamp",
+  "message": "{artifact}: '{field}' value '{found}' is not an epoch or ISO timestamp",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-PRS018",
+  "area": "PRS",
+  "number": 18,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Collection element has the wrong shape",
+  "message": "{artifact}: '{field}'[{index}] expects {expected}, found {found}",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-PRS019",
+  "area": "PRS",
+  "number": 19,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Boolean field holds a non-boolean",
+  "message": "{artifact}: '{field}' is '{found}', expected a boolean",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-PRS020",
+  "area": "PRS",
+  "number": 20,
+  "severity": "WARNING",
+  "non_demotable": false,
+  "title": "Deprecated field spelling",
+  "message": "{artifact}: '{field}' is deprecated; use '{expected}'",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-PRS021",
+  "area": "PRS",
+  "number": 21,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Deprecated relationship column shape",
+  "message": "{artifact}: relationship_columns / left_column / right_column is not supported",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-PRS022",
+  "area": "PRS",
+  "number": 22,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Unknown field within edit distance of a known field",
+  "message": "{artifact}: unknown field '{field}'; did you mean '{expected}'?",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-PRS023",
+  "area": "PRS",
+  "number": 23,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Passthrough block collides with a modelled key",
+  "message": "{artifact}: passthrough key '{key}' is already rendered by SST",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-PRS024",
+  "area": "PRS",
+  "number": 24,
+  "severity": "WARNING",
+  "non_demotable": false,
+  "title": "Passthrough block is non-empty",
+  "message": "{artifact}: {count} passthrough keys will be rendered unvalidated",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-PRS025",
+  "area": "PRS",
+  "number": 25,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Reserved alias used",
+  "message": "{artifact}: alias '{value}' is reserved",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-PRS026",
+  "area": "PRS",
+  "number": 26,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Tag value exceeds the length limit",
+  "message": "{artifact}: tag '{field}' value is {size} chars, over 256",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-PRS027",
+  "area": "PRS",
+  "number": 27,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Tags block has the wrong shape",
+  "message": "{artifact}: tags must be a mapping of name to value, found {found}",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-PRS028",
+  "area": "PRS",
+  "number": 28,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Constraints block has the wrong shape",
+  "message": "{artifact}: constraints block is invalid: {detail}",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-PRS029",
+  "area": "PRS",
+  "number": 29,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Synonyms block has the wrong type",
+  "message": "{artifact}: synonyms must be a list of strings, found {found}",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-PRS030",
+  "area": "PRS",
+  "number": 30,
+  "severity": "WARNING",
+  "non_demotable": false,
+  "title": "Synonym contains problematic characters",
+  "message": "{artifact}: synonym '{value}' contains {detail}",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-PRS031",
+  "area": "PRS",
+  "number": 31,
+  "severity": "WARNING",
+  "non_demotable": false,
+  "title": "Name collides with a reserved word",
+  "message": "'{name}' is a reserved word",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-PRS032",
+  "area": "PRS",
+  "number": 32,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Input schema property has a forbidden type",
+  "message": "{artifact}: input_schema property '{field}' has type '{found}'",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-PRS033",
+  "area": "PRS",
+  "number": 33,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Required input-schema name is not a declared property",
+  "message": "{artifact}: input_schema.required names '{field}', absent from properties",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-PRS034",
+  "area": "PRS",
+  "number": 34,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Frontmatter missing a required key",
+  "message": "{artifact}: frontmatter omits '{field}'",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-PRS100",
+  "area": "PRS",
+  "number": 100,
+  "severity": "WARNING",
+  "non_demotable": false,
+  "title": "Name collides with a reserved identifier namespace",
+  "message": "'{name}' is in a reserved namespace",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-PRS101",
+  "area": "PRS",
+  "number": 101,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Required collection is empty",
+  "message": "{artifact}: '{field}' is present and empty",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-PRS102",
+  "area": "PRS",
+  "number": 102,
+  "severity": "ERROR",
+  "non_demotable": true,
+  "title": "tables is explicitly empty",
+  "message": "{artifact}: 'tables: []' is not accepted",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-PRS103",
+  "area": "PRS",
+  "number": 103,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Value outside the allowed enum",
+  "message": "{artifact}: '{field}' is '{found}', expected one of {expected}",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-PRS104",
+  "area": "PRS",
+  "number": 104,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Member declared under two owners",
+  "message": "{member} is declared under both {a} and {b}",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-PRS105",
+  "area": "PRS",
+  "number": 105,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Member type not accepted by its owner",
+  "message": "{type} does not accept members of type {member_type}",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-PRS106",
+  "area": "PRS",
+  "number": 106,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Duplicate member name within an owner",
+  "message": "{artifact}: {member_type} '{name}' is declared twice",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-PRS107",
+  "area": "PRS",
+  "number": 107,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Member declares no distinguishing key",
+  "message": "{artifact}: {member_type} entry {index} has no name",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-PRS108",
+  "area": "PRS",
+  "number": 108,
+  "severity": "RETIRED",
+  "non_demotable": false,
+  "title": "Role-playing occurrence has no distinct name -- number burned, never reused",
+  "message": "--",
+  "precheck": "--"
+ },
+ {
+  "code": "SST-PRS109",
+  "area": "PRS",
+  "number": 109,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "table_config names a table not in tables",
+  "message": "{artifact}: table_config key '{name}' is not in tables:",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-PRS110",
+  "area": "PRS",
+  "number": 110,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Condition does not parse to one column pair",
+  "message": "{artifact}: condition '{value}' does not parse to one left/right pair",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-PRS111",
+  "area": "PRS",
+  "number": 111,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Range condition names one column twice",
+  "message": "{artifact}: range condition uses '{name}' for both start and end",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-PRS112",
+  "area": "PRS",
+  "number": 112,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "More than one asof condition",
+  "message": "{artifact}: {count} asof conditions declared",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-PRS113",
+  "area": "PRS",
+  "number": 113,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Expression field is not a string",
+  "message": "{artifact}: '{field}' expects a SQL string, found {found}",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-PRS114",
+  "area": "PRS",
+  "number": 114,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Score ranges are not contiguous",
+  "message": "{artifact}: score_ranges leave a gap or overlap at {value}",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-PRS115",
+  "area": "PRS",
+  "number": 115,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "threshold_default declares no usable bound inside the scale",
+  "message": "{artifact}: threshold_default {found} is not a usable bound within max_score {expected}",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-PRS116",
+  "area": "PRS",
+  "number": 116,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Unsupported template placeholder in a judge prompt",
+  "message": "{artifact}: '{placeholder}' is not one of the 12 supported names",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-PRS117",
+  "area": "PRS",
+  "number": 117,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Dataset row has no question or no expected field",
+  "message": "{artifact}: row {index} has {detail}",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-PRS118",
+  "area": "PRS",
+  "number": 118,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Sample question entry is a bare string",
+  "message": "{artifact}: sample_questions[{index}] is a string, expected a mapping",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-PRS119",
+  "area": "PRS",
+  "number": 119,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Skill folder contains another skill folder",
+  "message": "{artifact}: nested skill folder at {path}",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-PRS120",
+  "area": "PRS",
+  "number": 120,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "SKILL.md is not at the folder root",
+  "message": "{artifact}: SKILL.md found at {path}",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-PRS900",
+  "area": "PRS",
+  "number": 900,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Parser returned a non-frozen record",
+  "message": "{type} parser returned {cls}, which is mutable",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-PRT001",
+  "area": "PRT",
+  "number": 1,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Snowflake connection failed",
+  "message": "could not connect to {value}: {detail}",
+  "precheck": "runtime"
+ },
+ {
+  "code": "SST-PRT002",
+  "area": "PRT",
+  "number": 2,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Authentication failed",
+  "message": "authentication failed for {value}",
+  "precheck": "runtime"
+ },
+ {
+  "code": "SST-PRT003",
+  "area": "PRT",
+  "number": 3,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Query timed out",
+  "message": "query timed out after {detail}",
+  "precheck": "runtime"
+ },
+ {
+  "code": "SST-PRT004",
+  "area": "PRT",
+  "number": 4,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Insufficient privilege",
+  "message": "{value} lacks {detail}",
+  "precheck": "runtime"
+ },
+ {
+  "code": "SST-PRT005",
+  "area": "PRT",
+  "number": 5,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Object not found",
+  "message": "{value} not found",
+  "precheck": "runtime"
+ },
+ {
+  "code": "SST-PRT006",
+  "area": "PRT",
+  "number": 6,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "dbt manifest not found",
+  "message": "no dbt manifest at {path}",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-PRT007",
+  "area": "PRT",
+  "number": 7,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "dbt manifest schema version unsupported",
+  "message": "manifest schema '{found}' is unsupported",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-PRT008",
+  "area": "PRT",
+  "number": 8,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Filesystem write failed",
+  "message": "could not write {path}: {detail}",
+  "precheck": "runtime"
+ },
+ {
+  "code": "SST-PRT009",
+  "area": "PRT",
+  "number": 9,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Filesystem read failed",
+  "message": "could not read {path}: {detail}",
+  "precheck": "runtime"
+ },
+ {
+  "code": "SST-PRT010",
+  "area": "PRT",
+  "number": 10,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Path could not be removed",
+  "message": "could not remove {path}: {detail}",
+  "precheck": "runtime"
+ },
+ {
+  "code": "SST-PRT011",
+  "area": "PRT",
+  "number": 11,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Credential resolved to an empty value",
+  "message": "{value} resolved to an empty credential",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-PRT012",
+  "area": "PRT",
+  "number": 12,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Secret would be rendered in plain text",
+  "message": "{value} would be rendered verbatim",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-PRT100",
+  "area": "PRT",
+  "number": 100,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Invalid invocation",
+  "message": "{detail}",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-PRT101",
+  "area": "PRT",
+  "number": 101,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Comma in a selector",
+  "message": "selector '{value}' contains a comma",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-PRT102",
+  "area": "PRT",
+  "number": 102,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Unknown selector kind",
+  "message": "selector '{value}' names an unknown kind",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-PRT103",
+  "area": "PRT",
+  "number": 103,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Selector requires state that was not supplied",
+  "message": "selector '{value}' requires --state",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-PRT104",
+  "area": "PRT",
+  "number": 104,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Mutually exclusive flags",
+  "message": "{a} and {b} cannot be combined",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-PRT105",
+  "area": "PRT",
+  "number": 105,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Invalid source or model selector",
+  "message": "'{value}' is not a valid {detail} selector",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-PRT106",
+  "area": "PRT",
+  "number": 106,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Output format is not supported by this command",
+  "message": "'{found}' is not a supported format for {command}; supported: {expected}",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-PRT107",
+  "area": "PRT",
+  "number": 107,
+  "severity": "INFO",
+  "non_demotable": false,
+  "title": "Run interrupted",
+  "message": "interrupted after {detail}; {value}",
+  "precheck": "runtime"
+ },
+ {
+  "code": "SST-PRT108",
+  "area": "PRT",
+  "number": 108,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Object name is not fully qualified",
+  "message": "{command} requires a fully-qualified name; '{value}' is not one",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-PRT109",
+  "area": "PRT",
+  "number": 109,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Mandatory confirmation flag absent",
+  "message": "{command} requires --yes",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-PRT110",
+  "area": "PRT",
+  "number": 110,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Selector passed to a command that has none",
+  "message": "{command} takes no selector; '{value}' is not accepted",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-REF001",
+  "area": "REF",
+  "number": 1,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "ref() model not in the dbt catalog",
+  "message": "{{ ref('{model}') }} is not a model in the dbt manifest",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-REF002",
+  "area": "REF",
+  "number": 2,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "ref() column not on the model",
+  "message": "{{ ref('{model}','{column}') }}: '{column}' is not a column on {model}",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-REF003",
+  "area": "REF",
+  "number": 3,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Malformed template expression",
+  "message": "{file}:{line}:{col}: malformed template expression '{value}'",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-REF004",
+  "area": "REF",
+  "number": 4,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Unknown template function",
+  "message": "'{ref_function}' is not a template function",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-REF005",
+  "area": "REF",
+  "number": 5,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "metric() reference cycle",
+  "message": "metric reference cycle: {cycle}",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-REF006",
+  "area": "REF",
+  "number": 6,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "metric() target not found",
+  "message": "{{ metric('{name}') }} does not resolve",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-REF007",
+  "area": "REF",
+  "number": 7,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "custom_instructions() target not found",
+  "message": "{{ custom_instructions('{name}') }} does not resolve",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-REF008",
+  "area": "REF",
+  "number": 8,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Ref used in a field that forbids it",
+  "message": "{artifact}: '{field}' does not accept template expressions",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-REF009",
+  "area": "REF",
+  "number": 9,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Ref resolved to an empty string",
+  "message": "{{ {ref_function}('{name}') }} resolved to an empty string",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-REF010",
+  "area": "REF",
+  "number": 10,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "tool() target not found",
+  "message": "{{ tool('{group}','{name}') }} does not resolve",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-REF011",
+  "area": "REF",
+  "number": 11,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "semantic_view() target not found",
+  "message": "{{ semantic_view('{name}') }} does not resolve",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-REF012",
+  "area": "REF",
+  "number": 12,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "agent() target not found",
+  "message": "{{ agent('{name}') }} does not resolve",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-REF013",
+  "area": "REF",
+  "number": 13,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "extension() target not found",
+  "message": "{{ extension('{name}') }} does not resolve",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-REF014",
+  "area": "REF",
+  "number": 14,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "file() sidecar does not resolve",
+  "message": "{{ file('{path}') }} does not resolve to a file",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-REF015",
+  "area": "REF",
+  "number": 15,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Ref has the wrong arity",
+  "message": "{{ {ref_function}() }} takes {expected} arguments, found {found}",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-REF016",
+  "area": "REF",
+  "number": 16,
+  "severity": "RETIRED",
+  "non_demotable": false,
+  "title": "Two-argument ref used with a dbt cross-project idiom -- number burned, never reused",
+  "message": "--",
+  "precheck": ""
+ },
+ {
+  "code": "SST-REF017",
+  "area": "REF",
+  "number": 17,
+  "severity": "RETIRED",
+  "non_demotable": false,
+  "title": "Hardcoded fully-qualified name -- number burned, never reused",
+  "message": "--",
+  "precheck": ""
+ },
+ {
+  "code": "SST-REF018",
+  "area": "REF",
+  "number": 18,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Ref resolves outside the declared target",
+  "message": "{{ {ref_function}('{name}') }} has no entry for target '{target}'",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-REF019",
+  "area": "REF",
+  "number": 19,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Relation is not a three-part name",
+  "message": "'{value}' is not a three-part fully-qualified name",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-REF020",
+  "area": "REF",
+  "number": 20,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Ref resolves to an incompatible object type",
+  "message": "{{ {ref_function}('{name}') }} resolves to {found}, expected {expected}",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-REF021",
+  "area": "REF",
+  "number": 21,
+  "severity": "RETIRED",
+  "non_demotable": false,
+  "title": "Ref target is declared under both define and reference -- number burned, never reused",
+  "message": "--",
+  "precheck": ""
+ },
+ {
+  "code": "SST-REF022",
+  "area": "REF",
+  "number": 22,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Agent reference graph has a cycle",
+  "message": "agent delegation cycle: {cycle}",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-REF023",
+  "area": "REF",
+  "number": 23,
+  "severity": "WARNING",
+  "non_demotable": false,
+  "title": "Ref target resolves to the same object across targets",
+  "message": "{{ {ref_function}('{name}') }} resolves to {value} for both dev and prod",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-REF024",
+  "area": "REF",
+  "number": 24,
+  "severity": "RETIRED",
+  "non_demotable": false,
+  "title": "Legacy table() reference does not resolve -- number burned, never reused",
+  "message": "--",
+  "precheck": ""
+ },
+ {
+  "code": "SST-REF025",
+  "area": "REF",
+  "number": 25,
+  "severity": "RETIRED",
+  "non_demotable": false,
+  "title": "Legacy column() reference does not resolve -- number burned, never reused",
+  "message": "--",
+  "precheck": ""
+ },
+ {
+  "code": "SST-REF026",
+  "area": "REF",
+  "number": 26,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "eval_metric() target not found",
+  "message": "{{ eval_metric('{name}') }} does not resolve",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-REF027",
+  "area": "REF",
+  "number": 27,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "file() path escapes the project root",
+  "message": "{{ file('{path}') }} resolves outside the project root",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-REF028",
+  "area": "REF",
+  "number": 28,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "tag() target not declared",
+  "message": "{{ tag('{name}') }} does not resolve",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-REF029",
+  "area": "REF",
+  "number": 29,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "relationship() target not declared",
+  "message": "{{ relationship('{name}') }} does not resolve",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-REF030",
+  "area": "REF",
+  "number": 30,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "filter() target not declared",
+  "message": "{{ filter('{name}') }} does not resolve",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-REF031",
+  "area": "REF",
+  "number": 31,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "verified_query() target not declared",
+  "message": "{{ verified_query('{name}') }} does not resolve",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-REF032",
+  "area": "REF",
+  "number": 32,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "skill() target not declared",
+  "message": "{{ skill('{name}') }} does not resolve",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-REF033",
+  "area": "REF",
+  "number": 33,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Template does not match the ref grammar",
+  "message": "{file}:{line}:{col}: '{text}' is not a valid reference: {detail}",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-REF034",
+  "area": "REF",
+  "number": 34,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Legacy table() global is rejected",
+  "message": "{file}:{line}:{col}: '{{ table('{model}') }}' is not a reference in 1.0; use '{{ ref('{model}') }}'",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-REF035",
+  "area": "REF",
+  "number": 35,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Legacy column() global is rejected",
+  "message": "{file}:{line}:{col}: '{{ column('{model}','{column}') }}' is not a reference in 1.0; use '{{ ref('{model}','{column}') }}'",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-REF200",
+  "area": "REF",
+  "number": 200,
+  "severity": "RETIRED",
+  "non_demotable": false,
+  "title": "table() is deprecated -- number burned, never reused",
+  "message": "--",
+  "precheck": ""
+ },
+ {
+  "code": "SST-REF201",
+  "area": "REF",
+  "number": 201,
+  "severity": "RETIRED",
+  "non_demotable": false,
+  "title": "column() is deprecated -- number burned, never reused",
+  "message": "--",
+  "precheck": ""
+ },
+ {
+  "code": "SST-REF900",
+  "area": "REF",
+  "number": 900,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Resolver exceeded max depth",
+  "message": "resolution depth {found} exceeded the limit {expected}",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-REG001",
+  "area": "REG",
+  "number": 1,
+  "severity": "ERROR",
+  "non_demotable": true,
+  "title": "Registration missing a required field",
+  "message": "registration for {type} omits required field '{field}'",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-REG002",
+  "area": "REG",
+  "number": 2,
+  "severity": "ERROR",
+  "non_demotable": true,
+  "title": "Duplicate registration",
+  "message": "{type} is already registered",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-REG003",
+  "area": "REG",
+  "number": 3,
+  "severity": "ERROR",
+  "non_demotable": true,
+  "title": "Two types claim one root_key",
+  "message": "root_key '{root_key}' is claimed by {types}",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-REG004",
+  "area": "REG",
+  "number": 4,
+  "severity": "ERROR",
+  "non_demotable": true,
+  "title": "Duplicate ddl_position or clause_position",
+  "message": "position {position} is claimed by {types}",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-REG005",
+  "area": "REG",
+  "number": 5,
+  "severity": "ERROR",
+  "non_demotable": true,
+  "title": "Two types claim one ref_function",
+  "message": "ref_function '{ref_function}' is claimed twice",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-REG006",
+  "area": "REG",
+  "number": 6,
+  "severity": "ERROR",
+  "non_demotable": true,
+  "title": "Type names an unregistered rule",
+  "message": "{type} names rule '{rule_id}', which is not registered",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-REG007",
+  "area": "REG",
+  "number": 7,
+  "severity": "ERROR",
+  "non_demotable": true,
+  "title": "Type names an unregistered member type or owner",
+  "message": "{type} names '{member_type}', which is not registered",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-REG010",
+  "area": "REG",
+  "number": 10,
+  "severity": "ERROR",
+  "non_demotable": true,
+  "title": "ddl_position contradicts dependency_edges",
+  "message": "{type} is ordered at {position} but depends on {blocker}, ordered later",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-REG011",
+  "area": "REG",
+  "number": 11,
+  "severity": "ERROR",
+  "non_demotable": true,
+  "title": "Type dependency graph has a cycle",
+  "message": "type dependency cycle: {cycle}",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-REG012",
+  "area": "REG",
+  "number": 12,
+  "severity": "ERROR",
+  "non_demotable": true,
+  "title": "Code registered with a malformed identifier",
+  "message": "'{code}' does not match SST-<AREA><NNN>",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-REG013",
+  "area": "REG",
+  "number": 13,
+  "severity": "ERROR",
+  "non_demotable": true,
+  "title": "Code area disagrees with its declared subsystem",
+  "message": "'{code}' declares subsystem {subsystem}",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-REG014",
+  "area": "REG",
+  "number": 14,
+  "severity": "ERROR",
+  "non_demotable": true,
+  "title": "Internal-band code is not a non-demotable ERROR",
+  "message": "'{code}' is in the 900 band with severity {severity}",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-REG015",
+  "area": "REG",
+  "number": 15,
+  "severity": "ERROR",
+  "non_demotable": true,
+  "title": "Severity comparison outside the diagnostics module",
+  "message": "{module} compares severities outside diagnostics/",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-REG016",
+  "area": "REG",
+  "number": 16,
+  "severity": "ERROR",
+  "non_demotable": true,
+  "title": "Message template placeholder is not supplied",
+  "message": "'{code}' template names {placeholder}, absent from declared params",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-REG017",
+  "area": "REG",
+  "number": 17,
+  "severity": "ERROR",
+  "non_demotable": true,
+  "title": "Retired number re-registered",
+  "message": "'{code}' was retired in {version} and cannot be reused",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-REG018",
+  "area": "REG",
+  "number": 18,
+  "severity": "ERROR",
+  "non_demotable": true,
+  "title": "Deprecation without a successor",
+  "message": "'{code}' is deprecated_in {version} with no superseded_by",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-REG019",
+  "area": "REG",
+  "number": 19,
+  "severity": "ERROR",
+  "non_demotable": true,
+  "title": "internal_detail declared outside INT and SNO",
+  "message": "'{code}' declares internal_detail but its area is {area}",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-REG020",
+  "area": "REG",
+  "number": 20,
+  "severity": "ERROR",
+  "non_demotable": true,
+  "title": "Resolver set and registry `ref_function`s disagree",
+  "message": "'{ref_function}' -- {direction}",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-REG021",
+  "area": "REG",
+  "number": 21,
+  "severity": "ERROR",
+  "non_demotable": true,
+  "title": "`grant_preservation` contradicts the type's other fields",
+  "message": "type '{artifact}' -- {reason}",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-REG022",
+  "area": "REG",
+  "number": 22,
+  "severity": "ERROR",
+  "non_demotable": true,
+  "title": "Non-`semantic_view` artifact type declares `member_types`",
+  "message": "artifact type '{artifact}' declares member_types {member_types}; only semantic_view may",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-REG023",
+  "area": "REG",
+  "number": 23,
+  "severity": "ERROR",
+  "non_demotable": true,
+  "title": "`MemberIndex` does not cover every declared member type",
+  "message": "MemberIndex covers {covered}; semantic_view declares {declared}",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-REG024",
+  "area": "REG",
+  "number": 24,
+  "severity": "ERROR",
+  "non_demotable": true,
+  "title": "A `ref_field` policy is undeclared, or a declared policy is neither bound nor explained",
+  "message": "ref policy '{policy}': {detail}",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-REG900",
+  "area": "REG",
+  "number": 900,
+  "severity": "ERROR",
+  "non_demotable": true,
+  "title": "Registry mutated after freeze",
+  "message": "registry mutated after freeze: {detail}",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-RND001",
+  "area": "RND",
+  "number": 1,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Model is missing a field the dialect requires",
+  "message": "{artifact}: the {value} dialect requires '{field}'",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-RND002",
+  "area": "RND",
+  "number": 2,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Identifier cannot be safely quoted",
+  "message": "{artifact}: '{name}' cannot be safely quoted",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-RND003",
+  "area": "RND",
+  "number": 3,
+  "severity": "WARNING",
+  "non_demotable": false,
+  "title": "Rendered DDL exceeds the statement size limit",
+  "message": "{artifact}: rendered DDL is {size} bytes, over the {expected} guess",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-RND010",
+  "area": "RND",
+  "number": 10,
+  "severity": "WARNING",
+  "non_demotable": false,
+  "title": "Agent has no tools",
+  "message": "agent '{artifact}' renders with no tools",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-RND011",
+  "area": "RND",
+  "number": 11,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Agent spec contains a dollar-quote sequence",
+  "message": "agent '{artifact}': spec contains '$$' at {value}",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-RND012",
+  "area": "RND",
+  "number": 12,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Unknown agent tool type at render",
+  "message": "agent '{artifact}': tool type '{found}' is unknown to the renderer",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-RND013",
+  "area": "RND",
+  "number": 13,
+  "severity": "WARNING",
+  "non_demotable": false,
+  "title": "generic tool resources emitted with no server-side check behind them",
+  "message": "agent '{artifact}': tool_resources for '{name}' is not validated by Snowflake",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-RND020",
+  "area": "RND",
+  "number": 20,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Unknown eval expectation kind",
+  "message": "eval '{artifact}': expectation kind '{found}' is unknown",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-RND021",
+  "area": "RND",
+  "number": 21,
+  "severity": "WARNING",
+  "non_demotable": false,
+  "title": "Eval has no cases",
+  "message": "eval '{artifact}' renders with no cases",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-RND022",
+  "area": "RND",
+  "number": 22,
+  "severity": "WARNING",
+  "non_demotable": false,
+  "title": "SQL_MATCH expectation is brittle",
+  "message": "eval '{artifact}': row {index} uses SQL_MATCH",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-RND030",
+  "area": "RND",
+  "number": 30,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Skill references a path that does not exist",
+  "message": "skill '{artifact}': '{path}' does not exist at render",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-RND031",
+  "area": "RND",
+  "number": 31,
+  "severity": "WARNING",
+  "non_demotable": false,
+  "title": "Skill body is empty",
+  "message": "skill '{artifact}': rendered body is empty",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-RND032",
+  "area": "RND",
+  "number": 32,
+  "severity": "WARNING",
+  "non_demotable": false,
+  "title": "Skill body exceeds the soft size limit",
+  "message": "skill '{artifact}': rendered body is {size} bytes, over {expected}",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-RND040",
+  "area": "RND",
+  "number": 40,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Unsupported tool kind at render",
+  "message": "tool '{artifact}': kind '{found}' has no renderer",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-RND041",
+  "area": "RND",
+  "number": 41,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Tool source query is empty",
+  "message": "tool '{artifact}': rendered source query is empty",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-RND900",
+  "area": "RND",
+  "number": 900,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Rendered member count differs from the model's",
+  "message": "{artifact}: rendered {found} members, model carries {expected}",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-SNO001",
+  "area": "SNO",
+  "number": 1,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Snowflake refused and SST does not recognise the refusal",
+  "message": "Snowflake refused: {detail}",
+  "precheck": "runtime"
+ },
+ {
+  "code": "SST-SNO002",
+  "area": "SNO",
+  "number": 2,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Object already exists",
+  "message": "{value} already exists",
+  "precheck": "runtime"
+ },
+ {
+  "code": "SST-SNO003",
+  "area": "SNO",
+  "number": 3,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Object does not exist or is not authorised",
+  "message": "{value} does not exist or is not authorised",
+  "precheck": "runtime"
+ },
+ {
+  "code": "SST-SNO004",
+  "area": "SNO",
+  "number": 4,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Insufficient privileges",
+  "message": "insufficient privileges for {value}",
+  "precheck": "runtime"
+ },
+ {
+  "code": "SST-SNO005",
+  "area": "SNO",
+  "number": 5,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Schema does not exist or is not authorised",
+  "message": "schema {value} does not exist or is not authorised",
+  "precheck": "runtime"
+ },
+ {
+  "code": "SST-SNO006",
+  "area": "SNO",
+  "number": 6,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Database does not exist or is not authorised",
+  "message": "database {value} does not exist or is not authorised",
+  "precheck": "runtime"
+ },
+ {
+  "code": "SST-SNO007",
+  "area": "SNO",
+  "number": 7,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Warehouse does not exist or is not authorised",
+  "message": "warehouse {value} does not exist or is not authorised",
+  "precheck": "runtime"
+ },
+ {
+  "code": "SST-SNO008",
+  "area": "SNO",
+  "number": 8,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "No active warehouse in the session",
+  "message": "no active warehouse in the session",
+  "precheck": "runtime"
+ },
+ {
+  "code": "SST-SNO009",
+  "area": "SNO",
+  "number": 9,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "SQL compilation error",
+  "message": "SQL compilation error: {detail}",
+  "precheck": "runtime"
+ },
+ {
+  "code": "SST-SNO010",
+  "area": "SNO",
+  "number": 10,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "SQL execution internal error",
+  "message": "SQL execution internal error: {detail}",
+  "precheck": "runtime"
+ },
+ {
+  "code": "SST-SNO011",
+  "area": "SNO",
+  "number": 11,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Statement timeout",
+  "message": "statement timed out after {detail}",
+  "precheck": "runtime"
+ },
+ {
+  "code": "SST-SNO012",
+  "area": "SNO",
+  "number": 12,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Secure-object share restriction",
+  "message": "{value}: share restriction",
+  "precheck": "runtime"
+ },
+ {
+  "code": "SST-SNO013",
+  "area": "SNO",
+  "number": 13,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Authentication failed",
+  "message": "authentication failed for {value}",
+  "precheck": "runtime"
+ },
+ {
+  "code": "SST-SNO014",
+  "area": "SNO",
+  "number": 14,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Driver network failure",
+  "message": "network failure: {detail}",
+  "precheck": "runtime"
+ },
+ {
+  "code": "SST-SNO015",
+  "area": "SNO",
+  "number": 15,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "max_staleness rejected",
+  "message": "max_staleness {found} rejected",
+  "precheck": "runtime"
+ },
+ {
+  "code": "SST-SNO016",
+  "area": "SNO",
+  "number": 16,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Semantic view feature not enabled",
+  "message": "semantic views are not enabled on this account",
+  "precheck": "runtime"
+ },
+ {
+  "code": "SST-SNO017",
+  "area": "SNO",
+  "number": 17,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "CREATE AGENT privilege required",
+  "message": "CREATE AGENT required on {value}",
+  "precheck": "runtime"
+ },
+ {
+  "code": "SST-SNO018",
+  "area": "SNO",
+  "number": 18,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "CREATE DATASET privilege required",
+  "message": "CREATE DATASET required on {value}",
+  "precheck": "runtime"
+ },
+ {
+  "code": "SST-SNO019",
+  "area": "SNO",
+  "number": 19,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Duplicate synonym",
+  "message": "duplicate synonym {value}",
+  "precheck": "runtime"
+ },
+ {
+  "code": "SST-SNO020",
+  "area": "SNO",
+  "number": 20,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Identifier too long",
+  "message": "identifier {value} is too long",
+  "precheck": "runtime"
+ },
+ {
+  "code": "SST-SNO021",
+  "area": "SNO",
+  "number": 21,
+  "severity": "RETIRED",
+  "non_demotable": false,
+  "title": "Unsupported clause for the publish path -- number burned, never reused",
+  "message": "--",
+  "precheck": "--"
+ },
+ {
+  "code": "SST-SNO022",
+  "area": "SNO",
+  "number": 22,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Concurrent DDL or lock timeout",
+  "message": "lock timeout on {value}",
+  "precheck": "runtime"
+ },
+ {
+  "code": "SST-SNO023",
+  "area": "SNO",
+  "number": 23,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Result set too large",
+  "message": "result set too large for {value}",
+  "precheck": "runtime"
+ },
+ {
+  "code": "SST-SNO024",
+  "area": "SNO",
+  "number": 24,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Query queued beyond the wait limit",
+  "message": "query queued beyond {detail}",
+  "precheck": "runtime"
+ },
+ {
+  "code": "SST-SNO025",
+  "area": "SNO",
+  "number": 25,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Unexpected DESCRIBE output shape",
+  "message": "DESCRIBE {value} returned an unexpected shape",
+  "precheck": "runtime"
+ },
+ {
+  "code": "SST-VAL001",
+  "area": "VAL",
+  "number": 1,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Name is not unique within its type",
+  "message": "{type} '{name}' is declared more than once",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-VAL002",
+  "area": "VAL",
+  "number": 2,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Name is not unique across the extension namespace",
+  "message": "{type} '{name}' collides with {other} in another namespace",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-VAL003",
+  "area": "VAL",
+  "number": 3,
+  "severity": "WARNING",
+  "non_demotable": false,
+  "title": "Description missing",
+  "message": "{type} '{name}' has no description",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-VAL004",
+  "area": "VAL",
+  "number": 4,
+  "severity": "WARNING",
+  "non_demotable": false,
+  "title": "Description shorter than the configured floor",
+  "message": "{type} '{name}' description is {size} chars, under {expected}",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-VAL005",
+  "area": "VAL",
+  "number": 5,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Description does not state when to invoke",
+  "message": "{type} '{name}' description describes what it is, not when to use it",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-VAL006",
+  "area": "VAL",
+  "number": 6,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Hardcoded fully-qualified name in an authored file",
+  "message": "{type} '{name}': '{field}' hardcodes '{value}'",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-VAL007",
+  "area": "VAL",
+  "number": 7,
+  "severity": "WARNING",
+  "non_demotable": false,
+  "title": "Declared but referenced by nothing",
+  "message": "{type} '{name}' is referenced by nothing",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-VAL008",
+  "area": "VAL",
+  "number": 8,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Multi-line string uses a folded scalar",
+  "message": "{type} '{name}': '{field}' uses a folded scalar",
+  "precheck": "a"
+ },
+ {
+  "code": "SST-VAL009",
+  "area": "VAL",
+  "number": 9,
+  "severity": "WARNING",
+  "non_demotable": false,
+  "title": "File is not canonically formatted",
+  "message": "{path} is not canonically formatted",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-VAL010",
+  "area": "VAL",
+  "number": 10,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Reference graph contains a cycle",
+  "message": "{type} reference cycle: {cycle}",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-VAL011",
+  "area": "VAL",
+  "number": 11,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Declared value would be dropped or altered by the renderer",
+  "message": "{type} '{name}': '{field}' would be {detail} by the renderer",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-VAL012",
+  "area": "VAL",
+  "number": 12,
+  "severity": "WARNING",
+  "non_demotable": false,
+  "title": "Deprecated key spelling in use",
+  "message": "{type} '{name}' uses '{field}'; the current spelling is '{expected}'",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-VAL013",
+  "area": "VAL",
+  "number": 13,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Unmodelled key would be rendered unvalidated",
+  "message": "{type} '{name}': '{key}' is not modelled and would be rendered as-is",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-VAL014",
+  "area": "VAL",
+  "number": 14,
+  "severity": "WARNING",
+  "non_demotable": false,
+  "title": "Unmodelled key reported",
+  "message": "{type} '{name}': {count} unmodelled keys rendered",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-VAL015",
+  "area": "VAL",
+  "number": 15,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Deploy ordering violated",
+  "message": "{type} '{name}' would publish before {blocker}, which it depends on",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-VAL016",
+  "area": "VAL",
+  "number": 16,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Referenced object is not published by this project or declared external",
+  "message": "{type} '{name}' references '{value}', which is neither published nor declared",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-VAL017",
+  "area": "VAL",
+  "number": 17,
+  "severity": "WARNING",
+  "non_demotable": false,
+  "title": "Two objects express the same thing",
+  "message": "{type} '{name}' duplicates {other}",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-VAL018",
+  "area": "VAL",
+  "number": 18,
+  "severity": "WARNING",
+  "non_demotable": false,
+  "title": "Composed prose surface exceeds the configured budget",
+  "message": "{artifact}: composed instruction surface is {size} chars, over {expected}",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-VAL019",
+  "area": "VAL",
+  "number": 19,
+  "severity": "WARNING",
+  "non_demotable": false,
+  "title": "Prose names an object that does not resolve",
+  "message": "{type} '{name}': prose names '{value}', which does not resolve",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-VAL020",
+  "area": "VAL",
+  "number": 20,
+  "severity": "INFO",
+  "non_demotable": false,
+  "title": "Rule skipped -- requirement unavailable",
+  "message": "{rule_id} skipped: {detail}",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-VAL101",
+  "area": "VAL",
+  "number": 101,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Metric expression is not an aggregate",
+  "message": "metric '{metric}' is table-scoped and its expr is not an aggregate",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-VAL102",
+  "area": "VAL",
+  "number": 102,
+  "severity": "ERROR",
+  "non_demotable": true,
+  "title": "Window function in a derived metric",
+  "message": "window function {function} in derived metric '{metric}'",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-VAL103",
+  "area": "VAL",
+  "number": 103,
+  "severity": "ERROR",
+  "non_demotable": true,
+  "title": "Derived metric aggregates another metric",
+  "message": "derived metric '{metric}' aggregates '{other}'",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-VAL104",
+  "area": "VAL",
+  "number": 104,
+  "severity": "ERROR",
+  "non_demotable": true,
+  "title": "Derived metric references a physical column",
+  "message": "derived metric '{metric}' references column '{column}'",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-VAL105",
+  "area": "VAL",
+  "number": 105,
+  "severity": "ERROR",
+  "non_demotable": true,
+  "title": "Derived metric references an un-aggregated fact or dimension",
+  "message": "derived metric '{metric}' references un-aggregated {member_type} '{other}'",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-VAL106",
+  "area": "VAL",
+  "number": 106,
+  "severity": "ERROR",
+  "non_demotable": true,
+  "title": "Regular metric references a derived metric",
+  "message": "metric '{metric}' is table-scoped and references derived metric '{other}'",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-VAL107",
+  "area": "VAL",
+  "number": 107,
+  "severity": "ERROR",
+  "non_demotable": true,
+  "title": "Regular metric references a non-additive metric",
+  "message": "metric '{metric}' references '{other}', which declares non_additive_dimensions",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-VAL108",
+  "area": "VAL",
+  "number": 108,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Derived metric declares a table list",
+  "message": "derived metric '{metric}' declares tables:",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-VAL109",
+  "area": "VAL",
+  "number": 109,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Table-scoped metric declares no table list",
+  "message": "metric '{metric}' is table-scoped and declares no tables:",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-VAL110",
+  "area": "VAL",
+  "number": 110,
+  "severity": "WARNING",
+  "non_demotable": false,
+  "title": "Metric expression contains an unwrapped bare identifier",
+  "message": "metric '{metric}' expression contains bare identifier '{column}'",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-VAL111",
+  "area": "VAL",
+  "number": 111,
+  "severity": "WARNING",
+  "non_demotable": false,
+  "title": "Division with no zero guard",
+  "message": "metric '{metric}' divides without DIV0 or NULLIF on the denominator",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-VAL112",
+  "area": "VAL",
+  "number": 112,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Metric expression touches a table outside the view",
+  "message": "metric '{metric}' in {artifact} reaches {outside}",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-VAL113",
+  "area": "VAL",
+  "number": 113,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "using_relationships declared on a derived metric",
+  "message": "derived metric '{metric}' declares using_relationships",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-VAL114",
+  "area": "VAL",
+  "number": 114,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "using_relationships does not start from the metric's table",
+  "message": "metric '{metric}': relationship '{other}' does not start from '{name}'",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-VAL115",
+  "area": "VAL",
+  "number": 115,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "using_relationships is a chain",
+  "message": "metric '{metric}' declares a chain of {count} relationships",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-VAL116",
+  "area": "VAL",
+  "number": 116,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "using_relationships absent where the join path is ambiguous",
+  "message": "metric '{metric}' has {count} paths to '{name}' and declares no using_relationships",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-VAL117",
+  "area": "VAL",
+  "number": 117,
+  "severity": "WARNING",
+  "non_demotable": false,
+  "title": "Snapshot-grain metric declares no non-additive dimensions",
+  "message": "metric '{metric}' is over a snapshot grain and declares no non_additive_dimensions",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-VAL118",
+  "area": "VAL",
+  "number": 118,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "non_additive_dimensions target does not resolve",
+  "message": "metric '{metric}': non_additive_dimensions names {value}, which does not resolve",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-VAL119",
+  "area": "VAL",
+  "number": 119,
+  "severity": "INFO",
+  "non_demotable": false,
+  "title": "Effective non-additive dimension order",
+  "message": "metric '{metric}': effective non_additive_dimensions order is {value}",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-VAL120",
+  "area": "VAL",
+  "number": 120,
+  "severity": "WARNING",
+  "non_demotable": false,
+  "title": "Metric declares a sort with no ordering semantics",
+  "message": "metric '{metric}' declares sort_direction with no null_order",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-VAL121",
+  "area": "VAL",
+  "number": 121,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "access_modifier holds an unrecognised value",
+  "message": "metric '{metric}': access_modifier is '{found}'",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-VAL122",
+  "area": "VAL",
+  "number": 122,
+  "severity": "WARNING",
+  "non_demotable": false,
+  "title": "visibility used instead of access_modifier",
+  "message": "metric '{metric}' uses visibility; the current key is access_modifier",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-VAL123",
+  "area": "VAL",
+  "number": 123,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Metric-level restriction set not enforced before publish",
+  "message": "metric '{metric}' would publish without the derived-metric restriction check",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-VAL124",
+  "area": "VAL",
+  "number": 124,
+  "severity": "WARNING",
+  "non_demotable": false,
+  "title": "Duplicate metric expression under two names",
+  "message": "metric '{metric}' has the same expression as '{other}'",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-VAL125",
+  "area": "VAL",
+  "number": 125,
+  "severity": "INFO",
+  "non_demotable": false,
+  "title": "Metric fan-out",
+  "message": "metric '{metric}' attaches to {count} views",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-VAL201",
+  "area": "VAL",
+  "number": 201,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "relationship_conditions is empty",
+  "message": "relationship '{relationship}' declares no conditions",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-VAL202",
+  "area": "VAL",
+  "number": 202,
+  "severity": "ERROR",
+  "non_demotable": true,
+  "title": "A declared condition would not be emitted",
+  "message": "relationship '{relationship}': condition '{value}' would be dropped from the DDL",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-VAL203",
+  "area": "VAL",
+  "number": 203,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Relationship names a table not in the view",
+  "message": "relationship '{relationship}' names '{name}', absent from {artifact}",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-VAL204",
+  "area": "VAL",
+  "number": 204,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Join condition column is not on the named table",
+  "message": "relationship '{relationship}': '{column}' is not on '{name}'",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-VAL205",
+  "area": "VAL",
+  "number": 205,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Relationship sides never appear together in any view",
+  "message": "relationship '{relationship}' joins '{a}' and '{b}', which share no view",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-VAL206",
+  "area": "VAL",
+  "number": 206,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Range relationship target declares no distinct_range",
+  "message": "relationship '{relationship}' is a range join and '{name}' declares no distinct_range",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-VAL207",
+  "area": "VAL",
+  "number": 207,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Self-loop on a single logical table",
+  "message": "relationship '{relationship}' joins '{name}' to itself",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-VAL208",
+  "area": "VAL",
+  "number": 208,
+  "severity": "WARNING",
+  "non_demotable": false,
+  "title": "Equality join to a finer-grained table",
+  "message": "relationship '{relationship}' joins '{a}' to '{b}', whose grain is finer than one row per key",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-VAL209",
+  "area": "VAL",
+  "number": 209,
+  "severity": "WARNING",
+  "non_demotable": false,
+  "title": "Ambiguous join path between two tables",
+  "message": "{artifact}: {count} paths between '{a}' and '{b}'",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-VAL210",
+  "area": "VAL",
+  "number": 210,
+  "severity": "WARNING",
+  "non_demotable": false,
+  "title": "Join target declares no key covering the join columns",
+  "message": "relationship '{relationship}': '{name}' declares neither primary_key nor unique_keys over {value}",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-VAL211",
+  "area": "VAL",
+  "number": 211,
+  "severity": "WARNING",
+  "non_demotable": false,
+  "title": "relationship_type or join_type declared",
+  "message": "relationship '{relationship}' declares '{field}', which is not emitted",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-VAL212",
+  "area": "VAL",
+  "number": 212,
+  "severity": "WARNING",
+  "non_demotable": false,
+  "title": "Declared cardinality disagrees with the data",
+  "message": "relationship '{relationship}' declares cardinality {found}; the spot-check found {value}",
+  "precheck": "observe"
+ },
+ {
+  "code": "SST-VAL213",
+  "area": "VAL",
+  "number": 213,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Multi-column condition is not expressible",
+  "message": "relationship '{relationship}': condition '{value}' spans multiple columns per side",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-VAL214",
+  "area": "VAL",
+  "number": 214,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "using_relationships names an undeclared relationship",
+  "message": "metric '{metric}' names relationship '{relationship}', which is not declared",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-VAL215",
+  "area": "VAL",
+  "number": 215,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Relationship graph has a cycle that changes results",
+  "message": "{artifact}: relationship cycle {cycle}",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-VAL216",
+  "area": "VAL",
+  "number": 216,
+  "severity": "INFO",
+  "non_demotable": false,
+  "title": "Inferred many-to-many path through a bridge table",
+  "message": "{artifact}: many-to-many path {value} inferred through '{name}'",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-VAL217",
+  "area": "VAL",
+  "number": 217,
+  "severity": "INFO",
+  "non_demotable": false,
+  "title": "Join graph summary",
+  "message": "{artifact}: {count} tables, {value}",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-VAL218",
+  "area": "VAL",
+  "number": 218,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Range join target has overlapping ranges",
+  "message": "relationship '{relationship}': '{name}' declares distinct_range over ({a}, {b}) but the ranges overlap, for example {value}",
+  "precheck": "observe"
+ },
+ {
+  "code": "SST-VAL219",
+  "area": "VAL",
+  "number": 219,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "A scoped bare column does not exist on its model",
+  "message": "{artifact}: table_config.{model}.{field} names column '{column}', which does not exist on {model}",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-VAL220",
+  "area": "VAL",
+  "number": 220,
+  "severity": "WARNING",
+  "non_demotable": false,
+  "title": "A declared view variable is never referenced",
+  "message": "{artifact}: variable '{name}' is declared and never used",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-VAL221",
+  "area": "VAL",
+  "number": 221,
+  "severity": "WARNING",
+  "non_demotable": false,
+  "title": "A bare identifier in an expr matches no column and no declared variable",
+  "message": "{artifact}: '{name}' in {field} is neither a column nor a declared variable",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-VAL222",
+  "area": "VAL",
+  "number": 222,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Dimension declares a private access modifier",
+  "message": "{artifact}: dimension '{member}' declares access_modifier '{value}'; SST does not support a private dimension",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-VAL223",
+  "area": "VAL",
+  "number": 223,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "A primary-key column is also declared unique",
+  "message": "{artifact}: column '{column}' on '{model}' appears in both primary_key and unique_keys",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-VAL301",
+  "area": "VAL",
+  "number": 301,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "View resolves no dimensions and no metrics",
+  "message": "{artifact} resolves no dimension and no metric",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-VAL302",
+  "area": "VAL",
+  "number": 302,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Resolved relation differs from the model name",
+  "message": "{artifact}: table '{name}' resolves to relation '{value}'",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-VAL303",
+  "area": "VAL",
+  "number": 303,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "View references a disabled or ephemeral model",
+  "message": "{artifact}: '{name}' is {found} in dbt and produces no relation",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-VAL304",
+  "area": "VAL",
+  "number": 304,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "max_staleness below the accepted floor",
+  "message": "{artifact}: max_staleness is {found}; the minimum is 120",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-VAL305",
+  "area": "VAL",
+  "number": 305,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Fact column is not numeric",
+  "message": "{artifact}: fact '{member}' has type {found}",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-VAL306",
+  "area": "VAL",
+  "number": 306,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Time dimension column is not temporal",
+  "message": "{artifact}: time_dimension '{member}' has type {found}",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-VAL307",
+  "area": "VAL",
+  "number": 307,
+  "severity": "ERROR",
+  "non_demotable": true,
+  "title": "Publisher would replace without preserving grants",
+  "message": "{artifact} would be replaced without COPY GRANTS or CREATE OR ALTER",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-VAL308",
+  "area": "VAL",
+  "number": 308,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "column_type metadata is absent",
+  "message": "{artifact}: column '{member}' declares no column_type",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-VAL309",
+  "area": "VAL",
+  "number": 309,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "data_type metadata is absent",
+  "message": "{artifact}: column '{member}' declares no data_type",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-VAL310",
+  "area": "VAL",
+  "number": 310,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Primary key column is not on the table",
+  "message": "{artifact}: primary_key names '{column}', absent from '{name}'",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-VAL311",
+  "area": "VAL",
+  "number": 311,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Table declares no primary key and one is required",
+  "message": "{artifact}: '{name}' declares no primary_key",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-VAL312",
+  "area": "VAL",
+  "number": 312,
+  "severity": "WARNING",
+  "non_demotable": false,
+  "title": "Table declares no primary key or unique keys",
+  "message": "{artifact}: '{name}' declares neither primary_key nor unique_keys",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-VAL313",
+  "area": "VAL",
+  "number": 313,
+  "severity": "RETIRED",
+  "non_demotable": false,
+  "title": "Primary key and unique keys overlap -- number burned, never reused",
+  "message": "--",
+  "precheck": "--"
+ },
+ {
+  "code": "SST-VAL314",
+  "area": "VAL",
+  "number": 314,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Enum column declares no sample values",
+  "message": "{artifact}: '{member}' is is_enum and declares no sample_values",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-VAL315",
+  "area": "VAL",
+  "number": 315,
+  "severity": "WARNING",
+  "non_demotable": false,
+  "title": "Non-enum column declares sample values that look exhaustive",
+  "message": "{artifact}: '{member}' declares {count} sample_values and is not is_enum",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-VAL316",
+  "area": "VAL",
+  "number": 316,
+  "severity": "WARNING",
+  "non_demotable": false,
+  "title": "Auto-managed field contains a sentinel value",
+  "message": "{artifact}: '{member}'.{field} contains '{value}'",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-VAL317",
+  "area": "VAL",
+  "number": 317,
+  "severity": "WARNING",
+  "non_demotable": false,
+  "title": "Auto-managed field hand-edited",
+  "message": "{artifact}: '{member}'.{field} differs from the enriched value",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-VAL318",
+  "area": "VAL",
+  "number": 318,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Excluded column referenced by a member",
+  "message": "{artifact}: '{member}' references excluded column '{column}'",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-VAL319",
+  "area": "VAL",
+  "number": 319,
+  "severity": "INFO",
+  "non_demotable": false,
+  "title": "Member fan-out onto views",
+  "message": "{artifact}: {value}",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-VAL320",
+  "area": "VAL",
+  "number": 320,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Drift comparison not normalised on both sides",
+  "message": "{artifact}: drift comparison compared raw DDL",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-VAL321",
+  "area": "VAL",
+  "number": 321,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Tags would be set by the create statement",
+  "message": "{artifact}: tags would be set by CREATE OR ALTER, which cannot set them",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-VAL322",
+  "area": "VAL",
+  "number": 322,
+  "severity": "WARNING",
+  "non_demotable": false,
+  "title": "Two views share a table with contradictory descriptions",
+  "message": "{a} and {b} share '{name}' with conflicting descriptions",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-VAL323",
+  "area": "VAL",
+  "number": 323,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Base model has no columns block",
+  "message": "{artifact}: '{name}' has no columns: block in dbt",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-VAL324",
+  "area": "VAL",
+  "number": 324,
+  "severity": "WARNING",
+  "non_demotable": false,
+  "title": "Base model has no contract and no tests",
+  "message": "{artifact}: '{name}' has {detail}",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-VAL325",
+  "area": "VAL",
+  "number": 325,
+  "severity": "WARNING",
+  "non_demotable": false,
+  "title": "Manifest column absent from the relation",
+  "message": "model '{model}': column '{column}' is described in YAML and absent from the relation",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-VAL326",
+  "area": "VAL",
+  "number": 326,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Undefined bare identifier in an attached member",
+  "message": "view '{view}': member '{member}' references '{identifier}', which is neither a column on the view's tables nor a variable the view declares",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-VAL401",
+  "area": "VAL",
+  "number": 401,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Filter expression is not boolean",
+  "message": "filter '{member}' carries labels: [filter] and its expr is not boolean",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-VAL402",
+  "area": "VAL",
+  "number": 402,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Filter label applied to a metric",
+  "message": "'{member}' carries labels: [filter] and is a metric",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-VAL403",
+  "area": "VAL",
+  "number": 403,
+  "severity": "ERROR",
+  "non_demotable": true,
+  "title": "Legacy filter syntax",
+  "message": "filter '{member}' uses the legacy inline form",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-VAL404",
+  "area": "VAL",
+  "number": 404,
+  "severity": "WARNING",
+  "non_demotable": false,
+  "title": "Filter expression contains an unwrapped bare identifier",
+  "message": "filter '{member}' expression contains bare identifier '{column}'",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-VAL405",
+  "area": "VAL",
+  "number": 405,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Boolean standalone filter",
+  "message": "filter '{member}' is boolean-valued and standalone",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-VAL406",
+  "area": "VAL",
+  "number": 406,
+  "severity": "WARNING",
+  "non_demotable": false,
+  "title": "Filter synonyms declared but not emitted",
+  "message": "filter '{member}' declares synonyms that the renderer drops",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-VAL407",
+  "area": "VAL",
+  "number": 407,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Custom instruction block has no non-empty channel",
+  "message": "custom_instruction '{member}' declares no non-empty channel",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-VAL408",
+  "area": "VAL",
+  "number": 408,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Legacy custom-instruction rendering",
+  "message": "custom_instruction '{member}' would render as a bare string",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-VAL409",
+  "area": "VAL",
+  "number": 409,
+  "severity": "WARNING",
+  "non_demotable": false,
+  "title": "Instruction placed in the wrong channel",
+  "message": "custom_instruction '{member}': a {found} rule appears in the {expected} channel",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-VAL410",
+  "area": "VAL",
+  "number": 410,
+  "severity": "WARNING",
+  "non_demotable": false,
+  "title": "Two instruction blocks on one view contradict each other",
+  "message": "{artifact}: '{a}' and '{b}' give contradictory directives",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-VAL411",
+  "area": "VAL",
+  "number": 411,
+  "severity": "WARNING",
+  "non_demotable": false,
+  "title": "Instruction uses Cortex Analyst state keywords",
+  "message": "custom_instruction '{member}' uses {found} keywords, which an agent does not need",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-VAL412",
+  "area": "VAL",
+  "number": 412,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Verified query declares neither sql nor sql_file, or both",
+  "message": "verified_query '{member}': {detail}",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-VAL413",
+  "area": "VAL",
+  "number": 413,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Verified query question text is not unique within a view",
+  "message": "{artifact}: question text is shared by '{a}' and '{b}'",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-VAL414",
+  "area": "VAL",
+  "number": 414,
+  "severity": "WARNING",
+  "non_demotable": false,
+  "title": "Verified query SQL references a table not in its table list",
+  "message": "verified_query '{member}' queries '{relation}', absent from tables:",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-VAL415",
+  "area": "VAL",
+  "number": 415,
+  "severity": "WARNING",
+  "non_demotable": false,
+  "title": "Verified query returns no rows",
+  "message": "verified_query '{member}' executed and returned {row_count} rows in {elapsed_ms}ms",
+  "precheck": "observe"
+ },
+ {
+  "code": "SST-VAL416",
+  "area": "VAL",
+  "number": 416,
+  "severity": "WARNING",
+  "non_demotable": false,
+  "title": "Verified query SQL contains a relative date",
+  "message": "verified_query '{member}' contains relative date '{value}'",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-VAL417",
+  "area": "VAL",
+  "number": 417,
+  "severity": "WARNING",
+  "non_demotable": false,
+  "title": "Question text is shared across three different sets",
+  "message": "'{value}' appears as a VQ question, an agent sample_question and an eval row",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-VAL418",
+  "area": "VAL",
+  "number": 418,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Expression does not compile against Snowflake",
+  "message": "{type} '{name}': expression failed to compile: {detail}",
+  "precheck": "observe"
+ },
+ {
+  "code": "SST-VAL501",
+  "area": "VAL",
+  "number": 501,
+  "severity": "RETIRED",
+  "non_demotable": false,
+  "title": "create_mode holds an unrecognised value -- number burned, never reused",
+  "message": "--",
+  "precheck": "--"
+ },
+ {
+  "code": "SST-VAL502",
+  "area": "VAL",
+  "number": 502,
+  "severity": "RETIRED",
+  "non_demotable": false,
+  "title": "create_mode and copy_grants combination is illegal -- number burned, never reused",
+  "message": "--",
+  "precheck": "--"
+ },
+ {
+  "code": "SST-VAL503",
+  "area": "VAL",
+  "number": 503,
+  "severity": "RETIRED",
+  "non_demotable": false,
+  "title": "copy_grants is a no-op for this create mode -- number burned, never reused",
+  "message": "--",
+  "precheck": "--"
+ },
+ {
+  "code": "SST-VAL504",
+  "area": "VAL",
+  "number": 504,
+  "severity": "RETIRED",
+  "non_demotable": false,
+  "title": "Replace would drop live grants -- number burned, never reused",
+  "message": "--",
+  "precheck": "--"
+ },
+ {
+  "code": "SST-VAL505",
+  "area": "VAL",
+  "number": 505,
+  "severity": "RETIRED",
+  "non_demotable": false,
+  "title": "Replace would run without COPY GRANTS -- number burned, never reused",
+  "message": "--",
+  "precheck": "--"
+ },
+ {
+  "code": "SST-VAL506",
+  "area": "VAL",
+  "number": 506,
+  "severity": "WARNING",
+  "non_demotable": false,
+  "title": "secure: true requires the owner role to round-trip",
+  "message": "agent '{artifact}' is secure; the round-trip check needs the owner role",
+  "precheck": "observe"
+ },
+ {
+  "code": "SST-VAL507",
+  "area": "VAL",
+  "number": 507,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "secure: false transition blocked by a share or application role",
+  "message": "agent '{artifact}' is granted to {value}; it cannot become non-secure",
+  "precheck": "observe"
+ },
+ {
+  "code": "SST-VAL508",
+  "area": "VAL",
+  "number": 508,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Tag name does not resolve",
+  "message": "agent '{artifact}': tag '{field}' does not resolve to a tag object",
+  "precheck": "observe"
+ },
+ {
+  "code": "SST-VAL509",
+  "area": "VAL",
+  "number": 509,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Rendered spec differs from the live spec",
+  "message": "agent '{artifact}': re-render differs from the live spec at {value}",
+  "precheck": "observe"
+ },
+ {
+  "code": "SST-VAL510",
+  "area": "VAL",
+  "number": 510,
+  "severity": "ERROR",
+  "non_demotable": true,
+  "title": "Renderer emitted a partial spec",
+  "message": "agent '{artifact}': rendered spec omits {value}",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-VAL511",
+  "area": "VAL",
+  "number": 511,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Rendered spec exceeds the size limit",
+  "message": "agent '{artifact}': rendered spec is {size} bytes, over the 100,000 limit",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-VAL512",
+  "area": "VAL",
+  "number": 512,
+  "severity": "WARNING",
+  "non_demotable": false,
+  "title": "Rendered spec is near the size limit",
+  "message": "agent '{artifact}': rendered spec is {size} bytes, over 80% of the limit",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-VAL513",
+  "area": "VAL",
+  "number": 513,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Resolved tool name is not 1-64 characters",
+  "message": "agent '{artifact}': resolved tool name '{name}' is {size} chars",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-VAL514",
+  "area": "VAL",
+  "number": 514,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Resolved tool names collide case-sensitively",
+  "message": "agent '{artifact}': tool name '{name}' is declared twice",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-VAL515",
+  "area": "VAL",
+  "number": 515,
+  "severity": "WARNING",
+  "non_demotable": false,
+  "title": "Resolved tool names collide case-insensitively",
+  "message": "agent '{artifact}': '{a}' and '{b}' differ only by case",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-VAL516",
+  "area": "VAL",
+  "number": 516,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Tool type and key combination is illegal",
+  "message": "agent '{artifact}': tool '{name}' of type {found} declares '{key}'",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-VAL517",
+  "area": "VAL",
+  "number": 517,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "web_search tool is not named web_search",
+  "message": "agent '{artifact}': web_search tool is named '{name}'",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-VAL518",
+  "area": "VAL",
+  "number": 518,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Tool has no description",
+  "message": "agent '{artifact}': tool '{name}' has no description",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-VAL519",
+  "area": "VAL",
+  "number": 519,
+  "severity": "WARNING",
+  "non_demotable": false,
+  "title": "Two tool descriptions are near-duplicates",
+  "message": "agent '{artifact}': '{a}' and '{b}' have near-identical descriptions",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-VAL520",
+  "area": "VAL",
+  "number": 520,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Analyst tool does not declare exactly one semantic view",
+  "message": "agent '{artifact}': tool '{name}' declares {count} semantic views",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-VAL521",
+  "area": "VAL",
+  "number": 521,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Cortex Search tool omits a required key",
+  "message": "agent '{artifact}': tool '{name}' omits '{field}'",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-VAL522",
+  "area": "VAL",
+  "number": 522,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "stage_path and relative_path_column not declared together",
+  "message": "agent '{artifact}': tool '{name}' declares '{field}' without '{other}'",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-VAL523",
+  "area": "VAL",
+  "number": 523,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Filter column is not marked filterable",
+  "message": "agent '{artifact}': tool '{name}' filters on '{column}', not marked filterable",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-VAL524",
+  "area": "VAL",
+  "number": 524,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "columns_and_descriptions entry is malformed",
+  "message": "agent '{artifact}': tool '{name}' column '{column}': {detail}",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-VAL525",
+  "area": "VAL",
+  "number": 525,
+  "severity": "WARNING",
+  "non_demotable": false,
+  "title": "Searchable column is a vector index column",
+  "message": "agent '{artifact}': tool '{name}' marks vector column '{column}' searchable",
+  "precheck": "observe"
+ },
+ {
+  "code": "SST-VAL526",
+  "area": "VAL",
+  "number": 526,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "generic tool declares no object input schema",
+  "message": "agent '{artifact}': tool '{name}' input_schema is {found}",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-VAL527",
+  "area": "VAL",
+  "number": 527,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "generic tool declares no warehouse",
+  "message": "agent '{artifact}': tool '{name}' declares no warehouse",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-VAL528",
+  "area": "VAL",
+  "number": 528,
+  "severity": "WARNING",
+  "non_demotable": false,
+  "title": "Agent toolset makes the tool surface non-static",
+  "message": "agent '{artifact}' declares an agent toolset",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-VAL529",
+  "area": "VAL",
+  "number": 529,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Built-in tool type emits a tool_resources entry",
+  "message": "agent '{artifact}': built-in tool '{name}' would emit tool_resources",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-VAL530",
+  "area": "VAL",
+  "number": 530,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "tool_resources key matches no rendered tool",
+  "message": "agent '{artifact}': tool_resources key '{key}' matches no tools[].name",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-VAL531",
+  "area": "VAL",
+  "number": 531,
+  "severity": "WARNING",
+  "non_demotable": false,
+  "title": "Resolved external object does not exist in the target",
+  "message": "agent '{artifact}': '{value}' does not exist in target '{target}'",
+  "precheck": "observe"
+ },
+ {
+  "code": "SST-VAL532",
+  "area": "VAL",
+  "number": 532,
+  "severity": "WARNING",
+  "non_demotable": false,
+  "title": "External object signature disagrees with the input schema",
+  "message": "agent '{artifact}': '{value}' signature {found} differs from input_schema {expected}",
+  "precheck": "observe"
+ },
+ {
+  "code": "SST-VAL533",
+  "area": "VAL",
+  "number": 533,
+  "severity": "INFO",
+  "non_demotable": false,
+  "title": "generic tool resource key unverified",
+  "message": "agent '{artifact}': resource key '{key}' for a generic tool is unverified",
+  "precheck": "observe"
+ },
+ {
+  "code": "SST-VAL534",
+  "area": "VAL",
+  "number": 534,
+  "severity": "WARNING",
+  "non_demotable": false,
+  "title": "query_timeout exceeds the warehouse statement timeout",
+  "message": "agent '{artifact}': query_timeout {found} exceeds STATEMENT_TIMEOUT_IN_SECONDS {expected}, which silently wins",
+  "precheck": "observe"
+ },
+ {
+  "code": "SST-VAL535",
+  "area": "VAL",
+  "number": 535,
+  "severity": "WARNING",
+  "non_demotable": false,
+  "title": "Instructions name a tool that does not exist",
+  "message": "agent '{artifact}': instructions name tool '{name}', absent from tools:",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-VAL536",
+  "area": "VAL",
+  "number": 536,
+  "severity": "WARNING",
+  "non_demotable": false,
+  "title": "Instructions contradict a tool description",
+  "message": "agent '{artifact}': instructions route {value} to '{name}', documented as excluding it",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-VAL537",
+  "area": "VAL",
+  "number": 537,
+  "severity": "WARNING",
+  "non_demotable": false,
+  "title": "Sample question is a relative-dated duplicate of an eval question",
+  "message": "agent '{artifact}': sample question '{value}' is relative-dated and matches an eval row",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-VAL538",
+  "area": "VAL",
+  "number": 538,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Skill source does not pin an immutable version",
+  "message": "agent '{artifact}': skill source '{name}' does not pin an immutable version",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-VAL539",
+  "area": "VAL",
+  "number": 539,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Skill source points at a mutable stage path",
+  "message": "agent '{artifact}': skill source '{name}' is a STAGE path into a mutable bundle",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-VAL540",
+  "area": "VAL",
+  "number": 540,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "SKILL-type extension source has no name",
+  "message": "agent '{artifact}': SKILL-type source omits name",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-VAL541",
+  "area": "VAL",
+  "number": 541,
+  "severity": "WARNING",
+  "non_demotable": false,
+  "title": "Two skill entries contribute the same member name",
+  "message": "agent '{artifact}': '{a}' and '{b}' both contribute '{name}'; the later wins",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-VAL542",
+  "area": "VAL",
+  "number": 542,
+  "severity": "WARNING",
+  "non_demotable": false,
+  "title": "Consuming role lacks READ on an extension",
+  "message": "agent '{artifact}': {value} lacks READ on extension '{name}'",
+  "precheck": "observe"
+ },
+ {
+  "code": "SST-VAL543",
+  "area": "VAL",
+  "number": 543,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Orchestration model is not in the allowlist",
+  "message": "agent '{artifact}': models.orchestration '{found}' is not in the allowlist",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-VAL544",
+  "area": "VAL",
+  "number": 544,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Orchestration model is auto while a blocking eval exists",
+  "message": "agent '{artifact}': models.orchestration is auto and a blocking eval is configured",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-VAL545",
+  "area": "VAL",
+  "number": 545,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "tool_not_accessible is misplaced or invalid",
+  "message": "agent '{artifact}': tool_not_accessible {detail}",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-VAL546",
+  "area": "VAL",
+  "number": 546,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "analytical_search enabled with no Cortex Search tool",
+  "message": "agent '{artifact}': analytical_search is true and no cortex_search tool is declared",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-VAL547",
+  "area": "VAL",
+  "number": 547,
+  "severity": "WARNING",
+  "non_demotable": false,
+  "title": "Token budget read as a cost ceiling",
+  "message": "agent '{artifact}': budget.tokens covers orchestration only",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-VAL548",
+  "area": "VAL",
+  "number": 548,
+  "severity": "WARNING",
+  "non_demotable": false,
+  "title": "Profile value outside its declared allowlist or form",
+  "message": "agent '{artifact}': {field} '{found}' {detail}",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-VAL549",
+  "area": "VAL",
+  "number": 549,
+  "severity": "WARNING",
+  "non_demotable": false,
+  "title": "display_name collides with another agent",
+  "message": "agent '{artifact}': display_name '{value}' is shared with {other}",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-VAL550",
+  "area": "VAL",
+  "number": 550,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Deprecated or dropped version is still referenced",
+  "message": "agent '{artifact}': {detail}",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-VAL601",
+  "area": "VAL",
+  "number": 601,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Tool member name is not unique within its group",
+  "message": "tool group '{a}': member '{name}' is declared twice",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-VAL602",
+  "area": "VAL",
+  "number": 602,
+  "severity": "WARNING",
+  "non_demotable": false,
+  "title": "Tool member name is not globally unique",
+  "message": "tool member '{name}' is declared in {a} and {b}",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-VAL603",
+  "area": "VAL",
+  "number": 603,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Tool type is not recognised",
+  "message": "tool member '{name}': type '{found}' is not a known tool type",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-VAL604",
+  "area": "VAL",
+  "number": 604,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "define member carries no creation properties",
+  "message": "tool member '{name}' is under define: and declares neither on: nor body_file:",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-VAL605",
+  "area": "VAL",
+  "number": 605,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "reference member carries creation properties",
+  "message": "tool member '{name}' is under reference: and declares '{key}'",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-VAL606",
+  "area": "VAL",
+  "number": 606,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "define block present in an immutable group",
+  "message": "tool group '{a}' is immutable: true and declares define:",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-VAL607",
+  "area": "VAL",
+  "number": 607,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Defined procedure signature does not match the consuming input schema",
+  "message": "tool member '{name}': signature {found} differs from input_schema {expected}",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-VAL608",
+  "area": "VAL",
+  "number": 608,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "on: does not resolve to a dbt model",
+  "message": "tool member '{name}': on: '{value}' is not a model in the dbt manifest",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-VAL609",
+  "area": "VAL",
+  "number": 609,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "search_column or attribute_columns not on the indexed model",
+  "message": "tool member '{name}': '{column}' is not on '{value}'",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-VAL610",
+  "area": "VAL",
+  "number": 610,
+  "severity": "WARNING",
+  "non_demotable": false,
+  "title": "execute_as: owner on a procedure reachable from an agent",
+  "message": "tool member '{name}' runs as owner and is reachable from agent '{artifact}'",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-VAL611",
+  "area": "VAL",
+  "number": 611,
+  "severity": "WARNING",
+  "non_demotable": false,
+  "title": "embedding_model is null on an eval-gated search service",
+  "message": "tool member '{name}' declares embedding_model: null and is read by a gated agent",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-VAL612",
+  "area": "VAL",
+  "number": 612,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "DDL would be emitted for a reference member",
+  "message": "tool member '{name}' is under reference: and DDL was rendered for it",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-VAL613",
+  "area": "VAL",
+  "number": 613,
+  "severity": "WARNING",
+  "non_demotable": false,
+  "title": "Declared column is absent from the live object",
+  "message": "tool member '{name}': column '{column}' is absent from the live object",
+  "precheck": "observe"
+ },
+ {
+  "code": "SST-VAL614",
+  "area": "VAL",
+  "number": 614,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Search service publish order violated",
+  "message": "tool member '{name}' would publish before '{value}', which it indexes",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-VAL615",
+  "area": "VAL",
+  "number": 615,
+  "severity": "INFO",
+  "non_demotable": false,
+  "title": "Inherited values overridden by an agent tool",
+  "message": "agent '{artifact}': tool '{name}' overrides {value}",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-VAL616",
+  "area": "VAL",
+  "number": 616,
+  "severity": "WARNING",
+  "non_demotable": false,
+  "title": "Referenced object privilege pre-flight failed",
+  "message": "tool member '{name}': {value} lacks {detail}",
+  "precheck": "observe"
+ },
+ {
+  "code": "SST-VAL617",
+  "area": "VAL",
+  "number": 617,
+  "severity": "WARNING",
+  "non_demotable": false,
+  "title": "Search service indexes a relation its dbt materialization rebuilds",
+  "message": "tool member '{name}' indexes {value}, materialized '{detail}' -- every dbt run rebuilds the relation, disabling change tracking and forcing a full re-embed",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-VAL618",
+  "area": "VAL",
+  "number": 618,
+  "severity": "WARNING",
+  "non_demotable": false,
+  "title": "Search service source lost change tracking",
+  "message": "{value} has change_tracking = OFF; service '{name}' cannot refresh incrementally and is serving stale data",
+  "precheck": "observe"
+ },
+ {
+  "code": "SST-VAL619",
+  "area": "VAL",
+  "number": 619,
+  "severity": "WARNING",
+  "non_demotable": false,
+  "title": "Search service replace will not preserve grants atomically",
+  "message": "tool member '{name}': {detail} explicit grant(s) will be captured and replayed -- they do not exist between commit and replay",
+  "precheck": "observe"
+ },
+ {
+  "code": "SST-VAL620",
+  "area": "VAL",
+  "number": 620,
+  "severity": "RETIRED",
+  "non_demotable": false,
+  "title": "Publishing an artifact type whose grant preservation is unprobed -- number burned, never reused",
+  "message": "--",
+  "precheck": "--"
+ },
+ {
+  "code": "SST-VAL701",
+  "area": "VAL",
+  "number": 701,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Dataset name is not unique within the agent schema",
+  "message": "dataset '{artifact}' is declared twice in {value}",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-VAL702",
+  "area": "VAL",
+  "number": 702,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Dataset name exceeds the object limit",
+  "message": "dataset '{artifact}' is {size} chars, over 128",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-VAL703",
+  "area": "VAL",
+  "number": 703,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Dataset declares its own database or schema",
+  "message": "dataset '{artifact}' declares +{key}",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-VAL704",
+  "area": "VAL",
+  "number": 704,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Resolved eval schema differs from the agent schema",
+  "message": "dataset '{artifact}' resolves to {found}; agent '{value}' resolves to {expected}",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-VAL705",
+  "area": "VAL",
+  "number": 705,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Dataset row is incomplete",
+  "message": "dataset '{artifact}': row {index} {detail}",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-VAL706",
+  "area": "VAL",
+  "number": 706,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Relative date in an eval question or expected answer",
+  "message": "dataset '{artifact}': row {index} contains relative date '{value}'",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-VAL707",
+  "area": "VAL",
+  "number": 707,
+  "severity": "WARNING",
+  "non_demotable": false,
+  "title": "Eval question duplicates an agent sample question",
+  "message": "dataset '{artifact}': row {index} is byte-identical to a sample_question",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-VAL708",
+  "area": "VAL",
+  "number": 708,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "ground_truth_invocations names a tool the agent does not have",
+  "message": "dataset '{artifact}': row {index} expects tool '{name}', absent from agent '{value}'",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-VAL709",
+  "area": "VAL",
+  "number": 709,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "web_search expectation uses a non-canonical name",
+  "message": "dataset '{artifact}': row {index} expects '{name}'",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-VAL710",
+  "area": "VAL",
+  "number": 710,
+  "severity": "WARNING",
+  "non_demotable": false,
+  "title": "Dataset has fewer rows than the configured floor",
+  "message": "dataset '{artifact}' has {count} rows, under {expected}",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-VAL711",
+  "area": "VAL",
+  "number": 711,
+  "severity": "INFO",
+  "non_demotable": false,
+  "title": "Question-set tool coverage",
+  "message": "dataset '{artifact}': {value} of the agent's tools are exercised by no question",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-VAL712",
+  "area": "VAL",
+  "number": 712,
+  "severity": "INFO",
+  "non_demotable": false,
+  "title": "CREATE DATASET takes no properties",
+  "message": "dataset '{artifact}': versions and provenance are added by ALTER, not CREATE",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-VAL713",
+  "area": "VAL",
+  "number": 713,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Dataset version requires ownership",
+  "message": "dataset '{artifact}': {value} holds {found}, not OWNERSHIP",
+  "precheck": "observe"
+ },
+ {
+  "code": "SST-VAL714",
+  "area": "VAL",
+  "number": 714,
+  "severity": "WARNING",
+  "non_demotable": false,
+  "title": "Dataset metadata carries no commit provenance",
+  "message": "dataset '{artifact}': METADATA has no git SHA",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-VAL715",
+  "area": "VAL",
+  "number": 715,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Sensitive data in dataset metadata or comment",
+  "message": "dataset '{artifact}': {field} matches {detail}",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-VAL716",
+  "area": "VAL",
+  "number": 716,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "dataset block present for an existing dataset",
+  "message": "dataset '{artifact}' emits a dataset: block and the object already exists",
+  "precheck": "observe"
+ },
+ {
+  "code": "SST-VAL717",
+  "area": "VAL",
+  "number": 717,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "run_name is not unique for the agent",
+  "message": "run_name '{value}' is already used for {artifact}",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-VAL718",
+  "area": "VAL",
+  "number": 718,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "run_name carries no commit SHA",
+  "message": "run_name '{value}' does not include the git SHA",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-VAL719",
+  "area": "VAL",
+  "number": 719,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "agent_version is LIVE or omitted",
+  "message": "eval config for '{artifact}': agent_version is '{found}'",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-VAL720",
+  "area": "VAL",
+  "number": 720,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Referenced agent version does not exist",
+  "message": "eval config for '{artifact}': version '{value}' does not exist or is dropped",
+  "precheck": "observe"
+ },
+ {
+  "code": "SST-VAL721",
+  "area": "VAL",
+  "number": 721,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Metric is neither a system metric nor a declared custom metric",
+  "message": "eval config for '{artifact}': metric '{name}' is unknown",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-VAL722",
+  "area": "VAL",
+  "number": 722,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "metric_version is not pinned",
+  "message": "eval config for '{artifact}': metric '{name}' declares no metric_version",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-VAL723",
+  "area": "VAL",
+  "number": 723,
+  "severity": "WARNING",
+  "non_demotable": false,
+  "title": "metric_version pins a legacy judge",
+  "message": "eval config for '{artifact}': metric '{name}' pins legacy version '{found}'",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-VAL724",
+  "area": "VAL",
+  "number": 724,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "judge_model set for a system metric",
+  "message": "eval config for '{artifact}': metric '{name}' is a system metric and declares judge_model",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-VAL725",
+  "area": "VAL",
+  "number": 725,
+  "severity": "INFO",
+  "non_demotable": false,
+  "title": "Metric evaluation mechanics",
+  "message": "eval config for '{artifact}': metric '{name}' {detail}",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-VAL726",
+  "area": "VAL",
+  "number": 726,
+  "severity": "WARNING",
+  "non_demotable": false,
+  "title": "logical_consistency used as a gate",
+  "message": "eval config for '{artifact}': logical_consistency is a blocking metric",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-VAL727",
+  "area": "VAL",
+  "number": 727,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Eval privileges are spread across secondary roles",
+  "message": "eval config for '{artifact}': {detail}",
+  "precheck": "observe"
+ },
+ {
+  "code": "SST-VAL728",
+  "area": "VAL",
+  "number": 728,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Eval role lacks a required schema privilege",
+  "message": "eval config for '{artifact}': {value} lacks {detail}",
+  "precheck": "observe"
+ },
+ {
+  "code": "SST-VAL729",
+  "area": "VAL",
+  "number": 729,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Config stage file format is wrong",
+  "message": "eval config for '{artifact}': stage file format is {found}",
+  "precheck": "observe"
+ },
+ {
+  "code": "SST-VAL730",
+  "area": "VAL",
+  "number": 730,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Partial completion treated as a pass",
+  "message": "eval run for '{artifact}': status '{found}' is not a pass",
+  "precheck": "runtime"
+ },
+ {
+  "code": "SST-VAL731",
+  "area": "VAL",
+  "number": 731,
+  "severity": "WARNING",
+  "non_demotable": false,
+  "title": "Eval concurrency exceeds the configured ceiling",
+  "message": "eval config for '{artifact}': concurrency {found} exceeds {expected}",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-VAL732",
+  "area": "VAL",
+  "number": 732,
+  "severity": "INFO",
+  "non_demotable": false,
+  "title": "Unsupported tool types are skipped during evals",
+  "message": "eval config for '{artifact}': {value} will be skipped, not failed",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-VAL733",
+  "area": "VAL",
+  "number": 733,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Blocking threshold declares no usable bound",
+  "message": "eval config for '{artifact}': metric '{name}' threshold has {detail}",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-VAL734",
+  "area": "VAL",
+  "number": 734,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Threshold gates before the baseline runs complete",
+  "message": "eval config for '{artifact}': {count} baseline_runs completed, {expected} required",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-VAL735",
+  "area": "VAL",
+  "number": 735,
+  "severity": "WARNING",
+  "non_demotable": false,
+  "title": "Threshold set with no baseline",
+  "message": "eval config for '{artifact}': metric '{name}' has a threshold and no baseline",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-VAL736",
+  "area": "VAL",
+  "number": 736,
+  "severity": "RETIRED",
+  "non_demotable": false,
+  "title": "Selected verified queries are removed for the duration of a run -- number burned, never reused",
+  "message": "--",
+  "precheck": "--"
+ },
+ {
+  "code": "SST-VAL737",
+  "area": "VAL",
+  "number": 737,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Custom metric shadows a system metric name",
+  "message": "eval metric '{artifact}' shadows system metric '{name}'",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-VAL738",
+  "area": "VAL",
+  "number": 738,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Custom metric declares no explicit judge model",
+  "message": "eval metric '{artifact}': judge_model is '{found}'",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-VAL739",
+  "area": "VAL",
+  "number": 739,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "judge_model is not in the allowlist",
+  "message": "eval metric '{artifact}': judge_model '{found}' is not in the allowlist",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-VAL740",
+  "area": "VAL",
+  "number": 740,
+  "severity": "WARNING",
+  "non_demotable": false,
+  "title": "Custom metric duplicates a system metric's intent",
+  "message": "eval metric '{artifact}' duplicates '{name}'",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-VAL741",
+  "area": "VAL",
+  "number": 741,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Judge prompt declares no output contract",
+  "message": "eval metric '{artifact}': the prompt declares no scale or allowed values",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-VAL742",
+  "area": "VAL",
+  "number": 742,
+  "severity": "WARNING",
+  "non_demotable": false,
+  "title": "Judge prompt asks for reasoning with no parseable score",
+  "message": "eval metric '{artifact}': the prompt has no parseable score instruction",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-VAL743",
+  "area": "VAL",
+  "number": 743,
+  "severity": "WARNING",
+  "non_demotable": false,
+  "title": "Rubric has no tie-break or insufficient-information branch",
+  "message": "eval metric '{artifact}': the rubric has no {detail} branch",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-VAL744",
+  "area": "VAL",
+  "number": 744,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Custom metric is not versioned",
+  "message": "eval metric '{artifact}' declares no version",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-VAL745",
+  "area": "VAL",
+  "number": 745,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "In-place edit to a metric a retained run references",
+  "message": "eval metric '{artifact}' is referenced by retained run '{value}'",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-VAL746",
+  "area": "VAL",
+  "number": 746,
+  "severity": "INFO",
+  "non_demotable": false,
+  "title": "System judge versions move on Snowflake's cadence",
+  "message": "eval metric '{artifact}': judge for version '{value}' recorded",
+  "precheck": "observe"
+ },
+ {
+  "code": "SST-VAL747",
+  "area": "VAL",
+  "number": 747,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Scoring instruction produces a number outside the declared ranges",
+  "message": "eval metric '{artifact}': the prompt can produce {found}, outside {expected}",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-VAL748",
+  "area": "VAL",
+  "number": 748,
+  "severity": "WARNING",
+  "non_demotable": false,
+  "title": "Judged range is wider than three bands for an invariant",
+  "message": "eval metric '{artifact}' declares {count} bands for an invariant",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-VAL749",
+  "area": "VAL",
+  "number": 749,
+  "severity": "RETIRED",
+  "non_demotable": false,
+  "title": "Analyst eval declares the wrong subject or source -- number burned, never reused",
+  "message": "--",
+  "precheck": "--"
+ },
+ {
+  "code": "SST-VAL750",
+  "area": "VAL",
+  "number": 750,
+  "severity": "RETIRED",
+  "non_demotable": false,
+  "title": "Analyst eval declares more than one semantic view -- number burned, never reused",
+  "message": "--",
+  "precheck": "--"
+ },
+ {
+  "code": "SST-VAL751",
+  "area": "VAL",
+  "number": 751,
+  "severity": "RETIRED",
+  "non_demotable": false,
+  "title": "Analyst eval requests a metric other than sql_correctness -- number burned, never reused",
+  "message": "--",
+  "precheck": "--"
+ },
+ {
+  "code": "SST-VAL752",
+  "area": "VAL",
+  "number": 752,
+  "severity": "RETIRED",
+  "non_demotable": false,
+  "title": "min_verified_queries resolved per file instead of per view -- number burned, never reused",
+  "message": "--",
+  "precheck": "--"
+ },
+ {
+  "code": "SST-VAL753",
+  "area": "VAL",
+  "number": 753,
+  "severity": "RETIRED",
+  "non_demotable": false,
+  "title": "Analyst gate is an absolute pass rate -- number burned, never reused",
+  "message": "--",
+  "precheck": "--"
+ },
+ {
+  "code": "SST-VAL754",
+  "area": "VAL",
+  "number": 754,
+  "severity": "RETIRED",
+  "non_demotable": false,
+  "title": "A verified query was removed since the last run -- number burned, never reused",
+  "message": "--",
+  "precheck": "--"
+ },
+ {
+  "code": "SST-VAL755",
+  "area": "VAL",
+  "number": 755,
+  "severity": "WARNING",
+  "non_demotable": false,
+  "title": "Agent eval run overlaps a semantic view regenerate",
+  "message": "eval config for '{artifact}': the run overlaps a regenerate of view '{value}', which the agent uses",
+  "precheck": "observe"
+ },
+ {
+  "code": "SST-VAL756",
+  "area": "VAL",
+  "number": 756,
+  "severity": "RETIRED",
+  "non_demotable": false,
+  "title": "Analyst eval run overlaps a regenerate of the same view -- number burned, never reused",
+  "message": "--",
+  "precheck": "--"
+ },
+ {
+  "code": "SST-VAL757",
+  "area": "VAL",
+  "number": 757,
+  "severity": "RETIRED",
+  "non_demotable": false,
+  "title": "Analyst evals cannot colocate with their ground truth -- number burned, never reused",
+  "message": "--",
+  "precheck": "--"
+ },
+ {
+  "code": "SST-VAL801",
+  "area": "VAL",
+  "number": 801,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Skill folder layout is wrong",
+  "message": "skill '{artifact}': {detail}",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-VAL802",
+  "area": "VAL",
+  "number": 802,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Skill is not published as a typed CORTEX EXTENSION",
+  "message": "skill '{artifact}': TYPE is {found}",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-VAL803",
+  "area": "VAL",
+  "number": 803,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Extension version is not immutable and SHA-derived",
+  "message": "skill '{artifact}': version '{value}' is not SHA-derived",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-VAL804",
+  "area": "VAL",
+  "number": 804,
+  "severity": "WARNING",
+  "non_demotable": false,
+  "title": "Extension version referenced by no agent",
+  "message": "skill '{artifact}': version '{value}' is referenced by no agent",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-VAL805",
+  "area": "VAL",
+  "number": 805,
+  "severity": "WARNING",
+  "non_demotable": false,
+  "title": "Repo and catalog disagree",
+  "message": "skill reconciliation: {value}",
+  "precheck": "observe"
+ },
+ {
+  "code": "SST-VAL806",
+  "area": "VAL",
+  "number": 806,
+  "severity": "WARNING",
+  "non_demotable": false,
+  "title": "Folder-to-schema split introduced",
+  "message": "skill '{artifact}' would land in schema '{value}'",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-VAL807",
+  "area": "VAL",
+  "number": 807,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Certification attempted by moving schemas",
+  "message": "skill '{artifact}': certification would change its schema",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-VAL808",
+  "area": "VAL",
+  "number": 808,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Referenced bundle path does not resolve",
+  "message": "skill '{artifact}': SKILL.md references '{path}', absent from the bundle",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-VAL809",
+  "area": "VAL",
+  "number": 809,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Flattened file names collide",
+  "message": "skill '{artifact}': '{a}' and '{b}' flatten to one name",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-VAL810",
+  "area": "VAL",
+  "number": 810,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Flattening did not rewrite a subdirectory reference",
+  "message": "skill '{artifact}': '{path}' was not rewritten to its flattened name",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-VAL811",
+  "area": "VAL",
+  "number": 811,
+  "severity": "WARNING",
+  "non_demotable": false,
+  "title": "Flattened bundle exceeds the size budget",
+  "message": "skill '{artifact}': bundle is {size} bytes, over {expected}",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-VAL812",
+  "area": "VAL",
+  "number": 812,
+  "severity": "WARNING",
+  "non_demotable": false,
+  "title": "SKILL.md exceeds the size budget",
+  "message": "skill '{artifact}': SKILL.md is {size} bytes, over {expected}",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-VAL813",
+  "area": "VAL",
+  "number": 813,
+  "severity": "WARNING",
+  "non_demotable": false,
+  "title": "Bundled file is never referenced",
+  "message": "skill '{artifact}': '{path}' is never referenced from SKILL.md",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-VAL814",
+  "area": "VAL",
+  "number": 814,
+  "severity": "WARNING",
+  "non_demotable": false,
+  "title": "Bundle carries a script with no consumer that can run it",
+  "message": "skill '{artifact}': '{path}' is executable and no consuming agent enables code_execution",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-VAL815",
+  "area": "VAL",
+  "number": 815,
+  "severity": "WARNING",
+  "non_demotable": false,
+  "title": "Bundled script reads a credential or an absolute local path",
+  "message": "skill '{artifact}': '{path}' reads {detail}",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-VAL816",
+  "area": "VAL",
+  "number": 816,
+  "severity": "INFO",
+  "non_demotable": false,
+  "title": "SKILL.md and bundle byte split",
+  "message": "skill '{artifact}': {value}",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-VAL817",
+  "area": "VAL",
+  "number": 817,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "No publication channel configured",
+  "message": "skill '{artifact}': neither catalog nor stage is configured",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-VAL818",
+  "area": "VAL",
+  "number": 818,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Flatten settings are wrong for a channel",
+  "message": "skill '{artifact}': catalog.+flatten is {found} and stage.+flatten is {expected}",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-VAL819",
+  "area": "VAL",
+  "number": 819,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Stage auto_compress is enabled",
+  "message": "skill '{artifact}': stage.+auto_compress is true",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-VAL820",
+  "area": "VAL",
+  "number": 820,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Stage PUT target does not end in a separator",
+  "message": "skill '{artifact}': PUT target '{path}' does not end in '/'",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-VAL821",
+  "area": "VAL",
+  "number": 821,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Stage layout is not by_type",
+  "message": "skill '{artifact}': stage.+layout is '{found}'",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-VAL822",
+  "area": "VAL",
+  "number": 822,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Uploaded artifact has no registry pointer",
+  "message": "skill '{artifact}': '{path}' was uploaded with no PROFILE_REGISTRY pointer",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-VAL823",
+  "area": "VAL",
+  "number": 823,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Profile content hash does not cover every shipped tree",
+  "message": "skill '{artifact}': hash omits {value}",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-VAL824",
+  "area": "VAL",
+  "number": 824,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Deleted file survives into the next version",
+  "message": "skill '{artifact}': '{path}' was deleted and is still published",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-VAL825",
+  "area": "VAL",
+  "number": 825,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Version name is not collision-free under parallel deploys",
+  "message": "skill '{artifact}': version name '{value}' is not collision-free",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-VAL826",
+  "area": "VAL",
+  "number": 826,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Grants issued before certification succeeded",
+  "message": "skill '{artifact}': grants would be issued before certification",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-VAL827",
+  "area": "VAL",
+  "number": 827,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Identifier interpolated into DDL without validation",
+  "message": "skill '{artifact}': '{value}' reaches DDL unvalidated",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-VAL828",
+  "area": "VAL",
+  "number": 828,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Partial deploy reported as aggregate success",
+  "message": "skill '{artifact}': {detail}",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-VAL829",
+  "area": "VAL",
+  "number": 829,
+  "severity": "WARNING",
+  "non_demotable": false,
+  "title": "Channel content hashes diverge beyond flattening",
+  "message": "skill '{artifact}': catalog and stage hashes diverge by {value}",
+  "precheck": "observe"
+ },
+ {
+  "code": "SST-VAL830",
+  "area": "VAL",
+  "number": 830,
+  "severity": "WARNING",
+  "non_demotable": false,
+  "title": "Skill reaches neither channel",
+  "message": "skill '{artifact}' is published nowhere",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-VAL831",
+  "area": "VAL",
+  "number": 831,
+  "severity": "INFO",
+  "non_demotable": false,
+  "title": "CORTEX EXTENSION DDL surface used",
+  "message": "skill '{artifact}': {value}",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-VAL832",
+  "area": "VAL",
+  "number": 832,
+  "severity": "ERROR",
+  "non_demotable": false,
+  "title": "Skill name is not globally unique across extensions",
+  "message": "skill '{artifact}' collides with '{other}'",
+  "precheck": "local"
+ }
+]

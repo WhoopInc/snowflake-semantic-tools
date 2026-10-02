@@ -5,9 +5,11 @@ from collections import deque
 from dataclasses import replace
 from hashlib import md5
 from types import MappingProxyType
+from typing import Any
 
 import pytest
 
+from snowflake_semantic_tools.app.compile.evals import CompiledEval
 from snowflake_semantic_tools.app.evals.retrieve import (
     _expected_question_map,
     _metric_passed,
@@ -42,6 +44,7 @@ from snowflake_semantic_tools.domain.model.eval import (
     EvalRunAttempt,
     ThresholdRange,
 )
+from snowflake_semantic_tools.domain.model.identifier import QualifiedName
 from snowflake_semantic_tools.domain.model.lifecycle import ExecResult, ExecutionError, QueryResult
 from snowflake_semantic_tools.domain.ports.snowflake import SnowflakePortError, StagedFileMetadata
 from snowflake_semantic_tools.domain.state import STATE_SCHEMA_VERSION, AppliedEntry, State
@@ -52,6 +55,7 @@ from tests.helpers.eval_builders import (
     STATUS_COLUMNS,
     EvalSnowflake,
     compile_eval,
+    compiled_eval_of,
     result_row,
     result_rows,
     status_result,
@@ -59,13 +63,13 @@ from tests.helpers.eval_builders import (
 
 
 class ResolveErrorSnowflake(EvalSnowflake):
-    def resolve_agent_version(self, qualified_name, selector: str) -> str:
+    def resolve_agent_version(self, qualified_name: QualifiedName, selector: str) -> str:
         del qualified_name, selector
         raise SnowflakePortError("version lookup failed")
 
 
 class ConfigErrorSnowflake(EvalSnowflake):
-    def observe_staged_file(self, stage_path: str):
+    def observe_staged_file(self, stage_path: str) -> StagedFileMetadata | None:
         del stage_path
         raise SnowflakePortError("config observation failed")
 
@@ -97,12 +101,12 @@ class ConfigReadbackSnowflake(EvalSnowflake):
         return self.upload_content if self.upload_content is not None else self.staged_content
 
 
-def runner(port: EvalSnowflake):
-    compiled = compile_eval().compiled[0]
+def runner(port: EvalSnowflake) -> tuple[RunEvalSuite, CompiledEval]:
+    compiled = compiled_eval_of()
     return RunEvalSuite(port, FixedClock()), compiled
 
 
-def run_once(port: EvalSnowflake, compiled=None):
+def run_once(port: EvalSnowflake, compiled: CompiledEval | None = None) -> EvalSuiteResult:
     use_case, default_compiled = runner(port)
     return use_case.run(
         (compiled or default_compiled,),
@@ -110,7 +114,7 @@ def run_once(port: EvalSnowflake, compiled=None):
     )
 
 
-def retrieval_error(rows: tuple[tuple[object, ...], ...], compiled=None) -> str:
+def retrieval_error(rows: tuple[tuple[object, ...], ...], compiled: CompiledEval | None = None) -> str:
     result = run_once(
         EvalSnowflake([status_result("COMPLETED"), QueryResult(RESULT_COLUMNS, rows)]),
         compiled,
@@ -150,7 +154,7 @@ def test_eval_runner_polls_retrieves_scores_and_costs() -> None:
 
 
 def test_eval_runner_reports_every_retry_and_partial_status() -> None:
-    compiled = compile_eval().compiled[0]
+    compiled = compiled_eval_of()
     run = compiled.resolved.config.run
     assert run is not None
     compiled = replace(
@@ -239,7 +243,7 @@ def test_eval_runner_runs_and_retains_every_configured_attempt() -> None:
 
 
 def test_baseline_capture_runs_until_configured_completed_attempt_count() -> None:
-    compiled = compile_eval().compiled[0]
+    compiled = compiled_eval_of()
     run = compiled.resolved.config.run
     assert run is not None
     compiled = replace(
@@ -296,7 +300,7 @@ def test_eval_runner_rejects_unknown_status_and_times_out() -> None:
     )
 
     assert result.evals[0].attempts[0].terminal_status == "STATUS_FAILED"
-    assert "did not reach" in result.evals[0].attempts[0].retrieval_error
+    assert "did not reach" in (result.evals[0].attempts[0].retrieval_error or "")
 
 
 def test_eval_cost_deduplicates_agent_usage_across_metric_rows() -> None:
@@ -351,7 +355,7 @@ def test_question_key_is_stable_across_snowflake_input_ids() -> None:
 
 
 def test_result_question_key_accepts_exact_flattened_output_and_rejects_drift() -> None:
-    compiled = compile_eval().compiled[0]
+    compiled = compiled_eval_of()
     ground_truth = {"ground_truth_invocations": [], "ground_truth_output": "Answer"}
     expected = {"Question": (_question_identity("Question", ground_truth), ground_truth)}
 
@@ -363,7 +367,7 @@ def test_result_question_key_accepts_exact_flattened_output_and_rejects_drift() 
 
 
 def test_eval_publication_preflight_refuses_unapplied_state() -> None:
-    compiled = compile_eval().compiled[0]
+    compiled = compiled_eval_of()
     manifest = build_manifest(compile_eval())
     state = State(STATE_SCHEMA_VERSION, target(), manifest.manifest_id, "cfg", None, {})
 
@@ -400,7 +404,7 @@ def test_eval_runner_rejects_duplicate_metric_rows_and_nonfinite_scores() -> Non
         options=EvalRunOptions("abcdef0", timestamp="20260928T010203Z"),
     )
 
-    assert "not finite" in invalid.evals[0].attempts[0].retrieval_error
+    assert "not finite" in (invalid.evals[0].attempts[0].retrieval_error or "")
 
 
 def test_eval_runner_rejects_status_for_a_different_run() -> None:
@@ -413,11 +417,11 @@ def test_eval_runner_rejects_status_for_a_different_run() -> None:
     )
 
     assert result.evals[0].attempts[0].terminal_status == "STATUS_FAILED"
-    assert "some-other-run" in result.evals[0].attempts[0].retrieval_error
+    assert "some-other-run" in (result.evals[0].attempts[0].retrieval_error or "")
 
 
 def test_custom_metric_threshold_default_controls_pass_vector() -> None:
-    compiled = compile_eval().compiled[0]
+    compiled = compiled_eval_of()
     custom = replace(compiled.resolved.custom_metrics[0], threshold_default=ThresholdRange(min=4.5))
     compiled = replace(compiled, resolved=replace(compiled.resolved, custom_metrics=(custom,)))
     rows = result_rows().rows
@@ -434,7 +438,7 @@ def test_custom_metric_threshold_default_controls_pass_vector() -> None:
 
 
 def test_eval_runner_reports_missing_run_version_and_config_failures() -> None:
-    compiled = compile_eval().compiled[0]
+    compiled = compiled_eval_of()
     without_run = replace(
         compiled,
         resolved=replace(compiled.resolved, config=replace(compiled.resolved.config, run=None)),
@@ -452,12 +456,12 @@ def test_eval_runner_reports_missing_run_version_and_config_failures() -> None:
     assert not config_failure.evals[0].attempts
 
 
-def test_eval_runner_fail_fast_stops_before_the_next_eval(monkeypatch) -> None:
-    compiled = compile_eval().compiled[0]
+def test_eval_runner_fail_fast_stops_before_the_next_eval(monkeypatch: pytest.MonkeyPatch) -> None:
+    compiled = compiled_eval_of()
     use_case = RunEvalSuite(EvalSnowflake([]), FixedClock())
-    calls = []
+    calls: list[str] = []
 
-    def fail(*args):
+    def fail(*args: Any) -> EvalRunResult:
         calls.append(args[0].artifact_key)
         return EvalRunResult(args[0].artifact_key, (), DiagnosticBag(), False)
 
@@ -474,8 +478,8 @@ def test_eval_runner_fail_fast_stops_before_the_next_eval(monkeypatch) -> None:
     assert not result.success
 
 
-def test_eval_runner_parallelizes_with_the_requested_concurrency(monkeypatch) -> None:
-    first = compile_eval().compiled[0]
+def test_eval_runner_parallelizes_with_the_requested_concurrency(monkeypatch: pytest.MonkeyPatch) -> None:
+    first = compiled_eval_of()
     first_run = first.resolved.config.run
     assert first_run is not None
     second = replace(
@@ -487,7 +491,7 @@ def test_eval_runner_parallelizes_with_the_requested_concurrency(monkeypatch) ->
     )
     use_case = RunEvalSuite(EvalSnowflake([]), FixedClock())
 
-    def succeed(*args):
+    def succeed(*args: Any) -> EvalRunResult:
         return EvalRunResult(args[0].artifact_key, (), DiagnosticBag(), True)
 
     monkeypatch.setattr(use_case, "_run_eval", succeed)
@@ -519,9 +523,9 @@ def test_eval_runner_parallelizes_with_the_requested_concurrency(monkeypatch) ->
     ),
 )
 def test_ensure_config_uses_readback_bytes_not_encrypted_list_metadata(
-    initial,
-    trusted_digest,
-    expected_uploads,
+    initial: StagedFileMetadata,
+    trusted_digest: str | None,
+    expected_uploads: list[tuple[str, bytes]],
 ) -> None:
     content = b"config"
     digest = trusted_digest or "repaired"
@@ -572,10 +576,10 @@ def test_ensure_config_trusts_matching_metadata_and_verifies_bytes_without_uploa
     ),
 )
 def test_ensure_config_rejects_failed_repairs_and_readback_mismatches(
-    observations,
-    trusted_digest,
-    staged_content,
-    message,
+    observations: list[StagedFileMetadata | None],
+    trusted_digest: str | None,
+    staged_content: bytes | None,
+    message: str,
 ) -> None:
     port = ConfigReadbackSnowflake(observations, staged_content=staged_content)
 
@@ -590,7 +594,7 @@ def test_eval_runner_reports_start_failure_without_an_error_payload() -> None:
     result = run_once(port)
 
     assert result.evals[0].attempts[0].terminal_status == "START_FAILED"
-    assert "returned no result" in result.evals[0].attempts[0].retrieval_error
+    assert "returned no result" in (result.evals[0].attempts[0].retrieval_error or "")
 
 
 @pytest.mark.parametrize(
@@ -600,18 +604,20 @@ def test_eval_runner_reports_start_failure_without_an_error_payload() -> None:
         ("SALES_AGENT", "OTHER", "different agent type"),
     ),
 )
-def test_eval_runner_rejects_status_for_a_different_agent_identity(agent_name, agent_type, message) -> None:
+def test_eval_runner_rejects_status_for_a_different_agent_identity(
+    agent_name: str, agent_type: str, message: str
+) -> None:
     run_name = "EVAL_SALES_AGENT_abcdef0_ci_20260928T010203Z"
     status = QueryResult(STATUS_COLUMNS, ((run_name, agent_name, agent_type, "COMPLETED", []),))
 
     result = run_once(EvalSnowflake([status]))
 
     assert result.evals[0].attempts[0].terminal_status == "STATUS_FAILED"
-    assert message in result.evals[0].attempts[0].retrieval_error
+    assert message in (result.evals[0].attempts[0].retrieval_error or "")
 
 
 @pytest.mark.parametrize("rows", ((), (("run", "agent", "type", "status", []),) * 2))
-def test_single_row_rejects_missing_and_duplicate_status_rows(rows) -> None:
+def test_single_row_rejects_missing_and_duplicate_status_rows(rows: tuple[tuple[object, ...], ...]) -> None:
     with pytest.raises(SnowflakePortError, match="expected 1"):
         _single_row(STATUS_COLUMNS, rows, STATUS_COLUMNS, "evaluation status")
 
@@ -622,7 +628,7 @@ def test_eval_runner_rejects_blank_required_status_values() -> None:
 
     result = run_once(EvalSnowflake([status]))
 
-    assert "omitted AGENT_NAME" in result.evals[0].attempts[0].retrieval_error
+    assert "omitted AGENT_NAME" in (result.evals[0].attempts[0].retrieval_error or "")
 
 
 def test_eval_runner_normalizes_null_and_json_status_details() -> None:
@@ -646,7 +652,7 @@ def test_eval_runner_rejects_non_array_status_details() -> None:
 
     result = run_once(EvalSnowflake([status]))
 
-    assert "STATUS_DETAILS must be an array" in result.evals[0].attempts[0].retrieval_error
+    assert "STATUS_DETAILS must be an array" in (result.evals[0].attempts[0].retrieval_error or "")
 
 
 def test_eval_runner_rejects_empty_result_sets() -> None:
@@ -671,7 +677,7 @@ def test_eval_runner_rejects_record_and_question_identity_conflicts() -> None:
         (result_row(metric_type="custom").rows[0], "has type 'custom', expected 'system'"),
     ),
 )
-def test_eval_runner_rejects_unknown_metrics_and_wrong_metric_types(row, message) -> None:
+def test_eval_runner_rejects_unknown_metrics_and_wrong_metric_types(row: tuple[object, ...], message: str) -> None:
     assert message in retrieval_error((row,))
 
 
@@ -719,8 +725,8 @@ def test_eval_runner_rejects_question_and_metric_set_mismatches() -> None:
         ),
     ),
 )
-def test_expected_question_map_rejects_malformed_compiled_payloads(payload, message) -> None:
-    compiled = compile_eval().compiled[0]
+def test_expected_question_map_rejects_malformed_compiled_payloads(payload: str, message: str) -> None:
+    compiled = compiled_eval_of()
     compiled = replace(compiled, rendered=replace(compiled.rendered, dataset_payload=payload))
 
     with pytest.raises(ValueError, match=message):
@@ -728,7 +734,7 @@ def test_expected_question_map_rejects_malformed_compiled_payloads(payload, mess
 
 
 def test_metric_passed_fails_closed_for_errors_status_codes_and_missing_scores() -> None:
-    compiled = compile_eval().compiled[0]
+    compiled = compiled_eval_of()
 
     assert not _metric_passed(compiled, "answer_correctness", 0.9, {"status": 200}, "failed")
     assert not _metric_passed(compiled, "answer_correctness", 0.9, {"status": 500}, None)
@@ -737,7 +743,7 @@ def test_metric_passed_fails_closed_for_errors_status_codes_and_missing_scores()
 
 
 def test_metric_passed_applies_bounded_system_thresholds() -> None:
-    compiled = compile_eval().compiled[0]
+    compiled = compiled_eval_of()
     system_metric = replace(compiled.resolved.config.system_metrics[0], threshold=ThresholdRange(min=0.5, max=1.0))
     compiled = replace(
         compiled,
@@ -783,12 +789,12 @@ def test_variant_returns_malformed_json_unchanged() -> None:
     ("value", "expected"),
     ((None, 0), ("2", 2), (2.9, 2)),
 )
-def test_nonnegative_int_normalizes_supported_values(value, expected) -> None:
+def test_nonnegative_int_normalizes_supported_values(value: object, expected: int) -> None:
     assert _nonnegative_int(value) == expected
 
 
 @pytest.mark.parametrize("value", (True, object(), "not-an-int", -1))
-def test_nonnegative_int_rejects_invalid_values(value) -> None:
+def test_nonnegative_int_rejects_invalid_values(value: object) -> None:
     with pytest.raises(ValueError, match="evaluation cost value"):
         _nonnegative_int(value)
 
@@ -797,12 +803,12 @@ def test_nonnegative_int_rejects_invalid_values(value) -> None:
     ("value", "expected"),
     ((None, None), ("1.25", 1.25)),
 )
-def test_optional_float_normalizes_supported_values(value, expected) -> None:
+def test_optional_float_normalizes_supported_values(value: object, expected: float | None) -> None:
     assert _optional_float(value) == expected
 
 
 @pytest.mark.parametrize("value", (True, object(), "not-a-number"))
-def test_optional_float_rejects_invalid_values(value) -> None:
+def test_optional_float_rejects_invalid_values(value: object) -> None:
     with pytest.raises(ValueError, match="evaluation score"):
         _optional_float(value)
 
@@ -822,7 +828,7 @@ def test_compact_timestamp_uses_utc_compact_format() -> None:
 
 
 def test_eval_publication_preflight_refuses_manifest_mismatch() -> None:
-    compiled = compile_eval().compiled[0]
+    compiled = compiled_eval_of()
     manifest = build_manifest(compile_eval())
     artifact = compiled.rendered_for_publish(manifest.manifest_id)
     entry = AppliedEntry(
@@ -857,7 +863,7 @@ def test_eval_publication_preflight_refuses_manifest_mismatch() -> None:
 
 
 def test_eval_publication_preflight_allows_unrelated_rows_from_older_manifests() -> None:
-    compiled = compile_eval().compiled[0]
+    compiled = compiled_eval_of()
     manifest = build_manifest(compile_eval())
     artifact = compiled.rendered_for_publish(manifest.manifest_id)
     content = artifact.ddl.encode("utf-8")
@@ -901,7 +907,7 @@ def test_eval_publication_preflight_allows_unrelated_rows_from_older_manifests()
 
 
 def test_eval_publication_preflight_accepts_a_live_noop() -> None:
-    compiled = compile_eval().compiled[0]
+    compiled = compiled_eval_of()
     manifest = build_manifest(compile_eval())
     artifact = compiled.rendered_for_publish(manifest.manifest_id)
     content = artifact.ddl.encode("utf-8")
@@ -946,7 +952,7 @@ def test_eval_publication_preflight_accepts_a_live_noop() -> None:
 
 
 def test_eval_publication_preflight_reports_plan_diagnostics() -> None:
-    compiled = compile_eval().compiled[0]
+    compiled = compiled_eval_of()
     manifest = build_manifest(compile_eval())
     artifact = compiled.rendered_for_publish(manifest.manifest_id)
     entry = AppliedEntry(
@@ -984,7 +990,7 @@ def test_eval_publication_preflight_reports_plan_diagnostics() -> None:
 
 
 def test_eval_publication_preflight_refuses_a_live_non_noop_plan() -> None:
-    compiled = compile_eval().compiled[0]
+    compiled = compiled_eval_of()
     manifest = build_manifest(compile_eval())
     artifact = compiled.rendered_for_publish(manifest.manifest_id)
     entry = AppliedEntry(
@@ -1036,7 +1042,8 @@ def test_eval_suite_json_normalizes_metrics_costs_and_empty_results() -> None:
     attempt = EvalRunAttempt("run", 1, "COMPLETED", rows, EvalCostSummary(total_tokens=8))
     suite = EvalSuiteResult((EvalRunResult("eval:sales_agent", (attempt,), DiagnosticBag(), True),), DiagnosticBag())
 
-    payload = eval_suite_json(suite)
+    # The JSON envelope is untyped by design; read it as the document it is.
+    payload: Any = eval_suite_json(suite)
 
     summaries = {item["metric_name"]: item for item in payload["evals"][0]["attempts"][0]["metric_summaries"]}
     assert summaries["answer_correctness"] == {
@@ -1067,7 +1074,7 @@ def test_eval_suite_json_normalizes_metrics_costs_and_empty_results() -> None:
 
 
 def test_suite_concurrency_prefers_the_project_setting_then_the_largest_request() -> None:
-    first = compile_eval().compiled[0]
+    first = compiled_eval_of()
     run = first.resolved.config.run
     assert run is not None and run.concurrency is None
     requesting = replace(
@@ -1101,7 +1108,9 @@ class FixedReadbackSnowflake(ConfigReadbackSnowflake):
         (b"CONFIG", "bytes do not match rendered config"),
     ),
 )
-def test_ensure_config_rejects_a_readback_that_is_missing_short_or_different(readback, message) -> None:
+def test_ensure_config_rejects_a_readback_that_is_missing_short_or_different(
+    readback: bytes | None, message: str
+) -> None:
     port = FixedReadbackSnowflake(readback)
 
     with pytest.raises(SnowflakePortError, match=message):
@@ -1120,13 +1129,14 @@ def test_result_question_key_rejects_a_missing_input_and_different_whole_ground_
         _result_question_key(
             {"INPUT": "Question", "GROUND_TRUTH": json.dumps({"ground_truth_output": "Other"})}, expected
         )
-    assert _result_question_key({"INPUT": "Question", "GROUND_TRUTH": json.dumps(ground_truth)}, expected) == (
-        expected["Question"][0]
+    assert (
+        _result_question_key({"INPUT": "Question", "GROUND_TRUTH": json.dumps(ground_truth)}, expected)
+        == (expected["Question"][0])
     )
 
 
 def test_eval_runner_rejects_a_record_answering_two_questions_and_an_unanswered_question() -> None:
-    compiled = compile_eval().compiled[0]
+    compiled = compiled_eval_of()
     dataset = json.loads(compiled.rendered.dataset_payload)
     dataset.append(
         {"input_query": "Other", "ground_truth": {"ground_truth_invocations": [], "ground_truth_output": "Answer"}}

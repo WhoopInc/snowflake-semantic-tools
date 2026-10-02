@@ -8,8 +8,8 @@ change that depends on a blocked one. A blocked change stays in the plan, so it 
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import replace
-from typing import Mapping
 
 from snowflake_semantic_tools.domain.model.artifact_key import split_artifact_key
 from snowflake_semantic_tools.domain.model.diagnostic import D, Diagnostic, DiagnosticBag

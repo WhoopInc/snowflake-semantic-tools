@@ -369,7 +369,7 @@ class TestRelationshipsAndVariables:
             asof_index=1,
         )
         assert render_relationship(relationship) == (
-            "ITEMS_TO_ORDERS AS ITEMS (ORDER_ID, OCCURRED_AT) " "REFERENCES ORDERS (ORDER_ID, ASOF ORDERED_AT)"
+            "ITEMS_TO_ORDERS AS ITEMS (ORDER_ID, OCCURRED_AT) REFERENCES ORDERS (ORDER_ID, ASOF ORDERED_AT)"
         )
 
     def test_range_relationship_renders_half_open_bounds(self) -> None:
@@ -382,7 +382,7 @@ class TestRelationshipsAndVariables:
             range_bounds=("START_AT", "END_AT"),
         )
         assert render_relationship(relationship) == (
-            "ORDERS_TO_PERIODS AS ORDERS (ORDERED_AT) " "REFERENCES PERIODS (BETWEEN START_AT AND END_AT EXCLUSIVE)"
+            "ORDERS_TO_PERIODS AS ORDERS (ORDERED_AT) REFERENCES PERIODS (BETWEEN START_AT AND END_AT EXCLUSIVE)"
         )
 
     def test_variable_default_is_rendered_verbatim(self) -> None:

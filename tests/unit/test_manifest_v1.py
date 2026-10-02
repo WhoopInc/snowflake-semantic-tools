@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from snowflake_semantic_tools.app.compile import CompiledView, CompileResult
 from snowflake_semantic_tools.app.manifest import build_manifest
 from snowflake_semantic_tools.domain.model.semantic_view import Metric, SemanticView, Table
@@ -14,7 +16,7 @@ def test_manifest_uses_compiled_fingerprint_and_member_keys() -> None:
         metrics=(Metric(name="ORDER_COUNT", expr="COUNT(1)", table="ORDERS"),),
     )
     compiled = CompiledView(view, "CREATE OR REPLACE SEMANTIC VIEW DB.SCH.SALES\n  COPY GRANTS")
-    document = build_manifest(CompileResult((compiled,))).as_dict()
+    document: Any = build_manifest(CompileResult((compiled,))).as_dict()
     artifact = document["artifacts"]["semantic_view:sales"]
     assert artifact["fingerprint"] == compiled.fingerprint
     assert artifact["render"] == {

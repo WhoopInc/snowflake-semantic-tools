@@ -14,6 +14,9 @@ jobs:
   test:
     name: Run tests and linting
     runs-on: ubuntu-latest
+    env:
+      # Deterministic property tests, so a failure on a pull request reproduces on rerun.
+      HYPOTHESIS_PROFILE: ci
 
     steps:
       - name: Check out repository
@@ -44,9 +47,9 @@ jobs:
       - name: Install project
         run: poetry install --no-interaction
 
-      # Unit and contract tests. Neither connects to Snowflake.
+      # Unit, contract, and diagnostic-code guard tests. None connects to Snowflake.
       - name: Run tests
-        run: poetry run pytest tests/ -v
+        run: poetry run pytest tests/ -v -n auto
 
       - name: Check domain coverage
         run: >-
@@ -66,14 +69,21 @@ jobs:
           --cov-report=term --cov-fail-under=90
           tests/unit/cli
 
+      # A ratchet, measured over the whole suite: raise the floor as coverage rises, never lower it.
+      - name: Check adapters coverage
+        run: >-
+          poetry run pytest -q -n auto --cov=snowflake_semantic_tools.adapters --cov-branch
+          --cov-report=term --cov-fail-under=90
+          tests/
+
       - name: Check strict typing
-        run: poetry run mypy snowflake_semantic_tools
+        run: poetry run mypy snowflake_semantic_tools tests
 
-      - name: Check code formatting with Black
-        run: poetry run black --check snowflake_semantic_tools/ tests/
+      - name: Check code formatting with ruff
+        run: poetry run ruff format --check snowflake_semantic_tools/ tests/
 
-      - name: Check import sorting with isort
-        run: poetry run isort --check snowflake_semantic_tools/ tests/
+      - name: Lint with ruff
+        run: poetry run ruff check snowflake_semantic_tools/ tests/
 
       # The four-ring boundaries (cli -> app | adapters -> domain). This step IS the
       # enforcement; tests/unit/test_ring_boundaries.py separately proves the

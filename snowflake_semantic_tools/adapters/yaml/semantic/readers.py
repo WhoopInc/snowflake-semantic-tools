@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import UTC
 from pathlib import Path
 
 from snowflake_semantic_tools.adapters.errors import ProjectError
@@ -146,9 +147,9 @@ def _verified_at(value: object, *, path: Path, name: str) -> int | None:
         return value
     if isinstance(value, str):
         try:
-            from datetime import datetime, timezone
+            from datetime import datetime
 
-            return int(datetime.strptime(value, "%Y-%m-%d").replace(tzinfo=timezone.utc).timestamp())
+            return int(datetime.strptime(value, "%Y-%m-%d").replace(tzinfo=UTC).timestamp())
         except ValueError as exc:
             raise ProjectError(f"{path}: verified query {name} has invalid verified_at {value!r}") from exc
     raise ProjectError(f"{path}: verified query {name} has unsupported verified_at {value!r}")

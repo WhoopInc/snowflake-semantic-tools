@@ -8,11 +8,11 @@ the CLI, without judging it -- the gate compares it with a baseline.
 
 from __future__ import annotations
 
+from collections.abc import Callable, Mapping, Sequence
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, replace
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from hashlib import md5
-from typing import Callable, Mapping, Sequence
 
 from snowflake_semantic_tools.app.compile.evals import CompiledEval
 from snowflake_semantic_tools.app.evals.retrieve import _read_results, _read_status, _sum_costs
@@ -508,7 +508,7 @@ def _evaluation_call(job: str, run_name: str, config_path: str) -> str:
 
 
 def _compact_timestamp() -> str:
-    return datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    return datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
 
 
 def _metric_summaries(rows: tuple[EvalResultRow, ...]) -> list[dict[str, object]]:

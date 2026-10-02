@@ -98,9 +98,12 @@ def _immutable_ground_truth(
         emit("SST-PRS015", field=f"{field}.immutable_reason", other="immutable: true")
     if ground_truth.immutable and not ground_truth.immutable_reason:
         emit("SST-PRS015", field=f"{field}.immutable", other="immutable_reason")
-    if ground_truth.output and _NUMBER.search(ground_truth.output):
-        if not ground_truth.immutable or not ground_truth.immutable_reason:
-            emit("SST-PRS015", field=f"{field}.ground_truth_output", other="immutable: true plus immutable_reason")
+    if (
+        ground_truth.output
+        and _NUMBER.search(ground_truth.output)
+        and (not ground_truth.immutable or not ground_truth.immutable_reason)
+    ):
+        emit("SST-PRS015", field=f"{field}.ground_truth_output", other="immutable: true plus immutable_reason")
     return emit.diagnostics
 
 

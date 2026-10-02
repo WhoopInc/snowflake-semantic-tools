@@ -8,7 +8,7 @@ dependency on a key outside the changes: it is not this plan's to order.
 
 from __future__ import annotations
 
-from typing import Mapping
+from collections.abc import Mapping
 
 from snowflake_semantic_tools.domain.model.lifecycle import Action, Change, RenderedArtifact
 from snowflake_semantic_tools.domain.model.registry import Registry
@@ -36,8 +36,7 @@ def topological_order(changes: tuple[Change, ...]) -> tuple[tuple[Change, ...], 
     """
     by_key = {change.key: change for change in changes}
     dependencies = {
-        key: set(dependency for dependency in change.depends_on if dependency in by_key)
-        for key, change in by_key.items()
+        key: {dependency for dependency in change.depends_on if dependency in by_key} for key, change in by_key.items()
     }
     ordered: list[Change] = []
     remaining = set(by_key)

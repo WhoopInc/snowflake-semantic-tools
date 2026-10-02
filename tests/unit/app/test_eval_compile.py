@@ -4,7 +4,7 @@ from dataclasses import replace
 
 import pytest
 
-from snowflake_semantic_tools.app.compile.evals import CompileEvals
+from snowflake_semantic_tools.app.compile.evals import CompiledEval, CompileEvals
 from snowflake_semantic_tools.app.manifest import build_manifest
 from snowflake_semantic_tools.domain.model.diagnostic import D, DiagnosticBag
 from snowflake_semantic_tools.domain.model.eval import (
@@ -15,7 +15,8 @@ from snowflake_semantic_tools.domain.model.eval import (
     EvalRunConfig,
 )
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
-from tests.helpers.eval_builders import ORIGIN, compile_eval, resolved_eval
+from tests.helpers.compile_builders import compiled_as
+from tests.helpers.eval_builders import ORIGIN, compile_eval, compiled_eval_of, resolved_eval
 
 
 def test_compile_eval_projects_composite_metadata_and_manifest_impact() -> None:
@@ -54,11 +55,11 @@ def test_compile_eval_applies_inherited_agent_version() -> None:
     ).run_result()
 
     assert not result.diagnostics.has_errors
-    assert 'agent_version: "LAST"' in result.compiled[0].rendered.config_yaml
+    assert 'agent_version: "LAST"' in compiled_as(result, CompiledEval).rendered.config_yaml
 
 
 def test_rendered_for_publish_emits_source_table_and_dataset_statements() -> None:
-    compiled = compile_eval().compiled[0]
+    compiled = compiled_eval_of()
 
     published = compiled.rendered_for_publish("unused-manifest-id")
 
@@ -70,12 +71,12 @@ def test_rendered_for_publish_emits_source_table_and_dataset_statements() -> Non
 
 
 def test_dataset_identity_is_independent_of_config_and_git_sha() -> None:
-    first = compile_eval().compiled[0]
+    first = compiled_eval_of()
     changed_config = replace(
         resolved_eval(),
         config=replace(resolved_eval().config, run=EvalRunConfig(label="changed")),
     )
-    second = compile_eval(changed_config).compiled[0]
+    second = compiled_eval_of(changed_config)
     assert first.rendered.dataset_fingerprint == second.rendered.dataset_fingerprint
     assert first.dataset_target == second.dataset_target
     assert first.rendered.config_fingerprint != second.rendered.config_fingerprint
@@ -90,8 +91,8 @@ def test_dataset_identity_changes_with_question_payload() -> None:
             questions=(EvalQuestion(ORIGIN, "Different question", EvalGroundTruth(ORIGIN, (), "Answer")),),
         ),
     )
-    first = compile_eval(value).compiled[0]
-    second = compile_eval(changed).compiled[0]
+    first = compiled_eval_of(value)
+    second = compiled_eval_of(changed)
     assert first.rendered.dataset_fingerprint != second.rendered.dataset_fingerprint
     assert first.dataset_target != second.dataset_target
 
@@ -126,6 +127,7 @@ def test_compile_turns_missing_agent_target_into_invariant_diagnostic() -> None:
 
 def test_compile_turns_missing_dataset_templates_into_invariant_diagnostic() -> None:
     value = resolved_eval()
+    assert value.config.dataset is not None
     invalid = replace(value, config=replace(value.config, dataset=replace(value.config.dataset, name_template=None)))
 
     result = compile_eval(invalid)

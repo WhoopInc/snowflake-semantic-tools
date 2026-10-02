@@ -21,7 +21,7 @@ from __future__ import annotations
 
 import ast
 import re
-from typing import Iterable, Iterator
+from collections.abc import Iterable, Iterator
 
 from snowflake_semantic_tools.domain.model.diagnostic import ERROR_REGISTRY
 from tests.helpers.code_metrics import Definition, complexity, definitions, package_modules
@@ -122,8 +122,11 @@ class ClassIndex:
                 continue
             seen.add(id(base))
             for item in base.body:
-                is_function = isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef))
-                if is_function and item.name == method and ast.get_docstring(item):
+                if (
+                    isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef))
+                    and item.name == method
+                    and ast.get_docstring(item)
+                ):
                     return True
             pending.extend(parent for name in _base_names(base) for parent in self._by_name.get(name, []))
         return False

@@ -26,7 +26,7 @@ def test_sst_console_script_targets_the_one_point_zero_cli() -> None:
 def test_one_version_string_feeds_the_package_the_cli_and_the_manifest() -> None:
     project = tomllib.loads((REPO_ROOT / "pyproject.toml").read_text(encoding="utf-8"))
     assert project["tool"]["poetry"]["version"] == __version__
-    assert SST_VERSION == __version__
+    assert __version__ == SST_VERSION
     assert CliRunner().invoke(cli, ["--version"]).output == f"sst, version {__version__}\n"
 
 

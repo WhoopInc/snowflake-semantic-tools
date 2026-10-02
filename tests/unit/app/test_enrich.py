@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
+
 import pytest
 
 from snowflake_semantic_tools.app.enrich import (
@@ -50,7 +52,7 @@ def _project(
     *models: DbtModel,
     port: ScriptedEnrich | None = None,
     files: InMemoryFiles | None = None,
-    tree: dict[str, object] | None = None,
+    tree: Mapping[str, object] | None = None,
     views: tuple[SemanticView, ...] = (),
 ) -> tuple[EnrichProject, ScriptedEnrich, InMemoryFiles]:
     inputs = InMemoryProjectInputs(
@@ -102,7 +104,10 @@ def test_selection_keeps_the_projects_models_under_the_paths_and_names_given() -
     orders, refunds = _model(), _model("refunds", original_file_path="models/finance/refunds.sql", patch_file=None)
     vendored = _model("vendored", package_name="dbt_utils")
     catalog = _catalog(refunds, orders, vendored, relationless=("helper",))
-    names = lambda request: [model.name for model in select_models(catalog, request)[0]]  # noqa: E731
+
+    def names(request: EnrichRequest) -> list[str]:
+        return [model.name for model in select_models(catalog, request)[0]]
+
     assert names(EnrichRequest()) == ["orders", "refunds"]
     assert names(EnrichRequest(paths=("models/finance/",))) == ["refunds"]
     assert names(EnrichRequest(paths=("models/orders.yml",))) == ["orders"]
@@ -215,7 +220,10 @@ def test_column_synonyms_are_asked_in_batches_and_a_malformed_answer_fails_the_m
     assert project.run(_request(C.COLUMN_SYNONYMS)).diagnostics[0].message.endswith("column synonyms failed: no model")
 
 
-VIEW_YML = "semantic_views:\n  - name: sales\n    tables:\n      - \"{{ ref('orders') }}\"\n      - \"{{ ref('customers') }}\"\n"
+VIEW_YML = (
+    "semantic_views:\n  - name: sales\n    tables:\n"
+    "      - \"{{ ref('orders') }}\"\n      - \"{{ ref('customers') }}\"\n"
+)
 
 
 def _view(source_path: str | None = "semantic_models/views.yml", synonyms: tuple[str, ...] = ()) -> SemanticView:

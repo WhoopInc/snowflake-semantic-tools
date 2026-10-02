@@ -8,6 +8,7 @@ import pytest
 from snowflake_semantic_tools.app.compile.agents import (
     AgentCompileContext,
     CompileAgents,
+    CompiledAgent,
     ExtensionPin,
     for_publication,
 )
@@ -23,6 +24,7 @@ from snowflake_semantic_tools.domain.model.agent import (
 from snowflake_semantic_tools.domain.model.diagnostic import DiagnosticBag, Origin
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
 from snowflake_semantic_tools.domain.model.tool import ToolCatalog, ToolColumn, ToolGroup, ToolMember, ToolOwnership
+from tests.helpers.compile_builders import compiled_as
 
 SEMANTICS = ExtensionPin("skill:semantics", QualifiedName.parse("DB.S.SEMANTICS"), "SST_ABCDEF012345", ("semantics",))
 TOOLKIT = ExtensionPin(
@@ -110,13 +112,13 @@ def test_agent_compiler_resolves_tools_and_renders_complete_spec() -> None:
     result = CompileAgents((model,), DiagnosticBag(), context(tools=tools)).run_result()
     assert not result.diagnostics.has_errors
     assert len(result.compiled) == 1
-    payload = result.compiled[0].payload
+    payload = compiled_as(result, CompiledAgent).payload
     assert '"name": "SALES"' in payload
     assert '"semantic_view": "DB.S.SALES"' in payload
     assert '"identifier": "DB.S.LOOKUP"' in payload
     assert '"path": "DB.S.SEMANTICS"' in payload
     assert '"version": "SST_ABCDEF012345"' in payload
-    assert result.compiled[0].rendered_artifact.depends_on == ("semantic_view:sales", "skill:semantics")
+    assert compiled_as(result, CompiledAgent).rendered_artifact.depends_on == ("semantic_view:sales", "skill:semantics")
 
 
 def test_agent_compiler_validates_unknown_refs_names_alias_and_input_schema() -> None:
@@ -299,7 +301,7 @@ def test_agent_compiler_duplicate_names_size_skills_and_publish_properties() -> 
     assert {"SST-VAL514", "SST-VAL515", "SST-VAL512", "SST-VAL538", "SST-VAL539", "SST-REF013"}.issubset(codes)
 
     valid = AgentModel("valid", Origin("agent.yml"), ("agent.yml",))
-    compiled = CompileAgents((valid,), DiagnosticBag(), context()).run_result().compiled[0]
+    compiled = compiled_as(CompileAgents((valid,), DiagnosticBag(), context()).run_result(), CompiledAgent)
     assert compiled.name == "valid"
     assert compiled.artifact_key == "agent:valid"
     assert compiled.artifact_type == "agent"
@@ -333,8 +335,8 @@ def test_agent_compiler_size_limit_and_inheritance_resolution() -> None:
     )
     pinned = replace(context(), variables={"release": "V7"})
     result = CompileAgents((inherited,), DiagnosticBag(), pinned).run_result()
-    assert '"path": "DB.EXT.VENDOR_PACK"' in result.compiled[0].payload
-    assert '"version": "V7"' in result.compiled[0].payload
+    assert '"path": "DB.EXT.VENDOR_PACK"' in compiled_as(result, CompiledAgent).payload
+    assert '"version": "V7"' in compiled_as(result, CompiledAgent).payload
 
 
 def test_agent_compiler_reports_duplicate_identity_and_display_name() -> None:
@@ -458,7 +460,7 @@ def test_agent_compiler_resolves_reference_and_managed_tool_fallbacks() -> None:
     )
     valid = CompileAgents((valid_model,), DiagnosticBag(), context(tools=tools)).run_result()
     assert valid.compiled
-    resolved = valid.compiled[0].resolved.tools
+    resolved = compiled_as(valid, CompiledAgent).resolved.tools
     search = next(tool for tool in resolved if tool.name == "managed_search")
     assert search.resources["search_service"] == "DB.S.MANAGED_SEARCH"
     assert search.resources["id_column"] == "DOCUMENT_ID"
@@ -562,7 +564,9 @@ def test_agent_compiler_covers_empty_environment_and_input_schema_edge_cases() -
         ),
     )
     no_environment_context = replace(context(warehouse=None), query_timeout=None)
-    compiled = CompileAgents((no_environment,), DiagnosticBag(), no_environment_context).run_result().compiled[0]
+    compiled = compiled_as(
+        CompileAgents((no_environment,), DiagnosticBag(), no_environment_context).run_result(), CompiledAgent
+    )
     assert "execution_environment" not in compiled.resolved.tools[0].resources
 
     missing_schema = replace(
@@ -629,7 +633,9 @@ def test_agent_search_resources_support_authored_columns_and_partial_environment
             ),
         ),
     )
-    compiled = CompileAgents((model,), DiagnosticBag(), context(tools=tools, warehouse=None)).run_result().compiled[0]
+    compiled = compiled_as(
+        CompileAgents((model,), DiagnosticBag(), context(tools=tools, warehouse=None)).run_result(), CompiledAgent
+    )
     resources = compiled.resolved.tools[0].resources
     assert resources["columns_and_descriptions"] == {"BODY": {"description": "Body."}}
     assert resources["execution_environment"] == {
@@ -643,14 +649,13 @@ def test_agent_search_resources_support_authored_columns_and_partial_environment
         name="timeout_only",
         tools=(replace(model.tools[0], warehouse=None, query_timeout=9),),
     )
-    timeout_compiled = (
+    timeout_compiled = compiled_as(
         CompileAgents(
             (timeout_only,),
             DiagnosticBag(),
             replace(context(tools=tools, warehouse=None), query_timeout=None),
-        )
-        .run_result()
-        .compiled[0]
+        ).run_result(),
+        CompiledAgent,
     )
     assert timeout_compiled.resolved.tools[0].resources["execution_environment"] == {
         "type": "warehouse",
@@ -660,7 +665,7 @@ def test_agent_search_resources_support_authored_columns_and_partial_environment
 
 def test_compiled_agent_projection_properties_are_stable() -> None:
     model = AgentModel("projection", Origin("agent.yml"), ("agent.yml",))
-    compiled = CompileAgents((model,), DiagnosticBag(), context()).run_result().compiled[0]
+    compiled = compiled_as(CompileAgents((model,), DiagnosticBag(), context()).run_result(), CompiledAgent)
     assert compiled.member_keys == ()
     assert compiled.referenced_models == ()
     assert compiled.dbt_relations == ()
@@ -686,7 +691,7 @@ def test_agent_artifact_programs_cover_temporary_alias_tags_and_metadata() -> No
         alias="promoted",
         tags=(("DB.S.TAG", "owner's"), ("MIXED_TAG", "value")),
     )
-    compiled = CompileAgents((model,), DiagnosticBag(), context()).run_result().compiled[0]
+    compiled = compiled_as(CompileAgents((model,), DiagnosticBag(), context()).run_result(), CompiledAgent)
     published = for_publication(
         compiled,
         stage=QualifiedName.parse("DB.S.STAGE"),
@@ -709,7 +714,7 @@ def test_agent_artifact_programs_cover_temporary_alias_tags_and_metadata() -> No
 
     unsafe = replace(compiled, payload="contains $$ delimiter")
     with pytest.raises(ValueError, match="dollar-quote"):
-        for_publication(
+        _ = for_publication(
             unsafe,
             stage=QualifiedName.parse("DB.S.STAGE"),
             git_sha="abcdef0",
@@ -733,11 +738,11 @@ def test_skill_references_pin_owned_versions_and_check_consumed_ones() -> None:
     )
     result = CompileAgents((agent,), DiagnosticBag(), context()).run_result()
     assert [item.code for item in result.diagnostics] == ["SST-VAL814"]
-    payload = result.compiled[0].payload
+    payload = compiled_as(result, CompiledAgent).payload
     assert '"path": "DB.S.TOOLKIT"' in payload and '"version": "SST_0123456789AB"' in payload
     assert '"path": "DB.EXT.VENDOR_PACK"' in payload and '"version": "V2"' in payload
     assert payload.count('"name":') == 2  # semantics and vendor; the plugin entry omits name
-    assert result.compiled[0].rendered_artifact.depends_on == ("skill:semantics", "plugin:toolkit")
+    assert compiled_as(result, CompiledAgent).rendered_artifact.depends_on == ("skill:semantics", "plugin:toolkit")
 
     broken = AgentModel(
         "broken",

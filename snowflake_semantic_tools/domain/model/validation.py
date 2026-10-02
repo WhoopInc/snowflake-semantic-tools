@@ -10,8 +10,9 @@ exact wording its diagnostic uses.
 from __future__ import annotations
 
 import re
+from collections.abc import Callable, Hashable, Iterable
 from dataclasses import dataclass
-from typing import Any, Callable, Hashable, Iterable, TypeVar
+from typing import Any, TypeVar
 
 from snowflake_semantic_tools.domain.model.diagnostic import D, Diagnostic, Origin
 

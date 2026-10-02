@@ -29,7 +29,8 @@ def test_blocks_and_project_roots_read_as_empty_or_default_when_absent_or_mistyp
     assert configured_dir({"project": {"tools_dir": "t"}}, "tools_dir", "tools") == "t"
     assert configured_dir({"project": {"tools_dir": ""}}, "tools_dir", "tools") == "tools"
     assert configured_dir({"project": "nope"}, "tools_dir", "tools") == "tools"
-    assert [skills_configured({"skills": block}) for block in ({"catalog": {}}, {"stage": {}}, {"extensions": {}})] == [
+    blocks: tuple[dict[str, object], ...] = ({"catalog": {}}, {"stage": {}}, {"extensions": {}})
+    assert [skills_configured({"skills": block}) for block in blocks] == [
         True,
         True,
         False,

@@ -59,7 +59,7 @@ def test_compiled_view_uses_dimension_probe_and_rejects_view_without_public_memb
         metrics=(Metric("PRIVATE", "COUNT(1)", "T", access_modifier="private_access"),),
     )
     with pytest.raises(ValueError, match="no public dimension or metric"):
-        CompiledView(private_only, "CREATE SEMANTIC VIEW DB.S.PRIVATE_V").rendered_artifact
+        _ = CompiledView(private_only, "CREATE SEMANTIC VIEW DB.S.PRIVATE_V").rendered_artifact
 
 
 def test_manifest_builder_records_sources_members_impact_and_diagnostics() -> None:

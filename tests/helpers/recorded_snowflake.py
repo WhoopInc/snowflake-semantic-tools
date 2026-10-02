@@ -9,9 +9,10 @@ ship in the wheel.
 from __future__ import annotations
 
 from collections import deque
+from collections.abc import Mapping, Sequence
 from hashlib import md5
 from types import MappingProxyType
-from typing import Mapping, Sequence
+from typing import Any
 
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName, SchemaScope
 from snowflake_semantic_tools.domain.model.lifecycle import (
@@ -126,7 +127,7 @@ class RecordedSnowflake:
 
     def list_location(self, location: str) -> tuple[str, ...]:
         if location.startswith("snow://"):
-            for name, extension in self.extensions.items():
+            for extension in self.extensions.values():
                 for version in _versions(extension):
                     if str(version["location"]).casefold() == location.casefold():
                         return tuple(sorted(_files(version)))
@@ -487,7 +488,7 @@ class ReadOnlySnowflake:
     def __init__(self, delegate: SnowflakePort) -> None:
         self._delegate = delegate
 
-    def __getattr__(self, name: str) -> object:
+    def __getattr__(self, name: str) -> Any:
         return getattr(self._delegate, name)
 
     def execute_script(self, statements: Sequence[str]) -> ExecResult:

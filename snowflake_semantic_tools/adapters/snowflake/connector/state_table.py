@@ -8,9 +8,10 @@ before them reads both as NULL until `ensure_state_table` adds them.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from collections.abc import Mapping
+from datetime import UTC, datetime
 from types import MappingProxyType
-from typing import Mapping, NamedTuple
+from typing import NamedTuple
 
 from snowflake_semantic_tools.adapters.snowflake.connector.session import (
     Session,
@@ -217,8 +218,8 @@ def _state_timestamp(value: object) -> str:
     (`2026-09-29T11:56:32.077209Z`); the cache then disagreed after every apply.
     """
     if isinstance(value, datetime):
-        moment = value if value.tzinfo is not None else value.replace(tzinfo=timezone.utc)
-        return moment.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
+        moment = value if value.tzinfo is not None else value.replace(tzinfo=UTC)
+        return moment.astimezone(UTC).isoformat().replace("+00:00", "Z")
     return str(value)
 
 

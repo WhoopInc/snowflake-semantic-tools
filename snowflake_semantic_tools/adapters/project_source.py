@@ -10,9 +10,9 @@ through `dbt.project` and passed to the semantic pipeline, which reads no dbt fi
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from hashlib import sha256
 from pathlib import Path
-from typing import Callable
 
 from snowflake_semantic_tools.adapters.dbt.manifest import load_manifest_catalog
 from snowflake_semantic_tools.adapters.dbt.profiles import load_profile_target, resolve_profile_name

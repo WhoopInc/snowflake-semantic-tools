@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import dataclasses
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -130,8 +131,18 @@ def test_metric_diagnostics_cover_unknown_columns_empty_tables_and_duplicates() 
         columns=(DbtColumn("order_id", None, None, "dimension"),),
     )
     metrics = (
-        MetricDef("duplicate", "COUNT({{ ref('orders', 'missing') }})", None, (), ("orders",), False, (), (), True),
-        MetricDef("duplicate", "COUNT(1)", None, (), ("orders",), False, (), (), True),
+        MetricDef(
+            "duplicate",
+            "COUNT({{ ref('orders', 'missing') }})",
+            None,
+            (),
+            ("orders",),
+            False,
+            (),
+            (),
+            has_tables_key=True,
+        ),
+        MetricDef("duplicate", "COUNT(1)", None, (), ("orders",), False, (), (), has_tables_key=True),
         MetricDef("empty", "COUNT(1)", None, ()),
     )
     assert [diagnostic.code for diagnostic in _metric_diagnostics(metrics, {"orders": model})] == [
@@ -266,8 +277,8 @@ def test_multi_path_warns_on_view_and_errors_on_unpinned_metric() -> None:
         Relationship("PATH_B", "ORDER_ITEMS", ("ORDER_ID",), "ORDERS", ("ORDER_ID",)),
     )
     metrics = (
-        MetricDef("pinned", "COUNT(1)", None, (), ("order_items",), False, ("PATH_A",), (), True),
-        MetricDef("unpinned", "COUNT(1)", None, (), ("order_items",), False, (), (), True),
+        MetricDef("pinned", "COUNT(1)", None, (), ("order_items",), False, ("PATH_A",), (), has_tables_key=True),
+        MetricDef("unpinned", "COUNT(1)", None, (), ("order_items",), False, (), (), has_tables_key=True),
     )
     diagnostics = _multipath_diagnostics(
         relationships,
@@ -483,7 +494,7 @@ def test_critical_metric_restrictions_are_non_demotable_diagnostics() -> None:
         False,
         (),
         (NonAdditiveDef("ordered_at", "orders"),),
-        True,
+        has_tables_key=True,
     )
     derived = MetricDef("derived", "{{ metric('base') }}", None, (), derived=True)
     metrics = (
@@ -492,8 +503,10 @@ def test_critical_metric_restrictions_are_non_demotable_diagnostics() -> None:
         MetricDef("agg_metric", "SUM({{ metric('base') }})", None, (), derived=True),
         MetricDef("physical", "{{ ref('orders', 'order_id') }}", None, (), derived=True),
         MetricDef("member", "{{ fact('orders.total') }}", None, (), derived=True),
-        MetricDef("regular_derived", "{{ metric('derived') }}", None, (), ("orders",), False, (), (), True),
-        MetricDef("regular_nonadd", "{{ metric('base') }}", None, (), ("orders",), False, (), (), True),
+        MetricDef(
+            "regular_derived", "{{ metric('derived') }}", None, (), ("orders",), False, (), (), has_tables_key=True
+        ),
+        MetricDef("regular_nonadd", "{{ metric('base') }}", None, (), ("orders",), False, (), (), has_tables_key=True),
     )
     model = DbtModel(
         unique_id="model.fixture.orders",
@@ -559,7 +572,7 @@ def _window_codes(*metrics: MetricDef) -> list[tuple[str, str, object]]:
     ]
 
 
-def _supply_metric(name: str, expr: str, window: WindowDef | None = None, **changes: object) -> MetricDef:
+def _supply_metric(name: str, expr: str, window: WindowDef | None = None, **changes: Any) -> MetricDef:
     metric = MetricDef(name, expr, None, (), ("supplies",), window=window)
     return dataclasses.replace(metric, **changes) if changes else metric
 

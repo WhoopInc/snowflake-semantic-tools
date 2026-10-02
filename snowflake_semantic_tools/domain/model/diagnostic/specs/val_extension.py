@@ -304,8 +304,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         Severity.ERROR,
         "Command file is invalid",
         "command '{artifact}': {detail}",
-        "frontmatter is optional; when present it is a YAML mapping of description, allowed-tools, skill, "
-        "and hidden",
+        "frontmatter is optional; when present it is a YAML mapping of description, allowed-tools, skill, and hidden",
     ),
     spec(
         "SST-VAL860",

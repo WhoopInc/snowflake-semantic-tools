@@ -47,7 +47,7 @@ Read the diff carefully. Focus on:
 
 **Consistency with project conventions**
 - Read `AGENTS.md` and `CONTRIBUTING.md` for current conventions
-- Black (line length 120), isort (black profile), and every function annotated for mypy
+- ruff-formatted and lint-clean (line length 120), and strictly typed for mypy
 - Each new problem is a new diagnostic in its code family's module under `domain/model/diagnostic/specs/`: a new `SST-` code (never a reused one) with an actionable suggestion
 - A new `sst_config.yml` key is declared in `domain/model/config_schema/keys.py`
 - A change to diagnostics, config keys, CLI options, or artifact types ships the regenerated `docs/reference/*.md` (`sst docs`)
@@ -93,7 +93,7 @@ Structure the review as:
 
 ## Test Results
 - Suite: X passed, Y failed
-- Gates: coverage floors, mypy, black, isort, lint-imports, sst docs --check
+- Gates: coverage floors, mypy, ruff format, ruff check, lint-imports, sst docs --check
 - E2E: PASS/FAIL/SKIPPED
 
 ## Verdict

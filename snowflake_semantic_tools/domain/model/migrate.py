@@ -164,9 +164,7 @@ def migrate_refs(text: str) -> MigrationResult:
                 item is not None
                 and _unquoted(item.group(2)) == span
                 and _parent_key(lines, index, len(item.group(1))) == "tables"
-            ):
-                replacements.append((match.start(), match.end(), _renamed(span), "ref"))
-            elif _FLOW_TABLES.match(body):
+            ) or _FLOW_TABLES.match(body):
                 replacements.append((match.start(), match.end(), _renamed(span), "ref"))
             else:
                 untouched.append(

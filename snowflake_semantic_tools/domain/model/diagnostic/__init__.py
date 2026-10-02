@@ -10,10 +10,11 @@ changes what all three see.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass, replace
 from hashlib import sha256
 from types import MappingProxyType
-from typing import Any, Mapping
+from typing import Any
 
 from snowflake_semantic_tools.domain.model.diagnostic.core import (
     ERROR_REFERENCE_URL,
@@ -194,7 +195,7 @@ def resolve_severities(diagnostics: DiagnosticBag, *, strict: bool) -> tuple[Dia
     )
     return DiagnosticBag(promoted), sum(
         before.severity is Severity.WARNING and after.severity is Severity.ERROR
-        for before, after in zip(diagnostics, promoted)
+        for before, after in zip(diagnostics, promoted, strict=True)
     )
 
 

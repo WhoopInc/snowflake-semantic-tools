@@ -5,13 +5,17 @@ packages, which proves nothing at all -- a contract that has never rejected anyt
 is indistinguishable from a contract that cannot reject anything, and an architecture
 that is only written down decays. So each contract here is shown to bite: the test
 writes a module that deliberately crosses one boundary, asserts `lint-imports`
-reports that specific contract BROKEN, and removes the module again.
+reports that specific contract BROKEN, and removes the module again. The probe is
+written into a copy of the package, never the real tree, so tests running in parallel
+never see another test's probe.
 
 A test asserting the linter passes would be the weaker test. These assert it fails.
 """
 
 from __future__ import annotations
 
+import os
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -107,18 +111,24 @@ CROSSINGS = [
 PACKAGE_ROOT = frozenset(("__init__.py", "_version.py", "cli", "app", "adapters", "domain"))
 
 
-def _lint_imports() -> subprocess.CompletedProcess[str]:
+def _lint_imports(root: Path = REPO_ROOT) -> subprocess.CompletedProcess[str]:
     """Invoke the `lint-imports` console script from the running interpreter's venv.
 
     NOT `python -m importlinter.cli` -- that package ships no `__main__.py`, so `-m`
     exits 0 with empty output and every crossing test below would pass for the wrong
     reason. `test_contracts_hold_on_the_real_tree` is what caught that.
+
+    Args:
+        root: A directory holding `pyproject.toml` and the package. It is put first on
+            PYTHONPATH, ahead of the editable install, so a copy is linted instead of the
+            real tree.
     """
     script = Path(sys.executable).parent / "lint-imports"
     assert script.exists(), f"lint-imports is not installed beside {sys.executable}"
     return subprocess.run(
         [str(script)],
-        cwd=REPO_ROOT,
+        cwd=root,
+        env={**os.environ, "PYTHONPATH": os.pathsep.join(filter(None, (str(root), os.environ.get("PYTHONPATH"))))},
         capture_output=True,
         text=True,
     )
@@ -153,30 +163,26 @@ def test_package_root_holds_only_the_rings() -> None:
 
 
 @pytest.mark.parametrize(("probe_path", "body", "contract"), CROSSINGS)
-def test_crossing_a_boundary_breaks_its_contract(probe_path: str, body: str, contract: str) -> None:
-    probe = PKG / probe_path
+def test_crossing_a_boundary_breaks_its_contract(probe_path: str, body: str, contract: str, tmp_path: Path) -> None:
+    shutil.copy2(REPO_ROOT / "pyproject.toml", tmp_path / "pyproject.toml")
+    shutil.copytree(PKG, tmp_path / PKG.name, ignore=shutil.ignore_patterns("__pycache__"))
+    probe = tmp_path / PKG.name / probe_path
     assert not probe.exists(), f"probe path is not clean: {probe}"
 
     probe.write_text(f"# Temporary boundary probe written by {Path(__file__).name}.\n{body}")
-    try:
-        result = _lint_imports()
-    finally:
-        probe.unlink()
-        # .pyc would keep the violating module visible to a later run.
-        for cached in (probe.parent / "__pycache__").glob(f"{probe.stem}.*"):
-            cached.unlink()
+    result = _lint_imports(tmp_path)
 
     assert result.returncode != 0, (
         f"crossing a boundary was NOT caught -- {probe_path} imported "
         f"{body.strip()!r} and the linter still passed:\n{result.stdout}"
     )
     broken = [ln for ln in result.stdout.splitlines() if ln.endswith("BROKEN")]
-    assert any(
-        contract in ln for ln in broken
-    ), f"expected the {contract!r} contract to break; broken contracts were {broken}\n{result.stdout}"
+    assert any(contract in ln for ln in broken), (
+        f"expected the {contract!r} contract to break; broken contracts were {broken}\n{result.stdout}"
+    )
 
 
 def test_probes_left_no_residue() -> None:
-    """Every probe path is gone once the suite has run."""
+    """No probe ever reaches the real tree: a stray one would sit inside every contract."""
     leftover = sorted(p.relative_to(REPO_ROOT) for p in PKG.rglob("_boundary_probe.py"))
     assert not leftover, f"boundary probes were left behind: {leftover}"

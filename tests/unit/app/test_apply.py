@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import replace
 from types import MappingProxyType
 
@@ -9,11 +10,14 @@ from snowflake_semantic_tools.app.apply import ApplyArtifacts, classify_error, p
 from snowflake_semantic_tools.app.apply.errors import _outcome_diagnostic
 from snowflake_semantic_tools.app.plan import PlanArtifacts
 from snowflake_semantic_tools.domain.model.diagnostic import D, DiagnosticBag
+from snowflake_semantic_tools.domain.model.identifier import QualifiedName
 from snowflake_semantic_tools.domain.model.lifecycle import (
     Action,
     ApplyOptions,
     ApplyOutcome,
+    Change,
     ClassifiedError,
+    CompositePlan,
     ErrorKind,
     ExecResult,
     ExecutionError,
@@ -22,19 +26,20 @@ from snowflake_semantic_tools.domain.model.lifecycle import (
     GrantRow,
     OutcomeStatus,
     OwnershipMarker,
+    RenderedArtifact,
     RetryPolicy,
     ShowRow,
 )
 from snowflake_semantic_tools.domain.model.registry import GrantPreservation
 from snowflake_semantic_tools.domain.ports.snowflake import SnowflakePortError
-from snowflake_semantic_tools.domain.state import FAILED_AFTER_WRITE
+from snowflake_semantic_tools.domain.state import FAILED_AFTER_WRITE, AppliedEntry, AppliedResourceInput, Manifest
 from tests.helpers.app_ports import FixedClock, InMemorySnowflake, InMemoryStateStore, failed
 from tests.helpers.artifact_builders import change, changeset, manifest, marker, observed, rendered, state, target
 
 
 def runner(
     port: InMemorySnowflake | None = None, store: InMemoryStateStore | None = None, clock: FixedClock | None = None
-):
+) -> tuple[ApplyArtifacts, InMemorySnowflake, InMemoryStateStore, FixedClock]:
     port = port or InMemorySnowflake()
     store = store or InMemoryStateStore()
     clock = clock or FixedClock()
@@ -87,7 +92,7 @@ def test_remote_state_failure_does_not_publish_uncommitted_local_state() -> None
     port = InMemorySnowflake()
     store = InMemoryStateStore()
 
-    def fail_state(*args, **kwargs):
+    def fail_state(*args: object, **kwargs: object) -> None:
         del args, kwargs
         raise SnowflakePortError("state table unavailable")
 
@@ -186,7 +191,9 @@ def test_apply_update_rechecks_marker_preserves_or_detects_grants() -> None:
     port.markers[artifact.target.sql] = ownership
     calls = 0
 
-    def grants(object_type, qualified_name, routine_signature=()):
+    def grants(
+        object_type: str, qualified_name: QualifiedName, routine_signature: tuple[str, ...] = ()
+    ) -> tuple[GrantRow, ...]:
         nonlocal calls
         del object_type, qualified_name, routine_signature
         calls += 1
@@ -375,7 +382,9 @@ def test_apply_handles_unreadable_grants_and_unknown_execution_errors() -> None:
     port.markers[artifact.target.sql] = ownership
     calls = 0
 
-    def unreadable(object_type, qualified_name, routine_signature=()):
+    def unreadable(
+        object_type: str, qualified_name: QualifiedName, routine_signature: tuple[str, ...] = ()
+    ) -> tuple[GrantRow, ...]:
         nonlocal calls
         del object_type, qualified_name, routine_signature
         calls += 1
@@ -422,7 +431,7 @@ def test_apply_honors_parallelism_within_a_dependency_wave() -> None:
     barrier = Barrier(2)
     original = port.execute_script
 
-    def synchronized(statements):
+    def synchronized(statements: Sequence[str]) -> ExecResult:
         barrier.wait(timeout=2)
         return original(statements)
 
@@ -455,7 +464,10 @@ def test_worker_exception_becomes_outcome_and_persists_sibling_success() -> None
     port = InMemorySnowflake()
     port.markers[second.target.sql] = ownership
 
-    def marker_with_failure(qualified_name):
+    def marker_with_failure(
+        qualified_name: QualifiedName, object_type: str = "SEMANTIC VIEW"
+    ) -> OwnershipMarker | None:
+        del object_type
         if qualified_name == second.target:
             raise RuntimeError("metadata failure")
         return port.markers.get(qualified_name.sql)
@@ -491,7 +503,9 @@ def test_grant_preservation_ignores_grantor_drift() -> None:
     port.markers[artifact.target.sql] = ownership
     calls = 0
 
-    def grants(object_type, qualified_name, routine_signature=()):
+    def grants(
+        object_type: str, qualified_name: QualifiedName, routine_signature: tuple[str, ...] = ()
+    ) -> tuple[GrantRow, ...]:
         nonlocal calls
         del object_type, qualified_name, routine_signature
         calls += 1
@@ -638,7 +652,9 @@ def test_an_error_rechecking_grants_after_update_records_the_write() -> None:
     port.markers[artifact.target.sql] = ownership
     reads = 0
 
-    def grants(object_type, qualified_name, routine_signature=()):
+    def grants(
+        object_type: str, qualified_name: QualifiedName, routine_signature: tuple[str, ...] = ()
+    ) -> tuple[GrantRow, ...]:
         nonlocal reads
         del object_type, qualified_name, routine_signature
         reads += 1
@@ -771,7 +787,7 @@ def test_apply_upload_failure_and_empty_grant_replay() -> None:
     artifact = replace(rendered(), upload_path="@DB.S.FILE", upload_content=b"payload")
     port = InMemorySnowflake()
 
-    def fail_upload(stage_path, content):
+    def fail_upload(stage_path: str, content: bytes) -> None:
         del stage_path, content
         raise SnowflakePortError("timeout", sqlstate="08001")
 
@@ -967,8 +983,16 @@ class _LifecycleHandler:
         self.applied = False
         self.merged = False
 
-    def apply(self, change, options):
+    # Apply never plans or prunes through a handler, so this double leaves both unanswered.
+    def plan(self, artifact: RenderedArtifact, state_entry: AppliedEntry | None, manifest: Manifest) -> CompositePlan:
+        raise NotImplementedError
+
+    def report_prune(self, artifact_key: str, state_entry: AppliedEntry) -> Change:
+        raise NotImplementedError
+
+    def apply(self, change: Change, options: ApplyOptions) -> ApplyOutcome:
         del options
+        assert change.rendered is not None
         self.applied = True
         return ApplyOutcome(
             change.key,
@@ -980,7 +1004,9 @@ class _LifecycleHandler:
             write_succeeded=True,
         )
 
-    def merge_physical_resources(self, current, previous):
+    def merge_physical_resources(
+        self, current: tuple[tuple[str, str], ...], previous: AppliedEntry | None
+    ) -> tuple[AppliedResourceInput, ...]:
         del current, previous
         self.merged = True
         return (("TABLE", "DB.SCHEMA.MERGED"),)

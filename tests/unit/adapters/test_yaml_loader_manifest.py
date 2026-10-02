@@ -49,7 +49,8 @@ def write_project(root: Path) -> Path:
     )
     # Deliberately wrong metadata. If this file is re-read, the assertions below fail.
     (root / "models" / "products.yml").write_text(
-        "version: 2\nmodels:\n  - name: products\n    config:\n      meta:\n        sst:\n          primary_key: [wrong_id]\n",
+        "version: 2\nmodels:\n  - name: products\n    config:\n"
+        "      meta:\n        sst:\n          primary_key: [wrong_id]\n",
         encoding="utf-8",
     )
     manifest = {
@@ -291,7 +292,8 @@ def test_every_unread_key_is_reported_and_0_3_spellings_are_errors(tmp_path: Pat
         "    owner: data-team\n"
         "    tables: [\"{{ ref('products') }}\"]\n"
         "    table_config:\n      products:\n        synonyms: [items]\n        alias: goods\n"
-        "    variables:\n      - name: floor\n        data_type: NUMBER\n        default_value: 1\n        unit: cents\n"
+        "    variables:\n      - name: floor\n        data_type: NUMBER\n"
+        "        default_value: 1\n        unit: cents\n"
         "    tags:\n      - name: \"{{ tag('tier') }}\"\n        value: gold\n        note: x\n",
         encoding="utf-8",
     )

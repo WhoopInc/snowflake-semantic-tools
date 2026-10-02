@@ -102,7 +102,8 @@ def test_profile_values_sst_cannot_use_are_refused(tmp_path: Path) -> None:
     assert refused(tmp_path, "insecure_mode: sometimes")[1] == "target 'x': 'insecure_mode' must be true or false"
     assert refused(tmp_path, "oauth_client_id: id\noauth_client_secret: s\ntoken: refresh") == (
         "SST-CFG050",
-        "target 'x': oauth_client_id and oauth_client_secret ask dbt to exchange a refresh token, which SST does not do",
+        "target 'x': oauth_client_id and oauth_client_secret ask dbt to exchange a refresh token, "
+        "which SST does not do",
     )
     assert refused(tmp_path, "private_key: abc\nprivate_key_path: /k.p8")[1] == (
         "target 'x': private_key and a private key file are both set"
@@ -137,7 +138,7 @@ def test_an_inline_private_key_becomes_der_bytes_and_is_never_echoed(tmp_path: P
     encoded = base64.b64encode(der).decode()
     assert load_profile_target(target_with(tmp_path, f"private_key: {encoded}")).connection_params["private_key"] == der
     # dbt accepts base64 DER wrapped across lines.
-    wrapped = "".join(f"  {encoded[index:index + 64]}\n" for index in range(0, len(encoded), 64))
+    wrapped = "".join(f"  {encoded[index : index + 64]}\n" for index in range(0, len(encoded), 64))
     assert (
         load_profile_target(target_with(tmp_path, "private_key: |\n" + wrapped)).connection_params["private_key"] == der
     )
@@ -147,7 +148,7 @@ def test_an_inline_private_key_becomes_der_bytes_and_is_never_echoed(tmp_path: P
         target = load_profile_target(target_with(tmp_path, fields))
         assert target.authentication == "key pair (private_key)"
         with pytest.raises(ProjectError) as caught:
-            target.connection_params
+            _ = target.connection_params
         diagnostic = caught.value.diagnostics[0]
         return diagnostic.code, diagnostic.message
 

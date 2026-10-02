@@ -47,9 +47,9 @@
 <!-- Mark completed items with an 'x' -->
 
 ### Code Quality
-- [ ] Formatted with Black, line length 120 (`poetry run black --check snowflake_semantic_tools/ tests/`)
-- [ ] Imports sorted with isort, black profile (`poetry run isort --check snowflake_semantic_tools/ tests/`)
-- [ ] Every function is annotated (`poetry run mypy snowflake_semantic_tools` passes)
+- [ ] Formatted with ruff, line length 120 (`poetry run ruff format --check snowflake_semantic_tools/ tests/`)
+- [ ] Lint-clean, imports sorted (`poetry run ruff check snowflake_semantic_tools/ tests/`)
+- [ ] Strictly typed (`poetry run mypy snowflake_semantic_tools tests` passes)
 - [ ] Ring boundaries hold (`poetry run lint-imports` passes)
 - [ ] Pre-commit hooks pass (if using pre-commit)
 

@@ -8,9 +8,9 @@ rewrites the file.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass, field, replace
 from types import MappingProxyType
-from typing import Mapping
 
 from snowflake_semantic_tools.domain.state.codec import (
     optional_object,
@@ -201,9 +201,9 @@ class Manifest:
             "project": dict(self.project),
             "sources": dict(self.sources),
             "artifacts": {key: value.as_dict() for key, value in sorted(self.artifacts.items())},
-            "members": {key: value for key, value in sorted(self.members.items())},
-            "dbt_models": {key: value for key, value in sorted(self.dbt_models.items())},
-            "files": {key: value for key, value in sorted(self.files.items())},
+            "members": dict(sorted(self.members.items())),
+            "dbt_models": dict(sorted(self.dbt_models.items())),
+            "files": dict(sorted(self.files.items())),
             "impact": self.impact.as_dict(),
             "diagnostics_summary": dict(self.diagnostics_summary),
         }

@@ -10,9 +10,9 @@ checks what every resolved tool shares and builds its entry.
 
 from __future__ import annotations
 
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from types import MappingProxyType
-from typing import Callable, Mapping
 
 from snowflake_semantic_tools.app.compile.agents.context import AgentCompileContext
 from snowflake_semantic_tools.domain.model.agent import KNOWN_AGENT_TOOL_TYPES, AgentModel, AgentTool, ResolvedAgentTool

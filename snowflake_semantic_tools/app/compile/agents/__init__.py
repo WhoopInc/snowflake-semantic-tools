@@ -8,9 +8,9 @@ compiler: agent by agent in authored order, then the checks that span every agen
 
 from __future__ import annotations
 
+from collections.abc import Mapping, Sequence
 from dataclasses import replace
 from hashlib import sha256
-from typing import Mapping, Sequence
 
 from snowflake_semantic_tools.app.compile.agents.compiled import CompiledAgent, for_publication
 from snowflake_semantic_tools.app.compile.agents.context import AgentCompileContext, ExtensionPin

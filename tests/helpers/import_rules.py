@@ -19,7 +19,7 @@ import ...`); that is an absolute import, and it is how a script run as a file f
 from __future__ import annotations
 
 import ast
-from typing import Iterator
+from collections.abc import Iterator
 
 from tests.helpers.code_metrics import python_modules
 
@@ -35,7 +35,11 @@ def module_violations(path: str, tree: ast.Module) -> Iterator[str]:
     for node in ast.walk(tree):
         if isinstance(node, ast.ImportFrom) and node.level:
             yield f"relative-import {path}:{node.lineno}"
-        elif in_tests and any(_is_test_module(name) for name in _imported_modules(node)):
+        elif (
+            isinstance(node, (ast.Import, ast.ImportFrom))
+            and in_tests
+            and any(_is_test_module(name) for name in _imported_modules(node))
+        ):
             yield f"test-support-import {path}:{node.lineno}"
 
 

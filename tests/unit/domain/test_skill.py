@@ -34,7 +34,9 @@ SKILL_MD = "---\nname: {name}\ndescription: Does things.\n---\n{body}"
 
 
 def skill(name: str = "month-close", files: dict[str, bytes | str] | None = None, **fields: object) -> Skill:
-    authored = {"SKILL.md": SKILL_MD.format(name=name, body="# Close\nRead reference/steps.md.\n")}
+    authored: dict[str, bytes | str] = {
+        "SKILL.md": SKILL_MD.format(name=name, body="# Close\nRead reference/steps.md.\n")
+    }
     authored.update(files or {})
     entries = tuple(
         sorted(

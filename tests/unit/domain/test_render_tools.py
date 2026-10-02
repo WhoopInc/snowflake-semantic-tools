@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from types import MappingProxyType
+from typing import Any
 
 import pytest
 
@@ -11,8 +12,8 @@ from snowflake_semantic_tools.domain.model.tool import ToolMember, ToolOwnership
 from snowflake_semantic_tools.domain.render.tool import render_tool
 
 
-def member(**kwargs) -> ToolMember:
-    base = {
+def member(**kwargs: Any) -> ToolMember:
+    base: dict[str, Any] = {
         "group": "platform",
         "name": "search",
         "type": "cortex_search_service",

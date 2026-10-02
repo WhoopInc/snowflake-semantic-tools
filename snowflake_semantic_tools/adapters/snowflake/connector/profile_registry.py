@@ -6,7 +6,7 @@ observed and returns the rows it changed, so a count of 0 reveals a concurrent w
 
 from __future__ import annotations
 
-from typing import Mapping
+from collections.abc import Mapping
 
 from snowflake_semantic_tools.adapters.snowflake.connector.session import Session, _json_text, _require_ok
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
@@ -95,7 +95,7 @@ class ProfileRegistryMethods(Session, ProfileRegistryPort):
 
 def _named_rows(result: QueryResult) -> tuple[dict[str, object], ...]:
     """Return each row of a result as a mapping from its column names, uppercased, to its values."""
-    return tuple(dict(zip((column.upper() for column in result.columns), row)) for row in result.rows)
+    return tuple(dict(zip((column.upper() for column in result.columns), row, strict=False)) for row in result.rows)
 
 
 def _variant_parameter(value: object) -> str | None:

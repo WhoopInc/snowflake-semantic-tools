@@ -83,7 +83,7 @@ git clone https://github.com/WhoopInc/snowflake-semantic-tools.git
 cd snowflake-semantic-tools
 
 poetry install                  # add --extras dbt to run sst against a dbt project of your own
-poetry run pre-commit install   # optional: black, isort, and file checks on every commit
+poetry run pre-commit install   # optional: the CI gates and file checks on every commit
 
 poetry run sst --version
 ```
@@ -93,19 +93,20 @@ poetry run sst --version
 These are the checks `.github/workflows/test-and-lint.yml` runs on every pull request:
 
 ```bash
-poetry run pytest tests/
+poetry run pytest tests/ -n auto
 
-# Branch-coverage floors, each measured on its own test paths
+# Branch-coverage floors, each measured on its own test paths; adapters' on the whole suite
 poetry run pytest -q --cov=snowflake_semantic_tools.domain --cov-branch --cov-fail-under=100 \
   tests/unit/domain tests/unit/test_render_semantic_view.py
 poetry run pytest -q --cov=snowflake_semantic_tools.app --cov-branch --cov-fail-under=95 \
   tests/unit/app tests/unit/test_compile_use_case.py tests/unit/test_manifest_v1.py
 poetry run pytest -q --cov=snowflake_semantic_tools.cli --cov-branch --cov-fail-under=90 \
   tests/unit/cli
+poetry run pytest -q -n auto --cov=snowflake_semantic_tools.adapters --cov-branch --cov-fail-under=90 tests/
 
-poetry run mypy snowflake_semantic_tools
-poetry run black --check snowflake_semantic_tools/ tests/
-poetry run isort --check snowflake_semantic_tools/ tests/
+poetry run mypy snowflake_semantic_tools tests   # strict
+poetry run ruff format --check snowflake_semantic_tools/ tests/
+poetry run ruff check snowflake_semantic_tools/ tests/
 poetry run lint-imports         # ring boundaries
 poetry run sst docs --check     # generated reference pages are current
 ```
@@ -149,19 +150,17 @@ Every problem SST reports is a diagnostic registered in `snowflake_semantic_tool
 
 ## Code Style
 
-- **Formatting**: Black (line length 120)
-- **Imports**: absolute, naming each module by its full dotted path: `from snowflake_semantic_tools.domain.model.dbt import DbtCatalog`, never `from ..model.dbt import DbtCatalog`. A search for a module's name then finds every module that imports it. Tests share code only through `tests/helpers/`, imported as `tests.helpers.<module>`, never from a conftest or another test module. isort (black profile) sorts imports, and `tests/unit/test_import_style.py` enforces both rules.
-- **Type hints**: mypy runs with `disallow_untyped_defs`, so every function is annotated
+- **Formatting and linting**: ruff (line length 120)
+- **Imports**: absolute, naming each module by its full dotted path: `from snowflake_semantic_tools.domain.model.dbt import DbtCatalog`, never `from ..model.dbt import DbtCatalog`. A search for a module's name then finds every module that imports it. Tests share code only through `tests/helpers/`, imported as `tests.helpers.<module>`, never from a conftest or another test module. ruff sorts imports, and `tests/unit/test_import_style.py` enforces both rules.
+- **Type hints**: mypy runs in strict mode over the package and the tests, so every function is annotated
 - **Error messages**: a diagnostic's suggestion is actionable — it says what is wrong and how to fix it
 - **Tests**: real in-memory ports and pytest's `monkeypatch`, no mocking library
 - **Size**: a module holds at most 800 lines and a function at most 100, with a decision count of at most 25; a function defined inside another holds at most 25 lines. Aim well below: about 500 lines per module and 60 per function. `tests/unit/test_structure.py` enforces the limits.
 
 ```bash
-# Format code
-poetry run black snowflake_semantic_tools/ tests/
-
-# Sort imports
-poetry run isort snowflake_semantic_tools/ tests/
+# Format code and sort imports
+poetry run ruff format snowflake_semantic_tools/ tests/
+poetry run ruff check --fix snowflake_semantic_tools/ tests/
 ```
 
 ### Docstrings and comments

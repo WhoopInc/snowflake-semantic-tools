@@ -10,8 +10,8 @@ and MCP files -- and are compared only when committed. `CompareGoldens` reads th
 from __future__ import annotations
 
 import difflib
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Callable
 
 from snowflake_semantic_tools.app.compile import CompiledArtifact, CompileResult
 from snowflake_semantic_tools.app.compile.evals import CompiledEval

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import shutil
+from collections.abc import Mapping, Sequence
 from hashlib import md5
 from pathlib import Path
 
@@ -194,7 +195,7 @@ def test_eval_suite_uses_common_json_envelope(tmp_path: Path, monkeypatch: pytes
     config_content = compiled_eval.rendered.config_yaml.encode("utf-8")
     config_md5 = md5(config_content, usedforsecurity=False).hexdigest()
     config_path = (
-        "@SST_REF_DEV.JAFFLE.EVAL_CONFIGS/jaffle_analytics_agent/" f"{compiled_eval.rendered.config_fingerprint}.yaml"
+        f"@SST_REF_DEV.JAFFLE.EVAL_CONFIGS/jaffle_analytics_agent/{compiled_eval.rendered.config_fingerprint}.yaml"
     )
     entry = AppliedEntry(
         compiled_eval.rendered_artifact.fingerprint,
@@ -252,7 +253,7 @@ def test_eval_suite_uses_common_json_envelope(tmp_path: Path, monkeypatch: pytes
         },
         **{metric.name: "custom" for metric in compiled_eval.resolved.custom_metrics},
     }
-    result_rows = tuple(
+    result_rows: tuple[tuple[object, ...], ...] = tuple(
         (
             f"record-{row_index}",
             f"question-{row_index}",
@@ -275,7 +276,7 @@ def test_eval_suite_uses_common_json_envelope(tmp_path: Path, monkeypatch: pytes
         for row_index, row in enumerate(json.loads(compiled_eval.rendered.dataset_payload))
         for metric_name, metric_type in metric_types.items()
     )
-    response_values = []
+    response_values: list[QueryResult] = []
     for attempt_number in range(1, 6):
         suffix = "" if attempt_number == 1 else f"_R{attempt_number}"
         response_values.extend(
@@ -297,7 +298,7 @@ def test_eval_suite_uses_common_json_envelope(tmp_path: Path, monkeypatch: pytes
         )
     responses = iter(response_values)
 
-    def query(sql: str, params=None):
+    def query(sql: str, params: Sequence[object] | Mapping[str, object] | None = None) -> QueryResult:
         port.queries.append((sql, params))
         return next(responses)
 

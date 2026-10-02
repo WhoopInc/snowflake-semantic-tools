@@ -175,7 +175,7 @@ def _attach(
         if member.type_name == "metric" and isinstance(member.source, MetricDef)
     }
     attachment = attach_view_members(
-        {artifact: tables for artifact, tables in view_tables},
+        dict(view_tables),
         members,
         SEMANTIC_REGISTRY,
         view_named_members=view_instructions,

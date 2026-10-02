@@ -1,15 +1,47 @@
+# The gates CI runs (.github/workflows/test-and-lint.yml), run locally from the project's own
+# environment: every hook below is `language: system`, so it uses the ruff, mypy, import-linter,
+# sst, and pytest that `poetry install` put in the virtualenv, at the versions poetry.lock pins,
+# rather than separately pinned hook repositories. Activate that environment (or install the
+# hook with `poetry run pre-commit install`) before committing.
 repos:
-  - repo: https://github.com/psf/black
-    rev: 24.10.0
+  - repo: local
     hooks:
-      - id: black
-        args: [--line-length=120]
-
-  - repo: https://github.com/pycqa/isort
-    rev: 5.13.2
-    hooks:
-      - id: isort
-        args: [--profile=black, --line-length=120]
+      - id: ruff-format
+        name: ruff format --check
+        entry: ruff format --check
+        language: system
+        types_or: [python, pyi]
+      - id: ruff-check
+        name: ruff check
+        entry: ruff check
+        language: system
+        types_or: [python, pyi]
+      - id: mypy
+        name: mypy (strict) snowflake_semantic_tools tests
+        entry: mypy snowflake_semantic_tools tests
+        language: system
+        pass_filenames: false
+        types_or: [python, pyi]
+      - id: lint-imports
+        name: lint-imports (ring boundaries)
+        entry: lint-imports
+        language: system
+        pass_filenames: false
+        types_or: [python, toml]
+      - id: sst-docs
+        name: sst docs --check (generated reference pages)
+        entry: sst docs --check
+        language: system
+        pass_filenames: false
+        always_run: true
+      # The pure-domain tests and the diagnostic-code guards: a few seconds, so they run on every
+      # commit. The whole suite runs in CI.
+      - id: pytest-fast
+        name: pytest (domain and diagnostic-code guards)
+        entry: pytest -q -n auto tests/unit/domain tests/codes
+        language: system
+        pass_filenames: false
+        types_or: [python, json]
 
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v5.0.0

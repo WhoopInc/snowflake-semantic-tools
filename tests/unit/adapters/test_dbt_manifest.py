@@ -364,7 +364,11 @@ def test_enrich_inputs_are_read_from_columns_tests_and_the_model_node() -> None:
         "models/products.yml",
     )
     product_id, email, notes = model.columns
-    assert (product_id.native_data_type, product_id.declared_keys, product_id.pii_tagged) == ("VARCHAR", set(), False)
+    assert (product_id.native_data_type, product_id.declared_keys, product_id.pii_tagged) == (
+        "VARCHAR",
+        frozenset(),
+        False,
+    )
     assert email.pii_tagged and email.declared_keys == {"sample_values", "synonyms"}
     assert email.is_enum is None
     # An empty pii_tags block names no category, so the column is not gated.

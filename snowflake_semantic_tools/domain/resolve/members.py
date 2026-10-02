@@ -9,8 +9,8 @@ views are listed in artifact-key order.
 
 from __future__ import annotations
 
+from collections.abc import Iterable, Mapping
 from types import MappingProxyType
-from typing import Iterable, Mapping
 
 from snowflake_semantic_tools.domain.model.project import ArtifactKey, MemberKey, ParsedMember
 from snowflake_semantic_tools.domain.model.registry import AttachRule, Registry

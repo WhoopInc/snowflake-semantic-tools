@@ -7,9 +7,9 @@ result for the agents that reference the extensions.
 from __future__ import annotations
 
 import re
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from hashlib import sha256
-from typing import Mapping
 
 from snowflake_semantic_tools.app.compile.agents import ExtensionPin
 from snowflake_semantic_tools.app.compile.base import CompileResult, StandaloneArtifact, has_error

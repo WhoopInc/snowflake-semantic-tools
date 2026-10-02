@@ -9,9 +9,9 @@ store only through ports.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from types import MappingProxyType
-from typing import Mapping
 
 from snowflake_semantic_tools.app.compile import CompileResult
 from snowflake_semantic_tools.app.compile.evals import CompiledEval
@@ -200,7 +200,7 @@ class RunEvalGate:
         verdicts: list[EvalGateVerdict] = []
         captured: list[EvalBaselineRecord] = []
         diagnostics: list[Diagnostic] = []
-        for item, item_result in zip(evals, suite.evals):
+        for item, item_result in zip(evals, suite.evals, strict=False):
             if request.capture_baseline:
                 run = item.resolved.config.run
                 captured.append(
