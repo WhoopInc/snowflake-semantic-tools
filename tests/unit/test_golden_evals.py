@@ -7,6 +7,7 @@ from snowflake_semantic_tools.adapters.yaml.agents import load_agents
 from snowflake_semantic_tools.app.compile.evals import CompiledEval, CompileEvals
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
 from tests.helpers.compile_builders import compiled_as
+from tests.helpers.projects import project_paths
 
 ROOT = Path(__file__).parents[1]
 FIXTURE = ROOT / "fixtures" / "reference_project"
@@ -17,7 +18,7 @@ def test_reference_eval_matches_exact_source_sql_and_repeat_yaml_goldens() -> No
     agents, diagnostics = load_agents(FIXTURE)
     assert not diagnostics.has_errors
     source = YamlProjectSource(
-        FIXTURE,
+        project_paths(FIXTURE),
         target_name="dev",
         manifest_path=FIXTURE / "target" / "manifest.json",
         invoke_dbt=False,

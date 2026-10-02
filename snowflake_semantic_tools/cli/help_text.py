@@ -19,16 +19,36 @@ from snowflake_semantic_tools.domain.render.reference_docs import CommandDoc, Op
 # and the generated CLI reference say the same thing everywhere. A command whose
 # flag means something narrower overrides it in `_COMMAND_OPTION_HELP`.
 _OPTION_HELP: Mapping[str, str] = {
-    "--project-dir": "Project root: the directory that holds `sst_config.yml`.",
-    "--target": "Target from `profiles.yml`; defaults to the profile's own default target.",
+    "--project-dir": "Project root, else `$SST_PROJECT_DIR`: where `sst_config.yml` and `dbt_project.yml` are.",
+    "--config": "Read this configuration file, else `$SST_CONFIG`, instead of discovering one in the project.",
+    "--profiles-dir": "Directory of `profiles.yml`, else `$SST_PROFILES_DIR`, then `$DBT_PROFILES_DIR`.",
+    "--target": "Target from `profiles.yml`, else `$SST_TARGET`; defaults to the profile's own default target.",
     "--manifest": "Read this dbt `manifest.json` instead of running `dbt parse`.",
-    "--allow-unsupported-manifest-schema": (
-        "Read a dbt manifest whose schema version SST does not support or cannot read, at your own risk."
+    "--output": "`table` (default), `plain`, or `json`; `list` also takes `yaml` and `csv`. Else `$SST_OUTPUT`.",
+    "--verbose": "Add each diagnostic's phase and fingerprint. Cannot be combined with `--quiet`.",
+    "--quiet": "Show errors only.",
+    "--log-level": "Log threshold, else `$SST_LOG_LEVEL`; independent of `--verbose`.",
+    "--no-color": "No ANSI colour, as `$SST_NO_COLOR` or a non-empty `$NO_COLOR` also say.",
+    "--allow-unsupported-manifest-schema": "Read a dbt manifest of an unsupported schema version, for this run only.",
+    "--allow-stale-manifest": "Accept a `--manifest` older than the files it describes, for this run only.",
+    "--baseline": "Baseline file of known warnings; `.sst/baseline.json` when it exists.",
+    "--no-baseline": "Ignore the baseline for this run: every diagnostic is shown and blocks as declared.",
+    "--show-baselined": "Show baselined diagnostics instead of counting them.",
+    "--show-info": "Show info diagnostics instead of counting them.",
+    "--show-cascade": "Show cascade diagnostics instead of counting them.",
+    "--show-all-occurrences": "Show every occurrence of a code that repeats four or more times.",
+    "--select": (
+        "Only these artifacts: a name (globs allowed), `type:<type>`, `path:<glob>`, `state:<state>`, "
+        "or `<type>:<name>`."
     ),
-    "--output": "`human` for readable text, or `json` for one machine-readable envelope.",
-    "--select": "Only these artifacts: a semantic view name, `type:<type>`, or `<type>:<name>`.",
     "--exclude": "Leave these artifacts out; same forms as `--select`.",
-    "--strict": "Promote every warning to an error. Defaults to `validation.strict`.",
+    "--state": "Previous run's build directory, else `$SST_STATE_DIR`, for `state:` selectors.",
+    "--defer-target": "Not supported in this release: SST reads the manifest dbt resolves for `--target`.",
+    "--no-defer": "Accepted: SST never defers.",
+    "--threads": "Changes applied at once, 1 to 16, else `$SST_THREADS`; defaults to `skills.+threads`, else 4.",
+    "--database": "Read from this database instead of the target's; never where an artifact is published.",
+    "--no-detailed-exitcode": "Exit 0 instead of 2 when there are differences.",
+    "--strict": "Promote every warning to an error, else `$SST_STRICT`. Defaults to `validation.strict`.",
     "--snowflake-syntax-check": (
         "Compile expressions against Snowflake. Defaults to `validation.snowflake_syntax_check`."
     ),
@@ -44,21 +64,25 @@ _OPTION_HELP: Mapping[str, str] = {
     "--fail-fast": "Stop at the first failure instead of continuing.",
 }
 _COMMAND_OPTION_HELP: Mapping[tuple[str, str], str] = {
-    ("sst", "--output"): "Default `--output` for the command that follows.",
-    ("sst", "--project-dir"): "Default `--project-dir` for the command that follows.",
+    ("sst apply", "--fail-fast"): "Stop at the first failure instead of continuing. Defaults to `apply.fail_fast`.",
+    ("sst compile", "--database"): "Resolve refs against this database instead of the target's.",
+    ("sst compile", "--emit-agent-spec"): "Write each agent's rendered specification into this directory.",
+    ("sst debug", "--no-connect"): "Report everything but the connection, offline.",
+    ("sst debug", "--snowflake-signatures"): "Report how often Snowflake refusals went unrecognised, from the run log.",
+    ("sst init", "--skip-prompts"): "Accept every default without prompting.",
+    ("sst init", "--check-only"): "Report whether the setup is complete; create nothing.",
+    ("sst clean", "--dry-run"): "List what would be removed; remove nothing.",
+    ("sst docs", "--output-dir"): "Write the pages here instead of `docs/reference`.",
+    ("sst list", "--long"): "Every detail column, including each artifact's source files.",
     ("sst apply", "--plan"): "Apply this saved plan. It must still match the compiled project.",
     ("sst apply", "--yes"): "Apply without asking for confirmation.",
     ("sst apply", "--break-stale-lock"): "Take over a state lock left behind by a run that no longer exists.",
     ("sst apply", "--temporary"): (
         "Publish agents as session-scoped temporary agents; refused for a production-like target."
     ),
-    ("sst compile", "--emit-ddl"): "Write each semantic view's rendered DDL into this directory.",
-    ("sst compile", "--print-ddl"): "Print the rendered DDL to stdout.",
-    ("sst compile", "--ddl-output-dir"): "Same as `--emit-ddl`.",
-    ("sst compile", "--manifest-output"): "Also write the SST manifest here; with `--select`, only the selection.",
-    ("sst compile", "--select"): "Only this artifact: a semantic view name, `type:<type>`, or `<type>:<name>`.",
-    ("sst debug", "--test-connection"): "Also connect to Snowflake and report the session's role and account.",
-    ("sst docs", "--check"): "Write nothing; exit 1 when a committed reference page is out of date.",
+    ("sst compile", "--emit-ddl"): "Write each artifact's rendered payload into this directory, offline.",
+    ("sst compile", "--select"): "Report and emit only these artifacts; the manifest still holds everything.",
+    ("sst docs", "--check"): "Write nothing; exit 2 when a committed reference page is out of date.",
     ("sst enrich", "--select"): "Only these dbt models: `model:<name>` or a bare name; globs such as `fct_*` work.",
     ("sst enrich", "--exclude"): "Leave these dbt models out; same forms as `--select`.",
     ("sst enrich", "--include"): (
@@ -103,7 +127,9 @@ def document_options(command: click.Command, path: str = "sst") -> None:
 def command_docs(group: click.Group, prefix: str = "sst") -> tuple[CommandDoc, ...]:
     """The visible command tree, each group followed by its subcommands."""
     documented: list[CommandDoc] = []
-    for name in sorted(group.commands):
+    with click.Context(group) as ctx:
+        names = group.list_commands(ctx)
+    for name in names:
         command = group.commands[name]
         if command.hidden:
             continue

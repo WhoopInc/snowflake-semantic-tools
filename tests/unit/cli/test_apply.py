@@ -15,6 +15,7 @@ from snowflake_semantic_tools.domain.model.lifecycle import ExecResult, Ownershi
 from snowflake_semantic_tools.domain.sql import Sql
 from snowflake_semantic_tools.domain.state import content_hash
 from tests.helpers.cli_projects import (
+    OFFLINE_VALIDATION,
     PROFILE_CONFIG,
     break_menu_view,
     common,
@@ -363,7 +364,7 @@ def test_skills_only_project_publishes_through_plan_and_apply(tmp_path: Path, mo
 
 def test_profiles_publish_then_deactivate_under_prune(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     project = skill_project(tmp_path / "skills")
-    (project / "sst_config.yml").write_text(PROFILE_CONFIG, encoding="utf-8")
+    (project / "sst_config.yml").write_text(OFFLINE_VALIDATION + PROFILE_CONFIG, encoding="utf-8")
     profile = project / "profiles" / "analyst"
     profile.mkdir(parents=True)
     (profile / "profile.yml").write_text(

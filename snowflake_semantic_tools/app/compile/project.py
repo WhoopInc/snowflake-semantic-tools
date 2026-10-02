@@ -9,7 +9,7 @@ and merges their results in DDL order.
 from __future__ import annotations
 
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from types import MappingProxyType
 
 from snowflake_semantic_tools.app.compile import CompileArtifacts, CompileSemanticViews
@@ -29,6 +29,7 @@ from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, Diagnosti
 from snowflake_semantic_tools.domain.model.agent import AgentModel
 from snowflake_semantic_tools.domain.model.artifact_key import artifact_key, split_artifact_key
 from snowflake_semantic_tools.domain.model.config_schema import (
+    CONFIG_FILE,
     config_block,
     config_bool,
     config_int,
@@ -42,8 +43,9 @@ from snowflake_semantic_tools.domain.model.identifier import QualifiedName, Targ
 from snowflake_semantic_tools.domain.model.profile import ProfileCatalog
 from snowflake_semantic_tools.domain.model.registry import SEMANTIC_REGISTRY
 from snowflake_semantic_tools.domain.model.skill import DEFAULT_VERSION_PREFIX, extension_identifier
-from snowflake_semantic_tools.domain.model.tool import ToolCatalog
+from snowflake_semantic_tools.domain.model.tool import ToolCatalog, ToolGroup, ToolOwnership
 from snowflake_semantic_tools.domain.ports.project import ProjectInputs
+from snowflake_semantic_tools.domain.validate.config import config_tool_references, unreferenced_tool_members
 from snowflake_semantic_tools.domain.validate.shared import namespace_collisions
 
 # Where each artifact type sits in the merged stream, which is also the order apply publishes in.
@@ -76,6 +78,7 @@ class _Settings:
 
     tree: Mapping[str, object]
     target: TargetIdentity
+    file: str = CONFIG_FILE
 
     def block(self, name: str) -> dict[str, object]:
         """Return one top-level block; empty when it is absent or not a mapping."""
@@ -126,8 +129,8 @@ class CompileProject:
         """
         config = self._inputs.config()
         target = self._inputs.target()
-        settings = _Settings(config.tree, target.identity)
-        consumed, consumed_diagnostics = consumed_extensions(config.tree, target.identity)
+        settings = _Settings(config.tree, target.identity, config.file)
+        consumed, consumed_diagnostics = consumed_extensions(config.tree, target.identity, file=config.file)
         publishing = self._publishing(settings)
         # A reference to an entry that cannot be qualified names that cause, not "undeclared".
         unpublished = {
@@ -174,7 +177,7 @@ class CompileProject:
         skills_config = settings.block("skills")
         catalog_config = skills_config.get("catalog")
         channel = _catalog_channel(settings, skills_config)
-        skills = CompileSkills(catalog, channel).run_result()
+        skills = CompileSkills(catalog, channel, config_file=settings.file).run_result()
         unpublished = unpublished_reasons(catalog, skills, _channel_problem(catalog_config, channel))
         stage_config = skills_config.get("stage")
         if not isinstance(stage_config, dict):
@@ -206,7 +209,12 @@ class CompileProject:
 
         Tools read the dbt relations, agents the views and tools that compiled, and evals the
         tools each agent resolved. The agents' load diagnostics are reported once, by the agents.
-        The checks that span the four follow them, as a result that compiles nothing.
+        The checks that span the four follow them, as a result that compiles nothing; then
+        what the configuration and the agents say about the tools.
+
+        Diagnostics:
+            SST-CFG017: a configuration value's `tool()` names no declared member.
+            SST-CFG018: a declared tool member is referenced by no agent.
         """
         semantic = CompileSemanticViews(self._inputs).run_result()
         # A view the project declares disabled is named as such, not as undeclared, by a tool.
@@ -232,7 +240,18 @@ class CompileProject:
         eval_catalog = self._inputs.eval_catalog(enabled, agent_tool_names=resolved_tools)
         evals = CompileEvals(eval_catalog, agent_targets=dict(context.agents)).run_result()
         compiled = (semantic, tools, agents, evals)
-        return (*compiled, cross_artifact_result(compiled, eval_catalog, POSITIONS))
+        # Every agent counts as a consumer, enabled or not: disabling one does not orphan its tools.
+        calls = tuple(tool.backing for model in agent_models for tool in model.tools if tool.backing)
+        tool_config = CompileResult(
+            (),
+            DiagnosticBag(
+                (
+                    *config_tool_references(settings.tree, tool_catalog),
+                    *unreferenced_tool_members(tool_catalog, calls),
+                )
+            ),
+        )
+        return (*compiled, cross_artifact_result(compiled, eval_catalog, POSITIONS), tool_config)
 
     def _agent_context(
         self,
@@ -301,7 +320,7 @@ def _avatar_allowlist(snowflake: Mapping[str, object]) -> frozenset[str] | None:
 
 
 def consumed_extensions(
-    config: Mapping[str, object], target: TargetIdentity
+    config: Mapping[str, object], target: TargetIdentity, *, file: str = CONFIG_FILE
 ) -> tuple[dict[str, QualifiedName], tuple[Diagnostic, ...]]:
     """Resolve `skills.extensions`: the extensions agents consume and this project does not publish.
 
@@ -332,20 +351,20 @@ def consumed_extensions(
                 resolved[name.casefold()] = QualifiedName.parse(f"{prefix}.{extension_identifier(name)}")
                 continue
         except ValueError as exc:
-            diagnostics.append(_unqualified_extension(name, f"its name does not parse ({exc})"))
+            diagnostics.append(_unqualified_extension(name, f"its name does not parse ({exc})", file))
             continue
         reason = "the block sets no default_prefix" if not prefix else "the key is not a single identifier"
-        diagnostics.append(_unqualified_extension(name, reason))
+        diagnostics.append(_unqualified_extension(name, reason, file))
     return resolved, tuple(diagnostics)
 
 
 _NO_CATALOG = "skills.catalog is not configured"
 
 
-def _unqualified_extension(name: str, reason: str) -> Diagnostic:
+def _unqualified_extension(name: str, reason: str, file: str) -> Diagnostic:
     return D(
         "SST-CFG036",
-        origin=Origin("sst_config.yml"),
+        origin=Origin(file),
         subject=f"config:skills.extensions.{name}",
         block="skills.extensions",
         name=name,
@@ -423,8 +442,77 @@ def _carried_by_profiles(catalog: ProfileCatalog) -> frozenset[str]:
 
 
 def _compile_tools(settings: _Settings, catalog: ToolCatalog, dbt: DbtCatalog) -> CompileResult:
-    """Compile the tools with the `tools:` defaults, resolving each dbt model to its relation."""
+    """Compile the tools with the `tools:` defaults, a group's own `tools.<group>` block overriding them.
+
+    Each overridden group compiles on its own, with the catalog's diagnostics about its members,
+    so every diagnostic is reported once.
+
+    Diagnostics:
+        SST-CFG020: a `tools.<group>` override names no declared group, or one with no `define:`.
+    """
     defaults = settings.block("tools")
+    by_name = {group.name.casefold(): group for group in catalog.groups}
+    overrides: dict[str, dict[str, object]] = {}
+    problems: list[Diagnostic] = []
+    for name, block in defaults.items():
+        if name.startswith("+") or not isinstance(block, dict):
+            continue
+        group = by_name.get(name.casefold())
+        reason = (
+            "is not declared"
+            if group is None
+            else "has no define: members, so the override would change nothing"
+            if not any(member.ownership is ToolOwnership.DEFINE for member in group.members)
+            else None
+        )
+        if reason is not None:
+            problems.append(
+                D(
+                    "SST-CFG020",
+                    origin=Origin(settings.file),
+                    subject=f"config:tools.{name}",
+                    group=name,
+                    reason=reason,
+                )
+            )
+        else:
+            overrides[name.casefold()] = {**defaults, **config_block(block)}
+
+    def keys(groups: tuple[ToolGroup, ...]) -> frozenset[str]:
+        return frozenset(f"tool:{member.name.casefold()}" for group in groups for member in group.members)
+
+    separate = keys(tuple(by_name[name] for name in overrides))
+    shared = tuple(group for group in catalog.groups if group.name.casefold() not in overrides)
+    results = [
+        _tool_result(
+            settings,
+            replace(
+                catalog,
+                groups=shared,
+                diagnostics=DiagnosticBag(d for d in catalog.diagnostics if d.subject not in separate),
+            ),
+            defaults,
+            dbt,
+        )
+    ]
+    for name, merged in overrides.items():
+        own = keys((by_name[name],))
+        alone = replace(
+            catalog,
+            groups=(by_name[name],),
+            diagnostics=DiagnosticBag(d for d in catalog.diagnostics if d.subject in own),
+        )
+        results.append(_tool_result(settings, alone, merged, dbt))
+    return CompileResult(
+        tuple(item for result in results for item in result.compiled),
+        DiagnosticBag((*problems, *(item for result in results for item in result.diagnostics))),
+    )
+
+
+def _tool_result(
+    settings: _Settings, catalog: ToolCatalog, defaults: Mapping[str, object], dbt: DbtCatalog
+) -> CompileResult:
+    """Compile one part of the tool catalog with `defaults`, resolving each dbt model to its relation."""
     database, schema = settings.location(defaults)
     return CompileTools(
         catalog,

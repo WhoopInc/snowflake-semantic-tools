@@ -9,8 +9,9 @@
 # `dev` is the default and the golden target: every file under
 # tests/golden/expected/ resolves against it.
 #
-# `dev`, `prod` and `ci` carry no credentials, so they cannot connect; the
-# fixture runs offline against them. `verify` is the connected target.
+# `dev`, `prod` and `ci` name an account and a user but carry no credential, so
+# they cannot connect; the fixture runs offline against them, and the tests run
+# them against a recorded session. `verify` is the connected target.
 # =============================================================================
 
 sst_reference_impl:
@@ -19,6 +20,8 @@ sst_reference_impl:
   outputs:
     dev:
       type: snowflake
+      account: sst_reference
+      user: sst_reference
       database: SST_REF_DEV
       schema: JAFFLE
       warehouse: SST_REF_WH
@@ -28,6 +31,8 @@ sst_reference_impl:
     # `--target prod` resolves them all.
     prod:
       type: snowflake
+      account: sst_reference
+      user: sst_reference
       database: SST_REF_PROD
       schema: JAFFLE
       warehouse: SST_REF_WH
@@ -37,6 +42,8 @@ sst_reference_impl:
     # SST-REF018 for every referenced tool object.
     ci:
       type: snowflake
+      account: sst_reference
+      user: sst_reference
       database: SST_REF_CI
       schema: JAFFLE
       warehouse: SST_REF_WH

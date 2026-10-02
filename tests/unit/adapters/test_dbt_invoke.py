@@ -10,6 +10,7 @@ import pytest
 from snowflake_semantic_tools.adapters.dbt.invoke import CompletedRun, installation_type, subprocess_runner
 from snowflake_semantic_tools.adapters.errors import ProjectError
 from snowflake_semantic_tools.adapters.project_source import YamlProjectSource
+from tests.helpers.projects import project_paths
 from tests.helpers.seam_projects import FakeDbt, SmallProject, manifest
 
 
@@ -33,7 +34,7 @@ def test_a_project_source_parses_once_and_reports_dbts_warnings_with_the_project
     dbt = FakeDbt(
         version=CompletedRun(0, "dbt-fusion 2.0\n", ""), writes=(tmp_path / "target" / "manifest.json", manifest())
     )
-    loaded = YamlProjectSource(tmp_path, dbt_runner=dbt).load_project()
+    loaded = YamlProjectSource(project_paths(tmp_path), dbt_runner=dbt).load_project()
     assert [item.code for item in loaded.diagnostics][:1] == ["SST-DBT020"]
     assert [run[1] for run in dbt.runs] == ["--version", "parse"]
 
@@ -43,5 +44,5 @@ def test_defer_auto_compile_in_the_config_is_read_before_dbt_parses(tmp_path: Pa
     SmallProject(tmp_path, files={"sst_config.yml": config}).write()
     dbt = FakeDbt(version=CompletedRun(0, "dbt Cloud CLI - 0.38.6\n", ""))
     with pytest.raises(ProjectError) as raised:
-        YamlProjectSource(tmp_path, dbt_runner=dbt).dbt_catalog()
+        YamlProjectSource(project_paths(tmp_path), dbt_runner=dbt).dbt_catalog()
     assert [item.code for item in raised.value.diagnostics] == ["SST-DBT021"]

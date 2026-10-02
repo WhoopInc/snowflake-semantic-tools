@@ -1,4 +1,4 @@
-"""The emission audits, the baseline, and the derived properties diagnostics carry."""
+"""The emission audits and the derived properties diagnostics carry."""
 
 from __future__ import annotations
 
@@ -11,7 +11,6 @@ from snowflake_semantic_tools.domain.diagnostics import (
     DiagnosticBag,
     Origin,
     Severity,
-    apply_baseline,
     audit,
     resolve_severities,
     unstable_fingerprints,
@@ -50,22 +49,6 @@ def test_audit_reports_each_broken_invariant_once_and_leaves_a_clean_run_alone()
     dangling = replace(ERROR, caused_by="SST-CFG003")
     found = audit(DiagnosticBag((direct, unlocated, raised, dangling, dangling)))
     assert codes(found)[5:] == ["SST-INT004", "SST-INT005", "SST-INT007", "SST-INT008"]
-
-
-def test_a_baseline_marks_one_matching_warning_and_never_an_error() -> None:
-    bag = DiagnosticBag((WARNING, ERROR))
-    assert apply_baseline(bag, ()) is bag
-    assert apply_baseline(bag, (ERROR.fingerprint,)) is bag
-    marked = apply_baseline(bag, (WARNING.fingerprint[:16], WARNING.fingerprint))
-    assert [item.baselined for item in marked] == [True, False]
-    promoted, count = resolve_severities(marked, strict=True)
-    assert (promoted[0].severity, count) == (Severity.WARNING, 0)
-
-
-def test_a_baseline_entry_matching_several_diagnostics_marks_none() -> None:
-    found = apply_baseline(DiagnosticBag((WARNING, WARNING)), (WARNING.fingerprint,))
-    assert codes(found) == ["SST-LOD003", "SST-LOD003", "SST-INT009"]
-    assert not any(item.baselined for item in found)
 
 
 def test_fingerprints_are_compared_per_code_as_multisets() -> None:

@@ -136,12 +136,13 @@ def test_the_json_report_lists_models_files_and_components(monkeypatch: pytest.M
 @pytest.mark.parametrize(
     ("args", "message"),
     [
-        (["-m", "orders"], "--models/-m was removed in SST 1.0; pass --select model:<name> once per model"),
+        (["-m", "orders"], "-m is reserved: it meant --models in SST 0.3; use --select"),
+        (["--models", "orders"], "--models was removed in SST 1.0; pass --select model:<name> once per model"),
         (["--all"], "--all was removed in SST 1.0; use --include all"),
         (["-syn"], "--synonyms/-syn was removed in SST 1.0; use --include synonyms"),
         (["--include", "colour"], "--include: unknown component 'colour'"),
         (["--select", "source:raw.orders"], "sst enrich selects dbt models only"),
-        (["--select", "a,b"], "commas are not accepted in --select"),
+        (["--select", "a,b"], "selector 'a,b' contains a comma"),
         (["--exclude", "models/staging"], "--exclude selects models by name"),
         (["--select", "model:"], "names no model"),
         (["--database", "bad name"], "--database: invalid unquoted identifier"),

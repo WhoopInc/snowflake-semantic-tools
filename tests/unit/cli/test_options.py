@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from pathlib import Path
-
 import click
 
 from snowflake_semantic_tools.cli import options
@@ -25,62 +23,18 @@ def test_stacked_options_keep_the_order_they_are_written_in() -> None:
 
 
 def test_the_option_groups_expand_in_the_order_the_commands_list_them() -> None:
-    declared = params(
-        options.project_options(),
-        options.selection_options(),
-        options.validation_options(),
-        options.output_option(),
-    )
+    declared = params(options.target_option(), options.selection_options(), options.validation_options())
     assert [param.opts[0] for param in declared] == [
-        "--project-dir",
         "--target",
-        "--manifest",
-        "--allow-unsupported-manifest-schema",
         "--select",
         "--exclude",
         "--strict",
         "--snowflake-syntax-check",
-        "--output",
     ]
-    assert [param.name for param in declared if param.expose_value][:5] == [
-        "project_dir",
-        "target_name",
-        "manifest_path",
-        "selected",
-        "excluded",
-    ]
-
-
-def test_the_project_directory_must_exist_unless_the_command_creates_it() -> None:
-    [checked] = params(options.project_dir_option())
-    [created] = params(options.project_dir_option(exists=False, show_default=True))
-    assert isinstance(checked, click.Option) and isinstance(created, click.Option)
-    assert isinstance(checked.type, click.Path) and isinstance(created.type, click.Path)
-    assert (checked.type.exists, checked.type.file_okay, checked.default, checked.show_default) == (
-        True,
-        False,
-        Path("."),
-        None,
-    )
-    assert (created.type.exists, created.type.file_okay, created.show_default) == (False, False, True)
-
-
-def test_the_manifest_must_be_an_existing_file() -> None:
-    [manifest, override] = params(options.manifest_option())
-    assert isinstance(manifest.type, click.Path)
-    assert (manifest.name, manifest.type.exists, manifest.type.dir_okay, manifest.multiple) == (
-        "manifest_path",
-        True,
-        False,
-        False,
-    )
-    # The schema override is kept in the click context, not passed to the command.
-    assert isinstance(override, click.Option)
-    assert (override.opts, override.is_flag, override.expose_value) == (
-        ["--allow-unsupported-manifest-schema"],
-        True,
-        False,
-    )
+    assert [param.name for param in declared][:3] == ["target_name", "selected", "excluded"]
+    target, _, _, strict, _ = declared
+    assert isinstance(target, click.Option) and target.opts == ["--target", "-t"] and target.envvar == "SST_TARGET"
+    assert isinstance(strict, click.Option) and strict.envvar == "SST_STRICT"
 
 
 def test_select_repeats_except_where_a_command_takes_one_selector() -> None:
@@ -100,10 +54,13 @@ def test_the_validation_switches_default_to_unset_and_the_flags_to_off() -> None
         ("partial", True),
         ("fail_fast", True),
     ]
+    [pair] = params(options.fail_fast_pair())
+    assert isinstance(pair, click.Option) and (pair.secondary_opts, pair.default) == (["--no-fail-fast"], None)
 
 
-def test_sql_out_is_a_directory_and_output_defaults_to_human() -> None:
-    sql_out, output = params(options.sql_out_option(), options.output_option())
-    assert isinstance(sql_out.type, click.Path) and isinstance(output.type, click.Choice)
+def test_sql_out_and_state_are_directories_and_threads_is_bounded() -> None:
+    sql_out, state, threads = params(options.sql_out_option(), options.state_option(), options.threads_option())
+    assert isinstance(sql_out.type, click.Path) and isinstance(state.type, click.Path)
     assert (sql_out.name, sql_out.type.file_okay, sql_out.type.exists) == ("sql_out", False, False)
-    assert (output.default, list(output.type.choices)) == ("human", ["human", "json"])
+    assert (state.name, state.envvar) == ("state_dir", "SST_STATE_DIR")
+    assert isinstance(threads.type, click.IntRange) and (threads.type.min, threads.type.max) == (1, 16)

@@ -10,6 +10,7 @@ import pytest
 
 from snowflake_semantic_tools.adapters.dbt.invoke import CompletedRun
 from snowflake_semantic_tools.adapters.project_source import YamlProjectInputs, YamlProjectSource
+from tests.helpers.projects import project_paths
 
 FIXTURE_MANIFEST = Path(__file__).resolve().parents[2] / "fixtures" / "reference_project_manifest.json"
 CORE = CompletedRun(0, "Core:\n  - installed: 1.11.2\n", "")
@@ -30,7 +31,7 @@ def test_the_manifest_is_read_under_target_path_after_one_dbt_parse(tmp_path: Pa
         runs.append(tuple(argv))
         return CORE if argv[1] == "--version" else CompletedRun(0, "", "")
 
-    source = YamlProjectSource(project, target_name="dev", dbt_runner=runner)
+    source = YamlProjectSource(project_paths(project), target_name="dev", dbt_runner=runner)
     assert source.manifest_file() == project / "build" / "manifest.json"
     first = source.dbt_catalog()
     second = source.dbt_catalog()
@@ -48,8 +49,12 @@ def test_a_given_manifest_is_read_without_running_dbt(tmp_path: Path) -> None:
         pytest.fail("dbt must not run")
 
     inputs = YamlProjectInputs(
-        project, target_name=None, manifest_path=FIXTURE_MANIFEST, git_sha=lambda: "sha", dbt_runner=runner
+        project_paths(project),
+        target_name=None,
+        manifest_path=FIXTURE_MANIFEST,
+        git_sha=lambda: "sha",
+        dbt_runner=runner,
     )
     assert inputs.dbt_catalog().model("orders") is not None
-    never = YamlProjectSource(project, invoke_dbt=False, dbt_runner=runner)
+    never = YamlProjectSource(project_paths(project), invoke_dbt=False, dbt_runner=runner)
     assert never.dbt_catalog().model("orders") is not None

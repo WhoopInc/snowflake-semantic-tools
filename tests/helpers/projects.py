@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import dataclasses
 from collections.abc import Iterable
 from pathlib import Path
 
+from snowflake_semantic_tools.adapters.locations import ProjectPaths, locate_project
 from snowflake_semantic_tools.adapters.project_source import YamlProjectSource
 from snowflake_semantic_tools.domain.diagnostics import Diagnostic, DiagnosticBag, Severity
 from snowflake_semantic_tools.domain.model.project import SemanticViewProject
@@ -14,15 +16,22 @@ from snowflake_semantic_tools.domain.model.semantic_view import SemanticView
 SEAM_NOTES = frozenset(("SST-DBT016", "SST-DBT025"))
 
 
+def project_paths(project_dir: Path) -> ProjectPaths:
+    """The configuration and profiles a run in `project_dir` resolves, as `sst` resolves them."""
+    return locate_project(project_dir, required=False)
+
+
 def load_project(project_dir: Path, *, manifest_path: Path, target_name: str | None = None) -> SemanticViewProject:
     """Every view and diagnostic, loaded the way `sst` loads them, from the dbt manifest given.
 
     The dbt seam's notes are left out, so a test can compare the whole list of what is wrong.
     """
-    source = YamlProjectSource(project_dir, target_name=target_name, manifest_path=manifest_path, invoke_dbt=False)
+    source = YamlProjectSource(
+        project_paths(project_dir), target_name=target_name, manifest_path=manifest_path, invoke_dbt=False
+    )
     project = source.load_project()
     kept = DiagnosticBag(item for item in project.diagnostics if item.code not in SEAM_NOTES)
-    return SemanticViewProject(project.views, kept)
+    return dataclasses.replace(project, diagnostics=kept)
 
 
 def load_views(project_dir: Path, *, manifest_path: Path, target_name: str | None = None) -> tuple[SemanticView, ...]:

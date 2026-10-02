@@ -375,7 +375,7 @@ def test_a_failed_connection_names_the_account(monkeypatch: pytest.MonkeyPatch) 
         SnowflakeConnector({"account": "acme-prod"})
     diagnostic = raised.value.diagnostic
     assert diagnostic is not None and diagnostic.code == "SST-PRT001"
-    assert diagnostic.message == "connection to acme-prod failed: Could not connect to Snowflake backend"
+    assert diagnostic.message == "could not connect to acme-prod: Could not connect to Snowflake backend"
     assert raised.value.errno == 250001
 
 

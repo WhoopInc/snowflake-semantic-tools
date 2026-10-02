@@ -12,6 +12,7 @@ from snowflake_semantic_tools.app.compile import CompileResult
 from snowflake_semantic_tools.cli.wiring import compile as compiling
 from snowflake_semantic_tools.domain.diagnostics import Severity
 from tests.helpers.cli_projects import DBT_MANIFEST, project_copy
+from tests.helpers.projects import project_paths
 
 
 class RewritesManifest:
@@ -33,12 +34,12 @@ def test_sst_man031_fires(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> No
     manifest = tmp_path / "manifest.json"
     shutil.copy(DBT_MANIFEST, manifest)
     monkeypatch.setattr(compiling, "CompileProject", lambda inputs: RewritesManifest(inputs, manifest))
-    [diagnostic] = compiling.compile_result(project, None, manifest).diagnostics
+    [diagnostic] = compiling.compile_result(project_paths(project), None, manifest).diagnostics
     assert (diagnostic.code, diagnostic.severity) == ("SST-MAN031", Severity.ERROR)
     assert diagnostic.message == "dbt manifest digest changed during the run"
 
 
 def test_sst_man031_silent(tmp_path: Path) -> None:
     project = project_copy(tmp_path)
-    result = compiling.compile_result(project, None, DBT_MANIFEST)
+    result = compiling.compile_result(project_paths(project), None, DBT_MANIFEST)
     assert "SST-MAN031" not in [item.code for item in result.diagnostics]

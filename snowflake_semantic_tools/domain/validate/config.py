@@ -7,11 +7,21 @@ anything else is reported, never ignored.
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+import re
+from collections.abc import Iterable, Mapping
+from dataclasses import dataclass
 from types import MappingProxyType
 from typing import Any
 
-from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, DiagnosticBag, Origin
+from snowflake_semantic_tools.domain.diagnostics import (
+    ERROR_REGISTRY,
+    D,
+    Diagnostic,
+    DiagnosticBag,
+    Origin,
+    Severity,
+    override_refusal,
+)
 from snowflake_semantic_tools.domain.model.config_schema.keys import (
     CHILDREN,
     CONFIG_FILE,
@@ -22,6 +32,7 @@ from snowflake_semantic_tools.domain.model.config_schema.keys import (
     KeyKind,
     KeyStatus,
 )
+from snowflake_semantic_tools.domain.model.tool import ToolCatalog
 
 _TYPES: Mapping[KeyKind, tuple[type, ...]] = MappingProxyType(
     {
@@ -36,14 +47,21 @@ _TYPES: Mapping[KeyKind, tuple[type, ...]] = MappingProxyType(
 )
 
 Positions = Mapping[tuple[str | int, ...], tuple[int, int]]
+_SEVERITIES: Mapping[str, Severity] = MappingProxyType(
+    {"error": Severity.ERROR, "warning": Severity.WARNING, "info": Severity.INFO}
+)
+_TOOL_CALL = re.compile(r"\{\{\s*tool\(\s*['\"]([^'\"]+)['\"]\s*,\s*['\"]([^'\"]+)['\"]\s*\)\s*\}\}")
 
 
-def validate_config(tree: Mapping[Any, object], *, positions: Positions | None = None) -> DiagnosticBag:
+def validate_config(
+    tree: Mapping[Any, object], *, positions: Positions | None = None, file: str = CONFIG_FILE
+) -> DiagnosticBag:
     """Check every key of a parsed `sst_config.yml` against the declared schema.
 
     Args:
         positions: The (line, column) of each key path; a path without one is reported
             against the file alone.
+        file: How each diagnostic's origin names the configuration file.
 
     Returns:
         One diagnostic per problem, in document order; what a block leaves out is
@@ -61,22 +79,164 @@ def validate_config(tree: Mapping[Any, object], *, positions: Positions | None =
         SST-CFG042: `evals` or `skills` declares a folder route.
         SST-CFG043: a removed key is set; the message says what replaced it.
         SST-CFG044: a key reserved for a later release is set.
+        SST-CFG023: `semantic_views.+max_staleness` is below 120 seconds.
+        SST-CFG200: a deprecated key is set; it is checked as the key it is read as.
+        SST-CFG025: `agents.+orchestration_model` is not in `snowflake.orchestration_models`.
+        SST-CFG033: a severity override demotes a non-demotable code, an error below warning, or
+            promotes an info code to error.
         SST-VAL817: `skills` configures neither the catalog nor the stage channel.
         SST-VAL818: a channel's `+flatten` is not the value that channel requires.
         SST-VAL819: `skills.stage.+auto_compress` is true.
         SST-VAL821: `skills.stage.+layout` is not `by_type`.
     """
     diagnostics: list[Diagnostic] = []
-    _walk("", ChildPolicy.DECLARED, tree, (), positions or {}, diagnostics)
+    located = _Located(positions or {}, file)
+    _walk("", ChildPolicy.DECLARED, tree, (), located, diagnostics)
+    diagnostics.extend(_allowlist_problems(tree, located))
+    diagnostics.extend(_override_problems(tree, located))
     return DiagnosticBag(diagnostics)
 
 
-def _origin(path: tuple[str, ...], positions: Positions) -> Origin:
-    position = positions.get(path)
-    return Origin(CONFIG_FILE, position[0], position[1]) if position is not None else Origin(CONFIG_FILE)
+def _overrides(tree: Mapping[Any, object]) -> dict[str, object]:
+    block = tree.get("diagnostics")
+    overrides = block.get("severity_overrides") if isinstance(block, Mapping) else None
+    return {str(code): value for code, value in overrides.items()} if isinstance(overrides, Mapping) else {}
 
 
-def _diagnostic(code: str, path: tuple[str, ...], positions: Positions, **context: Any) -> Diagnostic:
+def _override_refusal(code: str, value: object) -> str | None:
+    """Return why an override of a registered code is not permitted; None when it is, or is no severity."""
+    if value not in _SEVERITIES:
+        return None
+    return override_refusal(code, _SEVERITIES[str(value)])
+
+
+def _override_problems(tree: Mapping[Any, object], positions: _Located) -> list[Diagnostic]:
+    """Report each override of an unregistered code, and each that breaks the demotion floor."""
+    problems: list[Diagnostic] = []
+    for code, value in _overrides(tree).items():
+        path = ("diagnostics", "severity_overrides", code)
+        if code not in ERROR_REGISTRY:
+            problems.append(_diagnostic("SST-CFG003", path, positions, key=".".join(path)))
+            continue
+        reason = _override_refusal(code, value)
+        if reason is not None:
+            problems.append(_diagnostic("SST-CFG033", path, positions, code=code, found=str(value), reason=reason))
+    return problems
+
+
+def severity_overrides(tree: Mapping[Any, object]) -> dict[str, Severity]:
+    """Return each legal `diagnostics.severity_overrides` entry as the severity its code now reports at.
+
+    An entry that is not a severity, names no registered code, or breaks the demotion floor is
+    left out: `validate_config` reports it.
+    """
+    return {
+        code: _SEVERITIES[str(value)]
+        for code, value in _overrides(tree).items()
+        if code in ERROR_REGISTRY and value in _SEVERITIES and _override_refusal(code, value) is None
+    }
+
+
+def _allowlist_problems(tree: Mapping[Any, object], positions: _Located) -> list[Diagnostic]:
+    """Report the agents' default orchestration model when `snowflake.orchestration_models` omits it."""
+    agents = tree.get("agents")
+    model = agents.get("+orchestration_model") if isinstance(agents, Mapping) else None
+    snowflake = tree.get("snowflake")
+    allowed = snowflake.get("orchestration_models") if isinstance(snowflake, Mapping) else None
+    names = [str(item) for item in allowed] if isinstance(allowed, list) else ["auto"]
+    if not isinstance(model, str) or model in names:
+        return []
+    path = ("agents", "+orchestration_model")
+    return [
+        _diagnostic(
+            "SST-CFG025",
+            path,
+            positions,
+            kind="orchestration model",
+            found=model,
+            key="snowflake.orchestration_models",
+        )
+    ]
+
+
+def unreferenced_tool_members(catalog: ToolCatalog, referenced: Iterable[tuple[str, ...]]) -> DiagnosticBag:
+    """Report each declared tool member no agent's `{{ tool(...) }}` names.
+
+    Args:
+        referenced: Each `tool()` call's arguments: a group and a member, or a member alone.
+
+    Diagnostics:
+        SST-CFG018: a declared tool member is referenced by nothing.
+    """
+    calls = [tuple(part.casefold() for part in call) for call in referenced]
+    diagnostics = [
+        D(
+            "SST-CFG018",
+            origin=member.origin,
+            subject=f"tool_group:{group.name}",
+            group=group.name,
+            name=member.name,
+        )
+        for group in catalog.groups
+        for member in group.members
+        if not any(call[-1] == member.name.casefold() and call[:-1] in ((), (group.name.casefold(),)) for call in calls)
+    ]
+    return DiagnosticBag(diagnostics)
+
+
+def config_tool_references(tree: Mapping[str, Any], catalog: ToolCatalog, *, file: str = CONFIG_FILE) -> DiagnosticBag:
+    """Report each `{{ tool(...) }}` in a configuration value that names no declared group and member.
+
+    Diagnostics:
+        SST-CFG017: a configuration value's `tool()` names a group or member that is not declared.
+    """
+    declared = {(group.name.casefold(), member.name.casefold()) for group in catalog.groups for member in group.members}
+    diagnostics: list[Diagnostic] = []
+
+    def walk(path: tuple[str, ...], value: object) -> None:
+        if isinstance(value, Mapping):
+            for key, item in value.items():
+                walk((*path, str(key)), item)
+        elif isinstance(value, str):
+            for group, name in _TOOL_CALL.findall(value):
+                if (group.casefold(), name.casefold()) not in declared:
+                    subject = f"config:{'.'.join(path)}"
+                    diagnostics.append(D("SST-CFG017", origin=Origin(file), subject=subject, group=group, name=name))
+
+    walk((), tree)
+    return DiagnosticBag(diagnostics)
+
+
+@dataclass(frozen=True, slots=True)
+class _Located:
+    """The key positions of one configuration file, and how its diagnostics name it."""
+
+    positions: Positions
+    file: str
+
+
+def unstated_policy(tree: Mapping[Any, object], *, file: str = CONFIG_FILE) -> DiagnosticBag:
+    """Report each policy key a configuration file must state although it has a default.
+
+    Whether expressions are compiled against Snowflake decides what a green validate proves,
+    so the file must say so; a block or value of the wrong type is reported by `validate_config`.
+
+    Diagnostics:
+        SST-CFG031: `validation.snowflake_syntax_check` is absent.
+    """
+    validation = tree.get("validation")
+    if isinstance(validation, Mapping) and "snowflake_syntax_check" in validation:
+        return DiagnosticBag()
+    path = ("validation", "snowflake_syntax_check") if isinstance(validation, Mapping) else ("validation",)
+    return DiagnosticBag((D("SST-CFG031", origin=Origin(file), subject=f"config:{'.'.join(path)}"),))
+
+
+def _origin(path: tuple[str, ...], positions: _Located) -> Origin:
+    position = positions.positions.get(path)
+    return Origin(positions.file, position[0], position[1]) if position is not None else Origin(positions.file)
+
+
+def _diagnostic(code: str, path: tuple[str, ...], positions: _Located, /, **context: Any) -> Diagnostic:
     return D(code, origin=_origin(path, positions), subject=f"config:{'.'.join(path)}", **context)
 
 
@@ -85,7 +245,7 @@ def _walk(
     policy: ChildPolicy,
     value: Mapping[Any, object],
     actual: tuple[str, ...],
-    positions: Positions,
+    positions: _Located,
     diagnostics: list[Diagnostic],
 ) -> None:
     """Check each entry of one block, then what the block as a whole leaves out.
@@ -121,7 +281,7 @@ def _block_problems(
     declared: Mapping[str, ConfigKey],
     value: Mapping[Any, object],
     actual: tuple[str, ...],
-    positions: Positions,
+    positions: _Located,
 ) -> list[Diagnostic]:
     """Diagnose the required children a block leaves out, then a missing `one_of` alternative."""
     present = {str(key) for key in value}
@@ -139,7 +299,7 @@ def _block_problems(
 
 
 def _enrichment_limit_problems(
-    value: Mapping[Any, object], actual: tuple[str, ...], positions: Positions
+    value: Mapping[Any, object], actual: tuple[str, ...], positions: _Located
 ) -> list[Diagnostic]:
     """Diagnose a display limit above the distinct limit: no more values than that are sampled.
 
@@ -169,7 +329,7 @@ def _enrichment_limit_problems(
     ]
 
 
-def _unknown(path: tuple[str, ...], positions: Positions) -> Diagnostic:
+def _unknown(path: tuple[str, ...], positions: _Located) -> Diagnostic:
     key = ".".join(path)
     if len(path) == 1:
         suggestion = _near_miss(path[0])
@@ -203,7 +363,7 @@ def _check(
     spec: ConfigKey,
     value: object,
     path: tuple[str, ...],
-    positions: Positions,
+    positions: _Located,
     diagnostics: list[Diagnostic],
     *,
     route_of: str | None,
@@ -214,6 +374,10 @@ def _check(
     that fails a check is not descended into. `route_of` names the routed block when the
     entry matched a folder route: the route's children are that block's own keys.
     """
+    if spec.status is KeyStatus.DEPRECATED:
+        # Checked as the block it is read as, so a mistake inside it is still reported.
+        diagnostics.append(_diagnostic("SST-CFG200", path, positions, key=".".join(path), expected=spec.replacement))
+        spec = CONFIG_KEYS[str(spec.replacement)]
     if spec.status is not KeyStatus.CURRENT:
         diagnostics.append(_status_problem(spec, path, positions))
         return
@@ -236,7 +400,7 @@ def _check(
             _walk(spec.path, spec.children, value, path, positions, diagnostics)
 
 
-def _status_problem(spec: ConfigKey, path: tuple[str, ...], positions: Positions) -> Diagnostic:
+def _status_problem(spec: ConfigKey, path: tuple[str, ...], positions: _Located) -> Diagnostic:
     """Diagnose a key that is set although SST no longer reads it or does not read it yet."""
     if spec.status is KeyStatus.UNSUPPORTED:
         return _diagnostic("SST-CFG044", path, positions, key=".".join(path))
@@ -249,7 +413,7 @@ def _status_problem(spec: ConfigKey, path: tuple[str, ...], positions: Positions
     return _diagnostic("SST-CFG043", path, positions, key=".".join(path), reason=spec.replacement)
 
 
-def _value_problem(spec: ConfigKey, value: object, path: tuple[str, ...], positions: Positions) -> Diagnostic | None:
+def _value_problem(spec: ConfigKey, value: object, path: tuple[str, ...], positions: _Located) -> Diagnostic | None:
     """Return the first rule a set value breaks: its type, choices, fixed value, then bounds."""
     key = ".".join(path)
     expected = _TYPES.get(spec.kind)
@@ -270,7 +434,7 @@ def _value_problem(spec: ConfigKey, value: object, path: tuple[str, ...], positi
         )
     if isinstance(value, int) and not isinstance(value, bool) and _out_of_bounds(spec, value):
         return _diagnostic(
-            "SST-CFG008",
+            spec.code or "SST-CFG008",
             path,
             positions,
             key=key,

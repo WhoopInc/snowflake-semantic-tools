@@ -382,6 +382,10 @@ def catalog_from_document(document: object, *, allow_unsupported_schema: bool = 
     Args:
         allow_unsupported_schema: Read a manifest whose schema version is unsupported or unreadable.
 
+    Args:
+        allow_unsupported_schema: Read a manifest of another schema version for this one run,
+            as `--allow-unsupported-manifest-schema` asks, instead of refusing it.
+
     Raises:
         ProjectError: The schema version is refused, or a part SST reads has the wrong shape.
 
@@ -428,11 +432,23 @@ def load_manifest_catalog(path: Path, *, allow_unsupported_schema: bool = False)
 
     Args:
         allow_unsupported_schema: As `catalog_from_document` takes it.
+
+    Raises:
+        ProjectError: the manifest is absent (SST-PRT006), cannot be read (SST-PRT009), is not
+            JSON, or is refused as `catalog_from_document` says.
+
+    Diagnostics:
+        SST-PRT006: no manifest exists at the path; raised.
+        SST-PRT009: the manifest exists and cannot be read; raised.
     """
     try:
         document = json.loads(path.read_text(encoding="utf-8"))
+    except FileNotFoundError as exc:
+        diagnostic = D("SST-PRT006", path=str(path))
+        raise ProjectError(diagnostic.message, diagnostics=(diagnostic,)) from exc
     except OSError as exc:
-        raise ProjectError(f"cannot read dbt manifest {path}: {exc}") from exc
+        diagnostic = D("SST-PRT009", path=str(path), detail=str(exc))
+        raise ProjectError(diagnostic.message, diagnostics=(diagnostic,)) from exc
     except json.JSONDecodeError as exc:
         raise ProjectError(f"dbt manifest {path} is not valid JSON: {exc}") from exc
     return catalog_from_document(document, allow_unsupported_schema=allow_unsupported_schema)

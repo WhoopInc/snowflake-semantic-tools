@@ -10,6 +10,7 @@ from snowflake_semantic_tools.adapters.yaml.skills import load_skill_catalog
 from snowflake_semantic_tools.app.compile.agents import AgentCompileContext, CompileAgents, CompiledAgent, ExtensionPin
 from snowflake_semantic_tools.app.compile.skills import CatalogChannel, CompiledExtension, CompileSkills
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
+from tests.helpers.projects import project_paths
 
 ROOT = Path(__file__).parents[2]
 FIXTURE = ROOT / "tests" / "fixtures" / "reference_project"
@@ -19,7 +20,7 @@ MANIFEST = ROOT / "tests" / "fixtures" / "reference_project_manifest.json"
 def test_reference_agents_match_complete_json_goldens() -> None:
     models, diagnostics = load_agents(FIXTURE)
     tool_catalog = YamlProjectSource(
-        FIXTURE,
+        project_paths(FIXTURE),
         target_name="dev",
         manifest_path=MANIFEST,
         invoke_dbt=False,

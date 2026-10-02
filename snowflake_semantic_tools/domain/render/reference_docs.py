@@ -250,6 +250,25 @@ def _template(spec: ErrorSpec) -> str:
 # ------------------------------------------------------------------------------ config
 
 
+def _deprecated_rows(schema: tuple[ConfigKey, ...]) -> list[str]:
+    """Return the deprecated-keys section: each key and the key it is read as."""
+    lines = [
+        "",
+        "## Deprecated keys",
+        "",
+        "Each is read as the key that replaced it, with a warning (`SST-CFG200`) naming it.",
+        "",
+        "| Key | Read as |",
+        "|---|---|",
+    ]
+    lines.extend(
+        f"| `{_cell(key.path)}` | `{_cell(key.replacement or '')}` |"
+        for key in schema
+        if key.status is KeyStatus.DEPRECATED
+    )
+    return lines
+
+
 def render_config(schema: tuple[ConfigKey, ...] = CONFIG_SCHEMA) -> str:
     """Render the configuration reference page from the configuration schema.
 
@@ -312,6 +331,7 @@ def render_config(schema: tuple[ConfigKey, ...] = CONFIG_SCHEMA) -> str:
         )
     for key in unsupported:
         lines.append(f"| `{_cell(key.path)}` | {_type(key)} | {_cell(_description(key))} |")
+    lines.extend(_deprecated_rows(schema))
     lines.extend(
         (
             "",

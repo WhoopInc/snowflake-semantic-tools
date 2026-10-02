@@ -13,6 +13,7 @@ import click
 from snowflake_semantic_tools.adapters.clock import SystemClock
 from snowflake_semantic_tools.adapters.errors import ProjectError
 from snowflake_semantic_tools.adapters.fs.golden import GoldenFileStore
+from snowflake_semantic_tools.adapters.locations import ProjectPaths
 from snowflake_semantic_tools.adapters.project_source import YamlProjectInputs, YamlProjectSource
 from snowflake_semantic_tools.adapters.snowflake.eval_state import SnowflakeEvalStateStore
 from snowflake_semantic_tools.app.compile import CompileResult
@@ -27,13 +28,7 @@ from snowflake_semantic_tools.app.golden import CompareGoldens, GoldenReport
 from snowflake_semantic_tools.app.smoke import SmokePublished
 from snowflake_semantic_tools.cli.exit_codes import ERROR, OK
 from snowflake_semantic_tools.cli.group import SstUsageError
-from snowflake_semantic_tools.cli.options import (
-    fail_fast_option,
-    manifest_option,
-    output_option,
-    project_dir_option,
-    target_option,
-)
+from snowflake_semantic_tools.cli.options import fail_fast_option, target_option
 from snowflake_semantic_tools.cli.plan_output import print_eval_results
 from snowflake_semantic_tools.cli.runner import CommandResult, command_body
 from snowflake_semantic_tools.cli.wiring import compile as compiling
@@ -44,10 +39,8 @@ from snowflake_semantic_tools.domain.model.identifier import Identifier, Qualifi
 
 
 @click.command(name="test")
-@project_dir_option()
 @click.option("--suite", type=click.Choice(["golden", "smoke", "evals"]), required=True)
 @target_option()
-@manifest_option()
 @click.option(
     "--golden-dir",
     type=click.Path(file_okay=False, path_type=Path),
@@ -56,10 +49,9 @@ from snowflake_semantic_tools.domain.model.identifier import Identifier, Qualifi
 @fail_fast_option()
 @click.option("--capture-baseline", "capture_baseline_requested", is_flag=True)
 @click.option("--reason")
-@output_option()
 @command_body("test")
 def test_command(
-    project_dir: Path,
+    paths: ProjectPaths,
     suite: str,
     target_name: str | None,
     manifest_path: Path | None,
@@ -67,26 +59,25 @@ def test_command(
     fail_fast: bool,
     capture_baseline_requested: bool,
     reason: str | None,
-    output: str,
 ) -> CommandResult:
     """Run exact offline goldens or separate connected smoke probes."""
-    result = compiling.compile_result(project_dir, target_name, manifest_path)
+    result = compiling.compile_result(paths, target_name, manifest_path)
     if not result.success:
         return CommandResult(ERROR, result.diagnostics)
-    inputs = project_inputs(project_dir, target_name, manifest_path)
+    inputs = project_inputs(paths, target_name, manifest_path)
     if suite == "golden":
         # The same project compiled again from the manifest just read, so dbt is not run twice.
         manifest = manifest_path
-        if manifest is None and (project_dir / "dbt_project.yml").is_file():
-            manifest = YamlProjectSource(project_dir).manifest_file()
-        again = compiling.compile_result(project_dir, target_name, manifest)
+        if manifest is None and (paths.project_dir / "dbt_project.yml").is_file():
+            manifest = YamlProjectSource(paths).manifest_file()
+        again = compiling.compile_result(paths, target_name, manifest)
         return _run_golden(
-            project_dir, golden_dir, result, inputs, unstable_fingerprints(result.diagnostics, again.diagnostics)
+            paths.project_dir, golden_dir, result, inputs, unstable_fingerprints(result.diagnostics, again.diagnostics)
         )
     if suite == "evals":
         request = EvalGateRequest(fail_fast, capture_baseline_requested, reason)
-        return _run_evals(project_dir, target_name, result, inputs, request)
-    return _run_smoke(project_dir, target_name, result, inputs, fail_fast)
+        return _run_evals(paths, target_name, result, inputs, request)
+    return _run_smoke(paths, target_name, result, inputs, fail_fast)
 
 
 def _run_golden(
@@ -119,17 +110,17 @@ def _print_golden(report: GoldenReport, artifact_count: int) -> None:
 
 
 def _run_smoke(
-    project_dir: Path,
+    paths: ProjectPaths,
     target_name: str | None,
     result: CompileResult,
     inputs: YamlProjectInputs,
     fail_fast: bool,
 ) -> CommandResult:
     """Probe the published objects once SST is proven to own them; exit 1 when a check or probe fails."""
-    manifest = current_manifest(project_dir, result, inputs, before="smoke")
-    profile, port = connect(project_dir, target_name)
+    manifest = current_manifest(paths.project_dir, result, inputs, before="smoke")
+    profile, port = connect(paths, target_name)
     try:
-        smoke = SmokePublished(port, state_store(project_dir, profile.target_name)).run(
+        smoke = SmokePublished(port, state_store(paths, profile.target_name)).run(
             result,
             manifest,
             target=profile.identity,
@@ -149,7 +140,7 @@ def _run_smoke(
 
 
 def _run_evals(
-    project_dir: Path,
+    paths: ProjectPaths,
     target_name: str | None,
     result: CompileResult,
     inputs: YamlProjectInputs,
@@ -169,10 +160,10 @@ def _run_evals(
     evals = compiled_evals(result)
     if not evals:
         raise ProjectError("no eval artifacts matched the project")
-    manifest = current_manifest(project_dir, result, inputs, before="evals")
-    profile, port = connect(project_dir, target_name)
+    manifest = current_manifest(paths.project_dir, result, inputs, before="evals")
+    profile, port = connect(paths, target_name)
     with closed_on_error(port):
-        store = state_store(project_dir, profile.target_name)
+        store = state_store(paths, profile.target_name)
         eval_store = SnowflakeEvalStateStore(port, _eval_state_table(profile.state_table))
         outcome = RunEvalGate(port, inputs, store, eval_store, SystemClock()).run(
             evals, manifest, request, target=profile.identity, state_table=profile.state_table

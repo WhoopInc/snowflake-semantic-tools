@@ -21,6 +21,7 @@ from snowflake_semantic_tools.domain.diagnostics import Diagnostic, Origin
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
 from snowflake_semantic_tools.domain.model.project import SemanticViewProject
 from snowflake_semantic_tools.domain.model.tool import ToolCatalog, ToolGroup, ToolMember, ToolOwnership
+from tests.helpers.projects import project_paths
 
 SCHEMA = "https://schemas.getdbt.com/dbt/manifest/v12.json"
 VIEW = (
@@ -132,7 +133,8 @@ class SmallProject:
 
     def load(self) -> SemanticViewProject:
         """Load the project the way `sst` loads it from a given manifest."""
-        return YamlProjectSource(self.root, manifest_path=self.write(), invoke_dbt=False).load_project()
+        manifest_path = self.write()
+        return YamlProjectSource(project_paths(self.root), manifest_path=manifest_path, invoke_dbt=False).load_project()
 
 
 def found(project: SemanticViewProject, code: str) -> list[Diagnostic]:

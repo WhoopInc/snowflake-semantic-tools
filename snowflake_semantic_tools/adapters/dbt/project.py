@@ -17,6 +17,7 @@ import yaml
 
 from snowflake_semantic_tools.adapters.dbt.profiles import profile_output
 from snowflake_semantic_tools.adapters.errors import ProjectError
+from snowflake_semantic_tools.adapters.locations import ProjectPaths
 from snowflake_semantic_tools.adapters.paths import resolve_within
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, Origin
 from snowflake_semantic_tools.domain.model.dbt import DbtCatalog, DbtTarget
@@ -26,7 +27,7 @@ YamlReader = Callable[[Path], Mapping[str, Any]]
 DEFAULT_MODEL_PATHS = ("models",)
 
 
-def resolve_target(project_dir: Path, target_name: str | None = None) -> DbtTarget:
+def resolve_target(files: ProjectPaths, target_name: str | None = None) -> DbtTarget:
     """Resolve a declared dbt target's database and schema from `profiles.yml`.
 
     The profile adapter reads the file: it is plain YAML, not a semantic model, so
@@ -34,7 +35,7 @@ def resolve_target(project_dir: Path, target_name: str | None = None) -> DbtTarg
     escapes inside `{{ env_var(...) }}` and the value would never resolve.
     """
     try:
-        _profile, selected_target, output = profile_output(project_dir, target_name)
+        _profile, selected_target, output = profile_output(files, target_name)
     except ValueError as exc:
         raise ProjectError(str(exc)) from exc
     database, schema = output.get("database"), output.get("schema")

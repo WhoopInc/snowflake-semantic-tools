@@ -7,8 +7,7 @@ without a word; an empty file is the load phase's to report.
 
 from __future__ import annotations
 
-from pathlib import Path
-
+from snowflake_semantic_tools.adapters.locations import ProjectPaths
 from snowflake_semantic_tools.adapters.yaml.discover import discover_yaml
 from snowflake_semantic_tools.adapters.yaml.documents import RawDocuments, load_documents
 from snowflake_semantic_tools.adapters.yaml.parse import parse_yaml_bytes, read_yaml_mapping
@@ -46,15 +45,19 @@ def assign_owners(
     return DiagnosticBag(problems), DiagnosticBag(assigned)
 
 
-def ownership_report(project_dir: Path) -> DiagnosticBag:
+def ownership_report(files: ProjectPaths) -> DiagnosticBag:
     """Discover and load the project's semantic-model files again, and say which type owns each.
 
-    Empty for a project with no semantic-models directory. What `sst validate --show-info` adds.
+    Empty for a project with no configuration file or no semantic-models directory. What
+    `sst validate --show-info` adds.
 
     Raises:
-        ProjectError: `sst_config.yml` cannot be read.
+        ProjectError: the configuration file cannot be read.
     """
-    config = read_yaml_mapping(project_dir / "sst_config.yml")
+    if files.config_file is None:
+        return DiagnosticBag()
+    project_dir = files.project_dir
+    config = read_yaml_mapping(files.config_file)
     semantic_models_dir = configured_dir(config, "semantic_models_dir", "semantic_models")
     if not (project_dir / semantic_models_dir).is_dir():
         return DiagnosticBag()

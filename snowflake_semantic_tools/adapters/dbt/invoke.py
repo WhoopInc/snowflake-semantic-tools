@@ -139,11 +139,14 @@ def parse_project(
     runner: DbtRunner = subprocess_runner,
     auto_compile: bool = False,
     echo: Callable[[str], object] = sys.stderr.write,
+    profiles_dir: Path | None = None,
 ) -> tuple[Diagnostic, ...]:
-    """Run `dbt parse` for the target named, with the project's own profiles.yml.
+    """Run `dbt parse` for the target named, with the profiles SST resolved.
 
     Args:
         manifest_path: Where dbt_project.yml says dbt writes the manifest.
+        profiles_dir: The directory of the `profiles.yml` SST resolves targets against; the
+            project directory when None.
         auto_compile: `defer.auto_compile` as `sst_config.yml` sets it.
         echo: Where dbt's own output goes when it fails, so the user reads dbt's words.
 
@@ -163,7 +166,7 @@ def parse_project(
     if missing:
         raise _refuse(D("SST-DBT026", origin=Origin("packages.yml"), count=missing))
     warnings = _installation(runner, project_dir, auto_compile)
-    command = ["dbt", "parse", "--project-dir", str(project_dir), "--profiles-dir", str(project_dir)]
+    command = ["dbt", "parse", "--project-dir", str(project_dir), "--profiles-dir", str(profiles_dir or project_dir)]
     if target_name:
         command.extend(("--target", target_name))
     completed = _run(runner, command, project_dir)

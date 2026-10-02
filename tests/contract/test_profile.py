@@ -7,6 +7,7 @@ import pytest
 
 from snowflake_semantic_tools.adapters.dbt.profiles import load_profile_target
 from snowflake_semantic_tools.adapters.errors import ProjectError
+from tests.helpers.projects import project_paths
 
 
 def test_profile_target_resolves_env_and_fixed_state_location(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -22,7 +23,7 @@ def test_profile_target_resolves_env_and_fixed_state_location(tmp_path: Path, mo
         encoding="utf-8",
     )
     monkeypatch.setenv("ACCOUNT", "acct")
-    value = load_profile_target(tmp_path)
+    value = load_profile_target(project_paths(tmp_path))
     assert value.identity.scope.sql == "SCRATCH.SST_1_REFERENCE_IMPL"
     assert value.state_table.sql == "SCRATCH.SST_1_REFERENCE_IMPL.SST_STATE"
     assert value.connection_params["session_parameters"] == {"QUERY_TAG": "SST_1_REFERENCE_IMPL"}
@@ -35,14 +36,14 @@ def test_profile_target_fails_closed_on_missing_env(tmp_path: Path) -> None:
         "      account: \"{{ env_var('MISSING') }}\"\n      database: DB\n      schema: S\n",
         encoding="utf-8",
     )
-    with pytest.raises(ValueError, match="MISSING"):
-        load_profile_target(tmp_path)
+    with pytest.raises(ProjectError, match=r"env_var\('MISSING'\) is unset"):
+        load_profile_target(project_paths(tmp_path))
 
 
 def target_with(tmp_path: Path, fields: str) -> Path:
     (tmp_path / "dbt_project.yml").write_text("profile: test\n", encoding="utf-8")
     (tmp_path / "profiles.yml").write_text(
-        "test:\n  target: x\n  outputs:\n    x:\n      type: snowflake\n      account: acct\n"
+        "test:\n  target: x\n  outputs:\n    x:\n      type: snowflake\n      account: acct\n      user: me\n"
         "      database: DB\n      schema: S\n" + "".join(f"      {line}\n" for line in fields.splitlines()),
         encoding="utf-8",
     )
@@ -51,7 +52,7 @@ def target_with(tmp_path: Path, fields: str) -> Path:
 
 def refused(tmp_path: Path, fields: str) -> tuple[str, str]:
     with pytest.raises(ProjectError) as caught:
-        load_profile_target(target_with(tmp_path, fields))
+        load_profile_target(project_paths(target_with(tmp_path, fields)))
     diagnostic = caught.value.diagnostics[0]
     return diagnostic.code, diagnostic.message
 
@@ -60,16 +61,18 @@ def test_dbt_snowflake_fields_map_to_connector_arguments(tmp_path: Path, monkeyp
     monkeypatch.setenv("KEY_DIR", "/keys")
     monkeypatch.setenv("SUFFIX", "dev")
     target = load_profile_target(
-        target_with(
-            tmp_path,
-            "user: \"svc_{{ env_var('SUFFIX') }}\"\n"
-            "private_key_path: \"{{ env_var('KEY_DIR') }}/rsa.p8\"\n"
-            "private_key_passphrase: secret\n"
-            'connect_timeout: "30"\n'
-            'client_session_keep_alive: "true"\n'
-            "port: 443\nhost: acct.snowflakecomputing.com\n"
-            "threads: \"{{ env_var('UNSET_THREADS') | as_number }}\"\n"
-            "retry_all: true\ncolour: blue\n",
+        project_paths(
+            target_with(
+                tmp_path,
+                "user: \"svc_{{ env_var('SUFFIX') }}\"\n"
+                "private_key_path: \"{{ env_var('KEY_DIR') }}/rsa.p8\"\n"
+                "private_key_passphrase: secret\n"
+                'connect_timeout: "30"\n'
+                'client_session_keep_alive: "true"\n'
+                "port: 443\nhost: acct.snowflakecomputing.com\n"
+                "threads: \"{{ env_var('UNSET_THREADS') | as_number }}\"\n"
+                "retry_all: true\ncolour: blue\n",
+            )
         )
     )
     params = target.connection_params
@@ -82,12 +85,12 @@ def test_dbt_snowflake_fields_map_to_connector_arguments(tmp_path: Path, monkeyp
     ]
     assert target.authentication == "key pair (private key file)"
 
-    token = load_profile_target(target_with(tmp_path, "token: abc"))
+    token = load_profile_target(project_paths(target_with(tmp_path, "token: abc")))
     assert token.connection_params["authenticator"] == "oauth" and token.authentication == "OAuth access token"
-    sso = load_profile_target(target_with(tmp_path, "authenticator: externalbrowser"))
+    sso = load_profile_target(project_paths(target_with(tmp_path, "authenticator: externalbrowser")))
     assert sso.authentication == "externalbrowser"
-    assert load_profile_target(target_with(tmp_path, "password: p")).authentication == "password"
-    assert load_profile_target(target_with(tmp_path, "")).authentication == "connector default"
+    assert load_profile_target(project_paths(target_with(tmp_path, "password: p"))).authentication == "password"
+    assert load_profile_target(project_paths(target_with(tmp_path, ""))).authentication == "connector default"
 
 
 def test_profile_values_sst_cannot_use_are_refused(tmp_path: Path) -> None:
@@ -131,21 +134,33 @@ def test_an_inline_private_key_becomes_der_bytes_and_is_never_echoed(tmp_path: P
     def inline(pem: str, extra: str = "") -> str:
         return "private_key: |\n" + "".join(f"  {line}\n" for line in pem.strip().splitlines()) + extra
 
-    assert load_profile_target(target_with(tmp_path, inline(plain))).connection_params["private_key"] == der
-    decrypted = load_profile_target(target_with(tmp_path, inline(encrypted, "private_key_passphrase: pass")))
+    assert (
+        load_profile_target(project_paths(target_with(tmp_path, inline(plain)))).connection_params["private_key"] == der
+    )
+    decrypted = load_profile_target(
+        project_paths(target_with(tmp_path, inline(encrypted, "private_key_passphrase: pass")))
+    )
     assert decrypted.connection_params["private_key"] == der
     assert decrypted.authentication == "key pair (private_key)"
     encoded = base64.b64encode(der).decode()
-    assert load_profile_target(target_with(tmp_path, f"private_key: {encoded}")).connection_params["private_key"] == der
+    assert (
+        load_profile_target(project_paths(target_with(tmp_path, f"private_key: {encoded}"))).connection_params[
+            "private_key"
+        ]
+        == der
+    )
     # dbt accepts base64 DER wrapped across lines.
     wrapped = "".join(f"  {encoded[index : index + 64]}\n" for index in range(0, len(encoded), 64))
     assert (
-        load_profile_target(target_with(tmp_path, "private_key: |\n" + wrapped)).connection_params["private_key"] == der
+        load_profile_target(project_paths(target_with(tmp_path, "private_key: |\n" + wrapped))).connection_params[
+            "private_key"
+        ]
+        == der
     )
 
     def refused_on_connect(fields: str) -> tuple[str, str]:
         # The key is decoded only when a connection opens, so loading succeeds.
-        target = load_profile_target(target_with(tmp_path, fields))
+        target = load_profile_target(project_paths(target_with(tmp_path, fields)))
         assert target.authentication == "key pair (private_key)"
         with pytest.raises(ProjectError) as caught:
             _ = target.connection_params
@@ -163,12 +178,14 @@ def test_dbt_filters_secrets_with_braces_and_token_precedence(tmp_path: Path, mo
     monkeypatch.setenv("KEEP", "True")
     monkeypatch.setenv("SECRET", "hunter{{2")
     target = load_profile_target(
-        target_with(
-            tmp_path,
-            "port: \"{{ env_var('PORT') | as_number }}\"\n"
-            "client_session_keep_alive: \"{{ env_var('KEEP', 'false') | as_bool }}\"\n"
-            "password: \"{{ env_var('SECRET') }}\"\n"
-            "token: abc",
+        project_paths(
+            target_with(
+                tmp_path,
+                "port: \"{{ env_var('PORT') | as_number }}\"\n"
+                "client_session_keep_alive: \"{{ env_var('KEEP', 'false') | as_bool }}\"\n"
+                "password: \"{{ env_var('SECRET') }}\"\n"
+                "token: abc",
+            )
         )
     )
     params = target.connection_params
@@ -181,13 +198,19 @@ def test_dbt_filters_secrets_with_braces_and_token_precedence(tmp_path: Path, mo
 
 def test_passphrase_precedence_unread_fields_and_refusal_order(tmp_path: Path) -> None:
     explicit = load_profile_target(
-        target_with(tmp_path, "private_key_file: /k.p8\nprivate_key_file_pwd: first\nprivate_key_passphrase: second")
+        project_paths(
+            target_with(
+                tmp_path, "private_key_file: /k.p8\nprivate_key_file_pwd: first\nprivate_key_passphrase: second"
+            )
+        )
     )
     assert explicit.connection_params["private_key_file_pwd"] == "first"
     # A passphrase with no key to open is dropped.
-    dropped = load_profile_target(target_with(tmp_path, "private_key_passphrase: x"))
+    dropped = load_profile_target(project_paths(target_with(tmp_path, "private_key_passphrase: x")))
     assert "private_key_file_pwd" not in dropped.connection_params
-    keyed = load_profile_target(target_with(tmp_path, "token: abc\nprivate_key_path: /k.p8\nzeta: 1\nalpha: 2"))
+    keyed = load_profile_target(
+        project_paths(target_with(tmp_path, "token: abc\nprivate_key_path: /k.p8\nzeta: 1\nalpha: 2"))
+    )
     assert "authenticator" not in keyed.connection_params
     assert [item.context["key"] for item in keyed.diagnostics] == ["zeta", "alpha"]
     # Authentication SST cannot use is refused before any field's type is checked.

@@ -11,6 +11,7 @@ from snowflake_semantic_tools.adapters.errors import ProjectError
 from snowflake_semantic_tools.adapters.project_source import YamlProjectSource
 from snowflake_semantic_tools.adapters.yaml.parse import read_yaml_mapping
 from snowflake_semantic_tools.domain.diagnostics import Severity
+from tests.helpers.projects import project_paths
 
 
 def dbt_project(tmp_path: Path, paths: str) -> Path:
@@ -21,7 +22,7 @@ def dbt_project(tmp_path: Path, paths: str) -> Path:
 def test_sst_dis009_fires(tmp_path: Path) -> None:
     # Refused before dbt is run, so no dbt is needed to reach it.
     with pytest.raises(ProjectError) as caught:
-        YamlProjectSource(dbt_project(tmp_path, "[models, staging]")).dbt_catalog()
+        YamlProjectSource(project_paths(dbt_project(tmp_path, "[models, staging]"))).dbt_catalog()
     diagnostics = caught.value.diagnostics
     assert [(item.code, item.severity) for item in diagnostics] == [("SST-DIS009", Severity.ERROR)] * 2
     assert diagnostics[1].message == "dbt model-paths entry staging does not exist"

@@ -44,6 +44,15 @@ What blocks a build.
 | `validation.description_floor` | integer |  | Shortest description, in characters, a semantic view or metric may carry; unset checks none. |
 | `validation.instruction_budget` | integer |  | Longest composed comment and instructions, in characters, a semantic view may publish; unset checks none. |
 
+## diagnostics
+
+How severe a diagnostic is, beyond what the error registry declares.
+
+| Key | Type | Default | Description |
+|---|---|---|---|
+| `diagnostics.severity_overrides` | map |  | Per-code severity: promote freely; demote an error no lower than warning, and never a non-demotable code (SST-CFG033). |
+| `diagnostics.severity_overrides.<name>` | enum: `error`, `warning`, `info` |  | The severity this code reports at. |
+
 ## enrichment
 
 What `sst enrich` collects from the warehouse, and how much.
@@ -96,6 +105,7 @@ Defaults for tool backing objects.
 | `tools.+target_lag` | string |  | Target lag for defined search services. |
 | `tools.+embedding_model` | string |  | Embedding model for defined search services. |
 | `tools.+execute_as` | enum: `caller`, `owner` | `caller` | Rights a generic tool runs with. |
+| `tools.<route>` | block |  | Per-group override of the `+` keys above, for a group with `define:` members. |
 
 ## semantic_views
 
@@ -106,6 +116,7 @@ Defaults for semantic views, overridable per folder.
 | `semantic_views.+database` | string | the target database | Database for semantic views. |
 | `semantic_views.+schema` | string | the target schema | Schema for semantic views. |
 | `semantic_views.+enabled` | boolean | `true` | Default for views that do not set `enabled` themselves. |
+| `semantic_views.+max_staleness` | integer |  | Default `max_staleness`, in seconds, for views that set none; at least 120 (SST-CFG023). |
 | `semantic_views.<route>` | block |  | Folder route: overrides for views under that directory. |
 
 ## agents
@@ -184,6 +195,7 @@ Stages apply uploads through.
 | `apply.agent_spec_stage.stage` | string | `AGENT_SPECS` | Stage name. |
 | `apply.eval_config_stage` | block |  | Stage for eval run configs, in each agent's schema. |
 | `apply.eval_config_stage.stage` | string | `EVAL_CONFIGS` | Stage name. |
+| `apply.fail_fast` | boolean | `false` | Stop at the first failure instead of continuing; `--fail-fast` and `--no-fail-fast` override it. |
 
 ## snowflake
 
@@ -204,13 +216,19 @@ reads it, so a setting cannot look as though it takes effect when it does not.
 | Key | Type | Description |
 |---|---|---|
 | `dbt` | block | How SST invokes dbt. |
-| `tools.<route>` | block | Per-group override. |
 | `semantic_views.+tags` | list | Default view tags. |
-| `semantic_views.+max_staleness` | integer | Default view staleness. |
 | `agents.+secure` | boolean | Default agent security flag. |
 | `agents.+tags` | list | Default agent tags. |
 | `agents.<route>` | block | Folder route. |
 | `snowflake.tool_types` | list | Extra agent tool types. |
+
+## Deprecated keys
+
+Each is read as the key that replaced it, with a warning (`SST-CFG200`) naming it.
+
+| Key | Read as |
+|---|---|
+| `deploy` | `apply` |
 
 ## Removed keys
 
@@ -241,5 +259,3 @@ as though it still does.
 | `skills.<route>` | the unprefixed keys of skills: are its channel blocks | [`SST-CFG042`](error-codes.md#sst-cfg042) |
 | `skills.catalog.+registry_table` | SST state records every published version | [`SST-CFG043`](error-codes.md#sst-cfg043) |
 | `skills.catalog.+prune_deleted` | every version is built from a complete bundle | [`SST-CFG043`](error-codes.md#sst-cfg043) |
-| `apply.fail_fast` | pass --fail-fast to sst apply | [`SST-CFG043`](error-codes.md#sst-cfg043) |
-| `deploy` | renamed to apply: | [`SST-CFG043`](error-codes.md#sst-cfg043) |

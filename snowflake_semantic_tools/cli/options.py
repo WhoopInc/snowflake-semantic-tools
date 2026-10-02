@@ -4,7 +4,8 @@ Every factory returns a decorator for one option, or for options that always app
 together and in this order. A command applies them where each option sits in its own
 signature: `--help` and the generated CLI reference list options in decorator order.
 Help text is not set here; `help_text.document_options` gives each flag its one shared
-description, so every command that takes a flag describes it the same way.
+description, so every command that takes a flag describes it the same way. The global
+options -- `--output`, `--project-dir`, `--manifest`, and the rest -- live in `cli.globals`.
 """
 
 from __future__ import annotations
@@ -29,64 +30,38 @@ def stacked(*decorators: Decorator) -> Decorator:
     return apply
 
 
-def project_dir_option(*, exists: bool = True, show_default: bool | None = None) -> Decorator:
-    """`--project-dir`, the current directory by default; it must exist unless `exists` is false."""
-    return click.option(
-        "--project-dir",
-        type=click.Path(exists=exists, file_okay=False, path_type=Path),
-        default=Path("."),
-        show_default=show_default,
-    )
-
-
 def target_option() -> Decorator:
-    """`--target`, passed to the command as `target_name`."""
-    return click.option("--target", "target_name")
+    """`--target`/`-t`, else `$SST_TARGET`, passed to the command as `target_name`."""
+    return click.option("--target", "-t", "target_name", envvar="SST_TARGET")
 
 
-# Where `--allow-unsupported-manifest-schema` is kept for the run, in the click context's `meta`.
-ALLOW_UNSUPPORTED_MANIFEST_SCHEMA = "sst.allow_unsupported_manifest_schema"
+def database_option() -> Decorator:
+    """`--database`: where a command reads from, never where an artifact is published."""
+    return click.option("--database")
 
 
-def _remember_schema_override(context: click.Context, _param: click.Parameter, value: bool) -> bool:
-    context.meta[ALLOW_UNSUPPORTED_MANIFEST_SCHEMA] = value
-    return value
+def _check_selectors(ctx: click.Context, param: click.Parameter, value: Any) -> Any:
+    # Imported here: the selector wiring imports the root group, which imports this module.
+    from snowflake_semantic_tools.cli.wiring.compile import check_selectors
 
-
-def manifest_option() -> Decorator:
-    """`--manifest`, an existing dbt `manifest.json`, passed as `manifest_path`.
-
-    With it comes `--allow-unsupported-manifest-schema`, which is not passed to the command: the
-    project wiring reads it from the click context, so every command that reads a manifest takes it.
-    """
-    return stacked(
-        click.option(
-            "--manifest",
-            "manifest_path",
-            type=click.Path(exists=True, dir_okay=False, path_type=Path),
-        ),
-        click.option(
-            "--allow-unsupported-manifest-schema",
-            is_flag=True,
-            expose_value=False,
-            callback=_remember_schema_override,
-        ),
-    )
-
-
-def project_options() -> Decorator:
-    """`--project-dir`, `--target`, and `--manifest`: the project a command reads, and its target."""
-    return stacked(project_dir_option(), target_option(), manifest_option())
+    return check_selectors(ctx, param, value)
 
 
 def select_option(*, multiple: bool = True) -> Decorator:
-    """`--select`, passed as `selected`: repeatable unless `multiple` is false."""
-    return click.option("--select", "selected", multiple=multiple)
+    """`--select`, passed as `selected`: repeatable unless `multiple` is false; checked as it is parsed."""
+    return click.option("--select", "selected", multiple=multiple, callback=_check_selectors)
 
 
 def selection_options() -> Decorator:
     """`--select` and `--exclude`, both repeatable, passed as `selected` and `excluded`."""
-    return stacked(select_option(), click.option("--exclude", "excluded", multiple=True))
+    return stacked(select_option(), click.option("--exclude", "excluded", multiple=True, callback=_check_selectors))
+
+
+def state_option() -> Decorator:
+    """`--state`, else `$SST_STATE_DIR`: the directory holding a previous run's `manifest.json`."""
+    return click.option(
+        "--state", "state_dir", type=click.Path(file_okay=False, path_type=Path), envvar="SST_STATE_DIR"
+    )
 
 
 def prune_option() -> Decorator:
@@ -100,10 +75,33 @@ def partial_option() -> Decorator:
 
 
 def validation_options() -> Decorator:
-    """`--strict/--no-strict` and `--snowflake-syntax-check/--no-...`; None when neither is given."""
+    """`--strict/--no-strict` (else `$SST_STRICT`) and the syntax-check pair; None when unset."""
+    from snowflake_semantic_tools.cli.globals import STRICT_BOOL
+
     return stacked(
-        click.option("--strict/--no-strict", default=None),
+        click.option("--strict/--no-strict", default=None, envvar="SST_STRICT", type=STRICT_BOOL),
         click.option("--snowflake-syntax-check/--no-snowflake-syntax-check", default=None),
+    )
+
+
+def _refuse_defer(ctx: click.Context, param: click.Parameter, value: Any) -> Any:
+    if value:
+        # Imported here: the root group imports this module.
+        from snowflake_semantic_tools.cli.group import SstUsageError
+
+        raise SstUsageError(
+            "--defer-target is not supported in this release: SST reads the manifest dbt resolves for --target, "
+            "so configure deferral in dbt",
+            ctx,
+        )
+    return value
+
+
+def defer_target_option() -> Decorator:
+    """`--defer-target` (else `$SST_DEFER_TARGET`), refused, and `--no-defer`, which defer never needs."""
+    return stacked(
+        click.option("--defer-target", envvar="SST_DEFER_TARGET", expose_value=False, callback=_refuse_defer),
+        click.option("--no-defer", is_flag=True, expose_value=False),
     )
 
 
@@ -117,6 +115,16 @@ def fail_fast_option() -> Decorator:
     return click.option("--fail-fast", is_flag=True)
 
 
-def output_option() -> Decorator:
-    """`--output human|json`, human by default."""
-    return click.option("--output", type=click.Choice(["human", "json"]), default="human")
+def fail_fast_pair() -> Decorator:
+    """`--fail-fast/--no-fail-fast`, None when neither is given so a config key decides."""
+    return click.option("--fail-fast/--no-fail-fast", default=None)
+
+
+def threads_option() -> Decorator:
+    """`--threads`, 1 to 16, else `$SST_THREADS`; None when neither is given."""
+    return click.option("--threads", type=click.IntRange(1, 16), envvar="SST_THREADS")
+
+
+def no_detailed_exitcode_option() -> Decorator:
+    """The `--no-detailed-exitcode` flag, which turns exit 2 into exit 0."""
+    return click.option("--no-detailed-exitcode", is_flag=True)

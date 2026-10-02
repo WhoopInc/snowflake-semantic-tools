@@ -10,14 +10,15 @@ through `dbt.project` and passed to the semantic pipeline, which reads no dbt fi
 
 from __future__ import annotations
 
+import dataclasses
 from collections.abc import Callable
-from dataclasses import replace
 from hashlib import sha256
 from pathlib import Path
+from types import MappingProxyType
 
 from snowflake_semantic_tools.adapters.dbt.invoke import DbtRunner, parse_project, subprocess_runner
 from snowflake_semantic_tools.adapters.dbt.manifest import load_manifest_catalog
-from snowflake_semantic_tools.adapters.dbt.profiles import load_profile_target, profile_output, resolve_profile_name
+from snowflake_semantic_tools.adapters.dbt.profiles import declared_targets, load_profile_target, profile_output
 from snowflake_semantic_tools.adapters.dbt.project import (
     check_model_paths,
     dbt_project_name,
@@ -27,6 +28,7 @@ from snowflake_semantic_tools.adapters.dbt.project import (
     target_path,
 )
 from snowflake_semantic_tools.adapters.errors import ProjectError
+from snowflake_semantic_tools.adapters.locations import ProjectPaths
 from snowflake_semantic_tools.adapters.yaml.agents import load_agents
 from snowflake_semantic_tools.adapters.yaml.config import load_project_config, read_config_document
 from snowflake_semantic_tools.adapters.yaml.discover import discover_yaml
@@ -43,6 +45,7 @@ from snowflake_semantic_tools.domain.model.agent import AgentModel
 from snowflake_semantic_tools.domain.model.config_schema import config_block, configured_dir, skills_configured
 from snowflake_semantic_tools.domain.model.dbt import DbtCatalog
 from snowflake_semantic_tools.domain.model.eval import EvalCatalog
+from snowflake_semantic_tools.domain.model.identifier import Identifier
 from snowflake_semantic_tools.domain.model.profile import ProfileCatalog
 from snowflake_semantic_tools.domain.model.project import SemanticViewProject
 from snowflake_semantic_tools.domain.model.skill import SkillCatalog
@@ -54,6 +57,7 @@ from snowflake_semantic_tools.domain.ports.project import (
     ProjectTarget,
     ValidationDefaults,
 )
+from snowflake_semantic_tools.domain.resolve.config import has_target_conditional, render_config
 from snowflake_semantic_tools.domain.state import canonical_json
 from snowflake_semantic_tools.domain.validate.dbt_seam import empty_catalog
 
@@ -68,22 +72,23 @@ class YamlProjectSource:
 
     def __init__(
         self,
-        project_dir: Path,
+        files: ProjectPaths,
         *,
         target_name: str | None = None,
         manifest_path: Path | None = None,
         invoke_dbt: bool = True,
+        database: str | None = None,
         dbt_runner: DbtRunner = subprocess_runner,
-        allow_unsupported_manifest_schema: bool = False,
         load_cache: LoadCache | None = None,
     ) -> None:
-        self._project_dir = project_dir
+        self._files = files
+        self._database = database
+        self._project_dir = files.project_dir
         self._target_name = target_name
         self._manifest_path = manifest_path
         self._invoke_dbt = invoke_dbt
-        self._load_cache = load_cache
         self._runner = dbt_runner
-        self._allow_unsupported = allow_unsupported_manifest_schema
+        self._load_cache = load_cache
         self._parsed = False
         self._parse_warnings: tuple[Diagnostic, ...] = ()
 
@@ -114,15 +119,19 @@ class YamlProjectSource:
         if self._manifest_path is None and self._invoke_dbt and not self._parsed:
             check_model_paths(self._project_dir, read_yaml_mapping)
             self._parse_warnings = parse_project(
-                self._project_dir, self._target_name, path, runner=self._runner, auto_compile=self._auto_compile()
+                self._project_dir,
+                self._target_name,
+                path,
+                runner=self._runner,
+                auto_compile=self._auto_compile(),
+                profiles_dir=self._files.profiles_directory(),
             )
             self._parsed = True
         return path
 
     def _auto_compile(self) -> bool:
         """Read `defer.auto_compile`, the 0.3 key that asked SST to build the manifest for a target."""
-        config = read_config_document(self._project_dir)
-        defer = config.get("defer") if isinstance(config, dict) else None
+        defer = self._config_tree().get("defer")
         return isinstance(defer, dict) and defer.get("auto_compile") is True
 
     def dbt_catalog(self) -> DbtCatalog:
@@ -131,7 +140,9 @@ class YamlProjectSource:
         Raises:
             ProjectError: dbt fails, or the manifest is absent, unreadable, or of another schema.
         """
-        return load_manifest_catalog(self._parsed_manifest(), allow_unsupported_schema=self._allow_unsupported)
+        return load_manifest_catalog(
+            self._parsed_manifest(), allow_unsupported_schema=self._files.allow_unsupported_manifest_schema
+        )
 
     def _seam_diagnostics(self, catalog: DbtCatalog) -> tuple[Diagnostic, ...]:
         """What the dbt seam found before any semantic file is checked against the models.
@@ -164,12 +175,17 @@ class YamlProjectSource:
         """
         # SST's own files first, then the dbt target and models: a problem in either is
         # reported in that order, and before dbt is run.
-        inputs = read_semantic_inputs(self._project_dir, self._load_cache)
-        target = resolve_target(self._project_dir, self._target_name)
+        inputs = read_semantic_inputs(
+            self._files, rendered_config(self._files, self._target_name).tree, self._load_cache
+        )
+        target = resolve_target(self._files, self._target_name)
+        if self._database is not None:
+            target = dataclasses.replace(target, database=self._database)
         catalog = self.dbt_catalog()
         models = {model.name.casefold(): model for model in catalog.models}
         project = load_semantic_views_result(self._project_dir, inputs, target=target, models=models, catalog=catalog)
-        return replace(project, diagnostics=DiagnosticBag((*self._seam_diagnostics(catalog), *project.diagnostics)))
+        seam = self._seam_diagnostics(catalog)
+        return dataclasses.replace(project, diagnostics=DiagnosticBag((*seam, *project.diagnostics)))
 
     def load_tools(self) -> ToolCatalog:
         """Load the tool groups under `project.tools_dir`, checked against the dbt manifest and target.
@@ -183,24 +199,27 @@ class YamlProjectSource:
             ValueError: The profile cannot be resolved, or `profiles.yml` does not declare the target.
         """
         dbt = self.dbt_catalog()
-        config = read_yaml_mapping(self._project_dir / "sst_config.yml")
-        project = config.get("project")
-        tools_dir = str(project.get("tools_dir") or "tools") if isinstance(project, dict) else "tools"
-        profile_name = resolve_profile_name(self._project_dir)
-        profiles = read_yaml_mapping(self._project_dir / "profiles.yml")
-        profile = profiles.get(profile_name)
-        outputs = profile.get("outputs") if isinstance(profile, dict) else None
-        declared_targets = frozenset(str(key) for key in outputs) if isinstance(outputs, dict) else frozenset()
-        selected = self._target_name or (profile.get("target") if isinstance(profile, dict) else None)
-        if not isinstance(selected, str) or selected not in declared_targets:
+        config = self._config_tree()
+        tools_dir = configured_dir(config, "tools_dir", "tools")
+        _profile, targets, default = declared_targets(self._files)
+        selected = self._target_name or default
+        if not isinstance(selected, str) or selected not in targets:
             raise ValueError(f"profiles.yml has no target {selected!r}")
         return load_tool_catalog(
             self._project_dir,
             dbt,
             target_name=selected,
-            declared_targets=declared_targets,
+            declared_targets=targets,
             tools_dir=tools_dir,
         )
+
+    def _config_tree(self) -> dict[str, object]:
+        """Return the resolved configuration file as a plain tree; empty when the run has none.
+
+        Raises:
+            ProjectError: the file cannot be read or parsed.
+        """
+        return read_yaml_mapping(self._files.config_file) if self._files.config_file is not None else {}
 
     def load_evals(
         self,
@@ -221,16 +240,13 @@ class YamlProjectSource:
         Raises:
             ProjectError: `sst_config.yml` cannot be read.
         """
-        config = read_yaml_mapping(self._project_dir / "sst_config.yml")
-        project = config.get("project")
-        agents_dir = str(project.get("agents_dir") or "agents") if isinstance(project, dict) else "agents"
-        metrics_dir = (
-            str(project.get("eval_metrics_dir") or "eval_metrics") if isinstance(project, dict) else "eval_metrics"
-        )
+        config = self._config_tree()
+        agents_dir = configured_dir(config, "agents_dir", "agents")
+        metrics_dir = configured_dir(config, "eval_metrics_dir", "eval_metrics")
         agent_diagnostics = DiagnosticBag()
         if agents is None:
             agents, agent_diagnostics = load_agents(self._project_dir, agents_dir=agents_dir)
-        defaults, default_diagnostics = parse_eval_defaults(config.get("evals"))
+        defaults, default_diagnostics = parse_eval_defaults(config.get("evals"), file=self._files.config_name)
         snowflake = config.get("snowflake")
         raw_models = snowflake.get("orchestration_models") if isinstance(snowflake, dict) else None
         allowed_models = strings(raw_models)
@@ -255,36 +271,40 @@ class YamlProjectInputs(ProjectInputs):
 
     def __init__(
         self,
-        project_dir: Path,
+        files: ProjectPaths,
         *,
         target_name: str | None,
         manifest_path: Path | None,
         git_sha: Callable[[], str],
+        database: str | None = None,
         dbt_runner: DbtRunner = subprocess_runner,
-        allow_unsupported_manifest_schema: bool = False,
         load_cache: LoadCache | None = None,
     ) -> None:
-        self._project_dir = project_dir
+        self._files = files
+        self._project_dir = files.project_dir
         self._target_name = target_name
-        self._allow_unsupported = allow_unsupported_manifest_schema
+        self._database = database
         self._load_cache = load_cache or LoadCache()
         self._source = YamlProjectSource(
-            project_dir,
+            files,
             target_name=target_name,
             manifest_path=manifest_path,
             invoke_dbt=manifest_path is None,
+            database=database,
             dbt_runner=dbt_runner,
-            allow_unsupported_manifest_schema=allow_unsupported_manifest_schema,
             load_cache=self._load_cache,
         )
         self._git_sha = git_sha
 
     def config(self) -> ProjectConfig:
-        return load_project_config(self._project_dir)
+        return rendered_config(self._files, self._target_name)
 
     def target(self) -> ProjectTarget:
-        profile = load_profile_target(self._project_dir, self._target_name)
-        return ProjectTarget(profile.identity, profile.diagnostics)
+        profile = load_profile_target(self._files, self._target_name)
+        identity = profile.identity
+        if self._database is not None:
+            identity = dataclasses.replace(identity, database=Identifier.parse(self._database))
+        return ProjectTarget(identity, profile.diagnostics)
 
     def load_project(self) -> SemanticViewProject:
         return self._source.load_project()
@@ -323,7 +343,7 @@ class YamlProjectInputs(ProjectInputs):
         return self._git_sha()
 
     def validation_defaults(self) -> ValidationDefaults:
-        config = read_config_document(self._project_dir)
+        config = read_config_document(self._files)
         validation = config.get("validation") if isinstance(config, dict) else None
         if not isinstance(validation, dict):
             return ValidationDefaults()
@@ -344,14 +364,14 @@ class YamlProjectInputs(ProjectInputs):
             dbt_schema_version=catalog.schema_version,
             dbt_digest=sha256(canonical_json(projection)).hexdigest(),
             model_count=len(catalog.models),
-            file_checksums=_file_checksums(self._project_dir, self._load_cache),
+            file_checksums=_file_checksums(self._files, self._load_cache),
             target_name=self._selected_target(),
         )
 
     def _selected_target(self) -> str:
         """Return the `profiles.yml` target this source compiles for, by name; empty when none resolves."""
         try:
-            return profile_output(self._project_dir, self._target_name)[1]
+            return profile_output(self._files, self._target_name)[1]
         except (ProjectError, ValueError, OSError):
             return ""
 
@@ -364,7 +384,9 @@ class YamlProjectInputs(ProjectInputs):
             return "", DbtCatalog(schema_version="", dbt_version=None, project_name=None, models=()), ""
         dbt_path = self._source.manifest_file()
         name = dbt_project_name(self._project_dir)
-        catalog = load_manifest_catalog(dbt_path, allow_unsupported_schema=self._allow_unsupported)
+        catalog = load_manifest_catalog(
+            dbt_path, allow_unsupported_schema=self._files.allow_unsupported_manifest_schema
+        )
         try:
             recorded = dbt_path.resolve().relative_to(self._project_dir.resolve()).as_posix()
         except ValueError:
@@ -373,13 +395,35 @@ class YamlProjectInputs(ProjectInputs):
 
     def _config_sources(self) -> tuple[str, str]:
         """Read `sst_config.yml` as written: its checksum, and the semantic models path it names."""
-        config_value = read_config_document(self._project_dir)
+        config_value = read_config_document(self._files)
         if config_value is None:
             return "", "semantic_models"
         semantic_path = "semantic_models"
         if isinstance(config_value, dict) and isinstance(config_value.get("project"), dict):
             semantic_path = str(config_value["project"].get("semantic_models_dir") or semantic_path)
         return sha256(canonical_json(config_value)).hexdigest(), semantic_path
+
+
+def rendered_config(files: ProjectPaths, target_name: str | None) -> ProjectConfig:
+    """Return the checked configuration with its target conditionals and `var()` calls resolved.
+
+    The target's name is read from `profiles.yml` only when a conditional needs it: `target_name`,
+    else the profile's default target.
+
+    Raises:
+        ProjectError: the file cannot be read or parsed, or a needed profile cannot be resolved.
+    """
+    loaded = load_project_config(files)
+    name = target_name
+    if name is None and has_target_conditional(loaded.tree):
+        name = declared_targets(files)[2]
+    tree, diagnostics = render_config(loaded.tree, target_name=name, file=files.config_name)
+    return ProjectConfig(
+        MappingProxyType(tree),
+        DiagnosticBag((*loaded.diagnostics, *diagnostics)),
+        loaded.has_dbt_project,
+        loaded.file,
+    )
 
 
 def _dbt_projection(catalog: DbtCatalog) -> list[dict[str, object]]:
@@ -404,7 +448,7 @@ def _dbt_projection(catalog: DbtCatalog) -> list[dict[str, object]]:
     ]
 
 
-def _file_checksums(project_dir: Path, cache: LoadCache | None = None) -> dict[str, str]:
+def _file_checksums(files: ProjectPaths, cache: LoadCache | None = None) -> dict[str, str]:
     """Checksum every input file the manifest records, by project-relative path.
 
     With a dbt project, each semantic model document; then every file under the tools,
@@ -412,7 +456,8 @@ def _file_checksums(project_dir: Path, cache: LoadCache | None = None) -> dict[s
     roots, and with the stage channel the profile, hook, and MCP server roots. Those bundled
     roots skip what publication skips: hidden entries and caches.
     """
-    config = dict(load_project_config(project_dir).tree)
+    project_dir = files.project_dir
+    config = dict(load_project_config(files).tree)
     checksums: dict[str, str] = {}
     if (project_dir / "dbt_project.yml").is_file():
         semantic_models_dir = configured_dir(config, "semantic_models_dir", "semantic_models")

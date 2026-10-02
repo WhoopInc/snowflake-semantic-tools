@@ -10,19 +10,19 @@ versioned JSON envelope on stdout and nothing else.
 
 | Command | Summary |
 |---|---|
-| [`sst apply`](#sst-apply) | Apply a current reviewed plan; smoke probes never run here. |
-| [`sst clean`](#sst-clean) | Remove local SST build artifacts only; never touch Snowflake. |
-| [`sst compile`](#sst-compile) | Compile semantic views and write the canonical manifest. |
-| [`sst debug`](#sst-debug) | Show resolved project, profile, target, and optional connection identity. |
-| [`sst docs`](#sst-docs) | Write the generated reference pages under docs/reference/. |
+| [`sst init`](#sst-init) | Scaffold SST into an existing dbt project without overwriting a file. |
+| [`sst debug`](#sst-debug) | Show the resolved configuration, profile, target, and registry, and test the connection. |
 | [`sst enrich`](#sst-enrich) | Fill dbt model column metadata from the warehouse, editing the model YAML in place. |
-| [`sst init`](#sst-init) | Create a minimal SST project scaffold without overwriting files. |
-| [`sst list`](#sst-list) | List compiled artifacts and cached application status. |
+| [`sst compile`](#sst-compile) | Compile every artifact and write the canonical manifest, offline. |
+| [`sst validate`](#sst-validate) | Validate every offline rule, with optional connected checks. |
+| [`sst list`](#sst-list) | List compiled artifacts and their cached application status, optionally of one TYPE. |
+| [`sst plan`](#sst-plan) | Observe live Snowflake state and compute a non-writing plan. |
+| [`sst apply`](#sst-apply) | Apply a current reviewed plan; smoke probes never run here. |
+| [`sst test`](#sst-test) | Run exact offline goldens or separate connected smoke probes. |
+| [`sst docs`](#sst-docs) | Write the generated reference pages under docs/reference/. |
+| [`sst clean`](#sst-clean) | Remove local SST build artifacts only; never touch Snowflake. |
 | [`sst migrate`](#sst-migrate) | Rewrite a 0.3 project into the 1.0 dialect. |
 | [`sst migrate refs`](#sst-migrate-refs) | Rewrite legacy table()/column() globals to ref(), and label boolean filters. |
-| [`sst plan`](#sst-plan) | Observe live Snowflake state and compute a non-writing plan. |
-| [`sst test`](#sst-test) | Run exact offline goldens or separate connected smoke probes. |
-| [`sst validate`](#sst-validate) | Validate every offline rule, with optional connected checks. |
 
 ## Global options
 
@@ -31,8 +31,23 @@ These go before the command name.
 | Option | Value | Default | Description |
 |---|---|---|---|
 | `--version` | flag |  | Show the version and exit. |
-| `--output` | human\|json |  | Default `--output` for the command that follows. |
-| `--project-dir` | DIRECTORY |  | Default `--project-dir` for the command that follows. |
+| `--output / -o` | table\|plain\|json\|yaml\|csv |  | `table` (default), `plain`, or `json`; `list` also takes `yaml` and `csv`. Else `$SST_OUTPUT`. |
+| `--verbose / -v` | flag |  | Add each diagnostic's phase and fingerprint. Cannot be combined with `--quiet`. |
+| `--quiet / -q` | flag |  | Show errors only. |
+| `--log-level` | debug\|info\|warn\|error |  | Log threshold, else `$SST_LOG_LEVEL`; independent of `--verbose`. |
+| `--no-color` | flag |  | No ANSI colour, as `$SST_NO_COLOR` or a non-empty `$NO_COLOR` also say. |
+| `--project-dir` | DIRECTORY |  | Project root, else `$SST_PROJECT_DIR`: where `sst_config.yml` and `dbt_project.yml` are. |
+| `--config` | PATH |  | Read this configuration file, else `$SST_CONFIG`, instead of discovering one in the project. |
+| `--profiles-dir` | DIRECTORY |  | Directory of `profiles.yml`, else `$SST_PROFILES_DIR`, then `$DBT_PROFILES_DIR`. |
+| `--manifest` | FILE |  | Read this dbt `manifest.json` instead of running `dbt parse`. |
+| `--allow-unsupported-manifest-schema` | flag |  | Read a dbt manifest of an unsupported schema version, for this run only. |
+| `--allow-stale-manifest` | flag |  | Accept a `--manifest` older than the files it describes, for this run only. |
+| `--baseline` | FILE |  | Baseline file of known warnings; `.sst/baseline.json` when it exists. |
+| `--no-baseline` | flag |  | Ignore the baseline for this run: every diagnostic is shown and blocks as declared. |
+| `--show-baselined` | flag |  | Show baselined diagnostics instead of counting them. |
+| `--show-info` | flag |  | Show info diagnostics instead of counting them. |
+| `--show-cascade` | flag |  | Show cascade diagnostics instead of counting them. |
+| `--show-all-occurrences` | flag |  | Show every occurrence of a code that repeats four or more times. |
 
 ## Exit codes
 
@@ -40,77 +55,35 @@ These go before the command name.
 |---:|---|---|
 | 0 | `OK` | Success. For `sst plan`, nothing to change. |
 | 1 | `ERROR` | Errors were reported, or an apply, a test suite, or a check failed. |
-| 2 | `CHANGES` | `sst plan` found changes, or `sst migrate refs` found rewrites to make. |
+| 2 | `CHANGES` | Declared and actual state differ: `sst plan` found changes, or `enrich --check`, `docs --check`, or `migrate refs` found something to rewrite. |
 | 3 | `USAGE` | The command line is invalid. |
 | 4 | `CONFIG` | The project, its configuration, or a saved plan cannot be used. |
 | 5 | `CONNECTION` | Snowflake could not be reached. |
 | 130 | `INTERRUPTED` | The run was interrupted. |
 
-## sst apply
+## sst init
 
-Apply a current reviewed plan; smoke probes never run here.
+Scaffold SST into an existing dbt project without overwriting a file.
+
+Writes the configuration file and the semantic-model directories it names. With
+--check-only nothing is written, and the command exits 1 unless the setup is complete.
+Exit 4 when the directory is not a dbt project.
 
 ```text
-sst apply [OPTIONS]
+sst init [OPTIONS]
 ```
 
 | Option | Value | Default | Description |
 |---|---|---|---|
-| `--project-dir` | DIRECTORY | `.` | Project root: the directory that holds `sst_config.yml`. |
-| `--target` | TEXT |  | Target from `profiles.yml`; defaults to the profile's own default target. |
-| `--manifest` | FILE |  | Read this dbt `manifest.json` instead of running `dbt parse`. |
-| `--allow-unsupported-manifest-schema` | flag |  | Read a dbt manifest whose schema version SST does not support or cannot read, at your own risk. |
-| `--select` | TEXT, repeatable |  | Only these artifacts: a semantic view name, `type:<type>`, or `<type>:<name>`. |
-| `--exclude` | TEXT, repeatable |  | Leave these artifacts out; same forms as `--select`. |
-| `--plan` | FILE |  | Apply this saved plan. It must still match the compiled project. |
-| `--prune` | flag |  | Also act on managed artifacts whose source was deleted, as far as each type allows: drop, deactivate, or report. |
-| `--partial` | flag |  | Go ahead with every artifact that has no errors and depends on nothing that does; still exits 1 while errors remain. Cannot be combined with `--prune`. |
-| `--yes` | flag |  | Apply without asking for confirmation. |
-| `--fail-fast` | flag |  | Stop at the first failure instead of continuing. |
-| `--break-stale-lock` | flag |  | Take over a state lock left behind by a run that no longer exists. |
-| `--temporary` | flag |  | Publish agents as session-scoped temporary agents; refused for a production-like target. |
-| `--sql-out` | DIRECTORY |  | Also write the statements for each change into this directory. |
-| `--strict / --no-strict` | flag |  | Promote every warning to an error. Defaults to `validation.strict`. |
-| `--snowflake-syntax-check / --no-snowflake-syntax-check` | flag |  | Compile expressions against Snowflake. Defaults to `validation.snowflake_syntax_check`. |
-| `--output` | human\|json | `human` | `human` for readable text, or `json` for one machine-readable envelope. |
-
-## sst clean
-
-Remove local SST build artifacts only; never touch Snowflake.
-
-```text
-sst clean [OPTIONS]
-```
-
-| Option | Value | Default | Description |
-|---|---|---|---|
-| `--project-dir` | DIRECTORY | `.` | Project root: the directory that holds `sst_config.yml`. |
-| `--output` | human\|json | `human` | `human` for readable text, or `json` for one machine-readable envelope. |
-
-## sst compile
-
-Compile semantic views and write the canonical manifest.
-
-```text
-sst compile [OPTIONS]
-```
-
-| Option | Value | Default | Description |
-|---|---|---|---|
-| `--project-dir` | DIRECTORY | `.` | Project root: the directory that holds `sst_config.yml`. |
-| `--emit-ddl` | DIRECTORY |  | Write each semantic view's rendered DDL into this directory. |
-| `--print-ddl` | flag |  | Print the rendered DDL to stdout. |
-| `--manifest-output` | FILE |  | Also write the SST manifest here; with `--select`, only the selection. |
-| `--select` | TEXT |  | Only this artifact: a semantic view name, `type:<type>`, or `<type>:<name>`. |
-| `--partial` | flag |  | Go ahead with every artifact that has no errors and depends on nothing that does; still exits 1 while errors remain. Cannot be combined with `--prune`. |
-| `--target` | TEXT |  | Target from `profiles.yml`; defaults to the profile's own default target. |
-| `--manifest` | FILE |  | Read this dbt `manifest.json` instead of running `dbt parse`. |
-| `--allow-unsupported-manifest-schema` | flag |  | Read a dbt manifest whose schema version SST does not support or cannot read, at your own risk. |
-| `--output` | human\|json | `human` | `human` for readable text, or `json` for one machine-readable envelope. |
+| `--skip-prompts` | flag |  | Accept every default without prompting. |
+| `--check-only` | flag |  | Report whether the setup is complete; create nothing. |
 
 ## sst debug
 
-Show resolved project, profile, target, and optional connection identity.
+Show the resolved configuration, profile, target, and registry, and test the connection.
+
+Exit 0 when everything resolved, 4 when the configuration or profile cannot be, and 5 when
+the connection fails.
 
 ```text
 sst debug [OPTIONS]
@@ -118,29 +91,9 @@ sst debug [OPTIONS]
 
 | Option | Value | Default | Description |
 |---|---|---|---|
-| `--project-dir` | DIRECTORY | `.` | Project root: the directory that holds `sst_config.yml`. |
-| `--target` | TEXT |  | Target from `profiles.yml`; defaults to the profile's own default target. |
-| `--test-connection` | flag |  | Also connect to Snowflake and report the session's role and account. |
-| `--output` | human\|json | `human` | `human` for readable text, or `json` for one machine-readable envelope. |
-
-## sst docs
-
-Write the generated reference pages under docs/reference/.
-
-The artifact, error-code, configuration, and command-line references are
-rendered from the engine's own registries, so they cannot drift from what the
-engine accepts. With --check, nothing is written and the command exits 1 when
-a committed page differs.
-
-```text
-sst docs [OPTIONS]
-```
-
-| Option | Value | Default | Description |
-|---|---|---|---|
-| `--project-dir` | DIRECTORY | `.` | Project root: the directory that holds `sst_config.yml`. |
-| `--check` | flag |  | Write nothing; exit 1 when a committed reference page is out of date. |
-| `--output` | human\|json | `human` | `human` for readable text, or `json` for one machine-readable envelope. |
+| `--target / -t` | TEXT |  | Target from `profiles.yml`, else `$SST_TARGET`; defaults to the profile's own default target. |
+| `--no-connect` | flag |  | Report everything but the connection, offline. |
+| `--snowflake-signatures` | flag |  | Report how often Snowflake refusals went unrecognised, from the run log. |
 
 ## sst enrich
 
@@ -159,10 +112,7 @@ sst enrich [OPTIONS]
 
 | Option | Value | Default | Description |
 |---|---|---|---|
-| `--project-dir` | DIRECTORY | `.` | Project root: the directory that holds `sst_config.yml`. |
-| `--target` | TEXT |  | Target from `profiles.yml`; defaults to the profile's own default target. |
-| `--manifest` | FILE |  | Read this dbt `manifest.json` instead of running `dbt parse`. |
-| `--allow-unsupported-manifest-schema` | flag |  | Read a dbt manifest whose schema version SST does not support or cannot read, at your own risk. |
+| `--target / -t` | TEXT |  | Target from `profiles.yml`, else `$SST_TARGET`; defaults to the profile's own default target. |
 | `--select` | TEXT, repeatable |  | Only these dbt models: `model:<name>` or a bare name; globs such as `fct_*` work. |
 | `--exclude` | TEXT, repeatable |  | Leave these dbt models out; same forms as `--select`. |
 | `--include` | TEXT, repeatable |  | Components to fill, repeatable or comma-separated: column-types, data-types, sample-values, enums, column-synonyms, table-synonyms, synonyms, all. Defaults to column-types and data-types. |
@@ -173,24 +123,50 @@ sst enrich [OPTIONS]
 | `--dry-run` | flag |  | Write nothing; print each file's change as a diff. |
 | `--no-detailed-exitcode` | flag |  | With `--check`, exit 0 when files would change, instead of 2. |
 | `--fail-fast` | flag |  | Stop at the first model that fails, and write nothing. |
-| `--output` | human\|json | `human` | `human` for readable text, or `json` for one machine-readable envelope. |
 
-## sst init
+## sst compile
 
-Create a minimal SST project scaffold without overwriting files.
+Compile every artifact and write the canonical manifest, offline.
+
+Diagnostics:
+    SST-MAN008: the compile failed, so no manifest was written.
+    SST-MAN007: the canonical manifest could not be written.
 
 ```text
-sst init [OPTIONS]
+sst compile [OPTIONS]
 ```
 
 | Option | Value | Default | Description |
 |---|---|---|---|
-| `--project-dir` | DIRECTORY | `.` | Project root: the directory that holds `sst_config.yml`. |
-| `--output` | human\|json | `human` | `human` for readable text, or `json` for one machine-readable envelope. |
+| `--target / -t` | TEXT |  | Target from `profiles.yml`, else `$SST_TARGET`; defaults to the profile's own default target. |
+| `--database` | TEXT |  | Resolve refs against this database instead of the target's. |
+| `--emit-ddl` | DIRECTORY |  | Write each artifact's rendered payload into this directory, offline. |
+| `--emit-agent-spec` | DIRECTORY |  | Write each agent's rendered specification into this directory. |
+| `--select` | TEXT |  | Report and emit only these artifacts; the manifest still holds everything. |
+| `--partial` | flag |  | Go ahead with every artifact that has no errors and depends on nothing that does; still exits 1 while errors remain. Cannot be combined with `--prune`. |
+
+## sst validate
+
+Validate every offline rule, with optional connected checks.
+
+Exit 0 with no errors, and 1 with errors, or warnings under --strict.
+
+```text
+sst validate [OPTIONS]
+```
+
+| Option | Value | Default | Description |
+|---|---|---|---|
+| `--target / -t` | TEXT |  | Target from `profiles.yml`, else `$SST_TARGET`; defaults to the profile's own default target. |
+| `--select` | TEXT, repeatable |  | Only these artifacts: a name (globs allowed), `type:<type>`, `path:<glob>`, `state:<state>`, or `<type>:<name>`. |
+| `--exclude` | TEXT, repeatable |  | Leave these artifacts out; same forms as `--select`. |
+| `--database` | TEXT |  | Read from this database instead of the target's; never where an artifact is published. |
+| `--strict / --no-strict` | flag |  | Promote every warning to an error, else `$SST_STRICT`. Defaults to `validation.strict`. |
+| `--snowflake-syntax-check / --no-snowflake-syntax-check` | flag |  | Compile expressions against Snowflake. Defaults to `validation.snowflake_syntax_check`. |
 
 ## sst list
 
-List compiled artifacts and cached application status.
+List compiled artifacts and their cached application status, optionally of one TYPE.
 
 ```text
 sst list [OPTIONS]
@@ -198,8 +174,119 @@ sst list [OPTIONS]
 
 | Option | Value | Default | Description |
 |---|---|---|---|
-| `--project-dir` | DIRECTORY | `.` | Project root: the directory that holds `sst_config.yml`. |
-| `--output` | human\|json | `human` | `human` for readable text, or `json` for one machine-readable envelope. |
+| `--select` | TEXT, repeatable |  | Only these artifacts: a name (globs allowed), `type:<type>`, `path:<glob>`, `state:<state>`, or `<type>:<name>`. |
+| `--exclude` | TEXT, repeatable |  | Leave these artifacts out; same forms as `--select`. |
+| `--long` | flag |  | Every detail column, including each artifact's source files. |
+
+## sst plan
+
+Observe live Snowflake state and compute a non-writing plan.
+
+Exit 0 with nothing to change, 2 with changes pending, and 1 on an error or a blocked change.
+
+```text
+sst plan [OPTIONS]
+```
+
+| Option | Value | Default | Description |
+|---|---|---|---|
+| `--target / -t` | TEXT |  | Target from `profiles.yml`, else `$SST_TARGET`; defaults to the profile's own default target. |
+| `--select` | TEXT, repeatable |  | Only these artifacts: a name (globs allowed), `type:<type>`, `path:<glob>`, `state:<state>`, or `<type>:<name>`. |
+| `--exclude` | TEXT, repeatable |  | Leave these artifacts out; same forms as `--select`. |
+| `--state` | DIRECTORY |  | Directory holding the previous run's `manifest.json`, which `--select state:modified` compares with. |
+| `--defer-target` | TEXT |  | Not supported in this release: SST reads the manifest dbt resolves for `--target`. |
+| `--no-defer` | flag |  | Accepted: SST never defers. |
+| `--prune` | flag |  | Also act on managed artifacts whose source was deleted, as far as each type allows: drop, deactivate, or report. |
+| `--partial` | flag |  | Go ahead with every artifact that has no errors and depends on nothing that does; still exits 1 while errors remain. Cannot be combined with `--prune`. |
+| `--plan-out` | FILE |  | Write the saved plan here instead of `target/sst/plan.json`. |
+| `--no-plan-out` | flag |  | Do not write a saved plan. |
+| `--sql-out` | DIRECTORY |  | Also write the statements for each change into this directory. |
+| `--no-detailed-exitcode` | flag |  | Exit 0 when changes are pending, instead of 2. |
+| `--strict / --no-strict` | flag |  | Promote every warning to an error, else `$SST_STRICT`. Defaults to `validation.strict`. |
+| `--snowflake-syntax-check / --no-snowflake-syntax-check` | flag |  | Compile expressions against Snowflake. Defaults to `validation.snowflake_syntax_check`. |
+
+## sst apply
+
+Apply a current reviewed plan; smoke probes never run here.
+
+`--fail-fast` and `--no-fail-fast` override `apply.fail_fast` for this run.
+
+```text
+sst apply [OPTIONS]
+```
+
+| Option | Value | Default | Description |
+|---|---|---|---|
+| `--target / -t` | TEXT |  | Target from `profiles.yml`, else `$SST_TARGET`; defaults to the profile's own default target. |
+| `--select` | TEXT, repeatable |  | Only these artifacts: a name (globs allowed), `type:<type>`, `path:<glob>`, `state:<state>`, or `<type>:<name>`. |
+| `--exclude` | TEXT, repeatable |  | Leave these artifacts out; same forms as `--select`. |
+| `--state` | DIRECTORY |  | Previous run's build directory, else `$SST_STATE_DIR`, for `state:` selectors. |
+| `--defer-target` | TEXT |  | Not supported in this release: SST reads the manifest dbt resolves for `--target`. |
+| `--no-defer` | flag |  | Accepted: SST never defers. |
+| `--plan` | FILE |  | Apply this saved plan. It must still match the compiled project. |
+| `--prune` | flag |  | Also act on managed artifacts whose source was deleted, as far as each type allows: drop, deactivate, or report. |
+| `--partial` | flag |  | Go ahead with every artifact that has no errors and depends on nothing that does; still exits 1 while errors remain. Cannot be combined with `--prune`. |
+| `--yes / -y` | flag |  | Apply without asking for confirmation. |
+| `--fail-fast / --no-fail-fast` | flag |  | Stop at the first failure instead of continuing. Defaults to `apply.fail_fast`. |
+| `--threads` | INTEGER RANGE |  | Changes applied at once, 1 to 16, else `$SST_THREADS`; defaults to `skills.+threads`, else 4. |
+| `--break-stale-lock` | flag |  | Take over a state lock left behind by a run that no longer exists. |
+| `--temporary` | flag |  | Publish agents as session-scoped temporary agents; refused for a production-like target. |
+| `--sql-out` | DIRECTORY |  | Also write the statements for each change into this directory. |
+| `--strict / --no-strict` | flag |  | Promote every warning to an error, else `$SST_STRICT`. Defaults to `validation.strict`. |
+| `--snowflake-syntax-check / --no-snowflake-syntax-check` | flag |  | Compile expressions against Snowflake. Defaults to `validation.snowflake_syntax_check`. |
+
+## sst test
+
+Run exact offline goldens or separate connected smoke probes.
+
+```text
+sst test [OPTIONS]
+```
+
+| Option | Value | Default | Description |
+|---|---|---|---|
+| `--suite` | golden\|smoke\|evals, required |  | `golden` compares outputs with committed goldens offline; `smoke` probes deployed objects; `evals` runs agent evaluations. |
+| `--target / -t` | TEXT |  | Target from `profiles.yml`, else `$SST_TARGET`; defaults to the profile's own default target. |
+| `--golden-dir` | DIRECTORY | `expected/ddl` | Directory of the semantic view DDL goldens; the other goldens sit beside it. |
+| `--fail-fast` | flag |  | Stop at the first failing golden, probe, or eval. |
+| `--capture-baseline` | flag |  | Record this eval run as the new baseline. Requires `--reason`. |
+| `--reason` | TEXT |  | Why the baseline is changing; stored with it. |
+
+## sst docs
+
+Write the generated reference pages under docs/reference/.
+
+The artifact, error-code, configuration, and command-line references are
+rendered from the engine's own registries, so they cannot drift from what the
+engine accepts. With --check, nothing is written and the command exits 2 when
+a committed page differs.
+
+```text
+sst docs [OPTIONS]
+```
+
+| Option | Value | Default | Description |
+|---|---|---|---|
+| `--check` | flag |  | Write nothing; exit 2 when a committed reference page is out of date. |
+| `--output-dir` | DIRECTORY |  | Write the pages here instead of `docs/reference`. |
+| `--no-detailed-exitcode` | flag |  | Exit 0 instead of 2 when there are differences. |
+
+## sst clean
+
+Remove local SST build artifacts only; never touch Snowflake.
+
+Exit 1 when the build directory cannot be removed.
+
+Diagnostics:
+    SST-PRT010: the build directory could not be removed.
+
+```text
+sst clean [OPTIONS]
+```
+
+| Option | Value | Default | Description |
+|---|---|---|---|
+| `--dry-run` | flag |  | List what would be removed; remove nothing. |
 
 ## sst migrate
 
@@ -220,73 +307,4 @@ sst migrate refs [OPTIONS]
 
 | Option | Value | Default | Description |
 |---|---|---|---|
-| `--project-dir` | DIRECTORY | `.` | Project root: the directory that holds `sst_config.yml`. |
 | `--write` | flag |  | Rewrite files in place instead of reporting. |
-| `--output` | human\|json | `human` | `human` for readable text, or `json` for one machine-readable envelope. |
-
-## sst plan
-
-Observe live Snowflake state and compute a non-writing plan.
-
-```text
-sst plan [OPTIONS]
-```
-
-| Option | Value | Default | Description |
-|---|---|---|---|
-| `--project-dir` | DIRECTORY | `.` | Project root: the directory that holds `sst_config.yml`. |
-| `--target` | TEXT |  | Target from `profiles.yml`; defaults to the profile's own default target. |
-| `--manifest` | FILE |  | Read this dbt `manifest.json` instead of running `dbt parse`. |
-| `--allow-unsupported-manifest-schema` | flag |  | Read a dbt manifest whose schema version SST does not support or cannot read, at your own risk. |
-| `--select` | TEXT, repeatable |  | Only these artifacts: a semantic view name, `type:<type>`, or `<type>:<name>`. |
-| `--exclude` | TEXT, repeatable |  | Leave these artifacts out; same forms as `--select`. |
-| `--prune` | flag |  | Also act on managed artifacts whose source was deleted, as far as each type allows: drop, deactivate, or report. |
-| `--partial` | flag |  | Go ahead with every artifact that has no errors and depends on nothing that does; still exits 1 while errors remain. Cannot be combined with `--prune`. |
-| `--plan-out` | FILE |  | Write the saved plan here instead of `target/sst/plan.json`. |
-| `--no-plan-out` | flag |  | Do not write a saved plan. |
-| `--sql-out` | DIRECTORY |  | Also write the statements for each change into this directory. |
-| `--no-detailed-exitcode` | flag |  | Exit 0 when changes are pending, instead of 2. |
-| `--state` | DIRECTORY |  | Directory holding the previous run's `manifest.json`, which `--select state:modified` compares with. |
-| `--strict / --no-strict` | flag |  | Promote every warning to an error. Defaults to `validation.strict`. |
-| `--snowflake-syntax-check / --no-snowflake-syntax-check` | flag |  | Compile expressions against Snowflake. Defaults to `validation.snowflake_syntax_check`. |
-| `--output` | human\|json | `human` | `human` for readable text, or `json` for one machine-readable envelope. |
-
-## sst test
-
-Run exact offline goldens or separate connected smoke probes.
-
-```text
-sst test [OPTIONS]
-```
-
-| Option | Value | Default | Description |
-|---|---|---|---|
-| `--project-dir` | DIRECTORY | `.` | Project root: the directory that holds `sst_config.yml`. |
-| `--suite` | golden\|smoke\|evals, required |  | `golden` compares outputs with committed goldens offline; `smoke` probes deployed objects; `evals` runs agent evaluations. |
-| `--target` | TEXT |  | Target from `profiles.yml`; defaults to the profile's own default target. |
-| `--manifest` | FILE |  | Read this dbt `manifest.json` instead of running `dbt parse`. |
-| `--allow-unsupported-manifest-schema` | flag |  | Read a dbt manifest whose schema version SST does not support or cannot read, at your own risk. |
-| `--golden-dir` | DIRECTORY | `expected/ddl` | Directory of the semantic view DDL goldens; the other goldens sit beside it. |
-| `--fail-fast` | flag |  | Stop at the first failing golden, probe, or eval. |
-| `--capture-baseline` | flag |  | Record this eval run as the new baseline. Requires `--reason`. |
-| `--reason` | TEXT |  | Why the baseline is changing; stored with it. |
-| `--output` | human\|json | `human` | `human` for readable text, or `json` for one machine-readable envelope. |
-
-## sst validate
-
-Validate every offline rule, with optional connected checks.
-
-```text
-sst validate [OPTIONS]
-```
-
-| Option | Value | Default | Description |
-|---|---|---|---|
-| `--project-dir` | DIRECTORY | `.` | Project root: the directory that holds `sst_config.yml`. |
-| `--target` | TEXT |  | Target from `profiles.yml`; defaults to the profile's own default target. |
-| `--manifest` | FILE |  | Read this dbt `manifest.json` instead of running `dbt parse`. |
-| `--allow-unsupported-manifest-schema` | flag |  | Read a dbt manifest whose schema version SST does not support or cannot read, at your own risk. |
-| `--strict / --no-strict` | flag |  | Promote every warning to an error. Defaults to `validation.strict`. |
-| `--snowflake-syntax-check / --no-snowflake-syntax-check` | flag |  | Compile expressions against Snowflake. Defaults to `validation.snowflake_syntax_check`. |
-| `--show-info` | flag |  | Also report which registered type owns each semantic-model file. |
-| `--output` | human\|json | `human` | `human` for readable text, or `json` for one machine-readable envelope. |

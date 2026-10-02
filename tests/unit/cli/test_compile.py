@@ -20,7 +20,7 @@ from tests.helpers.cli_projects import (
 )
 
 
-def test_compile_accepts_an_explicit_manifest_without_invoking_dbt() -> None:
+def test_compile_accepts_an_explicit_manifest_without_invoking_dbt(tmp_path: Path) -> None:
     result = CliRunner().invoke(
         cli,
         [
@@ -31,12 +31,17 @@ def test_compile_accepts_an_explicit_manifest_without_invoking_dbt() -> None:
             str(MANIFEST),
             "--select",
             "jaffle_minimal",
-            "--print-ddl",
+            "--emit-ddl",
+            str(tmp_path / "ddl"),
+            "--output",
+            "json",
         ],
     )
     assert result.exit_code == 0, result.output
-    assert "CREATE OR REPLACE SEMANTIC VIEW SST_REF_DEV.JAFFLE.JAFFLE_MINIMAL" in result.output
-    assert "JAFFLE_SALES" not in result.output
+    data = json.loads(result.output)["data"]
+    assert (data["ddl_files"], data["artifact_counts"]) == (["jaffle_minimal.sql"], {"semantic_view": 1})
+    ddl = (tmp_path / "ddl" / "jaffle_minimal.sql").read_text(encoding="utf-8")
+    assert "CREATE OR REPLACE SEMANTIC VIEW SST_REF_DEV.JAFFLE.JAFFLE_MINIMAL" in ddl
 
 
 def test_compile_rejects_an_unknown_target_before_rendering() -> None:
@@ -80,21 +85,10 @@ def test_compile_writes_one_deterministic_file_per_view(tmp_path: Path) -> None:
 
 
 def test_compile_writes_deterministic_manifest(tmp_path: Path) -> None:
-    manifest_output = tmp_path / "sst" / "manifest.json"
-    result = CliRunner().invoke(
-        cli,
-        [
-            "compile",
-            "--project-dir",
-            str(FIXTURE),
-            "--manifest",
-            str(MANIFEST),
-            "--manifest-output",
-            str(manifest_output),
-        ],
-    )
+    project = project_copy(tmp_path)
+    result = CliRunner().invoke(cli, ["compile", *common(project)])
     assert result.exit_code == 0, result.output
-    document = json.loads(manifest_output.read_text(encoding="utf-8"))
+    document = json.loads((project / "target" / "sst" / "manifest.json").read_text(encoding="utf-8"))
     assert document["schema_version"] == 2
     assert sorted(document["artifacts"]) == [
         "agent:jaffle_analytics_agent",
@@ -154,24 +148,20 @@ def test_compile_json_honors_selection() -> None:
     assert [artifact["artifact_key"] for artifact in artifacts] == ["semantic_view:jaffle_minimal"]
 
 
-def test_compile_selected_manifest_contains_only_selected_view(tmp_path: Path) -> None:
-    path = tmp_path / "manifest.json"
-    result = CliRunner().invoke(
-        cli,
-        [
-            "compile",
-            "--project-dir",
-            str(FIXTURE),
-            "--manifest",
-            str(MANIFEST),
-            "--select",
-            "jaffle_minimal",
-            "--manifest-output",
-            str(path),
-        ],
-    )
+def test_compile_emits_each_agent_specification_and_nothing_else(tmp_path: Path) -> None:
+    project = project_copy(tmp_path)
+    specs = tmp_path / "agents"
+    result = CliRunner().invoke(cli, ["compile", *common(project), "--emit-agent-spec", str(specs)])
     assert result.exit_code == 0, result.output
-    assert tuple(json.loads(path.read_text(encoding="utf-8"))["artifacts"]) == ("semantic_view:jaffle_minimal",)
+    assert sorted(path.name for path in specs.iterdir()) == [
+        "jaffle_analytics_agent.json",
+        "jaffle_delivery_agent.json",
+        "jaffle_minimal_agent.json",
+    ]
+    assert f"wrote 3 file(s) to {specs}" in result.output
+    database = CliRunner().invoke(cli, ["compile", *common(project), "--database", "ELSEWHERE", "--output", "json"])
+    targets = {item["artifact_key"]: item["target"] for item in json.loads(database.output)["data"]["artifacts"]}
+    assert targets["semantic_view:jaffle_minimal"].startswith("ELSEWHERE.")
 
 
 def test_compile_selection_keeps_the_canonical_manifest_full(tmp_path: Path) -> None:
@@ -275,7 +265,7 @@ def test_project_without_dbt_refuses_dbt_only_configuration(tmp_path: Path) -> N
 
 
 def test_project_without_dbt_or_target_profile_is_a_config_error(tmp_path: Path) -> None:
-    project = skills_only_project(tmp_path / "skills", "validation:\n  strict: false\n")
+    project = skills_only_project(tmp_path / "skills", "enrichment: {}\n")
     result = CliRunner().invoke(cli, ["compile", "--project-dir", str(project), "--output", "json"])
     assert result.exit_code == 4
     assert "project.target_profile" in json.loads(result.output)["data"]["error"]

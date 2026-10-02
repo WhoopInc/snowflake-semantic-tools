@@ -13,7 +13,12 @@ INTERRUPTED = 130
 EXIT_CODE_DOCS: tuple[tuple[int, str, str], ...] = (
     (OK, "OK", "Success. For `sst plan`, nothing to change."),
     (ERROR, "ERROR", "Errors were reported, or an apply, a test suite, or a check failed."),
-    (CHANGES, "CHANGES", "`sst plan` found changes, or `sst migrate refs` found rewrites to make."),
+    (
+        CHANGES,
+        "CHANGES",
+        "Declared and actual state differ: `sst plan` found changes, or `enrich --check`, `docs --check`, "
+        "or `migrate refs` found something to rewrite.",
+    ),
     (USAGE, "USAGE", "The command line is invalid."),
     (CONFIG, "CONFIG", "The project, its configuration, or a saved plan cannot be used."),
     (CONNECTION, "CONNECTION", "Snowflake could not be reached."),

@@ -1,25 +1,27 @@
-"""Bind a project directory to its files, its build directory, its commit, and its Snowflake target.
+"""Bind a resolved project to its files, its build directory, its commit, and its Snowflake target.
 
 Two names are looked up when they are needed rather than when this module is imported,
 so replacing either one changes what every command sees: the commit comes from this
 module's `git_sha`, and every connection is opened through `cli.main.SnowflakeConnector`.
+A connection opened here is closed again if anything fails before it is handed back.
 """
 
 from __future__ import annotations
 
 import dataclasses
 from collections.abc import Iterator
-from contextlib import contextmanager
+from contextlib import ExitStack, contextmanager
 from pathlib import Path
 
 import click
 
 from snowflake_semantic_tools.adapters.dbt.profiles import ProfileTarget, load_profile_target
 from snowflake_semantic_tools.adapters.fs.local import StateFileStore, state_file
+from snowflake_semantic_tools.adapters.locations import ProjectPaths
 from snowflake_semantic_tools.adapters.project_source import YamlProjectInputs
 from snowflake_semantic_tools.adapters.snowflake.connector import SnowflakeConnector
 from snowflake_semantic_tools.adapters.yaml.documents import LoadCache
-from snowflake_semantic_tools.cli.options import ALLOW_UNSUPPORTED_MANIFEST_SCHEMA
+from snowflake_semantic_tools.cli.output import register_secrets
 from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
 
 # Where a command's shared `LoadCache` is kept, in the click context's `meta`.
@@ -45,21 +47,26 @@ def git_sha(project_dir: Path) -> str:
     return value if completed.returncode == 0 and value else "WORKTREE"
 
 
-def project_inputs(project_dir: Path, target_name: str | None, manifest_path: Path | None) -> YamlProjectInputs:
+def project_inputs(
+    files: ProjectPaths, target_name: str | None, manifest_path: Path | None, *, database: str | None = None
+) -> YamlProjectInputs:
     """Bind the project's files as the inputs every use case reads.
 
     The commit is asked for through this module's `git_sha`, looked up when a use case
     needs it, so replacing `git_sha` here changes the commit every use case sees. Under a click
-    command, `--allow-unsupported-manifest-schema` is read from its context, and every input the
-    command builds shares one load cache, so a file read twice in the run is parsed once.
+    command, every input the command builds shares one load cache, so a file read twice in the
+    run is parsed once.
+
+    Args:
+        database: Resolve refs against this database instead of the target's; None keeps it.
     """
     context = click.get_current_context(silent=True)
     return YamlProjectInputs(
-        project_dir,
+        files,
         target_name=target_name,
         manifest_path=manifest_path,
-        git_sha=lambda: git_sha(project_dir),
-        allow_unsupported_manifest_schema=bool(context and context.meta.get(ALLOW_UNSUPPORTED_MANIFEST_SCHEMA)),
+        git_sha=lambda: git_sha(files.project_dir),
+        database=database,
         load_cache=context.meta.setdefault(LOAD_CACHE, LoadCache()) if context is not None else None,
     )
 
@@ -76,17 +83,21 @@ def open_connector(connection_params: dict[str, object]) -> SnowflakeConnector:
     return entry.SnowflakeConnector(connection_params)
 
 
-def connect(project_dir: Path, target_name: str | None) -> tuple[ProfileTarget, SnowflakeConnector]:
+def connect(files: ProjectPaths, target_name: str | None) -> tuple[ProfileTarget, SnowflakeConnector]:
     """Connect to the project's target, and bind it to the live session's account and role.
 
-    An error raised once the connection is open closes it again.
+    An error raised once the connection is open closes it again. The target's credentials are
+    registered with the output first, so no report of this run can print one.
 
     Raises:
+        ProjectError: the target cannot be connected to as declared, as `connection_params` says.
         SnowflakePortError: connecting failed, or the session's role is not the target's role.
     """
-    profile = load_profile_target(project_dir, target_name)
+    profile = load_profile_target(files, target_name)
+    register_secrets(profile.secrets)
     port = open_connector(profile.connection_params)
-    try:
+    with ExitStack() as cleanup:
+        cleanup.callback(port.close)
         live_account = port.current_account_locator()
         live_role = port.current_role()
         if profile.identity.role and live_role.upper() != profile.identity.role.upper():
@@ -105,23 +116,24 @@ def connect(project_dir: Path, target_name: str | None) -> tuple[ProfileTarget, 
             identity=identity,
             state_table=profile.state_table,
         )
-        return resolved, port
-    except Exception:
-        port.close()
-        raise
+        # Connected and bound: the caller owns the session from here, so nothing closes it.
+        cleanup.pop_all()
+    return resolved, port
 
 
 @contextmanager
 def closed_on_error(port: SnowflakeConnector) -> Iterator[None]:
-    """Close `port` if the block raises; a block that completes leaves the connection to its owner."""
-    try:
+    """Close `port` if the block raises; a block that completes leaves the connection to its owner.
+
+    The close is registered before the block runs and released only once it completes, so an
+    interrupt or a declined prompt closes the session too: nothing else would.
+    """
+    with ExitStack() as cleanup:
+        cleanup.callback(port.close)
         yield
-    except BaseException:
-        # Also on an interrupt or a declined prompt: nothing else will close the session.
-        port.close()
-        raise
+        cleanup.pop_all()
 
 
-def state_store(project_dir: Path, target_name: str) -> StateFileStore:
+def state_store(files: ProjectPaths, target_name: str) -> StateFileStore:
     """Return the local state file of `target_name`, under the project's build directory."""
-    return StateFileStore(state_file(target_dir(project_dir), target_name))
+    return StateFileStore(state_file(target_dir(files.project_dir), target_name), config_path=files.config_name)

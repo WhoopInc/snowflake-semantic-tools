@@ -109,8 +109,9 @@ validation:
 
 tools:
   # Defaults for `define:` members only; `reference:` members are never
-  # created. Per-group routes are reserved (SST-CFG044) and `+enabled` is
-  # removed (SST-CFG043).
+  # created. A `<group>:` block overrides them for that group (SST-CFG020
+  # when the group is missing or has no `define:`), and `+enabled` is removed
+  # (SST-CFG043).
   +database: "{{ target.database }}"
   +schema: JAFFLE
 

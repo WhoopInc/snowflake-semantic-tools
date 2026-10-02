@@ -68,8 +68,8 @@ __all__ = [
     "RULE_SETS",
     "RegistryIntegrityError",
     "Severity",
-    "apply_baseline",
     "audit",
+    "override_refusal",
     "build_registry",
     "render_diagnostic",
     "resolve_severities",
@@ -94,7 +94,6 @@ class Diagnostic:
         caused_by: The code of the diagnostic this one cascades from; None when it stands alone.
         emitted: True when `D` built it, which `dataclasses.replace` keeps; `audit` reports one
             constructed any other way (SST-INT004). Not part of equality.
-        baselined: True when the project's baseline accepts it, so strict mode leaves it alone.
             Not part of equality.
     """
 
@@ -106,12 +105,16 @@ class Diagnostic:
     related: tuple[Origin, ...] = ()
     caused_by: str | None = None
     emitted: bool = field(default=False, repr=False, compare=False)
-    baselined: bool = field(default=False, repr=False, compare=False)
 
     @property
     def blocks(self) -> bool:
         """Report whether the diagnostic, at its resolved severity, blocks the command."""
         return self.severity is Severity.ERROR
+
+    @property
+    def informational(self) -> bool:
+        """Report whether the diagnostic, at its resolved severity, is only information."""
+        return self.severity is Severity.INFO
 
     @property
     def cascaded(self) -> bool:
@@ -238,7 +241,7 @@ def D(
 ) -> Diagnostic:
     """Construct one diagnostic from a registered code and template context.
 
-    `code` is positional, so a template may name a `{code}` placeholder of its own.
+    `code` is positional only, so a template may name a `{code}` placeholder of its own.
     A LOD, PRS, REF or VAL code given no `origin` points at the `file`, `line` and `col` its
     context names, so a location the raise site knows is never dropped.
     """
@@ -274,48 +277,34 @@ def _position(value: object) -> int | None:
     return value if isinstance(value, int) and not isinstance(value, bool) else None
 
 
+def override_refusal(code: str, wanted: Severity) -> str | None:
+    """Return why reporting the registered `code` at `wanted` is not permitted; None when it is.
+
+    A non-demotable code is never lowered, an error is lowered no further than a warning, and an
+    info is raised no higher than a warning.
+    """
+    spec = ERROR_REGISTRY[code]
+    if not spec.demotable and wanted < spec.severity:
+        return f"{code} is non-demotable"
+    if spec.severity is Severity.ERROR and wanted is Severity.INFO:
+        return "an error is demoted no lower than warning"
+    if spec.severity is Severity.INFO and wanted is Severity.ERROR:
+        return "an info code is promoted no higher than warning"
+    return None
+
+
 def resolve_severities(diagnostics: DiagnosticBag, *, strict: bool) -> tuple[DiagnosticBag, int]:
-    """Apply strict-mode promotion once, preserving non-demotable errors and baselined warnings."""
+    """Apply strict-mode promotion once, preserving non-demotable errors."""
     if not strict:
         return diagnostics, 0
     promoted = tuple(
-        replace(diagnostic, severity=Severity.ERROR)
-        if diagnostic.severity is Severity.WARNING and not diagnostic.baselined
-        else diagnostic
+        replace(diagnostic, severity=Severity.ERROR) if diagnostic.severity is Severity.WARNING else diagnostic
         for diagnostic in diagnostics
     )
     return DiagnosticBag(promoted), sum(
         before.severity is Severity.WARNING and after.severity is Severity.ERROR
         for before, after in zip(diagnostics, promoted, strict=True)
     )
-
-
-def apply_baseline(diagnostics: DiagnosticBag, entries: Iterable[str]) -> DiagnosticBag:
-    """Mark each warning or info a baseline entry matches as baselined, before strict mode runs.
-
-    An entry is a fingerprint, or a prefix of one such as the 16 characters the JSON envelope
-    prints. An error is never baselined. An entry that matches exactly one diagnostic marks it;
-    one that matches several marks none of them.
-
-    Diagnostics:
-        SST-INT009: a baseline entry matched more than one diagnostic, one per entry in order.
-    """
-    marked: set[int] = set()
-    found: list[Diagnostic] = []
-    for entry in dict.fromkeys(entries):
-        matches = [
-            index
-            for index, item in enumerate(diagnostics)
-            if item.severity is not Severity.ERROR and item.fingerprint.startswith(entry)
-        ]
-        if len(matches) > 1:
-            found.append(D("SST-INT009", value=entry, count=len(matches)))
-        elif matches:
-            marked.update(matches)
-    if not marked and not found:
-        return diagnostics
-    kept = (replace(item, baselined=True) if index in marked else item for index, item in enumerate(diagnostics))
-    return DiagnosticBag((*kept, *found))
 
 
 def audit(diagnostics: DiagnosticBag) -> DiagnosticBag:

@@ -1,4 +1,8 @@
-"""Resolve one dbt profile target into connection and lifecycle values."""
+"""Resolve one dbt profile target into connection and lifecycle values.
+
+Which `profiles.yml` and which configuration file are read is decided by `ProjectPaths`; this
+module never looks for either itself.
+"""
 
 from __future__ import annotations
 
@@ -13,6 +17,7 @@ from typing import Any, NoReturn
 import yaml
 
 from snowflake_semantic_tools.adapters.errors import ProjectError
+from snowflake_semantic_tools.adapters.locations import ProjectPaths
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, Origin
 from snowflake_semantic_tools.domain.model.identifier import Identifier, QualifiedName, TargetIdentity
 
@@ -58,6 +63,10 @@ _IGNORED_KEYS = frozenset(
     )
 )
 _READ_KEYS = frozenset((*_CONNECTION_KEYS, *_SPECIAL_KEYS))
+# Credentials: a value written for one of these that renders empty is refused, never dropped.
+_SECRET_KEYS = frozenset(("password", "token", "private_key", "private_key_passphrase", "private_key_file_pwd"))
+# Read by SST, and silently left to account defaults when absent.
+_DEFAULTED_KEYS = ("role", "warehouse")
 _INTEGER_KEYS = frozenset(("port", "connect_timeout"))
 _BOOLEAN_KEYS = frozenset(("insecure_mode", "client_session_keep_alive"))
 
@@ -67,6 +76,12 @@ def _resolve_env(value: object) -> object:
 
     dbt's `as_number`, `as_bool`, and `as_native` filters type a value that is one
     template on its own; inside a longer string the rendered text is used.
+
+    Raises:
+        ProjectError: a variable is unset and the call gives no default (SST-CFG013).
+
+    Diagnostics:
+        SST-CFG013: `env_var()` names an unset variable with no default; raised.
     """
     if not isinstance(value, str):
         return value
@@ -77,7 +92,8 @@ def _resolve_env(value: object) -> object:
             return os.environ[name]
         if default is not None:
             return default
-        raise ValueError(f"environment variable {name} is required")
+        diagnostic = D("SST-CFG013", origin=Origin("profiles.yml"), subject="config:profiles.yml", var=name)
+        raise ProjectError(diagnostic.message, diagnostics=(diagnostic,))
 
     whole = _ENV_VAR.fullmatch(value.strip())
     if whole is None:
@@ -90,14 +106,29 @@ def _resolve_env(value: object) -> object:
 
 
 def _read_yaml(path: Path) -> dict[str, Any]:
-    value = yaml.safe_load(path.read_text(encoding="utf-8"))
+    """Read one YAML mapping: `dbt_project.yml` or the configuration file.
+
+    Raises:
+        ProjectError: the file is not valid YAML (SST-CFG002).
+        ValueError: the file does not hold a mapping.
+
+    Diagnostics:
+        SST-CFG002: the file is not valid YAML; raised.
+    """
+    try:
+        value = yaml.safe_load(path.read_text(encoding="utf-8"))
+    except yaml.YAMLError as exc:
+        diagnostic = D(
+            "SST-CFG002", origin=Origin(path.name), subject=f"config:{path.name}", path=str(path), detail=str(exc)
+        )
+        raise ProjectError(diagnostic.message, diagnostics=(diagnostic,)) from exc
     if not isinstance(value, dict):
         raise ValueError(f"{path} must contain a mapping")
     return {str(key): item for key, item in value.items()}
 
 
-def _read_profiles(project_dir: Path) -> dict[str, Any]:
-    """Read the project's `profiles.yml` as dbt does, as plain YAML.
+def _read_profiles(path: Path) -> dict[str, Any]:
+    """Read the `profiles.yml` at `path` as dbt does, as plain YAML.
 
     Raises:
         ProjectError: The file is not YAML, or not a mapping of profiles (SST-DBT019).
@@ -106,7 +137,7 @@ def _read_profiles(project_dir: Path) -> dict[str, Any]:
     Diagnostics:
         SST-DBT019: the file does not parse, or its root is not a mapping; raised.
     """
-    text = (project_dir / "profiles.yml").read_text(encoding="utf-8")
+    text = path.read_text(encoding="utf-8")
     try:
         value = yaml.safe_load(text)
     except yaml.YAMLError as exc:
@@ -156,14 +187,51 @@ class ProfileTarget:
     def connection_params(self) -> dict[str, object]:
         """Return a fresh copy of the connector arguments, with any inline key decoded to DER.
 
+        Read only to open a connection, so an offline run never needs a credential.
+
         Raises:
-            ProjectError: The inline `private_key` cannot be read (SST-CFG050).
+            ProjectError: `account` or `user` is absent (SST-CFG012), or the inline
+                `private_key` cannot be read (SST-CFG050).
+
+        Diagnostics:
+            SST-CFG012: the target sets no `account` or no `user`; raised.
+            SST-CFG050: the inline `private_key` cannot be read; raised.
         """
+        for field in ("account", "user"):
+            if not self._params.get(field):
+                _refuse_profile("SST-CFG012", self.profile_name, field=field)
         params = dict(self._params)
         if self._inline_key is not None:
             value, passphrase = self._inline_key
             params["private_key"] = _inline_private_key(self.target_name, value, passphrase)
         return params
+
+    @property
+    def connection_warnings(self) -> tuple[Diagnostic, ...]:
+        """Report each setting a connection would leave to the account's defaults.
+
+        Diagnostics:
+            SST-CFG014: the target sets no `role` or no `warehouse`.
+        """
+        return tuple(
+            D(
+                "SST-CFG014",
+                origin=Origin("profiles.yml"),
+                subject="config:profiles.yml",
+                profile=self.profile_name,
+                field=key,
+            )
+            for key in _DEFAULTED_KEYS
+            if not self._params.get(key)
+        )
+
+    @property
+    def secrets(self) -> tuple[str, ...]:
+        """Return every credential value this target holds, so output can refuse to print one."""
+        values = [str(self._params[key]) for key in sorted(_SECRET_KEYS) if self._params.get(key)]
+        if self._inline_key is not None:
+            values.extend(str(part) for part in self._inline_key if part not in (None, ""))
+        return tuple(values)
 
     @property
     def authentication(self) -> str:
@@ -180,17 +248,20 @@ class ProfileTarget:
         return "password" if "password" in params else "connector default"
 
 
-def resolve_profile_name(project_dir: Path) -> str:
-    """The `profiles.yml` profile: dbt's `profile:`, or `project.target_profile` without dbt."""
-    config_path = project_dir / "sst_config.yml"
-    config = _read_yaml(config_path) if config_path.is_file() else {}
+def resolve_profile_name(files: ProjectPaths) -> str:
+    """Return the `profiles.yml` profile: dbt's `profile:`, or `project.target_profile` without dbt.
+
+    Raises:
+        ValueError: neither names a profile, or the two disagree.
+    """
+    config = _read_yaml(files.config_file) if files.config_file is not None else {}
     project_block = config.get("project")
     configured = project_block.get("target_profile") if isinstance(project_block, dict) else None
-    dbt_project_path = project_dir / "dbt_project.yml"
+    dbt_project_path = files.project_dir / "dbt_project.yml"
     if not dbt_project_path.is_file():
         if not isinstance(configured, str) or not configured:
             raise ValueError(
-                "the project has no dbt_project.yml; set project.target_profile in sst_config.yml "
+                f"the project has no dbt_project.yml; set project.target_profile in {files.config_name} "
                 "to name its profiles.yml profile"
             )
         return configured
@@ -204,32 +275,80 @@ def resolve_profile_name(project_dir: Path) -> str:
     return profile_name
 
 
-def profile_output(project_dir: Path, target_name: str | None = None) -> tuple[str, str, dict[str, object]]:
-    """The profile name, target name, and fields of one output, `env_var()` rendered in those SST reads.
+def declared_targets(files: ProjectPaths) -> tuple[str, frozenset[str], str | None]:
+    """Return the profile's name, every target it declares, and its default `target:`.
+
+    Raises:
+        ProjectError: no `profiles.yml` exists (SST-CFG009), or it does not declare the profile
+            (SST-CFG010).
+
+    Diagnostics:
+        SST-CFG009: no `profiles.yml` exists at any searched location; raised.
+        SST-CFG010: `profiles.yml` does not declare the profile; raised.
+    """
+    profile_name = resolve_profile_name(files)
+    profile = _read_profiles(files.profiles_file()).get(profile_name)
+    if not isinstance(profile, dict):
+        diagnostic = D("SST-CFG010", subject="config:profiles.yml", target="(any)", profile=profile_name)
+        raise ProjectError(diagnostic.message, diagnostics=(diagnostic,))
+    outputs = profile.get("outputs")
+    targets = frozenset(str(key) for key in outputs) if isinstance(outputs, dict) else frozenset()
+    default = profile.get("target")
+    return profile_name, targets, default if isinstance(default, str) else None
+
+
+def profile_output(files: ProjectPaths, target_name: str | None = None) -> tuple[str, str, dict[str, object]]:
+    """Return the profile name, target name, and fields of one output, with `env_var()` rendered.
 
     A field SST ignores is left as written, so an unset variable or a dbt-only
     filter there cannot stop a run.
+
+    Raises:
+        ProjectError: the target is not declared, is not a Snowflake target, or holds a value
+            SST cannot use.
+
+    Diagnostics:
+        SST-CFG009: no `profiles.yml` exists at any searched location; raised.
+        SST-CFG010: the profile has no such target; raised.
+        SST-CFG011: the target's `type` is not `snowflake`; raised.
+        SST-CFG013: an `env_var()` SST reads is unset and has no default; raised.
+        SST-CFG049: a field SST reads holds a template other than `env_var()`; raised.
+        SST-PRT011: a credential written for the target renders empty; raised.
     """
-    profile_name = resolve_profile_name(project_dir)
-    profiles = _read_profiles(project_dir)
+    profile_name = resolve_profile_name(files)
+    profiles = _read_profiles(files.profiles_file())
     profile = profiles.get(profile_name)
     if not isinstance(profile, dict):
-        raise ValueError(f"profiles.yml has no profile {profile_name!r}")
+        diagnostic = D(
+            "SST-CFG010", subject="config:profiles.yml", target=target_name or "(default)", profile=profile_name
+        )
+        raise ProjectError(diagnostic.message, diagnostics=(diagnostic,))
     selected = target_name or profile.get("target")
     outputs = profile.get("outputs")
     output = outputs.get(selected) if isinstance(outputs, dict) else None
     if not isinstance(selected, str) or not isinstance(output, dict):
         diagnostic = D("SST-CFG010", target=selected, profile=profile_name)
         raise ProjectError(diagnostic.message, diagnostics=(diagnostic,))
+    adapter = output.get("type")
+    if adapter not in (None, "snowflake"):
+        _refuse_profile("SST-CFG011", profile_name, found=str(adapter))
     for key, value in output.items():
         # Checked as written, so a rendered secret that happens to contain `{{` is fine.
         if str(key) in _READ_KEYS and isinstance(value, str) and _TEMPLATE.search(_ENV_VAR.sub("", value)):
             _refuse("SST-CFG049", selected, key=str(key), problem="holds a template other than env_var()")
-    return (
-        profile_name,
-        selected,
-        {str(key): (_resolve_env(value) if str(key) in _READ_KEYS else value) for key, value in output.items()},
-    )
+    resolved = {str(key): (_resolve_env(value) if str(key) in _READ_KEYS else value) for key, value in output.items()}
+    for key in sorted(_SECRET_KEYS & set(resolved)):
+        if output[key] not in (None, "") and resolved[key] in (None, ""):
+            diagnostic = D(
+                "SST-PRT011", origin=Origin("profiles.yml"), subject="config:profiles.yml", value=f"{selected}.{key}"
+            )
+            raise ProjectError(diagnostic.message, diagnostics=(diagnostic,))
+    return profile_name, selected, resolved
+
+
+def _refuse_profile(code: str, profile: str, **context: Any) -> NoReturn:
+    diagnostic = D(code, origin=Origin("profiles.yml"), subject="config:profiles.yml", profile=profile, **context)
+    raise ProjectError(diagnostic.message, diagnostics=(diagnostic,))
 
 
 def _refuse(code: str, target: str, **context: Any) -> NoReturn:
@@ -381,7 +500,7 @@ def _inline_key(target: str, present: Mapping[str, object]) -> tuple[str, object
     return (key_value, present.get("private_key_passphrase"))
 
 
-def load_profile_target(project_dir: Path, target_name: str | None = None) -> ProfileTarget:
+def load_profile_target(files: ProjectPaths, target_name: str | None = None) -> ProfileTarget:
     """Resolve one profiles.yml target into its connection arguments, identity, and state table.
 
     `target_name` None selects the profile's default target. The state table is `SST_STATE` in
@@ -389,10 +508,10 @@ def load_profile_target(project_dir: Path, target_name: str | None = None) -> Pr
 
     Raises:
         OSError: profiles.yml cannot be read.
-        yaml.YAMLError: profiles.yml, dbt_project.yml or sst_config.yml is not valid YAML.
-        ValueError: The profile cannot be resolved, a required environment variable is unset,
-            or the target's database, schema or state table is missing or not a valid name.
-        ProjectError: The target is absent or holds a value SST cannot use.
+        ValueError: The profile cannot be resolved, or the target's database, schema or state
+            table is missing or not a valid name.
+        ProjectError: profiles.yml cannot be found or parsed, or the target is absent or holds a
+            value SST cannot use.
 
     Diagnostics:
         SST-CFG010: the profile has no such target; raised.
@@ -400,7 +519,7 @@ def load_profile_target(project_dir: Path, target_name: str | None = None) -> Pr
         SST-CFG050: the target's authentication cannot be used; raised.
         SST-CFG048: a field SST does not read; carried on the target.
     """
-    profile_name, selected, resolved = profile_output(project_dir, target_name)
+    profile_name, selected, resolved = profile_output(files, target_name)
     database = resolved.get("database")
     schema = resolved.get("schema")
     if not isinstance(database, str) or not isinstance(schema, str):
@@ -418,7 +537,7 @@ def load_profile_target(project_dir: Path, target_name: str | None = None) -> Pr
         str(resolved["role"]) if resolved.get("role") else None,
         str(resolved["warehouse"]) if resolved.get("warehouse") else None,
     )
-    state_table = _state_table(project_dir, database, schema)
+    state_table = _state_table(files, database, schema)
     return ProfileTarget(
         profile_name=profile_name,
         target_name=selected,
@@ -430,14 +549,13 @@ def load_profile_target(project_dir: Path, target_name: str | None = None) -> Pr
     )
 
 
-def _state_table(project_dir: Path, database: str, schema: str) -> QualifiedName:
+def _state_table(files: ProjectPaths, database: str, schema: str) -> QualifiedName:
     """Locate the state table: `SST_STATE` in the target's database and schema by default.
 
-    `state:` in `sst_config.yml` overrides each part: `+table` with `env_var()` rendered, and
+    `state:` in the configuration overrides each part: `+table` with `env_var()` rendered, and
     `+database` and `+schema` with `{{ target.database }}` and `{{ target.schema }}` replaced.
     """
-    config_path = project_dir / "sst_config.yml"
-    config = _read_yaml(config_path) if config_path.is_file() else {}
+    config = _read_yaml(files.config_file) if files.config_file is not None else {}
     state_config = config.get("state")
     state_name = "SST_STATE"
     state_database = database

@@ -46,7 +46,9 @@ def validate_tool_catalog(catalog: ToolCatalog, dbt: DbtCatalog) -> DiagnosticBa
         SST-PRS013: a defined member's language, `execute_as` or `refresh_mode` is not one
             Snowflake accepts.
         SST-VAL418: a defined member's `where:` is not one expression.
-        SST-VAL601: a group declares one member name twice, ignoring case.
+        SST-VAL601: a group declares one member name twice, ignoring case, under one of `define:` and
+            `reference:`.
+        SST-CFG019: a group declares one member name under both `define:` and `reference:`.
         SST-VAL001: a group name is declared twice, ignoring case.
         SST-VAL602: one member name is declared in two groups.
     """
@@ -68,7 +70,18 @@ def _validate_group(group: ToolGroup, catalog: ToolCatalog, dbt: DbtCatalog) -> 
         within.setdefault(member.name.casefold(), []).append(member)
         diagnostics.extend(_validate_member(member, catalog, dbt))
     for duplicate in within.values():
-        if len(duplicate) > 1:
+        if len(duplicate) > 1 and len({member.ownership for member in duplicate}) > 1:
+            # Owned and referenced at once: which of the two the member is cannot be decided.
+            diagnostics.append(
+                D(
+                    "SST-CFG019",
+                    name=duplicate[0].name,
+                    origin=duplicate[0].origin,
+                    related=tuple(member.origin for member in duplicate[1:]),
+                    subject=f"tool_group:{group.name}",
+                )
+            )
+        elif len(duplicate) > 1:
             diagnostics.append(
                 D(
                     "SST-VAL601",

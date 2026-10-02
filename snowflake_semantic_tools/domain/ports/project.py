@@ -15,6 +15,7 @@ from typing import Any, Protocol
 
 from snowflake_semantic_tools.domain.diagnostics import Diagnostic, DiagnosticBag
 from snowflake_semantic_tools.domain.model.agent import AgentModel
+from snowflake_semantic_tools.domain.model.config_schema import CONFIG_FILE
 from snowflake_semantic_tools.domain.model.dbt import DbtCatalog
 from snowflake_semantic_tools.domain.model.eval import EvalCatalog
 from snowflake_semantic_tools.domain.model.identifier import TargetIdentity
@@ -32,11 +33,13 @@ class ProjectConfig:
         tree: The parsed document, empty when the project has no `sst_config.yml`.
         diagnostics: What checking the document and its `project.*_dir` roots reported.
         has_dbt_project: Whether the project directory holds a `dbt_project.yml`.
+        file: How diagnostics name the configuration file the run read.
     """
 
     tree: Mapping[str, Any]
     diagnostics: DiagnosticBag
     has_dbt_project: bool
+    file: str = CONFIG_FILE
 
 
 @dataclass(frozen=True, slots=True)

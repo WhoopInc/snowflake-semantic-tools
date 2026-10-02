@@ -15,6 +15,7 @@ from snowflake_semantic_tools.app.compile.agents import ExtensionPin
 from snowflake_semantic_tools.app.compile.base import CompileResult, StandaloneArtifact, has_error
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, DiagnosticBag, Origin
 from snowflake_semantic_tools.domain.model.artifact_key import artifact_key, split_artifact_key
+from snowflake_semantic_tools.domain.model.config_schema import CONFIG_FILE
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
 from snowflake_semantic_tools.domain.model.lifecycle import (
     CompositeFacts,
@@ -138,9 +139,12 @@ class CompiledExtension(StandaloneArtifact):
 class CompileSkills:
     """One SKILL-type extension per skill and one PLUGIN-type extension per plugin."""
 
-    def __init__(self, catalog: SkillCatalog, channel: CatalogChannel | None) -> None:
+    def __init__(
+        self, catalog: SkillCatalog, channel: CatalogChannel | None, *, config_file: str = CONFIG_FILE
+    ) -> None:
         self._catalog = catalog
         self._channel = channel
+        self._config_file = config_file
 
     def run_result(self) -> CompileResult:
         """Validate the catalog, then compile each skill and then each plugin; the result is sorted by key.
@@ -165,7 +169,7 @@ class CompileSkills:
             diagnostics.append(
                 D(
                     "SST-CFG008",
-                    origin=Origin("sst_config.yml"),
+                    origin=Origin(self._config_file),
                     subject="config:skills.+version_prefix",
                     key="skills.+version_prefix",
                     found=repr(channel.version_prefix),

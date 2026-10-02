@@ -7,30 +7,40 @@ replacing it here changes what every command compiles.
 from __future__ import annotations
 
 import dataclasses
+from collections.abc import Mapping
 from pathlib import Path
 
+import click
+
 from snowflake_semantic_tools.adapters.errors import ProjectError
-from snowflake_semantic_tools.app.compile import CompileResult
+from snowflake_semantic_tools.adapters.locations import ProjectPaths
+from snowflake_semantic_tools.app.compile import CompiledArtifact, CompileResult
 from snowflake_semantic_tools.app.compile.project import CompileProject
 from snowflake_semantic_tools.app.manifest import dbt_manifest_moved
 from snowflake_semantic_tools.cli.group import SstUsageError
 from snowflake_semantic_tools.cli.wiring.project import project_inputs
-from snowflake_semantic_tools.domain.diagnostics import D, DiagnosticBag
-from snowflake_semantic_tools.domain.model.artifact_key import artifact_key, split_artifact_key
+from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, DiagnosticBag
 from snowflake_semantic_tools.domain.model.registry import SEMANTIC_REGISTRY
+from snowflake_semantic_tools.domain.plan.selectors import Selectable, resolve_selectors
+from snowflake_semantic_tools.domain.state import Manifest
 
 
-def compile_result(project_dir: Path, target_name: str | None, manifest_path: Path | None) -> CompileResult:
+def compile_result(
+    paths: ProjectPaths, target_name: str | None, manifest_path: Path | None, *, database: str | None = None
+) -> CompileResult:
     """Compile every artifact the project declares, from its files.
 
     With a dbt manifest given, its models are digested before and after the compile, and a
     manifest rewritten in between, by a concurrent `dbt compile`, fails the compile. Without
     one, SST runs `dbt parse` itself and so rewrites the manifest on purpose; nothing is checked.
 
+    Args:
+        database: Resolve refs against this database instead of the target's; None keeps it.
+
     Diagnostics:
         SST-MAN031: the given dbt manifest's models changed while the project compiled.
     """
-    inputs = project_inputs(project_dir, target_name, manifest_path)
+    inputs = project_inputs(paths, target_name, manifest_path, database=database)
     if manifest_path is None:
         return CompileProject(inputs).run()
     before = inputs.manifest_sources()
@@ -41,54 +51,85 @@ def compile_result(project_dir: Path, target_name: str | None, manifest_path: Pa
     return dataclasses.replace(result, diagnostics=DiagnosticBag((*result.diagnostics, moved)))
 
 
-def selected_result(project_dir: Path, result: CompileResult, selected: str) -> CompileResult:
-    """Return `result` with only the artifacts the one selector `selected` names.
+def selected_result(
+    project_dir: Path, result: CompileResult, selected: tuple[str, ...], excluded: tuple[str, ...] = ()
+) -> CompileResult:
+    """Return `result` with only the artifacts `selected` names, less those `excluded` names.
+
+    No selector keeps every artifact, and no exclusion removes any.
 
     Raises:
-        SstUsageError: the selector cannot be parsed, as `selection` says.
-        ProjectError: the selector matched no artifact (SST-DIS010).
+        SstUsageError: a selector is refused, as `selection` says.
+        ProjectError: the selectors matched no artifact (SST-DIS010).
     """
-    selected_types, selected_keys = selection((selected,))
+    universe = tuple(
+        Selectable(
+            item.artifact_key,
+            item.artifact_type,
+            item.name.casefold(),
+            item.rendered_artifact.fingerprint,
+            item.source_files,
+        )
+        for item in result.compiled
+    )
+    selected_types, selected_keys = selection(selected, universe)
+    excluded_types, excluded_keys = selection(excluded, universe)
+
+    def names(item: CompiledArtifact, types: frozenset[str] | None, keys: frozenset[str] | None) -> bool:
+        return (types is not None and item.artifact_type in types) or (keys is not None and item.artifact_key in keys)
+
     compiled = tuple(
         item
         for item in result.compiled
-        if (selected_types is None or item.artifact_type in selected_types)
-        and (selected_keys is None or item.artifact_key in selected_keys)
+        if (not selected or names(item, selected_types, selected_keys))
+        and not names(item, excluded_types, excluded_keys)
     )
     if not compiled:
         raise ProjectError(
-            f"selector {selected!r} matched no artifact in {project_dir}",
-            diagnostics=(D("SST-DIS010", selector=selected),),
+            f"selector {' '.join(selected)!r} matched no artifact in {project_dir}",
+            diagnostics=tuple(D("SST-DIS010", selector=value) for value in selected),
         )
     return dataclasses.replace(result, compiled=compiled)
 
 
-def selection(values: tuple[str, ...]) -> tuple[frozenset[str] | None, frozenset[str] | None]:
-    """Parse selectors into the artifact types and the artifact keys they name; None for neither.
+def manifest_universe(manifest: Manifest) -> tuple[Selectable, ...]:
+    """Return every artifact of a compiled manifest as a selector can name it."""
+    return tuple(
+        Selectable(key, entry.type, entry.name, entry.fingerprint, entry.source_files)
+        for key, entry in sorted(manifest.artifacts.items())
+    )
 
-    A bare name is a semantic view, `type:<type>` every artifact of a type, and
-    `<type>:<name>` one artifact; names are compared case-insensitively.
+
+def selection(
+    values: tuple[str, ...], universe: tuple[Selectable, ...] = (), previous: Mapping[str, str] | None = None
+) -> tuple[frozenset[str] | None, frozenset[str] | None]:
+    """Resolve selectors into the artifact types and the artifact keys they name; None for neither.
+
+    Args:
+        universe: The compiled artifacts names, paths, and states resolve against.
+        previous: Each key's fingerprint in the `--state` manifest; None without `--state`.
 
     Raises:
-        SstUsageError: a selector holds a comma, or names an unknown type or no name.
+        SstUsageError: a selector is refused, carrying its diagnostic.
     """
-    if not values:
-        return None, None
-    keys: set[str] = set()
-    types: set[str] = set()
-    for value in values:
-        if "," in value:
-            raise SstUsageError("commas are not accepted in selectors; pass space-separated selectors")
-        if ":" in value:
-            prefix, name = split_artifact_key(value)
-            if prefix == "type":
-                if name not in SEMANTIC_REGISTRY.artifacts:
-                    raise SstUsageError(f"unknown artifact type {name!r}")
-                types.add(name)
-                continue
-            if prefix not in SEMANTIC_REGISTRY.artifacts or not name:
-                raise SstUsageError(f"unsupported selector {value!r}")
-            keys.add(artifact_key(prefix, name.casefold()))
-            continue
-        keys.add(artifact_key("semantic_view", value.casefold()))
-    return (frozenset(types) if types else None), (frozenset(keys) if keys else None)
+    resolved = resolve_selectors(
+        values, artifact_types=SEMANTIC_REGISTRY.artifacts, universe=universe, previous=previous
+    )
+    if isinstance(resolved, Diagnostic):
+        raise SstUsageError(resolved.message, diagnostic=resolved)
+    return resolved.types, resolved.keys
+
+
+def check_selectors(ctx: click.Context, param: click.Parameter, values: tuple[str, ...] | str | None) -> object:
+    """Refuse a malformed `--select` or `--exclude` while the command line is parsed, before anything runs.
+
+    Only the grammar is checked here; what a selector names is resolved once the project is.
+
+    Raises:
+        SstUsageError: a selector is refused, carrying its diagnostic.
+    """
+    given = (values,) if isinstance(values, str) else tuple(values or ())
+    resolved = resolve_selectors(given, artifact_types=SEMANTIC_REGISTRY.artifacts, previous={})
+    if isinstance(resolved, Diagnostic):
+        raise SstUsageError(resolved.message, ctx, diagnostic=resolved)
+    return values

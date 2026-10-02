@@ -1,17 +1,21 @@
 """Run each command body under one exception guard, and report what it returns in one place.
 
 A command's click callback is its body decorated with `command_body(name)`, the innermost
-decorator, under the click options. The body does the command's work and returns a
-`CommandResult`; the runner prints that as one JSON envelope or as human text, then exits
-with its code. Every exception the body or its report raises becomes an exit code the
-same way for every command:
+decorator, under the click options. `command_body` adds every global option to the command,
+resolves them once into `GlobalOptions`, finds the configuration file, reads the baseline, and
+passes the body what its signature asks for by name: `paths` (the resolved `ProjectPaths`),
+`options`, `project_dir`, and `manifest_path`. The body does the command's work and returns a
+`CommandResult`; the runner marks what the baseline holds, prints one JSON envelope or human
+text, then exits with its code. Every exception becomes an exit code the same way for every
+command:
 
 - `click.exceptions.Exit` and `click.UsageError` pass through, to click and `SstGroup`;
 - an interrupt, end of input, or a declined prompt exits 130 (INTERRUPTED);
-- `SnowflakePortError` exits 5 (CONNECTION); in human output one that carries no
-  diagnostic is reported by click instead, which exits 1;
+- `SnowflakePortError` exits 5 (CONNECTION), reported as SST-PRT001 when it carries no diagnostic;
+- `WriteFailure` exits 1 (ERROR) with SST-PRT008: a file SST writes could not be written;
 - `ProjectError`, `ValueError`, `OSError`, and `JSONDecodeError` exit 4 (CONFIG);
-- anything else is SST-INT001, an internal error, and exits 1 (ERROR).
+- anything else is SST-INT001, an unhandled internal error, and exits 1 (ERROR). This is the
+  one place an exception nothing expects is caught.
 
 Every reported bag is `audit`ed first, so a diagnostic that breaks an emission invariant is
 reported beside it as an internal error, and a run that would have succeeded exits 1.
@@ -19,19 +23,54 @@ reported beside it as an internal error, and a run that would have succeeded exi
 
 from __future__ import annotations
 
+import csv
 import dataclasses
 import functools
+import inspect
+import io
 import json
-from collections.abc import Callable
+import logging
+import sys
+from collections.abc import Callable, Collection
+from datetime import UTC, datetime, timedelta
+from enum import Enum
+from pathlib import Path
 from typing import Any, NoReturn
 
 import click
 
 from snowflake_semantic_tools.adapters.errors import ProjectError
+from snowflake_semantic_tools.adapters.fs.baseline import BASELINE_FILE, read_baseline
+from snowflake_semantic_tools.adapters.locations import ProjectPaths, locate_project
+from snowflake_semantic_tools.adapters.yaml.dump import dump_yaml
 from snowflake_semantic_tools.cli.exit_codes import CHANGES, CONFIG, CONNECTION, ERROR, OK
-from snowflake_semantic_tools.cli.output import emit_json, interrupted, json_envelope, render_diagnostics
+from snowflake_semantic_tools.cli.globals import DEFAULT_OUTPUTS, GLOBAL_NAMES, GlobalOptions, command_global_options
+from snowflake_semantic_tools.cli.output import (
+    RenderPolicy,
+    emit_json,
+    interrupted,
+    json_envelope,
+    render_diagnostics,
+    resolve_invocation,
+    use_render_policy,
+)
+from snowflake_semantic_tools.cli.policy import with_policy
+from snowflake_semantic_tools.cli.run_log import append_run_log
+from snowflake_semantic_tools.cli.wiring.project import target_dir
 from snowflake_semantic_tools.domain.diagnostics import D, DiagnosticBag, audit
+from snowflake_semantic_tools.domain.diagnostics.baseline import Baseline, match_baseline, stable_fingerprint
 from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
+
+_LOG_LEVELS = {"debug": logging.DEBUG, "info": logging.INFO, "warn": logging.WARNING, "error": logging.ERROR}
+# A baseline expiring within this many days is reported as nearing expiry.
+_EXPIRY_WARNING_DAYS = 30
+
+
+class ConfigNeed(Enum):
+    """Whether a command needs a configuration file: `init`, `debug`, and `docs` run without one."""
+
+    REQUIRED = "required"
+    OPTIONAL = "optional"
 
 
 @dataclasses.dataclass(frozen=True)
@@ -46,6 +85,9 @@ class CommandResult:
         human: Prints the human report; it is not called for `--output json`.
         promoted: The envelope's `summary.promoted`: the warnings `--strict` made errors.
         show_diagnostics: False where human output leaves the diagnostics to `--output json`.
+        gated: True when the exit code is 1 only because a diagnostic is an error, so a run
+            whose every error is a baselined, promoted warning exits 0 instead.
+        rows: The flat rows `--output csv` prints, one per item; None for a command without them.
     """
 
     exit_code: int = OK
@@ -54,45 +96,276 @@ class CommandResult:
     human: Callable[[], None] | None = None
     promoted: int = 0
     show_diagnostics: bool = True
+    gated: bool = False
+    rows: list[dict[str, object]] | None = None
 
 
-def command_body(name: str) -> Callable[[Callable[..., CommandResult]], Callable[..., None]]:
+def command_body(
+    name: str,
+    *,
+    outputs: Collection[str] = DEFAULT_OUTPUTS,
+    config: ConfigNeed = ConfigNeed.REQUIRED,
+    refusals: Callable[..., None] | None = None,
+) -> Callable[[Callable[..., CommandResult]], Callable[..., None]]:
     """Make the click callback for the body of `sst <name>`, which returns a `CommandResult`.
 
-    The callback keeps the body's name and docstring, which click takes as the command's
-    name and help, and passes it every parameter, `output` included. It runs the body and
-    then its report under `guarded`, so an exception raised while reporting -- writing
-    `--emit-ddl` files, say -- fails the command the same way as one raised by the body.
+    The callback keeps the body's name and docstring, which click takes as the command's name
+    and help, and declares every global option on the command. It runs the body and then its
+    report under `guarded`, so an exception raised while reporting -- writing `--emit-ddl`
+    files, say -- fails the command the same way as one raised by the body.
+
+    Args:
+        outputs: The `--output` values the command supports; any other is SST-PRT106.
+        config: Whether the command refuses to run without a configuration file.
+        refusals: Checks the command line alone, before anything is resolved, so a usage error
+            exits 3 even in a directory that is not a project. It takes the parameters it names,
+            as the body does.
     """
 
     def decorate(body: Callable[..., CommandResult]) -> Callable[..., None]:
+        wanted = frozenset(inspect.signature(body).parameters)
+
         @functools.wraps(body)
         def callback(**params: Any) -> None:
-            output = params["output"]
-            guarded(lambda: _report(name, output, body(**params)), command=name, output=output)
+            options = GlobalOptions.from_params(params)
+            given = {key: value for key, value in params.items() if key not in GLOBAL_NAMES}
+            run = _Run(name, body, wanted, options, given, frozenset(outputs), config, refusals)
+            guarded(run.execute, command=name, output=options.output)
 
-        return callback
+        declared = command_global_options()(callback)
+        return declared if "selected" in wanted else _no_selector_options(name)(declared)
 
     return decorate
 
 
-def _report(command: str, output: str, result: CommandResult) -> None:
-    """Print `result` as one envelope or as human text, and exit with its code when it is not 0."""
+def _no_selector_options(command: str) -> Callable[[Callable[..., None]], Callable[..., None]]:
+    """Declare `--select` and `--exclude`, hidden, on a command that takes no selector, refusing both.
+
+    A selector there is refused rather than unknown, so the refusal can say what to do instead.
+
+    Diagnostics:
+        SST-PRT110: a selector was passed to a command that takes none; raised.
+    """
+
+    def refuse(ctx: click.Context, param: click.Parameter, value: tuple[str, ...]) -> None:
+        if value:
+            from snowflake_semantic_tools.cli.group import SstUsageError
+
+            diagnostic = D("SST-PRT110", subject="cli", command=f"sst {command}", value=value[0])
+            raise SstUsageError(diagnostic.message, ctx, diagnostic=diagnostic)
+
+    def apply(function: Callable[..., None]) -> Callable[..., None]:
+        for flag in ("--exclude", "--select"):
+            function = click.option(
+                flag, f"refused_{flag[2:]}", multiple=True, hidden=True, expose_value=False, callback=refuse
+            )(function)
+        return function
+
+    return apply
+
+
+@dataclasses.dataclass(frozen=True)
+class _Run:
+    """One invocation of a command body, from its resolved global options to its report."""
+
+    name: str
+    body: Callable[..., CommandResult]
+    wanted: frozenset[str]
+    options: GlobalOptions
+    given: dict[str, Any]
+    outputs: frozenset[str]
+    config: ConfigNeed
+    refusals: Callable[..., None] | None
+
+    def execute(self) -> None:
+        """Check the command line, resolve the project, run the body, and report it."""
+        options = self.options
+        if options.output not in self.outputs:
+            _refuse_output(self.name, options.output, self.outputs)
+        if options.verbose and options.quiet:
+            _refuse_pair("--verbose", "--quiet")
+        if self.refusals is not None:
+            names = frozenset(inspect.signature(self.refusals).parameters)
+            supplied = {"options": options, "project_dir": options.project_dir}
+            self.refusals(**{key: value for key, value in {**self.given, **supplied}.items() if key in names})
+        logging.basicConfig(level=_LOG_LEVELS[options.log_level], stream=sys.stderr)
+        use_render_policy(_render_policy(options))
+        files = dataclasses.replace(
+            locate_project(
+                options.project_dir,
+                options.config,
+                profiles_dir=options.profiles_dir,
+                required=self.config is ConfigNeed.REQUIRED,
+            ),
+            allow_unsupported_manifest_schema=options.allow_unsupported_manifest_schema,
+        )
+        resolve_invocation(
+            project_dir=options.project_dir,
+            config_file=files.config_file,
+            target=self.given.get("target_name"),
+            overrides=options.overrides,
+        )
+        baseline = _baseline(options)
+        result = self.body(**self._arguments(files))
+        diagnostics, exit_code = with_policy(
+            self.name,
+            result.diagnostics,
+            result.exit_code,
+            gated=result.gated,
+            promoted=result.promoted,
+            paths=files,
+            baselined=baseline is not None,
+        )
+        result = dataclasses.replace(result, diagnostics=diagnostics, exit_code=exit_code)
+        _report(self.name, options, _with_baseline(result, baseline, files))
+
+    def _arguments(self, files: ProjectPaths) -> dict[str, Any]:
+        """Return the body's arguments: its own parameters, and the resolved values it names."""
+        supplied = {
+            "paths": files,
+            "options": self.options,
+            "project_dir": self.options.project_dir,
+            "manifest_path": self.options.manifest,
+        }
+        arguments = {key: value for key, value in self.given.items() if key in self.wanted}
+        arguments.update({key: value for key, value in supplied.items() if key in self.wanted})
+        return arguments
+
+
+def _render_policy(options: GlobalOptions) -> RenderPolicy:
+    return RenderPolicy(
+        output=options.output,
+        no_color=options.no_color,
+        verbose=options.verbose,
+        quiet=options.quiet,
+        show_info=options.show_info,
+        show_baselined=options.show_baselined,
+        show_cascade=options.show_cascade,
+        show_all_occurrences=options.show_all_occurrences,
+    )
+
+
+def _refuse_output(command: str, found: str, supported: frozenset[str]) -> NoReturn:
+    """Refuse an `--output` value the command does not support; there is no fallback format.
+
+    Diagnostics:
+        SST-PRT106: the command does not support the `--output` value; raised.
+    """
+    from snowflake_semantic_tools.cli.group import SstUsageError
+
+    expected = ", ".join(value for value in ("table", "plain", "json", "yaml", "csv") if value in supported)
+    diagnostic = D("SST-PRT106", subject="cli", found=found, command=f"sst {command}", expected=expected)
+    raise SstUsageError(diagnostic.message, diagnostic=diagnostic)
+
+
+def _refuse_pair(first: str, second: str) -> NoReturn:
+    """Refuse two flags that exclude each other.
+
+    Diagnostics:
+        SST-PRT104: both flags were given; raised.
+    """
+    from snowflake_semantic_tools.cli.group import SstUsageError
+
+    diagnostic = D("SST-PRT104", subject="cli", a=first, b=second)
+    raise SstUsageError(diagnostic.message, diagnostic=diagnostic)
+
+
+def _baseline(options: GlobalOptions) -> Baseline | None:
+    """Read the run's baseline: `--baseline`, else `.sst/baseline.json` when it exists; None without one.
+
+    Raises:
+        ProjectError: the file `--baseline` names does not exist, or a baseline cannot be read.
+    """
+    if options.no_baseline:
+        return None
+    path = options.baseline or options.project_dir / BASELINE_FILE
+    if options.baseline is None and not path.is_file():
+        return None
+    name = path.as_posix() if options.baseline is not None else BASELINE_FILE.as_posix()
+    return read_baseline(path, name)
+
+
+def _with_baseline(result: CommandResult, baseline: Baseline | None, files: ProjectPaths) -> CommandResult:
+    """Mark what the baseline holds, add its expiry notices, and settle the exit code they decide.
+
+    A baselined diagnostic never blocks: a gated result whose every error is a baselined,
+    promoted warning exits 0. A baseline past its expiry is an error, and the run exits 1.
+    """
+    if baseline is None:
+        return result
+    today = datetime.now(UTC).date()
+    match = match_baseline(
+        result.diagnostics,
+        baseline,
+        today=today.isoformat(),
+        warn_from=(today + timedelta(days=_EXPIRY_WARNING_DAYS)).isoformat(),
+    )
+    resolve_invocation(
+        project_dir=files.project_dir,
+        config_file=files.config_file,
+        target=None,
+        baselined=match.baselined,
+    )
+    diagnostics = DiagnosticBag((*match.notices, *result.diagnostics))
+    exit_code = result.exit_code
+    errors = [item for item in result.diagnostics if item.blocks]
+    if (
+        result.gated
+        and exit_code == ERROR
+        and errors
+        and all(stable_fingerprint(item) in match.baselined for item in errors)
+    ):
+        exit_code = OK
+    if exit_code == OK and any(item.blocks for item in match.notices):
+        exit_code = ERROR
+    return dataclasses.replace(result, diagnostics=diagnostics, exit_code=exit_code)
+
+
+def _report(command: str, options: GlobalOptions, result: CommandResult) -> None:
+    """Print `result` as one envelope, YAML, CSV, or human text, and exit with its code when it is not 0.
+
+    YAML is the envelope serialized as YAML; CSV is the result's rows with a header, and its
+    diagnostics go to stderr. `plain` is `table` without colour.
+    """
     audited = audit(result.diagnostics)
     if audited is not result.diagnostics:
         exit_code = ERROR if result.exit_code in (OK, CHANGES) else result.exit_code
         result = dataclasses.replace(result, diagnostics=audited, exit_code=exit_code)
-    if output == "json":
+    append_run_log(target_dir(options.project_dir), result.diagnostics, command=command)
+    if options.output in ("json", "yaml"):
         envelope = json_envelope(
             command, result.diagnostics, exit_code=result.exit_code, promoted=result.promoted, data=result.data
         )
-        emit_json(envelope, result.exit_code)
+        if options.output == "json":
+            emit_json(envelope, result.exit_code)
+        click.echo(dump_yaml(envelope), nl=False)
+        raise click.exceptions.Exit(result.exit_code)
+    if options.output == "csv":
+        render_diagnostics(result.diagnostics)
+        _print_csv(result.rows or [])
+        raise click.exceptions.Exit(result.exit_code)
     if result.show_diagnostics:
         render_diagnostics(result.diagnostics)
     if result.human is not None:
         result.human()
     if result.exit_code:
         raise click.exceptions.Exit(result.exit_code)
+
+
+def _print_csv(rows: list[dict[str, object]]) -> None:
+    """Print `rows` as CSV with a header row; a list or mapping value is written as JSON."""
+    columns = list(dict.fromkeys(key for row in rows for key in row))
+    buffer = io.StringIO()
+    writer = csv.writer(buffer, lineterminator="\n")
+    writer.writerow(columns)
+    for row in rows:
+        writer.writerow(
+            [
+                json.dumps(row.get(key)) if isinstance(row.get(key), (list, dict)) else row.get(key, "")
+                for key in columns
+            ]
+        )
+    click.echo(buffer.getvalue(), nl=False)
 
 
 def guarded(action: Callable[[], None], *, command: str, output: str) -> None:
@@ -107,24 +380,65 @@ def guarded(action: Callable[[], None], *, command: str, output: str) -> None:
         interrupted(command, output, exc)
     except SnowflakePortError as exc:
         _connection_failed(command, output, exc)
+    except WriteFailure as exc:
+        _write_failed(command, output, exc)
     except (ProjectError, ValueError, OSError, json.JSONDecodeError) as exc:
         _unusable(command, output, exc)
-    except Exception as exc:
+    except Exception as exc:  # the one crash handler: an exception nothing above expects
         _internal_error(command, output, exc)
 
 
 def _connection_failed(command: str, output: str, exc: SnowflakePortError) -> NoReturn:
-    """Exit 5 because Snowflake could not be reached; without a diagnostic, click reports it."""
-    diagnostics = DiagnosticBag((exc.diagnostic,) if exc.diagnostic is not None else ())
+    """Exit 5 because Snowflake could not be reached or refused the session.
+
+    Diagnostics:
+        SST-PRT001: the failure carries no diagnostic of its own.
+    """
+    diagnostic = exc.diagnostic or D("SST-PRT001", subject="cli", value="Snowflake", detail=str(exc))
+    diagnostics = DiagnosticBag((diagnostic,))
     if output == "json":
         emit_json(
             json_envelope(command, diagnostics, exit_code=CONNECTION, status="error", data={"error": str(exc)}),
             CONNECTION,
         )
-    if diagnostics:
-        render_diagnostics(diagnostics)
-        raise click.exceptions.Exit(CONNECTION) from exc
-    raise click.ClickException(str(exc)) from exc
+    render_diagnostics(diagnostics)
+    raise click.exceptions.Exit(CONNECTION) from exc
+
+
+class WriteFailure(Exception):
+    """A file a command writes -- a manifest, rendered DDL, a page -- could not be written."""
+
+    def __init__(self, path: Path, cause: OSError) -> None:
+        super().__init__(f"could not write {path}: {cause}")
+        self.path = path
+        self.cause = cause
+
+
+def write_text(path: Path, text: str) -> None:
+    """Write `text` to `path`, creating its directory; a failure is a `WriteFailure`, exit 1.
+
+    Raises:
+        WriteFailure: the directory or the file cannot be written.
+    """
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(text, encoding="utf-8")
+    except OSError as exc:
+        raise WriteFailure(path, exc) from exc
+
+
+def _write_failed(command: str, output: str, exc: WriteFailure) -> NoReturn:
+    """Exit 1 because a file the command writes could not be written.
+
+    Diagnostics:
+        SST-PRT008: the write failed.
+    """
+    diagnostic = D("SST-PRT008", subject="cli", path=str(exc.path), detail=str(exc.cause))
+    diagnostics = DiagnosticBag((diagnostic,))
+    if output == "json":
+        emit_json(json_envelope(command, diagnostics, exit_code=ERROR, status="error", data={"error": str(exc)}), ERROR)
+    render_diagnostics(diagnostics)
+    raise click.exceptions.Exit(ERROR) from exc
 
 
 def _unusable(command: str, output: str, exc: Exception) -> NoReturn:
@@ -141,9 +455,19 @@ def _unusable(command: str, output: str, exc: Exception) -> NoReturn:
 
 
 def _internal_error(command: str, output: str, exc: Exception) -> NoReturn:
-    """Exit 1 with SST-INT001: an exception crossed every phase boundary unhandled."""
-    diagnostics = DiagnosticBag((D("SST-INT001", subject=command, detail=f"{type(exc).__name__}: {exc}"),))
+    """Exit 1 with SST-INT001: an exception nothing above expects means SST itself is broken.
+
+    Diagnostics:
+        SST-INT001: an exception no handler expects reached the command's guard.
+    """
+    detail = f"{type(exc).__name__}: {exc}"
+    diagnostics = DiagnosticBag((D("SST-INT001", subject=command, detail=detail),))
     if output == "json":
         emit_json(json_envelope(command, diagnostics, exit_code=ERROR, status="error", data={"error": str(exc)}), ERROR)
     render_diagnostics(diagnostics)
     raise click.exceptions.Exit(ERROR) from exc
+
+
+def project_path(files: ProjectPaths, path: Path) -> Path:
+    """Return `path` taken from the project directory when it is relative."""
+    return path if path.is_absolute() else files.project_dir / path
