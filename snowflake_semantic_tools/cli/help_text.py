@@ -137,6 +137,19 @@ _COMMAND_OPTION_HELP: Mapping[tuple[str, str], str] = {
     ("sst diff", "--full"): "Also name which recorded fields of a modified artifact differ.",
     ("sst diff", "--names-only"): "Print the name of each differing artifact, one per line, and nothing else.",
     ("sst diff", "--no-detailed-exitcode"): "Exit 0 when the states differ, instead of 2.",
+    (
+        "sst drop",
+        "--type",
+    ): "Required. The registered type of the object, which picks the DROP: agent or semantic_view.",
+    (
+        "sst drop",
+        "--target",
+    ): "Required. Target from `profiles.yml`; there is no default, and `$SST_TARGET` is not read.",
+    (
+        "sst drop",
+        "--profile",
+    ): "Profile in `profiles.yml`; else `dbt_project.yml`'s `profile:`. Needed outside a project.",
+    ("sst drop", "--yes"): "Required on every invocation: it is the confirmation, and there is no prompt.",
     ("sst explain", "--aliases"): "Also list the SST 0.3 codes that resolve to the code, and what each became.",
     ("sst format", "--check"): "Write nothing; exit 2 when a file would change.",
     ("sst format", "--dry-run"): "Write nothing; print each file's change as a diff.",

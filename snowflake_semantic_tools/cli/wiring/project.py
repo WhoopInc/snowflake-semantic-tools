@@ -83,38 +83,41 @@ def open_connector(connection_params: dict[str, object]) -> SnowflakeConnector:
     return entry.SnowflakeConnector(connection_params)
 
 
-def connect(files: ProjectPaths, target_name: str | None) -> tuple[ProfileTarget, SnowflakeConnector]:
+def connect(
+    files: ProjectPaths, target_name: str | None, *, profile: str | None = None
+) -> tuple[ProfileTarget, SnowflakeConnector]:
     """Connect to the project's target, and bind it to the live session's account and role.
 
-    An error raised once the connection is open closes it again. The target's credentials are
+    `profile` names the `profiles.yml` profile instead of the project. An error raised once the
+    connection is open closes it again. The target's credentials are
     registered with the output first, so no report of this run can print one.
 
     Raises:
         ProjectError: the target cannot be connected to as declared, as `connection_params` says.
         SnowflakePortError: connecting failed, or the session's role is not the target's role.
     """
-    profile = load_profile_target(files, target_name)
-    register_secrets(profile.secrets)
-    port = open_connector(profile.connection_params)
+    resolved_profile = load_profile_target(files, target_name, profile=profile)
+    register_secrets(resolved_profile.secrets)
+    port = open_connector(resolved_profile.connection_params)
     with ExitStack() as cleanup:
         cleanup.callback(port.close)
         live_account = port.current_account_locator()
         live_role = port.current_role()
-        if profile.identity.role and live_role.upper() != profile.identity.role.upper():
+        if resolved_profile.identity.role and live_role.upper() != resolved_profile.identity.role.upper():
             raise SnowflakePortError(
-                f"connected role {live_role!r} differs from configured role {profile.identity.role!r}"
+                f"connected role {live_role!r} differs from configured role {resolved_profile.identity.role!r}"
             )
         identity = dataclasses.replace(
-            profile.identity,
+            resolved_profile.identity,
             account_locator=live_account,
             role=live_role,
         )
         resolved = ProfileTarget(
-            profile_name=profile.profile_name,
-            target_name=profile.target_name,
-            connection_params=profile.connection_params,
+            profile_name=resolved_profile.profile_name,
+            target_name=resolved_profile.target_name,
+            connection_params=resolved_profile.connection_params,
             identity=identity,
-            state_table=profile.state_table,
+            state_table=resolved_profile.state_table,
         )
         # Connected and bound: the caller owns the session from here, so nothing closes it.
         cleanup.pop_all()

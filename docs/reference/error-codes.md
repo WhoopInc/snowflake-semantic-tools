@@ -29,7 +29,7 @@ cannot be downgraded by any setting.
 - [Planning (PLN)](#planning-pln) -- 36 codes
 - [Apply (APL)](#apply-apl) -- 28 codes
 - [Snowflake (SNO)](#snowflake-sno) -- 26 codes
-- [External systems (PRT)](#external-systems-prt) -- 21 codes
+- [External systems (PRT)](#external-systems-prt) -- 22 codes
 - [Internal (INT)](#internal-int) -- 12 codes
 
 ## Registry (REG)
@@ -5415,6 +5415,14 @@ Fix: pass one of the supported formats
 **Run interrupted** (info)
 
 `interrupted after <detail>; <value>`
+
+### SST-PRT108
+
+**Object name is not fully qualified** (error)
+
+`<command> requires a fully-qualified name; '<value>' is not one`
+
+Fix: pass &lt;database&gt;.&lt;schema&gt;.&lt;object&gt;
 
 ### SST-PRT109
 

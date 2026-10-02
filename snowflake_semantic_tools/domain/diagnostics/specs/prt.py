@@ -146,6 +146,13 @@ SPECS: tuple[ErrorSpec, ...] = (
         None,
     ),
     spec(
+        "SST-PRT108",
+        Severity.ERROR,
+        "Object name is not fully qualified",
+        "{command} requires a fully-qualified name; '{value}' is not one",
+        "pass <database>.<schema>.<object>",
+    ),
+    spec(
         "SST-PRT109",
         Severity.ERROR,
         "Mandatory confirmation flag absent",

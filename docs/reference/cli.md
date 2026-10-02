@@ -31,6 +31,7 @@ versioned JSON envelope on stdout and nothing else.
 | [`sst clean`](#sst-clean) | Remove local SST build artifacts only; never touch Snowflake. |
 | [`sst migrate`](#sst-migrate) | Rewrite a 0.3 project into the 1.0 dialect. |
 | [`sst migrate refs`](#sst-migrate-refs) | Rewrite legacy table()/column() globals to ref(), and label boolean filters. |
+| [`sst drop`](#sst-drop) | Break-glass: drop exactly one object SST owns from one target, and forget it in state. |
 
 ## Global options
 
@@ -471,3 +472,23 @@ sst migrate refs [OPTIONS]
 | Option | Value | Default | Description |
 |---|---|---|---|
 | `--write` | flag |  | Rewrite files in place instead of reporting. |
+
+## sst drop
+
+Break-glass: drop exactly one object SST owns from one target, and forget it in state.
+
+Exit 0 when the object was dropped; 1 when Snowflake refused, the object does not exist,
+it carries no SST ownership marker, or another run holds the lock; 3 for a command line drop
+refuses; 4 when the profile or target cannot be resolved; and 5 when Snowflake cannot be
+reached.
+
+```text
+sst drop [OPTIONS]
+```
+
+| Option | Value | Default | Description |
+|---|---|---|---|
+| `--type` | TEXT |  | Required. The registered type of the object, which picks the DROP: agent or semantic_view. |
+| `--target / -t` | TEXT |  | Required. Target from `profiles.yml`; there is no default, and `$SST_TARGET` is not read. |
+| `--profile` | TEXT |  | Profile in `profiles.yml`; else `dbt_project.yml`'s `profile:`. Needed outside a project. |
+| `--yes / -y` | flag |  | Required on every invocation: it is the confirmation, and there is no prompt. |
