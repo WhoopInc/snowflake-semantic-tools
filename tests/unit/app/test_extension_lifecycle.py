@@ -359,6 +359,27 @@ def test_the_extension_latest_certified_version_counts_as_certified() -> None:
     assert served_warnings(changeset) == []
 
 
+class AliasCertification(LaggingCertification):
+    """The extension names its latest certified version by alias rather than by system name."""
+
+    def observe_extension(self, qualified_name: QualifiedName) -> ExtensionObservation | None:
+        observed = super().observe_extension(qualified_name)
+        if observed is None or observed.latest_certified_version is None:
+            return observed
+        versions = {item.name: item.alias for item in super().extension_versions(qualified_name)}
+        return replace(observed, latest_certified_version=versions.get(observed.latest_certified_version))
+
+
+def test_a_latest_certified_version_reported_by_alias_is_not_tagged_again() -> None:
+    port = AliasCertification(existing=())
+    certified = compile_catalog(SkillCatalog((skill(),)), replace(CHANNEL, certified=True))
+    _, result, after = publish(port, certified, state())
+    assert result.success, result.outcomes[0].error
+    changeset, _, _ = publish(port, certified, after)
+    assert [change.action for change in changeset.changes] == [Action.NOOP]
+    assert len([statement for script in port.scripts for statement in script if "SET TAG" in statement]) == 1
+
+
 def test_served_version_prediction_edges() -> None:
     port = RecordedSnowflake(existing=())
     compiled = compile_catalog(SkillCatalog((skill(),)))

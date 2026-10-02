@@ -473,12 +473,19 @@ def _certified(extension: ExtensionObservation | None, version: ExtensionVersion
     """Whether a version is certified, by its own status or as the extension's latest certified version.
 
     Either signal counts: some versions tagged by the extensions pipeline report an empty
-    per-version status while the extension names them its latest certified one.
+    per-version status while the extension names them its latest certified one. The
+    extension may name that version by its system name or by its alias, so both identify it;
+    matching the name alone would read an alias as uncertified and re-tag on every run.
     """
     if (version.certification_status or "").upper() == CERTIFIED:
         return True
     latest = extension.latest_certified_version if extension is not None else None
-    return latest is not None and latest.upper() == version.name.upper()
+    return latest is not None and latest.upper() in _version_identity(version)
+
+
+def _version_identity(version: ExtensionVersion) -> frozenset[str]:
+    """Every name a version answers to, uppercased: its system name and, when it has one, its alias."""
+    return frozenset(name.upper() for name in (version.name, version.alias) if name)
 
 
 def _served_instead(observed: _Observed, release: ExtensionRelease) -> tuple[str, str] | None:
