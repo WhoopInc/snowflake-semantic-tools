@@ -349,8 +349,13 @@ def _grantee_identifier(value: str) -> str:
 
 
 def _simple_identifier(value: str) -> str:
-    """Render one name part unquoted when it parses as an identifier, else quoted exactly."""
+    """Render one name part as SHOW GRANTS printed it, naming the same object.
+
+    A part Snowflake would store as printed, upper case and valid unquoted, is written bare;
+    any other, one with a lowercase letter, a space, or a quote, is quoted exactly with each
+    inner quote doubled, so no name can close the identifier early. An empty part is `""`.
+    """
     try:
-        return Identifier.parse(value).sql
+        return Identifier.shown(value).sql
     except ValueError:
         return Identifier(value, quoted=True).sql
