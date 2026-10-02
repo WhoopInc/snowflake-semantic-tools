@@ -17,6 +17,7 @@ from typing import Any
 from snowflake_semantic_tools.adapters.errors import ProjectError
 from snowflake_semantic_tools.adapters.yaml.fields import mapping
 from snowflake_semantic_tools.adapters.yaml.semantic.defs import FilterDef, InstructionDef, MetricDef, VerifiedQueryDef
+from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, Origin
 from snowflake_semantic_tools.domain.model.artifact_key import artifact_key
 from snowflake_semantic_tools.domain.model.compiler import (
     FILTER_EXPR,
@@ -27,7 +28,6 @@ from snowflake_semantic_tools.domain.model.compiler import (
     resolve_scalar,
 )
 from snowflake_semantic_tools.domain.model.dbt import DbtCatalog
-from snowflake_semantic_tools.domain.model.diagnostic import D, Diagnostic, Origin
 from snowflake_semantic_tools.domain.model.reference import scan_template_calls, single_template_call
 from snowflake_semantic_tools.domain.model.semantic_view import (
     Column,

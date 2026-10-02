@@ -8,7 +8,7 @@ from typing import Any
 
 import pytest
 
-from snowflake_semantic_tools.domain.model.diagnostic import DiagnosticBag
+from snowflake_semantic_tools.domain.diagnostics import DiagnosticBag
 from snowflake_semantic_tools.domain.model.identifier import Identifier, QualifiedName, TargetIdentity
 from snowflake_semantic_tools.domain.model.lifecycle import Action, Change, ChangeReason, ChangeSet, RenderedArtifact
 from snowflake_semantic_tools.domain.state import (

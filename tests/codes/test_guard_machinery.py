@@ -10,8 +10,8 @@ from pathlib import Path
 
 import pytest
 
-from snowflake_semantic_tools.domain.model.diagnostic import ERROR_REGISTRY, Severity
-from snowflake_semantic_tools.domain.model.diagnostic.core import spec
+from snowflake_semantic_tools.domain.diagnostics import ERROR_REGISTRY, Severity
+from snowflake_semantic_tools.domain.diagnostics.core import spec
 from tests.helpers.code_guards import (
     CatalogRow,
     catalog_divergence,

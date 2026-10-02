@@ -18,7 +18,7 @@ import click
 from snowflake_semantic_tools._version import __version__ as VERSION
 from snowflake_semantic_tools.cli.exit_codes import INTERRUPTED, OK, USAGE
 from snowflake_semantic_tools.cli.output import json_envelope, print_envelope, start_invocation
-from snowflake_semantic_tools.domain.model.diagnostic import DiagnosticBag
+from snowflake_semantic_tools.domain.diagnostics import DiagnosticBag
 
 
 class SstUsageError(click.UsageError):

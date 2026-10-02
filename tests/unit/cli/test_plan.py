@@ -16,7 +16,7 @@ from snowflake_semantic_tools.adapters.errors import ProjectError
 from snowflake_semantic_tools.app.lifecycle.evals import EVAL_STAGE_FILE_FORMAT
 from snowflake_semantic_tools.cli.main import cli
 from snowflake_semantic_tools.cli.wiring.manifest import compiled_manifest as _compiled_manifest
-from snowflake_semantic_tools.domain.model.diagnostic import D, DiagnosticBag
+from snowflake_semantic_tools.domain.diagnostics import D, DiagnosticBag
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
 from snowflake_semantic_tools.domain.model.lifecycle import QueryResult, ShowRow
 from snowflake_semantic_tools.domain.ports.snowflake import SnowflakePortError, StagedFileMetadata

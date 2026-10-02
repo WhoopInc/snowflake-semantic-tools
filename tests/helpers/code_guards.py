@@ -20,7 +20,7 @@ from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 
-from snowflake_semantic_tools.domain.model.diagnostic import ErrorSpec
+from snowflake_semantic_tools.domain.diagnostics import ErrorSpec
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 PACKAGE = REPO_ROOT / "snowflake_semantic_tools"
@@ -29,7 +29,7 @@ CODES_DIR = TESTS / "codes"
 CATALOG_PATH = CODES_DIR / "catalog.json"
 ALLOWLIST_DIR = CODES_DIR / "allowlist"
 # The registry declares every code; a reference there proves nothing about emission.
-REGISTRY_SPECS = PACKAGE / "domain" / "model" / "diagnostic" / "specs"
+REGISTRY_SPECS = PACKAGE / "domain" / "diagnostics" / "specs"
 
 CODE = re.compile(r"^SST-[A-Z]{3}\d{3}$")
 # `test_sst_cfg010_fires` or `test_sst_cfg010_silent`, optionally followed by `_<what it shows>`.

@@ -11,9 +11,9 @@ from __future__ import annotations
 from dataclasses import replace
 
 from snowflake_semantic_tools.app.compile.agents.context import AgentCompileContext, ExtensionPin
+from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic
 from snowflake_semantic_tools.domain.model.agent import AgentModel, AgentSkill
 from snowflake_semantic_tools.domain.model.artifact_key import artifact_key
-from snowflake_semantic_tools.domain.model.diagnostic import D, Diagnostic
 
 
 def resolve_skills(

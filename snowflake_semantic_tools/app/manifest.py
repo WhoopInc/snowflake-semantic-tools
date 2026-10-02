@@ -13,7 +13,7 @@ from __future__ import annotations
 from types import MappingProxyType
 
 from snowflake_semantic_tools.app.compile import CompiledArtifact, CompileResult
-from snowflake_semantic_tools.domain.model.diagnostic import Severity
+from snowflake_semantic_tools.domain.diagnostics import Severity
 from snowflake_semantic_tools.domain.ports.project import ManifestSources
 from snowflake_semantic_tools.domain.state import SST_VERSION, ArtifactEntry, ImpactIndex, Manifest
 

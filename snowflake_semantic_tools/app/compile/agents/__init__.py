@@ -17,13 +17,13 @@ from snowflake_semantic_tools.app.compile.agents.context import AgentCompileCont
 from snowflake_semantic_tools.app.compile.agents.resolve_skills import resolve_skills
 from snowflake_semantic_tools.app.compile.agents.resolve_tools import resolve_tool
 from snowflake_semantic_tools.app.compile.base import CompileResult, has_error
+from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, DiagnosticBag
 from snowflake_semantic_tools.domain.model.agent import (
     RESERVED_AGENT_ALIASES,
     AgentModel,
     ResolvedAgent,
     ResolvedAgentTool,
 )
-from snowflake_semantic_tools.domain.model.diagnostic import D, Diagnostic, DiagnosticBag
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
 from snowflake_semantic_tools.domain.model.sql_checks import name_problem, qualified_name_problem
 from snowflake_semantic_tools.domain.render.agent import desired_agent_definition, render_agent_json, render_agent_spec

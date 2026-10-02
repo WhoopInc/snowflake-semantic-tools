@@ -22,7 +22,7 @@ from snowflake_semantic_tools.adapters.yaml.semantic.checks.shape import (
 from snowflake_semantic_tools.adapters.yaml.semantic.defs import _frame
 from snowflake_semantic_tools.adapters.yaml.semantic.relationships import _relationship_parse_diagnostics
 from snowflake_semantic_tools.adapters.yaml.semantic.target import _folder_route_diagnostics
-from snowflake_semantic_tools.domain.model.diagnostic import ERROR_REGISTRY
+from snowflake_semantic_tools.domain.diagnostics import ERROR_REGISTRY
 from tests.helpers.projects import load_project, load_views
 
 

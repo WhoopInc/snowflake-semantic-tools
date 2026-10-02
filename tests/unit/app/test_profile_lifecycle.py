@@ -14,7 +14,7 @@ from snowflake_semantic_tools.app.desktop_contract import desktop_view, is_point
 from snowflake_semantic_tools.app.lifecycle.profiles import ProfileLifecycleHandler, _shape_problem, _stale
 from snowflake_semantic_tools.app.manifest import build_manifest
 from snowflake_semantic_tools.app.plan import PlanArtifacts
-from snowflake_semantic_tools.domain.model.diagnostic import DiagnosticBag, Origin, Severity
+from snowflake_semantic_tools.domain.diagnostics import DiagnosticBag, Origin, Severity
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
 from snowflake_semantic_tools.domain.model.lifecycle import (
     Action,

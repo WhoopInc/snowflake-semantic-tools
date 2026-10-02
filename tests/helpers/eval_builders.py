@@ -13,8 +13,8 @@ from collections.abc import Sequence
 
 from snowflake_semantic_tools.app.compile.base import CompileResult
 from snowflake_semantic_tools.app.compile.evals import CompiledEval, CompileEvals
+from snowflake_semantic_tools.domain.diagnostics import DiagnosticBag, Origin
 from snowflake_semantic_tools.domain.model.agent import AgentModel
-from snowflake_semantic_tools.domain.model.diagnostic import DiagnosticBag, Origin
 from snowflake_semantic_tools.domain.model.eval import (
     CustomEvalMetric,
     EvalCatalog,

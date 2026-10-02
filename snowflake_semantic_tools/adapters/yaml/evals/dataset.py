@@ -17,7 +17,7 @@ from snowflake_semantic_tools.adapters.yaml.evals.readers import (
     required_string,
     string_tuple,
 )
-from snowflake_semantic_tools.domain.model.diagnostic import D, Diagnostic
+from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic
 from snowflake_semantic_tools.domain.model.eval import EvalDataset, EvalGroundTruth, EvalInvocation, EvalQuestion
 
 _GROUND_TRUTH_KEYS = frozenset(

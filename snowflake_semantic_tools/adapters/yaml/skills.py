@@ -20,8 +20,8 @@ from snowflake_semantic_tools.adapters.yaml.fields import (
     report_unknown_keys,
 )
 from snowflake_semantic_tools.adapters.yaml.parse import parse_yaml_bytes
+from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, DiagnosticBag, Origin
 from snowflake_semantic_tools.domain.model.artifact_key import artifact_key
-from snowflake_semantic_tools.domain.model.diagnostic import D, Diagnostic, DiagnosticBag, Origin
 from snowflake_semantic_tools.domain.model.skill import SKILL_FILE, Plugin, Skill, SkillCatalog, SkillFile
 
 PLUGIN_FILES = ("plugin.yml", "plugin.yaml")

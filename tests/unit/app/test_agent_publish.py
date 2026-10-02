@@ -3,8 +3,8 @@ from __future__ import annotations
 from dataclasses import replace
 
 from snowflake_semantic_tools.app.compile.agents import CompiledAgent, for_publication
+from snowflake_semantic_tools.domain.diagnostics import Origin
 from snowflake_semantic_tools.domain.model.agent import AgentModel, AgentProfile, ResolvedAgent
-from snowflake_semantic_tools.domain.model.diagnostic import Origin
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
 from snowflake_semantic_tools.domain.model.lifecycle import Action, ObservedArtifact
 from tests.helpers.sql_values import texts

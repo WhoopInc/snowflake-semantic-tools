@@ -6,7 +6,7 @@ before it builds the model a renderer reads; these helpers give each refusal its
 
 from __future__ import annotations
 
-from snowflake_semantic_tools.domain.model.diagnostic import D, Diagnostic, Origin
+from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, Origin
 from snowflake_semantic_tools.domain.model.identifier import Identifier, QualifiedName
 from snowflake_semantic_tools.domain.sql import (
     AuthoredExpression,

@@ -12,8 +12,8 @@ import re
 from collections.abc import Callable, Container, Iterable, Mapping
 from dataclasses import dataclass
 
+from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, DiagnosticBag, Severity
 from snowflake_semantic_tools.domain.model.artifact_key import artifact_key
-from snowflake_semantic_tools.domain.model.diagnostic import D, Diagnostic, DiagnosticBag, Severity
 from snowflake_semantic_tools.domain.model.profile.model import (
     SHARED_PROFILE,
     DesktopProfile,

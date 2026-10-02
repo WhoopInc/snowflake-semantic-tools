@@ -17,14 +17,14 @@ import click
 from snowflake_semantic_tools._version import __version__ as VERSION
 from snowflake_semantic_tools.adapters.clock import SystemClock
 from snowflake_semantic_tools.cli.exit_codes import CHANGES, ERROR, INTERRUPTED, OK
-from snowflake_semantic_tools.domain.model.artifact_key import split_artifact_key
-from snowflake_semantic_tools.domain.model.diagnostic import (
+from snowflake_semantic_tools.domain.diagnostics import (
     ERROR_REGISTRY,
     Diagnostic,
     DiagnosticBag,
     Severity,
     render_diagnostic,
 )
+from snowflake_semantic_tools.domain.model.artifact_key import split_artifact_key
 from snowflake_semantic_tools.domain.model.registry import SEMANTIC_REGISTRY
 
 _INVOCATION: dict[str, object] = {}

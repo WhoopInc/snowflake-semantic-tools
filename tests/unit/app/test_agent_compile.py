@@ -13,6 +13,7 @@ from snowflake_semantic_tools.app.compile.agents import (
     for_publication,
 )
 from snowflake_semantic_tools.app.compile.agents.resolve_tools import resolve_tool
+from snowflake_semantic_tools.domain.diagnostics import DiagnosticBag, Origin
 from snowflake_semantic_tools.domain.model.agent import (
     AgentModel,
     AgentProfile,
@@ -21,7 +22,6 @@ from snowflake_semantic_tools.domain.model.agent import (
     ResolvedAgent,
     ResolvedAgentTool,
 )
-from snowflake_semantic_tools.domain.model.diagnostic import DiagnosticBag, Origin
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
 from snowflake_semantic_tools.domain.model.tool import ToolCatalog, ToolColumn, ToolGroup, ToolMember, ToolOwnership
 from tests.helpers.compile_builders import compiled_as

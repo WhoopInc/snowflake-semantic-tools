@@ -11,7 +11,7 @@ import re
 from collections.abc import Mapping
 from types import MappingProxyType
 
-from snowflake_semantic_tools.domain.model.diagnostic import Diagnostic
+from snowflake_semantic_tools.domain.diagnostics import Diagnostic
 from snowflake_semantic_tools.domain.model.eval.model import (
     SUPPORTED_JUDGE_PLACEHOLDERS,
     SYSTEM_EVAL_METRICS,

@@ -17,7 +17,7 @@ from hypothesis import given, settings
 from hypothesis import strategies as st
 
 from snowflake_semantic_tools.adapters.yaml.parse import parse_yaml_bytes
-from snowflake_semantic_tools.domain.model.diagnostic import Origin
+from snowflake_semantic_tools.domain.diagnostics import Origin
 from snowflake_semantic_tools.domain.model.identifier import Identifier, QualifiedName
 from snowflake_semantic_tools.domain.model.semantic_view import (
     Column,

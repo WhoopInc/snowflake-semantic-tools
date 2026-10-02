@@ -31,9 +31,9 @@ from snowflake_semantic_tools.adapters.yaml.semantic.phases import (
 from snowflake_semantic_tools.adapters.yaml.semantic.poison import Poison, _member_poison, _view_poison
 from snowflake_semantic_tools.adapters.yaml.semantic.target import _semantic_view_defaults, _semantic_view_target
 from snowflake_semantic_tools.adapters.yaml.semantic.view_instructions import _view_instructions
+from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, DiagnosticBag, Origin
 from snowflake_semantic_tools.domain.model.artifact_key import artifact_key
 from snowflake_semantic_tools.domain.model.dbt import DbtModel, DbtTarget
-from snowflake_semantic_tools.domain.model.diagnostic import D, Diagnostic, DiagnosticBag, Origin
 from snowflake_semantic_tools.domain.model.project import ParsedMember, ResolvedProject, SemanticViewProject
 from snowflake_semantic_tools.domain.model.registry import SEMANTIC_REGISTRY
 from snowflake_semantic_tools.domain.model.semantic_view import SemanticView

@@ -6,7 +6,7 @@ from dataclasses import dataclass
 
 from snowflake_semantic_tools.app.compile import CompileResult
 from snowflake_semantic_tools.app.partial import partial_refusal, partial_split
-from snowflake_semantic_tools.domain.model.diagnostic import D, DiagnosticBag
+from snowflake_semantic_tools.domain.diagnostics import D, DiagnosticBag
 
 
 @dataclass(frozen=True)

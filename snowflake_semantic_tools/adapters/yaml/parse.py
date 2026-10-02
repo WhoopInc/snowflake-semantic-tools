@@ -27,7 +27,7 @@ import yaml
 
 from snowflake_semantic_tools.adapters.errors import ProjectError
 from snowflake_semantic_tools.adapters.yaml.documents import NodePath, ParsedYaml, SourcePosition, TemplateSource
-from snowflake_semantic_tools.domain.model.diagnostic import D, Diagnostic, Origin
+from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, Origin
 
 _PLACEHOLDER = "__SST_TPL_%d__"
 

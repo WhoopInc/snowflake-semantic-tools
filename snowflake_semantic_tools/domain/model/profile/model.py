@@ -12,8 +12,8 @@ import json
 from collections.abc import Mapping
 from dataclasses import dataclass
 
+from snowflake_semantic_tools.domain.diagnostics import DiagnosticBag, Origin
 from snowflake_semantic_tools.domain.model.artifact_key import artifact_key
-from snowflake_semantic_tools.domain.model.diagnostic import DiagnosticBag, Origin
 from snowflake_semantic_tools.domain.model.skill import BundleEntry, SkillFile, bundle_digest
 
 SHARED_PROFILE = "shared"

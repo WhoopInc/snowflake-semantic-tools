@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import re
 
-from snowflake_semantic_tools.domain.model.diagnostic import D, Diagnostic
+from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic
 from snowflake_semantic_tools.domain.model.eval.model import EvalDefaults, EvalGroundTruth, EvalQuestion, ResolvedEval
 from snowflake_semantic_tools.domain.model.eval.naming import NAME_LIMIT, has_agent_token, probe_name
 from snowflake_semantic_tools.domain.model.validation import Emitter

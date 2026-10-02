@@ -15,9 +15,9 @@ import string
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 
+from snowflake_semantic_tools.domain.diagnostics import ERROR_REGISTRY, ErrorSpec, Severity
+from snowflake_semantic_tools.domain.diagnostics.specs import SUBSYSTEMS
 from snowflake_semantic_tools.domain.model.config_schema import CONFIG_SCHEMA, ConfigKey, KeyKind, KeyStatus
-from snowflake_semantic_tools.domain.model.diagnostic import ERROR_REGISTRY, ErrorSpec, Severity
-from snowflake_semantic_tools.domain.model.diagnostic.specs import SUBSYSTEMS
 from snowflake_semantic_tools.domain.model.registry import (
     ARTIFACT_REGISTRY,
     ArtifactLifecycle,

@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from snowflake_semantic_tools.domain.model.diagnostic import Severity
+from snowflake_semantic_tools.domain.diagnostics import Severity
 from tests.helpers.cli_projects import project_copy
 from tests.helpers.projects import load_project
 

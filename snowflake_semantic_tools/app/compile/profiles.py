@@ -7,8 +7,8 @@ from dataclasses import dataclass
 from hashlib import sha256
 
 from snowflake_semantic_tools.app.compile.base import CompileResult, StandaloneArtifact
+from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, DiagnosticBag, Severity
 from snowflake_semantic_tools.domain.model.artifact_key import artifact_key
-from snowflake_semantic_tools.domain.model.diagnostic import D, Diagnostic, DiagnosticBag, Severity
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
 from snowflake_semantic_tools.domain.model.lifecycle import (
     CompositeFacts,

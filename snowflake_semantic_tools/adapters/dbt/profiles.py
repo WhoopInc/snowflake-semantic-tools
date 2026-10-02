@@ -13,7 +13,7 @@ from typing import Any, NoReturn
 import yaml
 
 from snowflake_semantic_tools.adapters.errors import ProjectError
-from snowflake_semantic_tools.domain.model.diagnostic import D, Diagnostic, Origin
+from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, Origin
 from snowflake_semantic_tools.domain.model.identifier import Identifier, QualifiedName, TargetIdentity
 
 _ENV_VAR = re.compile(

@@ -11,7 +11,7 @@ from snowflake_semantic_tools.adapters.dbt.profiles import load_profile_target
 from snowflake_semantic_tools.cli.options import output_option, project_dir_option, target_option
 from snowflake_semantic_tools.cli.runner import CommandResult, command_body
 from snowflake_semantic_tools.cli.wiring.project import open_connector
-from snowflake_semantic_tools.domain.model.diagnostic import DiagnosticBag
+from snowflake_semantic_tools.domain.diagnostics import DiagnosticBag
 
 
 @click.command()

@@ -29,7 +29,7 @@ from snowflake_semantic_tools.cli.wiring.plan import (
     refuse_partial_prune,
 )
 from snowflake_semantic_tools.cli.wiring.project import target_dir
-from snowflake_semantic_tools.domain.model.diagnostic import DiagnosticBag
+from snowflake_semantic_tools.domain.diagnostics import DiagnosticBag
 from snowflake_semantic_tools.domain.state import SavedPlan
 
 

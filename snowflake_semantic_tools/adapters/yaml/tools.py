@@ -9,9 +9,9 @@ from snowflake_semantic_tools.adapters.errors import ProjectError
 from snowflake_semantic_tools.adapters.paths import resolve_within
 from snowflake_semantic_tools.adapters.yaml.fields import optional_string, strings
 from snowflake_semantic_tools.adapters.yaml.parse import parse_yaml_bytes
+from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, DiagnosticBag, Origin
 from snowflake_semantic_tools.domain.model.artifact_key import artifact_key
 from snowflake_semantic_tools.domain.model.dbt import DbtCatalog
-from snowflake_semantic_tools.domain.model.diagnostic import D, Diagnostic, DiagnosticBag, Origin
 from snowflake_semantic_tools.domain.model.reference import TemplateSyntaxError, scan_template_calls
 from snowflake_semantic_tools.domain.model.tool import (
     CREATION_KEYS,

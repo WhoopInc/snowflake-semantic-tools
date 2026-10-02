@@ -7,6 +7,8 @@ from dataclasses import dataclass
 from enum import Enum, auto
 from types import MappingProxyType
 
+from snowflake_semantic_tools.domain.diagnostics.core import RegistryIntegrityError
+
 
 class MemberSource(Enum):
     """Where a member type is authored.
@@ -130,10 +132,6 @@ class Registry:
 
     artifacts: Mapping[str, ArtifactType]
     members: Mapping[str, MemberType]
-
-
-class RegistryIntegrityError(RuntimeError):
-    """Artifact and member types that contradict one another, as `build_registry` finds them."""
 
 
 def build_registry(artifact_types: tuple[ArtifactType, ...], member_types: tuple[MemberType, ...]) -> Registry:

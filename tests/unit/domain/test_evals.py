@@ -5,8 +5,8 @@ from dataclasses import FrozenInstanceError, replace
 
 import pytest
 
+from snowflake_semantic_tools.domain.diagnostics import Origin, Severity
 from snowflake_semantic_tools.domain.model.agent import AgentModel, AgentTool, ResolvedAgent, ResolvedAgentTool
-from snowflake_semantic_tools.domain.model.diagnostic import Origin, Severity
 from snowflake_semantic_tools.domain.model.eval import (
     CustomEvalMetric,
     EvalCatalog,

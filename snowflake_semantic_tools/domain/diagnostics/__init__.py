@@ -16,7 +16,7 @@ from hashlib import sha256
 from types import MappingProxyType
 from typing import Any
 
-from snowflake_semantic_tools.domain.model.diagnostic.core import (
+from snowflake_semantic_tools.domain.diagnostics.core import (
     ERROR_REFERENCE_URL,
     ErrorSpec,
     Origin,
@@ -24,7 +24,7 @@ from snowflake_semantic_tools.domain.model.diagnostic.core import (
     Severity,
     _placeholders,
 )
-from snowflake_semantic_tools.domain.model.diagnostic.specs import (
+from snowflake_semantic_tools.domain.diagnostics.specs import (
     apl,
     cfg,
     dbt,

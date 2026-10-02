@@ -4,7 +4,7 @@ import pytest
 
 from snowflake_semantic_tools.app.compile import CompileArtifacts, CompiledView, CompileResult
 from snowflake_semantic_tools.app.manifest import build_manifest
-from snowflake_semantic_tools.domain.model.diagnostic import D, DiagnosticBag
+from snowflake_semantic_tools.domain.diagnostics import D, DiagnosticBag
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
 from snowflake_semantic_tools.domain.model.lifecycle import CompositeFacts, PublishShape, RenderedArtifact
 from snowflake_semantic_tools.domain.model.semantic_view import (

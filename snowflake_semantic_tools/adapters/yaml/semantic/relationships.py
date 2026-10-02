@@ -11,9 +11,9 @@ from typing import Any
 from snowflake_semantic_tools.adapters.yaml.documents import RawDocuments
 from snowflake_semantic_tools.adapters.yaml.semantic.defs import MetricDef
 from snowflake_semantic_tools.adapters.yaml.semantic.nodes import _load_nodes, _member_root, _node_origin
+from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, Origin
 from snowflake_semantic_tools.domain.model.artifact_key import artifact_key
 from snowflake_semantic_tools.domain.model.dbt import DbtModel
-from snowflake_semantic_tools.domain.model.diagnostic import D, Diagnostic, Origin
 from snowflake_semantic_tools.domain.model.reference import TemplateSyntaxError, scan_template_calls
 from snowflake_semantic_tools.domain.model.semantic_view import Relationship
 from snowflake_semantic_tools.domain.model.sql_checks import name_problem

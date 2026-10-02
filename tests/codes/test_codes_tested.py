@@ -9,7 +9,7 @@ fire against a fake or recorded Snowflake session. Today's untested codes are li
 
 from __future__ import annotations
 
-from snowflake_semantic_tools.domain.model.diagnostic import ERROR_REGISTRY
+from snowflake_semantic_tools.domain.diagnostics import ERROR_REGISTRY
 from tests.helpers.code_guards import code_tests, load_allowlist, ratchet, untested
 
 

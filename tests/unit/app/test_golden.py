@@ -9,7 +9,7 @@ import pytest
 from snowflake_semantic_tools.app.compile import CompileResult
 from snowflake_semantic_tools.app.compile.project import CompileProject
 from snowflake_semantic_tools.app.golden import CompareGoldens, golden_payloads
-from snowflake_semantic_tools.domain.model.diagnostic import Origin
+from snowflake_semantic_tools.domain.diagnostics import Origin
 from snowflake_semantic_tools.domain.model.eval import EvalCatalog
 from snowflake_semantic_tools.domain.model.profile import DesktopProfile, ProfileCatalog
 from snowflake_semantic_tools.domain.model.project import SemanticViewProject

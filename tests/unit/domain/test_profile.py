@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 
-from snowflake_semantic_tools.domain.model.diagnostic import D, DiagnosticBag, Origin
+from snowflake_semantic_tools.domain.diagnostics import D, DiagnosticBag, Origin
 from snowflake_semantic_tools.domain.model.profile import (
     CommandFile,
     DesktopProfile,

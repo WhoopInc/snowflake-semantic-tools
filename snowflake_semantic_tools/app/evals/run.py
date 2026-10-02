@@ -17,7 +17,7 @@ from hashlib import md5
 from snowflake_semantic_tools.app.compile.evals import CompiledEval
 from snowflake_semantic_tools.app.evals.retrieve import _read_results, _read_status, _sum_costs
 from snowflake_semantic_tools.app.lifecycle.evals import EvalLifecycleConfig, EvalLifecycleHandler
-from snowflake_semantic_tools.domain.model.diagnostic import D, Diagnostic, DiagnosticBag
+from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, DiagnosticBag
 from snowflake_semantic_tools.domain.model.eval import (
     EVAL_PASS_STATUSES,
     EVAL_TERMINAL_STATUSES,

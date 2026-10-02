@@ -15,9 +15,9 @@ from dataclasses import dataclass, field
 from types import MappingProxyType
 
 from snowflake_semantic_tools.app.compile.agents.context import AgentCompileContext
+from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic
 from snowflake_semantic_tools.domain.model.agent import KNOWN_AGENT_TOOL_TYPES, AgentModel, AgentTool, ResolvedAgentTool
 from snowflake_semantic_tools.domain.model.artifact_key import artifact_key
-from snowflake_semantic_tools.domain.model.diagnostic import D, Diagnostic
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
 from snowflake_semantic_tools.domain.model.tool import ToolKind, ToolMember
 

@@ -33,10 +33,10 @@ from snowflake_semantic_tools.adapters.yaml.profiles import load_profile_catalog
 from snowflake_semantic_tools.adapters.yaml.semantic import load_semantic_views_result, read_semantic_inputs
 from snowflake_semantic_tools.adapters.yaml.skills import _published, load_skill_catalog
 from snowflake_semantic_tools.adapters.yaml.tools import load_tool_catalog
+from snowflake_semantic_tools.domain.diagnostics import DiagnosticBag
 from snowflake_semantic_tools.domain.model.agent import AgentModel
 from snowflake_semantic_tools.domain.model.config_schema import config_block, configured_dir, skills_configured
 from snowflake_semantic_tools.domain.model.dbt import DbtCatalog
-from snowflake_semantic_tools.domain.model.diagnostic import DiagnosticBag
 from snowflake_semantic_tools.domain.model.eval import EvalCatalog
 from snowflake_semantic_tools.domain.model.profile import ProfileCatalog
 from snowflake_semantic_tools.domain.model.project import SemanticViewProject

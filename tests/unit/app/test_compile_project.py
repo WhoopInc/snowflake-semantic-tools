@@ -17,9 +17,9 @@ from snowflake_semantic_tools.app.compile.skills import (
     extension_pins,
     unpublished_reasons,
 )
+from snowflake_semantic_tools.domain.diagnostics import D, DiagnosticBag, Origin
 from snowflake_semantic_tools.domain.model.agent import AgentModel, AgentSkill
 from snowflake_semantic_tools.domain.model.dbt import DbtCatalog, DbtModel
-from snowflake_semantic_tools.domain.model.diagnostic import D, DiagnosticBag, Origin
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
 from snowflake_semantic_tools.domain.model.profile import DesktopProfile, ProfileCatalog, SharedProfile
 from snowflake_semantic_tools.domain.model.project import SemanticViewProject

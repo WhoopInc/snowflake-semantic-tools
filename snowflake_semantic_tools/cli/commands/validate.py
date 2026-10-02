@@ -13,7 +13,7 @@ from snowflake_semantic_tools.cli.runner import CommandResult, command_body
 from snowflake_semantic_tools.cli.settings import validation_settings
 from snowflake_semantic_tools.cli.wiring import compile as compiling
 from snowflake_semantic_tools.cli.wiring.project import connect
-from snowflake_semantic_tools.domain.model.diagnostic import Severity
+from snowflake_semantic_tools.domain.diagnostics import Severity
 
 
 @click.command()

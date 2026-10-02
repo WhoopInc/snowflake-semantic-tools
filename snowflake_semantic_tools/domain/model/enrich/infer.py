@@ -10,6 +10,7 @@ from collections.abc import Collection, Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from types import MappingProxyType
 
+from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic
 from snowflake_semantic_tools.domain.model.column_metadata import (
     base_type,
     is_numeric,
@@ -17,7 +18,6 @@ from snowflake_semantic_tools.domain.model.column_metadata import (
     printable,
     synonym_problem,
 )
-from snowflake_semantic_tools.domain.model.diagnostic import D, Diagnostic
 
 # The type INFORMATION_SCHEMA reports for each spelling a model YAML may hold. A type not
 # listed is its own family, compared by its base type.

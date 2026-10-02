@@ -26,8 +26,8 @@ from snowflake_semantic_tools.app.evals.run import (
 )
 from snowflake_semantic_tools.app.lifecycle.evals import EvalLifecycleConfig, EvalLifecycleHandler
 from snowflake_semantic_tools.app.state import read_state
+from snowflake_semantic_tools.domain.diagnostics import Diagnostic, DiagnosticBag
 from snowflake_semantic_tools.domain.model.config_schema import config_block
-from snowflake_semantic_tools.domain.model.diagnostic import Diagnostic, DiagnosticBag
 from snowflake_semantic_tools.domain.model.eval import (
     DEFAULT_EVAL_CONFIG_STAGE,
     EvalBaselineRecord,

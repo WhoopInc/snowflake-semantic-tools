@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from snowflake_semantic_tools.adapters.yaml.skills import load_skill_catalog
-from snowflake_semantic_tools.domain.model.diagnostic import Origin
+from snowflake_semantic_tools.domain.diagnostics import Origin
 
 GOOD = "---\nname: {name}\ndescription: Close the month.\n---\n# Steps\nRead reference/a.md.\n"
 

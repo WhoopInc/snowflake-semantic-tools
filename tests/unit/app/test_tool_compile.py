@@ -5,7 +5,7 @@ from types import MappingProxyType
 
 from snowflake_semantic_tools.app.compile import CompileResult
 from snowflake_semantic_tools.app.compile.tools import CompiledTool, CompileTools
-from snowflake_semantic_tools.domain.model.diagnostic import D, Diagnostic, DiagnosticBag, Origin
+from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, DiagnosticBag, Origin
 from snowflake_semantic_tools.domain.model.tool import ToolCatalog, ToolGroup, ToolMember, ToolOwnership, ToolParameter
 from tests.helpers.artifact_builders import rendered
 from tests.helpers.compile_builders import compiled_as
@@ -115,7 +115,7 @@ def test_tool_compiler_skips_poisoned_and_reports_render_invariant() -> None:
         body_file="body.sql",
         body="RETURN 1",
     )
-    from snowflake_semantic_tools.domain.model.diagnostic import D, DiagnosticBag
+    from snowflake_semantic_tools.domain.diagnostics import D, DiagnosticBag
 
     catalog = ToolCatalog(
         (ToolGroup("platform", Origin("tools.yml"), "tools.yml", members=(poisoned, invalid)),),

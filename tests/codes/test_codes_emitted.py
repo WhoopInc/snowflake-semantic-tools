@@ -8,7 +8,7 @@ Today's unemitted codes are listed in `allowlist/unemitted.json`, which only shr
 
 from __future__ import annotations
 
-from snowflake_semantic_tools.domain.model.diagnostic import ERROR_REGISTRY
+from snowflake_semantic_tools.domain.diagnostics import ERROR_REGISTRY
 from tests.helpers.code_guards import code_references, load_allowlist, ratchet, unemitted
 
 

@@ -16,7 +16,7 @@ from types import MappingProxyType
 from typing import Generic, TypeVar
 
 from snowflake_semantic_tools.app.apply import classify_error
-from snowflake_semantic_tools.domain.model.diagnostic import D, Diagnostic, DiagnosticBag
+from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, DiagnosticBag
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
 from snowflake_semantic_tools.domain.model.lifecycle import (
     Action,

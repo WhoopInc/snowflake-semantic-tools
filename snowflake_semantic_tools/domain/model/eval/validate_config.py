@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import re
 
-from snowflake_semantic_tools.domain.model.diagnostic import D, Diagnostic
+from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic
 from snowflake_semantic_tools.domain.model.eval.model import (
     EVAL_COMPLETED,
     EVAL_CONCURRENCY_MIN,

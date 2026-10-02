@@ -9,8 +9,8 @@ from threading import Lock
 from types import MappingProxyType
 
 from snowflake_semantic_tools.app.lifecycle.composite import CompositeHandler, PublicationRun, blocked, failed
+from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, DiagnosticBag
 from snowflake_semantic_tools.domain.model.artifact_key import artifact_key, split_artifact_key
-from snowflake_semantic_tools.domain.model.diagnostic import D, Diagnostic, DiagnosticBag
 from snowflake_semantic_tools.domain.model.eval import DEFAULT_EVAL_CONFIG_STAGE
 from snowflake_semantic_tools.domain.model.identifier import Identifier, QualifiedName
 from snowflake_semantic_tools.domain.model.lifecycle import (

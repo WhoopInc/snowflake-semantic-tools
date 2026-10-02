@@ -10,7 +10,7 @@ from types import MappingProxyType
 from typing import Any, TypeAlias
 
 from snowflake_semantic_tools.adapters.errors import ProjectError
-from snowflake_semantic_tools.domain.model.diagnostic import Diagnostic
+from snowflake_semantic_tools.domain.diagnostics import Diagnostic
 from snowflake_semantic_tools.domain.model.registry import SEMANTIC_REGISTRY, Registry
 
 YAML_SUFFIXES = frozenset((".yml", ".yaml"))

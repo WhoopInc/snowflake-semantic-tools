@@ -14,7 +14,7 @@ from types import MappingProxyType
 from snowflake_semantic_tools.app.apply.errors import _failed, _outcome_diagnostic, _rendered_ddl, _skipped
 from snowflake_semantic_tools.app.apply.one import ChangeApplier
 from snowflake_semantic_tools.app.apply.state import EntryStamp, _applied_after, _run_outcome
-from snowflake_semantic_tools.domain.model.diagnostic import D, Diagnostic, DiagnosticBag
+from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, DiagnosticBag
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
 from snowflake_semantic_tools.domain.model.lifecycle import (
     Action,

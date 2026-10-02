@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from types import MappingProxyType
 
-from snowflake_semantic_tools.domain.model.diagnostic import D, DiagnosticBag
+from snowflake_semantic_tools.domain.diagnostics import D, DiagnosticBag
 from snowflake_semantic_tools.domain.model.identifier import Identifier, QualifiedName, TargetIdentity
 from snowflake_semantic_tools.domain.model.lifecycle import (
     Action,

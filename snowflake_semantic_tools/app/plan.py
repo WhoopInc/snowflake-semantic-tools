@@ -23,9 +23,9 @@ from snowflake_semantic_tools.app.manifest import manifest_for, stale_manifest
 from snowflake_semantic_tools.app.partial import PartialSplit, partial_refusal, partial_split
 from snowflake_semantic_tools.app.state import read_state
 from snowflake_semantic_tools.app.validate import ValidateArtifacts
+from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, DiagnosticBag
 from snowflake_semantic_tools.domain.model.artifact_key import artifact_key
 from snowflake_semantic_tools.domain.model.config_schema import config_block, config_text
-from snowflake_semantic_tools.domain.model.diagnostic import D, Diagnostic, DiagnosticBag
 from snowflake_semantic_tools.domain.model.eval import DEFAULT_EVAL_CONFIG_STAGE
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName, SchemaScope, TargetIdentity
 from snowflake_semantic_tools.domain.model.lifecycle import (

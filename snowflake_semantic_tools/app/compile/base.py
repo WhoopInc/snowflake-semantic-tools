@@ -13,7 +13,7 @@ from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from typing import Protocol, TypeVar
 
-from snowflake_semantic_tools.domain.model.diagnostic import D, Diagnostic, DiagnosticBag, Origin, Severity
+from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, DiagnosticBag, Origin, Severity
 from snowflake_semantic_tools.domain.model.lifecycle import RenderedArtifact
 
 # What rendering an input that validated may still raise; anything else escapes.

@@ -25,7 +25,7 @@ from snowflake_semantic_tools.app.lifecycle.composite import (
     failed,
     skipped,
 )
-from snowflake_semantic_tools.domain.model.diagnostic import D, DiagnosticBag
+from snowflake_semantic_tools.domain.diagnostics import D, DiagnosticBag
 from snowflake_semantic_tools.domain.model.identifier import Identifier, QualifiedName
 from snowflake_semantic_tools.domain.model.lifecycle import (
     Action,

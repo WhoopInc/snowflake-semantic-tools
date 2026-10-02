@@ -17,8 +17,8 @@ from snowflake_semantic_tools.adapters.yaml.semantic.readers import (
     load_verified_queries,
 )
 from snowflake_semantic_tools.adapters.yaml.semantic.relationships import load_relationships
+from snowflake_semantic_tools.domain.diagnostics import DiagnosticBag, Origin
 from snowflake_semantic_tools.domain.model.dbt import DbtModel
-from snowflake_semantic_tools.domain.model.diagnostic import DiagnosticBag, Origin
 from snowflake_semantic_tools.domain.model.project import ParsedMember, ParsedProject, ParsedView
 from snowflake_semantic_tools.domain.model.reference import TemplateCall, TemplateSyntaxError, scan_template_calls
 from snowflake_semantic_tools.domain.model.registry import SEMANTIC_REGISTRY

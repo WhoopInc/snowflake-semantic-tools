@@ -28,8 +28,8 @@ from snowflake_semantic_tools.app.compile.base import (
     compile_each,
     has_error,
 )
+from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, DiagnosticBag
 from snowflake_semantic_tools.domain.model.artifact_key import artifact_key
-from snowflake_semantic_tools.domain.model.diagnostic import D, Diagnostic, DiagnosticBag
 from snowflake_semantic_tools.domain.model.identifier import Identifier, QualifiedName
 from snowflake_semantic_tools.domain.model.lifecycle import OwnershipMarker, ProbeKind, RenderedArtifact, SmokeProbe
 from snowflake_semantic_tools.domain.model.semantic_view import SemanticView

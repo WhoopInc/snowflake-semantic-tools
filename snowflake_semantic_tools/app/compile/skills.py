@@ -13,8 +13,8 @@ from hashlib import sha256
 
 from snowflake_semantic_tools.app.compile.agents import ExtensionPin
 from snowflake_semantic_tools.app.compile.base import CompileResult, StandaloneArtifact, has_error
+from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, DiagnosticBag, Origin, Severity
 from snowflake_semantic_tools.domain.model.artifact_key import artifact_key, split_artifact_key
-from snowflake_semantic_tools.domain.model.diagnostic import D, Diagnostic, DiagnosticBag, Origin, Severity
 from snowflake_semantic_tools.domain.model.identifier import Identifier, QualifiedName
 from snowflake_semantic_tools.domain.model.lifecycle import (
     CompositeFacts,

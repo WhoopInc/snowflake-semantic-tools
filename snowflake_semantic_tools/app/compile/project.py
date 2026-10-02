@@ -24,6 +24,7 @@ from snowflake_semantic_tools.app.compile.skills import (
     unpublished_reasons,
 )
 from snowflake_semantic_tools.app.compile.tools import CompileTools
+from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, DiagnosticBag, Origin, Severity
 from snowflake_semantic_tools.domain.model.agent import AgentModel
 from snowflake_semantic_tools.domain.model.artifact_key import artifact_key, split_artifact_key
 from snowflake_semantic_tools.domain.model.config_schema import (
@@ -36,7 +37,6 @@ from snowflake_semantic_tools.domain.model.config_schema import (
     target_text,
 )
 from snowflake_semantic_tools.domain.model.dbt import DbtCatalog
-from snowflake_semantic_tools.domain.model.diagnostic import D, Diagnostic, DiagnosticBag, Origin, Severity
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName, TargetIdentity
 from snowflake_semantic_tools.domain.model.profile import ProfileCatalog
 from snowflake_semantic_tools.domain.model.registry import SEMANTIC_REGISTRY

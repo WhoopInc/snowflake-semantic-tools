@@ -7,7 +7,7 @@ from datetime import UTC, datetime, timedelta
 
 from snowflake_semantic_tools.app.compile.evals import CompiledEval
 from snowflake_semantic_tools.app.evals.run import EvalRunResult
-from snowflake_semantic_tools.domain.model.diagnostic import D, Diagnostic, DiagnosticBag
+from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, DiagnosticBag
 from snowflake_semantic_tools.domain.model.eval import (
     EVAL_COMPLETED,
     EvalBaselineMetric,

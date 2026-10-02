@@ -7,9 +7,9 @@ from dataclasses import dataclass, field
 from enum import Enum
 from types import MappingProxyType
 
+from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, DiagnosticBag, Origin
 from snowflake_semantic_tools.domain.model.artifact_key import artifact_key
 from snowflake_semantic_tools.domain.model.dbt import DbtCatalog
-from snowflake_semantic_tools.domain.model.diagnostic import D, Diagnostic, DiagnosticBag, Origin
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
 from snowflake_semantic_tools.domain.model.sql_checks import checked_expression, name_problem, qualified_name_problem
 from snowflake_semantic_tools.domain.model.validation import Emitter

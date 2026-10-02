@@ -6,7 +6,7 @@ import pytest
 
 from snowflake_semantic_tools.app.compile.evals import CompiledEval, CompileEvals
 from snowflake_semantic_tools.app.manifest import build_manifest
-from snowflake_semantic_tools.domain.model.diagnostic import D, DiagnosticBag
+from snowflake_semantic_tools.domain.diagnostics import D, DiagnosticBag
 from snowflake_semantic_tools.domain.model.eval import (
     EvalCatalog,
     EvalDefaults,

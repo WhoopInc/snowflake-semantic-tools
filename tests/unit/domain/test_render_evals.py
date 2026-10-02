@@ -6,7 +6,7 @@ from types import MappingProxyType
 
 import pytest
 
-from snowflake_semantic_tools.domain.model.diagnostic import Origin
+from snowflake_semantic_tools.domain.diagnostics import Origin
 from snowflake_semantic_tools.domain.model.eval import (
     CustomEvalMetric,
     EvalColumnMapping,

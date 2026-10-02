@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from snowflake_semantic_tools.domain.model.diagnostic import Diagnostic, Origin
+from snowflake_semantic_tools.domain.diagnostics import Diagnostic, Origin
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
 from snowflake_semantic_tools.domain.model.lifecycle import RenderedArtifact, StatementPlan
 from snowflake_semantic_tools.domain.model.sql_checks import (

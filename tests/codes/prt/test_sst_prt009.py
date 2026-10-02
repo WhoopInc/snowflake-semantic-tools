@@ -9,7 +9,7 @@ import pytest
 from snowflake_semantic_tools.adapters.dbt.project import target_path
 from snowflake_semantic_tools.adapters.errors import ProjectError
 from snowflake_semantic_tools.adapters.yaml.skills import load_skill_catalog
-from snowflake_semantic_tools.domain.model.diagnostic import Origin, Severity
+from snowflake_semantic_tools.domain.diagnostics import Origin, Severity
 
 SKILL = "---\nname: close\ndescription: Close the month.\n---\nSteps.\n"
 

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from snowflake_semantic_tools.app.compile.skills import CatalogChannel, CompiledExtension, CompileSkills
-from snowflake_semantic_tools.domain.model.diagnostic import Origin
+from snowflake_semantic_tools.domain.diagnostics import Origin
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
 from snowflake_semantic_tools.domain.model.skill import SCAN_MAX_FILES, Plugin, Skill, SkillCatalog, SkillFile
 

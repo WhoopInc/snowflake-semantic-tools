@@ -6,7 +6,7 @@ context, so both must stay registered. The module is `int_` so it does not shado
 
 from __future__ import annotations
 
-from snowflake_semantic_tools.domain.model.diagnostic.core import ErrorSpec, Severity, spec
+from snowflake_semantic_tools.domain.diagnostics.core import ErrorSpec, Severity, spec
 
 TITLE: str = "Internal"
 

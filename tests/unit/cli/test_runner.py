@@ -15,7 +15,7 @@ from snowflake_semantic_tools.cli.group import SstUsageError
 from snowflake_semantic_tools.cli.main import cli
 from snowflake_semantic_tools.cli.options import output_option
 from snowflake_semantic_tools.cli.runner import CommandResult, command_body
-from snowflake_semantic_tools.domain.model.diagnostic import D, DiagnosticBag
+from snowflake_semantic_tools.domain.diagnostics import D, DiagnosticBag
 from snowflake_semantic_tools.domain.ports.snowflake import SnowflakePortError
 from tests.helpers.cli_projects import DBT_MANIFEST, FIXTURE, REPO_ROOT, common, invoke_with_port, project_copy
 from tests.helpers.recorded_snowflake import RecordedSnowflake
@@ -34,7 +34,7 @@ def test_int902_is_emitted_only_at_the_invariant_allowlist() -> None:
     found = {
         path.relative_to(REPO_ROOT).as_posix(): count
         for path in sorted(package.rglob("*.py"))
-        if "domain/model/diagnostic/" not in path.as_posix()
+        if "domain/diagnostics/" not in path.as_posix()
         and (count := path.read_text(encoding="utf-8").count('"SST-INT902"'))
     }
     assert found == INT902_ALLOWLIST

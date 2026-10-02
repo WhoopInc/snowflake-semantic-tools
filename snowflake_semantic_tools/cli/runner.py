@@ -27,7 +27,7 @@ import click
 from snowflake_semantic_tools.adapters.errors import ProjectError
 from snowflake_semantic_tools.cli.exit_codes import CONFIG, CONNECTION, ERROR, OK
 from snowflake_semantic_tools.cli.output import emit_json, interrupted, json_envelope, render_diagnostics
-from snowflake_semantic_tools.domain.model.diagnostic import D, DiagnosticBag
+from snowflake_semantic_tools.domain.diagnostics import D, DiagnosticBag
 from snowflake_semantic_tools.domain.ports.snowflake import SnowflakePortError
 
 

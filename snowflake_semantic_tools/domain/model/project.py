@@ -7,8 +7,8 @@ from dataclasses import dataclass, field
 from types import MappingProxyType
 from typing import TypeAlias
 
+from snowflake_semantic_tools.domain.diagnostics import DiagnosticBag, Origin
 from snowflake_semantic_tools.domain.model.artifact_key import artifact_key
-from snowflake_semantic_tools.domain.model.diagnostic import DiagnosticBag, Origin
 from snowflake_semantic_tools.domain.model.reference import TemplateCall
 from snowflake_semantic_tools.domain.model.semantic_view import SemanticView
 

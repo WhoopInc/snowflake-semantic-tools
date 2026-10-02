@@ -11,9 +11,9 @@ import fnmatch
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 
+from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, DiagnosticBag, Origin
 from snowflake_semantic_tools.domain.model.config_schema import EnrichmentConfig, enrichment_config
 from snowflake_semantic_tools.domain.model.dbt import DbtCatalog, DbtModel
-from snowflake_semantic_tools.domain.model.diagnostic import D, Diagnostic, DiagnosticBag, Origin
 from snowflake_semantic_tools.domain.model.enrich import (
     COLUMN_SYNONYMS_SCHEMA,
     COLUMNS_PER_PROMPT,

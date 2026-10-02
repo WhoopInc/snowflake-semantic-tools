@@ -15,7 +15,7 @@ import re
 from collections.abc import Iterable, Iterator
 from dataclasses import dataclass
 
-from snowflake_semantic_tools.domain.model.diagnostic import D, Diagnostic, DiagnosticBag
+from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, DiagnosticBag
 from snowflake_semantic_tools.domain.model.skill.model import SKILL_FILE, Skill, SkillFile
 from snowflake_semantic_tools.domain.model.skill.references import PathReference, scan_references
 from snowflake_semantic_tools.domain.model.validation import Emitter

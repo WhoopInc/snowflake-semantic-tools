@@ -15,9 +15,9 @@ from snowflake_semantic_tools.adapters.yaml.evals.config import parse_config
 from snowflake_semantic_tools.adapters.yaml.evals.dataset import parse_dataset
 from snowflake_semantic_tools.adapters.yaml.evals.metrics import load_custom_metrics
 from snowflake_semantic_tools.adapters.yaml.parse import read_yaml_file
+from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, DiagnosticBag, Origin
 from snowflake_semantic_tools.domain.model.agent import AgentModel
 from snowflake_semantic_tools.domain.model.artifact_key import artifact_key
-from snowflake_semantic_tools.domain.model.diagnostic import D, Diagnostic, DiagnosticBag, Origin
 from snowflake_semantic_tools.domain.model.eval import (
     CustomEvalMetric,
     EvalCatalog,

@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from types import MappingProxyType
 
+from snowflake_semantic_tools.domain.diagnostics import Origin
 from snowflake_semantic_tools.domain.model.dbt import DbtCatalog, DbtColumn, DbtModel
-from snowflake_semantic_tools.domain.model.diagnostic import Origin
 from snowflake_semantic_tools.domain.model.tool import (
     ToolCatalog,
     ToolGroup,

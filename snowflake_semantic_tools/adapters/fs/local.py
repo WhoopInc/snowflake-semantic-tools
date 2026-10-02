@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Generic, TypeVar
 
 from snowflake_semantic_tools.adapters.errors import ProjectError
-from snowflake_semantic_tools.domain.model.diagnostic import D
+from snowflake_semantic_tools.domain.diagnostics import D
 from snowflake_semantic_tools.domain.state import Manifest, SavedPlan, State, StoredDocumentError, canonical_json
 
 T = TypeVar("T")

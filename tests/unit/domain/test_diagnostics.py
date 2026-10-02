@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from snowflake_semantic_tools.domain.model.diagnostic import (
+from snowflake_semantic_tools.domain.diagnostics import (
     ERROR_REGISTRY,
     D,
     DiagnosticBag,
@@ -29,7 +29,7 @@ def test_unregistered_code_becomes_an_internal_diagnostic() -> None:
 
 
 def test_0_3_codes_are_not_registered_and_never_emitted() -> None:
-    import snowflake_semantic_tools.domain.model.diagnostic as module
+    import snowflake_semantic_tools.domain.diagnostics as module
 
     assert not hasattr(module, "LEGACY_ALIASES") and not hasattr(module, "resolve_code")
     assert D("SST-V021").code == "SST-INT900"
@@ -152,7 +152,7 @@ def test_diagnostic_identity_and_human_render_are_stable() -> None:
 def test_human_render_omits_help_when_registry_has_no_suggestion() -> None:
     from dataclasses import replace
 
-    from snowflake_semantic_tools.domain.model import diagnostic as module
+    from snowflake_semantic_tools.domain import diagnostics as module
 
     original = module.ERROR_REGISTRY
     module.ERROR_REGISTRY = {**original, "SST-LOD003": replace(original["SST-LOD003"], suggestion=None)}
@@ -163,7 +163,7 @@ def test_human_render_omits_help_when_registry_has_no_suggestion() -> None:
 
 
 def test_registry_integrity_checks_invalid_codes_and_duplicates() -> None:
-    from snowflake_semantic_tools.domain.model.diagnostic import ErrorSpec, RegistryIntegrityError, build_registry
+    from snowflake_semantic_tools.domain.diagnostics import ErrorSpec, RegistryIntegrityError, build_registry
 
     first = ErrorSpec("BAD-X001", Severity.ERROR, "x", "{value}", None, "X00", "x00", "https://x")
     with pytest.raises(RegistryIntegrityError, match="invalid error code"):

@@ -8,7 +8,7 @@ from typing import Any
 
 from snowflake_semantic_tools.adapters.errors import ProjectError
 from snowflake_semantic_tools.adapters.yaml.documents import NodePath, RawDocument, RawDocuments
-from snowflake_semantic_tools.domain.model.diagnostic import D, Origin
+from snowflake_semantic_tools.domain.diagnostics import D, Origin
 from snowflake_semantic_tools.domain.model.reference import TemplateSyntaxError, single_template_call
 from snowflake_semantic_tools.domain.model.registry import SEMANTIC_REGISTRY
 

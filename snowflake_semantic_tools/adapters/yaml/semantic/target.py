@@ -7,8 +7,8 @@ from typing import Any
 
 from snowflake_semantic_tools.adapters.yaml.documents import RawDocuments
 from snowflake_semantic_tools.adapters.yaml.semantic.nodes import _node_root
+from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, Origin
 from snowflake_semantic_tools.domain.model.dbt import DbtTarget
-from snowflake_semantic_tools.domain.model.diagnostic import D, Diagnostic, Origin
 
 
 def _render_target_value(value: object, target: DbtTarget) -> str:

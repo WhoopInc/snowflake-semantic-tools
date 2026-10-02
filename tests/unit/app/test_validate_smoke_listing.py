@@ -8,7 +8,7 @@ from snowflake_semantic_tools.app.listing import list_artifacts
 from snowflake_semantic_tools.app.manifest import build_manifest
 from snowflake_semantic_tools.app.smoke import RunSmokeSuite
 from snowflake_semantic_tools.app.validate import ValidateArtifacts
-from snowflake_semantic_tools.domain.model.diagnostic import D, DiagnosticBag
+from snowflake_semantic_tools.domain.diagnostics import D, DiagnosticBag
 from snowflake_semantic_tools.domain.model.lifecycle import ProbeKind, RenderedArtifact, SmokeProbe
 from snowflake_semantic_tools.domain.model.semantic_view import (
     Column,

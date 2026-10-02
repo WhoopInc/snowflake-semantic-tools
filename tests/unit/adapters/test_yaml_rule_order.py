@@ -9,8 +9,8 @@ from snowflake_semantic_tools.adapters.yaml.semantic.checks.dbt import _dbt_colu
 from snowflake_semantic_tools.adapters.yaml.semantic.checks.metrics import _metric_diagnostics
 from snowflake_semantic_tools.adapters.yaml.semantic.defs import MetricDef
 from snowflake_semantic_tools.adapters.yaml.semantic.relationships import _Conditions, _parse_conditions
+from snowflake_semantic_tools.domain.diagnostics import Diagnostic, Origin
 from snowflake_semantic_tools.domain.model.dbt import DbtColumn, DbtModel
-from snowflake_semantic_tools.domain.model.diagnostic import Diagnostic, Origin
 from tests.helpers.projects import load_project
 
 REPO_ROOT = Path(__file__).resolve().parents[3]

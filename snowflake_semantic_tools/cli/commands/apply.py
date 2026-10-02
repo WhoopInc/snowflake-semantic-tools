@@ -39,7 +39,7 @@ from snowflake_semantic_tools.cli.wiring.plan import (
     refuse_partial_prune,
 )
 from snowflake_semantic_tools.cli.wiring.project import closed_on_error
-from snowflake_semantic_tools.domain.model.diagnostic import DiagnosticBag
+from snowflake_semantic_tools.domain.diagnostics import DiagnosticBag
 from snowflake_semantic_tools.domain.model.lifecycle import ApplyOptions, ApplyOutcome, FailurePolicy
 from snowflake_semantic_tools.domain.state import SavedPlan
 

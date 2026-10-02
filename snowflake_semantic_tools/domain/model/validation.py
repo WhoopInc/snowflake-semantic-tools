@@ -14,7 +14,7 @@ from collections.abc import Callable, Hashable, Iterable
 from dataclasses import dataclass
 from typing import Any, TypeVar
 
-from snowflake_semantic_tools.domain.model.diagnostic import D, Diagnostic, Origin
+from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, Origin
 
 T = TypeVar("T")
 K = TypeVar("K", bound=Hashable)

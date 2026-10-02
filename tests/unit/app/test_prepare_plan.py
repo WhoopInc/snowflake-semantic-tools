@@ -8,7 +8,7 @@ from types import MappingProxyType
 from snowflake_semantic_tools.app.compile import CompileResult
 from snowflake_semantic_tools.app.manifest import manifest_for
 from snowflake_semantic_tools.app.plan import PlanCandidates, PlanReady, PlanRefused, PlanScope, PreparePlan
-from snowflake_semantic_tools.domain.model.diagnostic import D, DiagnosticBag, Origin, Severity
+from snowflake_semantic_tools.domain.diagnostics import D, DiagnosticBag, Origin, Severity
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName, SchemaScope
 from snowflake_semantic_tools.domain.model.lifecycle import ShowRow
 from snowflake_semantic_tools.domain.ports.project import ValidationDefaults

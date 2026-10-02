@@ -35,7 +35,7 @@ from snowflake_semantic_tools.app.evals.run import (
 )
 from snowflake_semantic_tools.app.lifecycle.evals import EVAL_STAGE_FILE_FORMAT, EvalLifecycleHandler
 from snowflake_semantic_tools.app.manifest import build_manifest
-from snowflake_semantic_tools.domain.model.diagnostic import DiagnosticBag
+from snowflake_semantic_tools.domain.diagnostics import DiagnosticBag
 from snowflake_semantic_tools.domain.model.eval import (
     EvalCostSummary,
     EvalDefaults,

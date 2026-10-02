@@ -7,7 +7,7 @@ import pytest
 from snowflake_semantic_tools.app.compile.evals import CompiledEval
 from snowflake_semantic_tools.app.evals.gate import capture_baseline, evaluate_gate, persist_gate
 from snowflake_semantic_tools.app.evals.run import EvalRunResult
-from snowflake_semantic_tools.domain.model.diagnostic import DiagnosticBag
+from snowflake_semantic_tools.domain.diagnostics import DiagnosticBag
 from snowflake_semantic_tools.domain.model.eval import EvalMetricResult, EvalResultRow, EvalRunAttempt, ThresholdRange
 from tests.helpers.eval_builders import compiled_eval_of
 from tests.helpers.eval_state_store import InMemoryEvalStateStore

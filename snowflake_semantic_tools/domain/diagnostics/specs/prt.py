@@ -6,7 +6,7 @@ unsupported dbt manifest schema, or a file SST refuses to read.
 
 from __future__ import annotations
 
-from snowflake_semantic_tools.domain.model.diagnostic.core import ErrorSpec, Severity, spec
+from snowflake_semantic_tools.domain.diagnostics.core import ErrorSpec, Severity, spec
 
 TITLE: str = "External systems"
 

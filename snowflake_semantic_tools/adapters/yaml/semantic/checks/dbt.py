@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 from snowflake_semantic_tools.adapters.yaml.semantic.defs import MetricDef
+from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic
 from snowflake_semantic_tools.domain.model.artifact_key import artifact_key
 from snowflake_semantic_tools.domain.model.column_metadata import is_numeric, is_sentinel, is_temporal
 from snowflake_semantic_tools.domain.model.dbt import DbtColumn, DbtModel
-from snowflake_semantic_tools.domain.model.diagnostic import D, Diagnostic
 from snowflake_semantic_tools.domain.model.project import ParsedView
 
 

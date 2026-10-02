@@ -6,7 +6,7 @@ import re
 from dataclasses import dataclass
 
 from snowflake_semantic_tools.app.compile import CompiledView, CompileResult
-from snowflake_semantic_tools.domain.model.diagnostic import D, DiagnosticBag, resolve_severities
+from snowflake_semantic_tools.domain.diagnostics import D, DiagnosticBag, resolve_severities
 from snowflake_semantic_tools.domain.model.identifier import Identifier
 from snowflake_semantic_tools.domain.model.lifecycle import RenderedArtifact
 from snowflake_semantic_tools.domain.model.semantic_view import SemanticView

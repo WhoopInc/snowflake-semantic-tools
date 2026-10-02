@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import json
 
-from snowflake_semantic_tools.domain.model.diagnostic import ERROR_REGISTRY
+from snowflake_semantic_tools.domain.diagnostics import ERROR_REGISTRY
 from tests.helpers.code_guards import (
     CATALOG_FIELDS,
     CATALOG_PATH,

@@ -16,8 +16,8 @@ from snowflake_semantic_tools.app.enrich import (
     select_models,
     view_tables,
 )
+from snowflake_semantic_tools.domain.diagnostics import D, DiagnosticBag, Severity
 from snowflake_semantic_tools.domain.model.dbt import DbtCatalog, DbtColumn, DbtModel
-from snowflake_semantic_tools.domain.model.diagnostic import D, DiagnosticBag, Severity
 from snowflake_semantic_tools.domain.model.enrich import COLUMNS_PER_PROMPT, Component, resolve_options
 from snowflake_semantic_tools.domain.model.identifier import Identifier
 from snowflake_semantic_tools.domain.model.project import SemanticViewProject

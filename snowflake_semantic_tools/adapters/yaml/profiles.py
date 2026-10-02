@@ -21,8 +21,8 @@ from snowflake_semantic_tools.adapters.yaml.fields import (
 )
 from snowflake_semantic_tools.adapters.yaml.parse import parse_yaml_bytes
 from snowflake_semantic_tools.adapters.yaml.skills import _published
+from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, DiagnosticBag, Origin
 from snowflake_semantic_tools.domain.model.artifact_key import artifact_key
-from snowflake_semantic_tools.domain.model.diagnostic import D, Diagnostic, DiagnosticBag, Origin
 from snowflake_semantic_tools.domain.model.profile import (
     COMMAND_FRONTMATTER_KEYS,
     REJECTED_PROFILE_KEYS,

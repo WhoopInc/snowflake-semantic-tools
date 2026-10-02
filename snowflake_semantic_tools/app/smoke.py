@@ -11,7 +11,7 @@ from dataclasses import dataclass
 
 from snowflake_semantic_tools.app.compile import CompileResult
 from snowflake_semantic_tools.app.state import read_state
-from snowflake_semantic_tools.domain.model.diagnostic import D, Diagnostic, DiagnosticBag
+from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, DiagnosticBag
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName, TargetIdentity
 from snowflake_semantic_tools.domain.model.lifecycle import OwnershipMarker, RenderedArtifact, SmokeProbe
 from snowflake_semantic_tools.domain.ports.snowflake import SnowflakePort, SnowflakePortError, StateStore

@@ -13,7 +13,7 @@ from snowflake_semantic_tools.app.compile.evals import CompiledEval, CompileEval
 from snowflake_semantic_tools.app.lifecycle.evals import EVAL_STAGE_FILE_FORMAT, EvalLifecycleHandler
 from snowflake_semantic_tools.app.manifest import build_manifest
 from snowflake_semantic_tools.app.plan import PlanArtifacts
-from snowflake_semantic_tools.domain.model.diagnostic import D, DiagnosticBag, Origin
+from snowflake_semantic_tools.domain.diagnostics import D, DiagnosticBag, Origin
 from snowflake_semantic_tools.domain.model.eval import EvalCatalog, EvalGroundTruth, EvalQuestion
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
 from snowflake_semantic_tools.domain.model.lifecycle import (

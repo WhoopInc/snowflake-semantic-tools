@@ -12,7 +12,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from hashlib import sha256
 
-from snowflake_semantic_tools.domain.model.diagnostic import D, Diagnostic
+from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic
 from snowflake_semantic_tools.domain.model.identifier import TargetIdentity
 from snowflake_semantic_tools.domain.model.lifecycle import Change, ChangeSet
 from snowflake_semantic_tools.domain.state.codec import (

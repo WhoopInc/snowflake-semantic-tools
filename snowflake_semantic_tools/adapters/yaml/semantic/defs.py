@@ -10,7 +10,7 @@ from typing import Any
 
 from snowflake_semantic_tools.adapters.yaml.fields import optional_string
 from snowflake_semantic_tools.adapters.yaml.semantic.nodes import _list_of
-from snowflake_semantic_tools.domain.model.diagnostic import Origin
+from snowflake_semantic_tools.domain.diagnostics import Origin
 from snowflake_semantic_tools.domain.model.reference import TemplateCall, TemplateSyntaxError, scan_template_calls
 
 

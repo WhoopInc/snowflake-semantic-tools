@@ -23,7 +23,7 @@ import ast
 import re
 from collections.abc import Iterable, Iterator
 
-from snowflake_semantic_tools.domain.model.diagnostic import ERROR_REGISTRY
+from snowflake_semantic_tools.domain.diagnostics import ERROR_REGISTRY
 from tests.helpers.code_metrics import Definition, complexity, definitions, package_modules
 
 PRIVATE_LINES = 25

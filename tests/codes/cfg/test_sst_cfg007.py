@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
+from snowflake_semantic_tools.domain.diagnostics import Severity
 from snowflake_semantic_tools.domain.model.config_schema import validate_config
-from snowflake_semantic_tools.domain.model.diagnostic import Severity
 
 
 def test_sst_cfg007_fires() -> None:

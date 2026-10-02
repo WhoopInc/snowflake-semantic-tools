@@ -10,8 +10,8 @@ from typing import TypeVar
 
 from snowflake_semantic_tools.app.compile import CompileResult
 from snowflake_semantic_tools.app.compile.project import CompileProject
+from snowflake_semantic_tools.domain.diagnostics import Origin
 from snowflake_semantic_tools.domain.model.agent import AgentModel, AgentSkill
-from snowflake_semantic_tools.domain.model.diagnostic import Origin
 from snowflake_semantic_tools.domain.model.project import SemanticViewProject
 from snowflake_semantic_tools.domain.model.semantic_view import Column, ColumnKind, SemanticView, Table
 from snowflake_semantic_tools.domain.model.skill import Plugin, Skill, SkillFile

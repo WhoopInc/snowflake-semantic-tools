@@ -9,7 +9,7 @@ import pytest
 from click.testing import CliRunner, Result
 
 from snowflake_semantic_tools.cli.main import cli
-from snowflake_semantic_tools.domain.model.diagnostic import D
+from snowflake_semantic_tools.domain.diagnostics import D
 from snowflake_semantic_tools.domain.ports.snowflake import SnowflakePortError
 from tests.helpers.cli_projects import DBT_MANIFEST, project_copy
 from tests.helpers.enrich_ports import ScriptedEnrich

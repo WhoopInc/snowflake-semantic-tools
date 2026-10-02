@@ -19,7 +19,7 @@ from snowflake_semantic_tools.adapters.yaml.fields import (
     strings,
     unknown_keys,
 )
-from snowflake_semantic_tools.domain.model.diagnostic import D, Diagnostic, Origin
+from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, Origin
 
 ORIGIN = Origin("profiles/a/profile.yml", 1)
 

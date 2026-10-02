@@ -12,7 +12,7 @@ from __future__ import annotations
 import pytest
 
 from snowflake_semantic_tools.app.compile import CompiledView, CompileResult, CompileSemanticViews
-from snowflake_semantic_tools.domain.model.diagnostic import D, DiagnosticBag
+from snowflake_semantic_tools.domain.diagnostics import D, DiagnosticBag
 from snowflake_semantic_tools.domain.model.project import SemanticViewProject
 from snowflake_semantic_tools.domain.model.semantic_view import Column, ColumnKind, SemanticView, Table
 from tests.helpers.compile_builders import compiled_as

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from snowflake_semantic_tools.domain.diagnostics import Origin
 from snowflake_semantic_tools.domain.model.compiler import (
     CUSTOM_INSTRUCTION_ITEM,
     DESCRIPTION,
@@ -11,7 +12,6 @@ from snowflake_semantic_tools.domain.model.compiler import (
     resolve_scalar,
 )
 from snowflake_semantic_tools.domain.model.dbt import DbtCatalog, DbtColumn, DbtModel
-from snowflake_semantic_tools.domain.model.diagnostic import Origin
 from snowflake_semantic_tools.domain.model.project import ParsedMember
 from snowflake_semantic_tools.domain.model.reference import scan_template_calls
 from snowflake_semantic_tools.domain.model.registry import SEMANTIC_REGISTRY

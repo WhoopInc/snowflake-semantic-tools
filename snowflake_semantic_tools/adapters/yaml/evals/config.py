@@ -19,7 +19,7 @@ from snowflake_semantic_tools.adapters.yaml.evals.readers import (
     string_tuple,
 )
 from snowflake_semantic_tools.adapters.yaml.fields import optional_int, optional_string
-from snowflake_semantic_tools.domain.model.diagnostic import D, Diagnostic, DiagnosticBag, Origin
+from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, DiagnosticBag, Origin
 from snowflake_semantic_tools.domain.model.eval import (
     EVAL_TERMINAL_STATUSES,
     EvalColumnMapping,

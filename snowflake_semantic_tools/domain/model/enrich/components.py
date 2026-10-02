@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from enum import Enum
 from types import MappingProxyType
 
-from snowflake_semantic_tools.domain.model.diagnostic import D, Diagnostic
+from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic
 
 
 class Component(Enum):

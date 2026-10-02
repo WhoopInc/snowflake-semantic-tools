@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 
+from snowflake_semantic_tools.domain.diagnostics import ERROR_REGISTRY, Origin, Severity
 from snowflake_semantic_tools.domain.model.config_schema import (
     CONFIG_KEYS,
     CONFIG_SCHEMA,
@@ -13,7 +14,6 @@ from snowflake_semantic_tools.domain.model.config_schema import (
     KeyStatus,
     validate_config,
 )
-from snowflake_semantic_tools.domain.model.diagnostic import ERROR_REGISTRY, Origin, Severity
 
 
 def _codes(tree: Mapping[str, object]) -> list[tuple[str, str | None]]:

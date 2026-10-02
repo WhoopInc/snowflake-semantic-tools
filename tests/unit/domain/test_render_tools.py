@@ -8,7 +8,7 @@ from typing import Any
 
 import pytest
 
-from snowflake_semantic_tools.domain.model.diagnostic import Origin
+from snowflake_semantic_tools.domain.diagnostics import Origin
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
 from snowflake_semantic_tools.domain.model.registry import GrantPreservation
 from snowflake_semantic_tools.domain.model.tool import ToolMember, ToolOwnership, ToolParameter

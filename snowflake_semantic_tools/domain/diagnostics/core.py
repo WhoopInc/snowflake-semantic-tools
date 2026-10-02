@@ -66,7 +66,10 @@ class ErrorSpec:
 
 
 class RegistryIntegrityError(RuntimeError):
-    """The diagnostic registry itself is invalid."""
+    """A registry SST is built from is itself invalid: the diagnostic codes, or the artifact types.
+
+    Raised while the package is imported or a registry is built, never for a user's project.
+    """
 
 
 # Every code has a heading in the generated error reference (`sst docs`); the

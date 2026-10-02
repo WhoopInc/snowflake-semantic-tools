@@ -28,9 +28,9 @@ from snowflake_semantic_tools.adapters.yaml.semantic.build_members import (
 )
 from snowflake_semantic_tools.adapters.yaml.semantic.defs import FilterDef, InstructionDef, MetricDef, VerifiedQueryDef
 from snowflake_semantic_tools.adapters.yaml.semantic.nodes import _as_str_tuple
+from snowflake_semantic_tools.domain.diagnostics import D
 from snowflake_semantic_tools.domain.model.artifact_key import artifact_key
 from snowflake_semantic_tools.domain.model.dbt import DbtCatalog, DbtColumn, DbtModel, DbtTarget
-from snowflake_semantic_tools.domain.model.diagnostic import D
 from snowflake_semantic_tools.domain.model.project import ParsedMember
 from snowflake_semantic_tools.domain.model.reference import single_template_call
 from snowflake_semantic_tools.domain.model.semantic_view import (

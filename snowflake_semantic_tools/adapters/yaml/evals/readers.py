@@ -11,7 +11,7 @@ from collections.abc import Mapping
 
 from snowflake_semantic_tools.adapters.yaml.documents import ParsedYaml
 from snowflake_semantic_tools.adapters.yaml.fields import checked_strings, optional_int, optional_string
-from snowflake_semantic_tools.domain.model.diagnostic import D, Diagnostic, Origin
+from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, Origin
 from snowflake_semantic_tools.domain.model.eval import ThresholdRange
 
 

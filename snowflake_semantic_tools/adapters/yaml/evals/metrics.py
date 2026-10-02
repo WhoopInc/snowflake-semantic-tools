@@ -20,7 +20,7 @@ from snowflake_semantic_tools.adapters.yaml.evals.readers import (
 )
 from snowflake_semantic_tools.adapters.yaml.fields import report_unknown_keys
 from snowflake_semantic_tools.adapters.yaml.parse import read_yaml_file
-from snowflake_semantic_tools.domain.model.diagnostic import D, Diagnostic
+from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic
 from snowflake_semantic_tools.domain.model.eval import CustomEvalMetric, EvalScoreRanges
 
 _CUSTOM_METRIC_KEYS = frozenset(

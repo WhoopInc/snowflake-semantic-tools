@@ -69,7 +69,7 @@ ban-relative-imports = "all"
 extend-immutable-calls = [
     "snowflake_semantic_tools.app.evals.suite.EvalGateRequest",
     "snowflake_semantic_tools.app.lifecycle.evals.EvalLifecycleConfig",
-    "snowflake_semantic_tools.domain.model.diagnostic.DiagnosticBag",
+    "snowflake_semantic_tools.domain.diagnostics.DiagnosticBag",
     "snowflake_semantic_tools.domain.model.eval.EvalDefaults",
     "snowflake_semantic_tools.domain.model.lifecycle.ApplyOptions",
     "snowflake_semantic_tools.domain.model.lifecycle.rendered.DesiredMetadata",

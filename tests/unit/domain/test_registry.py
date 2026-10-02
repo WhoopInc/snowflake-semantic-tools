@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import pytest
 
+from snowflake_semantic_tools.domain.diagnostics.core import RegistryIntegrityError
 from snowflake_semantic_tools.domain.model.registry import (
     SEMANTIC_REGISTRY,
     ArtifactLifecycle,
@@ -12,7 +13,6 @@ from snowflake_semantic_tools.domain.model.registry import (
     GrantPreservation,
     MemberSource,
     MemberType,
-    RegistryIntegrityError,
     build_registry,
 )
 

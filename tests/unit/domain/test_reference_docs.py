@@ -4,8 +4,8 @@ import re
 
 import pytest
 
+from snowflake_semantic_tools.domain.diagnostics import ERROR_REFERENCE_URL, ERROR_REGISTRY, ErrorSpec, Severity
 from snowflake_semantic_tools.domain.model.config_schema import CONFIG_SCHEMA, ConfigKey, KeyKind, KeyStatus
-from snowflake_semantic_tools.domain.model.diagnostic import ERROR_REFERENCE_URL, ERROR_REGISTRY, ErrorSpec, Severity
 from snowflake_semantic_tools.domain.model.registry import ARTIFACT_REGISTRY
 from snowflake_semantic_tools.domain.render.reference_docs import (
     REFERENCE_DIR,

@@ -43,9 +43,9 @@ from snowflake_semantic_tools.adapters.yaml.semantic.relationships import (
     _relationship_parse_diagnostics,
 )
 from snowflake_semantic_tools.adapters.yaml.semantic.target import _folder_route_diagnostics, _stray_view_diagnostics
+from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, Origin
 from snowflake_semantic_tools.domain.model.artifact_key import artifact_key
 from snowflake_semantic_tools.domain.model.dbt import DbtModel, DbtTarget
-from snowflake_semantic_tools.domain.model.diagnostic import D, Diagnostic, Origin
 from snowflake_semantic_tools.domain.model.project import ParsedProject, ParsedView
 from snowflake_semantic_tools.domain.model.semantic_view import Relationship
 

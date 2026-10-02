@@ -18,7 +18,7 @@ from snowflake_semantic_tools.app.lifecycle.evals import EVAL_STAGE_FILE_FORMAT
 from snowflake_semantic_tools.cli.main import cli
 from snowflake_semantic_tools.cli.wiring.compile import compile_result as _compile_result
 from snowflake_semantic_tools.cli.wiring.manifest import build_manifest as _build_manifest
-from snowflake_semantic_tools.domain.model.diagnostic import DiagnosticBag
+from snowflake_semantic_tools.domain.diagnostics import DiagnosticBag
 from snowflake_semantic_tools.domain.model.eval import (
     EvalBaselineRecord,
     EvalCostSummary,

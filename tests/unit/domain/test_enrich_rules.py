@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from snowflake_semantic_tools.domain.model.diagnostic import Severity
+from snowflake_semantic_tools.domain.diagnostics import Severity
 from snowflake_semantic_tools.domain.model.enrich import (
     COMPONENT_NAMES,
     DEFAULT_COMPONENTS,

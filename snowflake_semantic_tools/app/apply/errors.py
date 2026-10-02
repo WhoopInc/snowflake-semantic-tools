@@ -8,7 +8,7 @@ its error names.
 
 from __future__ import annotations
 
-from snowflake_semantic_tools.domain.model.diagnostic import D, Diagnostic
+from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic
 from snowflake_semantic_tools.domain.model.lifecycle import (
     ApplyOutcome,
     Change,
