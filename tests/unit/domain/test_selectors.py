@@ -69,3 +69,17 @@ def test_new_is_what_the_previous_run_did_not_have() -> None:
     assert _resolve("state:new", previous={"semantic_view:orders": "f1"}) == Selection(
         None, frozenset(("agent:orders", "tool:docs"))
     )
+
+
+def test_each_state_compares_the_compiled_artifacts_with_the_previous_run() -> None:
+    previous = {"semantic_view:orders": "f1", "agent:orders": "changed", "tool:gone": "f9"}
+    assert _resolve("state:orphaned", previous=previous) == Selection(None, frozenset(("tool:gone",)))
+    assert _resolve("state:unmodified", previous=previous) == Selection(None, frozenset(("semantic_view:orders",)))
+    assert _resolve("state:modified", previous=previous) == Selection(None, frozenset(("agent:orders",)))
+
+
+def test_a_state_selector_without_state_and_a_typed_glob_are_refused() -> None:
+    without = _resolve("state:modified")
+    assert isinstance(without, Diagnostic) and without.message == "selector 'state:modified' requires --state"
+    glob = _resolve("tool:d*")
+    assert isinstance(glob, Diagnostic) and glob.code == "SST-PRT102"
