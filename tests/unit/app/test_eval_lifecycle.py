@@ -1021,3 +1021,30 @@ def test_eval_config_path_sanitizes_unsafe_agent_names() -> None:
     config_path = handler.config_path(artifact)
 
     assert f"/sales_team_{digest}/" in config_path
+
+
+def test_an_eval_recorded_under_another_manifest_is_rerecorded_then_unchanged() -> None:
+    manifest, artifact, port, handler = setup_eval()
+    entry = applied_entry(artifact, "an-older-manifest")
+    seed_existing_resources(artifact, port)
+    existing(port).add("DB.S.EVAL_CONFIGS")
+    port.stage_formats["DB.S.EVAL_CONFIGS"] = EVAL_STAGE_FILE_FORMAT
+    config_path = handler._config_path(artifact)
+    content = artifact.ddl.encode("utf-8")
+    port.stage_files.add(config_path)
+    port.staged_file_sizes[config_path] = len(content)
+    port.staged_file_md5s[config_path] = md5(content, usedforsecurity=False).hexdigest()
+    port.staged_file_contents[config_path] = content
+    prior = state_with(entry, "an-older-manifest")
+    plan = handler.plan(artifact, entry, manifest)
+    assert (plan.action, plan.reason) == (Action.UPDATE, ChangeReason.STATE_MANIFEST_MISMATCH)
+
+    store = InMemoryStateStore(prior)
+    change = planned_change(artifact, manifest, port, handler, prior)
+    result = ApplyArtifacts(
+        port, store, FixedClock(), state_table=artifact.target, lifecycle_handlers={"eval": handler}
+    ).run(replace(changeset(change), manifest_id=manifest.manifest_id), prior)
+    assert result.success
+    assert store.state is not None and store.state.applied[artifact.key].manifest_id == manifest.manifest_id
+    assert not [script for script in port.scripts if script and script[0].startswith("CREATE")]
+    assert planned_change(artifact, manifest, port, handler, store.state).action is Action.NOOP
