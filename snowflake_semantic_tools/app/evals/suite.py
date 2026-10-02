@@ -1,10 +1,10 @@
 """Run the eval suite against published agents and gate it on stored baselines.
 
-`RunEvalGate` is the evals test suite's use case: it holds the target's state lock for the
-run, refuses to start unless every eval is published exactly as the compiled manifest renders
-it, runs the evals as `RunEvalSuite` does, and then either captures each eval's baseline or
-gates each eval on the one stored. It reaches Snowflake, the state lock, and the baseline
-store only through ports.
+`RunEvalGate` is the evals test suite's use case: it holds the target's run lease -- the
+local lock and the remote one `sst apply` takes -- for the run, refuses to start unless
+every eval is published exactly as the compiled manifest renders it, runs the evals as
+`RunEvalSuite` does, and then either captures each eval's baseline or gates each eval on the
+one stored. It reaches Snowflake, the locks, and the baseline store only through ports.
 """
 
 from __future__ import annotations
@@ -14,6 +14,7 @@ from dataclasses import dataclass, field
 from types import MappingProxyType
 from typing import Protocol
 
+from snowflake_semantic_tools.app.apply.lock import LockPolicy, RunLease
 from snowflake_semantic_tools.app.compile import CompileResult
 from snowflake_semantic_tools.app.compile.evals import CompiledEval
 from snowflake_semantic_tools.app.evals.gate import capture_baseline, evaluate_gate, persist_gate, recorded_judges
@@ -28,7 +29,7 @@ from snowflake_semantic_tools.app.evals.run import (
 from snowflake_semantic_tools.app.lifecycle.evals import EvalLifecycleConfig, EvalLifecycleHandler
 from snowflake_semantic_tools.app.lifecycle.ports import CatalogPublicationPort
 from snowflake_semantic_tools.app.state import read_state
-from snowflake_semantic_tools.domain.diagnostics import Diagnostic, DiagnosticBag
+from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, DiagnosticBag
 from snowflake_semantic_tools.domain.model.config_schema import config_block
 from snowflake_semantic_tools.domain.model.eval import (
     DEFAULT_EVAL_CONFIG_STAGE,
@@ -43,6 +44,11 @@ from snowflake_semantic_tools.domain.ports.project import ProjectInputs
 from snowflake_semantic_tools.domain.ports.snowflake.state import StatePort
 from snowflake_semantic_tools.domain.ports.state import StateStore
 from snowflake_semantic_tools.domain.state import Manifest, State
+from snowflake_semantic_tools.domain.state.lock import LockClaim
+
+# The prefix of an eval run's lock id, so a refused run can tell an eval holder from an apply.
+EVAL_RUN_PREFIX = "eval-"
+_DEFAULT_LOCK_POLICY = LockPolicy()
 
 
 class EvalGatePort(CatalogPublicationPort, StatePort, Protocol):
@@ -82,9 +88,15 @@ class EvalGateOutcome:
 
 @dataclass(frozen=True, slots=True)
 class EvalGateRefused:
-    """The run did not start: another operation holds the target's state lock."""
+    """The run did not start: another operation holds the target's lock.
+
+    Attributes:
+        diagnostics: What taking the lease reported, then each view an apply holding it may
+            be regenerating under an eval's agent.
+    """
 
     reason: str
+    diagnostics: DiagnosticBag = DiagnosticBag()
 
 
 def compiled_evals(result: CompileResult) -> tuple[CompiledEval, ...]:
@@ -95,8 +107,9 @@ def compiled_evals(result: CompileResult) -> tuple[CompiledEval, ...]:
 class RunEvalGate:
     """Run the compiled evals against their published agents, then capture or gate each one.
 
-    The target's state lock is held from before state is read until the run ends, so no apply
-    changes what the evals run against. The lock is released however the run ends.
+    The target's run lease -- the local lock and the remote one every `sst apply` takes -- is
+    held from before state is read until the run ends, so no apply on any machine regenerates
+    what the evals run against. The lease is released however the run ends.
     """
 
     def __init__(
@@ -106,12 +119,19 @@ class RunEvalGate:
         state_store: StateStore,
         eval_store: EvalStateStore,
         clock: ClockPort,
+        *,
+        actor: str = "",
+        host: str = "",
+        lock_policy: LockPolicy = _DEFAULT_LOCK_POLICY,
     ) -> None:
         self._port = port
         self._inputs = inputs
         self._state_store = state_store
         self._eval_store = eval_store
         self._clock = clock
+        self._actor = actor
+        self._host = host
+        self._lock_policy = lock_policy
 
     def run(
         self,
@@ -127,17 +147,23 @@ class RunEvalGate:
         Steps, in order:
 
         1. Read the `evals:` defaults and the eval config stage from the project.
-        2. Take the target's state lock; refuse when another operation holds it.
+        2. Take the target's run lease; refuse when another operation holds either lock.
         3. Read authoritative state, and check every eval is published as `manifest` renders it.
         4. Unless that check reported an error, run the suite, then capture each eval's
            baseline or evaluate and record its gate.
-        5. Release the lock.
+        5. Release the lease.
 
         Args:
             manifest: The manifest the evals were compiled into, which `sst compile` wrote.
             target: The live target; baselines and gates are stored under its name.
 
+        Raises:
+            SnowflakePortError: the remote lock could not be read or claimed.
+
         Diagnostics:
+            SST-APL011: another run holds the target's lock, so no eval starts.
+            SST-VAL755: the run holding the lock is not an eval run, so it may be regenerating
+                a semantic view an eval's agent uses; one per eval and view.
             Those of `read_state`, `validate_eval_publication`, the suite, and each gate.
         """
         tree = self._inputs.config().tree
@@ -145,10 +171,23 @@ class RunEvalGate:
         stage = config_block(config_block(tree.get("apply")).get("eval_config_stage"))
         lifecycle_config = EvalLifecycleConfig(str(stage.get("stage") or DEFAULT_EVAL_CONFIG_STAGE))
         handler = EvalLifecycleHandler(self._port, lifecycle_config)
-        lock_id = f"eval-{self._clock.new_run_id()}"
-        locked, holder, _ = self._state_store.acquire_lock(lock_id, break_stale=False)
+        lock_id = f"{EVAL_RUN_PREFIX}{self._clock.new_run_id()}"
+        lease = RunLease(
+            self._state_store,
+            self._port,
+            state_table,
+            target.name,
+            LockClaim(lock_id, self._actor, self._host, self._lock_policy.ttl_seconds),
+            self._lock_policy,
+        )
+        locked, lock_diagnostics = lease.acquire(break_stale=False)
         if not locked:
-            return EvalGateRefused(f"cannot run evals while {holder or 'another operation'} holds the target lock")
+            holder = lease.holder
+            overlaps = () if holder is not None and holder.startswith(EVAL_RUN_PREFIX) else view_overlaps(evals)
+            return EvalGateRefused(
+                f"cannot run evals while {holder or 'another operation'} holds the target lock",
+                DiagnosticBag((*lock_diagnostics, *overlaps)),
+            )
         try:
             state, state_diagnostics = read_state(self._state_store, self._port, state_table=state_table, target=target)
             publication = validate_eval_publication(evals, manifest, state, handler)
@@ -157,7 +196,7 @@ class RunEvalGate:
                 return EvalGateOutcome(preflight, None, False, {"suite": "evals", **empty_eval_suite_json()})
             return self._run_suite(evals, state, preflight, defaults, lifecycle_config, request, target.name)
         finally:
-            self._state_store.release_lock(lock_id)
+            lease.release()
 
     def _run_suite(
         self,
@@ -242,6 +281,24 @@ class RunEvalGate:
         if request.capture_baseline:
             self._eval_store.write_baselines(target_name, tuple(captured))
         return verdicts, captured, diagnostics
+
+
+def view_overlaps(evals: tuple[CompiledEval, ...]) -> tuple[Diagnostic, ...]:
+    """Warn, per eval, of each semantic view its agent's tools query, which a running apply may regenerate.
+
+    Snowflake does not coordinate an eval run with a regenerate of a view its agent reads, so
+    the scores would grade a definition that changed under them.
+
+    Diagnostics:
+        SST-VAL755: the eval's agent uses the view; once per view, in tool order.
+    """
+    return tuple(
+        D("SST-VAL755", subject=item.artifact_key, artifact=item.name, value=view)
+        for item in evals
+        for view in dict.fromkeys(
+            tool.semantic_view for tool in item.resolved.agent.tools if tool.semantic_view is not None
+        )
+    )
 
 
 def _gate_data(

@@ -292,6 +292,13 @@ SPECS: tuple[ErrorSpec, ...] = (
         "narrow the scale",
     ),
     spec(
+        "SST-VAL755",
+        Severity.WARNING,
+        "Agent eval run overlaps a semantic view regenerate",
+        "eval config for '{artifact}': the run overlaps a regenerate of view '{value}', which the agent uses",
+        "serialise the run against the publish, or move one of the two",
+    ),
+    spec(
         "SST-VAL758",
         Severity.ERROR,
         "Eval baseline is absent",

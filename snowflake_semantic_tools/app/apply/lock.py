@@ -35,7 +35,8 @@ class LockPolicy:
 class RunLease:
     """Both locks one run holds on a target, and the heartbeat that keeps the remote one alive.
 
-    `lost` turns True when a heartbeat finds that another run broke the remote lock.
+    `lost` turns True when a heartbeat finds that another run broke the remote lock, and
+    `holder` names the run that held a lock this lease was refused.
     """
 
     def __init__(
@@ -56,6 +57,12 @@ class RunLease:
         self._stop = threading.Event()
         self._lost = threading.Event()
         self._heartbeat: threading.Thread | None = None
+        self._holder: str | None = None
+
+    @property
+    def holder(self) -> str | None:
+        """The run id holding the lock the last `acquire` was refused; None when it was not, or is unknown."""
+        return self._holder
 
     @property
     def lost(self) -> bool:
@@ -78,8 +85,10 @@ class RunLease:
             SST-APL010: an expired lock, local or remote, was taken over.
         """
         run_id = self._claim.run_id
+        self._holder = None
         locked, holder, broke_local = self._store.acquire_lock(run_id, break_stale=break_stale)
         if not locked:
+            self._holder = holder
             return False, (D("SST-APL011", value=holder or "another run"),)
         reported = [D("SST-APL010", value=holder or "expired run")] if broke_local else []
         try:
@@ -91,6 +100,7 @@ class RunLease:
             raise
         if not remote.acquired:
             self._store.release_lock(run_id)
+            self._holder = remote.holder.run_id if remote.holder is not None else None
             value = remote.holder.describe() if remote.holder is not None else "another run"
             return False, (*reported, D("SST-APL011", value=value))
         if remote.broke_stale and remote.holder is not None:

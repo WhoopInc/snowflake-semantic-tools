@@ -22,7 +22,7 @@ cannot be downgraded by any setting.
 - [Loading (LOD)](#loading-lod) -- 24 codes
 - [References (REF)](#references-ref) -- 37 codes
 - [Membership (MEM)](#membership-mem) -- 24 codes
-- [Validation (VAL)](#validation-val) -- 279 codes
+- [Validation (VAL)](#validation-val) -- 280 codes
 - [dbt (DBT)](#dbt-dbt) -- 30 codes
 - [Rendering (RND)](#rendering-rnd) -- 16 codes
 - [Manifest and state (MAN)](#manifest-and-state-man) -- 21 codes
@@ -3573,6 +3573,14 @@ Fix: align the prompt with score_ranges
 `eval metric '<artifact>' declares <count> bands for an invariant`
 
 Fix: narrow the scale
+
+### SST-VAL755
+
+**Agent eval run overlaps a semantic view regenerate** (warning)
+
+`eval config for '<artifact>': the run overlaps a regenerate of view '<value>', which the agent uses`
+
+Fix: serialise the run against the publish, or move one of the two
 
 ### SST-VAL758
 
