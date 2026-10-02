@@ -22,7 +22,7 @@ cannot be downgraded by any setting.
 - [Loading (LOD)](#loading-lod) -- 24 codes
 - [References (REF)](#references-ref) -- 37 codes
 - [Membership (MEM)](#membership-mem) -- 24 codes
-- [Validation (VAL)](#validation-val) -- 285 codes
+- [Validation (VAL)](#validation-val) -- 287 codes
 - [dbt (DBT)](#dbt-dbt) -- 30 codes
 - [Rendering (RND)](#rendering-rnd) -- 16 codes
 - [Manifest and state (MAN)](#manifest-and-state-man) -- 21 codes
@@ -3702,6 +3702,14 @@ Fix: reference it, or stop publishing it
 
 Fix: publish the missing sources, and reap the orphan objects
 
+### SST-VAL807
+
+**Certification attempted by moving schemas** (error)
+
+`skill '<artifact>': certification would change its schema`
+
+Fix: certify with the SNOWFLAKE.CORE.CERTIFICATION_STATUS tag
+
 ### SST-VAL808
 
 **Referenced bundle path does not resolve** (error)
@@ -3811,6 +3819,14 @@ Fix: set layout to by_type
 `skill '<artifact>': '<path>' was deleted and is still published`
 
 Fix: build each version from empty, or issue explicit removals
+
+### SST-VAL829
+
+**Channel content hashes diverge beyond flattening** (warning)
+
+`skill '<artifact>': catalog and stage hashes diverge by <value>`
+
+Fix: compare the two bundles
 
 ### SST-VAL830
 

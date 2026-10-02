@@ -40,6 +40,13 @@ SPECS: tuple[ErrorSpec, ...] = (
         "publish the missing sources, and reap the orphan objects",
     ),
     spec(
+        "SST-VAL807",
+        Severity.ERROR,
+        "Certification attempted by moving schemas",
+        "skill '{artifact}': certification would change its schema",
+        "certify with the SNOWFLAKE.CORE.CERTIFICATION_STATUS tag",
+    ),
+    spec(
         "SST-VAL808",
         Severity.ERROR,
         "Referenced bundle path does not resolve",
@@ -136,6 +143,13 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Deleted file survives into the next version",
         "skill '{artifact}': '{path}' was deleted and is still published",
         "build each version from empty, or issue explicit removals",
+    ),
+    spec(
+        "SST-VAL829",
+        Severity.WARNING,
+        "Channel content hashes diverge beyond flattening",
+        "skill '{artifact}': catalog and stage hashes diverge by {value}",
+        "compare the two bundles",
     ),
     spec(
         "SST-VAL830",

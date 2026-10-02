@@ -18,6 +18,7 @@ from snowflake_semantic_tools.app.compile.agents import CompiledAgent, for_publi
 from snowflake_semantic_tools.app.compile.evals import CompiledEval
 from snowflake_semantic_tools.app.compile.profiles import CompiledProfile
 from snowflake_semantic_tools.app.compile.skills import CompiledExtension
+from snowflake_semantic_tools.app.lifecycle.channels import channel_divergence
 from snowflake_semantic_tools.app.lifecycle.evals import EvalLifecycleConfig, EvalLifecycleHandler
 from snowflake_semantic_tools.app.lifecycle.extensions import ExtensionLifecycleHandler
 from snowflake_semantic_tools.app.lifecycle.profiles import ProfileLifecycleHandler, ProfilePublicationPort
@@ -491,8 +492,8 @@ class PreparePlan:
             SST-PLN018: observing and planning took longer than the observation stays current.
             SST-PLN032: with `--partial`, an artifact is left out of the plan.
             SST-PLN033: with `--partial`, a validation error names no artifact.
-            Those of validation, of `read_state`, and of `PlanArtifacts`, then the plan's
-            `change_summary` and `plan_notices`.
+            Those of validation, of `read_state`, and of `PlanArtifacts`, then
+            `channel_divergence`'s, then the plan's `change_summary` and `plan_notices`.
         """
         live = port if candidates.connected else None
         validation = ValidateArtifacts(live, catalog=live, target=target.name).run(
@@ -525,7 +526,7 @@ class PreparePlan:
         )
         stale = stale_observation(target, self._clock.monotonic_ms() - started)
         leading = (*candidates.notices, *state_diagnostics, *((stale,) if stale else ()))
-        trailing = (*change_summary(changeset), *plan_notices(changeset))
+        trailing = (*channel_divergence(port, result), *change_summary(changeset), *plan_notices(changeset))
         changeset = replace(changeset, diagnostics=DiagnosticBag((*leading, *changeset.diagnostics, *trailing)))
         return PlanReady(result, manifest, state, changeset, MappingProxyType(handlers))
 
