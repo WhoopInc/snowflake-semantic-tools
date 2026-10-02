@@ -231,7 +231,8 @@ class ChangeApplier:
     ) -> ApplyOutcome:
         """Report how the statements ran: applied, or failed with the error they reported.
 
-        A failure after any statement ran is still a write, which state keeps.
+        A failure after some statement completed is still a write, which state keeps as a
+        partial write so the next plan updates it; a failure before any completed wrote nothing.
         """
         duration = self._elapsed(started)
         if result.ok:
@@ -252,7 +253,8 @@ class ChangeApplier:
             duration,
             ddl,
             _script_error(result, "unknown Snowflake failure"),
-            write_succeeded=bool(result.query_ids or result.rows_affected),
+            write_succeeded=bool(result.query_ids),
+            partial_write=bool(result.query_ids),
         )
 
     def _verify_write(

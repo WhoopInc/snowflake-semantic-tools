@@ -26,6 +26,7 @@ from snowflake_semantic_tools.domain.state import (
     APPLIED,
     DEACTIVATED,
     FAILED_AFTER_WRITE,
+    PARTIAL_WRITE,
     AppliedEntry,
     AppliedResourceInput,
     State,
@@ -140,10 +141,11 @@ def _written_entry(
     stamp: EntryStamp,
     lifecycle_handler: CompositeLifecycleHandler | None,
 ) -> AppliedEntry:
-    """Record what a change published: APPLIED, or FAILED_AFTER_WRITE when it wrote and then failed.
+    """Record what a change published: APPLIED, or, when it wrote and then failed, PARTIAL_WRITE.
 
-    Component fingerprints the outcome reports, as a composite handler does for the parts it
-    verified, win over the rendered artifact's own.
+    PARTIAL_WRITE is for statements that stopped part way, FAILED_AFTER_WRITE for a complete
+    write whose check then failed. Component fingerprints the outcome reports, as a composite
+    handler does for the parts it verified, win over the rendered artifact's own.
     """
     assert change.rendered is not None
     return AppliedEntry(
@@ -151,13 +153,20 @@ def _written_entry(
         qualified_name=change.rendered.target.sql,
         applied_at=stamp.applied_at,
         run_id=stamp.run_id,
-        outcome=(APPLIED if outcome.status is OutcomeStatus.APPLIED else FAILED_AFTER_WRITE),
+        outcome=_entry_outcome(outcome),
         ddl_sha256=change.rendered.fingerprint,
         manifest_id=manifest_id,
         git_sha=stamp.git_sha,
         component_fingerprints=(outcome.component_fingerprints or change.rendered.component_fingerprints),
         physical_resources=_recorded_resources(change, outcome, previous_entry, lifecycle_handler),
     )
+
+
+def _entry_outcome(outcome: ApplyOutcome) -> str:
+    """Name what a written change leaves: applied, stopped part way, or written and then failed."""
+    if outcome.status is OutcomeStatus.APPLIED:
+        return APPLIED
+    return PARTIAL_WRITE if outcome.partial_write else FAILED_AFTER_WRITE
 
 
 def _recorded_resources(

@@ -1,8 +1,9 @@
 """The apply run: refuse or lock, preflight, run the dependency waves, account, and persist state.
 
-`ApplyArtifacts.run` holds the apply lock from the moment it takes it until the run ends, and
-writes state only after every wave ran: remote first, then local, so local state never claims
-what the state table does not hold.
+`ApplyArtifacts.run` holds the run lease, the local and the remote lock, from the moment it
+takes it until the run ends, and writes state only after every wave ran: remote first, then
+local, so local state never claims what the state table does not hold. Parallel changes run
+on sessions leased from a pool, one per worker, never on one shared connection.
 """
 
 from __future__ import annotations
@@ -12,7 +13,14 @@ from concurrent.futures import ThreadPoolExecutor
 from types import MappingProxyType
 from typing import Protocol
 
-from snowflake_semantic_tools.app.apply.errors import _failed, _outcome_diagnostic, _rendered_ddl, _skipped
+from snowflake_semantic_tools.app.apply.errors import (
+    _exception_error,
+    _failed,
+    _outcome_diagnostic,
+    _rendered_ddl,
+    _skipped,
+)
+from snowflake_semantic_tools.app.apply.lock import LockPolicy, RunLease
 from snowflake_semantic_tools.app.apply.one import ChangeApplier
 from snowflake_semantic_tools.app.apply.state import EntryStamp, _applied_after, _run_outcome
 from snowflake_semantic_tools.app.lifecycle.composite import CatalogPublicationPort
@@ -34,11 +42,15 @@ from snowflake_semantic_tools.domain.model.lifecycle import (
 from snowflake_semantic_tools.domain.plan import dependency_waves
 from snowflake_semantic_tools.domain.ports.clock import ClockPort
 from snowflake_semantic_tools.domain.ports.lifecycle import CompositeLifecycleHandler
+from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
+from snowflake_semantic_tools.domain.ports.snowflake.execution import SessionPool
 from snowflake_semantic_tools.domain.ports.snowflake.state import StatePort
 from snowflake_semantic_tools.domain.ports.state import StateStore
 from snowflake_semantic_tools.domain.state import SST_VERSION, STATE_SCHEMA_VERSION, LastRun, State
+from snowflake_semantic_tools.domain.state.lock import LockClaim, state_write
 
 _ApplyOne = Callable[[Change, ApplyOptions], ApplyOutcome]
+_DEFAULT_LOCK_POLICY = LockPolicy()
 
 
 class ApplyPort(CatalogPublicationPort, StatePort, Protocol):
@@ -49,7 +61,12 @@ class ApplyArtifacts:
     """Execute a reviewed ChangeSet against Snowflake and record what it wrote in state.
 
     A `ChangeApplier` applies each change, re-checking what plan saw before it writes. The use
-    case keeps nothing between runs; the state store's lock keeps two runs from applying at once.
+    case keeps nothing between runs; the run lease keeps two runs from applying at once.
+
+    Args:
+        sessions: Where parallel workers lease their sessions; None runs every change on
+            `port`, one statement at a time.
+        host: The machine the run lock records; empty when it is unknown.
     """
 
     def __init__(
@@ -61,7 +78,10 @@ class ApplyArtifacts:
         state_table: QualifiedName,
         git_sha: str = "",
         actor: str = "",
+        host: str = "",
         lifecycle_handlers: Mapping[str, CompositeLifecycleHandler] | None = None,
+        sessions: SessionPool[CatalogPublicationPort] | None = None,
+        lock_policy: LockPolicy = _DEFAULT_LOCK_POLICY,
     ) -> None:
         self._port = port
         self._state_store = state_store
@@ -69,7 +89,10 @@ class ApplyArtifacts:
         self._state_table = state_table
         self._git_sha = git_sha
         self._actor = actor
+        self._host = host
         self._lifecycle_handlers = dict(lifecycle_handlers or {})
+        self._sessions = sessions
+        self._lock_policy = lock_policy
         self._changes = ChangeApplier(port, clock, self._lifecycle_handlers)
 
     def run(self, changeset: ChangeSet, previous: State, options: ApplyOptions = ApplyOptions()) -> ApplyResult:
@@ -79,8 +102,10 @@ class ApplyArtifacts:
 
         1. Refusal, before the lock: a plan with an error diagnostic is refused with it, and so
            is a plan with blocked changes unless the policy is CONTINUE.
-        2. Lock: a lock another run holds refuses the run; an expired one is taken over when
-           `options.break_stale_lock` allows it.
+        2. Lock: the local lock, then the target's lock in Snowflake; either held by another
+           run refuses the run, and an expired one is taken over only when
+           `options.break_stale_lock` allows it. A heartbeat extends the remote lock while
+           the run holds it.
         3. Preflight: when a relation some create or update requires does not exist, every
            change fails with SST-PRT005 and nothing runs.
         4. Waves: the dependency waves run in order, as `_WaveRun` describes.
@@ -89,7 +114,8 @@ class ApplyArtifacts:
            leaves is written to the state table, then locally.
 
         A refused run never takes the lock; once taken, it is released however the run ends,
-        including when writing state raises. State keeps every object a statement wrote, even
+        including when writing state raises. A run whose remote lock another run broke starts
+        no further wave, and still records what it wrote. State keeps every object a statement wrote, even
         when its change then failed, so a partial write stays SST's and the next plan sees it.
         The plan's own diagnostics come first in the result, then each phase's in order.
 
@@ -102,7 +128,7 @@ class ApplyArtifacts:
             SST-APL003: the plan has a blocked change and the policy is not CONTINUE.
             SST-APL008: an object's grants could not be verified.
             SST-APL010: the run took over an expired lock.
-            SST-APL011: another run holds the lock.
+            SST-APL011: another run holds the lock, or broke it while this run held it.
             SST-APL900: the outcomes do not account for every planned change.
             Each failed change reports the diagnostic its error names; see `_outcome_diagnostic`.
         """
@@ -111,31 +137,22 @@ class ApplyArtifacts:
         refusal = _refusal(changeset, options)
         if refusal is not None:
             return self._refused(refusal, run_id, started)
-        locked, lock_diagnostics = self._lock(run_id, options)
+        lease = RunLease(
+            self._state_store,
+            self._port,
+            self._state_table,
+            changeset.target.name,
+            LockClaim(run_id, self._actor, self._host, self._lock_policy.ttl_seconds),
+            self._lock_policy,
+        )
+        locked, lock_diagnostics = lease.acquire(break_stale=options.break_stale_lock)
         reported = (*changeset.diagnostics, *lock_diagnostics)
         if not locked:
             return self._refused(reported, run_id, started)
         try:
-            return self._run_locked(changeset, previous, options, reported, run_id, started)
+            return self._run_locked(changeset, previous, options, reported, run_id, started, lease)
         finally:
-            self._state_store.release_lock(run_id)
-
-    def _lock(self, run_id: str, options: ApplyOptions) -> tuple[bool, tuple[Diagnostic, ...]]:
-        """Take the apply lock for this run, reporting who held it.
-
-        Returns:
-            Whether the run holds the lock, with SST-APL011 when another run holds it and
-            SST-APL010 when an expired lock was taken over.
-        """
-        locked, holder, broke_stale = self._state_store.acquire_lock(
-            run_id,
-            break_stale=options.break_stale_lock,
-        )
-        if not locked:
-            return False, (D("SST-APL011", value=holder or "another run"),)
-        if broke_stale:
-            return True, (D("SST-APL010", value=holder or "expired run"),)
-        return True, ()
+            lease.release()
 
     def _refused(self, diagnostics: tuple[Diagnostic, ...], run_id: str, started: str) -> ApplyResult:
         """Report a run that executed nothing and wrote no state."""
@@ -149,14 +166,28 @@ class ApplyArtifacts:
         reported: tuple[Diagnostic, ...],
         run_id: str,
         started: str,
+        lease: RunLease,
     ) -> ApplyResult:
         """Run the phases that need the lock: preflight, waves, accounting, then persist."""
         outcomes = self._preflight_relations(changeset.changes)
         wave_diagnostics: tuple[Diagnostic, ...] = ()
         if outcomes is None:
-            outcomes, wave_diagnostics = _WaveRun(changeset, options, self._changes.apply).run()
+            outcomes, wave_diagnostics = _WaveRun(changeset, options, self._apply_one, lambda: lease.lost).run()
         diagnostics = DiagnosticBag((*reported, *wave_diagnostics, *_unaccounted(changeset, outcomes)))
         return self._persist(changeset, previous, outcomes, diagnostics, run_id, started)
+
+    def _apply_one(self, change: Change, options: ApplyOptions) -> ApplyOutcome:
+        """Apply one change: on `port` without a pool, else on a session leased for it alone.
+
+        A session that cannot be opened fails the change with nothing written.
+        """
+        if self._sessions is None:
+            return self._changes.apply(change, options)
+        try:
+            with self._sessions.lease() as port:
+                return ChangeApplier(port, self._clock, self._lifecycle_handlers).apply(change, options)
+        except SnowflakePortError as exc:
+            return _failed(change, _exception_error(exc), _rendered_ddl(change))
 
     def _preflight_relations(self, changes: tuple[Change, ...]) -> tuple[ApplyOutcome, ...] | None:
         """Fail every change when a relation some create or update requires does not exist.
@@ -193,7 +224,7 @@ class ApplyArtifacts:
         if not changeset.writes and not changeset.report_only:
             return ApplyResult(outcomes, diagnostics, run_id, started, self._clock.now_iso(), False)
         state = self._finish_state(changeset, previous, outcomes, run_id, started)
-        self._write_remote_state(changeset, state)
+        self._write_remote_state(changeset, previous, state)
         self._state_store.write_local(state)
         return ApplyResult(
             outcomes,
@@ -226,12 +257,13 @@ class ApplyArtifacts:
             MappingProxyType(applied),
         )
 
-    def _write_remote_state(self, changeset: ChangeSet, state: State) -> None:
+    def _write_remote_state(self, changeset: ChangeSet, previous: State, state: State) -> None:
+        """Write to the state table only the entries the run changed or retired, and its manifest."""
         self._port.write_state(
             self._state_table,
             changeset.target.name,
             changeset.manifest_id,
-            state.applied,
+            state_write(previous.applied, state.applied),
         )
 
 
@@ -248,13 +280,22 @@ class _WaveRun:
 
     The outcomes are recorded wave by wave: a wave's skipped changes, then those it ran, each
     in key order, and STOP_ALL's skips last, in plan order. An outcome whose grants could not be
-    verified reports SST-APL008 before its failure's diagnostic.
+    verified reports SST-APL008 before its failure's diagnostic. Once `lost` reports the run
+    lock broken, no further wave starts: every change without an outcome is skipped, in plan
+    order, after one SST-APL011.
     """
 
-    def __init__(self, changeset: ChangeSet, options: ApplyOptions, apply_one: _ApplyOne) -> None:
+    def __init__(
+        self,
+        changeset: ChangeSet,
+        options: ApplyOptions,
+        apply_one: _ApplyOne,
+        lost: Callable[[], bool] = lambda: False,
+    ) -> None:
         self._changeset = changeset
         self._options = options
         self._apply_one = apply_one
+        self._lost = lost
         self._outcomes: list[ApplyOutcome] = []
         self._diagnostics: list[Diagnostic] = []
         self._failed_or_skipped: set[str] = set()
@@ -266,6 +307,10 @@ class _WaveRun:
             ValueError: the changes' dependencies form a cycle.
         """
         for wave in dependency_waves(self._changeset.changes):
+            if self._lost():
+                self._diagnostics.append(D("SST-APL011", value="another run, which broke this run's lock"))
+                self._skip_remaining()
+                break
             runnable = self._runnable(wave)
             self._record(runnable, self._execute(runnable))
             if self._failed_or_skipped and self._options.on_failure is FailurePolicy.STOP_ALL:

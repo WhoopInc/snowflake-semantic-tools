@@ -21,6 +21,7 @@ from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePort
 from snowflake_semantic_tools.domain.ports.snowflake.stage import StagedFileMetadata
 from snowflake_semantic_tools.domain.sql import sql
 from snowflake_semantic_tools.domain.state import AppliedEntry
+from snowflake_semantic_tools.domain.state.lock import LockClaim, StateWrite
 from tests.helpers.recorded_snowflake import ReadOnlySnowflake, RecordedSnowflake, ScriptedSnowflake
 from tests.helpers.sql_values import statement, statements
 
@@ -76,11 +77,18 @@ def test_offline_adapters_implement_the_full_read_write_contract(adapter_type: t
     assert port.execute_script(statements("one")).ok
     assert port.try_execute(statement("two")).ok
     assert port.read_state(name, "dev") == {"semantic_view:v": entry}
-    port.write_state(name, "dev", "m", {})
+    port.write_state(name, "dev", "m", StateWrite(MappingProxyType({}), ("semantic_view:v",)))
     assert port.read_state(name, "dev") == {}
+    assert port.read_state_manifest(name, "dev") == "m"
     port.ensure_state_table(name)
-    assert port.upsert_state(name, "dev", "semantic_view:v", entry) == 1
-    assert port.delete_state(name, "dev", "semantic_view:v") == 1
+    port.write_state(name, "dev", "n", StateWrite(MappingProxyType({"semantic_view:v": entry})))
+    assert port.read_state(name, "dev") == {"semantic_view:v": entry}
+    claim = LockClaim("run-a")
+    assert port.acquire_run_lock(name, "dev", claim, break_stale=False).acquired
+    assert not port.acquire_run_lock(name, "dev", LockClaim("run-b"), break_stale=False).acquired
+    assert port.extend_run_lock(name, "dev", claim)
+    port.release_run_lock(name, "dev", "run-a")
+    assert port.acquire_run_lock(name, "dev", LockClaim("run-b"), break_stale=False).acquired
 
 
 def test_scripted_and_read_only_behavior() -> None:
@@ -102,10 +110,8 @@ def test_scripted_and_read_only_behavior() -> None:
     with pytest.raises(SnowflakePortError):
         readonly.try_execute(statement("write"))
     with pytest.raises(SnowflakePortError):
-        readonly.write_state(values()[0], "dev", "m", MappingProxyType({}))
+        readonly.write_state(values()[0], "dev", "m", StateWrite(MappingProxyType({})))
     with pytest.raises(SnowflakePortError):
         readonly.ensure_state_table(values()[0])
     with pytest.raises(SnowflakePortError):
-        readonly.delete_state(values()[0], "dev", "k")
-    with pytest.raises(SnowflakePortError):
-        readonly.upsert_state(values()[0], "dev", "k", values()[-1])
+        readonly.acquire_run_lock(values()[0], "dev", LockClaim("r"), break_stale=False)

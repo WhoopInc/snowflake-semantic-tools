@@ -78,10 +78,14 @@ def test_profile_registry_and_state_port_methods_are_declarations_only() -> None
     )
     assert ProfileRegistryPort.desktop_profile_rows(source, object()) is None  # type: ignore[arg-type]
     assert StatePort.read_state(source, object(), "x") is None  # type: ignore[arg-type]
+    assert StatePort.read_state_manifest(source, object(), "x") is None  # type: ignore[arg-type]
     StatePort.write_state(source, object(), "x", "m", {})  # type: ignore[arg-type]
     StatePort.ensure_state_table(source, object())  # type: ignore[arg-type]
-    assert StatePort.delete_state(source, object(), "x", "k") is None  # type: ignore[arg-type]
-    assert StatePort.upsert_state(source, object(), "x", "k", object()) is None  # type: ignore[arg-type]
+    assert (
+        StatePort.acquire_run_lock(source, object(), "x", object(), break_stale=False) is None  # type: ignore[arg-type]
+    )
+    assert StatePort.extend_run_lock(source, object(), "x", object()) is None  # type: ignore[arg-type]
+    StatePort.release_run_lock(source, object(), "x", "r")  # type: ignore[arg-type]
 
 
 def test_clock_and_state_store_protocol_methods_are_declarations_only() -> None:

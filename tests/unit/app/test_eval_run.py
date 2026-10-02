@@ -145,9 +145,8 @@ def test_eval_runner_polls_retrieves_scores_and_costs() -> None:
     assert attempt.cost.total_output_tokens == 7
     assert attempt.cost.llm_call_count == 2
     assert len(port.uploads) == 1
-    assert port.scripts[0][0] == "USE DATABASE DB"
-    assert port.scripts[0][1] == "USE SCHEMA DB.S"
-    assert "EXECUTE_AI_EVALUATION('START'" in port.scripts[0][2]
+    assert port.scripts[0][0] == "IN DB.S"
+    assert "EXECUTE_AI_EVALUATION('START'" in port.scripts[0][1]
     assert port.queries[0][1] == (
         attempt.run_name,
         "@DB.S.EVAL_CONFIGS/sales_agent/" + dict(compiled.rendered_artifact.component_fingerprints)["config"] + ".yaml",
@@ -588,14 +587,14 @@ def test_ensure_config_rejects_failed_repairs_and_readback_mismatches(
         RunEvalSuite(port, FixedClock())._ensure_config("@config", b"config", trusted_digest)
 
 
-def test_eval_runner_reports_start_failure_without_an_error_payload() -> None:
+def test_eval_runner_reports_a_refused_start_with_the_error_snowflake_gave() -> None:
     port = EvalSnowflake([])
-    port.start_results.append(ExecResult(False))
+    port.start_results.append(ExecResult(False, error=ExecutionError("Insufficient privileges to operate on task")))
 
     result = run_once(port)
 
     assert result.evals[0].attempts[0].terminal_status == "START_FAILED"
-    assert "returned no result" in (result.evals[0].attempts[0].retrieval_error or "")
+    assert "Insufficient privileges to operate on task" in (result.evals[0].attempts[0].retrieval_error or "")
 
 
 @pytest.mark.parametrize(

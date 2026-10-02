@@ -122,6 +122,43 @@ commit it came from -- in a state table, `SST_STATE` in the target schema by
 default (`state:` in `sst_config.yml` moves it). The next `plan` compares the
 project against that record and against what is live.
 
+### Concurrent applies and the run lock
+
+Only one `apply` runs against a target at a time. Before it writes anything,
+`apply` takes the target's row in a lock table beside the state table
+(`SST_STATE_LOCK` for the default `SST_STATE`), recording its run id, the role
+and machine it runs as, and when the lock expires. The lock is claimed with a
+compare-and-set `MERGE` and read back, so of two runs that race for it exactly
+one proceeds; the other stops with `SST-APL011` naming the holder. A long apply
+extends its lock as it runs, and releases it when it ends, however it ends.
+Expiry is judged by Snowflake's clock. A lock left behind by a run that was
+killed expires after 30 minutes; `--break-stale-lock` takes over an expired lock
+(`SST-APL010`), and never a live one. A run also keeps a lock file beside its
+local state cache, which guards one machine only.
+
+A run writes state once, after its changes: one `MERGE` per entry it changed and
+one `DELETE` per entry it retired, in a single transaction, then it stamps the
+manifest it applied on the target's rows. Entries the run did not touch are left
+exactly as they were.
+
+**State and lock table type.** Both tables are standard tables, a choice made in
+one place in the connector. From Snowflake's documented semantics:
+
+| | Standard table | Hybrid table |
+|---|---|---|
+| Primary key | declared, not enforced | required and enforced |
+| Concurrent `MERGE`/`UPDATE`/`DELETE` | serialised by a table lock | row-level locks |
+| Availability | every account | not every account or region |
+
+A standard table cannot enforce the lock row's key, so SST does not rely on it:
+after claiming, it reads the target's lock rows back and holds the lock only if
+its row is the only one, withdrawing otherwise. A hybrid table would reject the
+second insert outright and let state writes to different targets proceed without
+waiting on each other, at the cost of availability. Whether the table lock
+serialises two claims exactly as documented, and how a hybrid table behaves
+under SST's write pattern, has not yet been measured; a spike against a scratch
+schema is pending.
+
 SST changes only objects it published. An object that already exists and that
 SST did not publish is reported as **unmanaged** (`SST-PLN024`) and left alone;
 adopt it or remove it deliberately. SST never grants new access: access to

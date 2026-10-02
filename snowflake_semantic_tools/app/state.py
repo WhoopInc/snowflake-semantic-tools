@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from types import MappingProxyType
 
 from snowflake_semantic_tools.domain.diagnostics import D, DiagnosticBag
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName, TargetIdentity
 from snowflake_semantic_tools.domain.ports.snowflake.state import StatePort
 from snowflake_semantic_tools.domain.ports.state import StateStore
-from snowflake_semantic_tools.domain.state import DEACTIVATED, STATE_SCHEMA_VERSION, State
+from snowflake_semantic_tools.domain.state import DEACTIVATED, STATE_SCHEMA_VERSION, AppliedEntry, State
 
 
 def read_state(
@@ -22,8 +23,8 @@ def read_state(
 
     The local cache is read first, online too. Online, the state table is authoritative: a
     cache whose entries disagree with it is rewritten, while a missing cache stays missing,
-    and the state's manifest is the one the active entries name, empty when they name none
-    or several.
+    and the state's manifest is the one the last state write recorded, else the one the
+    active entries name, empty when they name none or several.
 
     Args:
         port: The connection; None reads offline, from the local cache alone.
@@ -35,7 +36,8 @@ def read_state(
 
     Raises:
         ProjectError: the local cache exists and cannot be used, as `StateStore.read_local` raises.
-        SnowflakePortError: checking for the state table failed, or an entry it holds does not decode.
+        SnowflakePortError: checking for the state table or reading its manifest failed, or an
+            entry it holds does not decode.
 
     Diagnostics:
         SST-MAN020: offline, there is no local cache; every artifact reads as new.
@@ -61,10 +63,7 @@ def read_state(
         )
         return State.empty(target, store.config_path), DiagnosticBag(diagnostics)
 
-    remote_manifest_ids = {
-        entry.manifest_id for entry in remote.values() if entry.manifest_id and entry.outcome != DEACTIVATED
-    }
-    remote_manifest_id = next(iter(remote_manifest_ids)) if len(remote_manifest_ids) == 1 else ""
+    remote_manifest_id = port.read_state_manifest(state_table, target.name) or _entries_manifest(remote)
     remote_state = State(
         STATE_SCHEMA_VERSION,
         target,
@@ -77,3 +76,9 @@ def read_state(
         diagnostics.append(D("SST-MAN027", value=target.name, detail=state_table.sql))
         store.write_local(remote_state)
     return remote_state, DiagnosticBag(diagnostics)
+
+
+def _entries_manifest(entries: Mapping[str, AppliedEntry]) -> str:
+    """Return the one manifest the active entries name, else empty: for a table that records none."""
+    named = {entry.manifest_id for entry in entries.values() if entry.manifest_id and entry.outcome != DEACTIVATED}
+    return next(iter(named)) if len(named) == 1 else ""

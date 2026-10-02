@@ -6,6 +6,7 @@ plan must still match what the project compiles and what the target holds.
 
 from __future__ import annotations
 
+import socket
 from pathlib import Path
 
 import click
@@ -13,6 +14,7 @@ import click
 from snowflake_semantic_tools.adapters.clock import SystemClock
 from snowflake_semantic_tools.adapters.errors import ProjectError
 from snowflake_semantic_tools.adapters.fs.local import PlanFileStore
+from snowflake_semantic_tools.adapters.snowflake.connector import ConnectorPool
 from snowflake_semantic_tools.app.apply import ApplyArtifacts
 from snowflake_semantic_tools.app.plan import PlanRefused
 from snowflake_semantic_tools.cli.exit_codes import ERROR, OK
@@ -177,16 +179,22 @@ def _apply_plan(request: PlanRequest, session: PlanSession, options: ApplyOption
     A partial apply publishes the healthy changes and still exits 1 while errors remain.
     """
     ready = session.ready
+    params = session.profile.connection_params
+    # Parallel workers each lease a connection of their own; one at a time, the run stays on `port`.
+    parallel = options.parallelism > 1 and options.on_failure is not FailurePolicy.STOP_ALL
     try:
-        apply_result = ApplyArtifacts(
-            session.port,
-            session.state_store,
-            SystemClock(),
-            state_table=session.profile.state_table,
-            git_sha=project.git_sha(request.project_dir),
-            actor=session.profile.identity.role or "",
-            lifecycle_handlers=ready.lifecycle_handlers,
-        ).run(ready.changeset, ready.state, options)
+        with ConnectorPool(session.port, options.parallelism, lambda: project.open_connector(params)) as pool:
+            apply_result = ApplyArtifacts(
+                session.port,
+                session.state_store,
+                SystemClock(),
+                state_table=session.profile.state_table,
+                git_sha=project.git_sha(request.project_dir),
+                actor=session.profile.identity.role or "",
+                host=socket.gethostname(),
+                lifecycle_handlers=ready.lifecycle_handlers,
+                sessions=pool if parallel else None,
+            ).run(ready.changeset, ready.state, options)
     finally:
         session.port.close()
     left_out = ready.result.diagnostics if request.partial else DiagnosticBag()

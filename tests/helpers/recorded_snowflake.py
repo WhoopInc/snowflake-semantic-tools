@@ -33,6 +33,8 @@ from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePort
 from snowflake_semantic_tools.domain.ports.snowflake.stage import StagedFileMetadata
 from snowflake_semantic_tools.domain.sql import Sql
 from snowflake_semantic_tools.domain.state import AppliedEntry
+from snowflake_semantic_tools.domain.state.lock import LockAcquisition, LockClaim, StateWrite
+from tests.helpers.run_locks import InMemoryRunLocks
 
 
 class RecordedSnowflake:
@@ -78,6 +80,8 @@ class RecordedSnowflake:
         self.profile_rows: dict[str, dict[str, dict[str, object]]] = {}
         # Statements containing any of these fragments fail, to rehearse refusals.
         self.refused: tuple[str, ...] = ()
+        self.state_manifest: str | None = None
+        self.run_locks = InMemoryRunLocks()
 
     def table_columns(self, qualified_name: QualifiedName) -> tuple[tuple[str, str], ...] | None:
         return self.tables.get(qualified_name.sql)
@@ -289,35 +293,42 @@ class RecordedSnowflake:
         del state_table, target_name
         return self.state
 
+    def read_state_manifest(self, state_table: QualifiedName, target_name: str) -> str | None:
+        del state_table, target_name
+        return self.state_manifest
+
     def write_state(
         self,
         state_table: QualifiedName,
         target_name: str,
         manifest_id: str,
-        applied: Mapping[str, AppliedEntry],
+        write: StateWrite,
     ) -> None:
-        del state_table, target_name, manifest_id
-        self.state = MappingProxyType(dict(applied))
+        del state_table, target_name
+        current = {**self.state, **write.upserts}
+        for key in write.deletes:
+            current.pop(key, None)
+        self.state = MappingProxyType(current)
+        self.state_manifest = manifest_id
 
     def ensure_state_table(self, state_table: QualifiedName) -> None:
         del state_table
 
-    def delete_state(self, state_table: QualifiedName, target_name: str, artifact_key: str) -> int:
-        del state_table, target_name
-        existed = artifact_key in self.state
-        self.state = MappingProxyType({key: value for key, value in self.state.items() if key != artifact_key})
-        return int(existed)
-
-    def upsert_state(
+    def acquire_run_lock(
         self,
         state_table: QualifiedName,
         target_name: str,
-        artifact_key: str,
-        entry: AppliedEntry,
-    ) -> int:
-        del state_table, target_name
-        self.state = MappingProxyType({**self.state, artifact_key: entry})
-        return 1
+        claim: LockClaim,
+        *,
+        break_stale: bool,
+    ) -> LockAcquisition:
+        return self.run_locks.acquire_run_lock(state_table, target_name, claim, break_stale=break_stale)
+
+    def extend_run_lock(self, state_table: QualifiedName, target_name: str, claim: LockClaim) -> bool:
+        return self.run_locks.extend_run_lock(state_table, target_name, claim)
+
+    def release_run_lock(self, state_table: QualifiedName, target_name: str, run_id: str) -> None:
+        self.run_locks.release_run_lock(state_table, target_name, run_id)
 
     def _record_successful_statements(self, statements: Sequence[str]) -> None:
         for statement in statements:
@@ -523,28 +534,25 @@ class ReadOnlySnowflake:
         state_table: QualifiedName,
         target_name: str,
         manifest_id: str,
-        applied: Mapping[str, AppliedEntry],
+        write: StateWrite,
     ) -> None:
-        del state_table, target_name, manifest_id, applied
+        del state_table, target_name, manifest_id, write
         raise SnowflakePortError("read-only Snowflake adapter refused state write")
 
     def ensure_state_table(self, state_table: QualifiedName) -> None:
         del state_table
         raise SnowflakePortError("read-only Snowflake adapter refused state table creation")
 
-    def delete_state(self, state_table: QualifiedName, target_name: str, artifact_key: str) -> int:
-        del state_table, target_name, artifact_key
-        raise SnowflakePortError("read-only Snowflake adapter refused state delete")
-
-    def upsert_state(
+    def acquire_run_lock(
         self,
         state_table: QualifiedName,
         target_name: str,
-        artifact_key: str,
-        entry: AppliedEntry,
-    ) -> int:
-        del state_table, target_name, artifact_key, entry
-        raise SnowflakePortError("read-only Snowflake adapter refused state upsert")
+        claim: LockClaim,
+        *,
+        break_stale: bool,
+    ) -> LockAcquisition:
+        del state_table, target_name, claim, break_stale
+        raise SnowflakePortError("read-only Snowflake adapter refused the run lock")
 
 
 def _stage_format_from_statement(statement: str) -> str:

@@ -126,6 +126,8 @@ class ApplyOutcome:
             state should record the rendered artifact's own.
         physical_resources: The objects a composite handler verified, as `(object type, name)`;
             state records exactly these for a composite artifact, even when there are none.
+        partial_write: Whether the statements stopped part way, some run and a later one
+            failed, so what is live is not what was rendered.
     """
 
     key: ArtifactKey
@@ -139,6 +141,7 @@ class ApplyOutcome:
     write_succeeded: bool = False
     component_fingerprints: tuple[tuple[str, str], ...] = ()
     physical_resources: tuple[tuple[str, str], ...] = ()
+    partial_write: bool = False
 
 
 @dataclass(frozen=True, slots=True)

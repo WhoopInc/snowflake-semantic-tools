@@ -11,7 +11,7 @@ from dataclasses import dataclass
 
 from snowflake_semantic_tools.app.compile import CompiledView, CompileResult
 from snowflake_semantic_tools.domain.diagnostics import D, DiagnosticBag, resolve_severities
-from snowflake_semantic_tools.domain.model.identifier import Identifier
+from snowflake_semantic_tools.domain.model.identifier import Identifier, QualifiedName, SchemaScope
 from snowflake_semantic_tools.domain.model.lifecycle import RenderedArtifact
 from snowflake_semantic_tools.domain.model.semantic_view import SemanticView
 from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
@@ -117,9 +117,15 @@ class ValidateArtifacts:
                         ("verified_query", query.name, sql("EXPLAIN {query}", query=query_text(query.sql)))
                         for query in compiled_view.view.verified_queries
                     )
+                    # A verified query is authored SQL that may name objects relative to the
+                    # view's schema, so it alone is explained in that scope.
+                    view_scope = SchemaScope.from_qualified_name(QualifiedName.parse(compiled_view.view.fqn))
                     for kind, name, statement in checks:
                         try:
-                            self._port.query(statement)
+                            if kind == "verified_query":
+                                self._port.query_in_context(view_scope, statement)
+                            else:
+                                self._port.query(statement)
                         except SnowflakePortError as exc:
                             connected_diagnostics.append(
                                 D(

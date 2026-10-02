@@ -110,6 +110,9 @@ APPLIED = "applied"
 DEACTIVATED = "deactivated"
 # A publish that wrote something and then failed; the next plan retries it.
 FAILED_AFTER_WRITE = "failed_after_write"
+# A publish whose statements stopped part way: some ran and a later one failed, so what is
+# live is not what the entry's fingerprint describes, and the next plan updates it.
+PARTIAL_WRITE = "partial_write"
 
 
 @dataclass(frozen=True, slots=True)
