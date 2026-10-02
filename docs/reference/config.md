@@ -41,6 +41,8 @@ What blocks a build.
 |---|---|---|---|
 | `validation.strict` | boolean | `false` | Promote every warning to an error. |
 | `validation.snowflake_syntax_check` | boolean | `true` | Compile expressions against Snowflake during validate and plan. |
+| `validation.description_floor` | integer |  | Shortest description, in characters, a semantic view or metric may carry; unset checks none. |
+| `validation.instruction_budget` | integer |  | Longest composed comment and instructions, in characters, a semantic view may publish; unset checks none. |
 
 ## enrichment
 
@@ -190,6 +192,7 @@ Allowlists for Snowflake surfaces the renderer accepts.
 | Key | Type | Default | Description |
 |---|---|---|---|
 | `snowflake.orchestration_models` | list | `[auto]` | Orchestration models agents may name. |
+| `snowflake.allow_unknown_keys` | boolean | `true` | Render agent spec keys SST does not model with a warning; false makes each an error. |
 
 ## Unsupported keys
 
@@ -206,7 +209,6 @@ reads it, so a setting cannot look as though it takes effect when it does not.
 | `agents.+tags` | list | Default agent tags. |
 | `agents.<route>` | block | Folder route. |
 | `snowflake.tool_types` | list | Extra agent tool types. |
-| `snowflake.allow_unknown_keys` | boolean | Accept unknown agent spec keys. |
 | `snowflake.profile` | block | Agent profile allowlists. |
 
 ## Removed keys

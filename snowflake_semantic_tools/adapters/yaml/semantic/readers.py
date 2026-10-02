@@ -7,6 +7,7 @@ from pathlib import Path
 
 from snowflake_semantic_tools.adapters.errors import ProjectError
 from snowflake_semantic_tools.adapters.yaml.documents import RawDocuments
+from snowflake_semantic_tools.adapters.yaml.semantic.checks.deprecated import honoured
 from snowflake_semantic_tools.adapters.yaml.semantic.defs import (
     FilterDef,
     InstructionDef,
@@ -78,7 +79,7 @@ def load_metrics(documents: RawDocuments, project_dir: Path, semantic_models_dir
                     and isinstance(value.get("dimension"), str)
                     and value["dimension"].strip()
                 ),
-                access_modifier=str(node.get("access_modifier") or "public_access"),
+                access_modifier=str(honoured(node, "access_modifier", "metric") or "public_access"),
                 has_tables_key="tables" in node,
                 origin=_node_origin(document, _member_root("metric"), index),
                 template_calls=template_calls,
@@ -141,8 +142,11 @@ def load_instructions(
         name = str(node["name"])
         out[name.casefold()] = InstructionDef(
             name=name,
-            ai_sql_generation=str(node.get("ai_sql_generation") or "").strip() or None,
-            ai_question_categorization=str(node.get("ai_question_categorization") or "").strip() or None,
+            ai_sql_generation=str(honoured(node, "ai_sql_generation", "custom_instruction") or "").strip() or None,
+            ai_question_categorization=str(
+                honoured(node, "ai_question_categorization", "custom_instruction") or ""
+            ).strip()
+            or None,
             origin=_node_origin(document, _member_root("custom_instruction"), index),
         )
     return out

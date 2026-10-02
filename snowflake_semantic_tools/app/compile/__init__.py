@@ -37,6 +37,12 @@ from snowflake_semantic_tools.domain.model.semantic_view import SemanticView
 from snowflake_semantic_tools.domain.ports.semantic_view_source import SemanticViewSource
 from snowflake_semantic_tools.domain.render.semantic_view import render, render_checked
 from snowflake_semantic_tools.domain.sql import AuthoredExpression, Sql, ident, join, qname, query_text, sql
+from snowflake_semantic_tools.domain.validate.semantic_view import (
+    fan_out_diagnostics,
+    join_graph_diagnostics,
+    restriction_diagnostics,
+    statement_diagnostics,
+)
 from snowflake_semantic_tools.domain.validate.targets import shared_targets
 
 __all__ = [
@@ -47,11 +53,23 @@ __all__ = [
     "CompiledView",
     "CompileResult",
     "CompileSemanticViews",
+    "SemanticCompileResult",
     "StandaloneArtifact",
     "compile_checked",
     "compile_each",
     "has_error",
 ]
+
+
+@dataclass(frozen=True)
+class SemanticCompileResult(CompileResult):
+    """The compiled views, with the declared views left unpublished because they are disabled.
+
+    Attributes:
+        disabled: Casefolded names of the views the project declares disabled.
+    """
+
+    disabled: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -325,24 +343,47 @@ class CompileSemanticViews:
     def __init__(self, source: SemanticViewSource) -> None:
         self._source = source
 
-    def run_result(self) -> CompileResult:
+    def run_result(self) -> SemanticCompileResult:
         """Compile without turning one rendering invariant into process failure.
 
         Every view renders, in FQN order, whatever the source reported about it; only
-        TypeError and ValueError are caught. A view the render phase refuses is left out.
+        TypeError and ValueError are caught. A view the render phase refuses is left out. Each
+        rendered view is then checked as compiled, view by view: its statement, the metrics it
+        carries, and its join graph.
 
         Diagnostics:
             SST-RND001, SST-RND002, SST-RND003, SST-RND900: as `render_checked` reports them.
             SST-INT902: rendering a view raised TypeError or ValueError.
+            SST-VAL307, SST-VAL321: as `statement_diagnostics` reports them.
+            SST-VAL123: as `restriction_diagnostics` reports it.
+            SST-VAL216, SST-VAL217: as `join_graph_diagnostics` reports them.
+            SST-VAL319, SST-VAL125: as `fan_out_diagnostics` reports them, after every view.
         """
         project = self._source.load_project()
-        return compile_checked(
+        result = compile_checked(
             sorted(project.views, key=lambda view: view.fqn),
             key=lambda view: artifact_key("semantic_view", view.fqn),
             render=_compiled_view,
             diagnostics=project.diagnostics,
             skip=None,
             errors=(TypeError, ValueError),
+        )
+        checked = tuple(
+            diagnostic
+            for item in result.compiled
+            if isinstance(item, CompiledView)
+            for diagnostic in (
+                *statement_diagnostics(str(item.ddl), artifact=item.artifact_key),
+                *restriction_diagnostics(item.view, project.diagnostics, artifact=item.artifact_key),
+                *join_graph_diagnostics(item.view, artifact=item.artifact_key),
+            )
+        )
+        compiled_views = tuple(
+            (item.view, item.artifact_key) for item in result.compiled if isinstance(item, CompiledView)
+        )
+        reach = fan_out_diagnostics(compiled_views)
+        return SemanticCompileResult(
+            result.compiled, DiagnosticBag((*result.diagnostics, *checked, *reach)), disabled=project.disabled
         )
 
 

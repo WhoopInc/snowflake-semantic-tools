@@ -24,6 +24,7 @@ from snowflake_semantic_tools.domain.model.dbt import DbtModel
 from snowflake_semantic_tools.domain.parse.template import TemplateCall
 from snowflake_semantic_tools.domain.resolve.calls import call_problem, variable_problem
 from snowflake_semantic_tools.domain.resolve.template import METRIC_EXPR
+from snowflake_semantic_tools.domain.validate.column_metadata import is_temporal
 from snowflake_semantic_tools.domain.validate.expression import is_aggregate_expression
 from snowflake_semantic_tools.domain.validate.expression import root_function as _root_function
 
@@ -158,15 +159,18 @@ def _one_metric_diagnostics(
 ) -> list[Diagnostic]:
     """Run the per-metric rules on one metric, in order.
 
-    Structure, non-additive dimensions, window or aggregate, the derived or the base-metric
-    references, referenced metrics, template calls, then bare identifiers. A malformed template
+    Structure, non-additive dimensions, their ordering, window or aggregate, additivity and
+    division, the derived or the base-metric references, referenced metrics, template calls,
+    then bare identifiers. A malformed template
     is reported (SST-LOD004) in place of the template-call rule and ends the metric's checks:
     the bare-identifier rule would only guess at an expression it cannot scan.
     """
     diagnostics = [
         *_structure_diagnostics(metric),
         *_non_additive_diagnostics(metric, models),
+        *_ordering_diagnostics(metric),
         *_window_or_aggregate_diagnostics(metric, metric_by_name, models),
+        *_additivity_diagnostics(metric, models),
     ]
     if metric.derived:
         diagnostics.extend(_derived_diagnostics(metric))
@@ -235,6 +239,82 @@ def _non_additive_diagnostics(metric: MetricDef, models: Mapping[str, DbtModel])
                 )
             )
     return diagnostics
+
+
+def _ordering_diagnostics(metric: MetricDef) -> list[Diagnostic]:
+    """Report the order of a metric's non-additive dimensions, then a sort with no null order.
+
+    Diagnostics:
+        SST-VAL119: the metric declares two or more non-additive dimensions, whose order counts.
+        SST-VAL120: a non-additive or window order entry declares `sort_direction` and no
+            `null_order`; reported once per metric.
+    """
+    subject = artifact_key("metric", metric.name)
+    diagnostics: list[Diagnostic] = []
+    if len(metric.non_additive) > 1:
+        order = ", ".join(_sort_label(*entry.key) for entry in metric.non_additive)
+        diagnostics.append(D("SST-VAL119", metric=metric.name, value=order, subject=subject, origin=metric.origin))
+    entries = [(entry.descending, entry.nulls_first) for entry in metric.non_additive]
+    if metric.window is not None:
+        entries.extend((entry.descending, entry.nulls_first) for entry in metric.window.order_by)
+    if any(descending is not None and nulls_first is None for descending, nulls_first in entries):
+        diagnostics.append(D("SST-VAL120", metric=metric.name, subject=subject, origin=metric.origin))
+    return diagnostics
+
+
+def _sort_label(expression: str, descending: bool | None, nulls_first: bool | None) -> str:
+    direction = "" if descending is None else " DESC" if descending else " ASC"
+    nulls = "" if nulls_first is None else " NULLS FIRST" if nulls_first else " NULLS LAST"
+    return f"{expression}{direction}{nulls}"
+
+
+def _additivity_diagnostics(metric: MetricDef, models: Mapping[str, DbtModel]) -> list[Diagnostic]:
+    """Report a sum over a snapshot grain that declares no non-additive dimension, then a bare division.
+
+    A table is a snapshot grain when one of its keys holds a date or timestamp column: it holds
+    one row per entity per period, so summing a measure over periods counts it once per period.
+
+    Diagnostics:
+        SST-VAL117: a table-scoped SUM over a snapshot grain declares no non_additive_dimensions.
+        SST-VAL111: the expression divides by a denominator neither NULLIF nor a non-zero number.
+    """
+    subject = artifact_key("metric", metric.name)
+    diagnostics: list[Diagnostic] = []
+    owner = _metric_owner(metric)
+    model = models.get(owner) if owner is not None and not metric.derived else None
+    if (
+        model is not None
+        and not metric.non_additive
+        and metric.window is None
+        and (_root_function(metric.expr) or "").upper() == "SUM"
+        and _is_snapshot_grain(model)
+    ):
+        diagnostics.append(D("SST-VAL117", metric=metric.name, subject=subject, origin=metric.origin))
+    if unguarded_division(metric.expr):
+        diagnostics.append(D("SST-VAL111", metric=metric.name, subject=subject, origin=metric.origin))
+    return diagnostics
+
+
+def _is_snapshot_grain(model: DbtModel) -> bool:
+    for key in (model.primary_key, *model.unique_keys):
+        for name in key:
+            column = model.column(name)
+            if column is not None and (column.column_type == "time_dimension" or is_temporal(column.data_type)):
+                return True
+    return False
+
+
+_MASKED = re.compile(r"\{\{.*?\}\}|'(?:''|[^'])*'|\"(?:\"\"|[^\"])*\"|--[^\n]*|/\*.*?\*/", re.DOTALL)
+_GUARDED = re.compile(r"\s*(?:NULLIF\s*\(|\(*\s*(?:0*[1-9][0-9]*(?:\.[0-9]*)?|0*\.[0-9]*[1-9][0-9]*)\b)", re.IGNORECASE)
+
+
+def unguarded_division(expression: str) -> bool:
+    """Report whether an expression divides by anything other than NULLIF(...) or a non-zero number.
+
+    Template calls, strings and comments are masked first, so a `/` inside them is not division.
+    """
+    masked = _MASKED.sub(lambda match: "x" if match.group(0).startswith("{{") else " ", expression)
+    return any(not _GUARDED.match(masked, match.end()) for match in re.finditer(r"/", masked))
 
 
 def _window_or_aggregate_diagnostics(

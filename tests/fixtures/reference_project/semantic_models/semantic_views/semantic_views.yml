@@ -74,7 +74,7 @@ semantic_views:
   # optional renders beyond what attaches through `products`; keep it minimal.
   - name: jaffle_minimal
     description: |-
-      Menu products only. The smallest valid semantic view in this fixture.
+      Menu products only. Use it when a question needs nothing but the product catalogue.
     tables:
       - "{{ ref('products') }}"
 

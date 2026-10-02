@@ -8,7 +8,9 @@ from snowflake_semantic_tools.domain.diagnostics import Severity
 from tests.helpers.seam_projects import SmallProject, found
 
 OTHER = (
-    "semantic_views:\n  - name: other\n    description: Another view.\n    tables:\n      - \"{{ ref('products') }}\"\n"
+    "semantic_views:\n  - name: other\n"
+    "    description: Use this view for other questions about products.\n"
+    "    tables:\n      - \"{{ ref('products') }}\"\n"
 )
 
 

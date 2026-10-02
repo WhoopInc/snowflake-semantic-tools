@@ -106,7 +106,12 @@ class SemanticViewProject:
     """What a semantic-view source returns: the views that built, and every diagnostic of the load.
 
     A view a diagnostic kept from building is absent rather than partly built.
+
+    Attributes:
+        disabled: The casefolded names of the views the project declares with `enabled: false`,
+            directly or through a folder route; none of them is published.
     """
 
     views: tuple[SemanticView, ...]
     diagnostics: DiagnosticBag = DiagnosticBag()
+    disabled: tuple[str, ...] = ()

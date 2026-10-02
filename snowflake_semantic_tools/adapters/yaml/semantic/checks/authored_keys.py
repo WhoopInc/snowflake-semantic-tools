@@ -7,6 +7,8 @@ from types import MappingProxyType
 from typing import Any
 
 from snowflake_semantic_tools.adapters.yaml.documents import NodePath, RawDocument, RawDocuments
+from snowflake_semantic_tools.adapters.yaml.semantic.checks.deprecated import DEPRECATED_KEYS, INERT_KEYS
+from snowflake_semantic_tools.adapters.yaml.semantic.checks.scope import SCOPE_KEYS
 from snowflake_semantic_tools.adapters.yaml.semantic.nodes import _node_origin, _node_root
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, Origin
 from snowflake_semantic_tools.domain.model.artifact_key import artifact_key
@@ -30,6 +32,7 @@ AUTHORED_KEYS: Mapping[str, frozenset[str]] = MappingProxyType(
                 "tags",
                 "max_staleness",
                 "enabled",
+                *SCOPE_KEYS,
             )
         ),
         "metric": frozenset(
@@ -44,12 +47,24 @@ AUTHORED_KEYS: Mapping[str, frozenset[str]] = MappingProxyType(
                 "non_additive_dimensions",
                 "access_modifier",
                 "window",
+                # The 0.3 spelling of access_modifier, honoured with SST-VAL122.
+                "visibility",
             )
         ),
-        "filter": frozenset(("name", "expr", "description", "tables", "labels")),
+        # `synonyms` is read only to report it (SST-VAL011): a filter cannot carry them.
+        "filter": frozenset(("name", "expr", "description", "tables", "labels", "synonyms")),
         # Snowflake has no clause for a description on the next three: it documents
         # the YAML for its readers and is never published.
-        "custom_instruction": frozenset(("name", "description", "ai_sql_generation", "ai_question_categorization")),
+        "custom_instruction": frozenset(
+            (
+                "name",
+                "description",
+                "ai_sql_generation",
+                "ai_question_categorization",
+                # The 0.3 spellings, honoured with SST-VAL012 unless the 1.0 key is also set.
+                *DEPRECATED_KEYS["custom_instruction"],
+            )
+        ),
         "verified_query": frozenset(
             (
                 "name",
@@ -63,14 +78,24 @@ AUTHORED_KEYS: Mapping[str, frozenset[str]] = MappingProxyType(
                 "use_as_onboarding_question",
             )
         ),
-        "relationship": frozenset(("name", "description", "left_table", "right_table", "relationship_conditions")),
+        # `relationship_type` and `join_type` are read only to report them (SST-VAL211).
+        "relationship": frozenset(
+            (
+                "name",
+                "description",
+                "left_table",
+                "right_table",
+                "relationship_conditions",
+                *INERT_KEYS["relationship"],
+            )
+        ),
     }
 )
 # Mappings below a node, by the scope that holds them: a block, each item of a list
 # field, or each value of a name map.
 NESTED_KEYS: Mapping[tuple[str, str], frozenset[str]] = MappingProxyType(
     {
-        ("semantic_view", "table_config"): frozenset(("synonyms", "distinct_range")),
+        ("semantic_view", "table_config"): frozenset(("synonyms", "distinct_range", "description")),
         ("semantic_view", "variables"): frozenset(("name", "data_type", "default_value", "description")),
         ("semantic_view", "tags"): frozenset(("name", "value")),
         ("metric", "non_additive_dimensions"): frozenset(("dimension", "table", "sort_direction", "null_order")),
@@ -85,9 +110,6 @@ BLOCKS = frozenset((("metric", "window"),))
 # the 1.0 key: reading the old spelling would keep two dialects alive.
 RENAMED_KEYS: Mapping[tuple[str, str], str] = MappingProxyType(
     {
-        ("custom_instruction", "sql_generation"): "ai_sql_generation",
-        ("custom_instruction", "question_categorization"): "ai_question_categorization",
-        ("metric", "visibility"): "access_modifier",
         ("metric", "non_additive_by"): "non_additive_dimensions",
         ("metric.non_additive_dimensions", "order"): "sort_direction",
         ("metric.non_additive_dimensions", "nulls"): "null_order",

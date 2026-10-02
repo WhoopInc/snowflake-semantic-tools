@@ -1929,6 +1929,19 @@
           "column_name": "product_id"
         }
       }
+    },
+    "test.sst_reference_impl.not_null_supplies_product_id": {
+      "unique_id": "test.sst_reference_impl.not_null_supplies_product_id",
+      "resource_type": "test",
+      "name": "not_null_supplies_product_id",
+      "attached_node": "model.sst_reference_impl.supplies",
+      "column_name": "product_id",
+      "test_metadata": {
+        "name": "not_null",
+        "kwargs": {
+          "column_name": "product_id"
+        }
+      }
     }
   }
 }

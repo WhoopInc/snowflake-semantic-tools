@@ -8,7 +8,7 @@ the view are built in `build_members`.
 from __future__ import annotations
 
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any, TypeVar
 
@@ -26,6 +26,7 @@ from snowflake_semantic_tools.adapters.yaml.semantic.build_members import (
     _view_verified_queries,
     _with_variable_names,
 )
+from snowflake_semantic_tools.adapters.yaml.semantic.checks.scope import view_scope
 from snowflake_semantic_tools.adapters.yaml.semantic.defs import FilterDef, InstructionDef, MetricDef, VerifiedQueryDef
 from snowflake_semantic_tools.adapters.yaml.semantic.nodes import _as_str_tuple
 from snowflake_semantic_tools.domain.diagnostics import D, Origin
@@ -40,10 +41,12 @@ from snowflake_semantic_tools.domain.model.semantic_view import (
     Table,
     Tag,
     Variable,
+    ViewScope,
 )
 from snowflake_semantic_tools.domain.parse.template import single_template_call
 from snowflake_semantic_tools.domain.resolve.template import TAG_NAME, ResolveContext, resolve_scalar
 from snowflake_semantic_tools.domain.sql import Sql, boolean, datatype, is_datatype, literal, number
+from snowflake_semantic_tools.domain.validate.semantic_view import relation_diagnostics
 from snowflake_semantic_tools.domain.validate.sql import qualified_name_problem
 
 
@@ -61,8 +64,8 @@ def _build_view(
     """Build one view from its node and the members attached to it, one phase at a time.
 
     The phases run in this order, and each raises `ProjectError` at the first problem it finds,
-    so the order decides which problem a broken view reports: select the attached members, set
-    up the context, then tables, columns, metric names, metrics and their windows, filters,
+    so the order decides which problem a broken view reports: select the attached members the
+    view's scope admits, set up the context, then tables, columns, metric names, metrics and their windows, filters,
     instructions, verified queries, variables, tags, and assemble. A phase reads only what the
     earlier phases returned.
 
@@ -71,7 +74,8 @@ def _build_view(
             name the problem; one without diagnostics is reported by its message.
     """
     name = str(node["name"])
-    selected = _select_members(artifact_key("semantic_view", name), members, attachment)
+    scope = view_scope(node)
+    selected = _scoped(_select_members(artifact_key("semantic_view", name), members, attachment), scope)
     view = _View(
         name,
         path,
@@ -81,7 +85,12 @@ def _build_view(
         mapping(config.get("vars")),
     )
     tables, logical_by_model = _view_tables(node, view)
-    columns = _view_columns(models, logical_by_model)
+    # A `source()` table has no model; its relation is the source's own, so it cannot be misplaced.
+    relations = {logical: models[model].relation_name for model, logical in logical_by_model.items() if model in models}
+    misplaced = relation_diagnostics(tables, relations, artifact=view.key)
+    if misplaced:
+        raise ProjectError(misplaced[0].message, diagnostics=misplaced)
+    columns = [column for column in _view_columns(models, logical_by_model) if scope.admits_column(column)]
     resolver = _member_resolver(view, logical_by_model, selected)
     metrics = _view_metrics(selected.metrics, selected.relationships, resolver)
     entity_filters, standalone_filters = _view_filters(selected.filters, resolver)
@@ -115,6 +124,7 @@ def _build_view(
         source_path=source_path,
         source_files=source_files,
         referenced_models=tuple(sorted(logical_by_model)),
+        scope=scope,
     )
 
 
@@ -151,6 +161,19 @@ def _select_members(
         },
         verified_queries=_sources(attached, "verified_query", VerifiedQueryDef),
         relationships=_sources(attached, "relationship", Relationship),
+    )
+
+
+def _scoped(selected: _Members, scope: ViewScope) -> _Members:
+    """Keep the attached metrics and relationships the view's scope admits.
+
+    The metrics are narrowed before any expression resolves, so a metric that reads one the
+    scope removed fails to resolve rather than rendering a reference the view cannot satisfy.
+    """
+    return replace(
+        selected,
+        metrics=tuple(metric for metric in selected.metrics if scope.admits_metric(metric.name)),
+        relationships=tuple(item for item in selected.relationships if scope.admits_relationship(item.name)),
     )
 
 
@@ -267,6 +290,7 @@ def _view_table(
         raise ProjectError(diagnostic.message, diagnostics=(diagnostic,))
     per_table = table_config.get(model_name) if isinstance(table_config, dict) else None
     table_synonyms = _as_str_tuple(per_table.get("synonyms")) if isinstance(per_table, dict) else ()
+    table_comment = str(per_table.get("description") or "").strip() or None if isinstance(per_table, dict) else None
     distinct_range = _distinct_range(per_table, path=view.path, view_name=view.name, table_name=model_name)
     (logical,) = _names((logical,), view.key, None)
     if qualified_name_problem(model.relation_name, artifact=view.key, subject=view.key) is not None:
@@ -278,6 +302,7 @@ def _view_table(
         primary_key=_names(model.primary_key, view.key, None),
         unique_keys=tuple(_names(key, view.key, None) for key in model.unique_keys),
         synonyms=table_synonyms,
+        comment=table_comment,
         distinct_range=distinct_range,
     )
 

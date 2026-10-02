@@ -40,18 +40,19 @@ def test_validate_json_emits_one_v2_envelope() -> None:
     assert envelope["invocation"]["started_at"]
     assert envelope["invocation"]["duration_s"] >= 0
     assert envelope["status"] == "ok"
-    # Infos: SST-VAL854 (the fixture's profile registry is not Desktop's), SST-VAL020, the
-    # eval notes SST-VAL711/712/725, the skill notes SST-VAL816 (3) and SST-VAL831 (4), the
-    # dbt seam's notes SST-DBT016 for orders and products and SST-DBT025, and SST-LOD201 (7)
-    # for the files the manifest's checksums read first; eighteen report what attached where,
-    # SST-MEM011 for each of the fifteen members both jaffle views hold and SST-MEM103 for
-    # each of the three views. The warnings are SST-VAL528, SST-RND010 for the minimal
-    # agent's empty tool list, and SST-RND013 for the generic tool's resources; the plugin
-    # has a consumer, the operator profile.
+    # Infos: SST-VAL854 (the fixture's profile registry is not Desktop's), SST-VAL020 once per
+    # connected rule (3), the eval notes SST-VAL711/712/725, the skill notes SST-VAL816 (3) and
+    # SST-VAL831 (4), the dbt seam's notes SST-DBT016 for orders and products and SST-DBT025,
+    # SST-LOD201 (7) for the files the manifest's checksums read first, eighteen that report
+    # what attached where (SST-MEM011 for each of the fifteen members both jaffle views hold,
+    # SST-MEM103 for each of the three views), and the compiled views' shape: SST-VAL125 (9),
+    # SST-VAL216, SST-VAL217 (2) and SST-VAL319 (3). The warnings are SST-VAL528, SST-RND010
+    # for the minimal agent's empty tool list, and SST-RND013 for the generic tool's
+    # resources; the plugin has a consumer, the operator profile.
     assert envelope["summary"] == {
         "error": 0,
         "warning": 3,
-        "info": 40,
+        "info": 57,
         "promoted": 0,
         "suppressed_cascade": 0,
         "baselined": 0,

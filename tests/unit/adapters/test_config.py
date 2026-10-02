@@ -52,7 +52,7 @@ def test_positions_and_the_removed_deploy_block(tmp_path: Path) -> None:
 def test_unsupported_and_removed_0_3_keys_are_errors(tmp_path: Path) -> None:
     config = (
         "dbt: {}\nvalidation:\n  exclude_dirs: []\nenrichment: {}\ngeneration: {}\ndefer: {}\n"
-        "apply:\n  fail_fast: true\nsnowflake:\n  allow_unknown_keys: true\n"
+        "apply:\n  fail_fast: true\nsnowflake:\n  tool_types: []\n"
     )
     _write(tmp_path, {"dbt_project.yml": "profile: sst\n", "sst_config.yml": config})
     loaded = load_project_config(tmp_path)
@@ -63,7 +63,7 @@ def test_unsupported_and_removed_0_3_keys_are_errors(tmp_path: Path) -> None:
         ("SST-CFG043", "config:generation", "ERROR"),
         ("SST-CFG043", "config:defer", "ERROR"),
         ("SST-CFG043", "config:apply.fail_fast", "ERROR"),
-        ("SST-CFG044", "config:snowflake.allow_unknown_keys", "ERROR"),
+        ("SST-CFG044", "config:snowflake.tool_types", "ERROR"),
     ]
     assert "--fail-fast" in loaded.diagnostics[4].message
 

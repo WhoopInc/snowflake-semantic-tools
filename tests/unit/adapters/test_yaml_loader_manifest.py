@@ -16,6 +16,7 @@ from snowflake_semantic_tools.adapters.yaml.semantic.checks.authored_keys import
     _legacy_reference_diagnostics,
     _member_name_diagnostics,
 )
+from snowflake_semantic_tools.adapters.yaml.semantic.checks.deprecated import _deprecated_key_diagnostics
 from snowflake_semantic_tools.adapters.yaml.semantic.checks.shape import (
     _metric_parse_diagnostics,
     _verified_query_diagnostics,
@@ -44,7 +45,7 @@ def write_project(root: Path) -> Path:
         encoding="utf-8",
     )
     (root / "semantic_models" / "semantic_views" / "views.yml").write_text(
-        "semantic_views:\n  - name: catalog\n    description: Product catalog.\n"
+        "semantic_views:\n  - name: catalog\n    description: Use for product catalog.\n"
         "    tables:\n      - \"{{ ref('products') }}\"\n",
         encoding="utf-8",
     )
@@ -103,8 +104,9 @@ def test_semantic_views_enabled_default_follows_folder_routes(tmp_path: Path) ->
     views_dir = tmp_path / "semantic_models" / "semantic_views"
     (views_dir / "archive").mkdir()
     (views_dir / "archive" / "old.yml").write_text(
-        "semantic_views:\n  - name: retired\n    description: Retired.\n    tables: [\"{{ ref('products') }}\"]\n"
-        "  - name: kept\n    enabled: true\n    description: Kept.\n    tables: [\"{{ ref('products') }}\"]\n",
+        "semantic_views:\n  - name: retired\n    description: Use for retired.\n"
+        "    tables: [\"{{ ref('products') }}\"]\n"
+        "  - name: kept\n    enabled: true\n    description: Use for kept.\n    tables: [\"{{ ref('products') }}\"]\n",
         encoding="utf-8",
     )
     (tmp_path / "sst_config.yml").write_text(
@@ -121,10 +123,10 @@ def test_unknown_view_model_isolated_from_healthy_views(tmp_path: Path) -> None:
     views_path.write_text(
         "semantic_views:\n"
         "  - name: healthy\n"
-        "    description: Healthy view.\n"
+        "    description: Use for healthy view.\n"
         "    tables: [\"{{ ref('products') }}\"]\n"
         "  - name: poisoned\n"
-        "    description: Poisoned view.\n"
+        "    description: Use for poisoned view.\n"
         "    tables: [\"{{ ref('missing') }}\"]\n",
         encoding="utf-8",
     )
@@ -139,8 +141,8 @@ def test_duplicate_view_names_are_diagnosed_and_not_manifest_candidates(tmp_path
     views_path = tmp_path / "semantic_models" / "semantic_views" / "views.yml"
     views_path.write_text(
         "semantic_views:\n"
-        "  - name: duplicate\n    description: Duplicate one.\n    tables: [\"{{ ref('products') }}\"]\n"
-        "  - name: DUPLICATE\n    description: Duplicate two.\n    tables: [\"{{ ref('products') }}\"]\n",
+        "  - name: duplicate\n    description: Use for duplicate one.\n    tables: [\"{{ ref('products') }}\"]\n"
+        "  - name: DUPLICATE\n    description: Use for duplicate two.\n    tables: [\"{{ ref('products') }}\"]\n",
         encoding="utf-8",
     )
     project = load_project(tmp_path, manifest_path=manifest)
@@ -295,7 +297,7 @@ def test_every_unread_key_is_reported_and_0_3_spellings_are_named(tmp_path: Path
     (root / "semantic_views" / "views.yml").write_text(
         "semantic_views:\n"
         "  - name: catalog\n"
-        "    description: Product catalog.\n"
+        "    description: Use for product catalog.\n"
         "    owner: data-team\n"
         "    tables: [\"{{ ref('products') }}\"]\n"
         "    table_config:\n      products:\n        synonyms: [items]\n        alias: goods\n"
@@ -348,7 +350,6 @@ def test_every_unread_key_is_reported_and_0_3_spellings_are_named(tmp_path: Path
             ("SST-PRS004", "WARNING", "semantic_view:catalog", "table_config.products.alias", None),
             ("SST-PRS004", "WARNING", "semantic_view:catalog", "variables[0].unit", None),
             ("SST-PRS004", "WARNING", "semantic_view:catalog", "tags[0].note", None),
-            ("SST-PRS020", "WARNING", "metric:product_count", "visibility", "access_modifier"),
             ("SST-PRS020", "WARNING", "metric:product_count", "non_additive_by", "non_additive_dimensions"),
             ("SST-PRS004", "WARNING", "metric:product_count", "non_additive_dimensions[0].grain", None),
             (
@@ -360,26 +361,25 @@ def test_every_unread_key_is_reported_and_0_3_spellings_are_named(tmp_path: Path
             ),
             ("SST-PRS020", "WARNING", "metric:product_count", "non_additive_dimensions[0].nulls", "null_order"),
             ("SST-PRS004", "WARNING", "metric:product_count", "default_aggregation", None),
-            ("SST-PRS020", "WARNING", "custom_instruction:tone", "sql_generation", "ai_sql_generation"),
-            (
-                "SST-PRS020",
-                "WARNING",
-                "custom_instruction:tone",
-                "question_categorization",
-                "ai_question_categorization",
-            ),
             ("SST-PRS004", "WARNING", "custom_instruction:tone", "consumer", None),
-            ("SST-PRS004", "WARNING", "filter:cheap", "synonyms", None),
             ("SST-PRS004", "WARNING", "verified_query:how_many", "tags", None),
-            ("SST-PRS004", "WARNING", "relationship:self", "join_type", None),
             ("SST-PRS021", "ERROR", "relationship:self", None, None),
-        ],
-        key=str,
+        ]
     )
-    visibility = next(
-        item for item in _authored_key_diagnostics(documents) if item.context.get("field") == "visibility"
-    )
-    assert visibility.message == "metric:product_count: 'visibility' is deprecated; use 'access_modifier'"
+    # The 0.3 spellings SST still honours, and the keys that change nothing, are reported by
+    # their own codes instead.
+    assert [
+        (item.code, item.severity.name, item.subject, item.context.get("field"))
+        for item in _deprecated_key_diagnostics(documents)
+    ] == [
+        ("SST-VAL012", "WARNING", "custom_instruction:tone", "sql_generation"),
+        ("SST-VAL012", "WARNING", "custom_instruction:tone", "question_categorization"),
+        ("SST-VAL011", "ERROR", "filter:cheap", "synonyms"),
+        ("SST-VAL122", "WARNING", "metric:product_count", None),
+        ("SST-VAL211", "WARNING", "relationship:self", "join_type"),
+    ]
+    visibility = next(item for item in _deprecated_key_diagnostics(documents) if item.code == "SST-VAL122")
+    assert visibility.message == "metric 'product_count' uses visibility; the current key is access_modifier"
     assert visibility.origin is not None and visibility.origin.line == 5
     # The renamed relationship shape is not also reported as having no conditions.
     assert _relationship_parse_diagnostics(documents, tmp_path, "semantic_models") == ()
@@ -418,7 +418,7 @@ def test_view_tags_must_be_a_list_and_an_empty_file_only_warns(tmp_path: Path) -
     manifest = write_project(tmp_path)
     views = tmp_path / "semantic_models" / "semantic_views"
     (views / "views.yml").write_text(
-        "semantic_views:\n  - name: catalog\n    description: Product catalog.\n"
+        "semantic_views:\n  - name: catalog\n    description: Use for product catalog.\n"
         "    tables: [\"{{ ref('products') }}\"]\n    tags: {tier: gold}\n",
         encoding="utf-8",
     )
@@ -591,7 +591,7 @@ def test_a_window_dimension_the_metric_cannot_reach_fails_the_view(tmp_path: Pat
     }
     manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
     (tmp_path / "semantic_models" / "semantic_views" / "views.yml").write_text(
-        "semantic_views:\n  - name: catalog\n    description: Product catalog.\n"
+        "semantic_views:\n  - name: catalog\n    description: Use for product catalog.\n"
         "    tables:\n      - \"{{ ref('products') }}\"\n      - \"{{ ref('calendar') }}\"\n",
         encoding="utf-8",
     )
@@ -607,7 +607,7 @@ def test_a_window_dimension_the_metric_cannot_reach_fails_the_view(tmp_path: Pat
     project = load_project(tmp_path, manifest_path=manifest_path)
     assert project.views == ()
     assert [(item.code, item.subject, item.context["field"]) for item in findings(project.diagnostics)] == [
-        ("SST-VAL125", "semantic_view:catalog", "order_by[0]")
+        ("SST-VAL129", "semantic_view:catalog", "order_by[0]")
     ]
     assert "a dimension PRODUCTS reaches in this view" in findings(project.diagnostics)[0].message
 
@@ -712,7 +712,8 @@ def test_filter_labels_must_be_a_list_of_strings(tmp_path: Path) -> None:
 def test_a_view_list_outside_the_views_folder_is_reported_not_dropped_silently(tmp_path: Path, relative: str) -> None:
     manifest = write_project(tmp_path)
     (tmp_path / relative).write_text(
-        "semantic_views:\n  - name: stray\n    description: Stray view.\n    tables: [\"{{ ref('products') }}\"]\n",
+        "semantic_views:\n  - name: stray\n    description: Use for stray view.\n"
+        "    tables: [\"{{ ref('products') }}\"]\n",
         encoding="utf-8",
     )
     project = load_project(tmp_path, manifest_path=manifest)

@@ -135,6 +135,7 @@ def _column(name: str, value: object, *, node_path: str) -> DbtColumn:
         declared_keys=frozenset(str(key) for key in meta),
         native_data_type=native_type,
         pii_tagged=_pii_tagged(node),
+        access_modifier=_text(meta.get("access_modifier")),
     )
 
 

@@ -111,15 +111,28 @@ def _column_description_diagnostics(model: DbtModel, column: DbtColumn) -> list[
 
 
 def _column_meta_diagnostics(model: DbtModel, column: DbtColumn) -> list[Diagnostic]:
-    """Report each `meta.sst` key of a column that SST does not read.
+    """Report each `meta.sst` key of a column that SST does not read, and a private dimension.
+
+    A dimension's `access_modifier: private_access` is reported as unsupported rather than
+    as an unread key: it is read only to refuse it.
 
     Diagnostics:
+        SST-VAL222: when a dimension declares `access_modifier: private_access`.
         SST-PRS004: when a column's `meta.sst` holds a key SST does not read, once per key.
     """
-    _, subject = _column_keys(model, column)
-    return [
-        D("SST-PRS004", artifact=subject, field=f"meta.sst.{key}", subject=subject) for key in column.unknown_meta_keys
-    ]
+    artifact, subject = _column_keys(model, column)
+    private = column.access_modifier == "private_access" and column.column_type in ("dimension", "time_dimension")
+    diagnostics: list[Diagnostic] = []
+    if private:
+        diagnostics.append(
+            D("SST-VAL222", artifact=artifact, member=column.name, value=column.access_modifier, subject=subject)
+        )
+    diagnostics.extend(
+        D("SST-PRS004", artifact=subject, field=f"meta.sst.{key}", subject=subject)
+        for key in column.unknown_meta_keys
+        if not (private and key == "access_modifier")
+    )
+    return diagnostics
 
 
 def _declared_type_diagnostics(model: DbtModel, column: DbtColumn) -> list[Diagnostic]:

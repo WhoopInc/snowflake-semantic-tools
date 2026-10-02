@@ -38,9 +38,40 @@ semantic_views:
 - `tables:` is required and lists models with `{{ ref() }}`. It decides which
   members attach (see [Concepts](../concepts.md#association-how-members-find-views)).
 - `description:` is what an agent reads to pick this view; say what it answers
-  and what it does not.
+  and what it does not, and when to use it (`SST-VAL005`).
 - `variables:` declares view variables that expressions use by bare name.
 - `enabled: false` keeps a view in the project without publishing it.
+
+### Narrowing what a view exposes
+
+A view publishes every member its tables attach. To expose a relevant subset,
+list what to keep or what to drop, per kind -- never both for one kind
+(`SST-VAL329`):
+
+```yaml
+semantic_views:
+  - name: product_costs
+    description: |-
+      Use for product margin and supply cost by product.
+    tables:
+      - "{{ ref('order_items') }}"
+      - "{{ ref('products') }}"
+    columns:                       # or exclude_columns:
+      - "{{ ref('order_items', 'item_price') }}"
+      - "{{ ref('products', 'product_name') }}"
+    metrics:                       # or exclude_metrics:
+      - "{{ metric('total_line_item_revenue') }}"
+    relationships:                 # or exclude_relationships:
+      - order_items_to_products
+```
+
+- An entry must name something the view's tables provide (`SST-VAL330`); a
+  column excluded globally cannot be listed, and excluding it again only warns
+  (`SST-VAL331`).
+- A kept metric needs the relationships in its `using_relationships`
+  (`SST-VAL332`) and the dimensions its window or non-additive entries name
+  (`SST-VAL318`).
+- Filters are never scoped: they attach by their tables as usual.
 
 ## Columns: facts, dimensions, time dimensions
 
@@ -174,7 +205,7 @@ CUSTOMERS.CUMULATIVE_CUSTOMER_COUNT AS SUM(CUSTOMERS.CUSTOMER_COUNT) OVER (
 - Each entry is `{{ ref('<model>', '<column>') }}`, naming a dimension the
   metric's table reaches through the view's relationships, or
   `{{ metric('<name>') }}`, naming a metric of the same table. EXCLUDING takes
-  dimensions only (`SST-VAL125`).
+  dimensions only (`SST-VAL129`).
 - `frame` is `ROWS` or `RANGE BETWEEN <bound> AND <bound>`, where a bound is
   `UNBOUNDED PRECEDING`, `UNBOUNDED FOLLOWING`, `CURRENT ROW`, or a number or an
   `INTERVAL '<n> <unit>'` followed by `PRECEDING` or `FOLLOWING`. Anything else is

@@ -25,6 +25,7 @@ from snowflake_semantic_tools.adapters.yaml.semantic.checks.dbt import (
     _dbt_model_diagnostics,
     _description_diagnostics,
 )
+from snowflake_semantic_tools.adapters.yaml.semantic.checks.deprecated import _deprecated_key_diagnostics
 from snowflake_semantic_tools.adapters.yaml.semantic.checks.expressions import (
     _expression_reference_diagnostics,
     _filter_diagnostics,
@@ -214,12 +215,12 @@ def _document_diagnostics(
         table for view in parsed.views if not view.poisoned for table in view.declared_tables if table in context.models
     )
     return (
-        *_unreadable_view_tables(context, parsed),
         *consumed_model_diagnostics(context.catalog, referenced_models),
         *collapse_diagnostics(context.catalog, referenced_models),
         *_folder_route_diagnostics(context.config, context.views_dir),
         *_stray_view_diagnostics(documents, context.views_dir),
         *_authored_key_diagnostics(documents),
+        *_deprecated_key_diagnostics(documents),
         *_member_name_diagnostics(documents),
         *_description_diagnostics(parsed.views, metrics),
         *_description_template_diagnostics(parsed),
@@ -229,24 +230,6 @@ def _document_diagnostics(
         *_dbt_model_diagnostics(context.models, referenced_models),
         *_dbt_column_diagnostics(context.models, referenced_models),
     )
-
-
-def _unreadable_view_tables(context: LoadContext, parsed: ParsedProject) -> tuple[Diagnostic, ...]:
-    """Report each view table that names a model with no relation, once per view and model.
-
-    Diagnostics:
-        SST-DBT009: a view's table names a disabled or relationless model.
-    """
-    found: list[Diagnostic] = []
-    for view in parsed.views:
-        subject = artifact_key("semantic_view", view.name)
-        for table in view.declared_tables:
-            diagnostic = (
-                unreadable_model(context.catalog, table, subject=subject) if table not in context.models else None
-            )
-            if diagnostic is not None:
-                found.append(diagnostic)
-    return tuple(found)
 
 
 def _description_template_diagnostics(parsed: ParsedProject) -> tuple[Diagnostic, ...]:
@@ -448,7 +431,7 @@ def _relationship_checks(
     unattached = frozenset(
         diagnostic.subject.casefold()
         for diagnostic in placement
-        if diagnostic.code == "SST-VAL203" and diagnostic.subject is not None
+        if diagnostic.code in ("SST-VAL205", "SST-VAL207") and diagnostic.subject is not None
     )
     return diagnostics, unattached
 

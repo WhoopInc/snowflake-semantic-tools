@@ -50,7 +50,11 @@ def test_an_error_from_the_last_check_phase_still_keeps_its_view_unbuilt(tmp_pat
     text = views.read_text(encoding="utf-8")
     views.write_text(text.replace("'jaffle_question_scope'", "'no_such_instruction'"), encoding="utf-8")
     loaded = load_project(project, manifest_path=MANIFEST)
-    assert _findings(loaded.diagnostics) == [("SST-REF007", "semantic_view:jaffle_sales")]
+    # No view names jaffle_question_scope any more, so it is reported as referenced by nothing.
+    assert _findings(loaded.diagnostics) == [
+        ("SST-REF007", "semantic_view:jaffle_sales"),
+        ("SST-VAL007", "custom_instruction:jaffle_question_scope"),
+    ]
     assert sorted(view.fqn for view in loaded.views) == [
         "SST_REF_DEV.CORE.JAFFLE_MENU",
         "SST_REF_DEV.JAFFLE.JAFFLE_MINIMAL",

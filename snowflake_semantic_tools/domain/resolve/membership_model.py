@@ -9,6 +9,7 @@ from types import MappingProxyType
 from snowflake_semantic_tools.domain.model.artifact_key import artifact_key
 from snowflake_semantic_tools.domain.model.project import ArtifactKey, MemberKey, ParsedMember
 from snowflake_semantic_tools.domain.model.registry import Registry
+from snowflake_semantic_tools.domain.model.semantic_view import ViewScope
 
 Attachment = Mapping[MemberKey, tuple[ArtifactKey, ...]]
 
@@ -49,6 +50,8 @@ class MembershipRequest:
         instruction_channels: For each custom instruction's casefolded name, the instruction
             channels its text writes.
         unresolved: For each poisoned member's key, how many of its references did not resolve.
+        view_scopes: Each view's include or exclude lists, by the view's artifact key; a view
+            without an entry admits every member its tables attach.
     """
 
     members: tuple[ParsedMember, ...]
@@ -61,6 +64,7 @@ class MembershipRequest:
     joins: tuple[tuple[str, str], ...] = ()
     instruction_channels: Mapping[str, frozenset[str]] = field(default_factory=lambda: MappingProxyType({}))
     unresolved: Mapping[MemberKey, int] = field(default_factory=lambda: MappingProxyType({}))
+    view_scopes: Mapping[ArtifactKey, ViewScope] = field(default_factory=lambda: MappingProxyType({}))
 
     def facts_of(self, member: ParsedMember) -> MemberFacts:
         """Return what is known of `member` beyond its tables."""

@@ -26,7 +26,7 @@ SCHEMA = "https://schemas.getdbt.com/dbt/manifest/v12.json"
 VIEW = (
     "semantic_views:\n"
     "  - name: catalog\n"
-    "    description: Product catalog.\n"
+    "    description: Use this view for questions about the product catalog.\n"
     "    tables:\n"
     "      - \"{{ ref('products') }}\"\n"
 )

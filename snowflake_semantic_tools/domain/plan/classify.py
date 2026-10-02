@@ -33,6 +33,7 @@ from snowflake_semantic_tools.domain.model.lifecycle import (
 )
 from snowflake_semantic_tools.domain.model.registry import Registry
 from snowflake_semantic_tools.domain.state import PARTIAL_WRITE, AppliedEntry
+from snowflake_semantic_tools.domain.validate.shared import is_digest
 
 
 @dataclass(frozen=True, slots=True)
@@ -82,6 +83,8 @@ def classify(
         SST-PLN023: the declared name's case differs from the live object's.
         SST-PLN024: an object holds the name, but state records no entry for it.
         SST-PLN025: state records the artifact at another target.
+        SST-VAL320: the recorded or rendered fingerprint is not a canonical digest, so the
+            comparison would not be of normalised definitions.
     """
     artifact_type = registry.artifacts[artifact.artifact_type]
     if validation.has_errors:
@@ -184,6 +187,16 @@ class _StateRule:
     report: Callable[[_Evidence], Diagnostic] | None = None
 
 
+def _unnormalised(evidence: _Evidence) -> bool:
+    # Drift is decided by comparing digests of the canonical definition. A recorded or rendered
+    # value that is not one would compare raw text, which differs for reasons that are not drift.
+    return not (is_digest(evidence.recorded.fingerprint) and is_digest(evidence.artifact.fingerprint))
+
+
+def _raw_comparison(evidence: _Evidence) -> Diagnostic:
+    return D("SST-VAL320", artifact=evidence.key)
+
+
 def _recorded_elsewhere(evidence: _Evidence) -> bool:
     return QualifiedName.parse(evidence.recorded.qualified_name).folded != evidence.artifact.target.folded
 
@@ -230,6 +243,7 @@ def _out_of_band(evidence: _Evidence) -> Diagnostic:
 # The first row that holds decides, and an object no row matches is unchanged. The blocking
 # rows come first, so an update never overwrites an object that moved or changed out of band.
 _STATE_RULES: tuple[_StateRule, ...] = (
+    _StateRule(_unnormalised, Action.BLOCKED, ChangeReason.VALIDATION_ERRORS, _raw_comparison),
     _StateRule(_recorded_elsewhere, Action.BLOCKED, ChangeReason.TARGET_MOVED, _target_moved),
     _StateRule(_changed_out_of_band, Action.BLOCKED, ChangeReason.VALIDATION_ERRORS, _out_of_band),
     _StateRule(_applied_under_another_manifest, Action.UPDATE, ChangeReason.STATE_MANIFEST_MISMATCH),

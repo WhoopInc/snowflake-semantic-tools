@@ -44,6 +44,8 @@ class DbtColumn:
     native_data_type: str | None = None
     # The column carries `pii_tags` in its meta, of any privacy category.
     pii_tagged: bool = False
+    # `meta.sst.access_modifier` as written; None when the column writes none.
+    access_modifier: str | None = None
 
 
 @dataclass(frozen=True, slots=True)

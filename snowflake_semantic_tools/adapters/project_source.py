@@ -11,6 +11,7 @@ through `dbt.project` and passed to the semantic pipeline, which reads no dbt fi
 from __future__ import annotations
 
 from collections.abc import Callable
+from dataclasses import replace
 from hashlib import sha256
 from pathlib import Path
 
@@ -168,9 +169,7 @@ class YamlProjectSource:
         catalog = self.dbt_catalog()
         models = {model.name.casefold(): model for model in catalog.models}
         project = load_semantic_views_result(self._project_dir, inputs, target=target, models=models, catalog=catalog)
-        return SemanticViewProject(
-            project.views, DiagnosticBag((*self._seam_diagnostics(catalog), *project.diagnostics))
-        )
+        return replace(project, diagnostics=DiagnosticBag((*self._seam_diagnostics(catalog), *project.diagnostics)))
 
     def load_tools(self) -> ToolCatalog:
         """Load the tool groups under `project.tools_dir`, checked against the dbt manifest and target.

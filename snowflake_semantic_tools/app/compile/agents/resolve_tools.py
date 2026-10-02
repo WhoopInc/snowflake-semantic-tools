@@ -63,6 +63,8 @@ def resolve_tool(
     Diagnostics:
         SST-RND012: the tool type is unknown to the renderer.
         SST-VAL520: an Analyst tool names no semantic view, or is given a name as well.
+        SST-VAL016: an Analyst tool's semantic view is one the project declares and does not
+            publish, because it is disabled.
         SST-REF011: an Analyst tool's semantic view is not one that compiled.
         SST-VAL521: a Cortex Search or generic tool has no name, or names no tool member.
         SST-REF010: the tool member a tool names does not resolve (from the tool catalog).
@@ -111,6 +113,10 @@ def _analyst(
         )
         return None
     target = context.semantic_views.get(authored.semantic_view.casefold())
+    declared = artifact_key("semantic_view", authored.semantic_view.casefold())
+    if target is None and declared in context.unpublished:
+        diagnostics.append(D("SST-VAL016", type="agent", name=agent.name, value=declared, subject=agent.key))
+        return None
     if target is None:
         diagnostics.append(D("SST-REF011", name=authored.semantic_view, subject=agent.key))
         return None

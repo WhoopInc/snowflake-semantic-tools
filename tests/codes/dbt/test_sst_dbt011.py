@@ -8,7 +8,8 @@ from snowflake_semantic_tools.domain.diagnostics import Severity
 from tests.helpers.seam_projects import SmallProject, found, manifest
 
 VIEW = (
-    "semantic_views:\n  - name: catalog\n    description: Product catalog.\n    tables:\n"
+    "semantic_views:\n  - name: catalog\n"
+    "    description: Use this view for questions about the product catalog.\n    tables:\n"
     "      - \"{{ ref('products') }}\"\n      - \"{{ source('raw', 'orders') }}\"\n"
 )
 SOURCE = {"source_name": "raw", "name": "orders", "relation_name": "db.raw.orders"}

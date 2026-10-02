@@ -246,7 +246,7 @@ def _view_window(metric: MetricDef, owner: str, relationships: tuple[Relationshi
     Entries resolve in clause order: `partition_by`, `partition_by_excluding`, `order_by`.
 
     Raises:
-        ProjectError: A dimension is unreachable (SST-VAL125), or an entry does not resolve.
+        ProjectError: A dimension is unreachable (SST-VAL129), or an entry does not resolve.
     """
     window = metric.window
     assert window is not None
@@ -280,7 +280,7 @@ def _require_reachable(
     """Require each window dimension to be one the metric's table reaches through the view's joins.
 
     Diagnostics:
-        SST-VAL125: when a window entry names a dimension of a table the metric's table cannot reach.
+        SST-VAL129: when a window entry names a dimension of a table the metric's table cannot reach.
 
     Raises:
         ProjectError: A window dimension is unreachable.
@@ -300,7 +300,7 @@ def _require_reachable(
             continue
         if logical_by_model.get(call.args[0].casefold()) not in reached:
             diagnostic = D(
-                "SST-VAL125",
+                "SST-VAL129",
                 metric=metric.name,
                 field=field,
                 value=text,

@@ -19,6 +19,9 @@ from snowflake_semantic_tools.adapters.yaml.documents import LoadCache, RawDocum
 from snowflake_semantic_tools.adapters.yaml.ownership import assign_owners
 from snowflake_semantic_tools.adapters.yaml.parse import parse_yaml_bytes, read_yaml_mapping
 from snowflake_semantic_tools.adapters.yaml.semantic.build import _build_view
+from snowflake_semantic_tools.adapters.yaml.semantic.checks.fanout import _attachment_diagnostics
+from snowflake_semantic_tools.adapters.yaml.semantic.checks.rules import _rule_diagnostics
+from snowflake_semantic_tools.adapters.yaml.semantic.checks.scope import _scope_diagnostics, view_scope
 from snowflake_semantic_tools.adapters.yaml.semantic.collect import parse_semantic_project
 from snowflake_semantic_tools.adapters.yaml.semantic.membership import membership
 from snowflake_semantic_tools.adapters.yaml.semantic.phases import (
@@ -36,7 +39,7 @@ from snowflake_semantic_tools.adapters.yaml.semantic.view_instructions import _i
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, DiagnosticBag, Origin
 from snowflake_semantic_tools.domain.model.artifact_key import artifact_key
 from snowflake_semantic_tools.domain.model.dbt import DbtCatalog, DbtModel, DbtTarget
-from snowflake_semantic_tools.domain.model.project import ParsedMember, ResolvedProject, SemanticViewProject
+from snowflake_semantic_tools.domain.model.project import ParsedMember, ParsedView, ResolvedProject, SemanticViewProject
 from snowflake_semantic_tools.domain.model.registry import SEMANTIC_REGISTRY
 from snowflake_semantic_tools.domain.model.semantic_view import SemanticView
 from snowflake_semantic_tools.domain.resolve.rendered import rendered_diagnostics
@@ -95,11 +98,14 @@ def load_semantic_views_result(
        view is poisoned.
     7. The healthy metrics' `using_relationships`; a metric naming a relationship that is
        missing or starts elsewhere is poisoned.
-    8. View instructions: each view's `custom_instructions()` entries.
+    8. View instructions, scope and content: each view's `custom_instructions()` entries, the
+       columns, metrics and relationships it lists or excludes, then the file, prose and
+       per-view rules of `checks.rules`.
     9. Poisoned views: each view an error of phases 1-8 names, whose name repeats, whose
        tables are malformed, or whose file uses the legacy globals.
     10. Member resolution: attach every unpoisoned member to the views it belongs to, and
-        report what the attachment means (`domain.resolve.membership`).
+        report what the attachment means (`domain.resolve.membership`) and each member that
+        reaches no view.
     11. Build every enabled, unpoisoned view under semantic_views/; one that fails is
         reported and left out. Then the dbt seam: each model that feeds several built views,
         and a summary of what was read.
@@ -120,8 +126,9 @@ def load_semantic_views_result(
         ProjectError: A member cannot be read at all, or there is no semantic_views/ directory.
     """
     parsed = parse_semantic_project(inputs.documents, project_dir, inputs.semantic_models_dir, models)
-    texts_catalog = catalog or DbtCatalog("v12", None, None, tuple(models.values()))
-    resolved_members, instruction_text_diagnostics, unresolved_instructions = _instruction_texts(parsed, texts_catalog)
+    resolved_members, instruction_text_diagnostics, unresolved_instructions = _instruction_texts(
+        parsed, catalog or DbtCatalog("v12", None, None, tuple(models.values()))
+    )
     parsed = replace(parsed, members=resolved_members)
     members = _typed_members(parsed)
     context = _load_context(project_dir, inputs, target, models, catalog)
@@ -134,6 +141,10 @@ def load_semantic_views_result(
     using_diagnostics, misrouted = _using_checks(members, healthy)
     poison = poison.with_members(unattached | misrouted | unresolved_instructions)
     instruction_names, instruction_diagnostics = _view_instructions(parsed.views, members.instruction_names)
+    scope_diagnostics = _scope_diagnostics(parsed.views, members.metrics, members.relationships, context.models)
+    rule_diagnostics = _rule_diagnostics(
+        context.documents, parsed, context.models, context.config, instruction_names, context.catalog.unreadable_models
+    )
     reported = (
         *parsed.diagnostics,
         *structure.diagnostics,
@@ -142,34 +153,78 @@ def load_semantic_views_result(
         *using_diagnostics,
         *instruction_diagnostics,
         *instruction_text_diagnostics,
+        *scope_diagnostics,
+        *rule_diagnostics,
     )
     # After every check: the views left unbuilt are read from the errors reported so far.
     poison = _view_poison(poison, parsed.views, reported, structure.duplicate_views, structure.legacy_files)
-    built_nodes = tuple(_buildable_nodes(context, poison))
-    attached_members, decided = membership(
-        parsed.members,
-        poison.member_keys,
-        view_tables=dict(view_tables),
-        reported_views=frozenset(
-            artifact_key("semantic_view", str(node["name"]).casefold()) for _, node in built_nodes
-        ),
-        view_instructions=instruction_names,
-        known_models=frozenset(models),
-        reported=reported,
+    built, attachment, diagnostics = _resolve_and_build(
+        context, parsed.views, parsed.members, poison, dict(view_tables), instruction_names, reported
     )
-    attachment = decided.attachment
-    built, build_diagnostics = _build_views(context, built_nodes, attached_members, attachment)
-    rendered = rendered_diagnostics(built, attached_members, attachment)
-    seam = _seam_diagnostics(built, context.catalog)
     resolved = ResolvedProject(
         views=tuple(built.values()),
         attachment=attachment,
         custom_instruction_names=MappingProxyType(
             {artifact.casefold(): tuple(sorted(names)) for artifact, names in instruction_names.items()}
         ),
-        diagnostics=DiagnosticBag((*reported, *decided.diagnostics, *build_diagnostics, *seam, *rendered)),
+        diagnostics=DiagnosticBag((*reported, *diagnostics)),
     )
-    return SemanticViewProject(resolved.views, resolved.diagnostics)
+    return SemanticViewProject(resolved.views, resolved.diagnostics, _disabled_views(context))
+
+
+def _resolve_and_build(
+    context: LoadContext,
+    views: tuple[ParsedView, ...],
+    members: tuple[ParsedMember, ...],
+    poison: Poison,
+    view_tables: Mapping[str, frozenset[str]],
+    instruction_names: Mapping[str, frozenset[str]],
+    reported: tuple[Diagnostic, ...],
+) -> tuple[dict[str, SemanticView], Mapping[str, tuple[str, ...]], tuple[Diagnostic, ...]]:
+    """Phases 10 to 12: resolve membership, build the buildable views, and check what built.
+
+    Returns:
+        The views that built, by artifact key; the attachment; and the diagnostics of these
+        phases in report order: member resolution's, each unattached member's, the build's,
+        the dbt seam's, then the built views'.
+    """
+    built_nodes = tuple(_buildable_nodes(context, poison))
+    scopes = {artifact_key("semantic_view", str(node["name"]).casefold()): view_scope(node) for _, node in built_nodes}
+    attached_members, decided = membership(
+        members,
+        poison.member_keys,
+        view_tables=view_tables,
+        reported_views=frozenset(scopes),
+        view_instructions=instruction_names,
+        known_models=frozenset(context.models),
+        reported=reported,
+        view_scopes=scopes,
+    )
+    attachment = decided.attachment
+    orphans = _unreported_orphans(_attachment_diagnostics(views, attached_members, attachment), decided.diagnostics)
+    built, build_diagnostics = _build_views(context, built_nodes, attached_members, attachment)
+    return (
+        built,
+        attachment,
+        (
+            *decided.diagnostics,
+            *orphans,
+            *build_diagnostics,
+            *_seam_diagnostics(built, context.catalog),
+            *rendered_diagnostics(built, attached_members, attachment),
+        ),
+    )
+
+
+def _unreported_orphans(orphans: tuple[Diagnostic, ...], decided: tuple[Diagnostic, ...]) -> tuple[Diagnostic, ...]:
+    """Drop each SST-VAL007 for a member that member resolution already reported unattached.
+
+    SST-MEM005 names a member with tables that attaches to no view; SST-VAL007 says the same
+    of any authored member, so it is kept only for the members SST-MEM005 does not cover,
+    such as a custom instruction no view names.
+    """
+    unattached = {item.subject for item in decided if item.code == "SST-MEM005"}
+    return tuple(item for item in orphans if item.subject not in unattached)
 
 
 def _seam_diagnostics(built: Mapping[str, SemanticView], catalog: DbtCatalog) -> tuple[Diagnostic, ...]:
@@ -267,6 +322,23 @@ def _buildable_nodes(context: LoadContext, poison: Poison) -> Iterator[tuple[Pat
             if artifact_key("semantic_view", node["name"]).casefold() in poison.view_keys:
                 continue
             yield path, node
+
+
+def _disabled_views(context: LoadContext) -> tuple[str, ...]:
+    """The casefolded names of the views under semantic_views/ that are disabled, in document order."""
+    root_key = SEMANTIC_REGISTRY.artifacts["semantic_view"].root_key
+    assert root_key is not None
+    names: list[str] = []
+    for document in context.documents.under(context.views_dir, root_key):
+        for node in document.tree.get(root_key) or []:
+            if not isinstance(node, dict) or not node.get("name"):
+                continue
+            enabled = node.get("enabled")
+            if enabled is None:
+                enabled = _semantic_view_defaults(context.config, document.abs_path, context.views_dir).get("enabled")
+            if enabled is False:
+                names.append(str(node["name"]).casefold())
+    return tuple(names)
 
 
 def _build_failure(project_dir: Path, path: Path, node: dict[str, Any], exc: ProjectError) -> tuple[Diagnostic, ...]:

@@ -192,7 +192,11 @@ def test_sample_values_come_with_an_enum_decision_and_respect_what_is_written() 
         ("amount", (("sample_values", ("5", "3")),)),
         ("tier", (("is_enum", False),)),
     ]
-    assert [(item.code, item.subject) for item in result.diagnostics] == [("SST-VAL328", "dbt_column:orders.email")]
+    # kind's written is_enum: true is left for its author, whom SST-VAL317 tells.
+    assert [(item.code, item.subject) for item in result.diagnostics] == [
+        ("SST-VAL317", "dbt_column:orders.kind"),
+        ("SST-VAL328", "dbt_column:orders.email"),
+    ]
     forced = enrich_model(
         model, warehouse, _options(C.ENUMS, forced=(C.ENUMS, C.SAMPLE_VALUES)), SETTINGS, samples=samples, synonyms={}
     )

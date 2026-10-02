@@ -37,5 +37,5 @@ CREATE OR REPLACE SEMANTIC VIEW SST_REF_DEV.JAFFLE.JAFFLE_MINIMAL
   METRICS (
     PRODUCTS.PRODUCT_COUNT AS COUNT(DISTINCT PRODUCTS.PRODUCT_ID) COMMENT = 'Number of distinct products sold.'
   )
-  COMMENT = 'Menu products only. The smallest valid semantic view in this fixture.'
+  COMMENT = 'Menu products only. Use it when a question needs nothing but the product catalogue.'
   COPY GRANTS

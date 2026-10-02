@@ -87,7 +87,7 @@ def test_column_rules_run_in_order_and_only_sentinels_are_reported_on_an_unused_
     ]
 
 
-def test_a_relationship_reports_the_first_bad_condition_and_keeps_its_one_asof_column() -> None:
+def test_a_relationship_reports_the_first_bad_condition_and_a_second_asof_column() -> None:
     origin = Origin("relationships.yml", 1, 1)
     endpoints = ("orders", "customers")
     misplaced = "{{ ref('orders', 'customer_id') }} = {{ ref('people', 'customer_id') }}"
@@ -98,6 +98,7 @@ def test_a_relationship_reports_the_first_bad_condition_and_keeps_its_one_asof_c
     assert isinstance(second, Diagnostic) and second.code == "SST-PRS110"
     parsed = _parse_conditions(
         [
+            "{{ ref('orders', 'ordered_at') }} >= {{ ref('customers', 'first_at') }}",
             "{{ ref('orders', 'customer_id') }} = {{ ref('customers', 'customer_id') }}",
             "{{ ref('orders', 'placed_at') }} >= {{ ref('customers', 'joined_at') }}",
         ],
@@ -106,7 +107,20 @@ def test_a_relationship_reports_the_first_bad_condition_and_keeps_its_one_asof_c
         origin,
         "relationship:rel",
     )
-    assert parsed == _Conditions((("CUSTOMER_ID", "CUSTOMER_ID"), ("PLACED_AT", "JOINED_AT")), 1, None)
+    # A relationship renders one ASOF column, so a second ASOF condition is refused.
+    assert isinstance(parsed, Diagnostic) and parsed.code == "SST-PRS112"
+    assert parsed.context["count"] == 2
+    kept = _parse_conditions(
+        [
+            "{{ ref('orders', 'customer_id') }} = {{ ref('customers', 'customer_id') }}",
+            "{{ ref('orders', 'placed_at') }} >= {{ ref('customers', 'joined_at') }}",
+        ],
+        endpoints,
+        "rel",
+        origin,
+        "relationship:rel",
+    )
+    assert kept == _Conditions((("CUSTOMER_ID", "CUSTOMER_ID"), ("PLACED_AT", "JOINED_AT")), 1, None)
 
 
 def test_a_view_reports_its_verified_query_failure_before_a_bad_variable(tmp_path: Path) -> None:
@@ -135,7 +149,8 @@ def test_a_view_reports_its_verified_query_failure_before_a_bad_variable(tmp_pat
         if diagnostic.subject == "semantic_view:jaffle_sales" and diagnostic.severity is not Severity.INFO
     ]
     assert [(diagnostic.code, dict(diagnostic.context)) for diagnostic in sales] == [
-        ("SST-REF006", {"name": "product_count"})
+        ("SST-VAL220", {"artifact": "semantic_view:jaffle_sales", "name": "bad_bool"}),
+        ("SST-REF006", {"name": "product_count"}),
     ]
     assert sorted(view.fqn for view in result.views) == [
         "SST_REF_DEV.CORE.JAFFLE_MENU",

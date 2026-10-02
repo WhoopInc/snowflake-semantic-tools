@@ -11,11 +11,13 @@ request, split by what they read: `membership_tables` the members' own tables,
 from __future__ import annotations
 
 from dataclasses import dataclass
+from types import MappingProxyType
 
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, DiagnosticBag
 from snowflake_semantic_tools.domain.model.artifact_key import split_artifact_key
 from snowflake_semantic_tools.domain.model.project import ArtifactKey, ParsedMember
 from snowflake_semantic_tools.domain.model.registry import AttachRule, Registry
+from snowflake_semantic_tools.domain.model.semantic_view import ViewScope
 from snowflake_semantic_tools.domain.resolve.members import attach_members, attach_view_members, effective_tables
 from snowflake_semantic_tools.domain.resolve.membership_model import Attachment, MembershipRequest
 from snowflake_semantic_tools.domain.resolve.membership_reach import reach_diagnostics
@@ -41,7 +43,7 @@ def resolve_membership(request: MembershipRequest) -> MembershipResult:
         Those of `membership_tables.table_diagnostics`, then of
         `membership_reach.reach_diagnostics`, then of `invariant_diagnostics`.
     """
-    table_attachment = attach_members(request.view_tables, request.members, request.registry)
+    table_attachment = _scoped(attach_members(request.view_tables, request.members, request.registry), request)
     attachment = _attach(request)
     repeat = _attach(request)
     diagnostics = (
@@ -53,13 +55,35 @@ def resolve_membership(request: MembershipRequest) -> MembershipResult:
 
 
 def _attach(request: MembershipRequest) -> Attachment:
-    return attach_view_members(
+    attachment = attach_view_members(
         request.view_tables,
         request.members,
         request.registry,
         view_named_members=request.view_named_members,
         metric_dependencies=request.metric_dependencies(),
     )
+    return _scoped(attachment, request)
+
+
+def _scoped(attachment: Attachment, request: MembershipRequest) -> Attachment:
+    """Narrow each metric's and relationship's views to those whose scope admits it.
+
+    A view's include or exclude lists decide what it exposes, so a metric or relationship a
+    view leaves out is not attached to it; every other member type is left as attached.
+    """
+    names = {member.key: (member.type_name, member.name) for member in request.members}
+    narrowed: dict[str, tuple[ArtifactKey, ...]] = {}
+    for key, views in attachment.items():
+        type_name, name = names.get(key, ("", ""))
+        narrowed[key] = tuple(view for view in views if _admits(request.view_scopes.get(view), type_name, name))
+    return MappingProxyType(narrowed)
+
+
+def _admits(scope: ViewScope | None, type_name: str, name: str) -> bool:
+    """Report whether a view of `scope` exposes the member of this type and name."""
+    if scope is None or type_name not in ("metric", "relationship"):
+        return True
+    return scope.admits_metric(name) if type_name == "metric" else scope.admits_relationship(name)
 
 
 def invariant_diagnostics(

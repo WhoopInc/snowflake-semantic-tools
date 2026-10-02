@@ -234,8 +234,8 @@ def test_derived_window_and_unattached_relationship_diagnostics() -> None:
         (("semantic_view:sales", frozenset(("customers", "orders"))),),
     )
     assert [(diagnostic.code, diagnostic.severity.name, diagnostic.caused_by) for diagnostic in diagnostics] == [
-        ("SST-VAL203", "ERROR", None),
-        ("SST-MEM005", "WARNING", "SST-VAL203"),
+        ("SST-VAL205", "ERROR", None),
+        ("SST-MEM005", "WARNING", "SST-VAL205"),
     ]
 
 
@@ -564,7 +564,7 @@ SNAPSHOT = "{{ ref('supplies', 'snapshot_month') }}"
 def _window_codes(*metrics: MetricDef) -> list[tuple[str, str, object]]:
     other_model = dataclasses.replace(_supplies(), unique_id="model.fixture.products", name="products")
     diagnostics = _metric_diagnostics(metrics, {"supplies": _supplies(), "products": other_model})
-    window_codes = ("SST-VAL101", "SST-VAL102", "SST-VAL125", "SST-VAL126", "SST-VAL127", "SST-VAL128")
+    window_codes = ("SST-VAL101", "SST-VAL102", "SST-VAL129", "SST-VAL126", "SST-VAL127", "SST-VAL128")
     return [
         (item.code, item.context["metric"], item.context.get("field") or item.context.get("function"))
         for item in diagnostics
@@ -617,7 +617,7 @@ def test_window_entries_resolve_to_a_reachable_dimension_or_a_sibling_metric() -
         windowed,
         _supply_metric("bad_entries", "SUM({{ metric('supply_total') }})", window),
     )
-    assert [field for code, metric, field in found if code == "SST-VAL125"] == [
+    assert [field for code, metric, field in found if code == "SST-VAL129"] == [
         "partition_by[0]",
         "partition_by[1]",
         "partition_by[2]",
@@ -709,9 +709,9 @@ def test_relationship_targets_need_a_key_and_the_graph_no_cycle() -> None:
         ("semantic_view:acyclic", frozenset(("regions", "orders"))),
     )
     cycles = _relationship_cycle_diagnostics((to_regions, back, itself), views)
+    # The self-reference is SST-VAL207's, so it closes no cycle here.
     assert [(item.subject, item.context["cycle"]) for item in cycles] == [
-        ("semantic_view:loop", "locations -> locations"),
-        ("semantic_view:self", "locations -> locations"),
+        ("semantic_view:loop", "locations -> regions -> locations"),
     ]
     assert _relationship_cycle_diagnostics((to_regions, back), views[:1])[0].context["cycle"] == (
         "locations -> regions -> locations"

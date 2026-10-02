@@ -16,6 +16,7 @@ from snowflake_semantic_tools.domain.model.semantic_view import (
     SemanticView,
     Table,
     VerifiedQuery,
+    ViewScope,
 )
 from snowflake_semantic_tools.domain.resolve.membership import invariant_diagnostics, resolve_membership
 from snowflake_semantic_tools.domain.resolve.membership_model import NO_FACTS, MemberFacts
@@ -38,6 +39,24 @@ def test_a_healthy_project_attaches_by_tables_and_reports_only_what_attached_whe
     assert _codes(result.diagnostics) == ["SST-MEM011", "SST-MEM103", "SST-MEM103"]
     # A fact or dimension's reach follows its table, so it is not reported as fan-out.
     assert coded(result.diagnostics, "SST-MEM011")[0].subject == "metric:m"
+
+
+def test_a_view_scope_narrows_the_metrics_and_relationships_it_attaches() -> None:
+    kept = member("metric", "kept", ("orders",))
+    left_out = member("metric", "left_out", ("orders",))
+    join = member("relationship", "orders_to_customers", ("orders", "customers"))
+    dimension = member("dimension", "orders.id", ("orders",))
+    scopes = {
+        "semantic_view:menu": ViewScope(metrics=("KEPT",)),
+        "semantic_view:sales": ViewScope(exclude_metrics=("KEPT",), exclude_relationships=("ORDERS_TO_CUSTOMERS",)),
+    }
+    result = membership(kept, left_out, join, dimension, view_scopes=scopes)
+    assert result.attachment[kept.key] == ("semantic_view:menu",)
+    assert result.attachment[left_out.key] == ("semantic_view:sales",)
+    assert result.attachment[join.key] == ()
+    # A scope lists metrics and relationships; a dimension still follows its table.
+    assert result.attachment[dimension.key] == ("semantic_view:menu", "semantic_view:sales")
+    assert coded(result.diagnostics, "SST-MEM013") == []
 
 
 def test_facts_default_and_metric_dependencies_follow_metric_references() -> None:

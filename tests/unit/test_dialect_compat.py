@@ -73,8 +73,8 @@ def test_legacy_globals_are_rejected_with_their_codes_and_render_nothing() -> No
             ("SST-REF034", "error"): 10,
             ("SST-REF035", "error"): 7,
             ("SST-VAL405", "error"): 1,
-            ("SST-PRS020", "warning"): 2,
             ("SST-PRS021", "error"): 1,
+            ("SST-VAL012", "warning"): 2,
         }
     )
 
@@ -99,21 +99,17 @@ def test_codemod_converts_idempotently_and_the_result_renders_the_committed_ddl(
     again, report = invoke("migrate", "refs", "--project-dir", str(project))
     assert again == 0 and report["data"]["files"] == []
 
-    # The codemod rewrites references, not keys: the 0.3 spellings remain, each
-    # deprecated spelling naming its 1.0 key, and the 0.3 relationship shape an error.
+    # The codemod rewrites references, not keys: the 0.3 spellings remain. The custom
+    # instruction spellings are honoured and named; the relationship shape is an error.
     exit_code, payload = invoke("compile", "--project-dir", str(project), "--manifest", str(MANIFEST))
     assert exit_code == 1
     assert codes(payload) == Counter(
-        {
-            ("SST-PRS020", "warning"): 2,
-            ("SST-PRS021", "error"): 1,
-            ("SST-MAN008", "error"): 1,
-        }
+        {("SST-PRS021", "error"): 1, ("SST-VAL012", "warning"): 2, ("SST-MAN008", "error"): 1}
     )
     renames = {
         (item["params"]["field"], item["params"]["expected"])
         for item in payload["diagnostics"]
-        if item["code"] == "SST-PRS020"
+        if item["code"] == "SST-VAL012"
     }
     assert renames == {
         ("sql_generation", "ai_sql_generation"),

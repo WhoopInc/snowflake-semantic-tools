@@ -14,7 +14,7 @@ from snowflake_semantic_tools.adapters.yaml.semantic.defs import InstructionDef,
 from snowflake_semantic_tools.domain.diagnostics import Diagnostic
 from snowflake_semantic_tools.domain.model.project import ArtifactKey, MemberKey, ParsedMember
 from snowflake_semantic_tools.domain.model.registry import SEMANTIC_REGISTRY
-from snowflake_semantic_tools.domain.model.semantic_view import Relationship
+from snowflake_semantic_tools.domain.model.semantic_view import Relationship, ViewScope
 from snowflake_semantic_tools.domain.resolve.membership import MembershipResult, resolve_membership
 from snowflake_semantic_tools.domain.resolve.membership_model import MemberFacts, MembershipRequest
 
@@ -28,6 +28,7 @@ def membership(
     view_instructions: Mapping[ArtifactKey, frozenset[str]],
     known_models: frozenset[str],
     reported: Iterable[Diagnostic],
+    view_scopes: Mapping[ArtifactKey, ViewScope] | None = None,
 ) -> tuple[tuple[ParsedMember, ...], MembershipResult]:
     """Mark the poisoned members, then resolve every member's membership.
 
@@ -38,6 +39,7 @@ def membership(
         known_models: The casefolded names of the dbt models.
         reported: Every diagnostic reported so far, from which a poisoned member's unresolved
             references are counted.
+        view_scopes: Each built view's include or exclude lists, by its key.
 
     Returns:
         Every member, the poisoned ones marked so, and what member resolution decided.
@@ -62,6 +64,7 @@ def membership(
             if isinstance(member.source, InstructionDef)
         },
         unresolved=_unresolved({member.key for member in marked if member.poisoned}, reported),
+        view_scopes=view_scopes or {},
     )
     return marked, resolve_membership(request)
 

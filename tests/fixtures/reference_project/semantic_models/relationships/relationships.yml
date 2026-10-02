@@ -12,7 +12,7 @@
 
 snowflake_relationships:
   # Attaches to jaffle_sales, the one view holding both tables. A relationship
-  # that fits no view is SST-VAL203.
+  # that fits no view is SST-VAL205.
   - name: orders_to_customers
     description: |-
       Each order belongs to exactly one customer. Many orders to one customer, so

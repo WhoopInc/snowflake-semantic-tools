@@ -8,7 +8,7 @@ change that depends on a blocked one. A blocked change stays in the plan, so it 
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Container, Mapping
 from dataclasses import replace
 
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, DiagnosticBag
@@ -164,6 +164,50 @@ def _require_pinned(change: Change, planned: set[str], registry: Registry) -> tu
         diagnostics=DiagnosticBag((*change.diagnostics, *missing)),
     )
     return blocked, missing
+
+
+def block_unpublished_dependencies(
+    changes: tuple[Change, ...], observed: Container[str], compiled: Container[str], registry: Registry
+) -> tuple[tuple[Change, ...], tuple[Diagnostic, ...]]:
+    """Block each write whose dependency the project compiles, this plan leaves out, and Snowflake lacks.
+
+    The dependency was left out by `--select` or `--exclude` and does not exist yet, so the
+    write would publish before what it depends on. A pinned version is SST-PLN030's, and a
+    dependency the project does not compile is not this plan's to order.
+
+    Diagnostics:
+        SST-VAL015: once per such dependency of a create or update.
+    """
+    planned = {change.key for change in changes}
+    decided: list[Change] = []
+    diagnostics: list[Diagnostic] = []
+    for change in changes:
+        pinned = registry.artifacts[change.artifact_type].pins_versions_of
+        missing = tuple(
+            D(
+                "SST-VAL015",
+                subject=change.key,
+                type=change.artifact_type,
+                name=split_artifact_key(change.key)[1],
+                blocker=dependency,
+            )
+            for dependency in change.depends_on
+            if change.action in (Action.CREATE, Action.UPDATE)
+            and dependency in compiled
+            and dependency not in planned
+            and dependency not in observed
+            and split_artifact_key(dependency)[0] not in pinned
+        )
+        if missing:
+            change = replace(
+                change,
+                action=Action.BLOCKED,
+                reason=ChangeReason.DEPENDENCY_BLOCKED,
+                diagnostics=DiagnosticBag((*change.diagnostics, *missing)),
+            )
+        decided.append(change)
+        diagnostics.extend(missing)
+    return tuple(decided), tuple(diagnostics)
 
 
 def _block_dependents(change: Change, blocked: set[str]) -> Change:
