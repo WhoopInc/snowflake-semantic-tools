@@ -62,6 +62,8 @@ _OPTION_HELP: Mapping[str, str] = {
     ),
     "--sql-out": "Also write the statements for each change into this directory.",
     "--fail-fast": "Stop at the first failure instead of continuing.",
+    "--dbt": "Read the dbt models from this directory instead of `dbt_project.yml`'s `model-paths`.",
+    "--semantic": "Read the semantic models from this directory instead of `project.semantic_models_dir`.",
 }
 _COMMAND_OPTION_HELP: Mapping[tuple[str, str], str] = {
     ("sst apply", "--fail-fast"): "Stop at the first failure instead of continuing. Defaults to `apply.fail_fast`.",
@@ -103,13 +105,15 @@ _COMMAND_OPTION_HELP: Mapping[tuple[str, str], str] = {
         "Directory holding the previous run's `manifest.json`, which `--select state:modified` compares with."
     ),
     ("sst test", "--suite"): (
-        "`golden` compares outputs with committed goldens offline; `smoke` probes deployed "
-        "objects; `evals` runs agent evaluations."
+        "Repeatable. `golden` compares outputs with committed goldens offline; `smoke` probes deployed "
+        "objects; `evals` runs agent evaluations. Defaults to every suite that applies."
     ),
     ("sst test", "--golden-dir"): "Directory of the semantic view DDL goldens; the other goldens sit beside it.",
     ("sst test", "--capture-baseline"): "Record this eval run as the new baseline. Requires `--reason`.",
     ("sst test", "--reason"): "Why the baseline is changing; stored with it.",
     ("sst test", "--fail-fast"): "Stop at the first failing golden, probe, or eval.",
+    ("sst validate", "--verify-schema"): "Connects: confirm each column a semantic view reads exists in the warehouse.",
+    ("sst list", "--no-manifest"): "Compile the project's files in memory instead of reading the compiled manifest.",
     ("sst validate", "--show-info"): "Also report which registered type owns each semantic-model file.",
     ("sst baseline add", "--all-warnings"): "Baseline every current warning; prints the count and needs `--yes`.",
     ("sst baseline add", "--expires-in"): (

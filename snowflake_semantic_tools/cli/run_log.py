@@ -13,6 +13,7 @@ from collections.abc import Iterable
 from pathlib import Path
 
 from snowflake_semantic_tools.domain.diagnostics import Diagnostic
+from snowflake_semantic_tools.domain.diagnostics.signatures import fragile_signatures
 
 RUN_LOG = "run_log.jsonl"
 _UNMATCHED = "SST-SNO001"
@@ -36,7 +37,8 @@ def signature_report(build_dir: Path) -> dict[str, object]:
     """Return how many logged refusals matched a signature, how many did not, and the unmatched rate.
 
     A line that does not parse is skipped. `fragile` lists the signatures matched by message text
-    alone; SST classifies by SQLSTATE and error number, so it is empty.
+    alone, with no SQLSTATE or error number: each is a string matcher that a reworded Snowflake
+    error would silently miss, and the rate above is how often one already has.
     """
     path = build_dir / RUN_LOG
     codes: list[str] = []
@@ -54,5 +56,8 @@ def signature_report(build_dir: Path) -> dict[str, object]:
         "matched": len(codes) - unmatched,
         "unmatched": unmatched,
         "sno001_rate": round(unmatched / len(codes), 4) if codes else 0.0,
-        "fragile": [],
+        "fragile": [
+            {"code": row.code, "pattern": row.pattern.pattern if row.pattern else None, "kind": row.kind.value}
+            for row in fragile_signatures()
+        ],
     }

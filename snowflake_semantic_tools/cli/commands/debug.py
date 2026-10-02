@@ -19,7 +19,8 @@ from snowflake_semantic_tools._version import __version__ as VERSION
 from snowflake_semantic_tools.adapters.dbt.profiles import ProfileTarget, load_profile_target
 from snowflake_semantic_tools.adapters.errors import ProjectError
 from snowflake_semantic_tools.adapters.locations import ProjectPaths
-from snowflake_semantic_tools.cli.exit_codes import CONFIG, CONNECTION, OK
+from snowflake_semantic_tools.adapters.yaml.config import load_project_config
+from snowflake_semantic_tools.cli.exit_codes import CONFIG, CONNECTION, ERROR, OK
 from snowflake_semantic_tools.cli.options import target_option
 from snowflake_semantic_tools.cli.run_log import signature_report
 from snowflake_semantic_tools.cli.runner import CommandResult, ConfigNeed, command_body
@@ -46,29 +47,37 @@ def debug(
 ) -> CommandResult:
     """Show the resolved configuration, profile, target, and registry, and test the connection.
 
-    Exit 0 when everything resolved, 4 when the configuration or profile cannot be, and 5 when
-    the connection fails.
+    Exit 0 when everything resolved, 1 when a resolved value is invalid, 4 when the configuration
+    or profile cannot be, and 5 when the connection fails.
+
+    Diagnostics:
+        SST-CFG001: there is no configuration file.
+        SST-DBT017: the dbt manifest on disk declares a schema this release does not read.
+        Each code the configuration file's own checks report, at exit 1 when one is an error.
     """
     if snowflake_signatures:
         report = signature_report(target_dir(paths.project_dir))
         data: dict[str, object] = {"signatures": report}
         return CommandResult(data=data, human=lambda: _print_fields(report))
+    manifest = _manifest(paths, manifest_path)
     data = {
         "versions": _versions(),
         "config": _config(paths),
         "registry": sorted(SEMANTIC_REGISTRY.artifacts),
-        "manifest": _manifest(paths, manifest_path),
+        "manifest": manifest,
     }
     if paths.config_file is None:
         missing = D("SST-CFG001", subject="config:discovery", path=str(paths.project_dir))
         return CommandResult(CONFIG, DiagnosticBag((missing,)), data, human=lambda: _print_fields(data))
     try:
+        checked = load_project_config(paths).diagnostics
         profile = load_profile_target(paths, target_name)
     except ProjectError as exc:
         return CommandResult(CONFIG, DiagnosticBag(exc.diagnostics), data, human=lambda: _print_fields(data))
     data["target"] = _target(profile, paths)
-    diagnostics = DiagnosticBag((*profile.diagnostics, *profile.connection_warnings))
-    exit_code = OK
+    invalid = (*checked, *_unsupported_manifest(manifest, allowed=paths.allow_unsupported_manifest_schema))
+    diagnostics = DiagnosticBag((*invalid, *profile.diagnostics, *profile.connection_warnings))
+    exit_code = ERROR if diagnostics.has_errors else OK
     if no_connect:
         data["connection"] = {"tested": False}
     else:
@@ -112,6 +121,13 @@ def _manifest(paths: ProjectPaths, manifest_path: Path | None) -> dict[str, obje
         "schema_version": schema,
         "supported": schema == _SUPPORTED_MANIFEST_SCHEMA if schema is not None else None,
     }
+
+
+def _unsupported_manifest(manifest: Mapping[str, object], *, allowed: bool) -> tuple[Diagnostic, ...]:
+    """Report a dbt manifest on disk whose schema this release refuses to read, unless allowed."""
+    if manifest["supported"] is not False or allowed:
+        return ()
+    return (D("SST-DBT017", found=str(manifest["schema_version"]), expected=_SUPPORTED_MANIFEST_SCHEMA),)
 
 
 def _target(profile: ProfileTarget, paths: ProjectPaths) -> dict[str, object]:

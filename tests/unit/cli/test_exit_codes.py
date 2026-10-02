@@ -103,6 +103,7 @@ SCENARIOS: dict[tuple[str, int], Scenario] = {
     ("init", 1): lambda tmp, _: _run("init", "--project-dir", str(_dbt_project(tmp / "p")), "--check-only"),
     ("init", 3): lambda tmp, _: _run("init", "-s"),
     ("init", 4): lambda tmp, _: _run("init", "--project-dir", str(tmp / "not-dbt")),
+    ("debug", 1): lambda tmp, _: _debug_invalid(tmp),
     ("debug", 0): lambda tmp, _: _run("debug", "--project-dir", str(project_copy(tmp)), "--no-connect"),
     ("debug", 3): lambda tmp, _: _run("debug", "--select", "x"),
     ("debug", 4): lambda tmp, _: _run("debug", "--project-dir", str(tmp)),
@@ -138,7 +139,7 @@ SCENARIOS: dict[tuple[str, int], Scenario] = {
         "test", *common(project_copy(tmp)), "--suite", "golden", "--golden-dir", str(GOLDEN)
     ),
     ("test", 1): lambda tmp, _: _run("test", *common(project_copy(tmp)), "--suite", "golden", "--golden-dir", str(tmp)),
-    ("test", 3): lambda tmp, _: _run("test"),
+    ("test", 3): lambda tmp, _: _run("test", "--suite", "every"),
     ("test", 4): lambda tmp, _: _run("test", "--project-dir", str(tmp), "--suite", "golden"),
     ("test", 5): lambda tmp, mp: _connected(tmp, mp, "test", "--suite", "smoke"),
     ("docs", 0): lambda tmp, _: _run("docs", "--project-dir", str(REPO_ROOT), "--check"),
@@ -176,6 +177,15 @@ SCENARIOS: dict[tuple[str, int], Scenario] = {
     ("migrate", 3): lambda tmp, _: _run("migrate", "refs", "--bogus"),
     ("migrate", 4): lambda tmp, _: _run("migrate", "refs", "--project-dir", str(tmp)),
 }
+
+
+def _debug_invalid(tmp: Path) -> Result:
+    project = project_copy(tmp)
+    config = project / "sst_config.yml"
+    config.write_text(
+        config.read_text(encoding="utf-8") + "diagnostics:\n  severity_overrides:\n    SST-REG001: warning\n"
+    )
+    return _run("debug", "--project-dir", str(project), "--no-connect")
 
 
 def _debug_unreachable(tmp: Path, monkeypatch: pytest.MonkeyPatch) -> Result:

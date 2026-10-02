@@ -8,6 +8,7 @@ and `json`, `list` prints `yaml`, the envelope as YAML, and `csv`, one row per a
 from __future__ import annotations
 
 import dataclasses
+from pathlib import Path
 
 import click
 
@@ -15,10 +16,11 @@ from snowflake_semantic_tools.adapters.fs.local import STATE_FILE_GLOB, StateFil
 from snowflake_semantic_tools.adapters.locations import ProjectPaths
 from snowflake_semantic_tools.app.listing import ArtifactSummary, list_artifacts
 from snowflake_semantic_tools.app.manifest import read_notes
-from snowflake_semantic_tools.cli.options import selection_options
+from snowflake_semantic_tools.cli.options import model_path_options, selection_options, with_model_paths
 from snowflake_semantic_tools.cli.runner import CommandResult, command_body
+from snowflake_semantic_tools.cli.wiring import compile as compiling
 from snowflake_semantic_tools.cli.wiring.compile import manifest_universe, selection
-from snowflake_semantic_tools.cli.wiring.manifest import compiled_manifest
+from snowflake_semantic_tools.cli.wiring.manifest import build_manifest, compiled_manifest
 from snowflake_semantic_tools.cli.wiring.project import target_dir
 from snowflake_semantic_tools.domain.diagnostics import DiagnosticBag
 from snowflake_semantic_tools.domain.model.artifact_key import split_artifact_key
@@ -34,6 +36,8 @@ LIST_OUTPUTS = ("table", "plain", "json", "yaml", "csv")
 )
 @selection_options()
 @click.option("--long", "long_format", is_flag=True)
+@click.option("--no-manifest", is_flag=True)
+@model_path_options()
 @command_body("list", outputs=LIST_OUTPUTS)
 def list_command(
     paths: ProjectPaths,
@@ -41,9 +45,21 @@ def list_command(
     selected: tuple[str, ...],
     excluded: tuple[str, ...],
     long_format: bool,
+    no_manifest: bool,
+    dbt_dir: Path | None,
+    semantic_dir: Path | None,
+    manifest_path: Path | None,
 ) -> CommandResult:
-    """List compiled artifacts and their cached application status, optionally of one TYPE."""
-    manifest = compiled_manifest(paths.project_dir)
+    """List compiled artifacts and their cached application status, optionally of one TYPE.
+
+    With --no-manifest the project's files are compiled in memory instead of reading the
+    manifest `sst compile` wrote, and nothing is written.
+    """
+    paths = with_model_paths(paths, dbt_dir, semantic_dir)
+    if no_manifest:
+        manifest = build_manifest(paths, compiling.compile_result(paths, None, manifest_path), manifest_path)
+    else:
+        manifest = compiled_manifest(paths.project_dir)
     notes = read_notes(manifest, str(target_dir(paths.project_dir) / "manifest.json"))
     states = tuple(sorted(target_dir(paths.project_dir).glob(STATE_FILE_GLOB)))
     state = StateFileStore(states[0]).read_local() if len(states) == 1 else None

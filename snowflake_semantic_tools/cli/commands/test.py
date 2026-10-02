@@ -16,7 +16,7 @@ from snowflake_semantic_tools.adapters.fs.golden import GoldenFileStore
 from snowflake_semantic_tools.adapters.locations import ProjectPaths
 from snowflake_semantic_tools.adapters.project_source import YamlProjectInputs, YamlProjectSource
 from snowflake_semantic_tools.adapters.snowflake.eval_state import SnowflakeEvalStateStore
-from snowflake_semantic_tools.app.compile import CompileResult
+from snowflake_semantic_tools.app.compile import CompiledView, CompileResult
 from snowflake_semantic_tools.app.evals.suite import (
     EvalGateOutcome,
     EvalGateRefused,
@@ -26,20 +26,30 @@ from snowflake_semantic_tools.app.evals.suite import (
 )
 from snowflake_semantic_tools.app.golden import CompareGoldens, GoldenReport
 from snowflake_semantic_tools.app.smoke import SmokePublished
-from snowflake_semantic_tools.cli.exit_codes import ERROR, OK
+from snowflake_semantic_tools.cli.exit_codes import CONFIG, CONNECTION, ERROR, OK
 from snowflake_semantic_tools.cli.group import SstUsageError
 from snowflake_semantic_tools.cli.options import fail_fast_option, target_option
 from snowflake_semantic_tools.cli.plan_output import print_eval_results
 from snowflake_semantic_tools.cli.runner import CommandResult, command_body
 from snowflake_semantic_tools.cli.wiring import compile as compiling
 from snowflake_semantic_tools.cli.wiring.manifest import current_manifest
-from snowflake_semantic_tools.cli.wiring.project import closed_on_error, connect, project_inputs, state_store
+from snowflake_semantic_tools.cli.wiring.project import (
+    closed_on_error,
+    connect,
+    project_inputs,
+    state_store,
+    target_dir,
+)
 from snowflake_semantic_tools.domain.diagnostics import DiagnosticBag, unstable_fingerprints
 from snowflake_semantic_tools.domain.model.identifier import Identifier, QualifiedName
 
+SUITES = ("golden", "smoke", "evals")
+# Which exit code wins when suites disagree: Snowflake unreachable, then a setup failure, then 1.
+_EXIT_RANK = {OK: 0, ERROR: 1, CONFIG: 2, CONNECTION: 3}
+
 
 @click.command(name="test")
-@click.option("--suite", type=click.Choice(["golden", "smoke", "evals"]), required=True)
+@click.option("--suite", "suites", type=click.Choice(SUITES), multiple=True)
 @target_option()
 @click.option(
     "--golden-dir",
@@ -52,7 +62,7 @@ from snowflake_semantic_tools.domain.model.identifier import Identifier, Qualifi
 @command_body("test")
 def test_command(
     paths: ProjectPaths,
-    suite: str,
+    suites: tuple[str, ...],
     target_name: str | None,
     manifest_path: Path | None,
     golden_dir: Path,
@@ -60,24 +70,85 @@ def test_command(
     capture_baseline_requested: bool,
     reason: str | None,
 ) -> CommandResult:
-    """Run exact offline goldens or separate connected smoke probes."""
+    """Run the golden, smoke, and eval suites: those --suite names, else every one that applies.
+
+    The golden suite always applies; the connected suites apply once `sst compile` has written
+    the manifest, the smoke suite when a semantic view compiles, the eval suite when an eval
+    does. Exit 1 when any suite fails, and 5 when a connected suite cannot reach Snowflake.
+    """
     result = compiling.compile_result(paths, target_name, manifest_path)
     if not result.success:
         return CommandResult(ERROR, result.diagnostics)
     inputs = project_inputs(paths, target_name, manifest_path)
+    chosen = suites or tuple(name for name in SUITES if _applies(name, paths, result))
+    reports: list[tuple[str, CommandResult]] = []
+    for name in dict.fromkeys(chosen):
+        if name == "golden":
+            report = _golden(paths, target_name, manifest_path, golden_dir, result, inputs)
+        elif name == "evals":
+            report = _run_evals(
+                paths, target_name, result, inputs, EvalGateRequest(fail_fast, capture_baseline_requested, reason)
+            )
+        else:
+            report = _run_smoke(paths, target_name, result, inputs, fail_fast)
+        reports.append((name, report))
+        if fail_fast and report.exit_code:
+            break
+    if len(suites) == 1:
+        return reports[0][1]
+    return _combined(reports, skipped=tuple(name for name in SUITES if name not in chosen))
+
+
+def _applies(suite: str, paths: ProjectPaths, result: CompileResult) -> bool:
+    """Report whether a suite applies to the project when --suite does not name it."""
     if suite == "golden":
-        # The same project compiled again from the manifest just read, so dbt is not run twice.
-        manifest = manifest_path
-        if manifest is None and (paths.project_dir / "dbt_project.yml").is_file():
-            manifest = YamlProjectSource(paths).manifest_file()
-        again = compiling.compile_result(paths, target_name, manifest)
-        return _run_golden(
-            paths.project_dir, golden_dir, result, inputs, unstable_fingerprints(result.diagnostics, again.diagnostics)
-        )
+        return True
+    if not (target_dir(paths.project_dir) / "manifest.json").is_file():
+        return False
     if suite == "evals":
-        request = EvalGateRequest(fail_fast, capture_baseline_requested, reason)
-        return _run_evals(paths, target_name, result, inputs, request)
-    return _run_smoke(paths, target_name, result, inputs, fail_fast)
+        return bool(compiled_evals(result))
+    return any(isinstance(item, CompiledView) for item in result.compiled)
+
+
+def _golden(
+    paths: ProjectPaths,
+    target_name: str | None,
+    manifest_path: Path | None,
+    golden_dir: Path,
+    result: CompileResult,
+    inputs: YamlProjectInputs,
+) -> CommandResult:
+    # The same project compiled again from the manifest just read, so dbt is not run twice.
+    manifest = manifest_path
+    if manifest is None and (paths.project_dir / "dbt_project.yml").is_file():
+        manifest = YamlProjectSource(paths).manifest_file()
+    again = compiling.compile_result(paths, target_name, manifest)
+    return _run_golden(
+        paths.project_dir, golden_dir, result, inputs, unstable_fingerprints(result.diagnostics, again.diagnostics)
+    )
+
+
+def _combined(reports: list[tuple[str, CommandResult]], *, skipped: tuple[str, ...]) -> CommandResult:
+    """Report several suites as one run: every diagnostic, each suite's data, the worst exit code."""
+    failed = [name for name, report in reports if report.exit_code]
+    worst = max((report.exit_code for _, report in reports), default=OK, key=lambda code: _EXIT_RANK.get(code, 0))
+    data = {
+        "suites": [name for name, _ in reports],
+        "results": [report.data for _, report in reports],
+        "passed": len(reports) - len(failed),
+        "failed": len(failed),
+        "skipped": len(skipped),
+        "skipped_suites": list(skipped),
+    }
+
+    def human() -> None:
+        for _, report in reports:
+            if report.human is not None:
+                report.human()
+        click.echo(f"{len(reports) - len(failed)} suite(s) passed, {len(failed)} failed, {len(skipped)} skipped")
+
+    diagnostics = DiagnosticBag(tuple(item for _, report in reports for item in report.diagnostics))
+    return CommandResult(worst, diagnostics, data, human=human)
 
 
 def _run_golden(

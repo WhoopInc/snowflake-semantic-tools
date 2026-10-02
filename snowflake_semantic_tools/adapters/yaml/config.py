@@ -78,6 +78,12 @@ def load_project_config(files: ProjectPaths) -> ProjectConfig:
         *unstated_policy(parsed.tree, file=name),
     ]
     tree = dict(parsed.tree)
+    if files.semantic_models_dir is not None:
+        # `--semantic` stands in for the key, so every reader of the directory sees the override.
+        tree["project"] = {
+            **(tree["project"] if isinstance(tree.get("project"), dict) else {}),
+            "semantic_models_dir": files.semantic_models_dir,
+        }
     if "deploy" in tree and "apply" not in tree:
         # The deprecated spelling is read as the block it was renamed to; SST-CFG200 says so.
         tree["apply"] = tree["deploy"]

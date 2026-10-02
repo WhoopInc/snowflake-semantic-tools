@@ -25,7 +25,7 @@ versioned JSON envelope on stdout and nothing else.
 | [`sst plan`](#sst-plan) | Observe live Snowflake state and compute a non-writing plan. |
 | [`sst apply`](#sst-apply) | Apply a current reviewed plan; smoke probes never run here. |
 | [`sst diff`](#sst-diff) | Compare two states -- local, a dbt target, or a saved plan -- and list what differs. |
-| [`sst test`](#sst-test) | Run exact offline goldens or separate connected smoke probes. |
+| [`sst test`](#sst-test) | Run the golden, smoke, and eval suites: those --suite names, else every one that applies. |
 | [`sst explain`](#sst-explain) | Explain one diagnostic code from the registry: no project, configuration, or connection. |
 | [`sst docs`](#sst-docs) | Write the generated reference pages under docs/reference/. |
 | [`sst clean`](#sst-clean) | Remove local SST build artifacts only; never touch Snowflake. |
@@ -91,8 +91,13 @@ sst init [OPTIONS]
 
 Show the resolved configuration, profile, target, and registry, and test the connection.
 
-Exit 0 when everything resolved, 4 when the configuration or profile cannot be, and 5 when
-the connection fails.
+Exit 0 when everything resolved, 1 when a resolved value is invalid, 4 when the configuration
+or profile cannot be, and 5 when the connection fails.
+
+Diagnostics:
+    SST-CFG001: there is no configuration file.
+    SST-DBT017: the dbt manifest on disk declares a schema this release does not read.
+    Each code the configuration file's own checks report, at exit 1 when one is an error.
 
 ```text
 sst debug [OPTIONS]
@@ -176,6 +181,8 @@ sst compile [OPTIONS]
 |---|---|---|---|
 | `--target / -t` | TEXT |  | Target from `profiles.yml`, else `$SST_TARGET`; defaults to the profile's own default target. |
 | `--database` | TEXT |  | Resolve refs against this database instead of the target's. |
+| `--dbt` | DIRECTORY |  | Read the dbt models from this directory instead of `dbt_project.yml`'s `model-paths`. |
+| `--semantic` | DIRECTORY |  | Read the semantic models from this directory instead of `project.semantic_models_dir`. |
 | `--emit-ddl` | DIRECTORY |  | Write each artifact's rendered payload into this directory, offline. |
 | `--emit-agent-spec` | DIRECTORY |  | Write each agent's rendered specification into this directory. |
 | `--select` | TEXT |  | Report and emit only these artifacts; the manifest still holds everything. |
@@ -185,7 +192,8 @@ sst compile [OPTIONS]
 
 Validate every offline rule, with optional connected checks.
 
-Exit 0 with no errors, and 1 with errors, or warnings under --strict.
+Exit 0 with no errors, and 1 with errors, or warnings under --strict. With
+--verify-schema, the columns each semantic view reads are looked up in the warehouse.
 
 ```text
 sst validate [OPTIONS]
@@ -199,6 +207,9 @@ sst validate [OPTIONS]
 | `--database` | TEXT |  | Read from this database instead of the target's; never where an artifact is published. |
 | `--strict / --no-strict` | flag |  | Promote every warning to an error, else `$SST_STRICT`. Defaults to `validation.strict`. |
 | `--snowflake-syntax-check / --no-snowflake-syntax-check` | flag |  | Compile expressions against Snowflake. Defaults to `validation.snowflake_syntax_check`. |
+| `--dbt` | DIRECTORY |  | Read the dbt models from this directory instead of `dbt_project.yml`'s `model-paths`. |
+| `--semantic` | DIRECTORY |  | Read the semantic models from this directory instead of `project.semantic_models_dir`. |
+| `--verify-schema` | flag |  | Connects: confirm each column a semantic view reads exists in the warehouse. |
 
 ## sst baseline
 
@@ -287,6 +298,9 @@ sst baseline show [OPTIONS]
 
 List compiled artifacts and their cached application status, optionally of one TYPE.
 
+With --no-manifest the project's files are compiled in memory instead of reading the
+manifest `sst compile` wrote, and nothing is written.
+
 ```text
 sst list [OPTIONS]
 ```
@@ -296,6 +310,9 @@ sst list [OPTIONS]
 | `--select` | TEXT, repeatable |  | Only these artifacts: a name (globs allowed), `type:<type>`, `path:<glob>`, `state:<state>`, or `<type>:<name>`. |
 | `--exclude` | TEXT, repeatable |  | Leave these artifacts out; same forms as `--select`. |
 | `--long` | flag |  | Every detail column, including each artifact's source files. |
+| `--no-manifest` | flag |  | Compile the project's files in memory instead of reading the compiled manifest. |
+| `--dbt` | DIRECTORY |  | Read the dbt models from this directory instead of `dbt_project.yml`'s `model-paths`. |
+| `--semantic` | DIRECTORY |  | Read the semantic models from this directory instead of `project.semantic_models_dir`. |
 
 ## sst plan
 
@@ -383,7 +400,11 @@ sst diff [OPTIONS]
 
 ## sst test
 
-Run exact offline goldens or separate connected smoke probes.
+Run the golden, smoke, and eval suites: those --suite names, else every one that applies.
+
+The golden suite always applies; the connected suites apply once `sst compile` has written
+the manifest, the smoke suite when a semantic view compiles, the eval suite when an eval
+does. Exit 1 when any suite fails, and 5 when a connected suite cannot reach Snowflake.
 
 ```text
 sst test [OPTIONS]
@@ -391,7 +412,7 @@ sst test [OPTIONS]
 
 | Option | Value | Default | Description |
 |---|---|---|---|
-| `--suite` | golden\|smoke\|evals, required |  | `golden` compares outputs with committed goldens offline; `smoke` probes deployed objects; `evals` runs agent evaluations. |
+| `--suite` | golden\|smoke\|evals, repeatable |  | Repeatable. `golden` compares outputs with committed goldens offline; `smoke` probes deployed objects; `evals` runs agent evaluations. Defaults to every suite that applies. |
 | `--target / -t` | TEXT |  | Target from `profiles.yml`, else `$SST_TARGET`; defaults to the profile's own default target. |
 | `--golden-dir` | DIRECTORY | `expected/ddl` | Directory of the semantic view DDL goldens; the other goldens sit beside it. |
 | `--fail-fast` | flag |  | Stop at the first failing golden, probe, or eval. |
