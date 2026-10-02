@@ -35,6 +35,7 @@ from snowflake_semantic_tools.domain.model.enrich import (
     parse_column_synonyms,
     parse_table_synonyms,
     prompt_columns,
+    rejected_synonyms,
     sample_columns,
     synonym_columns,
     table_synonym_edits,
@@ -250,6 +251,7 @@ class EnrichProject:
             SST-DBT031: a model selected by name has no relation.
             SST-SNO030: a model's relation is missing or not visible.
             SST-SNO031: reading a model's values or asking Cortex failed.
+            SST-PRS030: Cortex proposed a synonym that can never be written; it is dropped.
             SST-PRS125: a file enrich writes is also reformatted.
         """
         config = self._inputs.config()
@@ -299,12 +301,13 @@ class EnrichProject:
         try:
             warehouse = self._columns(model, request)
             samples = self._samples(model, request, warehouse, settings)
-            synonyms = self._column_synonyms(model, warehouse, samples, request.options, settings)
+            synonyms, dropped = self._column_synonyms(model, warehouse, samples, request.options, settings)
             enrichment = enrich_model(model, warehouse, request.options, settings, samples=samples, synonyms=synonyms)
-            edits = self._table_synonyms(model, warehouse, view_tables(views, model.name), request.options, settings)
+            targets = view_tables(views, model.name)
+            edits, dropped_tables = self._table_synonyms(model, warehouse, targets, request.options, settings)
         except _ModelFailed as failure:
             return ModelReport(model.name, path, None), [failure.diagnostic]
-        return ModelReport(model.name, path, enrichment, edits), list(enrichment.diagnostics)
+        return ModelReport(model.name, path, enrichment, edits), [*enrichment.diagnostics, *dropped, *dropped_tables]
 
     def _failure(self, model: DbtModel, step: str, error: SnowflakePortError) -> _ModelFailed:
         if error.diagnostic is not None and error.diagnostic.code in _RUN_FAILURES:
@@ -353,7 +356,8 @@ class EnrichProject:
         samples: Mapping[str, Sequence[str]],
         options: EnrichOptions,
         settings: EnrichmentConfig,
-    ) -> dict[str, tuple[str, ...]]:
+    ) -> tuple[dict[str, tuple[str, ...]], tuple[Diagnostic, ...]]:
+        """Ask Cortex for the columns' synonyms; return those to write, and a report per refused one."""
         columns = synonym_columns(model, warehouse, options)
         proposals: dict[str, tuple[object, ...]] = {}
         for start in range(0, len(columns), COLUMNS_PER_PROMPT):
@@ -365,7 +369,17 @@ class EnrichProject:
             if parsed is None:
                 raise _ModelFailed(_shape_failure(model, "column synonyms"))
             proposals.update(parsed)
-        return column_synonyms(model, warehouse, proposals, limit=settings.synonym_max_count)
+        dropped = tuple(
+            diagnostic
+            for column, proposed in proposals.items()
+            for diagnostic in rejected_synonyms(
+                proposed,
+                artifact=f"{model.name}.{column}",
+                subject=f"dbt_model:{model.name}",
+                limit=settings.synonym_max_count,
+            )
+        )
+        return column_synonyms(model, warehouse, proposals, limit=settings.synonym_max_count), dropped
 
     def _table_synonyms(
         self,
@@ -374,9 +388,10 @@ class EnrichProject:
         targets: Sequence[ViewTable],
         options: EnrichOptions,
         settings: EnrichmentConfig,
-    ) -> tuple[TableSynonymEdit, ...]:
+    ) -> tuple[tuple[TableSynonymEdit, ...], tuple[Diagnostic, ...]]:
+        """Ask Cortex for the model's table synonyms; return each view's edit, and the refused ones."""
         if not needs_table_synonyms(targets, options):
-            return ()
+            return (), ()
         names = [yaml_column_name(column.name) for column in warehouse]
         prompt = table_synonyms_prompt(
             model.name, model.description, names, avoided_names(targets), max_count=settings.synonym_max_count
@@ -386,7 +401,10 @@ class EnrichProject:
         )
         if proposals is None:
             raise _ModelFailed(_shape_failure(model, "table synonyms"))
-        return table_synonym_edits(targets, proposals, options, limit=settings.synonym_max_count)
+        dropped = rejected_synonyms(
+            proposals, artifact=model.name, subject=f"dbt_model:{model.name}", limit=settings.synonym_max_count
+        )
+        return table_synonym_edits(targets, proposals, options, limit=settings.synonym_max_count), dropped
 
     def _edited_files(self, reports: Sequence[ModelReport]) -> tuple[EditedFile, ...]:
         """Compute every file's text after the run, models' files first, then views', each in path order."""

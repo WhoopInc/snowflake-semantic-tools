@@ -11,7 +11,7 @@ from snowflake_semantic_tools.adapters.yaml.documents import RawDocuments
 from snowflake_semantic_tools.adapters.yaml.semantic.defs import NULL_ORDERS, SORT_DIRECTIONS, _frame
 from snowflake_semantic_tools.adapters.yaml.semantic.nodes import _load_nodes, _member_root, _node_origin
 from snowflake_semantic_tools.domain.model.artifact_key import artifact_key
-from snowflake_semantic_tools.domain.model.column_metadata import synonym_problem
+from snowflake_semantic_tools.domain.model.column_metadata import printable, synonym_problem
 from snowflake_semantic_tools.domain.model.diagnostic import D, Diagnostic, Origin
 
 
@@ -21,13 +21,13 @@ def _synonyms_diagnostics(
     artifact: str,
     subject: str,
 ) -> tuple[Diagnostic, ...]:
-    """Check a `synonyms:` value: a list of strings, none of which holds a quote.
+    """Check a `synonyms:` value: a list of strings, none holding a quote or a control character.
 
     An absent value is fine.
 
     Diagnostics:
         SST-PRS029: when the value is not a list of strings.
-        SST-PRS030: when a synonym holds a single or double quote, once per synonym.
+        SST-PRS030: when a synonym holds a quote or a control character, once per synonym.
     """
     if value is None:
         return ()
@@ -48,7 +48,7 @@ def _synonyms_diagnostics(
                 D(
                     "SST-PRS030",
                     artifact=artifact,
-                    value=synonym,
+                    value=printable(synonym),
                     detail=problem,
                     subject=subject,
                 )
@@ -79,7 +79,7 @@ def _metric_parse_diagnostics(
             or declares both `partition_by` and `partition_by_excluding`.
         SST-PRS124: when the window's `frame` is not a frame clause.
         SST-PRS029: when `synonyms` is not a list of strings.
-        SST-PRS030: when a synonym holds a quote.
+        SST-PRS030: when a synonym holds a quote or a control character.
     """
     metrics_dir = project_dir / semantic_models_dir / "metrics"
     diagnostics: list[Diagnostic] = []

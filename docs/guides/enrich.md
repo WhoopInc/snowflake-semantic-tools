@@ -72,9 +72,11 @@ a run that includes `sample-values` or `enums` then stops before reading anythin
 Synonyms are written by `enrichment.synonym_model` through `AI_COMPLETE`, at temperature 0,
 with structured output, inside the account. A prompt describes up to 50 columns: their names,
 types, descriptions, and up to five example values from columns without `pii_tags`. Each
-synonym is cleaned before it is written: whitespace collapsed, quotes and template syntax
-refused, and any synonym that repeats the column's own name, or another column's name or
-synonym, dropped. At most `enrichment.synonym_max_count` are kept.
+synonym is cleaned before it is written: whitespace collapsed; quotes, control characters,
+template syntax, and more than 100 characters refused, each refusal reported as a warning
+(`SST-PRS030`); and any synonym that repeats the column's own name, or another column's name or
+synonym, dropped. At most `enrichment.synonym_max_count` are kept. A model's synonyms are a
+proposal: review them in the diff before merging (see [Security](security.md#trust-model)).
 
 A table's synonyms are generated once per model and written into every semantic view that
 uses the model and has none for it, each cleaned against that view's other tables.

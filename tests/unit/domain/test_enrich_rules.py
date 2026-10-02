@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from snowflake_semantic_tools.domain.model.diagnostic import Severity
 from snowflake_semantic_tools.domain.model.enrich import (
     COMPONENT_NAMES,
     DEFAULT_COMPONENTS,
@@ -14,6 +15,8 @@ from snowflake_semantic_tools.domain.model.enrich import (
     derive_column_type,
     is_sampled_type,
     parse_components,
+    proposed_synonym,
+    rejected_synonyms,
     resolve_options,
     same_data_type,
     semantic_data_type,
@@ -109,3 +112,29 @@ def test_synonyms_are_cleaned_capped_and_kept_apart_from_names_already_used() ->
     assert kept == ("Order Total", "net")
     assert clean_synonyms(["a", "b"], name="c", taken=(), limit=1) == ("a",)
     assert taken_names(["order_items"], []) == {"order_items", "order items"}
+
+
+def test_a_proposed_synonym_is_stripped_and_refused_for_what_no_table_could_accept() -> None:
+    assert proposed_synonym("  order   total \n") == ("order total", None)
+    assert proposed_synonym(7) == ("", None)
+    assert proposed_synonym("order\ntotal") == ("order total", "control characters")
+    assert proposed_synonym("x" * 101) == ("x" * 101, "more than 100 characters")
+    assert proposed_synonym("{{ total }}") == ("{{ total }}", "template syntax")
+    assert proposed_synonym("say " + chr(34) + "hi" + chr(34))[1] == "quotes"
+
+
+def test_control_characters_inside_a_proposal_are_refused_not_collapsed_away() -> None:
+    proposals = ["gross\ntotal", "gross\ttotal", "net\x00", " gross total "]
+    assert clean_synonyms(proposals, name="amount", taken=(), limit=4) == ("gross total",)
+
+
+def test_each_refused_proposal_is_reported_up_to_the_limit_and_duplicates_are_not() -> None:
+    proposals = ["ok", "amount", "bad\x1b[2Jtext", 7, "", "x" * 120, "{% raw %}"]
+    found = rejected_synonyms(proposals, artifact="orders.amount", subject="dbt_model:orders", limit=2)
+    assert [(item.code, item.severity) for item in found] == [("SST-PRS030", Severity.WARNING)] * 2
+    assert [item.message for item in found] == [
+        "orders.amount: synonym 'bad\\u001b[2Jtext' contains control characters",
+        "orders.amount: synonym '" + "x" * 77 + "...' contains more than 100 characters",
+    ]
+    assert {item.subject for item in found} == {"dbt_model:orders"}
+    assert rejected_synonyms(["ok", "amount"], artifact="a", subject="s", limit=4) == ()

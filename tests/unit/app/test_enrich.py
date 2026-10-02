@@ -326,3 +326,28 @@ def test_the_enrichment_blocks_own_config_problems_are_reported_and_its_errors_s
     warned = InMemoryProjectInputs(dbt=_catalog(_model()), config_diagnostics=DiagnosticBag((unknown, elsewhere)))
     report = EnrichProject(warned, port, InMemoryFiles({"models/orders.yml": ORDERS_YML})).run(_request())
     assert [item.code for item in report.diagnostics] == ["SST-CFG003"] and not report.stopped
+
+
+def test_a_proposed_synonym_that_can_never_be_written_is_reported_not_dropped_unseen() -> None:
+    def answer(prompt: str, schema: object) -> object:
+        if "columns" in str(schema):
+            return {"columns": [{"name": "TOTAL", "synonyms": ["grand total", "evil\ntext", "x" * 150]}]}
+        return {"synonyms": ["sales orders", "rm -rf\u202e"]}
+
+    port = ScriptedEnrich(columns={"DB.SCH.ORDERS": ORDERS_COLUMNS}, answer=answer)
+    files = InMemoryFiles({"models/orders.yml": ORDERS_YML, "semantic_models/views.yml": VIEW_YML})
+    project, _, _ = _project(port=port, files=files, views=(_view(),))
+    report = project.run(_request(C.COLUMN_SYNONYMS, C.TABLE_SYNONYMS))
+    warnings = [(item.code, item.severity, item.message) for item in report.diagnostics]
+    assert warnings == [
+        ("SST-PRS030", Severity.WARNING, "orders.total: synonym 'evil\\u000atext' contains control characters"),
+        (
+            "SST-PRS030",
+            Severity.WARNING,
+            "orders.total: synonym '" + "x" * 77 + "...' contains more than 100 characters",
+        ),
+        ("SST-PRS030", Severity.WARNING, "orders: synonym 'rm -rf\\u202e' contains control characters"),
+    ]
+    enrichment = report.models[0].enrichment
+    assert enrichment is not None and enrichment.filled(C.COLUMN_SYNONYMS) == 1
+    assert [edit.synonyms for edit in report.models[0].table_synonyms] == [("sales orders",)]
