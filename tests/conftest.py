@@ -2,6 +2,7 @@
 
 `ci` is deterministic, so a property failure on a pull request reproduces on rerun, and has
 no deadline, because shared runners are too noisy for per-example timing to mean anything.
+`nightly` searches at random and much deeper, for the scheduled run that has time to.
 `dev`, the default, keeps Hypothesis's random search and its local example database. Pick
 one with HYPOTHESIS_PROFILE or pytest's `--hypothesis-profile`.
 
@@ -152,5 +153,6 @@ def scratch_schema(
 
 
 settings.register_profile("ci", deadline=None, derandomize=True, database=None, print_blob=True)
+settings.register_profile("nightly", deadline=None, max_examples=1000, database=None, print_blob=True)
 settings.register_profile("dev", deadline=None)
 settings.load_profile(os.environ.get("HYPOTHESIS_PROFILE", "dev"))

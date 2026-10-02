@@ -1,0 +1,120 @@
+name: Slow gate
+
+# The tests that connect to Snowflake: the real connector against the port contract, apply in a
+# real account, and the CLI end to end through the smoke suite (`pytest -m live`). Each run works
+# in scratch schemas of its own, SST_IT_<UTC stamp>_<run>_<worker>, which the tests drop, which the
+# teardown step drops again even when a step failed, and which the nightly sweep drops if the job
+# was cancelled before either could run.
+#
+# The trigger is `pull_request`, never `pull_request_target`: a fork's pull request gets no
+# repository secrets, so the gate job is skipped there and the fast gate in test-and-lint.yml is
+# what such a change gets until it is merged. When the secrets are configured, the tests run with
+# --require-snowflake, so a credential that stops working fails the job rather than skipping it.
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: slow-gate-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  credentials:
+    name: Check for Snowflake credentials
+    runs-on: ubuntu-latest
+    outputs:
+      present: ${{ steps.check.outputs.present }}
+    steps:
+      - id: check
+        env:
+          ACCOUNT: ${{ secrets.SST_TEST_SNOWFLAKE_ACCOUNT }}
+        run: |
+          if [ -n "$ACCOUNT" ]; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::No Snowflake credentials (a fork, or the secrets are not configured): the slow gate is skipped."
+          fi
+
+  slow:
+    name: Contract, integration, end-to-end and smoke against Snowflake
+    needs: credentials
+    if: needs.credentials.outputs.present == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    env:
+      HYPOTHESIS_PROFILE: ci
+      SST_TEST_RUN_ID: ${{ github.run_id }}-${{ github.run_attempt }}
+      SST_TEST_SNOWFLAKE_ACCOUNT: ${{ secrets.SST_TEST_SNOWFLAKE_ACCOUNT }}
+      SST_TEST_SNOWFLAKE_USER: ${{ secrets.SST_TEST_SNOWFLAKE_USER }}
+      SST_TEST_SNOWFLAKE_ROLE: ${{ secrets.SST_TEST_SNOWFLAKE_ROLE }}
+      SST_TEST_SNOWFLAKE_WAREHOUSE: ${{ secrets.SST_TEST_SNOWFLAKE_WAREHOUSE }}
+      SST_TEST_SNOWFLAKE_DATABASE: ${{ secrets.SST_TEST_SNOWFLAKE_DATABASE }}
+      SST_TEST_SNOWFLAKE_GRANTEE_ROLE: ${{ secrets.SST_TEST_SNOWFLAKE_GRANTEE_ROLE }}
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: "3.11"
+
+      - name: Install Poetry
+        uses: snok/install-poetry@a783c322200f0519c7926aa6faa857c4e23e9263 # v1.4.2
+        with:
+          version: 2.2.1
+          virtualenvs-create: true
+          virtualenvs-in-project: true
+
+      - name: Check that poetry.lock matches pyproject.toml
+        run: |
+          poetry check --lock || {
+            echo "::error::poetry.lock is out of date with pyproject.toml. Regenerate it with: poetry lock"
+            exit 1
+          }
+
+      - name: Install dependencies
+        run: poetry install --no-interaction
+
+      # The key never reaches the log or the workspace: it is written once, outside the checkout,
+      # readable only by the runner user, and removed by the last step.
+      - name: Write the Snowflake private key
+        env:
+          PRIVATE_KEY: ${{ secrets.SST_TEST_SNOWFLAKE_PRIVATE_KEY }}
+        run: |
+          key_path="$RUNNER_TEMP/sst_test_snowflake.p8"
+          umask 077
+          printf '%s\n' "$PRIVATE_KEY" > "$key_path"
+          echo "SST_TEST_SNOWFLAKE_PRIVATE_KEY_PATH=$key_path" >> "$GITHUB_ENV"
+
+      # Driver logging stays at WARNING: the connector at DEBUG can echo connection settings.
+      - name: Run the live layers
+        run: >-
+          poetry run pytest -m live --require-snowflake
+          -n 4 --timeout 600 --log-level WARNING
+          tests/contract_live tests/integration tests/e2e
+
+      # The offline negative corpus also runs in test-and-lint.yml; it is repeated here so this
+      # job reports every end-to-end case in one place.
+      - name: Run the negative corpus
+        run: poetry run pytest -m "e2e and not live" -n auto tests/e2e
+
+      - name: Drop this run's scratch schemas
+        if: always()
+        run: poetry run python -m tests.helpers.sweep_scratch --run "$SST_TEST_RUN_ID"
+
+      - name: Remove the Snowflake private key
+        if: always()
+        run: rm -f "$RUNNER_TEMP/sst_test_snowflake.p8"
