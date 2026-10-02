@@ -37,6 +37,7 @@ from snowflake_semantic_tools.domain.ports.semantic_view_source import SemanticV
 from snowflake_semantic_tools.domain.render.semantic_view import render
 from snowflake_semantic_tools.domain.sql import AuthoredExpression, Sql, ident, join, qname, query_text, sql
 from snowflake_semantic_tools.domain.validate.semantic_view import (
+    fan_out_diagnostics,
     join_graph_diagnostics,
     restriction_diagnostics,
     statement_diagnostics,
@@ -327,6 +328,7 @@ class CompileSemanticViews:
             SST-VAL307, SST-VAL321: as `statement_diagnostics` reports them.
             SST-VAL123: as `restriction_diagnostics` reports it.
             SST-VAL216, SST-VAL217: as `join_graph_diagnostics` reports them.
+            SST-VAL319, SST-VAL125: as `fan_out_diagnostics` reports them, after every view.
         """
         project = self._source.load_project()
         result = compile_each(
@@ -347,7 +349,13 @@ class CompileSemanticViews:
                 *join_graph_diagnostics(item.view, artifact=item.artifact_key),
             )
         )
-        return CompileResult(result.compiled, DiagnosticBag((*result.diagnostics, *checked))) if checked else result
+        compiled_views = tuple(
+            (item.view, item.artifact_key) for item in result.compiled if isinstance(item, CompiledView)
+        )
+        reach = fan_out_diagnostics(compiled_views)
+        if not checked and not reach:
+            return result
+        return CompileResult(result.compiled, DiagnosticBag((*result.diagnostics, *checked, *reach)))
 
 
 def _compiled_view(view: SemanticView) -> CompiledView:

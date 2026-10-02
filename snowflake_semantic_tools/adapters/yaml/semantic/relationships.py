@@ -9,6 +9,12 @@ from pathlib import Path
 from typing import Any
 
 from snowflake_semantic_tools.adapters.yaml.documents import RawDocuments
+from snowflake_semantic_tools.adapters.yaml.semantic.checks.joins import (
+    dropped_condition,
+    is_self_loop,
+    key_diagnostic,
+    unparsable_condition,
+)
 from snowflake_semantic_tools.adapters.yaml.semantic.defs import MetricDef
 from snowflake_semantic_tools.adapters.yaml.semantic.nodes import _load_nodes, _member_root, _node_origin
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, Origin
@@ -34,10 +40,10 @@ def _relationship_diagnostics(
     and each origin is the one `origins` holds under its casefolded name.
 
     Diagnostics:
+        SST-VAL207: when the relationship joins one table to itself; it is checked no further.
         SST-VAL205: when no view holds both of the relationship's tables.
         SST-MEM005: with each SST-VAL205, since the relationship then attaches to no view.
-        SST-VAL311: when the right table declares neither `primary_key` nor `unique_keys`.
-        SST-VAL210: when no key of the right table lies within the join's right-hand columns.
+        SST-VAL311, SST-VAL208, SST-VAL210: as `checks.joins.key_diagnostic` reports them.
     """
     diagnostics: list[Diagnostic] = []
     for relationship in relationships:
@@ -47,6 +53,17 @@ def _relationship_diagnostics(
             relationship.to_table.casefold(),
         }
         subject = artifact_key("relationship", relationship.name.casefold())
+        if is_self_loop(relationship):
+            diagnostics.append(
+                D(
+                    "SST-VAL207",
+                    relationship=relationship.name.casefold(),
+                    name=relationship.from_table.casefold(),
+                    subject=subject,
+                    origin=origin,
+                )
+            )
+            continue
         if not any(endpoints.issubset(tables) for _, tables in view_table_sets):
             diagnostics.append(
                 D(
@@ -74,30 +91,9 @@ def _relationship_diagnostics(
             continue
         if relationship.asof_index is not None or relationship.range_bounds is not None:
             continue
-        join_columns = {column.casefold() for column in relationship.to_columns}
-        keys = tuple(key for key in (target.primary_key, *target.unique_keys) if key)
-        if not keys:
-            # Snowflake refuses a REFERENCES target that declares no key at all.
-            diagnostics.append(
-                D(
-                    "SST-VAL311",
-                    artifact=subject,
-                    name=target.name,
-                    subject=subject,
-                    origin=origin,
-                )
-            )
-        elif not any({column.casefold() for column in key}.issubset(join_columns) for key in keys):
-            diagnostics.append(
-                D(
-                    "SST-VAL210",
-                    relationship=relationship.name.casefold(),
-                    name=target.name,
-                    value=", ".join(relationship.to_columns),
-                    subject=subject,
-                    origin=origin,
-                )
-            )
+        problem = key_diagnostic(relationship, target, subject=subject, origin=origin)
+        if problem is not None:
+            diagnostics.append(problem)
     return tuple(diagnostics)
 
 
@@ -105,13 +101,14 @@ def _relationship_cycle_diagnostics(
     relationships: tuple[Relationship, ...],
     view_table_sets: tuple[tuple[str, frozenset[str]], ...],
 ) -> tuple[Diagnostic, ...]:
-    """Snowflake refuses a view whose relationships form a cycle, a self-reference included."""
+    """Snowflake refuses a view whose relationships form a cycle between two or more tables."""
     diagnostics: list[Diagnostic] = []
     for artifact, tables in view_table_sets:
         edges: dict[str, set[str]] = {}
         for relationship in relationships:
             left, right = relationship.from_table.casefold(), relationship.to_table.casefold()
-            if left in tables and right in tables:
+            # A self-reference is SST-VAL207's to report.
+            if left in tables and right in tables and left != right:
                 edges.setdefault(left, set()).add(right)
         cycle = _first_cycle({node: tuple(sorted(targets)) for node, targets in edges.items()})
         if cycle is not None:
@@ -384,15 +381,19 @@ def _parse_conditions(
 
     Diagnostics:
         SST-PRS110: when a condition is not an equality, an ASOF comparison or a range.
+        SST-VAL213: when one side of a condition spans more than one column.
         SST-VAL204: when a condition's column is on a table other than its side's endpoint.
+        SST-VAL202: when the renderer would drop a condition: a second ASOF or range, or any
+            condition beside a range.
     """
     pairs: list[tuple[str, str]] = []
+    kinds: list[str] = []
     asof_index: int | None = None
     range_bounds: tuple[str, str] | None = None
     for condition in raw_conditions:
         parsed = _parse_condition(condition)
         if parsed is None:
-            return D("SST-PRS110", origin=origin, subject=subject, artifact=subject, value=condition)
+            return unparsable_condition(condition, relationship=name, origin=origin, subject=subject)
         mismatch = _endpoint_mismatch(parsed, endpoints)
         if mismatch is not None:
             table, column, endpoint = mismatch
@@ -409,6 +410,10 @@ def _parse_conditions(
         if parsed.range_bounds is not None:
             range_bounds = parsed.range_bounds
         pairs.append((parsed.left_column.upper(), parsed.right_column.upper()))
+        kinds.append("range" if parsed.range_bounds is not None else "asof" if parsed.asof else "equality")
+    dropped = dropped_condition(kinds, raw_conditions, relationship=name, origin=origin, subject=subject)
+    if dropped is not None:
+        return dropped
     return _Conditions(tuple(pairs), asof_index, range_bounds)
 
 

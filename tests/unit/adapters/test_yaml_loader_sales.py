@@ -709,9 +709,9 @@ def test_relationship_targets_need_a_key_and_the_graph_no_cycle() -> None:
         ("semantic_view:acyclic", frozenset(("regions", "orders"))),
     )
     cycles = _relationship_cycle_diagnostics((to_regions, back, itself), views)
+    # The self-reference is SST-VAL207's, so it closes no cycle here.
     assert [(item.subject, item.context["cycle"]) for item in cycles] == [
-        ("semantic_view:loop", "locations -> locations"),
-        ("semantic_view:self", "locations -> locations"),
+        ("semantic_view:loop", "locations -> regions -> locations"),
     ]
     assert _relationship_cycle_diagnostics((to_regions, back), views[:1])[0].context["cycle"] == (
         "locations -> regions -> locations"

@@ -7,11 +7,11 @@ it and returns diagnostics; none raises for a user's project.
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Mapping
+from collections.abc import Iterable
 
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, Severity
 from snowflake_semantic_tools.domain.model.artifact_key import artifact_key
-from snowflake_semantic_tools.domain.model.semantic_view import SemanticView
+from snowflake_semantic_tools.domain.model.semantic_view import ColumnKind, SemanticView
 
 # The derived-metric restrictions Snowflake enforces at neither validate nor create time.
 CRITICAL_METRIC_CODES = frozenset(("SST-VAL102", "SST-VAL103", "SST-VAL104", "SST-VAL105", "SST-VAL106", "SST-VAL107"))
@@ -106,7 +106,48 @@ def _components(nodes: list[str], edges: Iterable[tuple[str, str]]) -> int:
     return len({root(node) for node in parent})
 
 
-def fan_out_value(counts: Mapping[str, int]) -> str:
-    """Describe how many members of each type attach to a view, in type order: `3 metrics, 1 filter`."""
-    words = [f"{count} {kind}{'' if count == 1 else 's'}" for kind, count in counts.items() if count]
-    return ", ".join(words) + " attach by table membership" if words else "no member attaches by table membership"
+def fan_out_diagnostics(views: Iterable[tuple[SemanticView, str]]) -> tuple[Diagnostic, ...]:
+    """Report how far implicit attachment reached: each view's members, then each shared metric.
+
+    Every member counted attaches by the tables it needs, so the authored files cannot show
+    where it lands. Views are reported in the order given; metrics by name.
+
+    Diagnostics:
+        SST-VAL319: what each view holds by table membership, by type; a view holding nothing
+            that way is not reported.
+        SST-VAL125: a metric is in more than one view.
+    """
+    pairs = tuple(views)
+    diagnostics = [
+        D("SST-VAL319", subject=key, artifact=key, value=value)
+        for view, key in pairs
+        if (value := _members_value(view)) is not None
+    ]
+    reach: dict[str, int] = {}
+    for view, _ in pairs:
+        for metric in view.metrics:
+            if view.scope.admits_metric(metric.name):
+                reach[metric.name.casefold()] = reach.get(metric.name.casefold(), 0) + 1
+    diagnostics.extend(
+        D("SST-VAL125", subject=artifact_key("metric", name), metric=name, count=count)
+        for name, count in sorted(reach.items())
+        if count > 1
+    )
+    return tuple(diagnostics)
+
+
+def _members_value(view: SemanticView) -> str | None:
+    """Count what a view holds by table membership, in clause order; None when it holds nothing."""
+    scope = view.scope
+    counts = {
+        "relationship": sum(1 for item in view.relationships if scope.admits_relationship(item.name)),
+        "filter": sum(1 for column in view.columns if column.kind is ColumnKind.FILTER),
+        "metric": sum(1 for metric in view.metrics if scope.admits_metric(metric.name)),
+        "verified query": len(view.verified_queries),
+    }
+    words = [f"{count} {kind if count == 1 else _plural(kind)}" for kind, count in counts.items() if count]
+    return ", ".join(words) + " by table membership" if words else None
+
+
+def _plural(word: str) -> str:
+    return word[:-1] + "ies" if word.endswith("y") else word + "s"

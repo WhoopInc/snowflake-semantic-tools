@@ -374,7 +374,7 @@ def _relationship_checks(
     unattached = frozenset(
         diagnostic.subject.casefold()
         for diagnostic in placement
-        if diagnostic.code == "SST-VAL205" and diagnostic.subject is not None
+        if diagnostic.code in ("SST-VAL205", "SST-VAL207") and diagnostic.subject is not None
     )
     return diagnostics, unattached
 

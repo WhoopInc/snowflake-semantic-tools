@@ -17,6 +17,7 @@ from snowflake_semantic_tools.adapters.errors import ProjectError
 from snowflake_semantic_tools.adapters.yaml.documents import RawDocuments, discover_yaml, load_documents
 from snowflake_semantic_tools.adapters.yaml.parse import parse_yaml_bytes, read_yaml_mapping
 from snowflake_semantic_tools.adapters.yaml.semantic.build import _build_view
+from snowflake_semantic_tools.adapters.yaml.semantic.checks.fanout import _attachment_diagnostics
 from snowflake_semantic_tools.adapters.yaml.semantic.checks.rules import _rule_diagnostics
 from snowflake_semantic_tools.adapters.yaml.semantic.checks.scope import _scope_diagnostics
 from snowflake_semantic_tools.adapters.yaml.semantic.collect import parse_semantic_project
@@ -91,7 +92,7 @@ def load_semantic_views_result(
        per-view rules of `checks.rules`.
     9. Poisoned views: each view an error of phases 1-8 names, whose name repeats, whose
        tables are malformed, or whose file uses the legacy globals.
-    10. Attach every unpoisoned member to the views it belongs to.
+    10. Attach every unpoisoned member to the views it belongs to, and report where each went.
     11. Build every enabled, unpoisoned view under semantic_views/; one that fails is
         reported and left out.
 
@@ -135,6 +136,7 @@ def load_semantic_views_result(
     # After every check: the views left unbuilt are read from the errors reported so far.
     poison = _view_poison(poison, parsed.views, reported, structure.duplicate_views, structure.legacy_files)
     attached_members, attachment = _attach(parsed.members, poison, view_tables, instruction_names)
+    attachment_diagnostics = _attachment_diagnostics(parsed.views, attached_members, attachment)
     views, build_diagnostics = _build_views(context, poison, attached_members, attachment)
     resolved = ResolvedProject(
         views=views,
@@ -142,7 +144,7 @@ def load_semantic_views_result(
         custom_instruction_names=MappingProxyType(
             {artifact.casefold(): tuple(sorted(names)) for artifact, names in instruction_names.items()}
         ),
-        diagnostics=DiagnosticBag((*reported, *build_diagnostics)),
+        diagnostics=DiagnosticBag((*reported, *attachment_diagnostics, *build_diagnostics)),
     )
     return SemanticViewProject(resolved.views, resolved.diagnostics)
 
