@@ -211,7 +211,8 @@ def _authored(kind: str) -> list[str]:
             for item in node:
                 walk(item)
 
-    for path in sorted(FIXTURES.rglob("*.yml")):
+    # `target/` holds what compile wrote during other tests, not what a project authors.
+    for path in sorted(path for path in FIXTURES.rglob("*.yml") if "target" not in path.relative_to(FIXTURES).parts):
         # The loader's own parser, which reads the 0.3 dialect's unquoted templates too.
         walk(parse_yaml_bytes(path.read_bytes(), str(path)).tree)
     if kind == "query":
