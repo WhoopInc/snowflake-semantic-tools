@@ -84,7 +84,7 @@ spec:
         encoding="utf-8",
     )
     _, diagnostics = load_agents(tmp_path)
-    assert {diagnostic.code for diagnostic in diagnostics} == {"SST-LOD018", "SST-PRS118"}
+    assert {diagnostic.code for diagnostic in diagnostics} == {"SST-REF014", "SST-PRS118"}
 
 
 # (YAML after `name: typed`, the field reported, what it expects, what it found)

@@ -23,7 +23,7 @@ from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, Diagnosti
 from snowflake_semantic_tools.domain.model.agent import AgentEvalFiles, AgentModel, AgentProfile, AgentSkill, AgentTool
 from snowflake_semantic_tools.domain.model.artifact_key import artifact_key
 from snowflake_semantic_tools.domain.parse.template import TemplateSyntaxError, scan_template_calls
-from snowflake_semantic_tools.domain.resolve.calls import syntax_problem
+from snowflake_semantic_tools.domain.resolve.calls import call_problem, malformed_field, syntax_problem
 
 
 def load_agents(project_dir: Path, *, agents_dir: str = "agents") -> tuple[tuple[AgentModel, ...], DiagnosticBag]:
@@ -50,7 +50,8 @@ def load_agents(project_dir: Path, *, agents_dir: str = "agents") -> tuple[tuple
             mapping. The agent is kept back, and the field reads as empty.
         SST-PRS018: when a `spec.tools` or `spec.skills` entry has the wrong shape.
         SST-PRS118: when a sample question is not a mapping with a string `question`.
-        SST-REF014: when an instruction holds templates other than one whole `{{ file() }}` call.
+        SST-REF003: when an instruction holds templates other than one whole `{{ file() }}` call.
+        SST-REF014: when an instruction's `{{ file() }}` names no file.
         SST-REF027: when a sidecar or an eval file resolves outside the project root.
         SST-LOD018: when a sidecar cannot be read.
         SST-LOD019: when a sidecar holds only whitespace.
@@ -275,9 +276,11 @@ def _instruction(
 
     Diagnostics:
         SST-LOD004, SST-REF033, SST-REF003: when a template in the text does not parse.
-        SST-REF014: when the text holds templates other than one `file()` call that is all of it.
+        SST-REF003: when the text holds templates, and they are not one call that is all of it.
+        SST-REF004, SST-REF041, SST-REF015: when that call is not one one-path `file()` call.
         SST-REF027: when the sidecar resolves outside the project root.
-        SST-LOD018: when the sidecar cannot be read.
+        SST-REF014: when the sidecar's path names no file.
+        SST-LOD018: when the sidecar is there and cannot be read.
         SST-PRS122: when the sidecar is not UTF-8.
         SST-LOD019: when the sidecar holds only whitespace.
     """
@@ -290,13 +293,21 @@ def _instruction(
         return value
     if not calls:
         return value
-    if len(calls) != 1 or calls[0].function != "file" or len(calls[0].args) != 1 or calls[0].raw != value:
-        diagnostics.append(D("SST-REF014", path=value, origin=Origin(source_file)))
+    origin = Origin(source_file)
+    if len(calls) != 1 or calls[0].raw != value:
+        diagnostics.append(malformed_field(value, origin))
+        return None
+    problem = call_problem(calls[0], frozenset(("file",)), origin, field="instructions", artifact=source_file)
+    if problem is not None:
+        diagnostics.append(problem)
         return None
     requested = str(calls[0].args[0])
     path = resolve_within(project_dir, agent_dir / requested)
     if path is None:
-        diagnostics.append(D("SST-REF027", path=requested, origin=Origin(source_file)))
+        diagnostics.append(D("SST-REF027", path=requested, origin=origin))
+        return None
+    if not path.exists():
+        diagnostics.append(D("SST-REF014", path=requested, origin=origin))
         return None
     relative = path.relative_to(project_dir.resolve()).as_posix()
     try:
