@@ -17,6 +17,7 @@ from pathlib import Path
 from snowflake_semantic_tools.adapters.dbt.manifest import load_manifest_catalog
 from snowflake_semantic_tools.adapters.dbt.profiles import load_profile_target, profile_output, resolve_profile_name
 from snowflake_semantic_tools.adapters.dbt.project import (
+    check_model_paths,
     dbt_project_name,
     load_models,
     resolve_target,
@@ -26,7 +27,8 @@ from snowflake_semantic_tools.adapters.dbt.project import (
 from snowflake_semantic_tools.adapters.errors import ProjectError
 from snowflake_semantic_tools.adapters.yaml.agents import load_agents
 from snowflake_semantic_tools.adapters.yaml.config import load_project_config, read_config_document
-from snowflake_semantic_tools.adapters.yaml.documents import discover_yaml, load_documents
+from snowflake_semantic_tools.adapters.yaml.discover import discover_yaml
+from snowflake_semantic_tools.adapters.yaml.documents import load_documents
 from snowflake_semantic_tools.adapters.yaml.evals import load_eval_catalog, parse_eval_defaults
 from snowflake_semantic_tools.adapters.yaml.fields import strings
 from snowflake_semantic_tools.adapters.yaml.parse import parse_yaml_bytes, read_yaml_mapping
@@ -95,10 +97,12 @@ class YamlProjectSource:
         command that reads both the models and the tools parses the project once.
 
         Raises:
-            ProjectError: `dbt_project.yml` cannot be read, or dbt fails.
+            ProjectError: `dbt_project.yml` cannot be read or names a `model-paths` entry that
+                is not a directory (SST-DIS009), or dbt fails.
         """
         path = self.manifest_file()
         if self._manifest_path is None and self._invoke_dbt and not self._parsed:
+            check_model_paths(self._project_dir, read_yaml_mapping)
             run_dbt_parse(self._project_dir, self._target_name)
             self._parsed = True
         return path

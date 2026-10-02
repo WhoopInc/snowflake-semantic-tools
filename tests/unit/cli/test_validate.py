@@ -25,7 +25,7 @@ def test_validate_accepts_the_recorded_manifest_offline() -> None:
     )
     assert result.exit_code == 0, result.output
     # Two warnings are SST-VAL804: no agent references jaffle-catalogue or jaffle-operations.
-    assert "validated 14 artifact(s): 0 errors, 1 warnings" in result.output
+    assert "validated 14 artifact(s): 0 errors, 3 warnings" in result.output
 
 
 def test_validate_uses_config_strict_unless_cli_overrides() -> None:

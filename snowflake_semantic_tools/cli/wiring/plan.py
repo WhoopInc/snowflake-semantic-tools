@@ -21,6 +21,7 @@ from snowflake_semantic_tools.cli.wiring import compile as compiling
 from snowflake_semantic_tools.cli.wiring.compile import selection
 from snowflake_semantic_tools.cli.wiring.manifest import compiled_manifest
 from snowflake_semantic_tools.cli.wiring.project import closed_on_error, connect, project_inputs, state_store
+from snowflake_semantic_tools.cli.wiring.selectors import selector_report
 from snowflake_semantic_tools.domain.diagnostics import DiagnosticBag
 from snowflake_semantic_tools.domain.model.registry import SEMANTIC_REGISTRY
 from snowflake_semantic_tools.domain.state import SavedPlan
@@ -96,13 +97,17 @@ def plan_runtime(request: PlanRequest) -> PlanSession | PlanRefused:
     A ready plan comes with its open connection, which the caller closes. Once connected, the
     connection is closed here whenever planning raises or is refused.
 
+    The plan's diagnostics start with what `selector_report` says of the selectors.
+
     Raises:
         SstUsageError: the selectors cannot be resolved, as `plan_scope` says.
-        ProjectError: the selectors matched nothing, or the compiled manifest is stale.
+        ProjectError: the selectors matched nothing, carrying SST-DIS010 for each, or the
+            compiled manifest is stale.
     """
     scope = plan_scope(request)
     project_dir = request.project_dir
     full_result = compiling.compile_result(project_dir, request.target_name, request.manifest_path)
+    selectors = selector_report(request.selected, request.excluded, full_result.compiled)
     prepare = PreparePlan(project_inputs(project_dir, request.target_name, request.manifest_path), SystemClock())
     candidates = prepare.select(
         full_result,
@@ -115,7 +120,7 @@ def plan_runtime(request: PlanRequest) -> PlanSession | PlanRefused:
     )
     if isinstance(candidates, PlanRefused):
         if candidates.reason is not None:
-            raise ProjectError(candidates.reason)
+            raise ProjectError(candidates.reason, diagnostics=tuple(selectors))
         return candidates
     profile, port = connect(project_dir, request.target_name)
     with closed_on_error(port):
@@ -131,6 +136,11 @@ def plan_runtime(request: PlanRequest) -> PlanSession | PlanRefused:
     if isinstance(outcome, PlanRefused):
         port.close()
         return outcome
+    if selectors:
+        changeset = dataclasses.replace(
+            outcome.changeset, diagnostics=DiagnosticBag((*selectors, *outcome.changeset.diagnostics))
+        )
+        outcome = dataclasses.replace(outcome, changeset=changeset)
     return PlanSession(outcome, profile, port, store)
 
 

@@ -12,7 +12,7 @@ from dataclasses import dataclass, replace
 
 from snowflake_semantic_tools.adapters.yaml.semantic.defs import MetricDef
 from snowflake_semantic_tools.adapters.yaml.semantic.phases import SemanticChecks, SemanticMembers
-from snowflake_semantic_tools.domain.diagnostics import Diagnostic, Severity
+from snowflake_semantic_tools.domain.diagnostics import Diagnostic
 from snowflake_semantic_tools.domain.model.artifact_key import artifact_key
 from snowflake_semantic_tools.domain.model.project import ParsedMember, ParsedView
 
@@ -59,9 +59,7 @@ class Poison:
 def _error_subjects(diagnostics: Iterable[Diagnostic]) -> frozenset[str]:
     """Collect the subject of every error among `diagnostics`, exactly as reported."""
     return frozenset(
-        diagnostic.subject
-        for diagnostic in diagnostics
-        if diagnostic.subject is not None and diagnostic.severity is Severity.ERROR
+        diagnostic.subject for diagnostic in diagnostics if diagnostic.subject is not None and diagnostic.blocks
     )
 
 

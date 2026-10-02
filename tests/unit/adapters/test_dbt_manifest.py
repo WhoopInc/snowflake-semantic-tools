@@ -104,7 +104,7 @@ def test_rejects_an_unsupported_manifest_schema() -> None:
     metadata["dbt_schema_version"] = "https://schemas.getdbt.com/dbt/manifest/v13.json"
     with pytest.raises(ProjectError, match="manifest schema") as exc_info:
         catalog_from_document(document)
-    assert [diagnostic.code for diagnostic in exc_info.value.diagnostics] == ["SST-PRT007"]
+    assert [diagnostic.code for diagnostic in exc_info.value.diagnostics] == ["SST-DBT017"]
 
 
 def test_rejects_a_model_without_a_physical_relation() -> None:

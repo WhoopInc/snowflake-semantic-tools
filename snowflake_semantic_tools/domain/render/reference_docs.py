@@ -15,7 +15,7 @@ import string
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 
-from snowflake_semantic_tools.domain.diagnostics import ERROR_REGISTRY, ErrorSpec, Severity
+from snowflake_semantic_tools.domain.diagnostics import ERROR_REGISTRY, ErrorSpec
 from snowflake_semantic_tools.domain.diagnostics.specs import SUBSYSTEMS
 from snowflake_semantic_tools.domain.model.config_schema import CONFIG_SCHEMA, ConfigKey, KeyKind, KeyStatus
 from snowflake_semantic_tools.domain.model.registry import (
@@ -223,7 +223,7 @@ def render_error_codes(registry: Mapping[str, ErrorSpec] = ERROR_REGISTRY) -> st
 
 def _error_entry(spec: ErrorSpec) -> list[str]:
     severity = spec.severity.name.lower()
-    qualifier = ", always an error" if spec.severity is Severity.ERROR and not spec.demotable else ""
+    qualifier = ", always an error" if spec.always_error else ""
     entry = [
         "",
         f"### {spec.code}",

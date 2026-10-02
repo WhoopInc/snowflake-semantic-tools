@@ -13,7 +13,7 @@ import click
 from snowflake_semantic_tools.adapters.clock import SystemClock
 from snowflake_semantic_tools.adapters.errors import ProjectError
 from snowflake_semantic_tools.adapters.fs.golden import GoldenFileStore
-from snowflake_semantic_tools.adapters.project_source import YamlProjectInputs
+from snowflake_semantic_tools.adapters.project_source import YamlProjectInputs, YamlProjectSource
 from snowflake_semantic_tools.adapters.snowflake.eval_state import SnowflakeEvalStateStore
 from snowflake_semantic_tools.app.compile import CompileResult
 from snowflake_semantic_tools.app.evals.suite import (
@@ -39,6 +39,7 @@ from snowflake_semantic_tools.cli.runner import CommandResult, command_body
 from snowflake_semantic_tools.cli.wiring import compile as compiling
 from snowflake_semantic_tools.cli.wiring.manifest import current_manifest
 from snowflake_semantic_tools.cli.wiring.project import closed_on_error, connect, project_inputs, state_store
+from snowflake_semantic_tools.domain.diagnostics import DiagnosticBag, unstable_fingerprints
 from snowflake_semantic_tools.domain.model.identifier import Identifier, QualifiedName
 
 
@@ -74,22 +75,37 @@ def test_command(
         return CommandResult(ERROR, result.diagnostics)
     inputs = project_inputs(project_dir, target_name, manifest_path)
     if suite == "golden":
-        return _run_golden(project_dir, golden_dir, result, inputs)
+        # The same project compiled again from the manifest just read, so dbt is not run twice.
+        manifest = manifest_path
+        if manifest is None and (project_dir / "dbt_project.yml").is_file():
+            manifest = YamlProjectSource(project_dir).manifest_file()
+        again = compiling.compile_result(project_dir, target_name, manifest)
+        return _run_golden(
+            project_dir, golden_dir, result, inputs, unstable_fingerprints(result.diagnostics, again.diagnostics)
+        )
     if suite == "evals":
         request = EvalGateRequest(fail_fast, capture_baseline_requested, reason)
         return _run_evals(project_dir, target_name, result, inputs, request)
     return _run_smoke(project_dir, target_name, result, inputs, fail_fast)
 
 
-def _run_golden(project_dir: Path, golden_dir: Path, result: CompileResult, inputs: YamlProjectInputs) -> CommandResult:
+def _run_golden(
+    project_dir: Path,
+    golden_dir: Path,
+    result: CompileResult,
+    inputs: YamlProjectInputs,
+    unstable: DiagnosticBag,
+) -> CommandResult:
     """Compare every compiled payload with its committed golden, offline; exit 1 on any failure.
 
-    A relative `--golden-dir` is taken from the project directory.
+    A relative `--golden-dir` is taken from the project directory. `unstable` holds the
+    SST-INT006 a second compile of the project found, each of which fails the suite too.
     """
     resolved = golden_dir if golden_dir.is_absolute() else project_dir / golden_dir
     report = CompareGoldens(GoldenFileStore(resolved), inputs.git_sha).run(result)
     return CommandResult(
-        OK if report.passed else ERROR,
+        OK if report.passed and not unstable else ERROR,
+        unstable,
         data={"suite": "golden", "failures": list(report.failures)},
         human=lambda: _print_golden(report, len(result.compiled)),
     )

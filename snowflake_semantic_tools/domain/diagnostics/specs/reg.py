@@ -1,12 +1,199 @@
-"""Registry codes (REG): the closed artifact registry and the member types each artifact owns.
+"""Registry codes (REG): the codes and artifact types SST is built from contradict themselves.
 
-No code is registered yet; a new one goes here.
+Every one is raised as `RegistryIntegrityError` while the package is imported or a registry is
+built, never reported for a user's project, and every one is non-demotable: a registry that
+contradicts itself cannot be trusted to report its own contradiction.
 """
 
 from __future__ import annotations
 
-from snowflake_semantic_tools.domain.diagnostics.core import ErrorSpec
+from snowflake_semantic_tools.domain.diagnostics.core import ErrorSpec, Severity, spec
 
 TITLE: str = "Registry"
 
-SPECS: tuple[ErrorSpec, ...] = ()
+SPECS: tuple[ErrorSpec, ...] = (
+    spec(
+        "SST-REG001",
+        Severity.ERROR,
+        "Registration missing a required field",
+        "registration for {type} omits required field '{field}'",
+        "add the field to the registration",
+        demotable=False,
+    ),
+    spec(
+        "SST-REG002",
+        Severity.ERROR,
+        "Duplicate registration",
+        "{type} is already registered",
+        "choose a different name, or delete the duplicate registration",
+        demotable=False,
+    ),
+    spec(
+        "SST-REG003",
+        Severity.ERROR,
+        "Two types claim one root_key",
+        "root_key '{root_key}' is claimed by {types}",
+        "give each type a distinct root_key",
+        demotable=False,
+    ),
+    spec(
+        "SST-REG004",
+        Severity.ERROR,
+        "Duplicate ddl_position or clause_position",
+        "position {position} is claimed by {types}",
+        "renumber one of the colliding positions",
+        demotable=False,
+    ),
+    spec(
+        "SST-REG005",
+        Severity.ERROR,
+        "Two types claim one ref_function",
+        "ref_function '{ref_function}' is claimed twice",
+        "give each referenceable type its own template function",
+        demotable=False,
+    ),
+    spec(
+        "SST-REG006",
+        Severity.ERROR,
+        "Type names an unregistered rule",
+        "{type} names rule '{rule_id}', which is not registered",
+        "register the rule, or remove it from the type",
+        demotable=False,
+    ),
+    spec(
+        "SST-REG007",
+        Severity.ERROR,
+        "Type names an unregistered member type or owner",
+        "{type} names '{member_type}', which is not registered",
+        "register the member type, or correct the name",
+        demotable=False,
+    ),
+    spec(
+        "SST-REG010",
+        Severity.ERROR,
+        "ddl_position contradicts dependency_edges",
+        "{type} is ordered at {position} but depends on {blocker}, ordered later",
+        "renumber ddl_position so dependents follow their dependencies",
+        demotable=False,
+    ),
+    spec(
+        "SST-REG011",
+        Severity.ERROR,
+        "Type dependency graph has a cycle",
+        "type dependency cycle: {cycle}",
+        "break the cycle by removing one dependency",
+        demotable=False,
+    ),
+    spec(
+        "SST-REG012",
+        Severity.ERROR,
+        "Code registered with a malformed identifier",
+        "'{code}' does not match SST-<AREA><NNN>",
+        "use three uppercase letters and three digits",
+        demotable=False,
+    ),
+    spec(
+        "SST-REG013",
+        Severity.ERROR,
+        "Code area disagrees with its declared subsystem",
+        "'{code}' declares subsystem {subsystem}",
+        "make the area letters and the subsystem field agree",
+        demotable=False,
+    ),
+    spec(
+        "SST-REG014",
+        Severity.ERROR,
+        "Internal-band code is not a non-demotable ERROR",
+        "'{code}' is in the 900 band with severity {severity}",
+        "declare 900-band codes ERROR, and INT and REG ones non-demotable",
+        demotable=False,
+    ),
+    spec(
+        "SST-REG015",
+        Severity.ERROR,
+        "Severity comparison outside the diagnostics module",
+        "{module} compares severities outside diagnostics/",
+        "route the decision through the diagnostic's resolved severity, such as Diagnostic.blocks",
+        demotable=False,
+    ),
+    spec(
+        "SST-REG016",
+        Severity.ERROR,
+        "Message template placeholder is not supplied",
+        "'{code}' template names {placeholder}, absent from declared params",
+        "use a placeholder from the shared vocabulary, or correct the template",
+        demotable=False,
+    ),
+    spec(
+        "SST-REG017",
+        Severity.ERROR,
+        "Retired number re-registered",
+        "'{code}' was retired in {version} and cannot be reused",
+        "allocate the next free number in the band",
+        demotable=False,
+    ),
+    spec(
+        "SST-REG018",
+        Severity.ERROR,
+        "Deprecation without a successor",
+        "'{code}' is deprecated_in {version} with no superseded_by",
+        "name the successor code, or do not deprecate",
+        demotable=False,
+    ),
+    spec(
+        "SST-REG019",
+        Severity.ERROR,
+        "internal_detail declared outside INT and SNO",
+        "'{code}' declares internal_detail but its area is {area}",
+        "drop internal_detail, or move the raw text into the template's params",
+        demotable=False,
+    ),
+    spec(
+        "SST-REG020",
+        Severity.ERROR,
+        "Resolver set and registry `ref_function`s disagree",
+        "'{ref_function}' -- {direction}",
+        "register the type, or remove the resolver",
+        demotable=False,
+    ),
+    spec(
+        "SST-REG021",
+        Severity.ERROR,
+        "`grant_preservation` contradicts the type's other fields",
+        "type '{artifact}' -- {reason}",
+        "correct the registration so its grant handling matches how the type is published",
+        demotable=False,
+    ),
+    spec(
+        "SST-REG022",
+        Severity.ERROR,
+        "Non-`semantic_view` artifact type declares `member_types`",
+        "artifact type '{artifact}' declares member_types {member_types}; only semantic_view may",
+        "leave member_types empty, or register the members as their own top-level type",
+        demotable=False,
+    ),
+    spec(
+        "SST-REG023",
+        Severity.ERROR,
+        "`MemberIndex` does not cover every declared member type",
+        "MemberIndex covers {covered}; semantic_view declares {declared}",
+        "index every declared member type",
+        demotable=False,
+    ),
+    spec(
+        "SST-REG024",
+        Severity.ERROR,
+        "A `ref_field` policy is undeclared, or a declared policy is neither bound nor explained",
+        "ref policy '{policy}': {detail}",
+        "declare the policy, bind it to a field, or state why it is unbound",
+        demotable=False,
+    ),
+    spec(
+        "SST-REG900",
+        Severity.ERROR,
+        "Registry mutated after freeze",
+        "registry mutated after freeze: {detail}",
+        "move the registration to import time",
+        demotable=False,
+    ),
+)

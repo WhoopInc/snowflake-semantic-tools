@@ -14,7 +14,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from snowflake_semantic_tools.app.compile import CompileResult
-from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, DiagnosticBag, Severity
+from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, DiagnosticBag
 from snowflake_semantic_tools.domain.model.artifact_key import split_artifact_key
 from snowflake_semantic_tools.domain.model.registry import SEMANTIC_REGISTRY
 
@@ -54,7 +54,7 @@ def _attributable(subject: str | None) -> bool:
 def partial_refusal(result: CompileResult) -> Diagnostic | None:
     """Why `--partial` cannot split this result, naming the first error it cannot place."""
     for item in result.diagnostics:
-        if item.severity is Severity.ERROR and not _attributable(item.subject):
+        if item.blocks and not _attributable(item.subject):
             return D("SST-PLN033", value=item.subject or "no artifact", found=item.code)
     return None
 
@@ -70,7 +70,7 @@ def partial_split(result: CompileResult) -> PartialSplit | None:
         The split; None when an error cannot be traced to the artifacts it would change, which
         `partial_refusal` reports.
     """
-    errors = [item for item in result.diagnostics if item.severity is Severity.ERROR]
+    errors = [item for item in result.diagnostics if item.blocks]
     if any(not _attributable(item.subject) for item in errors):
         return None
     failed = {str(item.subject).casefold() for item in errors}

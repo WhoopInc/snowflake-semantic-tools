@@ -63,6 +63,28 @@ def target_path(project_dir: Path, read_yaml: YamlReader) -> Path:
     return project_dir / target_path / "manifest.json"
 
 
+def check_model_paths(project_dir: Path, read_yaml: YamlReader) -> None:
+    """Refuse a `model-paths` entry dbt_project.yml sets that is not a directory in the project.
+
+    Only entries the file sets are checked: dbt's default needs no directory to exist.
+
+    Raises:
+        ProjectError: SST-DIS009, one per missing entry in the order they are listed.
+    """
+    entries = read_yaml(project_dir / "dbt_project.yml").get("model-paths")
+    missing = (
+        [str(entry) for entry in entries or () if not (project_dir / str(entry)).is_dir()]
+        if isinstance(entries, list)
+        else []
+    )
+    if missing:
+        diagnostics = tuple(
+            D("SST-DIS009", origin=Origin("dbt_project.yml"), subject="config:dbt_project.yml", path=entry)
+            for entry in missing
+        )
+        raise ProjectError(diagnostics[0].message, diagnostics=diagnostics)
+
+
 def run_dbt_parse(project_dir: Path, target_name: str | None) -> None:
     """Run `dbt parse` on the project, with its own profiles.yml, for the target named.
 

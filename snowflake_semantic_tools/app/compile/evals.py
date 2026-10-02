@@ -5,7 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass, replace
 from hashlib import sha256
 
-from snowflake_semantic_tools.app.compile.base import CompileResult, StandaloneArtifact, compile_each
+from snowflake_semantic_tools.app.compile.base import CompileResult, StandaloneArtifact, compile_checked
+from snowflake_semantic_tools.domain.diagnostics import Diagnostic
 from snowflake_semantic_tools.domain.model.eval import EvalCatalog, EvalDefaults, ResolvedEval
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
 from snowflake_semantic_tools.domain.model.lifecycle import (
@@ -17,6 +18,7 @@ from snowflake_semantic_tools.domain.model.lifecycle import (
 from snowflake_semantic_tools.domain.model.registry import GrantPreservation
 from snowflake_semantic_tools.domain.render.eval import (
     RenderedEval,
+    eval_render_checks,
     render_create_dataset_statement,
     render_dataset_payload,
     render_eval_config,
@@ -107,13 +109,15 @@ class CompileEvals:
     def run_result(self) -> CompileResult:
         """Compile the evals in key order, skipping each one an error already names.
 
-        The diagnostics are the catalog's, then any SST-INT902.
+        The diagnostics are the catalog's, then each eval's render checks or SST-INT902. An
+        eval a render check refuses is left out.
 
         Diagnostics:
+            SST-RND020, SST-RND021, SST-RND022: as `eval_render_checks` reports them.
             SST-INT902: rendering an eval raised KeyError, TypeError or ValueError, such as one
                 whose agent has no target.
         """
-        return compile_each(
+        return compile_checked(
             sorted(self._catalog.evals, key=lambda item: item.key),
             key=lambda resolved: resolved.key,
             render=self._compile,
@@ -121,9 +125,12 @@ class CompileEvals:
             origin=lambda resolved: resolved.config.origin,
         )
 
-    def _compile(self, resolved: ResolvedEval) -> CompiledEval:
+    def _compile(self, resolved: ResolvedEval) -> tuple[CompiledEval | None, tuple[Diagnostic, ...]]:
+        found = eval_render_checks(resolved)
+        if any(item.blocks for item in found):
+            return None, found
         agent_target = self._agent_targets[resolved.agent.name.casefold()]
-        return _render(resolved, agent_target, self._catalog.defaults)
+        return _render(resolved, agent_target, self._catalog.defaults), found
 
 
 def _render(

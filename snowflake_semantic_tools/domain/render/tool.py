@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import re
 
+from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic
 from snowflake_semantic_tools.domain.model.artifact_key import artifact_key
 from snowflake_semantic_tools.domain.model.identifier import Identifier, QualifiedName
 from snowflake_semantic_tools.domain.model.lifecycle import ProbeKind, PublishShape, RenderedArtifact, SmokeProbe
@@ -30,6 +31,29 @@ from snowflake_semantic_tools.domain.sql import (
 )
 
 _TABLE_RETURNS = re.compile(r"TABLE\s*\((?P<columns>.*)\)", re.IGNORECASE | re.DOTALL)
+
+
+# The member kinds `render_tool` has a renderer for.
+RENDERED_KINDS = frozenset(
+    {ToolKind.CORTEX_SEARCH_SERVICE.value, ToolKind.PROCEDURE.value, ToolKind.FUNCTION.value, ToolKind.STAGE.value}
+)
+
+
+def tool_render_checks(member: ToolMember, source_relation: QualifiedName | None) -> tuple[Diagnostic, ...]:
+    """Report a member `render_tool` cannot render: a kind with no renderer, or no source statement.
+
+    Diagnostics:
+        SST-RND040: the member's kind has no renderer.
+        SST-RND041: a search service has no relation to select from, or a routine has no body.
+    """
+    key = artifact_key("tool", member.name.casefold())
+    if member.type not in RENDERED_KINDS:
+        return (D("SST-RND040", origin=member.origin, subject=key, artifact=member.name, found=member.type),)
+    searching = member.type == ToolKind.CORTEX_SEARCH_SERVICE.value
+    routine = member.type in (ToolKind.PROCEDURE.value, ToolKind.FUNCTION.value)
+    if (searching and source_relation is None) or (routine and not (member.body or "").strip()):
+        return (D("SST-RND041", origin=member.origin, subject=key, artifact=member.name),)
+    return ()
 
 
 def render_tool(member: ToolMember, target: QualifiedName, source_relation: QualifiedName | None) -> RenderedArtifact:

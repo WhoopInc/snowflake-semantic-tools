@@ -31,14 +31,8 @@ from snowflake_semantic_tools.domain.model.semantic_view import (
     Window,
 )
 from snowflake_semantic_tools.domain.parse.template import scan_template_calls, single_template_call
-from snowflake_semantic_tools.domain.resolve.template import (
-    FILTER_EXPR,
-    METRIC_EXPR,
-    VQR_SQL,
-    RefPolicy,
-    ResolveContext,
-    resolve_scalar,
-)
+from snowflake_semantic_tools.domain.resolve.ref_fields import ref_field
+from snowflake_semantic_tools.domain.resolve.template import RefPolicy, ResolveContext, resolve_scalar
 from snowflake_semantic_tools.domain.sql import AuthoredExpression, AuthoredQuery
 from snowflake_semantic_tools.domain.validate.sql import checked_expression, checked_query, name_problem
 
@@ -209,7 +203,7 @@ def _view_metric(metric: MetricDef, relationships: tuple[Relationship, ...], res
         raise ProjectError(diagnostic.message, diagnostics=(diagnostic,))
     subject = artifact_key("metric", metric.name.casefold())
     (name,) = _names((metric.name,), subject, metric.origin)
-    resolved = resolver.resolve(metric.expr, METRIC_EXPR, metric.origin, "metric.expression")
+    resolved = resolver.resolve(metric.expr, ref_field("metric.expression"), metric.origin, "metric.expression")
     expr = _expression(resolved, kind="metric", name=metric.name, subject=subject, origin=metric.origin)
     window: Window | None = None
     if metric.window is not None and owner is not None:
@@ -261,7 +255,7 @@ def _view_window(metric: MetricDef, owner: str, relationships: tuple[Relationshi
     subject = artifact_key("metric", metric.name.casefold())
 
     def resolve(text: str) -> AuthoredExpression:
-        resolved = resolver.resolve(text, METRIC_EXPR, metric.origin, "metric.window")
+        resolved = resolver.resolve(text, ref_field("metric.window"), metric.origin, "metric.window")
         return _expression(resolved, kind="metric", name=metric.name, subject=subject, origin=metric.origin)
 
     return Window(
@@ -348,7 +342,7 @@ def _entity_filter(filter_def: FilterDef, resolver: _Resolver) -> Column:
     model_name = referenced[0].casefold()
     subject = artifact_key("filter", filter_def.name.casefold())
     (name,) = _names((filter_def.name,), subject, filter_def.origin)
-    resolved = resolver.resolve(filter_def.expr, FILTER_EXPR, filter_def.origin, "filter.expression")
+    resolved = resolver.resolve(filter_def.expr, ref_field("filter.expression"), filter_def.origin, "filter.expression")
     return Column(
         table=resolver.logical_by_model[model_name],
         name=name,
@@ -443,7 +437,7 @@ def _resolve_verified_query_sql(
     variables: dict[str, object] = mapping(config.get("vars"))
     return _resolve_expression(
         query.sql,
-        policy=VQR_SQL,
+        policy=ref_field("verified_query.sql"),
         origin=query.origin or Origin("<verified-query>"),
         catalog=catalog,
         logical_by_model=logical_by_model,

@@ -6,6 +6,8 @@ from pathlib import Path
 
 import click
 
+from snowflake_semantic_tools.adapters.fs.baseline import read_baseline
+from snowflake_semantic_tools.adapters.yaml.ownership import ownership_report
 from snowflake_semantic_tools.app.validate import ValidateArtifacts, ValidationResult
 from snowflake_semantic_tools.cli.exit_codes import ERROR, OK
 from snowflake_semantic_tools.cli.options import output_option, project_options, validation_options
@@ -13,12 +15,13 @@ from snowflake_semantic_tools.cli.runner import CommandResult, command_body
 from snowflake_semantic_tools.cli.settings import validation_settings
 from snowflake_semantic_tools.cli.wiring import compile as compiling
 from snowflake_semantic_tools.cli.wiring.project import connect
-from snowflake_semantic_tools.domain.diagnostics import Severity
+from snowflake_semantic_tools.domain.diagnostics import DiagnosticBag, Severity
 
 
 @click.command()
 @project_options()
 @validation_options()
+@click.option("--show-info", is_flag=True)
 @output_option()
 @command_body("validate")
 def validate(
@@ -27,6 +30,7 @@ def validate(
     manifest_path: Path | None,
     strict: bool | None,
     snowflake_syntax_check: bool | None,
+    show_info: bool,
     output: str,
 ) -> CommandResult:
     """Validate every offline rule, with optional connected checks."""
@@ -44,14 +48,18 @@ def validate(
             compiled,
             strict=effective_strict,
             connected=effective_connected,
+            baseline=read_baseline(project_dir),
         )
     finally:
         if port is not None:
             port.close()
     exit_code = OK if result.success else ERROR
+    diagnostics = (
+        DiagnosticBag((*result.diagnostics, *ownership_report(project_dir))) if show_info else result.diagnostics
+    )
     return CommandResult(
         exit_code,
-        result.diagnostics,
+        diagnostics,
         human=None if exit_code else lambda: _print_counts(result),
         promoted=result.promoted,
     )

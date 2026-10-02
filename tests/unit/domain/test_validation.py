@@ -24,7 +24,7 @@ def test_an_emitter_binds_subject_origin_and_defaults_once() -> None:
 
 def test_an_emitter_without_defaults_emits_plain_diagnostics() -> None:
     emit = Emitter()
-    diagnostic = emit("SST-LOD003", file="empty.yml")
+    diagnostic = emit("SST-PRT009", file="empty.yml")
     assert (diagnostic.subject, diagnostic.origin) == (None, None)
     assert emit.diagnostics == (diagnostic,)
 

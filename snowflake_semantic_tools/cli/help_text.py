@@ -80,6 +80,7 @@ _COMMAND_OPTION_HELP: Mapping[tuple[str, str], str] = {
     ("sst test", "--capture-baseline"): "Record this eval run as the new baseline. Requires `--reason`.",
     ("sst test", "--reason"): "Why the baseline is changing; stored with it.",
     ("sst test", "--fail-fast"): "Stop at the first failing golden, probe, or eval.",
+    ("sst validate", "--show-info"): "Also report which registered type owns each semantic-model file.",
 }
 
 

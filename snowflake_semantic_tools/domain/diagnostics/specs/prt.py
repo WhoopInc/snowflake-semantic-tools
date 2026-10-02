@@ -40,13 +40,6 @@ SPECS: tuple[ErrorSpec, ...] = (
         "create the dependency or correct its name",
     ),
     spec(
-        "SST-PRT007",
-        Severity.ERROR,
-        "dbt manifest schema version unsupported",
-        "manifest schema '{found}' is unsupported; expected '{expected}'",
-        "use a dbt version that emits {expected}",
-    ),
-    spec(
         "SST-PRT009",
         Severity.ERROR,
         "Filesystem read failed",

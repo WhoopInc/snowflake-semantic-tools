@@ -262,13 +262,13 @@ def catalog_from_document(document: object) -> DbtCatalog:
             wrong shape, such as a model without a name or a relation.
 
     Diagnostics:
-        SST-PRT007: the manifest's `dbt_schema_version` is not `SUPPORTED_SCHEMA`; raised.
+        SST-DBT017: the manifest's `dbt_schema_version` is not `SUPPORTED_SCHEMA`; raised.
     """
     root = _mapping(document, path="root")
     metadata = _mapping(root.get("metadata"), path="metadata")
     schema_version = str(metadata.get("dbt_schema_version") or "")
     if schema_version != SUPPORTED_SCHEMA:
-        diagnostic = D("SST-PRT007", found=schema_version, expected=SUPPORTED_SCHEMA)
+        diagnostic = D("SST-DBT017", found=schema_version, expected=SUPPORTED_SCHEMA)
         raise ProjectError(diagnostic.message, diagnostics=(diagnostic,))
 
     nodes = _mapping(root.get("nodes"), path="nodes")

@@ -41,10 +41,11 @@ def test_validate_json_emits_one_v2_envelope() -> None:
     assert envelope["invocation"]["duration_s"] >= 0
     assert envelope["status"] == "ok"
     # One info is SST-VAL854: the fixture's profile registry is not Desktop's. The
-    # one warning is SST-VAL528; the plugin has a consumer now, the operator profile.
+    # warnings are SST-VAL528, SST-RND010 for the minimal agent's empty tool list, and
+    # SST-RND013 for the generic tool's resources; the plugin has a consumer, the operator profile.
     assert envelope["summary"] == {
         "error": 0,
-        "warning": 1,
+        "warning": 3,
         "info": 5,
         "promoted": 0,
         "suppressed_cascade": 0,

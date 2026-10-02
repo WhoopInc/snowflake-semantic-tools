@@ -8,7 +8,8 @@ from pathlib import Path
 import pytest
 
 from snowflake_semantic_tools.adapters.dbt.manifest import SUPPORTED_SCHEMA
-from snowflake_semantic_tools.adapters.yaml.documents import discover_yaml, load_documents
+from snowflake_semantic_tools.adapters.yaml.discover import discover_yaml
+from snowflake_semantic_tools.adapters.yaml.documents import load_documents
 from snowflake_semantic_tools.adapters.yaml.parse import parse_yaml_bytes
 from snowflake_semantic_tools.adapters.yaml.semantic.checks.authored_keys import (
     _authored_key_diagnostics,

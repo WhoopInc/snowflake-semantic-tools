@@ -10,7 +10,7 @@ import re
 from dataclasses import dataclass
 
 from snowflake_semantic_tools.app.compile import CompiledView, CompileResult
-from snowflake_semantic_tools.domain.diagnostics import D, DiagnosticBag, resolve_severities
+from snowflake_semantic_tools.domain.diagnostics import D, DiagnosticBag, apply_baseline, resolve_severities
 from snowflake_semantic_tools.domain.model.identifier import Identifier, QualifiedName, SchemaScope
 from snowflake_semantic_tools.domain.model.lifecycle import RenderedArtifact
 from snowflake_semantic_tools.domain.model.semantic_view import SemanticView
@@ -63,6 +63,7 @@ class ValidateArtifacts:
         *,
         strict: bool,
         connected: bool,
+        baseline: tuple[str, ...] = (),
     ) -> ValidationResult:
         """Validate a compile result, asking Snowflake to compile each semantic view's SQL when connected.
 
@@ -75,10 +76,12 @@ class ValidateArtifacts:
         Args:
             strict: Promote every warning, the compile's included, to an error.
             connected: Run the Snowflake checks; False skips them even with a port.
+            baseline: The project's baseline entries, applied before strict mode.
 
         Diagnostics:
             SST-VAL020: the Snowflake checks were skipped: disabled, or no port was given.
             SST-VAL418: Snowflake would not compile an expression or a verified query.
+            SST-INT009: a baseline entry matched more than one diagnostic.
         """
         diagnostics = compiled.diagnostics
         if not connected:
@@ -137,7 +140,7 @@ class ValidateArtifacts:
                                 )
                             )
                 diagnostics = DiagnosticBag((*diagnostics, *connected_diagnostics))
-        resolved, promoted = resolve_severities(diagnostics, strict=strict)
+        resolved, promoted = resolve_severities(apply_baseline(diagnostics, baseline), strict=strict)
         return ValidationResult(compiled.rendered, resolved, promoted)
 
 

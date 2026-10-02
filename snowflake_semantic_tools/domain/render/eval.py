@@ -1,11 +1,19 @@
-"""Pure, deterministic renderers for Cortex Agent evaluation artifacts."""
+"""Pure, deterministic renderers for Cortex Agent evaluation artifacts.
+
+An eval's cases are its dataset's questions, and a case's expectations are the keys of its
+ground truth. The renderer expresses `EXPECTATION_KINDS`; any other key passes through as row
+metadata, except one in Snowflake's `ground_truth_` vocabulary, which is an expectation the
+renderer cannot express (`eval_render_checks`).
+"""
 
 from __future__ import annotations
 
 import json
+import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 
+from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic
 from snowflake_semantic_tools.domain.model.eval import (
     CustomEvalMetric,
     EvalConfig,
@@ -13,9 +21,46 @@ from snowflake_semantic_tools.domain.model.eval import (
     EvalGroundTruth,
     EvalScoreRanges,
     EvalSystemMetric,
+    ResolvedEval,
 )
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
 from snowflake_semantic_tools.domain.sql import Sql, join, literal, qname, sql
+
+# The ground-truth expectations the renderer writes into a dataset row.
+EXPECTATION_KINDS = frozenset({"ground_truth_invocations", "ground_truth_output", "required_filters"})
+_EXPECTATION_PREFIX = "ground_truth_"
+# An expected tool input that is a query, which a judge can only compare as text.
+_SQL_TEXT = re.compile(r"\s*(SELECT|WITH)\b", re.IGNORECASE)
+
+
+def eval_render_checks(resolved: ResolvedEval) -> tuple[Diagnostic, ...]:
+    """Report each case the renderer cannot express, or expresses as a brittle text match.
+
+    Cases are reported in question order, with their index in the dataset.
+
+    Diagnostics:
+        SST-RND021: the dataset has no questions.
+        SST-RND020: a question's ground truth names a `ground_truth_` expectation outside
+            `EXPECTATION_KINDS`.
+        SST-RND022: a question expects a tool input that is SQL text.
+    """
+    if not resolved.dataset.questions:
+        return (D("SST-RND021", subject=resolved.key, artifact=resolved.name),)
+    found: list[Diagnostic] = []
+    for index, question in enumerate(resolved.dataset.questions):
+        truth = question.ground_truth
+        if truth is None:
+            continue
+        found.extend(
+            D("SST-RND020", subject=resolved.key, origin=truth.origin, artifact=resolved.name, found=key)
+            for key in truth.extra
+            if key.startswith(_EXPECTATION_PREFIX) and key not in EXPECTATION_KINDS
+        )
+        if any(_SQL_TEXT.match(item.tool_input or "") for item in truth.invocations or ()):
+            found.append(
+                D("SST-RND022", subject=resolved.key, origin=truth.origin, artifact=resolved.name, index=index)
+            )
+    return tuple(found)
 
 
 @dataclass(frozen=True, slots=True)

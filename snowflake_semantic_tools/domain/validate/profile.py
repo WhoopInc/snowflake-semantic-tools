@@ -12,7 +12,7 @@ import re
 from collections.abc import Callable, Container, Iterable, Mapping
 from dataclasses import dataclass
 
-from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, DiagnosticBag, Severity
+from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, DiagnosticBag
 from snowflake_semantic_tools.domain.model.artifact_key import artifact_key
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
 from snowflake_semantic_tools.domain.model.profile.model import (
@@ -95,7 +95,7 @@ def validate_profile_catalog(
         configs={config.name: config for config in catalog.mcp_configs},
         shared_skills=frozenset(shared.skills if shared is not None else ()),
         shared_commands=frozenset(shared.commands if shared is not None else ()),
-        broken=frozenset(item.subject for item in catalog.diagnostics if item.severity is Severity.ERROR),
+        broken=frozenset(item.subject for item in catalog.diagnostics if item.blocks),
     )
     diagnostics: list[Diagnostic] = [*catalog.diagnostics, *_shared_rules(shared, known)]
     for profile in catalog.profiles:

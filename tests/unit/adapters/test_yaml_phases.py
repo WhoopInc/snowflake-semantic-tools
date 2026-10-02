@@ -6,7 +6,8 @@ from pathlib import Path
 
 import pytest
 
-from snowflake_semantic_tools.adapters.yaml.documents import ParsedYaml, discover_yaml, load_documents
+from snowflake_semantic_tools.adapters.yaml.discover import discover_yaml
+from snowflake_semantic_tools.adapters.yaml.documents import ParsedYaml, load_documents
 from snowflake_semantic_tools.adapters.yaml.parse import parse_yaml_bytes
 
 
