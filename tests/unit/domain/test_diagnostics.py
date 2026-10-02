@@ -100,7 +100,7 @@ def test_static_eval_diagnostics_are_registered_with_catalog_severities() -> Non
 
 
 def test_missing_template_context_becomes_an_internal_diagnostic() -> None:
-    diagnostic = D("SST-PRT007", found="v13")
+    diagnostic = D("SST-DBT017", found="v13")
     assert diagnostic.code == "SST-INT901"
     assert "expected" in diagnostic.message
 
@@ -145,8 +145,10 @@ def test_diagnostic_identity_and_human_render_are_stable() -> None:
     line_only = D("SST-LOD003", file="empty.yml", origin=Origin("empty.yml", 2))
     assert render_diagnostic(file_only).startswith("empty.yml: warning")
     assert render_diagnostic(line_only).startswith("empty.yml:2: warning")
-    no_origin = D("SST-LOD003", file="empty.yml")
-    assert render_diagnostic(no_origin).startswith("warning[SST-LOD003]")
+    # A LOD code given no origin points at the file its context names.
+    assert render_diagnostic(D("SST-LOD003", file="empty.yml")).startswith("empty.yml: warning")
+    no_origin = D("SST-INT902", detail="x")
+    assert render_diagnostic(no_origin).startswith("error[SST-INT902]")
 
 
 def test_human_render_omits_help_when_registry_has_no_suggestion() -> None:
@@ -166,10 +168,10 @@ def test_registry_integrity_checks_invalid_codes_and_duplicates() -> None:
     from snowflake_semantic_tools.domain.diagnostics import ErrorSpec, RegistryIntegrityError, build_registry
 
     first = ErrorSpec("BAD-X001", Severity.ERROR, "x", "{value}", None, "X00", "x00", "https://x")
-    with pytest.raises(RegistryIntegrityError, match="invalid error code"):
+    with pytest.raises(RegistryIntegrityError, match="SST-REG012"):
         build_registry((first,))
     valid = ERROR_REGISTRY["SST-REF001"]
-    with pytest.raises(RegistryIntegrityError, match="duplicate error code"):
+    with pytest.raises(RegistryIntegrityError, match="SST-REG002"):
         build_registry((valid, valid))
 
 

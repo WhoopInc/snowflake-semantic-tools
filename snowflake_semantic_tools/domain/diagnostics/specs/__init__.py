@@ -14,9 +14,9 @@ for INT, so it does not shadow the builtin), except VAL, which is split by hundr
 - `val_eval`: 7xx, evals
 - `val_skill`: 8xx, skills, plugins, and profiles
 
-A new code goes in the module for its prefix, or its band for VAL. A module whose area
-has no code yet (`reg`, `dis`) exports an empty `SPECS`, so the next code has a home.
-The package `__init__` builds `ERROR_REGISTRY` from every module's `SPECS`.
+A new code goes in the module for its prefix, or its band for VAL. The package `__init__`
+builds `ERROR_REGISTRY` from every module's `SPECS`, through the checks in
+`diagnostics.integrity`.
 
 `SUBSYSTEMS` maps each prefix to its section title in the generated error reference, in
 section order. It is keyed by prefix, not by module, so which module holds a code never

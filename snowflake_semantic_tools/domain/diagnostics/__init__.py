@@ -1,17 +1,22 @@
 """Structured diagnostics shared by every compiler phase.
 
 A diagnostic is a registered code plus the context its message template formats. `core`
-holds the value types and `spec`; `specs` holds every code, one module per code area.
-This module builds `ERROR_REGISTRY` from those modules and re-exports the `core` names,
-so importers never reach into the submodules. `D`, `Diagnostic`, and `render_diagnostic`
-look `ERROR_REGISTRY` up as a global of this module on each call, so replacing it here
-changes what all three see.
+holds the value types and `spec`; `specs` holds every code, one module per code area;
+`integrity` the checks the registry is built through. This module builds `ERROR_REGISTRY`
+from those modules and re-exports the `core` names, so importers never reach into the
+submodules. `D`, `Diagnostic`, and `render_diagnostic` look `ERROR_REGISTRY` up as a global
+of this module on each call, so replacing it here changes what all three see.
+
+`audit` and `unstable_fingerprints` check the emission invariants over a finished run: every
+diagnostic came from `D`, carries the location it knows, has the severity the registry and
+`resolve_severities` give it, and names a cause that is present.
 """
 
 from __future__ import annotations
 
-from collections.abc import Mapping
-from dataclasses import dataclass, replace
+from collections import Counter
+from collections.abc import Iterable, Mapping
+from dataclasses import dataclass, field, replace
 from hashlib import sha256
 from types import MappingProxyType
 from typing import Any
@@ -24,6 +29,7 @@ from snowflake_semantic_tools.domain.diagnostics.core import (
     Severity,
     _placeholders,
 )
+from snowflake_semantic_tools.domain.diagnostics.integrity import check_error_specs
 from snowflake_semantic_tools.domain.diagnostics.specs import (
     apl,
     cfg,
@@ -59,12 +65,18 @@ __all__ = [
     "ERROR_REGISTRY",
     "ErrorSpec",
     "Origin",
+    "RULE_SETS",
     "RegistryIntegrityError",
     "Severity",
+    "audit",
     "build_registry",
     "render_diagnostic",
     "resolve_severities",
+    "unstable_fingerprints",
 ]
+
+# Areas whose diagnostics point into a project file whenever they name one (SST-INT005).
+_LOCATED_AREAS = frozenset({"LOD", "PRS", "REF", "VAL"})
 
 
 @dataclass(frozen=True, slots=True)
@@ -79,6 +91,8 @@ class Diagnostic:
         subject: The artifact key of the artifact or member concerned; None when there is none.
         related: Further locations involved, such as the repeats of a duplicate declaration.
         caused_by: The code of the diagnostic this one cascades from; None when it stands alone.
+        emitted: True when `D` built it, which `dataclasses.replace` keeps; `audit` reports one
+            constructed any other way (SST-INT004). Not part of equality.
     """
 
     code: str
@@ -88,6 +102,23 @@ class Diagnostic:
     subject: str | None = None
     related: tuple[Origin, ...] = ()
     caused_by: str | None = None
+    emitted: bool = field(default=False, repr=False, compare=False)
+
+    @property
+    def blocks(self) -> bool:
+        """Report whether the diagnostic, at its resolved severity, blocks the command."""
+        return self.severity is Severity.ERROR
+
+    @property
+    def cascaded(self) -> bool:
+        """Report whether the diagnostic was downgraded to INFO as a consequence of another."""
+        return self.caused_by is not None and self.severity is Severity.INFO
+
+    @property
+    def promoted_from(self) -> Severity | None:
+        """Return the registered severity when the resolved one differs from it; None otherwise."""
+        registered = ERROR_REGISTRY[self.code].severity
+        return registered if self.severity is not registered else None
 
     @property
     def message(self) -> str:
@@ -130,22 +161,35 @@ class DiagnosticBag(tuple[Diagnostic, ...]):
         """Report whether any diagnostic is an error."""
         return self.count(Severity.ERROR) > 0
 
+    def blocking_subjects(self) -> frozenset[str]:
+        """Return the subjects that some blocking diagnostic names."""
+        return frozenset(item.subject for item in self if item.blocks and item.subject is not None)
+
 
 def build_registry(specs: tuple[ErrorSpec, ...]) -> Mapping[str, ErrorSpec]:
-    """Index specs by code into a read-only registry, refusing duplicate and malformed codes.
+    """Index specs by code into a read-only registry, refusing one that contradicts itself.
 
     Raises:
-        RegistryIntegrityError: A code repeats, or is not ``SST-`` followed by its subsystem.
+        RegistryIntegrityError: Any of the faults `integrity.check_error_specs` names.
     """
-    registry: dict[str, ErrorSpec] = {}
-    for spec in specs:
-        if spec.code in registry:
-            raise RegistryIntegrityError(f"duplicate error code {spec.code}")
-        if not spec.code.startswith("SST-") or spec.code.split("-")[1][:3] != spec.subsystem:
-            raise RegistryIntegrityError(f"invalid error code {spec.code}")
-        registry[spec.code] = spec
-    return MappingProxyType(registry)
+    return check_error_specs(specs)
 
+
+# The validation rule sets an artifact or member type's `validation_rules` names, each the VAL
+# band whose codes check that kind of artifact or member (SST-REG006).
+RULE_SETS: Mapping[str, tuple[ErrorSpec, ...]] = MappingProxyType(
+    {
+        "shared": val_shared.SPECS,
+        "metric": val_metric.SPECS,
+        "relationship": val_relationship.SPECS,
+        "semantic_view": val_semantic_view.SPECS,
+        "filter": val_filter.SPECS,
+        "agent": val_agent.SPECS,
+        "tool": val_tool.SPECS,
+        "eval": val_eval.SPECS,
+        "skill": val_skill.SPECS,
+    }
+)
 
 # Iteration order is not a contract: the error reference sorts the codes of each section.
 ERROR_REGISTRY = build_registry(
@@ -180,6 +224,7 @@ ERROR_REGISTRY = build_registry(
 
 def D(
     code: str,
+    /,
     *,
     origin: Origin | None = None,
     subject: str | None = None,
@@ -187,13 +232,20 @@ def D(
     caused_by: str | None = None,
     **context: Any,
 ) -> Diagnostic:
-    """Construct one diagnostic from a registered code and template context."""
+    """Construct one diagnostic from a registered code and template context.
+
+    `code` is positional, so a template may name a `{code}` placeholder of its own.
+    A LOD, PRS, REF or VAL code given no `origin` points at the `file`, `line` and `col` its
+    context names, so a location the raise site knows is never dropped.
+    """
     spec = ERROR_REGISTRY.get(code)
     if spec is None:
         return D("SST-INT900", value=code)
     missing = sorted(_placeholders(spec.template) - set(context))
     if missing:
         return D("SST-INT901", value=code, placeholder=", ".join(missing))
+    if origin is None and spec.subsystem in _LOCATED_AREAS:
+        origin = _context_origin(context)
     return Diagnostic(
         code=code,
         severity=spec.severity,
@@ -202,7 +254,20 @@ def D(
         subject=subject,
         related=related,
         caused_by=caused_by,
+        emitted=True,
     )
+
+
+def _context_origin(context: Mapping[str, Any]) -> Origin | None:
+    file = context.get("file")
+    if not isinstance(file, str) or not file:
+        return None
+    line = _position(context.get("line"))
+    return Origin(file, line, _position(context.get("col")) if line is not None else None)
+
+
+def _position(value: object) -> int | None:
+    return value if isinstance(value, int) and not isinstance(value, bool) else None
 
 
 def resolve_severities(diagnostics: DiagnosticBag, *, strict: bool) -> tuple[DiagnosticBag, int]:
@@ -217,6 +282,60 @@ def resolve_severities(diagnostics: DiagnosticBag, *, strict: bool) -> tuple[Dia
         before.severity is Severity.WARNING and after.severity is Severity.ERROR
         for before, after in zip(diagnostics, promoted, strict=True)
     )
+
+
+def audit(diagnostics: DiagnosticBag) -> DiagnosticBag:
+    """Return `diagnostics` followed by one internal error per emission invariant they break.
+
+    Each diagnostic is checked in order; then the run's cause chains, once.
+
+    Diagnostics:
+        SST-INT004: a diagnostic was not built by `D`.
+        SST-INT005: a LOD, PRS, REF or VAL diagnostic names a file in its context and has no origin.
+        SST-INT007: a severity differs from the registered one other than by strict promotion
+            of a warning or a cascade downgrade to INFO.
+        SST-INT008: the first diagnostic whose `caused_by` names no code in the run.
+    """
+    found: list[Diagnostic] = []
+    for item in diagnostics:
+        spec = ERROR_REGISTRY[item.code]
+        if not item.emitted:
+            found.append(D("SST-INT004", value=item.code, subject=item.subject))
+        if item.origin is None and spec.subsystem in _LOCATED_AREAS and isinstance(item.context.get("file"), str):
+            found.append(D("SST-INT005", value=item.code, subject=item.subject))
+        if not _legal_severity(item, spec.severity):
+            found.append(D("SST-INT007", value=item.code, subject=item.subject))
+    present = {item.code for item in diagnostics}
+    dangling = next(
+        (item for item in diagnostics if item.caused_by is not None and item.caused_by not in present), None
+    )
+    if dangling is not None:
+        found.append(D("SST-INT008", value=dangling.code, origin=dangling.origin, subject=dangling.subject))
+    return DiagnosticBag((*diagnostics, *found)) if found else diagnostics
+
+
+def _legal_severity(item: Diagnostic, registered: Severity) -> bool:
+    """Report whether a resolved severity is one `resolve_severities` or a cascade could give."""
+    if item.severity is registered:
+        return True
+    if registered is Severity.WARNING and item.severity is Severity.ERROR:
+        return True
+    return item.cascaded
+
+
+def unstable_fingerprints(first: Iterable[Diagnostic], second: Iterable[Diagnostic]) -> DiagnosticBag:
+    """Return one SST-INT006 per code whose fingerprints differ between two identical runs.
+
+    The runs are compared as multisets of fingerprints per code, so order does not matter, and
+    codes are reported in sorted order.
+    """
+    before: dict[str, Counter[str]] = {}
+    after: dict[str, Counter[str]] = {}
+    for prints, items in ((before, first), (after, second)):
+        for item in items:
+            prints.setdefault(item.code, Counter())[item.fingerprint] += 1
+    changed = sorted(code for code in set(before) | set(after) if before.get(code) != after.get(code))
+    return DiagnosticBag(D("SST-INT006", value=code) for code in changed)
 
 
 def render_diagnostic(diagnostic: Diagnostic) -> str:

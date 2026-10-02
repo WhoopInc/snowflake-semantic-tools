@@ -25,6 +25,7 @@ from snowflake_semantic_tools.app.compile.base import (
     CompiledArtifact,
     CompileResult,
     StandaloneArtifact,
+    compile_checked,
     compile_each,
     has_error,
 )
@@ -34,7 +35,7 @@ from snowflake_semantic_tools.domain.model.identifier import Identifier, Qualifi
 from snowflake_semantic_tools.domain.model.lifecycle import OwnershipMarker, ProbeKind, RenderedArtifact, SmokeProbe
 from snowflake_semantic_tools.domain.model.semantic_view import SemanticView
 from snowflake_semantic_tools.domain.ports.semantic_view_source import SemanticViewSource
-from snowflake_semantic_tools.domain.render.semantic_view import render
+from snowflake_semantic_tools.domain.render.semantic_view import render, render_checked
 from snowflake_semantic_tools.domain.sql import AuthoredExpression, Sql, ident, join, qname, query_text, sql
 from snowflake_semantic_tools.domain.validate.targets import shared_targets
 
@@ -47,6 +48,7 @@ __all__ = [
     "CompileResult",
     "CompileSemanticViews",
     "StandaloneArtifact",
+    "compile_checked",
     "compile_each",
     "has_error",
 ]
@@ -314,13 +316,14 @@ class CompileSemanticViews:
         """Compile without turning one rendering invariant into process failure.
 
         Every view renders, in FQN order, whatever the source reported about it; only
-        TypeError and ValueError are caught.
+        TypeError and ValueError are caught. A view the render phase refuses is left out.
 
         Diagnostics:
+            SST-RND001, SST-RND002, SST-RND003, SST-RND900: as `render_checked` reports them.
             SST-INT902: rendering a view raised TypeError or ValueError.
         """
         project = self._source.load_project()
-        return compile_each(
+        return compile_checked(
             sorted(project.views, key=lambda view: view.fqn),
             key=lambda view: artifact_key("semantic_view", view.fqn),
             render=_compiled_view,
@@ -330,5 +333,6 @@ class CompileSemanticViews:
         )
 
 
-def _compiled_view(view: SemanticView) -> CompiledView:
-    return CompiledView(view=view, ddl=render(view))
+def _compiled_view(view: SemanticView) -> tuple[CompiledView | None, tuple[Diagnostic, ...]]:
+    ddl, found = render_checked(view)
+    return (CompiledView(view=view, ddl=ddl) if ddl is not None else None), found

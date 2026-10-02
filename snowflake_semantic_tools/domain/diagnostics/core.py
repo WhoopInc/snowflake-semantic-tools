@@ -7,9 +7,11 @@ package `__init__`, which builds the registry from them, is still being imported
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from enum import IntEnum
 from string import Formatter
+from types import MappingProxyType
 
 
 class Severity(IntEnum):
@@ -52,6 +54,10 @@ class ErrorSpec:
         subsystem: The three letters after ``SST-``, which place the code in the error reference.
         phase: The subsystem in lowercase, reported as each diagnostic's phase.
         demotable: False for an error that no setting may downgrade ("always an error").
+        internal_detail: Whether its diagnostics carry raw text from SST or Snowflake beyond the
+            template; only INT and SNO codes may.
+        deprecated_in: The release that deprecated the code; None while it is current.
+        superseded_by: The code that replaces a deprecated one; required with `deprecated_in`.
     """
 
     code: str
@@ -63,13 +69,32 @@ class ErrorSpec:
     phase: str
     help_url: str
     demotable: bool = True
+    internal_detail: bool = False
+    deprecated_in: str | None = None
+    superseded_by: str | None = None
+
+    @property
+    def always_error(self) -> bool:
+        """Report whether the code is an error that no setting may downgrade."""
+        return self.severity is Severity.ERROR and not self.demotable
 
 
 class RegistryIntegrityError(RuntimeError):
     """A registry SST is built from is itself invalid: the diagnostic codes, or the artifact types.
 
     Raised while the package is imported or a registry is built, never for a user's project.
+    There is no diagnostic channel yet when it is raised, so it carries its REG code and the
+    code's formatted message itself; `str()` is ``<code>: <message>``.
+
+    Attributes:
+        code: The SST-REG code naming what is wrong.
+        context: The values the code's message template was formatted with, read-only.
     """
+
+    def __init__(self, code: str, message: str, context: Mapping[str, object]) -> None:
+        super().__init__(f"{code}: {message}")
+        self.code = code
+        self.context: Mapping[str, object] = MappingProxyType(dict(context))
 
 
 # Every code has a heading in the generated error reference (`sst docs`); the
@@ -85,11 +110,15 @@ def spec(
     suggestion: str | None,
     *,
     demotable: bool = True,
+    internal_detail: bool = False,
+    deprecated_in: str | None = None,
+    superseded_by: str | None = None,
 ) -> ErrorSpec:
     """Build the registry entry for one code, deriving its subsystem, phase, and help URL.
 
     Args:
         demotable: False for an error that no setting may downgrade.
+        internal_detail, deprecated_in, superseded_by: As `ErrorSpec` documents them.
     """
     return ErrorSpec(
         code=code,
@@ -101,6 +130,9 @@ def spec(
         phase=code.split("-")[1][:3].casefold(),
         help_url=f"{ERROR_REFERENCE_URL}#{code.casefold()}",
         demotable=demotable,
+        internal_detail=internal_detail,
+        deprecated_in=deprecated_in,
+        superseded_by=superseded_by,
     )
 
 

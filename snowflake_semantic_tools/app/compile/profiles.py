@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from hashlib import sha256
 
 from snowflake_semantic_tools.app.compile.base import CompileResult, StandaloneArtifact
-from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, DiagnosticBag, Severity
+from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, DiagnosticBag
 from snowflake_semantic_tools.domain.model.artifact_key import artifact_key
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
 from snowflake_semantic_tools.domain.model.lifecycle import (
@@ -143,7 +143,7 @@ class CompileProfiles:
             # SST-VAL836 it is a blocking decision over what compile found, so it stays in `app`.
             diagnostics.extend(self._blocking_inputs(profile, blocked_plugins))
             subjects = _blocking_subjects(profile, self._shared_commands())
-            if any(item.severity is Severity.ERROR and item.subject in subjects for item in diagnostics):
+            if any(item.blocks and item.subject in subjects for item in diagnostics):
                 continue
             compiled.append(self._compile(profile, skills, plugins, channel))
         return CompileResult(tuple(compiled), DiagnosticBag(diagnostics))

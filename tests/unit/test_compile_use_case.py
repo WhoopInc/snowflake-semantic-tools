@@ -117,7 +117,7 @@ def test_compile_result_keeps_healthy_views_when_project_has_errors() -> None:
 
 def test_compile_result_turns_render_invariant_into_diagnostic(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
-        "snowflake_semantic_tools.app.compile.render", lambda value: (_ for _ in ()).throw(ValueError("bad"))
+        "snowflake_semantic_tools.app.compile.render_checked", lambda value: (_ for _ in ()).throw(ValueError("bad"))
     )
     result = CompileSemanticViews(InMemorySource(view("BROKEN"))).run_result()
     assert result.compiled == ()

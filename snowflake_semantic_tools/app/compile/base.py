@@ -13,7 +13,8 @@ from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from typing import Protocol, TypeVar
 
-from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, DiagnosticBag, Origin, Severity
+from snowflake_semantic_tools.app.purity import ImpureCall, pure_phase
+from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, DiagnosticBag, Origin
 from snowflake_semantic_tools.domain.model.lifecycle import RenderedArtifact
 
 # What rendering an input that validated may still raise; anything else escapes.
@@ -188,7 +189,7 @@ Compiled = TypeVar("Compiled", bound=CompiledArtifact)
 
 def has_error(subject: str, diagnostics: Iterable[Diagnostic]) -> bool:
     """Return whether an error-severity diagnostic names `subject`."""
-    return any(item.severity is Severity.ERROR and item.subject == subject for item in diagnostics)
+    return any(item.blocks and item.subject == subject for item in diagnostics)
 
 
 def compile_each(
@@ -203,10 +204,33 @@ def compile_each(
 ) -> CompileResult:
     """Render each member in order, reporting an unexpected rendering failure as SST-INT902.
 
+    `compile_checked` with a renderer that reports nothing of its own; see it for `skip`,
+    `origin`, `errors`, and what is returned.
+    """
+
+    def checked(member: Member) -> tuple[Compiled | None, tuple[Diagnostic, ...]]:
+        return render(member), ()
+
+    return compile_checked(members, key, checked, diagnostics, skip=skip, origin=origin, errors=errors)
+
+
+def compile_checked(
+    members: Iterable[Member],
+    key: Callable[[Member], str],
+    render: Callable[[Member], tuple[Compiled | None, tuple[Diagnostic, ...]]],
+    diagnostics: DiagnosticBag,
+    *,
+    skip: Callable[[str, DiagnosticBag], bool] | None = has_error,
+    origin: Callable[[Member], Origin | None] | None = None,
+    errors: tuple[type[Exception], ...] = RENDER_ERRORS,
+) -> CompileResult:
+    """Render each member in order as a pure phase, with what its renderer reports about it.
+
     `skip` sees each member's key with the diagnostics so far; a member it accepts is not
     rendered. The default skips a member an error already names, which includes an
     SST-INT902 reported for an earlier member with the same key. `skip=None` renders every
-    member. Only `errors` are caught; any other exception escapes.
+    member. `render` returns the compiled member, or None when it refuses one, with its own
+    diagnostics. Only `errors` and `ImpureCall` are caught; any other exception escapes.
 
     Args:
         key: The member's artifact key: what `skip` checks and what SST-INT902 names.
@@ -215,24 +239,29 @@ def compile_each(
         origin: Where SST-INT902 points for a member; None points nowhere.
 
     Returns:
-        The rendered members in member order, with `diagnostics` followed by one SST-INT902
-        per failure, in member order. `diagnostics` itself is returned when nothing fails.
+        The rendered members in member order, with `diagnostics` followed by each member's
+        own and then any internal error, in member order. `diagnostics` itself is returned
+        when nothing is reported.
 
     Diagnostics:
         SST-INT902: rendering a member raised one of `errors`, although it validated.
+        SST-INT002: rendering a member reached a file, a socket, or a process.
     """
     compiled: list[Compiled] = []
     for member in members:
-        if skip is not None and skip(key(member), diagnostics):
+        member_key = key(member)
+        if skip is not None and skip(member_key, diagnostics):
             continue
         try:
-            compiled.append(render(member))
+            with pure_phase(f"rendering {member_key}"):
+                value, found = render(member)
+        except ImpureCall as exc:
+            value, found = None, (D("SST-INT002", subject=member_key, value=exc.phase),)
         except errors as exc:
-            failure = D(
-                "SST-INT902",
-                subject=key(member),
-                detail=str(exc),
-                origin=origin(member) if origin is not None else None,
-            )
-            diagnostics = DiagnosticBag((*diagnostics, failure))
+            where = origin(member) if origin is not None else None
+            value, found = None, (D("SST-INT902", subject=member_key, detail=str(exc), origin=where),)
+        if value is not None:
+            compiled.append(value)
+        if found:
+            diagnostics = DiagnosticBag((*diagnostics, *found))
     return CompileResult(tuple(compiled), diagnostics)

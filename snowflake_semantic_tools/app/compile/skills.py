@@ -13,7 +13,7 @@ from hashlib import sha256
 
 from snowflake_semantic_tools.app.compile.agents import ExtensionPin
 from snowflake_semantic_tools.app.compile.base import CompileResult, StandaloneArtifact, has_error
-from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, DiagnosticBag, Origin, Severity
+from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, DiagnosticBag, Origin
 from snowflake_semantic_tools.domain.model.artifact_key import artifact_key, split_artifact_key
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
 from snowflake_semantic_tools.domain.model.lifecycle import (
@@ -256,7 +256,7 @@ def unpublished_reasons(catalog: SkillCatalog, skills: CompileResult, channel_pr
         or plugin that compiled has no entry.
     """
     compiled = {item.artifact_key for item in skills.compiled}
-    failed = {item.subject for item in skills.diagnostics if item.severity is Severity.ERROR}
+    failed = {item.subject for item in skills.diagnostics if item.blocks}
     return {
         key: "it has errors" if key in failed else channel_problem or "the catalog channel cannot publish it"
         for key in (*(item.key for item in catalog.skills), *(item.key for item in catalog.plugins))

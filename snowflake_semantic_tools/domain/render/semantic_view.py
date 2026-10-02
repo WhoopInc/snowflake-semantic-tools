@@ -28,11 +28,21 @@ author wrote and the golden preserves it. Every other member list renders SORTED
 by its qualified name. The difference is not an inconsistency: table order is
 authored information, member order is not, and sorting members is what keeps a
 re-render byte-identical when an unrelated column is added.
+
+TOTALITY. `MEMBER_INDEX` reads each member type `semantic_view` declares off the model, and
+`render_checked` refuses a render whose member count differs from the index's; importing this
+module refuses an index that does not cover exactly the declared member types.
 """
 
 from __future__ import annotations
 
+from collections.abc import Callable, Mapping
+from types import MappingProxyType
+
+from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic
+from snowflake_semantic_tools.domain.model.artifact_key import artifact_key
 from snowflake_semantic_tools.domain.model.identifier import Identifier, QualifiedName
+from snowflake_semantic_tools.domain.model.registry import ARTIFACT_REGISTRY, check_member_index
 from snowflake_semantic_tools.domain.model.semantic_view import (
     Column,
     ColumnKind,
@@ -45,6 +55,7 @@ from snowflake_semantic_tools.domain.model.semantic_view import (
     VerifiedQuery,
     Window,
 )
+from snowflake_semantic_tools.domain.render.invariants import STATEMENT_SIZE_GUESS, statement_size, unquotable
 from snowflake_semantic_tools.domain.sql import (
     Sql,
     boolean,
@@ -56,6 +67,20 @@ from snowflake_semantic_tools.domain.sql import (
     qname,
     sql,
 )
+
+# Each member type `semantic_view` declares, and the model's members of that type.
+MEMBER_INDEX: Mapping[str, Callable[[SemanticView], tuple[object, ...]]] = MappingProxyType(
+    {
+        "relationship": lambda view: view.relationships,
+        "fact": lambda view: view.facts,
+        "dimension": lambda view: tuple(item for item in view.dimensions if item.kind is not ColumnKind.FILTER),
+        "metric": lambda view: view.metrics,
+        "filter": lambda view: tuple(item for item in view.dimensions if item.kind is ColumnKind.FILTER),
+        "verified_query": lambda view: view.verified_queries,
+        "custom_instruction": lambda view: view.custom_instruction_names,
+    }
+)
+check_member_index(MEMBER_INDEX, ARTIFACT_REGISTRY)
 
 
 def _name(text: str) -> Sql:
@@ -295,6 +320,67 @@ def render(view: SemanticView) -> Sql:
         ValueError: the view's or a table's name is not a three-part name, or a member name is
             not an identifier.
     """
+    return _render_counted(view)[0]
+
+
+def render_checked(view: SemanticView) -> tuple[Sql | None, tuple[Diagnostic, ...]]:
+    """Render `view` when the dialect can express it, with what the render phase found.
+
+    The view is checked before it renders and its DDL after; the DDL is None when an error
+    was found, and the view must not be published.
+
+    Raises:
+        ValueError: as `render` does, for a name the checks before rendering let through.
+
+    Diagnostics:
+        SST-RND001: the view has no tables.
+        SST-RND002: a name holds a character no quoting can carry.
+        SST-RND900: the DDL renders a different number of members than `MEMBER_INDEX` reads.
+        SST-RND003: the DDL is larger than `STATEMENT_SIZE_GUESS`.
+    """
+    subject = artifact_key("semantic_view", view.fqn)
+    problems = [*_dialect_gaps(view, subject), *_unquotable_names(view, subject)]
+    if problems:
+        return None, tuple(problems)
+    ddl, rendered = _render_counted(view)
+    expected = sum(len(members(view)) for members in MEMBER_INDEX.values())
+    if rendered != expected:
+        return None, (D("SST-RND900", subject=subject, artifact=view.fqn, found=rendered, expected=expected),)
+    size = statement_size(ddl.text)
+    if size > STATEMENT_SIZE_GUESS:
+        return ddl, (D("SST-RND003", subject=subject, artifact=view.fqn, size=size, expected=STATEMENT_SIZE_GUESS),)
+    return ddl, ()
+
+
+def _dialect_gaps(view: SemanticView, subject: str) -> list[Diagnostic]:
+    """The fields `CREATE SEMANTIC VIEW` requires that the view leaves empty: only `TABLES`.
+
+    A view with neither a dimension nor a metric is SST-VAL301's to report, so it renders.
+    """
+    if view.tables:
+        return []
+    return [D("SST-RND001", subject=subject, artifact=view.fqn, value="semantic view", field="tables")]
+
+
+def _unquotable_names(view: SemanticView, subject: str) -> list[Diagnostic]:
+    """One SST-RND002 per name in the view no quoting can carry, in clause order."""
+    names = [
+        view.fqn,
+        *(name for table in view.tables for name in (table.logical_name, table.fqn)),
+        *(item.name for item in view.relationships),
+        *(item.qualified_name for item in view.columns),
+        *(item.qualified_name for item in view.metrics),
+        *(item.name for item in view.verified_queries),
+    ]
+    return [
+        D("SST-RND002", subject=subject, artifact=view.fqn, name=name.encode("unicode_escape").decode("ascii"))
+        for name in dict.fromkeys(names)
+        if unquotable(name)
+    ]
+
+
+def _render_counted(view: SemanticView) -> tuple[Sql, int]:
+    """Render the statement, and count the members its clauses hold."""
     head = [sql("CREATE")]
     if view.or_replace:
         head.append(sql(" OR REPLACE"))
@@ -303,16 +389,28 @@ def render(view: SemanticView) -> Sql:
         head.append(sql(" IF NOT EXISTS"))
 
     lines: list[Sql] = [sql("{head} {fqn}", head=join("", head), fqn=qname(QualifiedName.parse(view.fqn)))]
-
+    relationships = [render_relationship(r) for r in sorted(view.relationships, key=lambda r: r.name)]
+    facts = [render_column(c) for c in _sorted_columns(view.facts)]
+    dimensions = [render_column(c) for c in _sorted_columns(view.dimensions)]
+    metrics = [render_metric(m) for m in _sorted_metrics(view.metrics)]
+    queries = [render_verified_query(q) for q in view.verified_queries]
     lines += _block(sql("TABLES"), [render_table(t) for t in view.tables])
-    lines += _block(
-        sql("RELATIONSHIPS"), [render_relationship(r) for r in sorted(view.relationships, key=lambda r: r.name)]
-    )
+    lines += _block(sql("RELATIONSHIPS"), relationships)
     lines += _block(sql("VARIABLES"), [render_variable(v) for v in view.variables])
-    lines += _block(sql("FACTS"), [render_column(c) for c in _sorted_columns(view.facts)])
-    lines += _block(sql("DIMENSIONS"), [render_column(c) for c in _sorted_columns(view.dimensions)])
-    lines += _block(sql("METRICS"), [render_metric(m) for m in _sorted_metrics(view.metrics)])
+    lines += _block(sql("FACTS"), facts)
+    lines += _block(sql("DIMENSIONS"), dimensions)
+    lines += _block(sql("METRICS"), metrics)
+    lines += _trailing_clauses(view, queries)
+    # The loader composes custom instructions into the AI_* text before the view exists, so
+    # each one the model carries is in the text that renders.
+    instructions = len(view.custom_instruction_names)
+    members = len(relationships) + len(facts) + len(dimensions) + len(metrics) + len(queries) + instructions
+    return join("\n", lines), members
 
+
+def _trailing_clauses(view: SemanticView, queries: list[Sql]) -> list[Sql]:
+    """The clauses after `METRICS`, in grammar order, ending with `COPY GRANTS`."""
+    lines: list[Sql] = []
     comment = view.comment
     if view.ownership_marker:
         comment = f"{comment.rstrip()} {view.ownership_marker}" if comment else view.ownership_marker
@@ -323,9 +421,9 @@ def render(view: SemanticView) -> Sql:
     if view.ai_question_categorization:
         lines.append(sql("  AI_QUESTION_CATEGORIZATION {text}", text=literal(view.ai_question_categorization)))
 
-    if view.verified_queries:
+    if queries:
         lines.append(sql("  AI_VERIFIED_QUERIES ("))
-        lines.append(join(",\n", (render_verified_query(q) for q in view.verified_queries)))
+        lines.append(join(",\n", queries))
         lines.append(sql("  )"))
 
     if view.max_staleness:
@@ -342,8 +440,7 @@ def render(view: SemanticView) -> Sql:
         lines.append(sql("  )"))
 
     lines.append(sql("  COPY GRANTS"))
-
-    return join("\n", lines)
+    return lines
 
 
 def _sorted_columns(columns: tuple[Column, ...]) -> list[Column]:
