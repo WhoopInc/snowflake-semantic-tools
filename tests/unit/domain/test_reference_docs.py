@@ -78,7 +78,6 @@ RETIRED = (
     "SST-MEM008",
     "SST-MEM011",
     "SST-MEM103",
-    "SST-PLN900",
     "SST-PRS028",
     "SST-PRS117",
     "SST-PRS121",

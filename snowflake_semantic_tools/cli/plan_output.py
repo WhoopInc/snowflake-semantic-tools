@@ -2,7 +2,7 @@
 
 `change_json` and `outcome_json` are what `--output json` lists for each change and each
 outcome; `print_plan` and `print_eval_results` are the human reports; `write_plan_sql`
-writes what each create or update would execute.
+writes what each create or update would execute; `plan_exit_code` is how a plan exits.
 """
 
 from __future__ import annotations
@@ -14,9 +14,27 @@ from typing import cast
 import click
 
 from snowflake_semantic_tools.app.evals.run import EvalSuiteResult, eval_suite_json
+from snowflake_semantic_tools.app.plan import PlanReady
+from snowflake_semantic_tools.cli.exit_codes import CHANGES, ERROR, OK
 from snowflake_semantic_tools.cli.wiring.project import target_dir
+from snowflake_semantic_tools.domain.diagnostics import DiagnosticBag
 from snowflake_semantic_tools.domain.model.artifact_key import split_artifact_key
 from snowflake_semantic_tools.domain.model.lifecycle import Action, ApplyOutcome, Change, ChangeSet
+
+
+def plan_exit_code(ready: PlanReady, shown: DiagnosticBag, *, detailed: bool) -> int:
+    """Return how a plan exits: 1 on an error or blocked change, 2 when applying changes Snowflake, else 0.
+
+    Applying changes Snowflake when the plan writes, and when it only reports prunes that
+    state has not yet recorded under this manifest: apply re-stamps state for them, so the
+    plan is not in sync until it runs. Without `detailed`, pending changes exit 0.
+    """
+    changeset = ready.changeset
+    if changeset.blocked or shown.has_errors:
+        return ERROR
+    if changeset.writes or ready.restamps_state:
+        return CHANGES if detailed else OK
+    return OK
 
 
 def change_json(change: Change) -> dict[str, object]:

@@ -122,10 +122,11 @@ summary's `promoted` count says how many diagnostics that affected.
 
 ## `plan --prune` keeps listing a deleted skill, plugin, or eval
 
-Those prunes are report-only (`SST-PLN021`, info): SST never removes them, so the
-plan lists them until the objects are removed by hand. They are not changes, so
-they never make `plan` exit 2 or fail `--strict`. Run `apply --prune` once so
-state records that the source is gone.
+Those prunes are report-only (`SST-PLN034`, info): SST never removes them, so the
+plan lists them until the objects are removed by hand. They never fail `--strict`.
+Until state records them under the current manifest, `plan` exits 2, because the
+apply that records them still changes the state table; run `apply --prune` once
+so state records that the source is gone, and `plan` exits 0 from then on.
 
 ## A reference does not resolve
 

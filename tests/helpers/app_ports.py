@@ -28,9 +28,10 @@ from snowflake_semantic_tools.domain.ports.snowflake.catalog import (
 from snowflake_semantic_tools.domain.ports.snowflake.stage import StagedFileMetadata
 from snowflake_semantic_tools.domain.sql import Sql
 from snowflake_semantic_tools.domain.state import AppliedEntry, State
+from tests.helpers.preflight import PreflightAnswers, PreflightDouble
 
 
-class InMemorySnowflake:
+class InMemorySnowflake(PreflightDouble):
     def __init__(self) -> None:
         self.rows: tuple[ShowRow, ...] = ()
         self.grants: dict[str, tuple[GrantRow, ...]] = {}
@@ -53,6 +54,7 @@ class InMemorySnowflake:
         self.staged_file_md5s: dict[str, str | None] = {}
         self.staged_file_contents: dict[str, bytes] = {}
         self.table_row_counts: dict[str, int] = {}
+        self.preflight = PreflightAnswers()
 
     def show_objects(self, object_type: str, scope: SchemaScope) -> tuple[ShowRow, ...]:
         del object_type, scope

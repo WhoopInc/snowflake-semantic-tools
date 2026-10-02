@@ -32,7 +32,7 @@ from snowflake_semantic_tools.domain.diagnostics import Diagnostic, DiagnosticBa
 from snowflake_semantic_tools.domain.model.artifact_key import artifact_key
 from snowflake_semantic_tools.domain.model.identifier import Identifier, QualifiedName
 from snowflake_semantic_tools.domain.model.lifecycle import OwnershipMarker, ProbeKind, RenderedArtifact, SmokeProbe
-from snowflake_semantic_tools.domain.model.semantic_view import SemanticView
+from snowflake_semantic_tools.domain.model.semantic_view import Metric, SemanticView
 from snowflake_semantic_tools.domain.ports.semantic_view_source import SemanticViewSource
 from snowflake_semantic_tools.domain.render.semantic_view import render
 from snowflake_semantic_tools.domain.sql import AuthoredExpression, Sql, ident, join, qname, query_text, sql
@@ -173,13 +173,9 @@ class CompiledView(CompiledArtifact):
             )
         ]
         probes.extend(
-            SmokeProbe(
-                key=artifact_key("metric", metric.qualified_name.casefold()),
-                kind=ProbeKind.METRIC,
-                sql=_member_probe(target, "METRICS", metric.table, metric.name, metric.expr, limit=True),
-            )
+            probe
             for metric in self.view.metrics
-            if metric.access_modifier != "private_access"
+            if metric.access_modifier != "private_access" and (probe := _metric_probe(target, metric)) is not None
         )
         probes.extend(
             SmokeProbe(
@@ -197,6 +193,15 @@ class CompiledView(CompiledArtifact):
             smoke=tuple(probes),
             required_relations=tuple(QualifiedName.parse(table.fqn) for table in self.view.tables),
         )
+
+
+def _metric_probe(target: QualifiedName, metric: Metric) -> SmokeProbe | None:
+    """Return the probe that queries one metric; None when no query can name it, which smoke reports."""
+    try:
+        query = _member_probe(target, "METRICS", metric.table, metric.name, metric.expr, limit=True)
+    except ValueError:
+        return None
+    return SmokeProbe(key=artifact_key("metric", metric.qualified_name.casefold()), kind=ProbeKind.METRIC, sql=query)
 
 
 def _view_probe(view: SemanticView, target: QualifiedName) -> Sql:

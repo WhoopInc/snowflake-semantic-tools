@@ -10,11 +10,12 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Protocol
 
-from snowflake_semantic_tools.app.compile import CompileResult
+from snowflake_semantic_tools.app.compile import CompiledView, CompileResult
 from snowflake_semantic_tools.app.state import read_state
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, DiagnosticBag
+from snowflake_semantic_tools.domain.model.artifact_key import artifact_key
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName, TargetIdentity
-from snowflake_semantic_tools.domain.model.lifecycle import OwnershipMarker, RenderedArtifact, SmokeProbe
+from snowflake_semantic_tools.domain.model.lifecycle import OwnershipMarker, ProbeKind, RenderedArtifact, SmokeProbe
 from snowflake_semantic_tools.domain.ports.snowflake.catalog import CatalogPort
 from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
 from snowflake_semantic_tools.domain.ports.snowflake.execution import ExecutionPort
@@ -50,25 +51,59 @@ class RunSmokeSuite:
         """Run every probe, in artifact order; with `fail_fast`, stop at the first that fails.
 
         Diagnostics:
-            SST-APL100: a probe failed.
+            SST-PLN100: a metric's probe failed.
+            SST-APL100: any other probe failed.
             SST-APL006: after the failures, how many probes failed.
+            SST-PLN101: with `fail_fast`, an artifact whose probes did not run once one failed.
         """
         attempted: list[SmokeProbe] = []
-        diagnostics = []
+        failures: list[Diagnostic] = []
+        skipped: list[Diagnostic] = []
         for artifact in rendered:
+            if failures and fail_fast:
+                if artifact.smoke:
+                    skipped.append(_skipped(artifact, "--fail-fast stopped the suite at an earlier failure"))
+                continue
             for probe in artifact.smoke:
                 attempted.append(probe)
                 try:
                     self._port.query(probe.sql)
                 except SnowflakePortError as exc:
-                    diagnostics.append(D("SST-APL100", artifact=probe.key, detail=str(exc), subject=artifact.key))
+                    failures.append(_probe_failure(artifact, probe, str(exc)))
                     if fail_fast:
                         break
-            if diagnostics and fail_fast:
-                break
-        if diagnostics:
-            diagnostics.append(D("SST-APL006", count=len(diagnostics)))
-        return SmokeResult(tuple(attempted), DiagnosticBag(diagnostics))
+        tally = (D("SST-APL006", count=len(failures)),) if failures else ()
+        return SmokeResult(tuple(attempted), DiagnosticBag((*failures, *tally, *skipped)))
+
+
+def _probe_failure(artifact: RenderedArtifact, probe: SmokeProbe, detail: str) -> Diagnostic:
+    """Report a failed probe: a metric's as SST-PLN100, naming the metric; any other as SST-APL100."""
+    if probe.kind is ProbeKind.METRIC:
+        member = probe.key.split(":", 1)[-1]
+        return D("SST-PLN100", artifact=artifact.key, member=member, detail=detail, subject=probe.key)
+    return D("SST-APL100", artifact=probe.key, detail=detail, subject=artifact.key)
+
+
+def _skipped(artifact: RenderedArtifact, why: str) -> Diagnostic:
+    return D("SST-PLN101", artifact=artifact.key, detail=why, subject=artifact.key)
+
+
+def unprobed_metrics(result: CompileResult) -> tuple[Diagnostic, ...]:
+    """Report each public metric that has no smoke probe, because no query can name it.
+
+    Diagnostics:
+        SST-PLN020: a public metric of a semantic view has no probe.
+    """
+    found: list[Diagnostic] = []
+    for item in result.compiled:
+        if not isinstance(item, CompiledView):
+            continue
+        probed = {probe.key for probe in item.rendered_artifact.smoke}
+        for metric in item.view.metrics:
+            key = artifact_key("metric", metric.qualified_name.casefold())
+            if metric.access_modifier != "private_access" and key not in probed:
+                found.append(D("SST-PLN020", artifact=item.artifact_key, member=metric.qualified_name, subject=key))
+    return tuple(found)
 
 
 class SmokePublished:
@@ -101,7 +136,8 @@ class SmokePublished:
         4. Check each artifact with probes: state records it from `manifest`, with its
            fingerprint and target, and its live marker is the one apply wrote. Composite
            artifacts carry no marker and have no probe, so they are not asked for one.
-        5. Run the probes only when nothing was reported; otherwise probe nothing.
+        5. Check every public metric has a probe.
+        6. Run the probes only when nothing was reported; otherwise probe nothing.
 
         Args:
             manifest: The manifest the project compiles to, which `sst compile` wrote.
@@ -120,6 +156,7 @@ class SmokePublished:
             )
         published = {artifact.key: artifact for artifact in result.rendered_for_publish(manifest.manifest_id)}
         problems.extend(self._unowned(result, manifest, state))
+        problems.extend(unprobed_metrics(result))
         if problems:
             return SmokeResult((), DiagnosticBag(tuple(problems)))
         return RunSmokeSuite(self._port).run(tuple(published.values()), fail_fast=fail_fast)

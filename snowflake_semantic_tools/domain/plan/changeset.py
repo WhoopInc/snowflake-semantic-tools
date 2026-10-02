@@ -5,9 +5,11 @@ decided:
 
 1. `classify` decides each rendered artifact, in DDL order;
 2. `plan_prunes` adds the orphans SST may drop, when prune is asked for;
-3. `block_unsafe` blocks a write that pins an unplanned version, and everything that depends on a
-   blocked change -- after prune, so every change it checks against is decided;
-4. `topological_order` orders the changes, whose decisions hash into the plan id.
+3. `check_preflight` blocks the writes the preflight read shows Snowflake would refuse, when
+   plan read one;
+4. `block_unsafe` blocks a write that pins an unplanned version, and everything that depends on a
+   blocked change -- after prune and preflight, so every change it checks against is decided;
+5. `order_changes` orders the changes, whose decisions hash into the plan id.
 
 The plan's diagnostics follow the same order, after the warning that state was recorded
 against another manifest.
@@ -29,7 +31,8 @@ from snowflake_semantic_tools.domain.model.lifecycle import (
 )
 from snowflake_semantic_tools.domain.model.registry import Registry
 from snowflake_semantic_tools.domain.plan.classify import classify
-from snowflake_semantic_tools.domain.plan.order import render_order, topological_order
+from snowflake_semantic_tools.domain.plan.order import order_changes, render_order
+from snowflake_semantic_tools.domain.plan.preflight import Preflight, check_preflight
 from snowflake_semantic_tools.domain.plan.prune import block_unsafe, plan_prunes
 from snowflake_semantic_tools.domain.state import Manifest, State, content_hash
 
@@ -48,6 +51,7 @@ def build_changeset(
     prune_types: frozenset[str] | None = None,
     prune_keys: frozenset[str] | None = None,
     composite_plans: Mapping[str, CompositePlan] | None = None,
+    preflight: Preflight | None = None,
 ) -> ChangeSet:
     """Decide one change per rendered artifact and order the changes into the plan apply runs.
 
@@ -59,28 +63,29 @@ def build_changeset(
         prune_types: The types prune considers; None considers every prunable type.
         prune_keys: The keys prune considers; None considers every key.
         composite_plans: What each composite lifecycle handler planned, by artifact key.
+        preflight: What plan read about the target before deciding; None skips the check.
 
     Returns:
-        The changes in dependency order and the plan id hashed from them; on a dependency
-        cycle, no changes and an empty plan id.
+        The changes in dependency order and the plan id hashed from them; when no order can
+        be computed, no changes and an empty plan id.
 
     Raises:
         KeyError: the registry has no entry for a rendered artifact's type.
 
     Diagnostics:
         SST-MAN021: state was recorded against another manifest.
-        SST-PLN005: the changes' dependencies form a cycle.
 
-    Each phase's own codes follow, in phase order: see `classify`, `plan_prunes`, and
-    `block_unsafe`.
+    Each phase's own codes follow, in phase order: see `classify`, `plan_prunes`,
+    `check_preflight`, `block_unsafe`, and `order_changes`.
     """
     drift = _manifest_drift(manifest, state)
     changes, classified = _classify_all(rendered, observation, manifest, state, registry, blocked, composite_plans)
     pruned, skipped = (
         plan_prunes(rendered, observation, state, registry, prune_types, prune_keys) if include_prune else ((), ())
     )
-    safe, unpinned = block_unsafe((*changes, *pruned), registry)
-    return _ordered(safe, (*drift, *classified, *skipped, *unpinned), manifest, target, observation, full)
+    decided, preflighted = check_preflight((*changes, *pruned), preflight) if preflight else ((*changes, *pruned), ())
+    safe, unpinned = block_unsafe(decided, registry)
+    return _ordered(safe, (*drift, *classified, *skipped, *preflighted, *unpinned), manifest, target, observation, full)
 
 
 def _manifest_drift(manifest: Manifest, state: State) -> tuple[Diagnostic, ...]:
@@ -127,10 +132,10 @@ def _ordered(
     observation: SnowflakeObservation,
     full: bool,
 ) -> ChangeSet:
-    """Order the changes by dependency into the plan; a cycle leaves it with no changes and no id."""
-    ordered, cycle = topological_order(changes)
-    if cycle:
-        failed = DiagnosticBag((*diagnostics, D("SST-PLN005", cycle=" -> ".join(cycle))))
+    """Order the changes by dependency into the plan; without an order, it has no changes and no id."""
+    ordered, unordered = order_changes(changes)
+    if unordered is not None:
+        failed = DiagnosticBag((*diagnostics, unordered))
         return ChangeSet(manifest.manifest_id, target, (), failed, observation.fetched_at, full)
     plan_id = _plan_id(manifest, target, observation, ordered)
     return ChangeSet(

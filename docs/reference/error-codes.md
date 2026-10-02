@@ -24,9 +24,9 @@ cannot be downgraded by any setting.
 - [dbt (DBT)](#dbt-dbt) -- 5 codes
 - [Rendering (RND)](#rendering-rnd) -- 2 codes
 - [Manifest and state (MAN)](#manifest-and-state-man) -- 11 codes
-- [Planning (PLN)](#planning-pln) -- 18 codes
+- [Planning (PLN)](#planning-pln) -- 36 codes
 - [Apply (APL)](#apply-apl) -- 20 codes
-- [Snowflake (SNO)](#snowflake-sno) -- 8 codes
+- [Snowflake (SNO)](#snowflake-sno) -- 26 codes
 - [External systems (PRT)](#external-systems-prt) -- 6 codes
 - [Internal (INT)](#internal-int) -- 3 codes
 
@@ -2224,43 +2224,99 @@ Fix: upgrade SST
 
 `observation of <value> failed: <detail>`
 
-Fix: check the connection and role, then re-run plan
+Fix: check the connection and the role, then re-run plan
 
 ### SST-PLN002
 
-**Different object type exists** (error)
+**An object of a different type exists at the target name** (error)
 
 `<artifact>: <value> exists as a <found>`
 
-Fix: rename the artifact or remove the conflicting object
+Fix: rename the artifact, or drop the existing object
 
 ### SST-PLN003
 
-**Prune candidate is unmanaged** (warning)
+**Prune candidate has no ownership marker** (warning)
 
 `<value> has no SST ownership marker; skipped`
 
-Fix: adopt it explicitly or delete it by hand
+Fix: adopt it explicitly, or delete it by hand
 
 ### SST-PLN004
 
-**Prune candidate is absent from state** (warning)
+**Marked prune candidate is absent from local state** (warning)
 
 `<value> carries an SST marker and is absent from state; skipped`
 
-Fix: reconcile state or delete it by hand
+Fix: reconcile state, or delete it by hand
 
 ### SST-PLN005
 
-**Artifact dependency cycle** (error)
+**Dependency cycle among artifacts** (error)
 
 `artifact dependency cycle: <cycle>`
 
 Fix: break the cycle
 
+### SST-PLN006
+
+**Impact-scoped plan requested with no previous manifest** (warning)
+
+`no previous manifest; a full plan was computed`
+
+Fix: commit the manifest, or pass --state
+
+### SST-PLN007
+
+**Referenced object does not exist in the target** (error)
+
+`<artifact> references <value>, absent from target '<target>'`
+
+Fix: publish it first, or correct the reference
+
+### SST-PLN008
+
+**Deploying role lacks a required privilege** (error)
+
+`<value> lacks <detail> on <target>`
+
+Fix: grant the privilege
+
+### SST-PLN009
+
+**An object already exists at the target name** (warning)
+
+`<artifact>: <value> already exists`
+
+Fix: use or_replace, or choose another name
+
+### SST-PLN010
+
+**Target schema does not exist** (error)
+
+`schema <value> does not exist or is not authorised`
+
+Fix: create the schema, or correct the target
+
+### SST-PLN011
+
+**Target database does not exist** (error)
+
+`database <value> does not exist or is not authorised`
+
+Fix: create the database, or correct the target
+
+### SST-PLN012
+
+**Warehouse does not exist or is not authorised** (error)
+
+`warehouse <value> does not exist or is not authorised`
+
+Fix: grant USAGE, or name an existing warehouse
+
 ### SST-PLN013
 
-**Live object carries explicit grants** (warning)
+**Live object carries grants that a replace would drop** (warning)
 
 `<artifact>: <count> explicit grants exist on <value>`
 
@@ -2268,23 +2324,75 @@ Fix: confirm COPY GRANTS is emitted before applying
 
 ### SST-PLN014
 
-**Live definition differs from recorded state** (error)
+**Live definition differs from the last recorded state** (warning)
 
 `<artifact> was changed out of band`
 
-Fix: review and explicitly reconcile the object before applying
+Fix: review the difference before applying
+
+### SST-PLN015
+
+**No change for an artifact** (info)
+
+`<artifact>: NOOP`
+
+### SST-PLN016
+
+**Plan summary** (info)
+
+`<value>`
+
+### SST-PLN017
+
+**Prune would remove an object a consumer references by name** (warning)
+
+`<value> is referenced outside this project`
+
+Fix: exclude it from prune, or migrate the consumer
+
+### SST-PLN018
+
+**Plan computed against a stale observation** (error)
+
+`observation for <value> is <detail>`
+
+Fix: re-run plan
+
+### SST-PLN019
+
+**Concurrent DDL detected on the target** (warning)
+
+`<value> is being modified by another session`
+
+Fix: retry, or serialise the publishers
+
+### SST-PLN020
+
+**Smoke query could not be constructed** (error)
+
+`<artifact>: no smoke query can be built for metric '<member>'`
+
+Fix: make the metric selectable, or exclude it from smoke checks
 
 ### SST-PLN021
 
-**Prune is report-only** (info)
+**Prune reconciliation found objects the repo does not declare** (warning)
 
-`<artifact> is no longer declared; SST never removes <value>: <detail>`
+`<count> objects in <value> are not declared here`
 
-Fix: the plan lists it until the objects are removed by hand; it never counts as a change
+Fix: adopt or delete them explicitly
+
+### SST-PLN022
+
+**Change order is not computable** (error)
+
+`change order could not be computed: <detail>`
+
+Fix: resolve the dependency conflict
 
 ### SST-PLN023
 
-**Declared and live case differ** (warning)
+**Declared name differs from the live object only by case** (warning)
 
 `<artifact>: declared '<value>', live object is '<found>'`
 
@@ -2361,6 +2469,36 @@ Fix: fix the errors reported for it; what is live stays as it is, and state keep
 `--partial publishes nothing: <found> on <value> cannot be traced to the artifacts it would change`
 
 Fix: fix that error first; a configuration error, or an error in a semantic view member such as a metric, stops every run, because the views it belongs to would otherwise publish without it
+
+### SST-PLN034
+
+**Prune is report-only** (info)
+
+`<artifact> is no longer declared; SST never removes <value>: <detail>`
+
+Fix: the plan lists it until the objects are removed by hand; it never counts as a change
+
+### SST-PLN100
+
+**Smoke query failed** (error)
+
+`<artifact>: smoke query for metric '<member>' failed: <detail>`
+
+Fix: fix the metric; a created view is not a working view
+
+### SST-PLN101
+
+**Smoke check skipped** (info)
+
+`<artifact>: smoke check skipped (<detail>)`
+
+### SST-PLN900
+
+**Change order is not a valid topological order** (error)
+
+`change order violates <value>`
+
+Fix: report this as a bug
 
 ## Apply (APL)
 
@@ -2528,9 +2666,11 @@ Fix: report this as a bug
 
 ### SST-SNO001
 
-**Unrecognised Snowflake refusal** (error)
+**Snowflake refused and SST does not recognise the refusal** (error)
 
 `Snowflake refused: <detail>`
+
+Fix: read internal_detail; if this recurs, add a signature
 
 ### SST-SNO002
 
@@ -2538,7 +2678,7 @@ Fix: report this as a bug
 
 `<value> already exists`
 
-Fix: choose another name
+Fix: choose another name; a semantic view is created with CREATE OR REPLACE, and an agent takes create_mode: or_alter (to add a version) or if_not_exists
 
 ### SST-SNO003
 
@@ -2546,7 +2686,7 @@ Fix: choose another name
 
 `<value> does not exist or is not authorised`
 
-Fix: publish the object or grant access
+Fix: publish the object, or grant access
 
 ### SST-SNO004
 
@@ -2556,6 +2696,38 @@ Fix: publish the object or grant access
 
 Fix: grant the privilege to the deploying role
 
+### SST-SNO005
+
+**Schema does not exist or is not authorised** (error)
+
+`schema <value> does not exist or is not authorised`
+
+Fix: create the schema, or correct the target
+
+### SST-SNO006
+
+**Database does not exist or is not authorised** (error)
+
+`database <value> does not exist or is not authorised`
+
+Fix: create the database, or correct the target
+
+### SST-SNO007
+
+**Warehouse does not exist or is not authorised** (error)
+
+`warehouse <value> does not exist or is not authorised`
+
+Fix: grant USAGE, or name an existing warehouse
+
+### SST-SNO008
+
+**No active warehouse in the session** (error)
+
+`no active warehouse in the session`
+
+Fix: set a default warehouse for the connecting user
+
 ### SST-SNO009
 
 **SQL compilation error** (error)
@@ -2564,13 +2736,125 @@ Fix: grant the privilege to the deploying role
 
 Fix: fix the statement
 
+### SST-SNO010
+
+**SQL execution internal error** (error)
+
+`SQL execution internal error: <detail>`
+
+Fix: this is the query-time class the derived-metric restrictions exist to prevent
+
+### SST-SNO011
+
+**Statement timeout** (error)
+
+`statement timed out after <detail>`
+
+Fix: raise the timeout, or reduce the statement
+
+### SST-SNO012
+
+**Secure-object share restriction** (error)
+
+`<value>: share restriction`
+
+Fix: keep the object secure, or revoke the share grant
+
+### SST-SNO013
+
+**Authentication failed** (error)
+
+`authentication failed for <value>`
+
+Fix: refresh the credential
+
+### SST-SNO014
+
+**Driver network failure** (error)
+
+`network failure: <detail>`
+
+Fix: retry
+
+### SST-SNO015
+
+**max_staleness rejected** (error)
+
+`max_staleness <found> rejected`
+
+Fix: raise it to at least 120
+
+### SST-SNO016
+
+**Semantic view feature not enabled** (error)
+
+`semantic views are not enabled on this account`
+
+Fix: ask an account administrator to enable the feature
+
+### SST-SNO017
+
+**CREATE AGENT privilege required** (error)
+
+`CREATE AGENT required on <value>`
+
+Fix: grant CREATE AGENT on the schema
+
+### SST-SNO018
+
+**CREATE DATASET privilege required** (error)
+
+`CREATE DATASET required on <value>`
+
+Fix: grant CREATE DATASET on the schema
+
+### SST-SNO019
+
+**Duplicate synonym** (error)
+
+`duplicate synonym <value>`
+
+Fix: make synonyms unique within the view
+
+### SST-SNO020
+
+**Identifier too long** (error)
+
+`identifier <value> is too long`
+
+Fix: shorten the name
+
 ### SST-SNO022
 
 **Concurrent DDL or lock timeout** (error)
 
 `lock timeout on <value>`
 
-Fix: retry or serialise publishers
+Fix: retry, or serialise the publishers
+
+### SST-SNO023
+
+**Result set too large** (error)
+
+`result set too large for <value>`
+
+Fix: narrow the query
+
+### SST-SNO024
+
+**Query queued beyond the wait limit** (error)
+
+`query queued beyond <detail>`
+
+Fix: raise the queue limit, or use a larger warehouse
+
+### SST-SNO025
+
+**Unexpected DESCRIBE output shape** (error)
+
+`DESCRIBE <value> returned an unexpected shape`
+
+Fix: report this as a Snowflake drift finding
 
 ### SST-SNO030
 

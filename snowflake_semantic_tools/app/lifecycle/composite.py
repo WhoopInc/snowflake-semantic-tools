@@ -15,8 +15,8 @@ from collections.abc import Callable, Collection, Iterable, Mapping
 from types import MappingProxyType
 from typing import Generic, Protocol, TypeVar
 
-from snowflake_semantic_tools.app.apply import classify_error
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, DiagnosticBag
+from snowflake_semantic_tools.domain.diagnostics.signatures import match_signature
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
 from snowflake_semantic_tools.domain.model.lifecycle import (
     Action,
@@ -80,7 +80,7 @@ def failed(
 ) -> ApplyOutcome:
     """Return a failed outcome for the change's artifact, with the error classified from its detail."""
     artifact = change.rendered
-    classified = classify_error(detail)
+    signature = match_signature(detail)
     return ApplyOutcome(
         change.key,
         change.action,
@@ -88,7 +88,7 @@ def failed(
         attempts,
         0,
         artifact.ddl if artifact is not None else "",
-        ClassifiedError(code, detail, classified.kind, classified.retryable, classified.sqlstate),
+        ClassifiedError(code, detail, signature.kind, signature.retryable),
         write_succeeded=write_succeeded,
         component_fingerprints=artifact.component_fingerprints if artifact is not None else (),
         physical_resources=physical_resources,
@@ -191,11 +191,11 @@ class CompositeHandler(CompositeLifecycleHandler, Generic[SubjectT, ObservedT, P
         """Report an artifact the project no longer declares as a prune apply never executes.
 
         Diagnostics:
-            SST-PLN021: the resources SST keeps, and what to do before removing them.
+            SST-PLN034: the resources SST keeps, and what to do before removing them.
         """
         resources = ", ".join(resource.qualified_name for resource in state_entry.applied_resources) or artifact_key
         diagnostic = D(
-            "SST-PLN021",
+            "SST-PLN034",
             subject=artifact_key,
             artifact=artifact_key,
             value=resources,

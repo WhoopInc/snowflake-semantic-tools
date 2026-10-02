@@ -33,9 +33,10 @@ from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePort
 from snowflake_semantic_tools.domain.ports.snowflake.stage import StagedFileMetadata
 from snowflake_semantic_tools.domain.sql import Sql
 from snowflake_semantic_tools.domain.state import AppliedEntry
+from tests.helpers.preflight import PreflightAnswers, PreflightDouble
 
 
-class RecordedSnowflake:
+class RecordedSnowflake(PreflightDouble):
     def __init__(
         self,
         *,
@@ -78,6 +79,7 @@ class RecordedSnowflake:
         self.profile_rows: dict[str, dict[str, dict[str, object]]] = {}
         # Statements containing any of these fragments fail, to rehearse refusals.
         self.refused: tuple[str, ...] = ()
+        self.preflight = PreflightAnswers()
 
     def table_columns(self, qualified_name: QualifiedName) -> tuple[tuple[str, str], ...] | None:
         return self.tables.get(qualified_name.sql)

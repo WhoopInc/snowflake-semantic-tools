@@ -241,6 +241,7 @@ sst plan [OPTIONS]
 | `--no-plan-out` | flag |  | Do not write a saved plan. |
 | `--sql-out` | DIRECTORY |  | Also write the statements for each change into this directory. |
 | `--no-detailed-exitcode` | flag |  | Exit 0 when changes are pending, instead of 2. |
+| `--state` | DIRECTORY |  | Directory holding the previous run's `manifest.json`, which `--select state:modified` compares with. |
 | `--strict / --no-strict` | flag |  | Promote every warning to an error. Defaults to `validation.strict`. |
 | `--snowflake-syntax-check / --no-snowflake-syntax-check` | flag |  | Compile expressions against Snowflake. Defaults to `validation.snowflake_syntax_check`. |
 | `--output` | human\|json | `human` | `human` for readable text, or `json` for one machine-readable envelope. |
