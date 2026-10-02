@@ -289,7 +289,9 @@ def _result_question_key(
     """Return the key of the dataset question a result row answers, found by its input.
 
     Snowflake returns the ground truth either whole, which must match the question's, or
-    flattened to one of its fields, which must equal that field's value.
+    flattened to one of its fields, which must equal that field's value, compared both as the
+    text Snowflake sent and as that text parsed. A question with no ground truth, as a run of
+    reference-free metrics may have, matches only a row that returns none. Anything else fails.
 
     Raises:
         ValueError: the row has no input, an input the dataset lacks, or different ground truth.
@@ -301,17 +303,22 @@ def _result_question_key(
     if expected is None:
         raise ValueError(f"evaluation results returned unexpected input {input_query!r}")
     expected_key, expected_ground_truth = expected
-    ground_truth = _variant(row.get("GROUND_TRUTH"))
+    raw = row.get("GROUND_TRUTH")
+    ground_truth = _variant(raw)
     if isinstance(ground_truth, dict):
         if _question_identity(input_query, ground_truth) != expected_key:
             raise ValueError(f"evaluation input {input_query!r} returned different ground truth")
+        return expected_key
+    if raw is None or raw == "":
+        if expected_ground_truth:
+            raise ValueError(f"evaluation input {input_query!r} returned no ground truth")
         return expected_key
     projections = tuple(
         expected_ground_truth[key]
         for key in ("ground_truth_output", "ground_truth_invocations", "required_filters")
         if key in expected_ground_truth
     )
-    if ground_truth not in projections:
+    if not any(value == projection for value in (raw, ground_truth) for projection in projections):
         raise ValueError(f"evaluation input {input_query!r} returned unrecognized flattened ground truth")
     return expected_key
 

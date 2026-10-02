@@ -1180,3 +1180,24 @@ def test_a_config_without_a_run_block_takes_the_project_retention_class() -> Non
         (bare,), defaults=EvalDefaults(retention="audit"), options=EvalRunOptions("abcdef0")
     )
     assert (result.evals[0].retention, result.evals[0].decision_window_days) == ("audit", None)
+
+
+def test_flattened_ground_truth_matches_as_sent_or_parsed_and_an_absent_one_only_when_none_is_expected() -> None:
+    numeric = {"ground_truth_output": "42"}
+    expected = {"Question": (_question_identity("Question", numeric), numeric)}
+    key = expected["Question"][0]
+    # The output text parses as JSON, so it is matched both as sent and as parsed.
+    assert _result_question_key({"INPUT": "Question", "GROUND_TRUTH": "42"}, expected) == key
+    assert _result_question_key({"INPUT": "Question", "GROUND_TRUTH": '"42"'}, expected) == key
+    with pytest.raises(ValueError, match="returned no ground truth"):
+        _result_question_key({"INPUT": "Question", "GROUND_TRUTH": None}, expected)
+
+    empty: dict[str, object] = {}
+    reference_free = {"Question": (_question_identity("Question", empty), empty)}
+    for absent in (None, ""):
+        assert (
+            _result_question_key({"INPUT": "Question", "GROUND_TRUTH": absent}, reference_free)
+            == (reference_free["Question"][0])
+        )
+    with pytest.raises(ValueError, match="unrecognized flattened ground truth"):
+        _result_question_key({"INPUT": "Question", "GROUND_TRUTH": "Answer"}, reference_free)
