@@ -636,7 +636,7 @@
   "severity": "WARNING",
   "non_demotable": false,
   "title": "Strict flag and config key disagree",
-  "message": "--strict {flag} disagrees with diagnostics.strict {config}; the flag wins",
+  "message": "--strict {flag} disagrees with validation.strict {config}; the flag wins",
   "precheck": "local"
  },
  {
@@ -787,6 +787,16 @@
   "non_demotable": false,
   "title": "Unsupported authentication configuration",
   "message": "target '{target}': {detail}",
+  "precheck": "local"
+ },
+ {
+  "code": "SST-CFG051",
+  "area": "CFG",
+  "number": 51,
+  "severity": "WARNING",
+  "non_demotable": false,
+  "title": "profiles.yml disables certificate revocation checks",
+  "message": "target '{target}': insecure_mode is true, so OCSP certificate revocation checks are off for this connection",
   "precheck": "local"
  },
  {

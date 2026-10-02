@@ -16,7 +16,7 @@ cannot be downgraded by any setting.
 ## Contents
 
 - [Registry (REG)](#registry-reg) -- 23 codes
-- [Configuration (CFG)](#configuration-cfg) -- 43 codes
+- [Configuration (CFG)](#configuration-cfg) -- 44 codes
 - [Discovery (DIS)](#discovery-dis) -- 12 codes
 - [Parsing (PRS)](#parsing-prs) -- 58 codes
 - [Loading (LOD)](#loading-lod) -- 24 codes
@@ -432,7 +432,7 @@ Fix: promote instead of demoting, or remove the override
 
 **Strict flag and config key disagree** (warning)
 
-`--strict <flag> disagrees with diagnostics.strict <config>; the flag wins`
+`--strict <flag> disagrees with validation.strict <config>; the flag wins`
 
 Fix: remove one of the two
 
@@ -555,6 +555,14 @@ Fix: SST renders {{ env_var('NAME') }} and {{ env_var('NAME', 'default') }} anyw
 `target '<target>': <detail>`
 
 Fix: authenticate with a key pair, a password, SSO (authenticator), or an OAuth access token (token)
+
+### SST-CFG051
+
+**profiles.yml disables certificate revocation checks** (warning)
+
+`target '<target>': insecure_mode is true, so OCSP certificate revocation checks are off for this connection`
+
+Fix: remove insecure_mode, or set it to false; with it on, a revoked certificate is still accepted
 
 ### SST-CFG200
 

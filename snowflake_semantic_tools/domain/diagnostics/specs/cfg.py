@@ -194,7 +194,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "SST-CFG034",
         Severity.WARNING,
         "Strict flag and config key disagree",
-        "--strict {flag} disagrees with diagnostics.strict {config}; the flag wins",
+        "--strict {flag} disagrees with validation.strict {config}; the flag wins",
         "remove one of the two",
     ),
     spec(
@@ -306,6 +306,13 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Unsupported authentication configuration",
         "target '{target}': {detail}",
         "authenticate with a key pair, a password, SSO (authenticator), or an OAuth access token (token)",
+    ),
+    spec(
+        "SST-CFG051",
+        Severity.WARNING,
+        "profiles.yml disables certificate revocation checks",
+        "target '{target}': insecure_mode is true, so OCSP certificate revocation checks are off for this connection",
+        "remove insecure_mode, or set it to false; with it on, a revoked certificate is still accepted",
     ),
     spec(
         "SST-CFG200",

@@ -471,6 +471,8 @@ def _connector_arguments(
     Diagnostics:
         SST-CFG049: a whole-number or boolean field has another value; raised.
         SST-CFG048: a field SST does not read; returned.
+        SST-CFG051: `insecure_mode` is true, so the connection skips OCSP revocation checks;
+            returned, and the setting is still honoured.
     """
     params: dict[str, object] = {}
     diagnostics: list[Diagnostic] = []
@@ -485,6 +487,8 @@ def _connector_arguments(
             diagnostics.append(
                 D("SST-CFG048", origin=Origin("profiles.yml"), subject="config:profiles.yml", target=target, key=key)
             )
+    if params.get("insecure_mode") is True:
+        diagnostics.append(D("SST-CFG051", origin=Origin("profiles.yml"), subject="config:profiles.yml", target=target))
     return params, tuple(diagnostics)
 
 

@@ -16,7 +16,7 @@ def test_sst_cfg034_fires(tmp_path: Path) -> None:
     result = CliRunner().invoke(cli, ["validate", *common(project), "--strict", "--output", "json"])
     [diagnostic] = [item for item in json.loads(result.output)["diagnostics"] if item["code"] == "SST-CFG034"]
     assert diagnostic["severity"] == "warning"
-    assert diagnostic["message"] == "--strict true disagrees with diagnostics.strict false; the flag wins"
+    assert diagnostic["message"] == "--strict true disagrees with validation.strict false; the flag wins"
     assert diagnostic["location"]["file"] == "sst_config.yml"
 
 
