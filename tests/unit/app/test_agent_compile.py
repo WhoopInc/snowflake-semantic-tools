@@ -32,7 +32,7 @@ TOOLKIT = ExtensionPin(
     QualifiedName.parse("DB.S.TOOLKIT"),
     "SST_0123456789AB",
     ("semantics", "operations"),
-    has_scripts=True,
+    scripts=(("operations", "close.py"),),
 )
 
 

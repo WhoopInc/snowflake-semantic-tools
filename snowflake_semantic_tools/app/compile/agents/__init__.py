@@ -36,6 +36,7 @@ from snowflake_semantic_tools.domain.validate.agent import (
     tool_name_clashes,
     unreferenced_extensions,
 )
+from snowflake_semantic_tools.domain.validate.skill import unrunnable_scripts
 
 __all__ = ["AgentCompileContext", "CompileAgents", "CompiledAgent", "ExtensionPin", "for_publication"]
 
@@ -80,6 +81,8 @@ class CompileAgents:
             SST-REF022: agents delegate to one another in a cycle.
             SST-VAL804: a published skill or plugin is referenced by no agent and consumed by
                 no plugin or profile.
+            SST-VAL814: an extension agents pin ships a script, and none of them has a
+                code_execution tool to run it.
         """
         diagnostics: list[Diagnostic] = list(self._diagnostics)
         identities = AgentIdentities()
@@ -100,6 +103,8 @@ class CompileAgents:
             compiled = []
         if self._models:
             diagnostics.extend(_unreferenced_extensions(resolved_agents, self._context))
+            pins = (*self._context.skills.values(), *self._context.plugins.values())
+            diagnostics.extend(unrunnable_scripts(resolved_agents, ((pin.key, pin.scripts) for pin in pins)))
         return CompileResult(tuple(compiled), DiagnosticBag(diagnostics))
 
     def _resolve(self, model: AgentModel) -> tuple[ResolvedAgent, str, tuple[Diagnostic, ...]]:

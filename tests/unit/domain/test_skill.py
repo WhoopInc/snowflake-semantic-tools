@@ -6,6 +6,7 @@ import json
 from dataclasses import replace
 
 from snowflake_semantic_tools.domain.diagnostics import Origin
+from snowflake_semantic_tools.domain.model.agent import AgentModel, AgentTool, ResolvedAgent
 from snowflake_semantic_tools.domain.model.skill import (
     BundleEntry,
     Plugin,
@@ -28,7 +29,11 @@ from snowflake_semantic_tools.domain.render.skill_bundle import (
     plugin_manifest_json,
 )
 from snowflake_semantic_tools.domain.render.skill_flatten import _recheck, flatten_skill, flattened_name
-from snowflake_semantic_tools.domain.validate.skill import extension_name_diagnostics, validate_skill_catalog
+from snowflake_semantic_tools.domain.validate.skill import (
+    extension_name_diagnostics,
+    unrunnable_scripts,
+    validate_skill_catalog,
+)
 
 SKILL_MD = "---\nname: {name}\ndescription: Does things.\n---\n{body}"
 
@@ -422,3 +427,22 @@ def test_an_extension_name_must_start_with_a_letter() -> None:
     assert extension_name_diagnostics("skill:ok", "folder", "ok", "OK", origin) == ()
     (found,) = extension_name_diagnostics("skill:9-lives", "folder", "9-lives", "9_LIVES", origin)
     assert (found.code, found.subject, found.origin) == ("SST-VAL801", "skill:9-lives", origin)
+
+
+def test_scripts_are_reported_only_for_extensions_agents_pin_and_none_of_them_can_run() -> None:
+    origin = Origin("agents/a.yml")
+    runner = ResolvedAgent(
+        AgentModel("runner", origin, ("agents/a.yml",), tools=(AgentTool("code_execution", origin, name="run"),)),
+        (),
+        skill_dependencies=("skill:shared",),
+    )
+    reader = ResolvedAgent(
+        AgentModel("reader", origin, ("agents/a.yml",)), (), skill_dependencies=("skill:shared", "skill:solo")
+    )
+    published = (
+        ("skill:shared", (("shared", "run.py"),)),
+        ("skill:solo", (("solo", "a.sh"), ("solo", "b.sh"))),
+        ("skill:unpinned", (("unpinned", "c.sh"),)),
+    )
+    found = [(item.subject, item.context["path"]) for item in unrunnable_scripts((runner, reader), published)]
+    assert found == [("skill:solo", "a.sh"), ("skill:solo", "b.sh")]
