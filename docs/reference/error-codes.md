@@ -20,7 +20,7 @@ cannot be downgraded by any setting.
 - [Loading (LOD)](#loading-lod) -- 8 codes
 - [References (REF)](#references-ref) -- 29 codes
 - [Membership (MEM)](#membership-mem) -- 2 codes
-- [Validation (VAL)](#validation-val) -- 161 codes
+- [Validation (VAL)](#validation-val) -- 217 codes
 - [dbt (DBT)](#dbt-dbt) -- 5 codes
 - [Rendering (RND)](#rendering-rnd) -- 2 codes
 - [Manifest and state (MAN)](#manifest-and-state-man) -- 11 codes
@@ -794,6 +794,14 @@ Fix: add its tables to a view, or delete the member
 
 Fix: rename one of them
 
+### SST-VAL002
+
+**Name is not unique across the extension namespace** (error)
+
+`<type> '<name>' collides with <other> in another namespace`
+
+Fix: rename one of them
+
 ### SST-VAL003
 
 **Description missing** (warning)
@@ -802,13 +810,139 @@ Fix: rename one of them
 
 Fix: add a description; it is how Analyst chooses between objects
 
+### SST-VAL004
+
+**Description shorter than the configured floor** (warning)
+
+`<type> '<name>' description is <size> chars, under <expected>`
+
+Fix: expand the description
+
+### SST-VAL005
+
+**Description does not state when to invoke** (error)
+
+`<type> '<name>' description describes what it is, not when to use it`
+
+Fix: state the trigger condition
+
+### SST-VAL006
+
+**Hardcoded fully-qualified name in an authored file** (error)
+
+`<type> '<name>': '<field>' hardcodes '<value>'`
+
+Fix: resolve the object through sst_config.yml or a reference: block
+
+### SST-VAL007
+
+**Declared but referenced by nothing** (warning)
+
+`<type> '<name>' is referenced by nothing`
+
+Fix: reference it, or delete it
+
+### SST-VAL008
+
+**Multi-line string uses a folded scalar** (error)
+
+`<type> '<name>': '<field>' uses a folded scalar`
+
+Fix: use |- so line breaks survive
+
+### SST-VAL009
+
+**File is not canonically formatted** (warning)
+
+`<path> is not canonically formatted`
+
+Fix: run sst format
+
+### SST-VAL010
+
+**Reference graph contains a cycle** (error)
+
+`<type> reference cycle: <cycle>`
+
+Fix: break the cycle
+
+### SST-VAL011
+
+**Declared value would be dropped or altered by the renderer** (error)
+
+`<type> '<name>': '<field>' would be <detail> by the renderer`
+
+Fix: emit the value unmodified, or stop declaring it
+
+### SST-VAL012
+
+**Deprecated key spelling in use** (warning)
+
+`<type> '<name>' uses '<field>'; the current spelling is '<expected>'`
+
+Fix: rename the key
+
+### SST-VAL013
+
+**Unmodelled key would be rendered unvalidated** (error)
+
+`<type> '<name>': '<key>' is not modelled and would be rendered as-is`
+
+Fix: promote the key, remove it, or set snowflake.allow_unknown_keys: true to render it with a warning instead
+
+### SST-VAL014
+
+**Unmodelled key reported** (warning)
+
+`<type> '<name>': <count> unmodelled keys rendered`
+
+Fix: promote the keys to first-class fields if they are load-bearing
+
+### SST-VAL015
+
+**Deploy ordering violated** (error)
+
+`<type> '<name>' would publish before <blocker>, which it depends on`
+
+Fix: include the blocker in the selection, or break the dependency; the publish order is not authorable
+
+### SST-VAL016
+
+**Referenced object is not published by this project or declared external** (error)
+
+`<type> '<name>' references '<value>', which is neither published nor declared`
+
+Fix: publish it, or declare it under reference:
+
+### SST-VAL017
+
+**Two objects express the same thing** (warning)
+
+`<type> '<name>' duplicates <other>`
+
+Fix: say it once, in the enforceable place
+
+### SST-VAL018
+
+**Composed prose surface exceeds the configured budget** (warning)
+
+`<artifact>: composed instruction surface is <size> chars, over <expected>`
+
+Fix: move bulk content into a referenced file
+
+### SST-VAL019
+
+**Prose names an object that does not resolve** (warning)
+
+`<type> '<name>': prose names '<value>', which does not resolve`
+
+Fix: correct the name, or remove the mention
+
 ### SST-VAL020
 
-**Connected validation unavailable** (info)
+**Rule skipped -- requirement unavailable** (info)
 
-`connected validation skipped: <detail>`
-
-Fix: connect to Snowflake to run connected checks
+`<rule_id> skipped: <detail>`
 
 ### SST-VAL101
 
@@ -816,7 +950,7 @@ Fix: connect to Snowflake to run connected checks
 
 `metric '<metric>' is table-scoped and its expr is not an aggregate`
 
-Fix: wrap the expression in an aggregate; for a window, move OVER (...) into a window: block
+Fix: wrap the expression in an aggregate; if the expression is a WINDOW function, compute it in the dbt model -- do NOT make the metric derived
 
 ### SST-VAL102
 
@@ -824,7 +958,7 @@ Fix: wrap the expression in an aggregate; for a window, move OVER (...) into a w
 
 `window function <function> in derived metric '<metric>'`
 
-Fix: put the window: block on a table-scoped metric; a derived metric cannot carry a window
+Fix: compute the window in the dbt model and aggregate the resulting column
 
 ### SST-VAL103
 
@@ -844,7 +978,7 @@ Fix: reference metrics only, or make the metric table-scoped
 
 ### SST-VAL105
 
-**Derived metric references an un-aggregated member** (error, always an error)
+**Derived metric references an un-aggregated fact or dimension** (error, always an error)
 
 `derived metric '<metric>' references un-aggregated <member_type> '<other>'`
 
@@ -868,39 +1002,47 @@ Fix: remove the reference, or drop the non-additive declaration
 
 ### SST-VAL108
 
-**Derived metric declares tables** (error)
+**Derived metric declares a table list** (error)
 
 `derived metric '<metric>' declares tables:`
 
-Fix: remove tables; a derived metric is view-scoped
+Fix: remove tables:; a derived metric is view-scoped by definition
 
 ### SST-VAL109
 
-**Table-scoped metric declares no tables** (error)
+**Table-scoped metric declares no table list** (error)
 
 `metric '<metric>' is table-scoped and declares no tables:`
 
-Fix: declare tables explicitly
+Fix: declare tables: explicitly
 
 ### SST-VAL110
 
-**Metric contains a bare identifier** (warning)
+**Metric expression contains an unwrapped bare identifier** (warning)
 
 `metric '<metric>' expression contains bare identifier '<column>'`
 
-Fix: wrap it in a two-argument ref so it is checked
+Fix: wrap it in {{ ref('&lt;model&gt;','&lt;column&gt;') }} so it is checked
+
+### SST-VAL111
+
+**Division with no zero guard** (warning)
+
+`metric '<metric>' divides without DIV0 or NULLIF on the denominator`
+
+Fix: wrap the denominator in NULLIF, or use DIV0
 
 ### SST-VAL112
 
-**Metric reaches an undeclared table** (error)
+**Metric expression touches a table outside the view** (error)
 
 `metric '<metric>' in <artifact> reaches <outside>`
 
-Fix: add the table to the view or narrow the expression
+Fix: add the table to the view, or narrow the expression
 
 ### SST-VAL113
 
-**Derived metric declares using_relationships** (error)
+**using_relationships declared on a derived metric** (error)
 
 `derived metric '<metric>' declares using_relationships`
 
@@ -908,15 +1050,15 @@ Fix: remove using_relationships; derived metrics have no join path
 
 ### SST-VAL114
 
-**Relationship path starts elsewhere** (error)
+**using_relationships does not start from the metric's table** (error)
 
 `metric '<metric>': relationship '<other>' does not start from '<name>'`
 
-Fix: name a relationship whose left side is the metric table
+Fix: name a relationship whose left side is the metric's table
 
 ### SST-VAL115
 
-**Relationship path is a chain** (error)
+**using_relationships is a chain** (error)
 
 `metric '<metric>' declares a chain of <count> relationships`
 
@@ -930,37 +1072,73 @@ Fix: declare one relationship, not a path
 
 Fix: declare using_relationships to pick the path
 
+### SST-VAL117
+
+**Snapshot-grain metric declares no non-additive dimensions** (warning)
+
+`metric '<metric>' is over a snapshot grain and declares no non_additive_dimensions`
+
+Fix: declare the non-additive dimension, or confirm additivity
+
 ### SST-VAL118
 
-**Non-additive dimension does not resolve** (error)
+**non_additive_dimensions target does not resolve** (error)
 
 `metric '<metric>': non_additive_dimensions names <value>, which does not resolve`
 
 Fix: correct the table and dimension names
 
+### SST-VAL119
+
+**Effective non-additive dimension order** (info)
+
+`metric '<metric>': effective non_additive_dimensions order is <value>`
+
+### SST-VAL120
+
+**Metric declares a sort with no ordering semantics** (warning)
+
+`metric '<metric>' declares sort_direction with no null_order`
+
+Fix: declare null_order explicitly
+
 ### SST-VAL121
 
-**Access modifier is invalid** (error)
+**access_modifier holds an unrecognised value** (error)
 
 `metric '<metric>': access_modifier is '<found>'`
 
 Fix: use public_access or private_access
 
+### SST-VAL122
+
+**visibility used instead of access_modifier** (warning)
+
+`metric '<metric>' uses visibility; the current key is access_modifier`
+
+Fix: rename the key
+
+### SST-VAL123
+
+**Metric-level restriction set not enforced before publish** (error)
+
+`metric '<metric>' would publish without the derived-metric restriction check`
+
+Fix: re-enable the restriction rules; Snowflake enforces none of them
+
 ### SST-VAL124
 
-**Duplicate metric expression** (warning)
+**Duplicate metric expression under two names** (warning)
 
 `metric '<metric>' has the same expression as '<other>'`
 
-Fix: keep one and synonym the other
+Fix: keep one, and synonym the other
 
 ### SST-VAL125
 
-**Window entry does not resolve** (error, always an error)
+**Metric fan-out** (info)
 
-`metric '<metric>': window <field> names <value>, which is not <expected>`
-
-Fix: name a dimension the metric's table can reach, or a metric of the same table
+`metric '<metric>' attaches to <count> views`
 
 ### SST-VAL126
 
@@ -986,13 +1164,29 @@ Fix: add order_by, or remove the frame
 
 Fix: reference the metric the window applies to instead; Snowflake does not allow a window metric in another metric
 
+### SST-VAL129
+
+**Window entry does not resolve** (error, always an error)
+
+`metric '<metric>': window <field> names <value>, which is not <expected>`
+
+Fix: name a dimension the metric's table can reach, or a metric of the same table
+
 ### SST-VAL201
 
-**Relationship declares no conditions** (error)
+**relationship_conditions is empty** (error)
 
 `relationship '<relationship>' declares no conditions`
 
 Fix: declare at least one condition
+
+### SST-VAL202
+
+**A declared condition would not be emitted** (error, always an error)
+
+`relationship '<relationship>': condition '<value>' would be dropped from the DDL`
+
+Fix: fix the condition so it renders, or remove it
 
 ### SST-VAL203
 
@@ -1004,11 +1198,43 @@ Fix: add the table to the view, or drop the relationship
 
 ### SST-VAL204
 
-**Relationship column is on the wrong table** (error)
+**Join condition column is not on the named table** (error)
 
 `relationship '<relationship>': '<column>' is not on '<name>'`
 
 Fix: correct the column, or swap the sides
+
+### SST-VAL205
+
+**Relationship sides never appear together in any view** (error)
+
+`relationship '<relationship>' joins '<a>' and '<b>', which share no view`
+
+Fix: add both tables to one view, or drop the relationship
+
+### SST-VAL206
+
+**Range relationship target declares no distinct_range** (error)
+
+`relationship '<relationship>' is a range join and '<name>' declares no distinct_range`
+
+Fix: declare distinct_range on the target table
+
+### SST-VAL207
+
+**Self-loop on a single logical table** (error)
+
+`relationship '<relationship>' joins '<name>' to itself`
+
+Fix: declare two logical names over the one model
+
+### SST-VAL208
+
+**Equality join to a finer-grained table** (warning)
+
+`relationship '<relationship>' joins '<a>' to '<b>', whose grain is finer than one row per key`
+
+Fix: use an asof join, or aggregate the target
 
 ### SST-VAL209
 
@@ -1020,35 +1246,143 @@ Fix: declare using_relationships on the affected metrics
 
 ### SST-VAL210
 
-**Relationship target has no matching key** (warning)
+**Join target declares no key covering the join columns** (warning)
 
 `relationship '<relationship>': '<name>' declares neither primary_key nor unique_keys over <value>`
 
 Fix: declare the key; it is the cheapest fan-out protection
 
+### SST-VAL211
+
+**relationship_type or join_type declared** (warning)
+
+`relationship '<relationship>' declares '<field>', which is not emitted`
+
+Fix: remove the key
+
+### SST-VAL212
+
+**Declared cardinality disagrees with the data** (warning)
+
+`relationship '<relationship>' declares cardinality <found>; the spot-check found <value>`
+
+Fix: correct the declaration, or fix the grain
+
+### SST-VAL213
+
+**Multi-column condition is not expressible** (error)
+
+`relationship '<relationship>': condition '<value>' spans multiple columns per side`
+
+Fix: split it into one condition per column pair
+
 ### SST-VAL214
 
-**Unknown relationship reference** (error)
+**using_relationships names an undeclared relationship** (error)
 
 `metric '<metric>' names relationship '<relationship>', which is not declared`
 
-Fix: declare the relationship or correct the name
+Fix: declare the relationship, or correct the name
 
 ### SST-VAL215
 
-**Relationship graph cycle changes results** (error)
+**Relationship graph has a cycle that changes results** (error)
 
 `<artifact>: relationship cycle <cycle>`
 
-Fix: break the cycle, or split role-playing tables
+Fix: break the cycle, or split into role-playing tables
+
+### SST-VAL216
+
+**Inferred many-to-many path through a bridge table** (info)
+
+`<artifact>: many-to-many path <value> inferred through '<name>'`
+
+### SST-VAL217
+
+**Join graph summary** (info)
+
+`<artifact>: <count> tables, <value>`
+
+### SST-VAL218
+
+**Range join target has overlapping ranges** (error)
+
+`relationship '<relationship>': '<name>' declares distinct_range over (<a>, <b>) but the ranges overlap, for example <value>`
+
+Fix: make the ranges disjoint, or narrow the range columns
+
+### SST-VAL219
+
+**A scoped bare column does not exist on its model** (error)
+
+`<artifact>: table_config.<model>.<field> names column '<column>', which does not exist on <model>`
+
+Fix: correct the column name, or add it to the dbt model
+
+### SST-VAL220
+
+**A declared view variable is never referenced** (warning)
+
+`<artifact>: variable '<name>' is declared and never used`
+
+Fix: reference it in an expr, or remove it
+
+### SST-VAL221
+
+**A bare identifier in an expr matches no column and no declared variable** (warning)
+
+`<artifact>: '<name>' in <field> is neither a column nor a declared variable`
+
+Fix: declare the variable, correct the name, or wrap the column in a two-arg ref
+
+### SST-VAL222
+
+**Dimension declares a private access modifier** (error)
+
+`<artifact>: dimension '<member>' declares access_modifier '<value>'; SST does not support a private dimension`
+
+Fix: remove the key
 
 ### SST-VAL223
 
-**Primary and unique keys overlap** (error)
+**A primary-key column is also declared unique** (error)
 
 `<artifact>: column '<column>' on '<model>' appears in both primary_key and unique_keys`
 
-Fix: remove it from unique_keys; a primary key is already unique
+Fix: remove it from unique_keys -- a primary key is already unique
+
+### SST-VAL301
+
+**View resolves no dimensions and no metrics** (error)
+
+`<artifact> resolves no dimension and no metric`
+
+Fix: attach at least one member, or enrich the base models
+
+### SST-VAL302
+
+**Resolved relation differs from the model name** (error)
+
+`<artifact>: table '<name>' resolves to relation '<value>'`
+
+Fix: point base_table at the resolved relation, not the model name
+
+### SST-VAL303
+
+**View references a disabled or ephemeral model** (error)
+
+`<artifact>: '<name>' is <found> in dbt and produces no relation`
+
+Fix: enable the model, or change its materialisation
+
+### SST-VAL304
+
+**max_staleness below the accepted floor** (error)
+
+`<artifact>: max_staleness is <found>; the minimum is 120`
+
+Fix: raise max_staleness to at least 120
 
 ### SST-VAL305
 
@@ -1066,41 +1400,49 @@ Fix: use a numeric column, or make it a dimension
 
 Fix: use a date or timestamp column, or change column_type
 
+### SST-VAL307
+
+**Publisher would replace without preserving grants** (error, always an error)
+
+`<artifact> would be replaced without COPY GRANTS or CREATE OR ALTER`
+
+Fix: emit COPY GRANTS on every replace
+
 ### SST-VAL308
 
-**Column type metadata is absent** (error)
+**column_type metadata is absent** (error)
 
 `<artifact>: column '<member>' declares no column_type`
 
-Fix: declare dimension, time_dimension or fact, or run sst enrich to derive it from the column's type
+Fix: declare dimension, time_dimension or fact
 
 ### SST-VAL309
 
-**Data type metadata is absent** (error)
+**data_type metadata is absent** (error)
 
 `<artifact>: column '<member>' declares no data_type`
 
-Fix: declare the Snowflake type, or run sst enrich to read it from the relation
+Fix: declare the Snowflake type
 
 ### SST-VAL310
 
-**Key column is absent** (error)
+**Primary key column is not on the table** (error)
 
 `<artifact>: primary_key names '<column>', absent from '<name>'`
 
-Fix: correct the primary_key or unique_keys list
+Fix: correct the primary_key list
 
 ### SST-VAL311
 
-**Relationship target declares no key** (error)
+**Table declares no primary key and one is required** (error)
 
 `<artifact>: '<name>' declares neither primary_key nor unique_keys, and a relationship references it`
 
-Fix: declare primary_key (or unique_keys) in the model's config.meta.sst
+Fix: declare primary_key in config.meta.sst
 
 ### SST-VAL312
 
-**Table declares no key** (warning)
+**Table declares no primary key or unique keys** (warning)
 
 `<artifact>: '<name>' declares neither primary_key nor unique_keys`
 
@@ -1108,19 +1450,19 @@ Fix: declare one; cardinality is otherwise guessed from data
 
 ### SST-VAL314
 
-**Enum has no sample values** (error)
+**Enum column declares no sample values** (error)
 
 `<artifact>: '<member>' is is_enum and declares no sample_values`
 
-Fix: populate sample_values or clear is_enum
+Fix: populate sample_values, or clear is_enum
 
 ### SST-VAL315
 
-**Non-enum sample values look exhaustive** (warning)
+**Non-enum column declares sample values that look exhaustive** (warning)
 
 `<artifact>: '<member>' declares <count> sample_values and is not is_enum`
 
-Fix: set is_enum: true if the set is complete, or is_enum: false if it is a sample; sst enrich --include enums decides from the data
+Fix: set is_enum if the set is genuinely closed
 
 ### SST-VAL316
 
@@ -1128,23 +1470,85 @@ Fix: set is_enum: true if the set is complete, or is_enum: false if it is a samp
 
 `<artifact>: '<member>'.<field> contains '<value>'`
 
-Fix: delete the value; it is a missing-value placeholder, not data. sst enrich --force sample-values collects the column again
+Fix: re-run sst enrich; the value came from a pandas round-trip
+
+### SST-VAL317
+
+**Auto-managed field hand-edited** (warning)
+
+`<artifact>: '<member>'.<field> differs from the enriched value`
+
+Fix: let sst enrich own the field
 
 ### SST-VAL318
 
-**Excluded column is referenced** (error)
+**Excluded column referenced by a member** (error)
 
 `<artifact>: '<member>' references excluded column '<column>'`
 
-Fix: un-exclude the column or change the expression
+Fix: un-exclude the column, or change the expression
+
+### SST-VAL319
+
+**Member fan-out onto views** (info)
+
+`<artifact>: <value>`
+
+### SST-VAL320
+
+**Drift comparison not normalised on both sides** (error)
+
+`<artifact>: drift comparison compared raw DDL`
+
+Fix: normalise both sides before comparing
+
+### SST-VAL321
+
+**Tags would be set by the create statement** (error)
+
+`<artifact>: tags would be set by CREATE OR ALTER, which cannot set them`
+
+Fix: apply tags in a separate ALTER
+
+### SST-VAL322
+
+**Two views share a table with contradictory descriptions** (warning)
+
+`<a> and <b> share '<name>' with conflicting descriptions`
+
+Fix: reconcile the two descriptions
+
+### SST-VAL323
+
+**Base model has no columns block** (error)
+
+`<artifact>: '<name>' has no columns: block in dbt`
+
+Fix: add a columns: block so column refs can be checked
+
+### SST-VAL324
+
+**Base model has no contract and no tests** (warning)
+
+`<artifact>: '<name>' has <detail>`
+
+Fix: add a contract, or at least a uniqueness test on the grain
 
 ### SST-VAL325
 
-**Described column is absent from the relation** (warning)
+**Manifest column absent from the relation** (warning)
 
 `model '<model>': column '<column>' is described in YAML and absent from the relation`
 
-Fix: delete the column from the model YAML, or rebuild the model; sst enrich never deletes it
+Fix: remove the stale column entry, or add the column to the model
+
+### SST-VAL326
+
+**Undefined bare identifier in an attached member** (error)
+
+`view '<view>': member '<member>' references '<identifier>', which is neither a column on the view's tables nor a variable the view declares`
+
+Fix: declare the variable on this view, or correct the identifier
 
 ### SST-VAL327
 
@@ -1161,6 +1565,38 @@ Fix: correct data_type, or run sst enrich --force data-types
 `model '<model>': column '<column>' carries pii_tags and <count> sample_values`
 
 Fix: delete the sample_values; sst enrich never samples a column with pii_tags
+
+### SST-VAL329
+
+**View scope declares include and exclude for one kind** (error)
+
+`<artifact>: '<field>' and '<other>' are both declared; a view either includes or excludes <kind>`
+
+Fix: keep one of the two lists
+
+### SST-VAL330
+
+**View scope names an item that does not exist** (error)
+
+`<artifact>: <field> names <kind> '<name>', which <reason>`
+
+Fix: correct the name, or remove the entry
+
+### SST-VAL331
+
+**Excluded column is already excluded globally** (warning)
+
+`<artifact>: exclude_columns names '<column>', which is already excluded globally`
+
+Fix: remove the entry; the column is excluded from every view
+
+### SST-VAL332
+
+**Metric needs a relationship the view excludes** (error)
+
+`<artifact>: metric '<metric>' needs relationship '<relationship>', which this view excludes`
+
+Fix: include the relationship, or exclude the metric
 
 ### SST-VAL401
 
