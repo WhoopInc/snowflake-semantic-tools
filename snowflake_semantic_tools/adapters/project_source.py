@@ -18,7 +18,7 @@ from snowflake_semantic_tools.adapters.dbt.manifest import load_manifest_catalog
 from snowflake_semantic_tools.adapters.dbt.profiles import load_profile_target, resolve_profile_name
 from snowflake_semantic_tools.adapters.dbt.project import (
     dbt_project_name,
-    load_models,
+    load_model_catalog,
     resolve_target,
     run_dbt_parse,
     target_path,
@@ -124,14 +124,17 @@ class YamlProjectSource:
         # reported in that order, and before dbt is run.
         inputs = read_semantic_inputs(self._project_dir)
         target = resolve_target(self._project_dir, self._target_name)
-        models = load_models(
+        catalog = load_model_catalog(
             self._project_dir,
             read_yaml=read_yaml_mapping,
             target_name=self._target_name,
             manifest_path=self._parsed_manifest(),
             invoke_dbt=False,
         )
-        return load_semantic_views_result(self._project_dir, inputs, target=target, models=models)
+        models = {model.name.casefold(): model for model in catalog.models}
+        return load_semantic_views_result(
+            self._project_dir, inputs, target=target, models=models, unavailable=catalog.unavailable_models()
+        )
 
     def load_tools(self) -> ToolCatalog:
         """Load the tool groups under `project.tools_dir`, checked against the dbt manifest and target.

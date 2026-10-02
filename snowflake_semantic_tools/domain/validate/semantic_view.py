@@ -7,11 +7,12 @@ it and returns diagnostics; none raises for a user's project.
 
 from __future__ import annotations
 
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, Severity
 from snowflake_semantic_tools.domain.model.artifact_key import artifact_key
-from snowflake_semantic_tools.domain.model.semantic_view import ColumnKind, SemanticView
+from snowflake_semantic_tools.domain.model.identifier import QualifiedName
+from snowflake_semantic_tools.domain.model.semantic_view import ColumnKind, SemanticView, Table
 
 # The derived-metric restrictions Snowflake enforces at neither validate nor create time.
 CRITICAL_METRIC_CODES = frozenset(("SST-VAL102", "SST-VAL103", "SST-VAL104", "SST-VAL105", "SST-VAL106", "SST-VAL107"))
@@ -54,6 +55,25 @@ def restriction_diagnostics(
         D("SST-VAL123", subject=artifact, metric=metric.name.casefold())
         for metric in sorted(view.metrics, key=lambda item: item.name)
         if artifact_key("metric", metric.name).casefold() in failed
+    )
+
+
+def relation_diagnostics(
+    tables: Iterable[Table], relations: Mapping[str, str], *, artifact: str
+) -> tuple[Diagnostic, ...]:
+    """Report each table that would render against anything but the relation its model resolves to.
+
+    `relations` maps each logical table name to its dbt model's resolved relation. A model
+    with an alias names a relation other than the model, and the view must point at that one.
+
+    Diagnostics:
+        SST-VAL302: a table's three-part name is not its model's resolved relation.
+    """
+    return tuple(
+        D("SST-VAL302", subject=artifact, artifact=artifact, name=table.logical_name.casefold(), value=table.fqn)
+        for table in tables
+        if (relation := relations.get(table.logical_name)) is not None
+        and QualifiedName.parse(table.fqn).folded != QualifiedName.parse(relation).folded
     )
 
 

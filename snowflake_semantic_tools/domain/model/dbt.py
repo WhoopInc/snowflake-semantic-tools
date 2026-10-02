@@ -40,6 +40,8 @@ class DbtColumn:
     native_data_type: str | None = None
     # The column carries `pii_tags` in its meta, of any privacy category.
     pii_tagged: bool = False
+    # `meta.sst.access_modifier` as written; None when the column writes none.
+    access_modifier: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -68,6 +70,9 @@ class DbtModel:
     raw_relation_name: str | None = None
     # `patch_path` relative to the project root, without dbt's `<package>://` prefix.
     patch_file: str | None = None
+    # Whether dbt enforces a contract on the model, and whether any test is attached to it.
+    contract_enforced: bool = False
+    tested: bool = False
 
     def column(self, name: str) -> DbtColumn | None:
         """Return a column case-insensitively."""
@@ -91,6 +96,14 @@ class DbtCatalog:
     models: tuple[DbtModel, ...]
     # Models left out because they have no relation and no SST metadata, such as ephemeral ones.
     relationless_models: tuple[str, ...] = ()
+    # Models dbt lists as disabled, which produce no relation either.
+    disabled_models: tuple[str, ...] = ()
+
+    def unavailable_models(self) -> dict[str, str]:
+        """Each model that produces no relation, by casefolded name, with why: `disabled` or `ephemeral`."""
+        found = {name.casefold(): "ephemeral" for name in self.relationless_models}
+        found.update((name.casefold(), "disabled") for name in self.disabled_models)
+        return found
 
     def model(self, name: str) -> DbtModel | None:
         """Return a model by its dbt logical name, case-insensitively."""

@@ -30,7 +30,7 @@ from snowflake_semantic_tools.domain.model.lifecycle import (
 from snowflake_semantic_tools.domain.model.registry import Registry
 from snowflake_semantic_tools.domain.plan.classify import classify
 from snowflake_semantic_tools.domain.plan.order import render_order, topological_order
-from snowflake_semantic_tools.domain.plan.prune import block_unsafe, plan_prunes
+from snowflake_semantic_tools.domain.plan.prune import block_unpublished_dependencies, block_unsafe, plan_prunes
 from snowflake_semantic_tools.domain.state import Manifest, State, content_hash
 
 
@@ -71,16 +71,19 @@ def build_changeset(
         SST-MAN021: state was recorded against another manifest.
         SST-PLN005: the changes' dependencies form a cycle.
 
-    Each phase's own codes follow, in phase order: see `classify`, `plan_prunes`, and
-    `block_unsafe`.
+    Each phase's own codes follow, in phase order: see `classify`, `plan_prunes`,
+    `block_unpublished_dependencies`, and `block_unsafe`.
     """
     drift = _manifest_drift(manifest, state)
     changes, classified = _classify_all(rendered, observation, manifest, state, registry, blocked, composite_plans)
     pruned, skipped = (
         plan_prunes(rendered, observation, state, registry, prune_types, prune_keys) if include_prune else ((), ())
     )
-    safe, unpinned = block_unsafe((*changes, *pruned), registry)
-    return _ordered(safe, (*drift, *classified, *skipped, *unpinned), manifest, target, observation, full)
+    ordered_safely, unordered = block_unpublished_dependencies(
+        changes, observation.artifacts, manifest.artifacts, registry
+    )
+    safe, unpinned = block_unsafe((*ordered_safely, *pruned), registry)
+    return _ordered(safe, (*drift, *classified, *skipped, *unordered, *unpinned), manifest, target, observation, full)
 
 
 def _manifest_drift(manifest: Manifest, state: State) -> tuple[Diagnostic, ...]:

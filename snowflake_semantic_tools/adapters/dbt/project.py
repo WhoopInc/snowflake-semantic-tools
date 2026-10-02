@@ -107,11 +107,25 @@ def load_models(
     Returns:
         Each model by its casefolded name.
     """
+    catalog = load_model_catalog(
+        project_dir, read_yaml=read_yaml, target_name=target_name, manifest_path=manifest_path, invoke_dbt=invoke_dbt
+    )
+    return {model.name.casefold(): model for model in catalog.models}
+
+
+def load_model_catalog(
+    project_dir: Path,
+    *,
+    read_yaml: YamlReader,
+    target_name: str | None = None,
+    manifest_path: Path | None = None,
+    invoke_dbt: bool = True,
+) -> DbtCatalog:
+    """Load the manifest catalog dbt resolved for this target, as `load_models` reads it."""
     path = manifest_path or target_path(project_dir, read_yaml)
     if manifest_path is None and invoke_dbt:
         run_dbt_parse(project_dir, target_name)
-    catalog: DbtCatalog = load_manifest_catalog(path)
-    return {model.name.casefold(): model for model in catalog.models}
+    return load_manifest_catalog(path)
 
 
 def dbt_project_name(project_dir: Path) -> str:

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Mapping
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
@@ -128,6 +129,7 @@ def _column(name: str, value: object, *, node_path: str) -> DbtColumn:
         declared_keys=frozenset(str(key) for key in meta),
         native_data_type=native_type,
         pii_tagged=_pii_tagged(node),
+        access_modifier=_text(meta.get("access_modifier")),
     )
 
 
@@ -181,6 +183,30 @@ def _key_test_columns(nodes: Mapping[str, Any]) -> dict[str, frozenset[str]]:
             continue
         found.setdefault(model, set()).update(_test_columns(node, metadata))
     return {model: frozenset(columns) for model, columns in found.items()}
+
+
+def _tested_models(nodes: Mapping[str, Any]) -> frozenset[str]:
+    """Return the unique ids of the models any test is attached to."""
+    return frozenset(
+        str(node["attached_node"])
+        for node in nodes.values()
+        if isinstance(node, dict) and node.get("resource_type") == "test" and isinstance(node.get("attached_node"), str)
+    )
+
+
+def _disabled_models(root: Mapping[str, Any]) -> tuple[str, ...]:
+    """Return the names of the models dbt lists under `disabled`, sorted; none when it lists nothing."""
+    disabled = root.get("disabled")
+    entries = (entry for value in (disabled.values() if isinstance(disabled, dict) else ()) for entry in value or ())
+    return tuple(
+        sorted(
+            {
+                str(entry["name"])
+                for entry in entries
+                if isinstance(entry, dict) and entry.get("resource_type") == "model" and entry.get("name")
+            }
+        )
+    )
 
 
 def _model(unique_id: object, raw_node: object, key_columns: frozenset[str]) -> DbtModel | str | None:
@@ -249,7 +275,14 @@ def _build_model(
         package_name=_text(node.get("package_name")),
         raw_relation_name=_text(node.get("relation_name")),
         patch_file=_patch_file(_text(node.get("patch_path"))),
+        contract_enforced=_contract_enforced(node),
     )
+
+
+def _contract_enforced(node: Mapping[str, Any]) -> bool:
+    config = node.get("config")
+    contract = config.get("contract") if isinstance(config, dict) else None
+    return isinstance(contract, dict) and contract.get("enforced") is True
 
 
 def catalog_from_document(document: object) -> DbtCatalog:
@@ -273,12 +306,13 @@ def catalog_from_document(document: object) -> DbtCatalog:
 
     nodes = _mapping(root.get("nodes"), path="nodes")
     key_tests = _key_test_columns(nodes)
+    tested = _tested_models(nodes)
     models: list[DbtModel] = []
     relationless: list[str] = []
     for unique_id, raw_node in sorted(nodes.items()):
         model = _model(unique_id, raw_node, key_tests.get(str(unique_id), frozenset()))
         if isinstance(model, DbtModel):
-            models.append(model)
+            models.append(replace(model, tested=model.unique_id in tested))
         elif model is not None:
             relationless.append(model)
 
@@ -288,6 +322,7 @@ def catalog_from_document(document: object) -> DbtCatalog:
         project_name=_text(metadata.get("project_name")),
         models=tuple(models),
         relationless_models=tuple(relationless),
+        disabled_models=_disabled_models(root),
     )
 
 

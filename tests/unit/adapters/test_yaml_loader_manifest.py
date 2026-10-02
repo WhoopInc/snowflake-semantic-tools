@@ -66,7 +66,7 @@ def write_project(root: Path) -> Path:
                 "name": "products",
                 "description": "Products available to semantic views.",
                 "relation_name": "physical_db.physical_schema.product_catalog",
-                "config": {"meta": {"sst": {"primary_key": ["product_id"]}}},
+                "config": {"meta": {"sst": {"primary_key": ["product_id"]}}, "contract": {"enforced": True}},
                 "columns": {
                     "product_id": {
                         "name": "product_id",
@@ -566,7 +566,7 @@ def test_a_window_dimension_the_metric_cannot_reach_fails_the_view(tmp_path: Pat
         "name": "calendar",
         "description": "Calendar months.",
         "relation_name": "db.sch.calendar",
-        "config": {"meta": {"sst": {"primary_key": ["month"]}}},
+        "config": {"meta": {"sst": {"primary_key": ["month"]}}, "contract": {"enforced": True}},
         "columns": {
             "month": {
                 "name": "month",
@@ -607,7 +607,7 @@ def test_a_non_additive_table_outside_the_view_fails_the_view(tmp_path: Path) ->
         "name": "calendar",
         "description": "Calendar months.",
         "relation_name": "db.sch.calendar",
-        "config": {"meta": {"sst": {"primary_key": ["month"]}}},
+        "config": {"meta": {"sst": {"primary_key": ["month"]}}, "contract": {"enforced": True}},
         "columns": {
             "month": {
                 "name": "month",

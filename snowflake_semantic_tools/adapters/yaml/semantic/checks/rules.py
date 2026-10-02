@@ -38,6 +38,7 @@ def _rule_diagnostics(
     models: Mapping[str, DbtModel],
     config: Mapping[str, Any],
     view_instructions: Mapping[str, frozenset[str]],
+    unavailable: Mapping[str, str],
 ) -> tuple[Diagnostic, ...]:
     """Run the content rules in order: files, hardcoded names, metric descriptions, instructions, views.
 
@@ -64,6 +65,7 @@ def _rule_diagnostics(
         relationships,
         instructions,
         view_instructions,
+        unavailable=unavailable,
         description_floor=floor,
         instruction_budget=_setting(config, "instruction_budget"),
     )

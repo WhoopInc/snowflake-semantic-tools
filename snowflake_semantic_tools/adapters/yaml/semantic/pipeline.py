@@ -70,6 +70,7 @@ def load_semantic_views_result(
     *,
     target: DbtTarget,
     models: dict[str, DbtModel],
+    unavailable: Mapping[str, str] | None = None,
 ) -> SemanticViewProject:
     """Load healthy views while collecting view-local failures.
 
@@ -105,6 +106,7 @@ def load_semantic_views_result(
         inputs: The project config and semantic-model documents, as `read_semantic_inputs` read them.
         target: The dbt target that `{{ target.database }}` and `{{ target.schema }}` name.
         models: The target's dbt models, by casefolded name.
+        unavailable: The models that produce no relation, by casefolded name, with why.
 
     Raises:
         ProjectError: A member cannot be read at all, or there is no semantic_views/ directory.
@@ -122,7 +124,9 @@ def load_semantic_views_result(
     poison = poison.with_members(unattached | misrouted)
     instruction_names, instruction_diagnostics = _view_instructions(parsed.views, members.instruction_names)
     scope_diagnostics = _scope_diagnostics(parsed.views, members.metrics, members.relationships, context.models)
-    rule_diagnostics = _rule_diagnostics(context.documents, parsed, context.models, context.config, instruction_names)
+    rule_diagnostics = _rule_diagnostics(
+        context.documents, parsed, context.models, context.config, instruction_names, unavailable or {}
+    )
     reported = (
         *parsed.diagnostics,
         *structure.diagnostics,

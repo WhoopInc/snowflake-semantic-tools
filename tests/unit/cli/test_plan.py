@@ -344,14 +344,20 @@ def test_type_exclusion_removes_semantic_views_from_plan_and_prune_scope(
         ],
     )
 
-    assert result.exit_code == 2, result.output
-    assert {item["artifact_type"] for item in json.loads(result.output)["data"]["changes"]} == {
+    # Nothing exists yet, so the agent that reads the excluded views cannot publish before them.
+    assert result.exit_code == 1, result.output
+    payload = json.loads(result.output)
+    assert {item["artifact_type"] for item in payload["data"]["changes"]} == {
         "tool",
         "skill",
         "plugin",
         "profile",
         "agent",
         "eval",
+    }
+    assert {item["params"]["blocker"] for item in payload["diagnostics"] if item["code"] == "SST-VAL015"} == {
+        "semantic_view:jaffle_sales",
+        "semantic_view:jaffle_menu",
     }
 
 
@@ -388,16 +394,21 @@ def test_an_agent_is_never_planned_without_the_skill_version_it_pins(
             "agent:jaffle_analytics_agent",
             "--select",
             "skill:jaffle-semantics",
+            "--select",
+            "type:semantic_view",
+            "--select",
+            "tool:menu_docs_search",
             "--no-plan-out",
             "--output",
             "json",
         ],
     )
+    # With every dependency it does not find in Snowflake selected too, the agent publishes
+    # after them (SST-VAL015 otherwise).
     assert together.exit_code == 2, together.output
-    assert [(item["artifact_key"], item["action"]) for item in json.loads(together.output)["data"]["changes"]] == [
-        ("skill:jaffle-semantics", "create"),
-        ("agent:jaffle_analytics_agent", "create"),
-    ]
+    changes = [(item["artifact_key"], item["action"]) for item in json.loads(together.output)["data"]["changes"]]
+    assert ("skill:jaffle-semantics", "create") in changes
+    assert changes[-1] == ("agent:jaffle_analytics_agent", "create")
 
 
 def test_plan_without_a_compiled_manifest_names_the_missing_file(tmp_path: Path) -> None:

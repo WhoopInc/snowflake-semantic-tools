@@ -312,6 +312,7 @@ def _sample_values(
         "sample_values" not in declared or options.forces(Component.SAMPLE_VALUES)
     )
     if write_values and not enum_open and written_enum is True and not decision.complete and column_role != "fact":
+        # Left for its author, whom SST-VAL317 tells.
         return []
     values = decision.values if write_values else written_values
     result: list[tuple[str, object]] = []
@@ -323,6 +324,44 @@ def _sample_values(
         if is_enum != written_enum:
             result.append(("is_enum", is_enum))
     return result
+
+
+def _hand_edited_enum(
+    model: DbtModel,
+    existing: DbtColumn | None,
+    column_role: str,
+    options: EnrichOptions,
+    settings: EnrichmentConfig,
+    fetched: Sequence[str] | None,
+) -> list[Diagnostic]:
+    """Report a written `is_enum: true` that the sampled data contradicts, which enrich leaves as written.
+
+    Enrich owns `is_enum`; without `--force enums` it keeps an author's value, so a value the
+    data shows is not a closed set is reported rather than overwritten.
+
+    Diagnostics:
+        SST-VAL317: a dimension's written `is_enum: true` is not what enrich would write.
+    """
+    if fetched is None or existing is None or existing.is_enum is not True or column_role == "fact":
+        return []
+    declared = _declared(existing)
+    decision = decide_samples(fetched, distinct_limit=settings.distinct_limit, display_limit=settings.display_limit)
+    enum_open = "is_enum" not in declared or options.forces(Component.ENUMS)
+    write_values = bool(decision.values) and (
+        "sample_values" not in declared or options.forces(Component.SAMPLE_VALUES)
+    )
+    # Exactly the case `_sample_values` leaves unwritten for the author.
+    if enum_open or not write_values or decision.complete:
+        return []
+    return [
+        D(
+            "SST-VAL317",
+            artifact=f"dbt_model:{model.name}",
+            member=existing.name,
+            field="is_enum",
+            subject=_subject(model, existing.name),
+        )
+    ]
 
 
 def _synonym_value(
@@ -391,6 +430,7 @@ def enrich_model(
         SST-VAL325: a described column is absent from the relation.
         SST-VAL327: a written data type disagrees with the relation's.
         SST-VAL328: a column with `pii_tags` carries sample values, and the run reads row data.
+        SST-VAL317: a written `is_enum: true` the sampled data contradicts.
     """
     diagnostics = _absent_columns(model, warehouse)
     updates: list[ColumnUpdate] = []
@@ -407,6 +447,7 @@ def enrich_model(
             "synonyms": _synonym_value(existing, options, synonyms.get(folded)),
         }
         found.update(_sample_values(existing, column_role, options, settings, fetched))
+        diagnostics.extend(_hand_edited_enum(model, existing, column_role, options, settings, fetched))
         values = tuple((key, found[key]) for key in WRITTEN_KEYS if found.get(key) is not None)
         if values:
             name = existing.name if existing is not None else yaml_column_name(column.name)

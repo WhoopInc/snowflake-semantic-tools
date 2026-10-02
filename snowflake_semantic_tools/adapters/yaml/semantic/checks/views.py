@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import re
 from collections.abc import Iterator, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from snowflake_semantic_tools.adapters.yaml.semantic.checks.scope import _metric_tables, view_scope
 from snowflake_semantic_tools.adapters.yaml.semantic.defs import FilterDef, InstructionDef, MetricDef
@@ -134,6 +134,7 @@ class ViewInputs:
         models: The dbt models, by casefolded name.
         instructions: Every custom instruction, by casefolded name.
         view_instructions: Each view's attached instruction names, casefolded, by view key.
+        unavailable: The dbt models that produce no relation, casefolded, with why.
         description_floor: `validation.description_floor`; None checks no floor.
         instruction_budget: `validation.instruction_budget`; None checks no budget.
     """
@@ -144,6 +145,7 @@ class ViewInputs:
     relationships: tuple[Relationship, ...]
     instructions: Mapping[str, InstructionDef]
     view_instructions: Mapping[str, frozenset[str]]
+    unavailable: Mapping[str, str] = field(default_factory=dict)
     description_floor: int | None = None
     instruction_budget: int | None = None
 
@@ -211,7 +213,9 @@ def _view_rule_diagnostics(views: tuple[ParsedView, ...], inputs: ViewInputs) ->
         SST-VAL326: an attached expression holds a bare name another table or view provides.
         SST-VAL301: the view resolves no dimension and no metric.
         SST-VAL304: `max_staleness` is under 120 seconds.
+        SST-VAL303: a table names a dbt model that is disabled or ephemeral.
         SST-VAL323: a table's dbt model declares no columns.
+        SST-VAL324: a table's dbt model has neither a contract nor a test.
         SST-VAL322: two views give one table different descriptions.
     """
     readable = tuple(_attached(view, inputs) for view in views if not view.poisoned)
@@ -280,18 +284,36 @@ def _prose_rules(item: _Attached, inputs: ViewInputs) -> Iterator[Diagnostic]:
 
 
 def _table_rules(item: _Attached, inputs: ViewInputs) -> Iterator[Diagnostic]:
-    """Report each table's missing columns, then each range join whose target declares no range.
+    """Report what each table's model lacks, then each range join whose target declares no range.
 
-    Table by table: a model with no columns, then a `distinct_range` bound naming a column the
-    model does not have.
+    Table by table: a model that produces no relation, one with no columns, one with no contract
+    and no tests, then a `distinct_range` bound naming a column the model does not have.
     """
     config = _mapping(item.view.source.get("table_config"))
     for table in item.view.declared_tables:
         model = inputs.models.get(table)
         if model is None:
+            if table in inputs.unavailable:
+                yield D(
+                    "SST-VAL303",
+                    origin=item.view.origin,
+                    subject=item.key,
+                    artifact=item.key,
+                    name=table,
+                    found=inputs.unavailable[table],
+                )
             continue
         if not model.columns:
             yield D("SST-VAL323", origin=item.view.origin, subject=item.key, artifact=item.key, name=model.name)
+        if not model.contract_enforced and not model.tested:
+            yield D(
+                "SST-VAL324",
+                origin=item.view.origin,
+                subject=item.key,
+                artifact=item.key,
+                name=model.name,
+                detail="no contract and no tests",
+            )
         per_table = _mapping(config.get(model.name)) or _mapping(config.get(table))
         bounds = _mapping(per_table.get("distinct_range"))
         for bound in ("start", "end"):

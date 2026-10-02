@@ -45,6 +45,7 @@ from snowflake_semantic_tools.domain.model.semantic_view import (
 )
 from snowflake_semantic_tools.domain.parse.template import single_template_call
 from snowflake_semantic_tools.domain.sql import Sql, boolean, datatype, is_datatype, literal, number
+from snowflake_semantic_tools.domain.validate.semantic_view import relation_diagnostics
 from snowflake_semantic_tools.domain.validate.sql import qualified_name_problem
 
 
@@ -75,6 +76,10 @@ def _build_view(
     selected = _scoped(_select_members(artifact_key("semantic_view", name), members, attachment), scope)
     view = _View(name, path, models, DbtCatalog("v12", None, None, tuple(models.values())), mapping(config.get("vars")))
     tables, logical_by_model = _view_tables(node, view)
+    relations = {logical: models[model].relation_name for model, logical in logical_by_model.items()}
+    misplaced = relation_diagnostics(tables, relations, artifact=view.key)
+    if misplaced:
+        raise ProjectError(misplaced[0].message, diagnostics=misplaced)
     columns = [column for column in _view_columns(models, logical_by_model) if scope.admits_column(column)]
     resolver = _member_resolver(view, logical_by_model, selected)
     metrics = _view_metrics(selected.metrics, selected.relationships, resolver)
