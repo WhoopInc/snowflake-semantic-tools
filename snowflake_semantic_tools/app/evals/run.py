@@ -16,8 +16,12 @@ from hashlib import md5
 
 from snowflake_semantic_tools.app.compile.evals import CompiledEval
 from snowflake_semantic_tools.app.evals.retrieve import _read_results, _read_status, _sum_costs
-from snowflake_semantic_tools.app.lifecycle.composite import CatalogPublicationPort
-from snowflake_semantic_tools.app.lifecycle.evals import EvalLifecycleConfig, EvalLifecycleHandler
+from snowflake_semantic_tools.app.lifecycle.evals import (
+    EvalLifecycleConfig,
+    EvalLifecycleHandler,
+    eval_stage_format_matches,
+)
+from snowflake_semantic_tools.app.lifecycle.ports import CatalogPublicationPort
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, DiagnosticBag
 from snowflake_semantic_tools.domain.model.eval import (
     EVAL_PASS_STATUSES,
@@ -32,7 +36,7 @@ from snowflake_semantic_tools.domain.model.eval import (
 from snowflake_semantic_tools.domain.model.identifier import SchemaScope
 from snowflake_semantic_tools.domain.model.lifecycle import Action
 from snowflake_semantic_tools.domain.ports.clock import ClockPort
-from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
+from snowflake_semantic_tools.domain.ports.snowflake.errors import AgentVersionNotFound, SnowflakePortError
 from snowflake_semantic_tools.domain.ports.snowflake.stage import StagedFileMetadata
 from snowflake_semantic_tools.domain.resolve.eval_name import render_eval_name_template
 from snowflake_semantic_tools.domain.sql import Sql, ident, literal, scope, sql
@@ -203,21 +207,26 @@ class RunEvalSuite:
         run allows its first attempt plus the retries.
 
         Diagnostics:
-            SST-APL023: the eval has no run configuration, its agent version does not resolve,
-                or its config cannot be staged.
+            SST-APL023: the eval has no run configuration, its agent version cannot be read, or
+                its config cannot be staged.
+            SST-VAL720: the agent version the config pins does not exist, or was dropped.
+            SST-VAL729: the config stage declares another file format than evals read.
         """
         run = compiled.resolved.config.run
         if run is None:
             return D("SST-APL023", artifact=compiled.artifact_key, detail="run configuration is absent")
         timestamp = options.timestamp or _compact_timestamp()
         retry_count = run.retry if run.retry is not None else defaults.retry or 0
+        selector = compiled.resolved.config.agent_version or ""
         try:
-            agent_version = self._port.resolve_agent_version(
-                compiled.agent_target,
-                compiled.resolved.config.agent_version or "",
-            )
+            agent_version = self._port.resolve_agent_version(compiled.agent_target, selector)
+        except AgentVersionNotFound:
+            return D("SST-VAL720", artifact=compiled.name, value=selector, subject=compiled.artifact_key)
         except SnowflakePortError as exc:
             return D("SST-APL023", artifact=compiled.artifact_key, detail=str(exc))
+        stage_problem = self._stage_format_problem(compiled)
+        if stage_problem is not None:
+            return stage_problem
         required_completed = (run.baseline_runs or default_baseline_runs or 1) if baseline_capture else 1
         attempt_limit = required_completed + retry_count if baseline_capture else retry_count + 1
         config_path = EvalLifecycleHandler(self._port, self._lifecycle_config).config_path(compiled.rendered_artifact)
@@ -274,6 +283,8 @@ class RunEvalSuite:
         Diagnostics:
             SST-APL023: the run could not be started, or its status could not be read.
             SST-APL024: the run ended partially completed.
+            SST-VAL730: the run ended partially completed, and the config accepts that status;
+                it is still not a pass.
             SST-SNO001: the run completed but its results could not be read or did not match.
         """
         run_name = _run_name(compiled, setup, options, attempt_number)
@@ -285,9 +296,7 @@ class RunEvalSuite:
         except (SnowflakePortError, ValueError) as exc:
             diagnostic = D("SST-APL023", artifact=compiled.artifact_key, detail=str(exc))
             return EvalRunAttempt(run_name, attempt_number, "STATUS_FAILED", retrieval_error=str(exc)), (diagnostic,)
-        diagnostics: tuple[Diagnostic, ...] = ()
-        if terminal_status in _PARTIAL_STATUSES:
-            diagnostics = (D("SST-APL024", artifact=compiled.artifact_key, found=terminal_status),)
+        diagnostics = _partial_status(compiled, setup.run, terminal_status)
         if terminal_status not in EVAL_PASS_STATUSES:
             return EvalRunAttempt(run_name, attempt_number, terminal_status, status_details=status_details), diagnostics
         completed = EvalRunAttempt(
@@ -303,6 +312,16 @@ class RunEvalSuite:
             failure = D("SST-SNO001", detail=f"eval '{compiled.artifact_key}' retrieval failed: {exc}")
             return replace(completed, retrieval_error=str(exc)), (*diagnostics, failure)
         return replace(completed, rows=rows, cost=cost), diagnostics
+
+    def _stage_format_problem(self, compiled: CompiledEval) -> Diagnostic | None:
+        """SST-VAL729 when the existing config stage declares a file format EXECUTE_AI_EVALUATION cannot read."""
+        stage = EvalLifecycleHandler(self._port, self._lifecycle_config).config_stage(compiled.rendered_artifact)
+        if not self._port.object_exists("STAGE", stage):
+            return None
+        found = self._port.describe_stage_file_format(stage)
+        if eval_stage_format_matches(found):
+            return None
+        return D("SST-VAL729", artifact=compiled.name, found=found or "absent", subject=compiled.artifact_key)
 
     def _ensure_config(self, config_path: str, content: bytes, trusted_digest: str | None) -> None:
         """Stage the rendered config unless a trusted, identical copy is staged, then verify the copy.
@@ -492,6 +511,15 @@ def _run_name(compiled: CompiledEval, setup: _RunSetup, options: EvalRunOptions,
         ts=setup.timestamp,
     )
     return base_name if attempt_number == 1 else f"{base_name}_R{attempt_number}"
+
+
+def _partial_status(compiled: CompiledEval, run: EvalRunConfig, terminal_status: str) -> tuple[Diagnostic, ...]:
+    """Report a partial terminal status: an error when the config would accept it, else a warning."""
+    if terminal_status not in _PARTIAL_STATUSES:
+        return ()
+    if terminal_status in run.accept_statuses:
+        return (D("SST-VAL730", artifact=compiled.name, found=terminal_status, subject=compiled.artifact_key),)
+    return (D("SST-APL024", artifact=compiled.artifact_key, found=terminal_status),)
 
 
 def _retrieved(attempt: EvalRunAttempt) -> bool:

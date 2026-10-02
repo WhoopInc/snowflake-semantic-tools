@@ -9,12 +9,12 @@ from threading import Lock
 from types import MappingProxyType
 
 from snowflake_semantic_tools.app.lifecycle.composite import (
-    CatalogPublicationPort,
     CompositeHandler,
     PublicationRun,
     blocked,
     failed,
 )
+from snowflake_semantic_tools.app.lifecycle.ports import CatalogPublicationPort
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, DiagnosticBag
 from snowflake_semantic_tools.domain.model.artifact_key import artifact_key, split_artifact_key
 from snowflake_semantic_tools.domain.model.eval import DEFAULT_EVAL_CONFIG_STAGE
@@ -96,6 +96,10 @@ class EvalLifecycleHandler(CompositeHandler[RenderedArtifact, CompositeObservati
             ValueError: the artifact carries no config fingerprint.
         """
         return self._config_path(artifact)
+
+    def config_stage(self, artifact: RenderedArtifact) -> QualifiedName:
+        """Return the stage in the eval's target schema that holds its run configs."""
+        return self._config_stage(artifact)
 
     def _subject(self, artifact: RenderedArtifact) -> RenderedArtifact:
         return artifact
@@ -529,9 +533,14 @@ def _diagnosed(
     )
 
 
+def eval_stage_format_matches(stage_format: str | None) -> bool:
+    """Report whether a stage's declared file format is the one evals read, compared key by key."""
+    return _normalize_file_format(stage_format) == _normalize_file_format(EVAL_STAGE_FILE_FORMAT)
+
+
 def _format_problem(stage: QualifiedName, stage_format: str | None) -> Diagnostic | None:
     """Return SST-APL028 when the config stage declares another file format than evals read."""
-    if _normalize_file_format(stage_format) == _normalize_file_format(EVAL_STAGE_FILE_FORMAT):
+    if eval_stage_format_matches(stage_format):
         return None
     return D("SST-APL028", value=stage.sql, found=stage_format or "absent", expected=EVAL_STAGE_FILE_FORMAT)
 

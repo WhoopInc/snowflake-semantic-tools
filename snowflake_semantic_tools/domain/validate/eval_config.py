@@ -62,7 +62,8 @@ def validate_eval_config(
         SST-VAL717: another eval of the same agent already claimed the rendered run name.
         SST-PRS016: the effective retry, concurrency or baseline_runs is below its minimum.
         SST-VAL731: run.concurrency exceeds `evals.+concurrency`.
-        SST-VAL735: a system metric has a threshold and the effective baseline_runs is not positive.
+        SST-VAL735: a system metric has a threshold and the effective baseline_runs is not positive;
+            reported per such metric.
         SST-VAL732: the agent has tools an eval run skips, one per tool type (info).
     """
     return (
@@ -241,15 +242,14 @@ def _concurrency_ceiling(resolved: ResolvedEval, run: EvalRunConfig, defaults: E
 
 
 def _threshold_baseline(resolved: ResolvedEval, run: EvalRunConfig, defaults: EvalDefaults) -> tuple[Diagnostic, ...]:
-    emit = _emitter(resolved)
-    has_threshold = any(
-        (metric.name or "") in SYSTEM_EVAL_METRICS and metric.threshold is not None
-        for metric in resolved.config.system_metrics
-    )
     baseline_runs = _effective(run.baseline_runs, defaults.baseline_runs)
-    if has_threshold and not (baseline_runs or 0) > 0:
-        emit("SST-VAL735", name="gated metric")
-    return emit.diagnostics
+    if (baseline_runs or 0) > 0:
+        return ()
+    return tuple(
+        D("SST-VAL735", artifact=resolved.name, name=metric.name, origin=metric.origin, subject=resolved.key)
+        for metric in resolved.config.system_metrics
+        if metric.name in SYSTEM_EVAL_METRICS and metric.threshold is not None
+    )
 
 
 def _accept_statuses(resolved: ResolvedEval, run: EvalRunConfig) -> tuple[Diagnostic, ...]:

@@ -6,6 +6,7 @@ from dataclasses import dataclass, replace
 from hashlib import sha256
 
 from snowflake_semantic_tools.app.compile.base import CompileResult, StandaloneArtifact, compile_each
+from snowflake_semantic_tools.domain.diagnostics import DiagnosticBag
 from snowflake_semantic_tools.domain.model.eval import EvalCatalog, EvalDefaults, ResolvedEval
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
 from snowflake_semantic_tools.domain.model.lifecycle import (
@@ -23,6 +24,7 @@ from snowflake_semantic_tools.domain.render.eval import (
     render_source_table_statements,
 )
 from snowflake_semantic_tools.domain.resolve.eval_name import render_eval_name_template
+from snowflake_semantic_tools.domain.validate.eval import eval_placement
 
 
 @dataclass(frozen=True, slots=True)
@@ -107,17 +109,25 @@ class CompileEvals:
     def run_result(self) -> CompileResult:
         """Compile the evals in key order, skipping each one an error already names.
 
-        The diagnostics are the catalog's, then any SST-INT902.
+        The diagnostics are the catalog's, then each eval's placement, then any SST-INT902.
 
         Diagnostics:
+            SST-VAL704: an eval names a schema other than its agent's; it does not compile.
             SST-INT902: rendering an eval raised KeyError, TypeError or ValueError, such as one
                 whose agent has no target.
         """
+        evals = sorted(self._catalog.evals, key=lambda item: item.key)
+        placement = tuple(
+            diagnostic
+            for resolved in evals
+            if (target := self._agent_targets.get(resolved.agent.name.casefold())) is not None
+            for diagnostic in eval_placement(resolved, target)
+        )
         return compile_each(
-            sorted(self._catalog.evals, key=lambda item: item.key),
+            evals,
             key=lambda resolved: resolved.key,
             render=self._compile,
-            diagnostics=self._catalog.diagnostics,
+            diagnostics=DiagnosticBag((*self._catalog.diagnostics, *placement)),
             origin=lambda resolved: resolved.config.origin,
         )
 
@@ -153,12 +163,8 @@ def _render(
     sha7 = dataset_fingerprint[:7]
     dataset_name = render_eval_name_template(dataset_config.name_template, agent=resolved.name, sha7=sha7)
     source_name = render_eval_name_template(dataset_config.source_table_template, agent=resolved.name, sha7=sha7)
-    dataset_target = QualifiedName(
-        agent_target.database, agent_target.schema, QualifiedName.from_parts("X", "X", dataset_name).name
-    )
-    source_table = QualifiedName(
-        agent_target.database, agent_target.schema, QualifiedName.from_parts("X", "X", source_name).name
-    )
+    dataset_target = _in_agent_schema(agent_target, dataset_name)
+    source_table = _in_agent_schema(agent_target, source_name)
     config_yaml = render_eval_config(
         resolved.config,
         resolved.custom_metrics,
@@ -174,3 +180,9 @@ def _render(
         sha256(config_yaml.encode("utf-8")).hexdigest(),
     )
     return CompiledEval(resolved, agent_target, source_table, dataset_target, rendered)
+
+
+def _in_agent_schema(agent_target: QualifiedName, rendered: str) -> QualifiedName:
+    """Place a rendered eval object name in the agent's schema, dropping a qualifier that names it."""
+    name = rendered.rsplit(".", 1)[-1]
+    return QualifiedName(agent_target.database, agent_target.schema, QualifiedName.from_parts("X", "X", name).name)

@@ -7,14 +7,17 @@ with `datetime`, which the pure ring may not import.
 
 from __future__ import annotations
 
+import json
 import re
 from datetime import UTC, datetime, timedelta
+from hashlib import sha256
 
 from snowflake_semantic_tools.app.compile.evals import CompiledEval
 from snowflake_semantic_tools.app.evals.run import EvalRunResult
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, DiagnosticBag
 from snowflake_semantic_tools.domain.model.eval import (
     EVAL_COMPLETED,
+    CustomEvalMetric,
     EvalBaselineMetric,
     EvalBaselineRecord,
     EvalGateState,
@@ -87,6 +90,24 @@ def capture_baseline(
     )
 
 
+def recorded_judges(compiled: CompiledEval) -> DiagnosticBag:
+    """Report, for a captured baseline, the version each system metric's judge was recorded under.
+
+    A system metric's judge comes with its version and moves on Snowflake's cadence, so the
+    baseline's `metric_versions` is what explains a later score shift.
+
+    Diagnostics:
+        SST-VAL746: one per system metric, in config order (info).
+    """
+    return DiagnosticBag(
+        tuple(
+            D("SST-VAL746", artifact=metric.name, value=metric.version or "", subject=compiled.artifact_key)
+            for metric in compiled.resolved.config.system_metrics
+            if metric.name is not None
+        )
+    )
+
+
 def evaluate_gate(
     compiled: CompiledEval,
     result: EvalRunResult,
@@ -94,6 +115,7 @@ def evaluate_gate(
     *,
     now: str,
     default_tier: str | None = None,
+    default_baseline_runs: int | None = None,
 ) -> tuple[EvalGateVerdict, DiagnosticBag]:
     """Decide whether a run regressed against its baseline, or say why the gate cannot tell.
 
@@ -101,7 +123,8 @@ def evaluate_gate(
     failed in some current one. Only a blocking tier fails on a regression, and reports it as
     SST-VAL763; a report tier passes and lists it. Without a usable baseline or a clean current
     run the verdict has no signal: it does not pass, and its reason says why -- `baseline_absent`,
-    `current_no_signal`, `baseline_incompatible`, `baseline_expired` or `retrieval_no_signal`.
+    `current_no_signal`, `baseline_incompatible`, `baseline_incomplete`, `baseline_expired` or
+    `retrieval_no_signal`.
 
     Raises:
         ValueError: the tier is invalid, a timestamp does not parse, or a current attempt's
@@ -109,8 +132,10 @@ def evaluate_gate(
 
     Diagnostics:
         SST-VAL758: the eval has no baseline.
+        SST-VAL745: a custom metric the baseline's runs scored was edited in place since.
         SST-VAL759: the baseline was captured for another payload, agent version, dataset,
             metric set or question/metric vector.
+        SST-VAL734: the baseline holds fewer runs than `baseline_runs` now requires.
         SST-VAL760: the baseline expires within `BASELINE_WARNING_DAYS`.
         SST-VAL761: the baseline has expired.
         SST-VAL763: a blocking eval regressed; the error fails the run.
@@ -121,7 +146,7 @@ def evaluate_gate(
     if baseline is None:
         diagnostic = D("SST-VAL758", artifact=compiled.artifact_key)
         return EvalGateVerdict(tier, (), False, "baseline_absent"), DiagnosticBag((diagnostic,))
-    unusable = _unusable_baseline(compiled, result, baseline, now, default_tier)
+    unusable = _unusable_baseline(compiled, result, baseline, now, default_tier, default_baseline_runs)
     if unusable is not None:
         reason, diagnostic = unusable
         return EvalGateVerdict(tier, (), False, reason), DiagnosticBag((diagnostic,))
@@ -175,18 +200,34 @@ def _unusable_baseline(
     baseline: EvalBaselineRecord,
     now: str,
     default_tier: str | None,
+    default_baseline_runs: int | None,
 ) -> tuple[str, Diagnostic] | None:
     """Say why a baseline cannot judge the run, as a verdict reason and its diagnostic; None when it can.
 
-    Checked in order: the run's agent version, the baseline's compatibility, then its expiry.
+    Checked in order: the run's agent version, an in-place metric edit, the baseline's
+    compatibility, its run count, then its expiry.
     """
     try:
         current_agent_version = _result_agent_version(result)
     except ValueError as exc:
         return "current_no_signal", D("SST-SNO001", detail=f"eval '{compiled.artifact_key}' {exc}")
+    edited = _edited_metric(compiled, baseline)
+    if edited is not None:
+        diagnostic = D("SST-VAL745", artifact=edited, value=baseline.run_names[-1], subject=f"eval_metric:{edited}")
+        return "baseline_incompatible", diagnostic
     incompatibility = _incompatibility(compiled, baseline, default_tier, current_agent_version)
     if incompatibility is not None:
         return "baseline_incompatible", D("SST-VAL759", artifact=compiled.artifact_key, detail=incompatibility)
+    required = _baseline_runs(compiled, default_baseline_runs)
+    if len(baseline.run_names) < required:
+        diagnostic = D(
+            "SST-VAL734",
+            artifact=compiled.name,
+            count=len(baseline.run_names),
+            expected=required,
+            subject=compiled.artifact_key,
+        )
+        return "baseline_incomplete", diagnostic
     if _parse_timestamp(now) >= _parse_timestamp(baseline.expires_at):
         return "baseline_expired", D("SST-VAL761", artifact=compiled.artifact_key, date=baseline.expires_at)
     return None
@@ -278,9 +319,11 @@ def _incompatibility(
     return None if current == recorded else "eval payload, agent version, dataset or metric identity changed"
 
 
-def _baseline_runs(compiled: CompiledEval) -> int:
+def _baseline_runs(compiled: CompiledEval, default: int | None = None) -> int:
     run = compiled.resolved.config.run
-    return run.baseline_runs if run is not None and run.baseline_runs is not None else 1
+    if run is not None and run.baseline_runs is not None:
+        return run.baseline_runs
+    return default or 1
 
 
 def _attempt_agent_version(attempts: tuple[EvalRunAttempt, ...]) -> str:
@@ -307,9 +350,37 @@ def _metric_versions(compiled: CompiledEval) -> tuple[tuple[str, str], ...]:
         if metric.name is not None
     ]
     values.extend(
-        (metric.name, f"custom:{metric.model or ''}") for metric in compiled.resolved.custom_metrics if metric.enabled
+        (metric.name, _custom_version(metric)) for metric in compiled.resolved.custom_metrics if metric.enabled
     )
     return tuple(sorted(values))
+
+
+def _custom_version(metric: CustomEvalMetric) -> str:
+    """A custom metric's identity: its judge model and a digest of its prompt and bands.
+
+    A custom metric has no Snowflake version, so an edited prompt or scale is told apart only
+    by this digest.
+    """
+    ranges = metric.score_ranges
+    definition = {
+        "model": metric.model,
+        "prompt": metric.prompt,
+        "score_ranges": [ranges.min_score, ranges.median_score, ranges.max_score] if ranges is not None else None,
+    }
+    digest = sha256(json.dumps(definition, sort_keys=True).encode("utf-8")).hexdigest()[:12]
+    return f"custom:{metric.model or ''}:{digest}"
+
+
+def _edited_metric(compiled: CompiledEval, baseline: EvalBaselineRecord) -> str | None:
+    """Name the first custom metric the baseline recorded under another definition; None when none was."""
+    current = dict(_metric_versions(compiled))
+    for name, recorded in baseline.metric_versions:
+        version = current.get(name)
+        # A baseline captured before metrics were digested records `custom:<model>`, with no
+        # definition to compare; SST-VAL759 reports that it differs.
+        if version is not None and recorded.count(":") == 2 and recorded != version:
+            return name
+    return None
 
 
 def _metric_policy(

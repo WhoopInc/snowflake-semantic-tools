@@ -19,6 +19,8 @@ from snowflake_semantic_tools.domain.model.eval.model import (
     EvalDefaults,
     ResolvedEval,
 )
+from snowflake_semantic_tools.domain.model.identifier import QualifiedName
+from snowflake_semantic_tools.domain.resolve.eval_name import probe_name
 from snowflake_semantic_tools.domain.validate.eval_config import validate_eval_config
 from snowflake_semantic_tools.domain.validate.eval_dataset import validate_eval_dataset
 from snowflake_semantic_tools.domain.validate.eval_metric import validate_custom_metric
@@ -67,7 +69,7 @@ def validate_eval_catalog(
         SST-VAL709: an expected web tool is not named `web_search`.
         SST-VAL706: a question or expectation contains a relative date.
         SST-VAL710: the dataset has fewer rows than `evals.+min_dataset_rows`.
-        SST-VAL711: how many of the agent's tools no row expects (info).
+        SST-VAL711: how many of the agent's tools no row expects, when any (info).
         SST-VAL712: CREATE DATASET takes no properties (info).
         SST-PRS002: the dataset name template has no agent token.
         SST-VAL701: two evals render the same dataset name.
@@ -107,6 +109,42 @@ def validate_eval_catalog(
         agent_tools = tool_names.get(resolved.agent.name.casefold())
         diagnostics.extend(_validate_eval(resolved, catalog.defaults, agent_tools, dataset_names, run_names))
     return DiagnosticBag(tuple(diagnostics))
+
+
+def eval_placement(resolved: ResolvedEval, agent_target: QualifiedName) -> tuple[Diagnostic, ...]:
+    """Report each eval object template that qualifies itself into another schema than its agent's.
+
+    An eval's dataset and source table live in its agent's schema, so that a scratch agent's
+    evals land in scratch. A template that renders a bare name is placed there; one that
+    renders `<schema>.<name>` or `<database>.<schema>.<name>` must name that same schema.
+
+    Diagnostics:
+        SST-VAL704: a dataset or source table template names another database or schema.
+    """
+    dataset = resolved.config.dataset
+    if dataset is None:
+        return ()
+    expected = (agent_target.database.sql, agent_target.schema.sql)
+    diagnostics: list[Diagnostic] = []
+    for template in (dataset.name_template, dataset.source_table_template):
+        rendered = probe_name(template, resolved.agent.name) if template is not None else None
+        parts = rendered.split(".") if rendered is not None else []
+        if len(parts) not in (2, 3):
+            continue
+        found = (expected[0], parts[0]) if len(parts) == 2 else (parts[0], parts[1])
+        if tuple(part.casefold() for part in found) != tuple(part.casefold() for part in expected):
+            diagnostics.append(
+                D(
+                    "SST-VAL704",
+                    artifact=rendered,
+                    found=".".join(found),
+                    value=resolved.agent.name,
+                    expected=".".join(expected),
+                    origin=resolved.config.origin,
+                    subject=resolved.key,
+                )
+            )
+    return tuple(diagnostics)
 
 
 def _validate_eval(

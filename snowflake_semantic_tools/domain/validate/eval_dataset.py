@@ -46,7 +46,7 @@ def validate_eval_dataset(
         SST-VAL709: an expected web tool is not named `web_search`.
         SST-VAL706: a question or its expectation contains a relative date.
         SST-VAL710: the dataset has fewer rows than `evals.+min_dataset_rows`.
-        SST-VAL711: how many of the agent's tools no row expects (info).
+        SST-VAL711: how many of the agent's tools no row expects, when any (info).
         SST-VAL712: CREATE DATASET takes no properties (info, for every dataset).
         SST-PRS002: the dataset name template has no agent token.
         SST-VAL701: another eval already claimed the rendered dataset name.
@@ -180,6 +180,8 @@ def _tool_coverage(resolved: ResolvedEval, tool_names: frozenset[str] | None) ->
         return ()
     dataset = resolved.dataset
     uncovered = tool_names - _expected_tool_names(dataset.questions)
+    if not uncovered:
+        return ()
     return (
         D(
             "SST-VAL711",

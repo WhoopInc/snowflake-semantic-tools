@@ -3,6 +3,8 @@
 `resolved_eval` is one agent with one question, one system metric, and one custom metric;
 `compile_eval` compiles it against `DB.S.SALES_AGENT`. `EvalSnowflake` answers queries from a
 queue of results, in order, and fails a test on any query it was not given an answer for.
+`gated_eval`, `attempt` and `run_result` build what the gate judges: a blocking eval with two
+baseline runs, one completed attempt's pass flags, and a run of attempts.
 """
 
 from __future__ import annotations
@@ -10,9 +12,11 @@ from __future__ import annotations
 import json
 from collections import deque
 from collections.abc import Sequence
+from dataclasses import replace
 
 from snowflake_semantic_tools.app.compile.base import CompileResult
 from snowflake_semantic_tools.app.compile.evals import CompiledEval, CompileEvals
+from snowflake_semantic_tools.app.evals.run import EvalRunResult
 from snowflake_semantic_tools.domain.diagnostics import DiagnosticBag, Origin
 from snowflake_semantic_tools.domain.model.agent import AgentModel
 from snowflake_semantic_tools.domain.model.eval import (
@@ -22,7 +26,10 @@ from snowflake_semantic_tools.domain.model.eval import (
     EvalDataset,
     EvalDatasetConfig,
     EvalGroundTruth,
+    EvalMetricResult,
     EvalQuestion,
+    EvalResultRow,
+    EvalRunAttempt,
     EvalRunConfig,
     EvalScoreRanges,
     EvalSystemMetric,
@@ -85,6 +92,42 @@ def compiled_eval_of(resolved: ResolvedEval | None = None) -> CompiledEval:
     compiled = compile_eval(resolved).compiled[0]
     assert isinstance(compiled, CompiledEval)
     return compiled
+
+
+def gated_eval(resolved: ResolvedEval | None = None) -> CompiledEval:
+    """Compile an eval whose system metric gates, as a blocking eval with two baseline runs."""
+    compiled = compiled_eval_of(resolved)
+    config = compiled.resolved.config
+    run = config.run or EvalRunConfig()
+    return replace(
+        compiled,
+        resolved=replace(
+            compiled.resolved,
+            config=replace(
+                config,
+                system_metrics=(replace(config.system_metrics[0], gate=True),),
+                run=replace(run, baseline_runs=2, tier="blocking"),
+            ),
+        ),
+    )
+
+
+def attempt(name: str, *values: tuple[str, str, bool], agent_version: str = "VERSION$1") -> EvalRunAttempt:
+    """One completed attempt, from `(question, metric, passed)` flags."""
+    rows: dict[str, list[EvalMetricResult]] = {}
+    for question, metric, passed in values:
+        rows.setdefault(question, []).append(EvalMetricResult(question, metric, 1.0 if passed else 0.0, passed))
+    return EvalRunAttempt(
+        name,
+        1,
+        "COMPLETED",
+        tuple(EvalResultRow(question, "", tuple(metrics)) for question, metrics in sorted(rows.items())),
+        agent_version=agent_version,
+    )
+
+
+def run_result(*attempts: EvalRunAttempt) -> EvalRunResult:
+    return EvalRunResult("eval:sales_agent", attempts, DiagnosticBag(), True)
 
 
 STATUS_COLUMNS = ("RUN_NAME", "AGENT_NAME", "AGENT_TYPE", "STATUS", "STATUS_DETAILS")

@@ -189,7 +189,7 @@ def _prompt_scale_within_bands(
     emit = _emitter(metric)
     declared = (ranges.min_score[0], ranges.max_score[1])
     if scale is not None and (scale[0] < declared[0] or scale[1] > declared[1]):
-        emit("SST-VAL747", found=f"{scale[0]}..{scale[1]}", expected=f"{declared[0]}..{declared[1]}")
+        emit("SST-VAL747", found=f"{scale[0]:g}..{scale[1]:g}", expected=f"{declared[0]}..{declared[1]}")
     return emit.diagnostics
 
 

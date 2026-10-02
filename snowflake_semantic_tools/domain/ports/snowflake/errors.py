@@ -31,3 +31,7 @@ class SnowflakePortError(RuntimeError):
         self.errno = errno
         # What the command reports, when the adapter recognised the failure.
         self.diagnostic = diagnostic
+
+
+class AgentVersionNotFound(SnowflakePortError):
+    """An agent version selector names no committed version: it was never created, or was dropped."""

@@ -215,7 +215,8 @@ class CatalogPort(Protocol):
         Never writes.
 
         Raises:
-            SnowflakePortError: the selector names no committed version, or DESCRIBE AGENT failed.
+            AgentVersionNotFound: the selector names no committed version.
+            SnowflakePortError: DESCRIBE AGENT failed, or returned unusable aliases.
         """
         ...
 
