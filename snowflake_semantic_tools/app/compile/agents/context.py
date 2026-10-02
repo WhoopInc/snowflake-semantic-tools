@@ -54,6 +54,8 @@ class AgentCompileContext:
     # or `extension:<name>` -- mapped to the reason, so a reference to one names
     # the cause instead of reporting the name as undeclared.
     unpublished: Mapping[str, str] = field(default_factory=lambda: MappingProxyType({}))
+    # `snowflake.profile.avatar_allowlist`; None when it is not configured (SST-VAL548).
+    avatar_allowlist: frozenset[str] | None = None
 
 
 @dataclass(frozen=True, slots=True)

@@ -47,6 +47,8 @@ class AgentTool:
         passthrough: Keys added last to a search or generic tool's resources, so they override
             the computed ones; an MCP tool's resources are exactly these.
         tool_spec_passthrough: Keys added last to the rendered `tool_spec`, so they override it.
+        declared_keys: Every key the entry writes, sorted; validation reports one the type does
+            not take.
     """
 
     type: str
@@ -68,6 +70,7 @@ class AgentTool:
     input_schema: Mapping[str, object] = field(default_factory=lambda: MappingProxyType({}))
     passthrough: Mapping[str, object] = field(default_factory=lambda: MappingProxyType({}))
     tool_spec_passthrough: Mapping[str, object] = field(default_factory=lambda: MappingProxyType({}))
+    declared_keys: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -122,6 +125,9 @@ class AgentModel:
         tags: `(tag name, value)` pairs, in authored order.
         passthrough: Keys added last to the rendered spec, so they override the computed ones.
         evals: None when the agent declares no `evals:`.
+        deprecated: The agent is retired from use; no alias may still point at a version of it.
+        budget_tokens_documented: A comment on or just above `budget.tokens` says it bounds
+            orchestration, so the budget is not read as a spend ceiling.
     """
 
     name: str
@@ -146,6 +152,8 @@ class AgentModel:
     tags: tuple[tuple[str, str], ...] = ()
     passthrough: Mapping[str, object] = field(default_factory=lambda: MappingProxyType({}))
     evals: AgentEvalFiles | None = None
+    deprecated: bool = False
+    budget_tokens_documented: bool = False
 
     @property
     def key(self) -> str:
@@ -164,6 +172,9 @@ class ResolvedAgentTool:
         depends_on: The artifact keys of the project artifacts it uses, such as the semantic
             view an Analyst tool queries; a referenced tool member adds none.
         tool_spec_passthrough: Keys added last to the rendered `tool_spec`, so they override it.
+        member: The tool member the tool resolved through; None for a tool that names none.
+        external: The object the tool calls is one SST does not publish: a referenced tool
+            member, or an agent outside the project. Connected validation looks it up.
     """
 
     type: str
@@ -173,6 +184,8 @@ class ResolvedAgentTool:
     input_schema: Mapping[str, object] = field(default_factory=lambda: MappingProxyType({}))
     depends_on: tuple[str, ...] = ()
     tool_spec_passthrough: Mapping[str, object] = field(default_factory=lambda: MappingProxyType({}))
+    member: str | None = None
+    external: bool = False
 
 
 @dataclass(frozen=True, slots=True)

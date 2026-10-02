@@ -401,7 +401,8 @@ CONFIG_SCHEMA: tuple[ConfigKey, ...] = (
     _key("snowflake.orchestration_models", _L, "Orchestration models agents may name.", default="[auto]"),
     _unsupported("snowflake.tool_types", _L, "Extra agent tool types."),
     _unsupported("snowflake.allow_unknown_keys", _B, "Accept unknown agent spec keys."),
-    _unsupported("snowflake.profile", _BLOCK, "Agent profile allowlists."),
+    _key("snowflake.profile", _BLOCK, "Agent profile allowlists."),
+    _key("snowflake.profile.avatar_allowlist", _L, "Avatars an agent profile may name; unset allows any."),
 )
 
 CONFIG_KEYS: Mapping[str, ConfigKey] = MappingProxyType({key.path: key for key in CONFIG_SCHEMA})

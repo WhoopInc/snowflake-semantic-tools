@@ -23,6 +23,12 @@ from snowflake_semantic_tools.domain.model.agent import KNOWN_AGENT_TOOL_TYPES, 
 from snowflake_semantic_tools.domain.model.artifact_key import artifact_key
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
 from snowflake_semantic_tools.domain.model.tool import ToolKind, ToolMember
+from snowflake_semantic_tools.domain.validate.agent_tool import (
+    misplaced_keys,
+    overrides,
+    search_tool_problems,
+    signature_mismatch,
+)
 
 _SEARCH_SERVICES = (ToolKind.CORTEX_SEARCH_SERVICE.value,)
 _ROUTINES = (ToolKind.PROCEDURE.value, ToolKind.FUNCTION.value)
@@ -37,6 +43,8 @@ class _Resolution:
     description: str
     resources: dict[str, object] = field(default_factory=dict)
     depends_on: tuple[str, ...] = ()
+    member: str | None = None
+    external: bool = False
 
 
 _Resolver = Callable[[AgentModel, AgentTool, AgentCompileContext, list[Diagnostic]], _Resolution | None]
@@ -58,6 +66,7 @@ def resolve_tool(
 
     Diagnostics:
         SST-RND012: the tool type is unknown to the renderer.
+        SST-VAL516: the tool declares a key another tool type takes and its own does not.
         SST-VAL520: an Analyst tool names no semantic view, or is given a name as well.
         SST-REF011: an Analyst tool's semantic view is not one that compiled.
         SST-VAL521: a Cortex Search or generic tool has no name, or names no tool member.
@@ -65,12 +74,18 @@ def resolve_tool(
         SST-REF020: the tool member is of a type the tool cannot use.
         SST-REF018: a referenced tool member has no relation for the target (from the catalog).
         SST-REF019: a referenced tool member's relation does not parse (from the catalog).
+        SST-VAL522: a Cortex Search tool declares half of its document-preview pair.
+        SST-VAL524: a Cortex Search tool's column descriptor is malformed.
+        SST-VAL523: a Cortex Search tool filters on a column not marked filterable.
+        SST-VAL615: a Cortex Search or generic tool overrides a value its member declares.
         SST-VAL526: a generic tool's input schema is not an object.
         SST-PRS032: an input schema property has a type a tool input cannot carry.
         SST-PRS033: an input schema requires a property it does not declare.
+        SST-VAL607: a generic tool's input schema disagrees with its member's signature.
         SST-VAL527: a generic tool resolves no warehouse.
         SST-REF012: an agent tool's `agent()` names no enabled agent.
         SST-VAL528: an agent tool resolved, so this spec no longer fixes the tool surface.
+        SST-VAL529: a built-in tool declares `passthrough` resources, which it may not emit.
         SST-VAL513: the resolved name is empty or longer than 64 characters.
         SST-VAL517: a web_search tool is not named web_search.
         SST-VAL518: the resolved tool has no description.
@@ -83,6 +98,7 @@ def resolve_tool(
         )
         return None, tuple(diagnostics)
     # A known type without a resolver of its own is a built-in.
+    diagnostics.extend(misplaced_keys(agent, authored, authored.name or authored.type))
     resolution = _RESOLVERS.get(authored.type, _builtin)(agent, authored, context, diagnostics)
     if resolution is None:
         return None, tuple(diagnostics)
@@ -136,11 +152,18 @@ def _search(
         diagnostics.extend(problems)
     if relation is None:
         return None
+    name = authored.name or ""
+    resources = _search_resources(authored, backing, relation, warehouse, context.query_timeout)
+    columns = resources.get("columns_and_descriptions")
+    diagnostics.extend(search_tool_problems(agent, authored, name, columns if isinstance(columns, dict) else {}))
+    diagnostics.extend(overrides(agent, authored, name, backing))
     return _Resolution(
-        authored.name or "",
+        name,
         authored.description or backing.description or "",
-        _search_resources(authored, backing, relation, warehouse, context.query_timeout),
+        resources,
         _dependency(backing),
+        backing.name,
+        backing.artifact_key is None,
     )
 
 
@@ -174,9 +197,20 @@ def _generic(
             )
         )
     diagnostics.extend(_input_schema_diagnostics(agent, name, authored.input_schema))
+    mismatch = signature_mismatch(agent, name, backing, authored.input_schema)
+    if mismatch is not None:
+        diagnostics.append(mismatch)
     if not warehouse:
         diagnostics.append(D("SST-VAL527", artifact=agent.name, name=name, subject=agent.key))
-    return _Resolution(name, authored.description or backing.description or "", resources, _dependency(backing))
+    diagnostics.extend(overrides(agent, authored, name, backing))
+    return _Resolution(
+        name,
+        authored.description or backing.description or "",
+        resources,
+        _dependency(backing),
+        backing.name,
+        backing.artifact_key is None,
+    )
 
 
 def _backing(
@@ -236,7 +270,8 @@ def _delegate(
     elif name:
         relation = _member_relation(name, context, diagnostics)
         if relation is not None:
-            resolution = _Resolution(name, authored.description or "", {"identifier": relation.sql, "type": "agent"})
+            resource: dict[str, object] = {"identifier": relation.sql, "type": "agent"}
+            resolution = _Resolution(name, authored.description or "", resource, external=True)
     if resolution is not None:
         diagnostics.append(D("SST-VAL528", artifact=agent.name, subject=agent.key))
     return resolution
@@ -252,8 +287,14 @@ def _mcp(
 def _builtin(
     agent: AgentModel, authored: AgentTool, context: AgentCompileContext, diagnostics: list[Diagnostic]
 ) -> _Resolution:
-    """A built-in tool, such as data_to_chart: no resources, and named after its type unless named."""
-    return _Resolution(authored.name or authored.type, authored.description or "")
+    """A built-in tool, such as data_to_chart: no resources, and named after its type unless named.
+
+    Resources it declares in `passthrough` are reported rather than rendered.
+    """
+    name = authored.name or authored.type
+    if authored.passthrough:
+        diagnostics.append(D("SST-VAL529", artifact=agent.name, name=name, subject=agent.key))
+    return _Resolution(name, authored.description or "")
 
 
 _RESOLVERS: Mapping[str, _Resolver] = MappingProxyType(
@@ -297,6 +338,8 @@ def _finish(
         authored.input_schema,
         resolution.depends_on,
         authored.tool_spec_passthrough,
+        resolution.member,
+        resolution.external,
     )
 
 
@@ -337,7 +380,8 @@ def _search_resources(
 
     Authored columns replace the member's searchable and filterable ones, and an id or
     title column falls back to the member's, then to its first column ending `_id` or
-    `_name`. The authored `passthrough` keys come last, so they override any of these.
+    `_name`. The document-preview pair and the filter are the tool's own. The authored
+    `passthrough` keys come last, so they override any of these.
     """
     columns = authored.columns_and_descriptions or MappingProxyType(
         {
@@ -362,6 +406,11 @@ def _search_resources(
             resources[key] = value.upper()
     if columns:
         resources["columns_and_descriptions"] = dict(columns)
+    for key, value in (("stage_path", authored.stage_path), ("relative_path_column", authored.relative_path_column)):
+        if value:
+            resources[key] = value
+    if authored.filter:
+        resources["filter"] = dict(authored.filter)
     resources.update(_execution_environment(warehouse, authored.query_timeout or query_timeout))
     resources.update(authored.passthrough)
     return resources

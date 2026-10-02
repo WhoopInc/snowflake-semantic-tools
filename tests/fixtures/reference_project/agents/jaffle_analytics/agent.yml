@@ -52,6 +52,8 @@ spec:
     budget:
       # Either limit ends generation.
       seconds: 120
+      # Orchestration tokens only: tokens spent inside tools are not counted, so
+      # this is not a spend ceiling (SST-VAL547).
       tokens: 16000
     # `reject`: a caller who lacks access to a tool gets an error instead of an
     # answer from fewer tools. The values are accept, reject and legacy

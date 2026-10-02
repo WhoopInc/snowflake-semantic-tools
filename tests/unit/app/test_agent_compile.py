@@ -379,8 +379,8 @@ def test_agent_compiler_resolves_reference_and_managed_tool_fallbacks() -> None:
         "tools.yml",
         description="Search managed documents.",
         columns=(
-            ToolColumn("DOCUMENT_ID", "Document id.", "VARCHAR", False, True),
-            ToolColumn("DOCUMENT_NAME", "Document name.", "VARCHAR", True, False),
+            ToolColumn("DOCUMENT_ID", "Document id.", "string", False, True),
+            ToolColumn("DOCUMENT_NAME", "Document name.", "string", True, False),
         ),
     )
     managed_procedure = ToolMember(
@@ -463,8 +463,18 @@ def test_agent_compiler_resolves_reference_and_managed_tool_fallbacks() -> None:
                 description="Search managed documents.",
                 columns_and_descriptions=MappingProxyType(
                     {
-                        "DOCUMENT_ID": {"description": "Document id.", "type": "VARCHAR"},
-                        "DOCUMENT_NAME": {"description": "Document name.", "type": "VARCHAR"},
+                        "DOCUMENT_ID": {
+                            "description": "Document id.",
+                            "type": "string",
+                            "searchable": False,
+                            "filterable": True,
+                        },
+                        "DOCUMENT_NAME": {
+                            "description": "Document name.",
+                            "type": "string",
+                            "searchable": True,
+                            "filterable": False,
+                        },
                     }
                 ),
             ),
@@ -643,7 +653,9 @@ def test_agent_search_resources_support_authored_columns_and_partial_environment
                 description="Search.",
                 backing=("platform", "search"),
                 warehouse="LOCAL_WH",
-                columns_and_descriptions=MappingProxyType({"BODY": {"description": "Body."}}),
+                columns_and_descriptions=MappingProxyType(
+                    {"BODY": {"description": "Body.", "type": "string", "searchable": True, "filterable": False}}
+                ),
             ),
         ),
     )
@@ -651,7 +663,9 @@ def test_agent_search_resources_support_authored_columns_and_partial_environment
         CompileAgents((model,), DiagnosticBag(), context(tools=tools, warehouse=None)).run_result(), CompiledAgent
     )
     resources = compiled.resolved.tools[0].resources
-    assert resources["columns_and_descriptions"] == {"BODY": {"description": "Body."}}
+    assert resources["columns_and_descriptions"] == {
+        "BODY": {"description": "Body.", "type": "string", "searchable": True, "filterable": False}
+    }
     assert resources["execution_environment"] == {
         "type": "warehouse",
         "warehouse": "LOCAL_WH",
@@ -751,7 +765,8 @@ def test_skill_references_pin_owned_versions_and_check_consumed_ones() -> None:
         ),
     )
     result = CompileAgents((agent,), DiagnosticBag(), context()).run_result()
-    assert [item.code for item in result.diagnostics] == ["SST-VAL814"]
+    # The plugin carries a `semantics` member as well, which shadows the skill named before it.
+    assert [item.code for item in result.diagnostics] == ["SST-VAL814", "SST-VAL541"]
     payload = compiled_as(result, CompiledAgent).payload
     assert '"path": "DB.S.TOOLKIT"' in payload and '"version": "SST_0123456789AB"' in payload
     assert '"path": "DB.EXT.VENDOR_PACK"' in payload and '"version": "V2"' in payload

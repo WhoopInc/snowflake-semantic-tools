@@ -7,6 +7,7 @@ is the compiler's.
 
 from __future__ import annotations
 
+import re
 from collections.abc import Iterable, Mapping, Sequence
 
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic
@@ -76,12 +77,16 @@ def tool_name_clashes(model: AgentModel, tools: Sequence[ResolvedAgentTool]) -> 
 
 
 def agent_rules(
-    model: AgentModel, allowed_models: frozenset[str], tools: Sequence[ResolvedAgentTool]
+    model: AgentModel,
+    allowed_models: frozenset[str],
+    tools: Sequence[ResolvedAgentTool],
+    avatar_allowlist: frozenset[str] | None = None,
 ) -> list[Diagnostic]:
-    """Check the rules about the agent as a whole: alias and tags, model, access handling, search.
+    """Check the rules about the agent as a whole: alias and tags, model, access, search, profile.
 
     Args:
         allowed_models: `snowflake.orchestration_models`.
+        avatar_allowlist: `snowflake.profile.avatar_allowlist`; None when it is not configured.
 
     Diagnostics:
         SST-PRS025: the agent's alias is reserved.
@@ -89,6 +94,9 @@ def agent_rules(
         SST-VAL543: the agent's orchestration model is not in `allowed_models`.
         SST-VAL545: the agent's `tool_not_accessible` is not accept, reject, or legacy.
         SST-VAL546: the agent enables analytical search without a cortex_search tool.
+        SST-VAL548: the avatar is outside the allowlist, or the color is neither a plain
+            colour name nor a `var(--token)`.
+        SST-VAL550: the agent is deprecated and an alias still points at a version of it.
     """
     diagnostics: list[Diagnostic] = []
     if model.alias and model.alias.upper() in RESERVED_AGENT_ALIASES:
@@ -110,7 +118,64 @@ def agent_rules(
         )
     if model.analytical_search and not any(tool.type == "cortex_search" for tool in tools):
         diagnostics.append(D("SST-VAL546", artifact=model.name, subject=model.key))
+    diagnostics.extend(_profile_problems(model, avatar_allowlist))
+    if model.deprecated and model.alias:
+        diagnostics.append(
+            D(
+                "SST-VAL550",
+                artifact=model.name,
+                detail=f"is deprecated and alias '{model.alias}' still points at a version of it",
+                subject=model.key,
+            )
+        )
     return diagnostics
+
+
+_COLOR_FORMS = re.compile(r"[A-Za-z]+|var\(--[A-Za-z0-9_-]+\)")
+
+
+def _profile_problems(model: AgentModel, avatar_allowlist: frozenset[str] | None) -> list[Diagnostic]:
+    """Report an avatar outside the configured allowlist, then a color in neither known form."""
+    found: list[Diagnostic] = []
+    avatar, color = model.profile.avatar, model.profile.color
+    if avatar and avatar_allowlist is not None and avatar not in avatar_allowlist:
+        found.append(
+            D(
+                "SST-VAL548",
+                artifact=model.name,
+                field="avatar",
+                found=avatar,
+                detail="is not in snowflake.profile.avatar_allowlist",
+                subject=model.key,
+            )
+        )
+    if color and not _COLOR_FORMS.fullmatch(color.strip()):
+        found.append(
+            D(
+                "SST-VAL548",
+                artifact=model.name,
+                field="color",
+                found=color,
+                detail="is neither a plain colour name nor a var(--token)",
+                subject=model.key,
+            )
+        )
+    return found
+
+
+def token_budget(authored: AgentModel) -> tuple[Diagnostic, ...]:
+    """Report a token budget the agent sets for itself, which bounds orchestration and not spend.
+
+    Read before the `agents:` defaults fill the budget, so a project-wide default is not
+    reported once per agent. A budget documented beside it as orchestration-only is not
+    being read as a spend ceiling, and is not reported.
+
+    Diagnostics:
+        SST-VAL547: the agent sets `budget.tokens` and does not say it bounds orchestration.
+    """
+    if authored.budget_tokens is None or authored.budget_tokens_documented:
+        return ()
+    return (D("SST-VAL547", artifact=authored.name, subject=authored.key),)
 
 
 def spec_size(resolved: ResolvedAgent, payload: str) -> tuple[Diagnostic, ...]:
