@@ -197,7 +197,7 @@ class YamlProjectSource:
         agent_diagnostics = DiagnosticBag()
         if agents is None:
             agents, agent_diagnostics = load_agents(self._project_dir, agents_dir=agents_dir)
-        defaults, default_diagnostics = parse_eval_defaults(config.get("evals"))
+        defaults, default_diagnostics = parse_eval_defaults(config.get("evals"), file=self._files.config_name)
         snowflake = config.get("snowflake")
         raw_models = snowflake.get("orchestration_models") if isinstance(snowflake, dict) else None
         allowed_models = strings(raw_models)

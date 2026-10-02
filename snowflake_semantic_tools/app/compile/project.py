@@ -163,7 +163,7 @@ class CompileProject:
         skills_config = settings.block("skills")
         catalog_config = skills_config.get("catalog")
         channel = _catalog_channel(settings, skills_config)
-        skills = CompileSkills(catalog, channel).run_result()
+        skills = CompileSkills(catalog, channel, config_file=settings.file).run_result()
         unpublished = unpublished_reasons(catalog, skills, _channel_problem(catalog_config, channel))
         stage_config = skills_config.get("stage")
         if not isinstance(stage_config, dict):

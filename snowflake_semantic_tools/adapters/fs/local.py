@@ -12,6 +12,7 @@ from typing import Generic, TypeVar
 
 from snowflake_semantic_tools.adapters.errors import ProjectError
 from snowflake_semantic_tools.domain.diagnostics import D
+from snowflake_semantic_tools.domain.model.config_schema import CONFIG_FILE
 from snowflake_semantic_tools.domain.state import Manifest, SavedPlan, State, StoredDocumentError, canonical_json
 
 T = TypeVar("T")
@@ -169,7 +170,7 @@ class StateFileStore(JsonStore[State]):
         self,
         path: Path,
         *,
-        config_path: str = "sst_config.yml",
+        config_path: str = CONFIG_FILE,
         now: Callable[[], datetime] | None = None,
     ) -> None:
         super().__init__(path, State.from_dict)

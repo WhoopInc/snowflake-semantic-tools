@@ -20,6 +20,7 @@ from snowflake_semantic_tools.adapters.yaml.evals.readers import (
 )
 from snowflake_semantic_tools.adapters.yaml.fields import optional_int, optional_string
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, DiagnosticBag, Origin
+from snowflake_semantic_tools.domain.model.config_schema import CONFIG_FILE
 from snowflake_semantic_tools.domain.model.eval import (
     EVAL_TERMINAL_STATUSES,
     EvalColumnMapping,
@@ -34,8 +35,10 @@ from snowflake_semantic_tools.domain.model.eval import (
 from snowflake_semantic_tools.domain.parse.template import TemplateSyntaxError, single_template_call
 
 
-def parse_eval_defaults(value: object) -> tuple[EvalDefaults, DiagnosticBag]:
-    """Parse the `evals:` block of `sst_config.yml` into the defaults every eval inherits.
+def parse_eval_defaults(value: object, *, file: str = CONFIG_FILE) -> tuple[EvalDefaults, DiagnosticBag]:
+    """Parse the `evals:` block of the configuration file into the defaults every eval inherits.
+
+    `file` is how diagnostics name the configuration file the run read.
 
     An absent block reads as the empty defaults. `+metrics` is checked for its type and a
     string `+eval_tier` for its value; any other value of the wrong type reads as unset,
@@ -52,17 +55,17 @@ def parse_eval_defaults(value: object) -> tuple[EvalDefaults, DiagnosticBag]:
         return EvalDefaults(), DiagnosticBag()
     if not isinstance(value, dict):
         return EvalDefaults(), DiagnosticBag(
-            (D("SST-PRS003", artifact="sst_config.yml", field="evals", expected="mapping", found=type(value).__name__),)
+            (D("SST-PRS003", artifact=file, field="evals", expected="mapping", found=type(value).__name__),)
         )
     diagnostics: list[Diagnostic] = []
-    origin = Origin("sst_config.yml")
+    origin = Origin(file)
     metrics = string_tuple(value.get("+metrics"), "evals.+metrics", origin, diagnostics)
     eval_tier = optional_string(value.get("+eval_tier"))
     if eval_tier is not None and eval_tier not in {"blocking", "report"}:
         diagnostics.append(
             D(
                 "SST-PRS013",
-                artifact="sst_config.yml",
+                artifact=file,
                 field="evals.+eval_tier",
                 found=eval_tier,
                 expected="blocking, report",
