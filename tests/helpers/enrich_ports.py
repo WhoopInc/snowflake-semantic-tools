@@ -9,7 +9,7 @@ from snowflake_semantic_tools.adapters.yaml.view_writer import write_table_synon
 from snowflake_semantic_tools.domain.enrich import ColumnUpdate, TableSynonymEdit, WarehouseColumn
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
 from snowflake_semantic_tools.domain.ports.enrich import WrittenFile
-from snowflake_semantic_tools.domain.ports.snowflake import SnowflakePortError
+from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
 
 Answer = Callable[[str, Mapping[str, object]], object]
 

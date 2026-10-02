@@ -1,7 +1,7 @@
 """Validation orchestration over compiled artifacts.
 
 The offline checks live in `domain.validate`. The connected syntax check (SST-VAL020,
-SST-VAL418) stays here because it compiles each expression through the `SnowflakePort`.
+SST-VAL418) stays here because it compiles each expression through the `ExecutionPort`.
 """
 
 from __future__ import annotations
@@ -14,7 +14,8 @@ from snowflake_semantic_tools.domain.diagnostics import D, DiagnosticBag, resolv
 from snowflake_semantic_tools.domain.model.identifier import Identifier
 from snowflake_semantic_tools.domain.model.lifecycle import RenderedArtifact
 from snowflake_semantic_tools.domain.model.semantic_view import SemanticView
-from snowflake_semantic_tools.domain.ports.snowflake import SnowflakePort, SnowflakePortError
+from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
+from snowflake_semantic_tools.domain.ports.snowflake.execution import ExecutionPort
 from snowflake_semantic_tools.domain.sql import (
     AuthoredExpression,
     Sql,
@@ -53,7 +54,7 @@ class ValidateArtifacts:
     The connected checks only EXPLAIN, so they never write.
     """
 
-    def __init__(self, port: SnowflakePort | None = None) -> None:
+    def __init__(self, port: ExecutionPort | None = None) -> None:
         self._port = port
 
     def run(

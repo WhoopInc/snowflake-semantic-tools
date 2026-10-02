@@ -8,14 +8,23 @@ ownership marker, and runs the probes only once it does.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Protocol
 
 from snowflake_semantic_tools.app.compile import CompileResult
 from snowflake_semantic_tools.app.state import read_state
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, DiagnosticBag
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName, TargetIdentity
 from snowflake_semantic_tools.domain.model.lifecycle import OwnershipMarker, RenderedArtifact, SmokeProbe
-from snowflake_semantic_tools.domain.ports.snowflake import SnowflakePort, SnowflakePortError, StateStore
+from snowflake_semantic_tools.domain.ports.snowflake.catalog import CatalogPort
+from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
+from snowflake_semantic_tools.domain.ports.snowflake.execution import ExecutionPort
+from snowflake_semantic_tools.domain.ports.snowflake.state import StatePort
+from snowflake_semantic_tools.domain.ports.state import StateStore
 from snowflake_semantic_tools.domain.state import Manifest, State
+
+
+class SmokePort(CatalogPort, ExecutionPort, StatePort, Protocol):
+    """The Snowflake roles the smoke suite over published objects uses: markers, probes, and state."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -34,7 +43,7 @@ class SmokeResult:
 class RunSmokeSuite:
     """Run each rendered artifact's smoke probes, which read and never write."""
 
-    def __init__(self, port: SnowflakePort) -> None:
+    def __init__(self, port: ExecutionPort) -> None:
         self._port = port
 
     def run(self, rendered: tuple[RenderedArtifact, ...], *, fail_fast: bool = False) -> SmokeResult:
@@ -69,7 +78,7 @@ class SmokePublished:
     no probe runs against an object some other run, or someone else, published.
     """
 
-    def __init__(self, port: SnowflakePort, state_store: StateStore) -> None:
+    def __init__(self, port: SmokePort, state_store: StateStore) -> None:
         self._port = port
         self._state_store = state_store
 

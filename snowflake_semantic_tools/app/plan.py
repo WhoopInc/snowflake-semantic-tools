@@ -18,7 +18,7 @@ from snowflake_semantic_tools.app.compile.profiles import CompiledProfile
 from snowflake_semantic_tools.app.compile.skills import CompiledExtension
 from snowflake_semantic_tools.app.lifecycle.evals import EvalLifecycleConfig, EvalLifecycleHandler
 from snowflake_semantic_tools.app.lifecycle.extensions import ExtensionLifecycleHandler
-from snowflake_semantic_tools.app.lifecycle.profiles import ProfileLifecycleHandler
+from snowflake_semantic_tools.app.lifecycle.profiles import ProfileLifecycleHandler, ProfilePublicationPort
 from snowflake_semantic_tools.app.manifest import manifest_for, stale_manifest
 from snowflake_semantic_tools.app.partial import PartialSplit, partial_refusal, partial_split
 from snowflake_semantic_tools.app.state import read_state
@@ -41,16 +41,20 @@ from snowflake_semantic_tools.domain.model.lifecycle import (
 )
 from snowflake_semantic_tools.domain.model.registry import SEMANTIC_REGISTRY, ArtifactType, Registry
 from snowflake_semantic_tools.domain.plan import build_changeset
+from snowflake_semantic_tools.domain.ports.clock import ClockPort
 from snowflake_semantic_tools.domain.ports.lifecycle import CompositeLifecycleHandler
 from snowflake_semantic_tools.domain.ports.project import ProjectInputs
-from snowflake_semantic_tools.domain.ports.snowflake import ClockPort, SnowflakePort, SnowflakePortError, StateStore
+from snowflake_semantic_tools.domain.ports.snowflake import SnowflakePort
+from snowflake_semantic_tools.domain.ports.snowflake.catalog import CatalogPort
+from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
+from snowflake_semantic_tools.domain.ports.state import StateStore
 from snowflake_semantic_tools.domain.state import DEACTIVATED, Manifest, State
 
 _FoldedName = tuple[str, str, str]
 
 
 def observe(
-    port: SnowflakePort,
+    port: CatalogPort,
     registry: Registry,
     targets: tuple[QualifiedName, ...],
     *,
@@ -104,7 +108,7 @@ def _active_object_types(
 
 
 def _observe_scope(
-    port: SnowflakePort,
+    port: CatalogPort,
     artifact_type: ArtifactType,
     object_type: str,
     scope: SchemaScope,
@@ -125,7 +129,7 @@ def _observe_scope(
 
 
 def _observe_row(
-    port: SnowflakePort,
+    port: CatalogPort,
     artifact_type: ArtifactType,
     object_type: str,
     row: ShowRow,
@@ -151,7 +155,7 @@ def _observe_row(
 
 
 def _replaceable_grants(
-    port: SnowflakePort,
+    port: CatalogPort,
     artifact_type: ArtifactType,
     object_type: str,
     row: ShowRow,
@@ -179,7 +183,7 @@ class PlanArtifacts:
 
     def __init__(
         self,
-        port: SnowflakePort,
+        port: CatalogPort,
         *,
         registry: Registry = SEMANTIC_REGISTRY,
         lifecycle_handlers: Mapping[str, CompositeLifecycleHandler] | None = None,
@@ -626,7 +630,7 @@ def _validated(candidates: PlanCandidates, diagnostics: DiagnosticBag) -> Compil
 
 
 def _lifecycle_handlers(
-    port: SnowflakePort, full: CompileResult, apply_config: Mapping[str, object]
+    port: ProfilePublicationPort, full: CompileResult, apply_config: Mapping[str, object]
 ) -> dict[str, CompositeLifecycleHandler]:
     """Build each composite artifact type's handler over everything that compiled, by type."""
     eval_stage_config = config_block(apply_config.get("eval_config_stage"))

@@ -13,7 +13,7 @@ from collections.abc import Mapping
 
 from snowflake_semantic_tools.adapters.snowflake.connector.session import Session, _variant_value
 from snowflake_semantic_tools.domain.ports.enrich import CortexPort
-from snowflake_semantic_tools.domain.ports.snowflake import SnowflakePortError
+from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
 from snowflake_semantic_tools.domain.sql import Sql, boolean, bound_literal, join, null, number, sql
 
 # A model name as Cortex spells one, such as `mistral-large2` or `claude-sonnet-4-6`.

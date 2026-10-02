@@ -12,7 +12,8 @@ from snowflake_semantic_tools.domain.model.eval import (
     EvalRegression,
 )
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
-from snowflake_semantic_tools.domain.ports.snowflake import SnowflakePort, SnowflakePortError
+from snowflake_semantic_tools.domain.ports.snowflake import SnowflakePort
+from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
 from snowflake_semantic_tools.domain.sql import Sql, literal, qname, sql
 
 

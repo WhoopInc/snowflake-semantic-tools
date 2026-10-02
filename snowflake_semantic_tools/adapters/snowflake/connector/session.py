@@ -25,7 +25,8 @@ from snowflake.connector.errors import Error as DriverError
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic
 from snowflake_semantic_tools.domain.model.identifier import SchemaScope
 from snowflake_semantic_tools.domain.model.lifecycle import ExecResult, ExecutionError, QueryResult
-from snowflake_semantic_tools.domain.ports.snowflake import ExecutionPort, SnowflakePortError
+from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
+from snowflake_semantic_tools.domain.ports.snowflake.execution import ExecutionPort
 from snowflake_semantic_tools.domain.sql import Sql, ident, scope, sql
 
 # What a statement or fetch raises when Snowflake or the network fails: the driver's own

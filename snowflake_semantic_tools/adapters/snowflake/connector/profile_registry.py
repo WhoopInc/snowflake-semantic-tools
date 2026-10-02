@@ -11,7 +11,8 @@ from collections.abc import Mapping
 from snowflake_semantic_tools.adapters.snowflake.connector.session import Session, _json_text, _require_ok
 from snowflake_semantic_tools.domain.model.identifier import Identifier, QualifiedName
 from snowflake_semantic_tools.domain.model.lifecycle import QueryResult
-from snowflake_semantic_tools.domain.ports.snowflake import ProfileRegistryPort, SnowflakePortError
+from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
+from snowflake_semantic_tools.domain.ports.snowflake.profile_registry import ProfileRegistryPort
 from snowflake_semantic_tools.domain.sql import Sql, ident, join, qname, sql
 
 # The 18 columns of CoCo Desktop's profile registry, as the production table

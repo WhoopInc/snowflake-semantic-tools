@@ -16,7 +16,8 @@ from pathlib import PurePosixPath
 
 from snowflake_semantic_tools.adapters.snowflake.connector.session import Session, _require_ok
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
-from snowflake_semantic_tools.domain.ports.snowflake import SnowflakePortError, StagedFileMetadata, StagePort
+from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
+from snowflake_semantic_tools.domain.ports.snowflake.stage import StagedFileMetadata, StagePort
 from snowflake_semantic_tools.domain.sql import Sql, literal, local_file, sql, stage_path
 from snowflake_semantic_tools.domain.validate.stage_path import SAFE_SEGMENT_CHARACTERS as _SAFE_SEGMENT
 

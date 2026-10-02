@@ -20,7 +20,7 @@ from snowflake_semantic_tools.domain.model.eval import (
 )
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
 from snowflake_semantic_tools.domain.model.lifecycle import QueryResult
-from snowflake_semantic_tools.domain.ports.snowflake import SnowflakePortError
+from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
 from tests.helpers.eval_state_store import InMemoryEvalStateStore
 from tests.helpers.recorded_snowflake import ReadOnlySnowflake, RecordedSnowflake, ScriptedSnowflake
 

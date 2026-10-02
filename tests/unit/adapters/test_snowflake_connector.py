@@ -12,7 +12,9 @@ from snowflake_semantic_tools.adapters.clock import SystemClock
 from snowflake_semantic_tools.adapters.snowflake.connector import SnowflakeConnector
 from snowflake_semantic_tools.domain.model.identifier import Identifier, QualifiedName, SchemaScope
 from snowflake_semantic_tools.domain.model.lifecycle import ExecResult, QueryResult
-from snowflake_semantic_tools.domain.ports.snowflake import SnowflakePortError, StagedFileMetadata, StageObservation
+from snowflake_semantic_tools.domain.ports.snowflake.catalog import StageObservation
+from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
+from snowflake_semantic_tools.domain.ports.snowflake.stage import StagedFileMetadata
 from snowflake_semantic_tools.domain.sql import Sql, sql
 from snowflake_semantic_tools.domain.state import AppliedEntry
 from tests.helpers.sql_values import texts

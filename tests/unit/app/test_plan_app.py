@@ -21,7 +21,7 @@ from snowflake_semantic_tools.domain.model.registry import (
     GrantPreservation,
     Registry,
 )
-from snowflake_semantic_tools.domain.ports.snowflake import SnowflakePortError
+from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
 from snowflake_semantic_tools.domain.state import AppliedEntry, AppliedResourceInput, Manifest
 from tests.helpers.app_ports import InMemorySnowflake
 from tests.helpers.artifact_builders import change, manifest, rendered, state, target

@@ -2,20 +2,18 @@
 
 from __future__ import annotations
 
+from snowflake_semantic_tools.domain.ports.clock import ClockPort
 from snowflake_semantic_tools.domain.ports.eval_state import EvalStateStore
 from snowflake_semantic_tools.domain.ports.lifecycle import CompositeLifecycleHandler
 from snowflake_semantic_tools.domain.ports.semantic_view_source import SemanticViewSource
-from snowflake_semantic_tools.domain.ports.snowflake import (
-    CatalogPort,
-    ClockPort,
-    ExecutionPort,
-    ProfileRegistryPort,
-    SnowflakePort,
-    SnowflakePortError,
-    StagePort,
-    StatePort,
-    StateStore,
-)
+from snowflake_semantic_tools.domain.ports.snowflake import SnowflakePort
+from snowflake_semantic_tools.domain.ports.snowflake.catalog import CatalogPort
+from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
+from snowflake_semantic_tools.domain.ports.snowflake.execution import ExecutionPort
+from snowflake_semantic_tools.domain.ports.snowflake.profile_registry import ProfileRegistryPort
+from snowflake_semantic_tools.domain.ports.snowflake.stage import StagePort
+from snowflake_semantic_tools.domain.ports.snowflake.state import StatePort
+from snowflake_semantic_tools.domain.ports.state import StateStore
 
 ROLES = (CatalogPort, ExecutionPort, StagePort, ProfileRegistryPort, StatePort)
 

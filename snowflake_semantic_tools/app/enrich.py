@@ -47,7 +47,7 @@ from snowflake_semantic_tools.domain.model.identifier import Identifier, Qualifi
 from snowflake_semantic_tools.domain.model.semantic_view import SemanticView
 from snowflake_semantic_tools.domain.ports.enrich import EnrichFilesPort, EnrichPort
 from snowflake_semantic_tools.domain.ports.project import ProjectInputs
-from snowflake_semantic_tools.domain.ports.snowflake import SnowflakePortError
+from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
 
 # A failure no other model would escape: the connection, a transient fault, or a privilege.
 # It stops the run as a connection failure instead of failing one model.

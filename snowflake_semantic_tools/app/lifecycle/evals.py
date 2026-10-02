@@ -8,7 +8,13 @@ from hashlib import md5, sha256
 from threading import Lock
 from types import MappingProxyType
 
-from snowflake_semantic_tools.app.lifecycle.composite import CompositeHandler, PublicationRun, blocked, failed
+from snowflake_semantic_tools.app.lifecycle.composite import (
+    CatalogPublicationPort,
+    CompositeHandler,
+    PublicationRun,
+    blocked,
+    failed,
+)
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, DiagnosticBag
 from snowflake_semantic_tools.domain.model.artifact_key import artifact_key, split_artifact_key
 from snowflake_semantic_tools.domain.model.eval import DEFAULT_EVAL_CONFIG_STAGE
@@ -27,7 +33,7 @@ from snowflake_semantic_tools.domain.model.lifecycle import (
     PhysicalResource,
     RenderedArtifact,
 )
-from snowflake_semantic_tools.domain.ports.snowflake import SnowflakePort, SnowflakePortError
+from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
 from snowflake_semantic_tools.domain.sql import Sql, qname, sql
 from snowflake_semantic_tools.domain.state import AppliedEntry, ResourceStatus
 
@@ -45,7 +51,7 @@ class EvalLifecycleConfig:
     config_stage_name: str = DEFAULT_EVAL_CONFIG_STAGE
 
 
-class EvalLifecycleHandler(CompositeHandler[RenderedArtifact, CompositeObservation]):
+class EvalLifecycleHandler(CompositeHandler[RenderedArtifact, CompositeObservation, CatalogPublicationPort]):
     """Plan and publish one agent's evaluation: its source table, dataset, and staged config.
 
     The table and dataset are immutable: a changed dataset publishes new ones, and state
@@ -56,7 +62,7 @@ class EvalLifecycleHandler(CompositeHandler[RenderedArtifact, CompositeObservati
     _prune_detail = "keep them while an evaluation run or baseline references them"
     _prune_order = 400
 
-    def __init__(self, port: SnowflakePort, config: EvalLifecycleConfig = EvalLifecycleConfig()) -> None:
+    def __init__(self, port: CatalogPublicationPort, config: EvalLifecycleConfig = EvalLifecycleConfig()) -> None:
         super().__init__(port)
         self._config = config
         # Every eval in a schema shares its config stage, and the first to apply
@@ -300,7 +306,7 @@ class EvalLifecycleHandler(CompositeHandler[RenderedArtifact, CompositeObservati
         )
 
 
-class _EvalRun(PublicationRun):
+class _EvalRun(PublicationRun[CatalogPublicationPort]):
     """One eval publication: each resource created only when absent, and verified before the next.
 
     The steps run in order: the source table, its row count, the dataset, the config

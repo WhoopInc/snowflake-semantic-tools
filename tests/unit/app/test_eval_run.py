@@ -46,7 +46,8 @@ from snowflake_semantic_tools.domain.model.eval import (
 )
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
 from snowflake_semantic_tools.domain.model.lifecycle import ExecResult, ExecutionError, QueryResult
-from snowflake_semantic_tools.domain.ports.snowflake import SnowflakePortError, StagedFileMetadata
+from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
+from snowflake_semantic_tools.domain.ports.snowflake.stage import StagedFileMetadata
 from snowflake_semantic_tools.domain.state import STATE_SCHEMA_VERSION, AppliedEntry, State
 from tests.helpers.app_ports import FixedClock, InMemorySnowflake
 from tests.helpers.artifact_builders import target

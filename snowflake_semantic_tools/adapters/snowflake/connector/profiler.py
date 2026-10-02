@@ -14,7 +14,7 @@ from snowflake_semantic_tools.adapters.snowflake.connector.session import Sessio
 from snowflake_semantic_tools.domain.enrich import WarehouseColumn
 from snowflake_semantic_tools.domain.model.identifier import Identifier, QualifiedName
 from snowflake_semantic_tools.domain.ports.enrich import RelationProfilerPort
-from snowflake_semantic_tools.domain.ports.snowflake import SnowflakePortError
+from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
 from snowflake_semantic_tools.domain.sql import Sql, ident, join, number, qname, sql
 
 # Columns sampled by one statement; a relation with more is sampled in several.

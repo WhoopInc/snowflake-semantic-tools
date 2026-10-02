@@ -16,7 +16,8 @@ from hashlib import sha256
 from snowflake_semantic_tools.app.compile.evals import CompiledEval
 from snowflake_semantic_tools.domain.model.eval import EvalCostSummary, EvalMetricResult, EvalResultRow, ThresholdRange
 from snowflake_semantic_tools.domain.model.identifier import SchemaScope
-from snowflake_semantic_tools.domain.ports.snowflake import SnowflakePort, SnowflakePortError
+from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
+from snowflake_semantic_tools.domain.ports.snowflake.execution import ExecutionPort
 from snowflake_semantic_tools.domain.sql import sql
 
 _STATUS_COLUMNS = ("RUN_NAME", "AGENT_NAME", "AGENT_TYPE", "STATUS", "STATUS_DETAILS")
@@ -46,7 +47,7 @@ _RecordQuestion = tuple[str, str]
 
 
 def _read_status(
-    port: SnowflakePort,
+    port: ExecutionPort,
     compiled: CompiledEval,
     run_name: str,
     config_path: str,
@@ -74,7 +75,7 @@ def _read_status(
 
 
 def _read_results(
-    port: SnowflakePort,
+    port: ExecutionPort,
     compiled: CompiledEval,
     run_name: str,
 ) -> tuple[tuple[EvalResultRow, ...], EvalCostSummary]:

@@ -12,6 +12,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from types import MappingProxyType
+from typing import Protocol
 
 from snowflake_semantic_tools.app.compile import CompileResult
 from snowflake_semantic_tools.app.compile.evals import CompiledEval
@@ -24,6 +25,7 @@ from snowflake_semantic_tools.app.evals.run import (
     eval_suite_json,
     validate_eval_publication,
 )
+from snowflake_semantic_tools.app.lifecycle.composite import CatalogPublicationPort
 from snowflake_semantic_tools.app.lifecycle.evals import EvalLifecycleConfig, EvalLifecycleHandler
 from snowflake_semantic_tools.app.state import read_state
 from snowflake_semantic_tools.domain.diagnostics import Diagnostic, DiagnosticBag
@@ -35,10 +37,16 @@ from snowflake_semantic_tools.domain.model.eval import (
     EvalGateVerdict,
 )
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName, TargetIdentity
+from snowflake_semantic_tools.domain.ports.clock import ClockPort
 from snowflake_semantic_tools.domain.ports.eval_state import EvalStateStore
 from snowflake_semantic_tools.domain.ports.project import ProjectInputs
-from snowflake_semantic_tools.domain.ports.snowflake import ClockPort, SnowflakePort, StateStore
+from snowflake_semantic_tools.domain.ports.snowflake.state import StatePort
+from snowflake_semantic_tools.domain.ports.state import StateStore
 from snowflake_semantic_tools.domain.state import Manifest, State
+
+
+class EvalGatePort(CatalogPublicationPort, StatePort, Protocol):
+    """The Snowflake roles the eval gate uses: running the suite, and reading recorded state."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -93,7 +101,7 @@ class RunEvalGate:
 
     def __init__(
         self,
-        port: SnowflakePort,
+        port: EvalGatePort,
         inputs: ProjectInputs,
         state_store: StateStore,
         eval_store: EvalStateStore,

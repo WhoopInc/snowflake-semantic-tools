@@ -22,7 +22,7 @@ from snowflake_semantic_tools.domain.model.dbt import DbtCatalog, DbtColumn, Dbt
 from snowflake_semantic_tools.domain.model.identifier import Identifier
 from snowflake_semantic_tools.domain.model.project import SemanticViewProject
 from snowflake_semantic_tools.domain.model.semantic_view import SemanticView, Table
-from snowflake_semantic_tools.domain.ports.snowflake import SnowflakePortError
+from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
 from tests.helpers.enrich_ports import InMemoryFiles, ScriptedEnrich
 from tests.helpers.project_inputs import InMemoryProjectInputs
 

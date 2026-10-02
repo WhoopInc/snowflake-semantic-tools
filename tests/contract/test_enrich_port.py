@@ -14,7 +14,7 @@ from snowflake_semantic_tools.adapters.snowflake.connector.profiler import (
 from snowflake_semantic_tools.domain.enrich import TABLE_SYNONYMS_SCHEMA, WarehouseColumn
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
 from snowflake_semantic_tools.domain.model.lifecycle import QueryResult
-from snowflake_semantic_tools.domain.ports.snowflake import SnowflakePortError
+from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
 from tests.helpers.enrich_ports import ScriptedEnrich
 
 ORDERS = QualifiedName.parse('db.sch."Orders"')

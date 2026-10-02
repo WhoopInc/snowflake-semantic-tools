@@ -22,7 +22,9 @@ from snowflake_semantic_tools.adapters.snowflake.connector.session import (
     _variant_value,
 )
 from snowflake_semantic_tools.domain.model.identifier import Identifier, QualifiedName
-from snowflake_semantic_tools.domain.ports.snowflake import CatalogPort, SnowflakePortError, StatePort
+from snowflake_semantic_tools.domain.ports.snowflake.catalog import CatalogPort
+from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
+from snowflake_semantic_tools.domain.ports.snowflake.state import StatePort
 from snowflake_semantic_tools.domain.sql import Sql, ident, join, qname, sql
 from snowflake_semantic_tools.domain.state import AppliedEntry, AppliedResource, pairs_from_json, pairs_to_json
 

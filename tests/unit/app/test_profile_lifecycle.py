@@ -32,7 +32,7 @@ from snowflake_semantic_tools.domain.model.profile import (
     SharedProfile,
 )
 from snowflake_semantic_tools.domain.model.skill import Plugin, Skill, SkillCatalog, SkillFile
-from snowflake_semantic_tools.domain.ports.snowflake import SnowflakePortError
+from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
 from snowflake_semantic_tools.domain.state import (
     DEACTIVATED,
     FAILED_AFTER_WRITE,

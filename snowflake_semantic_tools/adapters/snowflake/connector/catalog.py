@@ -14,13 +14,13 @@ from typing import Any
 from snowflake_semantic_tools.adapters.snowflake.connector.session import Session, _variant_value
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName, SchemaScope
 from snowflake_semantic_tools.domain.model.lifecycle import GrantRow, OwnershipMarker, ShowRow, extract_marker
-from snowflake_semantic_tools.domain.ports.snowflake import (
+from snowflake_semantic_tools.domain.ports.snowflake.catalog import (
     CatalogPort,
     ExtensionObservation,
     ExtensionVersion,
-    SnowflakePortError,
     StageObservation,
 )
+from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
 from snowflake_semantic_tools.domain.sql import Sql, datatype, ident, join, keyword, literal, qname, scope, sql
 
 # The object types SST observes, each spelled as SHOW spells it once pluralized with an S.

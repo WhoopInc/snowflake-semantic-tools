@@ -30,7 +30,8 @@ from snowflake_semantic_tools.domain.model.lifecycle import (
     OutcomeStatus,
 )
 from snowflake_semantic_tools.domain.model.skill import Plugin, Skill, SkillCatalog, SkillFile
-from snowflake_semantic_tools.domain.ports.snowflake import ExtensionObservation, ExtensionVersion, SnowflakePortError
+from snowflake_semantic_tools.domain.ports.snowflake.catalog import ExtensionObservation, ExtensionVersion
+from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
 from snowflake_semantic_tools.domain.sql import Sql
 from snowflake_semantic_tools.domain.state import FAILED_AFTER_WRITE, STATE_SCHEMA_VERSION, AppliedEntry, State
 from tests.helpers.app_ports import FixedClock, InMemoryStateStore

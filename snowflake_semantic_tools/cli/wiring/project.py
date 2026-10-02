@@ -16,7 +16,7 @@ from snowflake_semantic_tools.adapters.dbt.profiles import ProfileTarget, load_p
 from snowflake_semantic_tools.adapters.fs.local import StateFileStore, state_file
 from snowflake_semantic_tools.adapters.project_source import YamlProjectInputs
 from snowflake_semantic_tools.adapters.snowflake.connector import SnowflakeConnector
-from snowflake_semantic_tools.domain.ports.snowflake import SnowflakePortError
+from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
 
 
 def target_dir(project_dir: Path) -> Path:

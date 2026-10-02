@@ -31,7 +31,7 @@ from snowflake_semantic_tools.domain.model.lifecycle import (
     ShowRow,
 )
 from snowflake_semantic_tools.domain.model.registry import GrantPreservation
-from snowflake_semantic_tools.domain.ports.snowflake import SnowflakePortError
+from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
 from snowflake_semantic_tools.domain.sql import Sql
 from snowflake_semantic_tools.domain.state import FAILED_AFTER_WRITE, AppliedEntry, AppliedResourceInput, Manifest
 from tests.helpers.app_ports import FixedClock, InMemorySnowflake, InMemoryStateStore, failed

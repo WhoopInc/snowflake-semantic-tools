@@ -12,6 +12,7 @@ from collections.abc import Mapping
 from dataclasses import replace
 
 from snowflake_semantic_tools.app.apply.errors import _exception_error, _failed, _rendered_ddl, _script_error, _skipped
+from snowflake_semantic_tools.app.lifecycle.composite import CatalogPublicationPort
 from snowflake_semantic_tools.domain.model.identifier import Identifier
 from snowflake_semantic_tools.domain.model.lifecycle import (
     Action,
@@ -29,8 +30,9 @@ from snowflake_semantic_tools.domain.model.lifecycle import (
     RetryPolicy,
 )
 from snowflake_semantic_tools.domain.model.registry import GrantPreservation
+from snowflake_semantic_tools.domain.ports.clock import ClockPort
 from snowflake_semantic_tools.domain.ports.lifecycle import CompositeLifecycleHandler
-from snowflake_semantic_tools.domain.ports.snowflake import ClockPort, SnowflakePort, SnowflakePortError
+from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
 from snowflake_semantic_tools.domain.sql import Sql, ident, join, keyword, privilege, qname, sql
 
 
@@ -60,7 +62,7 @@ class ChangeApplier:
 
     def __init__(
         self,
-        port: SnowflakePort,
+        port: CatalogPublicationPort,
         clock: ClockPort,
         lifecycle_handlers: Mapping[str, CompositeLifecycleHandler],
     ) -> None:

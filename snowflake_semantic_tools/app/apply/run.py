@@ -10,10 +10,12 @@ from __future__ import annotations
 from collections.abc import Callable, Mapping
 from concurrent.futures import ThreadPoolExecutor
 from types import MappingProxyType
+from typing import Protocol
 
 from snowflake_semantic_tools.app.apply.errors import _failed, _outcome_diagnostic, _rendered_ddl, _skipped
 from snowflake_semantic_tools.app.apply.one import ChangeApplier
 from snowflake_semantic_tools.app.apply.state import EntryStamp, _applied_after, _run_outcome
+from snowflake_semantic_tools.app.lifecycle.composite import CatalogPublicationPort
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, DiagnosticBag
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
 from snowflake_semantic_tools.domain.model.lifecycle import (
@@ -30,11 +32,17 @@ from snowflake_semantic_tools.domain.model.lifecycle import (
     OutcomeStatus,
 )
 from snowflake_semantic_tools.domain.plan import dependency_waves
+from snowflake_semantic_tools.domain.ports.clock import ClockPort
 from snowflake_semantic_tools.domain.ports.lifecycle import CompositeLifecycleHandler
-from snowflake_semantic_tools.domain.ports.snowflake import ClockPort, SnowflakePort, StateStore
+from snowflake_semantic_tools.domain.ports.snowflake.state import StatePort
+from snowflake_semantic_tools.domain.ports.state import StateStore
 from snowflake_semantic_tools.domain.state import SST_VERSION, STATE_SCHEMA_VERSION, LastRun, State
 
 _ApplyOne = Callable[[Change, ApplyOptions], ApplyOutcome]
+
+
+class ApplyPort(CatalogPublicationPort, StatePort, Protocol):
+    """The Snowflake roles apply uses: a catalog publication port that also keeps the state table."""
 
 
 class ApplyArtifacts:
@@ -46,7 +54,7 @@ class ApplyArtifacts:
 
     def __init__(
         self,
-        port: SnowflakePort,
+        port: ApplyPort,
         state_store: StateStore,
         clock: ClockPort,
         *,

@@ -28,7 +28,7 @@ from snowflake_semantic_tools.domain.model.eval import (
 )
 from snowflake_semantic_tools.domain.model.identifier import Identifier, TargetIdentity
 from snowflake_semantic_tools.domain.model.lifecycle import QueryResult
-from snowflake_semantic_tools.domain.ports.snowflake import StagedFileMetadata
+from snowflake_semantic_tools.domain.ports.snowflake.stage import StagedFileMetadata
 from snowflake_semantic_tools.domain.sql import Sql
 from snowflake_semantic_tools.domain.state import AppliedEntry, State
 from tests.helpers.cli_projects import (
@@ -519,7 +519,7 @@ def test_golden_json_failure_missing_file_and_smoke_failure(tmp_path: Path, monk
     assert len(json.loads(missing.output)["data"]["failures"]) == 15
 
     from snowflake_semantic_tools.domain.model.lifecycle import OwnershipMarker
-    from snowflake_semantic_tools.domain.ports.snowflake import SnowflakePortError
+    from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
     from snowflake_semantic_tools.domain.state import AppliedEntry
 
     manifest = json.loads((project / "target" / "sst" / "manifest.json").read_text(encoding="utf-8"))

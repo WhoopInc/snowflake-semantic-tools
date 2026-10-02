@@ -16,7 +16,9 @@ from snowflake_semantic_tools.domain.model.lifecycle import (
     QueryResult,
     ShowRow,
 )
-from snowflake_semantic_tools.domain.ports.snowflake import SnowflakePortError, StagedFileMetadata, StageObservation
+from snowflake_semantic_tools.domain.ports.snowflake.catalog import StageObservation
+from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
+from snowflake_semantic_tools.domain.ports.snowflake.stage import StagedFileMetadata
 from snowflake_semantic_tools.domain.sql import sql
 from snowflake_semantic_tools.domain.state import AppliedEntry
 from tests.helpers.recorded_snowflake import ReadOnlySnowflake, RecordedSnowflake, ScriptedSnowflake

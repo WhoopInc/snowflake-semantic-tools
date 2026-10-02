@@ -16,6 +16,7 @@ from hashlib import md5
 
 from snowflake_semantic_tools.app.compile.evals import CompiledEval
 from snowflake_semantic_tools.app.evals.retrieve import _read_results, _read_status, _sum_costs
+from snowflake_semantic_tools.app.lifecycle.composite import CatalogPublicationPort
 from snowflake_semantic_tools.app.lifecycle.evals import EvalLifecycleConfig, EvalLifecycleHandler
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, DiagnosticBag
 from snowflake_semantic_tools.domain.model.eval import (
@@ -30,12 +31,9 @@ from snowflake_semantic_tools.domain.model.eval import (
 )
 from snowflake_semantic_tools.domain.model.identifier import SchemaScope
 from snowflake_semantic_tools.domain.model.lifecycle import Action
-from snowflake_semantic_tools.domain.ports.snowflake import (
-    ClockPort,
-    SnowflakePort,
-    SnowflakePortError,
-    StagedFileMetadata,
-)
+from snowflake_semantic_tools.domain.ports.clock import ClockPort
+from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
+from snowflake_semantic_tools.domain.ports.snowflake.stage import StagedFileMetadata
 from snowflake_semantic_tools.domain.resolve.eval_name import render_eval_name_template
 from snowflake_semantic_tools.domain.sql import Sql, ident, literal, scope, sql
 from snowflake_semantic_tools.domain.state import APPLIED, Manifest, State
@@ -122,7 +120,7 @@ class RunEvalSuite:
 
     def __init__(
         self,
-        port: SnowflakePort,
+        port: CatalogPublicationPort,
         clock: ClockPort,
         lifecycle_config: EvalLifecycleConfig = EvalLifecycleConfig(),
     ) -> None:

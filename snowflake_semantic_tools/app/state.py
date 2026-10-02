@@ -6,13 +6,14 @@ from types import MappingProxyType
 
 from snowflake_semantic_tools.domain.diagnostics import D, DiagnosticBag
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName, TargetIdentity
-from snowflake_semantic_tools.domain.ports.snowflake import SnowflakePort, StateStore
+from snowflake_semantic_tools.domain.ports.snowflake.state import StatePort
+from snowflake_semantic_tools.domain.ports.state import StateStore
 from snowflake_semantic_tools.domain.state import DEACTIVATED, STATE_SCHEMA_VERSION, State
 
 
 def read_state(
     store: StateStore,
-    port: SnowflakePort | None,
+    port: StatePort | None,
     *,
     state_table: QualifiedName,
     target: TargetIdentity,

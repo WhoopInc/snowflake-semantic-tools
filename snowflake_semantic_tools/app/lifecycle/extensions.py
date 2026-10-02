@@ -17,6 +17,7 @@ from types import MappingProxyType
 from snowflake_semantic_tools.app.compile.skills import ExtensionRelease
 from snowflake_semantic_tools.app.lifecycle.composite import (
     SSE_STAGE_TYPE,
+    CatalogPublicationPort,
     CompositeHandler,
     PublicationRun,
     blocked,
@@ -38,12 +39,8 @@ from snowflake_semantic_tools.domain.model.lifecycle import (
     PhysicalResource,
     RenderedArtifact,
 )
-from snowflake_semantic_tools.domain.ports.snowflake import (
-    ExtensionObservation,
-    ExtensionVersion,
-    SnowflakePort,
-    SnowflakePortError,
-)
+from snowflake_semantic_tools.domain.ports.snowflake.catalog import ExtensionObservation, ExtensionVersion
+from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
 from snowflake_semantic_tools.domain.sql import Sql, ident, literal, qname, sql
 from snowflake_semantic_tools.domain.state import FAILED_AFTER_WRITE, AppliedEntry
 
@@ -73,7 +70,7 @@ class _Observed:
         )
 
 
-class ExtensionLifecycleHandler(CompositeHandler[ExtensionRelease, _Observed]):
+class ExtensionLifecycleHandler(CompositeHandler[ExtensionRelease, _Observed, CatalogPublicationPort]):
     """One handler per extension-backed artifact type (`skill` or `plugin`).
 
     Prune is report-only: SST never drops an extension or a version.
@@ -81,7 +78,9 @@ class ExtensionLifecycleHandler(CompositeHandler[ExtensionRelease, _Observed]):
 
     _prune_detail = "remove the extension by hand once nothing uses it"
 
-    def __init__(self, port: SnowflakePort, releases: Mapping[str, ExtensionRelease], artifact_type: str) -> None:
+    def __init__(
+        self, port: CatalogPublicationPort, releases: Mapping[str, ExtensionRelease], artifact_type: str
+    ) -> None:
         super().__init__(port)
         self._releases = MappingProxyType(dict(releases))
         self.artifact_type = artifact_type
@@ -150,7 +149,7 @@ class ExtensionLifecycleHandler(CompositeHandler[ExtensionRelease, _Observed]):
         )
 
 
-class _Run(PublicationRun):
+class _Run(PublicationRun[CatalogPublicationPort]):
     """One publication attempt, tracking what has been written so a failure reports it.
 
     The steps run in order: ensure the bundle stage, upload the bundle and read it back,
@@ -160,7 +159,7 @@ class _Run(PublicationRun):
 
     def __init__(
         self,
-        port: SnowflakePort,
+        port: CatalogPublicationPort,
         change: Change,
         artifact: RenderedArtifact,
         release: ExtensionRelease,

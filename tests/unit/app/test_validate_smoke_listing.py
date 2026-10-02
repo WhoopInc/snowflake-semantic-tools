@@ -19,7 +19,7 @@ from snowflake_semantic_tools.domain.model.semantic_view import (
     Variable,
     VerifiedQuery,
 )
-from snowflake_semantic_tools.domain.ports.snowflake import SnowflakePortError
+from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
 from snowflake_semantic_tools.domain.sql import datatype
 from snowflake_semantic_tools.domain.state import STATE_SCHEMA_VERSION, AppliedEntry, State
 from tests.helpers.app_ports import InMemorySnowflake

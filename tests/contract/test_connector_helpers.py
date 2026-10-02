@@ -5,7 +5,7 @@ import pytest
 from snowflake_semantic_tools.adapters.snowflake.connector.catalog import _object_type
 from snowflake_semantic_tools.adapters.snowflake.connector.session import _port_error
 from snowflake_semantic_tools.adapters.snowflake.connector.state_table import _json_resources, _physical_resources
-from snowflake_semantic_tools.domain.ports.snowflake import SnowflakePortError
+from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
 from snowflake_semantic_tools.domain.state import AppliedEntry, AppliedResource, ResourceStatus
 
 

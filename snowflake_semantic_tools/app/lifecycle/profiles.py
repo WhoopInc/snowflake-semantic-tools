@@ -13,12 +13,14 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from threading import Lock
 from types import MappingProxyType
+from typing import Protocol
 
 from snowflake_semantic_tools.app.apply import classify_error
 from snowflake_semantic_tools.app.compile.profiles import CompiledProfile, DesktopChannel
 from snowflake_semantic_tools.app.desktop_contract import desktop_view, stage_pointers
 from snowflake_semantic_tools.app.lifecycle.composite import (
     SSE_STAGE_TYPE,
+    CatalogPublicationPort,
     CompositeHandler,
     PublicationRun,
     blocked,
@@ -43,7 +45,8 @@ from snowflake_semantic_tools.domain.model.lifecycle import (
     RenderedArtifact,
 )
 from snowflake_semantic_tools.domain.model.skill import BundleEntry
-from snowflake_semantic_tools.domain.ports.snowflake import SnowflakePort, SnowflakePortError
+from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
+from snowflake_semantic_tools.domain.ports.snowflake.profile_registry import ProfileRegistryPort
 from snowflake_semantic_tools.domain.state import DEACTIVATED, FAILED_AFTER_WRITE, AppliedEntry
 
 # The columns SST writes and the type family each must have.
@@ -82,7 +85,11 @@ class _Observed:
     trees: Mapping[str, tuple[str, ...]]
 
 
-class ProfileLifecycleHandler(CompositeHandler[CompiledProfile, _Observed]):
+class ProfilePublicationPort(CatalogPublicationPort, ProfileRegistryPort, Protocol):
+    """The roles publishing a profile uses: a catalog publication port that also keeps the registry."""
+
+
+class ProfileLifecycleHandler(CompositeHandler[CompiledProfile, _Observed, ProfilePublicationPort]):
     """Publish each Desktop profile's trees and registry row; a prune deactivates the row.
 
     Profiles publish and deactivate one at a time: every profile shares the registry
@@ -92,7 +99,7 @@ class ProfileLifecycleHandler(CompositeHandler[CompiledProfile, _Observed]):
     artifact_type = "profile"
     _prune_order = 270
 
-    def __init__(self, port: SnowflakePort, releases: Mapping[str, CompiledProfile]) -> None:
+    def __init__(self, port: ProfilePublicationPort, releases: Mapping[str, CompiledProfile]) -> None:
         super().__init__(port)
         self._releases = MappingProxyType(dict(releases))
         self._lock = Lock()
@@ -215,12 +222,12 @@ class ProfileLifecycleHandler(CompositeHandler[CompiledProfile, _Observed]):
         )
 
 
-class _ProfileRun(PublicationRun):
+class _ProfileRun(PublicationRun[ProfilePublicationPort]):
     """One profile publication: registry, stage, and trees, then the guarded MERGE and its read-back."""
 
     def __init__(
         self,
-        port: SnowflakePort,
+        port: ProfilePublicationPort,
         change: Change,
         artifact: RenderedArtifact,
         compiled: CompiledProfile,

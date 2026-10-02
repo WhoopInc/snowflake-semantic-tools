@@ -28,7 +28,7 @@ from snowflake_semantic_tools.domain.model.lifecycle import (
     QueryResult,
     RenderedArtifact,
 )
-from snowflake_semantic_tools.domain.ports.snowflake import SnowflakePortError
+from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
 from snowflake_semantic_tools.domain.sql import Sql
 from snowflake_semantic_tools.domain.state import (
     STATE_SCHEMA_VERSION,

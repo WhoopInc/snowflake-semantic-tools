@@ -13,7 +13,7 @@ from __future__ import annotations
 from abc import abstractmethod
 from collections.abc import Callable, Collection, Iterable, Mapping
 from types import MappingProxyType
-from typing import Generic, TypeVar
+from typing import Generic, Protocol, TypeVar
 
 from snowflake_semantic_tools.app.apply import classify_error
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, DiagnosticBag
@@ -33,7 +33,10 @@ from snowflake_semantic_tools.domain.model.lifecycle import (
 )
 from snowflake_semantic_tools.domain.model.skill import BundleEntry
 from snowflake_semantic_tools.domain.ports.lifecycle import CompositeLifecycleHandler
-from snowflake_semantic_tools.domain.ports.snowflake import SnowflakePort, SnowflakePortError
+from snowflake_semantic_tools.domain.ports.snowflake.catalog import CatalogPort
+from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
+from snowflake_semantic_tools.domain.ports.snowflake.execution import ExecutionPort
+from snowflake_semantic_tools.domain.ports.snowflake.stage import StagePort
 from snowflake_semantic_tools.domain.sql import Sql, qname, sql
 from snowflake_semantic_tools.domain.state import AppliedEntry, AppliedResourceInput, Manifest
 
@@ -42,6 +45,18 @@ SSE_STAGE_TYPE = "INTERNAL NO CSE"
 
 SubjectT = TypeVar("SubjectT")
 ObservedT = TypeVar("ObservedT")
+
+
+class PublicationPort(ExecutionPort, StagePort, Protocol):
+    """The Snowflake roles every publication run uses: running its statements and moving its files."""
+
+
+class CatalogPublicationPort(CatalogPort, PublicationPort, Protocol):
+    """A publication port that also reads the catalog, as the eval and extension handlers do."""
+
+
+# The port a handler or run is typed with: at least `PublicationPort`, narrowed per artifact type.
+PortT = TypeVar("PortT", bound=PublicationPort)
 
 
 def create_sse_stage_sql(stage: QualifiedName) -> Sql:
@@ -121,7 +136,7 @@ def details_stale(
     return before != after
 
 
-class CompositeHandler(CompositeLifecycleHandler, Generic[SubjectT, ObservedT]):
+class CompositeHandler(CompositeLifecycleHandler, Generic[SubjectT, ObservedT, PortT]):
     """The lifecycle skeleton of one composite artifact type, run with the steps a handler supplies.
 
     `plan` finds what the artifact publishes with `_subject`, reads it from Snowflake with
@@ -143,7 +158,7 @@ class CompositeHandler(CompositeLifecycleHandler, Generic[SubjectT, ObservedT]):
     _prune_detail: str
     _prune_order: int
 
-    def __init__(self, port: SnowflakePort) -> None:
+    def __init__(self, port: PortT) -> None:
         self._port = port
 
     def plan(
@@ -240,7 +255,7 @@ class CompositeHandler(CompositeLifecycleHandler, Generic[SubjectT, ObservedT]):
         return skipped(change)
 
 
-class PublicationRun:
+class PublicationRun(Generic[PortT]):
     """One publish attempt: counts the statements it runs and records what it wrote and verified.
 
     A handler's run subclasses this and chains its steps with `_run_steps`, each returning
@@ -249,7 +264,7 @@ class PublicationRun:
     `_recorded_resources`, by default any write and each resource verified so far.
     """
 
-    def __init__(self, port: SnowflakePort, change: Change, artifact: RenderedArtifact) -> None:
+    def __init__(self, port: PortT, change: Change, artifact: RenderedArtifact) -> None:
         self._port = port
         self._change = change
         self._artifact = artifact
