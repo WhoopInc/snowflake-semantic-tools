@@ -21,7 +21,7 @@ def test_sst_val011_fires_for_a_verified_by_the_loader_trims(tmp_path: Path) -> 
     project = edited(tmp_path, QUERIES, 'verified_by: "daa-platform"', 'verified_by: " daa-platform "')
     [diagnostic] = reported(project, "SST-VAL011")
     assert diagnostic.message.endswith(": 'verified_by' would be trimmed by the renderer")
-    assert diagnostic.subject.startswith("verified_query:")
+    assert (diagnostic.subject or "").startswith("verified_query:")
 
 
 def test_sst_val011_silent(tmp_path: Path) -> None:
