@@ -80,6 +80,8 @@ class DbtModel:
     has_contract: bool = False
     # How many dbt tests are attached to the model.
     test_count: int = 0
+    # `config.materialized`, such as `table` or `incremental`; None when the manifest does not say.
+    materialized: str | None = None
 
     def column(self, name: str) -> DbtColumn | None:
         """Return a column case-insensitively."""

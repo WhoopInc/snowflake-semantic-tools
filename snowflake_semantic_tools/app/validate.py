@@ -1,9 +1,10 @@
 """Validation orchestration over compiled artifacts.
 
 The offline checks live in `domain.validate`. The connected checks stay here because they
-run through the `ExecutionPort`: the syntax check (SST-VAL418) compiles each expression, and
-the spot checks (SST-VAL212, SST-VAL218) read the joined tables. SST-VAL020 reports each one
-skipped.
+run SQL through the `ExecutionPort`: the syntax check (SST-VAL418) compiles each expression,
+the verified-query row count (SST-VAL415) runs each query that compiles, and the spot checks
+(SST-VAL212, SST-VAL218) read the joined tables. SST-VAL020 reports each one skipped. The
+live-object checks of agents and tools are in `app.compile.agents.observe`.
 """
 
 from __future__ import annotations
@@ -12,10 +13,13 @@ import re
 from dataclasses import dataclass, replace
 
 from snowflake_semantic_tools.app.compile import CompiledView, CompileResult
+from snowflake_semantic_tools.app.compile.agents.observe import ObserveLiveObjects
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, DiagnosticBag, apply_baseline, resolve_severities
 from snowflake_semantic_tools.domain.model.identifier import Identifier, QualifiedName, SchemaScope
 from snowflake_semantic_tools.domain.model.lifecycle import RenderedArtifact
-from snowflake_semantic_tools.domain.model.semantic_view import Relationship, SemanticView, Table
+from snowflake_semantic_tools.domain.model.semantic_view import Relationship, SemanticView, Table, VerifiedQuery
+from snowflake_semantic_tools.domain.ports.clock import ClockPort
+from snowflake_semantic_tools.domain.ports.snowflake.catalog import CatalogPort
 from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
 from snowflake_semantic_tools.domain.ports.snowflake.execution import ExecutionPort
 from snowflake_semantic_tools.domain.sql import (
@@ -55,11 +59,28 @@ class ValidationResult:
 class ValidateArtifacts:
     """Validate a compile result offline or, with a port, against Snowflake.
 
-    The connected checks only EXPLAIN, so they never write.
+    The connected checks only EXPLAIN, count a verified query's rows, and read what exists,
+    so they never write.
+
+    Args:
+        catalog: Reads the live objects the compiled agents and tools publish over or call;
+            None skips those checks.
+        target: The `profiles.yml` target being validated, which a missing object names.
+        clock: Times each verified query's count; None reports it as taking 0ms.
     """
 
-    def __init__(self, port: ExecutionPort | None = None) -> None:
+    def __init__(
+        self,
+        port: ExecutionPort | None = None,
+        *,
+        catalog: CatalogPort | None = None,
+        target: str = "",
+        clock: ClockPort | None = None,
+    ) -> None:
         self._port = port
+        self._catalog = catalog
+        self._target = target
+        self._clock = clock
 
     def run(
         self,
@@ -75,9 +96,11 @@ class ValidateArtifacts:
         compiled semantic view's metrics, its dimensions (time dimensions and filters included,
         facts not), and its verified queries are EXPLAINed: an expression over a projection of
         NULL columns, with qualified references, variables, and metric names replaced by NULL;
-        a verified query as written. Then each equality relationship's target is read for a
-        repeated join key, and each distinct range for overlapping ranges. No other artifact
-        type gets a connected check. Strict mode then promotes every warning to an error.
+        a verified query as written. A verified query that compiles is then run under a row
+        count. Then each equality relationship's target is read for a repeated join key, and
+        each distinct range for overlapping ranges. With a catalog, the compiled agents and
+        tools are checked against their live objects. Strict mode then promotes every warning
+        to an error.
 
         Args:
             strict: Promote every warning, the compile's included, to an error.
@@ -90,8 +113,10 @@ class ValidateArtifacts:
                 disabled, or no port was given.
             SST-VAL418: Snowflake would not compile an expression or a verified query.
             SST-INT009: a baseline entry matched more than one diagnostic.
+            SST-VAL415: a verified query ran and returned no rows.
             SST-VAL212: a relationship's target holds more than one row for a join key.
             SST-VAL218: a distinct range's rows overlap.
+            Those of `ObserveLiveObjects`, with a catalog.
         """
         found = [*compiled.diagnostics, *_cycle_diagnostics(compiled.rendered)]
         if not connected or self._port is None:
@@ -104,6 +129,8 @@ class ValidateArtifacts:
                 if isinstance(compiled_view, CompiledView):
                     found.extend(self._compile_checks(compiled_view))
                     found.extend(self._data_checks(compiled_view))
+            if self._catalog is not None:
+                found.extend(ObserveLiveObjects(self._catalog, target=self._target).run(compiled))
         resolved, promoted = resolve_severities(apply_baseline(DiagnosticBag(found), baseline), strict=strict)
         return ValidationResult(compiled.rendered, resolved, promoted)
 
@@ -142,7 +169,38 @@ class ValidateArtifacts:
                 diagnostics.append(
                     D("SST-VAL418", type=kind, name=name, detail=str(exc), subject=compiled_view.artifact_key)
                 )
+        failed = {item.context["name"] for item in diagnostics if item.context["type"] == "verified_query"}
+        for query in view.verified_queries:
+            if query.name not in failed:
+                diagnostics.extend(self._row_count(self._port, compiled_view, query))
         return diagnostics
+
+    def _row_count(self, port: ExecutionPort, compiled_view: CompiledView, query: VerifiedQuery) -> list[Diagnostic]:
+        """Run a verified query under a row count, reporting one that returns nothing.
+
+        A query whose count fails is left to its EXPLAIN, which already passed; the failure is
+        not reported a second time.
+        """
+        started = self._clock.monotonic_ms() if self._clock is not None else 0
+        try:
+            result = port.query(
+                sql("SELECT COUNT(*) AS ROW_COUNT FROM ({query}) AS SST_VQ", query=query_text(query.sql))
+            )
+        except SnowflakePortError:
+            return []
+        elapsed = (self._clock.monotonic_ms() - started) if self._clock is not None else 0
+        count = result.rows[0][0] if result.rows and result.rows[0] else None
+        if not isinstance(count, (int, float)) or count:
+            return []
+        return [
+            D(
+                "SST-VAL415",
+                member=query.name,
+                row_count=int(count),
+                elapsed_ms=elapsed,
+                subject=compiled_view.artifact_key,
+            )
+        ]
 
     def _data_checks(self, compiled_view: CompiledView) -> list[Diagnostic]:
         """Read each equality join's target for repeated keys, and each distinct range for overlaps.
@@ -194,7 +252,7 @@ class ValidateArtifacts:
 
 
 # The connected rules, which offline validation skips and reports as skipped.
-CONNECTED_RULES = ("SST-VAL418", "SST-VAL212", "SST-VAL218")
+CONNECTED_RULES = ("SST-VAL418", "SST-VAL415", "SST-VAL212", "SST-VAL218")
 
 
 def _cycle_diagnostics(rendered: tuple[RenderedArtifact, ...]) -> tuple[Diagnostic, ...]:

@@ -12,14 +12,9 @@ import re
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic
 from snowflake_semantic_tools.domain.model.eval.model import EvalDefaults, EvalGroundTruth, EvalQuestion, ResolvedEval
 from snowflake_semantic_tools.domain.resolve.eval_name import NAME_LIMIT, has_agent_token, probe_name
+from snowflake_semantic_tools.domain.validate.relative_date import relative_date
 from snowflake_semantic_tools.domain.validate.shared import Emitter
 
-_RELATIVE_DATE = re.compile(
-    r"\b(?:last|this|current|recent)\s+(?:day|week|month|quarter|year)\b|"
-    r"\b(?:ytd|mtd|yesterday|today|tomorrow|q[1-4])\b|"
-    r"\b(?:first|second|third|fourth)\s+quarter\b",
-    re.IGNORECASE,
-)
 _NUMBER = re.compile(r"(?<![A-Za-z0-9_])[-+]?\d+(?:\.\d+)?%?(?![A-Za-z0-9_])")
 
 
@@ -135,14 +130,14 @@ def _relative_date(resolved: ResolvedEval, index: int, row: EvalQuestion) -> tup
     if row.ground_truth is not None:
         texts.extend(_ground_truth_text(row.ground_truth))
     for text in texts:
-        match = _RELATIVE_DATE.search(text)
-        if match is not None:
+        value = relative_date(text)
+        if value is not None:
             return (
                 D(
                     "SST-VAL706",
                     artifact=resolved.dataset.source_file,
                     index=index,
-                    value=match.group(0),
+                    value=value,
                     origin=row.origin,
                     subject=resolved.key,
                 ),

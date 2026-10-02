@@ -245,6 +245,7 @@ class InstructionDef:
         ai_sql_generation, ai_question_categorization: Stripped; None when absent or blank.
         origin: Where the entry starts; None only for a record not read from a file.
         poisoned: Never set by the reader: an instruction declares no tables to be malformed.
+        renamed: Whether the entry spells a channel the 0.3 way, which the reader does not read.
     """
 
     name: str
@@ -252,6 +253,7 @@ class InstructionDef:
     ai_question_categorization: str | None
     origin: Origin | None = None
     poisoned: bool = False
+    renamed: bool = False
 
 
 @dataclass(frozen=True, slots=True)

@@ -25,10 +25,9 @@ DEPRECATED_KEYS: Mapping[str, Mapping[str, str]] = MappingProxyType(
         "metric": MappingProxyType({"visibility": "access_modifier"}),
     }
 )
-# Keys SST reads only to report that the renderer emits nothing for them.
-INERT_KEYS: Mapping[str, tuple[str, ...]] = MappingProxyType(
-    {"relationship": ("relationship_type", "join_type"), "filter": ("synonyms",)}
-)
+# Keys SST reads only to report that the renderer emits nothing for them. A filter's
+# `synonyms:` is not read: it is SST-VAL406's, as an unread key.
+INERT_KEYS: Mapping[str, tuple[str, ...]] = MappingProxyType({"relationship": ("relationship_type", "join_type")})
 # The values 0.3 wrote under `visibility`, as the access modifiers they mean.
 VISIBILITY: Mapping[str, str] = MappingProxyType({"public": "public_access", "private": "private_access"})
 
@@ -52,7 +51,6 @@ def _deprecated_key_diagnostics(documents: RawDocuments) -> tuple[Diagnostic, ..
         SST-VAL122: a metric writes `visibility`, which is honoured as `access_modifier`.
         SST-PRS020: a 0.3 spelling is written beside its 1.0 key, so it is not honoured.
         SST-VAL211: a relationship declares `relationship_type` or `join_type`.
-        SST-VAL011: a filter declares `synonyms`, which a filter column cannot carry.
     """
     node_types = sorted({*DEPRECATED_KEYS, *INERT_KEYS})
     return tuple(
@@ -97,15 +95,4 @@ def _node_diagnostics(
     for key in INERT_KEYS.get(node_type, ()):
         if key not in node:
             continue
-        if node_type == "relationship":
-            yield D("SST-VAL211", origin=origin(key), subject=subject, relationship=name, field=key)
-        else:
-            yield D(
-                "SST-VAL011",
-                origin=origin(key),
-                subject=subject,
-                type=node_type,
-                name=name,
-                field=key,
-                detail="dropped",
-            )
+        yield D("SST-VAL211", origin=origin(key), subject=subject, relationship=name, field=key)

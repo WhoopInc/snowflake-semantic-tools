@@ -38,8 +38,15 @@ from snowflake_semantic_tools.domain.validate.agent import (
     delegation_cycle,
     delegations,
     spec_size,
+    token_budget,
     tool_name_clashes,
     unreferenced_extensions,
+)
+from snowflake_semantic_tools.domain.validate.agent_spec import (
+    instruction_problems,
+    near_duplicate_descriptions,
+    resource_keys,
+    spec_completeness,
 )
 from snowflake_semantic_tools.domain.validate.shared import unmodelled_key_diagnostics
 from snowflake_semantic_tools.domain.validate.skill import unrunnable_scripts
@@ -68,16 +75,20 @@ class CompileAgents:
         earlier agent with the same key. A delegation cycle drops every agent. The
         project's extensions are checked for references only when it has agents.
 
-        Each agent reports, in order: its name clashes, what `resolve_tool` reports for each
-        tool, its tool name clashes and agent-wide rules, what `resolve_skills` reports, its
-        spec size, and what `agent_render_checks` reports. SST-REF022, then SST-VAL804, follow
-        the last agent.
+        Each agent reports, in order: its name clashes, its own token budget, what
+        `resolve_tool` reports for each tool, its tool name clashes and near-duplicate
+        descriptions, its agent-wide rules and instructions, what `resolve_skills` reports,
+        the spec keys SST does not model, its rendered spec's completeness, resource keys, and
+        size, and what `agent_render_checks` reports. SST-REF022, then SST-VAL804, follow the
+        last agent.
 
         Diagnostics:
             SST-VAL001: an agent name repeats, ignoring case.
             SST-VAL549: an agent's display name repeats, ignoring case.
+            SST-VAL547: an agent sets its own token budget, which bounds orchestration only.
             SST-VAL514: an agent declares one tool name twice.
             SST-VAL515: two of an agent's tool names differ only by case.
+            SST-VAL519: two of an agent's tools have near-identical descriptions.
             SST-PRS025: an agent's alias is reserved.
             SST-PRS005: an agent's alias or a tag name is not an identifier or a qualified name.
             SST-VAL543: an agent's orchestration model is not in `snowflake.orchestration_models`.
@@ -85,6 +96,13 @@ class CompileAgents:
             SST-VAL546: an agent enables analytical search without a cortex_search tool.
             SST-VAL014, SST-VAL013: the spec renders keys SST does not model, with a warning
                 when `snowflake.allow_unknown_keys` is true and an error per key otherwise.
+            SST-VAL548: an agent's avatar or color is outside its allowlist or known forms.
+            SST-VAL550: a deprecated agent still has an alias.
+            SST-VAL535: an agent's instructions name a tool it does not have.
+            SST-VAL536: an agent's instructions route a topic to a tool that excludes it.
+            SST-VAL510: a rendered spec lacks a section the agent carries.
+            SST-VAL529: a rendered spec gives a built-in tool resources.
+            SST-VAL530: a rendered spec's resource key names no rendered tool.
             SST-VAL511: a rendered spec is over the 100,000-byte limit.
             SST-VAL512: a rendered spec is over 80% of that limit.
             SST-RND010, SST-RND011, SST-RND013: as `agent_render_checks` reports them.
@@ -118,14 +136,32 @@ class CompileAgents:
         return CompileResult(tuple(compiled), DiagnosticBag(diagnostics))
 
     def _resolve(self, model: AgentModel) -> tuple[ResolvedAgent, str, tuple[Diagnostic, ...]]:
-        """Resolve the agent with its inherited defaults, then render, size-check, and check its spec."""
+        """Resolve the agent with its inherited defaults, then render its spec and check it whole.
+
+        The authored token budget is read before the defaults fill it; the rendered spec is
+        checked for completeness, its resource keys, and its size, in that order.
+        """
         resolved, problems = _resolve_agent(_inherit(model, self._context), self._context)
+        document = render_agent_spec(resolved.model, resolved.tools)
         payload = render_agent_json(resolved.model, resolved.tools)
         checks = agent_render_checks(resolved.model, resolved.tools, payload)
         unmodelled = unmodelled_key_diagnostics(
             "agent", model.name, _passthrough_keys(model), allow=self._context.allow_unknown_keys, subject=model.key
         )
-        return resolved, payload, (*problems, *unmodelled, *spec_size(resolved, payload), *checks)
+        incomplete = spec_completeness(resolved.model, resolved.tools, document)
+        return (
+            resolved,
+            payload,
+            (
+                *token_budget(model),
+                *problems,
+                *unmodelled,
+                *((incomplete,) if incomplete is not None else ()),
+                *resource_keys(resolved.model, document),
+                *spec_size(resolved, payload),
+                *checks,
+            ),
+        )
 
     def _compile(self, model: AgentModel, resolved: ResolvedAgent, payload: str) -> CompiledAgent:
         spec = render_agent_spec(resolved.model, resolved.tools)
@@ -161,9 +197,10 @@ def _inherit(model: AgentModel, context: AgentCompileContext) -> AgentModel:
 
 
 def _resolve_agent(model: AgentModel, context: AgentCompileContext) -> tuple[ResolvedAgent, tuple[Diagnostic, ...]]:
-    """Resolve each tool, check the tool names and the agent-wide rules, then resolve the skills.
+    """Resolve each tool, check the tools together and the agent-wide rules, then resolve the skills.
 
-    The diagnostics come in that order, and the resolved agent carries them too.
+    The diagnostics come in that order -- tool names, descriptions, agent-wide rules, then
+    instructions against the tools -- and the resolved agent carries them too.
     """
     diagnostics: list[Diagnostic] = []
     tools: list[ResolvedAgentTool] = []
@@ -173,7 +210,9 @@ def _resolve_agent(model: AgentModel, context: AgentCompileContext) -> tuple[Res
         if resolved is not None:
             tools.append(resolved)
     diagnostics.extend(tool_name_clashes(model, tools))
-    diagnostics.extend(agent_rules(model, context.allowed_models, tools))
+    diagnostics.extend(near_duplicate_descriptions(model, tools))
+    diagnostics.extend(agent_rules(model, context.allowed_models, tools, context.avatar_allowlist))
+    diagnostics.extend(instruction_problems(model, tools))
     skills, dependencies, skill_diagnostics = resolve_skills(model, context)
     diagnostics.extend(skill_diagnostics)
     agent = ResolvedAgent(

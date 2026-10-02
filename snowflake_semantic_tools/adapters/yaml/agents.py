@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 from collections.abc import Mapping
+from dataclasses import replace
 from pathlib import Path
 from types import MappingProxyType
 from typing import Any, TypeVar
@@ -49,8 +50,8 @@ def load_agents(project_dir: Path, *, agents_dir: str = "agents") -> tuple[tuple
             `evals:` no `dataset` or `config`.
         SST-PRS003: when `evals:` is not a mapping, or one of its paths not a non-empty string;
             when `spec.tools`, `spec.skills`, `tags` or the sample questions are not a list; or
-            when `meta`, `spec.passthrough` or a tool's mapping field, such as `filter`, is not a
-            mapping. The agent is kept back, and the field reads as empty.
+            when `spec.instructions`, `meta`, `spec.passthrough` or a tool's mapping field, such
+            as `filter`, is not a mapping. The agent is kept back, and the field reads as empty.
         SST-PRS018: when a `spec.tools` or `spec.skills` entry has the wrong shape.
         SST-PRS118: when a sample question is not a mapping with a string `question`.
         SST-REF003: when an instruction holds templates other than one whole `{{ file() }}` call.
@@ -67,7 +68,8 @@ def load_agents(project_dir: Path, *, agents_dir: str = "agents") -> tuple[tuple
     for path in sorted(root.glob("*/agent.y*ml")):
         relative = path.relative_to(project_dir).as_posix()
         try:
-            parsed = parse_yaml_bytes(path.read_bytes(), relative)
+            raw = path.read_bytes()
+            parsed = parse_yaml_bytes(raw, relative)
         except ProjectError as exc:
             diagnostics.extend(exc.diagnostics)
             continue
@@ -77,8 +79,28 @@ def load_agents(project_dir: Path, *, agents_dir: str = "agents") -> tuple[tuple
         agent, problems = _parse_agent(project_dir, path.parent, relative, dict(parsed.tree), parsed.line_index)
         diagnostics.extend((*parsed.diagnostics, *problems))
         if agent is not None:
-            agents.append(agent)
+            documented = _comment_mentions(raw, parsed.line_index.get(_TOKENS), "orchestration")
+            agents.append(replace(agent, budget_tokens_documented=documented))
     return tuple(agents), DiagnosticBag(diagnostics)
+
+
+_TOKENS: NodePath = ("spec", "orchestration", "budget", "tokens")
+
+
+def _comment_mentions(raw: bytes, position: SourcePosition | None, word: str) -> bool:
+    """Report whether the comment ending the key's line, or the comment lines just above it, say `word`.
+
+    Comments are not part of the parsed tree, so they are read from the file's text.
+    """
+    if position is None:
+        return False
+    lines = raw.decode("utf-8", errors="replace").splitlines()
+    index = position.line - 1
+    comments = [lines[index].partition("#")[2]] if 0 <= index < len(lines) else []
+    while index > 0 and lines[index - 1].strip().startswith("#"):
+        index -= 1
+        comments.append(lines[index])
+    return any(word in comment.casefold() for comment in comments)
 
 
 def _parse_agent(
@@ -112,7 +134,7 @@ def _parse_agent(
     orchestration = mapping(spec.get("orchestration"))
     budget = mapping(orchestration.get("budget"))
     capabilities = mapping(orchestration.get("capabilities"))
-    instructions = mapping(spec.get("instructions"))
+    instructions = mapped(spec.get("instructions"), "spec.instructions")
     source_files = [relative]
     orchestration_text, response_text = (
         _instruction(project_dir, agent_dir, relative, instructions.get(key), source_files, diagnostics)
@@ -167,6 +189,7 @@ def _parse_agent(
             tags=tags,
             passthrough=MappingProxyType(passthrough),
             evals=eval_files,
+            deprecated=bool(tree.get("deprecated", False)),
         ),
         tuple(diagnostics),
     )
@@ -419,6 +442,7 @@ def _parse_tool(
             origin,
             diagnostics,
         ),
+        declared_keys=tuple(sorted(str(key) for key in value)),
     )
 
 

@@ -228,6 +228,20 @@ class RecordedSnowflake:
     def current_account_locator(self) -> str:
         return self.account_locator
 
+    # A recorded session records no SHOW rows, DESCRIBE properties, or parameters: each reads
+    # as absent, so a connected check that needs one finds nothing to report.
+    def show_row(self, object_type: str, qualified_name: QualifiedName) -> Mapping[str, str] | None:
+        del object_type, qualified_name
+        return None
+
+    def describe_properties(self, object_type: str, qualified_name: QualifiedName) -> Mapping[str, str] | None:
+        del object_type, qualified_name
+        return None
+
+    def object_parameter(self, object_type: str, name: str, parameter: str) -> str | None:
+        del object_type, name, parameter
+        return None
+
     def object_exists(self, object_type: str, qualified_name: QualifiedName) -> bool:
         if object_type.upper() == "DATASET":
             return self.dataset_exists(qualified_name)

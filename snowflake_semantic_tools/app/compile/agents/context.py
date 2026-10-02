@@ -56,6 +56,8 @@ class AgentCompileContext:
     unpublished: Mapping[str, str] = field(default_factory=lambda: MappingProxyType({}))
     # `snowflake.allow_unknown_keys`: whether a key SST does not model renders with a warning.
     allow_unknown_keys: bool = True
+    # `snowflake.profile.avatar_allowlist`; None when it is not configured (SST-VAL548).
+    avatar_allowlist: frozenset[str] | None = None
 
 
 @dataclass(frozen=True, slots=True)

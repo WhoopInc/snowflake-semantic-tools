@@ -148,6 +148,7 @@ def load_instructions(
             ).strip()
             or None,
             origin=_node_origin(document, _member_root("custom_instruction"), index),
+            renamed="sql_generation" in node or "question_categorization" in node,
         )
     return out
 

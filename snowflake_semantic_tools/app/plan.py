@@ -549,7 +549,8 @@ class PreparePlan:
             Those of validation, of `read_state`, and of `PlanArtifacts`, then the plan's
             `change_summary`.
         """
-        validation = ValidateArtifacts(port if candidates.connected else None).run(
+        live = port if candidates.connected else None
+        validation = ValidateArtifacts(live, catalog=live, target=target.name).run(
             candidates.selected,
             strict=candidates.strict,
             connected=candidates.connected,

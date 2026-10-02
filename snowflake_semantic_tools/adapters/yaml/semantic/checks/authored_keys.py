@@ -52,7 +52,7 @@ AUTHORED_KEYS: Mapping[str, frozenset[str]] = MappingProxyType(
             )
         ),
         # `synonyms` is read only to report it (SST-VAL011): a filter cannot carry them.
-        "filter": frozenset(("name", "expr", "description", "tables", "labels", "synonyms")),
+        "filter": frozenset(("name", "expr", "description", "tables", "labels")),
         # Snowflake has no clause for a description on the next three: it documents
         # the YAML for its readers and is never published.
         "custom_instruction": frozenset(
@@ -252,12 +252,16 @@ def _unread_keys(
     nested field of the wrong shape is left to its own check.
 
     Diagnostics:
-        Each code `_unread_key` lists.
+        SST-PRS021, SST-PRS020, SST-VAL402, SST-VAL403, SST-VAL406, SST-PRS022, SST-PRS004: as
+            `_unread_key` reports them.
     """
     diagnostics = [
-        _unread_key(document, (*path, str(key)), scope, f"{prefix}{key}", subject, allowed)
+        diagnostic
         for key in mapping
         if str(key) not in allowed
+        for diagnostic in _unread_key(
+            document, (*path, str(key)), scope, f"{prefix}{key}", subject, mapping[key], allowed
+        )
     ]
     for (owner, field), keys in NESTED_KEYS.items():
         value = mapping.get(field) if owner == scope else None
@@ -280,12 +284,13 @@ def _unread_keys(
 
 
 def _unread_key(
-    document: RawDocument, path: NodePath, scope: str, field: str, subject: str, allowed: frozenset[str]
-) -> Diagnostic:
+    document: RawDocument, path: NodePath, scope: str, field: str, subject: str, value: object, allowed: frozenset[str]
+) -> tuple[Diagnostic, ...]:
     """Report one key the loader does not read in `scope`, whose keys are `allowed`.
 
     Diagnostics:
         SST-PRS021: the key is part of the 0.3 relationship column shape.
+        SST-VAL402, SST-VAL403, SST-VAL406: the key is a known misuse, as `_known_misuse` says.
         SST-PRS020: the key is the 0.3 spelling of a 1.0 key in its scope.
         SST-PRS022: the key is within edit distance of one `allowed` lists.
         SST-PRS004: any other key.
@@ -298,11 +303,46 @@ def _unread_key(
     )
     key = str(path[-1])
     if scope == "relationship" and key in LEGACY_RELATIONSHIP_KEYS:
-        return D("SST-PRS021", origin=origin, subject=subject, artifact=subject)
+        return (D("SST-PRS021", origin=origin, subject=subject, artifact=subject),)
+    special = _known_misuse(scope, key, subject, value, origin)
+    if special:
+        return special
     renamed = RENAMED_KEYS.get((scope, key))
     if renamed is not None:
-        return D("SST-PRS020", origin=origin, subject=subject, artifact=subject, field=field, expected=renamed)
-    return unknown_field(key, allowed, label=field, origin=origin, subject=subject, artifact=subject)
+        return (D("SST-PRS020", origin=origin, subject=subject, artifact=subject, field=field, expected=renamed),)
+    return (unknown_field(key, allowed, label=field, origin=origin, subject=subject, artifact=subject),)
+
+
+def _known_misuse(scope: str, key: str, subject: str, value: object, origin: Origin) -> tuple[Diagnostic, ...]:
+    """Name an unread key that is a known misuse with its own code, rather than an unknown key.
+
+    Returns:
+        The diagnostics, one per inline filter for a view's `filters:`; empty for any other key.
+    """
+    name = subject.split(":", 1)[-1]
+    if scope == "metric" and key == "labels" and _holds_filter(value):
+        return (D("SST-VAL402", member=name, origin=origin, subject=subject),)
+    if scope == "filter" and key == "synonyms":
+        return (D("SST-VAL406", member=name, origin=origin, subject=subject),)
+    if scope == "semantic_view" and key == "filters":
+        entries = value if isinstance(value, list) and value else [None]
+        return tuple(
+            D(
+                "SST-VAL403",
+                member=str(entry["name"])
+                if isinstance(entry, dict) and entry.get("name")
+                else f"{name}.filters[{index}]",
+                origin=origin,
+                subject=subject,
+            )
+            for index, entry in enumerate(entries)
+        )
+    return ()
+
+
+def _holds_filter(value: object) -> bool:
+    labels = value if isinstance(value, list) else [value]
+    return any(isinstance(label, str) and label.casefold() == "filter" for label in labels)
 
 
 def _legacy_reference_diagnostics(documents: RawDocuments) -> tuple[Diagnostic, ...]:

@@ -58,6 +58,11 @@ class InMemorySnowflake:
         self.state_manifest: str | None = None
         self.state_writes: list[StateWrite] = []
         self.run_locks = InMemoryRunLocks()
+        # SHOW rows and DESCRIBE properties by "<TYPE> <qualified name>"; parameters by
+        # (type, object name, parameter), each upper-cased.
+        self.show_rows: dict[str, Mapping[str, str]] = {}
+        self.descriptions: dict[str, Mapping[str, str]] = {}
+        self.object_parameters: dict[tuple[str, str, str], str] = {}
 
     def show_objects(self, object_type: str, scope: SchemaScope) -> tuple[ShowRow, ...]:
         del object_type, scope
@@ -148,6 +153,15 @@ class InMemorySnowflake:
 
     def describe_stage_file_format(self, qualified_name: QualifiedName) -> str | None:
         return self.stage_formats.get(qualified_name.sql)
+
+    def show_row(self, object_type: str, qualified_name: QualifiedName) -> Mapping[str, str] | None:
+        return self.show_rows.get(f"{object_type.upper()} {qualified_name.sql}")
+
+    def describe_properties(self, object_type: str, qualified_name: QualifiedName) -> Mapping[str, str] | None:
+        return self.descriptions.get(f"{object_type.upper()} {qualified_name.sql}")
+
+    def object_parameter(self, object_type: str, name: str, parameter: str) -> str | None:
+        return self.object_parameters.get((object_type.upper(), name.upper(), parameter.upper()))
 
     def stage_file_exists(self, stage_path: str) -> bool:
         return stage_path in self.stage_files

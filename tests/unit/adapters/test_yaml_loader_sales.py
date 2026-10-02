@@ -378,7 +378,7 @@ def test_entity_filters_require_boolean_expressions() -> None:
             )
         )
     )
-    assert [diagnostic.code for diagnostic in _filter_diagnostics((invalid, *valid))] == ["SST-VAL401"]
+    assert [diagnostic.code for diagnostic in _filter_diagnostics((invalid, *valid), {}, {})] == ["SST-VAL401"]
 
 
 def test_unknown_metric_reference_is_a_diagnostic() -> None:

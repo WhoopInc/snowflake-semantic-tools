@@ -28,19 +28,24 @@ def _view_instructions(
 ) -> tuple[dict[str, frozenset[str]], tuple[Diagnostic, ...]]:
     """Resolve each view's `custom_instructions` entries to the casefolded names they attach.
 
-    A `custom_instructions` value that is not a list names nothing.
+    A `custom_instructions` value that is not a list names nothing; a string is the 0.3
+    bare-string form, which 1.0 never renders, so it is reported.
 
     Returns:
         The names by view key, with an entry for every view, and a diagnostic for each
         entry or call that attaches nothing.
 
     Diagnostics:
+        SST-VAL408: a view's `custom_instructions` is a bare string.
         SST-LOD004, SST-REF033, SST-REF003: an entry is not a template that parses.
     """
     names_by_view: dict[str, frozenset[str]] = {}
     diagnostics: list[Diagnostic] = []
     for view in views:
         raw_instructions = view.source.get("custom_instructions")
+        if isinstance(raw_instructions, str):
+            subject = artifact_key("semantic_view", view.name)
+            diagnostics.append(D("SST-VAL408", member=view.name, origin=view.origin, subject=subject))
         names: set[str] = set()
         for raw in raw_instructions if isinstance(raw_instructions, list) else []:
             try:

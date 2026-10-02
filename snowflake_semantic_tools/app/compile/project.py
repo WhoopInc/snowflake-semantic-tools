@@ -14,6 +14,7 @@ from types import MappingProxyType
 
 from snowflake_semantic_tools.app.compile import CompileArtifacts, CompileSemanticViews
 from snowflake_semantic_tools.app.compile.agents import AgentCompileContext, CompileAgents, CompiledAgent
+from snowflake_semantic_tools.app.compile.agents.cross import cross_artifact_result
 from snowflake_semantic_tools.app.compile.base import CompileResult
 from snowflake_semantic_tools.app.compile.evals import CompileEvals
 from snowflake_semantic_tools.app.compile.profiles import CompileProfiles, DesktopChannel
@@ -205,6 +206,7 @@ class CompileProject:
 
         Tools read the dbt relations, agents the views and tools that compiled, and evals the
         tools each agent resolved. The agents' load diagnostics are reported once, by the agents.
+        The checks that span the four follow them, as a result that compiles nothing.
         """
         semantic = CompileSemanticViews(self._inputs).run_result()
         # A view the project declares disabled is named as such, not as undeclared, by a tool.
@@ -227,11 +229,10 @@ class CompileProject:
             for item in agents.compiled
             if isinstance(item, CompiledAgent)
         }
-        evals = CompileEvals(
-            self._inputs.eval_catalog(enabled, agent_tool_names=resolved_tools),
-            agent_targets=dict(context.agents),
-        ).run_result()
-        return semantic, tools, agents, evals
+        eval_catalog = self._inputs.eval_catalog(enabled, agent_tool_names=resolved_tools)
+        evals = CompileEvals(eval_catalog, agent_targets=dict(context.agents)).run_result()
+        compiled = (semantic, tools, agents, evals)
+        return (*compiled, cross_artifact_result(compiled, eval_catalog, POSITIONS))
 
     def _agent_context(
         self,
@@ -281,6 +282,7 @@ class CompileProject:
             consumed=plugin_members | publishing.desktop_consumed,
             unpublished=MappingProxyType(dict(unpublished)),
             allow_unknown_keys=settings.block("snowflake").get("allow_unknown_keys") is not False,
+            avatar_allowlist=_avatar_allowlist(settings.block("snowflake")),
         )
 
 
@@ -290,6 +292,12 @@ def _consumed_collisions(skills: CompileResult, consumed: Mapping[str, Qualified
         ((item.artifact_key, item.artifact_type, item.name) for item in skills.compiled),
         {name: f"extension '{location.sql}'" for name, location in consumed.items()},
     )
+
+
+def _avatar_allowlist(snowflake: Mapping[str, object]) -> frozenset[str] | None:
+    """Return `snowflake.profile.avatar_allowlist`; None when it is not configured as a list."""
+    allowlist = config_block(snowflake.get("profile")).get("avatar_allowlist")
+    return frozenset(str(value) for value in allowlist) if isinstance(allowlist, list) else None
 
 
 def consumed_extensions(
@@ -427,4 +435,5 @@ def _compile_tools(settings: _Settings, catalog: ToolCatalog, dbt: DbtCatalog) -
         embedding_model=config_text(defaults.get("+embedding_model"), None),
         execute_as=config_text(defaults.get("+execute_as"), "caller"),
         dbt_relations={model.name: model.relation_name for model in dbt.models},
+        dbt_materializations={model.name: model.materialized for model in dbt.models},
     ).run_result()

@@ -5,11 +5,11 @@ from __future__ import annotations
 from dataclasses import dataclass, replace
 
 from snowflake_semantic_tools.app.compile.base import CompileResult, StandaloneArtifact, compile_checked
-from snowflake_semantic_tools.domain.diagnostics import Diagnostic
+from snowflake_semantic_tools.domain.diagnostics import Diagnostic, DiagnosticBag
 from snowflake_semantic_tools.domain.model.artifact_key import artifact_key
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
 from snowflake_semantic_tools.domain.model.lifecycle import OwnershipMarker, RenderedArtifact
-from snowflake_semantic_tools.domain.model.tool import ToolCatalog, ToolKind, ToolMember
+from snowflake_semantic_tools.domain.model.tool import ToolCatalog, ToolKind, ToolMember, ToolOwnership
 from snowflake_semantic_tools.domain.render.tool import (
     render_tool,
     routine_signature,
@@ -17,6 +17,7 @@ from snowflake_semantic_tools.domain.render.tool import (
     tool_render_checks,
 )
 from snowflake_semantic_tools.domain.sql import keyword, literal, qname, sql
+from snowflake_semantic_tools.domain.validate.tool import rebuilt_source, reference_ddl
 
 
 @dataclass(frozen=True, slots=True)
@@ -115,6 +116,7 @@ class CompileTools:
         embedding_model: str | None,
         execute_as: str | None,
         dbt_relations: dict[str, str],
+        dbt_materializations: dict[str, str | None] | None = None,
     ) -> None:
         self._catalog = catalog
         self._database = database
@@ -124,20 +126,24 @@ class CompileTools:
         self._embedding_model = embedding_model
         self._execute_as = execute_as
         self._dbt_relations = dbt_relations
+        self._dbt_materializations = dbt_materializations or {}
 
     def run_result(self) -> CompileResult:
-        """Compile the managed members in casefolded name order.
+        """Compile the managed members in casefolded name order, then check what compiled.
 
-        The diagnostics are the catalog's, then each member's render checks or SST-INT902. A
-        member that any catalog diagnostic names, whatever its severity, is not compiled, nor
-        is one a render check refuses.
+        The diagnostics are the catalog's, then each member's render checks or SST-INT902, then
+        the checks of the compiled members. A member that any catalog diagnostic names,
+        whatever its severity, is not compiled, nor is one a render check refuses; one rendered
+        although it is only referenced is dropped.
 
         Diagnostics:
             SST-RND040, SST-RND041: as `tool_render_checks` reports them.
             SST-INT902: rendering a member raised KeyError, TypeError or ValueError.
+            SST-VAL612: a `reference:` member was rendered.
+            SST-VAL617: a search service indexes a dbt model that dbt rebuilds every run.
         """
         poisoned = {diagnostic.subject for diagnostic in self._catalog.diagnostics if diagnostic.subject}
-        return compile_checked(
+        result = compile_checked(
             sorted(self._catalog.managed, key=lambda item: item.name.casefold()),
             key=lambda member: artifact_key("tool", member.name.casefold()),
             render=self._compile,
@@ -147,6 +153,20 @@ class CompileTools:
             skip=lambda subject, _: subject in poisoned,
             origin=lambda member: member.origin,
         )
+        compiled = tuple(item for item in result.compiled if isinstance(item, CompiledTool))
+        leaked = reference_ddl(tuple(item.member for item in compiled))
+        kept = tuple(
+            item
+            for item in result.compiled
+            if not isinstance(item, CompiledTool) or item.member.ownership is ToolOwnership.DEFINE
+        )
+        rebuilt = (
+            found
+            for item in compiled
+            for relation in item.dbt_relations
+            if (found := rebuilt_source(item.member, relation[1], self._dbt_materializations.get(relation[0])))
+        )
+        return CompileResult(kept, DiagnosticBag((*result.diagnostics, *leaked, *rebuilt)))
 
     def _compile(self, member: ToolMember) -> tuple[CompiledTool | None, tuple[Diagnostic, ...]]:
         effective = _defaults(

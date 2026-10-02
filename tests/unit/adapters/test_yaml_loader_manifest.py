@@ -362,6 +362,7 @@ def test_every_unread_key_is_reported_and_0_3_spellings_are_named(tmp_path: Path
             ("SST-PRS020", "WARNING", "metric:product_count", "non_additive_dimensions[0].nulls", "null_order"),
             ("SST-PRS004", "WARNING", "metric:product_count", "default_aggregation", None),
             ("SST-PRS004", "WARNING", "custom_instruction:tone", "consumer", None),
+            ("SST-VAL406", "WARNING", "filter:cheap", None, None),
             ("SST-PRS004", "WARNING", "verified_query:how_many", "tags", None),
             ("SST-PRS021", "ERROR", "relationship:self", None, None),
         ]
@@ -374,7 +375,6 @@ def test_every_unread_key_is_reported_and_0_3_spellings_are_named(tmp_path: Path
     ] == [
         ("SST-VAL012", "WARNING", "custom_instruction:tone", "sql_generation"),
         ("SST-VAL012", "WARNING", "custom_instruction:tone", "question_categorization"),
-        ("SST-VAL011", "ERROR", "filter:cheap", "synonyms"),
         ("SST-VAL122", "WARNING", "metric:product_count", None),
         ("SST-VAL211", "WARNING", "relationship:self", "join_type"),
     ]

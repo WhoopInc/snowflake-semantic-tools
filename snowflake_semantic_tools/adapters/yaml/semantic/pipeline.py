@@ -20,8 +20,10 @@ from snowflake_semantic_tools.adapters.yaml.ownership import assign_owners
 from snowflake_semantic_tools.adapters.yaml.parse import parse_yaml_bytes, read_yaml_mapping
 from snowflake_semantic_tools.adapters.yaml.semantic.build import _build_view
 from snowflake_semantic_tools.adapters.yaml.semantic.checks.fanout import _attachment_diagnostics
+from snowflake_semantic_tools.adapters.yaml.semantic.checks.instructions import _contradiction_diagnostics
 from snowflake_semantic_tools.adapters.yaml.semantic.checks.rules import _rule_diagnostics
 from snowflake_semantic_tools.adapters.yaml.semantic.checks.scope import _scope_diagnostics, view_scope
+from snowflake_semantic_tools.adapters.yaml.semantic.checks.verified_queries import _duplicate_question_diagnostics
 from snowflake_semantic_tools.adapters.yaml.semantic.collect import parse_semantic_project
 from snowflake_semantic_tools.adapters.yaml.semantic.membership import membership
 from snowflake_semantic_tools.adapters.yaml.semantic.phases import (
@@ -98,14 +100,15 @@ def load_semantic_views_result(
        view is poisoned.
     7. The healthy metrics' `using_relationships`; a metric naming a relationship that is
        missing or starts elsewhere is poisoned.
-    8. View instructions, scope and content: each view's `custom_instructions()` entries, the
-       columns, metrics and relationships it lists or excludes, then the file, prose and
-       per-view rules of `checks.rules`.
+    8. View instructions, scope and content: each view's `custom_instructions()` entries and
+       the pairs of them one view attaches that contradict each other, the columns, metrics and
+       relationships it lists or excludes, then the file, prose and per-view rules of
+       `checks.rules`.
     9. Poisoned views: each view an error of phases 1-8 names, whose name repeats, whose
        tables are malformed, or whose file uses the legacy globals.
     10. Member resolution: attach every unpoisoned member to the views it belongs to, and
-        report what the attachment means (`domain.resolve.membership`) and each member that
-        reaches no view.
+        report what the attachment means (`domain.resolve.membership`), each member that
+        reaches no view, and the verified queries one view attaches that share a question.
     11. Build every enabled, unpoisoned view under semantic_views/; one that fails is
         reported and left out. Then the dbt seam: each model that feeds several built views,
         and a summary of what was read.
@@ -153,6 +156,7 @@ def load_semantic_views_result(
         *using_diagnostics,
         *instruction_diagnostics,
         *instruction_text_diagnostics,
+        *_contradiction_diagnostics({item.name.casefold(): item for item in members.instructions}, instruction_names),
         *scope_diagnostics,
         *rule_diagnostics,
     )
@@ -209,6 +213,7 @@ def _resolve_and_build(
         (
             *decided.diagnostics,
             *orphans,
+            *_duplicate_question_diagnostics(attached_members, attachment),
             *build_diagnostics,
             *_seam_diagnostics(built, context.catalog),
             *rendered_diagnostics(built, attached_members, attachment),

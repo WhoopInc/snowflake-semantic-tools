@@ -42,6 +42,7 @@ def test_validation_promotes_warnings_and_reports_connected_skip_or_failure() ->
     assert [(item.code, item.context.get("rule_id")) for item in promoted.diagnostics] == [
         ("SST-LOD003", None),
         ("SST-VAL020", "SST-VAL418"),
+        ("SST-VAL020", "SST-VAL415"),
         ("SST-VAL020", "SST-VAL212"),
         ("SST-VAL020", "SST-VAL218"),
     ]
@@ -77,6 +78,7 @@ def test_connected_validation_compiles_expressions_and_verified_queries() -> Non
     assert [query for query, _params in port.queries] == [
         "EXPLAIN SELECT SUM(NULL) FROM (SELECT 1 AS SST_VALUE WHERE FALSE) AS SST_VALIDATE",
         "EXPLAIN SELECT 1",
+        "SELECT COUNT(*) AS ROW_COUNT FROM (SELECT 1) AS SST_VQ",
     ]
 
 

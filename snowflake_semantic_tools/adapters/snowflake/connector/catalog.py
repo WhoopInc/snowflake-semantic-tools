@@ -12,7 +12,7 @@ from collections.abc import Callable, Mapping
 from typing import Any
 
 from snowflake_semantic_tools.adapters.snowflake.connector.session import Session, _variant_value
-from snowflake_semantic_tools.domain.model.identifier import QualifiedName, SchemaScope
+from snowflake_semantic_tools.domain.model.identifier import Identifier, QualifiedName, SchemaScope
 from snowflake_semantic_tools.domain.model.lifecycle import GrantRow, OwnershipMarker, ShowRow, extract_marker
 from snowflake_semantic_tools.domain.ports.snowflake.catalog import (
     CatalogPort,
@@ -36,8 +36,11 @@ OBJECT_TYPES = frozenset(
         "DATASET",
         "TABLE",
         "VIEW",
+        "TAG",
     )
 )
+# The account-level object types SHOW PARAMETERS ... IN <type> is asked about.
+PARAMETER_OBJECT_TYPES = frozenset(("WAREHOUSE",))
 
 
 class CatalogMethods(Session, CatalogPort):
@@ -108,6 +111,40 @@ class CatalogMethods(Session, CatalogPort):
 
     def current_account_locator(self) -> str:
         return str(self.query(sql("SELECT CURRENT_ACCOUNT()")).rows[0][0])
+
+    def show_row(self, object_type: str, qualified_name: QualifiedName) -> Mapping[str, str] | None:
+        rows = self._show_like(object_type, qualified_name, str.upper)
+        return _text_row(rows[0]) if rows else None
+
+    def describe_properties(self, object_type: str, qualified_name: QualifiedName) -> Mapping[str, str] | None:
+        if not self.object_exists(object_type, qualified_name):
+            return None
+        rows = self._dict_rows(
+            sql("DESCRIBE {kind} {name}", kind=keyword(_object_type(object_type)), name=qname(qualified_name))
+        )
+        properties: dict[str, str] = {}
+        for row in rows:
+            key = row.get("property", row.get("name"))
+            if len(rows) > 1 and key is not None and ("value" in row or "property_value" in row):
+                properties[str(key).casefold()] = _text(row.get("property_value", row.get("value")))
+        if len(rows) == 1:
+            properties.update(_text_row(rows[0]))
+        return properties
+
+    def object_parameter(self, object_type: str, name: str, parameter: str) -> str | None:
+        kind = " ".join(object_type.upper().split())
+        if kind not in PARAMETER_OBJECT_TYPES:
+            raise SnowflakePortError(f"unsupported parameter object type {object_type!r}")
+        rows = self._dict_rows(
+            sql(
+                "SHOW PARAMETERS LIKE {parameter} IN {kind} {name}",
+                parameter=literal(parameter),
+                kind=keyword(kind),
+                name=ident(Identifier.parse(name)),
+            )
+        )
+        match = next((row for row in rows if str(row.get("key") or "").upper() == parameter.upper()), None)
+        return _text(match.get("value")) if match is not None else None
 
     def object_exists(self, object_type: str, qualified_name: QualifiedName) -> bool:
         normalized_input = " ".join(object_type.upper().split())
@@ -272,6 +309,14 @@ def _show_comment(row: Mapping[str, object]) -> str | None:
     """An object's COMMENT from a SHOW row; routines report it as `description`."""
     value = row["comment"] if "comment" in row else row.get("description")
     return str(value) if value is not None else None
+
+
+def _text(value: object) -> str:
+    return "" if value is None else str(value)
+
+
+def _text_row(row: Mapping[str, object]) -> dict[str, str]:
+    return {str(key).casefold(): _text(value) for key, value in row.items()}
 
 
 def _optional_text(value: object) -> str | None:

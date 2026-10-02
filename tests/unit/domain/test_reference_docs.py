@@ -73,7 +73,6 @@ RETIRED = (
     "SST-CFG045",
     "SST-PLN900",
     "SST-PRS121",
-    "SST-VAL403",
 )
 
 

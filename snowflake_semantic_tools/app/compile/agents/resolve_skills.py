@@ -42,17 +42,39 @@ def resolve_skills(
         SST-REF037: `extension()` names an extension this project publishes.
         SST-REF013: `extension()` names no `skills.extensions` entry.
         SST-VAL538: a consumed extension's entry pins no version, or pins LIVE.
+        SST-VAL541: a resolved entry contributes a member name an earlier entry contributed.
     """
     diagnostics: list[Diagnostic] = []
     resolved: list[AgentSkill] = []
     dependencies: list[str] = []
+    contributors: dict[str, str] = {}
     for skill in model.skills:
         pinned, dependency = _resolve_skill(model, skill, context, diagnostics)
         if pinned is not None:
             resolved.append(pinned)
+            diagnostics.extend(_shadowed(model, skill, context, contributors))
         if dependency is not None:
             dependencies.append(dependency)
     return tuple(resolved), tuple(dict.fromkeys(dependencies)), tuple(diagnostics)
+
+
+def _shadowed(
+    model: AgentModel, skill: AgentSkill, context: AgentCompileContext, contributors: dict[str, str]
+) -> list[Diagnostic]:
+    """Claim the member names one resolved entry contributes, reporting each an earlier entry claimed.
+
+    A named entry contributes its name; an unnamed plugin entry, every member of the plugin.
+    """
+    label = f"{skill.ref}('{skill.path}')" if not skill.name else skill.name
+    pin = context.plugins.get(skill.path) if skill.ref == "plugin" and not skill.name else None
+    names = (skill.name,) if skill.name else (pin.members if pin is not None else ())
+    found: list[Diagnostic] = []
+    for name in names:
+        earlier = contributors.get(name)
+        if earlier is not None:
+            found.append(D("SST-VAL541", artifact=model.name, a=earlier, b=label, name=name, subject=model.key))
+        contributors[name] = label
+    return found
 
 
 def _resolve_skill(

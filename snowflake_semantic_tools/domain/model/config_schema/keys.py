@@ -418,7 +418,8 @@ CONFIG_SCHEMA: tuple[ConfigKey, ...] = (
         "Render agent spec keys SST does not model with a warning; false makes each an error.",
         default="true",
     ),
-    _unsupported("snowflake.profile", _BLOCK, "Agent profile allowlists."),
+    _key("snowflake.profile", _BLOCK, "Agent profile allowlists."),
+    _key("snowflake.profile.avatar_allowlist", _L, "Avatars an agent profile may name; unset allows any."),
 )
 
 CONFIG_KEYS: Mapping[str, ConfigKey] = MappingProxyType({key.path: key for key in CONFIG_SCHEMA})

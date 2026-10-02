@@ -271,6 +271,7 @@ def _build_model(
         checksum=_checksum(node),
         has_contract=_has_contract(node),
         test_count=test_count,
+        materialized=_text(config.get("materialized")) if isinstance(config := node.get("config"), Mapping) else None,
     )
 
 
