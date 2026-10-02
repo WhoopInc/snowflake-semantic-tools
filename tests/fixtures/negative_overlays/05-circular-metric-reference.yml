@@ -1,0 +1,18 @@
+---
+# Three derived metrics that refer to each other in one cycle.
+snowflake_metrics:
+  - name: cycle_a
+    derived: true
+    description: |-
+      First metric of the cycle.
+    expr: "{{ metric('cycle_b') }} - {{ metric('order_count') }}"
+  - name: cycle_b
+    derived: true
+    description: |-
+      Second metric of the cycle.
+    expr: "{{ metric('cycle_c') }} - {{ metric('order_count') }}"
+  - name: cycle_c
+    derived: true
+    description: |-
+      Third metric of the cycle.
+    expr: "{{ metric('cycle_a') }} - {{ metric('order_count') }}"

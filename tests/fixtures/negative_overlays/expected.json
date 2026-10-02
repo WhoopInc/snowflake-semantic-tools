@@ -1,0 +1,52 @@
+{
+  "01-unknown-table-ref.yml": {
+    "into": "semantic_models/metrics",
+    "adds": [{"code": "SST-REF001", "severity": "error", "count": 1}]
+  },
+  "02-unknown-column-ref.yml": {
+    "into": "semantic_models/metrics",
+    "adds": [{"code": "SST-REF002", "severity": "error", "count": 1}]
+  },
+  "03-empty-tables.yml": {
+    "into": "semantic_models/metrics",
+    "adds": [{"code": "SST-PRS102", "severity": "error", "count": 1}]
+  },
+  "04-duplicate-name.yml": {
+    "into": "semantic_models/metrics",
+    "adds": [{"code": "SST-VAL001", "severity": "error", "count": 1}]
+  },
+  "05-circular-metric-reference.yml": {
+    "into": "semantic_models/metrics",
+    "adds": [{"code": "SST-REF005", "severity": "error", "count": 1}]
+  },
+  "06-derived-metric-window-function.yml": {
+    "into": "semantic_models/metrics",
+    "adds": [
+      {"code": "SST-VAL102", "severity": "error", "count": 1},
+      {"code": "SST-VAL123", "severity": "error", "count": 2}
+    ]
+  },
+  "07-malformed-template.yml": {
+    "into": "semantic_models/metrics",
+    "adds": [{"code": "SST-LOD004", "severity": "error", "count": 1}]
+  },
+  "08-relationship-table-not-in-view.yml": {
+    "into": "semantic_models/semantic_views",
+    "adds": [{"code": "SST-VAL203", "severity": "error", "count": 1}]
+  },
+  "09-vq-sql-and-sql-file.yml": {
+    "into": "semantic_models/verified_queries",
+    "adds": [{"code": "SST-VAL412", "severity": "error", "count": 1}]
+  },
+  "10-legacy-table-global.yml": {
+    "into": "semantic_models/metrics",
+    "adds": [
+      {"code": "SST-REF034", "severity": "error", "count": 1},
+      {"code": "SST-REF035", "severity": "error", "count": 1}
+    ]
+  },
+  "11-nan-sample-value.manifest.json": {
+    "into": "manifest",
+    "adds": [{"code": "SST-VAL316", "severity": "warning", "count": 1}]
+  }
+}

@@ -115,7 +115,14 @@ pythonpath = ["."]
 python_files = ["test_*.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
-addopts = "-v --tb=short --strict-markers --color=yes --durations=10"
+# `-m "not live"`: the tests that connect to Snowflake run only when asked for, with `-m live`
+# (the slow workflow does; a later `-m` replaces this one). Without credentials they skip, and
+# with `--require-snowflake` they fail instead, so a gate that cannot connect is never green.
+addopts = "-v --tb=short --strict-markers --color=yes --durations=10 -m 'not live'"
+markers = [
+    "live: connects to a real Snowflake account; deselected by default, run with -m live",
+    "e2e: drives the sst CLI over a whole project, as a user runs it",
+]
 # No test may run longer than this. The thread method dumps every thread's stack and ends the
 # worker, which a deadlocked lock wait cannot ignore the way it can ignore a signal.
 timeout = 120

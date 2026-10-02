@@ -1,0 +1,9 @@
+---
+# The 0.3 table() and column() globals, which 1.0 rejects.
+snowflake_metrics:
+  - name: legacy_globals
+    tables:
+      - orders
+    description: |-
+      Written in the 0.3 dialect.
+    expr: "SUM({{ column('orders', 'order_total') }}) + COUNT({{ table('orders') }})"

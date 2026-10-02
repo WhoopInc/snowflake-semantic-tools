@@ -1,0 +1,23 @@
+---
+# A view of orders alone that lists a relationship whose other side, customers,
+# the view does not hold.
+semantic_views:
+  - name: lonely_orders
+    description: |-
+      Use this view for questions about orders on their own, without customers
+      or locations.
+    tables:
+      - "{{ ref('orders') }}"
+    variables:
+      - name: large_order_cents
+        data_type: NUMBER
+        description: |-
+          Threshold above which an order counts as large.
+        default_value: 1000
+      - name: tax_inclusive
+        data_type: BOOLEAN
+        description: |-
+          Whether revenue metrics should include collected tax.
+        default_value: false
+    relationships:
+      - orders_to_customers
