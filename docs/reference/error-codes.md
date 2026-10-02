@@ -22,7 +22,7 @@ cannot be downgraded by any setting.
 - [Loading (LOD)](#loading-lod) -- 24 codes
 - [References (REF)](#references-ref) -- 37 codes
 - [Membership (MEM)](#membership-mem) -- 24 codes
-- [Validation (VAL)](#validation-val) -- 283 codes
+- [Validation (VAL)](#validation-val) -- 285 codes
 - [dbt (DBT)](#dbt-dbt) -- 30 codes
 - [Rendering (RND)](#rendering-rnd) -- 16 codes
 - [Manifest and state (MAN)](#manifest-and-state-man) -- 21 codes
@@ -3355,6 +3355,22 @@ Fix: add rows; a thin dataset cannot support range thresholds
 **CREATE DATASET takes no properties** (info)
 
 `dataset '<artifact>': versions and provenance are added by ALTER, not CREATE`
+
+### SST-VAL713
+
+**Dataset version requires ownership** (error)
+
+`dataset '<artifact>': <value> holds <found>, not OWNERSHIP`
+
+Fix: grant OWNERSHIP, or add the version as the owner
+
+### SST-VAL714
+
+**Dataset metadata carries no commit provenance** (warning)
+
+`dataset '<artifact>': METADATA has no git SHA`
+
+Fix: write the SHA into METADATA
 
 ### SST-VAL717
 

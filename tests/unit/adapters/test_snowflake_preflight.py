@@ -155,3 +155,9 @@ def test_the_walk_stops_at_the_hierarchy_depth_and_reads_a_deeper_grant_as_missi
     reachable = f"SHOW GRANTS TO ROLE R{ROLE_HIERARCHY_DEPTH - 1:02d}"
     within = ScriptedConnector({**chain, reachable: (_grant("CREATE TASK", "SCHEMA", "DB.SCH"),)})
     assert within.missing_role_privileges("R00", SCOPE, ("CREATE TASK",)) == ()
+
+
+def test_a_dataset_lists_its_versions_by_name_in_show_order() -> None:
+    connector = ScriptedConnector({"SHOW VERSIONS IN DATASET": ({"name": "SST_ABC"}, {"name": ""}, {"name": "V2"})})
+    assert connector.dataset_versions(QualifiedName.parse("DB.SCH.DS")) == ("SST_ABC", "V2")
+    assert connector.sent == [("SHOW VERSIONS IN DATASET DB.SCH.DS", None)]

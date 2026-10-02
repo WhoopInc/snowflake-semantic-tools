@@ -96,6 +96,20 @@ SPECS: tuple[ErrorSpec, ...] = (
         None,
     ),
     spec(
+        "SST-VAL713",
+        Severity.ERROR,
+        "Dataset version requires ownership",
+        "dataset '{artifact}': {value} holds {found}, not OWNERSHIP",
+        "grant OWNERSHIP, or add the version as the owner",
+    ),
+    spec(
+        "SST-VAL714",
+        Severity.WARNING,
+        "Dataset metadata carries no commit provenance",
+        "dataset '{artifact}': METADATA has no git SHA",
+        "write the SHA into METADATA",
+    ),
+    spec(
         "SST-VAL717",
         Severity.ERROR,
         "run_name is not unique for the agent",

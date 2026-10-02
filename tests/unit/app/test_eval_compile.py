@@ -30,7 +30,16 @@ def test_compile_eval_projects_composite_metadata_and_manifest_impact() -> None:
     assert not rendered.generic_apply_safe
     assert rendered.statements == ()
     # Each custom metric is recorded under its name, so a later plan can tell it was edited in place.
-    assert tuple(name for name, _ in rendered.component_fingerprints) == ("dataset", "config", "metric:grounding")
+    assert tuple(name for name, _ in rendered.component_fingerprints) == (
+        "dataset",
+        "config",
+        "dataset_version",
+        "metric:grounding",
+    )
+    # The version follows the questions, so it never moves between commits.
+    assert dict(rendered.component_fingerprints)["dataset_version"] == (
+        f"SST_{compiled.rendered_artifact.component_fingerprints[0][1][:12].upper()}"
+    )
     assert (
         dict(rendered.component_fingerprints)["metric:grounding"] == resolved_eval().custom_metrics[0].definition_digest
     )
@@ -68,11 +77,19 @@ def test_rendered_for_publish_emits_source_table_and_dataset_statements() -> Non
 
     published = compiled.rendered_for_publish("unused-manifest-id")
 
+    version = compiled.dataset_version
     assert texts(published.create_statements) == (
         compiled.rendered.source_table_sql.split(";\n\n", 1)[0],
         compiled.rendered.source_table_sql.split(";\n\n", 1)[1].removesuffix(";\n"),
         str(compiled.rendered.create_dataset_statement),
+        f"ALTER DATASET {compiled.dataset_target.sql} ADD VERSION '{version}'\n"
+        f"  FROM (SELECT INPUT_QUERY, GROUND_TRUTH FROM {compiled.source_table.sql})\n"
+        f"  COMMENT = 'SST eval questions {version.removeprefix('SST_').lower()}'\n"
+        f"  METADATA = '{compiled.version_metadata}'",
     )
+    assert dict(published.component_fingerprints)["version_metadata"] == compiled.version_metadata
+    # The commit reaches only what publishes, never the artifact the fingerprint covers.
+    assert published.fingerprint == compiled.rendered_artifact.fingerprint
 
 
 def test_dataset_identity_is_independent_of_config_and_git_sha() -> None:

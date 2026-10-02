@@ -228,6 +228,8 @@ def test_eval_suite_uses_common_json_envelope(tmp_path: Path, monkeypatch: pytes
         staged_file_contents={config_path: config_content},
         agent_versions={(compiled_eval.agent_target.sql, "committed"): "VERSION$1"},
     )
+    # The publish that finished left SST's version on the dataset.
+    port.dataset_version_names[compiled_eval.dataset_target.sql] = [compiled_eval.dataset_version]
     result_columns = (
         "RECORD_ID",
         "INPUT_ID",

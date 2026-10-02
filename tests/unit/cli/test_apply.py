@@ -140,8 +140,8 @@ def test_apply_requires_confirmation_and_accepts_current_saved_plan(
     payload = json.loads(applied.output)
     assert payload["data"]["state_written"] is True
     # Ten more than M4: the bundle stage, CREATE and ADD VERSION for each of three
-    # skills and the plugin, and the profile stage.
-    assert len(apply_port.scripts) == 21
+    # skills and the plugin, and the profile stage; and the eval dataset's own version.
+    assert len(apply_port.scripts) == 22
     first_lines = [statements[0].split("\n", 1)[0] for statements in apply_port.scripts]
     assert sum("JAFFLE_TOOLKIT" in line for line in first_lines) == 2
     assert sum("SKILL_BUNDLES " in line and line.startswith("CREATE STAGE") for line in first_lines) == 1

@@ -36,7 +36,7 @@ from snowflake_semantic_tools.domain.model.eval import (
     ResolvedEval,
 )
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName, SchemaScope
-from snowflake_semantic_tools.domain.model.lifecycle import ExecResult, QueryResult
+from snowflake_semantic_tools.domain.model.lifecycle import ExecResult, QueryResult, RenderedArtifact
 from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
 from snowflake_semantic_tools.domain.sql import Sql
 from tests.helpers.app_ports import InMemorySnowflake
@@ -79,13 +79,29 @@ def resolved_eval() -> ResolvedEval:
     return ResolvedEval(agent, dataset, config, (metric,))
 
 
-def compile_eval(resolved: ResolvedEval | None = None) -> CompileResult:
+# The commit plan stamps on an eval for publication, which its dataset version records.
+GIT_SHA = "abc1234"
+
+
+def compile_eval(resolved: ResolvedEval | None = None, *, git_sha: str = GIT_SHA) -> CompileResult:
+    """Compile one eval, stamped with the commit plan would publish it from."""
     value = resolved or resolved_eval()
     catalog = EvalCatalog((value,), value.custom_metrics, diagnostics=DiagnosticBag())
-    return CompileEvals(
+    result = CompileEvals(
         catalog,
         agent_targets={"sales_agent": QualifiedName.parse("DB.S.SALES_AGENT")},
     ).run_result()
+    stamped = tuple(
+        replace(item, git_sha=git_sha) if isinstance(item, CompiledEval) else item for item in result.compiled
+    )
+    return replace(result, compiled=stamped)
+
+
+def seed_dataset_version(artifact: RenderedArtifact, port: InMemorySnowflake) -> None:
+    """Record SST's version on the eval's dataset, as a publish that finished leaves it."""
+    version = dict(artifact.component_fingerprints)["dataset_version"]
+    dataset = next(name for kind, name in artifact.physical_resources if kind == "DATASET")
+    port.dataset_version_names[dataset.sql] = [version]
 
 
 def compiled_eval_of(resolved: ResolvedEval | None = None) -> CompiledEval:

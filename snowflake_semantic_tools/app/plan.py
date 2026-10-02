@@ -15,6 +15,7 @@ from types import MappingProxyType
 
 from snowflake_semantic_tools.app.compile import CompiledArtifact, CompileResult
 from snowflake_semantic_tools.app.compile.agents import CompiledAgent, for_publication
+from snowflake_semantic_tools.app.compile.evals import CompiledEval
 from snowflake_semantic_tools.app.compile.profiles import CompiledProfile
 from snowflake_semantic_tools.app.compile.skills import CompiledExtension
 from snowflake_semantic_tools.app.lifecycle.evals import EvalLifecycleConfig, EvalLifecycleHandler
@@ -540,7 +541,8 @@ class PreparePlan:
         """Render each selected artifact as apply publishes it, by key, agents staged for publication.
 
         Each agent is staged under `apply.agent_spec_stage`, in the target's database and
-        schema unless the block names others, beneath a folder for the project's commit.
+        schema unless the block names others, beneath a folder for the project's commit; each
+        eval's dataset version records that commit.
         """
         stage_config = config_block(apply_config.get("agent_spec_stage"))
         database = target.database.folded
@@ -550,10 +552,14 @@ class PreparePlan:
             config_text(stage_config.get("schema"), schema) or schema,
             str(stage_config.get("stage") or "AGENT_SPECS"),
         )
+        git_sha = self._inputs.git_sha()
         compiled = tuple(
             (
-                for_publication(item, stage=stage, git_sha=self._inputs.git_sha(), temporary=temporary)
+                for_publication(item, stage=stage, git_sha=git_sha, temporary=temporary)
                 if isinstance(item, CompiledAgent)
+                # A dataset version records the commit in its METADATA.
+                else replace(item, git_sha=git_sha)
+                if isinstance(item, CompiledEval)
                 else item
             )
             for item in result.compiled

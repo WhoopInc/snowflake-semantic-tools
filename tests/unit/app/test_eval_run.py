@@ -61,6 +61,7 @@ from tests.helpers.eval_builders import (
     compiled_eval_of,
     result_row,
     result_rows,
+    seed_dataset_version,
     status_result,
 )
 
@@ -892,6 +893,7 @@ def test_eval_publication_preflight_allows_unrelated_rows_from_older_manifests()
     )
     port = InMemorySnowflake()
     port.existing = {name.sql for _, name in artifact.physical_resources}
+    seed_dataset_version(artifact, port)
     port.existing.add("DB.S.EVAL_CONFIGS")
     port.stage_formats["DB.S.EVAL_CONFIGS"] = EVAL_STAGE_FILE_FORMAT
     config_path = EvalLifecycleHandler(port).config_path(artifact)
@@ -935,6 +937,7 @@ def test_eval_publication_preflight_accepts_a_live_noop() -> None:
     )
     port = InMemorySnowflake()
     port.existing = {name.sql for _, name in artifact.physical_resources}
+    seed_dataset_version(artifact, port)
     port.existing.add("DB.S.EVAL_CONFIGS")
     port.stage_formats["DB.S.EVAL_CONFIGS"] = EVAL_STAGE_FILE_FORMAT
     config_path = EvalLifecycleHandler(port).config_path(artifact)
@@ -978,6 +981,7 @@ def test_eval_publication_preflight_reports_plan_diagnostics() -> None:
     )
     port = InMemorySnowflake()
     port.existing = {name.sql for _, name in artifact.physical_resources}
+    seed_dataset_version(artifact, port)
     port.existing.add("DB.S.EVAL_CONFIGS")
     port.stage_formats["DB.S.EVAL_CONFIGS"] = "TYPE='CSV' FIELD_DELIMITER=','"
 

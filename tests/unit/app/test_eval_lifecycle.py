@@ -24,6 +24,7 @@ from snowflake_semantic_tools.domain.model.lifecycle import (
     CompositeObservation,
     ExecResult,
     ExecutionError,
+    GrantRow,
     OutcomeStatus,
     QueryResult,
     RenderedArtifact,
@@ -41,7 +42,7 @@ from snowflake_semantic_tools.domain.state import (
 from tests.helpers.app_ports import FixedClock, InMemorySnowflake, InMemoryStateStore
 from tests.helpers.artifact_builders import changeset, target
 from tests.helpers.compile_builders import compiled_as
-from tests.helpers.eval_builders import compile_eval, resolved_eval
+from tests.helpers.eval_builders import GIT_SHA, compile_eval, resolved_eval, seed_dataset_version
 from tests.helpers.sql_values import statement, texts
 
 ORIGIN = Origin("dataset.yml", 1, 1)
@@ -116,6 +117,7 @@ def planned_change(
 def seed_existing_resources(artifact: RenderedArtifact, port: InMemorySnowflake) -> None:
     for _, name in artifact.physical_resources:
         existing(port).add(name.sql)
+    seed_dataset_version(artifact, port)
     port.table_row_counts[artifact.physical_resources[0][1].sql] = 1
 
 
@@ -126,6 +128,7 @@ def test_eval_plan_uses_component_fingerprints_and_live_resources() -> None:
     entry = applied_entry(artifact, manifest.manifest_id)
     for _, name in artifact.physical_resources:
         existing(port).add(name.sql)
+    seed_dataset_version(artifact, port)
     existing(port).add("DB.S.EVAL_CONFIGS")
     port.stage_formats["DB.S.EVAL_CONFIGS"] = EVAL_STAGE_FILE_FORMAT
     config_path = handler._config_path(artifact)
@@ -157,11 +160,14 @@ def test_eval_apply_mints_dataset_creates_exact_stage_uploads_yaml_and_verifies(
         lifecycle_handlers={"eval": handler},
     ).run(replace(changeset(change), manifest_id=manifest.manifest_id), state_with(None, ""))
     assert result.success
-    assert len(port.scripts) == 4
+    assert len(port.scripts) == 5
     assert port.scripts[0][0].startswith("CREATE TABLE")
     assert port.scripts[1][0].startswith("INSERT INTO")
     assert "SYSTEM$CREATE_EVALUATION_DATASET" in port.scripts[2][0]
-    assert port.scripts[3] == (
+    # The dataset's provenance version, from the source table's rows.
+    assert port.scripts[3][0].startswith("ALTER DATASET DB.S.EVAL_SALES_AGENT_")
+    assert '"git_sha":"abc1234"' in port.scripts[3][0]
+    assert port.scripts[4] == (
         f"CREATE STAGE IF NOT EXISTS DB.S.EVAL_CONFIGS FILE_FORMAT = ({EVAL_STAGE_FILE_FORMAT})",
     )
     assert port.uploads[0][0].endswith(".yaml")
@@ -182,7 +188,7 @@ def test_eval_apply_mints_dataset_creates_exact_stage_uploads_yaml_and_verifies(
         store.state,
     )
     assert replanned.action is Action.NOOP
-    assert len(port.scripts) == 4
+    assert len(port.scripts) == 5
     assert len(port.uploads) == 1
 
 
@@ -191,6 +197,7 @@ def test_eval_ignores_encrypted_stage_size_when_readback_bytes_match() -> None:
     entry = applied_entry(artifact, manifest.manifest_id)
     for _, name in artifact.physical_resources:
         existing(port).add(name.sql)
+    seed_dataset_version(artifact, port)
     port.table_row_counts[artifact.physical_resources[0][1].sql] = 1
     existing(port).add("DB.S.EVAL_CONFIGS")
     port.stage_formats["DB.S.EVAL_CONFIGS"] = EVAL_STAGE_FILE_FORMAT
@@ -213,6 +220,7 @@ def test_eval_same_size_wrong_staged_config_is_overwritten() -> None:
     entry = applied_entry(artifact, manifest.manifest_id)
     for _, name in artifact.physical_resources:
         existing(port).add(name.sql)
+    seed_dataset_version(artifact, port)
     port.table_row_counts[artifact.physical_resources[0][1].sql] = 1
     existing(port).add("DB.S.EVAL_CONFIGS")
     port.stage_formats["DB.S.EVAL_CONFIGS"] = EVAL_STAGE_FILE_FORMAT
@@ -253,6 +261,7 @@ def test_eval_config_only_update_uploads_no_dataset_sql() -> None:
     entry = applied_entry(artifact, manifest.manifest_id)
     for _, name in artifact.physical_resources:
         existing(port).add(name.sql)
+    seed_dataset_version(artifact, port)
     port.table_row_counts[artifact.physical_resources[0][1].sql] = 1
     existing(port).add("DB.S.EVAL_CONFIGS")
     port.stage_formats["DB.S.EVAL_CONFIGS"] = EVAL_STAGE_FILE_FORMAT
@@ -395,7 +404,8 @@ def two_evals_in_one_schema() -> tuple[Manifest, dict[str, RenderedArtifact]]:
         },
     ).run_result()
     manifest = build_manifest(result)
-    return manifest, {item.artifact_key: item.rendered_for_publish(manifest.manifest_id) for item in result.compiled}
+    stamped = (replace(item, git_sha=GIT_SHA) for item in result.compiled if isinstance(item, CompiledEval))
+    return manifest, {item.artifact_key: item.rendered_for_publish(manifest.manifest_id) for item in stamped}
 
 
 def test_evals_sharing_a_config_stage_this_run_creates_all_apply() -> None:
@@ -1004,10 +1014,12 @@ def test_eval_helper_invariants_reject_malformed_artifacts() -> None:
         handler._resources_by_type(replace(artifact, physical_resources=artifact.physical_resources[:1]))
 
     without_statements = replace(artifact, create_statements=(statement(""),))
-    with pytest.raises(ValueError, match="CREATE TABLE and INSERT"):
+    with pytest.raises(ValueError, match="source-table, dataset and version statements"):
         handler._source_statements(without_statements)
-    with pytest.raises(ValueError, match="requires a dataset statement"):
+    with pytest.raises(ValueError, match="source-table, dataset and version statements"):
         handler._dataset_statement(without_statements)
+    with pytest.raises(ValueError, match="source-table, dataset and version statements"):
+        handler._version_statement(without_statements)
 
     assert handler._expected_row_count(()) == 0
 
@@ -1076,3 +1088,67 @@ def test_an_eval_that_does_not_mint_requires_its_dataset_and_publishes_only_its_
     assert [script[0].split(" ", 2)[:2] for script in port.scripts] == [["CREATE", "STAGE"]]
     assert store.state is not None and store.state.applied[artifact.key].applied_resources == ()
     assert planned_change(artifact, manifest, port, handler, store.state).action is Action.NOOP
+
+
+def _versionless_update(port: InMemorySnowflake) -> tuple[Change, RenderedArtifact, EvalLifecycleHandler]:
+    """Plan the retry of a publish that minted the dataset and stopped before its version."""
+    manifest, artifact, _, handler = setup_eval()
+    handler = EvalLifecycleHandler(port)
+    port.existing = {name.sql for _, name in artifact.physical_resources} | {"DB.S.EVAL_CONFIGS"}
+    port.stage_formats["DB.S.EVAL_CONFIGS"] = EVAL_STAGE_FILE_FORMAT
+    port.table_row_counts[artifact.physical_resources[0][1].sql] = 1
+    dataset = dict(artifact.physical_resources)["DATASET"]
+    port.grants[dataset.sql] = (GrantRow("OWNERSHIP", "ROLE", "TEST_ROLE"),)
+    entry = replace(applied_entry(artifact, manifest.manifest_id), outcome="failed_after_write")
+    change = planned_change(artifact, manifest, port, handler, state_with(entry, manifest.manifest_id))
+    assert (change.action, change.reason) == (Action.UPDATE, ChangeReason.NOT_PRESENT)
+    return change, artifact, handler
+
+
+def test_a_dataset_minted_without_its_version_gets_it_on_the_next_apply() -> None:
+    port = InMemorySnowflake()
+    change, artifact, handler = _versionless_update(port)
+    outcome = handler.apply(change, ApplyOptions())
+    assert outcome.status is OutcomeStatus.APPLIED
+    added = [script[0] for script in port.scripts if script[0].startswith("ALTER DATASET")]
+    assert len(added) == 1 and dict(artifact.component_fingerprints)["dataset_version"] in added[0]
+
+
+def test_a_version_another_run_added_after_the_plan_is_not_added_again() -> None:
+    port = InMemorySnowflake()
+    change, artifact, handler = _versionless_update(port)
+    seed_dataset_version(artifact, port)
+    assert handler.apply(change, ApplyOptions()).status is OutcomeStatus.APPLIED
+    assert not [script for script in port.scripts if script[0].startswith("ALTER DATASET")]
+
+
+def test_a_dataset_whose_owner_changed_after_the_plan_fails_before_any_version_is_added() -> None:
+    port = InMemorySnowflake()
+    change, artifact, handler = _versionless_update(port)
+    dataset = dict(artifact.physical_resources)["DATASET"]
+    port.grants[dataset.sql] = (GrantRow("OWNERSHIP", "ROLE", "ADMIN"),)
+    outcome = handler.apply(change, ApplyOptions())
+    assert outcome.status is OutcomeStatus.FAILED and outcome.error is not None
+    assert (outcome.error.code, outcome.error.message) == (
+        "SST-VAL713",
+        "dataset 'eval:sales_agent': TEST_ROLE holds no privilege, not OWNERSHIP",
+    )
+    assert not [script for script in port.scripts if script[0].startswith("ALTER DATASET")]
+
+
+def test_a_refused_or_unrecorded_add_version_fails_the_publish() -> None:
+    refused = InMemorySnowflake()
+    change, _, handler = _versionless_update(refused)
+    refused.execute_results = [ExecResult(False, error=ExecutionError("Insufficient privileges", "42501"))]
+    outcome = handler.apply(change, ApplyOptions())
+    assert outcome.error is not None and outcome.error.code == "SST-APL022"
+
+    class Forgetful(InMemorySnowflake):
+        def dataset_versions(self, qualified_name: QualifiedName) -> tuple[str, ...]:
+            return ()
+
+    forgetful = Forgetful()
+    change, _, handler = _versionless_update(forgetful)
+    outcome = handler.apply(change, ApplyOptions())
+    assert outcome.error is not None and outcome.error.code == "SST-APL016"
+    assert "after ADD VERSION" in outcome.error.message

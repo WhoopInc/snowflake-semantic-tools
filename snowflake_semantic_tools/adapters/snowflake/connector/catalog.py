@@ -179,6 +179,10 @@ class CatalogMethods(Session, CatalogPort):
             for row in self._show_like("DATASET", qualified_name, str.casefold)
         )
 
+    def dataset_versions(self, qualified_name: QualifiedName) -> tuple[str, ...]:
+        rows = self._dict_rows(sql("SHOW VERSIONS IN DATASET {dataset}", dataset=qname(qualified_name)))
+        return tuple(str(row.get("name") or "") for row in rows if row.get("name"))
+
     def observe_stage(self, qualified_name: QualifiedName) -> StageObservation:
         if not self.object_exists("STAGE", qualified_name):
             return StageObservation(False)
