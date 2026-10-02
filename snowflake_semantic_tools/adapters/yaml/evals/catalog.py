@@ -56,7 +56,7 @@ def load_eval_catalog(
 
     Diagnostics:
         SST-LOD018: an eval file or a metric file cannot be read.
-        SST-PRS122: an eval file or a metric file is not UTF-8.
+        SST-LOD006: an eval file or a metric file is not UTF-8.
         SST-LOD001: an eval file or a metric file is not valid YAML.
         SST-LOD002: an eval file or a metric file's root is not a mapping.
         SST-LOD003: an eval file or a metric file holds only whitespace or comments.

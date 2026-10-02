@@ -57,7 +57,7 @@ def load_project_config(project_dir: Path) -> ProjectConfig:
     positions = {
         key: (position.line, position.col) for key, position in parsed.line_index.items() if isinstance(key, tuple)
     }
-    diagnostics = list(validate_config(parsed.tree, positions=positions))
+    diagnostics = [*parsed.diagnostics, *validate_config(parsed.tree, positions=positions)]
     tree = dict(parsed.tree)
     project = tree.get("project")
     dbt_only_dirs: set[str] = set()

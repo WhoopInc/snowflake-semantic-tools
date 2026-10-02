@@ -86,9 +86,9 @@ state:
 # values but never creates a tag object, so these must already exist.
 tags:
   default_prefix: "{{ target.database }}.{{ target.schema }}"
-  cost_center:                          # -> <db>.<schema>.COST_CENTER
-  data_domain:                          # -> <db>.<schema>.DATA_DOMAIN
-  metric_tier:                          # -> <db>.<schema>.METRIC_TIER
+  cost_center: {}                       # -> <db>.<schema>.COST_CENTER
+  data_domain: {}                       # -> <db>.<schema>.DATA_DOMAIN
+  metric_tier: {}                       # -> <db>.<schema>.METRIC_TIER
 
 validation:
   # Every warning becomes an error; --strict/--no-strict on validate, plan and
@@ -222,7 +222,7 @@ skills:
   # extension() on an extension this project publishes is SST-REF037.
   extensions:
     default_prefix: "{{ target.database }}.PARTNER"
-    partner-glossary:
+    partner-glossary: {}
 
   catalog:
     +database: "{{ target.database }}"

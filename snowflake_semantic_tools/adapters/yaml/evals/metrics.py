@@ -50,7 +50,7 @@ def load_custom_metrics(
 
     Diagnostics:
         SST-LOD018: a metric file cannot be read.
-        SST-PRS122: a metric file is not UTF-8.
+        SST-LOD006: a metric file is not UTF-8.
         SST-LOD004: a template in a metric file is unterminated or nested.
         SST-LOD001: a metric file is not valid YAML.
         SST-LOD005: a metric file writes a key twice in one mapping.

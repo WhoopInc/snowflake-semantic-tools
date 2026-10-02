@@ -212,8 +212,8 @@ def test_a_prompt_or_a_rule_that_is_not_utf8_is_reported_and_left_out(tmp_path: 
     catalog = load(tmp_path)
 
     assert [(item.code, item.subject, dict(item.context)) for item in catalog.diagnostics] == [
-        ("SST-PRS122", "profile:analyst", {"file": "profiles/analyst/AGENTS.md", "offset": 3}),
-        ("SST-PRS122", "profile:shared", {"file": "profiles/shared/rules/b.md", "offset": 0}),
+        ("SST-LOD006", "profile:analyst", {"file": "profiles/analyst/AGENTS.md", "offset": 3}),
+        ("SST-LOD006", "profile:shared", {"file": "profiles/shared/rules/b.md", "offset": 0}),
     ]
     assert catalog.profiles[0].prompt is None
     assert catalog.shared is not None and [name for name, _ in catalog.shared.rules] == ["a.md"]

@@ -43,6 +43,7 @@ def load_skill_catalog(project_dir: Path, *, skills_dir: str, plugins_dir: str) 
 
     Diagnostics:
         SST-PRT009: once per symbolic link under `skills_dir` or `plugins_dir` that would be read.
+        SST-PRS120: a folder holds files of its own but its `SKILL.md` sits in a subfolder.
     """
     diagnostics: list[Diagnostic] = []
     skills: list[Skill] = []
@@ -57,6 +58,7 @@ def load_skill_catalog(project_dir: Path, *, skills_dir: str, plugins_dir: str) 
             for folder in folders
         }
         inner = {child for children in nested.values() for child in children}
+        diagnostics.extend(_misplaced_skill_files(project_dir, root, folders, readable))
         for folder in folders:
             if folder in inner:
                 continue
@@ -73,6 +75,30 @@ def load_skill_catalog(project_dir: Path, *, skills_dir: str, plugins_dir: str) 
             if plugin is not None:
                 plugins.append(plugin)
     return SkillCatalog(tuple(skills), tuple(plugins), DiagnosticBag(diagnostics))
+
+
+def _misplaced_skill_files(
+    project_dir: Path, root: Path, folders: list[Path], readable: list[Path]
+) -> tuple[Diagnostic, ...]:
+    """Report a folder whose own files sit beside no `SKILL.md`, while its subfolder holds one.
+
+    A grouping folder holds only folders; one that also holds files is a skill whose `SKILL.md`
+    was put one level too deep, where Snowflake will not find it as that skill's.
+
+    Diagnostics:
+        SST-PRS120: once per such folder, naming the nested `SKILL.md`.
+    """
+    skill_folders = set(folders)
+    found: list[Diagnostic] = []
+    for folder in folders:
+        parent = folder.parent
+        if parent == root or parent in skill_folders:
+            continue
+        if any(path.parent == parent and path.is_file() for path in readable):
+            subject = artifact_key("skill", parent.name)
+            nested = project_relative(project_dir, folder / SKILL_FILE)
+            found.append(D("SST-PRS120", origin=Origin(nested), subject=subject, artifact=subject, path=nested))
+    return tuple(found)
 
 
 def _load_skill(project_dir: Path, folder: Path, nested: tuple[Path, ...], diagnostics: list[Diagnostic]) -> Skill:
@@ -247,6 +273,7 @@ def _load_plugin(project_dir: Path, folder: Path, diagnostics: list[Diagnostic])
         found = exc.diagnostics or (D("SST-LOD001", origin=Origin(file), file=file, line=1, col=1, detail=str(exc)),)
         diagnostics.extend(replace(item, subject=subject) for item in found)
         return None
+    diagnostics.extend(replace(item, subject=subject) for item in parsed.diagnostics)
     tree = dict(parsed.tree)
 
     def origin(key: str) -> Origin:

@@ -50,7 +50,7 @@ def load_tool_catalog(
 
     Diagnostics:
         SST-LOD004: when a file cannot be read, or a template in it or in an `on:` is malformed.
-        SST-PRS122: when a file is not UTF-8.
+        SST-LOD006: when a file is not UTF-8.
         SST-LOD001: when a file is not valid YAML.
         SST-LOD005: when a file writes a key twice in one mapping.
         SST-LOD003: when a file holds only whitespace or comments.
@@ -70,7 +70,9 @@ def load_tool_catalog(
     for path in sorted(root.glob("*.y*ml")):
         relative = path.relative_to(project_dir).as_posix()
         try:
-            loaded = dict(parse_yaml_bytes(path.read_bytes(), relative).tree)
+            parsed = parse_yaml_bytes(path.read_bytes(), relative)
+            loaded = dict(parsed.tree)
+            diagnostics.extend(parsed.diagnostics)
         except ProjectError as exc:
             diagnostics.extend(exc.diagnostics)
             continue

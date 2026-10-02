@@ -3,64 +3,61 @@
 `parse_yaml_bytes` is the parser; `read_yaml_mapping` and `read_yaml_file` read a file
 through it, the first raising and the second collecting diagnostics. Every parse:
 
+- refuses a file that is too large, starts with a byte-order mark, is not UTF-8, or indents
+  with tabs, and reads CRLF line endings as LF (`text_checks`);
 - keeps each `{{ ... }}` template exactly as written, quoted or not: it is swapped for a
   YAML-safe placeholder before parsing and its source text restored in every string after
   (a whole-line comment or a block scalar is left to YAML as text, templates and all);
+- refuses anchors, aliases, merge keys, non-string keys, and a key written twice in one
+  mapping, and reports a value YAML cannot construct at its own position (`compose`);
 - indexes each node's source position by its path, and records each template's position;
-- refuses a key written twice in one mapping (SST-LOD005);
-- reports a value YAML cannot construct (an unknown tag, an impossible date, a bad merge)
-  as SST-LOD001 at its own position, never as YAML's own exception;
-- expands YAML 1.1 merge keys (`<<: *anchor`), the mapping's own keys winning.
+- returns what loads but is badly formatted -- CRLF, trailing whitespace, folded scalars,
+  implicit booleans and nulls -- as `ParsedYaml.diagnostics`, never raising for them.
 
 A file holds exactly one document, and its root is a mapping.
 """
 
 from __future__ import annotations
 
-import re
 from collections.abc import Mapping
 from pathlib import Path
 from types import MappingProxyType
-from typing import Any, NoReturn
+from typing import Any
 
 import yaml
 
 from snowflake_semantic_tools.adapters.errors import ProjectError
+from snowflake_semantic_tools.adapters.yaml.compose import compose_single, construct, formatting_findings
 from snowflake_semantic_tools.adapters.yaml.documents import NodePath, ParsedYaml, SourcePosition, TemplateSource
+from snowflake_semantic_tools.adapters.yaml.text_checks import (
+    decoded_text,
+    executable_lines,
+    normalised_text,
+    refuse_tab_indentation,
+)
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, Origin
 
 _PLACEHOLDER = "__SST_TPL_%d__"
 
 
-def _neutralize_templates(text: str, path: str) -> tuple[str, dict[str, TemplateSource]]:
-    """Replace template spans with YAML-safe scalars before parsing."""
+def _neutralize_templates(
+    text: str, path: str, executable: list[bool] | None = None
+) -> tuple[str, dict[str, TemplateSource]]:
+    """Replace template spans with YAML-safe scalars before parsing.
+
+    Args:
+        executable: `text_checks.executable_lines(text)`, when the caller already has it.
+    """
     # Comments and block scalars are already legal YAML and may discuss invalid
     # examples verbatim; only neutralize executable scalar text.
-    neutralizable_lines: list[str] = []
-    block_indent: int | None = None
-    for line in text.splitlines(keepends=True):
-        stripped = line.lstrip()
-        indent = len(line) - len(stripped)
-        if block_indent is not None:
-            if stripped.strip() and indent <= block_indent:
-                block_indent = None
-            else:
-                neutralizable_lines.append(" " * len(line.rstrip("\n")) + ("\n" if line.endswith("\n") else ""))
-                continue
-        if stripped.startswith("#"):
-            neutralizable_lines.append(" " * len(line.rstrip("\n")) + ("\n" if line.endswith("\n") else ""))
-            continue
-        opened = _block_scalar_indent(line.rstrip("\n"))
-        if opened is not None:
-            block_indent = opened
-        neutralizable_lines.append(line)
-    neutralizable = "".join(neutralizable_lines)
+    executable = executable_lines(text) if executable is None else executable
     spans: list[tuple[int, int]] = []
     diagnostics: list[Diagnostic] = []
     absolute_offset = 0
-    for line_number, line in enumerate(neutralizable.splitlines(keepends=True), start=1):
+    for line_number, line in enumerate(text.splitlines(keepends=True), start=1):
         cursor = 0
-        while True:
+        structural = executable[line_number - 1] if line_number <= len(executable) else False
+        while structural:
             start = line.find("{{", cursor)
             if start < 0:
                 break
@@ -69,15 +66,7 @@ def _neutralize_templates(text: str, path: str) -> tuple[str, dict[str, Template
             if end < 0 or nested >= 0:
                 col = (nested if nested >= 0 else start) + 1
                 reason = "nested template expression" if nested >= 0 else "unterminated template expression"
-                diagnostics.append(
-                    D(
-                        "SST-LOD004",
-                        file=str(path),
-                        line=line_number,
-                        col=col,
-                        reason=reason,
-                    )
-                )
+                diagnostics.append(D("SST-LOD004", file=str(path), line=line_number, col=col, reason=reason))
                 break
             spans.append((absolute_offset + start, absolute_offset + end + 2))
             cursor = end + 2
@@ -96,23 +85,6 @@ def _neutralize_templates(text: str, path: str) -> tuple[str, dict[str, Template
         templates[placeholder] = TemplateSource(text[start:end], template_line, start - previous_newline)
         rewritten = rewritten[:start] + placeholder + rewritten[end:]
     return rewritten, templates
-
-
-# Leading spaces and `- ` sequence entries: whatever precedes a line's first key or scalar.
-_ENTRY_PREFIX = re.compile(r" *(?:- +)*")
-
-
-def _block_scalar_indent(line: str) -> int | None:
-    """Return the column a block scalar opened on `line` is indented past, or None if it opens none."""
-    entries = _ENTRY_PREFIX.match(line)
-    prefix = entries.end() if entries else 0
-    # Measured from the owning key or entry, not the line's first `-`, so the rest of a
-    # list item after its `- key: |` block is still executable text.
-    if re.search(r":\s*[>|][+-]?\s*(?:#.*)?$", line):
-        return prefix
-    if line[:prefix].strip() and re.fullmatch(r"[>|][+-]?\s*(?:#.*)?", line[prefix:]):
-        return line.rindex("-", 0, prefix)
-    return None
 
 
 def _restore_templates(value: Any, templates: Mapping[str, TemplateSource]) -> Any:
@@ -146,100 +118,8 @@ def _node_path_index(node: yaml.Node) -> Mapping[NodePath, SourcePosition]:
     return MappingProxyType(positions)
 
 
-def _construct_yaml_node(node: yaml.Node, path: str) -> Any:
-    """Build the Python value of one composed node, as `yaml.safe_load` would.
-
-    Differences from safe_load: a key written twice in one mapping is SST-LOD005, and a
-    value YAML cannot construct (an unknown tag, an impossible date, a bad merge) is
-    SST-LOD001 at its own position rather than an exception. Merge keys (`<<: *anchor`)
-    expand as in YAML 1.1, with the mapping's own keys winning over merged ones.
-    """
-    if isinstance(node, yaml.MappingNode):
-        mapping: dict[Any, Any] = {}
-        for key_node, value_node in _merged_pairs(node, path):
-            mapping[_construct_yaml_node(key_node, path)] = _construct_yaml_node(value_node, path)
-        return mapping
-    if isinstance(node, yaml.SequenceNode):
-        return [_construct_yaml_node(child, path) for child in node.value]
-    if isinstance(node, yaml.ScalarNode):
-        return _construct_scalar(node, path)
-    mark = node.start_mark
-    diagnostic = D(
-        "SST-LOD001",
-        file=str(path),
-        line=mark.line + 1,
-        col=mark.column + 1,
-        detail=f"unsupported YAML node {type(node).__name__}",
-    )
-    raise ProjectError(diagnostic.message, diagnostics=(diagnostic,))
-
-
-_MERGE_TAG = "tag:yaml.org,2002:merge"
-
-
-def _merged_pairs(node: yaml.MappingNode, path: str) -> list[tuple[yaml.Node, yaml.Node]]:
-    """A mapping's key/value pairs with merge keys expanded, lowest precedence first.
-
-    Building a dict from the result in order gives YAML 1.1 merge semantics: the
-    mapping's own keys win over merged ones, and an earlier mapping in `<<: [*a, *b]`
-    wins over a later one. Composed nodes are never modified -- an anchored node is
-    shared by every alias that reaches it.
-    """
-    merged: list[tuple[yaml.Node, yaml.Node]] = []
-    own: list[tuple[yaml.Node, yaml.Node]] = []
-    for key_node, value_node in node.value:
-        if key_node.tag != _MERGE_TAG:
-            own.append((key_node, value_node))
-            continue
-        if isinstance(value_node, yaml.MappingNode):
-            sources: list[yaml.Node] = [value_node]
-        elif isinstance(value_node, yaml.SequenceNode):
-            sources = list(value_node.value)
-        else:
-            _raise_at(
-                value_node, path, f"expected a mapping or list of mappings for merging, found {_node_kind(value_node)}"
-            )
-        for source in reversed(sources):
-            if not isinstance(source, yaml.MappingNode):
-                _raise_at(source, path, f"expected a mapping for merging, found {_node_kind(source)}")
-            merged.extend(_merged_pairs(source, path))
-    _refuse_duplicate_keys(own, path)
-    return merged + own
-
-
-def _node_kind(node: yaml.Node) -> str:
-    """`scalar`, `sequence` or `mapping`, as YAML's own messages name a node."""
-    return type(node).__name__.removesuffix("Node").lower()
-
-
-def _refuse_duplicate_keys(pairs: list[tuple[yaml.Node, yaml.Node]], path: str) -> None:
-    seen: set[Any] = set()
-    for key_node, _ in pairs:
-        key = _construct_yaml_node(key_node, path)
-        if key in seen:
-            diagnostic = D("SST-LOD005", file=path, line=key_node.start_mark.line + 1, key=str(key))
-            raise ProjectError(diagnostic.message, diagnostics=(diagnostic,))
-        seen.add(key)
-
-
-def _construct_scalar(node: yaml.ScalarNode, path: str) -> Any:
-    loader = yaml.SafeLoader("")
-    try:
-        return loader.construct_object(node, deep=True)
-    except (yaml.constructor.ConstructorError, ValueError) as exc:
-        _raise_at(node, path, str(getattr(exc, "problem", None) or f"cannot read {node.value!r}: {exc}"), exc)
-    finally:
-        loader.dispose()
-
-
-def _raise_at(node: yaml.Node, path: str, detail: str, cause: Exception | None = None) -> NoReturn:
-    mark = node.start_mark
-    diagnostic = D("SST-LOD001", file=str(path), line=mark.line + 1, col=mark.column + 1, detail=detail)
-    raise ProjectError(diagnostic.message, diagnostics=(diagnostic,)) from cause
-
-
 def parse_yaml_bytes(raw: bytes, path: str) -> ParsedYaml:
-    """Parse one YAML file's bytes into its tree, node positions, and template sources.
+    """Parse one YAML file's bytes into its tree, node positions, template sources, and findings.
 
     A document that is only `null` (`---`, `~`) parses as an empty tree. The tree's
     top-level keys are strings; nested values are as YAML typed them.
@@ -251,48 +131,36 @@ def parse_yaml_bytes(raw: bytes, path: str) -> ParsedYaml:
         ProjectError: The file does not parse; its `diagnostics` say why, as listed below.
 
     Diagnostics:
-        SST-PRS122: the bytes are not UTF-8.
-        SST-LOD004: a template is unterminated or nested; every one is reported at once.
-        SST-LOD001: a YAML syntax error, or a value YAML cannot construct, at its position.
-        SST-LOD005: a key written twice in one mapping.
-        SST-LOD003: the file holds only whitespace or comments.
-        SST-LOD008: the file holds more than one document.
-        SST-LOD002: the document root is not a mapping.
+        SST-LOD007, SST-LOD017, SST-LOD006: the file is too large, starts with a byte-order
+            mark, or is not UTF-8; raised.
+        SST-LOD010: a structural line is indented with a tab; every one at once, raised.
+        SST-LOD004: a template is unterminated or nested; every one at once, raised.
+        SST-LOD009, SST-LOD001: an unquoted `: ` in a value, or another YAML syntax error, or
+            a value YAML cannot construct, at its position; raised.
+        SST-LOD003, SST-LOD008: the file holds no document, or more than one; raised.
+        SST-LOD013, SST-LOD014, SST-LOD015: an anchor or alias, a merge key, or a key that is
+            not a string; every one at once, raised.
+        SST-LOD005: a key written twice in one mapping; raised.
+        SST-LOD002: the document root is not a mapping; raised.
+        SST-LOD012, SST-LOD202: CRLF line endings, read as LF, or trailing whitespace; returned.
+        SST-LOD011, SST-LOD016: a folded scalar, or an implicit boolean or null; returned.
     """
-    try:
-        text = raw.decode("utf-8")
-    except UnicodeDecodeError as exc:
-        diagnostic = D("SST-PRS122", origin=Origin(path), file=path, offset=exc.start)
-        raise ProjectError(diagnostic.message, diagnostics=(diagnostic,)) from exc
-    neutralized, templates = _neutralize_templates(text, path)
-    try:
-        nodes = list(yaml.compose_all(neutralized, Loader=yaml.SafeLoader))
-    except yaml.YAMLError as exc:
-        mark = getattr(exc, "problem_mark", None)
-        line = mark.line + 1 if mark is not None else 1
-        col = mark.column + 1 if mark is not None else 1
-        detail = str(getattr(exc, "problem", exc))
-        diagnostic = D("SST-LOD001", file=str(path), line=line, col=col, detail=detail)
-        raise ProjectError(diagnostic.message, diagnostics=(diagnostic,)) from exc
-    if not nodes:
-        # Only whitespace or comments: nothing to load, and nothing wrong enough to stop a build.
-        diagnostic = D("SST-LOD003", file=str(path))
-        raise ProjectError(diagnostic.message, diagnostics=(diagnostic,))
-    if len(nodes) != 1:
-        diagnostic = D("SST-LOD008", file=str(path), count=len(nodes))
-        raise ProjectError(diagnostic.message, diagnostics=(diagnostic,))
-    composed = nodes[0]
-    loaded = _restore_templates(None if composed is None else _construct_yaml_node(composed, path), templates)
-    if loaded is None:
-        return ParsedYaml(MappingProxyType({}), MappingProxyType({}), MappingProxyType(templates))
+    text, findings = normalised_text(decoded_text(raw, path), path)
+    executable = executable_lines(text)
+    refuse_tab_indentation(text, path, executable)
+    neutralized, templates = _neutralize_templates(text, path, executable)
+    composed = compose_single(neutralized, path)
+    loaded = None if composed is None else _restore_templates(construct(composed, path), templates)
+    if composed is None or loaded is None:
+        return ParsedYaml(MappingProxyType({}), MappingProxyType({}), MappingProxyType(templates), findings)
     if not isinstance(loaded, dict):
         diagnostic = D("SST-LOD002", file=str(path), found=type(loaded).__name__)
         raise ProjectError(diagnostic.message, diagnostics=(diagnostic,))
-    line_index = MappingProxyType({}) if composed is None else _node_path_index(composed)
     return ParsedYaml(
         MappingProxyType({str(key): value for key, value in loaded.items()}),
-        line_index,
+        _node_path_index(composed),
         MappingProxyType(templates),
+        (*findings, *formatting_findings(composed, path)),
     )
 
 
@@ -329,20 +197,15 @@ def read_yaml_file(
             reported there, as a missing file that one references.
 
     Returns:
-        The parsed file, or None once its problem is in `sink`.
+        The parsed file, or None once its problem is in `sink`. A file that parses adds its
+        formatting findings, `ParsedYaml.diagnostics`, to `sink`.
 
     Diagnostics:
         SST-LOD018: the file cannot be read.
-        SST-PRS122: the bytes are not UTF-8.
-        SST-LOD004: a template is unterminated or nested.
-        SST-LOD001: a YAML syntax error, or a value YAML cannot construct.
-        SST-LOD005: a key written twice in one mapping.
-        SST-LOD003: the file holds only whitespace or comments.
-        SST-LOD008: the file holds more than one document.
-        SST-LOD002: the document root is not a mapping.
+        Each code `parse_yaml_bytes` lists.
     """
     try:
-        return parse_yaml_bytes(path.read_bytes(), relative)
+        parsed = parse_yaml_bytes(path.read_bytes(), relative)
     except OSError:
         sink.append(
             D(
@@ -354,4 +217,7 @@ def read_yaml_file(
         )
     except ProjectError as exc:
         sink.extend(exc.diagnostics)
+    else:
+        sink.extend(parsed.diagnostics)
+        return parsed
     return None
