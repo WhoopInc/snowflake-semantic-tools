@@ -17,8 +17,8 @@ from snowflake_semantic_tools.domain.model.artifact_key import artifact_key
 from snowflake_semantic_tools.domain.model.project import ParsedView
 
 _NAME = r"(?:\"(?:[^\"]|\"\")+\"|[A-Za-z_][A-Za-z0-9_$]*)"
-# A three-part name: two dots joining identifiers, not part of a longer dotted chain.
-_THREE_PART = re.compile(rf"(?<![\w$.\"]){_NAME}\.{_NAME}\.{_NAME}(?![\w$.\"])")
+# A name of three or more parts: a database, a schema and an object, and maybe a column.
+_THREE_PART = re.compile(rf"(?<![\w$.\"]){_NAME}(?:\.{_NAME}){{2,}}(?![\w$.\"])")
 _TEMPLATE = re.compile(r"\{\{.*?\}\}", re.DOTALL)
 _STRING = re.compile(r"'(?:''|[^'])*'")
 _COMMENT = re.compile(r"--[^\n]*|/\*.*?\*/", re.DOTALL)
@@ -27,7 +27,7 @@ _NAMED_MEMBER = re.compile(r"\b([a-z][a-z0-9]*(?:_[a-z0-9]+)+)\s+(metric|filter)
 
 
 def hardcoded_names(text: str) -> tuple[str, ...]:
-    """The three-part names `text` writes out, each once in order.
+    """The names of three or more parts `text` writes out, each once in order.
 
     Template calls, string literals and comments are masked first: a name in any of them
     is not one the text resolves.
@@ -86,19 +86,25 @@ def _normal(text: str) -> str:
     return " ".join(text.split()).casefold()
 
 
-def _predicate(filter_def: FilterDef) -> str:
-    """A filter's predicate as prose would write it: each `ref()` reduced to its column name."""
+def _predicate(filter_def: FilterDef, variables: Mapping[str, object]) -> str:
+    """A filter's predicate as prose would write it: each `ref()` its column, each `var()` its value."""
     bare = re.sub(r"\{\{\s*ref\(\s*['\"][^'\"]+['\"]\s*,\s*['\"]([^'\"]+)['\"]\s*\)\s*\}\}", r"\1", filter_def.expr)
+    bare = re.sub(
+        r"\{\{\s*var\(\s*['\"]([^'\"]+)['\"]\s*\)\s*\}\}",
+        lambda match: str(variables[match.group(1)]) if match.group(1) in variables else match.group(0),
+        bare,
+    )
     return _normal(bare)
 
 
 def _overlap_diagnostics(
-    filters: tuple[FilterDef, ...], instructions: Mapping[str, InstructionDef]
+    filters: tuple[FilterDef, ...], instructions: Mapping[str, InstructionDef], variables: Mapping[str, object]
 ) -> tuple[Diagnostic, ...]:
     """Report each custom instruction that writes out a filter's predicate.
 
-    A predicate is compared without its templates, whitespace or case; one that still holds a
-    template call, or no comparison at all, is not compared.
+    A predicate is compared with its `ref()` and `var()` calls written out, and without
+    whitespace or case; one that still holds a template call, or no comparison at all, is not
+    compared.
 
     Diagnostics:
         SST-VAL017: a custom instruction's text holds a filter's predicate.
@@ -106,7 +112,8 @@ def _overlap_diagnostics(
     predicates = [
         (filter_def, predicate)
         for filter_def in filters
-        if "{{" not in (predicate := _predicate(filter_def)) and re.search(r"[=<>]|\b(?:in|like)\b", predicate)
+        if "{{" not in (predicate := _predicate(filter_def, variables))
+        and re.search(r"[=<>]|\b(?:in|like)\b", predicate)
     ]
     diagnostics: list[Diagnostic] = []
     for name in sorted(instructions):

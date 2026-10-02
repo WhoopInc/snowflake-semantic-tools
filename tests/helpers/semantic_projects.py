@@ -7,6 +7,9 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
+from click.testing import CliRunner
+
+from snowflake_semantic_tools.cli.main import cli
 from snowflake_semantic_tools.domain.diagnostics import Diagnostic
 from snowflake_semantic_tools.domain.model.project import SemanticViewProject
 from tests.helpers.cli_projects import DBT_MANIFEST, project_copy
@@ -72,3 +75,16 @@ def found(project: Path, code: str, manifest_path: Path = DBT_MANIFEST) -> list[
 def view_names(project: Path, manifest_path: Path = DBT_MANIFEST) -> list[str]:
     """The unqualified names of the views that built."""
     return [view.fqn.rsplit(".", 1)[-1] for view in load(project, manifest_path).views]
+
+
+CONFIG = "sst_config.yml"
+INSTRUCTIONS = "semantic_models/custom_instructions/custom_instructions.yml"
+
+
+def compiled_diagnostics(project: Path, code: str) -> list[dict[str, Any]]:
+    """The diagnostics `sst compile --output json` reports under `code`, as JSON objects."""
+    result = CliRunner().invoke(
+        cli, ["compile", "--project-dir", str(project), "--manifest", str(DBT_MANIFEST), "--output", "json"]
+    )
+    payload = json.loads(result.output)
+    return [item for item in payload["diagnostics"] if item["code"] == code]

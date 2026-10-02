@@ -10,6 +10,7 @@ from collections.abc import Mapping
 from typing import Any
 
 from snowflake_semantic_tools.adapters.yaml.documents import RawDocuments
+from snowflake_semantic_tools.adapters.yaml.fields import mapping
 from snowflake_semantic_tools.adapters.yaml.semantic.checks.files import _file_diagnostics
 from snowflake_semantic_tools.adapters.yaml.semantic.checks.text import (
     _hardcoded_name_diagnostics,
@@ -86,7 +87,7 @@ def _rule_diagnostics(
         *_file_diagnostics(documents),
         *_hardcoded_name_diagnostics(parsed.views, metrics, filters, queries),
         *short_metrics,
-        *_overlap_diagnostics(filters, instructions),
+        *_overlap_diagnostics(filters, instructions, mapping(config.get("vars"))),
         *_unresolved_prose_diagnostics(
             instructions,
             frozenset(metric.name.casefold() for metric in metrics),
