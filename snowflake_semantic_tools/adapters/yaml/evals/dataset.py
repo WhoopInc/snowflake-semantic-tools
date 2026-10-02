@@ -38,7 +38,8 @@ def parse_dataset(loaded: tuple[str, ParsedYaml], diagnostics: list[Diagnostic])
     the validator to refuse.
 
     Diagnostics:
-        SST-PRS002: `agent`, `questions`, or a question's `ground_truth` is absent.
+        SST-PRS002: `agent` or `questions` is absent.
+        SST-PRS117: a question row has no `question` or no `ground_truth`.
         SST-PRS003: a field has the wrong type, such as a `questions` that is not a list.
         SST-PRS018: a question or an expected invocation is not a mapping.
         SST-PRS019: a ground truth's `immutable` is not a boolean.
@@ -90,7 +91,7 @@ def _parse_question(
 
     Diagnostics:
         SST-PRS018: the row, or one of its expected invocations, is not a mapping.
-        SST-PRS002: `ground_truth` is absent.
+        SST-PRS117: the row has no `question`, or no `ground_truth`; once for each.
         SST-PRS003: `ground_truth` is not a mapping, or a field of the row has the wrong type.
         SST-PRS019: `ground_truth.immutable` is not a boolean.
     """
@@ -109,11 +110,13 @@ def _parse_question(
         )
         return EvalQuestion(origin, None, None)
     question = optional_string_field(value, "question", source_file, parsed, diagnostics, ("questions", index))
+    if "question" not in value:
+        diagnostics.append(D("SST-PRS117", artifact=source_file, index=index, detail="no question", origin=origin))
     ground_truth_value = value.get("ground_truth")
     if not isinstance(ground_truth_value, dict):
         if ground_truth_value is None:
             diagnostics.append(
-                D("SST-PRS002", artifact=source_file, field=f"questions[{index}].ground_truth", origin=origin)
+                D("SST-PRS117", artifact=source_file, index=index, detail="no ground_truth", origin=origin)
             )
         else:
             diagnostics.append(

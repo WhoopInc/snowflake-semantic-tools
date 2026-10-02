@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import UTC
+from datetime import UTC, datetime
 from pathlib import Path
 
 from snowflake_semantic_tools.adapters.errors import ProjectError
@@ -24,6 +24,8 @@ from snowflake_semantic_tools.adapters.yaml.semantic.nodes import (
     _safe_table_refs,
     _table_refs_poisoned,
 )
+from snowflake_semantic_tools.domain.diagnostics import D
+from snowflake_semantic_tools.domain.model.artifact_key import artifact_key
 from snowflake_semantic_tools.domain.parse.template import TemplateSyntaxError, scan_template_calls
 
 
@@ -140,19 +142,29 @@ def _strip_sql_header(sql: str) -> str:
     return "\n".join(lines).rstrip()
 
 
-def _verified_at(value: object, *, path: Path, name: str) -> int | None:
+def _verified_at(value: object, *, name: str) -> int | None:
+    """Read `verified_at` as epoch seconds: an integer, or an ISO-8601 string, in UTC unless it says.
+
+    Raises:
+        ProjectError: The value is neither (SST-PRS017).
+
+    Diagnostics:
+        SST-PRS017: the value is not an integer epoch or an ISO-8601 string; raised.
+    """
     if value is None:
         return None
-    if isinstance(value, int):
+    if isinstance(value, int) and not isinstance(value, bool):
         return value
     if isinstance(value, str):
         try:
-            from datetime import datetime
-
-            return int(datetime.strptime(value, "%Y-%m-%d").replace(tzinfo=UTC).timestamp())
-        except ValueError as exc:
-            raise ProjectError(f"{path}: verified query {name} has invalid verified_at {value!r}") from exc
-    raise ProjectError(f"{path}: verified query {name} has unsupported verified_at {value!r}")
+            parsed = datetime.fromisoformat(value.strip())
+        except ValueError:
+            parsed = None
+        if parsed is not None:
+            return int((parsed if parsed.tzinfo else parsed.replace(tzinfo=UTC)).timestamp())
+    subject = artifact_key("verified_query", name)
+    diagnostic = D("SST-PRS017", artifact=subject, field="verified_at", found=str(value), subject=subject)
+    raise ProjectError(diagnostic.message, diagnostics=(diagnostic,))
 
 
 def load_verified_queries(
@@ -166,8 +178,8 @@ def load_verified_queries(
     read, is not UTF-8, or holds only whitespace; the shape checks report those files.
 
     Raises:
-        ProjectError: An entry's `verified_at` is neither an integer nor a `YYYY-MM-DD` string; an
-            unquoted date, which YAML reads as a date, is refused too.
+        ProjectError: An entry's `verified_at` is neither an integer nor an ISO-8601 string; an
+            unquoted date, which YAML reads as a date, is refused too (SST-PRS017).
     """
     root = project_dir / semantic_models_dir / "verified_queries"
     out: list[VerifiedQueryDef] = []
@@ -199,7 +211,7 @@ def load_verified_queries(
                 question=str(node["question"]),
                 sql=sql,
                 tables=_safe_table_refs(node.get("tables")),
-                verified_at=_verified_at(node.get("verified_at"), path=document.abs_path, name=name),
+                verified_at=_verified_at(node.get("verified_at"), name=name),
                 verified_by=str(node.get("verified_by") or "").strip() or None,
                 onboarding_question=(
                     bool(node["use_as_onboarding_question"]) if "use_as_onboarding_question" in node else None

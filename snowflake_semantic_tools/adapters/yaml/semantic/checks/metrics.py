@@ -115,7 +115,7 @@ def _metric_diagnostics(
     """
     duplicate_names = _duplicate_names(metrics)
     metric_by_name = {metric.name.casefold(): metric for metric in metrics}
-    diagnostics = _duplicate_diagnostics(duplicate_names)
+    diagnostics = _duplicate_diagnostics(duplicate_names, metrics)
     for metric in metrics:
         if metric.name.casefold() not in duplicate_names:
             diagnostics.extend(_one_metric_diagnostics(metric, metric_by_name, models, variables))
@@ -132,14 +132,20 @@ def _duplicate_names(metrics: tuple[MetricDef, ...]) -> frozenset[str]:
     return frozenset(name for name, count in counts.items() if count > 1)
 
 
-def _duplicate_diagnostics(duplicate_names: frozenset[str]) -> list[Diagnostic]:
+def _duplicate_diagnostics(duplicate_names: frozenset[str], metrics: tuple[MetricDef, ...]) -> list[Diagnostic]:
     """Report each repeated metric name once, in sorted order.
 
     Diagnostics:
-        SST-VAL001: when two or more metrics share a name, compared casefolded.
+        SST-PRS008: when a derived metric and a table-scoped metric share the name.
+        SST-VAL001: when two or more metrics of one scope share a name, compared casefolded.
     """
+    scopes: dict[str, set[bool]] = {}
+    for metric in metrics:
+        scopes.setdefault(metric.name.casefold(), set()).add(metric.derived)
     return [
-        D("SST-VAL001", type="metric", name=name, subject=artifact_key("metric", name))
+        D("SST-PRS008", name=name, subject=artifact_key("metric", name))
+        if len(scopes.get(name, ())) > 1
+        else D("SST-VAL001", type="metric", name=name, subject=artifact_key("metric", name))
         for name in sorted(duplicate_names)
     ]
 

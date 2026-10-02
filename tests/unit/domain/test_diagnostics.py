@@ -37,7 +37,7 @@ def test_0_3_codes_are_not_registered_and_never_emitted() -> None:
 
 
 def test_hard_deprecated_input_is_an_error_and_retired_codes_are_gone() -> None:
-    for code in ("SST-PRS020", "SST-DBT005", "SST-CFG044", "SST-REF045"):
+    for code in ("SST-DBT032", "SST-CFG044", "SST-REF045"):
         assert ERROR_REGISTRY[code].severity is Severity.ERROR, code
     for code in ("SST-PRS121", "SST-VAL122", "SST-CFG045"):
         assert code not in ERROR_REGISTRY, code
@@ -100,7 +100,7 @@ def test_static_eval_diagnostics_are_registered_with_catalog_severities() -> Non
 
 
 def test_missing_template_context_becomes_an_internal_diagnostic() -> None:
-    diagnostic = D("SST-PRT007", found="v13")
+    diagnostic = D("SST-DBT017", found="v13")
     assert diagnostic.code == "SST-INT901"
     assert "expected" in diagnostic.message
 

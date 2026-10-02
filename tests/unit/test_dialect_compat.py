@@ -20,6 +20,7 @@ from typing import Any
 from click.testing import CliRunner
 
 from snowflake_semantic_tools.cli.main import cli
+from tests.helpers.projects import SEAM_NOTES
 
 ROOT = Path(__file__).parents[2]
 CORPUS = ROOT / "tests" / "fixtures" / "v1_dialect"
@@ -32,9 +33,10 @@ def invoke(*args: str) -> tuple[int, dict[str, Any]]:
 
 
 def codes(payload: dict[str, object]) -> Counter[tuple[str, str]]:
+    """Count the payload's diagnostics by code and severity, leaving out the dbt seam's notes."""
     diagnostics = payload["diagnostics"]
     assert isinstance(diagnostics, list)
-    return Counter((item["code"], item["severity"]) for item in diagnostics)
+    return Counter((item["code"], item["severity"]) for item in diagnostics if item["code"] not in SEAM_NOTES)
 
 
 def converted_copy(tmp_path: Path) -> Path:
@@ -71,7 +73,8 @@ def test_legacy_globals_are_rejected_with_their_codes_and_render_nothing() -> No
             ("SST-REF034", "error"): 10,
             ("SST-REF035", "error"): 7,
             ("SST-VAL405", "error"): 1,
-            ("SST-PRS020", "error"): 3,
+            ("SST-PRS020", "warning"): 2,
+            ("SST-PRS021", "error"): 1,
         }
     )
 
@@ -96,16 +99,19 @@ def test_codemod_converts_idempotently_and_the_result_renders_the_committed_ddl(
     again, report = invoke("migrate", "refs", "--project-dir", str(project))
     assert again == 0 and report["data"]["files"] == []
 
-    # The codemod rewrites references, not keys: the 0.3 spellings remain, and
-    # each is an error naming its 1.0 key.
+    # The codemod rewrites references, not keys: the 0.3 spellings remain, each
+    # deprecated spelling naming its 1.0 key, and the 0.3 relationship shape an error.
     exit_code, payload = invoke("compile", "--project-dir", str(project), "--manifest", str(MANIFEST))
     assert exit_code == 1
-    assert codes(payload) == Counter({("SST-PRS020", "error"): 3})
-    renames = {(item["params"]["field"], item["params"]["expected"]) for item in payload["diagnostics"]}
+    assert codes(payload) == Counter({("SST-PRS020", "warning"): 2, ("SST-PRS021", "error"): 1})
+    renames = {
+        (item["params"]["field"], item["params"]["expected"])
+        for item in payload["diagnostics"]
+        if item["code"] == "SST-PRS020"
+    }
     assert renames == {
         ("sql_generation", "ai_sql_generation"),
         ("question_categorization", "ai_question_categorization"),
-        ("relationship_columns", "relationship_conditions"),
     }
 
     rename_0_3_keys(project)
@@ -124,7 +130,7 @@ def test_codemod_converts_idempotently_and_the_result_renders_the_committed_ddl(
     assert "AI_SQL_GENERATION 'Monetary columns" in ddl and "AI_QUESTION_CATEGORIZATION 'Decline" in ddl
 
 
-def test_a_0_3_spelling_beside_its_1_0_key_is_still_an_error(tmp_path: Path) -> None:
+def test_a_0_3_spelling_beside_its_1_0_key_is_reported_and_not_read(tmp_path: Path) -> None:
     project = converted_copy(tmp_path)
     CliRunner().invoke(cli, ["migrate", "refs", "--project-dir", str(project), "--write"])
     rename_0_3_keys(project)
@@ -136,5 +142,5 @@ def test_a_0_3_spelling_beside_its_1_0_key_is_still_an_error(tmp_path: Path) -> 
         encoding="utf-8",
     )
     exit_code, payload = invoke("compile", "--project-dir", str(project), "--manifest", str(MANIFEST))
-    assert exit_code == 1
-    assert codes(payload) == Counter({("SST-PRS020", "error"): 1})
+    assert exit_code == 0
+    assert codes(payload) == Counter({("SST-PRS020", "warning"): 1})

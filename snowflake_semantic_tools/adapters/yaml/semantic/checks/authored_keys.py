@@ -10,6 +10,8 @@ from snowflake_semantic_tools.adapters.yaml.documents import NodePath, RawDocume
 from snowflake_semantic_tools.adapters.yaml.semantic.nodes import _node_origin, _node_root
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, Origin
 from snowflake_semantic_tools.domain.model.artifact_key import artifact_key
+from snowflake_semantic_tools.domain.parse.fields import unknown_field
+from snowflake_semantic_tools.domain.parse.names import name_warnings
 from snowflake_semantic_tools.domain.parse.template import TemplateSyntaxError, scan_template_calls
 
 # The keys the loader reads, per semantic-model node. Anything else is reported,
@@ -85,7 +87,6 @@ RENAMED_KEYS: Mapping[tuple[str, str], str] = MappingProxyType(
     {
         ("custom_instruction", "sql_generation"): "ai_sql_generation",
         ("custom_instruction", "question_categorization"): "ai_question_categorization",
-        ("relationship", "relationship_columns"): "relationship_conditions",
         ("metric", "visibility"): "access_modifier",
         ("metric", "non_additive_by"): "non_additive_dimensions",
         ("metric.non_additive_dimensions", "order"): "sort_direction",
@@ -94,10 +95,22 @@ RENAMED_KEYS: Mapping[tuple[str, str], str] = MappingProxyType(
         ("metric.window.order_by", "direction"): "sort_direction",
     }
 )
+# The folder under the semantic models directory that owns each member type's files.
+TYPE_FOLDERS: Mapping[str, str] = MappingProxyType(
+    {
+        "metrics": "metric",
+        "filters": "filter",
+        "relationships": "relationship",
+        "verified_queries": "verified_query",
+        "custom_instructions": "custom_instruction",
+    }
+)
+# The 0.3 relationship shape, which 1.0 replaced with `relationship_conditions` rather than renamed.
+LEGACY_RELATIONSHIP_KEYS = frozenset(("relationship_columns", "left_column", "right_column"))
 
 
 def _authored_key_diagnostics(documents: RawDocuments) -> tuple[Diagnostic, ...]:
-    """Every key the loader does not read: SST-PRS020 for a 0.3 spelling, SST-PRS004 otherwise."""
+    """Every key the loader does not read, as `_unread_key` names it."""
     diagnostics: list[Diagnostic] = []
     for document in documents.documents:
         for node_type, allowed in AUTHORED_KEYS.items():
@@ -115,13 +128,16 @@ _NAMED_ELSEWHERE = frozenset(("semantic_view", "metric"))
 
 
 def _member_name_diagnostics(documents: RawDocuments) -> tuple[Diagnostic, ...]:
-    """A node with no name (SST-PRS107) or a name its type already uses (SST-PRS106).
+    """A node with no name (SST-PRS107), a risky name, or a name its type already uses.
 
-    Either would otherwise be skipped or overwritten without a word.
+    Either would otherwise be skipped or overwritten without a word. A repeat in the file that
+    first declares the name is SST-PRS106; a repeat in another file is SST-PRS007, naming it.
+    A risky name is reported as `name_warnings` reports it (SST-PRS012, SST-PRS031, SST-PRS100).
     """
     diagnostics: list[Diagnostic] = []
-    seen: set[tuple[str, str]] = set()
+    seen: dict[tuple[str, str], RawDocument] = {}
     for document in documents.documents:
+        diagnostics.extend(_foreign_members(document))
         for node_type in AUTHORED_KEYS:
             root_key = _node_root(node_type)
             nodes = document.tree.get(root_key) if root_key in document.root_keys else None
@@ -140,21 +156,66 @@ def _member_name_diagnostics(documents: RawDocuments) -> tuple[Diagnostic, ...]:
                     )
                     continue
                 name = str(node["name"])
+                diagnostics.extend(name_warnings(name, subject=artifact_key(node_type, name), origin=origin))
                 if node_type in _NAMED_ELSEWHERE:
                     continue
-                if (node_type, name.casefold()) in seen:
-                    diagnostics.append(
-                        D(
-                            "SST-PRS106",
-                            artifact=document.path,
-                            member_type=node_type,
-                            name=name,
-                            subject=artifact_key(node_type, name),
-                            origin=origin,
-                        )
-                    )
-                seen.add((node_type, name.casefold()))
+                diagnostics.extend(_repeated_name(seen, document, node_type, name, origin))
     return tuple(diagnostics)
+
+
+def _foreign_members(document: RawDocument) -> tuple[Diagnostic, ...]:
+    """Report each member list in a type folder that belongs to another member type.
+
+    Diagnostics:
+        SST-PRS105: a member type's folder holds a list of another member type.
+    """
+    owner = TYPE_FOLDERS.get(document.hint_root or "")
+    if owner is None:
+        return ()
+    return tuple(
+        D(
+            "SST-PRS105",
+            origin=Origin(document.path),
+            type=owner,
+            member_type=node_type,
+            subject=f"file:{document.path}",
+        )
+        for node_type in AUTHORED_KEYS
+        if node_type not in (owner, "semantic_view") and _node_root(node_type) in document.root_keys
+    )
+
+
+def _owner(document: RawDocument) -> str | None:
+    """The type that owns a document's folder: a member type's folder, or `semantic_views/`."""
+    return "semantic_view" if document.hint_root == "semantic_views" else TYPE_FOLDERS.get(document.hint_root or "")
+
+
+def _repeated_name(
+    seen: dict[tuple[str, str], RawDocument], document: RawDocument, node_type: str, name: str, origin: Origin
+) -> tuple[Diagnostic, ...]:
+    """Record where a name is first declared; report a later declaration of it.
+
+    Diagnostics:
+        SST-PRS106: the name repeats in the file that first declares it.
+        SST-PRS104: the name repeats in the folder of another owning type, so two owners declare it.
+        SST-PRS007: the name repeats in another file, which the message names.
+    """
+    key = (node_type, name.casefold())
+    subject = artifact_key(node_type, name)
+    if key not in seen:
+        seen[key] = document
+        return ()
+    first = seen[key]
+    if first.path == document.path:
+        return (
+            D("SST-PRS106", artifact=document.path, member_type=node_type, name=name, subject=subject, origin=origin),
+        )
+    owners = (_owner(first), _owner(document))
+    if None not in owners and owners[0] != owners[1]:
+        folders = (f"{first.hint_root}/", f"{document.hint_root}/")
+        return (D("SST-PRS104", member=subject, a=folders[0], b=folders[1], subject=subject, origin=origin),)
+    other = f"the one in {first.path}"
+    return (D("SST-PRS007", type=node_type, name=name, other=other, subject=subject, origin=origin),)
 
 
 def _unread_keys(
@@ -175,11 +236,10 @@ def _unread_keys(
     nested field of the wrong shape is left to its own check.
 
     Diagnostics:
-        SST-PRS020: when a key is the 0.3 spelling of a 1.0 key in its scope.
-        SST-PRS004: when any other key is not one `allowed` lists.
+        Each code `_unread_key` lists.
     """
     diagnostics = [
-        _unread_key(document, (*path, str(key)), scope, f"{prefix}{key}", subject)
+        _unread_key(document, (*path, str(key)), scope, f"{prefix}{key}", subject, allowed)
         for key in mapping
         if str(key) not in allowed
     ]
@@ -203,17 +263,30 @@ def _unread_keys(
     return diagnostics
 
 
-def _unread_key(document: RawDocument, path: NodePath, scope: str, field: str, subject: str) -> Diagnostic:
+def _unread_key(
+    document: RawDocument, path: NodePath, scope: str, field: str, subject: str, allowed: frozenset[str]
+) -> Diagnostic:
+    """Report one key the loader does not read in `scope`, whose keys are `allowed`.
+
+    Diagnostics:
+        SST-PRS021: the key is part of the 0.3 relationship column shape.
+        SST-PRS020: the key is the 0.3 spelling of a 1.0 key in its scope.
+        SST-PRS022: the key is within edit distance of one `allowed` lists.
+        SST-PRS004: any other key.
+    """
     position = document.position(path)
     origin = Origin(
         document.path,
         position.line if position is not None else None,
         position.col if position is not None else None,
     )
-    renamed = RENAMED_KEYS.get((scope, str(path[-1])))
+    key = str(path[-1])
+    if scope == "relationship" and key in LEGACY_RELATIONSHIP_KEYS:
+        return D("SST-PRS021", origin=origin, subject=subject, artifact=subject)
+    renamed = RENAMED_KEYS.get((scope, key))
     if renamed is not None:
         return D("SST-PRS020", origin=origin, subject=subject, artifact=subject, field=field, expected=renamed)
-    return D("SST-PRS004", origin=origin, subject=subject, artifact=subject, field=field)
+    return unknown_field(key, allowed, label=field, origin=origin, subject=subject, artifact=subject)
 
 
 def _legacy_reference_diagnostics(documents: RawDocuments) -> tuple[Diagnostic, ...]:
