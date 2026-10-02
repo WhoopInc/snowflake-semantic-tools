@@ -39,7 +39,7 @@ def test_0_3_codes_are_not_registered_and_never_emitted() -> None:
 def test_hard_deprecated_input_is_an_error_and_retired_codes_are_gone() -> None:
     for code in ("SST-PRS020", "SST-DBT005", "SST-CFG044", "SST-REF045"):
         assert ERROR_REGISTRY[code].severity is Severity.ERROR, code
-    for code in ("SST-PRS121", "SST-VAL122", "SST-CFG045"):
+    for code in ("SST-PRS121", "SST-CFG045"):
         assert code not in ERROR_REGISTRY, code
 
 
@@ -57,7 +57,7 @@ def test_enrich_codes_are_registered_and_the_collection_refusal_cannot_be_demote
     assert {code: ERROR_REGISTRY[code].severity for code in expected} == expected
     assert not ERROR_REGISTRY["SST-CFG038"].demotable
     # The checks on what enrich writes point at the command that writes it.
-    for code in ("SST-VAL308", "SST-VAL309", "SST-VAL315", "SST-VAL316"):
+    for code in ("SST-VAL316", "SST-VAL317", "SST-VAL327", "SST-VAL328"):
         assert "sst enrich" in str(ERROR_REGISTRY[code].suggestion), code
 
 

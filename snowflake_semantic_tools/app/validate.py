@@ -83,12 +83,12 @@ class ValidateArtifacts:
         diagnostics = compiled.diagnostics
         if not connected:
             diagnostics = DiagnosticBag(
-                (*diagnostics, D("SST-VAL020", detail="Snowflake syntax checking was disabled"))
+                (*diagnostics, D("SST-VAL020", rule_id="SST-VAL418", detail="Snowflake syntax checking was disabled"))
             )
         else:
             if self._port is None:
                 diagnostics = DiagnosticBag(
-                    (*diagnostics, D("SST-VAL020", detail="no Snowflake connection was provided"))
+                    (*diagnostics, D("SST-VAL020", rule_id="SST-VAL418", detail="no Snowflake connection was provided"))
                 )
             else:
                 connected_diagnostics = []

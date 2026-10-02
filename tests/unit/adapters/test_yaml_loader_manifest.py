@@ -591,7 +591,7 @@ def test_a_window_dimension_the_metric_cannot_reach_fails_the_view(tmp_path: Pat
     project = load_project(tmp_path, manifest_path=manifest_path)
     assert project.views == ()
     assert [(item.code, item.subject, item.context["field"]) for item in project.diagnostics] == [
-        ("SST-VAL125", "semantic_view:catalog", "order_by[0]")
+        ("SST-VAL129", "semantic_view:catalog", "order_by[0]")
     ]
     assert "a dimension PRODUCTS reaches in this view" in project.diagnostics[0].message
 

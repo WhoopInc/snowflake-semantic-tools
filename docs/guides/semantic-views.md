@@ -174,7 +174,7 @@ CUSTOMERS.CUMULATIVE_CUSTOMER_COUNT AS SUM(CUSTOMERS.CUSTOMER_COUNT) OVER (
 - Each entry is `{{ ref('<model>', '<column>') }}`, naming a dimension the
   metric's table reaches through the view's relationships, or
   `{{ metric('<name>') }}`, naming a metric of the same table. EXCLUDING takes
-  dimensions only (`SST-VAL125`).
+  dimensions only (`SST-VAL129`).
 - `frame` is `ROWS` or `RANGE BETWEEN <bound> AND <bound>`, where a bound is
   `UNBOUNDED PRECEDING`, `UNBOUNDED FOLLOWING`, `CURRENT ROW`, or a number or an
   `INTERVAL '<n> <unit>'` followed by `PRECEDING` or `FOLLOWING`. Anything else is

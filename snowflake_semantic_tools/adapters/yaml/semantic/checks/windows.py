@@ -96,7 +96,7 @@ def _window_entry_diagnostics(
     """Report each window entry that names neither a dimension nor, where allowed, a metric.
 
     Diagnostics:
-        SST-VAL125: when a `partition_by_excluding` entry is not a dimension, or another entry is
+        SST-VAL129: when a `partition_by_excluding` entry is not a dimension, or another entry is
             neither a dimension nor a metric of the same table.
     """
     diagnostics: list[Diagnostic] = []
@@ -105,7 +105,7 @@ def _window_entry_diagnostics(
         if not _window_entry_resolves(text, dimensions_only, owner, metric_by_name, models):
             diagnostics.append(
                 D(
-                    "SST-VAL125",
+                    "SST-VAL129",
                     metric=metric.name,
                     field=field,
                     value=text,
