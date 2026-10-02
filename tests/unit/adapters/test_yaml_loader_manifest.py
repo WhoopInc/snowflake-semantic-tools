@@ -44,7 +44,7 @@ def write_project(root: Path) -> Path:
         encoding="utf-8",
     )
     (root / "semantic_models" / "semantic_views" / "views.yml").write_text(
-        "semantic_views:\n  - name: catalog\n    description: Product catalog.\n"
+        "semantic_views:\n  - name: catalog\n    description: Use for product catalog.\n"
         "    tables:\n      - \"{{ ref('products') }}\"\n",
         encoding="utf-8",
     )
@@ -97,8 +97,9 @@ def test_semantic_views_enabled_default_follows_folder_routes(tmp_path: Path) ->
     views_dir = tmp_path / "semantic_models" / "semantic_views"
     (views_dir / "archive").mkdir()
     (views_dir / "archive" / "old.yml").write_text(
-        "semantic_views:\n  - name: retired\n    description: Retired.\n    tables: [\"{{ ref('products') }}\"]\n"
-        "  - name: kept\n    enabled: true\n    description: Kept.\n    tables: [\"{{ ref('products') }}\"]\n",
+        "semantic_views:\n  - name: retired\n    description: Use for retired.\n"
+        "    tables: [\"{{ ref('products') }}\"]\n"
+        "  - name: kept\n    enabled: true\n    description: Use for kept.\n    tables: [\"{{ ref('products') }}\"]\n",
         encoding="utf-8",
     )
     (tmp_path / "sst_config.yml").write_text(
@@ -115,10 +116,10 @@ def test_unknown_view_model_isolated_from_healthy_views(tmp_path: Path) -> None:
     views_path.write_text(
         "semantic_views:\n"
         "  - name: healthy\n"
-        "    description: Healthy view.\n"
+        "    description: Use for healthy view.\n"
         "    tables: [\"{{ ref('products') }}\"]\n"
         "  - name: poisoned\n"
-        "    description: Poisoned view.\n"
+        "    description: Use for poisoned view.\n"
         "    tables: [\"{{ ref('missing') }}\"]\n",
         encoding="utf-8",
     )
@@ -133,8 +134,8 @@ def test_duplicate_view_names_are_diagnosed_and_not_manifest_candidates(tmp_path
     views_path = tmp_path / "semantic_models" / "semantic_views" / "views.yml"
     views_path.write_text(
         "semantic_views:\n"
-        "  - name: duplicate\n    description: Duplicate one.\n    tables: [\"{{ ref('products') }}\"]\n"
-        "  - name: DUPLICATE\n    description: Duplicate two.\n    tables: [\"{{ ref('products') }}\"]\n",
+        "  - name: duplicate\n    description: Use for duplicate one.\n    tables: [\"{{ ref('products') }}\"]\n"
+        "  - name: DUPLICATE\n    description: Use for duplicate two.\n    tables: [\"{{ ref('products') }}\"]\n",
         encoding="utf-8",
     )
     project = load_project(tmp_path, manifest_path=manifest)
@@ -289,7 +290,7 @@ def test_every_unread_key_is_reported_and_0_3_spellings_are_named(tmp_path: Path
     (root / "semantic_views" / "views.yml").write_text(
         "semantic_views:\n"
         "  - name: catalog\n"
-        "    description: Product catalog.\n"
+        "    description: Use for product catalog.\n"
         "    owner: data-team\n"
         "    tables: [\"{{ ref('products') }}\"]\n"
         "    table_config:\n      products:\n        synonyms: [items]\n        alias: goods\n"
@@ -410,7 +411,7 @@ def test_view_tags_must_be_a_list_and_an_empty_file_only_warns(tmp_path: Path) -
     manifest = write_project(tmp_path)
     views = tmp_path / "semantic_models" / "semantic_views"
     (views / "views.yml").write_text(
-        "semantic_views:\n  - name: catalog\n    description: Product catalog.\n"
+        "semantic_views:\n  - name: catalog\n    description: Use for product catalog.\n"
         "    tables: [\"{{ ref('products') }}\"]\n    tags: {tier: gold}\n",
         encoding="utf-8",
     )
@@ -577,7 +578,7 @@ def test_a_window_dimension_the_metric_cannot_reach_fails_the_view(tmp_path: Pat
     }
     manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
     (tmp_path / "semantic_models" / "semantic_views" / "views.yml").write_text(
-        "semantic_views:\n  - name: catalog\n    description: Product catalog.\n"
+        "semantic_views:\n  - name: catalog\n    description: Use for product catalog.\n"
         "    tables:\n      - \"{{ ref('products') }}\"\n      - \"{{ ref('calendar') }}\"\n",
         encoding="utf-8",
     )
@@ -692,7 +693,8 @@ def test_filter_labels_must_be_a_list_of_strings(tmp_path: Path) -> None:
 def test_a_view_list_outside_the_views_folder_is_reported_not_dropped_silently(tmp_path: Path, relative: str) -> None:
     manifest = write_project(tmp_path)
     (tmp_path / relative).write_text(
-        "semantic_views:\n  - name: stray\n    description: Stray view.\n    tables: [\"{{ ref('products') }}\"]\n",
+        "semantic_views:\n  - name: stray\n    description: Use for stray view.\n"
+        "    tables: [\"{{ ref('products') }}\"]\n",
         encoding="utf-8",
     )
     project = load_project(tmp_path, manifest_path=manifest)

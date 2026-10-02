@@ -19,6 +19,7 @@ from snowflake_semantic_tools.domain.model.dbt import DbtModel
 from snowflake_semantic_tools.domain.model.project import ParsedView
 from snowflake_semantic_tools.domain.model.semantic_view import Relationship, ViewScope
 from snowflake_semantic_tools.domain.sql import is_datatype
+from snowflake_semantic_tools.domain.validate.shared import lacks_invocation
 
 DIMENSION_TYPES = frozenset(("dimension", "time_dimension"))
 # Words an expression may hold bare that are SQL rather than names. SST does not parse SQL, so
@@ -200,6 +201,7 @@ def _view_rule_diagnostics(views: tuple[ParsedView, ...], inputs: ViewInputs) ->
     """Run every view rule on every readable view, view by view, then the rules across views.
 
     Diagnostics:
+        SST-VAL005: a view's description never says when to use the view.
         SST-VAL004: a view's description is shorter than `validation.description_floor`.
         SST-VAL018: a view's description and instructions exceed `validation.instruction_budget`.
         SST-VAL206: a range relationship attaches and its target declares no `distinct_range`.
@@ -238,8 +240,13 @@ def _mapping(value: object) -> Mapping[str, object]:
 
 
 def _prose_rules(item: _Attached, inputs: ViewInputs) -> Iterator[Diagnostic]:
-    """Report a description under the floor, then a composed instruction surface over the budget."""
+    """Report a description that never says when to use its view or is short, then an over-budget surface.
+
+    A view is routed: the agent's Analyst tool chooses between views by their descriptions.
+    """
     description = str(item.view.source.get("description") or "").strip()
+    if lacks_invocation(description):
+        yield D("SST-VAL005", origin=item.view.origin, subject=item.key, type="semantic_view", name=item.view.name)
     if inputs.description_floor is not None and description and len(description) < inputs.description_floor:
         yield D(
             "SST-VAL004",

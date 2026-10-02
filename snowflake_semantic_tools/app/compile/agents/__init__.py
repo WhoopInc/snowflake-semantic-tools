@@ -36,6 +36,7 @@ from snowflake_semantic_tools.domain.validate.agent import (
     tool_name_clashes,
     unreferenced_extensions,
 )
+from snowflake_semantic_tools.domain.validate.shared import unmodelled_key_diagnostics
 
 __all__ = ["AgentCompileContext", "CompileAgents", "CompiledAgent", "ExtensionPin", "for_publication"]
 
@@ -75,6 +76,8 @@ class CompileAgents:
             SST-VAL543: an agent's orchestration model is not in `snowflake.orchestration_models`.
             SST-VAL545: an agent's `tool_not_accessible` is not accept, reject, or legacy.
             SST-VAL546: an agent enables analytical search without a cortex_search tool.
+            SST-VAL014, SST-VAL013: the spec renders keys SST does not model, with a warning
+                when `snowflake.allow_unknown_keys` is true and an error per key otherwise.
             SST-VAL511: a rendered spec is over the 100,000-byte limit.
             SST-VAL512: a rendered spec is over 80% of that limit.
             SST-REF022: agents delegate to one another in a cycle.
@@ -106,13 +109,25 @@ class CompileAgents:
         """Resolve the agent with its inherited defaults, then render and size-check its spec."""
         resolved, problems = _resolve_agent(_inherit(model, self._context), self._context)
         payload = render_agent_json(resolved.model, resolved.tools)
-        return resolved, payload, (*problems, *spec_size(resolved, payload))
+        unmodelled = unmodelled_key_diagnostics(
+            "agent", model.name, _passthrough_keys(model), allow=self._context.allow_unknown_keys, subject=model.key
+        )
+        return resolved, payload, (*problems, *unmodelled, *spec_size(resolved, payload))
 
     def _compile(self, model: AgentModel, resolved: ResolvedAgent, payload: str) -> CompiledAgent:
         spec = render_agent_spec(resolved.model, resolved.tools)
         definition_fingerprint = sha256(desired_agent_definition(resolved.model, spec)).hexdigest()
         target = QualifiedName.from_parts(self._context.database, self._context.schema, model.name)
         return CompiledAgent(resolved, target, payload, definition_fingerprint)
+
+
+def _passthrough_keys(model: AgentModel) -> tuple[str, ...]:
+    """Every key the agent's spec renders as written: its own `passthrough`, then each tool's."""
+    keys = [f"spec.passthrough.{key}" for key in model.passthrough]
+    for tool in model.tools:
+        keys.extend(f"tools.{tool.name}.passthrough.{key}" for key in tool.passthrough)
+        keys.extend(f"tools.{tool.name}.tool_spec_passthrough.{key}" for key in tool.tool_spec_passthrough)
+    return tuple(keys)
 
 
 def _inherit(model: AgentModel, context: AgentCompileContext) -> AgentModel:

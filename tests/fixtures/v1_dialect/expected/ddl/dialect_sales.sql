@@ -35,7 +35,7 @@ CREATE OR REPLACE SEMANTIC VIEW SST_REF_DEV.JAFFLE.DIALECT_SALES
     ORDERS.DIALECT_REVENUE AS SUM(ORDERS.ORDER_TOTAL) COMMENT = 'Order value including tax, in cents.'
   )
   COMMENT = 'Orders and the customers and locations behind them, authored in the 0.3
-dialect.'
+dialect. Use it for questions about orders by customer and location.'
   AI_SQL_GENERATION 'Monetary columns are stored in cents; divide by one hundred for currency.'
   AI_QUESTION_CATEGORIZATION 'Decline questions about an individual named customer.'
   COPY GRANTS;

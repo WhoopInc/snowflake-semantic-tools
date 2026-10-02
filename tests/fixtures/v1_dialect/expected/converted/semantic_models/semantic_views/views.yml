@@ -2,7 +2,7 @@ semantic_views:
   - name: dialect_sales
     description: |-
       Orders and the customers and locations behind them, authored in the 0.3
-      dialect.
+      dialect. Use it for questions about orders by customer and location.
     tables:
       - {{ ref('orders') }}
       - {{ ref('customers')}}

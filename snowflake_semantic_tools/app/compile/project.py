@@ -43,6 +43,7 @@ from snowflake_semantic_tools.domain.model.registry import SEMANTIC_REGISTRY
 from snowflake_semantic_tools.domain.model.skill import DEFAULT_VERSION_PREFIX, extension_identifier
 from snowflake_semantic_tools.domain.model.tool import ToolCatalog
 from snowflake_semantic_tools.domain.ports.project import ProjectInputs
+from snowflake_semantic_tools.domain.validate.shared import namespace_collisions
 
 # Where each artifact type sits in the merged stream, which is also the order apply publishes in.
 POSITIONS: Mapping[str, int] = MappingProxyType(
@@ -118,6 +119,8 @@ class CompileProject:
 
         Diagnostics:
             SST-CFG036: a `skills.extensions` entry cannot be qualified.
+            SST-VAL002: a skill or plugin this project publishes takes the name of an extension
+                it consumes.
             Each typed compiler's, as it documents them.
         """
         config = self._inputs.config()
@@ -135,7 +138,17 @@ class CompileProject:
             },
         }
         results = [
-            CompileResult((), DiagnosticBag((*config.diagnostics, *target.diagnostics, *consumed_diagnostics))),
+            CompileResult(
+                (),
+                DiagnosticBag(
+                    (
+                        *config.diagnostics,
+                        *target.diagnostics,
+                        *consumed_diagnostics,
+                        *_consumed_collisions(publishing.skills, consumed),
+                    )
+                ),
+            ),
             publishing.skills,
             publishing.profiles,
         ]
@@ -262,7 +275,16 @@ class CompileProject:
             plugins=plugin_pins,
             consumed=plugin_members | publishing.desktop_consumed,
             unpublished=MappingProxyType(dict(unpublished)),
+            allow_unknown_keys=settings.block("snowflake").get("allow_unknown_keys") is not False,
         )
+
+
+def _consumed_collisions(skills: CompileResult, consumed: Mapping[str, QualifiedName]) -> tuple[Diagnostic, ...]:
+    """Report each published skill or plugin whose name an extension under `skills.extensions` holds."""
+    return namespace_collisions(
+        ((item.artifact_key, item.artifact_type, item.name) for item in skills.compiled),
+        {name: f"extension '{location.sql}'" for name, location in consumed.items()},
+    )
 
 
 def consumed_extensions(

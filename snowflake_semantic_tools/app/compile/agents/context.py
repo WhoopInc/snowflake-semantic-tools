@@ -54,6 +54,8 @@ class AgentCompileContext:
     # or `extension:<name>` -- mapped to the reason, so a reference to one names
     # the cause instead of reporting the name as undeclared.
     unpublished: Mapping[str, str] = field(default_factory=lambda: MappingProxyType({}))
+    # `snowflake.allow_unknown_keys`: whether a key SST does not model renders with a warning.
+    allow_unknown_keys: bool = True
 
 
 @dataclass(frozen=True, slots=True)
