@@ -91,6 +91,8 @@ class ToolMember:
         search_column: From `search_column:`, or else from `on.search_column`.
         attribute_columns: From `attribute_columns:`, or else from `on.attributes`.
         where: A predicate appended verbatim to a search service's query.
+        refresh_mode: How a search service refreshes, `AUTO`, `FULL` or `INCREMENTAL` as
+            written; None leaves it to Snowflake, which refreshes incrementally where it can.
         body: The text `body_file:` names; None when it could not be read, which validation
             reports.
         secrets: Each secret variable's name, mapped to the three-part name of its secret.
@@ -119,6 +121,7 @@ class ToolMember:
     where: str | None = None
     target_lag: str | None = None
     embedding_model: str | None = None
+    refresh_mode: str | None = None
     language: str | None = None
     runtime_version: str | None = None
     handler: str | None = None
@@ -282,6 +285,7 @@ CREATION_KEYS = frozenset(
         "attribute_columns",
         "target_lag",
         "embedding_model",
+        "refresh_mode",
         "language",
         "runtime_version",
         "handler",

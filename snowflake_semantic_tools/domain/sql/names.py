@@ -34,6 +34,7 @@ OBJECT_TYPES = frozenset(
         "SEMANTIC VIEW",
         "STAGE",
         "TABLE",
+        "TAG",
         "VIEW",
     )
 )
@@ -57,6 +58,12 @@ _KEYWORDS = frozenset(
         "CALLER",
         "OWNER",
         "RESTRICTED CALLER",
+        # How a search service refreshes.
+        "AUTO",
+        "FULL",
+        "INCREMENTAL",
+        # An account-level object SHOW PARAMETERS reads.
+        "WAREHOUSE",
     )
 )
 

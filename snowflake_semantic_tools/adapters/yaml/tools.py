@@ -258,6 +258,7 @@ def _parse_member(
             where=optional_string(value.get("where")),
             target_lag=optional_string(value.get("target_lag")),
             embedding_model=optional_string(value.get("embedding_model")),
+            refresh_mode=optional_string(value.get("refresh_mode")),
             language=optional_string(value.get("language")),
             runtime_version=optional_string(value.get("runtime_version")),
             handler=optional_string(value.get("handler")),

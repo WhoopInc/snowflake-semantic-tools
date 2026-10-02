@@ -29,6 +29,7 @@ from snowflake_semantic_tools.domain.sql import (
     sql,
 )
 
+REFRESH_MODES = ("AUTO", "FULL", "INCREMENTAL")
 _TABLE_RETURNS = re.compile(r"TABLE\s*\((?P<columns>.*)\)", re.IGNORECASE | re.DOTALL)
 
 
@@ -104,6 +105,10 @@ def search_service_statement(
     clauses.append(sql("  TARGET_LAG = {lag}", lag=literal(member.target_lag)))
     if member.embedding_model:
         clauses.append(sql("  EMBEDDING_MODEL = {model}", model=literal(member.embedding_model)))
+    if member.refresh_mode:
+        if member.refresh_mode.upper() not in REFRESH_MODES:
+            raise ValueError(f"search service {member.name!r} has an unknown refresh mode {member.refresh_mode!r}")
+        clauses.append(sql("  REFRESH_MODE = {mode}", mode=keyword(member.refresh_mode.upper())))
     query = sql("SELECT {columns} FROM {source}", columns=_identifiers(selected), source=qname(source_relation))
     if member.where:
         query = sql("{query} WHERE {where}", query=query, where=expr(guard_expression(member.where)))

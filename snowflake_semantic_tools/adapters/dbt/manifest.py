@@ -249,6 +249,7 @@ def _build_model(
         package_name=_text(node.get("package_name")),
         raw_relation_name=_text(node.get("relation_name")),
         patch_file=_patch_file(_text(node.get("patch_path"))),
+        materialized=_text(config.get("materialized")) if isinstance(config := node.get("config"), Mapping) else None,
     )
 
 

@@ -68,6 +68,8 @@ class DbtModel:
     raw_relation_name: str | None = None
     # `patch_path` relative to the project root, without dbt's `<package>://` prefix.
     patch_file: str | None = None
+    # `config.materialized`, such as `table` or `incremental`; None when the manifest does not say.
+    materialized: str | None = None
 
     def column(self, name: str) -> DbtColumn | None:
         """Return a column case-insensitively."""

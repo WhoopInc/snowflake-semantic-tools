@@ -43,7 +43,8 @@ def validate_tool_catalog(catalog: ToolCatalog, dbt: DbtCatalog) -> DiagnosticBa
         SST-PRS005: a name a defined member's DDL writes is not an identifier, or a secret not a
             three-part name.
         SST-PRS003: a defined member's parameter or return type is not a Snowflake data type.
-        SST-PRS013: a defined member's language or `execute_as` is not one Snowflake accepts.
+        SST-PRS013: a defined member's language, `execute_as` or `refresh_mode` is not one
+            Snowflake accepts.
         SST-VAL418: a defined member's `where:` is not one expression.
         SST-VAL601: a group declares one member name twice, ignoring case.
         SST-VAL001: a group name is declared twice, ignoring case.
@@ -240,6 +241,53 @@ def _body_file(member: ToolMember, subject: str) -> tuple[Diagnostic, ...]:
 
 _LANGUAGES = ("java", "javascript", "python", "scala", "sql")
 _EXECUTE_AS = ("caller", "owner", "restricted caller")
+_REFRESH_MODES = ("auto", "full", "incremental")
+# dbt materializations that rebuild the relation on every run instead of merging into it.
+_REPLACING_MATERIALIZATIONS = frozenset(("table", "view"))
+
+
+def rebuilt_source(member: ToolMember, relation: str, materialized: str | None) -> Diagnostic | None:
+    """Report a search service whose source relation dbt rebuilds, unless it refreshes FULL anyway.
+
+    A rebuilt relation loses the change tracking an incremental refresh reads, so every dbt
+    run re-embeds the whole index; a FULL refresh pays that cost by choice.
+
+    Args:
+        relation: The relation the service's `on:` model resolves to.
+        materialized: The model's dbt materialization; None when the manifest does not say.
+
+    Diagnostics:
+        SST-VAL617: the model is materialized as a table or a view and the service does not
+            refresh FULL.
+    """
+    replaced = (materialized or "").casefold() in _REPLACING_MATERIALIZATIONS
+    if member.type != ToolKind.CORTEX_SEARCH_SERVICE.value or not replaced:
+        return None
+    if (member.refresh_mode or "").upper() == "FULL":
+        return None
+    return D(
+        "SST-VAL617",
+        name=member.name,
+        value=relation,
+        detail=materialized,
+        origin=member.origin,
+        subject=artifact_key("tool", member.name.casefold()),
+    )
+
+
+def reference_ddl(members: tuple[ToolMember, ...]) -> tuple[Diagnostic, ...]:
+    """Report each member DDL was rendered for although it is only referenced.
+
+    SST never creates, replaces or prunes an object it references; compiling one would.
+
+    Diagnostics:
+        SST-VAL612: a `reference:` member is among the members rendered.
+    """
+    return tuple(
+        D("SST-VAL612", name=member.name, origin=member.origin, subject=artifact_key("tool", member.name.casefold()))
+        for member in members
+        if member.ownership is ToolOwnership.REFERENCE
+    )
 
 
 def _sql_values(member: ToolMember, subject: str) -> tuple[Diagnostic, ...]:
@@ -251,7 +299,7 @@ def _sql_values(member: ToolMember, subject: str) -> tuple[Diagnostic, ...]:
         SST-PRS005: a column, parameter, warehouse, or integration name is not an identifier, or
             a secret is not a three-part name.
         SST-PRS003: a parameter or return type is not a Snowflake data type.
-        SST-PRS013: the language or `execute_as` is not one Snowflake accepts.
+        SST-PRS013: the language, `execute_as` or `refresh_mode` is not one Snowflake accepts.
         SST-VAL418: `where:` is not one expression.
     """
     if member.ownership is not ToolOwnership.DEFINE:
@@ -281,6 +329,7 @@ def _sql_values(member: ToolMember, subject: str) -> tuple[Diagnostic, ...]:
     for key, value, allowed in (
         ("language", member.language, _LANGUAGES),
         ("execute_as", member.execute_as, _EXECUTE_AS),
+        ("refresh_mode", member.refresh_mode, _REFRESH_MODES),
     ):
         if value and " ".join(value.casefold().split()) not in allowed:
             emit("SST-PRS013", field=key, found=value, expected=", ".join(allowed))
