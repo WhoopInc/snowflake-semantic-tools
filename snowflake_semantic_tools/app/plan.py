@@ -15,8 +15,10 @@ from types import MappingProxyType
 
 from snowflake_semantic_tools.app.compile import CompiledArtifact, CompileResult
 from snowflake_semantic_tools.app.compile.agents import CompiledAgent, for_publication
+from snowflake_semantic_tools.app.compile.evals import CompiledEval
 from snowflake_semantic_tools.app.compile.profiles import CompiledProfile
 from snowflake_semantic_tools.app.compile.skills import CompiledExtension
+from snowflake_semantic_tools.app.lifecycle.channels import channel_divergence
 from snowflake_semantic_tools.app.lifecycle.evals import EvalLifecycleConfig, EvalLifecycleHandler
 from snowflake_semantic_tools.app.lifecycle.extensions import ExtensionLifecycleHandler
 from snowflake_semantic_tools.app.lifecycle.profiles import ProfileLifecycleHandler, ProfilePublicationPort
@@ -490,8 +492,8 @@ class PreparePlan:
             SST-PLN018: observing and planning took longer than the observation stays current.
             SST-PLN032: with `--partial`, an artifact is left out of the plan.
             SST-PLN033: with `--partial`, a validation error names no artifact.
-            Those of validation, of `read_state`, and of `PlanArtifacts`, then the plan's
-            `change_summary` and `plan_notices`.
+            Those of validation, of `read_state`, and of `PlanArtifacts`, then
+            `channel_divergence`'s, then the plan's `change_summary` and `plan_notices`.
         """
         live = port if candidates.connected else None
         validation = ValidateArtifacts(live, catalog=live, target=target.name).run(
@@ -524,7 +526,7 @@ class PreparePlan:
         )
         stale = stale_observation(target, self._clock.monotonic_ms() - started)
         leading = (*candidates.notices, *state_diagnostics, *((stale,) if stale else ()))
-        trailing = (*change_summary(changeset), *plan_notices(changeset))
+        trailing = (*channel_divergence(port, result), *change_summary(changeset), *plan_notices(changeset))
         changeset = replace(changeset, diagnostics=DiagnosticBag((*leading, *changeset.diagnostics, *trailing)))
         return PlanReady(result, manifest, state, changeset, MappingProxyType(handlers))
 
@@ -540,7 +542,8 @@ class PreparePlan:
         """Render each selected artifact as apply publishes it, by key, agents staged for publication.
 
         Each agent is staged under `apply.agent_spec_stage`, in the target's database and
-        schema unless the block names others, beneath a folder for the project's commit.
+        schema unless the block names others, beneath a folder for the project's commit; each
+        eval's dataset version records that commit.
         """
         stage_config = config_block(apply_config.get("agent_spec_stage"))
         database = target.database.folded
@@ -550,10 +553,14 @@ class PreparePlan:
             config_text(stage_config.get("schema"), schema) or schema,
             str(stage_config.get("stage") or "AGENT_SPECS"),
         )
+        git_sha = self._inputs.git_sha()
         compiled = tuple(
             (
-                for_publication(item, stage=stage, git_sha=self._inputs.git_sha(), temporary=temporary)
+                for_publication(item, stage=stage, git_sha=git_sha, temporary=temporary)
                 if isinstance(item, CompiledAgent)
+                # A dataset version records the commit in its METADATA.
+                else replace(item, git_sha=git_sha)
+                if isinstance(item, CompiledEval)
                 else item
             )
             for item in result.compiled

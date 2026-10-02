@@ -644,3 +644,12 @@ def test_a_variant_belongs_to_one_retention_class_and_a_decision_window_is_a_day
 
     assert found(EvalRetention(("ci",), ("sweep",), 30)) == []
     assert found(EvalRetention(("ci", "sweep"), ("sweep",), 0)) == [("SST-PRS013", "sweep"), ("SST-PRS016", 0)]
+
+
+def test_a_custom_metric_definition_digest_moves_with_its_judge_prompt_and_bands_only() -> None:
+    metric = _valid_metric()
+    digest = metric.definition_digest
+    assert len(digest) == 12 and digest == _valid_metric(description="renamed in review").definition_digest
+    assert replace(metric, prompt="Score 0 to 5.").definition_digest != digest
+    assert replace(metric, model="openai-gpt-5.4").definition_digest != digest
+    assert replace(metric, score_ranges=None).definition_digest not in {digest, metric.definition_digest[::-1]}

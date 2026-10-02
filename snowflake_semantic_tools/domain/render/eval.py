@@ -207,6 +207,72 @@ def render_create_dataset_statement(
     )
 
 
+# The version SST adds to a dataset it mints; the rest of its name is the dataset's content digest.
+DATASET_VERSION_PREFIX = "SST_"
+# A commit as `git rev-parse` prints it; anything else is not a commit and stays out of METADATA.
+_GIT_SHA = re.compile(r"[0-9a-f]{7,40}")
+
+
+def dataset_version_name(dataset_fingerprint: str) -> str:
+    """Name the version SST adds to a dataset: the prefix, then 12 hex characters of its payload digest.
+
+    The hex is uppercased.
+    The name follows the questions, not the commit, so re-publishing the same questions names
+    the same version and the rendered artifact does not move between commits.
+    """
+    return f"{DATASET_VERSION_PREFIX}{dataset_fingerprint[:12].upper()}"
+
+
+def is_git_sha(value: str) -> bool:
+    """Report whether `value` is a commit SHA, abbreviated or full, as git prints it."""
+    return _GIT_SHA.fullmatch(value) is not None
+
+
+def dataset_version_metadata(
+    *, agent_target: QualifiedName, source_table: QualifiedName, dataset_fingerprint: str, git_sha: str
+) -> str:
+    """Return the version's METADATA: its provenance as canonical JSON.
+
+    The eval API cannot select a dataset version, so METADATA is the only place a dataset's
+    provenance lives as data. It holds the agent, the source table, the payload digest and,
+    when `git_sha` is a commit, the commit: identifiers and hex digests only, never authored text.
+    """
+    document = {
+        "agent": agent_target.sql,
+        "dataset_fingerprint": dataset_fingerprint,
+        "source_table": source_table.sql,
+        **({"git_sha": git_sha} if is_git_sha(git_sha) else {}),
+    }
+    return json.dumps(document, ensure_ascii=False, separators=(",", ":"), sort_keys=True)
+
+
+def render_add_version_statement(
+    dataset_target: QualifiedName, source_table: QualifiedName, *, version: str, metadata: str
+) -> Sql:
+    """Render the version SST adds to the dataset it minted: the source table's rows, with provenance.
+
+    `FROM` takes a query, never a stage path, and both properties are literals. Adding a
+    version needs OWNERSHIP of the dataset.
+
+    Example:
+        ALTER DATASET DB.S.DATASET ADD VERSION 'SST_0123456789AB'
+          FROM (SELECT INPUT_QUERY, GROUND_TRUTH FROM DB.S.SRC)
+          COMMENT = 'SST eval questions 0123456789ab'
+          METADATA = '{"agent":"DB.S.AGENT","dataset_fingerprint":"0123...","source_table":"DB.S.SRC"}'
+    """
+    return sql(
+        "ALTER DATASET {dataset} ADD VERSION {version}\n"
+        "  FROM (SELECT INPUT_QUERY, GROUND_TRUTH FROM {source})\n"
+        "  COMMENT = {comment}\n"
+        "  METADATA = {metadata}",
+        dataset=qname(dataset_target),
+        version=literal(version),
+        source=qname(source_table),
+        comment=literal(f"SST eval questions {version.removeprefix(DATASET_VERSION_PREFIX).lower()}"),
+        metadata=literal(metadata),
+    )
+
+
 def render_eval_config(
     config: EvalConfig,
     custom_metrics: tuple[CustomEvalMetric, ...] = (),

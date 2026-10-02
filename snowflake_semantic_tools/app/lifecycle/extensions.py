@@ -414,6 +414,8 @@ def _refusal(
     """Block the plan when the stage, extension, or version is not one SST may publish into.
 
     Diagnostics:
+        SST-VAL807: the release certifies an extension state records in another schema, so
+            certification would move it, changing the name every pinned reference uses.
         SST-PLN026: the bundle stage encrypts client-side.
         SST-PLN024: the extension exists, but state does not record it as SST's.
         SST-VAL802: the extension exists with no TYPE, or one SST does not recognise.
@@ -422,6 +424,12 @@ def _refusal(
         SST-VAL824: the bundle's stage prefix holds a file the bundle no longer has, which
             ADD VERSION would publish.
     """
+    if release.certified and state_entry is not None and _moved_schema(state_entry, release):
+        return blocked(
+            observation,
+            D("SST-VAL807", subject=key, artifact=release.bundle.name),
+            ChangeReason.TARGET_MOVED,
+        )
     if observed.stage_type is not None and observed.stage_type.upper() != SSE_STAGE_TYPE:
         return blocked(
             observation,
@@ -519,6 +527,15 @@ def _served_warning(key: str, observed: _Observed, release: ExtensionRelease) ->
             ),
         )
     )
+
+
+def _moved_schema(entry: AppliedEntry, release: ExtensionRelease) -> bool:
+    """Whether state records the extension in another database or schema than the release targets."""
+    try:
+        recorded = QualifiedName.parse(entry.qualified_name).folded
+    except ValueError:
+        return False
+    return recorded[:2] != release.target.folded[:2]
 
 
 def _recorded_target(entry: AppliedEntry, release: ExtensionRelease) -> bool:

@@ -6,6 +6,9 @@ from typing import Protocol
 
 from snowflake_semantic_tools.domain.model.identifier import Identifier, QualifiedName, SchemaScope
 
+# How many roles deep `missing_role_privileges` follows the role hierarchy before it stops.
+ROLE_HIERARCHY_DEPTH = 16
+
 
 class PreflightPort(Protocol):
     """Read whether the target can take the planned writes: its containers, privileges, and locks.
@@ -68,6 +71,24 @@ class PreflightPort(Protocol):
 
         Raises:
             SnowflakePortError: the schema's grants could not be read.
+        """
+        ...
+
+    def missing_role_privileges(self, role: str, scope: SchemaScope, privileges: tuple[str, ...]) -> tuple[str, ...]:
+        """Return, in the given order, the schema privileges one role lacks, inheritance included.
+
+        Unlike `missing_privileges`, the session's secondary roles do not count: this is what a
+        task running as `role` holds. The role holds a privilege when it, or a role or database
+        role granted to it, is granted the privilege or owns the schema. The hierarchy is read
+        with SHOW GRANTS TO ROLE and TO DATABASE ROLE, each role once however often it is
+        granted, and no deeper than `ROLE_HIERARCHY_DEPTH`; a privilege only a deeper role
+        holds reads as missing.
+
+        Args:
+            role: The account role, as CURRENT_ROLE() names it.
+
+        Raises:
+            SnowflakePortError: a role's grants could not be read.
         """
         ...
 

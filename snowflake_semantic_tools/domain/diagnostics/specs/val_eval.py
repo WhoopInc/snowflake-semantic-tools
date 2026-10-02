@@ -96,6 +96,20 @@ SPECS: tuple[ErrorSpec, ...] = (
         None,
     ),
     spec(
+        "SST-VAL713",
+        Severity.ERROR,
+        "Dataset version requires ownership",
+        "dataset '{artifact}': {value} holds {found}, not OWNERSHIP",
+        "grant OWNERSHIP, or add the version as the owner",
+    ),
+    spec(
+        "SST-VAL714",
+        Severity.WARNING,
+        "Dataset metadata carries no commit provenance",
+        "dataset '{artifact}': METADATA has no git SHA",
+        "write the SHA into METADATA",
+    ),
+    spec(
         "SST-VAL717",
         Severity.ERROR,
         "run_name is not unique for the agent",
@@ -164,6 +178,20 @@ SPECS: tuple[ErrorSpec, ...] = (
         "logical_consistency used as a gate",
         "eval config for '{artifact}': logical_consistency is a blocking metric",
         "report it rather than gate on it",
+    ),
+    spec(
+        "SST-VAL727",
+        Severity.ERROR,
+        "Eval privileges are spread across secondary roles",
+        "eval config for '{artifact}': {detail}",
+        "put every eval privilege on one primary role",
+    ),
+    spec(
+        "SST-VAL728",
+        Severity.ERROR,
+        "Eval role lacks a required schema privilege",
+        "eval config for '{artifact}': {value} lacks {detail}",
+        "grant CREATE TASK, CREATE STAGE and CREATE FILE FORMAT",
     ),
     spec(
         "SST-VAL729",
@@ -264,6 +292,13 @@ SPECS: tuple[ErrorSpec, ...] = (
         "add the branch; otherwise the judge invents one per call",
     ),
     spec(
+        "SST-VAL744",
+        Severity.ERROR,
+        "Custom metric is not versioned",
+        "eval metric '{artifact}' declares no version",
+        "version it; an edited prompt is a new metric",
+    ),
+    spec(
         "SST-VAL745",
         Severity.ERROR,
         "In-place edit to a metric a retained run references",
@@ -290,6 +325,13 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Judged range is wider than three bands for an invariant",
         "eval metric '{artifact}' declares {count} bands for an invariant",
         "narrow the scale",
+    ),
+    spec(
+        "SST-VAL755",
+        Severity.WARNING,
+        "Agent eval run overlaps a semantic view regenerate",
+        "eval config for '{artifact}': the run overlaps a regenerate of view '{value}', which the agent uses",
+        "serialise the run against the publish, or move one of the two",
     ),
     spec(
         "SST-VAL758",

@@ -81,7 +81,8 @@ def publish_skill(
     )
 
 
-def compiled_profile() -> CompiledProfile:
+def compiled_profile(*shipped: Skill) -> CompiledProfile:
+    """Compile the `analyst` profile, shipping each skill given."""
     profiles = ProfileCatalog(
         (
             DesktopProfile(
@@ -89,7 +90,7 @@ def compiled_profile() -> CompiledProfile:
                 directory="profiles/analyst",
                 description="Analyst.",
                 owner_team="Data",
-                skills=(),
+                skills=tuple(item.name for item in shipped),
                 mcp_servers=(),
                 hooks=(),
                 prompt="Be careful.\n",
@@ -101,7 +102,7 @@ def compiled_profile() -> CompiledProfile:
         (),
     )
     result = CompileProfiles(
-        profiles, SkillCatalog(), DesktopChannel(PROFILE_STAGE, PROFILE_REGISTRY), catalog_channel=True
+        profiles, SkillCatalog(shipped), DesktopChannel(PROFILE_STAGE, PROFILE_REGISTRY), catalog_channel=True
     ).run_result()
     assert not result.diagnostics.has_errors, result.diagnostics
     [compiled] = [item for item in result.compiled if isinstance(item, CompiledProfile)]

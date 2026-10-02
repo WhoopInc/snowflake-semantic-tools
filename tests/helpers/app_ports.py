@@ -56,6 +56,8 @@ class InMemorySnowflake(PreflightDouble):
         self.staged_file_md5s: dict[str, str | None] = {}
         self.staged_file_contents: dict[str, bytes] = {}
         self.table_row_counts: dict[str, int] = {}
+        # The versions of each dataset, by qualified name; ADD VERSION appends to them.
+        self.dataset_version_names: dict[str, list[str]] = {}
         self.state_manifest: str | None = None
         self.state_writes: list[StateWrite] = []
         self.run_locks = InMemoryRunLocks()
@@ -131,10 +133,15 @@ class InMemorySnowflake(PreflightDouble):
             elif normalized.upper().startswith("INSERT INTO "):
                 table = normalized.split()[2]
                 self.table_row_counts[table] = normalized.upper().count("SELECT")
+            elif normalized.upper().startswith("ALTER DATASET ") and " ADD VERSION " in normalized.upper():
+                tokens = normalized.split()
+                self.dataset_version_names.setdefault(tokens[2], []).append(tokens[5].strip("'"))
             elif "SYSTEM$CREATE_EVALUATION_DATASET" in normalized.upper() and self.existing is not None:
                 values = normalized.split("'")
                 if len(values) >= 6:
                     self.existing.add(values[5])
+                    # The role that creates a dataset owns it.
+                    self.grants.setdefault(values[5], (GrantRow("OWNERSHIP", "ROLE", self.current_role()),))
         return ExecResult(True)
 
     def try_execute(self, sql: Sql) -> ExecResult:
@@ -155,6 +162,9 @@ class InMemorySnowflake(PreflightDouble):
 
     def describe_stage_file_format(self, qualified_name: QualifiedName) -> str | None:
         return self.stage_formats.get(qualified_name.sql)
+
+    def dataset_versions(self, qualified_name: QualifiedName) -> tuple[str, ...]:
+        return tuple(self.dataset_version_names.get(qualified_name.sql, ()))
 
     def show_row(self, object_type: str, qualified_name: QualifiedName) -> Mapping[str, str] | None:
         return self.show_rows.get(f"{object_type.upper()} {qualified_name.sql}")

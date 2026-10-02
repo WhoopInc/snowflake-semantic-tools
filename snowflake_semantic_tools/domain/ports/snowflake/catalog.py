@@ -121,6 +121,16 @@ class CatalogPort(Protocol):
         """
         ...
 
+    def dataset_versions(self, qualified_name: QualifiedName) -> tuple[str, ...]:
+        """Return the names of a dataset's versions, as SHOW VERSIONS lists them, in its order.
+
+        Never writes.
+
+        Raises:
+            SnowflakePortError: SHOW VERSIONS failed, as it does for a dataset that does not exist.
+        """
+        ...
+
     def table_columns(self, qualified_name: QualifiedName) -> tuple[tuple[str, str], ...] | None:
         """Return a base table's columns as `(name, type)` pairs, both uppercase, in table order.
 

@@ -84,6 +84,8 @@ class RecordedSnowflake(PreflightDouble):
         self.state_manifest: str | None = None
         self.run_locks = InMemoryRunLocks()
         self.preflight = PreflightAnswers()
+        # The versions of each dataset, by qualified name; ADD VERSION appends to them.
+        self.dataset_version_names: dict[str, list[str]] = {}
 
     def table_columns(self, qualified_name: QualifiedName) -> tuple[tuple[str, str], ...] | None:
         return self.tables.get(qualified_name.sql)
@@ -256,6 +258,9 @@ class RecordedSnowflake(PreflightDouble):
     def dataset_exists(self, qualified_name: QualifiedName) -> bool:
         return self.existing is not None and qualified_name.sql in self.existing
 
+    def dataset_versions(self, qualified_name: QualifiedName) -> tuple[str, ...]:
+        return tuple(self.dataset_version_names.get(qualified_name.sql, ()))
+
     def observe_stage(self, qualified_name: QualifiedName) -> StageObservation:
         exists = self.object_exists("STAGE", qualified_name)
         return StageObservation(exists, self.stage_formats.get(qualified_name.sql) if exists else None)
@@ -362,10 +367,15 @@ class RecordedSnowflake(PreflightDouble):
                 name = normalized.split()[2]
                 if self.existing is not None:
                     self.existing.add(name)
+            elif normalized.upper().startswith("ALTER DATASET ") and " ADD VERSION " in normalized.upper():
+                tokens = normalized.split()
+                self.dataset_version_names.setdefault(tokens[2], []).append(tokens[5].strip("'"))
             elif "SYSTEM$CREATE_EVALUATION_DATASET" in normalized.upper():
                 quoted = _quoted_sql_arguments(normalized)
                 if len(quoted) >= 3 and self.existing is not None:
                     self.existing.add(quoted[2])
+                    # The role that creates a dataset owns it.
+                    self.grants.setdefault(quoted[2], (GrantRow("OWNERSHIP", "ROLE", self.current_role()),))
 
     def _record_extension_statement(self, normalized: str, original: str | None = None) -> None:
         tokens = normalized.split()

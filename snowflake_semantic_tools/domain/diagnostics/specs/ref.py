@@ -234,13 +234,6 @@ SPECS: tuple[ErrorSpec, ...] = (
         "reference it with skill() or plugin(), which pins the published version",
     ),
     spec(
-        "SST-REF038",
-        Severity.ERROR,
-        "Unknown project variable",
-        "{artifact}: var('{name}') names no project variable",
-        "declare it under vars: in sst_config.yml, or fix the name",
-    ),
-    spec(
         "SST-REF041",
         Severity.ERROR,
         "Template function not allowed in this field",

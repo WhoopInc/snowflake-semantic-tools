@@ -20,9 +20,9 @@ cannot be downgraded by any setting.
 - [Discovery (DIS)](#discovery-dis) -- 12 codes
 - [Parsing (PRS)](#parsing-prs) -- 58 codes
 - [Loading (LOD)](#loading-lod) -- 24 codes
-- [References (REF)](#references-ref) -- 38 codes
+- [References (REF)](#references-ref) -- 37 codes
 - [Membership (MEM)](#membership-mem) -- 24 codes
-- [Validation (VAL)](#validation-val) -- 279 codes
+- [Validation (VAL)](#validation-val) -- 287 codes
 - [dbt (DBT)](#dbt-dbt) -- 30 codes
 - [Rendering (RND)](#rendering-rnd) -- 16 codes
 - [Manifest and state (MAN)](#manifest-and-state-man) -- 21 codes
@@ -1569,14 +1569,6 @@ Fix: declare the plugin under the plugins directory, or correct the name
 `agent '<artifact>': extension('<name>') names a <kind> this project publishes`
 
 Fix: reference it with skill() or plugin(), which pins the published version
-
-### SST-REF038
-
-**Unknown project variable** (error)
-
-`<artifact>: var('<name>') names no project variable`
-
-Fix: declare it under vars: in sst_config.yml, or fix the name
 
 ### SST-REF041
 
@@ -3364,6 +3356,22 @@ Fix: add rows; a thin dataset cannot support range thresholds
 
 `dataset '<artifact>': versions and provenance are added by ALTER, not CREATE`
 
+### SST-VAL713
+
+**Dataset version requires ownership** (error)
+
+`dataset '<artifact>': <value> holds <found>, not OWNERSHIP`
+
+Fix: grant OWNERSHIP, or add the version as the owner
+
+### SST-VAL714
+
+**Dataset metadata carries no commit provenance** (warning)
+
+`dataset '<artifact>': METADATA has no git SHA`
+
+Fix: write the SHA into METADATA
+
 ### SST-VAL717
 
 **run_name is not unique for the agent** (error)
@@ -3441,6 +3449,22 @@ Fix: remove judge_model; the version carries the judge
 `eval config for '<artifact>': logical_consistency is a blocking metric`
 
 Fix: report it rather than gate on it
+
+### SST-VAL727
+
+**Eval privileges are spread across secondary roles** (error)
+
+`eval config for '<artifact>': <detail>`
+
+Fix: put every eval privilege on one primary role
+
+### SST-VAL728
+
+**Eval role lacks a required schema privilege** (error)
+
+`eval config for '<artifact>': <value> lacks <detail>`
+
+Fix: grant CREATE TASK, CREATE STAGE and CREATE FILE FORMAT
 
 ### SST-VAL729
 
@@ -3552,6 +3576,14 @@ Fix: ask for a number in a fixed position
 
 Fix: add the branch; otherwise the judge invents one per call
 
+### SST-VAL744
+
+**Custom metric is not versioned** (error)
+
+`eval metric '<artifact>' declares no version`
+
+Fix: version it; an edited prompt is a new metric
+
 ### SST-VAL745
 
 **In-place edit to a metric a retained run references** (error)
@@ -3581,6 +3613,14 @@ Fix: align the prompt with score_ranges
 `eval metric '<artifact>' declares <count> bands for an invariant`
 
 Fix: narrow the scale
+
+### SST-VAL755
+
+**Agent eval run overlaps a semantic view regenerate** (warning)
+
+`eval config for '<artifact>': the run overlaps a regenerate of view '<value>', which the agent uses`
+
+Fix: serialise the run against the publish, or move one of the two
 
 ### SST-VAL758
 
@@ -3661,6 +3701,14 @@ Fix: reference it, or stop publishing it
 `skill reconciliation: <value>`
 
 Fix: publish the missing sources, and reap the orphan objects
+
+### SST-VAL807
+
+**Certification attempted by moving schemas** (error)
+
+`skill '<artifact>': certification would change its schema`
+
+Fix: certify with the SNOWFLAKE.CORE.CERTIFICATION_STATUS tag
 
 ### SST-VAL808
 
@@ -3771,6 +3819,14 @@ Fix: set layout to by_type
 `skill '<artifact>': '<path>' was deleted and is still published`
 
 Fix: build each version from empty, or issue explicit removals
+
+### SST-VAL829
+
+**Channel content hashes diverge beyond flattening** (warning)
+
+`skill '<artifact>': catalog and stage hashes diverge by <value>`
+
+Fix: compare the two bundles
 
 ### SST-VAL830
 

@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+import json
 import re
 from dataclasses import dataclass, replace
 from hashlib import md5, sha256
 from threading import Lock
 from types import MappingProxyType
 
+from snowflake_semantic_tools.app.compile.evals import METRIC_COMPONENT_PREFIX
 from snowflake_semantic_tools.app.lifecycle.composite import (
     CompositeHandler,
     PublicationRun,
@@ -127,6 +129,39 @@ class EvalLifecycleHandler(CompositeHandler[RenderedArtifact, CompositeObservati
             diagnostics=DiagnosticBag(() if problem is None else (problem,)),
             config_size=len(staged_content) if staged_content is not None else None,
             config_md5=(md5(staged_content, usedforsecurity=False).hexdigest() if staged_content is not None else None),
+            details=(("dataset_version", self._version_state(artifact, resources)),),
+        )
+
+    def _version_state(self, artifact: RenderedArtifact, resources: tuple[PhysicalResource, ...]) -> str:
+        """Say whether the dataset holds SST's version: `present`, `absent`, or empty with no dataset to read."""
+        version = dataset_version(artifact)
+        dataset = next((item for item in resources if item.object_type.upper() == "DATASET"), None)
+        if version is None or dataset is None or not dataset.exists:
+            return ""
+        return "present" if self._holds_version(dataset.qualified_name, version) else "absent"
+
+    def _holds_version(self, dataset: QualifiedName, version: str) -> bool:
+        return version.casefold() in {name.casefold() for name in self._port.dataset_versions(dataset)}
+
+    def ownership_problem(self, artifact: RenderedArtifact, dataset: QualifiedName) -> Diagnostic | None:
+        """Return SST-VAL713 when the session's role does not own the dataset a version is added to.
+
+        SST mints a dataset as the session's role, so that role owns it unless ownership moved
+        since -- a future grant, or a hand transfer -- and only the owner may add a version.
+        """
+        role = self._port.current_role()
+        grants = self._port.show_grants("DATASET", dataset)
+        if any(
+            grant.privilege.upper() == "OWNERSHIP" and grant.grantee_name.upper() == role.upper() for grant in grants
+        ):
+            return None
+        held = sorted({grant.privilege.upper() for grant in grants if grant.grantee_name.upper() == role.upper()})
+        return D(
+            "SST-VAL713",
+            subject=artifact.key,
+            artifact=artifact.key,
+            value=role,
+            found=", ".join(held) or "no privilege",
         )
 
     def _decide(
@@ -136,16 +171,34 @@ class EvalLifecycleHandler(CompositeHandler[RenderedArtifact, CompositeObservati
         subject: RenderedArtifact,
         observation: CompositeObservation,
     ) -> CompositePlan:
-        """Decide an eval's change; a non-minting eval is decided by `_decide_unminted`.
+        """Decide an eval's change: `_decide_unminted` decides one SST does not mint, else `_decide_minted`.
 
         Diagnostics:
-            SST-PLN024: an object the eval publishes exists, and state does not record it as SST's.
+            SST-VAL744: a custom metric is rendered under the name state recorded with another
+                definition, as `edited_metrics` reports.
+            SST-VAL714: the change adds a dataset version whose METADATA carries no commit.
         """
         del subject
         if observation.diagnostics.has_errors:
             return CompositePlan(Action.BLOCKED, ChangeReason.VALIDATION_ERRORS, observation, observation.diagnostics)
+        edited = edited_metrics(artifact, state_entry)
+        if edited:
+            return CompositePlan(Action.BLOCKED, ChangeReason.VALIDATION_ERRORS, observation, DiagnosticBag(edited))
         if not mints(artifact):
             return self._decide_unminted(artifact, state_entry, observation)
+        return _with_provenance(artifact, self._decide_minted(artifact, state_entry, observation))
+
+    def _decide_minted(
+        self,
+        artifact: RenderedArtifact,
+        state_entry: AppliedEntry | None,
+        observation: CompositeObservation,
+    ) -> CompositePlan:
+        """Decide an eval SST mints: refuse an object it does not own, else create, update, or leave it.
+
+        Diagnostics:
+            SST-PLN024: an object the eval publishes exists, and state does not record it as SST's.
+        """
         recorded_resources = self._recorded_resource_identity(state_entry)
         unmanaged_live_resources = tuple(
             item
@@ -198,8 +251,11 @@ class EvalLifecycleHandler(CompositeHandler[RenderedArtifact, CompositeObservati
     ) -> CompositePlan:
         """Decide an eval state records: a new dataset, a missing resource, a new config, or nothing.
 
+        A dataset missing SST's version counts as a missing resource.
+
         Diagnostics:
             SST-PLN025: state records resources this eval no longer publishes to.
+            SST-VAL713: the dataset lacks SST's version, and the session's role does not own it.
         """
         desired_components = dict(artifact.component_fingerprints)
         recorded_components = dict(state_entry.component_fingerprints)
@@ -220,6 +276,12 @@ class EvalLifecycleHandler(CompositeHandler[RenderedArtifact, CompositeObservati
             (item.object_type.upper(), item.qualified_name.folded): item.exists for item in observation.resources
         }
         if not all(observed_resources.get(identity, False) for identity in desired_resources):
+            return CompositePlan(Action.UPDATE, ChangeReason.NOT_PRESENT, observation)
+        if dict(observation.details).get("dataset_version") == "absent":
+            # A publish that stopped after minting, or a dataset minted with no version of SST's.
+            problem = self.ownership_problem(artifact, self._resources_by_type(artifact)["DATASET"])
+            if problem is not None:
+                return blocked(observation, problem)
             return CompositePlan(Action.UPDATE, ChangeReason.NOT_PRESENT, observation)
         if (
             recorded_components.get("config") != desired_components.get("config")
@@ -309,18 +371,28 @@ class EvalLifecycleHandler(CompositeHandler[RenderedArtifact, CompositeObservati
         return frozenset(values)
 
     @staticmethod
-    def _source_statements(artifact: RenderedArtifact) -> tuple[Sql, ...]:
-        statements = tuple(statement for statement in artifact.create_statements if str(statement).strip())
-        if len(statements) < 2:
-            raise ValueError("eval artifact requires CREATE TABLE and INSERT statements")
-        return statements[:-1]
+    def _minting_statements(artifact: RenderedArtifact) -> tuple[Sql, ...]:
+        """The source table's statements, then the dataset's, then its version's.
 
-    @staticmethod
-    def _dataset_statement(artifact: RenderedArtifact) -> Sql:
+        Raises:
+            ValueError: there are not at least those three.
+        """
         statements = tuple(statement for statement in artifact.create_statements if str(statement).strip())
-        if len(statements) < 2:
-            raise ValueError("eval artifact requires a dataset statement")
-        return statements[-1]
+        if len(statements) < 3:
+            raise ValueError("eval artifact requires source-table, dataset and version statements")
+        return statements
+
+    @classmethod
+    def _source_statements(cls, artifact: RenderedArtifact) -> tuple[Sql, ...]:
+        return cls._minting_statements(artifact)[:-2]
+
+    @classmethod
+    def _dataset_statement(cls, artifact: RenderedArtifact) -> Sql:
+        return cls._minting_statements(artifact)[-2]
+
+    @classmethod
+    def _version_statement(cls, artifact: RenderedArtifact) -> Sql:
+        return cls._minting_statements(artifact)[-1]
 
     def _source_row_count(self, source_table: QualifiedName) -> int:
         result = self._port.query(sql("SELECT COUNT(*) AS ROW_COUNT FROM {table}", table=qname(source_table)))
@@ -350,8 +422,8 @@ class EvalLifecycleHandler(CompositeHandler[RenderedArtifact, CompositeObservati
 class _EvalRun(PublicationRun[CatalogPublicationPort]):
     """One eval publication: each resource created only when absent, and verified before the next.
 
-    The steps run in order: the source table, its row count, the dataset, the config
-    stage and its file format, then the config file and its read-back. Resources are
+    The steps run in order: the source table, its row count, the dataset and its version, the
+    config stage and its file format, then the config file and its read-back. Resources are
     recorded as each is verified; a failure reports those, or the table alone once its
     statements ran. A port error that interrupts the run also reports what it created.
     """
@@ -386,6 +458,7 @@ class _EvalRun(PublicationRun[CatalogPublicationPort]):
                 self._create_source_table,
                 self._verify_source_rows,
                 self._create_dataset,
+                self._add_dataset_version,
                 self._ensure_config_stage,
                 self._verify_stage_format,
             )
@@ -465,6 +538,35 @@ class _EvalRun(PublicationRun[CatalogPublicationPort]):
             if not self._port.object_exists("DATASET", self._dataset):
                 return self.fail(f"dataset {self._dataset.sql} is absent after publication", "SST-APL016")
         self._verified.append(("DATASET", self._dataset.sql))
+        return None
+
+    def _add_dataset_version(self) -> ApplyOutcome | None:
+        """Add SST's version to the dataset unless it holds it, then require it there.
+
+        A dataset this run found rather than minted may have changed owner, so its ownership
+        is checked first (SST-VAL713). A refused statement is SST-APL022, and a version absent
+        after it SST-APL016.
+        """
+        version = dataset_version(self._artifact)
+        if version is None or self._handler._holds_version(self._dataset, version):
+            return None
+        if self._dataset_exists:
+            problem = self._handler.ownership_problem(self._artifact, self._dataset)
+            if problem is not None:
+                return _diagnosed(
+                    self._change,
+                    problem,
+                    attempts=self._attempts,
+                    write_succeeded=self._written,
+                    physical_resources=self._recorded_resources(),
+                )
+        result = self._run_statement(self._handler._version_statement(self._artifact))
+        if not result.ok:
+            return self.fail(result.error.message if result.error else "ADD VERSION failed", "SST-APL022")
+        if not self._handler._holds_version(self._dataset, version):
+            return self.fail(
+                f"version {version} is absent from dataset {self._dataset.sql} after ADD VERSION", "SST-APL016"
+            )
         return None
 
     def _require_dataset(self) -> ApplyOutcome | None:
@@ -580,6 +682,49 @@ def _diagnosed(
         component_fingerprints=component_fingerprints,
         physical_resources=physical_resources,
     )
+
+
+def edited_metrics(artifact: RenderedArtifact, state_entry: AppliedEntry | None) -> tuple[Diagnostic, ...]:
+    """Report each custom metric the eval renders under a name state recorded with another definition.
+
+    A custom metric has no Snowflake version: its name is the score's column and chart, so an
+    edited prompt published under the same name would read as a continuous trend across a change
+    of judge. A metric versions by taking a new name.
+
+    Diagnostics:
+        SST-VAL744: the metric's definition digest differs from the one state recorded for its name.
+    """
+    if state_entry is None:
+        return ()
+    recorded = dict(state_entry.component_fingerprints)
+    edited = (
+        key.removeprefix(METRIC_COMPONENT_PREFIX)
+        for key, digest in artifact.component_fingerprints
+        if key.startswith(METRIC_COMPONENT_PREFIX) and recorded.get(key, digest) != digest
+    )
+    return tuple(D("SST-VAL744", subject=f"eval_metric:{name}", artifact=name) for name in edited)
+
+
+def dataset_version(artifact: RenderedArtifact) -> str | None:
+    """Name the version SST adds to an eval's dataset; None for an eval that does not mint one."""
+    return dict(artifact.component_fingerprints).get("dataset_version")
+
+
+def _with_provenance(artifact: RenderedArtifact, plan: CompositePlan) -> CompositePlan:
+    """Warn on a plan that adds a dataset version whose METADATA carries no commit (SST-VAL714).
+
+    A version is added when the plan creates the eval, or updates one whose dataset or version is
+    missing. Its METADATA is the only provenance the dataset carries, since the eval API cannot
+    select a version.
+    """
+    adds_version = plan.action is Action.CREATE or (
+        plan.action is Action.UPDATE and dict(plan.observation.details).get("dataset_version") != "present"
+    )
+    metadata = dict(artifact.component_fingerprints).get("version_metadata")
+    if not adds_version or metadata is None or "git_sha" in json.loads(metadata):
+        return plan
+    warning = D("SST-VAL714", subject=artifact.key, artifact=artifact.key)
+    return replace(plan, diagnostics=DiagnosticBag((*plan.diagnostics, warning)))
 
 
 def mints(artifact: RenderedArtifact) -> bool:

@@ -84,6 +84,10 @@ def configure_eval_as_applied(
     port.stage_formats["SST_REF_DEV.JAFFLE.EVAL_CONFIGS"] = EVAL_STAGE_FILE_FORMAT
     components = eval_change["component_fingerprints"]
     assert isinstance(components, dict)
+    # A publish that finished left SST's version on the dataset.
+    port.dataset_version_names["SST_REF_DEV.JAFFLE.EVAL_JAFFLE_ANALYTICS_AGENT_DCE1F8A"] = [
+        str(components["dataset_version"])
+    ]
     config_path = f"@SST_REF_DEV.JAFFLE.EVAL_CONFIGS/jaffle_analytics_agent/{components['config']}.yaml"
     port.stage_files = {config_path}
     port.staged_file_metadata = {

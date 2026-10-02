@@ -83,10 +83,10 @@ def test_an_error_in_something_an_artifact_carries_keeps_the_artifact_back() -> 
 
 
 def test_a_semantic_view_member_error_stops_the_split_and_says_why() -> None:
-    metric_error = D("SST-REF038", subject="metric:total_revenue", artifact="metric:total_revenue", name="nope")
+    metric_error = D("SST-CFG029", subject="metric:total_revenue", var="nope")
     broken = result(metric_error)
     assert partial_split(broken) is None
     refusal = partial_refusal(broken)
     assert refusal is not None and refusal.code == "SST-PLN033"
-    assert refusal.message.startswith("--partial publishes nothing: SST-REF038 on metric:total_revenue")
+    assert refusal.message.startswith("--partial publishes nothing: SST-CFG029 on metric:total_revenue")
     assert partial_refusal(result()) is None

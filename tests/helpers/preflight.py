@@ -21,6 +21,8 @@ class PreflightAnswers:
     missing_relations: set[str] = field(default_factory=set)
     missing_warehouses: set[str] = field(default_factory=set)
     lacking: dict[str, tuple[str, ...]] = field(default_factory=dict)
+    # What the session's primary role lacks by itself and through its hierarchy, by schema.
+    role_lacking: dict[str, tuple[str, ...]] = field(default_factory=dict)
     locked: dict[str, tuple[QualifiedName, ...]] = field(default_factory=dict)
     references: dict[str, tuple[QualifiedName, ...]] = field(default_factory=dict)
     refused: set[str] = field(default_factory=set)
@@ -54,6 +56,11 @@ class PreflightDouble:
     def missing_privileges(self, scope: SchemaScope, privileges: tuple[str, ...]) -> tuple[str, ...]:
         self._refuse("missing_privileges")
         lacking = self.preflight.lacking.get(scope.sql, ())
+        return tuple(privilege for privilege in privileges if privilege in lacking)
+
+    def missing_role_privileges(self, role: str, scope: SchemaScope, privileges: tuple[str, ...]) -> tuple[str, ...]:
+        self._refuse("missing_role_privileges")
+        lacking = self.preflight.role_lacking.get(scope.sql, ())
         return tuple(privilege for privilege in privileges if privilege in lacking)
 
     def locked_objects(self, scope: SchemaScope) -> tuple[QualifiedName, ...]:

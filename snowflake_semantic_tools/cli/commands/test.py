@@ -6,6 +6,7 @@ then refuse to run unless `sst compile` wrote the manifest the project compiles 
 
 from __future__ import annotations
 
+import socket
 from pathlib import Path
 
 import click
@@ -151,7 +152,7 @@ def _run_evals(
     Raises:
         SstUsageError: `--capture-baseline` and `--reason` are not given together.
         ProjectError: the project compiles no eval, its compiled manifest is stale, or another
-            operation holds the target's state lock.
+            operation holds the target's lock; it carries what taking the lock reported.
     """
     if request.capture_baseline and not request.reason:
         raise SstUsageError("--capture-baseline requires --reason")
@@ -165,12 +166,18 @@ def _run_evals(
     with closed_on_error(port):
         store = state_store(paths, profile.target_name)
         eval_store = SnowflakeEvalStateStore(port, _eval_state_table(profile.state_table))
-        outcome = RunEvalGate(port, inputs, store, eval_store, SystemClock()).run(
-            evals, manifest, request, target=profile.identity, state_table=profile.state_table
-        )
+        outcome = RunEvalGate(
+            port,
+            inputs,
+            store,
+            eval_store,
+            SystemClock(),
+            actor=profile.identity.role or "",
+            host=socket.gethostname(),
+        ).run(evals, manifest, request, target=profile.identity, state_table=profile.state_table)
     port.close()
     if isinstance(outcome, EvalGateRefused):
-        raise ProjectError(outcome.reason)
+        raise ProjectError(outcome.reason, diagnostics=tuple(outcome.diagnostics))
     return _eval_report(outcome)
 
 

@@ -34,6 +34,20 @@ def test_a_tool_call_in_a_configuration_value_must_name_a_declared_member() -> N
     ]
 
 
+def test_a_tool_call_inside_a_list_is_checked_with_its_index() -> None:
+    tools = catalog(search_member("docs"))
+    tree = {
+        "agents": {"+tools": ["{{ tool('platform', 'docs') }}", {"ref": "{{ tool('platform', 'ghost') }}"}]},
+        "nested": [["{{ tool('other', 'docs') }}"]],
+    }
+    found = config_tool_references(tree, tools, file="config/sst.yml")
+    assert [(item.subject, item.context["group"], item.context["name"]) for item in found] == [
+        ("config:agents.+tools[1].ref", "platform", "ghost"),
+        ("config:nested[0][0]", "other", "docs"),
+    ]
+    assert config_tool_references({"agents": {"+tools": ["{{ tool('platform', 'docs') }}"]}}, tools) == ()
+
+
 def test_the_syntax_check_policy_must_be_stated() -> None:
     assert [item.subject for item in unstated_policy({})] == ["config:validation"]
     assert [item.subject for item in unstated_policy({"validation": {}})] == [

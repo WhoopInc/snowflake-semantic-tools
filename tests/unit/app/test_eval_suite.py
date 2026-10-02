@@ -29,6 +29,7 @@ from snowflake_semantic_tools.domain.model.identifier import QualifiedName
 from snowflake_semantic_tools.domain.model.lifecycle import QueryResult
 from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
 from snowflake_semantic_tools.domain.state import AppliedEntry
+from snowflake_semantic_tools.domain.state.lock import LockClaim
 from tests.helpers.app_ports import FixedClock, InMemoryStateStore
 from tests.helpers.artifact_builders import target
 from tests.helpers.eval_builders import EvalSnowflake, compile_eval, resolved_eval, result_rows, status_result
@@ -78,13 +79,35 @@ def test_the_run_is_refused_while_another_operation_holds_the_target_lock() -> N
 
     outcome, _, lock, inputs = gate(port, state_store=held)
 
-    assert outcome == EvalGateRefused("cannot run evals while apply-run holds the target lock")
+    assert isinstance(outcome, EvalGateRefused)
+    assert outcome.reason == "cannot run evals while apply-run holds the target lock"
+    assert [item.code for item in outcome.diagnostics] == ["SST-APL011"]
     assert lock.holder == "apply-run" and port.queries == []
     assert inputs.reads == ["config", "eval_catalog"]
     unnamed = InMemoryStateStore()
     unnamed.locked = True
     refused, _, _, _ = gate(EvalSnowflake([]), state_store=unnamed)
-    assert refused == EvalGateRefused("cannot run evals while another operation holds the target lock")
+    assert isinstance(refused, EvalGateRefused)
+    assert refused.reason == "cannot run evals while another operation holds the target lock"
+
+
+def test_the_run_takes_the_remote_lock_an_apply_takes_and_releases_it() -> None:
+    port = EvalSnowflake(completed_attempt())
+    elsewhere = EvalSnowflake([])
+    elsewhere.run_locks = port.run_locks
+    elsewhere.run_locks.acquire_run_lock(STATE_TABLE, "verify", LockClaim("eval-other"), break_stale=False)
+
+    refused, _, lock, _ = gate(port)
+
+    assert isinstance(refused, EvalGateRefused)
+    assert refused.reason == "cannot run evals while eval-other holds the target lock"
+    # Another eval run regenerates nothing, so only the refusal is reported.
+    assert [item.code for item in refused.diagnostics] == ["SST-APL011"]
+    assert not lock.locked
+    port.run_locks.release_run_lock(STATE_TABLE, "verify", "eval-other")
+    outcome, _, _, _ = gate(port)
+    assert isinstance(outcome, EvalGateOutcome)
+    assert port.run_locks.claims[-1].startswith("eval-") and port.run_locks.rows == {}
 
 
 def test_an_unpublished_eval_stops_before_any_run_and_releases_the_lock(monkeypatch: pytest.MonkeyPatch) -> None:

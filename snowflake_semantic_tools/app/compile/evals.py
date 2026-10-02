@@ -18,7 +18,10 @@ from snowflake_semantic_tools.domain.model.lifecycle import (
 from snowflake_semantic_tools.domain.model.registry import GrantPreservation
 from snowflake_semantic_tools.domain.render.eval import (
     RenderedEval,
+    dataset_version_metadata,
+    dataset_version_name,
     eval_render_checks,
+    render_add_version_statement,
     render_create_dataset_statement,
     render_dataset_payload,
     render_eval_config,
@@ -26,6 +29,9 @@ from snowflake_semantic_tools.domain.render.eval import (
 )
 from snowflake_semantic_tools.domain.resolve.eval_name import render_eval_name_template
 from snowflake_semantic_tools.domain.validate.eval import eval_placement
+
+# The component fingerprint prefix that names one custom metric an eval renders.
+METRIC_COMPONENT_PREFIX = "metric:"
 
 
 @dataclass(frozen=True, slots=True)
@@ -39,6 +45,8 @@ class CompiledEval(StandaloneArtifact):
         resolved: The eval with its effective agent version applied.
         source_table: The table the dataset payload is loaded into.
         dataset_target: The dataset created over `source_table`; the artifact publishes here.
+        git_sha: The commit the dataset version's METADATA records; plan sets it for
+            publication, and it never enters the artifact's fingerprint.
     """
 
     resolved: ResolvedEval
@@ -46,6 +54,7 @@ class CompiledEval(StandaloneArtifact):
     source_table: QualifiedName
     dataset_target: QualifiedName
     rendered: RenderedEval
+    git_sha: str = ""
 
     @property
     def name(self) -> str:
@@ -79,7 +88,8 @@ class CompiledEval(StandaloneArtifact):
                 component_fingerprints=(
                     ("dataset", self.rendered.dataset_fingerprint),
                     ("config", self.rendered.config_fingerprint),
-                    *((("mint", EVAL_MINT_NEVER),) if not self.mints else ()),
+                    *((("dataset_version", self.dataset_version),) if self.mints else (("mint", EVAL_MINT_NEVER),)),
+                    *self.metric_fingerprints,
                 ),
                 physical_resources=(
                     (("TABLE", self.source_table), ("DATASET", self.dataset_target))
@@ -92,20 +102,59 @@ class CompiledEval(StandaloneArtifact):
         return replace(artifact, fingerprint=combined)
 
     @property
+    def metric_fingerprints(self) -> tuple[tuple[str, str], ...]:
+        """Each custom metric the config renders, as `metric:<casefolded name>` and its definition digest.
+
+        State keeps them, so a later plan can tell a metric edited under its own name.
+        """
+        return tuple(
+            (f"{METRIC_COMPONENT_PREFIX}{metric.name.casefold()}", metric.definition_digest)
+            for metric in self.resolved.custom_metrics
+            if metric.enabled
+        )
+
+    @property
+    def dataset_version(self) -> str:
+        """Name the version SST adds to the dataset it mints, from the questions' digest."""
+        return dataset_version_name(self.rendered.dataset_fingerprint)
+
+    @property
+    def version_metadata(self) -> str:
+        """The dataset version's METADATA: the eval's provenance, with `git_sha` when it is a commit."""
+        return dataset_version_metadata(
+            agent_target=self.agent_target,
+            source_table=self.source_table,
+            dataset_fingerprint=self.rendered.dataset_fingerprint,
+            git_sha=self.git_sha,
+        )
+
+    @property
     def mints(self) -> bool:
         """Report whether SST creates the eval's source table and dataset, which `dataset.mint: never` forbids."""
         dataset = self.resolved.config.dataset
         return dataset is None or dataset.mint != EVAL_MINT_NEVER
 
     def rendered_for_publish(self, manifest_id: str) -> RenderedArtifact:
-        """Add the statements that create the source table and then the dataset when SST mints them."""
+        """Add the statements that create the source table, the dataset, then its version, when SST mints them.
+
+        The version's METADATA carries the commit, so it is recorded as the `version_metadata`
+        component here, where state keeps it, and never in what the fingerprint covers.
+        """
         del manifest_id
         artifact = self.rendered_artifact
         if not self.mints:
             return artifact
+        add_version = render_add_version_statement(
+            self.dataset_target, self.source_table, version=self.dataset_version, metadata=self.version_metadata
+        )
         return replace(
             artifact,
-            create_statements=(*self.rendered.source_table_statements, self.rendered.create_dataset_statement),
+            create_statements=(
+                *self.rendered.source_table_statements,
+                self.rendered.create_dataset_statement,
+                add_version,
+            ),
+            component_fingerprints=(*artifact.component_fingerprints, ("version_metadata", self.version_metadata)),
         )
 
 
