@@ -6,6 +6,7 @@ from pathlib import Path
 
 import click
 
+from snowflake_semantic_tools.adapters.clock import SystemClock
 from snowflake_semantic_tools.app.validate import ValidateArtifacts, ValidationResult
 from snowflake_semantic_tools.cli.exit_codes import ERROR, OK
 from snowflake_semantic_tools.cli.options import output_option, project_options, validation_options
@@ -37,10 +38,12 @@ def validate(
         connected=snowflake_syntax_check,
     )
     port = None
+    target = target_name or ""
     if effective_connected:
-        _, port = connect(project_dir, target_name)
+        profile, port = connect(project_dir, target_name)
+        target = profile.target_name
     try:
-        result = ValidateArtifacts(port).run(
+        result = ValidateArtifacts(port, catalog=port, target=target, clock=SystemClock()).run(
             compiled,
             strict=effective_strict,
             connected=effective_connected,

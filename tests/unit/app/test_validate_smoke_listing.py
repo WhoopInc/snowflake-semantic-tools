@@ -71,6 +71,7 @@ def test_connected_validation_compiles_expressions_and_verified_queries() -> Non
     assert [query for query, _params in port.queries] == [
         "EXPLAIN SELECT SUM(NULL) FROM (SELECT 1 AS SST_VALUE WHERE FALSE) AS SST_VALIDATE",
         "EXPLAIN SELECT 1",
+        "SELECT COUNT(*) AS ROW_COUNT FROM (SELECT 1) AS SST_VQ",
     ]
 
 

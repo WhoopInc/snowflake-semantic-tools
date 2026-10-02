@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Protocol
 
@@ -226,6 +227,47 @@ class CatalogPort(Protocol):
 
         Raises:
             SnowflakePortError: the query failed.
+        """
+        ...
+
+    def show_row(self, object_type: str, qualified_name: QualifiedName) -> Mapping[str, str] | None:
+        """Return the row SHOW lists for one object, its columns lowercased and its values as text.
+
+        `object_type` is a type `object_exists` takes. A null value reads as `""`. Never writes.
+
+        Returns:
+            The row; None when no object of that type exists under the name.
+
+        Raises:
+            SnowflakePortError: the SHOW failed.
+        """
+        ...
+
+    def describe_properties(self, object_type: str, qualified_name: QualifiedName) -> Mapping[str, str] | None:
+        """Return what DESCRIBE reports for one object, as lowercase property names and text values.
+
+        A DESCRIBE that lists properties as `name`/`value` (or `property`/`property_value`)
+        rows gives one entry per row; one that answers with a single row gives its columns.
+        Never writes.
+
+        Returns:
+            The properties; None when no object of that type exists under the name.
+
+        Raises:
+            SnowflakePortError: the DESCRIBE failed.
+        """
+        ...
+
+    def object_parameter(self, object_type: str, name: str, parameter: str) -> str | None:
+        """Return one parameter's value on an account-level object, such as a warehouse's timeout.
+
+        Never writes.
+
+        Returns:
+            The value as SHOW PARAMETERS prints it; None when the object reports no such parameter.
+
+        Raises:
+            SnowflakePortError: SHOW PARAMETERS failed, including for an object that does not exist.
         """
         ...
 
