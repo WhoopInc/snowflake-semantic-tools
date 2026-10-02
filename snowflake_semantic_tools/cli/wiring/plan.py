@@ -9,19 +9,21 @@ from __future__ import annotations
 
 import dataclasses
 from pathlib import Path
+from typing import NoReturn
 
 from snowflake_semantic_tools.adapters.clock import SystemClock
 from snowflake_semantic_tools.adapters.dbt.profiles import ProfileTarget
 from snowflake_semantic_tools.adapters.errors import ProjectError
-from snowflake_semantic_tools.adapters.fs.local import StateFileStore
+from snowflake_semantic_tools.adapters.fs.local import ManifestFileStore, StateFileStore
+from snowflake_semantic_tools.adapters.locations import ProjectPaths
 from snowflake_semantic_tools.adapters.snowflake.connector import SnowflakeConnector
 from snowflake_semantic_tools.app.plan import PlanReady, PlanRefused, PlanScope, PreparePlan
 from snowflake_semantic_tools.cli.group import SstUsageError
 from snowflake_semantic_tools.cli.wiring import compile as compiling
-from snowflake_semantic_tools.cli.wiring.compile import selection
+from snowflake_semantic_tools.cli.wiring.compile import manifest_universe, selection
 from snowflake_semantic_tools.cli.wiring.manifest import compiled_manifest
 from snowflake_semantic_tools.cli.wiring.project import closed_on_error, connect, project_inputs, state_store
-from snowflake_semantic_tools.domain.diagnostics import DiagnosticBag
+from snowflake_semantic_tools.domain.diagnostics import D, DiagnosticBag
 from snowflake_semantic_tools.domain.model.registry import SEMANTIC_REGISTRY
 from snowflake_semantic_tools.domain.state import SavedPlan
 
@@ -32,9 +34,10 @@ class PlanRequest:
 
     Attributes:
         strict, connected: `--strict` and `--snowflake-syntax-check`; None defers to `validation:`.
+        state_dir: `--state`, the previous run's build directory `state:` selectors compare with.
     """
 
-    project_dir: Path
+    paths: ProjectPaths
     target_name: str | None
     manifest_path: Path | None
     selected: tuple[str, ...]
@@ -43,6 +46,12 @@ class PlanRequest:
     partial: bool
     strict: bool | None
     connected: bool | None
+    state_dir: Path | None = None
+
+    @property
+    def project_dir(self) -> Path:
+        """Return the project directory the request plans."""
+        return self.paths.project_dir
 
     def following(self, saved: SavedPlan | None) -> PlanRequest:
         """Return the request with a saved plan's selection in place of the flags'; itself without one."""
@@ -70,11 +79,16 @@ def plan_scope(request: PlanRequest) -> PlanScope:
     An excluded type leaves the selected types, or every type when none is selected. With
     `--prune`, an excluded key leaves the selected keys, which must then be given.
 
+    Names, paths, and states are resolved against the manifest `sst compile` wrote.
+
     Raises:
-        SstUsageError: a selector does not parse, or `--prune` excludes keys without `--select`.
+        SstUsageError: a selector is refused, or `--prune` excludes keys without `--select`.
+        ProjectError: no compiled manifest exists, or `--state` holds none (SST-MAN001).
     """
-    prune_types, prune_keys = selection(request.selected)
-    excluded_types, excluded_keys = selection(request.excluded)
+    universe = manifest_universe(compiled_manifest(request.project_dir)) if request.selected or request.excluded else ()
+    previous = _previous_fingerprints(request.state_dir)
+    prune_types, prune_keys = selection(request.selected, universe, previous)
+    excluded_types, excluded_keys = selection(request.excluded, universe, previous)
     if excluded_types is not None:
         prune_types = (
             frozenset(SEMANTIC_REGISTRY.artifacts) - excluded_types
@@ -86,6 +100,22 @@ def plan_scope(request: PlanRequest) -> PlanScope:
             raise SstUsageError("--prune with --exclude requires --select so the prune scope is explicit")
         prune_keys = frozenset(prune_keys - excluded_keys)
     return PlanScope(request.selected, prune_types, prune_keys, excluded_types, excluded_keys, request.prune)
+
+
+def _previous_fingerprints(state_dir: Path | None) -> dict[str, str] | None:
+    """Return each artifact key's fingerprint in the `--state` manifest; None without `--state`.
+
+    Raises:
+        ProjectError: the directory holds no SST manifest (SST-MAN001).
+    """
+    if state_dir is None:
+        return None
+    path = state_dir / "manifest.json"
+    manifest = ManifestFileStore(path).read()
+    if manifest is None:
+        diagnostic = D("SST-MAN001", path=str(path))
+        raise ProjectError(diagnostic.message, diagnostics=(diagnostic,))
+    return {key: entry.fingerprint for key, entry in manifest.artifacts.items()}
 
 
 def plan_runtime(request: PlanRequest) -> PlanSession | PlanRefused:
@@ -100,8 +130,8 @@ def plan_runtime(request: PlanRequest) -> PlanSession | PlanRefused:
     """
     scope = plan_scope(request)
     project_dir = request.project_dir
-    full_result = compiling.compile_result(project_dir, request.target_name, request.manifest_path)
-    prepare = PreparePlan(project_inputs(project_dir, request.target_name, request.manifest_path), SystemClock())
+    full_result = compiling.compile_result(request.paths, request.target_name, request.manifest_path)
+    prepare = PreparePlan(project_inputs(request.paths, request.target_name, request.manifest_path), SystemClock())
     candidates = prepare.select(
         full_result,
         compiled_manifest(project_dir),
@@ -115,9 +145,9 @@ def plan_runtime(request: PlanRequest) -> PlanSession | PlanRefused:
         if candidates.reason is not None:
             raise ProjectError(candidates.reason)
         return candidates
-    profile, port = connect(project_dir, request.target_name)
+    profile, port = connect(request.paths, request.target_name)
     with closed_on_error(port):
-        store = state_store(project_dir, profile.target_name)
+        store = state_store(request.paths, profile.target_name)
         outcome = prepare.run(candidates, port, store, target=profile.identity, state_table=profile.state_table)
     if isinstance(outcome, PlanRefused):
         port.close()
@@ -132,10 +162,23 @@ def refuse_partial_prune(partial: bool, prune: bool) -> None:
     object whose source is only broken; the combination is refused outright.
 
     Raises:
-        SstUsageError: both flags were given.
+        SstUsageError: both flags were given (SST-PRT104).
     """
     if partial and prune:
-        raise SstUsageError("--partial cannot be combined with --prune")
+        refuse_together("--partial", "--prune")
+
+
+def refuse_together(first: str, second: str) -> NoReturn:
+    """Refuse two flags that exclude each other.
+
+    Raises:
+        SstUsageError: always, carrying SST-PRT104.
+
+    Diagnostics:
+        SST-PRT104: both flags were given; raised.
+    """
+    diagnostic = D("SST-PRT104", subject="cli", a=first, b=second)
+    raise SstUsageError(diagnostic.message, diagnostic=diagnostic)
 
 
 def partial_excluded(diagnostics: DiagnosticBag) -> list[str]:

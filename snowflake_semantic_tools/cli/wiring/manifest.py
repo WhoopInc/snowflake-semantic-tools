@@ -6,6 +6,7 @@ from pathlib import Path
 
 from snowflake_semantic_tools.adapters.errors import ProjectError
 from snowflake_semantic_tools.adapters.fs.local import ManifestFileStore
+from snowflake_semantic_tools.adapters.locations import ProjectPaths
 from snowflake_semantic_tools.adapters.project_source import YamlProjectInputs
 from snowflake_semantic_tools.app.compile import CompileResult
 from snowflake_semantic_tools.app.manifest import manifest_for, stale_manifest
@@ -14,9 +15,9 @@ from snowflake_semantic_tools.domain.diagnostics import D
 from snowflake_semantic_tools.domain.state import Manifest
 
 
-def build_manifest(project_dir: Path, result: CompileResult, manifest_path: Path | None) -> Manifest:
+def build_manifest(paths: ProjectPaths, result: CompileResult, manifest_path: Path | None) -> Manifest:
     """Build the manifest `result` publishes, reading what it records about the project's files now."""
-    return manifest_for(result, project_inputs(project_dir, None, manifest_path).manifest_sources())
+    return manifest_for(result, project_inputs(paths, None, manifest_path).manifest_sources())
 
 
 def compiled_manifest(project_dir: Path) -> Manifest:

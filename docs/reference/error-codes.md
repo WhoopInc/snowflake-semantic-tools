@@ -15,22 +15,38 @@ cannot be downgraded by any setting.
 
 ## Contents
 
-- [Configuration (CFG)](#configuration-cfg) -- 19 codes
+- [Configuration (CFG)](#configuration-cfg) -- 43 codes
 - [Parsing (PRS)](#parsing-prs) -- 35 codes
 - [Loading (LOD)](#loading-lod) -- 8 codes
 - [References (REF)](#references-ref) -- 29 codes
 - [Membership (MEM)](#membership-mem) -- 2 codes
 - [Validation (VAL)](#validation-val) -- 161 codes
-- [dbt (DBT)](#dbt-dbt) -- 5 codes
+- [dbt (DBT)](#dbt-dbt) -- 6 codes
 - [Rendering (RND)](#rendering-rnd) -- 2 codes
 - [Manifest and state (MAN)](#manifest-and-state-man) -- 11 codes
 - [Planning (PLN)](#planning-pln) -- 18 codes
 - [Apply (APL)](#apply-apl) -- 20 codes
 - [Snowflake (SNO)](#snowflake-sno) -- 8 codes
-- [External systems (PRT)](#external-systems-prt) -- 6 codes
-- [Internal (INT)](#internal-int) -- 3 codes
+- [External systems (PRT)](#external-systems-prt) -- 21 codes
+- [Internal (INT)](#internal-int) -- 4 codes
 
 ## Configuration (CFG)
+
+### SST-CFG001
+
+**No config file found** (error)
+
+`no sst_config.yml at <path>`
+
+Fix: create sst_config.yml at the project root, or pass --project-dir
+
+### SST-CFG002
+
+**Config is not valid YAML** (error)
+
+`<path> is not valid YAML: <detail>`
+
+Fix: fix the YAML syntax at the reported position
 
 ### SST-CFG003
 
@@ -38,7 +54,7 @@ cannot be downgraded by any setting.
 
 `unknown config key '<key>'`
 
-Fix: remove the key, or check it against the configuration reference
+Fix: remove the key, or check it against sst docs config
 
 ### SST-CFG004
 
@@ -47,6 +63,14 @@ Fix: remove the key, or check it against the configuration reference
 `config key '<key>' expects <expected>, found <found>`
 
 Fix: correct the value type
+
+### SST-CFG005
+
+**Multiple config files discoverable** (error)
+
+`<count> candidate config files found; used <used>, shadowed <shadowed>`
+
+Fix: delete the shadowed files, or pass --project-dir
 
 ### SST-CFG006
 
@@ -70,7 +94,15 @@ Fix: correct the spelling
 
 `config key '<key>' value <found> is outside <expected>`
 
-Fix: use an allowed value
+Fix: use one of the allowed values
+
+### SST-CFG009
+
+**profiles.yml not found** (error)
+
+`no profiles.yml at any searched location`
+
+Fix: create profiles.yml, or set DBT_PROFILES_DIR
 
 ### SST-CFG010
 
@@ -80,6 +112,38 @@ Fix: use an allowed value
 
 Fix: add the target, or pass --target with a declared name
 
+### SST-CFG011
+
+**Profile type is not snowflake** (error)
+
+`profile '<profile>' declares type '<found>'`
+
+Fix: point SST at a Snowflake profile
+
+### SST-CFG012
+
+**Credential field missing from the resolved profile** (error)
+
+`profile '<profile>' has no <field>`
+
+Fix: set the field in profiles.yml or its env var
+
+### SST-CFG013
+
+**env_var() resolved to an empty string** (error)
+
+`env_var('<var>') is unset and has no default`
+
+Fix: set the variable, or give env_var() a default
+
+### SST-CFG014
+
+**Profile field silently empty** (warning)
+
+`profile '<profile>' leaves <field> empty`
+
+Fix: set it explicitly rather than relying on account defaults
+
 ### SST-CFG015
 
 **evals block declares a database or schema** (error)
@@ -87,6 +151,110 @@ Fix: add the target, or pass --target with a declared name
 `evals: declares <key>, which is structurally invalid`
 
 Fix: remove +database and +schema from evals:; eval objects resolve to the agent's schema
+
+### SST-CFG016
+
+**Targeting value does not resolve for the current target** (error)
+
+`+<key> does not resolve for target '<target>'`
+
+Fix: declare the value for every target you publish to
+
+### SST-CFG017
+
+**tool() reference does not resolve from config** (error)
+
+`{ tool('<group>','<name>') } does not resolve`
+
+Fix: declare the group and member under the tools directory
+
+### SST-CFG018
+
+**Declared tool member referenced by nothing** (warning)
+
+`tool member '<group>.<name>' is referenced by nothing`
+
+Fix: reference it from an agent, or delete it
+
+### SST-CFG019
+
+**Tool member declared under both define and reference** (error)
+
+`'<name>' appears under both define: and reference:`
+
+Fix: choose one; a member is owned or referenced, never both
+
+### SST-CFG020
+
+**Per-group tools override names an unknown or reference-only group** (error)
+
+`tools: override names group '<group>', which <reason>`
+
+Fix: target a group that exists and contains define: members
+
+### SST-CFG023
+
+**max_staleness below the accepted floor** (error)
+
+`+max_staleness is <found>; the minimum is 120`
+
+Fix: raise max_staleness to at least 120
+
+### SST-CFG025
+
+**Value absent from an allowlist** (warning)
+
+`<kind> '<found>' is absent from <key>`
+
+Fix: add it to the allowlist key, or use an allowed value
+
+### SST-CFG029
+
+**var() reference has no declaration** (error)
+
+`{ var('<var>') } is not declared in config`
+
+Fix: declare it under vars:
+
+### SST-CFG031
+
+**snowflake_syntax_check is not set explicitly** (error)
+
+`validation.snowflake_syntax_check is unset`
+
+Fix: set it true or false explicitly
+
+### SST-CFG032
+
+**Config file shadows another config file** (warning)
+
+`using <used>; shadowed <shadowed>`
+
+Fix: delete the shadowed file
+
+### SST-CFG033
+
+**Illegal severity override** (error, always an error)
+
+`severity_overrides <code>: <found> is not permitted (<reason>)`
+
+Fix: promote instead of demoting, or remove the override
+
+### SST-CFG034
+
+**Strict flag and config key disagree** (warning)
+
+`--strict <flag> disagrees with diagnostics.strict <config>; the flag wins`
+
+Fix: remove one of the two
+
+### SST-CFG035
+
+**Baseline nearing expiry** (warning)
+
+`baseline expires on <date>; <count> entries remain`
+
+Fix: fix the baselined diagnostics, or run sst baseline renew --reason
 
 ### SST-CFG036
 
@@ -96,21 +264,37 @@ Fix: remove +database and +schema from evals:; eval objects resolve to the agent
 
 Fix: set fqn: on the entry, or set default_prefix on the block
 
+### SST-CFG037
+
+**validation.strict is enforced from 1.0 and no baseline exists** (warning)
+
+`validation.strict: true is enforced from 1.0; <count> warnings now block`
+
+Fix: run sst baseline add to hold the current warning count, then fix them
+
 ### SST-CFG038
 
-**Sample-value collection is disabled** (error, always an error)
+**Sample-value collection requested but the project refuses it** (error, always an error)
 
 `--include <components> reads row data, and enrichment.allow_sample_value_collection is false`
 
 Fix: leave sample-values and enums out of --include; authored sample_values are still read
 
+### SST-CFG039
+
+**Baseline is past its expiry** (error)
+
+`baseline expired on <date>; <count> entries resume blocking`
+
+Fix: fix the baselined diagnostics, or run sst baseline renew --reason
+
 ### SST-CFG040
 
-**sha_version is declared in vars** (error)
+**`sha_version` is declared in `vars:`** (error)
 
 `vars.sha_version is supplied by SST and must not be declared`
 
-Fix: remove it from vars:
+Fix: remove it from vars:; SST resolves it from the commit being published
 
 ### SST-CFG041
 
@@ -122,7 +306,7 @@ Fix: create the directory, or remove the key
 
 ### SST-CFG042
 
-**Folder route declared under evals or skills** (error)
+**Folder route declared under `evals:` or `skills:`** (error)
 
 `<block>: declares a folder route '<key>'`
 
@@ -183,6 +367,14 @@ Fix: SST renders {{ env_var('NAME') }} and {{ env_var('NAME', 'default') }} anyw
 `target '<target>': <detail>`
 
 Fix: authenticate with a key pair, a password, SSO (authenticator), or an OAuth access token (token)
+
+### SST-CFG200
+
+**Deprecated config key** (warning)
+
+`config key '<key>' is deprecated; use '<expected>'`
+
+Fix: rename the key
 
 ## Parsing (PRS)
 
@@ -2092,6 +2284,14 @@ Fix: reconcile the two types, or add a dbt contract
 
 Fix: write primary_key as a list of columns and unique_keys as a list of column lists
 
+### SST-DBT017
+
+**dbt manifest schema version is unsupported** (error)
+
+`manifest schema '<found>'; supported: <expected>`
+
+Fix: use a dbt version that writes a supported manifest schema, or pass --allow-unsupported-manifest-schema for one run
+
 ### SST-DBT030
 
 **Forbidden meta.sst location key** (error)
@@ -2594,41 +2794,57 @@ Fix: fix the cause the message names, then run sst enrich again
 
 **Snowflake connection failed** (error)
 
-`connection to <value> failed: <detail>`
+`could not connect to <value>: <detail>`
 
-Fix: check credentials, network access, and the selected target
+Fix: check the account, the network and the credential
+
+### SST-PRT002
+
+**Authentication failed** (error)
+
+`authentication failed for <value>`
+
+Fix: refresh the credential
 
 ### SST-PRT003
 
-**Transient Snowflake failure** (error)
+**Query timed out** (error)
 
-`transient Snowflake failure: <detail>`
+`query timed out after <detail>`
 
-Fix: retry the operation
+Fix: retry; this is retryable
 
 ### SST-PRT004
 
-**Snowflake privilege refused** (error)
+**Insufficient privilege** (error)
 
-`Snowflake refused <value>: <detail>`
+`<value> lacks <detail>`
 
-Fix: grant the required privilege to the primary role
+Fix: grant the privilege
 
 ### SST-PRT005
 
-**Snowflake object not found** (error)
+**Object not found** (error)
 
 `Snowflake object <value> was not found: <detail>`
 
-Fix: create the dependency or correct its name
+Fix: publish it, or correct the name
 
-### SST-PRT007
+### SST-PRT006
 
-**dbt manifest schema version unsupported** (error)
+**dbt manifest not found** (error)
 
-`manifest schema '<found>' is unsupported; expected '<expected>'`
+`no dbt manifest at <path>`
 
-Fix: use a dbt version that emits {expected}
+Fix: run dbt parse, or pass --manifest with the path of an existing manifest
+
+### SST-PRT008
+
+**Filesystem write failed** (error)
+
+`could not write <path>: <detail>`
+
+Fix: check the permissions and the free space
 
 ### SST-PRT009
 
@@ -2638,7 +2854,117 @@ Fix: use a dbt version that emits {expected}
 
 Fix: SST reads only regular files inside the project: replace a symbolic link with the file or folder it points to, and keep dbt's target-path inside the project
 
+### SST-PRT010
+
+**Path could not be removed** (error)
+
+`could not remove <path>: <detail>`
+
+Fix: remove it by hand
+
+### SST-PRT011
+
+**Credential resolved to an empty value** (error)
+
+`<value> resolved to an empty credential`
+
+Fix: set the environment variable, or the profile field
+
+### SST-PRT012
+
+**Secret would be rendered in plain text** (error)
+
+`<value> would be rendered verbatim`
+
+Fix: the output was withheld; report this as a bug, since SST never prints a credential
+
+### SST-PRT100
+
+**Invalid invocation** (error)
+
+`<detail>`
+
+Fix: see sst --help, and the command's own --help
+
+### SST-PRT101
+
+**Comma in a selector** (error)
+
+`selector '<value>' contains a comma`
+
+Fix: use space-separated selectors; intersection is not supported
+
+### SST-PRT102
+
+**Unknown selector kind** (error)
+
+`selector '<value>' names an unknown kind`
+
+Fix: use a name, type:, path:, state:, or &lt;type&gt;:&lt;name&gt;; only a name takes * and ? globs
+
+### SST-PRT103
+
+**Selector requires state that was not supplied** (error)
+
+`selector '<value>' requires --state`
+
+Fix: pass --state
+
+### SST-PRT104
+
+**Mutually exclusive flags** (error)
+
+`<a> and <b> cannot be combined`
+
+Fix: pass one of them
+
+### SST-PRT105
+
+**Invalid source or model selector** (error)
+
+`'<value>' is not a valid <detail> selector`
+
+Fix: use the documented form: model:&lt;name&gt;, or a model name
+
+### SST-PRT106
+
+**Output format is not supported by this command** (error)
+
+`'<found>' is not a supported format for <command>; supported: <expected>`
+
+Fix: pass one of the supported formats
+
+### SST-PRT107
+
+**Run interrupted** (info)
+
+`interrupted after <detail>; <value>`
+
+### SST-PRT109
+
+**Mandatory confirmation flag absent** (error)
+
+`<command> requires --yes`
+
+Fix: re-run with --yes; there is no interactive prompt
+
+### SST-PRT110
+
+**Selector passed to a command that has none** (error)
+
+`<command> takes no selector; '<value>' is not accepted`
+
+Fix: remove the selector; this command takes none, and set-based removal is apply --prune
+
 ## Internal (INT)
+
+### SST-INT001
+
+**Unhandled internal exception** (error, always an error)
+
+`internal error: <detail>`
+
+Fix: report this as a bug, with the command line and the output
 
 ### SST-INT900
 

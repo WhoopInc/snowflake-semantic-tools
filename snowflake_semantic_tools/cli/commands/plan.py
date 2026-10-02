@@ -2,55 +2,73 @@
 
 from __future__ import annotations
 
+import dataclasses
 from pathlib import Path
 
 import click
 
 from snowflake_semantic_tools.adapters.fs.local import PlanFileStore
+from snowflake_semantic_tools.adapters.locations import ProjectPaths
 from snowflake_semantic_tools.app.plan import PlanReady, PlanRefused
 from snowflake_semantic_tools.cli.exit_codes import CHANGES, ERROR, OK
-from snowflake_semantic_tools.cli.group import SstUsageError
 from snowflake_semantic_tools.cli.options import (
-    output_option,
+    defer_target_option,
+    no_detailed_exitcode_option,
     partial_option,
-    project_options,
     prune_option,
     selection_options,
     sql_out_option,
+    state_option,
+    target_option,
     validation_options,
 )
 from snowflake_semantic_tools.cli.plan_output import change_json, print_plan, write_plan_sql
 from snowflake_semantic_tools.cli.runner import CommandResult, command_body
+from snowflake_semantic_tools.cli.settings import strict_disagreement
 from snowflake_semantic_tools.cli.wiring.plan import (
     PlanRequest,
     PlanSession,
     partial_excluded,
     plan_runtime,
     refuse_partial_prune,
+    refuse_together,
 )
 from snowflake_semantic_tools.cli.wiring.project import target_dir
 from snowflake_semantic_tools.domain.diagnostics import DiagnosticBag
 from snowflake_semantic_tools.domain.state import SavedPlan
 
 
+def _refuse_invocation(plan_out: Path | None, no_plan_out: bool, partial: bool, prune: bool) -> None:
+    """Refuse flags that exclude each other: a plan path with `--no-plan-out`, or a partial prune.
+
+    Raises:
+        SstUsageError: carrying SST-PRT104.
+    """
+    if plan_out is not None and no_plan_out:
+        refuse_together("--plan-out", "--no-plan-out")
+    refuse_partial_prune(partial, prune)
+
+
 @click.command()
-@project_options()
+@target_option()
 @selection_options()
+@state_option()
+@defer_target_option()
 @prune_option()
 @partial_option()
 @click.option("--plan-out", type=click.Path(dir_okay=False, path_type=Path))
 @click.option("--no-plan-out", is_flag=True)
 @sql_out_option()
-@click.option("--no-detailed-exitcode", is_flag=True)
+@no_detailed_exitcode_option()
 @validation_options()
-@output_option()
-@command_body("plan")
+@command_body("plan", refusals=_refuse_invocation)
 def plan(
-    project_dir: Path,
+    paths: ProjectPaths,
     target_name: str | None,
     manifest_path: Path | None,
     selected: tuple[str, ...],
     excluded: tuple[str, ...],
+    state_dir: Path | None,
     prune: bool,
     partial: bool,
     plan_out: Path | None,
@@ -59,21 +77,31 @@ def plan(
     no_detailed_exitcode: bool,
     strict: bool | None,
     snowflake_syntax_check: bool | None,
-    output: str,
 ) -> CommandResult:
-    """Observe live Snowflake state and compute a non-writing plan."""
-    if plan_out is not None and no_plan_out:
-        raise SstUsageError("--plan-out and --no-plan-out are mutually exclusive")
-    refuse_partial_prune(partial, prune)
+    """Observe live Snowflake state and compute a non-writing plan.
+
+    Exit 0 with nothing to change, 2 with changes pending, and 1 on an error or a blocked change.
+    """
     request = PlanRequest(
-        project_dir, target_name, manifest_path, selected, excluded, prune, partial, strict, snowflake_syntax_check
+        paths,
+        target_name,
+        manifest_path,
+        selected,
+        excluded,
+        prune,
+        partial,
+        strict,
+        snowflake_syntax_check,
+        state_dir,
     )
     session = plan_runtime(request)
     if isinstance(session, PlanRefused):
         return CommandResult(ERROR, session.diagnostics)
     saved, destination, sql_path = _save_plan(request, session, plan_out, no_plan_out, sql_out)
     plan_path = None if no_plan_out else destination
-    return _plan_report(request, session.ready, saved, plan_path, sql_path, no_detailed_exitcode)
+    report = _plan_report(request, session.ready, saved, plan_path, sql_path, no_detailed_exitcode)
+    disagreement = strict_disagreement(paths, strict)
+    return dataclasses.replace(report, diagnostics=DiagnosticBag((*disagreement, *report.diagnostics)))
 
 
 def _save_plan(

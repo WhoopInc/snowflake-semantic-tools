@@ -6,39 +6,48 @@ from pathlib import Path
 
 import click
 
+from snowflake_semantic_tools.adapters.locations import ProjectPaths
 from snowflake_semantic_tools.app.validate import ValidateArtifacts, ValidationResult
 from snowflake_semantic_tools.cli.exit_codes import ERROR, OK
-from snowflake_semantic_tools.cli.options import output_option, project_options, validation_options
+from snowflake_semantic_tools.cli.options import database_option, selection_options, target_option, validation_options
 from snowflake_semantic_tools.cli.runner import CommandResult, command_body
-from snowflake_semantic_tools.cli.settings import validation_settings
+from snowflake_semantic_tools.cli.settings import strict_disagreement, validation_settings
 from snowflake_semantic_tools.cli.wiring import compile as compiling
 from snowflake_semantic_tools.cli.wiring.project import connect
-from snowflake_semantic_tools.domain.diagnostics import Severity
+from snowflake_semantic_tools.domain.diagnostics import DiagnosticBag, Severity
 
 
 @click.command()
-@project_options()
+@target_option()
+@selection_options()
+@database_option()
 @validation_options()
-@output_option()
 @command_body("validate")
 def validate(
-    project_dir: Path,
+    paths: ProjectPaths,
     target_name: str | None,
+    selected: tuple[str, ...],
+    excluded: tuple[str, ...],
+    database: str | None,
     manifest_path: Path | None,
     strict: bool | None,
     snowflake_syntax_check: bool | None,
-    output: str,
 ) -> CommandResult:
-    """Validate every offline rule, with optional connected checks."""
-    compiled = compiling.compile_result(project_dir, target_name, manifest_path)
+    """Validate every offline rule, with optional connected checks.
+
+    Exit 0 with no errors, and 1 with errors, or warnings under --strict.
+    """
+    compiled = compiling.compile_result(paths, target_name, manifest_path, database=database)
+    if selected or excluded:
+        compiled = compiling.selected_result(paths.project_dir, compiled, selected, excluded)
     effective_strict, effective_connected = validation_settings(
-        project_dir,
+        paths,
         strict=strict,
         connected=snowflake_syntax_check,
     )
     port = None
     if effective_connected:
-        _, port = connect(project_dir, target_name)
+        _, port = connect(paths, target_name)
     try:
         result = ValidateArtifacts(port).run(
             compiled,
@@ -51,9 +60,10 @@ def validate(
     exit_code = OK if result.success else ERROR
     return CommandResult(
         exit_code,
-        result.diagnostics,
+        DiagnosticBag((*strict_disagreement(paths, strict), *result.diagnostics)),
         human=None if exit_code else lambda: _print_counts(result),
         promoted=result.promoted,
+        gated=True,
     )
 
 

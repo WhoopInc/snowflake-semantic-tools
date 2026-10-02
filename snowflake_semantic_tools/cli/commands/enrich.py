@@ -10,16 +10,17 @@ from typing import Any
 import click
 
 from snowflake_semantic_tools.adapters.errors import ProjectError
+from snowflake_semantic_tools.adapters.locations import ProjectPaths
 from snowflake_semantic_tools.app.enrich import EditedFile, EnrichReport, EnrichRequest, ModelReport
 from snowflake_semantic_tools.cli.exit_codes import CHANGES, ERROR, OK
 from snowflake_semantic_tools.cli.group import SstUsageError
 from snowflake_semantic_tools.cli.options import (
     Decorator,
+    database_option,
     fail_fast_option,
-    output_option,
-    project_options,
-    selection_options,
+    no_detailed_exitcode_option,
     stacked,
+    target_option,
 )
 from snowflake_semantic_tools.cli.runner import CommandResult, command_body
 from snowflake_semantic_tools.cli.wiring.enrich import (
@@ -39,10 +40,7 @@ from snowflake_semantic_tools.domain.enrich import (
 
 # Each 0.3 flag `sst enrich` no longer takes, and what to pass instead.
 _REMOVED_FLAGS: tuple[tuple[tuple[str, ...], bool, str], ...] = (
-    (("--models", "-m"), True, "pass --select model:<name> once per model"),
-    (("-t",), True, "use --target"),
-    (("-d",), True, "use --database"),
-    (("-s",), True, "use --schema"),
+    (("--models",), True, "pass --select model:<name> once per model"),
     (("--allow-non-prod",), False, "enrich reads the manifest of the target you pass; check --target"),
     (("--column-types", "-ct"), False, "use --include column-types"),
     (("--data-types", "-dt"), False, "use --include data-types"),
@@ -94,24 +92,48 @@ def _components(values: tuple[str, ...], flag: str) -> frozenset[Component]:
     return components
 
 
+def _refuse_invocation(
+    project_dir: Path,
+    path_arguments: tuple[Path, ...],
+    selected: tuple[str, ...],
+    excluded: tuple[str, ...],
+    included: tuple[str, ...],
+    forced: tuple[str, ...],
+    database: str | None,
+    schema: str | None,
+) -> None:
+    """Refuse a command line enrich cannot run, before the project is resolved.
+
+    Raises:
+        SstUsageError: a component, selector, PATH, or relation part is not accepted.
+    """
+    _components(included, "--include")
+    _components(forced, "--force")
+    project_paths(project_dir, path_arguments)
+    model_selectors(selected, "--select")
+    model_selectors(excluded, "--exclude")
+    relation_part(database, "--database")
+    relation_part(schema, "--schema")
+
+
 @click.command()
-@click.argument("paths", nargs=-1, type=click.Path(path_type=Path))
-@project_options()
-@selection_options()
+@click.argument("path_arguments", metavar="[PATH]...", nargs=-1, type=click.Path(path_type=Path))
+@target_option()
+@click.option("--select", "selected", multiple=True)
+@click.option("--exclude", "excluded", multiple=True)
 @click.option("--include", "included", multiple=True, metavar="COMPONENTS")
 @click.option("--force", "forced", multiple=True, metavar="COMPONENTS")
-@click.option("--database")
+@database_option()
 @click.option("--schema")
 @click.option("--check", is_flag=True)
 @click.option("--dry-run", is_flag=True)
-@click.option("--no-detailed-exitcode", is_flag=True)
+@no_detailed_exitcode_option()
 @fail_fast_option()
 @_removed_flags()
-@output_option()
-@command_body("enrich")
+@command_body("enrich", refusals=_refuse_invocation)
 def enrich(
-    paths: tuple[Path, ...],
-    project_dir: Path,
+    path_arguments: tuple[Path, ...],
+    paths: ProjectPaths,
     target_name: str | None,
     manifest_path: Path | None,
     selected: tuple[str, ...],
@@ -124,7 +146,6 @@ def enrich(
     dry_run: bool,
     no_detailed_exitcode: bool,
     fail_fast: bool,
-    output: str,
 ) -> CommandResult:
     """Fill dbt model column metadata from the warehouse, editing the model YAML in place.
 
@@ -136,8 +157,9 @@ def enrich(
     Exit 0 when done, 1 when a model failed, and 2 under --check when files would change.
     """
     options = resolve_options(_components(included, "--include"), _components(forced, "--force"))
+    project_dir = paths.project_dir
     request = EnrichRequest(
-        paths=project_paths(project_dir, paths),
+        paths=project_paths(project_dir, path_arguments),
         selected=model_selectors(selected, "--select"),
         excluded=model_selectors(excluded, "--exclude"),
         options=options,
@@ -145,9 +167,9 @@ def enrich(
         schema=relation_part(schema, "--schema"),
         fail_fast=fail_fast,
     )
-    port = LazyEnrichPort(project_dir, target_name)
+    port = LazyEnrichPort(paths, target_name)
     try:
-        project = enrich_project(project_dir, target_name, manifest_path, port)
+        project = enrich_project(paths, target_name, manifest_path, port)
         report = project.run(request)
         if not report.diagnostics.has_errors and report.selected == 0 and not report.stopped:
             raise ProjectError(f"no dbt model of the project in {project_dir} matched the selection")

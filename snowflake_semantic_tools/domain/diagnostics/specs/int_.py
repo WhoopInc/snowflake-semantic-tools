@@ -12,6 +12,14 @@ TITLE: str = "Internal"
 
 SPECS: tuple[ErrorSpec, ...] = (
     spec(
+        "SST-INT001",
+        Severity.ERROR,
+        "Unhandled internal exception",
+        "internal error: {detail}",
+        "report this as a bug, with the command line and the output",
+        demotable=False,
+    ),
+    spec(
         "SST-INT900",
         Severity.ERROR,
         "Unregistered diagnostic code",

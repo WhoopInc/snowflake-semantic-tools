@@ -2,14 +2,12 @@
 
 from __future__ import annotations
 
-from pathlib import Path
-
 import click
 
+from snowflake_semantic_tools.adapters.locations import ProjectPaths
 from snowflake_semantic_tools.adapters.yaml.migrate import filter_sites, semantic_files, write_file
 from snowflake_semantic_tools.app.migrate_refs import MigrateRefs, MigrationReport
 from snowflake_semantic_tools.cli.exit_codes import CHANGES, ERROR, OK
-from snowflake_semantic_tools.cli.options import output_option, project_dir_option
 from snowflake_semantic_tools.cli.runner import CommandResult, command_body
 from snowflake_semantic_tools.cli.settings import semantic_models_dir
 
@@ -23,17 +21,16 @@ def migrate(ctx: click.Context) -> None:
 
 
 @migrate.command(name="refs")
-@project_dir_option()
 @click.option("--write", "write_files", is_flag=True, help="Rewrite files in place instead of reporting.")
-@output_option()
 @command_body("migrate refs")
-def migrate_refs_command(project_dir: Path, write_files: bool, output: str) -> CommandResult:
+def migrate_refs_command(paths: ProjectPaths, write_files: bool) -> CommandResult:
     """Rewrite legacy table()/column() globals to ref(), and label boolean filters.
 
     Dry-run by default: exit 2 when rewrites are pending, 0 when there are none,
     and 1 when a table() call sits where no rewrite is safe.
     """
-    files = semantic_files(project_dir, semantic_models_dir(project_dir))
+    project_dir = paths.project_dir
+    files = semantic_files(project_dir, semantic_models_dir(paths))
     report = MigrateRefs(files, filter_sites).run()
     if write_files:
         for item in report.changed:

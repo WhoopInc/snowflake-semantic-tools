@@ -1,34 +1,84 @@
-"""`sst list`: the compiled artifacts, with the status the local state file records for each."""
+"""`sst list`: the compiled artifacts, with the status the local state file records for each.
+
+`TYPE` is a registered artifact type, so a newly registered type is listable without editing this
+command. `--select` and `--exclude` take the same selectors as `sst plan`. Besides `table`, `plain`
+and `json`, `list` prints `yaml`, the envelope as YAML, and `csv`, one row per artifact.
+"""
 
 from __future__ import annotations
 
 import dataclasses
-from pathlib import Path
 
 import click
 
 from snowflake_semantic_tools.adapters.fs.local import STATE_FILE_GLOB, StateFileStore
+from snowflake_semantic_tools.adapters.locations import ProjectPaths
 from snowflake_semantic_tools.app.listing import ArtifactSummary, list_artifacts
-from snowflake_semantic_tools.cli.options import output_option, project_dir_option
+from snowflake_semantic_tools.cli.options import selection_options
 from snowflake_semantic_tools.cli.runner import CommandResult, command_body
+from snowflake_semantic_tools.cli.wiring.compile import manifest_universe, selection
 from snowflake_semantic_tools.cli.wiring.manifest import compiled_manifest
 from snowflake_semantic_tools.cli.wiring.project import target_dir
+from snowflake_semantic_tools.domain.model.artifact_key import split_artifact_key
+from snowflake_semantic_tools.domain.model.registry import SEMANTIC_REGISTRY
+from snowflake_semantic_tools.domain.plan.selectors import Selectable
+
+LIST_OUTPUTS = ("table", "plain", "json", "yaml", "csv")
 
 
 @click.command(name="list")
-@project_dir_option()
-@output_option()
-@command_body("list")
-def list_command(project_dir: Path, output: str) -> CommandResult:
-    """List compiled artifacts and cached application status."""
-    manifest = compiled_manifest(project_dir)
-    states = tuple(sorted(target_dir(project_dir).glob(STATE_FILE_GLOB)))
+@click.argument(
+    "artifact_type", metavar="[TYPE]", required=False, type=click.Choice(sorted(SEMANTIC_REGISTRY.artifacts))
+)
+@selection_options()
+@click.option("--long", "long_format", is_flag=True)
+@command_body("list", outputs=LIST_OUTPUTS)
+def list_command(
+    paths: ProjectPaths,
+    artifact_type: str | None,
+    selected: tuple[str, ...],
+    excluded: tuple[str, ...],
+    long_format: bool,
+) -> CommandResult:
+    """List compiled artifacts and their cached application status, optionally of one TYPE."""
+    manifest = compiled_manifest(paths.project_dir)
+    states = tuple(sorted(target_dir(paths.project_dir).glob(STATE_FILE_GLOB)))
     state = StateFileStore(states[0]).read_local() if len(states) == 1 else None
-    summaries = list_artifacts(manifest, state)
-    data = [dataclasses.asdict(item) for item in summaries]
-    return CommandResult(data=data, human=lambda: _print_summaries(summaries))
+    universe = manifest_universe(manifest)
+    chosen = _chosen(selected, universe)
+    left_out = _chosen(excluded, universe) or frozenset()
+    summaries = tuple(
+        item
+        for item in list_artifacts(manifest, state)
+        if (artifact_type is None or split_artifact_key(item.key)[0] == artifact_type)
+        and (chosen is None or item.key in chosen)
+        and item.key not in left_out
+    )
+    items = [_item(item, manifest.artifacts[item.key].source_files if long_format else None) for item in summaries]
+    data = {"type": artifact_type, "items": items, "count": len(items)}
+    return CommandResult(data=data, human=lambda: _print_summaries(summaries, long_format), rows=items)
 
 
-def _print_summaries(summaries: tuple[ArtifactSummary, ...]) -> None:
+def _chosen(values: tuple[str, ...], universe: tuple[Selectable, ...]) -> frozenset[str] | None:
+    """Return the keys the selectors name, a type expanding to its artifacts; None without selectors."""
+    if not values:
+        return None
+    types, keys = selection(values, universe)
+    named = set(keys or ())
+    named.update(item.key for item in universe if types and item.type in types)
+    return frozenset(named)
+
+
+def _item(summary: ArtifactSummary, source_files: tuple[str, ...] | None) -> dict[str, object]:
+    item = dataclasses.asdict(summary)
+    if source_files is not None:
+        item["source_files"] = list(source_files)
+    return item
+
+
+def _print_summaries(summaries: tuple[ArtifactSummary, ...], long_format: bool) -> None:
     for item in summaries:
-        click.echo(f"{item.key} {item.status} {item.target} {item.fingerprint}")
+        line = f"{item.key} {item.status} {item.target} {item.fingerprint}"
+        if long_format:
+            line += f" applied={item.applied_fingerprint or '-'} version={item.version or '-'}"
+        click.echo(line)

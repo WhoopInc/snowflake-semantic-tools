@@ -8,12 +8,15 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from pathlib import Path
+from typing import NoReturn
 
 from snowflake_semantic_tools.adapters.enrich_files import ProjectFiles
+from snowflake_semantic_tools.adapters.locations import ProjectPaths
 from snowflake_semantic_tools.adapters.snowflake.connector import SnowflakeConnector
 from snowflake_semantic_tools.app.enrich import EnrichProject
 from snowflake_semantic_tools.cli.group import SstUsageError
 from snowflake_semantic_tools.cli.wiring.project import connect, project_inputs
+from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic
 from snowflake_semantic_tools.domain.enrich import WarehouseColumn
 from snowflake_semantic_tools.domain.model.identifier import Identifier, QualifiedName
 from snowflake_semantic_tools.domain.ports.enrich import EnrichPort
@@ -22,14 +25,14 @@ from snowflake_semantic_tools.domain.ports.enrich import EnrichPort
 class LazyEnrichPort(EnrichPort):
     """The project target's Snowflake session, connected when enrich first reads through it."""
 
-    def __init__(self, project_dir: Path, target_name: str | None) -> None:
-        self._project_dir = project_dir
+    def __init__(self, paths: ProjectPaths, target_name: str | None) -> None:
+        self._paths = paths
         self._target_name = target_name
         self._port: SnowflakeConnector | None = None
 
     def _connected(self) -> SnowflakeConnector:
         if self._port is None:
-            _, self._port = connect(self._project_dir, self._target_name)
+            _, self._port = connect(self._paths, self._target_name)
         return self._port
 
     def relation_columns(self, relation: QualifiedName) -> tuple[WarehouseColumn, ...] | None:
@@ -50,10 +53,10 @@ class LazyEnrichPort(EnrichPort):
 
 
 def enrich_project(
-    project_dir: Path, target_name: str | None, manifest_path: Path | None, port: EnrichPort
+    paths: ProjectPaths, target_name: str | None, manifest_path: Path | None, port: EnrichPort
 ) -> EnrichProject:
     """Bind the use case to the project's files and inputs, reading the warehouse through `port`."""
-    return EnrichProject(project_inputs(project_dir, target_name, manifest_path), port, ProjectFiles(project_dir))
+    return EnrichProject(project_inputs(paths, target_name, manifest_path), port, ProjectFiles(paths.project_dir))
 
 
 def project_paths(project_dir: Path, paths: Sequence[Path]) -> tuple[str, ...]:
@@ -84,22 +87,34 @@ def model_selectors(values: Sequence[str], flag: str) -> tuple[str, ...]:
     `model:<name>` and a bare `<name>` both name a model.
 
     Raises:
-        SstUsageError: a value holds a comma, names another artifact type, or names nothing.
+        SstUsageError: a value holds a comma (SST-PRT101), or is not a model selector (SST-PRT105).
+
+    Diagnostics:
+        SST-PRT101: a selector contains a comma; raised.
+        SST-PRT105: a selector names a directory, another kind than a model, or nothing; raised.
     """
     names = []
     for value in values:
         if "," in value:
-            raise SstUsageError(f"commas are not accepted in {flag}; repeat {flag} for each model")
-        if "/" in value:
-            raise SstUsageError(f"{flag} selects models by name; pass directories as PATH arguments instead")
+            _refuse(D("SST-PRT101", subject="cli", value=value), f"; repeat {flag} for each model")
         prefix, separator, name = value.partition(":")
-        if separator and prefix.strip().casefold() != "model":
-            raise SstUsageError(f"sst enrich selects dbt models only; write {flag} model:<name>")
         name = (name if separator else value).strip()
+        if "/" in value:
+            _refuse_model(value, f"{flag} selects models by name; pass directories as PATH arguments instead")
+        if separator and prefix.strip().casefold() != "model":
+            _refuse_model(value, f"sst enrich selects dbt models only; write {flag} model:<name>")
         if not name:
-            raise SstUsageError(f"{flag} {value!r} names no model")
+            _refuse_model(value, f"{flag} {value!r} names no model")
         names.append(name)
     return tuple(names)
+
+
+def _refuse_model(value: str, reason: str) -> NoReturn:
+    _refuse(D("SST-PRT105", subject="cli", value=value, detail="dbt model"), f": {reason}")
+
+
+def _refuse(diagnostic: Diagnostic, explanation: str) -> NoReturn:
+    raise SstUsageError(diagnostic.message + explanation, diagnostic=diagnostic)
 
 
 def relation_part(value: str | None, flag: str) -> Identifier | None:

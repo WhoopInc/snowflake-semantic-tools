@@ -203,6 +203,11 @@ def scrubbed_message(exc: BaseException) -> str:
     return _KEY_FILE.sub(_REDACTED, message)
 
 
+# Snowflake's error numbers for a credential it rejected at login: a wrong password, an expired or
+# invalid token, a rejected key pair, and a failed SSO or MFA exchange.
+_AUTHENTICATION_ERRNOS = frozenset((390100, 390144, 390195, 390302, 390303, 390318, 390422))
+
+
 def _port_error(exc: Exception, *, connecting_to: str | None = None) -> SnowflakePortError:
     """Build the port error for a connector failure, with the diagnostic a command reports for it.
 
@@ -210,7 +215,8 @@ def _port_error(exc: Exception, *, connecting_to: str | None = None) -> Snowflak
     nothing else of the failure is copied.
 
     Diagnostics:
-        SST-PRT001: connecting to `connecting_to` failed.
+        SST-PRT002: Snowflake rejected the session's credential while connecting.
+        SST-PRT001: connecting to `connecting_to` failed for another reason.
         SST-PRT003: the connection dropped or the statement timed out or was cancelled.
         SST-PRT004: Snowflake refused the statement for want of a privilege.
     """
@@ -219,12 +225,16 @@ def _port_error(exc: Exception, *, connecting_to: str | None = None) -> Snowflak
     state = sqlstate or ""
     upper = message.upper()
     diagnostic: Diagnostic | None = None
-    if connecting_to is not None:
+    if connecting_to is not None and (
+        getattr(exc, "errno", None) in _AUTHENTICATION_ERRNOS or "INCORRECT USERNAME OR PASSWORD" in upper
+    ):
+        diagnostic = D("SST-PRT002", value=connecting_to)
+    elif connecting_to is not None:
         diagnostic = D("SST-PRT001", value=connecting_to, detail=message)
     elif state.startswith("08") or state in {"57014", "57P01"} or "TIMEOUT" in upper:
-        diagnostic = D("SST-PRT003", detail=message)
+        diagnostic = D("SST-PRT003", detail=f"its deadline ({message})")
     elif state.startswith("28") or state == "42501" or "INSUFFICIENT PRIVILEGES" in upper:
-        diagnostic = D("SST-PRT004", value="the statement", detail=message)
+        diagnostic = D("SST-PRT004", value="the session's role", detail=f"a privilege the statement needs ({message})")
     return SnowflakePortError(
         message,
         sqlstate=sqlstate,
