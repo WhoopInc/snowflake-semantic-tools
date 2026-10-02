@@ -217,3 +217,49 @@ def test_a_prompt_or_a_rule_that_is_not_utf8_is_reported_and_left_out(tmp_path: 
     ]
     assert catalog.profiles[0].prompt is None
     assert catalog.shared is not None and [name for name, _ in catalog.shared.rules] == ["a.md"]
+
+
+def test_nothing_reached_through_a_symbolic_link_is_read(tmp_path: Path) -> None:
+    project = tmp_path / "project"
+    outside = write(
+        tmp_path / "outside",
+        {
+            "profile/profile.yml": "name: linked\n",
+            "rule.md": "Outside.\n",
+            "command.md": "Outside.\n",
+            "run.sh": "#!/bin/sh\n",
+            "mcp.json": '{"mcpServers": {}}',
+            "hook.yml": "name: h\nevent: PreToolUse\ncommand: bash\n",
+        },
+    )
+    write(
+        project,
+        {
+            "profiles/shared/AGENTS.md": "Shared.\n",
+            "profiles/shared/rules/kept.md": "Kept.\n",
+            "commands/kept.md": "Kept.\n",
+            "hooks/guard/hook.yml": "name: guard\nevent: PreToolUse\ncommand: bash\nscript: run.sh\n",
+            "hooks/linked/run.sh": "#!/bin/sh\n",
+            "mcp-servers/dbt/README.md": "x",
+        },
+    )
+    (project / "profiles/linked").symlink_to(outside / "profile")
+    (project / "profiles/shared/rules/outside.md").symlink_to(outside / "rule.md")
+    (project / "commands/outside.md").symlink_to(outside / "command.md")
+    (project / "hooks/guard/run.sh").symlink_to(outside / "run.sh")
+    (project / "hooks/linked/hook.yml").symlink_to(outside / "hook.yml")
+    (project / "mcp-servers/dbt/mcp.json").symlink_to(outside / "mcp.json")
+    catalog = load_profile_catalog(project, profiles_dir="profiles", hooks_dir="hooks", mcp_servers_dir="mcp-servers")
+    refused = sorted(item.context["path"] for item in catalog.diagnostics if item.code == "SST-PRT009")
+    assert refused == [
+        "commands/outside.md",
+        "hooks/guard/run.sh",
+        "hooks/linked/hook.yml",
+        "mcp-servers/dbt/mcp.json",
+        "profiles/linked",
+        "profiles/shared/rules/outside.md",
+    ]
+    assert catalog.profiles == ()
+    assert catalog.shared is not None and [name for name, _ in catalog.shared.rules] == ["kept.md"]
+    assert [command.path for command in catalog.commands] == ["kept.md"]
+    assert catalog.hooks == () and catalog.mcp_configs == ()

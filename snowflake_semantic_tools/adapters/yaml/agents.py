@@ -9,6 +9,7 @@ from types import MappingProxyType
 from typing import Any
 
 from snowflake_semantic_tools.adapters.errors import ProjectError
+from snowflake_semantic_tools.adapters.paths import resolve_within
 from snowflake_semantic_tools.adapters.yaml.documents import NodePath, SourcePosition
 from snowflake_semantic_tools.adapters.yaml.fields import (
     checked_list,
@@ -247,11 +248,11 @@ def _parse_eval_files(
                 )
             )
             continue
-        path = (agent_dir / raw).resolve()
-        try:
-            resolved[field] = path.relative_to(project_dir.resolve()).as_posix()
-        except ValueError:
+        path = resolve_within(project_dir, agent_dir / raw)
+        if path is None:
             diagnostics.append(D("SST-REF027", path=raw, origin=origin))
+            continue
+        resolved[field] = path.relative_to(project_dir.resolve()).as_posix()
     return AgentEvalFiles(origin, resolved["dataset"], resolved["config"])
 
 
@@ -292,12 +293,11 @@ def _instruction(
         diagnostics.append(D("SST-REF014", path=value, origin=Origin(source_file)))
         return None
     requested = str(calls[0].args[0])
-    path = (agent_dir / requested).resolve()
-    try:
-        relative = path.relative_to(project_dir.resolve()).as_posix()
-    except ValueError:
+    path = resolve_within(project_dir, agent_dir / requested)
+    if path is None:
         diagnostics.append(D("SST-REF027", path=requested, origin=Origin(source_file)))
         return None
+    relative = path.relative_to(project_dir.resolve()).as_posix()
     try:
         content = path.read_text(encoding="utf-8")
     except OSError:

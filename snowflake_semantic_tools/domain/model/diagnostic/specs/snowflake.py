@@ -2,8 +2,9 @@
 
 SNO classifies an error Snowflake returned for a statement. PRT reports a failure at
 the boundary with an external system: the Snowflake connection, a transient failure,
-a refused privilege, a missing object, or an unsupported dbt manifest schema. Each
-prefix keeps its own section title in `SUBSYSTEMS`; `TITLE` is the title of SNO.
+a refused privilege, a missing object, an unsupported dbt manifest schema, or a file
+SST refuses to read. Each prefix keeps its own section title in `SUBSYSTEMS`; `TITLE`
+is the title of SNO.
 """
 
 from __future__ import annotations
@@ -47,6 +48,14 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Snowflake object not found",
         "Snowflake object {value} was not found: {detail}",
         "create the dependency or correct its name",
+    ),
+    spec(
+        "SST-PRT009",
+        Severity.ERROR,
+        "Filesystem read failed",
+        "could not read {path}: {detail}",
+        "SST reads only regular files inside the project: replace a symbolic link with the file or folder "
+        "it points to, and keep dbt's target-path inside the project",
     ),
     spec("SST-SNO001", Severity.ERROR, "Unrecognised Snowflake refusal", "Snowflake refused: {detail}", None),
     spec("SST-SNO002", Severity.ERROR, "Object already exists", "{value} already exists", "choose another name"),

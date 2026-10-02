@@ -34,7 +34,7 @@ dbt = ["dbt-snowflake"]
 
 [tool.poetry.group.dev.dependencies]
 pre-commit = "4.0.1"
-pytest = "8.3.4"
+pytest = "9.0.3"
 pytest-cov = "6.0.0"
 mypy = "1.13.0"
 import-linter = "^2.1"

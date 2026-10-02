@@ -10,7 +10,14 @@ from collections.abc import Collection, Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from types import MappingProxyType
 
-from snowflake_semantic_tools.domain.model.column_metadata import base_type, is_numeric, is_sentinel, synonym_problem
+from snowflake_semantic_tools.domain.model.column_metadata import (
+    base_type,
+    is_numeric,
+    is_sentinel,
+    printable,
+    synonym_problem,
+)
+from snowflake_semantic_tools.domain.model.diagnostic import D, Diagnostic
 
 # The type INFORMATION_SCHEMA reports for each spelling a model YAML may hold. A type not
 # listed is its own family, compared by its base type.
@@ -117,29 +124,74 @@ def _folded_name(name: str) -> tuple[str, str]:
     return folded, folded.replace("_", " ")
 
 
+def proposed_synonym(candidate: object) -> tuple[str, str | None]:
+    """Read one proposed synonym: its text, and why it can never be written.
+
+    The text is stripped and its runs of spaces collapsed. It is refused, whatever else the
+    column or table holds, when it holds a quote or a control character (a newline or tab
+    inside it among them: those are checked before spaces are collapsed), is longer than
+    `MAX_SYNONYM_LENGTH`, or holds template syntax.
+
+    Returns:
+        `(text, reason)`, the reason worded as SST-PRS030 words it; `("", None)` for a proposal
+        that is not text, and a reason of None for one that may be written.
+    """
+    if not isinstance(candidate, str):
+        return "", None
+    stripped = candidate.strip()
+    text = " ".join(stripped.split())
+    problem = synonym_problem(stripped)
+    if problem is None and len(text) > MAX_SYNONYM_LENGTH:
+        problem = f"more than {MAX_SYNONYM_LENGTH} characters"
+    if problem is None and any(marker in text for marker in _TEMPLATE_MARKERS):
+        problem = "template syntax"
+    return text, problem
+
+
 def clean_synonyms(candidates: Iterable[object], *, name: str, taken: Collection[str], limit: int) -> tuple[str, ...]:
     """Return the usable synonyms of a column or table, in the order the model proposed them.
 
-    Whitespace is collapsed. A synonym is dropped when it is not text, empty, longer than
-    `MAX_SYNONYM_LENGTH`, holds a quote or template syntax, repeats `name` (with or without
-    underscores), repeats an earlier synonym, or is in `taken`: the casefolded names and synonyms
-    of the other columns or tables it must stay apart from. At most `limit` are kept.
+    A synonym is dropped when it is not text, is empty, `proposed_synonym` refuses it, repeats
+    `name` (with or without underscores), repeats an earlier synonym, or is in `taken`: the
+    casefolded names and synonyms of the other columns or tables it must stay apart from. At
+    most `limit` are kept.
     """
     seen = {*taken, *_folded_name(name)}
     kept: list[str] = []
     for candidate in candidates:
         if len(kept) == limit:
             break
-        if not isinstance(candidate, str):
-            continue
-        text = " ".join(candidate.split())
-        if not text or len(text) > MAX_SYNONYM_LENGTH or synonym_problem(text) is not None:
-            continue
-        if any(marker in text for marker in _TEMPLATE_MARKERS) or text.casefold() in seen:
+        text, problem = proposed_synonym(candidate)
+        if not text or problem is not None or text.casefold() in seen:
             continue
         seen.add(text.casefold())
         kept.append(text)
     return tuple(kept)
+
+
+def rejected_synonyms(
+    candidates: Iterable[object], *, artifact: str, subject: str, limit: int
+) -> tuple[Diagnostic, ...]:
+    """Report the proposed synonyms `proposed_synonym` refuses, so none is dropped unseen.
+
+    A proposal that merely repeats a name or another synonym is not reported: dropping it is
+    the cleaning working. At most `limit` are reported, so a runaway answer cannot flood the
+    report; the synonym is shown as proposed, stripped, escaped and cut short.
+
+    Diagnostics:
+        SST-PRS030: a proposed synonym holds a quote, a control character or template syntax,
+            or is too long.
+    """
+    found: list[Diagnostic] = []
+    for candidate in candidates:
+        if len(found) == limit:
+            break
+        text, problem = proposed_synonym(candidate)
+        if text and problem is not None:
+            # Shown as proposed, not collapsed, so the reviewer sees the newline that refused it.
+            shown = printable(str(candidate).strip())
+            found.append(D("SST-PRS030", artifact=artifact, value=shown, detail=problem, subject=subject))
+    return tuple(found)
 
 
 def taken_names(names: Iterable[str], synonyms: Iterable[str]) -> frozenset[str]:

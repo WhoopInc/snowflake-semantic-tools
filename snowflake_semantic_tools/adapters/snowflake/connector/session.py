@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import contextlib
 import json
+import re
 import sys
 from collections.abc import Iterator, Mapping, Sequence
 from threading import RLock
@@ -33,6 +34,15 @@ from snowflake_semantic_tools.domain.sql import Sql, ident, scope, sql
 # Snowflake failure, so it propagates unwrapped.
 _DRIVER_ERRORS = (DriverError, OSError)
 
+# What a driver or key library may echo into an error that must never reach a diagnostic: a
+# credential written as a `name=value` or `name: value` setting, and the path to a key file.
+_SECRET_SETTING = re.compile(
+    r"(?i)\b([\w-]*(?:password|passwd|pwd|token|passphrase|secret|private_key)[\w-]*)"
+    r"([\"']?\s*[=:]\s*)(\"[^\"]*\"|'[^']*'|[^\s,;&)\]}]+)"
+)
+_KEY_FILE = re.compile(r"(?i)(?:[A-Za-z]:)?[\w.~-]*(?:[/\\][^\s/\\'\"]+)+\.(?:p8|pem|key|der|p12|pfx)\b")
+_REDACTED = "<redacted>"
+
 
 class Session(ExecutionPort):
     """One live driver connection to Snowflake, which every role of the connector runs on.
@@ -46,6 +56,7 @@ class Session(ExecutionPort):
     """
 
     def __init__(self, connection_params: Mapping[str, object]) -> None:
+        failure: SnowflakePortError | None = None
         try:
             # Browser SSO prints its prompts to stdout, which `--output json` reserves
             # for exactly one envelope; the prompts still reach the user on stderr.
@@ -53,7 +64,10 @@ class Session(ExecutionPort):
                 self._connection = snowflake.connector.connect(**dict(connection_params))
             self._lock = RLock()
         except Exception as exc:
-            raise _port_error(exc, connecting_to=str(connection_params.get("account") or "Snowflake")) from exc
+            failure = _port_error(exc, connecting_to=str(connection_params.get("account") or "Snowflake"))
+        # Raised outside the handler, so the error chains no unscrubbed exception from connecting.
+        if failure is not None:
+            raise failure
 
     def close(self) -> None:
         """Close the driver connection, waiting for any statement that holds the session lock.
@@ -94,7 +108,7 @@ class Session(ExecutionPort):
                 False,
                 tuple(query_ids),
                 ExecutionError(
-                    str(exc),
+                    scrubbed_message(exc),
                     getattr(exc, "sqlstate", None),
                     getattr(exc, "errno", None),
                 ),
@@ -177,17 +191,29 @@ def _fetch(cursor: SnowflakeCursor, sql: Sql, params: Sequence[object] | Mapping
     return QueryResult(columns, rows)
 
 
+def scrubbed_message(exc: BaseException) -> str:
+    """Return a failure's message with every credential setting and key-file path replaced.
+
+    A value written after `password`, `token`, `passphrase`, `secret` or `private_key...` (with
+    `=` or `:`) and any path ending in a key-file extension, such as `.p8` or `.pem`, become
+    `<redacted>`; the rest of the message, its errno and SQLSTATE prefix included, is kept.
+    """
+    message = _SECRET_SETTING.sub(lambda match: f"{match.group(1)}{match.group(2)}{_REDACTED}", str(exc))
+    return _KEY_FILE.sub(_REDACTED, message)
+
+
 def _port_error(exc: Exception, *, connecting_to: str | None = None) -> SnowflakePortError:
     """Build the port error for a connector failure, with the diagnostic a command reports for it.
 
-    The error keeps the failure's message, SQLSTATE, and errno.
+    The error keeps the failure's SQLSTATE, errno, and message, scrubbed by `scrubbed_message`;
+    nothing else of the failure is copied.
 
     Diagnostics:
         SST-PRT001: connecting to `connecting_to` failed.
         SST-PRT003: the connection dropped or the statement timed out or was cancelled.
         SST-PRT004: Snowflake refused the statement for want of a privilege.
     """
-    message = str(exc)
+    message = scrubbed_message(exc)
     sqlstate = getattr(exc, "sqlstate", None)
     state = sqlstate or ""
     upper = message.upper()

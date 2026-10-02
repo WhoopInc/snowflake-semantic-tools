@@ -27,7 +27,7 @@ cannot be downgraded by any setting.
 - [Planning (PLN)](#planning-pln) -- 18 codes
 - [Apply (APL)](#apply-apl) -- 20 codes
 - [Snowflake (SNO)](#snowflake-sno) -- 8 codes
-- [External systems (PRT)](#external-systems-prt) -- 5 codes
+- [External systems (PRT)](#external-systems-prt) -- 6 codes
 - [Internal (INT)](#internal-int) -- 3 codes
 
 ## Configuration (CFG)
@@ -2629,6 +2629,14 @@ Fix: create the dependency or correct its name
 `manifest schema '<found>' is unsupported; expected '<expected>'`
 
 Fix: use a dbt version that emits {expected}
+
+### SST-PRT009
+
+**Filesystem read failed** (error)
+
+`could not read <path>: <detail>`
+
+Fix: SST reads only regular files inside the project: replace a symbolic link with the file or folder it points to, and keep dbt's target-path inside the project
 
 ## Internal (INT)
 

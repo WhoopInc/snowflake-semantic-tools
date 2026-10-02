@@ -97,7 +97,6 @@
   "SST-PRS025": "no test_sst_prs025_fires or test_sst_prs025_silent",
   "SST-PRS027": "no test_sst_prs027_fires or test_sst_prs027_silent",
   "SST-PRS029": "no test_sst_prs029_fires or test_sst_prs029_silent",
-  "SST-PRS030": "no test_sst_prs030_fires or test_sst_prs030_silent",
   "SST-PRS032": "no test_sst_prs032_fires or test_sst_prs032_silent",
   "SST-PRS033": "no test_sst_prs033_fires or test_sst_prs033_silent",
   "SST-PRS034": "no test_sst_prs034_fires or test_sst_prs034_silent",

@@ -6,6 +6,7 @@ from pathlib import Path
 from types import MappingProxyType
 
 from snowflake_semantic_tools.adapters.errors import ProjectError
+from snowflake_semantic_tools.adapters.paths import resolve_within
 from snowflake_semantic_tools.adapters.yaml.fields import optional_string, strings
 from snowflake_semantic_tools.adapters.yaml.parse import parse_yaml_bytes
 from snowflake_semantic_tools.domain.model.artifact_key import artifact_key
@@ -228,11 +229,10 @@ def _parse_member(
     body_file = optional_string(value.get("body_file"))
     body: str | None = None
     if body_file:
-        sidecar = (project_dir / body_file).resolve()
+        sidecar = resolve_within(project_dir, project_dir / body_file)
         try:
-            sidecar.relative_to(project_dir.resolve())
-            body = sidecar.read_text(encoding="utf-8")
-        except (OSError, ValueError):
+            body = sidecar.read_text(encoding="utf-8") if sidecar is not None else None
+        except (OSError, UnicodeDecodeError):
             body = None
     relations = _string_map(value.get("relations"), "relations", str(name), origin, diagnostics)
     columns = _columns(value.get("columns_and_descriptions"), str(name), origin, diagnostics)

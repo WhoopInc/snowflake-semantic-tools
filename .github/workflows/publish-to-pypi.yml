@@ -7,59 +7,44 @@ on:
       # Normal pushes and merges to main do NOT trigger this.
       - "v*.*.*"
 
+# Read-only by default. Only the publish job, which runs no project code and installs
+# nothing, is granted the OIDC token PyPI's Trusted Publishing exchanges for an upload.
 permissions:
-  # Required to read repository contents.
   contents: read
-  # Required for GitHub Actions to authenticate to PyPI via OIDC
-  # when using Trusted Publishing (no long-lived API tokens).
-  id-token: write
 
 jobs:
-  build-and-publish:
-    name: Build and publish to PyPI
+  build:
+    name: Build and test the distributions
     runs-on: ubuntu-latest
-
-    # This environment name must match the one you configure
-    # in PyPI's "Trusted Publishers" settings for this repository.
-    environment:
-      name: pypi
-      url: https://pypi.org/p/snowflake-semantic-tools
+    permissions:
+      contents: read
 
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
-          # Full history is not strictly required here, but it is
-          # a sensible default and avoids surprises if you later
-          # add tools that rely on git history.
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         with:
           python-version: "3.11"
 
-      - name: Install build and test tooling
-        # "build" uses pyproject.toml to create source and wheel distributions.
-        # "twine" validates the distributions' metadata before upload.
-        # The tests need pytest, and import-linter for the ring-boundary tests.
-        #
-        # Note: Poetry CLI is not required here. The project uses poetry-core
-        # as the build backend (PEP 517/518 compliant), which is automatically
-        # installed as a build dependency. Both "pip install ." and "python -m build"
-        # use the PEP 517 interface to call poetry-core directly, so the full
-        # Poetry CLI tool is not needed for building or installing.
-        run: |
-          python -m pip install --upgrade pip
-          python -m pip install build
-          python -m pip install .
-          python -m pip install "pytest==8.3.4" "import-linter>=2.1,<3"
-          python -m pip install twine
+      - name: Install Poetry
+        uses: snok/install-poetry@a783c322200f0519c7926aa6faa857c4e23e9263 # v1.4.2
+        with:
+          version: 2.2.1
+          virtualenvs-create: true
+          virtualenvs-in-project: true
+
+      - name: Install the locked dependencies
+        # Every package, the build and test tooling included, comes from poetry.lock.
+        run: poetry install --no-interaction
 
       - name: Verify tag and pyproject.toml version match
         # Extract version from tag, stripping the leading "v".
         # Example: refs/tags/v0.1.0 -> 0.1.0
-
         # Extract version from pyproject.toml.
         # Assumes a line like: version = "0.1.0"
         run: |
@@ -85,21 +70,16 @@ jobs:
 
       - name: Run the tests
         # Unit and contract tests; neither connects to Snowflake.
-        run: python -m pytest tests/
-
-      - name: Clean previous build artifacts if any
-        # Ensure we are starting from a clean state.
-        run: |
-          rm -rf dist
-          mkdir -p dist
+        run: poetry run pytest tests/ -n auto
 
       - name: Build source and wheel distributions
-        # This will create dist/*.tar.gz and dist/*.whl
+        # poetry build calls the same poetry-core backend as python -m build, without
+        # installing an unlocked build frontend. Creates dist/*.tar.gz and dist/*.whl.
         run: |
-          python -m build
+          rm -rf dist
+          poetry build --no-interaction
 
       - name: Verify build artifacts exist
-        # Basic sanity check: fail if directory is empty.
         run: |
           echo "Built artifacts in dist/:"
           ls -lh dist
@@ -108,13 +88,37 @@ jobs:
             exit 1
           fi
 
-      - name: Check distribution metadata with twine
-        # Ensures the built artifacts have valid metadata and are suitable
-        # for upload to PyPI. Catches common packaging issues early.
-        run: |
-          python -m twine check dist/*
+      - name: Upload the distributions
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: dist
+          path: dist/
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    name: Publish to PyPI
+    needs: build
+    runs-on: ubuntu-latest
+
+    # This environment name must match the one configured in PyPI's
+    # "Trusted Publishers" settings for this repository.
+    environment:
+      name: pypi
+      url: https://pypi.org/p/snowflake-semantic-tools
+
+    # The OIDC token is the only credential; the job checks out no code and
+    # installs nothing, so no project dependency ever runs with it.
+    permissions:
+      id-token: write
+
+    steps:
+      - name: Download the distributions
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: dist
+          path: dist/
 
       - name: Publish to PyPI
-        uses: pypa/gh-action-pypi-publish@release/v1
-        # No "with: password" needed; PyPI uses the OIDC token (id-token permission)
-        # and the Trusted Publisher configuration you set up on the PyPI side.
+        # The action checks the distributions' metadata (twine check) before uploading.
+        uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # v1.14.2

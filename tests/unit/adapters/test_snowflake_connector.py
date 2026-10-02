@@ -514,3 +514,51 @@ def test_query_in_context_sends_its_use_pair_and_statement_together_on_one_curso
         SchemaScope(Identifier.parse("AGENTS"), Identifier.parse("EVALS")), sql("SELECT 1")
     )
     assert session.executed == ["USE DATABASE AGENTS", "USE SCHEMA AGENTS.EVALS", "SELECT 1"]
+
+
+# What a driver or key library might echo on a failure: none of it may reach a diagnostic.
+_LEAKY = (
+    "250001 (08001): Failed to connect: password=hunter2 token: ey.J9 passphrase='open sesame' "
+    'private_key_file_pwd="pw with spaces" while reading /var/lib/sst-keys/rsa_key.p8 '
+    "and C:\\keys\\snowflake.pem"
+)
+_SECRETS = ("hunter2", "ey.J9", "open sesame", "pw with spaces", "rsa_key.p8", "snowflake.pem", "sst-keys")
+
+
+def test_a_failed_connection_reports_no_credential_and_chains_no_driver_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def connect(**params: object) -> object:
+        raise _ConnectorFailure(_LEAKY, "08001")
+
+    monkeypatch.setattr(
+        "snowflake_semantic_tools.adapters.snowflake.connector.session.snowflake.connector.connect", connect
+    )
+    with pytest.raises(SnowflakePortError) as raised:
+        SnowflakeConnector({"account": "acme", "password": "hunter2", "private_key_file": "/tmp/rsa_key.p8"})
+    error = raised.value
+    diagnostic = error.diagnostic
+    assert diagnostic is not None and diagnostic.code == "SST-PRT001"
+    shown = (str(error), diagnostic.message, repr(error.args))
+    assert not [secret for secret in _SECRETS for text in shown if secret in text]
+    assert str(error).startswith("250001 (08001): Failed to connect: password=<redacted> token: <redacted>")
+    assert (error.errno, error.sqlstate) == (250001, "08001")
+    assert error.__cause__ is None and error.__context__ is None
+
+
+def test_a_failed_statement_reports_no_credential() -> None:
+    leaky = ProgrammingError(msg=_LEAKY, errno=1003, sqlstate="42000")
+    with pytest.raises(SnowflakePortError) as raised:
+        SessionConnector(_Session({"SELECT": leaky})).query(sql("SELECT 1"))
+    assert not [secret for secret in _SECRETS if secret in str(raised.value)]
+    assert (raised.value.errno, raised.value.sqlstate) == (1003, "42000")
+    result = SessionConnector(_Session({"CREATE": leaky})).execute_script((sql("CREATE VIEW V AS SELECT 1"),))
+    assert result.error is not None and not [secret for secret in _SECRETS if secret in result.error.message]
+    assert (result.error.errno, result.error.sqlstate) == (1003, "42000")
+
+
+def test_a_message_without_credentials_is_kept_as_written() -> None:
+    plain = ProgrammingError(msg="Object 'DB.S.V' does not exist or not authorized.", errno=2003, sqlstate="02000")
+    with pytest.raises(SnowflakePortError) as raised:
+        SessionConnector(_Session({"SELECT": plain})).query(sql("SELECT 1"))
+    assert str(raised.value) == str(plain)

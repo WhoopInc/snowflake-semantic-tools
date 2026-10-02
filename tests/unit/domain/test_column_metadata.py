@@ -7,6 +7,7 @@ from snowflake_semantic_tools.domain.model.column_metadata import (
     is_numeric,
     is_sentinel,
     is_temporal,
+    printable,
     synonym_problem,
 )
 
@@ -37,3 +38,16 @@ def test_sentinels_are_missing_values_in_any_case() -> None:
 def test_a_synonym_with_a_quote_is_unusable() -> None:
     single = "customer" + chr(39) + "s name"
     assert [synonym_problem(value) for value in ("order count", single, 'say "hi"')] == [None, "quotes", "quotes"]
+
+
+def test_a_synonym_with_a_control_or_invisible_character_is_unusable() -> None:
+    values = ("line\nbreak", "tab\there", "bell\x07", "rtl\u202eoverride", "zero\u200bwidth", "para\u2029sep")
+    assert {synonym_problem(value) for value in values} == {"control characters"}
+    assert synonym_problem("caf\u00e9 total") is None
+
+
+def test_printable_escapes_control_characters_and_cuts_long_text() -> None:
+    assert printable("a\x1b[31mred\nb") == "a\\u001b[31mred\\u000ab"
+    assert printable("plain") == "plain"
+    assert printable("x" * 81) == "x" * 77 + "..."
+    assert printable("x" * 80) == "x" * 80
