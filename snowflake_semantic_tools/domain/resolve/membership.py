@@ -116,12 +116,16 @@ def _untyped_attachment(member: ParsedMember, placed: tuple[ArtifactKey, ...], r
 def _missing_tables(
     member: ParsedMember, placed: tuple[ArtifactKey, ...], request: MembershipRequest
 ) -> list[Diagnostic]:
-    """Report each view `member` is attached to that lacks one of the tables it needs (SST-MEM008)."""
+    """Report each view `member` is attached to that lacks one of the tables it needs (SST-MEM008).
+
+    An artifact that is no view is SST-MEM100's to report, so it is left out here.
+    """
     needed = effective_tables(member)
     return [
         D("SST-MEM008", member=member.key, artifact=artifact, name=table, subject=member.key, origin=member.origin)
         for artifact in placed
-        for table in sorted(needed - request.view_tables.get(artifact, frozenset()))
+        if artifact in request.view_tables
+        for table in sorted(needed - request.view_tables[artifact])
     ]
 
 
