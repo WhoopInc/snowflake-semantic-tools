@@ -527,8 +527,8 @@ def _source_files(
     source_files = {source_path}
     source_files.update(member.origin.file for member in attached)
     for model_key in logical_by_model:
-        model = models[model_key]
-        model_path = model.patch_path or model.original_file_path
+        model = models.get(model_key)
+        model_path = (model.patch_path or model.original_file_path) if model is not None else None
         if model_path:
             source_files.add(model_path)
     return source_path, tuple(sorted(source_files))

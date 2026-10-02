@@ -75,6 +75,7 @@ def test_the_manifest_must_be_an_existing_file() -> None:
         False,
     )
     # The schema override is kept in the click context, not passed to the command.
+    assert isinstance(override, click.Option)
     assert (override.opts, override.is_flag, override.expose_value) == (
         ["--allow-unsupported-manifest-schema"],
         True,

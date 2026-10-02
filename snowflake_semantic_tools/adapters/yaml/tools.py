@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from pathlib import Path
 from types import MappingProxyType
 
@@ -22,6 +23,7 @@ from snowflake_semantic_tools.domain.model.tool import (
     ToolParameter,
 )
 from snowflake_semantic_tools.domain.parse.template import TemplateSyntaxError, scan_template_calls
+from snowflake_semantic_tools.domain.validate.dbt_seam import literal_relation_diagnostic
 from snowflake_semantic_tools.domain.validate.tool import validate_tool_catalog
 
 
@@ -61,6 +63,7 @@ def load_tool_catalog(
         SST-PRS002: when a group has no `group`, or a member no `name` or no `type`.
         SST-VAL608: when a member's `on:` is not one `{{ ref('<model>') }}` call.
         Every code `validate_tool_catalog` lists, for the groups that load.
+        SST-DBT006: a reference relation names a dbt model by the name its alias replaced.
     """
     groups: list[ToolGroup] = []
     diagnostics: list[Diagnostic] = []
@@ -102,8 +105,26 @@ def load_tool_catalog(
         catalog.groups,
         catalog.target_name,
         catalog.declared_targets,
-        validate_tool_catalog(catalog, dbt),
+        DiagnosticBag((*validate_tool_catalog(catalog, dbt), *_aliased_relations(catalog, dbt))),
     )
+
+
+def _aliased_relations(catalog: ToolCatalog, dbt: DbtCatalog) -> tuple[Diagnostic, ...]:
+    """Report each `reference:` relation for the current target that names a dbt model dbt built elsewhere.
+
+    Diagnostics:
+        SST-DBT006: as `literal_relation_diagnostic` reports it.
+    """
+    found: list[Diagnostic] = []
+    for group in catalog.groups:
+        for member in group.members:
+            relation = member.relations.get(catalog.target_name)
+            diagnostic = (
+                literal_relation_diagnostic(dbt, relation, subject=member.declaration_key) if relation else None
+            )
+            if diagnostic is not None:
+                found.append(replace(diagnostic, origin=member.origin))
+    return tuple(found)
 
 
 def _parse_group(

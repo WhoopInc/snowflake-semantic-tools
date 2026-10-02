@@ -1,4 +1,4 @@
-"""Check a semantic-layer name: whether it renders unquoted, and whether it collides with reserved names."""
+"""Check a semantic-layer name: that it renders unquoted, and whether it collides with reserved names."""
 
 from __future__ import annotations
 

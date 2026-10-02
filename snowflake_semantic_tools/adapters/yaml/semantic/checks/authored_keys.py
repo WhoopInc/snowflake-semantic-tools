@@ -173,13 +173,7 @@ def _foreign_members(document: RawDocument) -> tuple[Diagnostic, ...]:
     if owner is None:
         return ()
     return tuple(
-        D(
-            "SST-PRS105",
-            origin=Origin(document.path),
-            type=owner,
-            member_type=node_type,
-            subject=f"file:{document.path}",
-        )
+        D("SST-PRS105", origin=Origin(document.path), type=owner, member_type=node_type)
         for node_type in AUTHORED_KEYS
         if node_type not in (owner, "semantic_view") and _node_root(node_type) in document.root_keys
     )

@@ -9,7 +9,6 @@ from snowflake_semantic_tools.domain.diagnostics import DiagnosticBag
 from snowflake_semantic_tools.domain.model.project import SemanticViewProject
 from snowflake_semantic_tools.domain.model.semantic_view import SemanticView
 
-
 # The dbt seam's notes, which every load reports; `tests/codes/dbt` pins them.
 SEAM_NOTES = frozenset(("SST-DBT016", "SST-DBT025"))
 

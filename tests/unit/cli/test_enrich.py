@@ -157,9 +157,7 @@ def test_usage_errors_exit_3_before_connecting(
     assert result.opened == []  # type: ignore[attr-defined]
 
 
-def test_a_selection_naming_no_model_exits_1_without_connecting(
-    monkeypatch: pytest.MonkeyPatch, project: Path
-) -> None:
+def test_a_selection_naming_no_model_exits_1_without_connecting(monkeypatch: pytest.MonkeyPatch, project: Path) -> None:
     result = _invoke(monkeypatch, project, _port(), "--select", "model:nope", ".")
     assert result.exit_code == 1, result.output
     assert "error[SST-DBT002]: model 'nope' is not in the dbt manifest" in result.output
