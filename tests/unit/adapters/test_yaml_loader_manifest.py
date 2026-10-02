@@ -15,6 +15,7 @@ from snowflake_semantic_tools.adapters.yaml.semantic.checks.authored_keys import
     _legacy_reference_diagnostics,
     _member_name_diagnostics,
 )
+from snowflake_semantic_tools.adapters.yaml.semantic.checks.deprecated import _deprecated_key_diagnostics
 from snowflake_semantic_tools.adapters.yaml.semantic.checks.shape import (
     _metric_parse_diagnostics,
     _verified_query_diagnostics,
@@ -282,7 +283,7 @@ def test_metric_parse_diagnostics_preserve_missing_empty_and_wrong_types(tmp_pat
     ]
 
 
-def test_every_unread_key_is_reported_and_0_3_spellings_are_errors(tmp_path: Path) -> None:
+def test_every_unread_key_is_reported_and_0_3_spellings_are_named(tmp_path: Path) -> None:
     write_project(tmp_path)
     root = tmp_path / "semantic_models"
     (root / "semantic_views" / "views.yml").write_text(
@@ -341,7 +342,6 @@ def test_every_unread_key_is_reported_and_0_3_spellings_are_errors(tmp_path: Pat
             ("SST-PRS004", "WARNING", "semantic_view:catalog", "table_config.products.alias", None),
             ("SST-PRS004", "WARNING", "semantic_view:catalog", "variables[0].unit", None),
             ("SST-PRS004", "WARNING", "semantic_view:catalog", "tags[0].note", None),
-            ("SST-PRS020", "ERROR", "metric:product_count", "visibility", "access_modifier"),
             ("SST-PRS020", "ERROR", "metric:product_count", "non_additive_by", "non_additive_dimensions"),
             ("SST-PRS004", "WARNING", "metric:product_count", "non_additive_dimensions[0].grain", None),
             (
@@ -353,23 +353,25 @@ def test_every_unread_key_is_reported_and_0_3_spellings_are_errors(tmp_path: Pat
             ),
             ("SST-PRS020", "ERROR", "metric:product_count", "non_additive_dimensions[0].nulls", "null_order"),
             ("SST-PRS004", "WARNING", "metric:product_count", "default_aggregation", None),
-            ("SST-PRS020", "ERROR", "custom_instruction:tone", "sql_generation", "ai_sql_generation"),
-            (
-                "SST-PRS020",
-                "ERROR",
-                "custom_instruction:tone",
-                "question_categorization",
-                "ai_question_categorization",
-            ),
             ("SST-PRS004", "WARNING", "custom_instruction:tone", "consumer", None),
-            ("SST-PRS004", "WARNING", "filter:cheap", "synonyms", None),
             ("SST-PRS004", "WARNING", "verified_query:how_many", "tags", None),
-            ("SST-PRS004", "WARNING", "relationship:self", "join_type", None),
             ("SST-PRS020", "ERROR", "relationship:self", "relationship_columns", "relationship_conditions"),
         ]
     )
-    visibility = next(item for item in _authored_key_diagnostics(documents) if item.context["field"] == "visibility")
-    assert visibility.message == "metric:product_count: 'visibility' was renamed in 1.0; use 'access_modifier'"
+    # The 0.3 spellings SST still honours, and the keys that change nothing, are reported by
+    # their own codes instead.
+    assert [
+        (item.code, item.severity.name, item.subject, item.context.get("field"))
+        for item in _deprecated_key_diagnostics(documents)
+    ] == [
+        ("SST-VAL012", "WARNING", "custom_instruction:tone", "sql_generation"),
+        ("SST-VAL012", "WARNING", "custom_instruction:tone", "question_categorization"),
+        ("SST-VAL011", "ERROR", "filter:cheap", "synonyms"),
+        ("SST-VAL122", "WARNING", "metric:product_count", None),
+        ("SST-VAL211", "WARNING", "relationship:self", "join_type"),
+    ]
+    visibility = next(item for item in _deprecated_key_diagnostics(documents) if item.code == "SST-VAL122")
+    assert visibility.message == "metric 'product_count' uses visibility; the current key is access_modifier"
     assert visibility.origin is not None and visibility.origin.line == 5
     # The renamed relationship shape is not also reported as having no conditions.
     assert _relationship_parse_diagnostics(documents, tmp_path, "semantic_models") == ()

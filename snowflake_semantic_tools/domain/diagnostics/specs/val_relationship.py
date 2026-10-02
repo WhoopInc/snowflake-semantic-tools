@@ -131,7 +131,8 @@ SPECS: tuple[ErrorSpec, ...] = (
         "SST-VAL218",
         Severity.ERROR,
         "Range join target has overlapping ranges",
-        "relationship '{relationship}': '{name}' declares distinct_range over ({a}, {b}) but the ranges overlap, for example {value}",
+        "relationship '{relationship}': '{name}' declares distinct_range over ({a}, {b}) but the ranges "
+        "overlap, for example {value}",
         "make the ranges disjoint, or narrow the range columns",
     ),
     spec(

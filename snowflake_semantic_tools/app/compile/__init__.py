@@ -36,6 +36,11 @@ from snowflake_semantic_tools.domain.model.semantic_view import SemanticView
 from snowflake_semantic_tools.domain.ports.semantic_view_source import SemanticViewSource
 from snowflake_semantic_tools.domain.render.semantic_view import render
 from snowflake_semantic_tools.domain.sql import AuthoredExpression, Sql, ident, join, qname, query_text, sql
+from snowflake_semantic_tools.domain.validate.semantic_view import (
+    join_graph_diagnostics,
+    restriction_diagnostics,
+    statement_diagnostics,
+)
 from snowflake_semantic_tools.domain.validate.targets import shared_targets
 
 __all__ = [
@@ -314,13 +319,17 @@ class CompileSemanticViews:
         """Compile without turning one rendering invariant into process failure.
 
         Every view renders, in FQN order, whatever the source reported about it; only
-        TypeError and ValueError are caught.
+        TypeError and ValueError are caught. Each rendered view is then checked as compiled,
+        view by view: its statement, the metrics it carries, and its join graph.
 
         Diagnostics:
             SST-INT902: rendering a view raised TypeError or ValueError.
+            SST-VAL307, SST-VAL321: as `statement_diagnostics` reports them.
+            SST-VAL123: as `restriction_diagnostics` reports it.
+            SST-VAL216, SST-VAL217: as `join_graph_diagnostics` reports them.
         """
         project = self._source.load_project()
-        return compile_each(
+        result = compile_each(
             sorted(project.views, key=lambda view: view.fqn),
             key=lambda view: artifact_key("semantic_view", view.fqn),
             render=_compiled_view,
@@ -328,6 +337,17 @@ class CompileSemanticViews:
             skip=None,
             errors=(TypeError, ValueError),
         )
+        checked = tuple(
+            diagnostic
+            for item in result.compiled
+            if isinstance(item, CompiledView)
+            for diagnostic in (
+                *statement_diagnostics(str(item.ddl), artifact=item.artifact_key),
+                *restriction_diagnostics(item.view, project.diagnostics, artifact=item.artifact_key),
+                *join_graph_diagnostics(item.view, artifact=item.artifact_key),
+            )
+        )
+        return CompileResult(result.compiled, DiagnosticBag((*result.diagnostics, *checked))) if checked else result
 
 
 def _compiled_view(view: SemanticView) -> CompiledView:

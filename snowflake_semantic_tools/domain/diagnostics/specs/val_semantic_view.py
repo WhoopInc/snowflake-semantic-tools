@@ -180,7 +180,8 @@ SPECS: tuple[ErrorSpec, ...] = (
         "SST-VAL326",
         Severity.ERROR,
         "Undefined bare identifier in an attached member",
-        "view '{view}': member '{member}' references '{identifier}', which is neither a column on the view's tables nor a variable the view declares",
+        "view '{view}': member '{member}' references '{identifier}', which is neither a column on the view's "
+        "tables nor a variable the view declares",
         "declare the variable on this view, or correct the identifier",
     ),
     spec(

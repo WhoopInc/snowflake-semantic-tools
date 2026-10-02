@@ -130,10 +130,12 @@ def test_a_view_reports_its_verified_query_failure_before_a_bad_variable(tmp_pat
     views.write_text(text.replace(variable, bad_variable + variable, 1), encoding="utf-8")
     result = load_project(project, manifest_path=MANIFEST)
     # jaffle_sales holds `orders` but not `products`, so the query's metric() does not resolve
-    # there; the build stops at that phase and never reaches the variables.
+    # there; the build stops at that phase and never reaches the variables. That nothing
+    # reads the new variable is a warning before the build.
     sales = [diagnostic for diagnostic in result.diagnostics if diagnostic.subject == "semantic_view:jaffle_sales"]
     assert [(diagnostic.code, dict(diagnostic.context)) for diagnostic in sales] == [
-        ("SST-REF006", {"name": "product_count"})
+        ("SST-VAL220", {"artifact": "semantic_view:jaffle_sales", "name": "bad_bool"}),
+        ("SST-REF006", {"name": "product_count"}),
     ]
     assert sorted(view.fqn for view in result.views) == [
         "SST_REF_DEV.CORE.JAFFLE_MENU",

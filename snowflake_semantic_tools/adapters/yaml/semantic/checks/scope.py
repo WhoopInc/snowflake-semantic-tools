@@ -106,9 +106,7 @@ def view_scope(node: Mapping[str, object]) -> ViewScope:
     """
 
     def names(field: str) -> tuple[str, ...]:
-        return tuple(
-            entry.label.upper() for entry in scope_entries(node) if entry.field == field and entry.readable
-        )
+        return tuple(entry.label.upper() for entry in scope_entries(node) if entry.field == field and entry.readable)
 
     def included(field: str) -> tuple[str, ...] | None:
         return names(field) if isinstance(node.get(field), list) else None
@@ -173,9 +171,7 @@ def _scope_diagnostics(
     for view in views:
         if view.poisoned:
             continue
-        context = _ScopeContext(
-            view, frozenset(view.declared_tables), models, metric_by_name, relationship_by_name
-        )
+        context = _ScopeContext(view, frozenset(view.declared_tables), models, metric_by_name, relationship_by_name)
         diagnostics.extend(_shape_diagnostics(context))
         diagnostics.extend(
             found for entry in scope_entries(view.source) if (found := _entry_problem(entry, context)) is not None
@@ -232,9 +228,7 @@ def _entry_problem(entry: ScopeEntry, context: _ScopeContext) -> Diagnostic | No
     relationship = context.relationships.get(entry.name)
     if relationship is None:
         return _unknown(entry, context, "does not exist")
-    absent = sorted(
-        {relationship.from_table.casefold(), relationship.to_table.casefold()} - context.tables
-    )
+    absent = sorted({relationship.from_table.casefold(), relationship.to_table.casefold()} - context.tables)
     if absent:
         return D(
             "SST-VAL203",
@@ -284,7 +278,9 @@ def _unknown(entry: ScopeEntry, context: _ScopeContext, reason: str) -> Diagnost
     )
 
 
-def _metric_tables(metric: MetricDef, metrics: Mapping[str, MetricDef], seen: frozenset[str] = frozenset()) -> frozenset[str]:
+def _metric_tables(
+    metric: MetricDef, metrics: Mapping[str, MetricDef], seen: frozenset[str] = frozenset()
+) -> frozenset[str]:
     """The tables a metric needs a view to hold: its own, and those of the metrics it reads."""
     tables = set(metric.tables or metric.referenced_models)
     for name in metric.referenced_metrics:

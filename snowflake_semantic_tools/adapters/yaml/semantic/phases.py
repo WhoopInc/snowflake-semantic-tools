@@ -25,6 +25,7 @@ from snowflake_semantic_tools.adapters.yaml.semantic.checks.dbt import (
     _dbt_model_diagnostics,
     _description_diagnostics,
 )
+from snowflake_semantic_tools.adapters.yaml.semantic.checks.deprecated import _deprecated_key_diagnostics
 from snowflake_semantic_tools.adapters.yaml.semantic.checks.expressions import (
     _expression_reference_diagnostics,
     _filter_diagnostics,
@@ -208,6 +209,7 @@ def _document_diagnostics(
         *_folder_route_diagnostics(context.config, context.views_dir),
         *_stray_view_diagnostics(documents, context.views_dir),
         *_authored_key_diagnostics(documents),
+        *_deprecated_key_diagnostics(documents),
         *_member_name_diagnostics(documents),
         *_description_diagnostics(parsed.views, metrics),
         *_metric_parse_diagnostics(documents, project_dir, models_dir),

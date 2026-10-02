@@ -356,4 +356,6 @@ def _sorted_columns(columns: tuple[Column, ...], scope: ViewScope) -> list[Colum
 
 
 def _sorted_metrics(metrics: tuple[Metric, ...], scope: ViewScope) -> list[Metric]:
-    return sorted((m for m in metrics if scope.admits_metric(m.name)), key=lambda m: (m.table is None, m.qualified_name))
+    return sorted(
+        (m for m in metrics if scope.admits_metric(m.name)), key=lambda m: (m.table is None, m.qualified_name)
+    )

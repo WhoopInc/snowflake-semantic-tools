@@ -12,7 +12,8 @@ SPECS: tuple[ErrorSpec, ...] = (
         Severity.ERROR,
         "Metric expression is not an aggregate",
         "metric '{metric}' is table-scoped and its expr is not an aggregate",
-        "wrap the expression in an aggregate; if the expression is a WINDOW function, compute it in the dbt model -- do NOT make the metric derived",
+        "wrap the expression in an aggregate; if the expression is a WINDOW function, compute it in the dbt "
+        "model -- do NOT make the metric derived",
     ),
     spec(
         "SST-VAL102",
@@ -209,7 +210,8 @@ SPECS: tuple[ErrorSpec, ...] = (
         Severity.ERROR,
         "Metric references a window metric",
         "metric '{metric}' references '{other}', a window function metric",
-        "reference the metric the window applies to instead; Snowflake does not allow a window metric in another metric",
+        "reference the metric the window applies to instead; Snowflake does not allow a window metric in "
+        "another metric",
         demotable=False,
     ),
     spec(

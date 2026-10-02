@@ -162,6 +162,18 @@ CONFIG_SCHEMA: tuple[ConfigKey, ...] = (
         "Compile expressions against Snowflake during validate and plan.",
         default="true",
     ),
+    _key(
+        "validation.description_floor",
+        _I,
+        "Shortest description, in characters, a semantic view or metric may carry; unset checks none.",
+        minimum=1,
+    ),
+    _key(
+        "validation.instruction_budget",
+        _I,
+        "Longest composed comment and instructions, in characters, a semantic view may publish; unset checks none.",
+        minimum=1,
+    ),
     _removed(
         "validation.exclude_dirs",
         "every file under the configured directories is read; set enabled: false on a view to skip it",
@@ -400,7 +412,12 @@ CONFIG_SCHEMA: tuple[ConfigKey, ...] = (
     _key("snowflake", _BLOCK, "Allowlists for Snowflake surfaces the renderer accepts."),
     _key("snowflake.orchestration_models", _L, "Orchestration models agents may name.", default="[auto]"),
     _unsupported("snowflake.tool_types", _L, "Extra agent tool types."),
-    _unsupported("snowflake.allow_unknown_keys", _B, "Accept unknown agent spec keys."),
+    _key(
+        "snowflake.allow_unknown_keys",
+        _B,
+        "Render agent spec keys SST does not model with a warning; false makes each an error.",
+        default="true",
+    ),
     _unsupported("snowflake.profile", _BLOCK, "Agent profile allowlists."),
 )
 

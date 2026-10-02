@@ -257,6 +257,7 @@ def _view_table(
         raise ProjectError(diagnostic.message, diagnostics=(diagnostic,))
     per_table = table_config.get(model_name) if isinstance(table_config, dict) else None
     table_synonyms = _as_str_tuple(per_table.get("synonyms")) if isinstance(per_table, dict) else ()
+    table_comment = str(per_table.get("description") or "").strip() or None if isinstance(per_table, dict) else None
     distinct_range = _distinct_range(per_table, path=view.path, view_name=view.name, table_name=model_name)
     (logical,) = _names((logical,), view.key, None)
     if qualified_name_problem(model.relation_name, artifact=view.key, subject=view.key) is not None:
@@ -268,6 +269,7 @@ def _view_table(
         primary_key=_names(model.primary_key, view.key, None),
         unique_keys=tuple(_names(key, view.key, None) for key in model.unique_keys),
         synonyms=table_synonyms,
+        comment=table_comment,
         distinct_range=distinct_range,
     )
 

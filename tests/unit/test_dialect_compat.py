@@ -32,9 +32,10 @@ def invoke(*args: str) -> tuple[int, dict[str, Any]]:
 
 
 def codes(payload: dict[str, object]) -> Counter[tuple[str, str]]:
+    """The errors and warnings a run reported; the join-graph notes every view carries are left out."""
     diagnostics = payload["diagnostics"]
     assert isinstance(diagnostics, list)
-    return Counter((item["code"], item["severity"]) for item in diagnostics)
+    return Counter((item["code"], item["severity"]) for item in diagnostics if item["severity"] != "info")
 
 
 def converted_copy(tmp_path: Path) -> Path:
@@ -71,7 +72,8 @@ def test_legacy_globals_are_rejected_with_their_codes_and_render_nothing() -> No
             ("SST-REF034", "error"): 10,
             ("SST-REF035", "error"): 7,
             ("SST-VAL405", "error"): 1,
-            ("SST-PRS020", "error"): 3,
+            ("SST-PRS020", "error"): 1,
+            ("SST-VAL012", "warning"): 2,
         }
     )
 
@@ -96,12 +98,16 @@ def test_codemod_converts_idempotently_and_the_result_renders_the_committed_ddl(
     again, report = invoke("migrate", "refs", "--project-dir", str(project))
     assert again == 0 and report["data"]["files"] == []
 
-    # The codemod rewrites references, not keys: the 0.3 spellings remain, and
-    # each is an error naming its 1.0 key.
+    # The codemod rewrites references, not keys: the 0.3 spellings remain. The custom
+    # instruction spellings are honoured and named; the relationship shape is an error.
     exit_code, payload = invoke("compile", "--project-dir", str(project), "--manifest", str(MANIFEST))
     assert exit_code == 1
-    assert codes(payload) == Counter({("SST-PRS020", "error"): 3})
-    renames = {(item["params"]["field"], item["params"]["expected"]) for item in payload["diagnostics"]}
+    assert codes(payload) == Counter({("SST-PRS020", "error"): 1, ("SST-VAL012", "warning"): 2})
+    renames = {
+        (item["params"]["field"], item["params"]["expected"])
+        for item in payload["diagnostics"]
+        if item["severity"] != "info"
+    }
     assert renames == {
         ("sql_generation", "ai_sql_generation"),
         ("question_categorization", "ai_question_categorization"),

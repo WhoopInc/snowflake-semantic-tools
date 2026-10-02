@@ -13,7 +13,7 @@ VIEW = """  - name: v
     description: |-
       Use this view for questions about orders.
     tables:
-      - "{{{{ ref('orders') }}}}"
+      - "{{{{ ref('customers') }}}}"
     {key}:
       - "{entry}"
 """
@@ -25,20 +25,20 @@ VIEW = """  - name: v
         ("metrics", "{{ metric('no_such_metric') }}", "metrics names metric 'no_such_metric', which does not exist"),
         (
             "exclude_metrics",
-            "{{ metric('customer_count') }}",
-            "exclude_metrics names metric 'customer_count', which does not attach to this view",
+            "{{ metric('order_count') }}",
+            "exclude_metrics names metric 'order_count', which does not attach to this view",
         ),
         (
             "columns",
-            "{{ ref('customers', 'customer_id') }}",
-            "columns names column 'customers.customer_id', which is not on a table of this view",
+            "{{ ref('orders', 'order_id') }}",
+            "columns names column 'orders.order_id', which is not on a table of this view",
         ),
         (
             "columns",
-            "{{ ref('orders', 'no_such_column') }}",
-            "columns names column 'orders.no_such_column', which does not exist on 'orders'",
+            "{{ ref('customers', 'no_such_column') }}",
+            "columns names column 'customers.no_such_column', which does not exist on 'customers'",
         ),
-        ("columns", "order_id", "columns names column 'order_id', which is not a two-argument ref() call"),
+        ("columns", "customer_id", "columns names column 'customer_id', which is not a two-argument ref() call"),
         (
             "exclude_relationships",
             "no_such_relationship",
@@ -56,6 +56,6 @@ def test_sst_val330_fires(tmp_path: Path, key: str, entry: str, message: str) ->
 
 
 def test_sst_val330_silent(tmp_path: Path) -> None:
-    project = with_view(tmp_path, VIEW.format(key="columns", entry="{{ ref('orders', 'order_id') }}"))
+    project = with_view(tmp_path, VIEW.format(key="exclude_columns", entry="{{ ref('customers', 'customer_name') }}"))
     assert found(project, "SST-VAL330") == []
     assert "V" in view_names(project)
