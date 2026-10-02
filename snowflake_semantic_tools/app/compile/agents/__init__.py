@@ -25,6 +25,7 @@ from snowflake_semantic_tools.domain.model.agent import (
 )
 from snowflake_semantic_tools.domain.model.diagnostic import D, Diagnostic, DiagnosticBag
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
+from snowflake_semantic_tools.domain.model.sql_checks import name_problem, qualified_name_problem
 from snowflake_semantic_tools.domain.render.agent import desired_agent_definition, render_agent_json, render_agent_spec
 
 __all__ = ["AgentCompileContext", "CompileAgents", "CompiledAgent", "ExtensionPin", "for_publication"]
@@ -64,6 +65,7 @@ class CompileAgents:
             SST-VAL514: an agent declares one tool name twice.
             SST-VAL515: two of an agent's tool names differ only by case.
             SST-PRS025: an agent's alias is reserved.
+            SST-PRS005: an agent's alias or a tag name is not an identifier or a qualified name.
             SST-VAL543: an agent's orchestration model is not in `snowflake.orchestration_models`.
             SST-VAL545: an agent's `tool_not_accessible` is not accept, reject, or legacy.
             SST-VAL546: an agent enables analytical search without a cortex_search tool.
@@ -191,10 +193,19 @@ def _tool_name_clashes(model: AgentModel, tools: Sequence[ResolvedAgentTool]) ->
 def _agent_rules(
     model: AgentModel, context: AgentCompileContext, tools: Sequence[ResolvedAgentTool]
 ) -> list[Diagnostic]:
-    """Check the rules about the agent as a whole: alias, model, access handling, search."""
+    """Check the rules about the agent as a whole: alias and tags, model, access handling, search."""
     diagnostics: list[Diagnostic] = []
     if model.alias and model.alias.upper() in RESERVED_AGENT_ALIASES:
         diagnostics.append(D("SST-PRS025", artifact=model.name, value=model.alias, subject=model.key))
+    # The alias and each tag name are written into ALTER AGENT unquoted when they can be.
+    for name in (model.alias, *(tag for tag, _ in model.tags)):
+        if not name:
+            continue
+        problem = name_problem(name, artifact=model.key, subject=model.key, origin=model.origin)
+        if problem is not None and "." in name:
+            problem = qualified_name_problem(name, artifact=model.key, subject=model.key, origin=model.origin)
+        if problem is not None:
+            diagnostics.append(problem)
     if model.orchestration_model not in context.allowed_models:
         diagnostics.append(D("SST-VAL543", artifact=model.name, found=model.orchestration_model, subject=model.key))
     if model.tool_not_accessible not in (None, "accept", "reject", "legacy"):

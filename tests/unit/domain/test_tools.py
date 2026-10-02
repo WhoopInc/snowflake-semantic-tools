@@ -343,3 +343,72 @@ def test_a_relation_with_an_undeclared_target_is_reported_before_the_missing_cur
         "{{ tool target('staging') }} has no entry for target 'profiles.yml'",
         "{{ tool('group', 'lookup') }} has no entry for target 'dev'",
     ]
+
+
+def _validated(member: ToolMember) -> list[tuple[str, str]]:
+    catalog = ToolCatalog(
+        (ToolGroup("group", Origin("tools.yml"), "tools.yml", members=(member,)),), "dev", frozenset(("dev",))
+    )
+    return [
+        (diagnostic.code, diagnostic.message)
+        for diagnostic in validate_tool_catalog(catalog, DbtCatalog("v12", None, None, ()))
+        if diagnostic.code in ("SST-PRS003", "SST-PRS005", "SST-PRS013", "SST-VAL418")
+    ]
+
+
+def test_every_value_a_defined_tool_writes_unquoted_is_checked_before_it_renders() -> None:
+    unsafe = ToolMember(
+        "group",
+        "lookup",
+        "procedure",
+        ToolOwnership.DEFINE,
+        Origin("tools.yml"),
+        "tools.yml",
+        body_file="lookup.sql",
+        body="RETURN 1",
+        language="sql; DROP",
+        execute_as="everyone",
+        returns="NUMBER); DROP TABLE x; --",
+        warehouse="WH X",
+        signature=(ToolParameter("id", "NUMBER) --", True),),
+        secrets=MappingProxyType({"token": "SECRET"}),
+        where="1 = 1; DROP TABLE x",
+    )
+    assert sorted(code for code, _ in _validated(unsafe)) == [
+        "SST-PRS003",
+        "SST-PRS003",
+        "SST-PRS005",
+        "SST-PRS005",
+        "SST-PRS013",
+        "SST-PRS013",
+        "SST-VAL418",
+    ]
+    assert ("SST-PRS005", "tool:lookup: 'WH X' is not a valid identifier") in _validated(unsafe)
+
+
+def test_a_tool_whose_values_render_or_wait_for_a_template_reports_none() -> None:
+    safe = ToolMember(
+        "group",
+        "lookup",
+        "function",
+        ToolOwnership.DEFINE,
+        Origin("tools.yml"),
+        "tools.yml",
+        body_file="lookup.sql",
+        body="SELECT 1",
+        language="Python",
+        execute_as="restricted   caller",
+        returns="TABLE (id NUMBER)",
+        warehouse="{{ env_var('WH') }}",
+        signature=(ToolParameter("id", "NUMBER(38, 0)", True),),
+        secrets=MappingProxyType({"token": "DB.S.SECRET"}),
+        where="{{ var('predicate') }}",
+    )
+    assert _validated(safe) == []
+    assert (
+        _validated(ToolMember("group", "r", "procedure", ToolOwnership.REFERENCE, Origin("t.yml"), "t.yml", where=";"))
+        == []
+    )
+    assert (
+        _validated(ToolMember("group", "s", "stage", ToolOwnership.DEFINE, Origin("t.yml"), "t.yml", where="X")) == []
+    )

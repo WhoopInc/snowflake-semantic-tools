@@ -150,6 +150,20 @@ def test_agent_compiler_validates_unknown_refs_names_alias_and_input_schema() ->
     assert {"SST-REF010", "SST-PRS025", "SST-VAL543"}.issubset(codes)
 
 
+def test_agent_alias_and_tag_names_must_render_as_identifiers() -> None:
+    def problems(alias: str | None, tags: tuple[tuple[str, str], ...]) -> list[str]:
+        model = AgentModel("tagged", Origin("agent.yml"), ("agent.yml",), alias=alias, tags=tags)
+        result = CompileAgents((model,), DiagnosticBag(), context()).run_result()
+        return [diagnostic.message for diagnostic in result.diagnostics if diagnostic.code == "SST-PRS005"]
+
+    assert problems("promoted", (("DB.S.COST_CENTER", "a"), ("owner", "b"))) == []
+    assert problems("pro moted", (("DB.S.COST CENTER", "a"), ('x"; DROP', "b"))) == [
+        "agent:tagged: 'pro moted' is not a valid identifier",
+        "agent:tagged: 'DB.S.COST CENTER' is not a valid identifier",
+        "agent:tagged: 'x\"; DROP' is not a valid identifier",
+    ]
+
+
 def test_agent_compiler_rejects_delegation_cycle() -> None:
     first = AgentModel(
         "first",

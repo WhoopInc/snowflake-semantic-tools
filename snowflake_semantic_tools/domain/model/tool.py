@@ -11,7 +11,9 @@ from snowflake_semantic_tools.domain.model.artifact_key import artifact_key
 from snowflake_semantic_tools.domain.model.dbt import DbtCatalog
 from snowflake_semantic_tools.domain.model.diagnostic import D, Diagnostic, DiagnosticBag, Origin
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
+from snowflake_semantic_tools.domain.model.sql_checks import checked_expression, name_problem, qualified_name_problem
 from snowflake_semantic_tools.domain.model.validation import Emitter
+from snowflake_semantic_tools.domain.sql import is_datatype
 
 
 class ToolOwnership(Enum):
@@ -318,6 +320,11 @@ def validate_tool_catalog(catalog: ToolCatalog, dbt: DbtCatalog) -> DiagnosticBa
         SST-VAL609: a search or attribute column is not on the search service's model.
         SST-LOD018: a defined member's `body_file:` does not exist.
         SST-LOD019: a defined member's `body_file:` is empty.
+        SST-PRS005: a name a defined member's DDL writes is not an identifier, or a secret not a
+            three-part name.
+        SST-PRS003: a defined member's parameter or return type is not a Snowflake data type.
+        SST-PRS013: a defined member's language or `execute_as` is not one Snowflake accepts.
+        SST-VAL418: a defined member's `where:` is not one expression.
         SST-VAL601: a group declares one member name twice, ignoring case.
         SST-VAL001: a group name is declared twice, ignoring case.
         SST-VAL602: one member name is declared in two groups.
@@ -404,6 +411,7 @@ def _validate_member(member: ToolMember, catalog: ToolCatalog, dbt: DbtCatalog) 
         *_object_parameter(member, subject),
         *_search_columns(member, dbt, subject),
         *_body_file(member, subject),
+        *_sql_values(member, subject),
     )
 
 
@@ -508,3 +516,55 @@ def _body_file(member: ToolMember, subject: str) -> tuple[Diagnostic, ...]:
     elif not member.body.strip():
         emit("SST-LOD019", path=member.body_file, file=member.source_file)
     return emit.diagnostics
+
+
+_LANGUAGES = ("java", "javascript", "python", "scala", "sql")
+_EXECUTE_AS = ("caller", "owner", "restricted caller")
+
+
+def _sql_values(member: ToolMember, subject: str) -> tuple[Diagnostic, ...]:
+    """Check each value a defined member's DDL writes unquoted, before anything renders it.
+
+    A value still holding a `{{ ... }}` template is left to the resolver that fills it.
+
+    Diagnostics:
+        SST-PRS005: a column, parameter, warehouse, or integration name is not an identifier, or
+            a secret is not a three-part name.
+        SST-PRS003: a parameter or return type is not a Snowflake data type.
+        SST-PRS013: the language or `execute_as` is not one Snowflake accepts.
+        SST-VAL418: `where:` is not one expression.
+    """
+    if member.ownership is not ToolOwnership.DEFINE:
+        return ()
+    emit = Emitter(subject=subject, origin=member.origin, artifact=subject)
+    names = (
+        member.search_column,
+        *member.attribute_columns,
+        *(column.name for column in member.columns),
+        member.warehouse,
+        *(parameter.name for parameter in member.signature),
+        *member.external_access_integrations,
+    )
+    for name in names:
+        if name and "{{" not in name and name_problem(name, artifact=subject, subject=subject) is not None:
+            emit("SST-PRS005", value=name)
+    for secret in member.secrets.values():
+        if qualified_name_problem(secret, artifact=subject, subject=subject) is not None:
+            emit("SST-PRS005", value=secret)
+    for key, value in (
+        *((f"signature.{item.name}", item.type) for item in member.signature),
+        ("returns", member.returns),
+    ):
+        # A table function's TABLE (...) return is checked column by column when it renders.
+        if value and not is_datatype(value) and not value.strip().upper().startswith("TABLE"):
+            emit("SST-PRS003", field=key, expected="a Snowflake data type", found=repr(value))
+    for key, value, allowed in (
+        ("language", member.language, _LANGUAGES),
+        ("execute_as", member.execute_as, _EXECUTE_AS),
+    ):
+        if value and " ".join(value.casefold().split()) not in allowed:
+            emit("SST-PRS013", field=key, found=value, expected=", ".join(allowed))
+    if not member.where or "{{" in member.where:
+        return emit.diagnostics
+    found = checked_expression(member.where, kind="tool", name=member.name, subject=subject, origin=member.origin)
+    return (*emit.diagnostics, found) if isinstance(found, Diagnostic) else emit.diagnostics
