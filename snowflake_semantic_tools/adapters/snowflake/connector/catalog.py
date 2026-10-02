@@ -20,7 +20,7 @@ from snowflake_semantic_tools.domain.ports.snowflake.catalog import (
     ExtensionVersion,
     StageObservation,
 )
-from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
+from snowflake_semantic_tools.domain.ports.snowflake.errors import AgentVersionNotFound, SnowflakePortError
 from snowflake_semantic_tools.domain.sql import Sql, datatype, ident, join, keyword, literal, qname, scope, sql
 
 # The object types SST observes, each spelled as SHOW spells it once pluralized with an S.
@@ -225,7 +225,7 @@ class CatalogMethods(Session, CatalogPort):
         key = "LAST" if selector == "committed" else selector.removeprefix("alias:")
         resolved = next((value for alias, value in aliases.items() if str(alias).casefold() == key.casefold()), None)
         if not isinstance(resolved, str) or not resolved.upper().startswith("VERSION$"):
-            raise SnowflakePortError(
+            raise AgentVersionNotFound(
                 f"agent {qualified_name.sql} selector {selector!r} does not resolve to a committed version"
             )
         return resolved.upper()

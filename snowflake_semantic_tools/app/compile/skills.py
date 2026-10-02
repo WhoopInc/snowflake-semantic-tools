@@ -7,7 +7,7 @@ result for the agents that reference the extensions.
 from __future__ import annotations
 
 import re
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from hashlib import sha256
 
@@ -80,16 +80,21 @@ class CompiledExtension(StandaloneArtifact):
     """One skill or plugin as the extension version it publishes.
 
     Attributes:
-        has_scripts: Whether the bundle carries a script, which only an agent with a
-            code_execution tool can run.
+        scripts: Each script the bundle carries, as the skill that ships it and the path
+            inside that skill; only an agent with a code_execution tool can run one.
         contained_keys: What the bundle carries besides itself: a plugin's member skills.
     """
 
     release: ExtensionRelease
     # `field()` keeps the protocol's `source_files` property from becoming this field's default.
     source_files: tuple[str, ...] = field()
-    has_scripts: bool = False
+    scripts: tuple[tuple[str, str], ...] = ()
     contained_keys: tuple[str, ...] = ()
+
+    @property
+    def has_scripts(self) -> bool:
+        """Report whether the bundle carries any script."""
+        return bool(self.scripts)
 
     @property
     def name(self) -> str:
@@ -149,6 +154,8 @@ class CompileSkills:
             SST-VAL801: a skill or plugin's extension name starts with a digit, so it cannot
                 name a Snowflake object; it does not compile.
             SST-VAL836: a plugin member has errors, so the plugin is blocked.
+            SST-VAL831: each compiled skill and plugin publishes through the CORTEX EXTENSION
+                statements (info).
         """
         diagnostics: list[Diagnostic] = list(validate_skill_catalog(self._catalog))
         channel = self._channel
@@ -188,7 +195,8 @@ class CompileSkills:
             diagnostics.extend(unnamed)
             return None
         release = self._release(skill.key, "SKILL", skill.extension_name, skill.description or "", bundle)
-        return CompiledExtension(release, skill.source_files, has_scripts=bool(skill.scripts))
+        diagnostics.append(_extension_surface(release, skill.name, skill.origin))
+        return CompiledExtension(release, skill.source_files, scripts=_scripts_of((skill,)))
 
     def _compile_plugin(
         self, plugin: Plugin, members: Mapping[str, Skill], diagnostics: list[Diagnostic]
@@ -223,10 +231,11 @@ class CompileSkills:
             dict.fromkeys((plugin.manifest_file, *(path for skill in carried for path in skill.source_files)))
         )
         release = self._release(plugin.key, "PLUGIN", plugin.extension_name, plugin.description or "", bundle)
+        diagnostics.append(_extension_surface(release, plugin.name, plugin.origin))
         return CompiledExtension(
             release,
             sources,
-            has_scripts=any(skill.scripts for skill in carried),
+            scripts=_scripts_of(carried),
             contained_keys=tuple(artifact_key("skill", name) for name in dict.fromkeys(plugin.members)),
         )
 
@@ -243,6 +252,19 @@ class CompileSkills:
             certified=channel.certified,
             bundle=bundle,
         )
+
+
+def _extension_surface(release: ExtensionRelease, name: str, origin: Origin) -> Diagnostic:
+    """SST-VAL831: the statements a release publishes through, which the public SQL reference omits."""
+    kind = release.extension_type.lower()
+    value = f"publishes as a {kind} Cortex Extension version, a statement surface the public SQL reference omits"
+    return D("SST-VAL831", origin=origin, subject=release.key, artifact=name, value=value)
+
+
+def _scripts_of(skills: Iterable[Skill]) -> tuple[tuple[str, str], ...]:
+    """Each script the skills ship, as the skill and its path, skills first-carried first."""
+    unique = {skill.name: skill for skill in skills}
+    return tuple((skill.name, script.path) for skill in unique.values() for script in skill.scripts)
 
 
 def unpublished_reasons(catalog: SkillCatalog, skills: CompileResult, channel_problem: str | None) -> dict[str, str]:
@@ -282,7 +304,7 @@ def extension_pins(skills: CompileResult) -> tuple[dict[str, ExtensionPin], dict
         release = item.release
         if item.artifact_type == "skill":
             skill_pins[item.name] = ExtensionPin(
-                item.artifact_key, release.target, release.alias, (item.name,), item.has_scripts
+                item.artifact_key, release.target, release.alias, (item.name,), item.scripts
             )
             continue
         members = tuple(
@@ -290,8 +312,6 @@ def extension_pins(skills: CompileResult) -> tuple[dict[str, ExtensionPin], dict
                 entry.path.split("/")[1] for entry in release.bundle.entries if entry.path.startswith("skills/")
             )
         )
-        plugin_pins[item.name] = ExtensionPin(
-            item.artifact_key, release.target, release.alias, members, item.has_scripts
-        )
+        plugin_pins[item.name] = ExtensionPin(item.artifact_key, release.target, release.alias, members, item.scripts)
         consumed.update(artifact_key("skill", member) for member in members)
     return skill_pins, plugin_pins, frozenset(consumed)

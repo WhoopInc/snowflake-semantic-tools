@@ -22,7 +22,7 @@ cannot be downgraded by any setting.
 - [Loading (LOD)](#loading-lod) -- 8 codes
 - [References (REF)](#references-ref) -- 29 codes
 - [Membership (MEM)](#membership-mem) -- 2 codes
-- [Validation (VAL)](#validation-val) -- 161 codes
+- [Validation (VAL)](#validation-val) -- 173 codes
 - [dbt (DBT)](#dbt-dbt) -- 6 codes
 - [Rendering (RND)](#rendering-rnd) -- 16 codes
 - [Manifest and state (MAN)](#manifest-and-state-man) -- 21 codes
@@ -1724,6 +1724,14 @@ Fix: shorten the name
 
 Fix: remove it; eval objects resolve to the agent's schema
 
+### SST-VAL704
+
+**Resolved eval schema differs from the agent schema** (error)
+
+`dataset '<artifact>' resolves to <found>; agent '<value>' resolves to <expected>`
+
+Fix: align the eval with its agent, per target
+
 ### SST-VAL705
 
 **Dataset row is incomplete** (error)
@@ -1806,7 +1814,15 @@ Fix: include the SHA so a score is attributable to a commit
 
 `eval config for '<artifact>': agent_version is '<found>'`
 
-Fix: use committed, alias:&lt;name&gt;, or VERSION$&lt;integer&gt;
+Fix: use committed or alias:&lt;name&gt;
+
+### SST-VAL720
+
+**Referenced agent version does not exist** (error)
+
+`eval config for '<artifact>': version '<value>' does not exist or is dropped`
+
+Fix: pin an existing version
 
 ### SST-VAL721
 
@@ -1822,7 +1838,7 @@ Fix: declare the custom metric, or use a system metric
 
 `eval config for '<artifact>': metric '<name>' declares no metric_version`
 
-Fix: pin the system metric to v3
+Fix: pin the version
 
 ### SST-VAL723
 
@@ -1830,7 +1846,7 @@ Fix: pin the system metric to v3
 
 `eval config for '<artifact>': metric '<name>' pins legacy version '<found>'`
 
-Fix: move to v3, and record the score shift
+Fix: move to a current version, and record the score shift
 
 ### SST-VAL724
 
@@ -1854,13 +1870,29 @@ Fix: remove judge_model; the version carries the judge
 
 Fix: report it rather than gate on it
 
+### SST-VAL729
+
+**Config stage file format is wrong** (error)
+
+`eval config for '<artifact>': stage file format is <found>`
+
+Fix: use TYPE='CSV' with every delimiter and escape disabled
+
+### SST-VAL730
+
+**Partial completion treated as a pass** (error)
+
+`eval run for '<artifact>': status '<found>' is not a pass`
+
+Fix: treat INVOCATION_PARTIALLY_COMPLETED and PARTIALLY_COMPLETED as failures
+
 ### SST-VAL731
 
 **Eval concurrency exceeds the configured ceiling** (warning)
 
 `eval config for '<artifact>': concurrency <found> exceeds <expected>`
 
-Fix: lower concurrency; runs re-invoke the agent
+Fix: lower concurrency; runs re-invoke the agent, so this is real load and real spend
 
 ### SST-VAL732
 
@@ -1875,6 +1907,14 @@ Fix: lower concurrency; runs re-invoke the agent
 `eval config for '<artifact>': metric '<name>' threshold has <detail>`
 
 Fix: declare min, max, or both, with min &lt;= max
+
+### SST-VAL734
+
+**Threshold gates before the baseline runs complete** (error)
+
+`eval config for '<artifact>': <count> baseline_runs completed, <expected> required`
+
+Fix: complete the baseline first
 
 ### SST-VAL735
 
@@ -1939,6 +1979,20 @@ Fix: ask for a number in a fixed position
 `eval metric '<artifact>': the rubric has no <detail> branch`
 
 Fix: add the branch; otherwise the judge invents one per call
+
+### SST-VAL745
+
+**In-place edit to a metric a retained run references** (error)
+
+`eval metric '<artifact>' is referenced by retained run '<value>'`
+
+Fix: publish a new version instead
+
+### SST-VAL746
+
+**System judge versions move on Snowflake's cadence** (info)
+
+`eval metric '<artifact>': judge for version '<value>' recorded`
 
 ### SST-VAL747
 
@@ -2006,19 +2060,35 @@ Fix: fix what regressed, or capture a new baseline with a reason if the change i
 
 ### SST-VAL801
 
-**Skill folder layout or name is wrong** (error)
+**Skill folder layout is wrong** (error)
 
 `'<artifact>': <detail>`
 
-Fix: name the folder in lowercase kebab-case and repeat that name in the frontmatter
+Fix: put SKILL.md at the folder root, with scripts beside it
+
+### SST-VAL802
+
+**Skill is not published as a typed CORTEX EXTENSION** (error)
+
+`skill '<artifact>': TYPE is <found>`
+
+Fix: publish with an explicit TYPE of SKILL or PLUGIN
 
 ### SST-VAL804
 
-**Published extension is referenced by no agent** (warning)
+**Extension version referenced by no agent** (warning)
 
 `<artifact>: version <value> is referenced by no agent`
 
-Fix: reference it from an agent, or accept that it serves the catalog and Desktop only
+Fix: reference it, or stop publishing it
+
+### SST-VAL805
+
+**Repo and catalog disagree** (warning)
+
+`skill reconciliation: <value>`
+
+Fix: publish the missing sources, and reap the orphan objects
 
 ### SST-VAL808
 
@@ -2026,7 +2096,7 @@ Fix: reference it from an agent, or accept that it serves the catalog and Deskto
 
 `skill '<artifact>': '<path>' is referenced and absent from the bundle`
 
-Fix: add the file, correct the reference, or mark an illustrative line with 'sst: ignore SST-VAL808'
+Fix: add the file, or correct the reference
 
 ### SST-VAL809
 
@@ -2038,11 +2108,11 @@ Fix: rename one of the authored files
 
 ### SST-VAL810
 
-**Reference does not survive flattening** (error)
+**Flattening did not rewrite a subdirectory reference** (error)
 
 `skill '<artifact>': '<path>' does not resolve inside the published bundle`
 
-Fix: reference bundled files relative to the skill folder; repository-root paths and directories are not published
+Fix: rewrite every subdirectory reference, then re-check the paths
 
 ### SST-VAL811
 
@@ -2050,7 +2120,7 @@ Fix: reference bundled files relative to the skill folder; repository-root paths
 
 `'<artifact>': bundle is <size> bytes, over <expected>`
 
-Fix: move bulk content out of the bundle; it is read on demand at invocation
+Fix: move bulk content out of the bundle
 
 ### SST-VAL812
 
@@ -2058,7 +2128,7 @@ Fix: move bulk content out of the bundle; it is read on demand at invocation
 
 `skill '<artifact>': SKILL.md is <size> bytes, over <expected>`
 
-Fix: move bulk content into a referenced file; SKILL.md is read on every orchestration turn
+Fix: move bulk content into a referenced file
 
 ### SST-VAL813
 
@@ -2070,19 +2140,25 @@ Fix: reference it, or remove it
 
 ### SST-VAL814
 
-**Bundle carries a script no consuming agent can run** (warning)
+**Bundle carries a script with no consumer that can run it** (warning)
 
-`agent '<artifact>': <name> bundles scripts, and the agent declares no code_execution tool`
+`skill '<artifact>': '<path>' is executable and no consuming agent enables code_execution`
 
-Fix: enable code_execution on the agent, or drop the scripts
+Fix: enable code_execution, or drop the script
 
 ### SST-VAL815
 
-**Bundled file reads a credential or an absolute local path** (warning)
+**Bundled script reads a credential or an absolute local path** (warning)
 
 `skill '<artifact>': '<path>' contains <detail>`
 
-Fix: parameterise it; a path that resolves on one machine does not resolve in the sandbox
+Fix: parameterise it; a path that resolves locally will not resolve in the sandbox
+
+### SST-VAL816
+
+**SKILL.md and bundle byte split** (info)
+
+`skill '<artifact>': <value>`
 
 ### SST-VAL817
 
@@ -2090,15 +2166,15 @@ Fix: parameterise it; a path that resolves on one machine does not resolve in th
 
 `<key>: configures neither the catalog nor the stage channel`
 
-Fix: configure skills.catalog, skills.stage, or both
+Fix: configure at least one channel
 
 ### SST-VAL818
 
-**Flatten setting is wrong for its channel** (error)
+**Flatten settings are wrong for a channel** (error)
 
 `config key '<key>' is <found>; it must be <expected>`
 
-Fix: set skills.catalog.+flatten true and skills.stage.+flatten false
+Fix: set catalog flatten true and stage flatten false
 
 ### SST-VAL819
 
@@ -2106,7 +2182,7 @@ Fix: set skills.catalog.+flatten true and skills.stage.+flatten false
 
 `config key '<key>' is <found>; it must be <expected>`
 
-Fix: set it false; compressed uploads are invisible to Desktop
+Fix: set it false
 
 ### SST-VAL821
 
@@ -2114,7 +2190,15 @@ Fix: set it false; compressed uploads are invisible to Desktop
 
 `config key '<key>' value <found> is outside <expected>`
 
-Fix: set skills.stage.+layout to by_type
+Fix: set layout to by_type
+
+### SST-VAL824
+
+**Deleted file survives into the next version** (error)
+
+`skill '<artifact>': '<path>' was deleted and is still published`
+
+Fix: build each version from empty, or issue explicit removals
 
 ### SST-VAL830
 
@@ -2122,11 +2206,17 @@ Fix: set skills.stage.+layout to by_type
 
 `skill '<artifact>' is published nowhere`
 
-Fix: enable the catalog channel, or add the skill to a profile
+Fix: reference it from a profile, or enable a channel
+
+### SST-VAL831
+
+**CORTEX EXTENSION DDL surface used** (info)
+
+`skill '<artifact>': <value>`
 
 ### SST-VAL832
 
-**Skill or plugin name is not unique as an extension** (error)
+**Skill name is not globally unique across extensions** (error)
 
 `'<artifact>' collides with '<other>' as one extension name`
 

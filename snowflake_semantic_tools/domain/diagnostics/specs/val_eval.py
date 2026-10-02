@@ -33,6 +33,13 @@ SPECS: tuple[ErrorSpec, ...] = (
         "remove it; eval objects resolve to the agent's schema",
     ),
     spec(
+        "SST-VAL704",
+        Severity.ERROR,
+        "Resolved eval schema differs from the agent schema",
+        "dataset '{artifact}' resolves to {found}; agent '{value}' resolves to {expected}",
+        "align the eval with its agent, per target",
+    ),
+    spec(
         "SST-VAL705",
         Severity.ERROR,
         "Dataset row is incomplete",
@@ -107,7 +114,14 @@ SPECS: tuple[ErrorSpec, ...] = (
         Severity.ERROR,
         "agent_version is LIVE or omitted",
         "eval config for '{artifact}': agent_version is '{found}'",
-        "use committed, alias:<name>, or VERSION$<integer>",
+        "use committed or alias:<name>",
+    ),
+    spec(
+        "SST-VAL720",
+        Severity.ERROR,
+        "Referenced agent version does not exist",
+        "eval config for '{artifact}': version '{value}' does not exist or is dropped",
+        "pin an existing version",
     ),
     spec(
         "SST-VAL721",
@@ -121,14 +135,14 @@ SPECS: tuple[ErrorSpec, ...] = (
         Severity.ERROR,
         "metric_version is not pinned",
         "eval config for '{artifact}': metric '{name}' declares no metric_version",
-        "pin the system metric to v3",
+        "pin the version",
     ),
     spec(
         "SST-VAL723",
         Severity.WARNING,
         "metric_version pins a legacy judge",
         "eval config for '{artifact}': metric '{name}' pins legacy version '{found}'",
-        "move to v3, and record the score shift",
+        "move to a current version, and record the score shift",
     ),
     spec(
         "SST-VAL724",
@@ -152,11 +166,25 @@ SPECS: tuple[ErrorSpec, ...] = (
         "report it rather than gate on it",
     ),
     spec(
+        "SST-VAL729",
+        Severity.ERROR,
+        "Config stage file format is wrong",
+        "eval config for '{artifact}': stage file format is {found}",
+        "use TYPE='CSV' with every delimiter and escape disabled",
+    ),
+    spec(
+        "SST-VAL730",
+        Severity.ERROR,
+        "Partial completion treated as a pass",
+        "eval run for '{artifact}': status '{found}' is not a pass",
+        "treat INVOCATION_PARTIALLY_COMPLETED and PARTIALLY_COMPLETED as failures",
+    ),
+    spec(
         "SST-VAL731",
         Severity.WARNING,
         "Eval concurrency exceeds the configured ceiling",
         "eval config for '{artifact}': concurrency {found} exceeds {expected}",
-        "lower concurrency; runs re-invoke the agent",
+        "lower concurrency; runs re-invoke the agent, so this is real load and real spend",
     ),
     spec(
         "SST-VAL732",
@@ -171,6 +199,13 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Blocking threshold declares no usable bound",
         "eval config for '{artifact}': metric '{name}' threshold has {detail}",
         "declare min, max, or both, with min <= max",
+    ),
+    spec(
+        "SST-VAL734",
+        Severity.ERROR,
+        "Threshold gates before the baseline runs complete",
+        "eval config for '{artifact}': {count} baseline_runs completed, {expected} required",
+        "complete the baseline first",
     ),
     spec(
         "SST-VAL735",
@@ -227,6 +262,20 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Rubric has no tie-break or insufficient-information branch",
         "eval metric '{artifact}': the rubric has no {detail} branch",
         "add the branch; otherwise the judge invents one per call",
+    ),
+    spec(
+        "SST-VAL745",
+        Severity.ERROR,
+        "In-place edit to a metric a retained run references",
+        "eval metric '{artifact}' is referenced by retained run '{value}'",
+        "publish a new version instead",
+    ),
+    spec(
+        "SST-VAL746",
+        Severity.INFO,
+        "System judge versions move on Snowflake's cadence",
+        "eval metric '{artifact}': judge for version '{value}' recorded",
+        None,
     ),
     spec(
         "SST-VAL747",

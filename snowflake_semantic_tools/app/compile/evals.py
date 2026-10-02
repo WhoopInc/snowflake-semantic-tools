@@ -6,8 +6,8 @@ from dataclasses import dataclass, replace
 from hashlib import sha256
 
 from snowflake_semantic_tools.app.compile.base import CompileResult, StandaloneArtifact, compile_checked
-from snowflake_semantic_tools.domain.diagnostics import Diagnostic
-from snowflake_semantic_tools.domain.model.eval import EvalCatalog, EvalDefaults, ResolvedEval
+from snowflake_semantic_tools.domain.diagnostics import Diagnostic, DiagnosticBag
+from snowflake_semantic_tools.domain.model.eval import EVAL_MINT_NEVER, EvalCatalog, EvalDefaults, ResolvedEval
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
 from snowflake_semantic_tools.domain.model.lifecycle import (
     CompositeFacts,
@@ -25,6 +25,7 @@ from snowflake_semantic_tools.domain.render.eval import (
     render_source_table_statements,
 )
 from snowflake_semantic_tools.domain.resolve.eval_name import render_eval_name_template
+from snowflake_semantic_tools.domain.validate.eval import eval_placement
 
 
 @dataclass(frozen=True, slots=True)
@@ -78,17 +79,30 @@ class CompiledEval(StandaloneArtifact):
                 component_fingerprints=(
                     ("dataset", self.rendered.dataset_fingerprint),
                     ("config", self.rendered.config_fingerprint),
+                    *((("mint", EVAL_MINT_NEVER),) if not self.mints else ()),
                 ),
-                physical_resources=(("TABLE", self.source_table), ("DATASET", self.dataset_target)),
+                physical_resources=(
+                    (("TABLE", self.source_table), ("DATASET", self.dataset_target))
+                    if self.mints
+                    else (("DATASET", self.dataset_target),)
+                ),
             ),
             depends_on=self.resolved.depends_on,
         )
         return replace(artifact, fingerprint=combined)
 
+    @property
+    def mints(self) -> bool:
+        """Report whether SST creates the eval's source table and dataset, which `dataset.mint: never` forbids."""
+        dataset = self.resolved.config.dataset
+        return dataset is None or dataset.mint != EVAL_MINT_NEVER
+
     def rendered_for_publish(self, manifest_id: str) -> RenderedArtifact:
-        """Add the statements that create the source table and then the dataset; nothing is marked."""
+        """Add the statements that create the source table and then the dataset when SST mints them."""
         del manifest_id
         artifact = self.rendered_artifact
+        if not self.mints:
+            return artifact
         return replace(
             artifact,
             create_statements=(*self.rendered.source_table_statements, self.rendered.create_dataset_statement),
@@ -109,19 +123,27 @@ class CompileEvals:
     def run_result(self) -> CompileResult:
         """Compile the evals in key order, skipping each one an error already names.
 
-        The diagnostics are the catalog's, then each eval's render checks or SST-INT902. An
-        eval a render check refuses is left out.
+        The diagnostics are the catalog's, then each eval's placement, then each eval's render
+        checks or SST-INT902. An eval a placement or render check refuses is left out.
 
         Diagnostics:
+            SST-VAL704: an eval names a schema other than its agent's; it does not compile.
             SST-RND020, SST-RND021, SST-RND022: as `eval_render_checks` reports them.
             SST-INT902: rendering an eval raised KeyError, TypeError or ValueError, such as one
                 whose agent has no target.
         """
+        evals = sorted(self._catalog.evals, key=lambda item: item.key)
+        placement = tuple(
+            diagnostic
+            for resolved in evals
+            if (target := self._agent_targets.get(resolved.agent.name.casefold())) is not None
+            for diagnostic in eval_placement(resolved, target)
+        )
         return compile_checked(
-            sorted(self._catalog.evals, key=lambda item: item.key),
+            evals,
             key=lambda resolved: resolved.key,
             render=self._compile,
-            diagnostics=self._catalog.diagnostics,
+            diagnostics=DiagnosticBag((*self._catalog.diagnostics, *placement)),
             origin=lambda resolved: resolved.config.origin,
         )
 
@@ -160,12 +182,8 @@ def _render(
     sha7 = dataset_fingerprint[:7]
     dataset_name = render_eval_name_template(dataset_config.name_template, agent=resolved.name, sha7=sha7)
     source_name = render_eval_name_template(dataset_config.source_table_template, agent=resolved.name, sha7=sha7)
-    dataset_target = QualifiedName(
-        agent_target.database, agent_target.schema, QualifiedName.from_parts("X", "X", dataset_name).name
-    )
-    source_table = QualifiedName(
-        agent_target.database, agent_target.schema, QualifiedName.from_parts("X", "X", source_name).name
-    )
+    dataset_target = _in_agent_schema(agent_target, dataset_name)
+    source_table = _in_agent_schema(agent_target, source_name)
     config_yaml = render_eval_config(
         resolved.config,
         resolved.custom_metrics,
@@ -181,3 +199,9 @@ def _render(
         sha256(config_yaml.encode("utf-8")).hexdigest(),
     )
     return CompiledEval(resolved, agent_target, source_table, dataset_target, rendered)
+
+
+def _in_agent_schema(agent_target: QualifiedName, rendered: str) -> QualifiedName:
+    """Place a rendered eval object name in the agent's schema, dropping a qualifier that names it."""
+    name = rendered.rsplit(".", 1)[-1]
+    return QualifiedName(agent_target.database, agent_target.schema, QualifiedName.from_parts("X", "X", name).name)

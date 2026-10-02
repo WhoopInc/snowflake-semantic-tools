@@ -56,17 +56,23 @@ class StageMethods(Session, StagePort):
         return self.observe_staged_file(stage_path) is not None
 
     def read_staged_file(self, stage_path: str) -> bytes | None:
+        """Download one staged file and return its bytes; None when the stage holds no such file.
+
+        GET matches a prefix, so it can download siblings (`a.yaml` brings `a.yaml.bak`); the
+        file is found by name among the rows the driver reports, never assumed to be there.
+
+        Raises:
+            SnowflakePortError: GET failed, or reported the file as anything but downloaded.
+        """
         stage_path = _validated_stage_path(stage_path)
         temp_dir = tempfile.mkdtemp(prefix="sst-stage-read-")
         try:
             statement = sql("GET {source} {target}", source=literal(stage_path), target=local_file(temp_dir))
-            _require_ok(self.execute_script((statement,)), "stage download failed")
-            local_path = os.path.join(temp_dir, PurePosixPath(stage_path).name)
-            try:
-                with open(local_path, "rb") as handle:
-                    return handle.read()
-            except FileNotFoundError:
+            downloaded = _downloaded_name(self._dict_rows(statement), stage_path)
+            if downloaded is None:
                 return None
+            with open(os.path.join(temp_dir, downloaded), "rb") as handle:
+                return handle.read()
         finally:
             shutil.rmtree(temp_dir, ignore_errors=True)
 
@@ -219,3 +225,21 @@ def _validated_location(value: str) -> str:
     if value.startswith("snow://"):
         return _extension_uri(value, directory=True)
     return _validated_stage_path(value, directory=True)
+
+
+def _downloaded_name(rows: tuple[dict[str, object], ...], stage_path: str) -> str | None:
+    """Return the local name GET wrote the staged file to, from its `file`/`status` result rows.
+
+    Raises:
+        SnowflakePortError: the file's row reports a status other than DOWNLOADED.
+    """
+    name = PurePosixPath(stage_path).name
+    row = next((item for item in rows if PurePosixPath(str(item.get("file") or "")).name == name), None)
+    if row is None:
+        return None
+    status = str(row.get("status") or "")
+    if status.upper() != "DOWNLOADED":
+        raise SnowflakePortError(
+            f"stage download of {stage_path} reported {status or 'no status'}: {row.get('message')}"
+        )
+    return name

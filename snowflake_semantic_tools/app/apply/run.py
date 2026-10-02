@@ -24,7 +24,7 @@ from snowflake_semantic_tools.app.apply.lock import LockPolicy, RunLease
 from snowflake_semantic_tools.app.apply.one import ChangeApplier
 from snowflake_semantic_tools.app.apply.state import EntryStamp, _applied_after, _run_outcome
 from snowflake_semantic_tools.app.apply.temporary import temporary_notes, temporary_refusal
-from snowflake_semantic_tools.app.lifecycle.composite import CatalogPublicationPort
+from snowflake_semantic_tools.app.lifecycle.ports import CatalogPublicationPort
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, DiagnosticBag
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
 from snowflake_semantic_tools.domain.model.lifecycle import (

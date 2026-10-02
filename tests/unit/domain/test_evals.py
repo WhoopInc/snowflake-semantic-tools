@@ -19,14 +19,16 @@ from snowflake_semantic_tools.domain.model.eval import (
     EvalInvocation,
     EvalQuestion,
     EvalRegression,
+    EvalRetention,
     EvalRunConfig,
     EvalScoreRanges,
     EvalSystemMetric,
     ResolvedEval,
     ThresholdRange,
 )
+from snowflake_semantic_tools.domain.model.identifier import QualifiedName
 from snowflake_semantic_tools.domain.resolve.eval_name import render_eval_name_template
-from snowflake_semantic_tools.domain.validate.eval import validate_eval_catalog
+from snowflake_semantic_tools.domain.validate.eval import eval_placement, validate_eval_catalog
 
 
 def test_resolved_eval_identity_sources_and_dependency_are_deterministic() -> None:
@@ -605,3 +607,40 @@ def test_eval_validation_covers_ground_truth_free_rows_valid_unique_runs_and_no_
         allowed_models=("claude-sonnet-4-6",),
     )
     assert "SST-VAL741" in {diagnostic.code for diagnostic in diagnostics}
+
+
+def test_eval_placement_accepts_bare_and_same_schema_names_and_reports_any_other_schema() -> None:
+    target = QualifiedName.parse("DB.S.SALES")
+    value = _resolved_eval()
+    base = value.config.dataset
+    assert base is not None
+
+    def placed(name: str | None, source: str | None) -> list[str]:
+        dataset = replace(base, name_template=name, source_table_template=source)
+        resolved = replace(value, config=replace(value.config, dataset=dataset))
+        return [item.context["found"] for item in eval_placement(resolved, target)]
+
+    assert placed("EVAL_{{ agent }}", "SRC_{{ agent }}") == []
+    assert placed("db.s.EVAL_{{ agent }}", "S.SRC_{{ agent }}") == []
+    assert placed("OTHER.S.EVAL_{{ agent }}", "X.SRC_{{ agent }}") == ["OTHER.S", "DB.X"]
+    assert placed(None, "{{ unknown }}") == []
+    assert placed("A.B.C.EVAL_{{ agent }}", None) == []
+    assert eval_placement(replace(value, config=replace(value.config, dataset=None)), target) == ()
+
+
+def test_a_variant_belongs_to_one_retention_class_and_a_decision_window_is_a_day_or_more() -> None:
+    value = _resolved_eval()
+    run = value.config.run
+    assert run is not None
+
+    def found(retention: EvalRetention) -> list[tuple[str, object]]:
+        config = replace(value.config, run=replace(run, retention=retention))
+        diagnostics = validate_eval_catalog(EvalCatalog((replace(value, config=config),), value.custom_metrics))
+        return [
+            (item.code, item.context["found"])
+            for item in diagnostics
+            if str(item.context.get("field", "")).startswith("run.retention")
+        ]
+
+    assert found(EvalRetention(("ci",), ("sweep",), 30)) == []
+    assert found(EvalRetention(("ci", "sweep"), ("sweep",), 0)) == [("SST-PRS013", "sweep"), ("SST-PRS016", 0)]

@@ -229,3 +229,16 @@ def test_an_over_long_dataset_name_is_reported_once(tmp_path: Path) -> None:
     catalog = load_eval_catalog(tmp_path, agents, initial_diagnostics=agent_diagnostics)
     length = [(item.code, item.subject) for item in catalog.diagnostics if item.code in ("SST-VAL702", "SST-PRS010")]
     assert length == [("SST-VAL702", "eval:sales")]
+
+
+def test_an_unknown_mint_policy_and_any_sweep_block_are_refused(tmp_path: Path) -> None:
+    agents, agent_diagnostics = _project(tmp_path)
+    config = tmp_path / "agents" / "sales" / "evals" / "config.yml"
+    text = config.read_text(encoding="utf-8").replace("mint: auto", "mint: sometimes")
+    _write(config, text + "\nsweep:\n  enabled: true\n  models: [claude-sonnet-4-6]\n")
+    catalog = load_eval_catalog(tmp_path, agents, initial_diagnostics=agent_diagnostics)
+    found = [(item.code, item.context.get("field") or item.context.get("key")) for item in catalog.diagnostics]
+    assert ("SST-PRS013", "dataset.mint") in found
+    assert ("SST-CFG044", "sweep") in found
+    [config_value] = [item.config for item in catalog.evals]
+    assert config_value.dataset is not None and config_value.dataset.mint == "sometimes"

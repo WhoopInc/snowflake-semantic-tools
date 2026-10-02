@@ -40,6 +40,8 @@ from tests.helpers.recorded_snowflake import RecordedSnowflake
 from tests.helpers.sql_values import statement, texts
 
 STAGE = QualifiedName.parse("DB.S.SKILL_BUNDLES")
+# The byte split and publication-surface notes every compiled extension reports.
+NOTES = frozenset(("SST-VAL816", "SST-VAL831"))
 CHANNEL = CatalogChannel("DB", "S", STAGE)
 
 
@@ -95,7 +97,7 @@ def test_compiled_skill_and_plugin_render_bundle_manifests_with_aliases() -> Non
         ),
     )
     result = CompileSkills(catalog, CHANNEL).run_result()
-    assert [item.code for item in result.diagnostics] == ["SST-VAL835"]
+    assert [item.code for item in result.diagnostics if item.code not in NOTES] == ["SST-VAL835"]
     catalog = replace(catalog, plugins=(replace(catalog.plugins[0], members=("month-close",)),))
     compiled = compile_catalog(catalog)
     skill_item = compiled["skill:month-close"]
@@ -132,7 +134,7 @@ def test_catalog_channel_absent_or_invalid_prefix_compiles_nothing() -> None:
     kit = Plugin("kit", "plugins/kit", "p", "d", None, ("month-close",), Origin("p"))
     result = CompileSkills(SkillCatalog((unsafe,), (kit,)), CHANNEL).run_result()
     assert result.compiled == ()
-    assert [(item.code, item.subject) for item in result.diagnostics if item.code != "SST-VAL813"] == [
+    assert [(item.code, item.subject) for item in result.diagnostics if item.code not in {"SST-VAL813", *NOTES}] == [
         ("SST-VAL857", "skill:month-close"),
         ("SST-VAL836", "plugin:kit"),
     ]
@@ -357,6 +359,27 @@ def test_the_extension_latest_certified_version_counts_as_certified() -> None:
     changeset, result, _ = publish(port, certified, after)
     assert [change.action for change in changeset.changes] == [Action.NOOP]
     assert served_warnings(changeset) == []
+
+
+class AliasCertification(LaggingCertification):
+    """The extension names its latest certified version by alias rather than by system name."""
+
+    def observe_extension(self, qualified_name: QualifiedName) -> ExtensionObservation | None:
+        observed = super().observe_extension(qualified_name)
+        if observed is None or observed.latest_certified_version is None:
+            return observed
+        versions = {item.name: item.alias for item in super().extension_versions(qualified_name)}
+        return replace(observed, latest_certified_version=versions.get(observed.latest_certified_version))
+
+
+def test_a_latest_certified_version_reported_by_alias_is_not_tagged_again() -> None:
+    port = AliasCertification(existing=())
+    certified = compile_catalog(SkillCatalog((skill(),)), replace(CHANNEL, certified=True))
+    _, result, after = publish(port, certified, state())
+    assert result.success, result.outcomes[0].error
+    changeset, _, _ = publish(port, certified, after)
+    assert [change.action for change in changeset.changes] == [Action.NOOP]
+    assert len([statement for script in port.scripts for statement in script if "SET TAG" in statement]) == 1
 
 
 def test_served_version_prediction_edges() -> None:

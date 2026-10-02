@@ -20,7 +20,6 @@ from snowflake_semantic_tools.app.compile.profiles import CompiledProfile, Deskt
 from snowflake_semantic_tools.app.desktop_contract import desktop_view, stage_pointers
 from snowflake_semantic_tools.app.lifecycle.composite import (
     SSE_STAGE_TYPE,
-    CatalogPublicationPort,
     CompositeHandler,
     PublicationRun,
     blocked,
@@ -29,6 +28,7 @@ from snowflake_semantic_tools.app.lifecycle.composite import (
     failed,
     skipped,
 )
+from snowflake_semantic_tools.app.lifecycle.ports import CatalogPublicationPort
 from snowflake_semantic_tools.domain.diagnostics import D
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
 from snowflake_semantic_tools.domain.model.lifecycle import (

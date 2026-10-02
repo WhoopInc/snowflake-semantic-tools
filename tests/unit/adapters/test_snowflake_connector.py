@@ -585,3 +585,49 @@ def test_a_message_without_credentials_is_kept_as_written() -> None:
     with pytest.raises(SnowflakePortError) as raised:
         SessionConnector(_Session({"SELECT": plain})).query(sql("SELECT 1"))
     assert str(raised.value) == str(plain)
+
+
+class _GetSession(_Session):
+    """The driver's GET, recorded: a prefix match that downloads every staged file it matches.
+
+    Each match is written into the `file://` target and reported as one row of the shape the
+    connector's dictionary cursor returns for GET: `file`, `size`, `status`, `message`.
+    """
+
+    def __init__(self, staged: Mapping[str, bytes], status: str = "DOWNLOADED") -> None:
+        super().__init__()
+        self.staged = dict(staged)
+        self.status = status
+        self.rows: list[dict[str, object]] = []
+
+    def execute(self, sql: str, params: object = None) -> None:
+        super().execute(sql, params)
+        source, target = (part.strip("'") for part in sql.removeprefix("GET ").split(" ", 1))
+        directory = target.removeprefix("file://")
+        self.rows = []
+        for path, content in sorted(self.staged.items()):
+            if path.startswith(source):
+                name = path.rsplit("/", 1)[-1]
+                with open(f"{directory}/{name}", "wb") as handle:
+                    handle.write(content)
+                self.rows.append({"file": name, "size": len(content), "status": self.status, "message": ""})
+
+    def fetchall(self) -> list[object]:
+        return list(self.rows)
+
+
+def test_a_staged_eval_config_is_read_from_the_file_get_reports_not_a_prefix_sibling() -> None:
+    config = "@DB.S.EVAL_CONFIGS/sales/abcdef0.yaml"
+    session = _GetSession({config: b"evaluation: {}\n", f"{config}.bak": b"stale\n"})
+    assert SessionConnector(session).read_staged_file(config) == b"evaluation: {}\n"
+    assert session.executed[0].startswith(f"GET '{config}' 'file://")
+
+    only_sibling = _GetSession({f"{config}.bak": b"stale\n"})
+    assert SessionConnector(only_sibling).read_staged_file(config) is None
+
+
+def test_a_staged_file_get_does_not_report_downloaded_fails_closed() -> None:
+    config = "@DB.S.EVAL_CONFIGS/sales/abcdef0.yaml"
+    session = _GetSession({config: b"evaluation: {}\n"}, status="FAILED")
+    with pytest.raises(SnowflakePortError, match="reported FAILED"):
+        SessionConnector(session).read_staged_file(config)

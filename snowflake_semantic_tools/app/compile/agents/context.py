@@ -64,12 +64,12 @@ class ExtensionPin:
         key: The extension's artifact key, `skill:<name>` or `plugin:<name>`.
         alias: The published version an agent reference is pinned to.
         members: The skills the extension carries: the skill itself, or a plugin's members.
-        has_scripts: Whether a carried skill ships a script, which only an agent with a
-            code_execution tool can run (SST-VAL814).
+        scripts: Each script a carried skill ships, as the skill and the path inside it;
+            only an agent with a code_execution tool can run one (SST-VAL814).
     """
 
     key: str
     target: QualifiedName
     alias: str
     members: tuple[str, ...] = ()
-    has_scripts: bool = False
+    scripts: tuple[tuple[str, str], ...] = ()

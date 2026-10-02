@@ -28,6 +28,7 @@ from snowflake_semantic_tools.domain.validate.shared import Emitter
 
 _PINNED_VERSION = re.compile(r"VERSION\$[1-9]\d*")
 _BASELINE_RUNS_MIN = 1
+_DECISION_WINDOW_MIN = 1
 # Agent tool types an eval run skips rather than fails (SST-VAL732).
 _SKIPPED_TOOL_TYPES = ("mcp", "agent")
 
@@ -62,7 +63,10 @@ def validate_eval_config(
         SST-VAL717: another eval of the same agent already claimed the rendered run name.
         SST-PRS016: the effective retry, concurrency or baseline_runs is below its minimum.
         SST-VAL731: run.concurrency exceeds `evals.+concurrency`.
-        SST-VAL735: a system metric has a threshold and the effective baseline_runs is not positive.
+        SST-VAL735: a system metric has a threshold and the effective baseline_runs is not positive;
+            reported per such metric.
+        SST-PRS013: a variant is in both `run.retention.audit` and `run.retention.decision`.
+        SST-PRS016: `run.retention.decision_window_days` is below one day.
         SST-VAL732: the agent has tools an eval run skips, one per tool type (info).
     """
     return (
@@ -188,6 +192,7 @@ def _run(
         *_run_limits(resolved, run, defaults),
         *_threshold_baseline(resolved, run, defaults),
         *_accept_statuses(resolved, run),
+        *_retention(resolved, run),
         *_skipped_tool_types(resolved),
     )
 
@@ -241,15 +246,14 @@ def _concurrency_ceiling(resolved: ResolvedEval, run: EvalRunConfig, defaults: E
 
 
 def _threshold_baseline(resolved: ResolvedEval, run: EvalRunConfig, defaults: EvalDefaults) -> tuple[Diagnostic, ...]:
-    emit = _emitter(resolved)
-    has_threshold = any(
-        (metric.name or "") in SYSTEM_EVAL_METRICS and metric.threshold is not None
-        for metric in resolved.config.system_metrics
-    )
     baseline_runs = _effective(run.baseline_runs, defaults.baseline_runs)
-    if has_threshold and not (baseline_runs or 0) > 0:
-        emit("SST-VAL735", name="gated metric")
-    return emit.diagnostics
+    if (baseline_runs or 0) > 0:
+        return ()
+    return tuple(
+        D("SST-VAL735", artifact=resolved.name, name=metric.name, origin=metric.origin, subject=resolved.key)
+        for metric in resolved.config.system_metrics
+        if metric.name in SYSTEM_EVAL_METRICS and metric.threshold is not None
+    )
 
 
 def _accept_statuses(resolved: ResolvedEval, run: EvalRunConfig) -> tuple[Diagnostic, ...]:
@@ -263,6 +267,29 @@ def _accept_statuses(resolved: ResolvedEval, run: EvalRunConfig) -> tuple[Diagno
                 found=status,
                 expected=EVAL_COMPLETED,
             )
+    return emit.diagnostics
+
+
+def _retention(resolved: ResolvedEval, run: EvalRunConfig) -> tuple[Diagnostic, ...]:
+    """A variant belongs to one retention class, and a decision window is at least a day."""
+    emit = _emitter(resolved)
+    retention = run.retention
+    for variant in sorted(set(retention.audit) & set(retention.decision)):
+        emit(
+            "SST-PRS013",
+            artifact=resolved.config.source_file,
+            field="run.retention",
+            found=variant,
+            expected="audit or decision, not both",
+        )
+    if retention.decision_window_days is not None and retention.decision_window_days < _DECISION_WINDOW_MIN:
+        emit(
+            "SST-PRS016",
+            artifact=resolved.config.source_file,
+            field="run.retention.decision_window_days",
+            found=retention.decision_window_days,
+            expected=f">= {_DECISION_WINDOW_MIN}",
+        )
     return emit.diagnostics
 
 

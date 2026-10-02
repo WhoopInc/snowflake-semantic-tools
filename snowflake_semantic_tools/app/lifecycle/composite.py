@@ -12,10 +12,12 @@ from __future__ import annotations
 
 from abc import abstractmethod
 from collections.abc import Callable, Collection, Iterable, Mapping
+from dataclasses import replace
 from types import MappingProxyType
-from typing import Generic, Protocol, TypeVar
+from typing import Generic, TypeVar
 
 from snowflake_semantic_tools.app.apply import classify_error
+from snowflake_semantic_tools.app.lifecycle.ports import PublicationPort
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, DiagnosticBag
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
 from snowflake_semantic_tools.domain.model.lifecycle import (
@@ -33,10 +35,7 @@ from snowflake_semantic_tools.domain.model.lifecycle import (
 )
 from snowflake_semantic_tools.domain.model.skill import BundleEntry
 from snowflake_semantic_tools.domain.ports.lifecycle import CompositeLifecycleHandler
-from snowflake_semantic_tools.domain.ports.snowflake.catalog import CatalogPort
 from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
-from snowflake_semantic_tools.domain.ports.snowflake.execution import ExecutionPort
-from snowflake_semantic_tools.domain.ports.snowflake.stage import StagePort
 from snowflake_semantic_tools.domain.sql import Sql, qname, sql
 from snowflake_semantic_tools.domain.state import AppliedEntry, AppliedResourceInput, Manifest
 
@@ -45,14 +44,6 @@ SSE_STAGE_TYPE = "INTERNAL NO CSE"
 
 SubjectT = TypeVar("SubjectT")
 ObservedT = TypeVar("ObservedT")
-
-
-class PublicationPort(ExecutionPort, StagePort, Protocol):
-    """The Snowflake roles every publication run uses: running its statements and moving its files."""
-
-
-class CatalogPublicationPort(CatalogPort, PublicationPort, Protocol):
-    """A publication port that also reads the catalog, as the eval and extension handlers do."""
 
 
 # The port a handler or run is typed with: at least `PublicationPort`, narrowed per artifact type.
@@ -172,14 +163,22 @@ class CompositeHandler(CompositeLifecycleHandler, Generic[SubjectT, ObservedT, P
         state_entry: AppliedEntry | None,
         manifest: Manifest,
     ) -> CompositePlan:
-        """Observe the artifact's resources and decide its change; an unreadable resource blocks it."""
-        del manifest
+        """Observe the artifact's resources and decide its change; an unreadable resource blocks it.
+
+        An artifact the handler finds unchanged, but whose state entry another manifest
+        recorded, is an UPDATE for that reason: publishing re-verifies it and records it under
+        this manifest, which is what clears SST-MAN021.
+        """
         subject = self._subject(artifact)
         try:
             observed = self._observe(subject)
         except SnowflakePortError as exc:
             return unobservable(artifact.key, exc)
-        return self._decide(artifact, state_entry, subject, observed)
+        decided = self._decide(artifact, state_entry, subject, observed)
+        recorded_elsewhere = state_entry is not None and state_entry.manifest_id != manifest.manifest_id
+        if decided.action is Action.NOOP and recorded_elsewhere:
+            return replace(decided, action=Action.UPDATE, reason=ChangeReason.STATE_MANIFEST_MISMATCH)
+        return decided
 
     def apply(self, change: Change, options: ApplyOptions) -> ApplyOutcome:
         """Carry out one planned change, dispatched as the class describes."""

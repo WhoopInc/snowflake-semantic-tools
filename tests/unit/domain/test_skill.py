@@ -6,6 +6,7 @@ import json
 from dataclasses import replace
 
 from snowflake_semantic_tools.domain.diagnostics import Origin
+from snowflake_semantic_tools.domain.model.agent import AgentModel, AgentTool, ResolvedAgent
 from snowflake_semantic_tools.domain.model.skill import (
     BundleEntry,
     Plugin,
@@ -28,7 +29,11 @@ from snowflake_semantic_tools.domain.render.skill_bundle import (
     plugin_manifest_json,
 )
 from snowflake_semantic_tools.domain.render.skill_flatten import _recheck, flatten_skill, flattened_name
-from snowflake_semantic_tools.domain.validate.skill import extension_name_diagnostics, validate_skill_catalog
+from snowflake_semantic_tools.domain.validate.skill import (
+    extension_name_diagnostics,
+    unrunnable_scripts,
+    validate_skill_catalog,
+)
 
 SKILL_MD = "---\nname: {name}\ndescription: Does things.\n---\n{body}"
 
@@ -351,7 +356,7 @@ def test_file_names_a_stage_rejects_fail_validation_at_the_file() -> None:
 
 def test_skill_bundle_budgets_limits_and_empty_folders() -> None:
     bundle, diagnostics = build_skill_bundle(skill(files={"reference/steps.md": "s"}))
-    assert bundle is not None and diagnostics == ()
+    assert bundle is not None and [item.code for item in diagnostics] == ["SST-VAL816"]
     assert [entry.path for entry in bundle.entries] == [
         "skills/month-close/SKILL.md",
         "skills/month-close/reference__steps.md",
@@ -360,11 +365,11 @@ def test_skill_bundle_budgets_limits_and_empty_folders() -> None:
     over_budget, diagnostics = build_skill_bundle(
         skill(files={"SKILL.md": SKILL_MD.format(name="month-close", body=big), "reference/steps.md": "s"})
     )
-    assert over_budget is not None and codes(diagnostics) == ["SST-VAL812"]
+    assert over_budget is not None and codes(diagnostics) == ["SST-VAL812", "SST-VAL816"]
     heavy, diagnostics = build_skill_bundle(
         skill(files={"reference/steps.md": "s", "data.bin": b"\0" * (BUNDLE_BUDGET_BYTES + 1)})
     )
-    assert heavy is not None and codes(diagnostics) == ["SST-VAL813", "SST-VAL811"]
+    assert heavy is not None and codes(diagnostics) == ["SST-VAL813", "SST-VAL811", "SST-VAL816"]
     many = {f"part{index}.md": "p" for index in range(SCAN_MAX_FILES)}
     too_many, diagnostics = build_skill_bundle(skill(files={"reference/steps.md": "s", **many}))
     assert too_many is None and "SST-VAL834" in codes(diagnostics)
@@ -422,3 +427,22 @@ def test_an_extension_name_must_start_with_a_letter() -> None:
     assert extension_name_diagnostics("skill:ok", "folder", "ok", "OK", origin) == ()
     (found,) = extension_name_diagnostics("skill:9-lives", "folder", "9-lives", "9_LIVES", origin)
     assert (found.code, found.subject, found.origin) == ("SST-VAL801", "skill:9-lives", origin)
+
+
+def test_scripts_are_reported_only_for_extensions_agents_pin_and_none_of_them_can_run() -> None:
+    origin = Origin("agents/a.yml")
+    runner = ResolvedAgent(
+        AgentModel("runner", origin, ("agents/a.yml",), tools=(AgentTool("code_execution", origin, name="run"),)),
+        (),
+        skill_dependencies=("skill:shared",),
+    )
+    reader = ResolvedAgent(
+        AgentModel("reader", origin, ("agents/a.yml",)), (), skill_dependencies=("skill:shared", "skill:solo")
+    )
+    published = (
+        ("skill:shared", (("shared", "run.py"),)),
+        ("skill:solo", (("solo", "a.sh"), ("solo", "b.sh"))),
+        ("skill:unpinned", (("unpinned", "c.sh"),)),
+    )
+    found = [(item.subject, item.context["path"]) for item in unrunnable_scripts((runner, reader), published)]
+    assert found == [("skill:solo", "a.sh"), ("skill:solo", "b.sh")]

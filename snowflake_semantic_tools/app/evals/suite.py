@@ -16,7 +16,7 @@ from typing import Protocol
 
 from snowflake_semantic_tools.app.compile import CompileResult
 from snowflake_semantic_tools.app.compile.evals import CompiledEval
-from snowflake_semantic_tools.app.evals.gate import capture_baseline, evaluate_gate, persist_gate
+from snowflake_semantic_tools.app.evals.gate import capture_baseline, evaluate_gate, persist_gate, recorded_judges
 from snowflake_semantic_tools.app.evals.run import (
     EvalRunOptions,
     EvalSuiteResult,
@@ -25,8 +25,8 @@ from snowflake_semantic_tools.app.evals.run import (
     eval_suite_json,
     validate_eval_publication,
 )
-from snowflake_semantic_tools.app.lifecycle.composite import CatalogPublicationPort
 from snowflake_semantic_tools.app.lifecycle.evals import EvalLifecycleConfig, EvalLifecycleHandler
+from snowflake_semantic_tools.app.lifecycle.ports import CatalogPublicationPort
 from snowflake_semantic_tools.app.state import read_state
 from snowflake_semantic_tools.domain.diagnostics import Diagnostic, DiagnosticBag
 from snowflake_semantic_tools.domain.model.config_schema import config_block
@@ -225,10 +225,16 @@ class RunEvalGate:
                         ),
                     )
                 )
+                diagnostics.extend(recorded_judges(item))
                 continue
             stored = self._eval_store.read_baseline(target_name, item.artifact_key)
             verdict, item_diagnostics = evaluate_gate(
-                item, item_result, stored, now=self._clock.now_iso(), default_tier=defaults.eval_tier
+                item,
+                item_result,
+                stored,
+                now=self._clock.now_iso(),
+                default_tier=defaults.eval_tier,
+                default_baseline_runs=defaults.baseline_runs,
             )
             diagnostics.extend(item_diagnostics)
             persist_gate(self._eval_store, target_name, item, item_result, verdict, evaluated_at=self._clock.now_iso())

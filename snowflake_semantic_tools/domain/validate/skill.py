@@ -7,9 +7,10 @@ reach it, so a plugin that collides with a skill is always the one reported.
 
 from __future__ import annotations
 
-from collections.abc import Container, Sequence
+from collections.abc import Container, Iterable, Sequence
 
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, DiagnosticBag, Origin
+from snowflake_semantic_tools.domain.model.agent import ResolvedAgent
 from snowflake_semantic_tools.domain.model.identifier import Identifier
 from snowflake_semantic_tools.domain.model.skill.model import Plugin, Skill, SkillCatalog
 from snowflake_semantic_tools.domain.validate.shared import SKILL_NAMES, Emitter, duplicates
@@ -93,6 +94,33 @@ def _plugin_rules(plugin: Plugin, other: str | None, skills: Container[str]) -> 
         if member not in skills:
             emit("SST-VAL835", name=member)
     return emit.diagnostics
+
+
+def unrunnable_scripts(
+    agents: Sequence[ResolvedAgent], published: Iterable[tuple[str, tuple[tuple[str, str], ...]]]
+) -> tuple[Diagnostic, ...]:
+    """Report each script an agent-referenced extension ships when no agent that pins it can run it.
+
+    An extension no agent pins is SST-VAL804's, so it is not reported here as well.
+
+    Args:
+        published: Each extension this project publishes, as its artifact key and the scripts
+            it carries, each as the skill that ships it and the path inside that skill.
+
+    Diagnostics:
+        SST-VAL814: a bundled script, when no consuming agent declares a code_execution tool.
+    """
+    consumers: dict[str, bool] = {}
+    for agent in agents:
+        runs_code = any(tool.type == "code_execution" for tool in agent.model.tools)
+        for key in agent.skill_dependencies:
+            consumers[key] = consumers.get(key, False) or runs_code
+    return tuple(
+        D("SST-VAL814", subject=key, artifact=skill, path=path)
+        for key, scripts in published
+        if consumers.get(key) is False
+        for skill, path in scripts
+    )
 
 
 def extension_name_diagnostics(

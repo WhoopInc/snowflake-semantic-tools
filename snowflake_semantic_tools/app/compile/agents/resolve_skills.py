@@ -39,7 +39,6 @@ def resolve_skills(
         SST-VAL838: an owned extension's entry sets a version, which SST pins itself.
         SST-VAL540: a `skill()` entry has no name.
         SST-VAL840: an entry's name is not the skill, or not a member of the plugin.
-        SST-VAL814: an owned extension ships a script and the agent has no code_execution tool.
         SST-REF037: `extension()` names an extension this project publishes.
         SST-REF013: `extension()` names no `skills.extensions` entry.
         SST-VAL538: a consumed extension's entry pins no version, or pins LIVE.
@@ -47,9 +46,8 @@ def resolve_skills(
     diagnostics: list[Diagnostic] = []
     resolved: list[AgentSkill] = []
     dependencies: list[str] = []
-    executes_code = any(tool.type == "code_execution" for tool in model.tools)
     for skill in model.skills:
-        pinned, dependency = _resolve_skill(model, skill, context, executes_code, diagnostics)
+        pinned, dependency = _resolve_skill(model, skill, context, diagnostics)
         if pinned is not None:
             resolved.append(pinned)
         if dependency is not None:
@@ -61,7 +59,6 @@ def _resolve_skill(
     model: AgentModel,
     skill: AgentSkill,
     context: AgentCompileContext,
-    executes_code: bool,
     diagnostics: list[Diagnostic],
 ) -> tuple[AgentSkill | None, str | None]:
     """Resolve one entry, appending what it reports; return it pinned, and the key of its pin.
@@ -76,7 +73,7 @@ def _resolve_skill(
         diagnostics.append(D("SST-VAL839", artifact=model.name, name=skill.name or skill.path, subject=model.key))
         return None, None
     if skill.ref in ("skill", "plugin"):
-        return _pin_owned(model, skill, context, executes_code, diagnostics)
+        return _pin_owned(model, skill, context, diagnostics)
     return _pin_consumed(model, skill, context, diagnostics), None
 
 
@@ -84,7 +81,6 @@ def _pin_owned(
     model: AgentModel,
     skill: AgentSkill,
     context: AgentCompileContext,
-    executes_code: bool,
     diagnostics: list[Diagnostic],
 ) -> tuple[AgentSkill | None, str | None]:
     """Pin a `skill()` or `plugin()` entry to the extension's published target and alias."""
@@ -96,8 +92,6 @@ def _pin_owned(
     if problem is not None:
         diagnostics.append(problem)
         return None, None
-    if pin.has_scripts and not executes_code:
-        diagnostics.append(D("SST-VAL814", artifact=model.name, name=f"{skill.ref}('{skill.path}')", subject=model.key))
     return replace(skill, path=pin.target.sql, version=pin.alias), pin.key
 
 

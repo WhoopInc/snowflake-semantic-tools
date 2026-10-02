@@ -8,6 +8,9 @@ from snowflake_semantic_tools.domain.model.identifier import QualifiedName
 from snowflake_semantic_tools.domain.model.skill import Plugin, Skill, SkillCatalog, SkillFile
 from snowflake_semantic_tools.domain.render.skill_bundle import SCAN_MAX_FILES
 
+# The byte split and publication-surface notes every compiled extension reports.
+NOTES = frozenset(("SST-VAL816", "SST-VAL831"))
+
 CHANNEL = CatalogChannel("DB", "S", QualifiedName.parse("DB.S.BUNDLES"))
 
 
@@ -34,7 +37,9 @@ def test_a_plugin_over_the_scan_limits_is_blocked_while_its_members_publish() ->
     result = CompileSkills(catalog, CHANNEL).run_result()
 
     assert [item.artifact_key for item in result.compiled] == ["skill:first", "skill:second"]
-    assert [(item.code, item.subject) for item in result.diagnostics] == [("SST-VAL834", "plugin:kit")]
+    assert [(item.code, item.subject) for item in result.diagnostics if item.code not in NOTES] == [
+        ("SST-VAL834", "plugin:kit")
+    ]
 
 
 def test_a_healthy_plugin_carries_its_members_sources_and_scripts() -> None:
@@ -56,7 +61,7 @@ def test_a_name_that_cannot_name_an_extension_is_reported_instead_of_raising() -
     result = CompileSkills(catalog, CHANNEL).run_result()
 
     assert [item.artifact_key for item in result.compiled] == ["skill:first"]
-    assert [(item.code, item.subject, item.message) for item in result.diagnostics] == [
+    assert [(item.code, item.subject, item.message) for item in result.diagnostics if item.code not in NOTES] == [
         (
             "SST-VAL801",
             "skill:9lives",

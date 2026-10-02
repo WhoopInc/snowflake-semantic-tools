@@ -32,7 +32,7 @@ TOOLKIT = ExtensionPin(
     QualifiedName.parse("DB.S.TOOLKIT"),
     "SST_0123456789AB",
     ("semantics", "operations"),
-    has_scripts=True,
+    scripts=(("operations", "close.py"),),
 )
 
 
@@ -751,7 +751,7 @@ def test_skill_references_pin_owned_versions_and_check_consumed_ones() -> None:
         ),
     )
     result = CompileAgents((agent,), DiagnosticBag(), context()).run_result()
-    assert [item.code for item in result.diagnostics] == ["SST-VAL814", "SST-RND010"]
+    assert [item.code for item in result.diagnostics] == ["SST-RND010", "SST-VAL814"]
     payload = compiled_as(result, CompiledAgent).payload
     assert '"path": "DB.S.TOOLKIT"' in payload and '"version": "SST_0123456789AB"' in payload
     assert '"path": "DB.EXT.VENDOR_PACK"' in payload and '"version": "V2"' in payload

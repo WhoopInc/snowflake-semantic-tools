@@ -9,15 +9,15 @@ from threading import Lock
 from types import MappingProxyType
 
 from snowflake_semantic_tools.app.lifecycle.composite import (
-    CatalogPublicationPort,
     CompositeHandler,
     PublicationRun,
     blocked,
     failed,
 )
+from snowflake_semantic_tools.app.lifecycle.ports import CatalogPublicationPort
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, DiagnosticBag
 from snowflake_semantic_tools.domain.model.artifact_key import artifact_key, split_artifact_key
-from snowflake_semantic_tools.domain.model.eval import DEFAULT_EVAL_CONFIG_STAGE
+from snowflake_semantic_tools.domain.model.eval import DEFAULT_EVAL_CONFIG_STAGE, EVAL_MINT_NEVER
 from snowflake_semantic_tools.domain.model.identifier import Identifier, QualifiedName
 from snowflake_semantic_tools.domain.model.lifecycle import (
     Action,
@@ -97,6 +97,10 @@ class EvalLifecycleHandler(CompositeHandler[RenderedArtifact, CompositeObservati
         """
         return self._config_path(artifact)
 
+    def config_stage(self, artifact: RenderedArtifact) -> QualifiedName:
+        """Return the stage in the eval's target schema that holds its run configs."""
+        return self._config_stage(artifact)
+
     def _subject(self, artifact: RenderedArtifact) -> RenderedArtifact:
         return artifact
 
@@ -132,9 +136,16 @@ class EvalLifecycleHandler(CompositeHandler[RenderedArtifact, CompositeObservati
         subject: RenderedArtifact,
         observation: CompositeObservation,
     ) -> CompositePlan:
+        """Decide an eval's change; a non-minting eval is decided by `_decide_unminted`.
+
+        Diagnostics:
+            SST-PLN024: an object the eval publishes exists, and state does not record it as SST's.
+        """
         del subject
         if observation.diagnostics.has_errors:
             return CompositePlan(Action.BLOCKED, ChangeReason.VALIDATION_ERRORS, observation, observation.diagnostics)
+        if not mints(artifact):
+            return self._decide_unminted(artifact, state_entry, observation)
         recorded_resources = self._recorded_resource_identity(state_entry)
         unmanaged_live_resources = tuple(
             item
@@ -149,6 +160,34 @@ class EvalLifecycleHandler(CompositeHandler[RenderedArtifact, CompositeObservati
         if state_entry is None:
             return CompositePlan(Action.CREATE, ChangeReason.NOT_PRESENT, observation)
         return self._decide_update(artifact, state_entry, observation, recorded_resources)
+
+    def _decide_unminted(
+        self,
+        artifact: RenderedArtifact,
+        state_entry: AppliedEntry | None,
+        observation: CompositeObservation,
+    ) -> CompositePlan:
+        """Decide an eval whose dataset someone else minted: it must exist, and only its config publishes.
+
+        The dataset is not SST's, so it is never reported unmanaged and never recorded.
+
+        Diagnostics:
+            SST-SNO003: the dataset the eval runs against does not exist, or the role cannot see it.
+        """
+        dataset = self._resources_by_type(artifact)["DATASET"]
+        if not all(item.exists for item in observation.resources):
+            return blocked(observation, D("SST-SNO003", value=dataset.sql, subject=artifact.key))
+        if state_entry is None:
+            return CompositePlan(Action.CREATE, ChangeReason.NOT_PRESENT, observation)
+        recorded = dict(state_entry.component_fingerprints)
+        if (
+            recorded.get("config") != dict(artifact.component_fingerprints).get("config")
+            or not observation.config_exists
+            or observation.config_size != len(artifact.ddl.encode("utf-8"))
+            or observation.config_md5 != recorded.get("config_stage_md5")
+        ):
+            return CompositePlan(Action.UPDATE, ChangeReason.FINGERPRINT_DIFFERS, observation)
+        return CompositePlan(Action.NOOP, ChangeReason.UNCHANGED, observation)
 
     def _decide_update(
         self,
@@ -238,8 +277,10 @@ class EvalLifecycleHandler(CompositeHandler[RenderedArtifact, CompositeObservati
     @staticmethod
     def _resources_by_type(artifact: RenderedArtifact) -> MappingProxyType[str, QualifiedName]:
         resources = {object_type.upper(): name for object_type, name in artifact.physical_resources}
-        if set(resources) != {"TABLE", "DATASET"}:
+        if mints(artifact) and set(resources) != {"TABLE", "DATASET"}:
             raise ValueError("eval artifact requires one TABLE and one DATASET resource")
+        if not mints(artifact) and set(resources) != {"DATASET"}:
+            raise ValueError("an eval that does not mint requires one DATASET resource")
         return MappingProxyType(resources)
 
     @staticmethod
@@ -319,7 +360,8 @@ class _EvalRun(PublicationRun[CatalogPublicationPort]):
         super().__init__(handler._port, change, artifact)
         self._handler = handler
         resources = handler._resources_by_type(artifact)
-        self._table = resources["TABLE"]
+        self._mints = mints(artifact)
+        self._table = resources.get("TABLE", resources["DATASET"])
         self._dataset = resources["DATASET"]
         self._stage = handler._config_stage(artifact)
         self._table_exists = False
@@ -335,6 +377,9 @@ class _EvalRun(PublicationRun[CatalogPublicationPort]):
         try:
             # Both are read before any write, so what this run creates is verified, not found.
             self._dataset_exists = self._port.object_exists("DATASET", self._dataset)
+            if not self._mints:
+                failure = self._run_steps(self._require_dataset, self._ensure_config_stage, self._verify_stage_format)
+                return failure if failure is not None else self._upload_config()
             self._table_exists = self._port.object_exists("TABLE", self._table)
             self._statements = self._handler._source_statements(self._artifact)
             failure = self._run_steps(
@@ -422,6 +467,12 @@ class _EvalRun(PublicationRun[CatalogPublicationPort]):
         self._verified.append(("DATASET", self._dataset.sql))
         return None
 
+    def _require_dataset(self) -> ApplyOutcome | None:
+        """Require the dataset a non-minting eval runs against to exist; SST never creates it."""
+        if self._dataset_exists:
+            return None
+        return self.fail(f"dataset {self._dataset.sql} does not exist, and the eval does not mint it")
+
     def _ensure_config_stage(self) -> ApplyOutcome | None:
         """Create the shared config stage unless it exists, and record it for sibling evals."""
         stage = self._stage
@@ -482,7 +533,12 @@ class _EvalRun(PublicationRun[CatalogPublicationPort]):
                 *artifact.component_fingerprints,
                 ("config_stage_md5", md5(content, usedforsecurity=False).hexdigest()),
             ),
-            physical_resources=tuple((object_type, name.sql) for object_type, name in artifact.physical_resources),
+            # A dataset SST did not mint is not SST's to record.
+            physical_resources=(
+                tuple((object_type, name.sql) for object_type, name in artifact.physical_resources)
+                if self._mints
+                else ()
+            ),
         )
 
     def _verify_config(self, config_path: str, content: bytes) -> ApplyOutcome | None:
@@ -526,9 +582,19 @@ def _diagnosed(
     )
 
 
+def mints(artifact: RenderedArtifact) -> bool:
+    """Report whether an eval artifact's apply creates its source table and dataset (`dataset.mint`)."""
+    return dict(artifact.component_fingerprints).get("mint") != EVAL_MINT_NEVER
+
+
+def eval_stage_format_matches(stage_format: str | None) -> bool:
+    """Report whether a stage's declared file format is the one evals read, compared key by key."""
+    return _normalize_file_format(stage_format) == _normalize_file_format(EVAL_STAGE_FILE_FORMAT)
+
+
 def _format_problem(stage: QualifiedName, stage_format: str | None) -> Diagnostic | None:
     """Return SST-APL028 when the config stage declares another file format than evals read."""
-    if _normalize_file_format(stage_format) == _normalize_file_format(EVAL_STAGE_FILE_FORMAT):
+    if eval_stage_format_matches(stage_format):
         return None
     return D("SST-APL028", value=stage.sql, found=stage_format or "absent", expected=EVAL_STAGE_FILE_FORMAT)
 
