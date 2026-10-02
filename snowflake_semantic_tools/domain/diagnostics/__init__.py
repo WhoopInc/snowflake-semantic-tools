@@ -379,7 +379,7 @@ def render_diagnostic(diagnostic: Diagnostic) -> str:
     one; the help line is absent when the code has no suggestion.
 
     Example:
-        views.yml:4:7: error[SST-REF001]: {{ ref('missing') }} is not a model in the dbt manifest
+        views.yml:4:7: error[SST-REF001]: { ref('missing') } is not a model in the dbt manifest
           help: <the code's suggestion>
           docs: <the code's help URL>
     """

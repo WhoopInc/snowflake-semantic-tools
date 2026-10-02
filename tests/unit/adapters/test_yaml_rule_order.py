@@ -9,7 +9,7 @@ from snowflake_semantic_tools.adapters.yaml.semantic.checks.dbt import _dbt_colu
 from snowflake_semantic_tools.adapters.yaml.semantic.checks.metrics import _metric_diagnostics
 from snowflake_semantic_tools.adapters.yaml.semantic.defs import MetricDef
 from snowflake_semantic_tools.adapters.yaml.semantic.relationships import _Conditions, _parse_conditions
-from snowflake_semantic_tools.domain.diagnostics import Diagnostic, Origin
+from snowflake_semantic_tools.domain.diagnostics import Diagnostic, Origin, Severity
 from snowflake_semantic_tools.domain.model.dbt import DbtColumn, DbtModel
 from tests.helpers.projects import load_project
 
@@ -43,8 +43,9 @@ def test_a_malformed_template_ends_its_metrics_checks_before_the_bare_identifier
     )
     bare = MetricDef("bare", "SUM(amount)", "Bare.", (), ("orders",), has_tables_key=True)
     diagnostics = _metric_diagnostics((broken, bare), {"orders": ORDERS})
-    # `broken` names `amount` bare too, but its template does not scan, so only `bare` is reported.
-    assert _codes(diagnostics) == ["SST-VAL121", "SST-LOD004", "SST-VAL110"]
+    # `broken` names `amount` bare too, but its template does not scan -- the call lacks its
+    # closing parenthesis, so it is not a reference at all -- and only `bare` is reported.
+    assert _codes(diagnostics) == ["SST-VAL121", "SST-REF033", "SST-VAL110"]
     assert diagnostics[2].subject == "metric:bare"
 
 
@@ -128,7 +129,11 @@ def test_a_view_reports_its_verified_query_failure_before_a_bad_variable(tmp_pat
     result = load_project(project, manifest_path=MANIFEST)
     # jaffle_sales holds `orders` but not `products`, so the query's metric() does not resolve
     # there; the build stops at that phase and never reaches the variables.
-    sales = [diagnostic for diagnostic in result.diagnostics if diagnostic.subject == "semantic_view:jaffle_sales"]
+    sales = [
+        diagnostic
+        for diagnostic in result.diagnostics
+        if diagnostic.subject == "semantic_view:jaffle_sales" and diagnostic.severity is not Severity.INFO
+    ]
     assert [(diagnostic.code, dict(diagnostic.context)) for diagnostic in sales] == [
         ("SST-REF006", {"name": "product_count"})
     ]

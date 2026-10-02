@@ -20,7 +20,6 @@ from typing import Any
 from click.testing import CliRunner
 
 from snowflake_semantic_tools.cli.main import cli
-from tests.helpers.projects import SEAM_NOTES
 
 ROOT = Path(__file__).parents[2]
 CORPUS = ROOT / "tests" / "fixtures" / "v1_dialect"
@@ -33,10 +32,10 @@ def invoke(*args: str) -> tuple[int, dict[str, Any]]:
 
 
 def codes(payload: dict[str, object]) -> Counter[tuple[str, str]]:
-    """Count the payload's diagnostics by code and severity, leaving out the dbt seam's notes."""
+    """Count each code and severity, leaving out the info that reports what attached where."""
     diagnostics = payload["diagnostics"]
     assert isinstance(diagnostics, list)
-    return Counter((item["code"], item["severity"]) for item in diagnostics if item["code"] not in SEAM_NOTES)
+    return Counter((item["code"], item["severity"]) for item in diagnostics if item["severity"] != "info")
 
 
 def converted_copy(tmp_path: Path) -> Path:
@@ -76,8 +75,6 @@ def test_legacy_globals_are_rejected_with_their_codes_and_render_nothing() -> No
             ("SST-VAL405", "error"): 1,
             ("SST-PRS020", "warning"): 2,
             ("SST-PRS021", "error"): 1,
-            # The manifest's file checksums read each file first; compile is served the cache.
-            ("SST-LOD201", "info"): 5,
         }
     )
 
@@ -111,7 +108,6 @@ def test_codemod_converts_idempotently_and_the_result_renders_the_committed_ddl(
             ("SST-PRS020", "warning"): 2,
             ("SST-PRS021", "error"): 1,
             ("SST-MAN008", "error"): 1,
-            ("SST-LOD201", "info"): 5,
         }
     )
     renames = {
@@ -127,7 +123,7 @@ def test_codemod_converts_idempotently_and_the_result_renders_the_committed_ddl(
     rename_0_3_keys(project)
     exit_code, payload = invoke("compile", "--project-dir", str(project), "--manifest", str(MANIFEST))
     assert exit_code == 0, payload
-    assert codes(payload) == Counter({("SST-LOD201", "info"): 5})
+    assert codes(payload) == Counter()
     rendered = tmp_path / "ddl"
     CliRunner().invoke(
         cli, ["compile", "--project-dir", str(project), "--manifest", str(MANIFEST), "--emit-ddl", str(rendered)]
@@ -153,4 +149,4 @@ def test_a_0_3_spelling_beside_its_1_0_key_is_reported_and_not_read(tmp_path: Pa
     )
     exit_code, payload = invoke("compile", "--project-dir", str(project), "--manifest", str(MANIFEST))
     assert exit_code == 0
-    assert codes(payload) == Counter({("SST-PRS020", "warning"): 1, ("SST-LOD201", "info"): 5})
+    assert codes(payload) == Counter({("SST-PRS020", "warning"): 1})

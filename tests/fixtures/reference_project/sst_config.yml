@@ -65,7 +65,7 @@ project:
   mcp_servers_dir: mcp-servers
   commands_dir: commands
 
-# `{{ var('<name>') }}` reads this block; an undeclared name is SST-REF038. A var
+# `{{ var('<name>') }}` reads this block; an undeclared name is SST-CFG029. A var
 # is substituted at compile time, so it means the same in every view. These two
 # name `order_state` values used by filters.yml and metrics.yml. `sha_version`
 # is supplied by SST; declaring it here is SST-CFG040.
@@ -81,7 +81,7 @@ state:
   +schema: "{{ target.schema }}"
   +table: SST_STATE
 
-# Tag object names for `{{ tag('<name>') }}`; an undeclared name is SST-REF040.
+# Tag object names for `{{ tag('<name>') }}`; an undeclared name is SST-REF028.
 # A name resolves to default_prefix plus the upper-cased key. SST applies tag
 # values but never creates a tag object, so these must already exist.
 tags:

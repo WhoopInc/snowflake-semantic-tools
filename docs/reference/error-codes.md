@@ -16,12 +16,12 @@ cannot be downgraded by any setting.
 ## Contents
 
 - [Registry (REG)](#registry-reg) -- 23 codes
-- [Configuration (CFG)](#configuration-cfg) -- 19 codes
+- [Configuration (CFG)](#configuration-cfg) -- 20 codes
 - [Discovery (DIS)](#discovery-dis) -- 12 codes
 - [Parsing (PRS)](#parsing-prs) -- 58 codes
 - [Loading (LOD)](#loading-lod) -- 24 codes
-- [References (REF)](#references-ref) -- 29 codes
-- [Membership (MEM)](#membership-mem) -- 2 codes
+- [References (REF)](#references-ref) -- 38 codes
+- [Membership (MEM)](#membership-mem) -- 24 codes
 - [Validation (VAL)](#validation-val) -- 173 codes
 - [dbt (DBT)](#dbt-dbt) -- 30 codes
 - [Rendering (RND)](#rendering-rnd) -- 16 codes
@@ -275,6 +275,14 @@ Fix: add the target, or pass --target with a declared name
 `evals: declares <key>, which is structurally invalid`
 
 Fix: remove +database and +schema from evals:; eval objects resolve to the agent's schema
+
+### SST-CFG029
+
+**var() reference has no declaration** (error)
+
+`{ var('<var>') } is not declared in config`
+
+Fix: declare the variable under vars: in sst_config.yml
 
 ### SST-CFG036
 
@@ -1126,17 +1134,33 @@ Fix: add the artifact's root key, or move the file out of the semantic models di
 
 **ref() model not in the dbt catalog** (error)
 
-`{{ ref('<model>') }} is not a model in the dbt manifest`
+`{ ref('<model>') } is not a model in the dbt manifest`
 
-Fix: run dbt parse, or correct the model name
+Fix: run dbt compile, or correct the model name
 
 ### SST-REF002
 
 **ref() column not on the model** (error)
 
-`{{ ref('<model>','<column>') }}: '<column>' is not a column on <model>`
+`{ ref('<model>','<column>') }: '<column>' is not a column on <model>`
 
-Fix: correct the column name, or add it to the model
+Fix: correct the column name, or add it to the model's columns: block
+
+### SST-REF003
+
+**Malformed template expression** (error)
+
+`<file>:<line>:<col>: malformed template expression '<value>'`
+
+Fix: correct the expression syntax
+
+### SST-REF004
+
+**Unknown template function** (error)
+
+`'<ref_function>' is not a template function`
+
+Fix: use one of agent, column, custom_instructions, eval_metric, extension, file, filter, metric, plugin, ref, relationship, semantic_view, skill, table, tag, tool, var, verified_query
 
 ### SST-REF005
 
@@ -1148,137 +1172,209 @@ Fix: break the cycle
 
 ### SST-REF006
 
-**Metric reference does not resolve** (error)
+**metric() target not found** (error)
 
-`metric('<name>') does not resolve`
+`{ metric('<name>') } does not resolve`
 
-Fix: correct the name or declare the metric
+Fix: correct the name, or declare the metric
+
+### SST-REF007
+
+**custom_instructions() target not found** (error)
+
+`{ custom_instructions('<name>') } does not resolve`
+
+Fix: declare the block, or correct the name
+
+### SST-REF008
+
+**Ref used in a field that forbids it** (error)
+
+`<artifact>: '<field>' does not accept template expressions`
+
+Fix: move the reference, or inline the value
+
+### SST-REF009
+
+**Ref resolved to an empty string** (error)
+
+`{ <ref_function>('<name>') } resolved to an empty string`
+
+Fix: check the referenced object's name
 
 ### SST-REF010
 
-**Tool reference does not resolve** (error)
+**tool() target not found** (error)
 
-`{{ tool('<group>','<name>') }} does not resolve`
+`{ tool('<group>','<name>') } does not resolve`
 
-Fix: declare the group and member, or correct the reference
+Fix: declare the member in specs/tools/
 
 ### SST-REF011
 
-**Semantic-view reference does not resolve** (error)
+**semantic_view() target not found** (error)
 
-`{{ semantic_view('<name>') }} does not resolve`
+`{ semantic_view('<name>') } does not resolve`
 
-Fix: declare the view, or correct the reference
+Fix: declare the view, or correct the name
 
 ### SST-REF012
 
-**Agent reference does not resolve** (error)
+**agent() target not found** (error)
 
-`{{ agent('<name>') }} does not resolve`
+`{ agent('<name>') } does not resolve`
 
-Fix: declare the agent, or correct the reference
+Fix: declare the agent, or correct the name
 
 ### SST-REF013
 
-**Extension reference does not resolve** (error)
+**extension() target not found** (error)
 
-`{{ extension('<name>') }} does not resolve`
+`{ extension('<name>') } does not resolve`
 
-Fix: declare the extension, or correct the reference
+Fix: declare the extension source, or correct the name
 
 ### SST-REF014
 
-**File sidecar reference does not resolve** (error)
+**file() sidecar does not resolve** (error)
 
-`{{ file('<path>') }} does not resolve to a file`
+`{ file('<path>') } does not resolve to a file`
 
-Fix: create the sidecar, or correct the path
+Fix: create the file, or correct the path
+
+### SST-REF015
+
+**Ref has the wrong arity** (error)
+
+`{ <ref_function>() } takes <expected> arguments, found <found>`
+
+Fix: supply the documented arguments
 
 ### SST-REF018
 
-**Reference has no current-target location** (error)
+**Ref resolves outside the declared target** (error)
 
-`{{ <ref_function>('<name>') }} has no entry for target '<target>'`
+`{ <ref_function>('<name>') } has no entry for target '<target>'`
 
-Fix: add an explicit relation for the current dbt target
+Fix: declare a relation for every target you publish to
 
 ### SST-REF019
 
-**Referenced object name is not fully qualified** (error)
+**Relation is not a three-part name** (error)
 
 `'<value>' is not a three-part fully-qualified name`
 
-Fix: use DATABASE.SCHEMA.OBJECT
+Fix: use database.schema.object
 
 ### SST-REF020
 
-**Referenced object type is incompatible** (error)
+**Ref resolves to an incompatible object type** (error)
 
-`{{ <ref_function>('<name>') }} resolves to <found>, expected <expected>`
+`{ <ref_function>('<name>') } resolves to <found>, expected <expected>`
 
-Fix: point the reference at a compatible object type
+Fix: point the reference at a compatible object
 
 ### SST-REF022
 
-**Agent delegation graph has a cycle** (error)
+**Agent reference graph has a cycle** (error)
 
 `agent delegation cycle: <cycle>`
 
-Fix: break the delegation cycle
+Fix: break the cycle
 
 ### SST-REF023
 
-**Multiple targets resolve to one writable object** (warning)
+**Ref target resolves to the same object across targets** (warning)
 
-`{{ <ref_function>('<name>') }} resolves to <value> for both dev and prod`
+`{ <ref_function>('<name>') } resolves to <value> for both dev and prod`
 
-Fix: map each writable target explicitly, or mark the group immutable
+Fix: use per-target relations for anything writable
 
 ### SST-REF026
 
-**Eval metric reference does not resolve** (error)
+**eval_metric() target not found** (error)
 
-`{{ eval_metric('<name>') }} does not resolve`
+`{ eval_metric('<name>') } does not resolve`
 
 Fix: declare the metric in the eval_metrics/ tree, or correct the name
 
 ### SST-REF027
 
-**File sidecar escapes the project root** (error)
+**file() path escapes the project root** (error)
 
-`{{ file('<path>') }} resolves outside the project root`
+`{ file('<path>') } resolves outside the project root`
 
 Fix: use a path inside the project
+
+### SST-REF028
+
+**tag() target not declared** (error)
+
+`{ tag('<name>') } does not resolve`
+
+Fix: declare the entry under tags: in sst_config.yml, or correct the name
+
+### SST-REF029
+
+**relationship() target not declared** (error)
+
+`{ relationship('<name>') } does not resolve`
+
+Fix: declare the relationship, or correct the name
+
+### SST-REF030
+
+**filter() target not declared** (error)
+
+`{ filter('<name>') } does not resolve`
+
+Fix: declare the filter, or correct the name
+
+### SST-REF031
+
+**verified_query() target not declared** (error)
+
+`{ verified_query('<name>') } does not resolve`
+
+Fix: declare the verified query, or correct the name
 
 ### SST-REF032
 
 **skill() target not declared** (error)
 
-`{{ skill('<name>') }} does not resolve`
+`{ skill('<name>') } does not resolve`
 
-Fix: declare the skill under the skills directory, or correct the name
+Fix: declare the skill under skills/, or correct the name
+
+### SST-REF033
+
+**Template does not match the ref grammar** (error)
+
+`<file>:<line>:<col>: '<text>' is not a valid reference: <detail>`
+
+Fix: write each reference as {{ fn('arg') }}, naming one of the documented template functions
 
 ### SST-REF034
 
 **Legacy table() global is rejected** (error)
 
-`<file>:<line>:<col>: table('<model>') is not a reference in 1.0; use ref('<model>')`
+`<file>:<line>:<col>: '{ table('<model>') }' is not a reference in 1.0; use '{ ref('<model>') }'`
 
-Fix: run sst migrate refs
+Fix: run `sst migrate refs`, which is a pure rename
 
 ### SST-REF035
 
 **Legacy column() global is rejected** (error)
 
-`<file>:<line>:<col>: column('<model>','<column>') is not a reference in 1.0; use ref('<model>','<column>')`
+`<file>:<line>:<col>: '{ column('<model>','<column>') }' is not a reference in 1.0; use '{ ref('<model>','<column>') }'`
 
-Fix: run sst migrate refs
+Fix: run `sst migrate refs`, which is a pure rename
 
 ### SST-REF036
 
 **plugin() target not declared** (error)
 
-`{{ plugin('<name>') }} does not resolve`
+`{ plugin('<name>') } does not resolve`
 
 Fix: declare the plugin under the plugins directory, or correct the name
 
@@ -1298,22 +1394,6 @@ Fix: reference it with skill() or plugin(), which pins the published version
 
 Fix: declare it under vars: in sst_config.yml, or fix the name
 
-### SST-REF039
-
-**Unknown custom instruction** (error)
-
-`<artifact>: custom_instructions('<name>') names no custom instruction`
-
-Fix: declare it under semantic_models/custom_instructions/, or fix the name
-
-### SST-REF040
-
-**Unknown or invalid tag reference** (error)
-
-`<artifact>: <detail>`
-
-Fix: write the tag name as {{ tag('&lt;name&gt;') }} and declare the tag under tags: in sst_config.yml
-
 ### SST-REF041
 
 **Template function not allowed in this field** (error)
@@ -1321,14 +1401,6 @@ Fix: write the tag name as {{ tag('&lt;name&gt;') }} and declare the tag under t
 `<artifact>: <function>() is not allowed in <field>`
 
 Fix: remove the call; each field accepts only the functions its reference page lists
-
-### SST-REF042
-
-**Invalid template arguments** (error)
-
-`<artifact>: <detail>`
-
-Fix: ref() takes a model and an optional column; metric(), var(), and tag() take one name
 
 ### SST-REF043
 
@@ -1342,7 +1414,7 @@ Fix: add the model to the view's tables:, or reference one of them
 
 **View table entry is not a ref()** (error)
 
-`<artifact>: table entry <found> is not a {{ ref('<model>') }} call`
+`<artifact>: table entry <found> is not a { ref('<model>') } call`
 
 Fix: write each tables: entry as {{ ref('&lt;model&gt;') }}
 
@@ -1354,7 +1426,31 @@ Fix: write each tables: entry as {{ ref('&lt;model&gt;') }}
 
 Fix: run sst migrate refs --write, or write the model name
 
+### SST-REF900
+
+**Resolver exceeded max depth** (error)
+
+`resolution depth <found> exceeded the limit <expected>`
+
+Fix: reduce the nesting of metric() references
+
 ## Membership (MEM)
+
+### SST-MEM001
+
+**Member declares a table present in no artifact** (warning)
+
+`<member> declares table '<name>', which no <type> lists`
+
+Fix: add the table to a view, or correct the member
+
+### SST-MEM002
+
+**tables absent and nothing inferable** (warning)
+
+`<member> declares no tables: and none can be inferred`
+
+Fix: declare tables: explicitly
 
 ### SST-MEM003
 
@@ -1364,6 +1460,14 @@ Fix: run sst migrate refs --write, or write the model name
 
 Fix: use a dbt model name the manifest knows
 
+### SST-MEM004
+
+**Member declares one table twice** (error)
+
+`<member> lists table '<name>' more than once`
+
+Fix: remove the duplicate entry
+
 ### SST-MEM005
 
 **Member attached to zero artifacts** (warning)
@@ -1371,6 +1475,150 @@ Fix: use a dbt model name the manifest knows
 `<member> attaches to no <type>`
 
 Fix: add its tables to a view, or delete the member
+
+### SST-MEM006
+
+**Derived member declares tables** (error)
+
+`<member> is derived and declares tables:`
+
+Fix: remove tables:; derived members are view-scoped
+
+### SST-MEM007
+
+**Composed member reaches outside its declared tables** (error)
+
+`<member>: transitive tables <outside> are not in its own tables:`
+
+Fix: widen tables:, or narrow the expression
+
+### SST-MEM008
+
+**Member attaches to an artifact lacking a declared table** (error)
+
+`<member> attaches to <artifact>, which lacks table '<name>'`
+
+Fix: align the member's tables with the view
+
+### SST-MEM009
+
+**Duplicate synonym within an artifact** (error)
+
+`<artifact>: synonym '<value>' is claimed by <a> and <b>`
+
+Fix: make synonyms unique within the view
+
+### SST-MEM010
+
+**Member declares a table the artifact reaches only by relationship** (warning)
+
+`<member> declares '<name>', reachable from <artifact> only through a join`
+
+Fix: declare the joined table explicitly
+
+### SST-MEM011
+
+**Member fan-out** (info)
+
+`<member> attaches to <count> artifacts`
+
+### SST-MEM012
+
+**Tables inferred for a member** (info)
+
+`<member>: tables inferred as <value>`
+
+### SST-MEM013
+
+**Attachment differs between two membership calls** (error)
+
+`<member> attached to <a> then <b>`
+
+Fix: report this as a bug
+
+### SST-MEM014
+
+**Member would be dropped at render after passing attachment** (error)
+
+`<member> passed attachment for <artifact> and would be dropped at render`
+
+Fix: fix the expression, or the view's table list
+
+### SST-MEM015
+
+**Private member referenced from outside the view** (warning)
+
+`<member> is private and is referenced by <artifact>`
+
+Fix: make it public, or drop the reference
+
+### SST-MEM016
+
+**Member attaches to two artifacts with contradictory scoping** (error)
+
+`<member> attaches to <a> and <b> with conflicting scope`
+
+Fix: split the member
+
+### SST-MEM100
+
+**Member attached to a type that accepts no members** (error)
+
+`<type> accepts no members; <member> was attached`
+
+Fix: move the member
+
+### SST-MEM101
+
+**Inferred tables exceed declared tables** (warning)
+
+`<member>: expression reaches <outside>, beyond its declared tables:`
+
+Fix: widen tables:, or narrow the expression
+
+### SST-MEM103
+
+**Artifact member counts** (info)
+
+`<artifact>: <value>`
+
+### SST-MEM104
+
+**Artifact has no members and its type requires at least one** (error)
+
+`<artifact> resolves no members`
+
+Fix: attach at least one dimension or metric
+
+### SST-MEM105
+
+**Two artifacts attach contradictory custom instructions to one table** (warning)
+
+`<a> and <b> share table '<name>' with conflicting instructions`
+
+Fix: reconcile the instruction blocks
+
+### SST-MEM106
+
+**Verified query attaches through a different membership rule** (error)
+
+`<member> used a verified-query-specific attachment path`
+
+Fix: use the one membership function
+
+### SST-MEM107
+
+**Attachment skipped for a poisoned member** (info)
+
+`<member> skipped: <count> unresolved references`
+
+### SST-MEM900
+
+**Attachment not idempotent** (error)
+
+`attachment for <member> changed on a second pass`
+
+Fix: report this as a bug
 
 ## Validation (VAL)
 

@@ -200,14 +200,14 @@ def test_compile_selection_keeps_the_canonical_manifest_full(tmp_path: Path) -> 
 @pytest.mark.parametrize(
     ("file", "before", "after", "code"),
     [
-        ("semantic_models/filters/filters.yml", "var('completed_state')", "var('no_such_var')", "SST-REF038"),
+        ("semantic_models/filters/filters.yml", "var('completed_state')", "var('no_such_var')", "SST-CFG029"),
         (
             "semantic_models/semantic_views/semantic_views.yml",
             "custom_instructions('jaffle_sql_conventions')",
             "custom_instructions('no_such_instruction')",
-            "SST-REF039",
+            "SST-REF007",
         ),
-        ("semantic_models/semantic_views/semantic_views.yml", "tag('cost_center')", "tag('no_such_tag')", "SST-REF040"),
+        ("semantic_models/semantic_views/semantic_views.yml", "tag('cost_center')", "tag('no_such_tag')", "SST-REF028"),
     ],
 )
 def test_unknown_references_name_their_own_code(tmp_path: Path, file: str, before: str, after: str, code: str) -> None:
@@ -250,7 +250,7 @@ def test_a_partial_run_refuses_to_publish_a_view_without_a_broken_member(tmp_pat
     result = CliRunner().invoke(cli, ["compile", *common(project), "--partial", "--output", "json"])
     assert result.exit_code == 1
     diagnostics = json.loads(result.output)["diagnostics"]
-    assert {"SST-REF038", "SST-PLN033"} <= {item["code"] for item in diagnostics}
+    assert {"SST-CFG029", "SST-PLN033"} <= {item["code"] for item in diagnostics}
     refusal = next(item for item in diagnostics if item["code"] == "SST-PLN033")
     assert "metric:total_revenue" in refusal["message"]
     assert not (project / "target" / "sst" / "manifest.json").exists()

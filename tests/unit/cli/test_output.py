@@ -43,13 +43,15 @@ def test_validate_json_emits_one_v2_envelope() -> None:
     # Infos: SST-VAL854 (the fixture's profile registry is not Desktop's), SST-VAL020, the
     # eval notes SST-VAL711/712/725, the skill notes SST-VAL816 (3) and SST-VAL831 (4), the
     # dbt seam's notes SST-DBT016 for orders and products and SST-DBT025, and SST-LOD201 (7)
-    # for the files the manifest's checksums read first. The warnings are SST-VAL528,
-    # SST-RND010 for the minimal agent's empty tool list, and SST-RND013 for the generic
-    # tool's resources; the plugin has a consumer, the operator profile.
+    # for the files the manifest's checksums read first; eighteen report what attached where,
+    # SST-MEM011 for each of the fifteen members both jaffle views hold and SST-MEM103 for
+    # each of the three views. The warnings are SST-VAL528, SST-RND010 for the minimal
+    # agent's empty tool list, and SST-RND013 for the generic tool's resources; the plugin
+    # has a consumer, the operator profile.
     assert envelope["summary"] == {
         "error": 0,
         "warning": 3,
-        "info": 22,
+        "info": 40,
         "promoted": 0,
         "suppressed_cascade": 0,
         "baselined": 0,

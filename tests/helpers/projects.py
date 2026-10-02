@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from pathlib import Path
 
 from snowflake_semantic_tools.adapters.project_source import YamlProjectSource
-from snowflake_semantic_tools.domain.diagnostics import DiagnosticBag
+from snowflake_semantic_tools.domain.diagnostics import Diagnostic, DiagnosticBag, Severity
 from snowflake_semantic_tools.domain.model.project import SemanticViewProject
 from snowflake_semantic_tools.domain.model.semantic_view import SemanticView
 
@@ -30,3 +31,8 @@ def load_views(project_dir: Path, *, manifest_path: Path, target_name: str | Non
     errors = [diagnostic for diagnostic in project.diagnostics if diagnostic.severity.name == "ERROR"]
     assert not errors, "project reported errors: " + "; ".join(f"{d.code} {d.message}" for d in errors)
     return project.views
+
+
+def findings(diagnostics: Iterable[Diagnostic]) -> tuple[Diagnostic, ...]:
+    """The diagnostics that are not INFO: every load reports what attached where, which a test of a fault ignores."""
+    return tuple(diagnostic for diagnostic in diagnostics if diagnostic.severity is not Severity.INFO)

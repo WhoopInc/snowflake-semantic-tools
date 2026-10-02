@@ -1,29 +1,61 @@
-"""The smallest agent compile context: one semantic view, no tools, extensions, or other agents."""
+"""An agent compile context for tests: one semantic view, one extension, one skill, and one plugin."""
 
 from __future__ import annotations
 
-from snowflake_semantic_tools.app.compile.agents.context import AgentCompileContext
+from types import MappingProxyType
+
+from snowflake_semantic_tools.app.compile.agents import AgentCompileContext, ExtensionPin
+from snowflake_semantic_tools.domain.diagnostics import Origin
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
-from snowflake_semantic_tools.domain.model.tool import ToolCatalog
+from snowflake_semantic_tools.domain.model.tool import ToolCatalog, ToolGroup, ToolMember, ToolOwnership
+
+SEMANTICS = ExtensionPin("skill:semantics", QualifiedName.parse("DB.S.SEMANTICS"), "SST_ABCDEF012345", ("semantics",))
+TOOLKIT = ExtensionPin("plugin:toolkit", QualifiedName.parse("DB.S.TOOLKIT"), "SST_0123456789AB", ("semantics",))
 
 
-def agent_context() -> AgentCompileContext:
-    """Compile agents into `DB.S` with the `sales` view, warehouse `WH`, and model `model` allowed."""
+def search_member(kind: str = "cortex_search_service") -> ToolMember:
+    """A referenced tool member `platform.search` of the kind given, with a relation for `dev`."""
+    return ToolMember(
+        "platform",
+        "search",
+        kind,
+        ToolOwnership.REFERENCE,
+        Origin("tools/platform.yml"),
+        "tools/platform.yml",
+        description="Search the docs.",
+        relations=MappingProxyType({"dev": "DB.S.SEARCH"}),
+    )
+
+
+def tools(*members: ToolMember) -> ToolCatalog:
+    """A tool catalog of one `platform` group holding `members`, compiled for `dev`."""
+    group = ToolGroup("platform", Origin("tools/platform.yml"), "tools/platform.yml", members=members)
+    return ToolCatalog((group,), "dev", frozenset(("dev",)))
+
+
+def agent_context(
+    *,
+    catalog: ToolCatalog | None = None,
+    agents: dict[str, QualifiedName] | None = None,
+) -> AgentCompileContext:
+    """The context agents compile against: view `sales`, extension `vendor-pack`, skill and plugin."""
     return AgentCompileContext(
         semantic_views={"sales": QualifiedName.parse("DB.S.SALES")},
-        tools=ToolCatalog((), "dev", frozenset(("dev",))),
-        agents={},
-        extensions={},
-        variables={},
+        tools=catalog or tools(),
+        agents=agents or {},
+        extensions={"vendor-pack": QualifiedName.parse("DB.EXT.VENDOR_PACK")},
+        variables={"sha_version": "0000000"},
         database="DB",
         schema="S",
         warehouse="WH",
         query_timeout=60,
         orchestration_model="model",
-        budget_seconds=None,
-        budget_tokens=None,
-        tool_not_accessible=None,
-        analytical_search=None,
-        alias=None,
+        budget_seconds=120,
+        budget_tokens=16000,
+        tool_not_accessible="reject",
+        analytical_search=False,
+        alias="promoted",
         allowed_models=frozenset(("model",)),
+        skills={"semantics": SEMANTICS},
+        plugins={"toolkit": TOOLKIT},
     )

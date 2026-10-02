@@ -126,11 +126,11 @@ def test_resolver_handles_metric_instruction_var_and_tag_calls() -> None:
         ("{{ custom_instructions('a', 'b') }}", CUSTOM_INSTRUCTION_ITEM, "custom_instructions"),
     ):
         resolved, diagnostics = resolve_scalar(text, policy, Origin("views.yml"), context, field=field)
-        assert resolved.poisoned and [item.code for item in diagnostics] == ["SST-REF042"]
-        assert "takes one name, found 2" in diagnostics[0].message
+        assert resolved.poisoned and [item.code for item in diagnostics] == ["SST-REF015"]
+        assert "takes 1 arguments, found 2" in diagnostics[0].message
     unknown = (
-        ("{{ var('missing') }}", METRIC_EXPR, "expression", "SST-REF038"),
-        ("{{ custom_instructions('missing') }}", CUSTOM_INSTRUCTION_ITEM, "custom_instructions", "SST-REF039"),
+        ("{{ var('missing') }}", METRIC_EXPR, "expression", "SST-CFG029"),
+        ("{{ custom_instructions('missing') }}", CUSTOM_INSTRUCTION_ITEM, "custom_instructions", "SST-REF007"),
     )
     for text, policy, field, code in unknown:
         _, diagnostics = resolve_scalar(text, policy, Origin("views.yml"), context, field=field)
@@ -147,8 +147,8 @@ def test_resolver_reports_policy_arity_and_unknown_targets() -> None:
         field="description",
     )
     assert description.poisoned
-    assert diagnostics[0].code == "SST-REF041"
-    assert diagnostics[0].message == "description: ref() is not allowed in description"
+    assert diagnostics[0].code == "SST-REF008"
+    assert diagnostics[0].message == "description: 'description' does not accept template expressions"
 
     bad_arity, diagnostics = resolve_scalar(
         "{{ ref() }}",
@@ -158,7 +158,8 @@ def test_resolver_reports_policy_arity_and_unknown_targets() -> None:
         field="expression",
     )
     assert bad_arity.poisoned
-    assert diagnostics[0].code == "SST-REF042"
+    assert diagnostics[0].code == "SST-REF015"
+    assert diagnostics[0].message == "{ ref() } takes 1 or 2 arguments, found 0"
 
     unknown_metric, diagnostics = resolve_scalar(
         "{{ metric('missing') }}",
@@ -191,7 +192,7 @@ def test_resolver_rejects_legacy_calls_and_required_missing_refs() -> None:
         field="tag",
     )
     assert missing.poisoned
-    assert diagnostics[0].code == "SST-REF040"
+    assert diagnostics[0].code == "SST-REF003"
 
 
 def test_resolver_reports_unknown_columns_and_malformed_templates() -> None:
@@ -252,6 +253,7 @@ def test_resolver_covers_remaining_error_and_value_branches() -> None:
         assert resolved.poisoned
         assert diagnostics
 
+    # A call that resolves to nothing would leave the field without the value it names.
     empty, diagnostics = resolve_scalar(
         "{{ var('empty') }}",
         METRIC_EXPR,
@@ -259,9 +261,9 @@ def test_resolver_covers_remaining_error_and_value_branches() -> None:
         context,
         field="value",
     )
-    assert empty.text == ""
-    assert not empty.poisoned
-    assert diagnostics == ()
+    assert empty.text == "{{ var('empty') }}"
+    assert empty.poisoned
+    assert [item.code for item in diagnostics] == ["SST-REF009"]
 
     resolved, diagnostics = resolve_scalar(
         "{{ ref('orders') }} + {{ ref('orders') }}",
@@ -340,9 +342,8 @@ def test_resolver_covers_remaining_error_and_value_branches() -> None:
         empty_context,
         field="expression",
     )
-    assert empty_metric.text == ""
-    assert not empty_metric.poisoned
-    assert diagnostics == ()
+    assert empty_metric.poisoned
+    assert [item.message for item in diagnostics] == ["{ metric('m') } resolved to an empty string"]
 
 
 def test_resolver_reports_calls_last_first_then_the_call_count() -> None:
@@ -354,10 +355,13 @@ def test_resolver_reports_calls_last_first_then_the_call_count() -> None:
         field="tag",
     )
     assert [(item.code, item.message) for item in diagnostics] == [
-        ("SST-REF040", "tag: {{ tag('missing') }} names no declared tag"),
+        ("SST-REF028", "{ tag('missing') } does not resolve"),
         ("SST-REF041", "tag: metric() is not allowed in tag"),
         ("SST-REF041", "tag: ref() is not allowed in tag"),
-        ("SST-REF042", "tag: tag accepts one reference, found 3"),
+        (
+            "SST-REF003",
+            "views.yml:1:1: malformed template expression '{{ ref('orders') }} {{ metric('m') }} {{ tag('missing') }}'",
+        ),
     ]
 
 

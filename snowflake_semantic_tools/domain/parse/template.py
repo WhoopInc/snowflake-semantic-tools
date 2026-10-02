@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
+from enum import Enum, auto
 
 
 @dataclass(frozen=True, slots=True)
@@ -19,14 +20,41 @@ class TemplateCall:
     col: int
 
 
-class TemplateSyntaxError(ValueError):
-    """A template span is unbalanced or does not match the call grammar."""
+class TemplateSyntaxKind(Enum):
+    """How a template span breaks the dialect, which decides the code that reports it.
 
-    def __init__(self, reason: str, *, line: int, col: int) -> None:
+    UNBALANCED: a `{{` never closes, or another opens inside it. GRAMMAR: the span is not
+    `name(...)` at all, such as `{{ sha_version }}` or a dropped closing parenthesis.
+    ARGUMENTS: the span is a call whose arguments do not parse, such as an unquoted one.
+    """
+
+    UNBALANCED = auto()
+    GRAMMAR = auto()
+    ARGUMENTS = auto()
+
+
+class TemplateSyntaxError(ValueError):
+    """A template span is unbalanced or does not match the call grammar.
+
+    Attributes:
+        span: The template text from its `{{`, through its `}}` when it has one.
+    """
+
+    def __init__(
+        self,
+        reason: str,
+        *,
+        line: int,
+        col: int,
+        kind: TemplateSyntaxKind = TemplateSyntaxKind.UNBALANCED,
+        span: str = "",
+    ) -> None:
         super().__init__(f"{line}:{col}: {reason}")
         self.reason = reason
         self.line = line
         self.col = col
+        self.kind = kind
+        self.span = span
 
 
 def _position(text: str, offset: int) -> tuple[int, int]:
@@ -35,9 +63,16 @@ def _position(text: str, offset: int) -> tuple[int, int]:
     return line, offset - previous_newline
 
 
-def _syntax(text: str, offset: int, reason: str) -> TemplateSyntaxError:
+def _syntax(
+    text: str,
+    offset: int,
+    reason: str,
+    *,
+    kind: TemplateSyntaxKind = TemplateSyntaxKind.UNBALANCED,
+    span: str = "",
+) -> TemplateSyntaxError:
     line, col = _position(text, offset)
-    return TemplateSyntaxError(reason, line=line, col=col)
+    return TemplateSyntaxError(reason, line=line, col=col, kind=kind, span=span)
 
 
 def _parse_body(body: str, *, text: str, body_offset: int) -> tuple[str, tuple[str, ...]]:
@@ -53,10 +88,12 @@ def _parse_body(body: str, *, text: str, body_offset: int) -> tuple[str, tuple[s
         body_offset: Where `body` starts in `text`.
 
     Raises:
-        TemplateSyntaxError: the body breaks that grammar; the error points where it breaks.
+        TemplateSyntaxError: the body breaks that grammar; the error points where it breaks. It
+            is ARGUMENTS when the body is a call whose arguments do not parse, else GRAMMAR.
     """
     cursor = 0
     length = len(body)
+    grammar = TemplateSyntaxKind.GRAMMAR
 
     def skip_space() -> None:
         nonlocal cursor
@@ -66,14 +103,14 @@ def _parse_body(body: str, *, text: str, body_offset: int) -> tuple[str, tuple[s
     skip_space()
     name_start = cursor
     if cursor >= length or not (body[cursor].isalpha() or body[cursor] == "_"):
-        raise _syntax(text, body_offset + cursor, "expected a template function name")
+        raise _syntax(text, body_offset + cursor, "expected a template function name", kind=grammar)
     cursor += 1
     while cursor < length and (body[cursor].isalnum() or body[cursor] == "_"):
         cursor += 1
     function = body[name_start:cursor]
     skip_space()
     if cursor >= length or body[cursor] != "(":
-        raise _syntax(text, body_offset + cursor, f"expected '(' after {function}")
+        raise _syntax(text, body_offset + cursor, f"expected '(' after {function}", kind=grammar)
     cursor += 1
     skip_space()
 
@@ -92,11 +129,14 @@ def _parse_body(body: str, *, text: str, body_offset: int) -> tuple[str, tuple[s
             if cursor < length and body[cursor] == ")":
                 cursor += 1
                 break
-            raise _syntax(text, body_offset + cursor, "expected ',' or ')' after template argument")
+            # Running out of body means the closing parenthesis is missing, so the span is
+            # not a call at all; anything else between the arguments is an argument fault.
+            kind = grammar if cursor >= length else TemplateSyntaxKind.ARGUMENTS
+            raise _syntax(text, body_offset + cursor, "expected ',' or ')' after template argument", kind=kind)
 
     skip_space()
     if cursor != length:
-        raise _syntax(text, body_offset + cursor, "unexpected text after template call")
+        raise _syntax(text, body_offset + cursor, "unexpected text after template call", kind=grammar)
     return function, tuple(args)
 
 
@@ -108,7 +148,12 @@ def _quoted(body: str, cursor: int, *, text: str, body_offset: int) -> tuple[str
     """
     length = len(body)
     if cursor >= length or body[cursor] not in ("'", '"'):
-        raise _syntax(text, body_offset + cursor, "template arguments must be quoted strings")
+        raise _syntax(
+            text,
+            body_offset + cursor,
+            "template arguments must be quoted strings",
+            kind=TemplateSyntaxKind.ARGUMENTS,
+        )
     quote = body[cursor]
     cursor += 1
     value: list[str] = []
@@ -122,7 +167,12 @@ def _quoted(body: str, cursor: int, *, text: str, body_offset: int) -> tuple[str
             return "".join(value), cursor + 1
         value.append(char)
         cursor += 1
-    raise _syntax(text, body_offset + cursor, "unterminated quoted template argument")
+    raise _syntax(
+        text,
+        body_offset + cursor,
+        "unterminated quoted template argument",
+        kind=TemplateSyntaxKind.ARGUMENTS,
+    )
 
 
 def scan_template_calls(text: str) -> tuple[TemplateCall, ...]:
@@ -135,12 +185,16 @@ def scan_template_calls(text: str) -> tuple[TemplateCall, ...]:
             return tuple(calls)
         end = text.find("}}", start + 2)
         if end < 0:
-            raise _syntax(text, start, "unterminated template expression")
+            raise _syntax(text, start, "unterminated template expression", span=text[start:])
         nested = text.find("{{", start + 2, end)
-        if nested >= 0:
-            raise _syntax(text, nested, "nested template expression")
         raw = text[start : end + 2]
-        function, args = _parse_body(raw[2:-2], text=text, body_offset=start + 2)
+        if nested >= 0:
+            raise _syntax(text, nested, "nested template expression", span=raw)
+        try:
+            function, args = _parse_body(raw[2:-2], text=text, body_offset=start + 2)
+        except TemplateSyntaxError as exc:
+            exc.span = raw
+            raise
         line, col = _position(text, start)
         calls.append(
             TemplateCall(

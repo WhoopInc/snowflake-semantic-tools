@@ -15,5 +15,14 @@ def test_sst_prs027_fires(tmp_path: Path) -> None:
     assert diagnostic.subject == "semantic_view:catalog"
 
 
+def test_sst_prs027_fires_for_a_tag_name_that_is_not_a_call(tmp_path: Path) -> None:
+    files = view_file("    tags:\n      - name: tier\n        value: gold\n")
+    [diagnostic] = found(SmallProject(tmp_path, files=files).load(), "SST-PRS027")
+    assert diagnostic.message == (
+        "semantic_view:catalog: tags must be a list of name and value entries, "
+        "found the name 'tier', which is not one tag() call"
+    )
+
+
 def test_sst_prs027_silent(tmp_path: Path) -> None:
     assert found(SmallProject(tmp_path, files=view_file("")).load(), "SST-PRS027") == []

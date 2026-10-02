@@ -8,9 +8,10 @@ from typing import Any
 
 from snowflake_semantic_tools.adapters.errors import ProjectError
 from snowflake_semantic_tools.adapters.yaml.documents import NodePath, RawDocument, RawDocuments
-from snowflake_semantic_tools.domain.diagnostics import D, Origin
+from snowflake_semantic_tools.domain.diagnostics import Origin
 from snowflake_semantic_tools.domain.model.registry import SEMANTIC_REGISTRY
 from snowflake_semantic_tools.domain.parse.template import TemplateSyntaxError, single_template_call
+from snowflake_semantic_tools.domain.resolve.calls import syntax_problem
 
 
 def _as_str_tuple(value: Any) -> tuple[str, ...]:
@@ -47,20 +48,15 @@ def _table_refs(value: object) -> tuple[str, ...]:
             a model name, or holds a malformed template; only the last carries a diagnostic.
 
     Diagnostics:
-        SST-LOD004: when an entry's template is malformed, positioned within the entry's own text.
+        SST-LOD004, SST-REF033, SST-REF003: when an entry's template does not parse, positioned
+            within the entry's own text.
     """
     refs: list[str] = []
     for raw in value if isinstance(value, list) else []:
         try:
             call = single_template_call(str(raw), "ref")
         except TemplateSyntaxError as exc:
-            diagnostic = D(
-                "SST-LOD004",
-                file="<tables>",
-                line=exc.line,
-                col=exc.col,
-                reason=exc.reason,
-            )
+            diagnostic = syntax_problem(exc, "<tables>")
             raise ProjectError(diagnostic.message, diagnostics=(diagnostic,)) from exc
         if call is not None:
             if len(call.args) != 1:

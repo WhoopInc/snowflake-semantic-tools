@@ -24,6 +24,7 @@ from snowflake_semantic_tools.domain.model.agent import AgentEvalFiles, AgentMod
 from snowflake_semantic_tools.domain.model.artifact_key import artifact_key
 from snowflake_semantic_tools.domain.parse.passthrough import AGENT_SPEC_KEYS, TOOL_SPEC_KEYS, passthrough_diagnostics
 from snowflake_semantic_tools.domain.parse.template import TemplateSyntaxError, scan_template_calls
+from snowflake_semantic_tools.domain.resolve.calls import call_problem, malformed_field, syntax_problem
 
 _Block = TypeVar("_Block", bound=Mapping[Any, Any])
 
@@ -52,7 +53,8 @@ def load_agents(project_dir: Path, *, agents_dir: str = "agents") -> tuple[tuple
             mapping. The agent is kept back, and the field reads as empty.
         SST-PRS018: when a `spec.tools` or `spec.skills` entry has the wrong shape.
         SST-PRS118: when a sample question is not a mapping with a string `question`.
-        SST-REF014: when an instruction holds templates other than one whole `{{ file() }}` call.
+        SST-REF003: when an instruction holds templates other than one whole `{{ file() }}` call.
+        SST-REF014: when an instruction's `{{ file() }}` names no file.
         SST-REF027: when a sidecar or an eval file resolves outside the project root.
         SST-LOD018: when a sidecar cannot be read.
         SST-LOD019: when a sidecar holds only whitespace.
@@ -267,10 +269,12 @@ def _instruction(
         The instruction; None when `value` is not a string or a sidecar problem was reported.
 
     Diagnostics:
-        SST-LOD004: when a template in the text is malformed.
-        SST-REF014: when the text holds templates other than one `file()` call that is all of it.
+        SST-LOD004, SST-REF033, SST-REF003: when a template in the text does not parse.
+        SST-REF003: when the text holds templates, and they are not one call that is all of it.
+        SST-REF004, SST-REF041, SST-REF015: when that call is not one one-path `file()` call.
         SST-REF027: when the sidecar resolves outside the project root.
-        SST-LOD018: when the sidecar cannot be read.
+        SST-REF014: when the sidecar's path names no file.
+        SST-LOD018: when the sidecar is there and cannot be read.
         SST-LOD006: when the sidecar is not UTF-8.
         SST-LOD019: when the sidecar holds only whitespace.
     """
@@ -279,17 +283,25 @@ def _instruction(
     try:
         calls = scan_template_calls(value)
     except TemplateSyntaxError as exc:
-        diagnostics.append(D("SST-LOD004", file=source_file, line=exc.line, col=exc.col, reason=exc.reason))
+        diagnostics.append(syntax_problem(exc, source_file))
         return value
     if not calls:
         return value
-    if len(calls) != 1 or calls[0].function != "file" or len(calls[0].args) != 1 or calls[0].raw != value:
-        diagnostics.append(D("SST-REF014", path=value, origin=Origin(source_file)))
+    origin = Origin(source_file)
+    if len(calls) != 1 or calls[0].raw != value:
+        diagnostics.append(malformed_field(value, origin))
+        return None
+    problem = call_problem(calls[0], frozenset(("file",)), origin, field="instructions", artifact=source_file)
+    if problem is not None:
+        diagnostics.append(problem)
         return None
     requested = str(calls[0].args[0])
     path = resolve_within(project_dir, agent_dir / requested)
     if path is None:
-        diagnostics.append(D("SST-REF027", path=requested, origin=Origin(source_file)))
+        diagnostics.append(D("SST-REF027", path=requested, origin=origin))
+        return None
+    if not path.exists():
+        diagnostics.append(D("SST-REF014", path=requested, origin=origin))
         return None
     relative = path.relative_to(project_dir.resolve()).as_posix()
     try:
@@ -347,7 +359,7 @@ def _parse_tool(
         SST-PRS018: when the entry is not a mapping.
         SST-PRS002: when it declares no string `type`.
         SST-PRS003: when a mapping field, such as `filter` or `input_schema`, holds another type.
-        SST-LOD004: when a template in a reference field is malformed.
+        SST-LOD004, SST-REF033, SST-REF003: when a template in a reference field does not parse.
         SST-PRS023, SST-PRS024: as `passthrough_diagnostics` reports `tool_spec_passthrough`.
     """
     if not isinstance(value, dict):
@@ -439,7 +451,8 @@ def _parse_skill(
     Diagnostics:
         SST-PRS018: when the entry is not a mapping with a `source:` mapping.
         SST-PRS002: when `source.type` is not a string, or `name` is present and not one.
-        SST-LOD004: when a template in `source.path` or `source.version` is malformed, once each.
+        SST-LOD004, SST-REF033, SST-REF003: when a template in `source.path` or `source.version`
+            does not parse, once each.
     """
     if not isinstance(value, dict) or not isinstance(value.get("source"), dict):
         diagnostics.append(
@@ -487,7 +500,7 @@ def _template_args(
     try:
         calls = scan_template_calls(value)
     except TemplateSyntaxError as exc:
-        diagnostics.append(D("SST-LOD004", file=origin.file, line=exc.line, col=exc.col, reason=exc.reason))
+        diagnostics.append(syntax_problem(exc, origin.file))
         return ()
     if len(calls) != 1 or calls[0].function != function or calls[0].raw != value:
         return ()

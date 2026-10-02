@@ -10,7 +10,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, NoReturn, TypeVar
+from typing import Any, TypeVar
 
 from snowflake_semantic_tools.adapters.errors import ProjectError
 from snowflake_semantic_tools.adapters.yaml.fields import mapping
@@ -28,7 +28,7 @@ from snowflake_semantic_tools.adapters.yaml.semantic.build_members import (
 )
 from snowflake_semantic_tools.adapters.yaml.semantic.defs import FilterDef, InstructionDef, MetricDef, VerifiedQueryDef
 from snowflake_semantic_tools.adapters.yaml.semantic.nodes import _as_str_tuple
-from snowflake_semantic_tools.domain.diagnostics import D
+from snowflake_semantic_tools.domain.diagnostics import D, Origin
 from snowflake_semantic_tools.domain.model.artifact_key import artifact_key
 from snowflake_semantic_tools.domain.model.dbt import DbtCatalog, DbtColumn, DbtModel, DbtSource, DbtTarget
 from snowflake_semantic_tools.domain.model.project import ParsedMember
@@ -42,6 +42,7 @@ from snowflake_semantic_tools.domain.model.semantic_view import (
     Variable,
 )
 from snowflake_semantic_tools.domain.parse.template import single_template_call
+from snowflake_semantic_tools.domain.resolve.template import TAG_NAME, ResolveContext, resolve_scalar
 from snowflake_semantic_tools.domain.sql import Sql, boolean, datatype, is_datatype, literal, number
 from snowflake_semantic_tools.domain.validate.sql import qualified_name_problem
 
@@ -71,8 +72,14 @@ def _build_view(
     """
     name = str(node["name"])
     selected = _select_members(artifact_key("semantic_view", name), members, attachment)
-    catalog = DbtCatalog("v12", None, None, tuple(models.values()), sources=sources)
-    view = _View(name, path, models, catalog, mapping(config.get("vars")))
+    view = _View(
+        name,
+        path,
+        Origin(path.resolve().relative_to(project_dir.resolve()).as_posix()),
+        models,
+        DbtCatalog("v12", None, None, tuple(models.values()), sources=sources),
+        mapping(config.get("vars")),
+    )
     tables, logical_by_model = _view_tables(node, view)
     columns = _view_columns(models, logical_by_model)
     resolver = _member_resolver(view, logical_by_model, selected)
@@ -162,6 +169,7 @@ class _View:
     """The view being built, and the project inputs every phase of its build reads.
 
     Attributes:
+        origin: The view's file, relative to the project: where its own keys' diagnostics point.
         models: The target's dbt models, by casefolded name.
         catalog: The same models, as the expression resolver reads them.
         variables: The project's `vars:`.
@@ -169,6 +177,7 @@ class _View:
 
     name: str
     path: Path
+    origin: Origin
     models: Mapping[str, DbtModel]
     catalog: DbtCatalog
     variables: Mapping[str, object]
@@ -462,54 +471,69 @@ def _view_tags(node: Mapping[str, Any], view: _View, config: dict[str, Any], tar
         SST-PRS027: when `tags:` is not a list.
 
     Raises:
-        ProjectError: `tags:` is not a list, or a tag does not resolve (SST-REF040).
+        ProjectError: `tags:` is not a list, or a tag does not build (see `_tag`).
     """
     raw_tags = node.get("tags")
     if raw_tags is not None and not isinstance(raw_tags, list):
         diagnostic = D("SST-PRS027", artifact=view.key, found=type(raw_tags).__name__)
         raise ProjectError(diagnostic.message, diagnostics=(diagnostic,))
-    return tuple(
-        _tag(value, config=config, target=target, path=view.path, view_name=view.name) for value in raw_tags or []
+    tag_names = _tag_names(config, target)
+    return tuple(_tag(value, view=view, tag_names=tag_names) for value in raw_tags or [])
+
+
+def _tag_names(config: dict[str, Any], target: DbtTarget) -> dict[str, str]:
+    """Name each tag `tags:` in `sst_config.yml` declares: its `default_prefix` and its upper-cased name."""
+    block = config.get("tags") or {}
+    if not isinstance(block, dict):
+        return {}
+    prefix = (
+        str(block.get("default_prefix") or "")
+        .replace("{{ target.database }}", target.database)
+        .replace("{{ target.schema }}", target.schema)
     )
+    return {str(name): f"{prefix}.{str(name).upper()}" for name in block if name != "default_prefix"}
 
 
-def _tag(value: object, *, config: dict[str, Any], target: DbtTarget, path: Path, view_name: str) -> Tag:
-    """Build one tag: its name a `tag()` call naming a tag under `tags:` in `sst_config.yml`.
+def _tag(value: object, *, view: _View, tag_names: Mapping[str, str]) -> Tag:
+    """Build one tag: its name one `tag()` call naming a tag under `tags:` in `sst_config.yml`.
 
     Diagnostics:
-        SST-PRS027: when the entry lacks a name or a value, or its name is not one `tag()` call.
-        SST-REF040: when the call names no declared tag.
+        SST-PRS027: when the entry lacks a name or a value, or its name holds no template call.
+        SST-REF003, SST-REF004, SST-REF041, SST-REF015: when its name is not one one-name `tag()` call.
+        SST-REF028: when the call names no declared tag.
+        SST-REF019: when the tag's name is not a three-part name.
         SST-PRS026: when the value is longer than 256 characters.
 
     Raises:
         ProjectError: For each diagnostic above.
     """
-    view_key = artifact_key("semantic_view", view_name)
-
-    def invalid(code: str, **context: Any) -> NoReturn:
-        diagnostic = D(code, artifact=view_key, **context)
-        raise ProjectError(diagnostic.message, diagnostics=(diagnostic,))
-
     if not isinstance(value, dict) or not value.get("name") or "value" not in value:
-        invalid("SST-PRS027", found=f"the entry {value!r}, which needs a name and a value")
-    call = single_template_call(str(value["name"]), "tag")
-    if call is None or len(call.args) != 1:
-        invalid("SST-PRS027", found=f"the name {value['name']!r}, which is not one tag() call")
-    tags = config.get("tags") or {}
-    tag_name = call.args[0]
-    if not isinstance(tags, dict) or tag_name not in tags:
-        invalid("SST-REF040", detail=f"tag('{tag_name}') names no tag under tags: in sst_config.yml")
-    if len(str(value["value"])) > 256:
-        invalid("SST-PRS026", field=tag_name, size=len(str(value["value"])))
-    prefix = (
-        str(tags.get("default_prefix") or "")
-        .replace("{{ target.database }}", target.database)
-        .replace("{{ target.schema }}", target.schema)
+        diagnostic = D("SST-PRS027", artifact=view.key, found=repr(value))
+        raise ProjectError(diagnostic.message, diagnostics=(diagnostic,))
+    if "{{" not in str(value["name"]):
+        found = f"the name {value['name']!r}, which is not one tag() call"
+        diagnostic = D("SST-PRS027", artifact=view.key, found=found, subject=view.key)
+        raise ProjectError(diagnostic.message, diagnostics=(diagnostic,))
+    resolved, diagnostics = resolve_scalar(
+        str(value["name"]),
+        TAG_NAME,
+        view.origin,
+        ResolveContext(view.catalog, tags=tag_names),
+        field="tags.name",
+        subject=view.key,
     )
-    name = f"{prefix}.{tag_name.upper()}"
-    if qualified_name_problem(name, artifact=artifact_key("semantic_view", view_name), subject=view_name) is not None:
-        invalid(f"tag('{tag_name}') resolves to {name!r}, not a three-part tag name")
-    return Tag(name=name, value=str(value["value"]))
+    if diagnostics:
+        raise ProjectError("; ".join(item.message for item in diagnostics), diagnostics=tuple(diagnostics))
+    if qualified_name_problem(resolved.text, artifact=view.key, subject=view.key) is not None:
+        diagnostic = D("SST-REF019", value=resolved.text, origin=view.origin, subject=view.key)
+        raise ProjectError(diagnostic.message, diagnostics=(diagnostic,))
+    if len(str(value["value"])) > 256:
+        call = single_template_call(str(value["name"]), "tag")
+        field = call.args[0] if call is not None and call.args else str(value["name"])
+        size = len(str(value["value"]))
+        diagnostic = D("SST-PRS026", artifact=view.key, field=field, size=size, subject=view.key)
+        raise ProjectError(diagnostic.message, diagnostics=(diagnostic,))
+    return Tag(name=resolved.text, value=str(value["value"]))
 
 
 def _source_files(

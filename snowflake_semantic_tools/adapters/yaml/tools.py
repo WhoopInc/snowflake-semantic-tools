@@ -23,6 +23,7 @@ from snowflake_semantic_tools.domain.model.tool import (
     ToolParameter,
 )
 from snowflake_semantic_tools.domain.parse.template import TemplateSyntaxError, scan_template_calls
+from snowflake_semantic_tools.domain.resolve.calls import syntax_problem
 from snowflake_semantic_tools.domain.validate.dbt_seam import literal_relation_diagnostic
 from snowflake_semantic_tools.domain.validate.tool import validate_tool_catalog
 
@@ -225,7 +226,7 @@ def _parse_member(
         SST-PRS003: when the entry is not a mapping, or `on:`, `relations`, `secrets`,
             `signature` or `columns_and_descriptions` has the wrong type.
         SST-PRS002: when the entry has no non-blank `name`, or no non-blank `type`.
-        SST-LOD004: when the template in `on:` is malformed.
+        SST-LOD004, SST-REF033, SST-REF003: when the template in `on:` does not parse.
         SST-VAL608: when `on:` is not one single-argument `ref()` call.
     """
     origin = Origin(source_file, index + 1, 1)
@@ -316,7 +317,7 @@ def _on_fields(
 
     Diagnostics:
         SST-PRS003: when `on:` is neither a string nor a mapping, or its `table` is set and not text.
-        SST-LOD004: when its template is malformed.
+        SST-LOD004, SST-REF033, SST-REF003: when its template does not parse.
         SST-VAL608: when it is not exactly one single-argument `ref()` call.
     """
     raw: object = value
@@ -343,9 +344,7 @@ def _on_fields(
     try:
         calls = scan_template_calls(raw)
     except TemplateSyntaxError as exc:
-        diagnostics.append(
-            D("SST-LOD004", file=origin.file, line=exc.line, col=exc.col, reason=exc.reason, origin=origin)
-        )
+        diagnostics.append(syntax_problem(exc, origin.file))
         return None, search_column, attributes
     if len(calls) != 1 or calls[0].function != "ref" or len(calls[0].args) != 1 or calls[0].raw.strip() != raw.strip():
         diagnostics.append(D("SST-VAL608", name=name, value=raw, origin=origin))
