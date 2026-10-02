@@ -54,7 +54,8 @@ def member(name: str, owner: str = "semantic_view", position: int = 10, **change
 
 def freeze(artifacts: tuple[ArtifactType, ...], members: tuple[MemberType, ...] = ()) -> Registry:
     """Build the registry of `artifacts` and `members`, resolving exactly the functions they name."""
-    declared = {entry.ref_function for entry in (*artifacts, *members) if entry.ref_function is not None}
+    entries: tuple[ArtifactType | MemberType, ...] = (*artifacts, *members)
+    declared = {entry.ref_function for entry in entries if entry.ref_function is not None}
     return build_registry(artifacts, members, functions=frozenset(declared) | NON_ARTIFACT_FUNCTIONS)
 
 
@@ -69,5 +70,6 @@ def refused(build: Callable[[], object], code: str, message: str) -> Mapping[str
     error = caught.value
     assert (error.code, str(error)) == (code, f"{code}: {message}")
     assert ERROR_REGISTRY[code].always_error
-    assert D(code, **error.context).message == message
+    context: dict[str, Any] = dict(error.context)
+    assert D(code, **context).message == message
     return error.context

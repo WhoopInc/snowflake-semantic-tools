@@ -280,4 +280,5 @@ sst validate [OPTIONS]
 | `--manifest` | FILE |  | Read this dbt `manifest.json` instead of running `dbt parse`. |
 | `--strict / --no-strict` | flag |  | Promote every warning to an error. Defaults to `validation.strict`. |
 | `--snowflake-syntax-check / --no-snowflake-syntax-check` | flag |  | Compile expressions against Snowflake. Defaults to `validation.snowflake_syntax_check`. |
+| `--show-info` | flag |  | Also report which registered type owns each semantic-model file. |
 | `--output` | human\|json | `human` | `human` for readable text, or `json` for one machine-readable envelope. |

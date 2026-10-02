@@ -17,7 +17,7 @@ def unquotable(name: str) -> bool:
 
 
 def dollar_quote_offset(text: str) -> int | None:
-    """Return the offset of the first `$$` in `text`, which would end a dollar-quoted body; None when absent."""
+    """Return where the first `$$` is in `text`, which would end a dollar-quoted body; None for none."""
     offset = text.find("$$")
     return offset if offset >= 0 else None
 

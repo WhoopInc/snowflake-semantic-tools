@@ -15,20 +15,208 @@ cannot be downgraded by any setting.
 
 ## Contents
 
+- [Registry (REG)](#registry-reg) -- 23 codes
 - [Configuration (CFG)](#configuration-cfg) -- 19 codes
+- [Discovery (DIS)](#discovery-dis) -- 12 codes
 - [Parsing (PRS)](#parsing-prs) -- 35 codes
 - [Loading (LOD)](#loading-lod) -- 8 codes
 - [References (REF)](#references-ref) -- 29 codes
 - [Membership (MEM)](#membership-mem) -- 2 codes
 - [Validation (VAL)](#validation-val) -- 161 codes
-- [dbt (DBT)](#dbt-dbt) -- 5 codes
-- [Rendering (RND)](#rendering-rnd) -- 2 codes
+- [dbt (DBT)](#dbt-dbt) -- 6 codes
+- [Rendering (RND)](#rendering-rnd) -- 16 codes
 - [Manifest and state (MAN)](#manifest-and-state-man) -- 11 codes
 - [Planning (PLN)](#planning-pln) -- 18 codes
 - [Apply (APL)](#apply-apl) -- 20 codes
 - [Snowflake (SNO)](#snowflake-sno) -- 8 codes
-- [External systems (PRT)](#external-systems-prt) -- 6 codes
-- [Internal (INT)](#internal-int) -- 3 codes
+- [External systems (PRT)](#external-systems-prt) -- 5 codes
+- [Internal (INT)](#internal-int) -- 12 codes
+
+## Registry (REG)
+
+### SST-REG001
+
+**Registration missing a required field** (error, always an error)
+
+`registration for <type> omits required field '<field>'`
+
+Fix: add the field to the registration
+
+### SST-REG002
+
+**Duplicate registration** (error, always an error)
+
+`<type> is already registered`
+
+Fix: choose a different name, or delete the duplicate registration
+
+### SST-REG003
+
+**Two types claim one root_key** (error, always an error)
+
+`root_key '<root_key>' is claimed by <types>`
+
+Fix: give each type a distinct root_key
+
+### SST-REG004
+
+**Duplicate ddl_position or clause_position** (error, always an error)
+
+`position <position> is claimed by <types>`
+
+Fix: renumber one of the colliding positions
+
+### SST-REG005
+
+**Two types claim one ref_function** (error, always an error)
+
+`ref_function '<ref_function>' is claimed twice`
+
+Fix: give each referenceable type its own template function
+
+### SST-REG006
+
+**Type names an unregistered rule** (error, always an error)
+
+`<type> names rule '<rule_id>', which is not registered`
+
+Fix: register the rule, or remove it from the type
+
+### SST-REG007
+
+**Type names an unregistered member type or owner** (error, always an error)
+
+`<type> names '<member_type>', which is not registered`
+
+Fix: register the member type, or correct the name
+
+### SST-REG010
+
+**ddl_position contradicts dependency_edges** (error, always an error)
+
+`<type> is ordered at <position> but depends on <blocker>, ordered later`
+
+Fix: renumber ddl_position so dependents follow their dependencies
+
+### SST-REG011
+
+**Type dependency graph has a cycle** (error, always an error)
+
+`type dependency cycle: <cycle>`
+
+Fix: break the cycle by removing one dependency
+
+### SST-REG012
+
+**Code registered with a malformed identifier** (error, always an error)
+
+`'<code>' does not match SST-<AREA><NNN>`
+
+Fix: use three uppercase letters and three digits
+
+### SST-REG013
+
+**Code area disagrees with its declared subsystem** (error, always an error)
+
+`'<code>' declares subsystem <subsystem>`
+
+Fix: make the area letters and the subsystem field agree
+
+### SST-REG014
+
+**Internal-band code is not a non-demotable ERROR** (error, always an error)
+
+`'<code>' is in the 900 band with severity <severity>`
+
+Fix: declare 900-band codes ERROR, and INT and REG ones non-demotable
+
+### SST-REG015
+
+**Severity comparison outside the diagnostics module** (error, always an error)
+
+`<module> compares severities outside diagnostics/`
+
+Fix: route the decision through the diagnostic's resolved severity, such as Diagnostic.blocks
+
+### SST-REG016
+
+**Message template placeholder is not supplied** (error, always an error)
+
+`'<code>' template names <placeholder>, absent from declared params`
+
+Fix: use a placeholder from the shared vocabulary, or correct the template
+
+### SST-REG017
+
+**Retired number re-registered** (error, always an error)
+
+`'<code>' was retired in <version> and cannot be reused`
+
+Fix: allocate the next free number in the band
+
+### SST-REG018
+
+**Deprecation without a successor** (error, always an error)
+
+`'<code>' is deprecated_in <version> with no superseded_by`
+
+Fix: name the successor code, or do not deprecate
+
+### SST-REG019
+
+**internal_detail declared outside INT and SNO** (error, always an error)
+
+`'<code>' declares internal_detail but its area is <area>`
+
+Fix: drop internal_detail, or move the raw text into the template's params
+
+### SST-REG020
+
+**Resolver set and registry `ref_function`s disagree** (error, always an error)
+
+`'<ref_function>' -- <direction>`
+
+Fix: register the type, or remove the resolver
+
+### SST-REG021
+
+**`grant_preservation` contradicts the type's other fields** (error, always an error)
+
+`type '<artifact>' -- <reason>`
+
+Fix: correct the registration so its grant handling matches how the type is published
+
+### SST-REG022
+
+**Non-`semantic_view` artifact type declares `member_types`** (error, always an error)
+
+`artifact type '<artifact>' declares member_types <member_types>; only semantic_view may`
+
+Fix: leave member_types empty, or register the members as their own top-level type
+
+### SST-REG023
+
+**`MemberIndex` does not cover every declared member type** (error, always an error)
+
+`MemberIndex covers <covered>; semantic_view declares <declared>`
+
+Fix: index every declared member type
+
+### SST-REG024
+
+**A `ref_field` policy is undeclared, or a declared policy is neither bound nor explained** (error, always an error)
+
+`ref policy '<policy>': <detail>`
+
+Fix: declare the policy, bind it to a field, or state why it is unbound
+
+### SST-REG900
+
+**Registry mutated after freeze** (error, always an error)
+
+`registry mutated after freeze: <detail>`
+
+Fix: move the registration to import time
 
 ## Configuration (CFG)
 
@@ -183,6 +371,100 @@ Fix: SST renders {{ env_var('NAME') }} and {{ env_var('NAME', 'default') }} anyw
 `target '<target>': <detail>`
 
 Fix: authenticate with a key pair, a password, SSO (authenticator), or an OAuth access token (token)
+
+## Discovery (DIS)
+
+### SST-DIS001
+
+**Semantic path does not exist** (error)
+
+`<path> does not exist`
+
+Fix: create the directory, or correct project.semantic_models_dir
+
+### SST-DIS002
+
+**Semantic path is not a directory** (error)
+
+`<path> is not a directory`
+
+Fix: point project.semantic_models_dir at a directory
+
+### SST-DIS003
+
+**No candidate files found** (warning)
+
+`no candidate files under <path>`
+
+Fix: check project.semantic_models_dir and the file-name conventions
+
+### SST-DIS004
+
+**File not readable** (error)
+
+`<path> is not readable`
+
+Fix: fix the file permissions
+
+### SST-DIS005
+
+**Symlink loop or depth limit exceeded** (error)
+
+`<path> exceeds the traversal depth limit`
+
+Fix: remove the symlink loop, or flatten the tree
+
+### SST-DIS006
+
+**Two paths collide under case folding** (error)
+
+`<a> and <b> collide under case folding`
+
+Fix: rename one file
+
+### SST-DIS007
+
+**File claimed by two artifact types** (error)
+
+`<path> is claimed by <types>`
+
+Fix: move the file, or give the types' directories distinct paths
+
+### SST-DIS008
+
+**File matches no artifact type** (warning)
+
+`<path> matches no registered artifact type`
+
+Fix: remove the file, or give it a root key a registered type owns
+
+### SST-DIS009
+
+**model-paths directory does not exist** (error)
+
+`dbt model-paths entry <path> does not exist`
+
+Fix: correct model-paths in dbt_project.yml
+
+### SST-DIS010
+
+**Selector matched nothing** (warning)
+
+`--select <selector> matched no artifact`
+
+Fix: widen the selector, or check the artifact name
+
+### SST-DIS200
+
+**Artifact ownership assigned** (info)
+
+`<path> assigned to <type>`
+
+### SST-DIS201
+
+**Files excluded by selector** (info)
+
+`<count> files excluded by --exclude`
 
 ## Parsing (PRS)
 
@@ -2092,6 +2374,14 @@ Fix: reconcile the two types, or add a dbt contract
 
 Fix: write primary_key as a list of columns and unique_keys as a list of column lists
 
+### SST-DBT017
+
+**dbt manifest schema version is unsupported** (error)
+
+`manifest schema '<found>'; supported: <expected>`
+
+Fix: upgrade or downgrade dbt to a version that emits a supported manifest schema
+
 ### SST-DBT030
 
 **Forbidden meta.sst location key** (error)
@@ -2110,13 +2400,93 @@ Fix: materialize the model as a table or a view; an ephemeral model has nothing 
 
 ## Rendering (RND)
 
+### SST-RND001
+
+**Model is missing a field the dialect requires** (error)
+
+`<artifact>: the <value> dialect requires '<field>'`
+
+Fix: supply the field
+
+### SST-RND002
+
+**Identifier cannot be safely quoted** (error)
+
+`<artifact>: '<name>' cannot be safely quoted`
+
+Fix: rename the object without control characters
+
+### SST-RND003
+
+**Rendered DDL exceeds the statement size limit** (warning)
+
+`<artifact>: rendered DDL is <size> bytes, over the <expected> guess`
+
+Fix: split the view, or reduce the member count
+
+### SST-RND010
+
+**Agent has no tools** (warning)
+
+`agent '<artifact>' renders with no tools`
+
+Fix: declare at least one tool
+
+### SST-RND011
+
+**Agent spec contains a dollar-quote sequence** (error)
+
+`agent '<artifact>': spec contains '$$' at <value>`
+
+Fix: remove or escape the sequence
+
 ### SST-RND012
 
-**Unknown agent tool type** (error)
+**Unknown agent tool type at render** (error)
 
 `agent '<artifact>': tool type '<found>' is unknown to the renderer`
 
-Fix: use a supported type, or extend the allowlist
+Fix: add the type to snowflake.tool_types
+
+### SST-RND013
+
+**generic tool resources emitted with no server-side check behind them** (warning)
+
+`agent '<artifact>': tool_resources for '<name>' is not validated by Snowflake`
+
+Fix: confirm the key and the backing object yourself; CREATE AGENT will accept a wrong one
+
+### SST-RND020
+
+**Unknown eval expectation kind** (error)
+
+`eval '<artifact>': expectation kind '<found>' is unknown`
+
+Fix: use a supported expectation kind
+
+### SST-RND021
+
+**Eval has no cases** (warning)
+
+`eval '<artifact>' renders with no cases`
+
+Fix: add rows to the dataset
+
+### SST-RND022
+
+**SQL_MATCH expectation is brittle** (warning)
+
+`eval '<artifact>': row <index> uses SQL_MATCH`
+
+Fix: prefer a result-set comparison
+
+### SST-RND030
+
+**Skill references a path that does not exist** (error)
+
+`skill '<artifact>': '<path>' does not exist at render`
+
+Fix: add the file, or correct the reference
 
 ### SST-RND031
 
@@ -2124,7 +2494,39 @@ Fix: use a supported type, or extend the allowlist
 
 `skill '<artifact>': SKILL.md has no instructions after its frontmatter`
 
-Fix: add the instructions the skill carries
+Fix: add content
+
+### SST-RND032
+
+**Skill body exceeds the soft size limit** (warning)
+
+`skill '<artifact>': rendered body is <size> bytes, over <expected>`
+
+Fix: move bulk content into a referenced file
+
+### SST-RND040
+
+**Unsupported tool kind at render** (error)
+
+`tool '<artifact>': kind '<found>' has no renderer`
+
+Fix: register a renderer, or change the kind
+
+### SST-RND041
+
+**Tool source query is empty** (error)
+
+`tool '<artifact>': rendered source query is empty`
+
+Fix: supply on: or body_file: content
+
+### SST-RND900
+
+**Rendered member count differs from the model's** (error)
+
+`<artifact>: rendered <found> members, model carries <expected>`
+
+Fix: report this as a bug
 
 ## Manifest and state (MAN)
 
@@ -2622,14 +3024,6 @@ Fix: grant the required privilege to the primary role
 
 Fix: create the dependency or correct its name
 
-### SST-PRT007
-
-**dbt manifest schema version unsupported** (error)
-
-`manifest schema '<found>' is unsupported; expected '<expected>'`
-
-Fix: use a dbt version that emits {expected}
-
 ### SST-PRT009
 
 **Filesystem read failed** (error)
@@ -2640,9 +3034,81 @@ Fix: SST reads only regular files inside the project: replace a symbolic link wi
 
 ## Internal (INT)
 
+### SST-INT001
+
+**Unhandled internal exception** (error, always an error)
+
+`internal error: <detail>`
+
+Fix: report this as a bug, with the code and the full message
+
+### SST-INT002
+
+**Pure function attempted I/O** (error, always an error)
+
+`<value> attempted I/O from a pure ring`
+
+Fix: report this as a bug
+
+### SST-INT003
+
+**Phase produced an output that violates its contract** (error, always an error)
+
+`<value> returned <found>, expected <expected>`
+
+Fix: report this as a bug
+
+### SST-INT004
+
+**Diagnostic constructed outside the emit function** (error, always an error)
+
+`diagnostic for <value> was constructed directly`
+
+Fix: report this as a bug
+
+### SST-INT005
+
+**Diagnostic has no location where one is required** (error, always an error)
+
+`<value> emitted with no location`
+
+Fix: report this as a bug
+
+### SST-INT006
+
+**Fingerprint is not stable across identical runs** (error, always an error)
+
+`fingerprint for <value> changed between identical runs`
+
+Fix: report this as a bug
+
+### SST-INT007
+
+**Effective severity computed outside the diagnostics module** (error, always an error)
+
+`<value> resolved severity outside diagnostics/`
+
+Fix: report this as a bug
+
+### SST-INT008
+
+**Cascade attribution produced a dangling cause chain** (error, always an error)
+
+`<value> carries a caused_by naming no diagnostic in the run`
+
+Fix: report this as a bug
+
+### SST-INT009
+
+**Baseline entry matched more than one diagnostic** (error, always an error)
+
+`baseline entry <value> matched <count> diagnostics`
+
+Fix: re-generate the baseline
+
 ### SST-INT900
 
-**Unregistered diagnostic code** (error, always an error)
+**Unregistered code passed to the emit function** (error, always an error)
 
 `unregistered code <value>`
 
@@ -2650,7 +3116,7 @@ Fix: report this as a bug
 
 ### SST-INT901
 
-**Missing diagnostic context** (error, always an error)
+**Diagnostic context missing a required template placeholder** (error, always an error)
 
 `<value> template needs <placeholder>, which was not supplied`
 

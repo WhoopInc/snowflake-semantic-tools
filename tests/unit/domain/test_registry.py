@@ -8,6 +8,8 @@ from snowflake_semantic_tools.domain.diagnostics import RULE_SETS
 from snowflake_semantic_tools.domain.model.registry import (
     SEMANTIC_REGISTRY,
     ArtifactLifecycle,
+    ArtifactType,
+    MemberType,
     RegistryBuilder,
 )
 from tests.helpers.registry_types import artifact, freeze
@@ -54,7 +56,11 @@ def test_registry_ref_functions_are_unique_when_present() -> None:
 
 
 def test_every_type_names_registered_rule_sets_and_a_discovery_directory() -> None:
-    for value in (*SEMANTIC_REGISTRY.artifacts.values(), *SEMANTIC_REGISTRY.members.values()):
+    types: tuple[ArtifactType | MemberType, ...] = (
+        *SEMANTIC_REGISTRY.artifacts.values(),
+        *SEMANTIC_REGISTRY.members.values(),
+    )
+    for value in types:
         assert value.validation_rules
         assert set(value.validation_rules) <= set(RULE_SETS)
     for value in SEMANTIC_REGISTRY.artifacts.values():

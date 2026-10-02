@@ -19,57 +19,9 @@ from types import MappingProxyType
 
 from snowflake_semantic_tools.domain.diagnostics.core import ErrorSpec, RegistryIntegrityError, Severity, _placeholders
 from snowflake_semantic_tools.domain.diagnostics.specs import reg
+from snowflake_semantic_tools.domain.diagnostics.specs.retired import RETIRED_CODES
 
 CODE_SCHEME = re.compile(r"^SST-[A-Z]{3}\d{3}$")
-
-# Numbers the 1.0 catalog retired, with the release that retired them. A retired number is
-# burned: it keeps its meaning in user configuration, baselines and history, so it is never
-# registered again (SST-REG017).
-RETIRED_CODES: Mapping[str, str] = MappingProxyType(
-    dict.fromkeys(
-        (
-            "SST-APL101",
-            "SST-APL102",
-            "SST-CFG021",
-            "SST-CFG022",
-            "SST-CFG024",
-            "SST-CFG026",
-            "SST-CFG027",
-            "SST-CFG028",
-            "SST-CFG030",
-            "SST-DBT007",
-            "SST-DBT008",
-            "SST-MEM102",
-            "SST-PRS108",
-            "SST-PRT007",
-            "SST-REF016",
-            "SST-REF017",
-            "SST-REF021",
-            "SST-REF024",
-            "SST-REF025",
-            "SST-REF200",
-            "SST-REF201",
-            "SST-SNO021",
-            "SST-VAL313",
-            "SST-VAL501",
-            "SST-VAL502",
-            "SST-VAL503",
-            "SST-VAL504",
-            "SST-VAL505",
-            "SST-VAL620",
-            "SST-VAL736",
-            "SST-VAL749",
-            "SST-VAL750",
-            "SST-VAL751",
-            "SST-VAL752",
-            "SST-VAL753",
-            "SST-VAL754",
-            "SST-VAL756",
-            "SST-VAL757",
-        ),
-        "1.0.0",
-    )
-)
 
 # Every placeholder a message template may name. The vocabulary is shared so a JSON consumer can
 # act on a diagnostic's params without parsing prose; a template naming anything else is refused

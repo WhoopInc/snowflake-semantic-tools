@@ -294,7 +294,8 @@ def _check_required(artifacts: tuple[ArtifactType, ...], members: tuple[MemberTy
 def _check_root_keys(artifacts: tuple[ArtifactType, ...], members: tuple[MemberType, ...]) -> None:
     """Refuse a YAML root key claimed twice; artifact types without one claim nothing (SST-REG003)."""
     claims: dict[str, list[str]] = {}
-    for entry in (*artifacts, *members):
+    entries: tuple[ArtifactType | MemberType, ...] = (*artifacts, *members)
+    for entry in entries:
         if entry.root_key is not None:
             claims.setdefault(entry.root_key, []).append(entry.name)
     for root_key, types in claims.items():
@@ -392,6 +393,7 @@ def _check_grant_preservation(artifact: ArtifactType) -> None:
 
 
 def _grant_contradiction(artifact: ArtifactType) -> str | None:
+    """Say how the type's grant handling or composite lifecycle contradicts itself; None when it does not."""
     if artifact.replaces_on_update and artifact.grant_preservation is GrantPreservation.NONE:
         return "it replaces its object and declares no grant preservation"
     if not artifact.replaces_on_update and artifact.grant_preservation is not GrantPreservation.NONE:
@@ -407,7 +409,8 @@ def _grant_contradiction(artifact: ArtifactType) -> str | None:
 def _check_ref_functions(artifacts: tuple[ArtifactType, ...], members: tuple[MemberType, ...]) -> None:
     """Refuse a reference function claimed by two types; types without one claim nothing (SST-REG005)."""
     seen: set[str] = set()
-    for entry in (*artifacts, *members):
+    entries: tuple[ArtifactType | MemberType, ...] = (*artifacts, *members)
+    for entry in entries:
         if entry.ref_function is None:
             continue
         if entry.ref_function in seen:
@@ -423,7 +426,8 @@ def _check_resolvers(
     A resolved function that addresses no registered type, a type's function that no resolver
     handles, and an artifact type with no function that is not deliberately unreferenced.
     """
-    declared = {entry.ref_function for entry in (*artifacts, *members) if entry.ref_function is not None}
+    entries: tuple[ArtifactType | MemberType, ...] = (*artifacts, *members)
+    declared = {entry.ref_function for entry in entries if entry.ref_function is not None}
     for function in sorted(functions - NON_ARTIFACT_FUNCTIONS - declared):
         raise registry_fault("SST-REG020", ref_function=function, direction="a resolver addresses no registered type")
     for function in sorted(declared - functions):

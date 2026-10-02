@@ -100,10 +100,10 @@ published on their own. Members read from dbt model metadata come from the
 
 | Member | Owner | Authored as | Attaches by | Reference function |
 |---|---|---|---|---|
-| `relationship` | `semantic_view` | `snowflake_relationships:` files | table membership | `relationship()` |
+| `relationship` | `semantic_view` | `snowflake_relationships:` files | table membership | none |
 | `fact` | `semantic_view` | dbt column metadata | table membership | none |
 | `dimension` | `semantic_view` | dbt column metadata | table membership | none |
 | `metric` | `semantic_view` | `snowflake_metrics:` files | table membership | `metric()` |
-| `filter` | `semantic_view` | `snowflake_filters:` files | table membership | `filter()` |
-| `verified_query` | `semantic_view` | `snowflake_verified_queries:` files | table membership | `verified_query()` |
+| `filter` | `semantic_view` | `snowflake_filters:` files | table membership | none |
+| `verified_query` | `semantic_view` | `snowflake_verified_queries:` files | table membership | none |
 | `custom_instruction` | `semantic_view` | `snowflake_custom_instructions:` files | view name | `custom_instructions()` |
