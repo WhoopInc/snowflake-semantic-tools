@@ -65,7 +65,7 @@ def test_validate_reports_view_error_but_compile_fails_closed(tmp_path: Path) ->
     import shutil
 
     project = tmp_path / "project"
-    shutil.copytree(FIXTURE, project)
+    shutil.copytree(FIXTURE, project, ignore=shutil.ignore_patterns("target"))
     views_path = project / "semantic_models" / "semantic_views" / "semantic_views.yml"
     text = views_path.read_text(encoding="utf-8")
     text = text.replace("{{ ref('products') }}", "{{ ref('missing') }}", 1)
