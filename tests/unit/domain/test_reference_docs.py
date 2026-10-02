@@ -87,7 +87,6 @@ RETIRED = (
     "SST-VAL122",
     "SST-VAL205",
     "SST-VAL213",
-    "SST-VAL403",
 )
 
 

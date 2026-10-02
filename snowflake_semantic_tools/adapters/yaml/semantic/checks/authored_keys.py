@@ -176,12 +176,16 @@ def _unread_keys(
 
     Diagnostics:
         SST-PRS020: when a key is the 0.3 spelling of a 1.0 key in its scope.
+        SST-VAL402: when a metric carries `labels:` holding `filter`.
+        SST-VAL403: for each entry of a view's 0.3 inline `filters:` list.
+        SST-VAL406: when a filter declares `synonyms:`, which nothing renders.
         SST-PRS004: when any other key is not one `allowed` lists.
     """
     diagnostics = [
-        _unread_key(document, (*path, str(key)), scope, f"{prefix}{key}", subject)
+        diagnostic
         for key in mapping
         if str(key) not in allowed
+        for diagnostic in _unread_key(document, (*path, str(key)), scope, f"{prefix}{key}", subject, mapping[key])
     ]
     for (owner, field), keys in NESTED_KEYS.items():
         value = mapping.get(field) if owner == scope else None
@@ -203,17 +207,54 @@ def _unread_keys(
     return diagnostics
 
 
-def _unread_key(document: RawDocument, path: NodePath, scope: str, field: str, subject: str) -> Diagnostic:
+def _unread_key(
+    document: RawDocument, path: NodePath, scope: str, field: str, subject: str, value: object
+) -> tuple[Diagnostic, ...]:
     position = document.position(path)
     origin = Origin(
         document.path,
         position.line if position is not None else None,
         position.col if position is not None else None,
     )
+    special = _known_misuse(scope, str(path[-1]), subject, value, origin)
+    if special:
+        return special
     renamed = RENAMED_KEYS.get((scope, str(path[-1])))
     if renamed is not None:
-        return D("SST-PRS020", origin=origin, subject=subject, artifact=subject, field=field, expected=renamed)
-    return D("SST-PRS004", origin=origin, subject=subject, artifact=subject, field=field)
+        return (D("SST-PRS020", origin=origin, subject=subject, artifact=subject, field=field, expected=renamed),)
+    return (D("SST-PRS004", origin=origin, subject=subject, artifact=subject, field=field),)
+
+
+def _known_misuse(scope: str, key: str, subject: str, value: object, origin: Origin) -> tuple[Diagnostic, ...]:
+    """Name an unread key that is a known misuse with its own code, rather than an unknown key.
+
+    Returns:
+        The diagnostics, one per inline filter for a view's `filters:`; empty for any other key.
+    """
+    name = subject.split(":", 1)[-1]
+    if scope == "metric" and key == "labels" and _holds_filter(value):
+        return (D("SST-VAL402", member=name, origin=origin, subject=subject),)
+    if scope == "filter" and key == "synonyms":
+        return (D("SST-VAL406", member=name, origin=origin, subject=subject),)
+    if scope == "semantic_view" and key == "filters":
+        entries = value if isinstance(value, list) and value else [None]
+        return tuple(
+            D(
+                "SST-VAL403",
+                member=str(entry["name"])
+                if isinstance(entry, dict) and entry.get("name")
+                else f"{name}.filters[{index}]",
+                origin=origin,
+                subject=subject,
+            )
+            for index, entry in enumerate(entries)
+        )
+    return ()
+
+
+def _holds_filter(value: object) -> bool:
+    labels = value if isinstance(value, list) else [value]
+    return any(isinstance(label, str) and label.casefold() == "filter" for label in labels)
 
 
 def _legacy_reference_diagnostics(documents: RawDocuments) -> tuple[Diagnostic, ...]:

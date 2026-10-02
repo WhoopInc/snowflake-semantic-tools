@@ -129,6 +129,7 @@ def load_instructions(
             ai_sql_generation=str(node.get("ai_sql_generation") or "").strip() or None,
             ai_question_categorization=str(node.get("ai_question_categorization") or "").strip() or None,
             origin=_node_origin(document, _member_root("custom_instruction"), index),
+            renamed="sql_generation" in node or "question_categorization" in node,
         )
     return out
 

@@ -332,7 +332,7 @@ def test_every_unread_key_is_reported_and_0_3_spellings_are_errors(tmp_path: Pat
         (root / folder / f"{folder}.yml").write_text(text, encoding="utf-8")
     documents = load_documents(discover_yaml(tmp_path, "semantic_models"), parse_yaml_bytes)
     found = [
-        (item.code, item.severity.name, item.subject, item.context["field"], item.context.get("expected"))
+        (item.code, item.severity.name, item.subject, item.context.get("field"), item.context.get("expected"))
         for item in _authored_key_diagnostics(documents)
     ]
     assert sorted(found) == sorted(
@@ -362,13 +362,15 @@ def test_every_unread_key_is_reported_and_0_3_spellings_are_errors(tmp_path: Pat
                 "ai_question_categorization",
             ),
             ("SST-PRS004", "WARNING", "custom_instruction:tone", "consumer", None),
-            ("SST-PRS004", "WARNING", "filter:cheap", "synonyms", None),
+            ("SST-VAL406", "WARNING", "filter:cheap", None, None),
             ("SST-PRS004", "WARNING", "verified_query:how_many", "tags", None),
             ("SST-PRS004", "WARNING", "relationship:self", "join_type", None),
             ("SST-PRS020", "ERROR", "relationship:self", "relationship_columns", "relationship_conditions"),
         ]
     )
-    visibility = next(item for item in _authored_key_diagnostics(documents) if item.context["field"] == "visibility")
+    visibility = next(
+        item for item in _authored_key_diagnostics(documents) if item.context.get("field") == "visibility"
+    )
     assert visibility.message == "metric:product_count: 'visibility' was renamed in 1.0; use 'access_modifier'"
     assert visibility.origin is not None and visibility.origin.line == 5
     # The renamed relationship shape is not also reported as having no conditions.

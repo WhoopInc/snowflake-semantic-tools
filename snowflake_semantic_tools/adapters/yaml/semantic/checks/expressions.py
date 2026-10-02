@@ -35,7 +35,7 @@ def _expression_reference_diagnostics(
         subject = artifact_key("filter" if isinstance(member, FilterDef) else "verified_query", member.name)
         declared = {table.casefold() for table in member.tables}
         if isinstance(member, VerifiedQueryDef):
-            diagnostics.extend(_undeclared_table_diagnostics(member, subject, declared))
+            diagnostics.extend(_undeclared_table_diagnostics(member, subject, declared, models))
         calls = _scan_expression(text, member.origin, subject)
         if isinstance(calls, Diagnostic):
             diagnostics.append(calls)
@@ -45,16 +45,26 @@ def _expression_reference_diagnostics(
     return tuple(diagnostics)
 
 
-def _undeclared_table_diagnostics(member: VerifiedQueryDef, subject: str, declared: set[str]) -> list[Diagnostic]:
+def _undeclared_table_diagnostics(
+    member: VerifiedQueryDef, subject: str, declared: set[str], models: Mapping[str, DbtModel]
+) -> list[Diagnostic]:
     """Report each table a verified query's SQL reads that its `tables:` leaves out.
 
-    Nothing is reported when the query declares no tables at all.
+    Nothing is reported when the query declares no tables at all. The table is named by the
+    relation its dbt model resolves to, the name compared against `tables:`; a table that is
+    no dbt model is named as written.
 
     Diagnostics:
-        SST-VAL413: when the SQL reads a table outside the query's non-empty `tables:`.
+        SST-VAL414: when the SQL reads a table outside the query's non-empty `tables:`.
     """
     return [
-        D("SST-VAL413", origin=member.origin, subject=subject, member=member.name, name=table_name)
+        D(
+            "SST-VAL414",
+            origin=member.origin,
+            subject=subject,
+            member=member.name,
+            relation=model.relation_name if (model := models.get(table_name)) is not None else table_name,
+        )
         for table_name in _sql_tables(member.sql)
         if declared and table_name not in declared
     ]
@@ -199,20 +209,32 @@ def _ref_call_diagnostics(
     return []
 
 
-def _filter_diagnostics(filters: tuple[FilterDef, ...]) -> tuple[Diagnostic, ...]:
+def _filter_diagnostics(
+    filters: tuple[FilterDef, ...], models: Mapping[str, DbtModel], variables: Mapping[str, object]
+) -> tuple[Diagnostic, ...]:
+    """Check each filter's shape, then the columns its expression names bare, filter by filter.
+
+    Diagnostics:
+        SST-VAL401: when a filter labelled `filter` has an expression that is not boolean.
+        SST-VAL405: when a filter with no `labels:` key has a boolean expression.
+        SST-VAL404: for each column of the filter's tables its expression names without `ref()`.
+    """
     diagnostics: list[Diagnostic] = []
     for filter_def in filters:
+        subject = artifact_key("filter", filter_def.name)
         boolean = _is_boolean_expression(filter_def.expr)
+        code: str | None = None
         if filter_def.entity_level and not boolean:
             code = "SST-VAL401"
         elif not filter_def.entity_level and not filter_def.labeled and boolean:
             # A boolean predicate with no labels: key has no native home; it
             # must carry labels: [filter] to render as a LABELS = (FILTER) dimension.
             code = "SST-VAL405"
-        else:
-            continue
-        diagnostics.append(
-            D(code, member=filter_def.name, subject=artifact_key("filter", filter_def.name), origin=filter_def.origin)
+        if code is not None:
+            diagnostics.append(D(code, member=filter_def.name, subject=subject, origin=filter_def.origin))
+        diagnostics.extend(
+            D("SST-VAL404", member=filter_def.name, column=column, subject=subject, origin=filter_def.origin)
+            for column in _bare_column_identifiers(filter_def.expr, filter_def.tables, models, variables)
         )
     return tuple(diagnostics)
 

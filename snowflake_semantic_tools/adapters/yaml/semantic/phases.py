@@ -29,12 +29,14 @@ from snowflake_semantic_tools.adapters.yaml.semantic.checks.expressions import (
     _expression_reference_diagnostics,
     _filter_diagnostics,
 )
+from snowflake_semantic_tools.adapters.yaml.semantic.checks.instructions import _instruction_diagnostics
 from snowflake_semantic_tools.adapters.yaml.semantic.checks.metrics import _metric_cycles, _metric_diagnostics
 from snowflake_semantic_tools.adapters.yaml.semantic.checks.shape import (
     _filter_parse_diagnostics,
     _metric_parse_diagnostics,
     _verified_query_diagnostics,
 )
+from snowflake_semantic_tools.adapters.yaml.semantic.checks.verified_queries import _relative_date_diagnostics
 from snowflake_semantic_tools.adapters.yaml.semantic.defs import FilterDef, InstructionDef, MetricDef, VerifiedQueryDef
 from snowflake_semantic_tools.adapters.yaml.semantic.relationships import (
     _multipath_diagnostics,
@@ -77,6 +79,7 @@ class SemanticMembers:
             casefolded metric names of which the last repeats the first; every metric on a
             cycle is in at least one.
         instruction_names: Casefolded names of every custom instruction.
+        instructions: Every custom instruction, in parse order.
         relationship_records: Each relationship with the origin it was read from.
     """
 
@@ -87,6 +90,7 @@ class SemanticMembers:
     verified_queries: tuple[VerifiedQueryDef, ...]
     relationships: tuple[Relationship, ...]
     relationship_records: tuple[tuple[Relationship, Origin], ...]
+    instructions: tuple[InstructionDef, ...] = ()
 
 
 def _typed_members(parsed: ParsedProject) -> SemanticMembers:
@@ -97,15 +101,14 @@ def _typed_members(parsed: ParsedProject) -> SemanticMembers:
     by_type = parsed.members_by_type
     metrics = tuple(member.source for member in by_type.get("metric", ()) if isinstance(member.source, MetricDef))
     relationship_members = by_type.get("relationship", ())
+    instructions = tuple(
+        member.source for member in by_type.get("custom_instruction", ()) if isinstance(member.source, InstructionDef)
+    )
     return SemanticMembers(
         metrics=metrics,
         cycles=_metric_cycles(metrics),
         filters=tuple(member.source for member in by_type.get("filter", ()) if isinstance(member.source, FilterDef)),
-        instruction_names=frozenset(
-            member.name.casefold()
-            for member in by_type.get("custom_instruction", ())
-            if isinstance(member.source, InstructionDef)
-        ),
+        instruction_names=frozenset(instruction.name.casefold() for instruction in instructions),
         verified_queries=tuple(
             member.source for member in by_type.get("verified_query", ()) if isinstance(member.source, VerifiedQueryDef)
         ),
@@ -115,6 +118,7 @@ def _typed_members(parsed: ParsedProject) -> SemanticMembers:
         relationship_records=tuple(
             (member.source, member.origin) for member in relationship_members if isinstance(member.source, Relationship)
         ),
+        instructions=instructions,
     )
 
 
@@ -243,8 +247,8 @@ class SemanticChecks:
 def _semantic_checks(context: LoadContext, members: SemanticMembers, legacy_files: frozenset[str]) -> SemanticChecks:
     """Check the references of filters, verified queries and metrics, then their tables and cycles.
 
-    Reports, in order: expression references, filters, metrics, tables that are not dbt
-    models, and metric cycles.
+    Reports, in order: expression references, filters, custom instructions, verified-query
+    dates, metrics, tables that are not dbt models, and metric cycles.
     """
     variables: dict[str, object] = mapping(context.config.get("vars"))
     authored: tuple[FilterDef | VerifiedQueryDef, ...] = members.filters + members.verified_queries
@@ -254,7 +258,7 @@ def _semantic_checks(context: LoadContext, members: SemanticMembers, legacy_file
         metric_names=frozenset(metric.name.casefold() for metric in members.metrics),
         variables=variables,
     )
-    filter_diagnostics = _filter_diagnostics(members.filters)
+    filter_diagnostics = _filter_diagnostics(members.filters, context.models, variables)
     metric_findings = _metric_diagnostics(members.metrics, context.models, variables)
     metric_tables, unknown_table_metrics = _unknown_metric_tables(members.metrics, context.models)
     member_tables, unknown_table_members = _unknown_member_tables(authored, context.models)
@@ -262,6 +266,8 @@ def _semantic_checks(context: LoadContext, members: SemanticMembers, legacy_file
         diagnostics=(
             *_outside_legacy_files(expression_findings, legacy_files),
             *filter_diagnostics,
+            *_instruction_diagnostics(members.instructions),
+            *_relative_date_diagnostics(members.verified_queries),
             *_outside_legacy_files(metric_findings, legacy_files),
             *metric_tables,
             *member_tables,
