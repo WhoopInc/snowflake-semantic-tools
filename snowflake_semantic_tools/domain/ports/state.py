@@ -19,6 +19,11 @@ class StateStore(Protocol):
         """Return the configuration path recorded in each `State` a use case builds for this store."""
         ...
 
+    @property
+    def location(self) -> str:
+        """Return where the cache lives, as a diagnostic names it, such as its file path."""
+        ...
+
     def read_local(self) -> State | None:
         """Return the cached state; None when there is no cache.
 

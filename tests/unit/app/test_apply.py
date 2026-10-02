@@ -605,9 +605,9 @@ def test_partial_statement_failure_records_truthful_recovery_state() -> None:
     use_case, _, store, _ = runner(port)
     result = use_case.run(changeset(change(artifact)), state())
     assert not result.success
-    assert result.outcomes[0].write_succeeded
+    assert result.outcomes[0].write_succeeded and result.outcomes[0].partial_write
     assert store.state is not None
-    assert store.state.applied[artifact.key].outcome == "failed_after_write"
+    assert store.state.applied[artifact.key].outcome == "partial_write"
 
 
 def test_expected_marker_must_be_visible_after_multi_statement_publish() -> None:

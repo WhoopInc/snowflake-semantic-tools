@@ -30,6 +30,7 @@ from snowflake_semantic_tools.domain.model.eval import (
 )
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName, SchemaScope
 from snowflake_semantic_tools.domain.model.lifecycle import ExecResult, QueryResult
+from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
 from snowflake_semantic_tools.domain.sql import Sql
 from tests.helpers.app_ports import InMemorySnowflake
 
@@ -129,8 +130,15 @@ class EvalSnowflake(InMemorySnowflake):
         return result
 
     def query_in_context(self, scope: SchemaScope, sql: Sql, params: object = None) -> QueryResult:
-        del scope
-        return self.query(sql, params)
+        # A START is the one scoped call that writes; it is answered by `start_results`, and
+        # recorded with the scope it ran in, as the connector runs it on its scoped session.
+        if "EXECUTE_AI_EVALUATION('START'" not in str(sql):
+            return self.query(sql, params)
+        self.scripts.append((f"IN {scope.sql}", str(sql)))
+        result = self.start_results.popleft() if self.start_results else ExecResult(True)
+        if not result.ok:
+            raise SnowflakePortError(result.error.message if result.error else "start failed")
+        return QueryResult()
 
 
 def status_result(status: str, run_name: str = "EVAL_SALES_AGENT_abcdef0_ci_20260928T010203Z") -> QueryResult:

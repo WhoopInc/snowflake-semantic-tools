@@ -12,15 +12,33 @@ from pathlib import Path
 from snowflake_semantic_tools.adapters.errors import ProjectError
 from snowflake_semantic_tools.app.compile import CompileResult
 from snowflake_semantic_tools.app.compile.project import CompileProject
+from snowflake_semantic_tools.app.manifest import dbt_manifest_moved
 from snowflake_semantic_tools.cli.group import SstUsageError
 from snowflake_semantic_tools.cli.wiring.project import project_inputs
+from snowflake_semantic_tools.domain.diagnostics import DiagnosticBag
 from snowflake_semantic_tools.domain.model.artifact_key import artifact_key, split_artifact_key
 from snowflake_semantic_tools.domain.model.registry import SEMANTIC_REGISTRY
 
 
 def compile_result(project_dir: Path, target_name: str | None, manifest_path: Path | None) -> CompileResult:
-    """Compile every artifact the project declares, from its files."""
-    return CompileProject(project_inputs(project_dir, target_name, manifest_path)).run()
+    """Compile every artifact the project declares, from its files.
+
+    With a dbt manifest given, its models are digested before and after the compile, and a
+    manifest rewritten in between, by a concurrent `dbt compile`, fails the compile. Without
+    one, SST runs `dbt parse` itself and so rewrites the manifest on purpose; nothing is checked.
+
+    Diagnostics:
+        SST-MAN031: the given dbt manifest's models changed while the project compiled.
+    """
+    inputs = project_inputs(project_dir, target_name, manifest_path)
+    if manifest_path is None:
+        return CompileProject(inputs).run()
+    before = inputs.manifest_sources()
+    result = CompileProject(inputs).run()
+    moved = dbt_manifest_moved(before, inputs.manifest_sources())
+    if moved is None:
+        return result
+    return dataclasses.replace(result, diagnostics=DiagnosticBag((*result.diagnostics, moved)))
 
 
 def selected_result(project_dir: Path, result: CompileResult, selected: str) -> CompileResult:

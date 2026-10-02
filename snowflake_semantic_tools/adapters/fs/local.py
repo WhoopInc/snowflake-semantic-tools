@@ -182,6 +182,11 @@ class StateFileStore(JsonStore[State]):
         """Return the configuration path this store was given, which the states built for it record."""
         return self._config_path
 
+    @property
+    def location(self) -> str:
+        """Return the state file's path."""
+        return str(self.path)
+
     def read_local(self) -> State | None:
         """Read the state file; None when there is none.
 

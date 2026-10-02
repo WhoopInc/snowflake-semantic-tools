@@ -26,7 +26,7 @@ from snowflake_semantic_tools.domain.model.eval import (
     EvalResultRow,
     EvalRunAttempt,
 )
-from snowflake_semantic_tools.domain.model.identifier import Identifier, TargetIdentity
+from snowflake_semantic_tools.domain.model.identifier import Identifier, SchemaScope, TargetIdentity
 from snowflake_semantic_tools.domain.model.lifecycle import QueryResult
 from snowflake_semantic_tools.domain.ports.snowflake.stage import StagedFileMetadata
 from snowflake_semantic_tools.domain.sql import Sql
@@ -303,8 +303,17 @@ def test_eval_suite_uses_common_json_envelope(tmp_path: Path, monkeypatch: pytes
         port.queries.append((str(sql), params))
         return next(responses)
 
+    def query_in_context(
+        scope: SchemaScope, sql: Sql, params: Sequence[object] | Mapping[str, object] | None = None
+    ) -> QueryResult:
+        # A START runs scoped to the agent's schema and returns nothing the run reads.
+        if "EXECUTE_AI_EVALUATION('START'" in str(sql):
+            port.scripts.append((f"IN {scope.sql}", str(sql)))
+            return QueryResult()
+        return query(sql, params)
+
     port.query = query  # type: ignore[method-assign]
-    port.query_in_context = lambda scope, sql, params=None: query(sql, params)  # type: ignore[method-assign]
+    port.query_in_context = query_in_context  # type: ignore[method-assign]
     store = InMemoryEvalStateStore()
     monkeypatch.setattr("snowflake_semantic_tools.cli.commands.test.SnowflakeEvalStateStore", lambda *args: store)
     monkeypatch.setattr(

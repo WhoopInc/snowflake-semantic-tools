@@ -23,9 +23,9 @@ cannot be downgraded by any setting.
 - [Validation (VAL)](#validation-val) -- 161 codes
 - [dbt (DBT)](#dbt-dbt) -- 5 codes
 - [Rendering (RND)](#rendering-rnd) -- 2 codes
-- [Manifest and state (MAN)](#manifest-and-state-man) -- 11 codes
+- [Manifest and state (MAN)](#manifest-and-state-man) -- 21 codes
 - [Planning (PLN)](#planning-pln) -- 18 codes
-- [Apply (APL)](#apply-apl) -- 20 codes
+- [Apply (APL)](#apply-apl) -- 28 codes
 - [Snowflake (SNO)](#snowflake-sno) -- 8 codes
 - [External systems (PRT)](#external-systems-prt) -- 6 codes
 - [Internal (INT)](#internal-int) -- 3 codes
@@ -2130,7 +2130,7 @@ Fix: add the instructions the skill carries
 
 ### SST-MAN001
 
-**Manifest missing** (error)
+**manifest.json not found where expected** (error)
 
 `no SST manifest at <path>`
 
@@ -2138,7 +2138,7 @@ Fix: run sst compile
 
 ### SST-MAN002
 
-**Manifest is unreadable** (error)
+**manifest.json is not valid JSON** (error)
 
 `<path> is not a readable SST manifest: <detail>`
 
@@ -2146,71 +2146,147 @@ Fix: delete it and re-run sst compile
 
 ### SST-MAN003
 
-**Manifest key missing** (error)
+**Required manifest key missing** (error)
 
 `<path> omits required key '<key>'`
 
 Fix: re-run sst compile
 
-### SST-MAN005
+### SST-MAN004
 
-**Manifest content hash mismatch** (error)
+**Impact index incomplete** (error)
 
-`manifest_id <found>, recomputed <expected>`
+`<artifact> has no reverse-index entry`
 
 Fix: re-run sst compile
 
+### SST-MAN005
+
+**manifest_id does not match the recomputed hash** (error)
+
+`manifest_id <found>, recomputed <expected>`
+
+Fix: re-run sst compile; the manifest is tampered or truncated
+
+### SST-MAN006
+
+**Manifest written for a different target** (error)
+
+`manifest target '<found>', current target '<expected>'`
+
+Fix: re-run sst compile for this target
+
+### SST-MAN007
+
+**Manifest write failed** (error)
+
+`could not write <path>: <detail>`
+
+Fix: check the filesystem permissions
+
+### SST-MAN008
+
+**Compile failed before a manifest could be written** (error)
+
+`compile failed: <detail>`
+
+Fix: fix the reported errors, then re-compile
+
 ### SST-MAN020
 
-**State is absent** (warning)
+**state.json absent** (warning)
 
 `no state file; treating every artifact as new`
 
-Fix: check that the state table is readable
+Fix: check that the state table is readable on this target; a full plan is the safe fallback, not the fix
 
 ### SST-MAN021
 
-**State and manifest differ** (warning)
+**state.manifest_id does not match the current manifest** (warning)
 
 `state was recorded against manifest <found>; current is <expected>`
 
-Fix: re-run plan; NOOP detection is disabled
+Fix: re-run plan; NOOP detection is disabled for this run
 
 ### SST-MAN022
 
-**State is unreadable** (error)
+**state.json present but unreadable** (error)
 
 `<path> is present and unreadable: <detail>`
 
-Fix: fix or explicitly delete the file
+Fix: fix or delete the file explicitly
 
 ### SST-MAN023
 
-**State schema unsupported** (error)
+**State file schema is unrecognised** (error)
 
 `<path> declares schema <found>`
 
-Fix: upgrade SST or explicitly clear the state
+Fix: delete it and re-run plan
+
+### SST-MAN024
+
+**State written by a newer SST** (warning)
+
+`<path> was written by SST <found>; this is <expected>`
+
+Fix: upgrade SST, or delete the state file
+
+### SST-MAN025
+
+**Two writers produced one state filename** (error)
+
+`<path> was written by <value>`
+
+Fix: split the two files; one filename, one schema
+
+### SST-MAN026
+
+**Change detection summary** (info)
+
+`<value>`
 
 ### SST-MAN027
 
-**State cache disagrees with remote state** (warning)
+**Local state cache disagrees with the state table** (warning)
 
 `local state.json for target <value> disagrees with <detail>; the table wins`
 
-Fix: the run proceeds from authoritative remote state
+Fix: none; the run proceeds from the table
+
+### SST-MAN030
+
+**Cached Snowflake observation past its TTL** (warning)
+
+`observation for <value> is <detail> old; ignored`
+
+Fix: no action; the observation was refreshed
+
+### SST-MAN031
+
+**dbt manifest digest changed mid-run** (error)
+
+`dbt manifest digest changed during the run`
+
+Fix: re-run; a concurrent dbt compile is in progress
+
+### SST-MAN201
+
+**Older manifest schema migrated in memory** (info)
+
+`<path> schema <found> migrated to <expected> in memory`
 
 ### SST-MAN202
 
-**Manifest schema has no migration** (error)
+**Older manifest schema with no migration** (warning)
 
-`<path> schema <found> has no migration`
+`<path> schema <found> has no migration; full recompile`
 
 Fix: re-run sst compile
 
 ### SST-MAN203
 
-**Manifest schema is newer** (error)
+**Manifest schema newer than this binary supports** (error)
 
 `<path> schema <found>; this binary supports <expected>`
 
@@ -2370,27 +2446,27 @@ Fix: fix that error first; a configuration error, or an error in a semantic view
 
 `<artifact>: <value> failed: <detail>`
 
-Fix: fix the statement or the account
+Fix: read internal_detail, then fix the statement or the account
 
 ### SST-APL002
 
-**Dependency failed** (warning)
+**Skipped: a dependency failed** (warning)
 
 `<artifact> skipped: <blocker> failed`
 
-Fix: fix the dependency and re-apply
+Fix: fix the dependency, then re-apply
 
 ### SST-APL003
 
-**Blocked artifact refused** (error)
+**Refused: artifact is blocked** (error)
 
 `<artifact> is BLOCKED by <count> errors`
 
-Fix: fix the errors and re-apply
+Fix: fix the errors, then re-apply
 
 ### SST-APL004
 
-**Unsafe replacement refused** (error, always an error)
+**Refused: replace would run without COPY GRANTS** (error, always an error)
 
 `<artifact>: replace statement omits COPY GRANTS`
 
@@ -2398,31 +2474,31 @@ Fix: emit COPY GRANTS; this is not configurable
 
 ### SST-APL005
 
-**Plan target differs from apply target** (error)
+**Refused: plan was not computed for this target** (error)
 
-`<artifact>: plan target '<found>' differs from apply target '<expected>'`
+`<artifact>: plan target '<found>' differs from the apply target '<expected>'`
 
 Fix: re-run plan against the apply target
 
 ### SST-APL006
 
-**Smoke verification failed** (error, always an error)
+**Verification gate failed** (error, always an error)
 
 `<count> published probes failed`
 
-Fix: fix the artifacts and rerun the smoke suite
+Fix: fix the metrics, then re-run the smoke suite; this never fails an apply
 
 ### SST-APL007
 
 **Tag application failed after a successful create** (error)
 
-`<artifact>: <detail>`
+`<artifact>: tags could not be applied: <detail>`
 
-Fix: re-run apply; the version exists and only its certification tag is missing
+Fix: grant the tag privilege, then re-apply
 
 ### SST-APL008
 
-**Grants could not be verified** (warning)
+**Grants could not be re-read after a replace** (warning)
 
 `<artifact>: grants could not be verified after replace`
 
@@ -2430,7 +2506,7 @@ Fix: check the grants by hand
 
 ### SST-APL009
 
-**Explicit grant was lost** (error, always an error)
+**Explicit grant did not survive a replace** (error, always an error)
 
 `<artifact>: grant <value> was present before replace and is absent after`
 
@@ -2438,35 +2514,67 @@ Fix: confirm COPY GRANTS was emitted
 
 ### SST-APL010
 
-**Stale apply lock broken** (warning)
+**Stale lock broken** (warning)
 
 `broke a stale lock held by <value>`
 
-Fix: confirm no other run is live
+Fix: confirm no other run is live; a broken lock means the previous run did not exit cleanly
 
 ### SST-APL011
 
-**Apply lock is held** (error)
+**Lock held by a live run** (error)
 
 `<value> holds the apply lock`
 
-Fix: wait for the other run or explicitly break a stale lock
+Fix: wait for the other run, or clear the lock
 
 ### SST-APL012
 
-**Object changed after plan** (error)
+**Object changed between plan and apply** (error)
 
 `<artifact>: <value> changed since the plan`
 
 Fix: re-run plan
 
+### SST-APL013
+
+**Write refused: target is a production-like environment under --temporary** (error)
+
+`<artifact>: --temporary against target '<target>' is not permitted`
+
+Fix: drop --temporary, or point at a scratch target
+
+### SST-APL014
+
+**Temporary artifact shadows a permanent one** (warning)
+
+`<artifact> shadows a permanent object of the same name for this session`
+
+Fix: remember the change is local
+
+### SST-APL015
+
+**alias ignored under --temporary** (warning)
+
+`<artifact>: alias is meaningless under --temporary and was ignored`
+
+Fix: no action; the same committed file is reusable for a permanent apply
+
 ### SST-APL016
 
-**Partial write left the artifact in an unusable state** (error, always an error)
+**Partial write left the artifact in an unusable state** (error)
 
 `<artifact>: <detail>`
 
-Fix: re-apply after reconciling the recorded physical resources
+Fix: re-apply, or drop and re-create
+
+### SST-APL017
+
+**Per-channel publish reported aggregate success** (error)
+
+`<artifact>: <detail>`
+
+Fix: report per-channel status separately
 
 ### SST-APL018
 
@@ -2474,19 +2582,43 @@ Fix: re-apply after reconciling the recorded physical resources
 
 `<artifact>: uploaded <path>, pointer write failed: <detail>`
 
-Fix: re-run apply; the uploaded trees are content-addressed and are reused
+Fix: re-run apply; the publish is half complete
+
+### SST-APL019
+
+**Deletion of a removed bundle file failed** (error)
+
+`<artifact>: '<path>' could not be removed from the published version`
+
+Fix: re-publish from empty
+
+### SST-APL020
+
+**Version name collided under a parallel deploy** (error)
+
+`<artifact>: version '<value>' was minted twice`
+
+Fix: retry; derive versions from the content SHA
+
+### SST-APL021
+
+**Grant issued before certification completed** (error)
+
+`<artifact>: grants were issued and certification did not succeed`
+
+Fix: revoke, certify, then grant
 
 ### SST-APL022
 
-**Dataset publication failed** (error, always an error)
+**Dataset version could not be added** (error)
 
-`dataset '<artifact>': <detail>`
+`dataset '<artifact>': ADD VERSION failed: <detail>`
 
-Fix: check source-table and dataset privileges, then re-apply
+Fix: check OWNERSHIP on the dataset
 
 ### SST-APL023
 
-**Eval run could not be started** (error, always an error)
+**Eval run could not be started** (error)
 
 `eval '<artifact>': <detail>`
 
@@ -2500,25 +2632,33 @@ Fix: check CREATE TASK, CREATE STAGE and the file format
 
 Fix: treat this as a failure and re-run
 
+### SST-APL027
+
+**Metadata table absent or the wrong shape** (error)
+
+`<value>: <detail>`
+
+Fix: re-run sst compile, then apply
+
 ### SST-APL028
 
-**Eval config stage has the wrong FILE FORMAT** (error, always an error)
+**Eval config stage has the wrong FILE FORMAT** (error)
 
 `eval config stage '<value>': FILE FORMAT is <found>, expected <expected>`
 
-Fix: alter the stage once to the required format; SST will not alter it
+Fix: run one ALTER STAGE to set the required FILE FORMAT; SST will not alter a stage it did not create
 
 ### SST-APL100
 
-**Smoke probe failed** (error, always an error)
+**Smoke query failed** (error)
 
 `<artifact>: smoke probe failed: <detail>`
 
-Fix: fix the artifact and rerun the smoke suite
+Fix: fix the metric; a created view is not a working view
 
 ### SST-APL900
 
-**Apply outcome count mismatch** (error, always an error)
+**Outcome count does not match change count** (error)
 
 `applied <found> outcomes for <expected> changes`
 

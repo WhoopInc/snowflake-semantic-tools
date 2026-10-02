@@ -77,8 +77,13 @@ def failed(
     write_succeeded: bool = False,
     attempts: int = 0,
     physical_resources: tuple[tuple[str, str], ...] = (),
+    value: str = "",
 ) -> ApplyOutcome:
-    """Return a failed outcome for the change's artifact, with the error classified from its detail."""
+    """Return a failed outcome for the change's artifact, with the error classified from its detail.
+
+    Args:
+        value: What `code`'s message names besides the artifact, such as a path or version.
+    """
     artifact = change.rendered
     classified = classify_error(detail)
     return ApplyOutcome(
@@ -88,7 +93,7 @@ def failed(
         attempts,
         0,
         artifact.ddl if artifact is not None else "",
-        ClassifiedError(code, detail, classified.kind, classified.retryable, classified.sqlstate),
+        ClassifiedError(code, detail, classified.kind, classified.retryable, classified.sqlstate, value),
         write_succeeded=write_succeeded,
         component_fingerprints=artifact.component_fingerprints if artifact is not None else (),
         physical_resources=physical_resources,
@@ -272,8 +277,12 @@ class PublicationRun(Generic[PortT]):
         self._written = False
         self._verified: list[tuple[str, str]] = []
 
-    def fail(self, detail: str, code: str = "SST-APL001") -> ApplyOutcome:
-        """Return the failed outcome, reporting only the write and resources state may own."""
+    def fail(self, detail: str, code: str = "SST-APL001", *, value: str = "") -> ApplyOutcome:
+        """Return the failed outcome, reporting only the write and resources state may own.
+
+        Args:
+            value: What `code`'s message names besides the artifact, such as a path or version.
+        """
         return failed(
             self._change,
             detail,
@@ -281,6 +290,7 @@ class PublicationRun(Generic[PortT]):
             write_succeeded=self._owns_write(),
             attempts=self._attempts,
             physical_resources=self._recorded_resources(),
+            value=value,
         )
 
     def applied(

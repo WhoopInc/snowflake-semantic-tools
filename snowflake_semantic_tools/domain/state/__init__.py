@@ -13,6 +13,7 @@ from snowflake_semantic_tools.domain.state.applied import (
     APPLIED,
     DEACTIVATED,
     FAILED_AFTER_WRITE,
+    PARTIAL_WRITE,
     STATE_SCHEMA_VERSION,
     AppliedEntry,
     AppliedResource,
@@ -21,6 +22,7 @@ from snowflake_semantic_tools.domain.state.applied import (
     ResourceStatus,
     State,
     migrate_state,
+    written_by_newer,
 )
 from snowflake_semantic_tools.domain.state.codec import (
     optional_object,
@@ -42,7 +44,13 @@ from snowflake_semantic_tools.domain.state.manifest import (
     Manifest,
     migrate_manifest,
 )
-from snowflake_semantic_tools.domain.state.saved_plan import PLAN_SCHEMA_VERSION, PlanMismatch, SavedChange, SavedPlan
+from snowflake_semantic_tools.domain.state.saved_plan import (
+    OBSERVATION_TTL_SECONDS,
+    PLAN_SCHEMA_VERSION,
+    PlanMismatch,
+    SavedChange,
+    SavedPlan,
+)
 
 __all__ = [
     "APPLIED",
@@ -55,7 +63,9 @@ __all__ = [
     "ImpactIndex",
     "LastRun",
     "MANIFEST_SCHEMA_VERSION",
+    "OBSERVATION_TTL_SECONDS",
     "Manifest",
+    "PARTIAL_WRITE",
     "PLAN_SCHEMA_VERSION",
     "PlanMismatch",
     "ResourceStatus",
@@ -74,4 +84,5 @@ __all__ = [
     "pairs_to_json",
     "resources_from_json",
     "resources_to_json",
+    "written_by_newer",
 ]

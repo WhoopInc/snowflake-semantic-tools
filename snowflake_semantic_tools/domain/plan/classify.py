@@ -32,7 +32,7 @@ from snowflake_semantic_tools.domain.model.lifecycle import (
     RenderedArtifact,
 )
 from snowflake_semantic_tools.domain.model.registry import Registry
-from snowflake_semantic_tools.domain.state import AppliedEntry
+from snowflake_semantic_tools.domain.state import PARTIAL_WRITE, AppliedEntry
 
 
 @dataclass(frozen=True, slots=True)
@@ -208,6 +208,12 @@ def _fingerprint_differs(evidence: _Evidence) -> bool:
     return evidence.recorded.fingerprint != evidence.artifact.fingerprint
 
 
+def _written_partly(evidence: _Evidence) -> bool:
+    # A publish whose statements stopped part way recorded the fingerprint it meant to
+    # publish, not one it finished, so the object is updated rather than trusted as unchanged.
+    return evidence.recorded.outcome == PARTIAL_WRITE
+
+
 def _target_moved(evidence: _Evidence) -> Diagnostic:
     return D(
         "SST-PLN025",
@@ -228,6 +234,7 @@ _STATE_RULES: tuple[_StateRule, ...] = (
     _StateRule(_changed_out_of_band, Action.BLOCKED, ChangeReason.VALIDATION_ERRORS, _out_of_band),
     _StateRule(_applied_under_another_manifest, Action.UPDATE, ChangeReason.STATE_MANIFEST_MISMATCH),
     _StateRule(_fingerprint_differs, Action.UPDATE, ChangeReason.FINGERPRINT_DIFFERS),
+    _StateRule(_written_partly, Action.UPDATE, ChangeReason.FINGERPRINT_DIFFERS),
 )
 
 

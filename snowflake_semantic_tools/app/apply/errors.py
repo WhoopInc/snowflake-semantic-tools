@@ -84,37 +84,54 @@ def _outcome_diagnostic(change: Change, outcome: ApplyOutcome) -> Diagnostic:
     """Report a failed outcome as the diagnostic its error code stands for.
 
     A code without a diagnostic of its own, such as a classified Snowflake failure, reports as
-    SST-APL001 naming the action and the error.
+    SST-APL001 naming the action and the error. A code whose message names something besides
+    the artifact reads it from the error's `value`.
 
     Diagnostics:
         SST-APL001: any other failure, with the action and the error message.
         SST-APL004: a replace omits COPY GRANTS.
+        SST-APL007: the tag a publish applies after creating could not be applied.
         SST-APL008: the grants could not be read before the replace.
         SST-APL009: an explicit grant present before the replace is absent after it.
         SST-APL012: the object changed since the plan, or the write left no ownership marker.
         SST-APL016: a partial write left a composite artifact unusable.
-        SST-APL022: a dataset could not be published.
+        SST-APL017: one channel of a multi-channel publish failed while another succeeded.
+        SST-APL018: a registry pointer write failed after its upload.
+        SST-APL019: a file the published version must no longer hold is still in it.
+        SST-APL020: the version name a publish mints was minted by another deploy.
+        SST-APL021: grants are in place on an artifact whose certification did not succeed.
+        SST-APL022: a dataset version could not be added.
+        SST-APL027: a metadata table a publish writes is absent or the wrong shape.
         SST-APL028: the plan's own diagnostic for an eval config stage with the wrong file format.
         SST-INT902: an SST-APL028 failure the plan never recorded.
     """
     assert outcome.error is not None
-    code = outcome.error.code
-    if code in ("SST-APL004", "SST-APL008"):
+    error = outcome.error
+    code = error.code
+    if code in ("SST-APL004", "SST-APL008", "SST-APL021"):
         return D(code, artifact=change.key)
     if code == "SST-APL009":
-        return D(code, artifact=change.key, value=outcome.error.message)
+        return D(code, artifact=change.key, value=error.message)
     if code == "SST-APL012":
         target = change.observed.qualified_name.sql if change.observed else change.key
         return D(code, artifact=change.key, value=target)
-    if code in ("SST-APL016", "SST-APL022"):
-        return D(code, artifact=change.key, detail=outcome.error.message)
+    if code in ("SST-APL007", "SST-APL016", "SST-APL017", "SST-APL022"):
+        return D(code, artifact=change.key, detail=error.message)
+    if code == "SST-APL018":
+        return D(code, artifact=change.key, path=error.value, detail=error.message)
+    if code == "SST-APL019":
+        return D(code, artifact=change.key, path=error.value)
+    if code == "SST-APL020":
+        return D(code, artifact=change.key, value=error.value)
+    if code == "SST-APL027":
+        return D(code, value=error.value, detail=error.message)
     if code == "SST-APL028":
         if change.diagnostics and change.diagnostics[0].code == "SST-APL028":
             return change.diagnostics[0]
-        return D("SST-INT902", detail=outcome.error.message)
+        return D("SST-INT902", detail=error.message)
     return D(
         "SST-APL001",
         artifact=change.key,
         value=change.action.value,
-        detail=outcome.error.message,
+        detail=error.message,
     )

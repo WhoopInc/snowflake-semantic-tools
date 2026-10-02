@@ -68,6 +68,7 @@ def test_legacy_globals_are_rejected_with_their_codes_and_render_nothing() -> No
     assert exit_code == 1
     assert codes(payload) == Counter(
         {
+            ("SST-MAN008", "error"): 1,
             ("SST-REF034", "error"): 10,
             ("SST-REF035", "error"): 7,
             ("SST-VAL405", "error"): 1,
@@ -100,8 +101,12 @@ def test_codemod_converts_idempotently_and_the_result_renders_the_committed_ddl(
     # each is an error naming its 1.0 key.
     exit_code, payload = invoke("compile", "--project-dir", str(project), "--manifest", str(MANIFEST))
     assert exit_code == 1
-    assert codes(payload) == Counter({("SST-PRS020", "error"): 3})
-    renames = {(item["params"]["field"], item["params"]["expected"]) for item in payload["diagnostics"]}
+    assert codes(payload) == Counter({("SST-PRS020", "error"): 3, ("SST-MAN008", "error"): 1})
+    renames = {
+        (item["params"]["field"], item["params"]["expected"])
+        for item in payload["diagnostics"]
+        if item["code"] == "SST-PRS020"
+    }
     assert renames == {
         ("sql_generation", "ai_sql_generation"),
         ("question_categorization", "ai_question_categorization"),
@@ -137,4 +142,4 @@ def test_a_0_3_spelling_beside_its_1_0_key_is_still_an_error(tmp_path: Path) -> 
     )
     exit_code, payload = invoke("compile", "--project-dir", str(project), "--manifest", str(MANIFEST))
     assert exit_code == 1
-    assert codes(payload) == Counter({("SST-PRS020", "error"): 1})
+    assert codes(payload) == Counter({("SST-PRS020", "error"): 1, ("SST-MAN008", "error"): 1})

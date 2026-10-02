@@ -36,6 +36,7 @@ from snowflake_semantic_tools.domain.model.lifecycle import (
     ChangeReason,
     CompositeObservation,
     CompositePlan,
+    OutcomeStatus,
     PhysicalResource,
     RenderedArtifact,
 )
@@ -257,6 +258,9 @@ class _Run(PublicationRun[CatalogPublicationPort]):
         if result.ok:
             return None
         detail = result.error.message if result.error else "ADD VERSION failed"
+        if "ALREADY EXISTS" in detail.upper():
+            # Another deploy minted this version name between the plan and this statement.
+            return self.fail(f"ADD VERSION failed: {detail}", "SST-APL020", value=release.alias)
         if release.extension_type != "PLUGIN":
             return self.fail(f"ADD VERSION failed: {detail}")
         return self._add_live_version()
@@ -291,6 +295,9 @@ class _Run(PublicationRun[CatalogPublicationPort]):
         if version is None:
             return self.fail(f"alias {release.alias} is absent from {target} after ADD VERSION", "SST-APL016")
         published = tuple(sorted(self._port.list_location(version.location)))
+        leftover = sorted(set(published) - set(release.paths))
+        if leftover and set(published) > set(release.paths):
+            return self.fail(f"{version.name} of {target} still holds {leftover[0]}", "SST-APL019", value=leftover[0])
         if published != tuple(sorted(release.paths)):
             return self.fail(
                 f"{version.name} of {target} differs from the bundle ({_difference(published, release.paths)})",
@@ -317,6 +324,25 @@ class _Run(PublicationRun[CatalogPublicationPort]):
         )
 
     def _certify(self) -> ApplyOutcome:
+        """Tag the version CERTIFIED, then require the catalog to report it certified.
+
+        A failure is SST-APL007, or SST-APL021 when the extension already carries grants, so
+        its readers reach a version whose certification did not succeed.
+        """
+        outcome = self._tag_certified()
+        if outcome.status is OutcomeStatus.FAILED and self._granted():
+            return self.fail(outcome.error.message if outcome.error else "certification failed", "SST-APL021")
+        return outcome
+
+    def _granted(self) -> bool:
+        """Whether a role holds an explicit grant on the extension; grants that cannot be read count as none."""
+        try:
+            grants = self._port.show_grants("CORTEX EXTENSION", self._release.target)
+        except SnowflakePortError:
+            return False
+        return any(grant.is_explicit for grant in grants)
+
+    def _tag_certified(self) -> ApplyOutcome:
         """Tag the version CERTIFIED, then require the catalog to report it certified (SST-APL007)."""
         release = self._release
         target = release.target.sql

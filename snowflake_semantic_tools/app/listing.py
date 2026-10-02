@@ -4,7 +4,14 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from snowflake_semantic_tools.domain.state import DEACTIVATED, FAILED_AFTER_WRITE, AppliedEntry, Manifest, State
+from snowflake_semantic_tools.domain.state import (
+    DEACTIVATED,
+    FAILED_AFTER_WRITE,
+    PARTIAL_WRITE,
+    AppliedEntry,
+    Manifest,
+    State,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -55,7 +62,7 @@ def _status(recorded: AppliedEntry | None, fingerprint: str) -> str:
         return "pending"
     if recorded.outcome == DEACTIVATED:
         return DEACTIVATED
-    if recorded.outcome == FAILED_AFTER_WRITE:
+    if recorded.outcome in (FAILED_AFTER_WRITE, PARTIAL_WRITE):
         # Something was written, but the publish did not complete.
         return "failed"
     return "applied" if recorded.fingerprint == fingerprint else "pending"

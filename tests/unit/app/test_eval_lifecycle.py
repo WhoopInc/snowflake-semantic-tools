@@ -734,7 +734,7 @@ def test_eval_dataset_execution_failure_after_source_write_is_partial() -> None:
 
     assert outcome.status is OutcomeStatus.FAILED
     assert outcome.error is not None
-    assert outcome.error.code == "SST-APL016"
+    assert outcome.error.code == "SST-APL022"
     assert outcome.error.message == "dataset publication failed"
     assert outcome.write_succeeded
     assert outcome.physical_resources == (("TABLE", artifact.physical_resources[0][1].sql),)
@@ -756,7 +756,7 @@ def test_eval_dataset_execution_failure_without_prior_write_is_not_partial() -> 
 
     assert outcome.status is OutcomeStatus.FAILED
     assert outcome.error is not None
-    assert outcome.error.code == "SST-APL001"
+    assert outcome.error.code == "SST-APL022"
     assert outcome.error.message == "dataset denied"
     assert not outcome.write_succeeded
 

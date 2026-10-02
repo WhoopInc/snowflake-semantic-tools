@@ -32,6 +32,7 @@ class PlanRequest:
 
     Attributes:
         strict, connected: `--strict` and `--snowflake-syntax-check`; None defers to `validation:`.
+        temporary: `apply --temporary`: agents publish as session-scoped temporary agents.
     """
 
     project_dir: Path
@@ -43,6 +44,7 @@ class PlanRequest:
     partial: bool
     strict: bool | None
     connected: bool | None
+    temporary: bool = False
 
     def following(self, saved: SavedPlan | None) -> PlanRequest:
         """Return the request with a saved plan's selection in place of the flags'; itself without one."""
@@ -118,7 +120,14 @@ def plan_runtime(request: PlanRequest) -> PlanSession | PlanRefused:
     profile, port = connect(project_dir, request.target_name)
     with closed_on_error(port):
         store = state_store(project_dir, profile.target_name)
-        outcome = prepare.run(candidates, port, store, target=profile.identity, state_table=profile.state_table)
+        outcome = prepare.run(
+            candidates,
+            port,
+            store,
+            target=profile.identity,
+            state_table=profile.state_table,
+            temporary=request.temporary,
+        )
     if isinstance(outcome, PlanRefused):
         port.close()
         return outcome

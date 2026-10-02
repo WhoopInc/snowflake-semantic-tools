@@ -72,8 +72,6 @@ def test_every_help_url_names_a_heading_in_the_error_reference() -> None:
 RETIRED = (
     "SST-CFG045",
     "SST-DBT002",
-    "SST-MAN004",
-    "SST-MAN201",
     "SST-MEM002",
     "SST-MEM008",
     "SST-MEM011",

@@ -15,7 +15,7 @@ from hashlib import sha256
 from pathlib import Path
 
 from snowflake_semantic_tools.adapters.dbt.manifest import load_manifest_catalog
-from snowflake_semantic_tools.adapters.dbt.profiles import load_profile_target, resolve_profile_name
+from snowflake_semantic_tools.adapters.dbt.profiles import load_profile_target, profile_output, resolve_profile_name
 from snowflake_semantic_tools.adapters.dbt.project import (
     dbt_project_name,
     load_models,
@@ -23,6 +23,7 @@ from snowflake_semantic_tools.adapters.dbt.project import (
     run_dbt_parse,
     target_path,
 )
+from snowflake_semantic_tools.adapters.errors import ProjectError
 from snowflake_semantic_tools.adapters.yaml.agents import load_agents
 from snowflake_semantic_tools.adapters.yaml.config import load_project_config, read_config_document
 from snowflake_semantic_tools.adapters.yaml.documents import discover_yaml, load_documents
@@ -299,7 +300,15 @@ class YamlProjectInputs(ProjectInputs):
             dbt_digest=sha256(canonical_json(projection)).hexdigest(),
             model_count=len(catalog.models),
             file_checksums=_file_checksums(self._project_dir),
+            target_name=self._selected_target(),
         )
+
+    def _selected_target(self) -> str:
+        """Return the `profiles.yml` target this source compiles for, by name; empty when none resolves."""
+        try:
+            return profile_output(self._project_dir, self._target_name)[1]
+        except (ProjectError, ValueError, OSError):
+            return ""
 
     def _dbt_sources(self) -> tuple[str, DbtCatalog, str]:
         """Read the dbt project's name and manifest; empty values for a project without dbt.

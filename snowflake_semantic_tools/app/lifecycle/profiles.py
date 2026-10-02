@@ -239,6 +239,8 @@ class _ProfileRun(PublicationRun[ProfilePublicationPort]):
         # `_written` counts any write at all, trees included. Trees are content-addressed,
         # so they change nothing Desktop reads; only the row does, and state follows it.
         self._row_written = False
+        # Every tree is on the stage: a failure from here on is the registry channel's alone.
+        self._uploaded = False
 
     def publish(self) -> ApplyOutcome:
         """Create what is missing and upload the trees, then MERGE the row and read it back as Desktop does."""
@@ -246,6 +248,7 @@ class _ProfileRun(PublicationRun[ProfilePublicationPort]):
             failure = self._run_steps(self._ensure_registry, self._ensure_stage, self._upload_trees)
             if failure is not None:
                 return failure
+            self._uploaded = True
             self._merge_row()
             return self._verify()
         except SnowflakePortError as exc:
@@ -260,8 +263,14 @@ class _ProfileRun(PublicationRun[ProfilePublicationPort]):
         return _resources(self._compiled.channel) if self._row_written else ()
 
     def _interrupted(self, error: SnowflakePortError) -> ApplyOutcome:
-        """Fail on a port error, as a partial write once anything was written (SST-APL018)."""
-        return self.fail(f"{error}", "SST-APL018" if self._written else "SST-APL001")
+        """Fail on a port error: the registry write after the upload (SST-APL018), else a partial write.
+
+        A failure before every tree is uploaded is a partial write once anything was written
+        (SST-APL016), and a plain failure otherwise.
+        """
+        if self._uploaded:
+            return self.fail(f"{error}", "SST-APL018", value=f"@{self._compiled.channel.stage.sql}")
+        return self.fail(f"{error}", "SST-APL016" if self._written else "SST-APL001")
 
     def _ensure_registry(self) -> ApplyOutcome | None:
         if self._current.columns is not None:
@@ -270,9 +279,10 @@ class _ProfileRun(PublicationRun[ProfilePublicationPort]):
         self._attempts += 1
         self._port.ensure_profile_registry(registry)
         self._written = True
-        shape = _shape_problem(self._port.table_columns(registry))
+        columns = self._port.table_columns(registry)
+        shape = "is absent" if columns is None else _shape_problem(columns)
         if shape is not None:
-            return self.fail(f"{registry.sql} {shape} after creation", "SST-APL016")
+            return self.fail(f"the registry {shape} after creation", "SST-APL027", value=registry.sql)
         return None
 
     def _ensure_stage(self) -> ApplyOutcome | None:
@@ -340,7 +350,11 @@ class _ProfileRun(PublicationRun[ProfilePublicationPort]):
             )
         for pointer in stage_pointers(view):
             if not self._resolves(pointer):
-                return self.fail(f"row '{compiled.name}' points at {pointer}, which does not resolve", "SST-APL016")
+                # The registry channel reports success; the stage channel does not hold the tree.
+                return self.fail(
+                    f"the registry row '{compiled.name}' was written, but the stage does not hold {pointer}",
+                    "SST-APL017",
+                )
         return self.applied(
             write_succeeded=True,
             component_fingerprints=self._artifact.component_fingerprints,

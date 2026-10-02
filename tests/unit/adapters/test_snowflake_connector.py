@@ -17,6 +17,7 @@ from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePort
 from snowflake_semantic_tools.domain.ports.snowflake.stage import StagedFileMetadata
 from snowflake_semantic_tools.domain.sql import Sql, sql
 from snowflake_semantic_tools.domain.state import AppliedEntry
+from snowflake_semantic_tools.domain.state.lock import LockClaim, StateWrite
 from tests.helpers.sql_values import texts
 
 
@@ -434,21 +435,36 @@ class _Session:
 
 
 class SessionConnector(SnowflakeConnector):
-    def __init__(self, session: _Session) -> None:
+    def __init__(self, session: _Session, scoped: _Session | None = None) -> None:
         self._lock = RLock()
         self._connection = session  # type: ignore[assignment]  # a double, not a driver connection
+        self._scoped_double = scoped or session
+        self.siblings: list[SessionConnector] = []
+
+    def sibling(self) -> SessionConnector:
+        opened = SessionConnector(self._scoped_double)
+        self.siblings.append(opened)
+        return opened
 
 
 STATE_TABLE = QualifiedName.parse("DB.S.SST_STATE")
 SCOPE = SchemaScope.from_qualified_name(STATE_TABLE)
 ENTRY = AppliedEntry("f" * 64, "DB.S.V", "2026-09-29T00:00:00Z", "run", "applied", "d" * 64, "m" * 64)
+WRITE = StateWrite({"k": ENTRY})
+CLAIM = LockClaim("run", "ROLE", "host")
 DRIVER_CALLS: tuple[tuple[str, str, Callable[[SnowflakeConnector], object]], ...] = (
     ("query", "SELECT 1", lambda port: port.query(sql("SELECT 1"))),
     ("query_in_context", "SELECT 1", lambda port: port.query_in_context(SCOPE, sql("SELECT 1"))),
     ("show_objects", "SHOW TABLES", lambda port: port.show_objects("TABLE", SCOPE)),
-    ("delete_state", "DELETE FROM", lambda port: port.delete_state(STATE_TABLE, "dev", "k")),
-    ("upsert_state", "MERGE INTO", lambda port: port.upsert_state(STATE_TABLE, "dev", "k", ENTRY)),
-    ("write_state", "INSERT INTO", lambda port: port.write_state(STATE_TABLE, "dev", "m" * 64, {"k": ENTRY})),
+    ("write_state", "MERGE INTO", lambda port: port.write_state(STATE_TABLE, "dev", "m" * 64, WRITE)),
+    ("retire_state", "DELETE FROM", lambda port: port.write_state(STATE_TABLE, "dev", "m", StateWrite({}, ("k",)))),
+    (
+        "acquire_run_lock",
+        "MERGE INTO",
+        lambda port: port.acquire_run_lock(STATE_TABLE, "dev", CLAIM, break_stale=False),
+    ),
+    ("extend_run_lock", "UPDATE", lambda port: port.extend_run_lock(STATE_TABLE, "dev", CLAIM)),
+    ("release_run_lock", "DELETE FROM", lambda port: port.release_run_lock(STATE_TABLE, "dev", "run")),
 )
 
 
@@ -485,21 +501,18 @@ def test_a_driver_or_transport_failure_is_still_reported_as_a_port_error(
 
 
 def test_a_programming_error_mid_state_write_still_rolls_the_transaction_back() -> None:
-    session = _Session({"INSERT INTO": TypeError("unsupported parameter type: Decimal")})
+    session = _Session({"MERGE INTO": TypeError("unsupported parameter type: Decimal")})
     with pytest.raises(TypeError):
-        SessionConnector(session).write_state(STATE_TABLE, "dev", "m" * 64, {"k": ENTRY})
-    assert session.executed[-3:] == [
-        "DELETE FROM DB.S.SST_STATE WHERE TARGET_NAME = %s",
-        session.executed[-2],
-        "ROLLBACK",
-    ]
+        SessionConnector(session).write_state(STATE_TABLE, "dev", "m" * 64, WRITE)
+    assert session.executed[-3:] == ["BEGIN", session.executed[-2], "ROLLBACK"]
+    assert session.executed[-2].startswith("MERGE INTO DB.S.SST_STATE AS target")
 
 
 def test_a_failed_rollback_keeps_the_error_that_aborted_the_state_write() -> None:
     aborted = ProgrammingError(msg="Numeric value 'x' is not recognized", errno=100038, sqlstate="22018")
-    session = _Session({"INSERT INTO": aborted, "ROLLBACK": OperationalError(msg="Connection is closed")})
+    session = _Session({"MERGE INTO": aborted, "ROLLBACK": OperationalError(msg="Connection is closed")})
     with pytest.raises(SnowflakePortError) as raised:
-        SessionConnector(session).write_state(STATE_TABLE, "dev", "m" * 64, {"k": ENTRY})
+        SessionConnector(session).write_state(STATE_TABLE, "dev", "m" * 64, WRITE)
     assert str(raised.value) == str(aborted) == "100038 (22018): Numeric value 'x' is not recognized"
     assert (raised.value.sqlstate, raised.value.errno) == ("22018", 100038)
     assert raised.value.__cause__ is aborted
@@ -507,15 +520,23 @@ def test_a_failed_rollback_keeps_the_error_that_aborted_the_state_write() -> Non
     assert getattr(aborted, "__notes__", []) == ["ROLLBACK also failed: Connection is closed"]
 
 
-def test_query_in_context_sends_its_use_pair_and_statement_together_on_one_cursor() -> None:
-    # The session is not restored afterwards. That is safe while every statement SST sends is
-    # fully qualified or, like this one, carries its own USE pair within the same locked call:
-    # concurrent evals share one session.
-    session = _Session()
-    SessionConnector(session).query_in_context(
-        SchemaScope(Identifier.parse("AGENTS"), Identifier.parse("EVALS")), sql("SELECT 1")
-    )
-    assert session.executed == ["USE DATABASE AGENTS", "USE SCHEMA AGENTS.EVALS", "SELECT 1"]
+def test_query_in_context_runs_on_a_scoped_session_and_never_changes_the_main_one() -> None:
+    main, scoped = _Session(), _Session()
+    connector = SessionConnector(main, scoped)
+    agents = SchemaScope(Identifier.parse("AGENTS"), Identifier.parse("EVALS"))
+    connector.query_in_context(agents, sql("SELECT 1"))
+    connector.query(sql("SELECT 2"))
+    connector.query_in_context(agents, sql("SELECT 3"))
+    assert main.executed == ["SELECT 2"]
+    assert scoped.executed == [
+        "USE DATABASE AGENTS",
+        "USE SCHEMA AGENTS.EVALS",
+        "SELECT 1",
+        "USE DATABASE AGENTS",
+        "USE SCHEMA AGENTS.EVALS",
+        "SELECT 3",
+    ]
+    assert len(connector.siblings) == 1
 
 
 # What a driver or key library might echo on a failure: none of it may reach a diagnostic.

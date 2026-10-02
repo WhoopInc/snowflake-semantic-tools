@@ -135,7 +135,7 @@ def test_a_saved_plan_for_another_target_names_both_targets() -> None:
     assert mismatch.message == diagnostic.message
     assert (
         mismatch.message
-        == "plan.json: plan target 'dev/ACCT/DB/SCH/OTHER' differs from apply target 'dev/ACCT/DB/SCH/ROLE/WH'"
+        == "plan.json: plan target 'dev/ACCT/DB/SCH/OTHER' differs from the apply target 'dev/ACCT/DB/SCH/ROLE/WH'"
     )
 
 

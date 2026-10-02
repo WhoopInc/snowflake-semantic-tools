@@ -1,9 +1,14 @@
 """The state table: one row per target and artifact key, recording what apply published there.
 
 One column table drives every statement the table sees: the CREATE, the ALTERs that migrate
-an older table, the SELECT that reads a target's entries, and the INSERT and MERGE that
-write them. COMPONENT_FINGERPRINTS and PHYSICAL_RESOURCES came later, so a table created
-before them reads both as NULL until `ensure_state_table` adds them.
+an older table, the SELECT that reads a target's entries, and the MERGE that writes one.
+COMPONENT_FINGERPRINTS, PHYSICAL_RESOURCES and STATE_MANIFEST_ID came later, so a table
+created before them reads the first two as NULL and records no manifest until
+`ensure_state_table` adds them with ADD COLUMN IF NOT EXISTS, which is safe to repeat.
+
+A run writes only the entries it changed: one MERGE per changed entry and one DELETE per
+retired key, then one UPDATE that stamps the run's manifest on every row of the target, all
+in one transaction on one cursor with every value bound.
 """
 
 from __future__ import annotations
@@ -15,8 +20,6 @@ from typing import NamedTuple
 
 from snowflake_semantic_tools.adapters.snowflake.connector.session import (
     Session,
-    _as_port_errors,
-    _execute,
     _json_text,
     _require_ok,
     _variant_value,
@@ -27,6 +30,11 @@ from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePort
 from snowflake_semantic_tools.domain.ports.snowflake.state import StatePort
 from snowflake_semantic_tools.domain.sql import Sql, ident, join, qname, sql
 from snowflake_semantic_tools.domain.state import AppliedEntry, AppliedResource, pairs_from_json, pairs_to_json
+from snowflake_semantic_tools.domain.state.lock import StateWrite
+
+# The kind of table the state and lock tables are created as. A standard table, not a hybrid
+# one: "Concurrent applies and the run lock" in docs/concepts.md compares the two.
+TABLE_KIND = sql("TABLE")
 
 
 class _StateColumn(NamedTuple):
@@ -60,10 +68,12 @@ _COLUMNS = (
     _StateColumn("PHYSICAL_RESOURCES", sql("ARRAY"), sql("PARSE_JSON(%s)"), added=True),
 )
 STATE_COLUMNS = tuple(column.name for column in _COLUMNS)
+# The manifest of the run that last wrote the target, on every one of its rows; not part of an entry.
+_STATE_MANIFEST = _StateColumn("STATE_MANIFEST_ID", sql("VARCHAR(64)"), added=True)
 
 
 class StateTableMethods(Session, StatePort, CatalogPort):
-    """Keep the state table: reads never create it, and every write creates and migrates it first.
+    """Keep the state table: reads never change it, and every write creates and migrates it first.
 
     `CatalogPort` is a base for the one lookup a read starts with, whether the table exists,
     which the assembled connector's catalog role answers.
@@ -94,75 +104,56 @@ class StateTableMethods(Session, StatePort, CatalogPort):
             }
         )
 
-    def ensure_state_table(self, state_table: QualifiedName) -> None:
-        _require_ok(self.execute_script((_create_sql(state_table),)), "state table creation failed")
-        self._ensure_state_columns(state_table)
+    def read_state_manifest(self, state_table: QualifiedName, target_name: str) -> str | None:
+        if not self.object_exists("TABLE", state_table):
+            return None
+        if _STATE_MANIFEST.name not in self._column_names(state_table):
+            return None
+        result = self.query(
+            sql(
+                "SELECT DISTINCT {column} FROM {table} WHERE TARGET_NAME = %s",
+                column=_STATE_MANIFEST.identifier,
+                table=qname(state_table),
+            ),
+            (target_name,),
+        )
+        recorded = {str(row[0]) for row in result.rows if row[0]}
+        return next(iter(recorded)) if len(recorded) == 1 else None
 
-    def _ensure_state_columns(self, state_table: QualifiedName) -> None:
-        present = self._column_names(state_table)
+    def ensure_state_table(self, state_table: QualifiedName) -> None:
         additions = tuple(
             sql(
-                "ALTER TABLE {table} ADD COLUMN {column} {ddl}",
+                "ALTER TABLE {table} ADD COLUMN IF NOT EXISTS {column} {ddl}",
                 table=qname(state_table),
                 column=column.identifier,
                 ddl=column.ddl,
             )
-            for column in _COLUMNS
-            if column.added and column.name not in present
+            for column in (*_COLUMNS, _STATE_MANIFEST)
+            if column.added
         )
-        if additions:
-            _require_ok(self.execute_script(additions), "state table migration failed")
+        _require_ok(self.execute_script((_create_sql(state_table), *additions)), "state table creation failed")
 
     def write_state(
         self,
         state_table: QualifiedName,
         target_name: str,
         manifest_id: str,
-        applied: Mapping[str, AppliedEntry],
+        write: StateWrite,
     ) -> None:
-        del manifest_id
         self.ensure_state_table(state_table)
-        insert = _insert_sql(state_table)
-        with _as_port_errors(), self._cursor() as cursor:
-            try:
-                _execute(cursor, sql("BEGIN"))
-                _execute(
-                    cursor,
-                    sql("DELETE FROM {table} WHERE TARGET_NAME = %s", table=qname(state_table)),
-                    (target_name,),
-                )
-                for key, entry in sorted(applied.items()):
-                    _execute(cursor, insert, _state_values(target_name, key, entry))
-                _execute(cursor, sql("COMMIT"))
-            except Exception as failure:
-                try:
-                    _execute(cursor, sql("ROLLBACK"))
-                except Exception as rollback_failure:
-                    # The error that aborted the write is the one to report; a ROLLBACK
-                    # that fails too (the session is usually gone) is context for it.
-                    failure.add_note(f"ROLLBACK also failed: {rollback_failure}")
-                raise
-
-    def delete_state(self, state_table: QualifiedName, target_name: str, artifact_key: str) -> int:
-        with _as_port_errors(), self._cursor() as cursor:
-            _execute(
-                cursor,
-                sql("DELETE FROM {table} WHERE TARGET_NAME = %s AND ARTIFACT_KEY = %s", table=qname(state_table)),
-                (target_name, artifact_key),
-            )
-            return max(cursor.rowcount or 0, 0)
-
-    def upsert_state(
-        self,
-        state_table: QualifiedName,
-        target_name: str,
-        artifact_key: str,
-        entry: AppliedEntry,
-    ) -> int:
+        table = qname(state_table)
         merge = _merge_sql(state_table)
-        with _as_port_errors(), self._cursor() as cursor:
-            _execute(cursor, merge, _state_values(target_name, artifact_key, entry))
-            return max(cursor.rowcount or 0, 0)
+        delete = sql("DELETE FROM {table} WHERE TARGET_NAME = %s AND ARTIFACT_KEY = %s", table=table)
+        stamp = sql(
+            "UPDATE {table} SET {column} = %s WHERE TARGET_NAME = %s", table=table, column=_STATE_MANIFEST.identifier
+        )
+        self._transaction(
+            (
+                *((merge, _state_values(target_name, key, entry)) for key, entry in sorted(write.upserts.items())),
+                *((delete, (target_name, key)) for key in write.deletes),
+                (stamp, (manifest_id, target_name)),
+            )
+        )
 
     def _column_names(self, table: QualifiedName) -> set[str]:
         """Return the names of the columns DESCRIBE TABLE lists for a table, uppercased."""
@@ -173,10 +164,13 @@ class StateTableMethods(Session, StatePort, CatalogPort):
 
 
 def _create_sql(table: QualifiedName) -> Sql:
-    columns = join(", ", (sql("{name} {ddl}", name=column.identifier, ddl=column.ddl) for column in _COLUMNS))
+    columns = join(
+        ", ", (sql("{name} {ddl}", name=column.identifier, ddl=column.ddl) for column in (*_COLUMNS, _STATE_MANIFEST))
+    )
     key = join(", ", (column.identifier for column in _COLUMNS if column.key))
     return sql(
-        "CREATE TABLE IF NOT EXISTS {table} ({columns}, PRIMARY KEY ({key}))",
+        "CREATE {kind} IF NOT EXISTS {table} ({columns}, PRIMARY KEY ({key}))",
+        kind=TABLE_KIND,
         table=qname(table),
         columns=columns,
         key=key,
@@ -203,13 +197,6 @@ def _select_sql(table: QualifiedName, present: set[str]) -> Sql:
 
 def _column_list() -> Sql:
     return join(", ", (column.identifier for column in _COLUMNS))
-
-
-def _insert_sql(table: QualifiedName) -> Sql:
-    binds = join(", ", (column.bind for column in _COLUMNS))
-    return sql(
-        "INSERT INTO {table} ({columns}) SELECT {binds}", table=qname(table), columns=_column_list(), binds=binds
-    )
 
 
 def _merge_sql(table: QualifiedName) -> Sql:

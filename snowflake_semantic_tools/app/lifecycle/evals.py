@@ -415,10 +415,7 @@ class _EvalRun(PublicationRun[CatalogPublicationPort]):
         if not self._dataset_exists:
             result = self._run_statement(self._handler._dataset_statement(self._artifact))
             if not result.ok:
-                return self.fail(
-                    result.error.message if result.error else "dataset publication failed",
-                    "SST-APL016" if self._written else "SST-APL001",
-                )
+                return self.fail(result.error.message if result.error else "dataset publication failed", "SST-APL022")
             self._created.append(("DATASET", self._dataset.sql))
             if not self._port.object_exists("DATASET", self._dataset):
                 return self.fail(f"dataset {self._dataset.sql} is absent after publication", "SST-APL016")
