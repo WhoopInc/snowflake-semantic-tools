@@ -15,7 +15,6 @@ from threading import Lock
 from types import MappingProxyType
 from typing import Protocol
 
-from snowflake_semantic_tools.app.apply import classify_error
 from snowflake_semantic_tools.app.compile.profiles import CompiledProfile, DesktopChannel
 from snowflake_semantic_tools.app.desktop_contract import desktop_view, stage_pointers
 from snowflake_semantic_tools.app.lifecycle.composite import (
@@ -30,6 +29,7 @@ from snowflake_semantic_tools.app.lifecycle.composite import (
 )
 from snowflake_semantic_tools.app.lifecycle.ports import CatalogPublicationPort
 from snowflake_semantic_tools.domain.diagnostics import D
+from snowflake_semantic_tools.domain.diagnostics.signatures import match_signature
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
 from snowflake_semantic_tools.domain.model.lifecycle import (
     Action,
@@ -448,7 +448,7 @@ def _action(
 
 def _refused(change: Change, detail: str, attempts: int) -> ApplyOutcome:
     """Fail a deactivation SST cannot vouch for (SST-APL012); retrying the statement cannot help."""
-    error = ClassifiedError("SST-APL012", detail, classify_error(detail).kind)
+    error = ClassifiedError("SST-APL012", detail, match_signature(detail).kind)
     return ApplyOutcome(change.key, change.action, OutcomeStatus.FAILED, attempts, 0, "", error)
 
 

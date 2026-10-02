@@ -13,7 +13,7 @@ from pathlib import Path
 from snowflake_semantic_tools.adapters.clock import SystemClock
 from snowflake_semantic_tools.adapters.dbt.profiles import ProfileTarget
 from snowflake_semantic_tools.adapters.errors import ProjectError
-from snowflake_semantic_tools.adapters.fs.local import StateFileStore
+from snowflake_semantic_tools.adapters.fs.local import ManifestFileStore, StateFileStore
 from snowflake_semantic_tools.adapters.snowflake.connector import SnowflakeConnector
 from snowflake_semantic_tools.app.plan import PlanReady, PlanRefused, PlanScope, PreparePlan
 from snowflake_semantic_tools.cli.group import SstUsageError
@@ -24,7 +24,8 @@ from snowflake_semantic_tools.cli.wiring.project import closed_on_error, connect
 from snowflake_semantic_tools.cli.wiring.selectors import selector_report
 from snowflake_semantic_tools.domain.diagnostics import DiagnosticBag
 from snowflake_semantic_tools.domain.model.registry import SEMANTIC_REGISTRY
-from snowflake_semantic_tools.domain.state import SavedPlan
+from snowflake_semantic_tools.domain.plan.impact import STATE_MODIFIED
+from snowflake_semantic_tools.domain.state import Manifest, SavedPlan
 
 
 @dataclasses.dataclass(frozen=True)
@@ -34,6 +35,8 @@ class PlanRequest:
     Attributes:
         strict, connected: `--strict` and `--snowflake-syntax-check`; None defers to `validation:`.
         temporary: `apply --temporary`: agents publish as session-scoped temporary agents.
+        state_path: `--state`, the directory holding the previous run's `manifest.json` that
+            `state:modified` compares with; None when it was not given.
     """
 
     project_dir: Path
@@ -46,6 +49,7 @@ class PlanRequest:
     strict: bool | None
     connected: bool | None
     temporary: bool = False
+    state_path: Path | None = None
 
     def following(self, saved: SavedPlan | None) -> PlanRequest:
         """Return the request with a saved plan's selection in place of the flags'; itself without one."""
@@ -72,11 +76,14 @@ def plan_scope(request: PlanRequest) -> PlanScope:
 
     An excluded type leaves the selected types, or every type when none is selected. With
     `--prune`, an excluded key leaves the selected keys, which must then be given.
+    `state:modified` selects nothing itself: it narrows the plan to what changed since the
+    previous manifest.
 
     Raises:
         SstUsageError: a selector does not parse, or `--prune` excludes keys without `--select`.
     """
-    prune_types, prune_keys = selection(request.selected)
+    impact = STATE_MODIFIED in request.selected
+    prune_types, prune_keys = selection(tuple(value for value in request.selected if value != STATE_MODIFIED))
     excluded_types, excluded_keys = selection(request.excluded)
     if excluded_types is not None:
         prune_types = (
@@ -88,7 +95,18 @@ def plan_scope(request: PlanRequest) -> PlanScope:
         if prune_keys is None:
             raise SstUsageError("--prune with --exclude requires --select so the prune scope is explicit")
         prune_keys = frozenset(prune_keys - excluded_keys)
-    return PlanScope(request.selected, prune_types, prune_keys, excluded_types, excluded_keys, request.prune)
+    return PlanScope(request.selected, prune_types, prune_keys, excluded_types, excluded_keys, request.prune, impact)
+
+
+def previous_manifest(request: PlanRequest) -> Manifest | None:
+    """Read the manifest in `--state`, which `state:modified` compares with; None when there is none.
+
+    Raises:
+        ProjectError: the file is there but cannot be used.
+    """
+    if request.state_path is None:
+        return None
+    return ManifestFileStore(request.state_path / "manifest.json").read()
 
 
 def plan_runtime(request: PlanRequest) -> PlanSession | PlanRefused:
@@ -107,7 +125,9 @@ def plan_runtime(request: PlanRequest) -> PlanSession | PlanRefused:
     scope = plan_scope(request)
     project_dir = request.project_dir
     full_result = compiling.compile_result(project_dir, request.target_name, request.manifest_path)
-    selectors = selector_report(request.selected, request.excluded, full_result.compiled)
+    # `state:modified` narrows the plan rather than naming artifacts, so it is not reported as a selector.
+    named = tuple(value for value in request.selected if value != STATE_MODIFIED)
+    selectors = selector_report(named, request.excluded, full_result.compiled)
     prepare = PreparePlan(project_inputs(project_dir, request.target_name, request.manifest_path), SystemClock())
     candidates = prepare.select(
         full_result,
@@ -117,6 +137,7 @@ def plan_runtime(request: PlanRequest) -> PlanSession | PlanRefused:
         strict=request.strict,
         connected=request.connected,
         project=str(project_dir),
+        previous_manifest=previous_manifest(request),
     )
     if isinstance(candidates, PlanRefused):
         if candidates.reason is not None:
@@ -132,6 +153,7 @@ def plan_runtime(request: PlanRequest) -> PlanSession | PlanRefused:
             target=profile.identity,
             state_table=profile.state_table,
             temporary=request.temporary,
+            preflight=port,
         )
     if isinstance(outcome, PlanRefused):
         port.close()

@@ -34,10 +34,11 @@ from snowflake_semantic_tools.domain.ports.snowflake.stage import StagedFileMeta
 from snowflake_semantic_tools.domain.sql import Sql
 from snowflake_semantic_tools.domain.state import AppliedEntry
 from snowflake_semantic_tools.domain.state.lock import LockAcquisition, LockClaim, StateWrite
+from tests.helpers.preflight import PreflightAnswers, PreflightDouble
 from tests.helpers.run_locks import InMemoryRunLocks
 
 
-class RecordedSnowflake:
+class RecordedSnowflake(PreflightDouble):
     def __init__(
         self,
         *,
@@ -82,6 +83,7 @@ class RecordedSnowflake:
         self.refused: tuple[str, ...] = ()
         self.state_manifest: str | None = None
         self.run_locks = InMemoryRunLocks()
+        self.preflight = PreflightAnswers()
 
     def table_columns(self, qualified_name: QualifiedName) -> tuple[tuple[str, str], ...] | None:
         return self.tables.get(qualified_name.sql)

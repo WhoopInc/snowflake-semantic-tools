@@ -12,6 +12,7 @@ from collections.abc import Callable, Mapping
 from typing import Any
 
 from snowflake_semantic_tools.adapters.snowflake.connector.session import Session, _variant_value
+from snowflake_semantic_tools.domain.diagnostics import D
 from snowflake_semantic_tools.domain.model.identifier import Identifier, QualifiedName, SchemaScope
 from snowflake_semantic_tools.domain.model.lifecycle import GrantRow, OwnershipMarker, ShowRow, extract_marker
 from snowflake_semantic_tools.domain.ports.snowflake.catalog import (
@@ -240,6 +241,8 @@ class CatalogMethods(Session, CatalogPort):
         if not self.object_exists("TABLE", qualified_name):
             return None
         rows = self._dict_rows(sql("DESCRIBE TABLE {table}", table=qname(qualified_name)))
+        if any("name" not in row or "type" not in row for row in rows):
+            raise _unexpected_describe(f"TABLE {qualified_name.sql}")
         return tuple((str(row.get("name") or "").upper(), str(row.get("type") or "").upper()) for row in rows)
 
     def agent_has_live_version(self, qualified_name: QualifiedName) -> bool:
@@ -258,7 +261,7 @@ class CatalogMethods(Session, CatalogPort):
         }
         aliases = _variant_value(properties.get("aliases"), {})
         if not isinstance(aliases, dict):
-            raise SnowflakePortError(f"agent {qualified_name.sql} returned invalid aliases metadata")
+            raise _unexpected_describe(f"AGENT {qualified_name.sql}")
         key = "LAST" if selector == "committed" else selector.removeprefix("alias:")
         resolved = next((value for alias, value in aliases.items() if str(alias).casefold() == key.casefold()), None)
         if not isinstance(resolved, str) or not resolved.upper().startswith("VERSION$"):
@@ -322,3 +325,14 @@ def _text_row(row: Mapping[str, object]) -> dict[str, str]:
 def _optional_text(value: object) -> str | None:
     text = str(value).strip() if value is not None else ""
     return text or None
+
+
+def _unexpected_describe(described: str) -> SnowflakePortError:
+    """The error for a DESCRIBE whose rows lack what SST reads, such as `type` from a table.
+
+    Diagnostics:
+        SST-SNO025: the DESCRIBE of `described` returned an unexpected shape.
+    """
+    return SnowflakePortError(
+        f"the DESCRIBE of {described} returned an unexpected shape", diagnostic=D("SST-SNO025", value=described)
+    )

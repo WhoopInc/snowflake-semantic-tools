@@ -8,7 +8,7 @@ import click
 
 from snowflake_semantic_tools.adapters.fs.local import PlanFileStore
 from snowflake_semantic_tools.app.plan import PlanReady, PlanRefused
-from snowflake_semantic_tools.cli.exit_codes import CHANGES, ERROR, OK
+from snowflake_semantic_tools.cli.exit_codes import ERROR
 from snowflake_semantic_tools.cli.group import SstUsageError
 from snowflake_semantic_tools.cli.options import (
     output_option,
@@ -19,7 +19,7 @@ from snowflake_semantic_tools.cli.options import (
     sql_out_option,
     validation_options,
 )
-from snowflake_semantic_tools.cli.plan_output import change_json, print_plan, write_plan_sql
+from snowflake_semantic_tools.cli.plan_output import change_json, plan_exit_code, print_plan, write_plan_sql
 from snowflake_semantic_tools.cli.runner import CommandResult, command_body
 from snowflake_semantic_tools.cli.wiring.plan import (
     PlanRequest,
@@ -42,6 +42,7 @@ from snowflake_semantic_tools.domain.state import SavedPlan
 @click.option("--no-plan-out", is_flag=True)
 @sql_out_option()
 @click.option("--no-detailed-exitcode", is_flag=True)
+@click.option("--state", "state_path", type=click.Path(file_okay=False, path_type=Path))
 @validation_options()
 @output_option()
 @command_body("plan")
@@ -57,6 +58,7 @@ def plan(
     no_plan_out: bool,
     sql_out: Path | None,
     no_detailed_exitcode: bool,
+    state_path: Path | None,
     strict: bool | None,
     snowflake_syntax_check: bool | None,
     output: str,
@@ -66,7 +68,16 @@ def plan(
         raise SstUsageError("--plan-out and --no-plan-out are mutually exclusive")
     refuse_partial_prune(partial, prune)
     request = PlanRequest(
-        project_dir, target_name, manifest_path, selected, excluded, prune, partial, strict, snowflake_syntax_check
+        project_dir,
+        target_name,
+        manifest_path,
+        selected,
+        excluded,
+        prune,
+        partial,
+        strict,
+        snowflake_syntax_check,
+        state_path=state_path,
     )
     session = plan_runtime(request)
     if isinstance(session, PlanRefused):
@@ -110,21 +121,15 @@ def _plan_report(
     sql_path: Path,
     no_detailed_exitcode: bool,
 ) -> CommandResult:
-    """Report a plan, which exits 1 on an error or a blocked change, 2 with writes pending, else 0.
+    """Report a plan, exiting as `plan_exit_code` says.
 
-    With `--no-detailed-exitcode`, pending writes exit 0. With `--partial`, what was left out
-    is reported ahead of the plan's own diagnostics.
+    With `--partial`, what was left out is reported ahead of the plan's own diagnostics.
     """
     changeset = ready.changeset
     shown = (
         DiagnosticBag((*ready.result.diagnostics, *changeset.diagnostics)) if request.partial else changeset.diagnostics
     )
-    if changeset.blocked or shown.has_errors:
-        exit_code = ERROR
-    elif changeset.writes:
-        exit_code = OK if no_detailed_exitcode else CHANGES
-    else:
-        exit_code = OK
+    exit_code = plan_exit_code(ready, shown, detailed=not no_detailed_exitcode)
     data: dict[str, object] = {
         "manifest_id": ready.manifest.manifest_id,
         "plan_id": saved.plan_id,

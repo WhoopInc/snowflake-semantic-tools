@@ -14,7 +14,8 @@ from tests.helpers.artifact_builders import rendered
 
 
 def probed() -> RenderedArtifact:
-    probe = SmokeProbe("metric:v.revenue", ProbeKind.METRIC, sql("SELECT 1"))
+    # A metric's failed probe is SST-PLN100's; this code reports any other probe.
+    probe = SmokeProbe("verified_query:v.top_customers", ProbeKind.VERIFIED_QUERY, sql("SELECT 1"))
     return replace(rendered(), smoke=(probe,))
 
 
@@ -23,7 +24,7 @@ def test_sst_apl100_fires() -> None:
     port.query_error = SnowflakePortError("invalid identifier 'REVENUE'")
     [diagnostic, _] = RunSmokeSuite(port).run((probed(),)).diagnostics
     assert (diagnostic.code, diagnostic.severity) == ("SST-APL100", Severity.ERROR)
-    assert diagnostic.message == "metric:v.revenue: smoke probe failed: invalid identifier 'REVENUE'"
+    assert diagnostic.message == "verified_query:v.top_customers: smoke probe failed: invalid identifier 'REVENUE'"
     assert diagnostic.subject == "semantic_view:v"
 
 

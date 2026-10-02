@@ -29,10 +29,11 @@ from snowflake_semantic_tools.domain.ports.snowflake.stage import StagedFileMeta
 from snowflake_semantic_tools.domain.sql import Sql
 from snowflake_semantic_tools.domain.state import AppliedEntry, State
 from snowflake_semantic_tools.domain.state.lock import LockAcquisition, LockClaim, StateWrite
+from tests.helpers.preflight import PreflightAnswers, PreflightDouble
 from tests.helpers.run_locks import InMemoryRunLocks
 
 
-class InMemorySnowflake:
+class InMemorySnowflake(PreflightDouble):
     def __init__(self) -> None:
         self.rows: tuple[ShowRow, ...] = ()
         self.grants: dict[str, tuple[GrantRow, ...]] = {}
@@ -63,6 +64,7 @@ class InMemorySnowflake:
         self.show_rows: dict[str, Mapping[str, str]] = {}
         self.descriptions: dict[str, Mapping[str, str]] = {}
         self.object_parameters: dict[tuple[str, str, str], str] = {}
+        self.preflight = PreflightAnswers()
 
     def show_objects(self, object_type: str, scope: SchemaScope) -> tuple[ShowRow, ...]:
         del object_type, scope

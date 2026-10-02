@@ -521,11 +521,17 @@ def test_report_only_prunes_are_listed_but_are_not_changes(tmp_path: Path, monke
     assert CliRunner().invoke(cli, ["compile", "--project-dir", str(project)]).exit_code == 0
     scripts = len(port.scripts)
 
+    # Until apply records the report-only prune under this manifest, applying changes state,
+    # so the plan exits 2 (and 0 without the detailed exit code).
     first = invoke_with_port(monkeypatch, port, ["plan", "--project-dir", str(project), "--prune", "--output", "json"])
-    assert first.exit_code == 0, first.output
+    assert first.exit_code == 2, first.output
     assert json.loads(first.output)["data"]["report_only"] == ["skill:month-close"]
     human = invoke_with_port(monkeypatch, port, ["plan", "--project-dir", str(project), "--prune"])
-    assert human.exit_code == 0, human.output
+    assert human.exit_code == 2, human.output
+    quiet = invoke_with_port(
+        monkeypatch, port, ["plan", "--project-dir", str(project), "--prune", "--no-detailed-exitcode"]
+    )
+    assert quiet.exit_code == 0, quiet.output
     assert "0 to prune" in human.output and "1 report-only (SST never removes these)." in human.output
     assert "- skill:month-close PRUNE - orphaned (report only)" in human.output
 
@@ -548,7 +554,8 @@ def test_report_only_prunes_are_listed_but_are_not_changes(tmp_path: Path, monke
         assert payload["status"] == "ok" and payload["data"]["report_only"] == ["skill:month-close"]
         assert [(item["action"], item["report_only"]) for item in payload["data"]["changes"]] == [("prune", True)]
         assert [(item["code"], item["severity"]) for item in payload["diagnostics"]] == [
-            ("SST-PLN021", "info"),
+            ("SST-PLN034", "info"),
             ("SST-VAL805", "warning"),
             ("SST-MAN026", "info"),
+            ("SST-PLN016", "info"),
         ]

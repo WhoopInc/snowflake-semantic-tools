@@ -170,11 +170,12 @@ them afterwards.
 `--prune` extends a plan to managed artifacts whose source was deleted. What
 happens depends on the type: semantic views and agents are dropped, and
 profiles are deactivated. Skills, plugins, and evals are **report-only**: the
-plan lists them (`SST-PLN021`, an info diagnostic), but they are never removed,
+plan lists them (`SST-PLN034`, an info diagnostic), but they are never removed,
 because an agent elsewhere may still pin a version, or a run or baseline may
-still reference an evaluation. A report-only prune is not a change, so it never
-makes `plan` exit 2 or `--strict` fail. `apply --prune` records that the source
-is gone, and the plan keeps listing the objects until they are removed by hand.
+still reference an evaluation. A report-only prune never makes `--strict` fail.
+`apply --prune` records that the source is gone; until it has, `plan` exits 2,
+because that apply still changes the state table. The plan keeps listing the
+objects until they are removed by hand.
 
 `--partial` lets `compile`, `plan`, and `apply` go ahead with every artifact
 that has no errors and depends on nothing that does. Each artifact left out is

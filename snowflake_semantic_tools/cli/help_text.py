@@ -75,6 +75,9 @@ _COMMAND_OPTION_HELP: Mapping[tuple[str, str], str] = {
     ("sst plan", "--plan-out"): "Write the saved plan here instead of `target/sst/plan.json`.",
     ("sst plan", "--no-plan-out"): "Do not write a saved plan.",
     ("sst plan", "--no-detailed-exitcode"): "Exit 0 when changes are pending, instead of 2.",
+    ("sst plan", "--state"): (
+        "Directory holding the previous run's `manifest.json`, which `--select state:modified` compares with."
+    ),
     ("sst test", "--suite"): (
         "`golden` compares outputs with committed goldens offline; `smoke` probes deployed "
         "objects; `evals` runs agent evaluations."

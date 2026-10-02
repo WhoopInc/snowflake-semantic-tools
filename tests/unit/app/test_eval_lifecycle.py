@@ -987,7 +987,7 @@ def test_eval_prune_report_falls_back_to_artifact_key_without_resources() -> Non
 
     change = handler.report_prune(artifact.key, entry)
 
-    assert change.diagnostics[0].code == "SST-PLN021"
+    assert change.diagnostics[0].code == "SST-PLN034"
     assert artifact.key in change.diagnostics[0].message
 
 

@@ -3,7 +3,8 @@ from __future__ import annotations
 from dataclasses import replace
 from types import MappingProxyType
 
-from snowflake_semantic_tools.app.plan import PlanArtifacts, observe
+from snowflake_semantic_tools.app.observe import observe
+from snowflake_semantic_tools.app.plan import PlanArtifacts
 from snowflake_semantic_tools.domain.model.lifecycle import (
     Action,
     ApplyOptions,

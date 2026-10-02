@@ -14,6 +14,7 @@ from types import MappingProxyType
 from typing import Protocol
 
 from snowflake_semantic_tools.app.apply.errors import (
+    _cause_diagnostic,
     _exception_error,
     _failed,
     _outcome_diagnostic,
@@ -136,6 +137,8 @@ class ApplyArtifacts:
             SST-APL015: a temporary artifact's alias was ignored.
             SST-APL900: the outcomes do not account for every planned change.
             Each failed change reports the diagnostic its error names; see `_outcome_diagnostic`.
+            A change Snowflake refused also reports the refusal under its SNO code; see
+            `_cause_diagnostic`.
         """
         run_id = self._clock.new_run_id()
         started = self._clock.now_iso()
@@ -360,6 +363,9 @@ class _WaveRun:
             if outcome.status is OutcomeStatus.FAILED:
                 self._failed_or_skipped.add(change.key)
                 self._diagnostics.append(_outcome_diagnostic(change, outcome))
+                cause = _cause_diagnostic(change, outcome)
+                if cause is not None:
+                    self._diagnostics.append(cause)
                 if self._options.on_failure is FailurePolicy.STOP_ALL:
                     self._skip_remaining()
                     break

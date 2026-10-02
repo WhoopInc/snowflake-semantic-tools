@@ -33,7 +33,7 @@ from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, Diagnosti
 from snowflake_semantic_tools.domain.model.artifact_key import artifact_key
 from snowflake_semantic_tools.domain.model.identifier import Identifier, QualifiedName
 from snowflake_semantic_tools.domain.model.lifecycle import OwnershipMarker, ProbeKind, RenderedArtifact, SmokeProbe
-from snowflake_semantic_tools.domain.model.semantic_view import SemanticView
+from snowflake_semantic_tools.domain.model.semantic_view import Metric, SemanticView
 from snowflake_semantic_tools.domain.ports.semantic_view_source import SemanticViewSource
 from snowflake_semantic_tools.domain.render.semantic_view import render, render_checked
 from snowflake_semantic_tools.domain.sql import AuthoredExpression, Sql, ident, join, qname, query_text, sql
@@ -44,6 +44,9 @@ from snowflake_semantic_tools.domain.validate.semantic_view import (
     statement_diagnostics,
 )
 from snowflake_semantic_tools.domain.validate.targets import shared_targets
+
+# A dimension as a window's PARTITION BY EXCLUDING names it: `TABLE.DIMENSION`, both unquoted.
+_DIMENSION_REFERENCE = re.compile(r"[A-Za-z_][A-Za-z0-9_$]*\.[A-Za-z_][A-Za-z0-9_$]*")
 
 __all__ = [
     "RENDER_ERRORS",
@@ -193,13 +196,9 @@ class CompiledView(CompiledArtifact):
             )
         ]
         probes.extend(
-            SmokeProbe(
-                key=artifact_key("metric", metric.qualified_name.casefold()),
-                kind=ProbeKind.METRIC,
-                sql=_member_probe(target, "METRICS", metric.table, metric.name, metric.expr, limit=True),
-            )
+            probe
             for metric in self.view.metrics
-            if metric.access_modifier != "private_access"
+            if metric.access_modifier != "private_access" and (probe := _metric_probe(target, metric)) is not None
         )
         probes.extend(
             SmokeProbe(
@@ -217,6 +216,19 @@ class CompiledView(CompiledArtifact):
             smoke=tuple(probes),
             required_relations=tuple(QualifiedName.parse(table.fqn) for table in self.view.tables),
         )
+
+
+def _metric_probe(target: QualifiedName, metric: Metric) -> SmokeProbe | None:
+    """Return the probe that queries one metric; None when no query can name it, which smoke reports.
+
+    A window metric's query must request each dimension its PARTITION BY EXCLUDING names, so
+    a key there that is not a `TABLE.DIMENSION` reference leaves the metric unqueryable.
+    """
+    excluded = tuple(key.text.strip() for key in metric.window.partition_excluding) if metric.window else ()
+    if any(_DIMENSION_REFERENCE.fullmatch(key) is None for key in excluded):
+        return None
+    query = _member_probe(target, "METRICS", metric.table, metric.name, metric.expr, limit=True, excluding=excluded)
+    return SmokeProbe(key=artifact_key("metric", metric.qualified_name.casefold()), kind=ProbeKind.METRIC, sql=query)
 
 
 def _view_probe(view: SemanticView, target: QualifiedName) -> Sql:
@@ -238,8 +250,12 @@ def _member_probe(
     expression: AuthoredExpression | None,
     *,
     limit: bool,
+    excluding: tuple[str, ...] = (),
 ) -> Sql:
     """Query one member through SEMANTIC_VIEW, with the dimensions a windowed metric requires.
+
+    `excluding` holds the `TABLE.DIMENSION` keys a structured window excludes, which the query
+    requests besides those its expression names.
 
     Example:
         SELECT SV.ORDER_COUNT FROM SEMANTIC_VIEW(DB.S.V METRICS ORDERS.ORDER_COUNT) AS SV LIMIT 1
@@ -248,7 +264,8 @@ def _member_probe(
     qualified = (
         member if table is None else sql("{table}.{member}", table=ident(Identifier.parse(table)), member=member)
     )
-    required = _required_dimension_clause(expression.text) if expression is not None else ()
+    named = _required_dimension_clause(expression.text) if expression is not None else ()
+    required = (*named, *(_dimension(*key.split(".")) for key in excluding))
     dimensions = sql(" DIMENSIONS {names}", names=join(", ", required)) if required else sql("")
     parts = {
         "member": member,
@@ -265,6 +282,10 @@ def _member_probe(
     return sql(
         "SELECT SV.{member} FROM SEMANTIC_VIEW({view} METRICS {qualified}{dimensions}) AS SV LIMIT {limit}", **parts
     )
+
+
+def _dimension(table: str, name: str) -> Sql:
+    return sql("{table}.{name}", table=ident(Identifier.parse(table)), name=ident(Identifier.parse(name)))
 
 
 def _required_dimension_clause(expression: str) -> tuple[Sql, ...]:

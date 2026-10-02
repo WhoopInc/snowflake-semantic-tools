@@ -1,61 +1,66 @@
 """How apply names a failure: the classified error, the failed or skipped outcome, and its diagnostic.
 
-`classify_error` turns what Snowflake reported into the `ClassifiedError` an outcome carries;
-the composite lifecycle handlers classify their own failures with it. The outcome builders keep
-every refusal shaped alike, and `_outcome_diagnostic` reports a failed outcome under the code
-its error names.
+`classify_error` turns what Snowflake reported into the `ClassifiedError` an outcome carries,
+by the signature table in `domain.diagnostics.signatures`; the composite lifecycle handlers
+classify their own failures with it. The outcome builders keep every refusal shaped alike,
+`_outcome_diagnostic` reports a failed outcome under the code its error names, and
+`_cause_diagnostic` reports the Snowflake refusal behind it under its SNO code.
 """
 
 from __future__ import annotations
 
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic
+from snowflake_semantic_tools.domain.diagnostics.signatures import (
+    match_signature,
+    signature_codes,
+    snowflake_diagnostic,
+)
 from snowflake_semantic_tools.domain.model.lifecycle import (
     ApplyOutcome,
     Change,
     ClassifiedError,
-    ErrorKind,
     ExecResult,
     GrantCheck,
     OutcomeStatus,
 )
 
 
-def classify_error(message: str, *, sqlstate: str | None = None) -> ClassifiedError:
-    """Classify a Snowflake failure by its SQLSTATE, else by the words of its message.
-
-    The classes are tried in a fixed order and the first that matches wins: privilege, missing
-    object, name conflict, syntax, transient fault. Only a transient fault is retryable.
+def classify_error(message: str, *, sqlstate: str | None = None, errno: int | None = None) -> ClassifiedError:
+    """Classify a Snowflake failure by the signature table: its number, its SQLSTATE, then its wording.
 
     Returns:
-        SST-SNO004 for a privilege failure, SST-SNO003 for a missing object, SST-SNO002 for a
-        name conflict, SST-SNO009 for a syntax error, SST-SNO022 for a transient fault, and
-        SST-SNO001 for anything else.
+        The SNO code of the most specific signature `match_signature` finds, with that
+        signature's kind and retryability; SST-SNO001 when no signature matches.
     """
-    state = sqlstate or ""
-    upper = message.upper()
-    if state.startswith("28") or "INSUFFICIENT PRIVILEGE" in upper or "NOT AUTHORIZED" in upper:
-        return ClassifiedError("SST-SNO004", message, ErrorKind.PRIVILEGE, False, sqlstate)
-    if state in {"02000", "42S02"} or "DOES NOT EXIST" in upper:
-        return ClassifiedError("SST-SNO003", message, ErrorKind.NOT_FOUND, False, sqlstate)
-    # Checked before the syntax class, which shares the 42 prefix: a name conflict is not a typo.
-    if state == "42710" or "ALREADY EXISTS" in upper:
-        return ClassifiedError("SST-SNO002", message, ErrorKind.UNKNOWN, False, sqlstate)
-    if state.startswith("42") or "SYNTAX ERROR" in upper:
-        return ClassifiedError("SST-SNO009", message, ErrorKind.SYNTAX, False, sqlstate)
-    if state.startswith("08") or state in {"57014", "57P01"} or "TIMEOUT" in upper:
-        return ClassifiedError("SST-SNO022", message, ErrorKind.TRANSIENT, True, sqlstate)
-    return ClassifiedError("SST-SNO001", message, ErrorKind.UNKNOWN, False, sqlstate)
+    signature = match_signature(message, errno=errno, sqlstate=sqlstate)
+    return ClassifiedError(signature.code, message, signature.kind, signature.retryable, sqlstate)
 
 
 def _exception_error(exc: BaseException) -> ClassifiedError:
-    """Classify an exception by its message and, when it carries one, its SQLSTATE."""
-    return classify_error(str(exc), sqlstate=getattr(exc, "sqlstate", None))
+    """Classify an exception by its message and, when it carries them, its SQLSTATE and number."""
+    errno = getattr(exc, "errno", None)
+    return classify_error(
+        str(exc), sqlstate=getattr(exc, "sqlstate", None), errno=errno if isinstance(errno, int) else None
+    )
 
 
 def _script_error(result: ExecResult, fallback: str) -> ClassifiedError:
     """Classify a failed script by the error it reported; `fallback` is the message when it gave none."""
-    message = result.error.message if result.error else fallback
-    return classify_error(message, sqlstate=result.error.sqlstate if result.error else None)
+    if result.error is None:
+        return classify_error(fallback)
+    return classify_error(result.error.message, sqlstate=result.error.sqlstate, errno=result.error.errno)
+
+
+def _cause_diagnostic(change: Change, outcome: ApplyOutcome) -> Diagnostic | None:
+    """Report why Snowflake refused a failed change, under its SNO code; None for any other failure.
+
+    Diagnostics:
+        Any SNO code the signature table maps a driver error to, SST-SNO001 included.
+    """
+    if outcome.error is None or outcome.error.code not in signature_codes():
+        return None
+    target = change.rendered.target.sql if change.rendered else change.key
+    return snowflake_diagnostic(outcome.error.code, outcome.error.message, value=target, subject=change.key)
 
 
 def _rendered_ddl(change: Change) -> str:

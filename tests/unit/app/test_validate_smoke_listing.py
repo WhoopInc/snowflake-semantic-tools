@@ -133,6 +133,7 @@ def test_smoke_suite_runs_each_probe_and_supports_fail_fast() -> None:
 
     all_failures = RunSmokeSuite(bad_port).run((artifact,), fail_fast=False)
     assert len(all_failures.attempted) == 2
+    assert [item.code for item in all_failures.diagnostics] == ["SST-APL100", "SST-PLN100", "SST-APL006"]
 
 
 def test_listing_projects_pending_and_applied_artifacts() -> None:
