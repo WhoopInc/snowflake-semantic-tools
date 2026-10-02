@@ -1,4 +1,4 @@
-"""Discover and load semantic-layer YAML exactly once per compiler run."""
+"""Load semantic-layer YAML exactly once per compiler run, from the files `discover` found."""
 
 from __future__ import annotations
 
@@ -10,10 +10,9 @@ from types import MappingProxyType
 from typing import Any, TypeAlias
 
 from snowflake_semantic_tools.adapters.errors import ProjectError
+from snowflake_semantic_tools.adapters.yaml.discover import FileSet
 from snowflake_semantic_tools.domain.diagnostics import Diagnostic
-from snowflake_semantic_tools.domain.model.registry import SEMANTIC_REGISTRY, Registry
 
-YAML_SUFFIXES = frozenset((".yml", ".yaml"))
 NodePath: TypeAlias = tuple[str | int, ...]
 
 
@@ -59,43 +58,6 @@ class ParsedYaml:
 
 
 @dataclass(frozen=True, slots=True)
-class DiscoveredFile:
-    """One YAML file found under the semantic-models directory, before anything reads it.
-
-    Attributes:
-        path: Relative to the project directory, in POSIX form: how diagnostics name the file.
-        abs_path: The file under the project directory as given, so relative when that is;
-            `RawDocument.abs_path` is resolved.
-        size: In bytes, when discovered.
-        mtime_ns: The modification time when discovered, in nanoseconds since the epoch.
-        hint_root: The first directory below the semantic-models directory on the file's path;
-            None for a file directly in it.
-    """
-
-    path: str
-    abs_path: Path
-    size: int
-    mtime_ns: int
-    hint_root: str | None
-
-
-@dataclass(frozen=True, slots=True)
-class FileSet:
-    """The YAML files one run discovers, in path order, before any of them is read.
-
-    Attributes:
-        roots: Each discovered directory by its role; `discover_yaml` records `semantic_models`,
-            the directory as configured.
-        diagnostics: What discovery found wrong, which `load_documents` carries into its result;
-            `discover_yaml` reports nothing.
-    """
-
-    files: tuple[DiscoveredFile, ...]
-    roots: Mapping[str, str]
-    diagnostics: tuple[Diagnostic, ...] = ()
-
-
-@dataclass(frozen=True, slots=True)
 class RawDocument:
     """One semantic-model file, read and parsed once, with what its parse recorded.
 
@@ -105,7 +67,7 @@ class RawDocument:
         checksum: The SHA-256 of the file's bytes, as lowercase hex.
         tree, line_index, templates: As `ParsedYaml` holds them.
         root_keys: The tree's top-level keys, in file order.
-        hint_root: As `DiscoveredFile.hint_root`.
+        hint_root: As `discover.DiscoveredFile.hint_root`.
     """
 
     path: str
@@ -151,37 +113,6 @@ class RawDocuments:
             for document in self.documents
             if document.abs_path.is_relative_to(resolved) and root_key in document.root_keys
         )
-
-
-def discover_yaml(
-    project_dir: Path,
-    semantic_models_dir: str,
-    registry: Registry = SEMANTIC_REGISTRY,
-) -> FileSet:
-    """Discover paths only; no file content is opened here."""
-    root = project_dir / semantic_models_dir
-    del registry
-    if not root.is_dir():
-        raise ProjectError(f"no semantic model directory under {root}")
-    found: list[DiscoveredFile] = []
-    for path in sorted(root.rglob("*")):
-        if not path.is_file() or path.suffix.casefold() not in YAML_SUFFIXES:
-            continue
-        stat = path.stat()
-        relative = path.relative_to(project_dir).as_posix()
-        relative_to_root = path.relative_to(root)
-        hint_root = relative_to_root.parts[0] if len(relative_to_root.parts) > 1 else None
-        hint_root = hint_root
-        found.append(
-            DiscoveredFile(
-                path=relative,
-                abs_path=path,
-                size=stat.st_size,
-                mtime_ns=stat.st_mtime_ns,
-                hint_root=hint_root,
-            )
-        )
-    return FileSet(tuple(found), MappingProxyType({"semantic_models": semantic_models_dir}))
 
 
 def load_documents(

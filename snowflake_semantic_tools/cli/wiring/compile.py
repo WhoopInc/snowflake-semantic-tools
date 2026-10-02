@@ -14,6 +14,7 @@ from snowflake_semantic_tools.app.compile import CompileResult
 from snowflake_semantic_tools.app.compile.project import CompileProject
 from snowflake_semantic_tools.cli.group import SstUsageError
 from snowflake_semantic_tools.cli.wiring.project import project_inputs
+from snowflake_semantic_tools.domain.diagnostics import D
 from snowflake_semantic_tools.domain.model.artifact_key import artifact_key, split_artifact_key
 from snowflake_semantic_tools.domain.model.registry import SEMANTIC_REGISTRY
 
@@ -28,7 +29,7 @@ def selected_result(project_dir: Path, result: CompileResult, selected: str) -> 
 
     Raises:
         SstUsageError: the selector cannot be parsed, as `selection` says.
-        ProjectError: the selector matched no artifact.
+        ProjectError: the selector matched no artifact (SST-DIS010).
     """
     selected_types, selected_keys = selection((selected,))
     compiled = tuple(
@@ -38,7 +39,10 @@ def selected_result(project_dir: Path, result: CompileResult, selected: str) -> 
         and (selected_keys is None or item.artifact_key in selected_keys)
     )
     if not compiled:
-        raise ProjectError(f"selector {selected!r} matched no artifact in {project_dir}")
+        raise ProjectError(
+            f"selector {selected!r} matched no artifact in {project_dir}",
+            diagnostics=(D("SST-DIS010", selector=selected),),
+        )
     return dataclasses.replace(result, compiled=compiled)
 
 

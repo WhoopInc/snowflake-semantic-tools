@@ -7,7 +7,7 @@ from pathlib import Path
 import yaml
 
 from snowflake_semantic_tools.adapters.errors import ProjectError
-from snowflake_semantic_tools.adapters.yaml.documents import YAML_SUFFIXES
+from snowflake_semantic_tools.adapters.yaml.discover import YAML_SUFFIXES
 from snowflake_semantic_tools.adapters.yaml.parse import _neutralize_templates, _restore_templates
 from snowflake_semantic_tools.domain.migrate.refs import FilterSite
 

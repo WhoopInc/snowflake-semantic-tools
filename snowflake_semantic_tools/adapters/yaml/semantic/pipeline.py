@@ -14,7 +14,9 @@ from types import MappingProxyType
 from typing import Any
 
 from snowflake_semantic_tools.adapters.errors import ProjectError
-from snowflake_semantic_tools.adapters.yaml.documents import RawDocuments, discover_yaml, load_documents
+from snowflake_semantic_tools.adapters.yaml.discover import discover_yaml
+from snowflake_semantic_tools.adapters.yaml.documents import RawDocuments, load_documents
+from snowflake_semantic_tools.adapters.yaml.ownership import assign_owners
 from snowflake_semantic_tools.adapters.yaml.parse import parse_yaml_bytes, read_yaml_mapping
 from snowflake_semantic_tools.adapters.yaml.semantic.build import _build_view
 from snowflake_semantic_tools.adapters.yaml.semantic.collect import parse_semantic_project
@@ -50,14 +52,17 @@ class SemanticInputs:
 
 
 def read_semantic_inputs(project_dir: Path) -> SemanticInputs:
-    """Read `sst_config.yml`, then discover and parse every semantic-model document once.
+    """Read `sst_config.yml`, then discover, parse, and assign every semantic-model document once.
 
     The caller reads these before it loads the dbt target and models, so a broken config or a
-    missing semantic-models directory is reported before dbt is consulted.
+    missing semantic-models directory is reported before dbt is consulted. The documents carry
+    discovery's diagnostics, then load's, then each file no registered type owns.
     """
     config = read_yaml_mapping(project_dir / "sst_config.yml")
     semantic_models_dir = str((config.get("project") or {}).get("semantic_models_dir") or "semantic_models")
-    documents = load_documents(discover_yaml(project_dir, semantic_models_dir), parse_yaml_bytes)
+    documents = load_documents(discover_yaml(project_dir, semantic_models_dir, config=config), parse_yaml_bytes)
+    unowned, _ = assign_owners(documents)
+    documents = replace(documents, diagnostics=(*documents.diagnostics, *unowned))
     return SemanticInputs(config, semantic_models_dir, documents)
 
 
