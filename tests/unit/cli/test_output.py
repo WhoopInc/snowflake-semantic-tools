@@ -40,12 +40,13 @@ def test_validate_json_emits_one_v2_envelope() -> None:
     assert envelope["invocation"]["started_at"]
     assert envelope["invocation"]["duration_s"] >= 0
     assert envelope["status"] == "ok"
-    # One info is SST-VAL854: the fixture's profile registry is not Desktop's. The
+    # One info is SST-VAL854: the fixture's profile registry is not Desktop's; three are
+    # the dbt seam's notes, SST-DBT016 for orders and products and SST-DBT025. The
     # one warning is SST-VAL528; the plugin has a consumer now, the operator profile.
     assert envelope["summary"] == {
         "error": 0,
         "warning": 1,
-        "info": 5,
+        "info": 8,
         "promoted": 0,
         "suppressed_cascade": 0,
         "baselined": 0,

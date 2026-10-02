@@ -166,7 +166,16 @@ def select_models(catalog: DbtCatalog, request: EnrichRequest) -> tuple[tuple[Db
 
     Diagnostics:
         SST-DBT031: a model selected by name has no relation.
+        SST-DBT002: a name selected without a wildcard is no model the manifest knows.
     """
+    known = {model.name.casefold() for model in catalog.models} | {
+        name.casefold() for name in catalog.relationless_models
+    }
+    absent = [
+        D("SST-DBT002", model=pattern, subject=f"dbt_model:{pattern}")
+        for pattern in request.selected
+        if not any(character in pattern for character in "*?[") and pattern.casefold() not in known
+    ]
     models = [model for model in catalog.models if model.package_name in (None, catalog.project_name)]
     if request.paths:
         paths = [path.strip("/") for path in request.paths]
@@ -178,9 +187,12 @@ def select_models(catalog: DbtCatalog, request: EnrichRequest) -> tuple[tuple[Db
     if request.excluded:
         models = [model for model in models if not _matches(model.name, request.excluded)]
     diagnostics = [
-        D("SST-DBT031", model=name, subject=f"dbt_model:{name}")
-        for name in catalog.relationless_models
-        if request.selected and _matches(name, request.selected) and not _matches(name, request.excluded)
+        *absent,
+        *(
+            D("SST-DBT031", model=name, subject=f"dbt_model:{name}")
+            for name in catalog.relationless_models
+            if request.selected and _matches(name, request.selected) and not _matches(name, request.excluded)
+        ),
     ]
     return tuple(sorted(models, key=lambda model: model.name.casefold())), diagnostics
 
@@ -249,6 +261,7 @@ class EnrichProject:
                 of the wrong type, or one out of bounds; an error stops the run before any read.
             SST-CFG038: the run reads row data and the project forbids collecting it.
             SST-DBT031: a model selected by name has no relation.
+            SST-DBT002: a name selected without a wildcard is no model the manifest knows.
             SST-SNO030: a model's relation is missing or not visible.
             SST-SNO031: reading a model's values or asking Cortex failed.
             SST-PRS030: Cortex proposed a synonym that can never be written; it is dropped.

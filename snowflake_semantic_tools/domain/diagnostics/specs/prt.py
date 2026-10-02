@@ -1,7 +1,7 @@
 """External-system codes (PRT): a failure at the boundary with an external system.
 
-The Snowflake connection, a transient failure, a refused privilege, a missing object, an
-unsupported dbt manifest schema, or a file SST refuses to read.
+The Snowflake connection, a transient failure, a refused privilege, a missing object, or a
+file SST refuses to read.
 """
 
 from __future__ import annotations
@@ -38,13 +38,6 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Snowflake object not found",
         "Snowflake object {value} was not found: {detail}",
         "create the dependency or correct its name",
-    ),
-    spec(
-        "SST-PRT007",
-        Severity.ERROR,
-        "dbt manifest schema version unsupported",
-        "manifest schema '{found}' is unsupported; expected '{expected}'",
-        "use a dbt version that emits {expected}",
     ),
     spec(
         "SST-PRT009",

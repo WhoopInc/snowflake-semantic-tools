@@ -22,6 +22,9 @@ _OPTION_HELP: Mapping[str, str] = {
     "--project-dir": "Project root: the directory that holds `sst_config.yml`.",
     "--target": "Target from `profiles.yml`; defaults to the profile's own default target.",
     "--manifest": "Read this dbt `manifest.json` instead of running `dbt parse`.",
+    "--allow-unsupported-manifest-schema": (
+        "Read a dbt manifest whose schema version SST does not support or cannot read, at your own risk."
+    ),
     "--output": "`human` for readable text, or `json` for one machine-readable envelope.",
     "--select": "Only these artifacts: a semantic view name, `type:<type>`, or `<type>:<name>`.",
     "--exclude": "Leave these artifacts out; same forms as `--select`.",

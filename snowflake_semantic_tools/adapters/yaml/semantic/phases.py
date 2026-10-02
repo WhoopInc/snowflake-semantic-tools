@@ -45,9 +45,14 @@ from snowflake_semantic_tools.adapters.yaml.semantic.relationships import (
 from snowflake_semantic_tools.adapters.yaml.semantic.target import _folder_route_diagnostics, _stray_view_diagnostics
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, Origin
 from snowflake_semantic_tools.domain.model.artifact_key import artifact_key
-from snowflake_semantic_tools.domain.model.dbt import DbtModel, DbtTarget
+from snowflake_semantic_tools.domain.model.dbt import DbtCatalog, DbtModel, DbtTarget
 from snowflake_semantic_tools.domain.model.project import ParsedProject, ParsedView
 from snowflake_semantic_tools.domain.model.semantic_view import Relationship
+from snowflake_semantic_tools.domain.validate.dbt_seam import (
+    collapse_diagnostics,
+    consumed_model_diagnostics,
+    unreadable_model,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -57,6 +62,7 @@ class LoadContext:
     Attributes:
         views_dir: `<semantic_models_dir>/semantic_views`; only the views under it are built.
         models: The target's dbt models, by casefolded name.
+        catalog: The manifest those models come from, with the models it could not read.
     """
 
     project_dir: Path
@@ -66,6 +72,7 @@ class LoadContext:
     views_dir: Path
     target: DbtTarget
     models: dict[str, DbtModel]
+    catalog: DbtCatalog
 
 
 @dataclass(frozen=True, slots=True)
@@ -205,6 +212,9 @@ def _document_diagnostics(
         table for view in parsed.views if not view.poisoned for table in view.declared_tables if table in context.models
     )
     return (
+        *_unreadable_view_tables(context, parsed),
+        *consumed_model_diagnostics(context.catalog, referenced_models),
+        *collapse_diagnostics(context.catalog, referenced_models),
         *_folder_route_diagnostics(context.config, context.views_dir),
         *_stray_view_diagnostics(documents, context.views_dir),
         *_authored_key_diagnostics(documents),
@@ -216,6 +226,24 @@ def _document_diagnostics(
         *_dbt_model_diagnostics(context.models, referenced_models),
         *_dbt_column_diagnostics(context.models, referenced_models),
     )
+
+
+def _unreadable_view_tables(context: LoadContext, parsed: ParsedProject) -> tuple[Diagnostic, ...]:
+    """Report each view table that names a model with no relation, once per view and model.
+
+    Diagnostics:
+        SST-DBT009: a view's table names a disabled or relationless model.
+    """
+    found: list[Diagnostic] = []
+    for view in parsed.views:
+        subject = artifact_key("semantic_view", view.name)
+        for table in view.declared_tables:
+            diagnostic = (
+                unreadable_model(context.catalog, table, subject=subject) if table not in context.models else None
+            )
+            if diagnostic is not None:
+                found.append(diagnostic)
+    return tuple(found)
 
 
 @dataclass(frozen=True, slots=True)
@@ -256,8 +284,8 @@ def _semantic_checks(context: LoadContext, members: SemanticMembers, legacy_file
     )
     filter_diagnostics = _filter_diagnostics(members.filters)
     metric_findings = _metric_diagnostics(members.metrics, context.models, variables)
-    metric_tables, unknown_table_metrics = _unknown_metric_tables(members.metrics, context.models)
-    member_tables, unknown_table_members = _unknown_member_tables(authored, context.models)
+    metric_tables, unknown_table_metrics = _unknown_metric_tables(members.metrics, context.models, context.catalog)
+    member_tables, unknown_table_members = _unknown_member_tables(authored, context.models, context.catalog)
     return SemanticChecks(
         diagnostics=(
             *_outside_legacy_files(expression_findings, legacy_files),
@@ -285,31 +313,36 @@ def _outside_legacy_files(findings: tuple[Diagnostic, ...], legacy_files: frozen
     )
 
 
+def _unknown_table(catalog: DbtCatalog, subject: str, table_name: str) -> Diagnostic:
+    """Report a declared table that is not a readable dbt model.
+
+    Diagnostics:
+        SST-DBT009: the table names a disabled or relationless model.
+        SST-MEM003: the table names no dbt model at all.
+    """
+    return unreadable_model(catalog, table_name, subject=subject) or D(
+        "SST-MEM003", member=subject, name=table_name, subject=subject
+    )
+
+
 def _unknown_metric_tables(
-    metrics: tuple[MetricDef, ...], models: Mapping[str, DbtModel]
+    metrics: tuple[MetricDef, ...], models: Mapping[str, DbtModel], catalog: DbtCatalog
 ) -> tuple[tuple[Diagnostic, ...], frozenset[str]]:
-    """Report each metric table that is not a dbt model (SST-MEM003), with the metric names, casefolded."""
+    """Report each metric table that is not a readable dbt model, with the metric names, casefolded."""
     diagnostics: list[Diagnostic] = []
     names: set[str] = set()
     for metric in metrics:
         for table_name in metric.tables:
             if table_name not in models:
                 names.add(metric.name.casefold())
-                diagnostics.append(
-                    D(
-                        "SST-MEM003",
-                        member=artifact_key("metric", metric.name),
-                        name=table_name,
-                        subject=artifact_key("metric", metric.name),
-                    )
-                )
+                diagnostics.append(_unknown_table(catalog, artifact_key("metric", metric.name), table_name))
     return tuple(diagnostics), frozenset(names)
 
 
 def _unknown_member_tables(
-    members: tuple[FilterDef | VerifiedQueryDef, ...], models: Mapping[str, DbtModel]
+    members: tuple[FilterDef | VerifiedQueryDef, ...], models: Mapping[str, DbtModel], catalog: DbtCatalog
 ) -> tuple[tuple[Diagnostic, ...], frozenset[str]]:
-    """Report each filter and verified query table that is not a dbt model, with their keys casefolded."""
+    """Report each filter and verified query table that is not a readable model, with the keys casefolded."""
     diagnostics: list[Diagnostic] = []
     keys: set[str] = set()
     for member in members:
@@ -317,7 +350,7 @@ def _unknown_member_tables(
         for table_name in member.tables:
             if table_name not in models:
                 keys.add(subject.casefold())
-                diagnostics.append(D("SST-MEM003", member=subject, name=table_name, subject=subject))
+                diagnostics.append(_unknown_table(catalog, subject, table_name))
     return tuple(diagnostics), frozenset(keys)
 
 

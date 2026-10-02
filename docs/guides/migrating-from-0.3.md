@@ -10,7 +10,7 @@ mechanical work is done by one command; the rest is renaming keys.
 
 1. Install 1.0 on a branch and put `profiles.yml` in the project root.
 2. Run `sst migrate refs`, review the report, then `sst migrate refs --write`.
-3. Run `sst validate` and rename the keys it reports (`SST-PRS020`, `SST-DBT005`,
+3. Run `sst validate` and rename the keys it reports (`SST-PRS020`, `SST-DBT032`,
    `SST-CFG043`).
 4. Point publishing at a new schema, then `sst compile`, `sst plan` and
    `sst apply`.
@@ -90,7 +90,7 @@ that deserve review.
 
 In the dbt YAML, `meta.sst.primary_key` is a list of columns and
 `meta.sst.unique_keys` a list of column lists. The 0.3 forms (a column name, a
-comma-separated string, a flat list of names) are errors (`SST-DBT005`) and are
+comma-separated string, a flat list of names) are errors (`SST-DBT032`) and are
 not read.
 
 A metric's `window:` block keeps 0.3's structure with 1.0 spellings, and `expr`

@@ -104,18 +104,21 @@ def test_rejects_an_unsupported_manifest_schema() -> None:
     metadata["dbt_schema_version"] = "https://schemas.getdbt.com/dbt/manifest/v13.json"
     with pytest.raises(ProjectError, match="manifest schema") as exc_info:
         catalog_from_document(document)
-    assert [diagnostic.code for diagnostic in exc_info.value.diagnostics] == ["SST-PRT007"]
+    assert [diagnostic.code for diagnostic in exc_info.value.diagnostics] == ["SST-DBT017"]
 
 
-def test_rejects_a_model_without_a_physical_relation() -> None:
+def test_a_model_without_a_physical_relation_is_left_out_with_its_materialisation() -> None:
     document = manifest_document()
     nodes = document["nodes"]
     assert isinstance(nodes, dict)
     model = nodes["model.fixture.products"]
     assert isinstance(model, dict)
     model["relation_name"] = None
-    with pytest.raises(ProjectError, match="relation_name is required"):
-        catalog_from_document(document)
+    model["config"] = {"materialized": "ephemeral", "meta": {"sst": {"primary_key": ["product_id"]}}}
+    catalog = catalog_from_document(document)
+    assert catalog.model("products") is None
+    assert catalog.relationless_models == ("products",)
+    assert dict(catalog.unreadable_models) == {"products": "ephemeral"}
 
 
 def test_loads_a_manifest_from_disk(tmp_path: Path) -> None:
@@ -286,17 +289,14 @@ def test_models_keep_unique_id_order_and_a_malformed_model_reports_its_first_pro
     with pytest.raises(ProjectError, match="seed.fixture.raw must be an object"):
         catalog_from_document(document)
     del nodes["seed.fixture.raw"]
-    # Columns are read before keys, and keys before the relation.
-    broken = dict(product, relation_name=None, columns={"bad": 3})
+    # Columns are read before keys.
+    broken = dict(product, columns={"bad": 3})
     broken["config"] = {"meta": {"sst": {"primary_key": {"column": "x"}}}}
     nodes["model.fixture.products"] = broken
     with pytest.raises(ProjectError, match=r"columns\.bad must be an object"):
         catalog_from_document(document)
     broken["columns"] = {}
     with pytest.raises(ProjectError, match="primary_key must be a list"):
-        catalog_from_document(document)
-    broken["config"] = {"meta": {"sst": {"primary_key": ["x"]}}}
-    with pytest.raises(ProjectError, match="relation_name is required"):
         catalog_from_document(document)
 
 

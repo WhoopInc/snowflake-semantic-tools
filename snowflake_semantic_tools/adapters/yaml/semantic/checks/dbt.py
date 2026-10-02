@@ -176,7 +176,7 @@ def _dbt_model_diagnostics(
 
     Diagnostics:
         SST-DBT030: when `meta.sst` holds a forbidden location key, once per key.
-        SST-DBT005: when the model writes key metadata in the 0.3 form, once per field.
+        SST-DBT032: when the model writes key metadata in the 0.3 form, once per field.
         SST-PRS004: when `meta.sst` holds a key SST does not read, once per key.
         SST-VAL312: when the model declares neither `primary_key` nor `unique_keys`, in either form.
         SST-VAL310: when a declared key column is not a column of the model.
@@ -191,7 +191,7 @@ def _dbt_model_diagnostics(
         if referenced_models is not None and model.name.casefold() not in referenced_models:
             continue
         diagnostics.extend(
-            D("SST-DBT005", model=model.name, field=field, subject=subject) for field in model.legacy_key_fields
+            D("SST-DBT032", model=model.name, field=field, subject=subject) for field in model.legacy_key_fields
         )
         diagnostics.extend(
             D("SST-PRS004", artifact=subject, field=f"meta.sst.{key}", subject=subject)

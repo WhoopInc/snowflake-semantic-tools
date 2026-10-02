@@ -35,13 +35,14 @@ def test_the_option_groups_expand_in_the_order_the_commands_list_them() -> None:
         "--project-dir",
         "--target",
         "--manifest",
+        "--allow-unsupported-manifest-schema",
         "--select",
         "--exclude",
         "--strict",
         "--snowflake-syntax-check",
         "--output",
     ]
-    assert [param.name for param in declared][:5] == [
+    assert [param.name for param in declared if param.expose_value][:5] == [
         "project_dir",
         "target_name",
         "manifest_path",
@@ -65,12 +66,18 @@ def test_the_project_directory_must_exist_unless_the_command_creates_it() -> Non
 
 
 def test_the_manifest_must_be_an_existing_file() -> None:
-    [manifest] = params(options.manifest_option())
+    [manifest, override] = params(options.manifest_option())
     assert isinstance(manifest.type, click.Path)
     assert (manifest.name, manifest.type.exists, manifest.type.dir_okay, manifest.multiple) == (
         "manifest_path",
         True,
         False,
+        False,
+    )
+    # The schema override is kept in the click context, not passed to the command.
+    assert (override.opts, override.is_flag, override.expose_value) == (
+        ["--allow-unsupported-manifest-schema"],
+        True,
         False,
     )
 

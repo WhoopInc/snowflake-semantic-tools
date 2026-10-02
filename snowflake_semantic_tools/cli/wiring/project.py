@@ -12,11 +12,18 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
 
+import click
+
 from snowflake_semantic_tools.adapters.dbt.profiles import ProfileTarget, load_profile_target
 from snowflake_semantic_tools.adapters.fs.local import StateFileStore, state_file
 from snowflake_semantic_tools.adapters.project_source import YamlProjectInputs
 from snowflake_semantic_tools.adapters.snowflake.connector import SnowflakeConnector
+from snowflake_semantic_tools.adapters.yaml.documents import LoadCache
+from snowflake_semantic_tools.cli.options import ALLOW_UNSUPPORTED_MANIFEST_SCHEMA
 from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
+
+# Where a command's shared `LoadCache` is kept, in the click context's `meta`.
+LOAD_CACHE = "sst.load_cache"
 
 
 def target_dir(project_dir: Path) -> Path:
@@ -42,13 +49,18 @@ def project_inputs(project_dir: Path, target_name: str | None, manifest_path: Pa
     """Bind the project's files as the inputs every use case reads.
 
     The commit is asked for through this module's `git_sha`, looked up when a use case
-    needs it, so replacing `git_sha` here changes the commit every use case sees.
+    needs it, so replacing `git_sha` here changes the commit every use case sees. Under a click
+    command, `--allow-unsupported-manifest-schema` is read from its context, and every input the
+    command builds shares one load cache, so a file read twice in the run is parsed once.
     """
+    context = click.get_current_context(silent=True)
     return YamlProjectInputs(
         project_dir,
         target_name=target_name,
         manifest_path=manifest_path,
         git_sha=lambda: git_sha(project_dir),
+        allow_unsupported_manifest_schema=bool(context and context.meta.get(ALLOW_UNSUPPORTED_MANIFEST_SCHEMA)),
+        load_cache=context.meta.setdefault(LOAD_CACHE, LoadCache()) if context is not None else None,
     )
 
 

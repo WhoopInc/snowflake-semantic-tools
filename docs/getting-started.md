@@ -8,7 +8,7 @@ change goes through.
 
 - Python 3.11, 3.12, or 3.13.
 - A dbt project on the Snowflake adapter whose `dbt parse` writes manifest
-  schema v12. SST is tested with dbt 1.11 and 1.12 and reports `SST-PRT007` for
+  schema v12. SST is tested with dbt 1.11 and 1.12 and reports `SST-DBT017` for
   any other manifest schema.
 - A Snowflake role that can create semantic views in the schema you publish to,
   and create a table for SST's state.

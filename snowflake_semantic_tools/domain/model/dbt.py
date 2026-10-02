@@ -2,7 +2,11 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from collections.abc import Mapping
+from dataclasses import dataclass, field
+from types import MappingProxyType
+
+from snowflake_semantic_tools.domain.diagnostics import Diagnostic
 
 
 @dataclass(frozen=True, slots=True)
@@ -68,6 +72,12 @@ class DbtModel:
     raw_relation_name: str | None = None
     # `patch_path` relative to the project root, without dbt's `<package>://` prefix.
     patch_file: str | None = None
+    # dbt's `checksum.checksum` of the model's SQL file; None when the manifest records none.
+    checksum: str | None = None
+    # The model declares an enforced contract.
+    has_contract: bool = False
+    # How many dbt tests are attached to the model.
+    test_count: int = 0
 
     def column(self, name: str) -> DbtColumn | None:
         """Return a column case-insensitively."""
@@ -82,6 +92,16 @@ class DbtModel:
 
 
 @dataclass(frozen=True, slots=True)
+class DbtSource:
+    """One dbt source table: `source('<source_name>', '<name>')`, and the relation it reads."""
+
+    unique_id: str
+    source_name: str
+    name: str
+    relation_name: str | None
+
+
+@dataclass(frozen=True, slots=True)
 class DbtCatalog:
     """All dbt models visible to one parsed target."""
 
@@ -89,8 +109,15 @@ class DbtCatalog:
     dbt_version: str | None
     project_name: str | None
     models: tuple[DbtModel, ...]
-    # Models left out because they have no relation and no SST metadata, such as ephemeral ones.
+    # Models left out because they have no relation, such as ephemeral ones.
     relationless_models: tuple[str, ...] = ()
+    # Why each model with no relation has none, by casefolded name: its materialisation, such
+    # as `ephemeral`, or `disabled` for a model dbt moved to the manifest's `disabled` map.
+    unreadable_models: Mapping[str, str] = field(default_factory=lambda: MappingProxyType({}))
+    # The declared dbt sources, in sorted unique-id order.
+    sources: tuple[DbtSource, ...] = ()
+    # What reading the manifest found wrong with nodes SST skipped or with the project as a whole.
+    diagnostics: tuple[Diagnostic, ...] = ()
 
     def model(self, name: str) -> DbtModel | None:
         """Return a model by its dbt logical name, case-insensitively."""

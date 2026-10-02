@@ -14,7 +14,7 @@ from types import MappingProxyType
 from typing import Any
 
 from snowflake_semantic_tools.adapters.errors import ProjectError
-from snowflake_semantic_tools.adapters.yaml.documents import RawDocuments, discover_yaml, load_documents
+from snowflake_semantic_tools.adapters.yaml.documents import LoadCache, RawDocuments, discover_yaml, load_documents
 from snowflake_semantic_tools.adapters.yaml.parse import parse_yaml_bytes, read_yaml_mapping
 from snowflake_semantic_tools.adapters.yaml.semantic.build import _build_view
 from snowflake_semantic_tools.adapters.yaml.semantic.collect import parse_semantic_project
@@ -33,11 +33,12 @@ from snowflake_semantic_tools.adapters.yaml.semantic.target import _semantic_vie
 from snowflake_semantic_tools.adapters.yaml.semantic.view_instructions import _view_instructions
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, DiagnosticBag, Origin
 from snowflake_semantic_tools.domain.model.artifact_key import artifact_key
-from snowflake_semantic_tools.domain.model.dbt import DbtModel, DbtTarget
+from snowflake_semantic_tools.domain.model.dbt import DbtCatalog, DbtModel, DbtTarget
 from snowflake_semantic_tools.domain.model.project import ParsedMember, ResolvedProject, SemanticViewProject
 from snowflake_semantic_tools.domain.model.registry import SEMANTIC_REGISTRY
 from snowflake_semantic_tools.domain.model.semantic_view import SemanticView
 from snowflake_semantic_tools.domain.resolve.members import attach_view_members
+from snowflake_semantic_tools.domain.validate.dbt_seam import fan_out_diagnostics, seam_summary
 
 
 @dataclass(frozen=True, slots=True)
@@ -49,15 +50,18 @@ class SemanticInputs:
     documents: RawDocuments
 
 
-def read_semantic_inputs(project_dir: Path) -> SemanticInputs:
+def read_semantic_inputs(project_dir: Path, cache: LoadCache | None = None) -> SemanticInputs:
     """Read `sst_config.yml`, then discover and parse every semantic-model document once.
 
     The caller reads these before it loads the dbt target and models, so a broken config or a
     missing semantic-models directory is reported before dbt is consulted.
+
+    Args:
+        cache: The parses this run already holds, which an unchanged file is served from.
     """
     config = read_yaml_mapping(project_dir / "sst_config.yml")
     semantic_models_dir = str((config.get("project") or {}).get("semantic_models_dir") or "semantic_models")
-    documents = load_documents(discover_yaml(project_dir, semantic_models_dir), parse_yaml_bytes)
+    documents = load_documents(discover_yaml(project_dir, semantic_models_dir), parse_yaml_bytes, cache)
     return SemanticInputs(config, semantic_models_dir, documents)
 
 
@@ -67,6 +71,7 @@ def load_semantic_views_result(
     *,
     target: DbtTarget,
     models: dict[str, DbtModel],
+    catalog: DbtCatalog | None = None,
 ) -> SemanticViewProject:
     """Load healthy views while collecting view-local failures.
 
@@ -89,7 +94,8 @@ def load_semantic_views_result(
        tables are malformed, or whose file uses the legacy globals.
     10. Attach every unpoisoned member to the views it belongs to.
     11. Build every enabled, unpoisoned view under semantic_views/; one that fails is
-        reported and left out.
+        reported and left out. Then the dbt seam: each model that feeds several built views,
+        and a summary of what was read.
 
     Poisoning keeps one fault to one diagnostic: a poisoned member attaches to no view and
     a poisoned view is not built, while everything else still builds. Phase 9 reads every
@@ -100,13 +106,14 @@ def load_semantic_views_result(
         inputs: The project config and semantic-model documents, as `read_semantic_inputs` read them.
         target: The dbt target that `{{ target.database }}` and `{{ target.schema }}` name.
         models: The target's dbt models, by casefolded name.
+        catalog: The manifest the models come from; None stands for one holding just `models`.
 
     Raises:
         ProjectError: A member cannot be read at all, or there is no semantic_views/ directory.
     """
     parsed = parse_semantic_project(inputs.documents, project_dir, inputs.semantic_models_dir, models)
     members = _typed_members(parsed)
-    context = _load_context(project_dir, inputs, target, models)
+    context = _load_context(project_dir, inputs, target, models, catalog)
     structure = _structural_checks(context, parsed, members.metrics)
     semantic = _semantic_checks(context, members, structure.legacy_files)
     poison = _member_poison(parsed.members, members, structure.legacy_files, semantic)
@@ -128,6 +135,14 @@ def load_semantic_views_result(
     poison = _view_poison(poison, parsed.views, reported, structure.duplicate_views, structure.legacy_files)
     attached_members, attachment = _attach(parsed.members, poison, view_tables, instruction_names)
     views, build_diagnostics = _build_views(context, poison, attached_members, attachment)
+    feeds = {artifact_key("semantic_view", view.fqn.rsplit(".", 1)[-1]): view.referenced_models for view in views}
+    build_diagnostics = (
+        *build_diagnostics,
+        *fan_out_diagnostics(feeds, context.catalog),
+        seam_summary(
+            context.catalog, {name for view in views for name in view.referenced_models}, sum(map(len, feeds.values()))
+        ),
+    )
     resolved = ResolvedProject(
         views=views,
         attachment=attachment,
@@ -140,7 +155,11 @@ def load_semantic_views_result(
 
 
 def _load_context(
-    project_dir: Path, inputs: SemanticInputs, target: DbtTarget, models: dict[str, DbtModel]
+    project_dir: Path,
+    inputs: SemanticInputs,
+    target: DbtTarget,
+    models: dict[str, DbtModel],
+    catalog: DbtCatalog | None = None,
 ) -> LoadContext:
     """Gather the fixed inputs every later phase reads.
 
@@ -150,8 +169,11 @@ def _load_context(
     views_dir = project_dir / inputs.semantic_models_dir / "semantic_views"
     if not views_dir.is_dir():
         raise ProjectError(f"no semantic_views/ directory under {project_dir / inputs.semantic_models_dir}")
+    catalog = catalog or DbtCatalog(
+        schema_version="", dbt_version=None, project_name=None, models=tuple(models.values())
+    )
     return LoadContext(
-        project_dir, inputs.config, inputs.semantic_models_dir, inputs.documents, views_dir, target, models
+        project_dir, inputs.config, inputs.semantic_models_dir, inputs.documents, views_dir, target, models, catalog
     )
 
 
@@ -198,7 +220,15 @@ def _build_views(
         try:
             views.append(
                 _build_view(
-                    node, path, context.project_dir, view_target, context.models, members, attachment, context.config
+                    node,
+                    path,
+                    context.project_dir,
+                    view_target,
+                    context.models,
+                    members,
+                    attachment,
+                    context.config,
+                    context.catalog.sources,
                 )
             )
         except ProjectError as exc:

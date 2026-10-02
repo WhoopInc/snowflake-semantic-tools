@@ -1,27 +1,29 @@
 """Load what SST needs from a dbt project: the resolved target, its name, and its manifest's models.
 
-`dbt parse` runs here, and only when no manifest is given. `load_models` reads
-dbt_project.yml through the YAML reader the caller passes; `dbt_project_name` reads it
-as plain YAML, as dbt does. This package never parses an SST file.
+`invoke` runs dbt; this module reads what the project declares about where dbt writes and
+reads: the manifest's path and the model directories, through the YAML reader the caller
+passes, and whether the manifest still matches the model files. `dbt_project_name` reads
+dbt_project.yml as plain YAML, as dbt does. This package never parses an SST file.
 """
 
 from __future__ import annotations
 
-import subprocess
 from collections.abc import Callable, Mapping
+from hashlib import sha256
 from pathlib import Path
 from typing import Any
 
 import yaml
 
-from snowflake_semantic_tools.adapters.dbt.manifest import load_manifest_catalog
 from snowflake_semantic_tools.adapters.dbt.profiles import profile_output
 from snowflake_semantic_tools.adapters.errors import ProjectError
 from snowflake_semantic_tools.adapters.paths import resolve_within
-from snowflake_semantic_tools.domain.diagnostics import D, Origin
-from snowflake_semantic_tools.domain.model.dbt import DbtCatalog, DbtModel, DbtTarget
+from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, Origin
+from snowflake_semantic_tools.domain.model.dbt import DbtCatalog, DbtTarget
 
 YamlReader = Callable[[Path], Mapping[str, Any]]
+# dbt's own default when dbt_project.yml declares no `model-paths`.
+DEFAULT_MODEL_PATHS = ("models",)
 
 
 def resolve_target(project_dir: Path, target_name: str | None = None) -> DbtTarget:
@@ -63,55 +65,52 @@ def target_path(project_dir: Path, read_yaml: YamlReader) -> Path:
     return project_dir / target_path / "manifest.json"
 
 
-def run_dbt_parse(project_dir: Path, target_name: str | None) -> None:
-    """Run `dbt parse` on the project, with its own profiles.yml, for the target named.
+def model_paths(project_dir: Path, read_yaml: YamlReader) -> tuple[tuple[str, ...], tuple[Diagnostic, ...]]:
+    """Return dbt_project.yml's `model-paths`, or dbt's default when it declares none.
 
-    Raises:
-        ProjectError: dbt cannot be started, or exits non-zero; the message carries its output.
+    Diagnostics:
+        SST-DBT022: `model-paths` is declared but is not a list of directories; the default is used.
     """
-    command = [
-        "dbt",
-        "parse",
-        "--project-dir",
-        str(project_dir),
-        "--profiles-dir",
-        str(project_dir),
-    ]
-    if target_name:
-        command.extend(("--target", target_name))
-    try:
-        completed = subprocess.run(command, capture_output=True, text=True, check=False)
-    except OSError as exc:
-        raise ProjectError(f"cannot run dbt parse: {exc}") from exc
-    if completed.returncode != 0:
-        detail = (completed.stderr or completed.stdout).strip()
-        raise ProjectError(f"dbt parse failed with exit {completed.returncode}: {detail}")
+    value = read_yaml(project_dir / "dbt_project.yml").get("model-paths")
+    if value is None:
+        return DEFAULT_MODEL_PATHS, ()
+    if isinstance(value, list) and value and all(isinstance(item, str) and item.strip() for item in value):
+        return tuple(str(item).strip().rstrip("/") for item in value), ()
+    diagnostic = D(
+        "SST-DBT022",
+        origin=Origin("dbt_project.yml"),
+        subject="config:dbt_project.yml",
+        expected=repr(list(DEFAULT_MODEL_PATHS)),
+    )
+    return DEFAULT_MODEL_PATHS, (diagnostic,)
 
 
-def load_models(
-    project_dir: Path,
-    *,
-    read_yaml: YamlReader,
-    target_name: str | None = None,
-    manifest_path: Path | None = None,
-    invoke_dbt: bool = True,
-) -> dict[str, DbtModel]:
-    """Load dbt models only from the manifest dbt resolved for this target.
+def _fresh(path: Path, checksum: str) -> bool:
+    """Report whether a model file still has the checksum dbt recorded, read raw or stripped as dbt may."""
+    raw = path.read_bytes()
+    return checksum in (sha256(raw).hexdigest(), sha256(raw.decode("utf-8", "replace").strip().encode()).hexdigest())
 
-    Args:
-        read_yaml: Reads dbt_project.yml for its `target-path`; called only when no
-            `manifest_path` is given, and before dbt runs.
-        manifest_path: A manifest to read instead; dbt is then not run.
-        invoke_dbt: Whether to run `dbt parse` first when no manifest is given.
 
-    Returns:
-        Each model by its casefolded name.
+def stale_models(project_dir: Path, catalog: DbtCatalog, paths: tuple[str, ...]) -> tuple[Diagnostic, ...]:
+    """Report each model file under `paths` that changed after the manifest recorded its checksum.
+
+    Only the root project's models are compared, by the file dbt read them from; a model with no
+    checksum, or whose file is gone, is not compared.
+
+    Diagnostics:
+        SST-DBT005: a model file's contents no longer match the manifest, once per file.
     """
-    path = manifest_path or target_path(project_dir, read_yaml)
-    if manifest_path is None and invoke_dbt:
-        run_dbt_parse(project_dir, target_name)
-    catalog: DbtCatalog = load_manifest_catalog(path)
-    return {model.name.casefold(): model for model in catalog.models}
+    found: list[Diagnostic] = []
+    for model in sorted(catalog.models, key=lambda item: item.original_file_path or ""):
+        file = model.original_file_path
+        if file is None or model.checksum is None or model.package_name not in (None, catalog.project_name):
+            continue
+        if not any(file == root or file.startswith(f"{root}/") for root in paths):
+            continue
+        path = project_dir / file
+        if path.is_file() and not _fresh(path, model.checksum):
+            found.append(D("SST-DBT005", origin=Origin(file), subject=f"dbt_model:{model.name}", value=file))
+    return tuple(found)
 
 
 def dbt_project_name(project_dir: Path) -> str:
