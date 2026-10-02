@@ -12,7 +12,7 @@ from collections.abc import Mapping
 from dataclasses import replace
 
 from snowflake_semantic_tools.app.apply.errors import _exception_error, _failed, _rendered_ddl, _script_error, _skipped
-from snowflake_semantic_tools.app.lifecycle.composite import CatalogPublicationPort
+from snowflake_semantic_tools.app.lifecycle.ports import CatalogPublicationPort
 from snowflake_semantic_tools.domain.model.identifier import Identifier
 from snowflake_semantic_tools.domain.model.lifecycle import (
     Action,

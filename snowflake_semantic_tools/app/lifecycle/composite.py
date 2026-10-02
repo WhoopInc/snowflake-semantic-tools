@@ -13,9 +13,10 @@ from __future__ import annotations
 from abc import abstractmethod
 from collections.abc import Callable, Collection, Iterable, Mapping
 from types import MappingProxyType
-from typing import Generic, Protocol, TypeVar
+from typing import Generic, TypeVar
 
 from snowflake_semantic_tools.app.apply import classify_error
+from snowflake_semantic_tools.app.lifecycle.ports import PublicationPort
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, DiagnosticBag
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
 from snowflake_semantic_tools.domain.model.lifecycle import (
@@ -33,10 +34,7 @@ from snowflake_semantic_tools.domain.model.lifecycle import (
 )
 from snowflake_semantic_tools.domain.model.skill import BundleEntry
 from snowflake_semantic_tools.domain.ports.lifecycle import CompositeLifecycleHandler
-from snowflake_semantic_tools.domain.ports.snowflake.catalog import CatalogPort
 from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
-from snowflake_semantic_tools.domain.ports.snowflake.execution import ExecutionPort
-from snowflake_semantic_tools.domain.ports.snowflake.stage import StagePort
 from snowflake_semantic_tools.domain.sql import Sql, qname, sql
 from snowflake_semantic_tools.domain.state import AppliedEntry, AppliedResourceInput, Manifest
 
@@ -45,14 +43,6 @@ SSE_STAGE_TYPE = "INTERNAL NO CSE"
 
 SubjectT = TypeVar("SubjectT")
 ObservedT = TypeVar("ObservedT")
-
-
-class PublicationPort(ExecutionPort, StagePort, Protocol):
-    """The Snowflake roles every publication run uses: running its statements and moving its files."""
-
-
-class CatalogPublicationPort(CatalogPort, PublicationPort, Protocol):
-    """A publication port that also reads the catalog, as the eval and extension handlers do."""
 
 
 # The port a handler or run is typed with: at least `PublicationPort`, narrowed per artifact type.
