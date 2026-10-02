@@ -16,6 +16,11 @@ versioned JSON envelope on stdout and nothing else.
 | [`sst format`](#sst-format) | Rewrite YAML into canonical form: indentation, key order, and `\|-` block scalars. |
 | [`sst compile`](#sst-compile) | Compile every artifact and write the canonical manifest, offline. |
 | [`sst validate`](#sst-validate) | Validate every offline rule, with optional connected checks. |
+| [`sst baseline`](#sst-baseline) | Write and maintain the baseline file of known, not yet fixed, diagnostics. |
+| [`sst baseline add`](#sst-baseline-add) | Baseline every current instance of CODE, or with --all-warnings every current warning. |
+| [`sst baseline prune`](#sst-baseline-prune) | Remove the entries no current diagnostic matches; the only way an entry leaves the file. |
+| [`sst baseline renew`](#sst-baseline-renew) | Re-date the baseline --expires-in days from today, recording --reason as its audit record. |
+| [`sst baseline show`](#sst-baseline-show) | List the baseline's entries: those of one --code, or with --expired only once it has expired. |
 | [`sst list`](#sst-list) | List compiled artifacts and their cached application status, optionally of one TYPE. |
 | [`sst plan`](#sst-plan) | Observe live Snowflake state and compute a non-writing plan. |
 | [`sst apply`](#sst-apply) | Apply a current reviewed plan; smoke probes never run here. |
@@ -192,6 +197,89 @@ sst validate [OPTIONS]
 | `--database` | TEXT |  | Read from this database instead of the target's; never where an artifact is published. |
 | `--strict / --no-strict` | flag |  | Promote every warning to an error, else `$SST_STRICT`. Defaults to `validation.strict`. |
 | `--snowflake-syntax-check / --no-snowflake-syntax-check` | flag |  | Compile expressions against Snowflake. Defaults to `validation.snowflake_syntax_check`. |
+
+## sst baseline
+
+Write and maintain the baseline file of known, not yet fixed, diagnostics.
+
+Subcommands: [`sst baseline add`](#sst-baseline-add), [`sst baseline prune`](#sst-baseline-prune), [`sst baseline renew`](#sst-baseline-renew), [`sst baseline show`](#sst-baseline-show).
+
+## sst baseline add
+
+Baseline every current instance of CODE, or with --all-warnings every current warning.
+
+Additive: an entry is never removed. A new file expires in --expires-in days; an existing
+one keeps its date, which only `renew` moves. Exit 1 when CODE is an error or non-demotable,
+and 3 when CODE is not registered, or --all-warnings has no --yes off a terminal.
+
+Diagnostics:
+    SST-PRT100: no CODE and no --all-warnings, or CODE is not registered; raised. Also, at
+        exit 1, CODE cannot be baselined.
+    SST-PRT104: CODE and --all-warnings were both given; raised.
+    SST-PRT109: --all-warnings off a terminal without --yes; raised.
+
+```text
+sst baseline add [OPTIONS]
+```
+
+| Option | Value | Default | Description |
+|---|---|---|---|
+| `--select` | TEXT, repeatable |  | Baseline only the diagnostics of these artifacts. |
+| `--exclude` | TEXT, repeatable |  | Leave the diagnostics of these artifacts out. |
+| `--all-warnings` | flag |  | Baseline every current warning; prints the count and needs `--yes`. |
+| `--expires-in` | INTEGER RANGE | `180` | Days, 1 to 365, until a new baseline expires; an existing one keeps its date until `renew`. |
+| `--note` | TEXT |  | Written into each entry; defaults to `pre-existing at adoption of <code>`. |
+| `--yes / -y` | flag |  | Baseline every warning without asking; required off a terminal. |
+
+## sst baseline prune
+
+Remove the entries no current diagnostic matches; the only way an entry leaves the file.
+
+With --select or --exclude, only the entries of the artifacts chosen are considered.
+
+Diagnostics:
+    SST-PRT009: there is no baseline file to prune.
+
+```text
+sst baseline prune [OPTIONS]
+```
+
+| Option | Value | Default | Description |
+|---|---|---|---|
+| `--select` | TEXT, repeatable |  | Prune only the entries of these artifacts. |
+| `--exclude` | TEXT, repeatable |  | Leave the entries of these artifacts as they are. |
+
+## sst baseline renew
+
+Re-date the baseline --expires-in days from today, recording --reason as its audit record.
+
+Exit 1 when asked for more than 365 days, and 3 without --reason.
+
+Diagnostics:
+    SST-PRT100: --expires-in is above 365 days.
+    SST-PRT009: there is no baseline file to renew.
+
+```text
+sst baseline renew [OPTIONS]
+```
+
+| Option | Value | Default | Description |
+|---|---|---|---|
+| `--reason` | TEXT |  | Required. Why the baseline is renewed; written into the file. |
+| `--expires-in` | INTEGER RANGE | `180` | Days until the renewed baseline expires, at most 365. |
+
+## sst baseline show
+
+List the baseline's entries: those of one --code, or with --expired only once it has expired.
+
+```text
+sst baseline show [OPTIONS]
+```
+
+| Option | Value | Default | Description |
+|---|---|---|---|
+| `--code` | TEXT |  | Show only the entries of this code. |
+| `--expired` | flag |  | Show the entries only once the baseline has expired. |
 
 ## sst list
 

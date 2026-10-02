@@ -111,6 +111,7 @@ def command_body(
     outputs: Collection[str] = DEFAULT_OUTPUTS,
     config: ConfigNeed = ConfigNeed.REQUIRED,
     refusals: Callable[..., None] | None = None,
+    applies_baseline: bool = True,
 ) -> Callable[[Callable[..., CommandResult]], Callable[..., None]]:
     """Make the click callback for the body of `sst <name>`, which returns a `CommandResult`.
 
@@ -125,6 +126,8 @@ def command_body(
         refusals: Checks the command line alone, before anything is resolved, so a usage error
             exits 3 even in a directory that is not a project. It takes the parameters it names,
             as the body does.
+        applies_baseline: False for a command that reads and writes the baseline itself, as
+            `sst baseline` does, so the runner neither reads it first nor marks what it holds.
     """
 
     def decorate(body: Callable[..., CommandResult]) -> Callable[..., None]:
@@ -134,7 +137,7 @@ def command_body(
         def callback(**params: Any) -> None:
             options = GlobalOptions.from_params(params)
             given = {key: value for key, value in params.items() if key not in GLOBAL_NAMES}
-            run = _Run(name, body, wanted, options, given, frozenset(outputs), config, refusals)
+            run = _Run(name, body, wanted, options, given, frozenset(outputs), config, refusals, applies_baseline)
             guarded(run.execute, command=name, output=options.output)
 
         declared = command_global_options()(callback)
@@ -181,6 +184,7 @@ class _Run:
     outputs: frozenset[str]
     config: ConfigNeed
     refusals: Callable[..., None] | None
+    applies_baseline: bool = True
 
     def execute(self) -> None:
         """Check the command line, resolve the project, run the body, and report it."""
@@ -202,7 +206,8 @@ class _Run:
             target=self.given.get("target_name"),
             overrides=options.overrides,
         )
-        baseline = None if self.config is ConfigNeed.NONE else _baseline(options)
+        reads = self.applies_baseline and self.config is not ConfigNeed.NONE
+        baseline = _baseline(options) if reads else None
         result = self.body(**self._arguments(files))
         diagnostics, exit_code = with_policy(
             self.name,

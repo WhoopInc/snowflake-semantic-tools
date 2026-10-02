@@ -42,6 +42,7 @@ EXIT_CODES = {
     "clean": {0, 1, 3, 4},
     "migrate": {0, 1, 2, 3, 4},
     "explain": {0, 3},
+    "baseline": {0, 1, 3, 4},
     "format": {0, 1, 2, 3, 4},
 }
 GOLDEN = REPO_ROOT / "tests" / "golden" / "expected" / "ddl"
@@ -143,6 +144,10 @@ SCENARIOS: dict[tuple[str, int], Scenario] = {
     ("clean", 1): lambda tmp, mp: _clean_refused(tmp, mp),
     ("clean", 3): lambda tmp, _: _run("clean", "--force"),
     ("clean", 4): lambda tmp, _: _run("clean", "--project-dir", str(tmp)),
+    ("baseline", 0): lambda tmp, _: _run("baseline", "show", *common(project_copy(tmp))),
+    ("baseline", 1): lambda tmp, _: _run("baseline", "add", "SST-VAL116", *common(project_copy(tmp))),
+    ("baseline", 3): lambda tmp, _: _run("baseline", "renew"),
+    ("baseline", 4): lambda tmp, _: _run("baseline", "add", "SST-CFG018", "--project-dir", str(tmp)),
     ("explain", 0): lambda tmp, _: _run("explain", "SST-VAL009", "--project-dir", str(tmp)),
     ("explain", 3): lambda tmp, _: _run("explain", "SST-NOPE01"),
     ("format", 0): lambda tmp, _: _run("format", "--project-dir", str(_yaml_project(tmp, "a: 1\n"))),
