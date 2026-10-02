@@ -4,6 +4,9 @@ An entry reaches its extension one of three ways. `skill()` and `plugin()` name 
 extension this project publishes, and resolve to its published alias. `extension()`
 names one this project only consumes, and must pin a version itself. A STAGE source,
 a path into a mutable bundle, is kept as authored and reported.
+
+Its diagnostics are reported as each entry resolves against the `AgentCompileContext`, so
+they stay with resolution here rather than in `domain.validate`.
 """
 
 from __future__ import annotations

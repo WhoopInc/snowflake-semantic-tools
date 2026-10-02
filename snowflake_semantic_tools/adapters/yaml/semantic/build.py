@@ -42,8 +42,8 @@ from snowflake_semantic_tools.domain.model.semantic_view import (
     Tag,
     Variable,
 )
-from snowflake_semantic_tools.domain.model.sql_checks import qualified_name_problem
 from snowflake_semantic_tools.domain.sql import Sql, boolean, datatype, is_datatype, literal, number
+from snowflake_semantic_tools.domain.validate.sql import qualified_name_problem
 
 
 def _build_view(

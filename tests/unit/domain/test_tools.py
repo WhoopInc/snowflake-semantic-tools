@@ -4,14 +4,8 @@ from types import MappingProxyType
 
 from snowflake_semantic_tools.domain.diagnostics import Origin
 from snowflake_semantic_tools.domain.model.dbt import DbtCatalog, DbtColumn, DbtModel
-from snowflake_semantic_tools.domain.model.tool import (
-    ToolCatalog,
-    ToolGroup,
-    ToolMember,
-    ToolOwnership,
-    ToolParameter,
-    validate_tool_catalog,
-)
+from snowflake_semantic_tools.domain.model.tool import ToolCatalog, ToolGroup, ToolMember, ToolOwnership, ToolParameter
+from snowflake_semantic_tools.domain.validate.tool import validate_tool_catalog
 
 
 def test_tool_catalog_reference_resolution_requires_current_target() -> None:

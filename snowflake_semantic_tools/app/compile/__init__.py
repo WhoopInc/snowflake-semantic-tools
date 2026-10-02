@@ -28,7 +28,7 @@ from snowflake_semantic_tools.app.compile.base import (
     compile_each,
     has_error,
 )
-from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, DiagnosticBag
+from snowflake_semantic_tools.domain.diagnostics import Diagnostic, DiagnosticBag
 from snowflake_semantic_tools.domain.model.artifact_key import artifact_key
 from snowflake_semantic_tools.domain.model.identifier import Identifier, QualifiedName
 from snowflake_semantic_tools.domain.model.lifecycle import OwnershipMarker, ProbeKind, RenderedArtifact, SmokeProbe
@@ -36,6 +36,7 @@ from snowflake_semantic_tools.domain.model.semantic_view import SemanticView
 from snowflake_semantic_tools.domain.ports.semantic_view_source import SemanticViewSource
 from snowflake_semantic_tools.domain.render.semantic_view import render
 from snowflake_semantic_tools.domain.sql import AuthoredExpression, Sql, ident, join, qname, query_text, sql
+from snowflake_semantic_tools.domain.validate.targets import shared_targets
 
 __all__ = [
     "RENDER_ERRORS",
@@ -298,25 +299,8 @@ class CompileArtifacts:
 
 
 def _shared_targets(compiled: tuple[CompiledArtifact, ...]) -> tuple[Diagnostic, ...]:
-    """Two artifacts of different types that publish to one Snowflake name.
-
-    Whether the object types share a namespace is not documented for every pair,
-    so this warns rather than refuses; it always makes a report ambiguous.
-    """
-    by_target: dict[tuple[str, str, str], list[CompiledArtifact]] = {}
-    for item in compiled:
-        by_target.setdefault(item.rendered_artifact.target.folded, []).append(item)
-    # Profiles share the registry table by design, so only a clash across types counts.
-    return tuple(
-        D(
-            "SST-VAL843",
-            subject=items[1].artifact_key,
-            a=items[0].artifact_key,
-            b=items[1].artifact_key,
-            target=items[0].rendered_artifact.target.sql,
-        )
-        for items in by_target.values()
-        if len({item.artifact_type for item in items}) > 1
+    return shared_targets(
+        tuple((item.artifact_type, item.artifact_key, item.rendered_artifact.target) for item in compiled)
     )
 
 

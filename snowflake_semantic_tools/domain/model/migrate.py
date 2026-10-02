@@ -18,8 +18,8 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
-from snowflake_semantic_tools.domain.model.expression import is_boolean_expression
 from snowflake_semantic_tools.domain.model.reference import TemplateSyntaxError, scan_template_calls
+from snowflake_semantic_tools.domain.validate.expression import is_boolean_expression
 
 _SPAN = re.compile(r"\{\{.*?\}\}")
 _RELATION_KEY = re.compile(r"^(\s*)(left_table|right_table)(\s*:\s*)(\S.*?)\s*(#.*)?$")

@@ -7,14 +7,14 @@ import pytest
 from snowflake_semantic_tools.domain.diagnostics import Diagnostic, Origin
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
 from snowflake_semantic_tools.domain.model.lifecycle import RenderedArtifact, StatementPlan
-from snowflake_semantic_tools.domain.model.sql_checks import (
+from snowflake_semantic_tools.domain.render.eval import RenderedEval
+from snowflake_semantic_tools.domain.sql import AuthoredExpression, AuthoredQuery
+from snowflake_semantic_tools.domain.validate.sql import (
     checked_expression,
     checked_query,
     name_problem,
     qualified_name_problem,
 )
-from snowflake_semantic_tools.domain.render.eval import RenderedEval
-from snowflake_semantic_tools.domain.sql import AuthoredExpression, AuthoredQuery
 from tests.helpers.sql_values import statement, statements
 
 ORIGIN = Origin("metrics.yml", 3, 5)

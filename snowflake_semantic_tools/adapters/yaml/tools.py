@@ -21,8 +21,8 @@ from snowflake_semantic_tools.domain.model.tool import (
     ToolMember,
     ToolOwnership,
     ToolParameter,
-    validate_tool_catalog,
 )
+from snowflake_semantic_tools.domain.validate.tool import validate_tool_catalog
 
 
 def load_tool_catalog(

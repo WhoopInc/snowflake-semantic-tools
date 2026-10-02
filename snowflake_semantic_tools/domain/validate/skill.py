@@ -9,10 +9,11 @@ from __future__ import annotations
 
 from collections.abc import Container, Sequence
 
-from snowflake_semantic_tools.domain.diagnostics import Diagnostic, DiagnosticBag
+from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, DiagnosticBag, Origin
+from snowflake_semantic_tools.domain.model.identifier import Identifier
 from snowflake_semantic_tools.domain.model.skill.model import Plugin, Skill, SkillCatalog
-from snowflake_semantic_tools.domain.model.stage_path import ALLOWED_DESCRIPTION, unsafe_segment
-from snowflake_semantic_tools.domain.model.validation import SKILL_NAMES, Emitter, duplicates
+from snowflake_semantic_tools.domain.validate.shared import SKILL_NAMES, Emitter, duplicates
+from snowflake_semantic_tools.domain.validate.stage_path import ALLOWED_DESCRIPTION, unsafe_segment
 
 
 def validate_skill_catalog(catalog: SkillCatalog) -> DiagnosticBag:
@@ -92,3 +93,25 @@ def _plugin_rules(plugin: Plugin, other: str | None, skills: Container[str]) -> 
         if member not in skills:
             emit("SST-VAL835", name=member)
     return emit.diagnostics
+
+
+def extension_name_diagnostics(
+    subject: str, label: str, name: str, extension_name: str, origin: Origin
+) -> tuple[Diagnostic, ...]:
+    """Report SST-VAL801 when a skill or plugin's extension name cannot be an unquoted object name.
+
+    Only a name that passed the naming rule is checked, and a kebab-case name converts to
+    letters, digits and underscores, so the one way it fails is a leading digit, which the
+    naming rule allows.
+
+    Args:
+        label: What the name is in the report, such as `folder` or `plugin`.
+    """
+    try:
+        Identifier.parse(extension_name)
+    except ValueError:
+        detail = (
+            f"{label} name '{name}' publishes as {extension_name}, which must start with a letter to name an extension"
+        )
+        return (D("SST-VAL801", origin=origin, subject=subject, artifact=name, detail=detail),)
+    return ()

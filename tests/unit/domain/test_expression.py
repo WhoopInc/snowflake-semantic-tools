@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from snowflake_semantic_tools.domain.model.expression import call_arguments, is_aggregate_expression
+from snowflake_semantic_tools.domain.validate.expression import call_arguments, is_aggregate_expression
 
 COLUMN = "{{ ref('orders', 'amount') }}"
 

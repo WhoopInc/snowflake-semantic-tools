@@ -17,13 +17,10 @@ from snowflake_semantic_tools.domain.model.lifecycle import (
     StatementPlan,
 )
 from snowflake_semantic_tools.domain.model.profile import (
-    DESKTOP_REGISTRY,
     DesktopProfile,
     ProfileCatalog,
     ProfileRelease,
     build_profile,
-    unreached_skills,
-    validate_profile_catalog,
 )
 from snowflake_semantic_tools.domain.model.registry import GrantPreservation
 from snowflake_semantic_tools.domain.model.skill import (
@@ -33,6 +30,11 @@ from snowflake_semantic_tools.domain.model.skill import (
     SkillCatalog,
     build_plugin_bundle,
     flatten_skill,
+)
+from snowflake_semantic_tools.domain.validate.profile import (
+    desktop_registry_diagnostics,
+    unreached_skills,
+    validate_profile_catalog,
 )
 
 
@@ -143,11 +145,11 @@ class CompileProfiles:
         channel = self._channel
         if channel is None:
             return CompileResult((), DiagnosticBag(diagnostics))
-        if channel.registry.folded != QualifiedName.parse(DESKTOP_REGISTRY).folded:
-            diagnostics.append(D("SST-VAL854", value=channel.registry.sql, expected=DESKTOP_REGISTRY))
+        diagnostics.extend(desktop_registry_diagnostics(channel.registry))
         compiled: list[CompiledProfile] = []
         for profile in self._catalog.profiles:
-            # The SST-VAL855 appended here is an error on the profile, so it blocks it below.
+            # The SST-VAL855 appended here is an error on the profile, so it blocks it below. Like
+            # SST-VAL836 it is a blocking decision over what compile found, so it stays in `app`.
             diagnostics.extend(self._blocking_inputs(profile, blocked_plugins))
             subjects = _blocking_subjects(profile, self._shared_commands())
             if any(item.severity is Severity.ERROR and item.subject in subjects for item in diagnostics):

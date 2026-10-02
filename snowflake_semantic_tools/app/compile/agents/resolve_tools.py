@@ -6,6 +6,9 @@ another agent, and an MCP tool passes its keys through. Every other known type i
 built-in, such as data_to_chart. A resolver appends what it finds to the diagnostics it
 is given, in order, and returns None for a tool that cannot be rendered; `_finish` then
 checks what every resolved tool shares and builds its entry.
+
+Its diagnostics are reported as each entry resolves against the `AgentCompileContext`, so
+they stay with resolution here rather than in `domain.validate`.
 """
 
 from __future__ import annotations

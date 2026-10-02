@@ -8,10 +8,10 @@ from snowflake_semantic_tools.adapters.yaml.semantic.defs import MetricDef, Wind
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic
 from snowflake_semantic_tools.domain.model.artifact_key import artifact_key
 from snowflake_semantic_tools.domain.model.dbt import DbtModel
-from snowflake_semantic_tools.domain.model.expression import call_arguments, is_aggregate_expression
-from snowflake_semantic_tools.domain.model.expression import root_function as _root_function
 from snowflake_semantic_tools.domain.model.reference import TemplateSyntaxError, single_template_call
 from snowflake_semantic_tools.domain.model.semantic_view import ColumnKind
+from snowflake_semantic_tools.domain.validate.expression import call_arguments, is_aggregate_expression
+from snowflake_semantic_tools.domain.validate.expression import root_function as _root_function
 
 # The column types a NON ADDITIVE BY entry or a window may sort or partition by.
 DIMENSION_TYPES = frozenset((ColumnKind.DIMENSION.value, ColumnKind.TIME_DIMENSION.value))

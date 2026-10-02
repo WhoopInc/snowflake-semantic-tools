@@ -14,7 +14,9 @@ from dataclasses import dataclass
 
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, DiagnosticBag, Severity
 from snowflake_semantic_tools.domain.model.artifact_key import artifact_key
+from snowflake_semantic_tools.domain.model.identifier import QualifiedName
 from snowflake_semantic_tools.domain.model.profile.model import (
+    DESKTOP_REGISTRY,
     SHARED_PROFILE,
     DesktopProfile,
     McpConfig,
@@ -22,8 +24,8 @@ from snowflake_semantic_tools.domain.model.profile.model import (
     SharedProfile,
 )
 from snowflake_semantic_tools.domain.model.skill import Plugin, Skill
-from snowflake_semantic_tools.domain.model.stage_path import ALLOWED_DESCRIPTION, unsafe_segment
-from snowflake_semantic_tools.domain.model.validation import PROFILE_NAMES, Emitter
+from snowflake_semantic_tools.domain.validate.shared import PROFILE_NAMES, Emitter
+from snowflake_semantic_tools.domain.validate.stage_path import ALLOWED_DESCRIPTION, unsafe_segment
 
 _PLACEHOLDER = re.compile(r"^\$\{[A-Za-z_][A-Za-z0-9_]*\}$")
 _CREDENTIAL_KEY = re.compile(r"(?i)(token|secret|password|passwd|api[_-]?key|private[_-]?key)")
@@ -271,3 +273,14 @@ def unreached_skills(
         for name, skill in sorted(skills.items())
         if name not in reached
     )
+
+
+def desktop_registry_diagnostics(registry: QualifiedName) -> tuple[Diagnostic, ...]:
+    """Report a profile registry that is not the one CoCo Desktop reads, `DESKTOP_REGISTRY`.
+
+    Diagnostics:
+        SST-VAL854: the channel's registry is not the one CoCo Desktop reads.
+    """
+    if registry.folded != QualifiedName.parse(DESKTOP_REGISTRY).folded:
+        return (D("SST-VAL854", value=registry.sql, expected=DESKTOP_REGISTRY),)
+    return ()

@@ -19,7 +19,7 @@ from snowflake_semantic_tools.domain.model.eval.model import (
     EvalScoreRanges,
     ThresholdRange,
 )
-from snowflake_semantic_tools.domain.model.validation import Emitter
+from snowflake_semantic_tools.domain.validate.shared import Emitter
 
 _JUDGE_PLACEHOLDER = re.compile(r"{{\s*([A-Za-z_][A-Za-z0-9_]*)\s*}}")
 _SCALE = re.compile(r"(-?\d+(?:\.\d+)?)\s+(?:to|and|through|-)\s+(-?\d+(?:\.\d+)?)", re.IGNORECASE)

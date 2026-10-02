@@ -10,8 +10,9 @@ import yaml
 from snowflake_semantic_tools.adapters.errors import ProjectError
 from snowflake_semantic_tools.adapters.yaml.parse import parse_yaml_bytes
 from snowflake_semantic_tools.domain.diagnostics import D, DiagnosticBag, Origin
-from snowflake_semantic_tools.domain.model.config_schema import CONFIG_FILE, validate_config
+from snowflake_semantic_tools.domain.model.config_schema import CONFIG_FILE
 from snowflake_semantic_tools.domain.ports.project import ProjectConfig
+from snowflake_semantic_tools.domain.validate.config import validate_config
 
 # Blocks and directory keys whose artifacts are compiled from a dbt project.
 DBT_ONLY_KEYS = (

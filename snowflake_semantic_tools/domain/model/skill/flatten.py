@@ -18,7 +18,7 @@ from dataclasses import dataclass
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, DiagnosticBag
 from snowflake_semantic_tools.domain.model.skill.model import SKILL_FILE, Skill, SkillFile
 from snowflake_semantic_tools.domain.model.skill.references import PathReference, scan_references
-from snowflake_semantic_tools.domain.model.validation import Emitter
+from snowflake_semantic_tools.domain.validate.shared import Emitter
 
 # Directories an author conventionally bundles. A bare path starting with one of
 # them is a bundle reference even when the directory is absent, which is what

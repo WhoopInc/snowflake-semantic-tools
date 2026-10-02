@@ -441,6 +441,8 @@ def _action(
     return Action.NOOP, ChangeReason.UNCHANGED
 
 
+# A plan-time check against what the catalog serves, observed through the Snowflake port,
+# so it stays with the planner rather than in `domain.validate`.
 def _served_warning(key: str, observed: _Observed, release: ExtensionRelease) -> DiagnosticBag:
     """Warn when the catalog will serve another version than this release's (SST-VAL841)."""
     served = _served_instead(observed, release)

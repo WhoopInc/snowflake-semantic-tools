@@ -16,7 +16,7 @@ from snowflake_semantic_tools.domain.model.artifact_key import artifact_key
 from snowflake_semantic_tools.domain.model.dbt import DbtModel
 from snowflake_semantic_tools.domain.model.reference import TemplateSyntaxError, scan_template_calls
 from snowflake_semantic_tools.domain.model.semantic_view import Relationship
-from snowflake_semantic_tools.domain.model.sql_checks import name_problem
+from snowflake_semantic_tools.domain.validate.sql import name_problem
 
 
 def _relationship_diagnostics(

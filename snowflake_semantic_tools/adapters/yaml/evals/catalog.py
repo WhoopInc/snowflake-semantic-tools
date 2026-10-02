@@ -24,8 +24,8 @@ from snowflake_semantic_tools.domain.model.eval import (
     EvalConfig,
     EvalDefaults,
     ResolvedEval,
-    validate_eval_catalog,
 )
+from snowflake_semantic_tools.domain.validate.eval import validate_eval_catalog
 
 
 def load_eval_catalog(

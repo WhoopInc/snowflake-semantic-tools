@@ -26,9 +26,9 @@ from snowflake_semantic_tools.domain.model.skill import (
     flattened_name,
     plugin_manifest_json,
     scan_references,
-    validate_skill_catalog,
 )
 from snowflake_semantic_tools.domain.model.skill.flatten import _recheck
+from snowflake_semantic_tools.domain.validate.skill import extension_name_diagnostics, validate_skill_catalog
 
 SKILL_MD = "---\nname: {name}\ndescription: Does things.\n---\n{body}"
 
@@ -415,3 +415,10 @@ def test_plugin_manifest_and_bundle() -> None:
         Plugin("kit", "plugins/kit", "plugins/kit/plugin.yml", None, None, ("broken",), Origin("p")), members
     )
     assert blocked is None and codes(diagnostics) == ["SST-VAL836"]
+
+
+def test_an_extension_name_must_start_with_a_letter() -> None:
+    origin = Origin("skills/9-lives/SKILL.md")
+    assert extension_name_diagnostics("skill:ok", "folder", "ok", "OK", origin) == ()
+    (found,) = extension_name_diagnostics("skill:9-lives", "folder", "9-lives", "9_LIVES", origin)
+    assert (found.code, found.subject, found.origin) == ("SST-VAL801", "skill:9-lives", origin)

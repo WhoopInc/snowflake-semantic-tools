@@ -39,8 +39,8 @@ from snowflake_semantic_tools.domain.model.semantic_view import (
     VerifiedQuery,
     Window,
 )
-from snowflake_semantic_tools.domain.model.sql_checks import checked_expression, checked_query, name_problem
 from snowflake_semantic_tools.domain.sql import AuthoredExpression, AuthoredQuery
+from snowflake_semantic_tools.domain.validate.sql import checked_expression, checked_query, name_problem
 
 
 def _require(found: Diagnostic | None) -> None:

@@ -12,8 +12,8 @@ from snowflake_semantic_tools.domain.model.config_schema import (
     ChildPolicy,
     KeyKind,
     KeyStatus,
-    validate_config,
 )
+from snowflake_semantic_tools.domain.validate.config import validate_config
 
 
 def _codes(tree: Mapping[str, object]) -> list[tuple[str, str | None]]:

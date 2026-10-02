@@ -19,9 +19,9 @@ from snowflake_semantic_tools.domain.model.eval.model import (
     EvalDefaults,
     ResolvedEval,
 )
-from snowflake_semantic_tools.domain.model.eval.validate_config import validate_eval_config
-from snowflake_semantic_tools.domain.model.eval.validate_dataset import validate_eval_dataset
-from snowflake_semantic_tools.domain.model.eval.validate_metric import validate_custom_metric
+from snowflake_semantic_tools.domain.validate.eval_config import validate_eval_config
+from snowflake_semantic_tools.domain.validate.eval_dataset import validate_eval_dataset
+from snowflake_semantic_tools.domain.validate.eval_metric import validate_custom_metric
 
 
 def validate_eval_catalog(

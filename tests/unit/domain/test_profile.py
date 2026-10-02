@@ -5,7 +5,9 @@ from __future__ import annotations
 import json
 
 from snowflake_semantic_tools.domain.diagnostics import D, DiagnosticBag, Origin
+from snowflake_semantic_tools.domain.model.identifier import QualifiedName
 from snowflake_semantic_tools.domain.model.profile import (
+    DESKTOP_REGISTRY,
     CommandFile,
     DesktopProfile,
     HookDefinition,
@@ -15,10 +17,13 @@ from snowflake_semantic_tools.domain.model.profile import (
     StageTree,
     assemble_prompt,
     build_profile,
+)
+from snowflake_semantic_tools.domain.model.skill import BundleEntry, Plugin, Skill, SkillFile, build_plugin_bundle
+from snowflake_semantic_tools.domain.validate.profile import (
+    desktop_registry_diagnostics,
     unreached_skills,
     validate_profile_catalog,
 )
-from snowflake_semantic_tools.domain.model.skill import BundleEntry, Plugin, Skill, SkillFile, build_plugin_bundle
 
 ORIGIN = Origin("profiles/analyst/profile.yml", 1)
 
@@ -456,3 +461,9 @@ def test_hooks_group_by_event_then_matcher_in_the_order_the_profile_first_names_
         "hooks/e/e.sh",
         "hooks/d/d.sh",
     ]
+
+
+def test_only_the_registry_desktop_reads_is_accepted() -> None:
+    assert desktop_registry_diagnostics(QualifiedName.parse(DESKTOP_REGISTRY.lower())) == ()
+    (found,) = desktop_registry_diagnostics(QualifiedName.parse("DB.SCH.OTHER"))
+    assert found.code == "SST-VAL854"

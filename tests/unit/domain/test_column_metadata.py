@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from snowflake_semantic_tools.domain.model.column_metadata import (
+from snowflake_semantic_tools.domain.validate.column_metadata import (
     base_type,
     is_numeric,
     is_sentinel,

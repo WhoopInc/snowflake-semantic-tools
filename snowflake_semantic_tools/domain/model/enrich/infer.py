@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from types import MappingProxyType
 
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic
-from snowflake_semantic_tools.domain.model.column_metadata import (
+from snowflake_semantic_tools.domain.validate.column_metadata import (
     base_type,
     is_numeric,
     is_sentinel,

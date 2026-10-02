@@ -1,4 +1,8 @@
-"""Validation orchestration over compiled artifacts."""
+"""Validation orchestration over compiled artifacts.
+
+The offline checks live in `domain.validate`. The connected syntax check (SST-VAL020,
+SST-VAL418) stays here because it compiles each expression through the `SnowflakePort`.
+"""
 
 from __future__ import annotations
 

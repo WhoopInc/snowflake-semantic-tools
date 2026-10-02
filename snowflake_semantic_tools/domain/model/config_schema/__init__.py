@@ -1,10 +1,9 @@
 """The declared shape of `sst_config.yml`, and how the engine reads values out of it.
 
 `keys` holds the key table: every key, block, and wildcard slot SST reads, which the
-generated configuration reference renders row by row. `validate` checks a parsed
-configuration tree against that table, and `values` reads the values the engine uses out
-of one. This module re-exports their public surfaces, so importers never reach into the
-submodules.
+generated configuration reference renders row by row, and `values` reads the values the
+engine uses out of a parsed tree; `domain.validate.config` checks a tree against the table.
+This module re-exports their public surfaces, so importers never reach into the submodules.
 """
 
 from __future__ import annotations
@@ -20,7 +19,6 @@ from snowflake_semantic_tools.domain.model.config_schema.keys import (
     KeyKind,
     KeyStatus,
 )
-from snowflake_semantic_tools.domain.model.config_schema.validate import Positions, validate_config
 from snowflake_semantic_tools.domain.model.config_schema.values import (
     EnrichmentConfig,
     config_block,
@@ -44,7 +42,6 @@ __all__ = [
     "EnrichmentConfig",
     "KeyKind",
     "KeyStatus",
-    "Positions",
     "config_block",
     "config_bool",
     "config_int",
@@ -53,5 +50,4 @@ __all__ = [
     "enrichment_config",
     "skills_configured",
     "target_text",
-    "validate_config",
 ]

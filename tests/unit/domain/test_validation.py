@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 
 from snowflake_semantic_tools.domain.diagnostics import Origin
-from snowflake_semantic_tools.domain.model.validation import PROFILE_NAMES, SKILL_NAMES, Emitter, NamePolicy, duplicates
+from snowflake_semantic_tools.domain.validate.shared import PROFILE_NAMES, SKILL_NAMES, Emitter, NamePolicy, duplicates
 
 ORIGIN = Origin("skills/a/SKILL.md", 1, 1)
 OTHER = Origin("skills/a/SKILL.md", 9, 3)

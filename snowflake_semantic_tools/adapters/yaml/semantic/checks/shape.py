@@ -12,7 +12,7 @@ from snowflake_semantic_tools.adapters.yaml.semantic.defs import NULL_ORDERS, SO
 from snowflake_semantic_tools.adapters.yaml.semantic.nodes import _load_nodes, _member_root, _node_origin
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, Origin
 from snowflake_semantic_tools.domain.model.artifact_key import artifact_key
-from snowflake_semantic_tools.domain.model.column_metadata import printable, synonym_problem
+from snowflake_semantic_tools.domain.validate.column_metadata import printable, synonym_problem
 
 
 def _synonyms_diagnostics(

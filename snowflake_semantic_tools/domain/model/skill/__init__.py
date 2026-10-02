@@ -9,7 +9,7 @@ check the rewritten text again.
 
 `model` holds the records and the identities derived from them, `references` finds the
 paths a file names, `flatten` publishes a folder flat, `bundle` builds the file set an
-extension version is made from, and `validate` checks the catalog. This module only
+extension version is made from; `domain.validate.skill` checks the catalog. This module only
 re-exports their public names.
 """
 
@@ -42,7 +42,6 @@ from snowflake_semantic_tools.domain.model.skill.model import (
     extension_identifier,
 )
 from snowflake_semantic_tools.domain.model.skill.references import IGNORE_MARKER, PathReference, scan_references
-from snowflake_semantic_tools.domain.model.skill.validate import validate_skill_catalog
 
 __all__ = [
     "ALIAS_HEX_CHARACTERS",
@@ -72,5 +71,4 @@ __all__ = [
     "flattened_name",
     "plugin_manifest_json",
     "scan_references",
-    "validate_skill_catalog",
 ]

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from snowflake_semantic_tools.domain.model.stage_path import unsafe_segment
+from snowflake_semantic_tools.domain.validate.stage_path import unsafe_segment
 
 
 @pytest.mark.parametrize(

@@ -28,8 +28,8 @@ from snowflake_semantic_tools.adapters.yaml.semantic.relationships import (
     _relationship_diagnostics,
 )
 from snowflake_semantic_tools.domain.model.dbt import DbtColumn, DbtModel
-from snowflake_semantic_tools.domain.model.expression import is_aggregate_expression
 from snowflake_semantic_tools.domain.model.semantic_view import Relationship, SemanticView
+from snowflake_semantic_tools.domain.validate.expression import is_aggregate_expression
 from tests.helpers.projects import load_views
 
 REPO_ROOT = Path(__file__).resolve().parents[3]

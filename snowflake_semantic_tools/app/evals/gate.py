@@ -1,4 +1,9 @@
-"""Metadata-only baseline capture and retrospective eval regression gating."""
+"""Metadata-only baseline capture and retrospective eval regression gating.
+
+The gate's checks (SST-VAL758 to SST-VAL763) stay in `app` rather than `domain.validate`:
+they judge a run against a baseline read through the `EvalStateStore` port, and date it
+with `datetime`, which the pure ring may not import.
+"""
 
 from __future__ import annotations
 

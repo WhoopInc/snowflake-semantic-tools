@@ -24,7 +24,7 @@ from snowflake_semantic_tools.domain.model.eval.model import (
     ThresholdRange,
 )
 from snowflake_semantic_tools.domain.model.eval.naming import NAME_LIMIT, PROBE_SHA7, probe_name
-from snowflake_semantic_tools.domain.model.validation import Emitter
+from snowflake_semantic_tools.domain.validate.shared import Emitter
 
 _PINNED_VERSION = re.compile(r"VERSION\$[1-9]\d*")
 _BASELINE_RUNS_MIN = 1
