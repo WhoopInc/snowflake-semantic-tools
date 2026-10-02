@@ -68,6 +68,7 @@ __all__ = [
     "RULE_SETS",
     "RegistryIntegrityError",
     "Severity",
+    "apply_baseline",
     "audit",
     "build_registry",
     "render_diagnostic",
@@ -93,6 +94,8 @@ class Diagnostic:
         caused_by: The code of the diagnostic this one cascades from; None when it stands alone.
         emitted: True when `D` built it, which `dataclasses.replace` keeps; `audit` reports one
             constructed any other way (SST-INT004). Not part of equality.
+        baselined: True when the project's baseline accepts it, so strict mode leaves it alone.
+            Not part of equality.
     """
 
     code: str
@@ -103,6 +106,7 @@ class Diagnostic:
     related: tuple[Origin, ...] = ()
     caused_by: str | None = None
     emitted: bool = field(default=False, repr=False, compare=False)
+    baselined: bool = field(default=False, repr=False, compare=False)
 
     @property
     def blocks(self) -> bool:
@@ -271,17 +275,47 @@ def _position(value: object) -> int | None:
 
 
 def resolve_severities(diagnostics: DiagnosticBag, *, strict: bool) -> tuple[DiagnosticBag, int]:
-    """Apply strict-mode promotion once, preserving non-demotable errors."""
+    """Apply strict-mode promotion once, preserving non-demotable errors and baselined warnings."""
     if not strict:
         return diagnostics, 0
     promoted = tuple(
-        replace(diagnostic, severity=Severity.ERROR) if diagnostic.severity is Severity.WARNING else diagnostic
+        replace(diagnostic, severity=Severity.ERROR)
+        if diagnostic.severity is Severity.WARNING and not diagnostic.baselined
+        else diagnostic
         for diagnostic in diagnostics
     )
     return DiagnosticBag(promoted), sum(
         before.severity is Severity.WARNING and after.severity is Severity.ERROR
         for before, after in zip(diagnostics, promoted, strict=True)
     )
+
+
+def apply_baseline(diagnostics: DiagnosticBag, entries: Iterable[str]) -> DiagnosticBag:
+    """Mark each warning or info a baseline entry matches as baselined, before strict mode runs.
+
+    An entry is a fingerprint, or a prefix of one such as the 16 characters the JSON envelope
+    prints. An error is never baselined. An entry that matches exactly one diagnostic marks it;
+    one that matches several marks none of them.
+
+    Diagnostics:
+        SST-INT009: a baseline entry matched more than one diagnostic, one per entry in order.
+    """
+    marked: set[int] = set()
+    found: list[Diagnostic] = []
+    for entry in dict.fromkeys(entries):
+        matches = [
+            index
+            for index, item in enumerate(diagnostics)
+            if item.severity is not Severity.ERROR and item.fingerprint.startswith(entry)
+        ]
+        if len(matches) > 1:
+            found.append(D("SST-INT009", value=entry, count=len(matches)))
+        elif matches:
+            marked.update(matches)
+    if not marked and not found:
+        return diagnostics
+    kept = (replace(item, baselined=True) if index in marked else item for index, item in enumerate(diagnostics))
+    return DiagnosticBag((*kept, *found))
 
 
 def audit(diagnostics: DiagnosticBag) -> DiagnosticBag:

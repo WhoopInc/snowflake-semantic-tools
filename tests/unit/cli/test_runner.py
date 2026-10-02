@@ -25,7 +25,6 @@ INT902_ALLOWLIST = {
     "snowflake_semantic_tools/app/apply/errors.py": 1,  # an APL028 outcome the plan never recorded
     # compile_each: rendering a view, tool, or eval that validated (VAL762 guards eval templates)
     "snowflake_semantic_tools/app/compile/base.py": 1,
-    "snowflake_semantic_tools/cli/runner.py": 1,  # the catch-all for an unexpected exception
 }
 
 
@@ -54,7 +53,8 @@ def test_unexpected_json_failure_emits_one_error_document(monkeypatch: pytest.Mo
     assert result.exit_code == 1
     payload = json.loads(result.output)
     assert payload["status"] == "error"
-    assert payload["diagnostics"][0]["code"] == "SST-INT902"
+    assert payload["diagnostics"][0]["code"] == "SST-INT001"
+    assert payload["diagnostics"][0]["message"] == "internal error: RuntimeError: unexpected failure"
 
 
 def test_a_recognised_snowflake_failure_is_reported_as_its_diagnostic(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -79,14 +79,14 @@ def test_a_declined_or_interrupted_run_exits_130_without_an_internal_error(
     )
     assert declined.exit_code == 130, declined.output
     assert "Apply this plan?" in declined.output and "Aborted." in declined.output
-    assert "SST-INT902" not in declined.output
+    assert "SST-INT001" not in declined.output
 
     def interrupt(params: object) -> RecordedSnowflake:
         raise KeyboardInterrupt
 
     monkeypatch.setattr("snowflake_semantic_tools.cli.main.SnowflakeConnector", interrupt)
     human = CliRunner().invoke(cli, ["plan", *common(project), "--target", "dev"])
-    assert human.exit_code == 130 and "SST-INT902" not in human.output
+    assert human.exit_code == 130 and "SST-INT001" not in human.output
     as_json = CliRunner().invoke(cli, ["plan", *common(project), "--target", "dev", "--output", "json"])
     assert as_json.exit_code == 130
     envelope = json.loads(as_json.output)
@@ -165,7 +165,7 @@ def test_a_failing_human_report_fails_the_command_like_its_body() -> None:
         ),
         pytest.param(ProjectError("broken project"), 4, "error: broken project", 4, [], id="project-error"),
         pytest.param(ValueError("bad value"), 4, "error: bad value", 4, [], id="value-error"),
-        pytest.param(RuntimeError("boom"), 1, "error[SST-INT902]", 1, ["SST-INT902"], id="internal-error"),
+        pytest.param(RuntimeError("boom"), 1, "error[SST-INT001]", 1, ["SST-INT001"], id="internal-error"),
         pytest.param(KeyboardInterrupt(), 130, "Aborted.", 130, [], id="interrupt"),
         pytest.param(SstUsageError("not like that"), 3, "Error: not like that", None, None, id="usage-error"),
         pytest.param(click.exceptions.Exit(7), 7, "", None, None, id="exit"),

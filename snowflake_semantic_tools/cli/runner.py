@@ -11,7 +11,10 @@ same way for every command:
 - `SnowflakePortError` exits 5 (CONNECTION); in human output one that carries no
   diagnostic is reported by click instead, which exits 1;
 - `ProjectError`, `ValueError`, `OSError`, and `JSONDecodeError` exit 4 (CONFIG);
-- anything else is SST-INT902, an internal error, and exits 1 (ERROR).
+- anything else is SST-INT001, an internal error, and exits 1 (ERROR).
+
+Every reported bag is `audit`ed first, so a diagnostic that breaks an emission invariant is
+reported beside it as an internal error, and a run that would have succeeded exits 1.
 """
 
 from __future__ import annotations
@@ -25,9 +28,9 @@ from typing import Any, NoReturn
 import click
 
 from snowflake_semantic_tools.adapters.errors import ProjectError
-from snowflake_semantic_tools.cli.exit_codes import CONFIG, CONNECTION, ERROR, OK
+from snowflake_semantic_tools.cli.exit_codes import CHANGES, CONFIG, CONNECTION, ERROR, OK
 from snowflake_semantic_tools.cli.output import emit_json, interrupted, json_envelope, render_diagnostics
-from snowflake_semantic_tools.domain.diagnostics import D, DiagnosticBag
+from snowflake_semantic_tools.domain.diagnostics import D, DiagnosticBag, audit
 from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
 
 
@@ -75,6 +78,10 @@ def command_body(name: str) -> Callable[[Callable[..., CommandResult]], Callable
 
 def _report(command: str, output: str, result: CommandResult) -> None:
     """Print `result` as one envelope or as human text, and exit with its code when it is not 0."""
+    audited = audit(result.diagnostics)
+    if audited is not result.diagnostics:
+        exit_code = ERROR if result.exit_code in (OK, CHANGES) else result.exit_code
+        result = dataclasses.replace(result, diagnostics=audited, exit_code=exit_code)
     if output == "json":
         envelope = json_envelope(
             command, result.diagnostics, exit_code=result.exit_code, promoted=result.promoted, data=result.data
@@ -122,7 +129,7 @@ def _connection_failed(command: str, output: str, exc: SnowflakePortError) -> No
 
 def _unusable(command: str, output: str, exc: Exception) -> NoReturn:
     """Exit 4 because the project, its configuration, or a saved plan cannot be used."""
-    diagnostics = DiagnosticBag(getattr(exc, "diagnostics", ()))
+    diagnostics = audit(DiagnosticBag(getattr(exc, "diagnostics", ())))
     if output == "json":
         emit_json(
             json_envelope(command, diagnostics, exit_code=CONFIG, status="error", data={"error": str(exc)}), CONFIG
@@ -134,8 +141,8 @@ def _unusable(command: str, output: str, exc: Exception) -> NoReturn:
 
 
 def _internal_error(command: str, output: str, exc: Exception) -> NoReturn:
-    """Exit 1 with SST-INT902: an exception nothing above expects means SST broke an invariant."""
-    diagnostics = DiagnosticBag((D("SST-INT902", subject=command, detail=str(exc)),))
+    """Exit 1 with SST-INT001: an exception crossed every phase boundary unhandled."""
+    diagnostics = DiagnosticBag((D("SST-INT001", subject=command, detail=f"{type(exc).__name__}: {exc}"),))
     if output == "json":
         emit_json(json_envelope(command, diagnostics, exit_code=ERROR, status="error", data={"error": str(exc)}), ERROR)
     render_diagnostics(diagnostics)

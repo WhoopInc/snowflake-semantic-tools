@@ -6,6 +6,7 @@ from pathlib import Path
 
 import click
 
+from snowflake_semantic_tools.adapters.fs.baseline import read_baseline
 from snowflake_semantic_tools.app.validate import ValidateArtifacts, ValidationResult
 from snowflake_semantic_tools.cli.exit_codes import ERROR, OK
 from snowflake_semantic_tools.cli.options import output_option, project_options, validation_options
@@ -44,6 +45,7 @@ def validate(
             compiled,
             strict=effective_strict,
             connected=effective_connected,
+            baseline=read_baseline(project_dir),
         )
     finally:
         if port is not None:

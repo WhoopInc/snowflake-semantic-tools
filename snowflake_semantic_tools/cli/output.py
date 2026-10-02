@@ -57,7 +57,7 @@ def diagnostic_json(value: Diagnostic) -> dict[str, object]:
         "severity": value.severity.name.lower(),
         "declared_severity": spec.severity.name.lower(),
         "promoted_from": value.promoted_from.name.lower() if value.promoted_from is not None else None,
-        "baselined": False,
+        "baselined": value.baselined,
         "message": value.message,
         "suggestion": spec.suggestion,
         "phase": value.phase,
@@ -125,7 +125,7 @@ def json_envelope(
             "info": info,
             "promoted": promoted,
             "suppressed_cascade": sum(diagnostic.cascaded for diagnostic in diagnostics),
-            "baselined": 0,
+            "baselined": sum(diagnostic.baselined for diagnostic in diagnostics),
         },
         "data": data if data is not None else {},
     }

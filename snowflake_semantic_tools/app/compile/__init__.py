@@ -29,7 +29,7 @@ from snowflake_semantic_tools.app.compile.base import (
     compile_each,
     has_error,
 )
-from snowflake_semantic_tools.domain.diagnostics import Diagnostic, DiagnosticBag
+from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, DiagnosticBag
 from snowflake_semantic_tools.domain.model.artifact_key import artifact_key
 from snowflake_semantic_tools.domain.model.identifier import Identifier, QualifiedName
 from snowflake_semantic_tools.domain.model.lifecycle import OwnershipMarker, ProbeKind, RenderedArtifact, SmokeProbe
@@ -289,15 +289,28 @@ class CompileArtifacts:
             positions: Each artifact type's position in the stream, by type name.
 
         Diagnostics:
+            SST-INT003: a compiler returned an artifact of a type `positions` does not place; it
+                is left out.
             SST-VAL843: two artifacts of different types publish to one Snowflake name.
         """
         compiled: list[CompiledArtifact] = []
         diagnostics = DiagnosticBag()
         for result in results:
-            compiled.extend(result.compiled)
-            diagnostics = DiagnosticBag((*diagnostics, *result.diagnostics))
+            compiled.extend(item for item in result.compiled if item.artifact_type in positions)
+            stray = [item for item in result.compiled if item.artifact_type not in positions]
+            diagnostics = DiagnosticBag((*diagnostics, *result.diagnostics, *map(_unplaced, stray)))
         ordered = tuple(sorted(compiled, key=lambda item: (positions[item.artifact_type], item.artifact_key)))
         return CompileResult(ordered, DiagnosticBag((*diagnostics, *_shared_targets(ordered))))
+
+
+def _unplaced(item: CompiledArtifact) -> Diagnostic:
+    return D(
+        "SST-INT003",
+        subject=item.artifact_key,
+        value="compile",
+        found=f"artifact type '{item.artifact_type}'",
+        expected="a registered artifact type",
+    )
 
 
 def _shared_targets(compiled: tuple[CompiledArtifact, ...]) -> tuple[Diagnostic, ...]:
