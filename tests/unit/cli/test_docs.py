@@ -23,10 +23,10 @@ def test_docs_writes_checks_and_reports_drift(tmp_path: Path) -> None:
     config = tmp_path / "docs" / "reference" / "config.md"
     config.write_text(config.read_text(encoding="utf-8") + "hand edit\n", encoding="utf-8")
     drifted = CliRunner().invoke(cli, ["docs", "--project-dir", str(tmp_path), "--check"])
-    assert drifted.exit_code == 1
+    assert drifted.exit_code == 2
     assert "out of date: docs/reference/config.md" in drifted.output
     machine = CliRunner().invoke(cli, ["docs", "--project-dir", str(tmp_path), "--check", "--output", "json"])
-    assert machine.exit_code == 1
+    assert machine.exit_code == 2
     assert json.loads(machine.output)["data"]["drifted"] == ["docs/reference/config.md"]
     assert "hand edit" in config.read_text(encoding="utf-8")
 

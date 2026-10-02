@@ -25,7 +25,8 @@ def test_validate_accepts_the_recorded_manifest_offline() -> None:
     )
     assert result.exit_code == 0, result.output
     # Two warnings are SST-VAL804: no agent references jaffle-catalogue or jaffle-operations.
-    assert "validated 14 artifact(s): 0 errors, 1 warnings" in result.output
+    # SST-VAL528, and SST-CFG018 for each of the three partner tool members no agent references.
+    assert "validated 14 artifact(s): 0 errors, 4 warnings" in result.output
 
 
 def test_validate_uses_config_strict_unless_cli_overrides() -> None:
@@ -57,7 +58,7 @@ def test_validate_connected_syntax_check_requires_a_connection() -> None:
         ],
     )
     assert result.exit_code != 0
-    assert "User is empty" in result.output
+    assert "Password is empty" in result.output
 
 
 def test_validate_reports_view_error_but_compile_fails_closed(tmp_path: Path) -> None:

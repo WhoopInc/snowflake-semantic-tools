@@ -43,6 +43,7 @@ from tests.helpers.cli_projects import (
     project_copy,
 )
 from tests.helpers.eval_state_store import InMemoryEvalStateStore
+from tests.helpers.projects import project_paths
 from tests.helpers.recorded_snowflake import RecordedSnowflake
 
 
@@ -188,7 +189,7 @@ def test_eval_suite_uses_common_json_envelope(tmp_path: Path, monkeypatch: pytes
     monkeypatch.setattr("snowflake_semantic_tools.cli.wiring.project.git_sha", lambda path: "0000000")
     monkeypatch.setattr("snowflake_semantic_tools.app.evals.run._compact_timestamp", lambda: "20260928T010203Z")
     compile_project(project)
-    compiled = _compile_result(project, "dev", DBT_MANIFEST)
+    compiled = _compile_result(project_paths(project), "dev", DBT_MANIFEST)
     compiled_eval = next(item for item in compiled.compiled if isinstance(item, CompiledEval))
     manifest = json.loads((project / "target" / "sst" / "manifest.json").read_text(encoding="utf-8"))
     manifest_id = manifest["manifest_id"]
@@ -377,7 +378,7 @@ def test_eval_suite_reports_every_attempt_in_human_output(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     project = project_copy(tmp_path)
-    compiled_eval = _compile_result(project, "dev", DBT_MANIFEST)
+    compiled_eval = _compile_result(project_paths(project), "dev", DBT_MANIFEST)
     eval_item = next(item for item in compiled_eval.compiled if isinstance(item, CompiledEval))
     attempt = EvalRunAttempt(
         "EVAL_RUN_R2",
@@ -406,7 +407,7 @@ def test_eval_suite_reports_every_attempt_in_human_output(
     )
     monkeypatch.setattr(
         "snowflake_semantic_tools.cli.wiring.manifest.ManifestFileStore.read",
-        lambda self: _build_manifest(project, compiled_eval, DBT_MANIFEST),
+        lambda self: _build_manifest(project_paths(project), compiled_eval, DBT_MANIFEST),
     )
     monkeypatch.setattr(
         "snowflake_semantic_tools.app.evals.suite.capture_baseline",

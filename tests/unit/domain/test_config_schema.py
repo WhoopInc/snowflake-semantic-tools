@@ -92,22 +92,23 @@ def test_unsupported_keys_are_errors_and_are_not_descended() -> None:
     assert [(item.code, item.severity) for item in diagnostics] == [("SST-CFG044", Severity.ERROR)]
     assert diagnostics[0].message == "config key 'dbt' is not supported in this release"
     assert _codes({"agents": {"finance": {"+schema": "X"}}}) == [("SST-CFG044", "config:agents.finance")]
-    assert _codes({"tools": {"finance": {}}}) == [("SST-CFG044", "config:tools.finance")]
+    assert _codes({"tools": {"finance": {"+bogus": 1}}}) == [("SST-CFG003", "config:tools.finance.+bogus")]
     assert _codes({"semantic_views": {"+tags": [], "+max_staleness": 60}}) == [
         ("SST-CFG044", "config:semantic_views.+tags"),
-        ("SST-CFG044", "config:semantic_views.+max_staleness"),
+        ("SST-CFG023", "config:semantic_views.+max_staleness"),
     ]
 
 
-def test_0_3_blocks_and_deploy_are_removed_with_their_reasons() -> None:
+def test_0_3_blocks_are_removed_with_their_reasons_and_deploy_is_deprecated() -> None:
     assert _codes({"generation": {"threads": 1}, "defer": {}}) == [
         ("SST-CFG043", "config:generation"),
         ("SST-CFG043", "config:defer"),
     ]
     assert _codes({"validation": {"exclude_dirs": []}}) == [("SST-CFG043", "config:validation.exclude_dirs")]
-    assert _codes({"deploy": {"agent_spec_stage": {"stage": "S"}}}) == [("SST-CFG043", "config:deploy")]
-    message = validate_config({"apply": {"fail_fast": True}})[0].message
-    assert message == "config key 'apply.fail_fast' was removed: pass --fail-fast to sst apply"
+    assert _codes({"deploy": {"agent_spec_stage": {"stage": "S"}}}) == [("SST-CFG200", "config:deploy")]
+    assert _codes({"deploy": {"bogus": 1}}) == [("SST-CFG200", "config:deploy"), ("SST-CFG003", "config:deploy.bogus")]
+    assert _codes({"apply": {"fail_fast": True}}) == []
+    assert _codes({"apply": {"fail_fast": "yes"}}) == [("SST-CFG004", "config:apply.fail_fast")]
 
 
 def test_types_domains_bounds_and_fixed_values() -> None:
@@ -195,3 +196,25 @@ def test_the_display_limit_cannot_exceed_the_distinct_limit() -> None:
     assert _codes({"enrichment": {"distinct_limit": 5, "sample_values_display_limit": True}}) == [
         ("SST-CFG004", "config:enrichment.sample_values_display_limit")
     ]
+
+
+def test_only_legal_severity_overrides_take_effect() -> None:
+    from snowflake_semantic_tools.domain.validate.config import severity_overrides
+
+    tree = {
+        "diagnostics": {
+            "severity_overrides": {
+                "SST-VAL003": "error",
+                "SST-REF001": "info",
+                "SST-NOPE01": "warning",
+                "SST-CFG018": "fatal",
+            }
+        }
+    }
+    assert severity_overrides(tree) == {"SST-VAL003": Severity.ERROR}
+    assert _codes(tree) == [
+        ("SST-CFG008", "config:diagnostics.severity_overrides.SST-CFG018"),
+        ("SST-CFG033", "config:diagnostics.severity_overrides.SST-REF001"),
+        ("SST-CFG003", "config:diagnostics.severity_overrides.SST-NOPE01"),
+    ]
+    assert severity_overrides({"diagnostics": []}) == {}

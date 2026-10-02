@@ -3,6 +3,8 @@ v1_dialect:
   outputs:
     dev:
       type: snowflake
+      account: sst_reference
+      user: sst_reference
       database: SST_REF_DEV
       schema: JAFFLE
       warehouse: SST_REF_WH

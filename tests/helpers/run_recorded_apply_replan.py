@@ -12,6 +12,7 @@ from collections.abc import Callable, Sequence
 from click.testing import CliRunner
 from run_recorded_plan import recorded
 
+from snowflake_semantic_tools.adapters.locations import locate_project
 from snowflake_semantic_tools.app.compile.evals import CompiledEval
 from snowflake_semantic_tools.cli import main as cli_module
 from snowflake_semantic_tools.cli.wiring.compile import compile_result
@@ -89,7 +90,7 @@ def main() -> None:
         if not isinstance(changes, list) or not isinstance(manifest_id, str):
             raise RuntimeError("create plan omitted changes or manifest identity")
 
-        compiled = compile_result(project_dir, args.target, manifest_path)
+        compiled = compile_result(locate_project(project_dir), args.target, manifest_path)
         port.existing = {
             relation.sql for item in compiled.compiled for relation in item.rendered_artifact.required_relations
         }

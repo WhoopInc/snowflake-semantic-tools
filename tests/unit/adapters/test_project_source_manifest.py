@@ -9,6 +9,7 @@ import pytest
 
 from snowflake_semantic_tools.adapters import project_source
 from snowflake_semantic_tools.adapters.project_source import YamlProjectInputs, YamlProjectSource
+from tests.helpers.projects import project_paths
 
 FIXTURE_MANIFEST = Path(__file__).resolve().parents[2] / "fixtures" / "reference_project_manifest.json"
 
@@ -25,8 +26,10 @@ def test_the_manifest_is_read_under_target_path_after_one_dbt_parse(
 ) -> None:
     project = _project(tmp_path)
     parses: list[tuple[Path, str | None]] = []
-    monkeypatch.setattr(project_source, "run_dbt_parse", lambda directory, target: parses.append((directory, target)))
-    source = YamlProjectSource(project, target_name="dev")
+    monkeypatch.setattr(
+        project_source, "run_dbt_parse", lambda directory, target, profiles: parses.append((directory, target))
+    )
+    source = YamlProjectSource(project_paths(project), target_name="dev")
     assert source.manifest_file() == project / "build" / "manifest.json"
     first = source.dbt_catalog()
     second = source.dbt_catalog()
@@ -37,7 +40,9 @@ def test_the_manifest_is_read_under_target_path_after_one_dbt_parse(
 def test_a_given_manifest_is_read_without_running_dbt(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     project = _project(tmp_path)
     monkeypatch.setattr(project_source, "run_dbt_parse", lambda *_: pytest.fail("dbt must not run"))
-    inputs = YamlProjectInputs(project, target_name=None, manifest_path=FIXTURE_MANIFEST, git_sha=lambda: "sha")
+    inputs = YamlProjectInputs(
+        project_paths(project), target_name=None, manifest_path=FIXTURE_MANIFEST, git_sha=lambda: "sha"
+    )
     assert inputs.dbt_catalog().model("orders") is not None
-    never = YamlProjectSource(project, invoke_dbt=False)
+    never = YamlProjectSource(project_paths(project), invoke_dbt=False)
     assert never.dbt_catalog().model("orders") is not None

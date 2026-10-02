@@ -13,8 +13,7 @@ from click.testing import CliRunner
 from snowflake_semantic_tools.adapters.errors import ProjectError
 from snowflake_semantic_tools.cli.group import SstUsageError
 from snowflake_semantic_tools.cli.main import cli
-from snowflake_semantic_tools.cli.options import output_option
-from snowflake_semantic_tools.cli.runner import CommandResult, command_body
+from snowflake_semantic_tools.cli.runner import CommandResult, ConfigNeed, command_body
 from snowflake_semantic_tools.domain.diagnostics import D, DiagnosticBag
 from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
 from tests.helpers.cli_projects import DBT_MANIFEST, FIXTURE, REPO_ROOT, common, invoke_with_port, project_copy
@@ -25,19 +24,24 @@ INT902_ALLOWLIST = {
     "snowflake_semantic_tools/app/apply/errors.py": 1,  # an APL028 outcome the plan never recorded
     # compile_each: rendering a view, tool, or eval that validated (VAL762 guards eval templates)
     "snowflake_semantic_tools/app/compile/base.py": 1,
-    "snowflake_semantic_tools/cli/runner.py": 1,  # the catch-all for an unexpected exception
 }
+# INT001 is the one crash handler's: an exception nothing above it expects.
+INT001_ALLOWLIST = {"snowflake_semantic_tools/cli/runner.py": 1}
 
 
-def test_int902_is_emitted_only_at_the_invariant_allowlist() -> None:
+def _emit_sites(code: str) -> dict[str, int]:
     package = REPO_ROOT / "snowflake_semantic_tools"
-    found = {
+    return {
         path.relative_to(REPO_ROOT).as_posix(): count
         for path in sorted(package.rglob("*.py"))
         if "domain/diagnostics/" not in path.as_posix()
-        and (count := path.read_text(encoding="utf-8").count('"SST-INT902"'))
+        and (count := path.read_text(encoding="utf-8").count(f'"{code}"'))
     }
-    assert found == INT902_ALLOWLIST
+
+
+def test_int902_and_int001_are_emitted_only_at_their_allowlists() -> None:
+    assert _emit_sites("SST-INT902") == INT902_ALLOWLIST
+    assert _emit_sites("SST-INT001") == INT001_ALLOWLIST
 
 
 def test_unexpected_json_failure_emits_one_error_document(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -54,7 +58,7 @@ def test_unexpected_json_failure_emits_one_error_document(monkeypatch: pytest.Mo
     assert result.exit_code == 1
     payload = json.loads(result.output)
     assert payload["status"] == "error"
-    assert payload["diagnostics"][0]["code"] == "SST-INT902"
+    assert payload["diagnostics"][0]["code"] == "SST-INT001"
 
 
 def test_a_recognised_snowflake_failure_is_reported_as_its_diagnostic(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -90,16 +94,16 @@ def test_a_declined_or_interrupted_run_exits_130_without_an_internal_error(
     as_json = CliRunner().invoke(cli, ["plan", *common(project), "--target", "dev", "--output", "json"])
     assert as_json.exit_code == 130
     envelope = json.loads(as_json.output)
-    assert (envelope["exit_code"], envelope["status"], envelope["diagnostics"]) == (130, "error", [])
+    assert (envelope["exit_code"], envelope["status"]) == (130, "error")
+    assert [(item["code"], item["severity"]) for item in envelope["diagnostics"]] == [("SST-PRT107", "info")]
 
 
 def demo_command(body: Callable[[], CommandResult]) -> click.Command:
     """A throwaway command whose work is `body`, run and reported by `command_body`."""
 
     @click.command()
-    @output_option()
-    @command_body("demo")
-    def demo(output: str) -> CommandResult:
+    @command_body("demo", config=ConfigNeed.OPTIONAL)
+    def demo() -> CommandResult:
         """Demonstrate the runner."""
         return body()
 
@@ -116,7 +120,7 @@ def raising(error: BaseException) -> Callable[[], CommandResult]:
 def test_command_body_keeps_the_body_name_and_help_and_returns_nothing() -> None:
     command = demo_command(CommandResult)
     assert (command.name, command.help) == ("demo", "Demonstrate the runner.")
-    assert command.callback is not None and command.callback(output="human") is None
+    assert command.callback is not None and command.callback() is None
 
 
 def test_a_result_renders_its_diagnostics_then_its_human_report_then_exits_with_its_code() -> None:
@@ -154,7 +158,7 @@ def test_a_failing_human_report_fails_the_command_like_its_body() -> None:
 @pytest.mark.parametrize(
     ("error", "human_exit", "human_text", "json_exit", "json_codes"),
     [
-        pytest.param(SnowflakePortError("refused"), 1, "Error: refused", 5, [], id="port-error"),
+        pytest.param(SnowflakePortError("refused"), 5, "error[SST-PRT001]", 5, ["SST-PRT001"], id="port-error"),
         pytest.param(
             SnowflakePortError("refused", diagnostic=D("SST-PRT001", value="acme", detail="refused")),
             5,
@@ -165,9 +169,11 @@ def test_a_failing_human_report_fails_the_command_like_its_body() -> None:
         ),
         pytest.param(ProjectError("broken project"), 4, "error: broken project", 4, [], id="project-error"),
         pytest.param(ValueError("bad value"), 4, "error: bad value", 4, [], id="value-error"),
-        pytest.param(RuntimeError("boom"), 1, "error[SST-INT902]", 1, ["SST-INT902"], id="internal-error"),
-        pytest.param(KeyboardInterrupt(), 130, "Aborted.", 130, [], id="interrupt"),
-        pytest.param(SstUsageError("not like that"), 3, "Error: not like that", None, None, id="usage-error"),
+        pytest.param(RuntimeError("boom"), 1, "error[SST-INT001]", 1, ["SST-INT001"], id="internal-error"),
+        pytest.param(KeyboardInterrupt(), 130, "Aborted.", 130, ["SST-PRT107"], id="interrupt"),
+        pytest.param(
+            SstUsageError("not like that"), 3, "error[SST-PRT100]: not like that", None, None, id="usage-error"
+        ),
         pytest.param(click.exceptions.Exit(7), 7, "", None, None, id="exit"),
     ],
 )

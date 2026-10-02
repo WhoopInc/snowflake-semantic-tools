@@ -82,10 +82,14 @@ skills:
 """
 
 
+# Every configuration states whether expressions are compiled against Snowflake (SST-CFG031).
+OFFLINE_VALIDATION = "validation:\n  snowflake_syntax_check: false\n"
+
+
 def skills_only_project(root: Path, config: str = "project:\n  target_profile: skills\n") -> Path:
     root.mkdir(parents=True, exist_ok=True)
     (root / "profiles.yml").write_text(PROFILES, encoding="utf-8")
-    (root / "sst_config.yml").write_text(config, encoding="utf-8")
+    (root / "sst_config.yml").write_text(OFFLINE_VALIDATION + config, encoding="utf-8")
     return root
 
 
@@ -122,7 +126,7 @@ skills:
 
 def profile_with_commands_and_plugin(root: Path) -> Path:
     project = skill_project(root)
-    (project / "sst_config.yml").write_text(PROFILE_CONFIG, encoding="utf-8")
+    (project / "sst_config.yml").write_text(OFFLINE_VALIDATION + PROFILE_CONFIG, encoding="utf-8")
     files = {
         "profiles/analyst/profile.yml": (
             "name: analyst\ndescription: Analyst.\nowner_team: Data\nskills: [month-close]\n"

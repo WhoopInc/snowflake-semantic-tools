@@ -100,7 +100,7 @@ def test_static_eval_diagnostics_are_registered_with_catalog_severities() -> Non
 
 
 def test_missing_template_context_becomes_an_internal_diagnostic() -> None:
-    diagnostic = D("SST-PRT007", found="v13")
+    diagnostic = D("SST-DBT017", found="v13")
     assert diagnostic.code == "SST-INT901"
     assert "expected" in diagnostic.message
 

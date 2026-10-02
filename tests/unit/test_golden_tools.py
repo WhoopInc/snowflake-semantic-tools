@@ -5,6 +5,7 @@ from pathlib import Path
 from snowflake_semantic_tools.adapters.dbt.manifest import load_manifest_catalog
 from snowflake_semantic_tools.adapters.project_source import YamlProjectSource
 from snowflake_semantic_tools.app.compile.tools import CompileTools
+from tests.helpers.projects import project_paths
 
 ROOT = Path(__file__).parents[2]
 FIXTURE = ROOT / "tests" / "fixtures" / "reference_project"
@@ -14,7 +15,7 @@ GOLDEN = ROOT / "tests" / "golden" / "expected" / "tool" / "menu_docs_search.sql
 def test_reference_search_service_matches_golden() -> None:
     manifest_path = ROOT / "tests" / "fixtures" / "reference_project_manifest.json"
     catalog = YamlProjectSource(
-        FIXTURE,
+        project_paths(FIXTURE),
         target_name="dev",
         manifest_path=manifest_path,
         invoke_dbt=False,
