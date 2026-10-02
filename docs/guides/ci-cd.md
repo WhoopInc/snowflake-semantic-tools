@@ -82,6 +82,10 @@ The `prod` output in `profiles.yml` reads the key path with
 `private_key_path: "{{ env_var('SNOWFLAKE_PRIVATE_KEY_PATH') }}"`, the field dbt
 reads too; see [authentication](configuration.md#authentication).
 
+The `pull_request` trigger gives a fork's pull request no secrets, so its connected steps cannot
+authenticate. Keep it that way: a project's YAML is SQL that runs with the job's role, so never
+move a credentialed step to `pull_request_target`; see [Security](security.md#trust-model).
+
 ## JSON output
 
 Every command accepts `--output json` and then prints exactly one JSON object on

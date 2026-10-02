@@ -24,6 +24,7 @@ a reviewed plan.
 | [Plugins and profiles](guides/plugins-and-profiles.md) | plugins, CoCo Desktop profiles, hooks, and MCP configs |
 | [Configuration](guides/configuration.md) | `sst_config.yml`, targets, projects without dbt, and authentication |
 | [CI/CD](guides/ci-cd.md) | pull-request and merge jobs, JSON output, and exit codes |
+| [Security](guides/security.md) | the trust model, what SST checks, and running it with least privilege |
 | [Troubleshooting](guides/troubleshooting.md) | symptoms and their causes |
 
 ## Reference
