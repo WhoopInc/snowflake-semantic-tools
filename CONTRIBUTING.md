@@ -122,8 +122,30 @@ snowflake_semantic_tools/
 ├── cli/        # click commands: the composition root that wires adapters into use cases
 ├── app/        # use cases: compile, validate, plan, apply, the test suites, migrate refs
 ├── adapters/   # the edges: YAML, the dbt manifest, the Snowflake connector, files, config, profile
-└── domain/     # pure: model, render, resolve, plan, state, and the ports adapters implement
+└── domain/     # pure: the pipeline's logic by stage, its data types, and the ports adapters implement
 ```
+
+`domain/` is laid out by stage, following the pipeline parse → resolve → validate → plan → apply:
+
+```text
+domain/
+├── model/        # data types only: artifacts, members, identifiers, the artifact registry, lifecycle values
+├── diagnostics/  # the diagnostic machinery, with every code in specs/, one module per code area
+├── parse/        # scanners: the template dialect, and the paths a skill's Markdown names
+├── resolve/      # template calls, member attachment, and eval name templates
+├── validate/     # every offline check, one module per subject
+├── render/       # DDL, agent and tool specs, eval payloads, skill bundles, and Desktop profiles
+├── plan/         # what apply must change, and in what order
+├── state/        # the manifest, the applied state, and saved plans
+├── enrich/       # the rules `sst enrich` derives column metadata by
+├── migrate/      # the `sst migrate refs` rewrite
+├── sql/          # typed SQL: the one way SST builds statement text
+└── ports/        # the protocols adapters implement; ports/snowflake/ holds one module per role
+```
+
+A use case depends on the narrowest port it uses: a single role such as `ExecutionPort`, or a
+small protocol combining the roles it calls. `SnowflakePort`, the union of every role, is for
+the composition root in `cli/`.
 
 Imports run one way, `cli` → (`app` | `adapters`) → `domain`:
 

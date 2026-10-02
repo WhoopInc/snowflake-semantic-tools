@@ -32,7 +32,7 @@ SST is a command-line compiler and publisher for a Snowflake semantic layer kept
 | `cli/` | click commands; the composition root | may import every ring |
 | `app/` | use cases (compile, validate, plan, apply, test suites, migrate refs) | `domain` only, never `adapters`; no `yaml`, `click`, or `snowflake` |
 | `adapters/` | YAML, dbt manifest, Snowflake connector, filesystem, config, profile | `domain` models and ports, never `domain.render` or `app`; the `yaml`, `dbt`, `snowflake`, and `fs` subpackages never import each other, and only `yaml` and `dbt` import `yaml` |
-| `domain/` | pure: model, render, resolve, plan, state, ports | no I/O, clock, environment, randomness, logging, or SDKs |
+| `domain/` | pure, by stage: parse, resolve, validate, render, plan, state; plus model (data types only), diagnostics, enrich, migrate, sql, ports | no I/O, clock, environment, randomness, logging, or SDKs |
 
 `poetry run lint-imports` enforces these as the six contracts in `pyproject.toml`; `tests/unit/test_ring_boundaries.py` proves each one rejects a crossing.
 
