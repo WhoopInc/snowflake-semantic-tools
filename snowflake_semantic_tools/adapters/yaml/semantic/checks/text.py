@@ -52,9 +52,7 @@ def _hardcoded_name_diagnostics(
     fields: list[tuple[str, str, str, str, Origin | None]] = [
         ("semantic_view", view.name, f"tables[{index}]", str(entry), view.origin)
         for view in views
-        for index, entry in enumerate(
-            view.source.get("tables") or [] if isinstance(view.source.get("tables"), list) else []
-        )
+        for index, entry in enumerate(_entries(view.source.get("tables")))
     ]
     fields.extend(("metric", metric.name, "expr", metric.expr, metric.origin) for metric in metrics)
     fields.extend(("filter", item.name, "expr", item.expr, item.origin) for item in filters)
@@ -72,6 +70,10 @@ def _hardcoded_name_diagnostics(
         for type_name, name, field, text, origin in fields
         for value in hardcoded_names(text)
     )
+
+
+def _entries(value: object) -> list[object]:
+    return value if isinstance(value, list) else []
 
 
 def _instruction_texts(instruction: InstructionDef) -> Iterator[str]:

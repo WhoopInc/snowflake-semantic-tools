@@ -207,6 +207,11 @@ class CompileProject:
         tools each agent resolved. The agents' load diagnostics are reported once, by the agents.
         """
         semantic = CompileSemanticViews(self._inputs).run_result()
+        # A view the project declares disabled is named as such, not as undeclared, by a tool.
+        unpublished = {
+            **unpublished,
+            **{artifact_key("semantic_view", name): "it is disabled" for name in semantic.disabled},
+        }
         dbt = self._inputs.dbt_catalog()
         tool_catalog = self._inputs.tool_catalog()
         tools = _compile_tools(settings, tool_catalog, dbt)

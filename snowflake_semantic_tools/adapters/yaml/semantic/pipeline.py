@@ -150,7 +150,7 @@ def load_semantic_views_result(
         ),
         diagnostics=DiagnosticBag((*reported, *attachment_diagnostics, *build_diagnostics)),
     )
-    return SemanticViewProject(resolved.views, resolved.diagnostics)
+    return SemanticViewProject(resolved.views, resolved.diagnostics, _disabled_views(context))
 
 
 def _load_context(
@@ -244,6 +244,23 @@ def _buildable_nodes(context: LoadContext, poison: Poison) -> Iterator[tuple[Pat
             if artifact_key("semantic_view", node["name"]).casefold() in poison.view_keys:
                 continue
             yield path, node
+
+
+def _disabled_views(context: LoadContext) -> tuple[str, ...]:
+    """The casefolded names of the views under semantic_views/ that are disabled, in document order."""
+    root_key = SEMANTIC_REGISTRY.artifacts["semantic_view"].root_key
+    assert root_key is not None
+    names: list[str] = []
+    for document in context.documents.under(context.views_dir, root_key):
+        for node in document.tree.get(root_key) or []:
+            if not isinstance(node, dict) or not node.get("name"):
+                continue
+            enabled = node.get("enabled")
+            if enabled is None:
+                enabled = _semantic_view_defaults(context.config, document.abs_path, context.views_dir).get("enabled")
+            if enabled is False:
+                names.append(str(node["name"]).casefold())
+    return tuple(names)
 
 
 def _build_failure(project_dir: Path, path: Path, node: dict[str, Any], exc: ProjectError) -> tuple[Diagnostic, ...]:

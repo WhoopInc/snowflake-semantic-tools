@@ -52,10 +52,22 @@ __all__ = [
     "CompiledView",
     "CompileResult",
     "CompileSemanticViews",
+    "SemanticCompileResult",
     "StandaloneArtifact",
     "compile_each",
     "has_error",
 ]
+
+
+@dataclass(frozen=True)
+class SemanticCompileResult(CompileResult):
+    """The compiled views, with the declared views left unpublished because they are disabled.
+
+    Attributes:
+        disabled: Casefolded names of the views the project declares disabled.
+    """
+
+    disabled: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -316,7 +328,7 @@ class CompileSemanticViews:
     def __init__(self, source: SemanticViewSource) -> None:
         self._source = source
 
-    def run_result(self) -> CompileResult:
+    def run_result(self) -> SemanticCompileResult:
         """Compile without turning one rendering invariant into process failure.
 
         Every view renders, in FQN order, whatever the source reported about it; only
@@ -353,9 +365,9 @@ class CompileSemanticViews:
             (item.view, item.artifact_key) for item in result.compiled if isinstance(item, CompiledView)
         )
         reach = fan_out_diagnostics(compiled_views)
-        if not checked and not reach:
-            return result
-        return CompileResult(result.compiled, DiagnosticBag((*result.diagnostics, *checked, *reach)))
+        return SemanticCompileResult(
+            result.compiled, DiagnosticBag((*result.diagnostics, *checked, *reach)), disabled=project.disabled
+        )
 
 
 def _compiled_view(view: SemanticView) -> CompiledView:
