@@ -20,7 +20,7 @@ cannot be downgraded by any setting.
 - [Loading (LOD)](#loading-lod) -- 8 codes
 - [References (REF)](#references-ref) -- 29 codes
 - [Membership (MEM)](#membership-mem) -- 2 codes
-- [Validation (VAL)](#validation-val) -- 161 codes
+- [Validation (VAL)](#validation-val) -- 211 codes
 - [dbt (DBT)](#dbt-dbt) -- 5 codes
 - [Rendering (RND)](#rendering-rnd) -- 2 codes
 - [Manifest and state (MAN)](#manifest-and-state-man) -- 11 codes
@@ -1170,17 +1170,89 @@ Fix: delete the sample_values; sst enrich never samples a column with pii_tags
 
 Fix: make the expression boolean
 
+### SST-VAL402
+
+**Filter label applied to a metric** (error)
+
+`'<member>' carries labels: [filter] and is a metric`
+
+Fix: remove the label, or declare a filter
+
+### SST-VAL403
+
+**Legacy filter syntax** (error, always an error)
+
+`filter '<member>' uses the legacy inline form`
+
+Fix: declare filters as named objects with labels:
+
+### SST-VAL404
+
+**Filter expression contains an unwrapped bare identifier** (warning)
+
+`filter '<member>' expression contains bare identifier '<column>'`
+
+Fix: wrap it in {{ ref('&lt;model&gt;','&lt;column&gt;') }}
+
 ### SST-VAL405
 
 **Boolean standalone filter** (error)
 
 `filter '<member>' is boolean-valued and declares no labels: key`
 
-Fix: add labels: [filter] so it renders as a native LABELS = (FILTER) dimension; sst migrate refs adds it
+Fix: add labels: [filter] so it renders as a native LABELS = (FILTER) dimension on its table
+
+### SST-VAL406
+
+**Filter synonyms declared but not emitted** (warning)
+
+`filter '<member>' declares synonyms that the renderer drops`
+
+Fix: remove the synonyms until the renderer emits them
+
+### SST-VAL407
+
+**Custom instruction block has no non-empty channel** (error)
+
+`custom_instruction '<member>' declares no non-empty channel`
+
+Fix: populate at least one channel
+
+### SST-VAL408
+
+**Legacy custom-instruction rendering** (error)
+
+`custom_instruction '<member>' would render as a bare string`
+
+Fix: emit module_custom_instructions or the ai_-prefixed clauses
+
+### SST-VAL409
+
+**Instruction placed in the wrong channel** (warning)
+
+`custom_instruction '<member>': a <found> rule appears in the <expected> channel`
+
+Fix: move the rule to the channel that acts on it
+
+### SST-VAL410
+
+**Two instruction blocks on one view contradict each other** (warning)
+
+`<artifact>: '<a>' and '<b>' give contradictory directives`
+
+Fix: reconcile the two blocks
+
+### SST-VAL411
+
+**Instruction uses Cortex Analyst state keywords** (warning)
+
+`custom_instruction '<member>' uses <found> keywords, which an agent does not need`
+
+Fix: write the instruction as plain natural language
 
 ### SST-VAL412
 
-**Verified-query SQL source is invalid** (error)
+**Verified query declares neither sql nor sql_file, or both** (error)
 
 `verified_query '<member>': <detail>`
 
@@ -1188,11 +1260,43 @@ Fix: declare exactly one of sql or sql_file
 
 ### SST-VAL413
 
-**Verified-query SQL reads an undeclared table** (warning)
+**Verified query question text is not unique within a view** (error)
 
-`verified_query '<member>': its SQL reads '<name>', which is not in its tables:`
+`<artifact>: question text is shared by '<a>' and '<b>'`
+
+Fix: make the question text unique
+
+### SST-VAL414
+
+**Verified query SQL references a table not in its table list** (warning)
+
+`verified_query '<member>' queries '<relation>', absent from tables:`
 
 Fix: add the table to tables:, which decides the views the query attaches to
+
+### SST-VAL415
+
+**Verified query returns no rows** (warning)
+
+`verified_query '<member>' executed and returned <row_count> rows in <elapsed_ms>ms`
+
+Fix: fix the query, or widen the fixture
+
+### SST-VAL416
+
+**Verified query SQL contains a relative date** (warning)
+
+`verified_query '<member>' contains relative date '<value>'`
+
+Fix: pin the date, or accept that it is runtime guidance only
+
+### SST-VAL417
+
+**Question text is shared across three different sets** (warning)
+
+`'<value>' appears as a VQ question, an agent sample_question and an eval row`
+
+Fix: keep the three sets distinct
 
 ### SST-VAL418
 
@@ -1202,93 +1306,181 @@ Fix: add the table to tables:, which decides the views the query attaches to
 
 Fix: fix the expression so Snowflake compiles it; SST also refuses, before sending it, a `;`, a comment, `$$`, an unbalanced bracket, or a statement keyword outside quotes
 
+### SST-VAL506
+
+**secure: true requires the owner role to round-trip** (warning)
+
+`agent '<artifact>' is secure; the round-trip check needs the owner role`
+
+Fix: run CI as the owner role, or accept that the round-trip is skipped
+
+### SST-VAL507
+
+**secure: false transition blocked by a share or application role** (error)
+
+`agent '<artifact>' is granted to <value>; it cannot become non-secure`
+
+Fix: keep secure: true, or revoke the share grant first
+
+### SST-VAL508
+
+**Tag name does not resolve** (error)
+
+`agent '<artifact>': tag '<field>' does not resolve to a tag object`
+
+Fix: create the tag, or correct the name
+
+### SST-VAL509
+
+**Rendered spec differs from the live spec** (error)
+
+`agent '<artifact>': re-render differs from the live spec at <value>`
+
+Fix: apply, or reconcile the authored file with the live object
+
+### SST-VAL510
+
+**Renderer emitted a partial spec** (error, always an error)
+
+`agent '<artifact>': rendered spec omits <value>`
+
+Fix: emit the complete spec; a partial spec deletes fields on the live agent
+
 ### SST-VAL511
 
-**Rendered agent spec exceeds the size limit** (error)
+**Rendered spec exceeds the size limit** (error)
 
 `agent '<artifact>': rendered spec is <size> bytes, over the 100,000 limit`
 
-Fix: trim the spec or move bulk context out of it
+Fix: move instructions into referenced files
 
 ### SST-VAL512
 
-**Rendered agent spec is near the size limit** (warning)
+**Rendered spec is near the size limit** (warning)
 
 `agent '<artifact>': rendered spec is <size> bytes, over 80% of the limit`
 
-Fix: trim the specification before it reaches the hard limit
+Fix: trim the instruction surface
 
 ### SST-VAL513
 
-**Resolved agent tool name is invalid** (error)
+**Resolved tool name is not 1-64 characters** (error)
 
 `agent '<artifact>': resolved tool name '<name>' is <size> chars`
 
-Fix: use a 1-64 character name
+Fix: shorten the source name; for Analyst tools this is the derived name
 
 ### SST-VAL514
 
-**Agent tool names collide** (error)
+**Resolved tool names collide case-sensitively** (error)
 
 `agent '<artifact>': tool name '<name>' is declared twice`
 
-Fix: rename one tool
+Fix: rename one of them
 
 ### SST-VAL515
 
-**Agent tool names differ only by case** (warning)
+**Resolved tool names collide case-insensitively** (warning)
 
 `agent '<artifact>': '<a>' and '<b>' differ only by case`
 
-Fix: rename one tool
+Fix: rename one; an eval must match the trace name exactly
+
+### SST-VAL516
+
+**Tool type and key combination is illegal** (error)
+
+`agent '<artifact>': tool '<name>' of type <found> declares '<key>'`
+
+Fix: remove the key, or change the tool type
 
 ### SST-VAL517
 
-**Web search tool has a non-canonical name** (error)
+**web_search tool is not named web_search** (error)
 
 `agent '<artifact>': web_search tool is named '<name>'`
 
-Fix: name it web_search
+Fix: rename it to web_search; the trace name is not configurable
 
 ### SST-VAL518
 
-**Agent tool has no description** (error)
+**Tool has no description** (error)
 
 `agent '<artifact>': tool '<name>' has no description`
 
-Fix: write a disambiguating tool description
+Fix: write a description; it is the router
+
+### SST-VAL519
+
+**Two tool descriptions are near-duplicates** (warning)
+
+`agent '<artifact>': '<a>' and '<b>' have near-identical descriptions`
+
+Fix: differentiate them
 
 ### SST-VAL520
 
-**Analyst tool has an invalid semantic-view declaration** (error)
+**Analyst tool does not declare exactly one semantic view** (error)
 
 `agent '<artifact>': tool '<name>' declares <count> semantic views`
 
-Fix: declare exactly one semantic_view and omit name
+Fix: declare exactly one semantic_view and no name
 
 ### SST-VAL521
 
-**Agent tool omits a required resource** (error)
+**Cortex Search tool omits a required key** (error)
 
 `agent '<artifact>': tool '<name>' omits '<field>'`
 
-Fix: declare the required resource reference
+Fix: declare search_service and name
+
+### SST-VAL522
+
+**stage_path and relative_path_column not declared together** (error)
+
+`agent '<artifact>': tool '<name>' declares '<field>' without '<other>'`
+
+Fix: declare both, or neither; one alone is a silent no-op
+
+### SST-VAL523
+
+**Filter column is not marked filterable** (error)
+
+`agent '<artifact>': tool '<name>' filters on '<column>', not marked filterable`
+
+Fix: mark the column filterable: true
+
+### SST-VAL524
+
+**columns_and_descriptions entry is malformed** (error)
+
+`agent '<artifact>': tool '<name>' column '<column>': <detail>`
+
+Fix: use type string or datetime, with boolean searchable and filterable
+
+### SST-VAL525
+
+**Searchable column is a vector index column** (warning)
+
+`agent '<artifact>': tool '<name>' marks vector column '<column>' searchable`
+
+Fix: clear searchable on the vector column
 
 ### SST-VAL526
 
-**Generic tool has no object input schema** (error)
+**generic tool declares no object input schema** (error)
 
 `agent '<artifact>': tool '<name>' input_schema is <found>`
 
-Fix: declare input_schema with type object
+Fix: declare input_schema with type: object
 
 ### SST-VAL527
 
-**Generic tool has no warehouse** (error)
+**generic tool declares no warehouse** (error)
 
 `agent '<artifact>': tool '<name>' declares no warehouse`
 
-Fix: declare or inherit a warehouse
+Fix: declare a warehouse
 
 ### SST-VAL528
 
@@ -1296,23 +1488,95 @@ Fix: declare or inherit a warehouse
 
 `agent '<artifact>' declares an agent toolset`
 
-Fix: account for delegated tools in tests
+Fix: accept that tool-name uniqueness and eval coverage are incomplete here
+
+### SST-VAL529
+
+**Built-in tool type emits a tool_resources entry** (error)
+
+`agent '<artifact>': built-in tool '<name>' would emit tool_resources`
+
+Fix: remove the resources entry
+
+### SST-VAL530
+
+**tool_resources key matches no rendered tool** (error)
+
+`agent '<artifact>': tool_resources key '<key>' matches no tools[].name`
+
+Fix: align the key with the rendered tool name
+
+### SST-VAL531
+
+**Resolved external object does not exist in the target** (warning)
+
+`agent '<artifact>': '<value>' does not exist in target '<target>'`
+
+Fix: publish it first, or correct the reference
+
+### SST-VAL532
+
+**External object signature disagrees with the input schema** (warning)
+
+`agent '<artifact>': '<value>' signature <found> differs from input_schema <expected>`
+
+Fix: align the schema with the object
+
+### SST-VAL533
+
+**generic tool resource key unverified** (info)
+
+`agent '<artifact>': resource key '<key>' for a generic tool is unverified`
+
+Fix: confirm against DESCRIBE AGENT on a live agent
+
+### SST-VAL534
+
+**query_timeout exceeds the warehouse statement timeout** (warning)
+
+`agent '<artifact>': query_timeout <found> exceeds STATEMENT_TIMEOUT_IN_SECONDS <expected>, which silently wins`
+
+Fix: lower query_timeout, or raise the warehouse setting
+
+### SST-VAL535
+
+**Instructions name a tool that does not exist** (warning)
+
+`agent '<artifact>': instructions name tool '<name>', absent from tools:`
+
+Fix: correct the instruction, or add the tool
+
+### SST-VAL536
+
+**Instructions contradict a tool description** (warning)
+
+`agent '<artifact>': instructions route <value> to '<name>', documented as excluding it`
+
+Fix: reconcile the instruction and the description
+
+### SST-VAL537
+
+**Sample question is a relative-dated duplicate of an eval question** (warning)
+
+`agent '<artifact>': sample question '<value>' is relative-dated and matches an eval row`
+
+Fix: pin the date, and keep the two sets distinct
 
 ### SST-VAL538
 
-**Skill source is not pinned** (error)
+**Skill source does not pin an immutable version** (error)
 
 `agent '<artifact>': skill source '<name>' does not pin an immutable version`
 
-Fix: pin a committed extension version
+Fix: pin a committed version; LIVE and an omitted version are both refused here, though Snowflake refuses neither
 
 ### SST-VAL539
 
-**Skill source uses a mutable stage** (error)
+**Skill source points at a mutable stage path** (error)
 
 `agent '<artifact>': skill source '<name>' is a STAGE path into a mutable bundle`
 
-Fix: reference a versioned Cortex Extension
+Fix: reference a CORTEX EXTENSION version instead
 
 ### SST-VAL540
 
@@ -1320,47 +1584,95 @@ Fix: reference a versioned Cortex Extension
 
 `agent '<artifact>': the skill source for skill('<path>') omits name`
 
-Fix: declare name; it is optional only for a plugin
+Fix: declare name; it is optional only for PLUGIN-type
+
+### SST-VAL541
+
+**Two skill entries contribute the same member name** (warning)
+
+`agent '<artifact>': '<a>' and '<b>' both contribute '<name>'; the later wins`
+
+Fix: rename one of them
+
+### SST-VAL542
+
+**Consuming role lacks READ on an extension** (warning)
+
+`agent '<artifact>': <value> lacks READ on extension '<name>'`
+
+Fix: grant READ before publishing
 
 ### SST-VAL543
 
-**Orchestration model is not allowed** (error)
+**Orchestration model is not in the allowlist** (error)
 
 `agent '<artifact>': models.orchestration '<found>' is not in the allowlist`
 
-Fix: use an allowed model, or extend the allowlist
+Fix: add it to the config allowlist, or use an allowed model
+
+### SST-VAL544
+
+**Orchestration model is auto while a blocking eval exists** (error)
+
+`agent '<artifact>': models.orchestration is auto and a blocking eval is configured`
+
+Fix: pin the model explicitly
 
 ### SST-VAL545
 
-**tool_not_accessible is invalid** (error)
+**tool_not_accessible is misplaced or invalid** (error)
 
 `agent '<artifact>': tool_not_accessible <detail>`
 
-Fix: use accept, reject, or legacy
+Fix: set it to accept, reject or legacy on the top-level orchestration key
 
 ### SST-VAL546
 
-**Analytical search has no Cortex Search tool** (error)
+**analytical_search enabled with no Cortex Search tool** (error)
 
 `agent '<artifact>': analytical_search is true and no cortex_search tool is declared`
 
-Fix: declare a Cortex Search tool, or disable the capability
+Fix: declare a cortex_search tool, or disable analytical_search
+
+### SST-VAL547
+
+**Token budget read as a cost ceiling** (warning)
+
+`agent '<artifact>': budget.tokens covers orchestration only`
+
+Fix: treat it as an orchestration bound, not a spend cap
+
+### SST-VAL548
+
+**Profile value outside its declared allowlist or form** (warning)
+
+`agent '<artifact>': <field> '<found>' <detail>`
+
+Fix: use an allowlisted avatar, or a plain colour name or var(--token)
 
 ### SST-VAL549
 
-**Agent display name collides** (warning)
+**display_name collides with another agent** (warning)
 
 `agent '<artifact>': display_name '<value>' is shared with <other>`
 
-Fix: give each agent a distinct display name
+Fix: rename one of them; it is the conversational handle
+
+### SST-VAL550
+
+**Deprecated or dropped version is still referenced** (error)
+
+`agent '<artifact>': <detail>`
+
+Fix: clear the alias, or retain the version
 
 ### SST-VAL601
 
-**Tool member is duplicated within its group** (error)
+**Tool member name is not unique within its group** (error)
 
 `tool group '<a>': member '<name>' is declared twice`
 
-Fix: rename or remove one declaration
+Fix: rename one of them
 
 ### SST-VAL602
 
@@ -1368,55 +1680,141 @@ Fix: rename or remove one declaration
 
 `tool member '<name>' is declared in <a> and <b>`
 
-Fix: use the canonical two-argument tool reference
+Fix: rename one; the single-argument ref form is unavailable for this name
 
 ### SST-VAL603
 
-**Unknown tool type** (error)
+**Tool type is not recognised** (error)
 
 `tool member '<name>': type '<found>' is not a known tool type`
 
-Fix: use one of: {expected}
+Fix: use one of the known tool types
 
 ### SST-VAL604
 
-**Defined tool lacks creation properties** (error)
+**define member carries no creation properties** (error)
 
 `tool member '<name>' is under define: and declares neither on: nor body_file:`
 
-Fix: add the creation fields required by the tool type
+Fix: declare on: or body_file:, or move it to reference:
 
 ### SST-VAL605
 
-**Tool ownership category is inconsistent** (error)
+**reference member carries creation properties** (error)
 
 `tool member '<name>' is under reference: and declares '<key>'`
 
-Fix: move creation properties under define:, or remove them
+Fix: remove the creation property; a reference is not owned
 
 ### SST-VAL606
 
-**Immutable tool group contains managed objects** (error)
+**define block present in an immutable group** (error)
 
 `tool group '<a>' is immutable: true and declares define:`
 
-Fix: remove define:, or make the group mutable
+Fix: remove the define: block
+
+### SST-VAL607
+
+**Defined procedure signature does not match the consuming input schema** (error)
+
+`tool member '<name>': signature <found> differs from input_schema <expected>`
+
+Fix: align the signature and the schema
 
 ### SST-VAL608
 
-**Tool source is not a dbt model** (error)
+**on: does not resolve to a dbt model** (error)
 
 `tool member '<name>': on: '<value>' is not a model in the dbt manifest`
 
-Fix: reference a dbt model in the current manifest
+Fix: correct the model name, or run dbt compile
 
 ### SST-VAL609
 
-**Tool column is absent from its source** (error)
+**search_column or attribute_columns not on the indexed model** (error)
 
 `tool member '<name>': '<column>' is not on '<value>'`
 
-Fix: use a column present on the source model
+Fix: correct the column list
+
+### SST-VAL610
+
+**execute_as: owner on a procedure reachable from an agent** (warning)
+
+`tool member '<name>' runs as owner and is reachable from agent '<artifact>'`
+
+Fix: review the privilege escalation, or run as caller
+
+### SST-VAL611
+
+**embedding_model is null on an eval-gated search service** (warning)
+
+`tool member '<name>' declares embedding_model: null and is read by a gated agent`
+
+Fix: pin the embedding model
+
+### SST-VAL612
+
+**DDL would be emitted for a reference member** (error)
+
+`tool member '<name>' is under reference: and DDL was rendered for it`
+
+Fix: emit no DDL for referenced members
+
+### SST-VAL613
+
+**Declared column is absent from the live object** (warning)
+
+`tool member '<name>': column '<column>' is absent from the live object`
+
+Fix: align the declaration with the object
+
+### SST-VAL614
+
+**Search service publish order violated** (error)
+
+`tool member '<name>' would publish before '<value>', which it indexes`
+
+Fix: include the source relation in the selection, or let dbt build it first; the order is not authorable
+
+### SST-VAL615
+
+**Inherited values overridden by an agent tool** (info)
+
+`agent '<artifact>': tool '<name>' overrides <value>`
+
+### SST-VAL616
+
+**Referenced object privilege pre-flight failed** (warning)
+
+`tool member '<name>': <value> lacks <detail>`
+
+Fix: grant the privilege before publishing
+
+### SST-VAL617
+
+**Search service indexes a relation its dbt materialization rebuilds** (warning)
+
+`tool member '<name>' indexes <value>, materialized '<detail>' -- every dbt run rebuilds the relation, disabling change tracking and forcing a full re-embed`
+
+Fix: make the model incremental, or set refresh_mode: FULL and accept the cost explicitly
+
+### SST-VAL618
+
+**Search service source lost change tracking** (warning)
+
+`<value> has change_tracking = OFF; service '<name>' cannot refresh incrementally and is serving stale data`
+
+Fix: re-enable change tracking on the source, or replace the service
+
+### SST-VAL619
+
+**Search service replace will not preserve grants atomically** (warning)
+
+`tool member '<name>': <detail> explicit grant(s) will be captured and replayed -- they do not exist between commit and replay`
+
+Fix: none -- Snowflake provides no COPY GRANTS for this object type
 
 ### SST-VAL701
 

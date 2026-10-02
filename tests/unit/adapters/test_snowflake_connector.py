@@ -564,3 +564,44 @@ def test_a_message_without_credentials_is_kept_as_written() -> None:
     with pytest.raises(SnowflakePortError) as raised:
         SessionConnector(_Session({"SELECT": plain})).query(sql("SELECT 1"))
     assert str(raised.value) == str(plain)
+
+
+def test_show_row_reads_the_named_object_as_text() -> None:
+    connector = StubSnowflakeConnector(
+        {"SHOW AGENTS LIKE": ({"name": "SALES_AGENT_OLD"}, {"name": "SALES_AGENT", "OWNER": "ADMIN", "comment": None})}
+    )
+    row = connector.show_row("AGENT", QualifiedName.parse("DB.S.SALES_AGENT"))
+    assert row == {"name": "SALES_AGENT", "owner": "ADMIN", "comment": ""}
+    assert connector.show_row("AGENT", QualifiedName.parse("DB.S.OTHER")) is None
+
+
+def test_describe_properties_reads_property_rows_or_a_single_row() -> None:
+    present: dict[str, tuple[dict[str, object], ...]] = {
+        "SHOW AGENTS LIKE": ({"name": "SALES_AGENT", "database_name": "DB", "schema_name": "S"},)
+    }
+    properties = StubSnowflakeConnector(
+        {
+            **present,
+            "DESCRIBE AGENT": ({"name": "agent_spec", "value": "{}"}, {"property": "ALIASES", "property_value": None}),
+        }
+    )
+    name = QualifiedName.parse("DB.S.SALES_AGENT")
+    assert properties.describe_properties("AGENT", name) == {"agent_spec": "{}", "aliases": ""}
+    single = StubSnowflakeConnector({**present, "DESCRIBE AGENT": ({"name": "SALES_AGENT", "agent_spec": "{}"},)})
+    assert single.describe_properties("AGENT", name) == {"name": "SALES_AGENT", "agent_spec": "{}"}
+    assert StubSnowflakeConnector({}).describe_properties("AGENT", name) is None
+
+
+def test_object_parameter_reads_one_warehouse_parameter() -> None:
+    connector = StubSnowflakeConnector(
+        {
+            "SHOW PARAMETERS LIKE": (
+                {"key": "OTHER", "value": "1"},
+                {"key": "STATEMENT_TIMEOUT_IN_SECONDS", "value": 300},
+            )
+        }
+    )
+    assert connector.object_parameter("warehouse", "WH", "STATEMENT_TIMEOUT_IN_SECONDS") == "300"
+    assert StubSnowflakeConnector({}).object_parameter("WAREHOUSE", "WH", "STATEMENT_TIMEOUT_IN_SECONDS") is None
+    with pytest.raises(SnowflakePortError, match="unsupported parameter object type"):
+        connector.object_parameter("DATABASE", "DB", "DATA_RETENTION_TIME_IN_DAYS")

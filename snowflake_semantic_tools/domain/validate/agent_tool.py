@@ -170,14 +170,13 @@ def signature_mismatch(
     if matches:
         return None
     found = "(" + ", ".join(f"{parameter.name} {parameter.type}" for parameter in backing.signature) + ")"
-    expected = (
-        "("
-        + ", ".join(
-            f"{key} {value.get('type') if isinstance(value, Mapping) else value!r}" for key, value in properties.items()
-        )
-        + ")"
-    )
+    expected = "(" + ", ".join(f"{key} {schema_type(value)}" for key, value in properties.items()) + ")"
     return D("SST-VAL607", name=backing.name, found=found, expected=expected, subject=agent.key)
+
+
+def schema_type(schema: object) -> str:
+    """Name an input-schema property's JSON type, or show the value when it is not a mapping."""
+    return str(schema.get("type")) if isinstance(schema, Mapping) else repr(schema)
 
 
 def input_type_matches(sql_type: str, schema: object) -> bool:

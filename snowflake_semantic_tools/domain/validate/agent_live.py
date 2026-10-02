@@ -10,7 +10,7 @@ import json
 import re
 from collections.abc import Mapping, Sequence
 
-from snowflake_semantic_tools.domain.validate.agent_tool import input_type_matches
+from snowflake_semantic_tools.domain.validate.agent_tool import input_type_matches, schema_type
 
 _ARGUMENTS = re.compile(r"\((?P<types>[^)]*)\)")
 
@@ -82,7 +82,5 @@ def signature_disagreement(types: Sequence[str], input_schema: Mapping[str, obje
     )
     if agrees:
         return None
-    expected = ", ".join(
-        f"{key} {value.get('type') if isinstance(value, Mapping) else value!r}" for key, value in properties.items()
-    )
+    expected = ", ".join(f"{key} {schema_type(value)}" for key, value in properties.items())
     return f"({', '.join(types)})", f"({expected})"

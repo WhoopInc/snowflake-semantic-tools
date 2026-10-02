@@ -98,7 +98,9 @@ def resolve_tool(
         )
         return None, tuple(diagnostics)
     # A known type without a resolver of its own is a built-in.
-    diagnostics.extend(misplaced_keys(agent, authored, authored.name or authored.type))
+    # An Analyst tool is named after its view; any other unnamed tool, after its type.
+    label = authored.name or (authored.semantic_view.upper() if authored.semantic_view else authored.type)
+    diagnostics.extend(misplaced_keys(agent, authored, label))
     resolution = _RESOLVERS.get(authored.type, _builtin)(agent, authored, context, diagnostics)
     if resolution is None:
         return None, tuple(diagnostics)

@@ -186,3 +186,41 @@ def test_each_tool_is_placed_where_its_entry_starts(tmp_path: Path) -> None:
     assert not_a_mapping.code == "SST-PRS018"
     assert not_a_mapping.origin is not None
     assert (not_a_mapping.origin.file, not_a_mapping.origin.line) == ("agents/placed/agent.yml", 9)
+
+
+def _agent_file(tmp_path: Path, text: str) -> Path:
+    root = tmp_path / "agents" / "sales"
+    root.mkdir(parents=True)
+    (root / "agent.yml").write_text(text, encoding="utf-8")
+    return tmp_path
+
+
+def test_a_bare_string_instructions_block_is_refused_rather_than_dropped(tmp_path: Path) -> None:
+    project = _agent_file(tmp_path, "name: sales_agent\nspec:\n  instructions: Route sales questions to Sales.\n")
+    agents, diagnostics = load_agents(project)
+    [diagnostic] = diagnostics
+    assert (diagnostic.code, diagnostic.subject) == ("SST-PRS003", "agent:sales_agent")
+    assert "spec.instructions" in diagnostic.message
+    assert agents[0].orchestration_instructions is None
+
+
+def test_a_token_budget_documented_beside_it_is_marked_so(tmp_path: Path) -> None:
+    text = (
+        "name: sales_agent\n"
+        "spec:\n"
+        "  orchestration:\n"
+        "    budget:\n"
+        "      seconds: 60  # wall clock\n"
+        "      # Bounds orchestration tokens only,\n"
+        "      # not what the tools spend.\n"
+        "      tokens: 16000\n"
+    )
+    [documented], _ = load_agents(_agent_file(tmp_path / "a", text))
+    assert documented.budget_tokens == 16000 and documented.budget_tokens_documented
+    trailing = text.replace("      # Bounds orchestration tokens only,\n      # not what the tools spend.\n", "")
+    trailing = trailing.replace("tokens: 16000", "tokens: 16000  # orchestration only")
+    [inline], _ = load_agents(_agent_file(tmp_path / "b", trailing))
+    assert inline.budget_tokens_documented
+    bare = text.replace("      # Bounds orchestration tokens only,\n      # not what the tools spend.\n", "")
+    [undocumented], _ = load_agents(_agent_file(tmp_path / "c", bare))
+    assert not undocumented.budget_tokens_documented

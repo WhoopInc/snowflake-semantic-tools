@@ -190,6 +190,8 @@ Allowlists for Snowflake surfaces the renderer accepts.
 | Key | Type | Default | Description |
 |---|---|---|---|
 | `snowflake.orchestration_models` | list | `[auto]` | Orchestration models agents may name. |
+| `snowflake.profile` | block |  | Agent profile allowlists. |
+| `snowflake.profile.avatar_allowlist` | list |  | Avatars an agent profile may name; unset allows any. |
 
 ## Unsupported keys
 
@@ -207,7 +209,6 @@ reads it, so a setting cannot look as though it takes effect when it does not.
 | `agents.<route>` | block | Folder route. |
 | `snowflake.tool_types` | list | Extra agent tool types. |
 | `snowflake.allow_unknown_keys` | boolean | Accept unknown agent spec keys. |
-| `snowflake.profile` | block | Agent profile allowlists. |
 
 ## Removed keys
 
