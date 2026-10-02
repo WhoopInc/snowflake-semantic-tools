@@ -18,7 +18,7 @@ from snowflake_semantic_tools.domain.diagnostics import (
 def test_registered_code_owns_severity_and_formats_context() -> None:
     diagnostic = D("SST-REF001", model="missing", origin=Origin("views.yml", 3, 7))
     assert diagnostic.severity is Severity.ERROR
-    assert diagnostic.message == "{{ ref('missing') }} is not a model in the dbt manifest"
+    assert diagnostic.message == "{ ref('missing') } is not a model in the dbt manifest"
     assert diagnostic.origin == Origin("views.yml", 3, 7)
 
 

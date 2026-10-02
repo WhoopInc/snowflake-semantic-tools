@@ -57,6 +57,13 @@ SPECS: tuple[ErrorSpec, ...] = (
         "remove +database and +schema from evals:; eval objects resolve to the agent's schema",
     ),
     spec(
+        "SST-CFG029",
+        Severity.ERROR,
+        "var() reference has no declaration",
+        "{{ var('{var}') }} is not declared in config",
+        "declare the variable under vars: in sst_config.yml",
+    ),
+    spec(
         "SST-CFG036",
         Severity.ERROR,
         "Name-map entry cannot be qualified",

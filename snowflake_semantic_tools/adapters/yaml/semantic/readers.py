@@ -25,6 +25,12 @@ from snowflake_semantic_tools.adapters.yaml.semantic.nodes import (
     _table_refs_poisoned,
 )
 from snowflake_semantic_tools.domain.parse.template import TemplateSyntaxError, scan_template_calls
+from snowflake_semantic_tools.domain.resolve.calls import member_reference
+
+
+def _relationship_name(text: str) -> str:
+    """Read a `using_relationships` entry: a bare relationship name, or one `relationship()` call."""
+    return member_reference(text, "relationship") or text
 
 
 def load_metrics(documents: RawDocuments, project_dir: Path, semantic_models_dir: str) -> tuple[MetricDef, ...]:
@@ -55,7 +61,14 @@ def load_metrics(documents: RawDocuments, project_dir: Path, semantic_models_dir
                 synonyms=_as_str_tuple(node.get("synonyms")),
                 tables=_safe_table_refs(node.get("tables")),
                 derived=bool(node.get("derived", False)),
-                using_relationships=tuple(str(value).upper() for value in node.get("using_relationships") or []),
+                using_relationships=tuple(
+                    _relationship_name(str(value)).upper() for value in node.get("using_relationships") or []
+                ),
+                relationship_refs=tuple(
+                    name.upper()
+                    for value in node.get("using_relationships") or []
+                    if (name := member_reference(str(value), "relationship")) is not None
+                ),
                 non_additive=tuple(
                     _non_additive(value)
                     for value in _list_of(node.get("non_additive_dimensions"))

@@ -10,6 +10,8 @@ from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, Origin
 from snowflake_semantic_tools.domain.model.artifact_key import artifact_key
 from snowflake_semantic_tools.domain.model.dbt import DbtModel
 from snowflake_semantic_tools.domain.parse.template import TemplateCall, TemplateSyntaxError, scan_template_calls
+from snowflake_semantic_tools.domain.resolve.calls import call_problem, syntax_problem, variable_problem
+from snowflake_semantic_tools.domain.resolve.template import FILTER_EXPR, VQR_SQL
 from snowflake_semantic_tools.domain.validate.expression import is_boolean_expression as _is_boolean_expression
 
 
@@ -22,8 +24,8 @@ def _expression_reference_diagnostics(
 ) -> tuple[Diagnostic, ...]:
     """Check the template calls of every filter expression and verified-query SQL, member by member.
 
-    A verified query's undeclared tables come first, then each call in source order. A malformed
-    template (SST-LOD004) ends that member's checks, since no call in it can be read.
+    A verified query's undeclared tables come first, then each call in source order. A template
+    that does not parse ends that member's checks, since no call in it can be read.
 
     Args:
         metric_names: Every metric's name, casefolded.
@@ -61,23 +63,15 @@ def _undeclared_table_diagnostics(member: VerifiedQueryDef, subject: str, declar
 
 
 def _scan_expression(text: str, origin: Origin | None, subject: str) -> tuple[TemplateCall, ...] | Diagnostic:
-    """Return an expression's template calls, or the diagnostic for a malformed template.
+    """Return an expression's template calls, or the diagnostic for a template that does not parse.
 
     Diagnostics:
-        SST-LOD004: when a template call in the expression does not parse.
+        SST-LOD004, SST-REF033, SST-REF003: when a template span in the expression does not parse.
     """
     try:
         return scan_template_calls(text)
     except TemplateSyntaxError as exc:
-        return D(
-            "SST-LOD004",
-            origin=origin,
-            file=origin.file if origin else "<expression>",
-            line=exc.line,
-            col=exc.col,
-            reason=exc.reason,
-            subject=subject,
-        )
+        return syntax_problem(exc, origin.file if origin else "<expression>", subject=subject)
 
 
 def _call_diagnostics(
@@ -91,71 +85,36 @@ def _call_diagnostics(
 ) -> list[Diagnostic]:
     """Check one template call of a filter expression or verified-query SQL, by the function it calls.
 
-    `metric()` and `ref()` calls have rules of their own; a legacy `table()` or `column()` call is
-    left to SST-REF034/SST-REF035, which name it at its position.
+    A call must first be legal in its field (`call_problem`); a legacy `table()` or `column()`
+    call is left to SST-REF034/SST-REF035 from the legacy check, which names it at its position.
 
     Diagnostics:
-        SST-REF041: when the call's function is none of `ref()`, `metric()` and `var()`.
-        SST-REF042: when a `var()` call does not take exactly one name.
-        SST-REF038: when a `var()` call names no project variable.
+        SST-REF004, SST-REF041, SST-REF015: when the call is not legal in the field.
+        SST-REF006: when a `metric()` call names no metric.
+        SST-CFG029, SST-REF009: when a `var()` call names no project variable, or an empty one.
     """
-    if call.function == "metric":
-        return _metric_call_diagnostics(call, member, subject, metric_names)
-    if call.function == "var":
-        return [_var_diagnostic(call, member.origin, subject)] if _is_bad_var(call, variables) else []
     if call.function in ("table", "column"):
         # SST-REF034/SST-REF035 already name the legacy global at its position.
         return []
-    if call.function != "ref":
-        return [
-            D(
-                "SST-REF041",
-                origin=member.origin,
-                subject=subject,
-                artifact=subject,
-                function=call.function,
-                field="an expression",
-            )
-        ]
-    if len(call.args) not in (1, 2):
+    is_filter = isinstance(member, FilterDef)
+    problem = call_problem(
+        call,
+        (FILTER_EXPR if is_filter else VQR_SQL).allowed,
+        member.origin,
+        field="filter.expression" if is_filter else "verified_query.sql",
+        artifact=subject,
+        subject=subject,
+    )
+    if problem is not None:
+        return [problem]
+    if call.function == "metric":
+        if call.args[0].casefold() not in metric_names:
+            return [D("SST-REF006", origin=member.origin, subject=subject, name=call.args[0])]
         return []
+    if call.function == "var":
+        found = variable_problem(call.args[0], variables, member.origin, subject=subject)
+        return [found] if found is not None else []
     return _ref_call_diagnostics(call, member, subject, declared, models)
-
-
-def _metric_call_diagnostics(
-    call: TemplateCall, member: FilterDef | VerifiedQueryDef, subject: str, metric_names: frozenset[str]
-) -> list[Diagnostic]:
-    """Check one `metric()` call: a filter may not make one, and a verified query's must resolve.
-
-    Diagnostics:
-        SST-REF041: when a filter expression calls `metric()`.
-        SST-REF042: when the call does not name exactly one metric.
-        SST-REF006: when the call names no metric.
-    """
-    if isinstance(member, FilterDef):
-        return [
-            D(
-                "SST-REF041",
-                origin=member.origin,
-                subject=subject,
-                artifact=subject,
-                function="metric",
-                field="a filter expression",
-            )
-        ]
-    if len(call.args) != 1:
-        return [
-            D(
-                "SST-REF042",
-                origin=member.origin,
-                subject=subject,
-                artifact=subject,
-                detail=f"metric() takes one name, found {len(call.args)} in {call.raw}",
-            )
-        ]
-    if call.args[0].casefold() not in metric_names:
-        return [D("SST-REF006", origin=member.origin, subject=subject, name=call.args[0])]
-    return []
 
 
 def _ref_call_diagnostics(
@@ -267,20 +226,3 @@ def _sql_tables(sql: str) -> tuple[str, ...]:
         for name in re.findall(r"(?i)(?:\bWITH\s+(?:RECURSIVE\s+)?|,\s*)([A-Za-z_][A-Za-z0-9_$]*)\s+AS\s*\(", statement)
     }
     return tuple(dict.fromkeys(name.casefold() for name in names if name.casefold() not in ctes))
-
-
-def _is_bad_var(call: TemplateCall, variables: Mapping[str, object] | None) -> bool:
-    """Report whether a `var()` call is malformed or names no variable; None checks only its shape."""
-    return len(call.args) != 1 or variables is not None and call.args[0] not in variables
-
-
-def _var_diagnostic(call: TemplateCall, origin: Origin | None, subject: str) -> Diagnostic:
-    if len(call.args) != 1:
-        return D(
-            "SST-REF042",
-            origin=origin,
-            subject=subject,
-            artifact=subject,
-            detail=f"var() takes one name, found {len(call.args)} in {call.raw}",
-        )
-    return D("SST-REF038", origin=origin, subject=subject, artifact=subject, name=call.args[0])

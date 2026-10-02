@@ -23,6 +23,7 @@ from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, Diagnosti
 from snowflake_semantic_tools.domain.model.agent import AgentEvalFiles, AgentModel, AgentProfile, AgentSkill, AgentTool
 from snowflake_semantic_tools.domain.model.artifact_key import artifact_key
 from snowflake_semantic_tools.domain.parse.template import TemplateSyntaxError, scan_template_calls
+from snowflake_semantic_tools.domain.resolve.calls import syntax_problem
 
 
 def load_agents(project_dir: Path, *, agents_dir: str = "agents") -> tuple[tuple[AgentModel, ...], DiagnosticBag]:
@@ -273,7 +274,7 @@ def _instruction(
         The instruction; None when `value` is not a string or a sidecar problem was reported.
 
     Diagnostics:
-        SST-LOD004: when a template in the text is malformed.
+        SST-LOD004, SST-REF033, SST-REF003: when a template in the text does not parse.
         SST-REF014: when the text holds templates other than one `file()` call that is all of it.
         SST-REF027: when the sidecar resolves outside the project root.
         SST-LOD018: when the sidecar cannot be read.
@@ -285,7 +286,7 @@ def _instruction(
     try:
         calls = scan_template_calls(value)
     except TemplateSyntaxError as exc:
-        diagnostics.append(D("SST-LOD004", file=source_file, line=exc.line, col=exc.col, reason=exc.reason))
+        diagnostics.append(syntax_problem(exc, source_file))
         return value
     if not calls:
         return value
@@ -353,7 +354,7 @@ def _parse_tool(
         SST-PRS018: when the entry is not a mapping.
         SST-PRS002: when it declares no string `type`.
         SST-PRS003: when a mapping field, such as `filter` or `input_schema`, holds another type.
-        SST-LOD004: when a template in a reference field is malformed.
+        SST-LOD004, SST-REF033, SST-REF003: when a template in a reference field does not parse.
     """
     if not isinstance(value, dict):
         diagnostics.append(
@@ -424,7 +425,8 @@ def _parse_skill(
     Diagnostics:
         SST-PRS018: when the entry is not a mapping with a `source:` mapping.
         SST-PRS002: when `source.type` is not a string, or `name` is present and not one.
-        SST-LOD004: when a template in `source.path` or `source.version` is malformed, once each.
+        SST-LOD004, SST-REF033, SST-REF003: when a template in `source.path` or `source.version`
+            does not parse, once each.
     """
     if not isinstance(value, dict) or not isinstance(value.get("source"), dict):
         diagnostics.append(
@@ -472,7 +474,7 @@ def _template_args(
     try:
         calls = scan_template_calls(value)
     except TemplateSyntaxError as exc:
-        diagnostics.append(D("SST-LOD004", file=origin.file, line=exc.line, col=exc.col, reason=exc.reason))
+        diagnostics.append(syntax_problem(exc, origin.file))
         return ()
     if len(calls) != 1 or calls[0].function != function or calls[0].raw != value:
         return ()

@@ -334,8 +334,8 @@ def test_a_relation_with_an_undeclared_target_is_reported_before_the_missing_cur
         DbtCatalog("v12", None, None, ()),
     )
     assert [item.message for item in diagnostics if item.code == "SST-REF018"] == [
-        "{{ tool target('staging') }} has no entry for target 'profiles.yml'",
-        "{{ tool('group', 'lookup') }} has no entry for target 'dev'",
+        "{ tool target('staging') } has no entry for target 'profiles.yml'",
+        "{ tool('group', 'lookup') } has no entry for target 'dev'",
     ]
 
 

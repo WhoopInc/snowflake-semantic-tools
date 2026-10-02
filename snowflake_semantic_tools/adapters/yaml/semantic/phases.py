@@ -48,6 +48,8 @@ from snowflake_semantic_tools.domain.model.artifact_key import artifact_key
 from snowflake_semantic_tools.domain.model.dbt import DbtModel, DbtTarget
 from snowflake_semantic_tools.domain.model.project import ParsedProject, ParsedView
 from snowflake_semantic_tools.domain.model.semantic_view import Relationship
+from snowflake_semantic_tools.domain.resolve.calls import literal_problem
+from snowflake_semantic_tools.domain.resolve.depth import MAX_METRIC_DEPTH, over_deep
 
 
 @dataclass(frozen=True, slots=True)
@@ -210,12 +212,37 @@ def _document_diagnostics(
         *_authored_key_diagnostics(documents),
         *_member_name_diagnostics(documents),
         *_description_diagnostics(parsed.views, metrics),
+        *_description_template_diagnostics(parsed),
         *_metric_parse_diagnostics(documents, project_dir, models_dir),
         *_filter_parse_diagnostics(documents, project_dir, models_dir),
         *_relationship_parse_diagnostics(documents, project_dir, models_dir),
         *_dbt_model_diagnostics(context.models, referenced_models),
         *_dbt_column_diagnostics(context.models, referenced_models),
     )
+
+
+def _description_template_diagnostics(parsed: ParsedProject) -> tuple[Diagnostic, ...]:
+    """Report each view, metric and filter description that holds a template expression.
+
+    A description is published as written, so a call in it would reach Snowflake unresolved.
+
+    Diagnostics:
+        SST-REF008: when a description holds `{{`.
+    """
+    described: list[tuple[str, str, Origin | None]] = [
+        (artifact_key("semantic_view", view.name), str(view.source.get("description") or ""), view.origin)
+        for view in parsed.views
+    ]
+    described.extend(
+        (member.key, member.source.description or "", member.origin)
+        for member in parsed.members
+        if isinstance(member.source, (MetricDef, FilterDef))
+    )
+    found = (
+        literal_problem(text, origin, field="description", artifact=subject, subject=subject)
+        for subject, text, origin in described
+    )
+    return tuple(diagnostic for diagnostic in found if diagnostic is not None)
 
 
 @dataclass(frozen=True, slots=True)
@@ -322,7 +349,12 @@ def _unknown_member_tables(
 
 
 def _cycle_diagnostics(members: SemanticMembers) -> tuple[Diagnostic, ...]:
-    """Report each metric cycle once, relating every metric in it (SST-REF005)."""
+    """Report each metric cycle once, relating every metric in it, then each over-deep metric.
+
+    Diagnostics:
+        SST-REF005: the `metric()` references form a cycle.
+        SST-REF900: a metric's references nest more than `MAX_METRIC_DEPTH` deep.
+    """
     metric_by_name = {metric.name.casefold(): metric for metric in members.metrics}
     diagnostics: list[Diagnostic] = []
     for cycle in members.cycles:
@@ -335,6 +367,17 @@ def _cycle_diagnostics(members: SemanticMembers) -> tuple[Diagnostic, ...]:
                 subject=artifact_key("metric", cycle[0]),
                 origin=origins[0] if origins else None,
                 related=origins,
+            )
+        )
+    graph = {name: metric.referenced_metrics for name, metric in metric_by_name.items()}
+    for name, depth in over_deep(graph):
+        diagnostics.append(
+            D(
+                "SST-REF900",
+                found=depth,
+                expected=MAX_METRIC_DEPTH,
+                subject=artifact_key("metric", name),
+                origin=metric_by_name[name].origin,
             )
         )
     return tuple(diagnostics)
@@ -401,10 +444,13 @@ def _using_problem(metric: MetricDef, name: str, relationship: Relationship | No
     """Report one `using_relationships` entry of a metric, or return None when it fits.
 
     Diagnostics:
-        SST-VAL214: the entry names no declared relationship.
+        SST-REF029: the entry is a `relationship()` call naming no declared relationship.
+        SST-VAL214: the entry is a bare name naming no declared relationship.
         SST-VAL114: the relationship does not start from the metric's table.
     """
     subject = artifact_key("metric", metric.name)
+    if relationship is None and name in metric.relationship_refs:
+        return D("SST-REF029", name=name.casefold(), subject=subject, origin=metric.origin)
     if relationship is None:
         return D("SST-VAL214", metric=metric.name, relationship=name, subject=subject, origin=metric.origin)
     if metric.tables and relationship.from_table.casefold() != metric.tables[0]:

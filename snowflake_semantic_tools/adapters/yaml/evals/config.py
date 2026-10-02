@@ -32,6 +32,7 @@ from snowflake_semantic_tools.domain.model.eval import (
     EvalSystemMetric,
 )
 from snowflake_semantic_tools.domain.parse.template import TemplateSyntaxError, single_template_call
+from snowflake_semantic_tools.domain.resolve.calls import call_problem, malformed_field, syntax_problem
 
 
 def parse_eval_defaults(value: object) -> tuple[EvalDefaults, DiagnosticBag]:
@@ -100,7 +101,8 @@ def parse_config(loaded: tuple[str, ParsedYaml], diagnostics: list[Diagnostic]) 
         SST-PRS013: `run.tier` or a `run.accept_statuses` entry is not an accepted value.
         SST-PRS018: an entry of `metrics.system` or `metrics.custom` has the wrong type.
         SST-PRS019: a boolean field, such as a system metric's `gate`, is not a boolean.
-        SST-LOD004: a `metrics.custom` entry is not exactly one `eval_metric()` reference.
+        SST-LOD004, SST-REF033, SST-REF003, SST-REF015: a `metrics.custom` entry is not exactly
+            one `eval_metric()` reference.
     """
     source_file, parsed = loaded
     tree = parsed.tree
@@ -267,8 +269,9 @@ def _parse_custom_refs(
     Diagnostics:
         SST-PRS003: the block is not a list; reported without a position.
         SST-PRS018: an entry is not a string.
-        SST-LOD004: an entry's template does not parse, or is not one `eval_metric()` call with
-            one argument.
+        SST-LOD004, SST-REF033, SST-REF003: an entry's template does not parse, or the entry is
+            not one whole `eval_metric()` call (SST-REF003).
+        SST-REF015: the call does not take one argument.
     """
     if value is None:
         return ()
@@ -296,18 +299,15 @@ def _parse_custom_refs(
         try:
             call = single_template_call(item, "eval_metric")
         except TemplateSyntaxError as exc:
-            diagnostics.append(D("SST-LOD004", file=source_file, line=exc.line, col=exc.col, reason=exc.reason))
+            diagnostics.append(syntax_problem(exc, source_file))
             continue
-        if call is None or len(call.args) != 1:
-            diagnostics.append(
-                D(
-                    "SST-LOD004",
-                    file=source_file,
-                    line=origin.line or 1,
-                    col=origin.col or 1,
-                    reason="expected one eval_metric() reference",
-                )
-            )
+        located = Origin(source_file, origin.line, origin.col)
+        if call is None:
+            diagnostics.append(malformed_field(item, located))
+            continue
+        problem = call_problem(call, frozenset(("eval_metric",)), located, field="metrics.custom", artifact=source_file)
+        if problem is not None:
+            diagnostics.append(problem)
             continue
         names.append(str(call.args[0]))
     return tuple(names)

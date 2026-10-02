@@ -129,13 +129,19 @@ state records that the source is gone.
 
 ## A reference does not resolve
 
-- **`SST-REF038`**: `var()` names no project variable; declare it under `vars:`.
-- **`SST-REF039`**: `custom_instructions()` names no custom instruction.
-- **`SST-REF040`**: `tag()` names no declared tag, or a tag name is not written
-  as one `tag()` call.
+- **`SST-CFG029`**: `var()` names no project variable; declare it under `vars:`.
+- **`SST-REF007`**: `custom_instructions()` names no custom instruction.
+- **`SST-REF028`**: `tag()` names no tag declared under `tags:`.
+- **`SST-REF029`**, **`SST-REF030`**, **`SST-REF031`**: `relationship()`,
+  `filter()` or `verified_query()` names no declared member of that type.
+- **`SST-REF003`**: a field that takes exactly one call, such as a tag name, is
+  something else.
+- **`SST-REF004`**: the function is not a template function at all.
 - **`SST-REF041`**: the function is not allowed in that field, such as
   `metric()` inside a filter.
-- **`SST-REF042`**: a function has the wrong number of arguments.
+- **`SST-REF015`**: a function has the wrong number of arguments.
+- **`SST-REF033`**: a `{{ ... }}` span is not a call, such as `{{ name }}` or a
+  call missing its closing parenthesis.
 - **`SST-REF043`**: an expression refs a model that is not one of the view's
   `tables:`.
 

@@ -146,7 +146,8 @@ class MetricDef:
         tables: The models `tables:` names, casefolded, in order; `()` when it is absent or
             cannot be read.
         derived: Whether the metric is derived, built from other metrics, rather than table-scoped.
-        using_relationships: The relationship names, uppercased.
+        using_relationships: The relationship names, uppercased, each as written or as the one
+            `relationship()` call it is written as.
         non_additive: The `non_additive_dimensions` entries that name a dimension.
         access_modifier: As written; `public_access` when absent.
         has_tables_key: Whether the entry has a `tables:` key at all, which `tables` cannot tell.
@@ -154,6 +155,7 @@ class MetricDef:
         template_calls: The calls in `expr`, as read; `()` when it has none or one is malformed.
         poisoned: Whether `tables:` cannot be read, which keeps the metric out of every view.
         window: The `window:` block; None when absent or not a mapping.
+        relationship_refs: Those of `using_relationships` written as a `relationship()` call.
     """
 
     name: str
@@ -170,6 +172,7 @@ class MetricDef:
     template_calls: tuple[TemplateCall, ...] = ()
     poisoned: bool = False
     window: WindowDef | None = None
+    relationship_refs: tuple[str, ...] = ()
 
     @property
     def calls(self) -> tuple[TemplateCall, ...]:

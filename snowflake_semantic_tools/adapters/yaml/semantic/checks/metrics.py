@@ -10,9 +10,7 @@ from collections.abc import Mapping
 
 from snowflake_semantic_tools.adapters.yaml.semantic.checks.expressions import (
     _bare_column_identifiers,
-    _is_bad_var,
     _scan_expression,
-    _var_diagnostic,
 )
 from snowflake_semantic_tools.adapters.yaml.semantic.checks.windows import (
     DIMENSION_TYPES,
@@ -24,6 +22,8 @@ from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic
 from snowflake_semantic_tools.domain.model.artifact_key import artifact_key
 from snowflake_semantic_tools.domain.model.dbt import DbtModel
 from snowflake_semantic_tools.domain.parse.template import TemplateCall
+from snowflake_semantic_tools.domain.resolve.calls import call_problem, variable_problem
+from snowflake_semantic_tools.domain.resolve.template import METRIC_EXPR
 from snowflake_semantic_tools.domain.validate.expression import is_aggregate_expression
 from snowflake_semantic_tools.domain.validate.expression import root_function as _root_function
 
@@ -361,17 +361,29 @@ def _template_call_diagnostics(
     models: Mapping[str, DbtModel],
     variables: Mapping[str, object] | None,
 ) -> list[Diagnostic]:
-    """Check each `var()` and `ref()` call of a metric's expression, in source order.
+    """Check each template call of a metric's expression, in source order.
+
+    A call must first be legal in a metric expression; a legacy call is left to the legacy
+    check, which names it at its position, and a `metric()` call to the reference rules.
 
     Diagnostics:
-        SST-REF042: when a `var()` call does not take exactly one name.
-        SST-REF038: when a `var()` call names no project variable.
+        SST-REF004, SST-REF041, SST-REF015: when the call is not legal in a metric expression.
+        SST-CFG029, SST-REF009: when a `var()` call names no project variable, or an empty one.
     """
+    subject = artifact_key("metric", metric.name)
     diagnostics: list[Diagnostic] = []
     for call in calls:
-        if call.function == "var" and _is_bad_var(call, variables):
-            diagnostics.append(_var_diagnostic(call, metric.origin, artifact_key("metric", metric.name)))
-        elif call.function == "ref" and len(call.args) in (1, 2):
+        if call.function in ("table", "column"):
+            continue
+        problem = call_problem(
+            call, METRIC_EXPR.allowed, metric.origin, field="metric.expression", artifact=subject, subject=subject
+        )
+        if problem is not None:
+            diagnostics.append(problem)
+        elif call.function == "var" and variables is not None:
+            found = variable_problem(call.args[0], variables, metric.origin, subject=subject)
+            diagnostics.extend((found,) if found is not None else ())
+        elif call.function == "ref":
             diagnostics.extend(_ref_call_diagnostics(metric, call, models))
     return diagnostics
 
