@@ -5,7 +5,8 @@ from __future__ import annotations
 from snowflake_semantic_tools.app.compile.skills import CatalogChannel, CompiledExtension, CompileSkills
 from snowflake_semantic_tools.domain.diagnostics import Origin
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
-from snowflake_semantic_tools.domain.model.skill import SCAN_MAX_FILES, Plugin, Skill, SkillCatalog, SkillFile
+from snowflake_semantic_tools.domain.model.skill import Plugin, Skill, SkillCatalog, SkillFile
+from snowflake_semantic_tools.domain.render.skill_bundle import SCAN_MAX_FILES
 
 CHANNEL = CatalogChannel("DB", "S", QualifiedName.parse("DB.S.BUNDLES"))
 

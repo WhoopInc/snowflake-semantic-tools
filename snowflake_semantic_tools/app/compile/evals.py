@@ -6,12 +6,7 @@ from dataclasses import dataclass, replace
 from hashlib import sha256
 
 from snowflake_semantic_tools.app.compile.base import CompileResult, StandaloneArtifact, compile_each
-from snowflake_semantic_tools.domain.model.eval import (
-    EvalCatalog,
-    EvalDefaults,
-    ResolvedEval,
-    render_eval_name_template,
-)
+from snowflake_semantic_tools.domain.model.eval import EvalCatalog, EvalDefaults, ResolvedEval
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
 from snowflake_semantic_tools.domain.model.lifecycle import (
     CompositeFacts,
@@ -27,6 +22,7 @@ from snowflake_semantic_tools.domain.render.eval import (
     render_eval_config,
     render_source_table_statements,
 )
+from snowflake_semantic_tools.domain.resolve.eval_name import render_eval_name_template
 
 
 @dataclass(frozen=True, slots=True)

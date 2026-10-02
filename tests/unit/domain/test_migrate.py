@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from snowflake_semantic_tools.domain.model.migrate import FilterSite, MigrationResult, add_filter_labels, migrate_refs
+from snowflake_semantic_tools.domain.migrate.refs import FilterSite, MigrationResult, add_filter_labels, migrate_refs
 from snowflake_semantic_tools.domain.validate.expression import is_boolean_expression, outer_parentheses, root_function
 
 SOURCE = """semantic_views:

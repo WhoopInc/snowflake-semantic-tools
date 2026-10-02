@@ -9,7 +9,7 @@ from snowflake_semantic_tools.adapters.yaml.semantic.defs import FilterDef, Veri
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, Origin
 from snowflake_semantic_tools.domain.model.artifact_key import artifact_key
 from snowflake_semantic_tools.domain.model.dbt import DbtModel
-from snowflake_semantic_tools.domain.model.reference import TemplateCall, TemplateSyntaxError, scan_template_calls
+from snowflake_semantic_tools.domain.parse.template import TemplateCall, TemplateSyntaxError, scan_template_calls
 from snowflake_semantic_tools.domain.validate.expression import is_boolean_expression as _is_boolean_expression
 
 

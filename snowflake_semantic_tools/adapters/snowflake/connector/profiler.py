@@ -11,7 +11,7 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 
 from snowflake_semantic_tools.adapters.snowflake.connector.session import Session
-from snowflake_semantic_tools.domain.model.enrich import WarehouseColumn
+from snowflake_semantic_tools.domain.enrich import WarehouseColumn
 from snowflake_semantic_tools.domain.model.identifier import Identifier, QualifiedName
 from snowflake_semantic_tools.domain.ports.enrich import RelationProfilerPort
 from snowflake_semantic_tools.domain.ports.snowflake import SnowflakePortError

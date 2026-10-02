@@ -12,7 +12,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Protocol
 
-from snowflake_semantic_tools.domain.model.enrich import ColumnUpdate, TableSynonymEdit, WarehouseColumn
+from snowflake_semantic_tools.domain.enrich import ColumnUpdate, TableSynonymEdit, WarehouseColumn
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
 
 

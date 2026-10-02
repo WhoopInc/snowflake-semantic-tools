@@ -22,7 +22,7 @@ from snowflake_semantic_tools.adapters.roundtrip import (
     new_editable,
     scalar,
 )
-from snowflake_semantic_tools.domain.model.enrich import WRITTEN_KEYS, ColumnUpdate
+from snowflake_semantic_tools.domain.enrich import WRITTEN_KEYS, ColumnUpdate
 
 
 def _value(value: object) -> object:

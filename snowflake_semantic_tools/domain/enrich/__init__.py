@@ -8,7 +8,7 @@ reads the warehouse and the files, and passes what it read in.
 
 from __future__ import annotations
 
-from snowflake_semantic_tools.domain.model.enrich.columns import (
+from snowflake_semantic_tools.domain.enrich.columns import (
     COMPONENT_KEYS,
     WRITTEN_KEYS,
     ColumnUpdate,
@@ -22,7 +22,7 @@ from snowflake_semantic_tools.domain.model.enrich.columns import (
     synonym_columns,
     yaml_column_name,
 )
-from snowflake_semantic_tools.domain.model.enrich.components import (
+from snowflake_semantic_tools.domain.enrich.components import (
     COMPONENT_GROUPS,
     COMPONENT_NAMES,
     DATA_COMPONENTS,
@@ -34,7 +34,7 @@ from snowflake_semantic_tools.domain.model.enrich.components import (
     parse_components,
     resolve_options,
 )
-from snowflake_semantic_tools.domain.model.enrich.infer import (
+from snowflake_semantic_tools.domain.enrich.infer import (
     SampleDecision,
     clean_synonyms,
     decide_samples,
@@ -47,7 +47,7 @@ from snowflake_semantic_tools.domain.model.enrich.infer import (
     taken_names,
     usable_sample,
 )
-from snowflake_semantic_tools.domain.model.enrich.prompts import (
+from snowflake_semantic_tools.domain.enrich.prompts import (
     COLUMN_SYNONYMS_SCHEMA,
     COLUMNS_PER_PROMPT,
     TABLE_SYNONYMS_SCHEMA,
@@ -57,7 +57,7 @@ from snowflake_semantic_tools.domain.model.enrich.prompts import (
     parse_table_synonyms,
     table_synonyms_prompt,
 )
-from snowflake_semantic_tools.domain.model.enrich.tables import (
+from snowflake_semantic_tools.domain.enrich.tables import (
     TableSynonymEdit,
     ViewTable,
     avoided_names,

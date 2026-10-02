@@ -2,9 +2,7 @@
 
 from __future__ import annotations
 
-from snowflake_semantic_tools.domain.model.config_schema import EnrichmentConfig
-from snowflake_semantic_tools.domain.model.dbt import DbtColumn, DbtModel
-from snowflake_semantic_tools.domain.model.enrich import (
+from snowflake_semantic_tools.domain.enrich import (
     COLUMN_SYNONYMS_SCHEMA,
     TABLE_SYNONYMS_SCHEMA,
     ColumnUpdate,
@@ -30,6 +28,8 @@ from snowflake_semantic_tools.domain.model.enrich import (
     table_synonyms_prompt,
     yaml_column_name,
 )
+from snowflake_semantic_tools.domain.model.config_schema import EnrichmentConfig
+from snowflake_semantic_tools.domain.model.dbt import DbtColumn, DbtModel
 
 C = Component
 SETTINGS = EnrichmentConfig(distinct_limit=3, display_limit=2)

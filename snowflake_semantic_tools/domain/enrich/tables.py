@@ -10,8 +10,8 @@ from __future__ import annotations
 from collections.abc import Sequence
 from dataclasses import dataclass
 
-from snowflake_semantic_tools.domain.model.enrich.components import Component, EnrichOptions
-from snowflake_semantic_tools.domain.model.enrich.infer import clean_synonyms
+from snowflake_semantic_tools.domain.enrich.components import Component, EnrichOptions
+from snowflake_semantic_tools.domain.enrich.infer import clean_synonyms
 
 
 @dataclass(frozen=True, slots=True)

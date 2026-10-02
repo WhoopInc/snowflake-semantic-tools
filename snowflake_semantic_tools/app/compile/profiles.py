@@ -16,21 +16,12 @@ from snowflake_semantic_tools.domain.model.lifecycle import (
     RenderedArtifact,
     StatementPlan,
 )
-from snowflake_semantic_tools.domain.model.profile import (
-    DesktopProfile,
-    ProfileCatalog,
-    ProfileRelease,
-    build_profile,
-)
+from snowflake_semantic_tools.domain.model.profile import DesktopProfile, ProfileCatalog, ProfileRelease
 from snowflake_semantic_tools.domain.model.registry import GrantPreservation
-from snowflake_semantic_tools.domain.model.skill import (
-    DEFAULT_VERSION_PREFIX,
-    Plugin,
-    Skill,
-    SkillCatalog,
-    build_plugin_bundle,
-    flatten_skill,
-)
+from snowflake_semantic_tools.domain.model.skill import DEFAULT_VERSION_PREFIX, Plugin, Skill, SkillCatalog
+from snowflake_semantic_tools.domain.render.profile import build_profile
+from snowflake_semantic_tools.domain.render.skill_bundle import build_plugin_bundle
+from snowflake_semantic_tools.domain.render.skill_flatten import flatten_skill
 from snowflake_semantic_tools.domain.validate.profile import (
     desktop_registry_diagnostics,
     unreached_skills,

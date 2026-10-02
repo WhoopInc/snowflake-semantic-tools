@@ -12,9 +12,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, DiagnosticBag, Origin
-from snowflake_semantic_tools.domain.model.config_schema import EnrichmentConfig, enrichment_config
-from snowflake_semantic_tools.domain.model.dbt import DbtCatalog, DbtModel
-from snowflake_semantic_tools.domain.model.enrich import (
+from snowflake_semantic_tools.domain.enrich import (
     COLUMN_SYNONYMS_SCHEMA,
     COLUMNS_PER_PROMPT,
     DEFAULT_COMPONENTS,
@@ -43,6 +41,8 @@ from snowflake_semantic_tools.domain.model.enrich import (
     taken_names,
     yaml_column_name,
 )
+from snowflake_semantic_tools.domain.model.config_schema import EnrichmentConfig, enrichment_config
+from snowflake_semantic_tools.domain.model.dbt import DbtCatalog, DbtModel
 from snowflake_semantic_tools.domain.model.identifier import Identifier, QualifiedName
 from snowflake_semantic_tools.domain.model.semantic_view import SemanticView
 from snowflake_semantic_tools.domain.ports.enrich import EnrichFilesPort, EnrichPort

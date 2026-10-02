@@ -3,7 +3,12 @@
 from __future__ import annotations
 
 from snowflake_semantic_tools.domain.diagnostics import Origin
-from snowflake_semantic_tools.domain.model.compiler import (
+from snowflake_semantic_tools.domain.model.dbt import DbtCatalog, DbtColumn, DbtModel
+from snowflake_semantic_tools.domain.model.project import ParsedMember
+from snowflake_semantic_tools.domain.model.registry import SEMANTIC_REGISTRY
+from snowflake_semantic_tools.domain.parse.template import scan_template_calls
+from snowflake_semantic_tools.domain.resolve.members import attach_members, attach_view_members, effective_tables
+from snowflake_semantic_tools.domain.resolve.template import (
     CUSTOM_INSTRUCTION_ITEM,
     DESCRIPTION,
     METRIC_EXPR,
@@ -11,11 +16,6 @@ from snowflake_semantic_tools.domain.model.compiler import (
     ResolveContext,
     resolve_scalar,
 )
-from snowflake_semantic_tools.domain.model.dbt import DbtCatalog, DbtColumn, DbtModel
-from snowflake_semantic_tools.domain.model.project import ParsedMember
-from snowflake_semantic_tools.domain.model.reference import scan_template_calls
-from snowflake_semantic_tools.domain.model.registry import SEMANTIC_REGISTRY
-from snowflake_semantic_tools.domain.resolve.members import attach_members, attach_view_members, effective_tables
 
 
 def catalog() -> DbtCatalog:

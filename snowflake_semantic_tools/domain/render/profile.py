@@ -26,7 +26,8 @@ from snowflake_semantic_tools.domain.model.profile.model import (
     SharedProfile,
     StageTree,
 )
-from snowflake_semantic_tools.domain.model.skill import BundleEntry, Plugin, Skill, build_plugin_bundle
+from snowflake_semantic_tools.domain.model.skill import BundleEntry, Plugin, Skill
+from snowflake_semantic_tools.domain.render.skill_bundle import build_plugin_bundle
 
 
 def assemble_prompt(shared: SharedProfile | None, profile: DesktopProfile) -> str | None:

@@ -23,7 +23,7 @@ from snowflake_semantic_tools.adapters.yaml.semantic.defs import MetricDef, Wind
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic
 from snowflake_semantic_tools.domain.model.artifact_key import artifact_key
 from snowflake_semantic_tools.domain.model.dbt import DbtModel
-from snowflake_semantic_tools.domain.model.reference import TemplateCall
+from snowflake_semantic_tools.domain.parse.template import TemplateCall
 from snowflake_semantic_tools.domain.validate.expression import is_aggregate_expression
 from snowflake_semantic_tools.domain.validate.expression import root_function as _root_function
 

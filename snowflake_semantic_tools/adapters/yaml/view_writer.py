@@ -19,7 +19,7 @@ from snowflake_semantic_tools.adapters.roundtrip import (
     load_editable,
 )
 from snowflake_semantic_tools.adapters.yaml.parse import _neutralize_templates
-from snowflake_semantic_tools.domain.model.enrich import TableSynonymEdit
+from snowflake_semantic_tools.domain.enrich import TableSynonymEdit
 
 
 def _view(root: object, name: str, path: str) -> CommentedMap:

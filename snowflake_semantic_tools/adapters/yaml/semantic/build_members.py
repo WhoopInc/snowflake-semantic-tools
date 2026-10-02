@@ -19,16 +19,7 @@ from snowflake_semantic_tools.adapters.yaml.fields import mapping
 from snowflake_semantic_tools.adapters.yaml.semantic.defs import FilterDef, InstructionDef, MetricDef, VerifiedQueryDef
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, Origin
 from snowflake_semantic_tools.domain.model.artifact_key import artifact_key
-from snowflake_semantic_tools.domain.model.compiler import (
-    FILTER_EXPR,
-    METRIC_EXPR,
-    VQR_SQL,
-    RefPolicy,
-    ResolveContext,
-    resolve_scalar,
-)
 from snowflake_semantic_tools.domain.model.dbt import DbtCatalog
-from snowflake_semantic_tools.domain.model.reference import scan_template_calls, single_template_call
 from snowflake_semantic_tools.domain.model.semantic_view import (
     Column,
     ColumnKind,
@@ -38,6 +29,15 @@ from snowflake_semantic_tools.domain.model.semantic_view import (
     Variable,
     VerifiedQuery,
     Window,
+)
+from snowflake_semantic_tools.domain.parse.template import scan_template_calls, single_template_call
+from snowflake_semantic_tools.domain.resolve.template import (
+    FILTER_EXPR,
+    METRIC_EXPR,
+    VQR_SQL,
+    RefPolicy,
+    ResolveContext,
+    resolve_scalar,
 )
 from snowflake_semantic_tools.domain.sql import AuthoredExpression, AuthoredQuery
 from snowflake_semantic_tools.domain.validate.sql import checked_expression, checked_query, name_problem

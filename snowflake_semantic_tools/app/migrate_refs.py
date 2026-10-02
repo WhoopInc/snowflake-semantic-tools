@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 
-from snowflake_semantic_tools.domain.model.migrate import FilterSite, MigrationResult, add_filter_labels, migrate_refs
+from snowflake_semantic_tools.domain.migrate.refs import FilterSite, MigrationResult, add_filter_labels, migrate_refs
 
 
 @dataclass(frozen=True, slots=True)

@@ -1,9 +1,9 @@
-"""Cortex Agent evaluations: authoring values, name templates, and results.
+"""Cortex Agent evaluations: authoring values and results.
 
-`model` holds the authoring values and the eval contract's constants, `naming` the name
-template grammar, and `results` the run, baseline and gate records. The static validator is
-`domain.validate.eval`. This module re-exports the public names, so importers never reach
-into the submodules.
+`model` holds the authoring values and the eval contract's constants, and `results` the
+run, baseline and gate records. Name templates resolve in `domain.resolve.eval_name`, and
+the static validator is `domain.validate.eval`. This module re-exports the public names, so
+importers never reach into the submodules.
 """
 
 from __future__ import annotations
@@ -36,7 +36,6 @@ from snowflake_semantic_tools.domain.model.eval.model import (
     ResolvedEval,
     ThresholdRange,
 )
-from snowflake_semantic_tools.domain.model.eval.naming import render_eval_name_template
 from snowflake_semantic_tools.domain.model.eval.results import (
     EvalBaselineMetric,
     EvalBaselineRecord,
@@ -85,5 +84,4 @@ __all__ = [
     "SYSTEM_EVAL_METRICS",
     "SYSTEM_EVAL_METRIC_VERSION",
     "ThresholdRange",
-    "render_eval_name_template",
 ]

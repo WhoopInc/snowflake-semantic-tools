@@ -6,13 +6,13 @@ the digest of its own content, then one registry row whose pointers name those
 trees. Uploading a new tree never touches a tree a live row points at, so the row
 write is the atomic switch and the previous trees remain for rollback.
 
-`model` holds the records, and `build` renders one profile's release; `domain.validate.profile`
-checks what profiles name. This module only re-exports their public names.
+`model` holds the records; `domain.render.profile` renders one profile's release and
+`domain.validate.profile` checks what profiles name. This module only re-exports `model`'s
+public names.
 """
 
 from __future__ import annotations
 
-from snowflake_semantic_tools.domain.model.profile.build import assemble_prompt, build_profile
 from snowflake_semantic_tools.domain.model.profile.model import (
     COMMAND_FRONTMATTER_KEYS,
     DESKTOP_REGISTRY,
@@ -43,6 +43,4 @@ __all__ = [
     "ProfileRelease",
     "SharedProfile",
     "StageTree",
-    "assemble_prompt",
-    "build_profile",
 ]

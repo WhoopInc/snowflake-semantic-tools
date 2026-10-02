@@ -29,7 +29,7 @@ from snowflake_semantic_tools.cli.wiring.enrich import (
     project_paths,
     relation_part,
 )
-from snowflake_semantic_tools.domain.model.enrich import (
+from snowflake_semantic_tools.domain.enrich import (
     COMPONENT_NAMES,
     Component,
     EnrichOptions,

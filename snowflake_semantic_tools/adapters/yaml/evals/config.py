@@ -31,7 +31,7 @@ from snowflake_semantic_tools.domain.model.eval import (
     EvalSweepConfig,
     EvalSystemMetric,
 )
-from snowflake_semantic_tools.domain.model.reference import TemplateSyntaxError, single_template_call
+from snowflake_semantic_tools.domain.parse.template import TemplateSyntaxError, single_template_call
 
 
 def parse_eval_defaults(value: object) -> tuple[EvalDefaults, DiagnosticBag]:

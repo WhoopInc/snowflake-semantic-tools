@@ -11,7 +11,7 @@ from snowflake_semantic_tools.adapters.snowflake.connector.profiler import (
     columns_sql,
     distinct_values_sql,
 )
-from snowflake_semantic_tools.domain.model.enrich import TABLE_SYNONYMS_SCHEMA, WarehouseColumn
+from snowflake_semantic_tools.domain.enrich import TABLE_SYNONYMS_SCHEMA, WarehouseColumn
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
 from snowflake_semantic_tools.domain.model.lifecycle import QueryResult
 from snowflake_semantic_tools.domain.ports.snowflake import SnowflakePortError

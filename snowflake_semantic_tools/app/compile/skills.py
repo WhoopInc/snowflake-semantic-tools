@@ -23,15 +23,8 @@ from snowflake_semantic_tools.domain.model.lifecycle import (
     StatementPlan,
 )
 from snowflake_semantic_tools.domain.model.registry import GrantPreservation
-from snowflake_semantic_tools.domain.model.skill import (
-    DEFAULT_VERSION_PREFIX,
-    Plugin,
-    Skill,
-    SkillBundle,
-    SkillCatalog,
-    build_plugin_bundle,
-    build_skill_bundle,
-)
+from snowflake_semantic_tools.domain.model.skill import DEFAULT_VERSION_PREFIX, Plugin, Skill, SkillBundle, SkillCatalog
+from snowflake_semantic_tools.domain.render.skill_bundle import build_plugin_bundle, build_skill_bundle
 from snowflake_semantic_tools.domain.sql import Sql, stage_path
 from snowflake_semantic_tools.domain.validate.skill import extension_name_diagnostics, validate_skill_catalog
 

@@ -1,1 +1,4 @@
-"""Pure renderers: model in, DDL string out. Nothing else consulted."""
+"""Pure renderers: resolved model in, what SST publishes out -- DDL, JSON specs, and stage files.
+
+Nothing else is consulted. Adapters may not import this package; rendering is domain logic.
+"""

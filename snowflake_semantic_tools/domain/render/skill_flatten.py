@@ -17,7 +17,7 @@ from dataclasses import dataclass
 
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, DiagnosticBag
 from snowflake_semantic_tools.domain.model.skill.model import SKILL_FILE, Skill, SkillFile
-from snowflake_semantic_tools.domain.model.skill.references import PathReference, scan_references
+from snowflake_semantic_tools.domain.parse.skill_references import PathReference, scan_references
 from snowflake_semantic_tools.domain.validate.shared import Emitter
 
 # Directories an author conventionally bundles. A bare path starting with one of

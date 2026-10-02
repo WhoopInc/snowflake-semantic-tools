@@ -13,10 +13,8 @@ from dataclasses import dataclass
 from types import MappingProxyType
 
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic
-from snowflake_semantic_tools.domain.model.config_schema import EnrichmentConfig
-from snowflake_semantic_tools.domain.model.dbt import DbtColumn, DbtModel
-from snowflake_semantic_tools.domain.model.enrich.components import Component, EnrichOptions
-from snowflake_semantic_tools.domain.model.enrich.infer import (
+from snowflake_semantic_tools.domain.enrich.components import Component, EnrichOptions
+from snowflake_semantic_tools.domain.enrich.infer import (
     clean_synonyms,
     decide_samples,
     derive_column_type,
@@ -25,7 +23,9 @@ from snowflake_semantic_tools.domain.model.enrich.infer import (
     semantic_data_type,
     taken_names,
 )
-from snowflake_semantic_tools.domain.model.enrich.prompts import EXAMPLES_PER_COLUMN, PromptColumn
+from snowflake_semantic_tools.domain.enrich.prompts import EXAMPLES_PER_COLUMN, PromptColumn
+from snowflake_semantic_tools.domain.model.config_schema import EnrichmentConfig
+from snowflake_semantic_tools.domain.model.dbt import DbtColumn, DbtModel
 from snowflake_semantic_tools.domain.model.identifier import Identifier
 
 # The `meta.sst` keys enrich writes, in the order it adds them to a column.

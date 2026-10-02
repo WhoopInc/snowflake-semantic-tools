@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from snowflake_semantic_tools.app.migrate_refs import MigrateRefs
-from snowflake_semantic_tools.domain.model.migrate import FilterSite
+from snowflake_semantic_tools.domain.migrate.refs import FilterSite
 
 
 def test_migrate_refs_rewrites_counts_and_reports_untouched_calls() -> None:

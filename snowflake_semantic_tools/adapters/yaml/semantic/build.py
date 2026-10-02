@@ -32,7 +32,6 @@ from snowflake_semantic_tools.domain.diagnostics import D
 from snowflake_semantic_tools.domain.model.artifact_key import artifact_key
 from snowflake_semantic_tools.domain.model.dbt import DbtCatalog, DbtColumn, DbtModel, DbtTarget
 from snowflake_semantic_tools.domain.model.project import ParsedMember
-from snowflake_semantic_tools.domain.model.reference import single_template_call
 from snowflake_semantic_tools.domain.model.semantic_view import (
     Column,
     ColumnKind,
@@ -42,6 +41,7 @@ from snowflake_semantic_tools.domain.model.semantic_view import (
     Tag,
     Variable,
 )
+from snowflake_semantic_tools.domain.parse.template import single_template_call
 from snowflake_semantic_tools.domain.sql import Sql, boolean, datatype, is_datatype, literal, number
 from snowflake_semantic_tools.domain.validate.sql import qualified_name_problem
 

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from snowflake_semantic_tools.domain.diagnostics import Severity
-from snowflake_semantic_tools.domain.model.enrich import rejected_synonyms
+from snowflake_semantic_tools.domain.enrich import rejected_synonyms
 
 
 def test_sst_prs030_fires() -> None:

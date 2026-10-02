@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from snowflake_semantic_tools.domain.model.reference import (
+from snowflake_semantic_tools.domain.parse.template import (
     TemplateSyntaxError,
     replace_template_calls,
     scan_template_calls,

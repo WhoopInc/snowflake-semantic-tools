@@ -7,27 +7,27 @@ from dataclasses import replace
 
 from snowflake_semantic_tools.domain.diagnostics import Origin
 from snowflake_semantic_tools.domain.model.skill import (
-    BUNDLE_BUDGET_BYTES,
-    SCAN_MAX_FILE_BYTES,
-    SCAN_MAX_FILES,
-    SCAN_MAX_TOTAL_BYTES,
-    SKILL_MD_BUDGET_BYTES,
     BundleEntry,
     Plugin,
     Skill,
     SkillBundle,
     SkillCatalog,
     SkillFile,
-    build_plugin_bundle,
-    build_skill_bundle,
     bundle_digest,
     extension_identifier,
-    flatten_skill,
-    flattened_name,
-    plugin_manifest_json,
-    scan_references,
 )
-from snowflake_semantic_tools.domain.model.skill.flatten import _recheck
+from snowflake_semantic_tools.domain.parse.skill_references import scan_references
+from snowflake_semantic_tools.domain.render.skill_bundle import (
+    BUNDLE_BUDGET_BYTES,
+    SCAN_MAX_FILE_BYTES,
+    SCAN_MAX_FILES,
+    SCAN_MAX_TOTAL_BYTES,
+    SKILL_MD_BUDGET_BYTES,
+    build_plugin_bundle,
+    build_skill_bundle,
+    plugin_manifest_json,
+)
+from snowflake_semantic_tools.domain.render.skill_flatten import _recheck, flatten_skill, flattened_name
 from snowflake_semantic_tools.domain.validate.skill import extension_name_diagnostics, validate_skill_catalog
 
 SKILL_MD = "---\nname: {name}\ndescription: Does things.\n---\n{body}"

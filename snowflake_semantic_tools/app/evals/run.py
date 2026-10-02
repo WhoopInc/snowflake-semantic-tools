@@ -27,7 +27,6 @@ from snowflake_semantic_tools.domain.model.eval import (
     EvalResultRow,
     EvalRunAttempt,
     EvalRunConfig,
-    render_eval_name_template,
 )
 from snowflake_semantic_tools.domain.model.identifier import SchemaScope
 from snowflake_semantic_tools.domain.model.lifecycle import Action
@@ -37,6 +36,7 @@ from snowflake_semantic_tools.domain.ports.snowflake import (
     SnowflakePortError,
     StagedFileMetadata,
 )
+from snowflake_semantic_tools.domain.resolve.eval_name import render_eval_name_template
 from snowflake_semantic_tools.domain.sql import Sql, ident, literal, scope, sql
 from snowflake_semantic_tools.domain.state import APPLIED, Manifest, State
 

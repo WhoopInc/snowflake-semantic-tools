@@ -15,10 +15,10 @@ from snowflake_semantic_tools.domain.model.profile import (
     ProfileCatalog,
     SharedProfile,
     StageTree,
-    assemble_prompt,
-    build_profile,
 )
-from snowflake_semantic_tools.domain.model.skill import BundleEntry, Plugin, Skill, SkillFile, build_plugin_bundle
+from snowflake_semantic_tools.domain.model.skill import BundleEntry, Plugin, Skill, SkillFile
+from snowflake_semantic_tools.domain.render.profile import assemble_prompt, build_profile
+from snowflake_semantic_tools.domain.render.skill_bundle import build_plugin_bundle
 from snowflake_semantic_tools.domain.validate.profile import (
     desktop_registry_diagnostics,
     unreached_skills,

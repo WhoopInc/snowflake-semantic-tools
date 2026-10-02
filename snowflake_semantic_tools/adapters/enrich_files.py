@@ -13,7 +13,7 @@ from snowflake_semantic_tools.adapters.dbt.yaml_writer import write_model_update
 from snowflake_semantic_tools.adapters.errors import ProjectError
 from snowflake_semantic_tools.adapters.fs.local import write_text_atomic
 from snowflake_semantic_tools.adapters.yaml.view_writer import write_table_synonyms
-from snowflake_semantic_tools.domain.model.enrich import ColumnUpdate, TableSynonymEdit
+from snowflake_semantic_tools.domain.enrich import ColumnUpdate, TableSynonymEdit
 from snowflake_semantic_tools.domain.ports.enrich import EnrichFilesPort, WrittenFile
 
 

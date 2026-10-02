@@ -9,8 +9,8 @@ from typing import TypeAlias
 
 from snowflake_semantic_tools.domain.diagnostics import DiagnosticBag, Origin
 from snowflake_semantic_tools.domain.model.artifact_key import artifact_key
-from snowflake_semantic_tools.domain.model.reference import TemplateCall
 from snowflake_semantic_tools.domain.model.semantic_view import SemanticView
+from snowflake_semantic_tools.domain.parse.template import TemplateCall
 
 ArtifactKey: TypeAlias = str
 MemberKey: TypeAlias = str

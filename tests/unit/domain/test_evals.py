@@ -24,8 +24,8 @@ from snowflake_semantic_tools.domain.model.eval import (
     EvalSystemMetric,
     ResolvedEval,
     ThresholdRange,
-    render_eval_name_template,
 )
+from snowflake_semantic_tools.domain.resolve.eval_name import render_eval_name_template
 from snowflake_semantic_tools.domain.validate.eval import validate_eval_catalog
 
 

@@ -1,4 +1,9 @@
-"""Unresolved compiler records shared by parse, resolve, attach, and validate."""
+"""Resolve the template calls in one authored scalar, and the records that describe them.
+
+`resolve_scalar` replaces each ``{{ function('arg') }}`` call `domain.parse.template` finds
+with its value, checked against the field's `RefPolicy`. The records are shared by the
+loaders that call it and by attach and validate, which read what each scalar referenced.
+"""
 
 from __future__ import annotations
 
@@ -9,7 +14,7 @@ from types import MappingProxyType
 
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, DiagnosticBag, Origin
 from snowflake_semantic_tools.domain.model.dbt import DbtCatalog
-from snowflake_semantic_tools.domain.model.reference import TemplateCall, TemplateSyntaxError, scan_template_calls
+from snowflake_semantic_tools.domain.parse.template import TemplateCall, TemplateSyntaxError, scan_template_calls
 
 
 class RefKind(Enum):

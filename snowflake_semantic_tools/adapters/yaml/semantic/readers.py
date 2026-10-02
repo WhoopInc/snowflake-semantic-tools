@@ -24,7 +24,7 @@ from snowflake_semantic_tools.adapters.yaml.semantic.nodes import (
     _safe_table_refs,
     _table_refs_poisoned,
 )
-from snowflake_semantic_tools.domain.model.reference import TemplateSyntaxError, scan_template_calls
+from snowflake_semantic_tools.domain.parse.template import TemplateSyntaxError, scan_template_calls
 
 
 def load_metrics(documents: RawDocuments, project_dir: Path, semantic_models_dir: str) -> tuple[MetricDef, ...]:
