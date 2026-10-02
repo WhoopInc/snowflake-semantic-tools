@@ -518,3 +518,42 @@ def test_a_registry_or_stage_that_cannot_be_created_fails_before_any_row_is_writ
     assert outcome.error.message.startswith("recorded refusal: CREATE STAGE")
     assert (outcome.attempts, outcome.write_succeeded, after.applied) == (2, False, {})
     assert refusing.uploads == []
+
+
+def test_every_tree_a_profile_uploads_is_one_its_registry_row_points_at() -> None:
+    # Uploading a tree the row records no pointer to is a half-completed publish; the row is
+    # built from the very trees it uploads, so each is reached by one of its pointers.
+    release = compile_profiles(catalog())["profile:analyst"].release
+    pointers = stage_pointers(desktop_view(release.row))
+    assert len(release.trees) == 5
+    for tree in release.trees:
+        assert any(pointer.startswith(f"@{STAGE.sql}/{tree.prefix}") for pointer in pointers), tree.prefix
+
+
+def test_a_profile_version_covers_every_tree_it_ships_so_any_tree_change_is_a_new_version() -> None:
+    compiled = compile_profiles(catalog())["profile:analyst"].release
+    document = json.dumps(compiled.row)
+    # Each tree is named by its own digest, and the row that VERSION digests names each tree.
+    assert all(tree.prefix in document for tree in compiled.trees)
+    changed = {
+        "prompt": catalog(prompt="Be careful twice.\n"),
+        "mcp": replace(
+            catalog(), mcp_configs=(McpConfig("dbt", "m.json", {"dbt": {"command": "other"}}, Origin("m")),)
+        ),
+        "hooks": replace(
+            catalog(),
+            hooks=(
+                HookDefinition(
+                    "guard",
+                    "hooks/guard",
+                    "PreToolUse",
+                    "bash",
+                    SkillFile("guard.sh", b"#!/bin/sh\nexit 0\n"),
+                    Origin("h"),
+                ),
+            ),
+        ),
+    }
+    versions = {kind: compile_profiles(value)["profile:analyst"].release.version for kind, value in changed.items()}
+    assert compiled.version not in versions.values()
+    assert len(set(versions.values())) == len(versions)

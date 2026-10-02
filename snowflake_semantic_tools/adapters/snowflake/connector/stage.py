@@ -130,12 +130,16 @@ class StageMethods(Session, StagePort):
 def _put_destination(directory: str) -> Sql:
     """Name a PUT target directory: an extension path quoted, a stage path as the stage location.
 
-    Both are validated already, so each segment is safe; the stage path is rebuilt from its
-    parts so it reaches the statement through `stage_path`.
+    Either ends in `/`, the stage's root included. Both are validated already, so each
+    segment is safe; the stage path is rebuilt from its parts so it reaches the statement
+    through `stage_path`.
     """
     if directory.startswith("snow://"):
         return literal(directory)
     stage, path = directory[1:].split("/", 1)
+    if not path:
+        # `stage_path` names the root without a separator; a PUT target always has one.
+        return sql("{stage}/", stage=stage_path(QualifiedName.parse(stage)))
     return stage_path(QualifiedName.parse(stage), path)
 
 

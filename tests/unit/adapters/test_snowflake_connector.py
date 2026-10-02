@@ -672,3 +672,21 @@ def test_object_parameter_reads_one_warehouse_parameter() -> None:
     assert StubSnowflakeConnector({}).object_parameter("WAREHOUSE", "WH", "STATEMENT_TIMEOUT_IN_SECONDS") is None
     with pytest.raises(SnowflakePortError, match="unsupported parameter object type"):
         connector.object_parameter("DATABASE", "DB", "DATA_RETENTION_TIME_IN_DAYS")
+
+
+@pytest.mark.parametrize(
+    ("stage_path", "target"),
+    [
+        ("@DB.SCH.STAGE/config.yaml", "@DB.SCH.STAGE/"),
+        ("@DB.SCH.STAGE/skills/analyst/ABC/close/SKILL.md", "@DB.SCH.STAGE/skills/analyst/ABC/close/"),
+        (
+            "snow://cortex_extension/DB.S.KIT/versions/live/SKILL.md",
+            "'snow://cortex_extension/DB.S.KIT/versions/live/'",
+        ),
+    ],
+)
+def test_every_put_targets_the_directory_of_its_file_so_it_ends_in_a_separator(stage_path: str, target: str) -> None:
+    # The one PUT SST issues names a directory built from the file's own path, never the file.
+    connector = RecordingUploadConnector()
+    connector.upload(stage_path, b"x")
+    assert connector.statements[0].endswith(f" {target} OVERWRITE=TRUE AUTO_COMPRESS=FALSE")
