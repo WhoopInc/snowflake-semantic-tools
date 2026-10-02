@@ -17,6 +17,8 @@ from snowflake_semantic_tools.domain.model.eval import DEFAULT_EVAL_CONFIG_STAGE
 from snowflake_semantic_tools.domain.model.skill import DEFAULT_VERSION_PREFIX
 
 CONFIG_FILE = "sst_config.yml"
+# The two spellings discovery accepts in the project root; both present is an error, not a precedence.
+CONFIG_NAMES: tuple[str, ...] = (CONFIG_FILE, "sst_config.yaml")
 
 
 class KeyKind(Enum):
@@ -37,9 +39,11 @@ class KeyKind(Enum):
 
 
 class KeyStatus(Enum):
-    """Whether SST reads a key, reserves it for a later release, or no longer reads it."""
+    """Whether SST reads a key, reserves it, reads it under its new name, or no longer reads it."""
 
     CURRENT = "current"
+    # Read as its replacement, with a warning naming it.
+    DEPRECATED = "deprecated"
     # Reserved for a later release: setting it is an error until SST reads it.
     UNSUPPORTED = "unsupported"
     REMOVED = "removed"
@@ -71,7 +75,8 @@ class ConfigKey:
         required: A block that is present must set this key; an empty value is unset.
         minimum: Inclusive lower bound of an integer value, or None for no bound.
         maximum: Inclusive upper bound of an integer value, or None for no bound.
-        replacement: For a removed key, the reason its diagnostic gives.
+        replacement: For a removed key, the reason its diagnostic gives; for a deprecated key,
+            the key it is read as.
         code: The code reported instead of the generic one: a removed key's dedicated
             code, or the code for a value outside `choices` or not `fixed`.
         fixed: The only boolean the key accepts, or None when either is accepted.
@@ -114,6 +119,16 @@ _key = ConfigKey
 
 def _removed(path: str, reason: str, *, code: str | None = None) -> ConfigKey:
     return ConfigKey(path, KeyKind.ANY, reason, status=KeyStatus.REMOVED, replacement=reason, code=code)
+
+
+def _deprecated(path: str, replacement: str) -> ConfigKey:
+    return ConfigKey(
+        path,
+        KeyKind.BLOCK,
+        f"Deprecated spelling of `{replacement}:`, read as it.",
+        status=KeyStatus.DEPRECATED,
+        replacement=replacement,
+    )
 
 
 def _unsupported(path: str, kind: KeyKind, summary: str) -> ConfigKey:
@@ -169,6 +184,20 @@ CONFIG_SCHEMA: tuple[ConfigKey, ...] = (
     _removed("validation.expression_rules", "the expression rules it disabled are no longer optional"),
     _removed("validation.multipath_check", "multi-path relationship analysis is always on"),
     _removed("validation.smoke_query", "smoke probes run only under sst test --suite smoke"),
+    _key("diagnostics", _BLOCK, "How severe a diagnostic is, beyond what the error registry declares."),
+    _key(
+        "diagnostics.severity_overrides",
+        KeyKind.MAP,
+        "Per-code severity: promote freely; demote an error no lower than warning, and never a "
+        "non-demotable code (SST-CFG033).",
+        children=ChildPolicy.NAMES,
+    ),
+    _key(
+        "diagnostics.severity_overrides.<name>",
+        KeyKind.ENUM,
+        "The severity this code reports at.",
+        choices=("error", "warning", "info"),
+    ),
     _key("enrichment", _BLOCK, "What `sst enrich` collects from the warehouse, and how much."),
     _key(
         "enrichment.distinct_limit",
@@ -239,7 +268,7 @@ CONFIG_SCHEMA: tuple[ConfigKey, ...] = (
         choices=("caller", "owner"),
     ),
     _removed("tools.+enabled", "omit the tools instead"),
-    _unsupported("tools.<route>", _BLOCK, "Per-group override."),
+    _key("tools.<route>", _BLOCK, "Per-group override of the `+` keys above, for a group with `define:` members."),
     _key(
         "semantic_views",
         _BLOCK,
@@ -255,7 +284,13 @@ CONFIG_SCHEMA: tuple[ConfigKey, ...] = (
         default="true",
     ),
     _unsupported("semantic_views.+tags", _L, "Default view tags."),
-    _unsupported("semantic_views.+max_staleness", _I, "Default view staleness."),
+    _key(
+        "semantic_views.+max_staleness",
+        _I,
+        "Default `max_staleness`, in seconds, for views that set none; at least 120 (SST-CFG023).",
+        minimum=120,
+        code="SST-CFG023",
+    ),
     _removed("semantic_views.+meta", "put metadata on the view itself"),
     _key("semantic_views.<route>", _BLOCK, "Folder route: overrides for views under that directory."),
     _key("agents", _BLOCK, "Defaults for Cortex Agents.", children=ChildPolicy.ROUTES),
@@ -395,8 +430,13 @@ CONFIG_SCHEMA: tuple[ConfigKey, ...] = (
     _key("apply.agent_spec_stage.stage", _S, "Stage name.", default="AGENT_SPECS"),
     _key("apply.eval_config_stage", _BLOCK, "Stage for eval run configs, in each agent's schema."),
     _key("apply.eval_config_stage.stage", _S, "Stage name.", default=DEFAULT_EVAL_CONFIG_STAGE),
-    _removed("apply.fail_fast", "pass --fail-fast to sst apply"),
-    _removed("deploy", "renamed to apply:"),
+    _key(
+        "apply.fail_fast",
+        _B,
+        "Stop at the first failure instead of continuing; `--fail-fast` and `--no-fail-fast` override it.",
+        default="false",
+    ),
+    _deprecated("deploy", "apply"),
     _key("snowflake", _BLOCK, "Allowlists for Snowflake surfaces the renderer accepts."),
     _key("snowflake.orchestration_models", _L, "Orchestration models agents may name.", default="[auto]"),
     _unsupported("snowflake.tool_types", _L, "Extra agent tool types."),

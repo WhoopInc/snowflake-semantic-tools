@@ -252,23 +252,27 @@ def _build_model(
     )
 
 
-def catalog_from_document(document: object) -> DbtCatalog:
+def catalog_from_document(document: object, *, allow_unsupported_schema: bool = False) -> DbtCatalog:
     """Project a decoded manifest document into immutable domain values.
 
     Nodes are read in sorted unique-id order, and the catalog keeps their models in that order.
 
+    Args:
+        allow_unsupported_schema: Read a manifest of another schema version for this one run,
+            as `--allow-unsupported-manifest-schema` asks, instead of refusing it.
+
     Raises:
-        ProjectError: The schema version is not `SUPPORTED_SCHEMA`, or a part SST reads has the
-            wrong shape, such as a model without a name or a relation.
+        ProjectError: The schema version is not `SUPPORTED_SCHEMA` and is not allowed, or a part
+            SST reads has the wrong shape, such as a model without a name or a relation.
 
     Diagnostics:
-        SST-PRT007: the manifest's `dbt_schema_version` is not `SUPPORTED_SCHEMA`; raised.
+        SST-DBT017: the manifest's `dbt_schema_version` is not `SUPPORTED_SCHEMA`; raised.
     """
     root = _mapping(document, path="root")
     metadata = _mapping(root.get("metadata"), path="metadata")
     schema_version = str(metadata.get("dbt_schema_version") or "")
-    if schema_version != SUPPORTED_SCHEMA:
-        diagnostic = D("SST-PRT007", found=schema_version, expected=SUPPORTED_SCHEMA)
+    if schema_version != SUPPORTED_SCHEMA and not allow_unsupported_schema:
+        diagnostic = D("SST-DBT017", found=schema_version, expected=SUPPORTED_SCHEMA)
         raise ProjectError(diagnostic.message, diagnostics=(diagnostic,))
 
     nodes = _mapping(root.get("nodes"), path="nodes")
@@ -291,12 +295,25 @@ def catalog_from_document(document: object) -> DbtCatalog:
     )
 
 
-def load_manifest_catalog(path: Path) -> DbtCatalog:
-    """Read and decode one dbt manifest without consulting dbt model YAML."""
+def load_manifest_catalog(path: Path, *, allow_unsupported_schema: bool = False) -> DbtCatalog:
+    """Read and decode one dbt manifest without consulting dbt model YAML.
+
+    Raises:
+        ProjectError: the manifest is absent (SST-PRT006), cannot be read (SST-PRT009), is not
+            JSON, or is refused as `catalog_from_document` says.
+
+    Diagnostics:
+        SST-PRT006: no manifest exists at the path; raised.
+        SST-PRT009: the manifest exists and cannot be read; raised.
+    """
     try:
         document = json.loads(path.read_text(encoding="utf-8"))
+    except FileNotFoundError as exc:
+        diagnostic = D("SST-PRT006", path=str(path))
+        raise ProjectError(diagnostic.message, diagnostics=(diagnostic,)) from exc
     except OSError as exc:
-        raise ProjectError(f"cannot read dbt manifest {path}: {exc}") from exc
+        diagnostic = D("SST-PRT009", path=str(path), detail=str(exc))
+        raise ProjectError(diagnostic.message, diagnostics=(diagnostic,)) from exc
     except json.JSONDecodeError as exc:
         raise ProjectError(f"dbt manifest {path} is not valid JSON: {exc}") from exc
-    return catalog_from_document(document)
+    return catalog_from_document(document, allow_unsupported_schema=allow_unsupported_schema)

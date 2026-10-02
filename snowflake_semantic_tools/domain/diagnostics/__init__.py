@@ -180,6 +180,7 @@ ERROR_REGISTRY = build_registry(
 
 def D(
     code: str,
+    /,
     *,
     origin: Origin | None = None,
     subject: str | None = None,
@@ -187,7 +188,10 @@ def D(
     caused_by: str | None = None,
     **context: Any,
 ) -> Diagnostic:
-    """Construct one diagnostic from a registered code and template context."""
+    """Construct one diagnostic from a registered code and template context.
+
+    `code` is positional only, so a template may name a `{code}` placeholder of its own.
+    """
     spec = ERROR_REGISTRY.get(code)
     if spec is None:
         return D("SST-INT900", value=code)

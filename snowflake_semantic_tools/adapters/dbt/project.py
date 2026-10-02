@@ -17,6 +17,7 @@ import yaml
 from snowflake_semantic_tools.adapters.dbt.manifest import load_manifest_catalog
 from snowflake_semantic_tools.adapters.dbt.profiles import profile_output
 from snowflake_semantic_tools.adapters.errors import ProjectError
+from snowflake_semantic_tools.adapters.locations import ProjectPaths
 from snowflake_semantic_tools.adapters.paths import resolve_within
 from snowflake_semantic_tools.domain.diagnostics import D, Origin
 from snowflake_semantic_tools.domain.model.dbt import DbtCatalog, DbtModel, DbtTarget
@@ -24,7 +25,7 @@ from snowflake_semantic_tools.domain.model.dbt import DbtCatalog, DbtModel, DbtT
 YamlReader = Callable[[Path], Mapping[str, Any]]
 
 
-def resolve_target(project_dir: Path, target_name: str | None = None) -> DbtTarget:
+def resolve_target(files: ProjectPaths, target_name: str | None = None) -> DbtTarget:
     """Resolve a declared dbt target's database and schema from `profiles.yml`.
 
     The profile adapter reads the file: it is plain YAML, not a semantic model, so
@@ -32,7 +33,7 @@ def resolve_target(project_dir: Path, target_name: str | None = None) -> DbtTarg
     escapes inside `{{ env_var(...) }}` and the value would never resolve.
     """
     try:
-        _profile, selected_target, output = profile_output(project_dir, target_name)
+        _profile, selected_target, output = profile_output(files, target_name)
     except ValueError as exc:
         raise ProjectError(str(exc)) from exc
     database, schema = output.get("database"), output.get("schema")
@@ -63,8 +64,12 @@ def target_path(project_dir: Path, read_yaml: YamlReader) -> Path:
     return project_dir / target_path / "manifest.json"
 
 
-def run_dbt_parse(project_dir: Path, target_name: str | None) -> None:
-    """Run `dbt parse` on the project, with its own profiles.yml, for the target named.
+def run_dbt_parse(project_dir: Path, target_name: str | None, profiles_dir: Path | None = None) -> None:
+    """Run `dbt parse` on the project for the target named, with the profiles SST resolved.
+
+    Args:
+        profiles_dir: The directory of the `profiles.yml` SST resolves targets against; the
+            project directory when None.
 
     Raises:
         ProjectError: dbt cannot be started, or exits non-zero; the message carries its output.
@@ -75,7 +80,7 @@ def run_dbt_parse(project_dir: Path, target_name: str | None) -> None:
         "--project-dir",
         str(project_dir),
         "--profiles-dir",
-        str(project_dir),
+        str(profiles_dir or project_dir),
     ]
     if target_name:
         command.extend(("--target", target_name))

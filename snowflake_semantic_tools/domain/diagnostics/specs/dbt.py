@@ -29,6 +29,14 @@ SPECS: tuple[ErrorSpec, ...] = (
         "write primary_key as a list of columns and unique_keys as a list of column lists",
     ),
     spec(
+        "SST-DBT017",
+        Severity.ERROR,
+        "dbt manifest schema version is unsupported",
+        "manifest schema '{found}'; supported: {expected}",
+        "use a dbt version that writes a supported manifest schema, or pass --allow-unsupported-manifest-schema "
+        "for one run",
+    ),
+    spec(
         "SST-DBT030",
         Severity.ERROR,
         "Forbidden meta.sst location key",

@@ -1,4 +1,4 @@
-"""Configuration codes (CFG): `sst_config.yml` keys and values, folder routes, and dbt profiles."""
+"""Configuration codes (CFG): the configuration file's discovery, keys and values, and dbt profiles."""
 
 from __future__ import annotations
 
@@ -8,11 +8,25 @@ TITLE: str = "Configuration"
 
 SPECS: tuple[ErrorSpec, ...] = (
     spec(
+        "SST-CFG001",
+        Severity.ERROR,
+        "No config file found",
+        "no sst_config.yml at {path}",
+        "create sst_config.yml at the project root, or pass --project-dir",
+    ),
+    spec(
+        "SST-CFG002",
+        Severity.ERROR,
+        "Config is not valid YAML",
+        "{path} is not valid YAML: {detail}",
+        "fix the YAML syntax at the reported position",
+    ),
+    spec(
         "SST-CFG003",
         Severity.WARNING,
         "Unknown config key",
         "unknown config key '{key}'",
-        "remove the key, or check it against the configuration reference",
+        "remove the key, or check it against sst docs config",
     ),
     spec(
         "SST-CFG004",
@@ -20,6 +34,13 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Config value has the wrong type",
         "config key '{key}' expects {expected}, found {found}",
         "correct the value type",
+    ),
+    spec(
+        "SST-CFG005",
+        Severity.ERROR,
+        "Multiple config files discoverable",
+        "{count} candidate config files found; used {used}, shadowed {shadowed}",
+        "delete the shadowed files, or pass --project-dir",
     ),
     spec(
         "SST-CFG006",
@@ -40,7 +61,14 @@ SPECS: tuple[ErrorSpec, ...] = (
         Severity.ERROR,
         "Config value outside its allowed domain",
         "config key '{key}' value {found} is outside {expected}",
-        "use an allowed value",
+        "use one of the allowed values",
+    ),
+    spec(
+        "SST-CFG009",
+        Severity.ERROR,
+        "profiles.yml not found",
+        "no profiles.yml at any searched location",
+        "create profiles.yml, or set DBT_PROFILES_DIR",
     ),
     spec(
         "SST-CFG010",
@@ -50,11 +78,131 @@ SPECS: tuple[ErrorSpec, ...] = (
         "add the target, or pass --target with a declared name",
     ),
     spec(
+        "SST-CFG011",
+        Severity.ERROR,
+        "Profile type is not snowflake",
+        "profile '{profile}' declares type '{found}'",
+        "point SST at a Snowflake profile",
+    ),
+    spec(
+        "SST-CFG012",
+        Severity.ERROR,
+        "Credential field missing from the resolved profile",
+        "profile '{profile}' has no {field}",
+        "set the field in profiles.yml or its env var",
+    ),
+    spec(
+        "SST-CFG013",
+        Severity.ERROR,
+        "env_var() resolved to an empty string",
+        "env_var('{var}') is unset and has no default",
+        "set the variable, or give env_var() a default",
+    ),
+    spec(
+        "SST-CFG014",
+        Severity.WARNING,
+        "Profile field silently empty",
+        "profile '{profile}' leaves {field} empty",
+        "set it explicitly rather than relying on account defaults",
+    ),
+    spec(
         "SST-CFG015",
         Severity.ERROR,
         "evals block declares a database or schema",
         "evals: declares {key}, which is structurally invalid",
         "remove +database and +schema from evals:; eval objects resolve to the agent's schema",
+    ),
+    spec(
+        "SST-CFG016",
+        Severity.ERROR,
+        "Targeting value does not resolve for the current target",
+        "+{key} does not resolve for target '{target}'",
+        "declare the value for every target you publish to",
+    ),
+    spec(
+        "SST-CFG017",
+        Severity.ERROR,
+        "tool() reference does not resolve from config",
+        "{{ tool('{group}','{name}') }} does not resolve",
+        "declare the group and member under the tools directory",
+    ),
+    spec(
+        "SST-CFG018",
+        Severity.WARNING,
+        "Declared tool member referenced by nothing",
+        "tool member '{group}.{name}' is referenced by nothing",
+        "reference it from an agent, or delete it",
+    ),
+    spec(
+        "SST-CFG019",
+        Severity.ERROR,
+        "Tool member declared under both define and reference",
+        "'{name}' appears under both define: and reference:",
+        "choose one; a member is owned or referenced, never both",
+    ),
+    spec(
+        "SST-CFG020",
+        Severity.ERROR,
+        "Per-group tools override names an unknown or reference-only group",
+        "tools: override names group '{group}', which {reason}",
+        "target a group that exists and contains define: members",
+    ),
+    spec(
+        "SST-CFG023",
+        Severity.ERROR,
+        "max_staleness below the accepted floor",
+        "+max_staleness is {found}; the minimum is 120",
+        "raise max_staleness to at least 120",
+    ),
+    spec(
+        "SST-CFG025",
+        Severity.WARNING,
+        "Value absent from an allowlist",
+        "{kind} '{found}' is absent from {key}",
+        "add it to the allowlist key, or use an allowed value",
+    ),
+    spec(
+        "SST-CFG029",
+        Severity.ERROR,
+        "var() reference has no declaration",
+        "{{ var('{var}') }} is not declared in config",
+        "declare it under vars:",
+    ),
+    spec(
+        "SST-CFG031",
+        Severity.ERROR,
+        "snowflake_syntax_check is not set explicitly",
+        "validation.snowflake_syntax_check is unset",
+        "set it true or false explicitly",
+    ),
+    spec(
+        "SST-CFG032",
+        Severity.WARNING,
+        "Config file shadows another config file",
+        "using {used}; shadowed {shadowed}",
+        "delete the shadowed file",
+    ),
+    spec(
+        "SST-CFG033",
+        Severity.ERROR,
+        "Illegal severity override",
+        "severity_overrides {code}: {found} is not permitted ({reason})",
+        "promote instead of demoting, or remove the override",
+        demotable=False,
+    ),
+    spec(
+        "SST-CFG034",
+        Severity.WARNING,
+        "Strict flag and config key disagree",
+        "--strict {flag} disagrees with diagnostics.strict {config}; the flag wins",
+        "remove one of the two",
+    ),
+    spec(
+        "SST-CFG035",
+        Severity.WARNING,
+        "Baseline nearing expiry",
+        "baseline expires on {date}; {count} entries remain",
+        "fix the baselined diagnostics, or run sst baseline renew --reason",
     ),
     spec(
         "SST-CFG036",
@@ -64,19 +212,33 @@ SPECS: tuple[ErrorSpec, ...] = (
         "set fqn: on the entry, or set default_prefix on the block",
     ),
     spec(
+        "SST-CFG037",
+        Severity.WARNING,
+        "validation.strict is enforced from 1.0 and no baseline exists",
+        "validation.strict: true is enforced from 1.0; {count} warnings now block",
+        "run sst baseline add to hold the current warning count, then fix them",
+    ),
+    spec(
         "SST-CFG038",
         Severity.ERROR,
-        "Sample-value collection is disabled",
+        "Sample-value collection requested but the project refuses it",
         "--include {components} reads row data, and enrichment.allow_sample_value_collection is false",
         "leave sample-values and enums out of --include; authored sample_values are still read",
         demotable=False,
     ),
     spec(
+        "SST-CFG039",
+        Severity.ERROR,
+        "Baseline is past its expiry",
+        "baseline expired on {date}; {count} entries resume blocking",
+        "fix the baselined diagnostics, or run sst baseline renew --reason",
+    ),
+    spec(
         "SST-CFG040",
         Severity.ERROR,
-        "sha_version is declared in vars",
+        "`sha_version` is declared in `vars:`",
         "vars.sha_version is supplied by SST and must not be declared",
-        "remove it from vars:",
+        "remove it from vars:; SST resolves it from the commit being published",
     ),
     spec(
         "SST-CFG041",
@@ -88,7 +250,7 @@ SPECS: tuple[ErrorSpec, ...] = (
     spec(
         "SST-CFG042",
         Severity.ERROR,
-        "Folder route declared under evals or skills",
+        "Folder route declared under `evals:` or `skills:`",
         "{block}: declares a folder route '{key}'",
         "remove it; evals: location is structural, and skills: keeps only its catalog, stage, and extensions blocks",
     ),
@@ -144,5 +306,12 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Unsupported authentication configuration",
         "target '{target}': {detail}",
         "authenticate with a key pair, a password, SSO (authenticator), or an OAuth access token (token)",
+    ),
+    spec(
+        "SST-CFG200",
+        Severity.WARNING,
+        "Deprecated config key",
+        "config key '{key}' is deprecated; use '{expected}'",
+        "rename the key",
     ),
 )

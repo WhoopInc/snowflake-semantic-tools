@@ -14,6 +14,7 @@ from types import MappingProxyType
 from typing import Any
 
 from snowflake_semantic_tools.adapters.errors import ProjectError
+from snowflake_semantic_tools.adapters.locations import ProjectPaths
 from snowflake_semantic_tools.adapters.yaml.documents import RawDocuments, discover_yaml, load_documents
 from snowflake_semantic_tools.adapters.yaml.parse import parse_yaml_bytes, read_yaml_mapping
 from snowflake_semantic_tools.adapters.yaml.semantic.build import _build_view
@@ -49,13 +50,23 @@ class SemanticInputs:
     documents: RawDocuments
 
 
-def read_semantic_inputs(project_dir: Path) -> SemanticInputs:
-    """Read `sst_config.yml`, then discover and parse every semantic-model document once.
+def read_semantic_inputs(files: ProjectPaths, config: Mapping[str, Any] | None = None) -> SemanticInputs:
+    """Read the resolved configuration file, then discover and parse every semantic-model document once.
 
     The caller reads these before it loads the dbt target and models, so a broken config or a
     missing semantic-models directory is reported before dbt is consulted.
+
+    Args:
+        config: The configuration with its templates resolved for the run's target; None reads
+            the file as written.
+
+    Raises:
+        ProjectError: the run has no configuration file, or it or a document cannot be read.
     """
-    config = read_yaml_mapping(project_dir / "sst_config.yml")
+    if files.config_file is None:
+        raise ProjectError(f"no configuration file in {files.project_dir}")
+    project_dir = files.project_dir
+    config = dict(config) if config is not None else read_yaml_mapping(files.config_file)
     semantic_models_dir = str((config.get("project") or {}).get("semantic_models_dir") or "semantic_models")
     documents = load_documents(discover_yaml(project_dir, semantic_models_dir), parse_yaml_bytes)
     return SemanticInputs(config, semantic_models_dir, documents)
@@ -195,6 +206,10 @@ def _build_views(
     diagnostics: list[Diagnostic] = []
     for path, node in _buildable_nodes(context, poison):
         view_target = _semantic_view_target(context.config, path, context.views_dir, context.target)
+        default_staleness = _semantic_view_defaults(context.config, path, context.views_dir).get("max_staleness")
+        if "max_staleness" not in node and default_staleness is not None:
+            # A view's own max_staleness wins; only an unset one takes the folder routes' default.
+            node = {**node, "max_staleness": default_staleness}
         try:
             views.append(
                 _build_view(
