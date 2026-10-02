@@ -46,7 +46,7 @@ semantic_views:
     max_staleness: 300
 
     # Each `name:` is a tag() call resolved against the top-level `tags:` block
-    # in sst_config.yml (SST-REF040 if it names no tag there). Tags render
+    # in sst_config.yml (SST-REF028 if it names no tag there). Tags render
     # inline as WITH TAG (...) in the CREATE statement.
     tags:
       - name: "{{ tag('cost_center') }}"
