@@ -166,6 +166,20 @@ SPECS: tuple[ErrorSpec, ...] = (
         "report it rather than gate on it",
     ),
     spec(
+        "SST-VAL727",
+        Severity.ERROR,
+        "Eval privileges are spread across secondary roles",
+        "eval config for '{artifact}': {detail}",
+        "put every eval privilege on one primary role",
+    ),
+    spec(
+        "SST-VAL728",
+        Severity.ERROR,
+        "Eval role lacks a required schema privilege",
+        "eval config for '{artifact}': {value} lacks {detail}",
+        "grant CREATE TASK, CREATE STAGE and CREATE FILE FORMAT",
+    ),
+    spec(
         "SST-VAL729",
         Severity.ERROR,
         "Config stage file format is wrong",

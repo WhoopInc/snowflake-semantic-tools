@@ -99,3 +99,59 @@ def test_external_references_come_from_the_dependency_record_once_each() -> None
     found = connector.external_references(QualifiedName.parse("DB.SCH.SALES"))
     assert [item.sql for item in found] == ["BI.DASH.REVENUE", '"bi"."Dash"."lower"']
     assert connector.sent[0][1] == ("DB", "SCH", "SALES")
+
+
+def _grant(privilege: str, granted_on: str, name: str) -> dict[str, object]:
+    return {"privilege": privilege, "granted_on": granted_on, "name": name}
+
+
+def test_a_role_holds_what_it_inherits_through_roles_and_database_roles_reading_each_once() -> None:
+    connector = ScriptedConnector(
+        {
+            "SHOW GRANTS TO ROLE RUNNER": (
+                _grant("CREATE TASK", "SCHEMA", "DB.SCH"),
+                _grant("USAGE", "ROLE", "BUILDER"),
+                _grant("CREATE STAGE", "SCHEMA", "DB.OTHER"),
+            ),
+            "SHOW GRANTS TO ROLE BUILDER": (
+                _grant("USAGE", "DATABASE_ROLE", "DB.WRITER"),
+                # A cycle back to the role the walk started from.
+                _grant("USAGE", "ROLE", "RUNNER"),
+                _grant("SELECT", "TABLE", "DB.SCH.T"),
+            ),
+            "SHOW GRANTS TO DATABASE ROLE DB.WRITER": (_grant("CREATE STAGE", "SCHEMA", "DB.SCH"),),
+        }
+    )
+    privileges = ("CREATE TASK", "CREATE STAGE", "CREATE FILE FORMAT")
+    assert connector.missing_role_privileges("RUNNER", SCOPE, privileges) == ("CREATE FILE FORMAT",)
+    assert [statement for statement, _ in connector.sent] == [
+        "SHOW GRANTS TO ROLE RUNNER",
+        "SHOW GRANTS TO ROLE BUILDER",
+        "SHOW GRANTS TO DATABASE ROLE DB.WRITER",
+    ]
+
+
+def test_a_role_that_owns_the_schema_lacks_nothing_and_a_quoted_role_keeps_its_case() -> None:
+    connector = ScriptedConnector(
+        {
+            'SHOW GRANTS TO ROLE "runner"': (_grant("USAGE", "DATABASE_ROLE", '"db".OWNERS'),),
+            'SHOW GRANTS TO DATABASE ROLE "db".OWNERS': (_grant("OWNERSHIP", "SCHEMA", "DB.SCH"),),
+        }
+    )
+    assert connector.missing_role_privileges("runner", SCOPE, ("CREATE TASK",)) == ()
+
+
+def test_the_walk_stops_at_the_hierarchy_depth_and_reads_a_deeper_grant_as_missing() -> None:
+    from snowflake_semantic_tools.domain.ports.snowflake.preflight import ROLE_HIERARCHY_DEPTH
+
+    # Two digits, so no role's statement is a prefix of another's.
+    chain = {
+        f"SHOW GRANTS TO ROLE R{level:02d}": (_grant("USAGE", "ROLE", f"R{level + 1:02d}"),) for level in range(40)
+    }
+    deepest = f"SHOW GRANTS TO ROLE R{ROLE_HIERARCHY_DEPTH:02d}"
+    connector = ScriptedConnector({**chain, deepest: (_grant("CREATE TASK", "SCHEMA", "DB.SCH"),)})
+    assert connector.missing_role_privileges("R00", SCOPE, ("CREATE TASK",)) == ("CREATE TASK",)
+    assert len(connector.sent) == ROLE_HIERARCHY_DEPTH
+    reachable = f"SHOW GRANTS TO ROLE R{ROLE_HIERARCHY_DEPTH - 1:02d}"
+    within = ScriptedConnector({**chain, reachable: (_grant("CREATE TASK", "SCHEMA", "DB.SCH"),)})
+    assert within.missing_role_privileges("R00", SCOPE, ("CREATE TASK",)) == ()

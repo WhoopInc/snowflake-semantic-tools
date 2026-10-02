@@ -22,7 +22,7 @@ cannot be downgraded by any setting.
 - [Loading (LOD)](#loading-lod) -- 24 codes
 - [References (REF)](#references-ref) -- 37 codes
 - [Membership (MEM)](#membership-mem) -- 24 codes
-- [Validation (VAL)](#validation-val) -- 280 codes
+- [Validation (VAL)](#validation-val) -- 282 codes
 - [dbt (DBT)](#dbt-dbt) -- 30 codes
 - [Rendering (RND)](#rendering-rnd) -- 16 codes
 - [Manifest and state (MAN)](#manifest-and-state-man) -- 21 codes
@@ -3433,6 +3433,22 @@ Fix: remove judge_model; the version carries the judge
 `eval config for '<artifact>': logical_consistency is a blocking metric`
 
 Fix: report it rather than gate on it
+
+### SST-VAL727
+
+**Eval privileges are spread across secondary roles** (error)
+
+`eval config for '<artifact>': <detail>`
+
+Fix: put every eval privilege on one primary role
+
+### SST-VAL728
+
+**Eval role lacks a required schema privilege** (error)
+
+`eval config for '<artifact>': <value> lacks <detail>`
+
+Fix: grant CREATE TASK, CREATE STAGE and CREATE FILE FORMAT
 
 ### SST-VAL729
 

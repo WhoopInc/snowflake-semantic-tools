@@ -18,6 +18,7 @@ from snowflake_semantic_tools.app.apply.lock import LockPolicy, RunLease
 from snowflake_semantic_tools.app.compile import CompileResult
 from snowflake_semantic_tools.app.compile.evals import CompiledEval
 from snowflake_semantic_tools.app.evals.gate import capture_baseline, evaluate_gate, persist_gate, recorded_judges
+from snowflake_semantic_tools.app.evals.privileges import EvalRolePort, eval_role_diagnostics
 from snowflake_semantic_tools.app.evals.run import (
     EvalRunOptions,
     EvalSuiteResult,
@@ -51,8 +52,8 @@ EVAL_RUN_PREFIX = "eval-"
 _DEFAULT_LOCK_POLICY = LockPolicy()
 
 
-class EvalGatePort(CatalogPublicationPort, StatePort, Protocol):
-    """The Snowflake roles the eval gate uses: running the suite, and reading recorded state."""
+class EvalGatePort(CatalogPublicationPort, StatePort, EvalRolePort, Protocol):
+    """The Snowflake roles the eval gate uses: running the suite, reading state, and the run role's grants."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -148,7 +149,8 @@ class RunEvalGate:
 
         1. Read the `evals:` defaults and the eval config stage from the project.
         2. Take the target's run lease; refuse when another operation holds either lock.
-        3. Read authoritative state, and check every eval is published as `manifest` renders it.
+        3. Read authoritative state, check every eval is published as `manifest` renders it, and
+           that the primary role alone holds what a run needs in each agent's schema.
         4. Unless that check reported an error, run the suite, then capture each eval's
            baseline or evaluate and record its gate.
         5. Release the lease.
@@ -164,6 +166,8 @@ class RunEvalGate:
             SST-APL011: another run holds the target's lock, so no eval starts.
             SST-VAL755: the run holding the lock is not an eval run, so it may be regenerating
                 a semantic view an eval's agent uses; one per eval and view.
+            SST-VAL727, SST-VAL728: the primary role lacks a privilege a run needs in an eval's
+                agent schema; as `eval_role_diagnostics` reports, and no eval starts.
             Those of `read_state`, `validate_eval_publication`, the suite, and each gate.
         """
         tree = self._inputs.config().tree
@@ -191,7 +195,7 @@ class RunEvalGate:
         try:
             state, state_diagnostics = read_state(self._state_store, self._port, state_table=state_table, target=target)
             publication = validate_eval_publication(evals, manifest, state, handler)
-            preflight = DiagnosticBag((*state_diagnostics, *publication))
+            preflight = DiagnosticBag((*state_diagnostics, *publication, *eval_role_diagnostics(self._port, evals)))
             if preflight.has_errors:
                 return EvalGateOutcome(preflight, None, False, {"suite": "evals", **empty_eval_suite_json()})
             return self._run_suite(evals, state, preflight, defaults, lifecycle_config, request, target.name)
