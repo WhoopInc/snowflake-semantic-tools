@@ -30,6 +30,7 @@ from snowflake_semantic_tools.domain.state import (
 )
 from snowflake_semantic_tools.domain.state.manifest import _manifest_from_dict_unchecked, _object_map
 from tests.helpers.manifests import build_minimal_manifest
+from tests.helpers.sql_values import statement
 
 
 def target() -> TargetIdentity:
@@ -41,7 +42,7 @@ def artifact() -> RenderedArtifact:
         key="semantic_view:v",
         artifact_type="semantic_view",
         target=QualifiedName.from_parts("db", "schema", "v"),
-        ddl="create semantic view db.schema.v as tables (t as db.schema.t) copy grants",
+        ddl=statement("create semantic view db.schema.v as tables (t as db.schema.t) copy grants"),
     )
 
 

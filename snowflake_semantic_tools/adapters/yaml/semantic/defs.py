@@ -12,7 +12,6 @@ from snowflake_semantic_tools.adapters.yaml.fields import optional_string
 from snowflake_semantic_tools.adapters.yaml.semantic.nodes import _list_of
 from snowflake_semantic_tools.domain.model.diagnostic import Origin
 from snowflake_semantic_tools.domain.model.reference import TemplateCall, TemplateSyntaxError, scan_template_calls
-from snowflake_semantic_tools.domain.model.semantic_view import SortKey
 
 
 @dataclass(frozen=True, slots=True)
@@ -25,14 +24,18 @@ class NonAdditiveDef:
     nulls_first: bool | None = None
 
     @property
-    def key(self) -> SortKey:
-        """Return the entry's `NON ADDITIVE BY` sort key, with its sort as written.
+    def names(self) -> tuple[str, ...]:
+        """Return the names the entry's sort key is written from: its table, if any, then its dimension."""
+        return (self.table, self.dimension) if self.table else (self.dimension,)
+
+    @property
+    def key(self) -> tuple[str, bool | None, bool | None]:
+        """Return the entry's `NON ADDITIVE BY` sort key as text, with its sort as written.
 
         The expression is the dimension uppercased, as `TABLE.DIMENSION` when the entry names a
-        table.
+        table; the loader guards it before a model holds it.
         """
-        name = self.dimension.upper()
-        return SortKey(f"{self.table.upper()}.{name}" if self.table else name, self.descending, self.nulls_first)
+        return ".".join(name.upper() for name in self.names), self.descending, self.nulls_first
 
 
 SORT_DIRECTIONS: Mapping[str, bool] = MappingProxyType({"ascending": False, "descending": True})

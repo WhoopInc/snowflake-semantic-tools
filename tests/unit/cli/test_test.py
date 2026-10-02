@@ -29,6 +29,7 @@ from snowflake_semantic_tools.domain.model.eval import (
 from snowflake_semantic_tools.domain.model.identifier import Identifier, TargetIdentity
 from snowflake_semantic_tools.domain.model.lifecycle import QueryResult
 from snowflake_semantic_tools.domain.ports.snowflake import StagedFileMetadata
+from snowflake_semantic_tools.domain.sql import Sql
 from snowflake_semantic_tools.domain.state import AppliedEntry, State
 from tests.helpers.cli_projects import (
     DBT_MANIFEST,
@@ -298,8 +299,8 @@ def test_eval_suite_uses_common_json_envelope(tmp_path: Path, monkeypatch: pytes
         )
     responses = iter(response_values)
 
-    def query(sql: str, params: Sequence[object] | Mapping[str, object] | None = None) -> QueryResult:
-        port.queries.append((sql, params))
+    def query(sql: Sql, params: Sequence[object] | Mapping[str, object] | None = None) -> QueryResult:
+        port.queries.append((str(sql), params))
         return next(responses)
 
     port.query = query  # type: ignore[method-assign]

@@ -20,14 +20,18 @@ from snowflake_semantic_tools.domain.model.semantic_view import (
     VerifiedQuery,
 )
 from snowflake_semantic_tools.domain.ports.snowflake import SnowflakePortError
+from snowflake_semantic_tools.domain.sql import datatype
 from snowflake_semantic_tools.domain.state import STATE_SCHEMA_VERSION, AppliedEntry, State
 from tests.helpers.app_ports import InMemorySnowflake
 from tests.helpers.artifact_builders import rendered, target
+from tests.helpers.sql_values import authored, authored_query, statement
 
 
 def compile_result(diagnostics: DiagnosticBag = DiagnosticBag()) -> CompileResult:
-    view = SemanticView("DB.S.V", (Table("T", "DB.S.T"),), metrics=(Metric("M", "COUNT(1)", "T"),))
-    return CompileResult((CompiledView(view, "CREATE OR REPLACE SEMANTIC VIEW DB.S.V COPY GRANTS"),), diagnostics)
+    view = SemanticView("DB.S.V", (Table("T", "DB.S.T"),), metrics=(Metric("M", authored("COUNT(1)"), "T"),))
+    return CompileResult(
+        (CompiledView(view, statement("CREATE OR REPLACE SEMANTIC VIEW DB.S.V COPY GRANTS")),), diagnostics
+    )
 
 
 def test_validation_promotes_warnings_and_reports_connected_skip_or_failure() -> None:
@@ -42,9 +46,11 @@ def test_validation_promotes_warnings_and_reports_connected_skip_or_failure() ->
     invalid_view = SemanticView(
         "DB.S.V",
         (Table("T", "DB.S.T"),),
-        metrics=(Metric("M", "SUM(T.VALUE)", "T"),),
+        metrics=(Metric("M", authored("SUM(T.VALUE)"), "T"),),
     )
-    invalid_result = CompileResult((CompiledView(invalid_view, "CREATE OR REPLACE SEMANTIC VIEW DB.S.V COPY GRANTS"),))
+    invalid_result = CompileResult(
+        (CompiledView(invalid_view, statement("CREATE OR REPLACE SEMANTIC VIEW DB.S.V COPY GRANTS")),)
+    )
     failed = ValidateArtifacts(port).run(invalid_result, strict=False, connected=True)
     assert not failed.success and failed.diagnostics[0].code == "SST-VAL418"
     healthy = ValidateArtifacts(InMemorySnowflake()).run(compile_result(), strict=False, connected=True)
@@ -55,10 +61,10 @@ def test_connected_validation_compiles_expressions_and_verified_queries() -> Non
     view = SemanticView(
         "DB.S.V",
         (Table("T", "DB.S.T"),),
-        metrics=(Metric("M", "SUM(T.VALUE)", "T"),),
-        verified_queries=(VerifiedQuery("Q", "q?", "SELECT 1;"),),
+        metrics=(Metric("M", authored("SUM(T.VALUE)"), "T"),),
+        verified_queries=(VerifiedQuery("Q", "q?", authored_query("SELECT 1;")),),
     )
-    result = CompileResult((CompiledView(view, "CREATE OR REPLACE SEMANTIC VIEW DB.S.V COPY GRANTS"),))
+    result = CompileResult((CompiledView(view, statement("CREATE OR REPLACE SEMANTIC VIEW DB.S.V COPY GRANTS")),))
     port = InMemorySnowflake()
     validated = ValidateArtifacts(port).run(result, strict=False, connected=True)
     assert validated.success
@@ -72,17 +78,17 @@ def test_connected_validation_skips_non_views_and_projects_columns() -> None:
     view = SemanticView(
         "DB.S.V",
         (Table("T", "DB.S.T"),),
-        variables=(Variable("THRESHOLD", "NUMBER", "1"),),
+        variables=(Variable("THRESHOLD", datatype("NUMBER"), statement("1")),),
         columns=(
-            Column("T", "CATEGORY", ColumnKind.DIMENSION, "T.CATEGORY"),
-            Column("T", "ACTIVE", ColumnKind.FILTER, "T.ACTIVE = TRUE"),
+            Column("T", "CATEGORY", ColumnKind.DIMENSION, authored("T.CATEGORY")),
+            Column("T", "ACTIVE", ColumnKind.FILTER, authored("T.ACTIVE = TRUE")),
         ),
-        metrics=(Metric("TOTAL", "SUM(T.VALUE) + THRESHOLD + TOTAL", "T"),),
+        metrics=(Metric("TOTAL", authored("SUM(T.VALUE) + THRESHOLD + TOTAL"), "T"),),
     )
     result = CompileResult(
         (
             _NonViewArtifact(),
-            CompiledView(view, "CREATE OR REPLACE SEMANTIC VIEW DB.S.V COPY GRANTS"),
+            CompiledView(view, statement("CREATE OR REPLACE SEMANTIC VIEW DB.S.V COPY GRANTS")),
         )
     )
     port = InMemorySnowflake()
@@ -101,10 +107,10 @@ def test_smoke_suite_runs_each_probe_and_supports_fail_fast() -> None:
         key="semantic_view:v",
         artifact_type="semantic_view",
         target=rendered().target,
-        ddl="ddl",
+        ddl=statement("ddl"),
         smoke=(
-            SmokeProbe("view", ProbeKind.VIEW, "select 1"),
-            SmokeProbe("metric", ProbeKind.METRIC, "select 2"),
+            SmokeProbe("view", ProbeKind.VIEW, statement("select 1")),
+            SmokeProbe("metric", ProbeKind.METRIC, statement("select 2")),
         ),
     )
     good_port = InMemorySnowflake()

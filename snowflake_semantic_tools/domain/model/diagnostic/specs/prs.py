@@ -30,6 +30,14 @@ SPECS: tuple[ErrorSpec, ...] = (
         "change the value to the expected type",
     ),
     spec(
+        "SST-PRS005",
+        Severity.ERROR,
+        "Name is not a valid identifier",
+        "{artifact}: '{value}' is not a valid identifier",
+        "start an unquoted name with a letter or underscore and use only letters, digits, `_` and `$`, "
+        "or double-quote it",
+    ),
+    spec(
         "SST-PRS013",
         Severity.ERROR,
         "Value outside allowed set",

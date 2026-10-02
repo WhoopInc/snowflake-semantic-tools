@@ -15,6 +15,7 @@ from snowflake_semantic_tools.domain.model.lifecycle import (
 )
 from snowflake_semantic_tools.domain.state import ImpactIndex, Manifest, State
 from tests.helpers.manifests import build_minimal_manifest
+from tests.helpers.sql_values import statement
 
 
 def target() -> TargetIdentity:
@@ -26,7 +27,7 @@ def rendered(name: str = "V", *, depends_on: tuple[str, ...] = ()) -> RenderedAr
         key=f"semantic_view:{name.casefold()}",
         artifact_type="semantic_view",
         target=QualifiedName.from_parts("db", "schema", name),
-        ddl=f"CREATE OR REPLACE SEMANTIC VIEW DB.SCHEMA.{name} TABLES (T AS DB.SCHEMA.T) COPY GRANTS",
+        ddl=statement(f"CREATE OR REPLACE SEMANTIC VIEW DB.SCHEMA.{name} TABLES (T AS DB.SCHEMA.T) COPY GRANTS"),
         depends_on=depends_on,
         required_relations=(QualifiedName.from_parts("db", "schema", "t"),),
     )

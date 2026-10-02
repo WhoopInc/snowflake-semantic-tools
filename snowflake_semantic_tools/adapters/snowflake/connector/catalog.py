@@ -14,7 +14,6 @@ from typing import Any
 from snowflake_semantic_tools.adapters.snowflake.connector.session import Session, _variant_value
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName, SchemaScope
 from snowflake_semantic_tools.domain.model.lifecycle import GrantRow, OwnershipMarker, ShowRow, extract_marker
-from snowflake_semantic_tools.domain.model.sql import string_literal
 from snowflake_semantic_tools.domain.ports.snowflake import (
     CatalogPort,
     ExtensionObservation,
@@ -22,6 +21,7 @@ from snowflake_semantic_tools.domain.ports.snowflake import (
     SnowflakePortError,
     StageObservation,
 )
+from snowflake_semantic_tools.domain.sql import Sql, datatype, ident, join, keyword, literal, qname, scope, sql
 
 # The object types SST observes, each spelled as SHOW spells it once pluralized with an S.
 OBJECT_TYPES = frozenset(
@@ -45,8 +45,9 @@ class CatalogMethods(Session, CatalogPort):
 
     def show_objects(self, object_type: str, scope: SchemaScope) -> tuple[ShowRow, ...]:
         normalized_type = _object_type(object_type)
-        sql = f"SHOW {normalized_type}S IN SCHEMA {scope.sql}"
-        rows = self._dict_rows(sql)
+        rows = self._dict_rows(
+            sql("SHOW {kind} IN SCHEMA {scope}", kind=keyword(normalized_type, plural=True), scope=_scope(scope))
+        )
         return tuple(
             sorted(
                 (
@@ -74,10 +75,13 @@ class CatalogMethods(Session, CatalogPort):
         qualified_name: QualifiedName,
         routine_signature: tuple[str, ...] = (),
     ) -> tuple[GrantRow, ...]:
-        object_name = qualified_name.sql
+        object_name = qname(qualified_name)
         if object_type.upper() in {"PROCEDURE", "FUNCTION"}:
-            object_name += f"({', '.join(routine_signature)})"
-        rows = self._dict_rows(f"SHOW GRANTS ON {_object_type(object_type)} {object_name}")
+            types = join(", ", (datatype(value) for value in routine_signature))
+            object_name = sql("{name}({types})", name=object_name, types=types)
+        rows = self._dict_rows(
+            sql("SHOW GRANTS ON {kind} {name}", kind=keyword(_object_type(object_type)), name=object_name)
+        )
         return tuple(
             sorted(
                 GrantRow(
@@ -100,20 +104,24 @@ class CatalogMethods(Session, CatalogPort):
         return extract_marker(_show_comment(rows[0])) if rows else None
 
     def current_role(self) -> str:
-        return str(self.query("SELECT CURRENT_ROLE()").rows[0][0])
+        return str(self.query(sql("SELECT CURRENT_ROLE()")).rows[0][0])
 
     def current_account_locator(self) -> str:
-        return str(self.query("SELECT CURRENT_ACCOUNT()").rows[0][0])
+        return str(self.query(sql("SELECT CURRENT_ACCOUNT()")).rows[0][0])
 
     def object_exists(self, object_type: str, qualified_name: QualifiedName) -> bool:
         normalized_input = " ".join(object_type.upper().split())
         if normalized_input == "DATASET":
             return self.dataset_exists(qualified_name)
         if normalized_input in {"TABLE OR VIEW", "TABLE"}:
-            type_filter = "" if normalized_input == "TABLE OR VIEW" else " AND TABLE_TYPE = 'BASE TABLE'"
+            type_filter = sql("") if normalized_input == "TABLE OR VIEW" else sql(" AND TABLE_TYPE = 'BASE TABLE'")
             result = self.query(
-                f"SELECT COUNT(*) FROM {qualified_name.database.sql}.INFORMATION_SCHEMA.TABLES "
-                f"WHERE TABLE_SCHEMA = %s AND TABLE_NAME = %s{type_filter}",
+                sql(
+                    "SELECT COUNT(*) FROM {database}.INFORMATION_SCHEMA.TABLES "
+                    "WHERE TABLE_SCHEMA = %s AND TABLE_NAME = %s{type_filter}",
+                    database=ident(qualified_name.database),
+                    type_filter=type_filter,
+                ),
                 (qualified_name.schema.folded, qualified_name.name.folded),
             )
             count = result.rows[0][0] if result.rows else 0
@@ -139,7 +147,7 @@ class CatalogMethods(Session, CatalogPort):
         return StageObservation(True, self.describe_stage_file_format(qualified_name))
 
     def describe_stage_file_format(self, qualified_name: QualifiedName) -> str | None:
-        rows = self._dict_rows(f"DESCRIBE STAGE {qualified_name.sql}")
+        rows = self._dict_rows(sql("DESCRIBE STAGE {stage}", stage=qname(qualified_name)))
         properties = {
             str(row.get("property") or row.get("name") or "").upper(): row.get("property_value", row.get("value"))
             for row in rows
@@ -178,7 +186,7 @@ class CatalogMethods(Session, CatalogPort):
         )
 
     def extension_versions(self, qualified_name: QualifiedName) -> tuple[ExtensionVersion, ...]:
-        rows = self._dict_rows(f"SHOW VERSIONS IN CORTEX EXTENSION {qualified_name.sql}")
+        rows = self._dict_rows(sql("SHOW VERSIONS IN CORTEX EXTENSION {extension}", extension=qname(qualified_name)))
         return tuple(
             ExtensionVersion(
                 name=str(row.get("name") or "").upper(),
@@ -194,17 +202,17 @@ class CatalogMethods(Session, CatalogPort):
     def table_columns(self, qualified_name: QualifiedName) -> tuple[tuple[str, str], ...] | None:
         if not self.object_exists("TABLE", qualified_name):
             return None
-        rows = self._dict_rows(f"DESCRIBE TABLE {qualified_name.sql}")
+        rows = self._dict_rows(sql("DESCRIBE TABLE {table}", table=qname(qualified_name)))
         return tuple((str(row.get("name") or "").upper(), str(row.get("type") or "").upper()) for row in rows)
 
     def agent_has_live_version(self, qualified_name: QualifiedName) -> bool:
-        rows = self._dict_rows(f"SHOW VERSIONS IN AGENT {qualified_name.sql}")
+        rows = self._dict_rows(sql("SHOW VERSIONS IN AGENT {agent}", agent=qname(qualified_name)))
         return any(row.get("name") is None for row in rows)
 
     def resolve_agent_version(self, qualified_name: QualifiedName, selector: str) -> str:
         if selector.upper().startswith("VERSION$"):
             return selector.upper()
-        rows = self._dict_rows(f"DESCRIBE AGENT {qualified_name.sql}")
+        rows = self._dict_rows(sql("DESCRIBE AGENT {agent}", agent=qname(qualified_name)))
         # Unlike DESCRIBE STAGE above, a row's `name` and `value` win over `property` and
         # `property_value`, and names compare casefolded.
         properties = {
@@ -233,13 +241,20 @@ class CatalogMethods(Session, CatalogPort):
         Raises:
             SnowflakePortError: SST does not observe `object_type`, or the SHOW failed.
         """
-        pattern = string_literal(qualified_name.name.folded)
         rows = self._dict_rows(
-            f"SHOW {_object_type(object_type)}S LIKE {pattern} IN SCHEMA "
-            f"{qualified_name.database.sql}.{qualified_name.schema.sql}"
+            sql(
+                "SHOW {kind} LIKE {pattern} IN SCHEMA {scope}",
+                kind=keyword(_object_type(object_type), plural=True),
+                pattern=literal(qualified_name.name.folded),
+                scope=_scope(SchemaScope.from_qualified_name(qualified_name)),
+            )
         )
         expected = fold(qualified_name.name.folded)
         return tuple(row for row in rows if fold(str(row.get("name") or "")) == expected)
+
+
+def _scope(value: SchemaScope) -> Sql:
+    return scope(value)
 
 
 def _object_type(value: str) -> str:

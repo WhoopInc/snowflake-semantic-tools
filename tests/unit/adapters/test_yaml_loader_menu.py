@@ -8,6 +8,7 @@ import pytest
 
 from snowflake_semantic_tools.domain.model.semantic_view import SemanticView, SortKey
 from tests.helpers.projects import load_views
+from tests.helpers.sql_values import authored
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 FIXTURE = REPO_ROOT / "tests" / "fixtures" / "reference_project"
@@ -40,20 +41,20 @@ def test_loads_asof_and_range_relationships(menu: SemanticView) -> None:
 def test_loads_path_pinning_and_non_additive_dimension(menu: SemanticView) -> None:
     metrics = {metric.name: metric for metric in menu.metrics}
     assert metrics["LINE_ITEM_COUNT"].using_relationships == ("ORDER_ITEMS_TO_ORDERS",)
-    assert metrics["TOTAL_SUPPLY_COST"].non_additive_by == (SortKey("SNAPSHOT_MONTH"),)
+    assert metrics["TOTAL_SUPPLY_COST"].non_additive_by == (SortKey(authored("SNAPSHOT_MONTH")),)
     assert metrics["OPENING_SUPPLY_COST"].non_additive_by == (
-        SortKey("SUPPLIES.SNAPSHOT_MONTH", descending=True, nulls_first=True),
+        SortKey(authored("SUPPLIES.SNAPSHOT_MONTH"), descending=True, nulls_first=True),
     )
 
 
 def test_loads_sql_sidecar_without_its_comment_header(menu: SemanticView) -> None:
     query = next(query for query in menu.verified_queries if query.name == "PRODUCT_MIX_BY_TYPE")
-    assert query.sql.startswith("SELECT\n")
-    assert "semantic_models/verified_queries/sql" not in query.sql
-    assert "INNER JOIN products" in query.sql
+    assert query.sql.text.startswith("SELECT\n")
+    assert "semantic_models/verified_queries/sql" not in query.sql.text
+    assert "INNER JOIN products" in query.sql.text
 
 
 def test_derived_metric_depth_is_resolved_to_rendered_metric_names(menu: SemanticView) -> None:
     metrics = {metric.name: metric for metric in menu.metrics}
-    assert metrics["GROSS_MARGIN"].expr == ("ORDER_ITEMS.TOTAL_LINE_ITEM_REVENUE - SUPPLIES.TOTAL_SUPPLY_COST")
-    assert metrics["GROSS_MARGIN_RATE"].expr == "DIV0(GROSS_MARGIN, ORDER_ITEMS.TOTAL_LINE_ITEM_REVENUE)"
+    assert metrics["GROSS_MARGIN"].expr.text == ("ORDER_ITEMS.TOTAL_LINE_ITEM_REVENUE - SUPPLIES.TOTAL_SUPPLY_COST")
+    assert metrics["GROSS_MARGIN_RATE"].expr.text == "DIV0(GROSS_MARGIN, ORDER_ITEMS.TOTAL_LINE_ITEM_REVENUE)"

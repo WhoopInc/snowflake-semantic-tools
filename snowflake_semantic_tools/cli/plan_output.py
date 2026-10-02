@@ -151,7 +151,7 @@ def write_plan_sql(project_dir: Path, changeset: ChangeSet, sql_out: Path | None
         content = (
             change.rendered.content
             if suffix in (".json", ".yaml")
-            else ";\n\n".join(change.rendered.statements) + ";\n"
+            else ";\n\n".join(str(statement) for statement in change.rendered.statements) + ";\n"
         )
         path.write_text(content, encoding="utf-8")
     return output

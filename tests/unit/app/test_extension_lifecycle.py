@@ -31,10 +31,12 @@ from snowflake_semantic_tools.domain.model.lifecycle import (
 )
 from snowflake_semantic_tools.domain.model.skill import Plugin, Skill, SkillCatalog, SkillFile
 from snowflake_semantic_tools.domain.ports.snowflake import ExtensionObservation, ExtensionVersion, SnowflakePortError
+from snowflake_semantic_tools.domain.sql import Sql
 from snowflake_semantic_tools.domain.state import FAILED_AFTER_WRITE, STATE_SCHEMA_VERSION, AppliedEntry, State
 from tests.helpers.app_ports import FixedClock, InMemoryStateStore
 from tests.helpers.artifact_builders import target
 from tests.helpers.recorded_snowflake import RecordedSnowflake
+from tests.helpers.sql_values import statement, texts
 
 STAGE = QualifiedName.parse("DB.S.SKILL_BUNDLES")
 CHANNEL = CatalogChannel("DB", "S", STAGE)
@@ -199,7 +201,9 @@ def test_unmanaged_type_mismatch_stage_and_damaged_alias_block() -> None:
     owned = AppliedEntry("f", release.target.sql, "now", "run", "applied", "f", "m")
 
     unmanaged = RecordedSnowflake(existing=())
-    unmanaged.execute_script(("CREATE CORTEX EXTENSION IF NOT EXISTS DB.S.MONTH_CLOSE TYPE = 'SKILL' COMMENT = 'x'",))
+    unmanaged.execute_script(
+        (statement("CREATE CORTEX EXTENSION IF NOT EXISTS DB.S.MONTH_CLOSE TYPE = 'SKILL' COMMENT = 'x'"),)
+    )
     changeset, _, _ = publish(unmanaged, compiled, state())
     assert [(change.action, change.reason) for change in changeset.changes] == [
         (Action.BLOCKED, ChangeReason.UNMANAGED_OBJECT)
@@ -207,7 +211,9 @@ def test_unmanaged_type_mismatch_stage_and_damaged_alias_block() -> None:
     assert [item.code for item in changeset.diagnostics] == ["SST-PLN024"]
 
     mismatch = RecordedSnowflake(existing=())
-    mismatch.execute_script(("CREATE CORTEX EXTENSION IF NOT EXISTS DB.S.MONTH_CLOSE TYPE = 'PLUGIN' COMMENT = 'x'",))
+    mismatch.execute_script(
+        (statement("CREATE CORTEX EXTENSION IF NOT EXISTS DB.S.MONTH_CLOSE TYPE = 'PLUGIN' COMMENT = 'x'"),)
+    )
     changeset, _, _ = publish(mismatch, compiled, state({"skill:month-close": owned}))
     assert [item.code for item in changeset.diagnostics] == ["SST-PLN002"]
 
@@ -218,9 +224,15 @@ def test_unmanaged_type_mismatch_stage_and_damaged_alias_block() -> None:
 
     damaged = RecordedSnowflake(existing=())
     damaged.execute_script(
-        ("CREATE CORTEX EXTENSION IF NOT EXISTS DB.S.MONTH_CLOSE TYPE = 'SKILL' COMMENT = 'Close the month.'",)
+        (
+            statement(
+                "CREATE CORTEX EXTENSION IF NOT EXISTS DB.S.MONTH_CLOSE TYPE = 'SKILL' COMMENT = 'Close the month.'"
+            ),
+        )
     )
-    damaged.execute_script((f"ALTER CORTEX EXTENSION DB.S.MONTH_CLOSE ADD VERSION {release.alias} FROM @DB.S.EMPTY/",))
+    damaged.execute_script(
+        (statement(f"ALTER CORTEX EXTENSION DB.S.MONTH_CLOSE ADD VERSION {release.alias} FROM @DB.S.EMPTY/"),)
+    )
     changeset, _, _ = publish(damaged, compiled, state({"skill:month-close": owned}))
     assert [item.code for item in changeset.diagnostics] == ["SST-PLN027"]
     assert "missing" in changeset.diagnostics[0].message
@@ -253,7 +265,7 @@ def test_comment_drift_and_certification_with_readback() -> None:
     port = RecordedSnowflake(existing=())
     compiled = compile_catalog(SkillCatalog((skill(),)))
     _, _, after = publish(port, compiled, state())
-    port.execute_script(("ALTER CORTEX EXTENSION DB.S.MONTH_CLOSE SET COMMENT = 'drifted'",))
+    port.execute_script((statement("ALTER CORTEX EXTENSION DB.S.MONTH_CLOSE SET COMMENT = 'drifted'"),))
     certified = compile_catalog(SkillCatalog((skill(),)), replace(CHANNEL, certified=True))
     changeset, result, _ = publish(port, certified, after)
     assert [change.action for change in changeset.changes] == [Action.UPDATE]
@@ -535,8 +547,8 @@ def test_each_publish_step_fails_closed() -> None:
     created: list[str] = []
     execute = client_side.execute_script
 
-    def create_client_side(statements: Sequence[str]) -> ExecResult:
-        created.extend(statement for statement in statements if statement.startswith("CREATE STAGE"))
+    def create_client_side(statements: Sequence[Sql]) -> ExecResult:
+        created.extend(text for text in texts(statements) if text.startswith("CREATE STAGE"))
         return execute(statements)
 
     client_side.execute_script = create_client_side  # type: ignore[method-assign]
@@ -568,7 +580,7 @@ def test_each_publish_step_fails_closed() -> None:
 
     drifted = RecordedSnowflake(existing=())
     _, _, after = publish(drifted, compiled, state())
-    drifted.execute_script(("ALTER CORTEX EXTENSION DB.S.MONTH_CLOSE SET COMMENT = 'drifted'",))
+    drifted.execute_script((statement("ALTER CORTEX EXTENSION DB.S.MONTH_CLOSE SET COMMENT = 'drifted'"),))
     drifted.refused = ("SET COMMENT = 'Close",)
     assert "SET COMMENT" in _failure(publish(drifted, compiled, after)[1])
 

@@ -32,9 +32,11 @@ from snowflake_semantic_tools.domain.model.lifecycle import (
 )
 from snowflake_semantic_tools.domain.model.registry import GrantPreservation
 from snowflake_semantic_tools.domain.ports.snowflake import SnowflakePortError
+from snowflake_semantic_tools.domain.sql import Sql
 from snowflake_semantic_tools.domain.state import FAILED_AFTER_WRITE, AppliedEntry, AppliedResourceInput, Manifest
 from tests.helpers.app_ports import FixedClock, InMemorySnowflake, InMemoryStateStore, failed
 from tests.helpers.artifact_builders import change, changeset, manifest, marker, observed, rendered, state, target
+from tests.helpers.sql_values import statement, texts
 
 
 def runner(
@@ -82,7 +84,7 @@ def test_apply_create_writes_remote_then_local_state() -> None:
     result = use_case.run(changeset(change(artifact)), state())
     assert result.success and result.state_written
     assert result.outcomes[0].status is OutcomeStatus.APPLIED
-    assert port.scripts == [artifact.statements]
+    assert port.scripts == [texts(artifact.statements)]
     assert store.writes and artifact.key in store.writes[0].applied
     assert artifact.key in (port.remote_state or {})
 
@@ -102,7 +104,7 @@ def test_remote_state_failure_does_not_publish_uncommitted_local_state() -> None
     with pytest.raises(SnowflakePortError, match="state table unavailable"):
         use_case.run(changeset(change(artifact)), state())
 
-    assert port.scripts == [artifact.statements]
+    assert port.scripts == [texts(artifact.statements)]
     assert store.state is None
 
 
@@ -228,7 +230,7 @@ def test_apply_update_refuses_marker_drift_and_unsafe_replace() -> None:
     drift = use_case.run(changeset(change(artifact, Action.UPDATE, live=live)), state())
     assert drift.diagnostics[-1].code == "SST-APL012"
 
-    unsafe_artifact = replace(artifact, statements=(artifact.ddl.replace(" COPY GRANTS", ""),))
+    unsafe_artifact = replace(artifact, statements=(statement(artifact.ddl.replace(" COPY GRANTS", "")),))
     port.markers[artifact.target.sql] = ownership
     use_case, _, _, _ = runner(port)
     unsafe = use_case.run(changeset(change(unsafe_artifact, Action.UPDATE, live=live)), state())
@@ -409,7 +411,7 @@ def test_preserves_grants_non_update_and_non_replacing_statement() -> None:
     artifact = rendered()
     assert preserves_grants(change(artifact))
     live = observed(artifact, ownership=marker(artifact))
-    safe = replace(artifact, statements=("ALTER SEMANTIC VIEW DB.SCHEMA.V SET COMMENT='x'",))
+    safe = replace(artifact, statements=(statement("ALTER SEMANTIC VIEW DB.SCHEMA.V SET COMMENT='x'"),))
     assert preserves_grants(change(safe, Action.UPDATE, live=live))
 
 
@@ -431,7 +433,7 @@ def test_apply_honors_parallelism_within_a_dependency_wave() -> None:
     barrier = Barrier(2)
     original = port.execute_script
 
-    def synchronized(statements: Sequence[str]) -> ExecResult:
+    def synchronized(statements: Sequence[Sql]) -> ExecResult:
         barrier.wait(timeout=2)
         return original(statements)
 
@@ -535,7 +537,9 @@ def test_search_service_update_replays_and_verifies_explicit_grants() -> None:
         rendered(),
         object_type="CORTEX SEARCH SERVICE",
         grant_preservation=GrantPreservation.REPLAY,
-        statements=("CREATE OR REPLACE CORTEX SEARCH SERVICE DB.SCHEMA.V ON BODY AS SELECT BODY FROM DB.SCHEMA.T",),
+        statements=(
+            statement("CREATE OR REPLACE CORTEX SEARCH SERVICE DB.SCHEMA.V ON BODY AS SELECT BODY FROM DB.SCHEMA.T"),
+        ),
     )
     ownership = marker(artifact)
     live = replace(observed(artifact, ownership=ownership), object_type="CORTEX SEARCH SERVICE")
@@ -548,7 +552,7 @@ def test_search_service_update_replays_and_verifies_explicit_grants() -> None:
     result = use_case.run(changeset(change(artifact, Action.UPDATE, live=live)), state())
 
     assert result.success
-    assert port.scripts[0] == artifact.statements
+    assert port.scripts[0] == texts(artifact.statements)
     assert port.scripts[1] == ("GRANT USAGE ON CORTEX SEARCH SERVICE DB.SCHEMA.V TO ROLE READER WITH GRANT OPTION",)
     assert result.outcomes[0].grants is GrantCheck.PRESERVED
 
@@ -558,7 +562,9 @@ def test_search_service_replay_failure_retains_truthful_write_state() -> None:
         rendered(),
         object_type="CORTEX SEARCH SERVICE",
         grant_preservation=GrantPreservation.REPLAY,
-        statements=("CREATE OR REPLACE CORTEX SEARCH SERVICE DB.SCHEMA.V ON BODY AS SELECT BODY FROM DB.SCHEMA.T",),
+        statements=(
+            statement("CREATE OR REPLACE CORTEX SEARCH SERVICE DB.SCHEMA.V ON BODY AS SELECT BODY FROM DB.SCHEMA.T"),
+        ),
     )
     ownership = marker(artifact)
     live = replace(observed(artifact, ownership=ownership), object_type="CORTEX SEARCH SERVICE")
@@ -583,13 +589,13 @@ def test_agent_apply_uploads_spec_before_executing_version_program() -> None:
         grant_preservation=GrantPreservation.NONE,
         upload_path="@DB.S.AGENT_SPECS/v/sha/agent_spec.yaml",
         upload_content=b"{}",
-        statements=("CREATE AGENT IF NOT EXISTS DB.SCHEMA.V FROM @DB.S.AGENT_SPECS/v/sha/",),
+        statements=(statement("CREATE AGENT IF NOT EXISTS DB.SCHEMA.V FROM @DB.S.AGENT_SPECS/v/sha/"),),
     )
     use_case, port, _, _ = runner()
     result = use_case.run(changeset(change(artifact)), state())
     assert result.success
     assert port.uploads == [(artifact.upload_path, b"{}")]
-    assert port.scripts == [artifact.statements]
+    assert port.scripts == [texts(artifact.statements)]
 
 
 def test_partial_statement_failure_records_truthful_recovery_state() -> None:
@@ -631,7 +637,7 @@ def test_an_error_reading_the_marker_back_after_create_keeps_ownership() -> None
 
     result = use_case.run(replace(changeset(change(artifact)), manifest_id=published.manifest_id), state())
 
-    assert port.scripts == [artifact.statements]
+    assert port.scripts == [texts(artifact.statements)]
     assert store.state is not None
     port.marker_error = None
     port.rows = (ShowRow("V", "DB", "SCHEMA", "OWNER", "now", f"published {ownership.text}"),)
@@ -667,7 +673,7 @@ def test_an_error_rechecking_grants_after_update_records_the_write() -> None:
 
     result = use_case.run(changeset(change(artifact, Action.UPDATE, live=live)), state())
 
-    assert port.scripts == [artifact.statements]
+    assert port.scripts == [texts(artifact.statements)]
     assert result.outcomes[0].status is OutcomeStatus.FAILED
     assert result.outcomes[0].write_succeeded
     assert result.outcomes[0].error.message == "unexpected SHOW GRANTS row"  # type: ignore[union-attr]
@@ -681,7 +687,9 @@ def test_database_role_grant_replay_uses_snowflake_spelling() -> None:
         rendered(),
         object_type="CORTEX SEARCH SERVICE",
         grant_preservation=GrantPreservation.REPLAY,
-        statements=("CREATE OR REPLACE CORTEX SEARCH SERVICE DB.SCHEMA.V ON BODY AS SELECT BODY FROM DB.SCHEMA.T",),
+        statements=(
+            statement("CREATE OR REPLACE CORTEX SEARCH SERVICE DB.SCHEMA.V ON BODY AS SELECT BODY FROM DB.SCHEMA.T"),
+        ),
     )
     ownership = marker(artifact)
     live = replace(observed(artifact, ownership=ownership), object_type="CORTEX SEARCH SERVICE")
@@ -699,7 +707,9 @@ def test_grant_replay_quotes_special_role_names() -> None:
         rendered(),
         object_type="CORTEX SEARCH SERVICE",
         grant_preservation=GrantPreservation.REPLAY,
-        statements=("CREATE OR REPLACE CORTEX SEARCH SERVICE DB.SCHEMA.V ON BODY AS SELECT BODY FROM DB.SCHEMA.T",),
+        statements=(
+            statement("CREATE OR REPLACE CORTEX SEARCH SERVICE DB.SCHEMA.V ON BODY AS SELECT BODY FROM DB.SCHEMA.T"),
+        ),
     )
     ownership = marker(artifact)
     live = replace(observed(artifact, ownership=ownership), object_type="CORTEX SEARCH SERVICE")
@@ -958,7 +968,7 @@ def test_outcomes_that_do_not_account_for_every_change_report_apl900() -> None:
     # The waves key changes by artifact key, so a repeated key runs once.
     result = use_case.run(changeset(change(artifact), change(artifact)), state())
 
-    assert len(result.outcomes) == 1 and port.scripts == [artifact.statements]
+    assert len(result.outcomes) == 1 and port.scripts == [texts(artifact.statements)]
     assert [item.code for item in result.diagnostics] == ["SST-APL900"]
     assert not result.success
 

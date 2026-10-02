@@ -19,7 +19,17 @@ from snowflake_semantic_tools.domain.model.lifecycle import (
     Upload,
 )
 from snowflake_semantic_tools.domain.model.registry import GrantPreservation
-from snowflake_semantic_tools.domain.model.sql import string_literal
+from snowflake_semantic_tools.domain.sql import (
+    Sql,
+    boolean,
+    dollar_quoted,
+    ident,
+    join,
+    literal,
+    qname,
+    sql,
+    stage_path,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -33,6 +43,7 @@ class CompiledAgent(StandaloneArtifact):
             the payload's own fingerprint, so a change to any of them is a change.
         stage_path: `<stage>/<agent>/<git sha>`, where the specification is staged; empty
             until `for_publication` sets it, and an agent without one has no statements.
+        stage: The stage `stage_path` starts with; None until `for_publication` sets it.
         temporary: Publish as a TEMPORARY agent created from the inline specification,
             staging nothing.
     """
@@ -43,6 +54,7 @@ class CompiledAgent(StandaloneArtifact):
     definition_fingerprint: str
     stage_path: str = ""
     temporary: bool = False
+    stage: QualifiedName | None = None
 
     @property
     def name(self) -> str:
@@ -65,7 +77,7 @@ class CompiledAgent(StandaloneArtifact):
         create, update, update_live = _agent_programs(
             self.resolved.model,
             self.target,
-            self.stage_path,
+            self._location,
             temporary=self.temporary,
             payload=self.payload,
         )
@@ -91,11 +103,19 @@ class CompiledAgent(StandaloneArtifact):
                 SmokeProbe(
                     f"{self.artifact_key}:describe",
                     ProbeKind.DESCRIBE,
-                    f"DESCRIBE AGENT {self.target.sql}",
+                    sql("DESCRIBE AGENT {agent}", agent=qname(self.target)),
                 ),
             ),
         )
         return replace(artifact, fingerprint=self.definition_fingerprint)
+
+    @property
+    def _location(self) -> tuple[Sql, str] | None:
+        """The stage directory the specification is staged in, with its git sha; None when unstaged."""
+        if self.stage is None or not self.stage_path:
+            return None
+        git_sha = self.stage_path.rsplit("/", 1)[-1]
+        return stage_path(self.stage, f"{self.name}/{git_sha}/"), git_sha
 
     def rendered_for_publish(self, manifest_id: str) -> RenderedArtifact:
         """Follow every statement program with the ALTERs that set the profile, marked comment, and SECURE."""
@@ -128,55 +148,74 @@ def for_publication(
         compiled,
         stage_path=f"{stage.sql}/{compiled.name}/{git_sha}",
         temporary=temporary,
+        stage=stage,
     )
 
 
 def _agent_programs(
     model: AgentModel,
     target: QualifiedName,
-    stage_path: str,
+    location: tuple[Sql, str] | None,
     *,
     temporary: bool,
     payload: str,
-) -> tuple[tuple[str, ...], tuple[str, ...], tuple[str, ...]]:
+) -> tuple[tuple[Sql, ...], tuple[Sql, ...], tuple[Sql, ...]]:
     """Return the create, update, and update-live statement programs for an agent.
 
     A temporary agent is one CREATE OR REPLACE TEMPORARY AGENT from the inline
-    specification for all three. A staged agent is created from its stage path, or gets a
+    specification for all three. A staged agent is created from its stage directory, or gets a
     version added from it -- after COMMIT when a live version exists -- and then its alias
-    and tags are set. An agent with no stage path has no statements.
+    and tags are set. An agent with no stage directory has no statements.
+
+    Args:
+        location: The stage directory and the git sha it is named for; None when unstaged.
 
     Raises:
         ValueError: a temporary agent's specification holds `$$`, which would end the
             dollar-quoted literal it is inlined in.
     """
+    agent = qname(target)
     if temporary:
         if "$$" in payload:
             raise ValueError("temporary agent spec contains an unsupported dollar-quote delimiter")
         profile = _profile_json(model)
-        statement = (
-            f"CREATE OR REPLACE TEMPORARY AGENT {target.sql}"
-            + (f" WITH PROFILE = {string_literal(profile)}" if profile else "")
-            + f" FROM SPECIFICATION $${payload.rstrip()}$$"
+        statement = sql(
+            "CREATE OR REPLACE TEMPORARY AGENT {agent}{profile} FROM SPECIFICATION {specification}",
+            agent=agent,
+            profile=sql(" WITH PROFILE = {profile}", profile=literal(profile)) if profile else sql(""),
+            specification=dollar_quoted(payload.rstrip()),
         )
         return (statement,), (statement,), (statement,)
-    if not stage_path:
+    if location is None:
         return (), (), ()
-    create = [f"CREATE AGENT {target.sql}\n  FROM @{stage_path}/"]
-    add_version = (
-        f"ALTER AGENT {target.sql}\n  ADD VERSION FROM @{stage_path}/\n"
-        f"  COMMENT = 'git:{stage_path.rsplit('/', 1)[-1]}'"
+    directory, git_sha = location
+    create = [sql("CREATE AGENT {agent}\n  FROM {directory}", agent=agent, directory=directory)]
+    add_version = sql(
+        "ALTER AGENT {agent}\n  ADD VERSION FROM {directory}\n  COMMENT = {comment}",
+        agent=agent,
+        directory=directory,
+        comment=literal(f"git:{git_sha}"),
     )
     update = [add_version]
-    update_live = [f"ALTER AGENT {target.sql} COMMIT", add_version]
+    update_live = [sql("ALTER AGENT {agent} COMMIT", agent=agent), add_version]
     if model.alias:
-        alias = f'ALTER AGENT {target.sql}\n  MODIFY VERSION "LAST" SET ALIAS = {_identifier(model.alias)}'
+        alias = sql(
+            'ALTER AGENT {agent}\n  MODIFY VERSION "LAST" SET ALIAS = {alias}',
+            agent=agent,
+            alias=_identifier(model.alias),
+        )
         create.append(alias)
         update.append(alias)
         update_live.append(alias)
     if model.tags:
-        pairs = ", ".join(f"{_qualified_or_identifier(name)} = {string_literal(value)}" for name, value in model.tags)
-        tag = f"ALTER AGENT {target.sql}\n  SET TAG {pairs}"
+        pairs = join(
+            ", ",
+            (
+                sql("{tag} = {value}", tag=_qualified_or_identifier(name), value=literal(value))
+                for name, value in model.tags
+            ),
+        )
+        tag = sql("ALTER AGENT {agent}\n  SET TAG {pairs}", agent=agent, pairs=pairs)
         create.append(tag)
         update.append(tag)
         update_live.append(tag)
@@ -200,22 +239,22 @@ def _agent_metadata_statements(
     model: AgentModel,
     target: QualifiedName,
     marker: str,
-) -> tuple[str, ...]:
-    statements: list[str] = []
-    profile = _profile_json(model)
-    statements.append(f"ALTER AGENT {target.sql} SET PROFILE = {string_literal(profile)}")
+) -> tuple[Sql, ...]:
+    agent = qname(target)
     comment = f"{marker} {model.comment}" if model.comment else marker
-    statements.append(f"ALTER AGENT {target.sql} SET COMMENT = {string_literal(comment)}")
-    statements.append(f"ALTER AGENT {target.sql} SET SECURE = {'TRUE' if model.secure else 'FALSE'}")
-    return tuple(statements)
+    return (
+        sql("ALTER AGENT {agent} SET PROFILE = {profile}", agent=agent, profile=literal(_profile_json(model))),
+        sql("ALTER AGENT {agent} SET COMMENT = {comment}", agent=agent, comment=literal(comment)),
+        sql("ALTER AGENT {agent} SET SECURE = {secure}", agent=agent, secure=boolean(model.secure)),
+    )
 
 
-def _identifier(value: str) -> str:
-    return Identifier.parse(value).sql
+def _identifier(value: str) -> Sql:
+    return ident(Identifier.parse(value))
 
 
-def _qualified_or_identifier(value: str) -> str:
+def _qualified_or_identifier(value: str) -> Sql:
     try:
-        return QualifiedName.parse(value).sql
+        return qname(QualifiedName.parse(value))
     except ValueError:
         return _identifier(value)

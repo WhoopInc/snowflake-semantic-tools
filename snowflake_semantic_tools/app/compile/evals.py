@@ -22,10 +22,10 @@ from snowflake_semantic_tools.domain.model.lifecycle import (
 from snowflake_semantic_tools.domain.model.registry import GrantPreservation
 from snowflake_semantic_tools.domain.render.eval import (
     RenderedEval,
-    render_create_dataset_sql,
+    render_create_dataset_statement,
     render_dataset_payload,
     render_eval_config,
-    render_source_table_sql,
+    render_source_table_statements,
 )
 
 
@@ -93,10 +93,7 @@ class CompiledEval(StandaloneArtifact):
         artifact = self.rendered_artifact
         return replace(
             artifact,
-            create_statements=(
-                *_sql_statements(self.rendered.source_table_sql),
-                self.rendered.create_dataset_sql.strip(),
-            ),
+            create_statements=(*self.rendered.source_table_statements, self.rendered.create_dataset_statement),
         )
 
 
@@ -174,16 +171,10 @@ def _render(
     )
     rendered = RenderedEval(
         payload,
-        render_source_table_sql(payload, source_table),
-        render_create_dataset_sql(resolved.config, source_table, dataset_target),
+        render_source_table_statements(payload, source_table),
+        render_create_dataset_statement(resolved.config, source_table, dataset_target),
         config_yaml,
         dataset_fingerprint,
         sha256(config_yaml.encode("utf-8")).hexdigest(),
     )
     return CompiledEval(resolved, agent_target, source_table, dataset_target, rendered)
-
-
-def _sql_statements(value: str) -> tuple[str, ...]:
-    return tuple(
-        statement.strip() for statement in value.rstrip().removesuffix(";").split(";\n\n") if statement.strip()
-    )

@@ -16,6 +16,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from enum import Enum
 
+from snowflake_semantic_tools.domain.sql import AuthoredExpression, AuthoredQuery, Sql
+
 
 class ColumnKind(Enum):
     """Which clause a column renders into.
@@ -36,15 +38,15 @@ class ColumnKind(Enum):
 class Column:
     """One entry inside `FACTS (...)` or `DIMENSIONS (...)`.
 
-    `table` and `name` are already upper-cased by the loader. `expr` is the right
-    side of `AS`: for a plain column that is `TABLE.COLUMN`, and for a filter it is
-    a predicate such as `ORDERS.ORDER_STATE = 'completed'`.
+    `table` and `name` are already upper-cased by the loader, and each is one identifier.
+    `expr` is the right side of `AS`, guarded: for a plain column that is `TABLE.COLUMN`,
+    and for a filter it is a predicate such as `ORDERS.ORDER_STATE = 'completed'`.
     """
 
     table: str
     name: str
     kind: ColumnKind
-    expr: str
+    expr: AuthoredExpression
     comment: str | None = None
     synonyms: tuple[str, ...] = ()
     sample_values: tuple[str, ...] = ()
@@ -93,13 +95,13 @@ class Variable:
     """One entry inside `VARIABLES (...)`.
 
     Declares a name a metric or filter `expr` may use as a bare identifier.
-    `default` is rendered verbatim, so the loader is responsible for turning the
-    YAML value into its SQL literal -- `False` into `FALSE`, not `False`.
+    `data_type` has matched Snowflake's type grammar, and `default` is the SQL literal the
+    loader made of the YAML value -- `False` into `FALSE`, not `False`.
     """
 
     name: str
-    data_type: str
-    default: str
+    data_type: Sql
+    default: Sql
     comment: str | None = None
 
 
@@ -111,7 +113,7 @@ class SortKey:
     the DDL says exactly what was written and Snowflake's defaults decide the rest.
     """
 
-    expr: str
+    expr: AuthoredExpression
     descending: bool | None = None
     nulls_first: bool | None = None
 
@@ -125,10 +127,10 @@ class Window:
     frame clause the loader has already checked against Snowflake's grammar.
     """
 
-    partition_by: tuple[str, ...] = ()
-    partition_excluding: tuple[str, ...] = ()
+    partition_by: tuple[AuthoredExpression, ...] = ()
+    partition_excluding: tuple[AuthoredExpression, ...] = ()
     order_by: tuple[SortKey, ...] = ()
-    frame: str | None = None
+    frame: AuthoredExpression | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -140,7 +142,7 @@ class Metric:
     """
 
     name: str
-    expr: str
+    expr: AuthoredExpression
     table: str | None = None
     comment: str | None = None
     synonyms: tuple[str, ...] = ()
@@ -167,7 +169,7 @@ class VerifiedQuery:
 
     name: str
     question: str
-    sql: str
+    sql: AuthoredQuery
     verified_at: int | None = None
     verified_by: str | None = None
     onboarding_question: bool | None = None

@@ -330,7 +330,8 @@ SPECS: tuple[ErrorSpec, ...] = (
         Severity.ERROR,
         "Expression does not compile against Snowflake",
         "{type} '{name}': expression failed to compile: {detail}",
-        "fix the expression",
+        "fix the expression so Snowflake compiles it; SST also refuses, before sending it, a `;`, a "
+        "comment, `$$`, an unbalanced bracket, or a statement keyword outside quotes",
     ),
     spec(
         "SST-VAL118",

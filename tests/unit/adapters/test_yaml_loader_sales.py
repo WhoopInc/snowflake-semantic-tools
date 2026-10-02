@@ -54,19 +54,19 @@ def test_loads_table_grain_synonyms_and_equality_relationships(sales: SemanticVi
 
 
 def test_loads_view_variables_and_substitutes_their_names(sales: SemanticView) -> None:
-    assert [(variable.name, variable.data_type, variable.default) for variable in sales.variables] == [
+    assert [(variable.name, str(variable.data_type), str(variable.default)) for variable in sales.variables] == [
         ("LARGE_ORDER_CENTS", "NUMBER", "1000"),
         ("TAX_INCLUSIVE", "BOOLEAN", "FALSE"),
     ]
     large_filter = next(column for column in sales.columns if column.name == "IS_LARGE_ORDER")
-    assert large_filter.expr == "ORDERS.ORDER_TOTAL > LARGE_ORDER_CENTS"
+    assert large_filter.expr.text == "ORDERS.ORDER_TOTAL > LARGE_ORDER_CENTS"
 
 
 def test_resolves_project_vars_and_derived_metric_dependencies(sales: SemanticView) -> None:
     returned = next(metric for metric in sales.metrics if metric.name == "RETURNED_ORDER_COUNT")
     per_customer = next(metric for metric in sales.metrics if metric.name == "REVENUE_PER_CUSTOMER")
-    assert "'returned'" in returned.expr
-    assert per_customer.expr == "DIV0(ORDERS.TOTAL_REVENUE, CUSTOMERS.CUSTOMER_COUNT)"
+    assert "'returned'" in returned.expr.text
+    assert per_customer.expr.text == "DIV0(ORDERS.TOTAL_REVENUE, CUSTOMERS.CUSTOMER_COUNT)"
 
 
 def test_composes_instruction_channels_and_standalone_filter_prose(sales: SemanticView) -> None:

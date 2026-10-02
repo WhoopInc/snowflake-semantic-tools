@@ -15,7 +15,7 @@ from snowflake_semantic_tools.domain.model.eval import (
     EvalSystemMetric,
 )
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
-from snowflake_semantic_tools.domain.model.sql import string_literal
+from snowflake_semantic_tools.domain.sql import Sql, join, literal, qname, sql
 
 
 @dataclass(frozen=True, slots=True)
@@ -24,24 +24,29 @@ class RenderedEval:
 
     Attributes:
         dataset_payload: The canonical question payload `render_dataset_payload` returns.
-        source_table_sql: The script that creates the source table and loads the payload into it.
-        create_dataset_sql: The call that creates the evaluation dataset over the source table.
+        source_table_statements: The statements that create the source table and load the
+            payload into it, in order.
+        create_dataset_statement: The call that creates the evaluation dataset over the source table.
         config_yaml: The evaluation config that runs against the agent.
         dataset_fingerprint: The hex SHA-256 of `dataset_payload`.
         config_fingerprint: The hex SHA-256 of `config_yaml`.
     """
 
     dataset_payload: str
-    source_table_sql: str
-    create_dataset_sql: str
+    source_table_statements: tuple[Sql, ...]
+    create_dataset_statement: Sql
     config_yaml: str
     dataset_fingerprint: str
     config_fingerprint: str
 
+    @property
+    def source_table_sql(self) -> str:
+        """The source-table statements as one script: each ends in `;`, a blank line between."""
+        return source_table_script(self.source_table_statements)
+
 
 def render_dataset_payload(dataset: EvalDataset) -> str:
     """Return the canonical question payload; coordinates never enter this identity."""
-
     rows = [
         {
             "ground_truth": _ground_truth_value(question.ground_truth),
@@ -52,18 +57,17 @@ def render_dataset_payload(dataset: EvalDataset) -> str:
     return json.dumps(rows, ensure_ascii=False, allow_nan=False, separators=(",", ":"), sort_keys=True) + "\n"
 
 
-def render_source_table_sql(dataset_payload: str, source_table: QualifiedName) -> str:
-    """Render the script that creates the source table and loads one row per question into it.
+def render_source_table_statements(dataset_payload: str, source_table: QualifiedName) -> tuple[Sql, ...]:
+    """Render the statements that create the source table and load one row per question into it.
 
-    The table is created, never replaced, and loaded only when there are questions. Statements
-    end with `;` and are separated by a blank line, which is where the caller splits them.
+    The table is created, never replaced, and loaded only when there are questions.
 
     Args:
         dataset_payload: The payload `render_dataset_payload` returned; each ground truth is
             re-encoded compactly with sorted keys.
 
     Raises:
-        ValueError: the payload is not JSON.
+        ValueError: the payload is not JSON, or a question holds a NUL.
         KeyError: a row lacks `input_query` or `ground_truth`.
 
     Example:
@@ -78,8 +82,12 @@ def render_source_table_sql(dataset_payload: str, source_table: QualifiedName) -
           , PARSE_JSON('{"ground_truth_output":"42"}')         AS GROUND_TRUTH;
     """
     rows = json.loads(dataset_payload)
+    table = qname(source_table)
     statements = [
-        f"CREATE TABLE {source_table.sql} (\n    INPUT_QUERY VARCHAR NOT NULL\n  , GROUND_TRUTH VARIANT NOT NULL\n)"
+        sql(
+            "CREATE TABLE {table} (\n    INPUT_QUERY VARCHAR NOT NULL\n  , GROUND_TRUTH VARIANT NOT NULL\n)",
+            table=table,
+        )
     ]
     if rows:
         row_selects = []
@@ -88,21 +96,32 @@ def render_source_table_sql(dataset_payload: str, source_table: QualifiedName) -
                 row["ground_truth"], ensure_ascii=False, allow_nan=False, separators=(",", ":"), sort_keys=True
             )
             row_selects.append(
-                "SELECT\n"
-                f"    {string_literal(str(row['input_query']))}::VARCHAR AS INPUT_QUERY\n"
-                f"  , PARSE_JSON({string_literal(ground_truth)})         AS GROUND_TRUTH"
+                sql(
+                    "SELECT\n    {question}::VARCHAR AS INPUT_QUERY\n  , PARSE_JSON({truth})         AS GROUND_TRUTH",
+                    question=literal(str(row["input_query"])),
+                    truth=literal(ground_truth),
+                )
             )
         statements.append(
-            f"INSERT INTO {source_table.sql} (INPUT_QUERY, GROUND_TRUTH)\n" + "\nUNION ALL\n".join(row_selects)
+            sql(
+                "INSERT INTO {table} (INPUT_QUERY, GROUND_TRUTH)\n{rows}",
+                table=table,
+                rows=join("\nUNION ALL\n", row_selects),
+            )
         )
-    return ";\n\n".join(statements) + ";\n"
+    return tuple(statements)
 
 
-def render_create_dataset_sql(
+def source_table_script(statements: tuple[Sql, ...]) -> str:
+    """Write source-table statements as the script the golden holds: each ends in `;`, a blank line apart."""
+    return ";\n\n".join(str(statement) for statement in statements) + ";\n"
+
+
+def render_create_dataset_statement(
     config: EvalConfig,
     source_table: QualifiedName,
     dataset_target: QualifiedName,
-) -> str:
+) -> Sql:
     """Render the call that creates the evaluation dataset over the source table.
 
     The source table's question column maps to `query_text`, and its ground truth column to
@@ -121,25 +140,25 @@ def render_create_dataset_sql(
                 'query_text', 'INPUT_QUERY'
               , 'expected_tools', 'GROUND_TRUTH'
             )
-        );
+        )
     """
     columns = config.dataset.column_mapping if config.dataset is not None else None
     if columns is not None and (
         columns.query_text.casefold() != "input_query" or columns.ground_truth.casefold() != "ground_truth"
     ):
         raise ValueError("source-table publication requires input_query and ground_truth column mapping")
-    query_text = "INPUT_QUERY"
-    ground_truth = "GROUND_TRUTH"
-    return (
+    return sql(
         "CALL SYSTEM$CREATE_EVALUATION_DATASET(\n"
         "    'Cortex Agent'\n"
-        f"  , {string_literal(source_table.sql)}\n"
-        f"  , {string_literal(dataset_target.sql)}\n"
+        "  , {source}\n"
+        "  , {dataset}\n"
         "  , OBJECT_CONSTRUCT(\n"
-        f"        'query_text', {string_literal(query_text)}\n"
-        f"      , 'expected_tools', {string_literal(ground_truth)}\n"
+        "        'query_text', 'INPUT_QUERY'\n"
+        "      , 'expected_tools', 'GROUND_TRUTH'\n"
         "    )\n"
-        ");\n"
+        ")",
+        source=literal(source_table.sql),
+        dataset=literal(dataset_target.sql),
     )
 
 

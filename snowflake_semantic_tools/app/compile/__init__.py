@@ -30,11 +30,12 @@ from snowflake_semantic_tools.app.compile.base import (
 )
 from snowflake_semantic_tools.domain.model.artifact_key import artifact_key
 from snowflake_semantic_tools.domain.model.diagnostic import D, Diagnostic, DiagnosticBag
-from snowflake_semantic_tools.domain.model.identifier import QualifiedName
+from snowflake_semantic_tools.domain.model.identifier import Identifier, QualifiedName
 from snowflake_semantic_tools.domain.model.lifecycle import OwnershipMarker, ProbeKind, RenderedArtifact, SmokeProbe
 from snowflake_semantic_tools.domain.model.semantic_view import SemanticView
 from snowflake_semantic_tools.domain.ports.semantic_view_source import SemanticViewSource
 from snowflake_semantic_tools.domain.render.semantic_view import render
+from snowflake_semantic_tools.domain.sql import AuthoredExpression, Sql, ident, join, qname, query_text, sql
 
 __all__ = [
     "RENDER_ERRORS",
@@ -60,7 +61,7 @@ class CompiledView(CompiledArtifact):
     """
 
     view: SemanticView
-    ddl: str
+    ddl: Sql
 
     @property
     def name(self) -> str:
@@ -70,7 +71,7 @@ class CompiledView(CompiledArtifact):
     @property
     def canonical_ddl(self) -> str:
         """Canonical bytes hashed by manifests and compared by plans."""
-        return "\n".join(line.rstrip() for line in self.ddl.splitlines()).strip() + "\n"
+        return "\n".join(line.rstrip() for line in str(self.ddl).splitlines()).strip() + "\n"
 
     @property
     def byte_length(self) -> int:
@@ -151,7 +152,7 @@ class CompiledView(CompiledArtifact):
         artifact = self._rendered_artifact(marked_ddl)
         return replace(artifact, fingerprint=self.fingerprint)
 
-    def _rendered_artifact(self, ddl: str) -> RenderedArtifact:
+    def _rendered_artifact(self, ddl: Sql) -> RenderedArtifact:
         """Wrap `ddl` as this view's artifact, with a smoke probe for the view and each public member.
 
         The probes are the view itself, then each metric that is not private, then each
@@ -174,11 +175,7 @@ class CompiledView(CompiledArtifact):
             SmokeProbe(
                 key=artifact_key("metric", metric.qualified_name.casefold()),
                 kind=ProbeKind.METRIC,
-                sql=(
-                    f"SELECT SV.{metric.name} FROM "
-                    f"SEMANTIC_VIEW({target.sql} METRICS {metric.qualified_name}"
-                    f"{_required_dimension_clause(metric.expr)}) AS SV LIMIT 1"
-                ),
+                sql=_member_probe(target, "METRICS", metric.table, metric.name, metric.expr, limit=True),
             )
             for metric in self.view.metrics
             if metric.access_modifier != "private_access"
@@ -187,7 +184,7 @@ class CompiledView(CompiledArtifact):
             SmokeProbe(
                 key=artifact_key("verified_query", query.name.casefold()),
                 kind=ProbeKind.VERIFIED_QUERY,
-                sql=f"SELECT * FROM ({query.sql.rstrip(';')}) LIMIT 0",
+                sql=sql("SELECT * FROM ({query}) LIMIT 0", query=query_text(query.sql)),
             )
             for query in self.view.verified_queries
         )
@@ -201,25 +198,56 @@ class CompiledView(CompiledArtifact):
         )
 
 
-def _view_probe(view: SemanticView, target: QualifiedName) -> str:
+def _view_probe(view: SemanticView, target: QualifiedName) -> Sql:
     if view.dimensions:
         dimension = sorted(view.dimensions, key=lambda item: item.qualified_name)[0]
-        return (
-            f"SELECT SV.{dimension.name} FROM "
-            f"SEMANTIC_VIEW({target.sql} DIMENSIONS {dimension.qualified_name}) AS SV LIMIT 0"
-        )
+        return _member_probe(target, "DIMENSIONS", dimension.table, dimension.name, None, limit=False)
     public_metrics = tuple(metric for metric in view.metrics if metric.access_modifier != "private_access")
     if public_metrics:
         metric = sorted(public_metrics, key=lambda item: item.qualified_name)[0]
-        return (
-            f"SELECT SV.{metric.name} FROM "
-            f"SEMANTIC_VIEW({target.sql} METRICS {metric.qualified_name}"
-            f"{_required_dimension_clause(metric.expr)}) AS SV LIMIT 0"
-        )
+        return _member_probe(target, "METRICS", metric.table, metric.name, metric.expr, limit=False)
     raise ValueError(f"{view.fqn} has no public dimension or metric for its view smoke probe")
 
 
-def _required_dimension_clause(expression: str) -> str:
+def _member_probe(
+    target: QualifiedName,
+    clause: str,
+    table: str | None,
+    name: str,
+    expression: AuthoredExpression | None,
+    *,
+    limit: bool,
+) -> Sql:
+    """Query one member through SEMANTIC_VIEW, with the dimensions a windowed metric requires.
+
+    Example:
+        SELECT SV.ORDER_COUNT FROM SEMANTIC_VIEW(DB.S.V METRICS ORDERS.ORDER_COUNT) AS SV LIMIT 1
+    """
+    member = ident(Identifier.parse(name))
+    qualified = (
+        member if table is None else sql("{table}.{member}", table=ident(Identifier.parse(table)), member=member)
+    )
+    required = _required_dimension_clause(expression.text) if expression is not None else ()
+    dimensions = sql(" DIMENSIONS {names}", names=join(", ", required)) if required else sql("")
+    parts = {
+        "member": member,
+        "view": qname(target),
+        "qualified": qualified,
+        "dimensions": dimensions,
+        "limit": sql("1") if limit else sql("0"),
+    }
+    if clause == "DIMENSIONS":
+        return sql(
+            "SELECT SV.{member} FROM SEMANTIC_VIEW({view} DIMENSIONS {qualified}{dimensions}) AS SV LIMIT {limit}",
+            **parts,
+        )
+    return sql(
+        "SELECT SV.{member} FROM SEMANTIC_VIEW({view} METRICS {qualified}{dimensions}) AS SV LIMIT {limit}", **parts
+    )
+
+
+def _required_dimension_clause(expression: str) -> tuple[Sql, ...]:
+    """The dimensions a window's PARTITION BY EXCLUDING names, which a query of the metric must request."""
     match = re.search(
         r"\bPARTITION\s+BY\s+EXCLUDING\s+"
         r"([A-Za-z_][A-Za-z0-9_$]*\.[A-Za-z_][A-Za-z0-9_$]*"
@@ -227,7 +255,12 @@ def _required_dimension_clause(expression: str) -> str:
         expression,
         flags=re.IGNORECASE,
     )
-    return f" DIMENSIONS {match.group(1)}" if match else ""
+    if match is None:
+        return ()
+    return tuple(
+        sql("{table}.{name}", table=ident(Identifier.parse(table)), name=ident(Identifier.parse(name)))
+        for table, name in (part.strip().split(".") for part in match.group(1).split(","))
+    )
 
 
 class CompileArtifacts:

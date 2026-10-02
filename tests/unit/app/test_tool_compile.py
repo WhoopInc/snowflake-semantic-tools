@@ -53,7 +53,7 @@ def test_tool_compiler_applies_config_defaults_and_emits_only_managed_members() 
     assert "TARGET_LAG = '1 hour'" in rendered.ddl
     assert rendered.required_relations[0].sql == "DB.S.DOCS"
     published = compiled_as(result, CompiledTool).rendered_for_publish("a" * 64)
-    assert f"[sst:{'a' * 64}:{rendered.fingerprint}]" in published.statements[0]
+    assert f"[sst:{'a' * 64}:{rendered.fingerprint}]" in str(published.statements[0])
 
 
 def test_compiled_tool_projections_cover_sidecars_relations_and_routine_markers() -> None:
@@ -93,7 +93,7 @@ def test_compiled_tool_projections_cover_sidecars_relations_and_routine_markers(
     assert compiled.name == "routine"
     assert compiled.artifact_type == "tool"
     published = compiled.rendered_for_publish("b" * 64)
-    assert published.statements[-1].startswith("ALTER FUNCTION DB.S.ROUTINE(NUMBER) SET COMMENT")
+    assert str(published.statements[-1]).startswith("ALTER FUNCTION DB.S.ROUTINE(NUMBER) SET COMMENT")
 
 
 def test_tool_compiler_skips_poisoned_and_reports_render_invariant() -> None:
@@ -199,8 +199,8 @@ def test_compiled_tool_publication_replaces_existing_search_comment() -> None:
     ).run_result()
     compiled = compiled_as(result, CompiledTool)
     published = compiled.rendered_for_publish("a" * 64)
-    assert published.statements[0].count("COMMENT =") == 1
-    assert "Owner''s search" in published.statements[0]
+    assert str(published.statements[0]).count("COMMENT =") == 1
+    assert "Owner''s search" in str(published.statements[0])
 
 
 def test_compiled_tool_publication_covers_stage_and_empty_projections() -> None:
@@ -235,7 +235,7 @@ def test_compiled_tool_publication_covers_stage_and_empty_projections() -> None:
     assert compiled.referenced_models == ()
     assert compiled.dbt_relations == ()
     published = compiled.rendered_for_publish("b" * 64)
-    assert published.statements[-1] == (
+    assert str(published.statements[-1]) == (
         f"ALTER STAGE DB.S.STAGE SET COMMENT = '[sst:{'b' * 64}:{compiled.rendered.fingerprint}] Owner''s stage.'"
     )
 
@@ -305,8 +305,8 @@ def test_compiled_tool_publication_adds_search_comment_when_missing() -> None:
         compiled, rendered=replace(compiled.rendered, ddl=compiled.rendered.ddl.replace("\n  COMMENT = ''", ""))
     )
     published = without_comment.rendered_for_publish("c" * 64)
-    assert published.statements[0].count("COMMENT =") == 1
-    assert f"[sst:{'c' * 64}:" in published.statements[0]
+    assert str(published.statements[0]).count("COMMENT =") == 1
+    assert f"[sst:{'c' * 64}:" in str(published.statements[0])
 
 
 def test_compiled_tool_publication_covers_routine_without_signature() -> None:
@@ -341,7 +341,7 @@ def test_compiled_tool_publication_covers_routine_without_signature() -> None:
     assert result.compiled
     compiled = compiled_as(result, CompiledTool)
     published = compiled.rendered_for_publish("d" * 64)
-    assert published.statements[-1].startswith("ALTER PROCEDURE DB.S.PROCEDURE SET COMMENT")
+    assert str(published.statements[-1]).startswith("ALTER PROCEDURE DB.S.PROCEDURE SET COMMENT")
 
 
 def compile_stage(*diagnostics: Diagnostic) -> CompileResult:

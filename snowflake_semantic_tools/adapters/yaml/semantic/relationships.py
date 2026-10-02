@@ -16,6 +16,7 @@ from snowflake_semantic_tools.domain.model.dbt import DbtModel
 from snowflake_semantic_tools.domain.model.diagnostic import D, Diagnostic, Origin
 from snowflake_semantic_tools.domain.model.reference import TemplateSyntaxError, scan_template_calls
 from snowflake_semantic_tools.domain.model.semantic_view import Relationship
+from snowflake_semantic_tools.domain.model.sql_checks import name_problem
 
 
 def _relationship_diagnostics(
@@ -273,6 +274,7 @@ def load_relationships(
         SST-VAL204: when a condition's column is on a table other than its side's endpoint.
         SST-REF001: when an endpoint names no dbt model.
         SST-REF002: when a condition names a column its endpoint's model does not have.
+        SST-PRS005: when the name, an endpoint, or a column is not a valid identifier.
     """
     root = project_dir / semantic_models_dir / "relationships"
     out: list[tuple[Relationship, Origin]] = []
@@ -338,6 +340,7 @@ def _read_relationship(
         SST-VAL204: when a condition's column is on a table other than its side's endpoint.
         SST-REF001: when an endpoint names no dbt model.
         SST-REF002: when a condition names a column its endpoint's model does not have.
+        SST-PRS005: when the name, an endpoint, or a column is not a valid identifier.
     """
     subject = artifact_key("relationship", node["name"])
     endpoint_problems = _endpoint_diagnostics(node, subject, origin)
@@ -351,6 +354,23 @@ def _read_relationship(
     if problem is not None:
         return (problem,)
     left_endpoint, right_endpoint = endpoints
+    names = (
+        str(node["name"]),
+        left_endpoint,
+        right_endpoint,
+        *(column for pair in conditions.pairs for column in pair),
+        *(conditions.range_bounds or ()),
+    )
+    invalid = next(
+        (
+            found
+            for found in (name_problem(name, artifact=subject, subject=subject, origin=origin) for name in names)
+            if found
+        ),
+        None,
+    )
+    if invalid is not None:
+        return (invalid,)
     return Relationship(
         name=str(node["name"]).upper(),
         from_table=left_endpoint.upper(),

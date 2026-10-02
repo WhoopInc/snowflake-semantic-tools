@@ -15,8 +15,11 @@ from typing import Any, NoReturn, TypeVar
 from snowflake_semantic_tools.adapters.errors import ProjectError
 from snowflake_semantic_tools.adapters.yaml.fields import mapping
 from snowflake_semantic_tools.adapters.yaml.semantic.build_members import (
+    _expression,
     _instruction_parts,
     _metric_names,
+    _names,
+    _require,
     _Resolver,
     _view_filters,
     _view_metrics,
@@ -39,7 +42,8 @@ from snowflake_semantic_tools.domain.model.semantic_view import (
     Tag,
     Variable,
 )
-from snowflake_semantic_tools.domain.model.sql import string_literal
+from snowflake_semantic_tools.domain.model.sql_checks import qualified_name_problem
+from snowflake_semantic_tools.domain.sql import Sql, boolean, datatype, is_datatype, literal, number
 
 
 def _build_view(
@@ -83,8 +87,10 @@ def _build_view(
     tags = _view_tags(node, view, config, target)
     max_staleness = node.get("max_staleness")
     source_path, source_files = _source_files(path, project_dir, selected.attached, models, logical_by_model)
+    fqn = target.fqn(name)
+    _require(qualified_name_problem(fqn, artifact=view.key, subject=view.key))
     return SemanticView(
-        fqn=target.fqn(name),
+        fqn=fqn,
         tables=tables,
         relationships=selected.relationships,
         variables=variables,
@@ -235,11 +241,15 @@ def _view_table(
     per_table = table_config.get(model_name) if isinstance(table_config, dict) else None
     table_synonyms = _as_str_tuple(per_table.get("synonyms")) if isinstance(per_table, dict) else ()
     distinct_range = _distinct_range(per_table, path=view.path, view_name=view.name, table_name=model_name)
+    (logical,) = _names((logical,), view.key, None)
+    if qualified_name_problem(model.relation_name, artifact=view.key, subject=view.key) is not None:
+        diagnostic = D("SST-REF019", value=model.relation_name, subject=view.key)
+        raise ProjectError(diagnostic.message, diagnostics=(diagnostic,))
     return model_name.lower(), Table(
         logical_name=logical,
         fqn=model.relation_name,
-        primary_key=tuple(c.upper() for c in model.primary_key),
-        unique_keys=tuple(tuple(column.upper() for column in key) for key in model.unique_keys),
+        primary_key=_names(model.primary_key, view.key, None),
+        unique_keys=tuple(_names(key, view.key, None) for key in model.unique_keys),
         synonyms=table_synonyms,
         distinct_range=distinct_range,
     )
@@ -257,7 +267,8 @@ def _distinct_range(
     value = per_table["distinct_range"]
     if not isinstance(value, dict) or not value.get("start") or not value.get("end"):
         raise ProjectError(f"{path}: view {view_name} table {table_name} has an invalid distinct_range")
-    return str(value["start"]).upper(), str(value["end"]).upper()
+    start, end = _names((str(value["start"]), str(value["end"])), artifact_key("semantic_view", view_name), None)
+    return start, end
 
 
 def _view_columns(models: Mapping[str, DbtModel], logical_by_model: Mapping[str, str]) -> list[Column]:
@@ -298,11 +309,13 @@ def _view_column(model: DbtModel, column: DbtColumn, logical: str) -> Column:
         raise ProjectError(role.message, diagnostics=(role,)) from exc
     if kind is ColumnKind.TIME_DIMENSION:
         kind = ColumnKind.DIMENSION
+    subject = f"dbt_model:{model.name}"
+    (name,) = _names((column.name,), subject, None)
     return Column(
         table=logical,
-        name=column.name.upper(),
+        name=name,
         kind=kind,
-        expr=f"{logical}.{column.name.upper()}",
+        expr=_expression(f"{logical}.{name}", kind=kind.value, name=name, subject=subject, origin=None),
         comment=column.description,
         synonyms=column.synonyms,
         sample_values=column.sample_values,
@@ -319,13 +332,17 @@ def _view_variables(node: Mapping[str, Any], view: _View) -> tuple[Variable, ...
     return tuple(_variable(value, path=view.path, view_name=view.name) for value in node.get("variables") or [])
 
 
-def _sql_value(value: object) -> str:
-    """The SQL literal for a YAML scalar: a boolean or number as written, anything else a string."""
+def _sql_value(value: object) -> Sql:
+    """The SQL literal for a YAML scalar: a boolean or number as written, anything else a string.
+
+    Raises:
+        ValueError: a number is not finite, or a string holds a NUL.
+    """
     if isinstance(value, bool):
-        return "TRUE" if value else "FALSE"
+        return boolean(value)
     if isinstance(value, (int, float)):
-        return str(value)
-    return string_literal(str(value))
+        return number(value)
+    return literal(str(value))
 
 
 def _variable(value: object, *, path: Path, view_name: str) -> Variable:
@@ -350,10 +367,25 @@ def _variable(value: object, *, path: Path, view_name: str) -> Variable:
         raise ProjectError(f"{path}: view {view_name} variable {value['name']} requires a numeric default")
     if data_type.startswith(("VARCHAR", "TEXT", "STRING")) and not isinstance(raw_default, str):
         raise ProjectError(f"{path}: view {view_name} variable {value['name']} requires a string default")
-    default = _sql_value(raw_default)
+    subject = artifact_key("semantic_view", view_name)
+    if not is_datatype(data_type):
+        diagnostic = D(
+            "SST-PRS003",
+            artifact=subject,
+            field=f"variables.{value['name']}.data_type",
+            expected="a Snowflake data type",
+            found=repr(value["data_type"]),
+            subject=subject,
+        )
+        raise ProjectError(diagnostic.message, diagnostics=(diagnostic,))
+    try:
+        default = _sql_value(raw_default)
+    except ValueError as exc:
+        raise ProjectError(f"{path}: view {view_name} variable {value['name']} has an invalid default: {exc}") from exc
+    (name,) = _names((str(value["name"]),), subject, None)
     return Variable(
-        name=str(value["name"]).upper(),
-        data_type=data_type,
+        name=name,
+        data_type=datatype(data_type),
         default=default,
         comment=str(value.get("description") or "").strip() or None,
     )
@@ -406,7 +438,10 @@ def _tag(value: object, *, config: dict[str, Any], target: DbtTarget, path: Path
         .replace("{{ target.database }}", target.database)
         .replace("{{ target.schema }}", target.schema)
     )
-    return Tag(name=f"{prefix}.{tag_name.upper()}", value=str(value["value"]))
+    name = f"{prefix}.{tag_name.upper()}"
+    if qualified_name_problem(name, artifact=artifact_key("semantic_view", view_name), subject=view_name) is not None:
+        invalid(f"tag('{tag_name}') resolves to {name!r}, not a three-part tag name")
+    return Tag(name=name, value=str(value["value"]))
 
 
 def _source_files(

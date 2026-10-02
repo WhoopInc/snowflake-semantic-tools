@@ -26,6 +26,7 @@ from snowflake_semantic_tools.domain.ports.snowflake import (
     StagedFileMetadata,
     StageObservation,
 )
+from snowflake_semantic_tools.domain.sql import Sql
 from snowflake_semantic_tools.domain.state import AppliedEntry, State
 
 
@@ -80,27 +81,29 @@ class InMemorySnowflake:
             raise self.marker_error
         return self.markers.get(qualified_name.sql)
 
-    def query(self, sql: str, params: object = None) -> QueryResult:
-        self.queries.append((sql, params))
+    def query(self, sql: Sql, params: object = None) -> QueryResult:
+        text = str(sql)
+        self.queries.append((text, params))
         if self.query_error:
             raise self.query_error
         prefix = "SELECT COUNT(*) AS ROW_COUNT FROM "
-        if sql.upper().startswith(prefix):
-            table = sql[len(prefix) :]
+        if text.upper().startswith(prefix):
+            table = text[len(prefix) :]
             return QueryResult(("ROW_COUNT",), ((self.table_row_counts.get(table, 0),),))
         return QueryResult()
 
-    def query_in_context(self, scope: SchemaScope, sql: str, params: object = None) -> QueryResult:
+    def query_in_context(self, scope: SchemaScope, sql: Sql, params: object = None) -> QueryResult:
         del scope
         return self.query(sql, params)
 
-    def execute_script(self, statements: Sequence[str]) -> ExecResult:
-        self.scripts.append(tuple(statements))
+    def execute_script(self, statements: Sequence[Sql]) -> ExecResult:
+        texts = tuple(str(statement) for statement in statements)
+        self.scripts.append(texts)
         if self.execute_results:
             result = self.execute_results.pop(0)
             if not result.ok:
                 return result
-        for statement in statements:
+        for statement in texts:
             normalized = " ".join(statement.split())
             if normalized.upper().startswith("CREATE STAGE IF NOT EXISTS "):
                 name = normalized.split()[5]
@@ -122,7 +125,7 @@ class InMemorySnowflake:
                     self.existing.add(values[5])
         return ExecResult(True)
 
-    def try_execute(self, sql: str) -> ExecResult:
+    def try_execute(self, sql: Sql) -> ExecResult:
         return self.execute_script((sql,))
 
     def current_role(self) -> str:

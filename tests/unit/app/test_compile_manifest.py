@@ -15,6 +15,7 @@ from snowflake_semantic_tools.domain.model.semantic_view import (
     Table,
     VerifiedQuery,
 )
+from tests.helpers.sql_values import authored, authored_query, statement
 
 
 def test_compiled_view_emits_all_smoke_probe_kinds_and_required_relations() -> None:
@@ -22,18 +23,18 @@ def test_compiled_view_emits_all_smoke_probe_kinds_and_required_relations() -> N
         "DB.S.V",
         (Table("T", "DB.S.T"),),
         metrics=(
-            Metric("PUBLIC", "COUNT(1)", "T"),
-            Metric("PRIVATE", "COUNT(1)", "T", access_modifier="private_access"),
+            Metric("PUBLIC", authored("COUNT(1)"), "T"),
+            Metric("PRIVATE", authored("COUNT(1)"), "T", access_modifier="private_access"),
         ),
-        verified_queries=(VerifiedQuery("Q", "q?", "SELECT 1;"),),
+        verified_queries=(VerifiedQuery("Q", "q?", authored_query("SELECT 1;")),),
     )
-    compiled = CompiledView(view, "CREATE OR REPLACE SEMANTIC VIEW DB.S.V COPY GRANTS")
+    compiled = CompiledView(view, statement("CREATE OR REPLACE SEMANTIC VIEW DB.S.V COPY GRANTS"))
     rendered = compiled.rendered_artifact
     assert [probe.kind.value for probe in rendered.smoke] == ["view", "metric", "verified_query"]
-    assert rendered.smoke[0].sql == "SELECT SV.PUBLIC FROM SEMANTIC_VIEW(DB.S.V METRICS T.PUBLIC) AS SV LIMIT 0"
-    assert "SELECT SV.PUBLIC" in rendered.smoke[1].sql
+    assert str(rendered.smoke[0].sql) == "SELECT SV.PUBLIC FROM SEMANTIC_VIEW(DB.S.V METRICS T.PUBLIC) AS SV LIMIT 0"
+    assert "SELECT SV.PUBLIC" in str(rendered.smoke[1].sql)
     assert rendered.required_relations[0].sql == "DB.S.T"
-    assert "LIMIT 0" in rendered.smoke[-1].sql
+    assert "LIMIT 0" in str(rendered.smoke[-1].sql)
     assert CompileResult((compiled,)).rendered == (rendered,)
     publish = compiled.rendered_for_publish("a" * 64)
     assert f"[sst:{'a' * 64}:{compiled.fingerprint}]" in publish.ddl
@@ -45,33 +46,33 @@ def test_compiled_view_uses_dimension_probe_and_rejects_view_without_public_memb
     view = SemanticView(
         "DB.S.V",
         (Table("T", "DB.S.T"),),
-        columns=(Column("T", "CATEGORY", ColumnKind.DIMENSION, "T.CATEGORY"),),
+        columns=(Column("T", "CATEGORY", ColumnKind.DIMENSION, authored("T.CATEGORY")),),
     )
-    compiled = CompiledView(view, "CREATE OR REPLACE SEMANTIC VIEW DB.S.V COPY GRANTS")
+    compiled = CompiledView(view, statement("CREATE OR REPLACE SEMANTIC VIEW DB.S.V COPY GRANTS"))
     assert compiled.byte_length == len(compiled.canonical_ddl.encode("utf-8"))
-    assert compiled.rendered_artifact.smoke[0].sql == (
+    assert str(compiled.rendered_artifact.smoke[0].sql) == (
         "SELECT SV.CATEGORY FROM SEMANTIC_VIEW(DB.S.V DIMENSIONS T.CATEGORY) AS SV LIMIT 0"
     )
 
     private_only = SemanticView(
         "DB.S.PRIVATE_V",
         (Table("T", "DB.S.T"),),
-        metrics=(Metric("PRIVATE", "COUNT(1)", "T", access_modifier="private_access"),),
+        metrics=(Metric("PRIVATE", authored("COUNT(1)"), "T", access_modifier="private_access"),),
     )
     with pytest.raises(ValueError, match="no public dimension or metric"):
-        _ = CompiledView(private_only, "CREATE SEMANTIC VIEW DB.S.PRIVATE_V").rendered_artifact
+        _ = CompiledView(private_only, statement("CREATE SEMANTIC VIEW DB.S.PRIVATE_V")).rendered_artifact
 
 
 def test_manifest_builder_records_sources_members_impact_and_diagnostics() -> None:
     view = SemanticView(
         "DB.S.V",
         (Table("T", "DB.S.T"),),
-        metrics=(Metric("M", "COUNT(1)", "T"),),
+        metrics=(Metric("M", authored("COUNT(1)"), "T"),),
         source_path="semantic_models/views.yml",
         source_files=("semantic_models/views.yml", "semantic_models/metrics.yml"),
         referenced_models=("t",),
     )
-    compiled = CompiledView(view, "CREATE OR REPLACE SEMANTIC VIEW DB.S.V COPY GRANTS")
+    compiled = CompiledView(view, statement("CREATE OR REPLACE SEMANTIC VIEW DB.S.V COPY GRANTS"))
     result = CompileResult(
         (compiled,),
         DiagnosticBag((D("SST-LOD003", file="empty.yml", subject="semantic_view:v"),)),
@@ -111,7 +112,7 @@ class _CompiledTool:
             key=self.artifact_key,
             artifact_type=self.artifact_type,
             target=QualifiedName.parse("DB.S.SEARCH"),
-            ddl="CREATE CORTEX SEARCH SERVICE DB.S.SEARCH ON BODY AS SELECT BODY FROM DB.S.DOCS",
+            ddl=statement("CREATE CORTEX SEARCH SERVICE DB.S.SEARCH ON BODY AS SELECT BODY FROM DB.S.DOCS"),
             shape=PublishShape("CORTEX SEARCH SERVICE"),
             depends_on=("semantic_view:v",),
         )
@@ -130,8 +131,8 @@ class _Compiler:
 
 
 def test_generic_compiler_and_manifest_preserve_artifact_metadata() -> None:
-    view = SemanticView("DB.S.V", (Table("T", "DB.S.T"),), metrics=(Metric("M", "COUNT(1)", "T"),))
-    compiled_view = CompiledView(view, "CREATE OR REPLACE SEMANTIC VIEW DB.S.V COPY GRANTS")
+    view = SemanticView("DB.S.V", (Table("T", "DB.S.T"),), metrics=(Metric("M", authored("COUNT(1)"), "T"),))
+    compiled_view = CompiledView(view, statement("CREATE OR REPLACE SEMANTIC VIEW DB.S.V COPY GRANTS"))
     tool = _CompiledTool()
     result = CompileArtifacts(
         (_Compiler(CompileResult((tool,))), _Compiler(CompileResult((compiled_view,)))),
@@ -151,7 +152,7 @@ def test_manifest_round_trip_preserves_composite_component_metadata() -> None:
         key="eval:a",
         artifact_type="eval",
         target=QualifiedName.parse("DB.S.EVAL_A"),
-        ddl="evaluation:\n  agent_params: {}\nmetrics: []",
+        ddl=statement("evaluation:\n  agent_params: {}\nmetrics: []"),
         shape=PublishShape("", render_dialect="eval_yaml"),
         composite=CompositeFacts(
             component_fingerprints=(("dataset", "a" * 64), ("config", "b" * 64)),

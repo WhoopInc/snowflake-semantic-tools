@@ -17,6 +17,7 @@ from snowflake_semantic_tools.domain.model.eval import (
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
 from tests.helpers.compile_builders import compiled_as
 from tests.helpers.eval_builders import ORIGIN, compile_eval, compiled_eval_of, resolved_eval
+from tests.helpers.sql_values import texts
 
 
 def test_compile_eval_projects_composite_metadata_and_manifest_impact() -> None:
@@ -63,10 +64,10 @@ def test_rendered_for_publish_emits_source_table_and_dataset_statements() -> Non
 
     published = compiled.rendered_for_publish("unused-manifest-id")
 
-    assert published.create_statements == (
+    assert texts(published.create_statements) == (
         compiled.rendered.source_table_sql.split(";\n\n", 1)[0],
         compiled.rendered.source_table_sql.split(";\n\n", 1)[1].removesuffix(";\n"),
-        compiled.rendered.create_dataset_sql.strip(),
+        str(compiled.rendered.create_dataset_statement),
     )
 
 

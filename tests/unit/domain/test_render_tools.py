@@ -1,5 +1,8 @@
+"""The tool renderers: search services, routines, and stages, each value held to its grammar."""
+
 from __future__ import annotations
 
+from dataclasses import replace
 from types import MappingProxyType
 from typing import Any
 
@@ -9,7 +12,8 @@ from snowflake_semantic_tools.domain.model.diagnostic import Origin
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
 from snowflake_semantic_tools.domain.model.registry import GrantPreservation
 from snowflake_semantic_tools.domain.model.tool import ToolMember, ToolOwnership, ToolParameter
-from snowflake_semantic_tools.domain.render.tool import render_tool
+from snowflake_semantic_tools.domain.render.tool import render_tool, routine_signature, search_service_statement
+from snowflake_semantic_tools.domain.sql import UnsafeSqlError
 
 
 def member(**kwargs: Any) -> ToolMember:
@@ -44,7 +48,7 @@ def test_search_renderer_is_deterministic_and_uses_replay_grants() -> None:
     assert "AS SELECT CATEGORY, BODY FROM DB.S.DOCS WHERE IS_PUBLIC" in first.ddl
     assert first.grant_preservation is GrantPreservation.REPLAY
     assert first.object_type == "CORTEX SEARCH SERVICE"
-    assert first.smoke[0].sql == "DESCRIBE CORTEX SEARCH SERVICE DB.S.SEARCH"
+    assert str(first.smoke[0].sql) == "DESCRIBE CORTEX SEARCH SERVICE DB.S.SEARCH"
 
 
 def test_routine_renderers_include_copy_grants_and_sidecar_body() -> None:
@@ -164,3 +168,49 @@ def test_tool_renderers_cover_all_optional_routine_and_stage_clauses() -> None:
     stage = member(name="files", type="stage")
     rendered = render_tool(stage, QualifiedName.parse("DB.S.FILES"), None)
     assert rendered.ddl == "CREATE STAGE IF NOT EXISTS DB.S.FILES\n"
+
+
+def test_a_search_service_takes_an_exact_comment_and_refuses_a_where_that_is_not_one_expression() -> None:
+    value = member(search_column="body", warehouse="WH", target_lag="1 hour", description="a  b", where="IS_PUBLIC  ")
+    marked = search_service_statement(
+        value, QualifiedName.parse("DB.S.SEARCH"), QualifiedName.parse("DB.S.DOCS"), comment="[sst:m:f] a  b  "
+    )
+    assert str(marked).splitlines()[-2:] == [
+        "  COMMENT = '[sst:m:f] a  b  '",
+        "  AS SELECT BODY FROM DB.S.DOCS WHERE IS_PUBLIC",
+    ]
+    injected = replace(value, where="1=1 UNION SELECT secret FROM other")
+    with pytest.raises(UnsafeSqlError, match="statement keyword"):
+        render_tool(injected, QualifiedName.parse("DB.S.SEARCH"), QualifiedName.parse("DB.S.DOCS"))
+
+
+def test_routine_values_are_held_to_their_grammars() -> None:
+    table_function = member(
+        name="lines",
+        type="function",
+        language="sql",
+        body="SELECT 1, 2",
+        returns="TABLE (order_id NUMBER(38, 0), total VARCHAR)",
+    )
+    rendered = render_tool(table_function, QualifiedName.parse("DB.S.LINES"), None)
+    assert "RETURNS TABLE (ORDER_ID NUMBER(38, 0), TOTAL VARCHAR)" in rendered.ddl
+    assert str(rendered.smoke[0].sql) == "DESCRIBE FUNCTION DB.S.LINES()"
+    for bad in (
+        {"returns": "NUMBER); DROP TABLE x; --"},
+        {"returns": "TABLE (x NOT_A_TYPE)"},
+        {"language": "sql; DROP TABLE x"},
+        {"signature": (ToolParameter("id", "NUMBER) AS 'x'; --", True),)},
+        {"body": "$$; DROP TABLE x; $$"},
+    ):
+        with pytest.raises(ValueError):
+            render_tool(replace(table_function, **bad), QualifiedName.parse("DB.S.LINES"), None)
+    procedure = replace(table_function, type="procedure", returns="NUMBER", warehouse="WH", execute_as="anyone")
+    with pytest.raises(ValueError, match="not a keyword"):
+        render_tool(procedure, QualifiedName.parse("DB.S.LINES"), None)
+
+
+def test_a_routine_is_named_with_its_argument_types() -> None:
+    target = QualifiedName.parse("DB.S.LOOKUP")
+    assert str(routine_signature("procedure", target, ("NUMBER", "VARCHAR(10)"))) == "DB.S.LOOKUP(NUMBER, VARCHAR(10))"
+    with pytest.raises(ValueError, match="not a routine type"):
+        routine_signature("TABLE", target, ())

@@ -697,10 +697,10 @@ def test_agent_artifact_programs_cover_temporary_alias_tags_and_metadata() -> No
         stage=QualifiedName.parse("DB.S.STAGE"),
         git_sha="abcdef0",
     ).rendered_for_publish("a" * 64)
-    assert any("MODIFY VERSION" in statement for statement in published.create_statements)
-    assert any("SET TAG DB.S.TAG" in statement for statement in published.create_statements)
-    assert any("SET SECURE = TRUE" in statement for statement in published.statements)
-    assert "owner''s agent" in published.statements[-2]
+    assert any("MODIFY VERSION" in str(statement) for statement in published.create_statements)
+    assert any("SET TAG DB.S.TAG" in str(statement) for statement in published.create_statements)
+    assert any("SET SECURE = TRUE" in str(statement) for statement in published.statements)
+    assert "owner''s agent" in str(published.statements[-2])
 
     temporary = for_publication(
         compiled,
@@ -709,8 +709,8 @@ def test_agent_artifact_programs_cover_temporary_alias_tags_and_metadata() -> No
         temporary=True,
     ).rendered_artifact
     assert temporary.upload_path is None
-    assert temporary.statements[0].startswith("CREATE OR REPLACE TEMPORARY AGENT")
-    assert "WITH PROFILE" in temporary.statements[0]
+    assert str(temporary.statements[0]).startswith("CREATE OR REPLACE TEMPORARY AGENT")
+    assert "WITH PROFILE" in str(temporary.statements[0])
 
     unsafe = replace(compiled, payload="contains $$ delimiter")
     with pytest.raises(ValueError, match="dollar-quote"):

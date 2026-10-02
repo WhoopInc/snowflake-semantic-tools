@@ -28,12 +28,14 @@ from snowflake_semantic_tools.domain.model.lifecycle import (
     RenderedArtifact,
 )
 from snowflake_semantic_tools.domain.ports.snowflake import SnowflakePort, SnowflakePortError
+from snowflake_semantic_tools.domain.sql import Sql, qname, sql
 from snowflake_semantic_tools.domain.state import AppliedEntry, ResourceStatus
 
-EVAL_STAGE_FILE_FORMAT = (
+_EVAL_STAGE_FILE_FORMAT = sql(
     "TYPE='CSV' FIELD_DELIMITER=NONE RECORD_DELIMITER='\\n' SKIP_HEADER=0 "
     "FIELD_OPTIONALLY_ENCLOSED_BY=NONE ESCAPE_UNENCLOSED_FIELD=NONE"
 )
+EVAL_STAGE_FILE_FORMAT = str(_EVAL_STAGE_FILE_FORMAT)
 
 
 @dataclass(frozen=True, slots=True)
@@ -260,21 +262,21 @@ class EvalLifecycleHandler(CompositeHandler[RenderedArtifact, CompositeObservati
         return frozenset(values)
 
     @staticmethod
-    def _source_statements(artifact: RenderedArtifact) -> tuple[str, ...]:
-        statements = tuple(statement.strip() for statement in artifact.create_statements if statement.strip())
+    def _source_statements(artifact: RenderedArtifact) -> tuple[Sql, ...]:
+        statements = tuple(statement for statement in artifact.create_statements if str(statement).strip())
         if len(statements) < 2:
             raise ValueError("eval artifact requires CREATE TABLE and INSERT statements")
         return statements[:-1]
 
     @staticmethod
-    def _dataset_statement(artifact: RenderedArtifact) -> str:
-        statements = tuple(statement.strip() for statement in artifact.create_statements if statement.strip())
+    def _dataset_statement(artifact: RenderedArtifact) -> Sql:
+        statements = tuple(statement for statement in artifact.create_statements if str(statement).strip())
         if len(statements) < 2:
             raise ValueError("eval artifact requires a dataset statement")
         return statements[-1]
 
     def _source_row_count(self, source_table: QualifiedName) -> int:
-        result = self._port.query(f"SELECT COUNT(*) AS ROW_COUNT FROM {source_table.sql}")
+        result = self._port.query(sql("SELECT COUNT(*) AS ROW_COUNT FROM {table}", table=qname(source_table)))
         if not result.rows or not result.rows[0]:
             raise SnowflakePortError("COUNT(*) returned no row")
         value = result.rows[0][0]
@@ -283,15 +285,19 @@ class EvalLifecycleHandler(CompositeHandler[RenderedArtifact, CompositeObservati
         return int(value)
 
     @staticmethod
-    def _expected_row_count(statements: tuple[str, ...]) -> int:
+    def _expected_row_count(statements: tuple[Sql, ...]) -> int:
         if len(statements) < 2:
             return 0
-        insert = statements[1]
+        insert = str(statements[1])
         return insert.count("\nUNION ALL\n") + 1
 
     @staticmethod
-    def _create_stage_sql(stage: QualifiedName) -> str:
-        return f"CREATE STAGE IF NOT EXISTS {stage.sql} FILE_FORMAT = ({EVAL_STAGE_FILE_FORMAT})"
+    def _create_stage_sql(stage: QualifiedName) -> Sql:
+        return sql(
+            "CREATE STAGE IF NOT EXISTS {stage} FILE_FORMAT = ({file_format})",
+            stage=qname(stage),
+            file_format=_EVAL_STAGE_FILE_FORMAT,
+        )
 
 
 class _EvalRun(PublicationRun):
@@ -312,7 +318,7 @@ class _EvalRun(PublicationRun):
         self._stage = handler._config_stage(artifact)
         self._table_exists = False
         self._dataset_exists = False
-        self._statements: tuple[str, ...] = ()
+        self._statements: tuple[Sql, ...] = ()
         # What this run's CREATE statements made, verified or not: SST's once created.
         self._created: list[tuple[str, str]] = []
 

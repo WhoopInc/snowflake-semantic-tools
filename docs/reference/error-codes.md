@@ -16,7 +16,7 @@ cannot be downgraded by any setting.
 ## Contents
 
 - [Configuration (CFG)](#configuration-cfg) -- 19 codes
-- [Parsing (PRS)](#parsing-prs) -- 34 codes
+- [Parsing (PRS)](#parsing-prs) -- 35 codes
 - [Loading (LOD)](#loading-lod) -- 8 codes
 - [References (REF)](#references-ref) -- 29 codes
 - [Membership (MEM)](#membership-mem) -- 2 codes
@@ -209,6 +209,14 @@ Fix: change the value to the expected type
 `<artifact>: unknown field '<field>'`
 
 Fix: remove the field, or check the spelling
+
+### SST-PRS005
+
+**Name is not a valid identifier** (error)
+
+`<artifact>: '<value>' is not a valid identifier`
+
+Fix: start an unquoted name with a letter or underscore and use only letters, digits, `_` and `$`, or double-quote it
 
 ### SST-PRS006
 
@@ -1192,7 +1200,7 @@ Fix: add the table to tables:, which decides the views the query attaches to
 
 `<type> '<name>': expression failed to compile: <detail>`
 
-Fix: fix the expression
+Fix: fix the expression so Snowflake compiles it; SST also refuses, before sending it, a `;`, a comment, `$$`, an unbalanced bracket, or a statement keyword outside quotes
 
 ### SST-VAL511
 

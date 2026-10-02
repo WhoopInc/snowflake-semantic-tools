@@ -25,6 +25,7 @@ from snowflake_semantic_tools.domain.ports.snowflake import SnowflakePortError
 from snowflake_semantic_tools.domain.state import AppliedEntry, AppliedResourceInput, Manifest
 from tests.helpers.app_ports import InMemorySnowflake
 from tests.helpers.artifact_builders import change, manifest, rendered, state, target
+from tests.helpers.sql_values import statement
 
 
 def test_observe_collects_markers_grants_and_errors() -> None:
@@ -146,8 +147,8 @@ def test_observe_agent_live_version_selects_update_program() -> None:
         key="agent:v",
         artifact_type="agent",
         object_type="AGENT",
-        update_statements=("ALTER AGENT ADD VERSION",),
-        update_live_statements=("ALTER AGENT COMMIT", "ALTER AGENT ADD VERSION"),
+        update_statements=(statement("ALTER AGENT ADD VERSION"),),
+        update_live_statements=(statement("ALTER AGENT COMMIT"), statement("ALTER AGENT ADD VERSION")),
     )
     port = InMemorySnowflake()
     port.rows = (ShowRow("V", "DB", "SCHEMA", "OWNER", "now", object_type="AGENT"),)
@@ -164,7 +165,7 @@ def test_observe_agent_live_version_selects_update_program() -> None:
     assert diagnostics == ()
     observed = next(iter(observation.artifacts.values()))
     assert observed.has_live_version
-    assert artifact.for_action(Action.UPDATE, observed).statements[0] == "ALTER AGENT COMMIT"
+    assert str(artifact.for_action(Action.UPDATE, observed).statements[0]) == "ALTER AGENT COMMIT"
 
 
 def test_plan_reports_composite_prune_when_generic_observation_has_no_change() -> None:

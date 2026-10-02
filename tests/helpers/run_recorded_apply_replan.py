@@ -16,6 +16,7 @@ from snowflake_semantic_tools.app.compile.evals import CompiledEval
 from snowflake_semantic_tools.cli import main as cli_module
 from snowflake_semantic_tools.cli.wiring.compile import compile_result
 from snowflake_semantic_tools.domain.model.lifecycle import ExecResult, OwnershipMarker, QueryResult, ShowRow
+from snowflake_semantic_tools.domain.sql import Sql
 
 OBJECT_TYPES = {
     "semantic_view": "SEMANTIC VIEW",
@@ -97,23 +98,24 @@ def main() -> None:
             for item in compiled.compiled
             if isinstance(item, CompiledEval)
         }
-        original_query: Callable[[str, object], QueryResult] = port.query
+        original_query: Callable[[Sql, object], QueryResult] = port.query
 
-        def query(sql: str, params: object = None) -> QueryResult:
+        def query(sql: Sql, params: object = None) -> QueryResult:
             prefix = "SELECT COUNT(*) AS ROW_COUNT FROM "
-            if sql.startswith(prefix) and sql[len(prefix) :] in row_counts:
-                port.queries.append((sql, params))
-                return QueryResult(("ROW_COUNT",), ((row_counts[sql[len(prefix) :]],),))
+            text = str(sql)
+            if text.startswith(prefix) and text[len(prefix) :] in row_counts:
+                port.queries.append((text, params))
+                return QueryResult(("ROW_COUNT",), ((row_counts[text[len(prefix) :]],),))
             return original_query(sql, params)
 
         port.query = query
-        original_execute: Callable[[Sequence[str]], ExecResult] = port.execute_script
+        original_execute: Callable[[Sequence[Sql]], ExecResult] = port.execute_script
 
-        def execute_with_markers(statements: Sequence[str]) -> ExecResult:
+        def execute_with_markers(statements: Sequence[Sql]) -> ExecResult:
             result = original_execute(statements)
             if not result.ok:
                 return result
-            sql = "\n".join(statements)
+            sql = "\n".join(str(statement) for statement in statements)
             for raw in changes:
                 if not isinstance(raw, dict) or raw.get("artifact_type") in COMPOSITE_TYPES:
                     continue

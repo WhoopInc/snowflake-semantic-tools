@@ -38,6 +38,7 @@ from snowflake_semantic_tools.domain.model.lifecycle import (
     StatementPlan,
     extract_marker,
 )
+from tests.helpers.sql_values import statement, statements, texts
 
 
 def target() -> TargetIdentity:
@@ -49,8 +50,8 @@ def rendered(name: str = "VIEW") -> RenderedArtifact:
         key=f"semantic_view:{name.casefold()}",
         artifact_type="semantic_view",
         target=QualifiedName.from_parts("db", "sch", name),
-        ddl="create semantic view x  \n",
-        smoke=(SmokeProbe("view:x", ProbeKind.VIEW, "select 1"),),
+        ddl=statement("create semantic view x  \n"),
+        smoke=(SmokeProbe("view:x", ProbeKind.VIEW, statement("select 1")),),
     )
 
 
@@ -102,7 +103,7 @@ def test_rendered_artifact_canonicalizes_and_accepts_explicit_statements() -> No
     assert artifact.content == artifact.ddl
     assert artifact.object_type == "SEMANTIC VIEW"
     assert artifact.render_dialect == "ddl"
-    assert artifact.statements == ("create semantic view x",)
+    assert texts(artifact.statements) == ("create semantic view x",)
     assert len(artifact.fingerprint) == 64
     explicit = RenderedArtifact.create(
         key="semantic_view:x",
@@ -110,10 +111,10 @@ def test_rendered_artifact_canonicalizes_and_accepts_explicit_statements() -> No
         target=QualifiedName.from_parts("db", "sch", "x"),
         ddl="payload",
         shape=PublishShape("AGENT", render_dialect="json"),
-        statements=StatementPlan(default=("one", "two")),
+        statements=StatementPlan(default=statements("one", "two")),
         depends_on=("semantic_view:y",),
     )
-    assert explicit.statements == ("one", "two")
+    assert texts(explicit.statements) == ("one", "two")
     assert explicit.object_type == "AGENT"
     assert explicit.render_dialect == "json"
 
@@ -133,18 +134,18 @@ def test_rendered_artifact_canonicalizes_and_accepts_explicit_statements() -> No
         key="agent:x",
         artifact_type="agent",
         target=observed.qualified_name,
-        ddl="{}",
+        ddl=statement("{}"),
         shape=PublishShape("AGENT"),
-        statements=StatementPlan(update=("ALTER AGENT ADD VERSION",)),
+        statements=StatementPlan(update=statements("ALTER AGENT ADD VERSION")),
         metadata=DesiredMetadata(alias="KEEP", tags=("DB.S.KEEP",)),
     ).for_action(Action.UPDATE, observed)
-    assert not any("KEEP UNSET ALIAS" in statement for statement in metadata.statements)
-    assert any('"Mixed Alias" UNSET ALIAS' in statement for statement in metadata.statements)
-    assert any('UNSET TAG "broken tag"' in statement for statement in metadata.statements)
+    assert not any("KEEP UNSET ALIAS" in statement for statement in texts(metadata.statements))
+    assert any('"Mixed Alias" UNSET ALIAS' in statement for statement in texts(metadata.statements))
+    assert any('UNSET TAG "broken tag"' in statement for statement in texts(metadata.statements))
 
     ordinary = rendered()
     assert ordinary.for_action(Action.UPDATE, None) is ordinary
-    non_agent = replace(ordinary, update_statements=("update",))
+    non_agent = replace(ordinary, update_statements=statements("update"))
     non_agent_observed = ObservedArtifact(
         non_agent.key,
         "V",
@@ -155,7 +156,7 @@ def test_rendered_artifact_canonicalizes_and_accepts_explicit_statements() -> No
         None,
         None,
     )
-    assert non_agent.for_action(Action.UPDATE, non_agent_observed).statements == ("update",)
+    assert texts(non_agent.for_action(Action.UPDATE, non_agent_observed).statements) == ("update",)
 
 
 def test_rendered_artifact_selects_create_live_update_and_safe_metadata_statements() -> None:
@@ -163,9 +164,11 @@ def test_rendered_artifact_selects_create_live_update_and_safe_metadata_statemen
         key="agent:a",
         artifact_type="agent",
         target=QualifiedName.from_parts("db", "sch", "a"),
-        ddl="{}",
+        ddl=statement("{}"),
         shape=PublishShape("AGENT"),
-        statements=StatementPlan(create=("create",), update=("update",), update_live=("update live",)),
+        statements=StatementPlan(
+            create=statements("create"), update=statements("update"), update_live=statements("update live")
+        ),
         metadata=DesiredMetadata(tags=("DB.S.KEEP",)),
     )
     observed = ObservedArtifact(
@@ -181,24 +184,25 @@ def test_rendered_artifact_selects_create_live_update_and_safe_metadata_statemen
         aliases=("SAFE",),
         tags=("DB.S.STALE",),
     )
-    assert agent.for_action(Action.CREATE, None).statements == ("create",)
+    assert texts(agent.for_action(Action.CREATE, None).statements) == ("create",)
     live = agent.for_action(Action.UPDATE, observed)
-    assert live.statements == (
+    assert texts(live.statements) == (
         "update live",
         "ALTER AGENT DB.SCH.A MODIFY VERSION SAFE UNSET ALIAS",
         "ALTER AGENT DB.SCH.A UNSET TAG DB.S.STALE",
     )
     no_stale_tags = replace(observed, tags=("DB.S.KEEP",))
-    assert agent.for_action(Action.UPDATE, no_stale_tags).statements == (
+    assert texts(agent.for_action(Action.UPDATE, no_stale_tags).statements) == (
         "update live",
         "ALTER AGENT DB.SCH.A MODIFY VERSION SAFE UNSET ALIAS",
     )
 
     quoted = replace(agent, desired_alias=None, desired_tags=())
     malformed = replace(observed, aliases=("1 bad",), tags=("DB..TAG",))
-    statements = quoted.for_action(Action.UPDATE, malformed).statements
-    assert 'MODIFY VERSION "1 bad" UNSET ALIAS' in statements[1]
-    assert 'UNSET TAG DB."".TAG' in statements[2]
+    removals = texts(quoted.for_action(Action.UPDATE, malformed).statements)
+    assert 'MODIFY VERSION "1 bad" UNSET ALIAS' in removals[1]
+    # No identifier is empty, so a tag shown with an empty part is left alone rather than unset.
+    assert len(removals) == 2
 
 
 def test_changeset_partitions_writes_and_blocked() -> None:

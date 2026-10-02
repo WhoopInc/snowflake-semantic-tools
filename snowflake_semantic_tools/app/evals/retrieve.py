@@ -17,6 +17,7 @@ from snowflake_semantic_tools.app.compile.evals import CompiledEval
 from snowflake_semantic_tools.domain.model.eval import EvalCostSummary, EvalMetricResult, EvalResultRow, ThresholdRange
 from snowflake_semantic_tools.domain.model.identifier import SchemaScope
 from snowflake_semantic_tools.domain.ports.snowflake import SnowflakePort, SnowflakePortError
+from snowflake_semantic_tools.domain.sql import sql
 
 _STATUS_COLUMNS = ("RUN_NAME", "AGENT_NAME", "AGENT_TYPE", "STATUS", "STATUS_DETAILS")
 _RESULT_COLUMNS = (
@@ -38,8 +39,8 @@ _RESULT_COLUMNS = (
     "TOTAL_OUTPUT_TOKENS",
     "LLM_CALL_COUNT",
 )
-_STATUS_CALL = "CALL EXECUTE_AI_EVALUATION('STATUS', OBJECT_CONSTRUCT('run_name', %s), %s)"
-_RESULTS_QUERY = "SELECT * FROM TABLE(SNOWFLAKE.LOCAL.GET_AI_EVALUATION_DATA(%s, %s, %s, %s, %s))"
+_STATUS_CALL = sql("CALL EXECUTE_AI_EVALUATION('STATUS', OBJECT_CONSTRUCT('run_name', %s), %s)")
+_RESULTS_QUERY = sql("SELECT * FROM TABLE(SNOWFLAKE.LOCAL.GET_AI_EVALUATION_DATA(%s, %s, %s, %s, %s))")
 
 _RecordQuestion = tuple[str, str]
 

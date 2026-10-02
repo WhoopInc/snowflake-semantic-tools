@@ -23,11 +23,21 @@ from snowflake_semantic_tools.domain.model.eval import (
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
 from snowflake_semantic_tools.domain.render.eval import (
     _emit_yaml,
-    render_create_dataset_sql,
+    render_create_dataset_statement,
     render_dataset_payload,
     render_eval_config,
-    render_source_table_sql,
+    render_source_table_statements,
+    source_table_script,
 )
+
+
+def render_source_table_sql(payload: str, table: QualifiedName) -> str:
+    return source_table_script(render_source_table_statements(payload, table))
+
+
+def render_create_dataset_sql(config: EvalConfig, source: QualifiedName, dataset: QualifiedName) -> str:
+    return str(render_create_dataset_statement(config, source, dataset))
+
 
 ORIGIN = Origin("eval.yml", 1, 1)
 

@@ -33,6 +33,7 @@ from snowflake_semantic_tools.domain.model.skill import (
     build_skill_bundle,
     validate_skill_catalog,
 )
+from snowflake_semantic_tools.domain.sql import Sql, stage_path
 
 _ALIAS_PREFIX = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
 
@@ -65,6 +66,15 @@ class ExtensionRelease:
     def prefix(self) -> str:
         """`@<stage>/<name>/<ALIAS>/`: immutable, because the alias is the content digest."""
         return f"@{self.stage.sql}/{self.bundle.name}/{self.alias}/"
+
+    @property
+    def location(self) -> Sql:
+        """`prefix` as the stage location ADD VERSION ... FROM names.
+
+        Raises:
+            ValueError: the bundle name or the alias is not a safe stage path segment.
+        """
+        return stage_path(self.stage, f"{self.bundle.name}/{self.alias}/")
 
     @property
     def paths(self) -> tuple[str, ...]:

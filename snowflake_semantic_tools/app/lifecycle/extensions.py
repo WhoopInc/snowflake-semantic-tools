@@ -26,7 +26,7 @@ from snowflake_semantic_tools.app.lifecycle.composite import (
     skipped,
 )
 from snowflake_semantic_tools.domain.model.diagnostic import D, DiagnosticBag
-from snowflake_semantic_tools.domain.model.identifier import QualifiedName
+from snowflake_semantic_tools.domain.model.identifier import Identifier, QualifiedName
 from snowflake_semantic_tools.domain.model.lifecycle import (
     Action,
     ApplyOptions,
@@ -38,13 +38,13 @@ from snowflake_semantic_tools.domain.model.lifecycle import (
     PhysicalResource,
     RenderedArtifact,
 )
-from snowflake_semantic_tools.domain.model.sql import string_literal
 from snowflake_semantic_tools.domain.ports.snowflake import (
     ExtensionObservation,
     ExtensionVersion,
     SnowflakePort,
     SnowflakePortError,
 )
+from snowflake_semantic_tools.domain.sql import Sql, ident, literal, qname, sql
 from snowflake_semantic_tools.domain.state import FAILED_AFTER_WRITE, AppliedEntry
 
 CERTIFIED = "CERTIFIED"
@@ -229,15 +229,18 @@ class _Run(PublicationRun):
 
     def _create_extension(self) -> ApplyOutcome | None:
         release = self._release
-        target = release.target.sql
         if self._current.extension is None:
             failure = self._execute(
-                f"CREATE CORTEX EXTENSION IF NOT EXISTS {target} TYPE = '{release.extension_type}' "
-                f"COMMENT = {string_literal(release.comment)}"
+                sql(
+                    "CREATE CORTEX EXTENSION IF NOT EXISTS {target} TYPE = {kind} COMMENT = {comment}",
+                    target=qname(release.target),
+                    kind=literal(release.extension_type),
+                    comment=literal(release.comment),
+                )
             )
             if failure is not None:
                 return failure
-        self._verified.append(("CORTEX EXTENSION", target))
+        self._verified.append(("CORTEX EXTENSION", release.target.sql))
         return None
 
     def _add_version(self) -> ApplyOutcome | None:
@@ -245,7 +248,12 @@ class _Run(PublicationRun):
             return None
         release = self._release
         result = self._run_statement(
-            f"ALTER CORTEX EXTENSION {release.target.sql} ADD VERSION {release.alias} FROM {release.prefix}"
+            sql(
+                "ALTER CORTEX EXTENSION {target} ADD VERSION {alias} FROM {location}",
+                target=qname(release.target),
+                alias=_alias(release.alias),
+                location=release.location,
+            )
         )
         if result.ok:
             return None
@@ -257,20 +265,23 @@ class _Run(PublicationRun):
     def _add_live_version(self) -> ApplyOutcome | None:
         """The PLUGIN fallback: a LIVE version built from empty, never `FROM LAST`."""
         release = self._release
-        target = release.target.sql
-        self._port.execute_script((f"ALTER CORTEX EXTENSION {target} ABORT",))
-        failure = self._execute(f"ALTER CORTEX EXTENSION {target} ADD LIVE VERSION {release.alias}")
+        target = qname(release.target)
+        abort = sql("ALTER CORTEX EXTENSION {target} ABORT", target=target)
+        self._port.execute_script((abort,))
+        failure = self._execute(
+            sql("ALTER CORTEX EXTENSION {target} ADD LIVE VERSION {alias}", target=target, alias=_alias(release.alias))
+        )
         if failure is not None:
             return failure
-        live = f"snow://cortex_extension/{target}/versions/live/"
+        live = f"snow://cortex_extension/{release.target.sql}/versions/live/"
         failed_upload = self._upload_missing(live, release.bundle.entries, ())
         if failed_upload is not None:
             entry, error = failed_upload
-            self._port.execute_script((f"ALTER CORTEX EXTENSION {target} ABORT",))
+            self._port.execute_script((abort,))
             return self.fail(f"upload of {entry.path} into the live version failed: {error}")
-        failure = self._execute(f"ALTER CORTEX EXTENSION {target} COMMIT")
+        failure = self._execute(sql("ALTER CORTEX EXTENSION {target} COMMIT", target=target))
         if failure is not None:
-            self._port.execute_script((f"ALTER CORTEX EXTENSION {target} ABORT",))
+            self._port.execute_script((abort,))
         return failure
 
     def _check_version(self) -> ApplyOutcome:
@@ -299,7 +310,11 @@ class _Run(PublicationRun):
         if extension is None or (extension.comment or "") == release.comment:
             return None
         return self._execute(
-            f"ALTER CORTEX EXTENSION {release.target.sql} SET COMMENT = {string_literal(release.comment)}"
+            sql(
+                "ALTER CORTEX EXTENSION {target} SET COMMENT = {comment}",
+                target=qname(release.target),
+                comment=literal(release.comment),
+            )
         )
 
     def _certify(self) -> ApplyOutcome:
@@ -307,8 +322,12 @@ class _Run(PublicationRun):
         release = self._release
         target = release.target.sql
         failure = self._execute(
-            f"ALTER CORTEX EXTENSION {target} VERSION {release.alias} "
-            "SET TAG SNOWFLAKE.CORE.CERTIFICATION_STATUS = 'CERTIFIED'",
+            sql(
+                "ALTER CORTEX EXTENSION {target} VERSION {alias} "
+                "SET TAG SNOWFLAKE.CORE.CERTIFICATION_STATUS = 'CERTIFIED'",
+                target=qname(release.target),
+                alias=_alias(release.alias),
+            ),
             code="SST-APL007",
         )
         if failure is not None:
@@ -335,12 +354,12 @@ class _Run(PublicationRun):
         versions = self._port.extension_versions(self._release.target)
         return next((item for item in versions if (item.alias or "").casefold() == alias), None)
 
-    def _execute(self, statement: str, *, code: str = "SST-APL001") -> ApplyOutcome | None:
+    def _execute(self, statement: Sql, *, code: str = "SST-APL001") -> ApplyOutcome | None:
         result = self._run_statement(statement)
         if result.ok:
             return None
         detail = result.error.message if result.error else "statement failed"
-        return self.fail(f"{statement.split(' FROM ')[0][:120]} failed: {detail}", code)
+        return self.fail(f"{str(statement).split(' FROM ')[0][:120]} failed: {detail}", code)
 
 
 def _refusal(
@@ -515,3 +534,8 @@ def _digest(paths: tuple[str, ...]) -> str:
 
 def _text_digest(value: str) -> str:
     return sha256(value.encode("utf-8")).hexdigest()
+
+
+def _alias(value: str) -> Sql:
+    """A version alias, which compile builds from a checked prefix and the bundle's hex digest."""
+    return ident(Identifier.parse(value))

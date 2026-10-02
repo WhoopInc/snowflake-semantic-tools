@@ -16,6 +16,7 @@ from snowflake_semantic_tools.domain.state import AppliedEntry, State
 from tests.helpers.app_ports import FixedClock, InMemorySnowflake, InMemoryStateStore
 from tests.helpers.compile_builders import compiled
 from tests.helpers.project_inputs import EMPTY_SOURCES, InMemoryProjectInputs, dev_target
+from tests.helpers.sql_values import texts
 
 EVERYTHING = PlanScope((), None, None, None, None, False)
 STATE_TABLE = QualifiedName.parse("DB.SCH.SST_STATE")
@@ -157,7 +158,7 @@ def test_run_plans_from_state_with_agents_staged_and_every_composite_type_handle
     assert "OTHER.SCHEMA" in port.scopes and "DB.SCH" in port.scopes
     agent_change = next(change for change in ready.changeset.changes if change.artifact_type == "agent")
     assert agent_change.rendered is not None
-    assert "@SPECS.SCH.AGENT_STAGE/helper/abc1234" in "\n".join(agent_change.rendered.statements)
+    assert "@SPECS.SCH.AGENT_STAGE/helper/abc1234" in "\n".join(texts(agent_change.rendered.statements))
     assert ready.state.applied == {"semantic_view:gone": gone}
     assert inputs.reads[-2:] == ["config", "git_sha"]
 

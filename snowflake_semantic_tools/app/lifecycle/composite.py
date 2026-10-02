@@ -34,6 +34,7 @@ from snowflake_semantic_tools.domain.model.lifecycle import (
 from snowflake_semantic_tools.domain.model.skill import BundleEntry
 from snowflake_semantic_tools.domain.ports.lifecycle import CompositeLifecycleHandler
 from snowflake_semantic_tools.domain.ports.snowflake import SnowflakePort, SnowflakePortError
+from snowflake_semantic_tools.domain.sql import Sql, qname, sql
 from snowflake_semantic_tools.domain.state import AppliedEntry, AppliedResourceInput, Manifest
 
 # The type Snowflake reports for an internal stage with server-side encryption only.
@@ -43,9 +44,9 @@ SubjectT = TypeVar("SubjectT")
 ObservedT = TypeVar("ObservedT")
 
 
-def create_sse_stage_sql(stage: QualifiedName) -> str:
+def create_sse_stage_sql(stage: QualifiedName) -> Sql:
     """Return the statement that creates a server-side encrypted stage unless it exists."""
-    return f"CREATE STAGE IF NOT EXISTS {stage.sql} ENCRYPTION = (TYPE = 'SNOWFLAKE_SSE')"
+    return sql("CREATE STAGE IF NOT EXISTS {stage} ENCRYPTION = (TYPE = 'SNOWFLAKE_SSE')", stage=qname(stage))
 
 
 def skipped(change: Change, ddl: str = "") -> ApplyOutcome:
@@ -304,7 +305,7 @@ class PublicationRun:
                 return failure
         return None
 
-    def _run_statement(self, statement: str) -> ExecResult:
+    def _run_statement(self, statement: Sql) -> ExecResult:
         """Execute one statement as an attempt; a success counts as a write."""
         self._attempts += 1
         result = self._port.execute_script((statement,))

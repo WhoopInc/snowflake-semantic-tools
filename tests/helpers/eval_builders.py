@@ -30,6 +30,7 @@ from snowflake_semantic_tools.domain.model.eval import (
 )
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName, SchemaScope
 from snowflake_semantic_tools.domain.model.lifecycle import ExecResult, QueryResult
+from snowflake_semantic_tools.domain.sql import Sql
 from tests.helpers.app_ports import InMemorySnowflake
 
 ORIGIN = Origin("agent.yml", 1, 1)
@@ -114,12 +115,12 @@ class EvalSnowflake(InMemorySnowflake):
         self.results = deque(results)
         self.start_results: deque[ExecResult] = deque()
 
-    def execute_script(self, statements: Sequence[str]) -> ExecResult:
-        self.scripts.append(tuple(statements))
+    def execute_script(self, statements: Sequence[Sql]) -> ExecResult:
+        self.scripts.append(tuple(str(statement) for statement in statements))
         return self.start_results.popleft() if self.start_results else ExecResult(True)
 
-    def query(self, sql: str, params: object = None) -> QueryResult:
-        self.queries.append((sql, params))
+    def query(self, sql: Sql, params: object = None) -> QueryResult:
+        self.queries.append((str(sql), params))
         if not self.results:
             raise AssertionError(f"unexpected query: {sql}")
         result = self.results.popleft()
@@ -127,7 +128,7 @@ class EvalSnowflake(InMemorySnowflake):
             raise result
         return result
 
-    def query_in_context(self, scope: SchemaScope, sql: str, params: object = None) -> QueryResult:
+    def query_in_context(self, scope: SchemaScope, sql: Sql, params: object = None) -> QueryResult:
         del scope
         return self.query(sql, params)
 

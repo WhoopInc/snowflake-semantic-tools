@@ -102,7 +102,7 @@ class SavedChange:
                 )
             ),
             statement_hashes=(
-                tuple(sha256(statement.encode("utf-8")).hexdigest() for statement in change.rendered.statements)
+                tuple(sha256(str(statement).encode("utf-8")).hexdigest() for statement in change.rendered.statements)
                 if change.rendered is not None
                 else ()
             ),

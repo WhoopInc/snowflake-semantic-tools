@@ -7,9 +7,20 @@ from dataclasses import dataclass
 
 from snowflake_semantic_tools.app.compile import CompiledView, CompileResult
 from snowflake_semantic_tools.domain.model.diagnostic import D, DiagnosticBag, resolve_severities
+from snowflake_semantic_tools.domain.model.identifier import Identifier
 from snowflake_semantic_tools.domain.model.lifecycle import RenderedArtifact
 from snowflake_semantic_tools.domain.model.semantic_view import SemanticView
 from snowflake_semantic_tools.domain.ports.snowflake import SnowflakePort, SnowflakePortError
+from snowflake_semantic_tools.domain.sql import (
+    AuthoredExpression,
+    Sql,
+    expr,
+    guard_expression,
+    ident,
+    join,
+    query_text,
+    sql,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -79,13 +90,13 @@ class ValidateArtifacts:
                 for compiled_view in compiled.compiled:
                     if not isinstance(compiled_view, CompiledView):
                         continue
-                    checks: list[tuple[str, str, str]] = []
+                    checks: list[tuple[str, str, Sql]] = []
+                    projection = _validation_projection(compiled_view.view)
                     checks.extend(
                         (
                             "metric",
                             metric.qualified_name,
-                            f"EXPLAIN SELECT {_test_expression(metric.expr, compiled_view.view)} "
-                            f"FROM ({_validation_projection(compiled_view.view)}) AS SST_VALIDATE",
+                            _explain_expression(metric.expr, compiled_view.view, projection),
                         )
                         for metric in compiled_view.view.metrics
                     )
@@ -93,22 +104,17 @@ class ValidateArtifacts:
                         (
                             "filter" if column.kind.value == "filter" else "dimension",
                             column.qualified_name,
-                            f"EXPLAIN SELECT {_test_expression(column.expr, compiled_view.view)} "
-                            f"FROM ({_validation_projection(compiled_view.view)}) AS SST_VALIDATE",
+                            _explain_expression(column.expr, compiled_view.view, projection),
                         )
                         for column in compiled_view.view.dimensions
                     )
                     checks.extend(
-                        (
-                            "verified_query",
-                            query.name,
-                            f"EXPLAIN {query.sql.rstrip(';')}",
-                        )
+                        ("verified_query", query.name, sql("EXPLAIN {query}", query=query_text(query.sql)))
                         for query in compiled_view.view.verified_queries
                     )
-                    for kind, name, sql in checks:
+                    for kind, name, statement in checks:
                         try:
-                            self._port.query(sql)
+                            self._port.query(statement)
                         except SnowflakePortError as exc:
                             connected_diagnostics.append(
                                 D(
@@ -122,6 +128,18 @@ class ValidateArtifacts:
                 diagnostics = DiagnosticBag((*diagnostics, *connected_diagnostics))
         resolved, promoted = resolve_severities(diagnostics, strict=strict)
         return ValidationResult(compiled.rendered, resolved, promoted)
+
+
+def _explain_expression(expression: AuthoredExpression, view: SemanticView, projection: Sql) -> Sql:
+    """EXPLAIN one member expression over the view's NULL projection.
+
+    The rewritten expression is guarded again, so a statement it builds still holds one
+    expression; a rewrite cannot fail that guard, since it only swaps words for NULL.
+    """
+    test = guard_expression(_test_expression(expression.text, view))
+    return sql(
+        "EXPLAIN SELECT {expression} FROM ({projection}) AS SST_VALIDATE", expression=expr(test), projection=projection
+    )
 
 
 def _test_expression(expression: str, view: SemanticView) -> str:
@@ -143,8 +161,9 @@ def _test_expression(expression: str, view: SemanticView) -> str:
     return qualified
 
 
-def _validation_projection(view: SemanticView) -> str:
+def _validation_projection(view: SemanticView) -> Sql:
     columns = sorted({column.name.upper() for column in view.columns})
     if not columns:
-        return "SELECT 1 AS SST_VALUE WHERE FALSE"
-    return "SELECT " + ", ".join(f"NULL AS {column}" for column in columns) + " WHERE FALSE"
+        return sql("SELECT 1 AS SST_VALUE WHERE FALSE")
+    nulls = join(", ", (sql("NULL AS {column}", column=ident(Identifier.parse(column))) for column in columns))
+    return sql("SELECT {columns} WHERE FALSE", columns=nulls)

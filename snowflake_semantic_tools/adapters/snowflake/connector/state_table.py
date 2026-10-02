@@ -16,12 +16,14 @@ from typing import NamedTuple
 from snowflake_semantic_tools.adapters.snowflake.connector.session import (
     Session,
     _as_port_errors,
+    _execute,
     _json_text,
     _require_ok,
     _variant_value,
 )
-from snowflake_semantic_tools.domain.model.identifier import QualifiedName
+from snowflake_semantic_tools.domain.model.identifier import Identifier, QualifiedName
 from snowflake_semantic_tools.domain.ports.snowflake import CatalogPort, SnowflakePortError, StatePort
+from snowflake_semantic_tools.domain.sql import Sql, ident, join, qname, sql
 from snowflake_semantic_tools.domain.state import AppliedEntry, AppliedResource, pairs_from_json, pairs_to_json
 
 
@@ -29,26 +31,31 @@ class _StateColumn(NamedTuple):
     """One state-table column: its DDL type, and the expression a write binds its value through."""
 
     name: str
-    ddl: str
-    bind: str = "%s"
+    ddl: Sql
+    bind: Sql = sql("%s")
     key: bool = False
     added: bool = False
+
+    @property
+    def identifier(self) -> Sql:
+        """The column's name as SQL."""
+        return ident(Identifier(self.name))
 
 
 # In table order, which is the order a write binds values in and a read decodes them in.
 _COLUMNS = (
-    _StateColumn("TARGET_NAME", "VARCHAR NOT NULL", key=True),
-    _StateColumn("ARTIFACT_KEY", "VARCHAR NOT NULL", key=True),
-    _StateColumn("FINGERPRINT", "VARCHAR(64) NOT NULL"),
-    _StateColumn("QUALIFIED_NAME", "VARCHAR NOT NULL"),
-    _StateColumn("MANIFEST_ID", "VARCHAR(64) NOT NULL"),
-    _StateColumn("GIT_SHA", "VARCHAR"),
-    _StateColumn("APPLIED_AT", "TIMESTAMP_TZ", "TO_TIMESTAMP_TZ(%s)"),
-    _StateColumn("RUN_ID", "VARCHAR"),
-    _StateColumn("OUTCOME", "VARCHAR"),
-    _StateColumn("DDL_SHA256", "VARCHAR(64)"),
-    _StateColumn("COMPONENT_FINGERPRINTS", "OBJECT", "PARSE_JSON(%s)", added=True),
-    _StateColumn("PHYSICAL_RESOURCES", "ARRAY", "PARSE_JSON(%s)", added=True),
+    _StateColumn("TARGET_NAME", sql("VARCHAR NOT NULL"), key=True),
+    _StateColumn("ARTIFACT_KEY", sql("VARCHAR NOT NULL"), key=True),
+    _StateColumn("FINGERPRINT", sql("VARCHAR(64) NOT NULL")),
+    _StateColumn("QUALIFIED_NAME", sql("VARCHAR NOT NULL")),
+    _StateColumn("MANIFEST_ID", sql("VARCHAR(64) NOT NULL")),
+    _StateColumn("GIT_SHA", sql("VARCHAR")),
+    _StateColumn("APPLIED_AT", sql("TIMESTAMP_TZ"), sql("TO_TIMESTAMP_TZ(%s)")),
+    _StateColumn("RUN_ID", sql("VARCHAR")),
+    _StateColumn("OUTCOME", sql("VARCHAR")),
+    _StateColumn("DDL_SHA256", sql("VARCHAR(64)")),
+    _StateColumn("COMPONENT_FINGERPRINTS", sql("OBJECT"), sql("PARSE_JSON(%s)"), added=True),
+    _StateColumn("PHYSICAL_RESOURCES", sql("ARRAY"), sql("PARSE_JSON(%s)"), added=True),
 )
 STATE_COLUMNS = tuple(column.name for column in _COLUMNS)
 
@@ -92,7 +99,12 @@ class StateTableMethods(Session, StatePort, CatalogPort):
     def _ensure_state_columns(self, state_table: QualifiedName) -> None:
         present = self._column_names(state_table)
         additions = tuple(
-            f"ALTER TABLE {state_table.sql} ADD COLUMN {column.name} {column.ddl}"
+            sql(
+                "ALTER TABLE {table} ADD COLUMN {column} {ddl}",
+                table=qname(state_table),
+                column=column.identifier,
+                ddl=column.ddl,
+            )
             for column in _COLUMNS
             if column.added and column.name not in present
         )
@@ -111,17 +123,18 @@ class StateTableMethods(Session, StatePort, CatalogPort):
         insert = _insert_sql(state_table)
         with _as_port_errors(), self._cursor() as cursor:
             try:
-                cursor.execute("BEGIN")
-                cursor.execute(
-                    f"DELETE FROM {state_table.sql} WHERE TARGET_NAME = %s",
+                _execute(cursor, sql("BEGIN"))
+                _execute(
+                    cursor,
+                    sql("DELETE FROM {table} WHERE TARGET_NAME = %s", table=qname(state_table)),
                     (target_name,),
                 )
                 for key, entry in sorted(applied.items()):
-                    cursor.execute(insert, _state_values(target_name, key, entry))
-                cursor.execute("COMMIT")
+                    _execute(cursor, insert, _state_values(target_name, key, entry))
+                _execute(cursor, sql("COMMIT"))
             except Exception as failure:
                 try:
-                    cursor.execute("ROLLBACK")
+                    _execute(cursor, sql("ROLLBACK"))
                 except Exception as rollback_failure:
                     # The error that aborted the write is the one to report; a ROLLBACK
                     # that fails too (the session is usually gone) is context for it.
@@ -130,8 +143,9 @@ class StateTableMethods(Session, StatePort, CatalogPort):
 
     def delete_state(self, state_table: QualifiedName, target_name: str, artifact_key: str) -> int:
         with _as_port_errors(), self._cursor() as cursor:
-            cursor.execute(
-                f"DELETE FROM {state_table.sql} WHERE TARGET_NAME = %s AND ARTIFACT_KEY = %s",
+            _execute(
+                cursor,
+                sql("DELETE FROM {table} WHERE TARGET_NAME = %s AND ARTIFACT_KEY = %s", table=qname(state_table)),
                 (target_name, artifact_key),
             )
             return max(cursor.rowcount or 0, 0)
@@ -145,50 +159,79 @@ class StateTableMethods(Session, StatePort, CatalogPort):
     ) -> int:
         merge = _merge_sql(state_table)
         with _as_port_errors(), self._cursor() as cursor:
-            cursor.execute(merge, _state_values(target_name, artifact_key, entry))
+            _execute(cursor, merge, _state_values(target_name, artifact_key, entry))
             return max(cursor.rowcount or 0, 0)
 
     def _column_names(self, table: QualifiedName) -> set[str]:
         """Return the names of the columns DESCRIBE TABLE lists for a table, uppercased."""
-        return {str(row.get("name") or "").upper() for row in self._dict_rows(f"DESCRIBE TABLE {table.sql}")}
+        return {
+            str(row.get("name") or "").upper()
+            for row in self._dict_rows(sql("DESCRIBE TABLE {table}", table=qname(table)))
+        }
 
 
-def _create_sql(table: QualifiedName) -> str:
-    columns = ", ".join(f"{column.name} {column.ddl}" for column in _COLUMNS)
-    key = ", ".join(column.name for column in _COLUMNS if column.key)
-    return f"CREATE TABLE IF NOT EXISTS {table.sql} ({columns}, PRIMARY KEY ({key}))"
+def _create_sql(table: QualifiedName) -> Sql:
+    columns = join(", ", (sql("{name} {ddl}", name=column.identifier, ddl=column.ddl) for column in _COLUMNS))
+    key = join(", ", (column.identifier for column in _COLUMNS if column.key))
+    return sql(
+        "CREATE TABLE IF NOT EXISTS {table} ({columns}, PRIMARY KEY ({key}))",
+        table=qname(table),
+        columns=columns,
+        key=key,
+    )
 
 
-def _select_sql(table: QualifiedName, present: set[str]) -> str:
+def _select_sql(table: QualifiedName, present: set[str]) -> Sql:
     """Select a target's entries, every column but TARGET_NAME in table order.
 
     A table that lacks either added column selects NULL for both, so a half-migrated table
     reads as an unmigrated one.
     """
     migrated = all(column.name in present for column in _COLUMNS if column.added)
-    selected = ", ".join(
-        column.name if migrated or not column.added else f"NULL {column.name}"
-        for column in _COLUMNS
-        if column.name != "TARGET_NAME"
+    selected = join(
+        ", ",
+        (
+            column.identifier if migrated or not column.added else sql("NULL {name}", name=column.identifier)
+            for column in _COLUMNS
+            if column.name != "TARGET_NAME"
+        ),
     )
-    return f"SELECT {selected} FROM {table.sql} WHERE TARGET_NAME = %s"
+    return sql("SELECT {selected} FROM {table} WHERE TARGET_NAME = %s", selected=selected, table=qname(table))
 
 
-def _insert_sql(table: QualifiedName) -> str:
-    binds = ", ".join(column.bind for column in _COLUMNS)
-    return f"INSERT INTO {table.sql} ({', '.join(STATE_COLUMNS)}) SELECT {binds}"
+def _column_list() -> Sql:
+    return join(", ", (column.identifier for column in _COLUMNS))
 
 
-def _merge_sql(table: QualifiedName) -> str:
+def _insert_sql(table: QualifiedName) -> Sql:
+    binds = join(", ", (column.bind for column in _COLUMNS))
+    return sql(
+        "INSERT INTO {table} ({columns}) SELECT {binds}", table=qname(table), columns=_column_list(), binds=binds
+    )
+
+
+def _merge_sql(table: QualifiedName) -> Sql:
     """Insert or replace one entry: matched on the key columns, every other column updated."""
-    source = ", ".join(f"{column.bind} {column.name}" for column in _COLUMNS)
-    matched = " AND ".join(f"target.{column.name} = source.{column.name}" for column in _COLUMNS if column.key)
-    updates = ", ".join(f"{column.name}=source.{column.name}" for column in _COLUMNS if not column.key)
-    values = ", ".join(f"source.{column.name}" for column in _COLUMNS)
-    return (
-        f"MERGE INTO {table.sql} AS target USING (SELECT {source}) AS source ON {matched} "
-        f"WHEN MATCHED THEN UPDATE SET {updates} "
-        f"WHEN NOT MATCHED THEN INSERT ({', '.join(STATE_COLUMNS)}) VALUES ({values})"
+    source = join(", ", (sql("{bind} {name}", bind=column.bind, name=column.identifier) for column in _COLUMNS))
+    matched = join(
+        " AND ",
+        (sql("target.{name} = source.{name}", name=column.identifier) for column in _COLUMNS if column.key),
+    )
+    updates = join(
+        ", ",
+        (sql("{name}=source.{name}", name=column.identifier) for column in _COLUMNS if not column.key),
+    )
+    values = join(", ", (sql("source.{name}", name=column.identifier) for column in _COLUMNS))
+    return sql(
+        "MERGE INTO {table} AS target USING (SELECT {source}) AS source ON {matched} "
+        "WHEN MATCHED THEN UPDATE SET {updates} "
+        "WHEN NOT MATCHED THEN INSERT ({columns}) VALUES ({values})",
+        table=qname(table),
+        source=source,
+        matched=matched,
+        updates=updates,
+        columns=_column_list(),
+        values=values,
     )
 
 

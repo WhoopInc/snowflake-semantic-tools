@@ -16,6 +16,7 @@ from snowflake_semantic_tools.domain.model.diagnostic import D, DiagnosticBag
 from snowflake_semantic_tools.domain.model.project import SemanticViewProject
 from snowflake_semantic_tools.domain.model.semantic_view import Column, ColumnKind, SemanticView, Table
 from tests.helpers.compile_builders import compiled_as
+from tests.helpers.sql_values import authored
 
 
 class InMemorySource:
@@ -44,7 +45,7 @@ def test_compiles_each_view_to_ddl() -> None:
     assert len(compiled) == 1
     assert isinstance(compiled[0], CompiledView)
     assert compiled[0].name == "ALPHA"
-    assert compiled[0].ddl.startswith("CREATE OR REPLACE SEMANTIC VIEW DB.SCH.ALPHA")
+    assert str(compiled[0].ddl).startswith("CREATE OR REPLACE SEMANTIC VIEW DB.SCH.ALPHA")
 
 
 def test_output_is_ordered_by_fqn_regardless_of_source_order() -> None:
@@ -73,12 +74,12 @@ def test_name_is_the_unqualified_tail_of_the_fqn() -> None:
 
 def test_model_and_ddl_are_both_retained() -> None:
     """The caller needs the name from the model and the bytes from the DDL."""
-    columns = (Column(table="T", name="C", kind=ColumnKind.DIMENSION, expr="T.C"),)
+    columns = (Column(table="T", name="C", kind=ColumnKind.DIMENSION, expr=authored("T.C")),)
     compiled = compiled_as(
         CompileSemanticViews(InMemorySource(view("ALPHA", columns=columns))).run_result(), CompiledView
     )
     assert compiled.view.dimensions == columns
-    assert "T.C AS T.C" in compiled.ddl
+    assert "T.C AS T.C" in str(compiled.ddl)
 
 
 def test_compiled_artifact_metadata_is_deterministic() -> None:

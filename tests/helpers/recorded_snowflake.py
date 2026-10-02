@@ -31,6 +31,7 @@ from snowflake_semantic_tools.domain.ports.snowflake import (
     StagedFileMetadata,
     StageObservation,
 )
+from snowflake_semantic_tools.domain.sql import Sql
 from snowflake_semantic_tools.domain.state import AppliedEntry
 
 
@@ -189,31 +190,32 @@ class RecordedSnowflake:
         del object_type
         return self.markers.get(qualified_name.sql)
 
-    def query(self, sql: str, params: Sequence[object] | Mapping[str, object] | None = None) -> QueryResult:
-        self.queries.append((sql, params))
+    def query(self, sql: Sql, params: Sequence[object] | Mapping[str, object] | None = None) -> QueryResult:
+        self.queries.append((str(sql), params))
         return QueryResult()
 
     def query_in_context(
         self,
         scope: SchemaScope,
-        sql: str,
+        sql: Sql,
         params: Sequence[object] | Mapping[str, object] | None = None,
     ) -> QueryResult:
         del scope
         return self.query(sql, params)
 
-    def execute_script(self, statements: Sequence[str]) -> ExecResult:
-        self.scripts.append(tuple(statements))
+    def execute_script(self, statements: Sequence[Sql]) -> ExecResult:
+        texts = tuple(str(statement) for statement in statements)
+        self.scripts.append(texts)
         refused = next(
-            (statement for statement in statements if any(fragment in statement for fragment in self.refused)),
+            (statement for statement in texts if any(fragment in statement for fragment in self.refused)),
             None,
         )
         if refused is not None:
             return ExecResult(False, error=ExecutionError(f"recorded refusal: {refused[:60]}"))
-        self._record_successful_statements(statements)
+        self._record_successful_statements(texts)
         return ExecResult(True)
 
-    def try_execute(self, sql: str) -> ExecResult:
+    def try_execute(self, sql: Sql) -> ExecResult:
         return self.execute_script((sql,))
 
     def current_role(self) -> str:
@@ -468,15 +470,16 @@ class ScriptedSnowflake(RecordedSnowflake):
         self.query_results = deque(query_results)
         self.query_failures: deque[SnowflakePortError] = deque()
 
-    def execute_script(self, statements: Sequence[str]) -> ExecResult:
-        self.scripts.append(tuple(statements))
+    def execute_script(self, statements: Sequence[Sql]) -> ExecResult:
+        texts = tuple(str(statement) for statement in statements)
+        self.scripts.append(texts)
         result = self.results.popleft() if self.results else ExecResult(True)
         if result.ok:
-            self._record_successful_statements(statements)
+            self._record_successful_statements(texts)
         return result
 
-    def query(self, sql: str, params: Sequence[object] | Mapping[str, object] | None = None) -> QueryResult:
-        self.queries.append((sql, params))
+    def query(self, sql: Sql, params: Sequence[object] | Mapping[str, object] | None = None) -> QueryResult:
+        self.queries.append((str(sql), params))
         if self.query_failures:
             raise self.query_failures.popleft()
         if self.query_results:
@@ -491,13 +494,13 @@ class ReadOnlySnowflake:
     def __getattr__(self, name: str) -> Any:
         return getattr(self._delegate, name)
 
-    def execute_script(self, statements: Sequence[str]) -> ExecResult:
+    def execute_script(self, statements: Sequence[Sql]) -> ExecResult:
         raise SnowflakePortError(f"read-only Snowflake adapter refused {len(statements)} statement(s)")
 
     def query_in_context(
         self,
         scope: SchemaScope,
-        sql: str,
+        sql: Sql,
         params: Sequence[object] | Mapping[str, object] | None = None,
     ) -> QueryResult:
         return self._delegate.query_in_context(scope, sql, params)
@@ -509,8 +512,8 @@ class ReadOnlySnowflake:
     def read_staged_file(self, stage_path: str) -> bytes | None:
         return self._delegate.read_staged_file(stage_path)
 
-    def try_execute(self, sql: str) -> ExecResult:
-        raise SnowflakePortError(f"read-only Snowflake adapter refused statement: {sql[:40]}")
+    def try_execute(self, sql: Sql) -> ExecResult:
+        raise SnowflakePortError(f"read-only Snowflake adapter refused statement: {str(sql)[:40]}")
 
     def resolve_agent_version(self, qualified_name: QualifiedName, selector: str) -> str:
         return self._delegate.resolve_agent_version(qualified_name, selector)

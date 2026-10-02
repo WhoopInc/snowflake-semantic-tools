@@ -26,7 +26,6 @@ from snowflake_semantic_tools.domain.model.diagnostic import D, Diagnostic
 from snowflake_semantic_tools.domain.model.expression import is_aggregate_expression
 from snowflake_semantic_tools.domain.model.expression import root_function as _root_function
 from snowflake_semantic_tools.domain.model.reference import TemplateCall
-from snowflake_semantic_tools.domain.model.semantic_view import SortKey
 
 
 def _metric_cycles(metrics: tuple[MetricDef, ...]) -> tuple[tuple[str, ...], ...]:
@@ -467,7 +466,9 @@ def _equivalence_diagnostics(metrics: tuple[MetricDef, ...]) -> list[Diagnostic]
         SST-VAL124: when a table-scoped metric computes what an earlier metric does.
     """
     diagnostics: list[Diagnostic] = []
-    expressions: dict[tuple[str, tuple[str, ...], bool, tuple[SortKey, ...], WindowDef | None], str] = {}
+    expressions: dict[
+        tuple[str, tuple[str, ...], bool, tuple[tuple[str, bool | None, bool | None], ...], WindowDef | None], str
+    ] = {}
     for metric in metrics:
         # The non-additive ordering and the window are part of what a metric
         # computes: the same SUM at the latest and at the earliest snapshot, or over

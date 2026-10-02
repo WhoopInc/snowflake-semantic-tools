@@ -31,6 +31,7 @@ from snowflake_semantic_tools.domain.model.lifecycle import (
 from snowflake_semantic_tools.domain.model.registry import GrantPreservation
 from snowflake_semantic_tools.domain.ports.lifecycle import CompositeLifecycleHandler
 from snowflake_semantic_tools.domain.ports.snowflake import ClockPort, SnowflakePort, SnowflakePortError
+from snowflake_semantic_tools.domain.sql import Sql, ident, join, keyword, privilege, qname, sql
 
 
 def preserves_grants(change: Change) -> bool:
@@ -44,7 +45,7 @@ def preserves_grants(change: Change) -> bool:
     if change.rendered.grant_preservation is not GrantPreservation.CLAUSE:
         return True
     for statement in change.rendered.statements:
-        normalized = " ".join(statement.upper().split())
+        normalized = " ".join(str(statement).upper().split())
         if "CREATE OR REPLACE" in normalized and "COPY GRANTS" not in normalized:
             return False
     return True
@@ -107,7 +108,13 @@ class ChangeApplier:
             error = ClassifiedError("SST-APL012", "ownership marker changed", ErrorKind.UNKNOWN)
             return _failed(change, error, "", duration_ms=self._elapsed(started))
         result = self._port.execute_script(
-            (f"DROP {change.observed.object_type} {change.observed.qualified_name.sql}",)
+            (
+                sql(
+                    "DROP {kind} {name}",
+                    kind=keyword(change.observed.object_type),
+                    name=qname(change.observed.qualified_name),
+                ),
+            )
         )
         return self._execution_outcome(change, result, 1, started, "")
 
@@ -193,7 +200,7 @@ class ChangeApplier:
         if rendered.upload_path is not None and rendered.upload_content is not None:
             self._port.upload(rendered.upload_path, rendered.upload_content)
 
-    def _execute_with_retry(self, statements: tuple[str, ...], retry: RetryPolicy) -> tuple[ExecResult, int]:
+    def _execute_with_retry(self, statements: tuple[Sql, ...], retry: RetryPolicy) -> tuple[ExecResult, int]:
         """Run the statements, retrying a transient failure after the policy's backoff.
 
         Returns:
@@ -330,27 +337,31 @@ class ChangeApplier:
         return self._clock.monotonic_ms() - started
 
 
-def _grant_statement(rendered: RenderedArtifact, grant: GrantRow) -> str:
+def _grant_statement(rendered: RenderedArtifact, grant: GrantRow) -> Sql:
     """Render the GRANT that restores one explicit grant, spelling a database role as Snowflake does."""
-    grantee_kind = "DATABASE ROLE" if grant.granted_to.upper() == "DATABASE_ROLE" else grant.granted_to.upper()
-    grant_option = " WITH GRANT OPTION" if grant.grant_option else ""
-    return (
-        f"GRANT {grant.privilege.upper()} ON {rendered.object_type} {rendered.target.sql} TO "
-        f"{grantee_kind} {_grantee_identifier(grant.grantee_name)}{grant_option}"
+    grantee_kind = "DATABASE ROLE" if grant.granted_to.upper() == "DATABASE_ROLE" else grant.granted_to
+    return sql(
+        "GRANT {privilege} ON {kind} {target} TO {grantee_kind} {grantee}{grant_option}",
+        privilege=privilege(grant.privilege),
+        kind=keyword(rendered.object_type),
+        target=qname(rendered.target),
+        grantee_kind=keyword(grantee_kind),
+        grantee=_grantee_identifier(grant.grantee_name),
+        grant_option=sql(" WITH GRANT OPTION") if grant.grant_option else sql(""),
     )
 
 
-def _grantee_identifier(value: str) -> str:
+def _grantee_identifier(value: str) -> Sql:
     """Render a grantee as SHOW GRANTS printed it; a name of two or three dotted parts part by part."""
     parts = value.split(".")
     if len(parts) in (2, 3):
-        return ".".join(_simple_identifier(part) for part in parts)
+        return join(".", (_simple_identifier(part) for part in parts))
     return _simple_identifier(value)
 
 
-def _simple_identifier(value: str) -> str:
+def _simple_identifier(value: str) -> Sql:
     """Render one name part unquoted when it parses as an identifier, else quoted exactly."""
     try:
-        return Identifier.parse(value).sql
+        return ident(Identifier.parse(value))
     except ValueError:
-        return Identifier(value, quoted=True).sql
+        return ident(Identifier(value, quoted=True))

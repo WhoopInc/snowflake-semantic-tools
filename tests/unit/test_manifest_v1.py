@@ -7,15 +7,16 @@ from typing import Any
 from snowflake_semantic_tools.app.compile import CompiledView, CompileResult
 from snowflake_semantic_tools.app.manifest import build_manifest
 from snowflake_semantic_tools.domain.model.semantic_view import Metric, SemanticView, Table
+from tests.helpers.sql_values import authored, statement
 
 
 def test_manifest_uses_compiled_fingerprint_and_member_keys() -> None:
     view = SemanticView(
         fqn="DB.SCH.SALES",
         tables=(Table(logical_name="ORDERS", fqn="DB.SCH.ORDERS"),),
-        metrics=(Metric(name="ORDER_COUNT", expr="COUNT(1)", table="ORDERS"),),
+        metrics=(Metric(name="ORDER_COUNT", expr=authored("COUNT(1)"), table="ORDERS"),),
     )
-    compiled = CompiledView(view, "CREATE OR REPLACE SEMANTIC VIEW DB.SCH.SALES\n  COPY GRANTS")
+    compiled = CompiledView(view, statement("CREATE OR REPLACE SEMANTIC VIEW DB.SCH.SALES\n  COPY GRANTS"))
     document: Any = build_manifest(CompileResult((compiled,))).as_dict()
     artifact = document["artifacts"]["semantic_view:sales"]
     assert artifact["fingerprint"] == compiled.fingerprint

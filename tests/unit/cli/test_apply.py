@@ -12,6 +12,7 @@ from click.testing import CliRunner
 from snowflake_semantic_tools.cli.main import cli
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
 from snowflake_semantic_tools.domain.model.lifecycle import ExecResult, OwnershipMarker, QueryResult
+from snowflake_semantic_tools.domain.sql import Sql
 from snowflake_semantic_tools.domain.state import content_hash
 from tests.helpers.cli_projects import (
     PROFILE_CONFIG,
@@ -25,6 +26,7 @@ from tests.helpers.cli_projects import (
     skill_project,
 )
 from tests.helpers.recorded_snowflake import RecordedSnowflake
+from tests.helpers.sql_values import texts
 
 
 def configure_eval_apply(port: RecordedSnowflake, changes: list[dict[str, object]]) -> None:
@@ -52,9 +54,9 @@ def configure_eval_apply(port: RecordedSnowflake, changes: list[dict[str, object
     port.object_exists = object_exists  # type: ignore[method-assign]
     original_execute = port.execute_script
 
-    def execute_with_eval_resources(statements: Sequence[str]) -> ExecResult:
+    def execute_with_eval_resources(statements: Sequence[Sql]) -> ExecResult:
         result = original_execute(statements)
-        for statement in statements:
+        for statement in texts(statements):
             normalized = " ".join(statement.split())
             if normalized.startswith("CREATE TABLE "):
                 existing_eval_resources.add(source_table)
@@ -68,10 +70,10 @@ def configure_eval_apply(port: RecordedSnowflake, changes: list[dict[str, object
     original_query = port.query
 
     def query_with_eval_row_count(
-        sql: str, params: Sequence[object] | Mapping[str, object] | None = None
+        sql: Sql, params: Sequence[object] | Mapping[str, object] | None = None
     ) -> QueryResult:
-        if sql == f"SELECT COUNT(*) AS ROW_COUNT FROM {source_table}":
-            port.queries.append((sql, params))
+        if str(sql) == f"SELECT COUNT(*) AS ROW_COUNT FROM {source_table}":
+            port.queries.append((str(sql), params))
             return QueryResult(("ROW_COUNT",), ((4,),))
         return original_query(sql, params)
 
@@ -116,7 +118,7 @@ def test_apply_requires_confirmation_and_accepts_current_saved_plan(
     apply_port = plan_port
     original_execute = apply_port.execute_script
 
-    def execute_with_markers(statements: Sequence[str]) -> ExecResult:
+    def execute_with_markers(statements: Sequence[Sql]) -> ExecResult:
         result = original_execute(statements)
         for planned_change in planned_payload["data"]["changes"]:
             if planned_change["artifact_type"] in {"tool", "agent"}:
@@ -186,7 +188,7 @@ def test_partial_runs_publish_what_is_healthy_and_still_exit_one(
 
     original_execute = port.execute_script
 
-    def execute_with_markers(statements: Sequence[str]) -> ExecResult:
+    def execute_with_markers(statements: Sequence[Sql]) -> ExecResult:
         executed = original_execute(statements)
         for change in plan_payload["data"]["changes"]:
             if change["artifact_type"] in {"tool", "agent"}:

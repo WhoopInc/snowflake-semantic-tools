@@ -20,6 +20,7 @@ from snowflake_semantic_tools.domain.model.diagnostic import D, DiagnosticBag
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
 from snowflake_semantic_tools.domain.model.lifecycle import QueryResult, ShowRow
 from snowflake_semantic_tools.domain.ports.snowflake import SnowflakePortError, StagedFileMetadata
+from snowflake_semantic_tools.domain.sql import Sql
 from snowflake_semantic_tools.domain.state import AppliedEntry
 from tests.helpers.cli_projects import (
     FIXTURE,
@@ -100,9 +101,9 @@ def configure_eval_as_applied(
     )
     original_query = port.query
 
-    def query(sql: str, params: Sequence[object] | Mapping[str, object] | None = None) -> QueryResult:
-        if sql == f"SELECT COUNT(*) AS ROW_COUNT FROM {source_table}":
-            port.queries.append((sql, params))
+    def query(sql: Sql, params: Sequence[object] | Mapping[str, object] | None = None) -> QueryResult:
+        if str(sql) == f"SELECT COUNT(*) AS ROW_COUNT FROM {source_table}":
+            port.queries.append((str(sql), params))
             return QueryResult(("ROW_COUNT",), ((2,),))
         return original_query(sql, params)
 

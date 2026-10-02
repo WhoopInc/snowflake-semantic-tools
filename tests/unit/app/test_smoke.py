@@ -69,7 +69,7 @@ def test_owned_objects_are_probed_as_apply_published_them() -> None:
 
     assert outcome.success and outcome.diagnostics == ()
     assert [probe.key for probe in outcome.attempted] == ["semantic_view:menu:view", "semantic_view:sales:view"]
-    assert [sql for sql, _ in port.queries] == [probe.sql for probe in outcome.attempted]
+    assert [sql for sql, _ in port.queries] == [str(probe.sql) for probe in outcome.attempted]
     assert port.described == ["DB.SCH.MENU", "DB.SCH.SALES"]
 
 

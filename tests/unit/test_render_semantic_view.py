@@ -21,7 +21,6 @@ from snowflake_semantic_tools.domain.model.semantic_view import (
     VerifiedQuery,
     Window,
 )
-from snowflake_semantic_tools.domain.model.sql import string_literal as quote
 from snowflake_semantic_tools.domain.render.semantic_view import (
     render,
     render_column,
@@ -31,6 +30,8 @@ from snowflake_semantic_tools.domain.render.semantic_view import (
     render_variable,
     render_verified_query,
 )
+from snowflake_semantic_tools.domain.sql import datatype, literal
+from tests.helpers.sql_values import authored, authored_query, statement
 
 PRODUCTS = Table(logical_name="PRODUCTS", fqn="DB.SCH.PRODUCTS", primary_key=("PRODUCT_ID",))
 
@@ -39,6 +40,10 @@ def minimal(**overrides: object) -> SemanticView:
     base: dict[str, object] = {"fqn": "DB.SCH.V", "tables": (PRODUCTS,)}
     base.update(overrides)
     return SemanticView(**base)  # type: ignore[arg-type]
+
+
+def quote(text: str) -> str:
+    return str(literal(text))
 
 
 class TestQuoting:
@@ -69,17 +74,17 @@ class TestTables:
             unique_keys=(("CUSTOMER_NAME",),),
             synonyms=("buyer", "guest"),
         )
-        assert render_table(table) == (
+        assert str(render_table(table)) == (
             "CUSTOMERS AS DB.SCH.CUSTOMERS PRIMARY KEY (CUSTOMER_ID) "
             "UNIQUE (CUSTOMER_NAME) WITH SYNONYMS ('buyer', 'guest')"
         )
 
     def test_composite_key_is_comma_separated(self) -> None:
         table = Table(logical_name="S", fqn="DB.SCH.S", primary_key=("PRODUCT_ID", "SNAPSHOT_MONTH"))
-        assert "PRIMARY KEY (PRODUCT_ID, SNAPSHOT_MONTH)" in render_table(table)
+        assert "PRIMARY KEY (PRODUCT_ID, SNAPSHOT_MONTH)" in str(render_table(table))
 
     def test_omits_absent_parts_entirely(self) -> None:
-        assert render_table(Table(logical_name="T", fqn="DB.SCH.T")) == "T AS DB.SCH.T"
+        assert str(render_table(Table(logical_name="T", fqn="DB.SCH.T"))) == "T AS DB.SCH.T"
 
     def test_distinct_range_follows_keys(self) -> None:
         table = Table(
@@ -88,7 +93,7 @@ class TestTables:
             primary_key=("ID",),
             distinct_range=("START_AT", "END_AT"),
         )
-        assert render_table(table) == (
+        assert str(render_table(table)) == (
             "PERIODS AS DB.SCH.PERIODS PRIMARY KEY (ID) "
             "CONSTRAINT PERIODS_DISTINCT_RANGE DISTINCT RANGE BETWEEN START_AT AND END_AT EXCLUSIVE"
         )
@@ -97,7 +102,7 @@ class TestTables:
         """Authored order, NOT sorted -- unlike every other member list."""
         a = Table(logical_name="ORDERS", fqn="DB.SCH.ORDERS")
         b = Table(logical_name="CUSTOMERS", fqn="DB.SCH.CUSTOMERS")
-        out = render(minimal(tables=(a, b)))
+        out = str(render(minimal(tables=(a, b))))
         assert out.index("ORDERS AS") < out.index("CUSTOMERS AS")
 
 
@@ -107,21 +112,21 @@ class TestColumns:
             table="PRODUCTS",
             name="PRODUCT_TYPE",
             kind=ColumnKind.DIMENSION,
-            expr="PRODUCTS.PRODUCT_TYPE",
+            expr=authored("PRODUCTS.PRODUCT_TYPE"),
             comment="Food or drink.",
             synonyms=("item category",),
             sample_values=("jaffle", "beverage"),
             is_enum=True,
         )
-        assert render_column(col) == (
+        assert str(render_column(col)) == (
             "PRODUCTS.PRODUCT_TYPE AS PRODUCTS.PRODUCT_TYPE "
             "WITH SYNONYMS ('item category') COMMENT = 'Food or drink.' "
             "SAMPLE_VALUES ('jaffle', 'beverage') IS_ENUM"
         )
 
     def test_is_enum_false_renders_nothing(self) -> None:
-        col = Column(table="T", name="C", kind=ColumnKind.DIMENSION, expr="T.C", is_enum=False)
-        assert "IS_ENUM" not in render_column(col)
+        col = Column(table="T", name="C", kind=ColumnKind.DIMENSION, expr=authored("T.C"), is_enum=False)
+        assert "IS_ENUM" not in str(render_column(col))
 
     def test_filter_label_precedes_AS(self) -> None:
         """`LABELS = (FILTER)` qualifies the NAME, so it sits before `AS`."""
@@ -129,19 +134,21 @@ class TestColumns:
             table="ORDERS",
             name="IS_COMPLETED_ORDER",
             kind=ColumnKind.FILTER,
-            expr="ORDERS.ORDER_STATE = 'completed'",
+            expr=authored("ORDERS.ORDER_STATE = 'completed'"),
         )
-        assert render_column(col) == ("ORDERS.IS_COMPLETED_ORDER LABELS = (FILTER) AS ORDERS.ORDER_STATE = 'completed'")
+        assert str(render_column(col)) == (
+            "ORDERS.IS_COMPLETED_ORDER LABELS = (FILTER) AS ORDERS.ORDER_STATE = 'completed'"
+        )
 
     def test_filters_render_inside_DIMENSIONS_not_their_own_clause(self) -> None:
         """No grammar has a `FILTERS (` clause head."""
         view = minimal(
             columns=(
-                Column(table="T", name="D", kind=ColumnKind.DIMENSION, expr="T.D"),
-                Column(table="T", name="F", kind=ColumnKind.FILTER, expr="T.X = 1"),
+                Column(table="T", name="D", kind=ColumnKind.DIMENSION, expr=authored("T.D")),
+                Column(table="T", name="F", kind=ColumnKind.FILTER, expr=authored("T.X = 1")),
             )
         )
-        out = render(view)
+        out = str(render(view))
         assert "FILTERS (" not in out
         assert "DIMENSIONS (" in out
         assert "T.F LABELS = (FILTER)" in out
@@ -149,110 +156,112 @@ class TestColumns:
     def test_members_are_sorted_by_qualified_name(self) -> None:
         view = minimal(
             columns=(
-                Column(table="T", name="Z", kind=ColumnKind.DIMENSION, expr="T.Z"),
-                Column(table="T", name="A", kind=ColumnKind.DIMENSION, expr="T.A"),
+                Column(table="T", name="Z", kind=ColumnKind.DIMENSION, expr=authored("T.Z")),
+                Column(table="T", name="A", kind=ColumnKind.DIMENSION, expr=authored("T.A")),
             )
         )
-        out = render(view)
+        out = str(render(view))
         assert out.index("T.A AS") < out.index("T.Z AS")
 
     def test_facts_and_dimensions_are_partitioned_by_kind(self) -> None:
         view = minimal(
             columns=(
-                Column(table="T", name="F", kind=ColumnKind.FACT, expr="T.F"),
-                Column(table="T", name="D", kind=ColumnKind.DIMENSION, expr="T.D"),
+                Column(table="T", name="F", kind=ColumnKind.FACT, expr=authored("T.F")),
+                Column(table="T", name="D", kind=ColumnKind.DIMENSION, expr=authored("T.D")),
             )
         )
-        facts = render(view).split("FACTS (")[1].split(")")[0]
+        facts = str(render(view)).split("FACTS (")[1].split(")")[0]
         assert "T.F" in facts and "T.D" not in facts
 
 
 class TestMetrics:
     def test_metric_with_a_table_renders_qualified(self) -> None:
-        m = Metric(name="ORDER_COUNT", expr="COUNT(1)", table="ORDERS", comment="n")
-        assert render_metric(m) == "ORDERS.ORDER_COUNT AS COUNT(1) COMMENT = 'n'"
+        m = Metric(name="ORDER_COUNT", expr=authored("COUNT(1)"), table="ORDERS", comment="n")
+        assert str(render_metric(m)) == "ORDERS.ORDER_COUNT AS COUNT(1) COMMENT = 'n'"
 
     def test_cross_table_metric_renders_unqualified(self) -> None:
         """As the golden's REVENUE_PER_CUSTOMER does, drawing on two tables."""
-        m = Metric(name="REVENUE_PER_CUSTOMER", expr="DIV0(A, B)", table=None)
-        assert render_metric(m) == "REVENUE_PER_CUSTOMER AS DIV0(A, B)"
+        m = Metric(name="REVENUE_PER_CUSTOMER", expr=authored("DIV0(A, B)"), table=None)
+        assert str(render_metric(m)) == "REVENUE_PER_CUSTOMER AS DIV0(A, B)"
 
     def test_path_and_non_additive_modifiers_precede_as(self) -> None:
         metric = Metric(
             name="M",
-            expr="SUM(T.X)",
+            expr=authored("SUM(T.X)"),
             table="T",
             using_relationships=("T_TO_D",),
-            non_additive_by=(SortKey("SNAPSHOT_MONTH"),),
+            non_additive_by=(SortKey(authored("SNAPSHOT_MONTH")),),
         )
-        assert render_metric(metric) == ("T.M USING (T_TO_D) NON ADDITIVE BY (SNAPSHOT_MONTH) AS SUM(T.X)")
+        assert str(render_metric(metric)) == ("T.M USING (T_TO_D) NON ADDITIVE BY (SNAPSHOT_MONTH) AS SUM(T.X)")
 
     def test_non_additive_keys_render_only_the_ordering_authored_in_order(self) -> None:
         metric = Metric(
             name="M",
-            expr="SUM(T.X)",
+            expr=authored("SUM(T.X)"),
             table="T",
             non_additive_by=(
-                SortKey("T.YEAR", descending=True, nulls_first=True),
-                SortKey("T.MONTH", descending=False, nulls_first=False),
-                SortKey("T.DAY", nulls_first=True),
+                SortKey(authored("T.YEAR"), descending=True, nulls_first=True),
+                SortKey(authored("T.MONTH"), descending=False, nulls_first=False),
+                SortKey(authored("T.DAY"), nulls_first=True),
             ),
         )
-        assert render_metric(metric) == (
+        assert str(render_metric(metric)) == (
             "T.M NON ADDITIVE BY (T.YEAR DESC NULLS FIRST, T.MONTH ASC NULLS LAST, T.DAY NULLS FIRST) AS SUM(T.X)"
         )
 
     def test_window_metrics_render_every_over_clause_form(self) -> None:
         excluding = Window(
-            partition_excluding=("T.DAY", "T.YEAR"),
-            order_by=(SortKey("T.DAY", descending=False, nulls_first=False),),
-            frame="RANGE BETWEEN INTERVAL '6 days' PRECEDING AND CURRENT ROW",
+            partition_excluding=(authored("T.DAY"), authored("T.YEAR")),
+            order_by=(SortKey(authored("T.DAY"), descending=False, nulls_first=False),),
+            frame=authored("RANGE BETWEEN INTERVAL '6 days' PRECEDING AND CURRENT ROW"),
         )
-        assert render_metric(Metric(name="W", expr="AVG(T.M)", table="T", window=excluding)) == (
+        assert str(render_metric(Metric(name="W", expr=authored("AVG(T.M)"), table="T", window=excluding))) == (
             "T.W AS AVG(T.M) OVER (PARTITION BY EXCLUDING T.DAY, T.YEAR ORDER BY T.DAY ASC NULLS LAST "
             "RANGE BETWEEN INTERVAL '6 days' PRECEDING AND CURRENT ROW)"
         )
-        partitioned = Window(partition_by=("T.REGION",), order_by=(SortKey("T.M", descending=True),))
-        assert render_metric(Metric(name="W", expr="SUM(T.M)", table="T", window=partitioned)) == (
+        partitioned = Window(
+            partition_by=(authored("T.REGION"),), order_by=(SortKey(authored("T.M"), descending=True),)
+        )
+        assert str(render_metric(Metric(name="W", expr=authored("SUM(T.M)"), table="T", window=partitioned))) == (
             "T.W AS SUM(T.M) OVER (PARTITION BY T.REGION ORDER BY T.M DESC)"
         )
-        ordered = Window(order_by=(SortKey("T.DAY"),))
-        assert render_metric(Metric(name="W", expr="LAG(T.M, 1)", table="T", window=ordered)) == (
+        ordered = Window(order_by=(SortKey(authored("T.DAY")),))
+        assert str(render_metric(Metric(name="W", expr=authored("LAG(T.M, 1)"), table="T", window=ordered))) == (
             "T.W AS LAG(T.M, 1) OVER (ORDER BY T.DAY)"
         )
-        assert render_metric(Metric(name="W", expr="SUM(T.M)", table="T", window=Window())) == (
+        assert str(render_metric(Metric(name="W", expr=authored("SUM(T.M)"), table="T", window=Window()))) == (
             "T.W AS SUM(T.M) OVER ()"
         )
 
     def test_a_window_metric_renders_no_path_or_non_additive_clause(self) -> None:
         metric = Metric(
             name="W",
-            expr="SUM(T.M)",
+            expr=authored("SUM(T.M)"),
             table="T",
             comment="Running total.",
             synonyms=("running",),
             using_relationships=("T_TO_D",),
-            non_additive_by=(SortKey("T.DAY"),),
+            non_additive_by=(SortKey(authored("T.DAY")),),
             access_modifier="private_access",
-            window=Window(order_by=(SortKey("T.DAY"),)),
+            window=Window(order_by=(SortKey(authored("T.DAY")),)),
         )
-        assert render_metric(metric) == (
+        assert str(render_metric(metric)) == (
             "PRIVATE T.W AS SUM(T.M) OVER (ORDER BY T.DAY) WITH SYNONYMS ('running') COMMENT = 'Running total.'"
         )
 
     def test_private_metric_emits_the_non_default_access_modifier(self) -> None:
-        metric = Metric(name="M", table="T", expr="COUNT(*)", access_modifier="private_access")
-        assert render_metric(metric).startswith("PRIVATE T.M AS")
+        metric = Metric(name="M", table="T", expr=authored("COUNT(*)"), access_modifier="private_access")
+        assert str(render_metric(metric)).startswith("PRIVATE T.M AS")
 
 
 class TestClauseOmission:
     def test_empty_clauses_are_omitted_not_rendered_empty(self) -> None:
-        out = render(minimal())
+        out = str(render(minimal()))
         for head in ("RELATIONSHIPS", "VARIABLES", "FACTS", "DIMENSIONS", "METRICS", "AI_"):
             assert head not in out
 
     def test_bare_minimum_is_head_tables_and_copy_grants(self) -> None:
-        assert render(minimal()) == (
+        assert str(render(minimal())) == (
             "CREATE OR REPLACE SEMANTIC VIEW DB.SCH.V\n"
             "  TABLES (\n"
             "    PRODUCTS AS DB.SCH.PRODUCTS PRIMARY KEY (PRODUCT_ID)\n"
@@ -261,16 +270,16 @@ class TestClauseOmission:
         )
 
     def test_copy_grants_is_unconditional(self) -> None:
-        assert render(minimal()).endswith("COPY GRANTS")
+        assert str(render(minimal())).endswith("COPY GRANTS")
 
     def test_ownership_marker_appends_to_or_becomes_comment(self) -> None:
         with_comment = minimal(comment="Human", ownership_marker="[sst:a:b]")
         marker_only = minimal(ownership_marker="[sst:a:b]")
-        assert "COMMENT = 'Human [sst:a:b]'" in render(with_comment)
-        assert "COMMENT = '[sst:a:b]'" in render(marker_only)
+        assert "COMMENT = 'Human [sst:a:b]'" in str(render(with_comment))
+        assert "COMMENT = '[sst:a:b]'" in str(render(marker_only))
 
     def test_if_not_exists_replaces_nothing_and_adds_the_clause(self) -> None:
-        out = render(minimal(or_replace=False, if_not_exists=True))
+        out = str(render(minimal(or_replace=False, if_not_exists=True)))
         assert out.startswith("CREATE SEMANTIC VIEW IF NOT EXISTS DB.SCH.V")
 
 
@@ -282,20 +291,20 @@ class TestFullClauseOrder:
             relationships=(
                 Relationship(name="R", from_table="A", from_columns=("X",), to_table="B", to_columns=("Y",)),
             ),
-            variables=(Variable(name="V", data_type="NUMBER", default="1"),),
+            variables=(Variable(name="V", data_type=datatype("NUMBER"), default=statement("1")),),
             columns=(
-                Column(table="T", name="F", kind=ColumnKind.FACT, expr="T.F"),
-                Column(table="T", name="D", kind=ColumnKind.DIMENSION, expr="T.D"),
+                Column(table="T", name="F", kind=ColumnKind.FACT, expr=authored("T.F")),
+                Column(table="T", name="D", kind=ColumnKind.DIMENSION, expr=authored("T.D")),
             ),
-            metrics=(Metric(name="M", expr="COUNT(1)", table="T"),),
+            metrics=(Metric(name="M", expr=authored("COUNT(1)"), table="T"),),
             comment="c",
             ai_sql_generation="gen",
             ai_question_categorization="cat",
-            verified_queries=(VerifiedQuery(name="Q", question="q?", sql="SELECT 1"),),
+            verified_queries=(VerifiedQuery(name="Q", question="q?", sql=authored_query("SELECT 1")),),
             max_staleness="300 seconds",
             tags=(Tag(name="DB.SCH.COST_CENTER", value="analytics"),),
         )
-        out = render(view)
+        out = str(render(view))
         order = [
             "CREATE OR REPLACE SEMANTIC VIEW",
             "TABLES (",
@@ -318,29 +327,31 @@ class TestFullClauseOrder:
 
 class TestVerifiedQueries:
     def test_optional_parts_are_omitted_when_absent(self) -> None:
-        view = minimal(verified_queries=(VerifiedQuery(name="Q", question="q?", sql="SELECT 1"),))
-        out = render(view)
+        view = minimal(verified_queries=(VerifiedQuery(name="Q", question="q?", sql=authored_query("SELECT 1")),))
+        out = str(render(view))
         assert "VERIFIED_AT" not in out
         assert "ONBOARDING_QUESTION" not in out
         assert "VERIFIED_BY" not in out
 
     def test_boolean_renders_as_a_sql_keyword_not_python(self) -> None:
         view = minimal(
-            verified_queries=(VerifiedQuery(name="Q", question="q?", sql="SELECT 1", onboarding_question=True),)
+            verified_queries=(
+                VerifiedQuery(name="Q", question="q?", sql=authored_query("SELECT 1"), onboarding_question=True),
+            )
         )
-        assert "ONBOARDING_QUESTION TRUE" in render(view)
-        assert "True" not in render(view)
+        assert "ONBOARDING_QUESTION TRUE" in str(render(view))
+        assert "True" not in str(render(view))
 
     def test_all_optional_parts_render_when_present(self) -> None:
         query = VerifiedQuery(
             name="Q",
             question="q?",
-            sql="SELECT 1",
+            sql=authored_query("SELECT 1"),
             verified_at=1,
             verified_by="owner",
             onboarding_question=False,
         )
-        rendered = render_verified_query(query)
+        rendered = str(render_verified_query(query))
         assert "VERIFIED_AT 1" in rendered
         assert "ONBOARDING_QUESTION FALSE" in rendered
         assert "VERIFIED_BY 'owner'" in rendered
@@ -355,7 +366,7 @@ class TestRelationshipsAndVariables:
             to_table="CUSTOMERS",
             to_columns=("CUSTOMER_ID",),
         )
-        assert render_relationship(rel) == (
+        assert str(render_relationship(rel)) == (
             "ORDERS_TO_CUSTOMERS AS ORDERS (CUSTOMER_ID) REFERENCES CUSTOMERS (CUSTOMER_ID)"
         )
 
@@ -368,7 +379,7 @@ class TestRelationshipsAndVariables:
             to_columns=("ORDER_ID", "ORDERED_AT"),
             asof_index=1,
         )
-        assert render_relationship(relationship) == (
+        assert str(render_relationship(relationship)) == (
             "ITEMS_TO_ORDERS AS ITEMS (ORDER_ID, OCCURRED_AT) REFERENCES ORDERS (ORDER_ID, ASOF ORDERED_AT)"
         )
 
@@ -381,11 +392,11 @@ class TestRelationshipsAndVariables:
             to_columns=("START_AT",),
             range_bounds=("START_AT", "END_AT"),
         )
-        assert render_relationship(relationship) == (
+        assert str(render_relationship(relationship)) == (
             "ORDERS_TO_PERIODS AS ORDERS (ORDERED_AT) REFERENCES PERIODS (BETWEEN START_AT AND END_AT EXCLUSIVE)"
         )
 
     def test_variable_default_is_rendered_verbatim(self) -> None:
         """The loader owns SQL-literal conversion, so FALSE arrives already correct."""
-        var = Variable(name="TAX_INCLUSIVE", data_type="BOOLEAN", default="FALSE", comment="c")
-        assert render_variable(var) == "TAX_INCLUSIVE BOOLEAN DEFAULT FALSE COMMENT = 'c'"
+        var = Variable(name="TAX_INCLUSIVE", data_type=datatype("BOOLEAN"), default=statement("FALSE"), comment="c")
+        assert str(render_variable(var)) == "TAX_INCLUSIVE BOOLEAN DEFAULT FALSE COMMENT = 'c'"

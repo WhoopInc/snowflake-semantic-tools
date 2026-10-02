@@ -211,7 +211,6 @@
   "SST-VAL405": "no test_sst_val405_fires or test_sst_val405_silent",
   "SST-VAL412": "no test_sst_val412_fires or test_sst_val412_silent",
   "SST-VAL413": "no test_sst_val413_fires or test_sst_val413_silent",
-  "SST-VAL418": "no test_sst_val418_fires or test_sst_val418_silent",
   "SST-VAL511": "no test_sst_val511_fires or test_sst_val511_silent",
   "SST-VAL512": "no test_sst_val512_fires or test_sst_val512_silent",
   "SST-VAL513": "no test_sst_val513_fires or test_sst_val513_silent",

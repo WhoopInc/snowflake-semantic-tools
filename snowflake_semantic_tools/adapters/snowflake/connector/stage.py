@@ -18,6 +18,7 @@ from snowflake_semantic_tools.adapters.snowflake.connector.session import Sessio
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
 from snowflake_semantic_tools.domain.model.stage_path import SAFE_SEGMENT_CHARACTERS as _SAFE_SEGMENT
 from snowflake_semantic_tools.domain.ports.snowflake import SnowflakePortError, StagedFileMetadata, StagePort
+from snowflake_semantic_tools.domain.sql import Sql, literal, local_file, sql, stage_path
 
 _EXTENSION_URI = re.compile(
     r"snow://cortex_extension/(?P<name>[A-Za-z0-9_$.]+)/versions/(?P<version>version\$[0-9]+|live)/(?P<path>.*)",
@@ -30,7 +31,7 @@ class StageMethods(Session, StagePort):
 
     def observe_staged_file(self, stage_path: str) -> StagedFileMetadata | None:
         stage_path = _validated_stage_path(stage_path)
-        rows = self._dict_rows(f"LIST '{stage_path}'")
+        rows = self._dict_rows(sql("LIST {location}", location=literal(stage_path)))
         expected_name = stage_path[1:]
         matches = tuple(row for row in rows if _staged_file_name_matches(row.get("name"), stage_path))
         if len(matches) > 1:
@@ -57,7 +58,8 @@ class StageMethods(Session, StagePort):
         stage_path = _validated_stage_path(stage_path)
         temp_dir = tempfile.mkdtemp(prefix="sst-stage-read-")
         try:
-            _require_ok(self.execute_script((f"GET '{stage_path}' 'file://{temp_dir}'",)), "stage download failed")
+            statement = sql("GET {source} {target}", source=literal(stage_path), target=local_file(temp_dir))
+            _require_ok(self.execute_script((statement,)), "stage download failed")
             local_path = os.path.join(temp_dir, PurePosixPath(stage_path).name)
             try:
                 with open(local_path, "rb") as handle:
@@ -76,11 +78,15 @@ class StageMethods(Session, StagePort):
             with open(local_path, "wb") as handle:
                 handle.write(content)
             # The PUT target is always a directory, so it ends in a separator.
-            destination = stage_path.rsplit("/", 1)[0] + "/"
-            if destination.startswith("snow://"):
-                destination = f"'{destination}'"
+            destination = _put_destination(stage_path.rsplit("/", 1)[0] + "/")
             result = self.execute_script(
-                (f"PUT 'file://{local_path}' {destination} OVERWRITE=TRUE AUTO_COMPRESS=FALSE",)
+                (
+                    sql(
+                        "PUT {source} {destination} OVERWRITE=TRUE AUTO_COMPRESS=FALSE",
+                        source=local_file(local_path),
+                        destination=destination,
+                    ),
+                )
             )
             _require_ok(result, "stage upload failed")
         finally:
@@ -97,7 +103,7 @@ class StageMethods(Session, StagePort):
         name the location gave, so a stage prefix is compared, exactly, after the first separator.
         """
         location = _validated_location(location)
-        rows = self._dict_rows(f"LIST '{location}'")
+        rows = self._dict_rows(sql("LIST {location}", location=literal(location)))
         if location.startswith("snow://"):
             marker = location[location.index("/versions/") :]
             names = (str(row.get("name") or "") for row in rows)
@@ -112,6 +118,18 @@ class StageMethods(Session, StagePort):
             if path.startswith(prefix):
                 relative.append(path[len(prefix) :])
         return tuple(sorted(relative))
+
+
+def _put_destination(directory: str) -> Sql:
+    """Name a PUT target directory: an extension path quoted, a stage path as the stage location.
+
+    Both are validated already, so each segment is safe; the stage path is rebuilt from its
+    parts so it reaches the statement through `stage_path`.
+    """
+    if directory.startswith("snow://"):
+        return literal(directory)
+    stage, path = directory[1:].split("/", 1)
+    return stage_path(QualifiedName.parse(stage), path)
 
 
 def _staged_file_name_matches(value: object, stage_path: str) -> bool:

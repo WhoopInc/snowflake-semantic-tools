@@ -15,6 +15,7 @@ from snowflake_semantic_tools.domain.model.enrich import WarehouseColumn
 from snowflake_semantic_tools.domain.model.identifier import Identifier, QualifiedName
 from snowflake_semantic_tools.domain.ports.enrich import RelationProfilerPort
 from snowflake_semantic_tools.domain.ports.snowflake import SnowflakePortError
+from snowflake_semantic_tools.domain.sql import Sql, ident, join, number, qname, sql
 
 # Columns sampled by one statement; a relation with more is sampled in several.
 COLUMNS_PER_QUERY = 50
@@ -25,17 +26,18 @@ _NOT_VISIBLE_SQLSTATE = "02000"
 _NOT_VISIBLE_TEXT = "DOES NOT EXIST OR NOT AUTHORIZED"
 
 
-def columns_sql(relation: QualifiedName) -> str:
+def columns_sql(relation: QualifiedName) -> Sql:
     """Return the statement reading a relation's columns; it binds the schema and the name."""
-    return (
+    return sql(
         "SELECT COLUMN_NAME, DATA_TYPE "
-        f"FROM {relation.database.sql}.INFORMATION_SCHEMA.COLUMNS "
+        "FROM {database}.INFORMATION_SCHEMA.COLUMNS "
         "WHERE TABLE_SCHEMA = %s AND TABLE_NAME = %s "
-        "ORDER BY ORDINAL_POSITION"
+        "ORDER BY ORDINAL_POSITION",
+        database=ident(relation.database),
     )
 
 
-def distinct_values_sql(relation: QualifiedName, columns: Sequence[str], limit: int) -> str:
+def distinct_values_sql(relation: QualifiedName, columns: Sequence[str], limit: int) -> Sql:
     """Return the statement sampling each column's most frequent distinct values.
 
     Each column is named as Snowflake stores it and quoted when it must be. A row is the
@@ -43,13 +45,22 @@ def distinct_values_sql(relation: QualifiedName, columns: Sequence[str], limit: 
     """
     branches = []
     for index, column in enumerate(columns):
-        name = Identifier.shown(column).sql
+        name = ident(Identifier.shown(column))
         branches.append(
-            f"(SELECT {index} AS COLUMN_INDEX, TO_VARCHAR({name}) AS VALUE, COUNT(*) AS ROW_COUNT "
-            f"FROM {relation.sql} WHERE {name} IS NOT NULL GROUP BY {name} "
-            f"ORDER BY ROW_COUNT DESC, VALUE LIMIT {int(limit)})"
+            sql(
+                "(SELECT {index} AS COLUMN_INDEX, TO_VARCHAR({name}) AS VALUE, COUNT(*) AS ROW_COUNT "
+                "FROM {relation} WHERE {name} IS NOT NULL GROUP BY {name} "
+                "ORDER BY ROW_COUNT DESC, VALUE LIMIT {limit})",
+                index=number(index),
+                name=name,
+                relation=qname(relation),
+                limit=number(int(limit)),
+            )
         )
-    return "\nUNION ALL\n".join(branches) + "\nORDER BY COLUMN_INDEX, ROW_COUNT DESC, VALUE"
+    return sql(
+        "{branches}\nORDER BY COLUMN_INDEX, ROW_COUNT DESC, VALUE",
+        branches=join("\nUNION ALL\n", branches),
+    )
 
 
 def _not_visible(error: SnowflakePortError) -> bool:

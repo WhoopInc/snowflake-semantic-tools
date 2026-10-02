@@ -16,6 +16,7 @@ from typing import Protocol
 from snowflake_semantic_tools.domain.model.diagnostic import Diagnostic
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName, SchemaScope
 from snowflake_semantic_tools.domain.model.lifecycle import ExecResult, GrantRow, OwnershipMarker, QueryResult, ShowRow
+from snowflake_semantic_tools.domain.sql import Sql
 from snowflake_semantic_tools.domain.state import AppliedEntry, State
 
 
@@ -304,7 +305,7 @@ class ExecutionPort(Protocol):
     `try_execute` report the failure in their result instead.
     """
 
-    def query(self, sql: str, params: Sequence[object] | Mapping[str, object] | None = None) -> QueryResult:
+    def query(self, sql: Sql, params: Sequence[object] | Mapping[str, object] | None = None) -> QueryResult:
         """Run one statement with `params` bound to its placeholders, and return its rows.
 
         Writes what the statement writes, and nothing else.
@@ -320,7 +321,7 @@ class ExecutionPort(Protocol):
     def query_in_context(
         self,
         scope: SchemaScope,
-        sql: str,
+        sql: Sql,
         params: Sequence[object] | Mapping[str, object] | None = None,
     ) -> QueryResult:
         """Run one statement as `query` does, with `scope` as the session's current schema.
@@ -333,7 +334,7 @@ class ExecutionPort(Protocol):
         """
         ...
 
-    def execute_script(self, statements: Sequence[str]) -> ExecResult:
+    def execute_script(self, statements: Sequence[Sql]) -> ExecResult:
         """Run statements in order on one session, stopping at the first failure.
 
         Never raises for a SQL error; the result carries it.
@@ -347,7 +348,7 @@ class ExecutionPort(Protocol):
         """
         ...
 
-    def try_execute(self, sql: str) -> ExecResult:
+    def try_execute(self, sql: Sql) -> ExecResult:
         """Run one statement as a one-statement script, which reports a failure in its result.
 
         Never raises for a SQL error, as `execute_script` does not.

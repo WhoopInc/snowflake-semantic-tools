@@ -13,16 +13,18 @@ from snowflake_semantic_tools.adapters.snowflake.connector import SnowflakeConne
 from snowflake_semantic_tools.domain.model.identifier import Identifier, QualifiedName, SchemaScope
 from snowflake_semantic_tools.domain.model.lifecycle import ExecResult, QueryResult
 from snowflake_semantic_tools.domain.ports.snowflake import SnowflakePortError, StagedFileMetadata, StageObservation
+from snowflake_semantic_tools.domain.sql import Sql, sql
 from snowflake_semantic_tools.domain.state import AppliedEntry
+from tests.helpers.sql_values import texts
 
 
 class StubSnowflakeConnector(SnowflakeConnector):
     def __init__(self, rows_by_prefix: dict[str, tuple[dict[str, object], ...]]) -> None:
         self._rows_by_prefix = rows_by_prefix
 
-    def _dict_rows(self, sql: str) -> tuple[dict[str, object], ...]:
+    def _dict_rows(self, sql: Sql) -> tuple[dict[str, object], ...]:
         for prefix, rows in self._rows_by_prefix.items():
-            if sql.startswith(prefix):
+            if str(sql).startswith(prefix):
                 return rows
         return ()
 
@@ -31,8 +33,8 @@ class RecordingUploadConnector(SnowflakeConnector):
     def __init__(self) -> None:
         self.statements: tuple[str, ...] = ()
 
-    def execute_script(self, statements: Sequence[str]) -> ExecResult:
-        self.statements = tuple(statements)
+    def execute_script(self, statements: Sequence[Sql]) -> ExecResult:
+        self.statements = texts(statements)
         return ExecResult(True)
 
 
@@ -264,10 +266,10 @@ class StateRowsConnector(SnowflakeConnector):
     def object_exists(self, object_type: str, qualified_name: QualifiedName) -> bool:
         return True
 
-    def _dict_rows(self, sql: str) -> tuple[dict[str, object], ...]:
+    def _dict_rows(self, sql: Sql) -> tuple[dict[str, object], ...]:
         return ({"name": "COMPONENT_FINGERPRINTS"}, {"name": "PHYSICAL_RESOURCES"})
 
-    def query(self, sql: str, params: object = None) -> QueryResult:
+    def query(self, sql: Sql, params: object = None) -> QueryResult:
         return QueryResult(
             (),
             tuple(
@@ -398,7 +400,7 @@ def test_query_failures_carry_the_diagnostic_a_command_reports(
             self._connection = Connection()  # type: ignore[assignment]  # a double, not a driver connection
 
     with pytest.raises(SnowflakePortError) as raised:
-        FailingConnector().query("SELECT 1")
+        FailingConnector().query(sql("SELECT 1"))
     diagnostic = raised.value.diagnostic
     assert (diagnostic.code if diagnostic is not None else None) == code
 
@@ -439,8 +441,8 @@ STATE_TABLE = QualifiedName.parse("DB.S.SST_STATE")
 SCOPE = SchemaScope.from_qualified_name(STATE_TABLE)
 ENTRY = AppliedEntry("f" * 64, "DB.S.V", "2026-09-29T00:00:00Z", "run", "applied", "d" * 64, "m" * 64)
 DRIVER_CALLS: tuple[tuple[str, str, Callable[[SnowflakeConnector], object]], ...] = (
-    ("query", "SELECT 1", lambda port: port.query("SELECT 1")),
-    ("query_in_context", "SELECT 1", lambda port: port.query_in_context(SCOPE, "SELECT 1")),
+    ("query", "SELECT 1", lambda port: port.query(sql("SELECT 1"))),
+    ("query_in_context", "SELECT 1", lambda port: port.query_in_context(SCOPE, sql("SELECT 1"))),
     ("show_objects", "SHOW TABLES", lambda port: port.show_objects("TABLE", SCOPE)),
     ("delete_state", "DELETE FROM", lambda port: port.delete_state(STATE_TABLE, "dev", "k")),
     ("upsert_state", "MERGE INTO", lambda port: port.upsert_state(STATE_TABLE, "dev", "k", ENTRY)),
@@ -509,6 +511,6 @@ def test_query_in_context_sends_its_use_pair_and_statement_together_on_one_curso
     # concurrent evals share one session.
     session = _Session()
     SessionConnector(session).query_in_context(
-        SchemaScope(Identifier.parse("AGENTS"), Identifier.parse("EVALS")), "SELECT 1"
+        SchemaScope(Identifier.parse("AGENTS"), Identifier.parse("EVALS")), sql("SELECT 1")
     )
     assert session.executed == ["USE DATABASE AGENTS", "USE SCHEMA AGENTS.EVALS", "SELECT 1"]

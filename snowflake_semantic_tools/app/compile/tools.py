@@ -8,9 +8,9 @@ from snowflake_semantic_tools.app.compile.base import CompileResult, StandaloneA
 from snowflake_semantic_tools.domain.model.artifact_key import artifact_key
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
 from snowflake_semantic_tools.domain.model.lifecycle import OwnershipMarker, RenderedArtifact
-from snowflake_semantic_tools.domain.model.sql import string_literal
 from snowflake_semantic_tools.domain.model.tool import ToolCatalog, ToolKind, ToolMember
-from snowflake_semantic_tools.domain.render.tool import render_tool
+from snowflake_semantic_tools.domain.render.tool import render_tool, routine_signature, search_service_statement
+from snowflake_semantic_tools.domain.sql import keyword, literal, qname, sql
 
 
 @dataclass(frozen=True, slots=True)
@@ -63,28 +63,26 @@ class CompiledTool(StandaloneArtifact):
         keeps its statements. Apply expects the marker either way.
         """
         marker = OwnershipMarker(manifest_id, self.rendered.fingerprint).text
+        description = self.member.description
+        comment_value = f"{marker} {description}" if description else marker
         statements = self.rendered.statements
         if self.rendered.object_type == "CORTEX SEARCH SERVICE":
-            base = self.rendered.ddl.rstrip()
-            description = self.member.description
-            comment_value = f"{marker} {description}" if description else marker
-            comment = f"COMMENT = {string_literal(comment_value)}"
-            if "\n  COMMENT = " in base:
-                start = base.index("\n  COMMENT = ")
-                end = base.index("\n  AS ", start)
-                base = base[:start] + f"\n  {comment}" + base[end:]
-            else:
-                base = base.replace("\n  AS ", f"\n  {comment}\n  AS ", 1)
-            statements = (base,)
+            source = self.rendered.required_relations[0] if self.rendered.required_relations else None
+            statements = (search_service_statement(self.member, self.rendered.target, source, comment=comment_value),)
         elif self.rendered.object_type in {"PROCEDURE", "FUNCTION", "STAGE"}:
-            object_name = self.rendered.target.sql
+            object_name = qname(self.rendered.target)
             if self.rendered.routine_signature:
-                object_name += f"({', '.join(self.rendered.routine_signature)})"
-            description = self.member.description
-            comment_value = f"{marker} {description}" if description else marker
+                object_name = routine_signature(
+                    self.rendered.object_type, self.rendered.target, self.rendered.routine_signature
+                )
             statements = (
                 *statements,
-                f"ALTER {self.rendered.object_type} {object_name} SET COMMENT = {string_literal(comment_value)}",
+                sql(
+                    "ALTER {kind} {name} SET COMMENT = {comment}",
+                    kind=keyword(self.rendered.object_type),
+                    name=object_name,
+                    comment=literal(comment_value),
+                ),
             )
         return replace(
             self.rendered,

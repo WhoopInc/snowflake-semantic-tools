@@ -19,6 +19,7 @@ from snowflake_semantic_tools.domain.model.lifecycle.action import Action
 from snowflake_semantic_tools.domain.model.lifecycle.marker import OwnershipMarker
 from snowflake_semantic_tools.domain.model.lifecycle.observation import ArtifactKey, ObservedArtifact
 from snowflake_semantic_tools.domain.model.registry import GrantPreservation
+from snowflake_semantic_tools.domain.sql import Sql, canonical, ident, join, qname, sql
 
 
 class ProbeKind(Enum):
@@ -41,7 +42,7 @@ class SmokeProbe:
 
     key: str
     kind: ProbeKind
-    sql: str
+    sql: Sql
 
 
 @dataclass(frozen=True, slots=True)
@@ -84,10 +85,10 @@ class StatementPlan:
         update_live: What an UPDATE runs instead of `update` when the object has a live version.
     """
 
-    default: tuple[str, ...] | None = None
-    create: tuple[str, ...] = ()
-    update: tuple[str, ...] = ()
-    update_live: tuple[str, ...] = ()
+    default: tuple[Sql, ...] | None = None
+    create: tuple[Sql, ...] = ()
+    update: tuple[Sql, ...] = ()
+    update_live: tuple[Sql, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -165,7 +166,7 @@ class RenderedArtifact:
     artifact_type: str
     target: QualifiedName
     ddl: str
-    statements: tuple[str, ...]
+    statements: tuple[Sql, ...]
     fingerprint: str
     object_type: str = "SEMANTIC VIEW"
     render_dialect: str = "ddl"
@@ -174,9 +175,9 @@ class RenderedArtifact:
     upload_content: bytes | None = None
     temporary: bool = False
     routine_signature: tuple[str, ...] = ()
-    create_statements: tuple[str, ...] = ()
-    update_statements: tuple[str, ...] = ()
-    update_live_statements: tuple[str, ...] = ()
+    create_statements: tuple[Sql, ...] = ()
+    update_statements: tuple[Sql, ...] = ()
+    update_live_statements: tuple[Sql, ...] = ()
     expected_marker: OwnershipMarker | None = None
     desired_alias: str | None = None
     desired_tags: tuple[str, ...] = ()
@@ -194,7 +195,7 @@ class RenderedArtifact:
         key: ArtifactKey,
         artifact_type: str,
         target: QualifiedName,
-        ddl: str,
+        ddl: Sql | str,
         shape: PublishShape = PublishShape(),
         statements: StatementPlan = StatementPlan(),
         upload: Upload | None = None,
@@ -210,19 +211,32 @@ class RenderedArtifact:
         only once the manifest is built, so the publish step sets it.
 
         Args:
-            ddl: The rendered text, canonicalized into `ddl` before it is fingerprinted.
+            ddl: The rendered statement, or the document a non-DDL dialect renders; canonicalized
+                into `ddl` before it is fingerprinted. A statement is also what apply runs
+                when `statements` names no default.
             upload: The file to stage first; None stages nothing.
             composite: Given for an artifact a lifecycle handler publishes, which sets
                 `generic_apply_safe` to False; None for one the generic apply path publishes.
+
+        Raises:
+            TypeError: `ddl` is a document and `statements` names no default to run.
         """
-        canonical = "\n".join(line.rstrip() for line in ddl.splitlines()).strip() + "\n"
+        if isinstance(ddl, Sql):
+            statement = canonical(ddl)
+            text = statement.text + "\n"
+            default = (statement,) if statements.default is None else statements.default
+        elif statements.default is None:
+            raise TypeError("a rendered document needs the statements that publish it")
+        else:
+            text = "\n".join(line.rstrip() for line in ddl.splitlines()).strip() + "\n"
+            default = statements.default
         return cls(
             key=key,
             artifact_type=artifact_type,
             target=target,
-            ddl=canonical,
-            statements=(canonical.rstrip("\n"),) if statements.default is None else statements.default,
-            fingerprint=sha256(canonical.encode("utf-8")).hexdigest(),
+            ddl=text,
+            statements=default,
+            fingerprint=sha256(text.encode("utf-8")).hexdigest(),
             object_type=shape.object_type,
             render_dialect=shape.render_dialect,
             grant_preservation=shape.grant_preservation,
@@ -273,42 +287,65 @@ class RenderedArtifact:
 def _metadata_removals(
     artifact: RenderedArtifact,
     observed: ObservedArtifact | None,
-) -> tuple[str, ...]:
+) -> tuple[Sql, ...]:
     """Unset each alias and tag the observed agent carries that the artifact does not desire.
 
     Both compare casefolded. Only an observed agent has any; for anything else this is empty.
     """
     if observed is None or artifact.object_type != "AGENT":
         return ()
-    statements: list[str] = []
+    statements: list[Sql] = []
+    agent = qname(artifact.target)
     desired_alias = artifact.desired_alias.casefold() if artifact.desired_alias else None
     for alias in observed.aliases:
-        if alias.casefold() == desired_alias:
+        name = _safe_identifier(alias)
+        if alias.casefold() == desired_alias or name is None:
             continue
-        statements.append(f"ALTER AGENT {artifact.target.sql} MODIFY VERSION {_safe_identifier(alias)} UNSET ALIAS")
+        statements.append(sql("ALTER AGENT {agent} MODIFY VERSION {alias} UNSET ALIAS", agent=agent, alias=name))
+    desired_tags = {value.casefold() for value in artifact.desired_tags}
+    # A name no identifier can spell is not one Snowflake showed, so it is left alone.
     stale_tags = tuple(
-        tag for tag in observed.tags if tag.casefold() not in {value.casefold() for value in artifact.desired_tags}
+        name
+        for name in (_safe_qualified_identifier(tag) for tag in observed.tags if tag.casefold() not in desired_tags)
+        if name is not None
     )
     if stale_tags:
         statements.append(
-            f"ALTER AGENT {artifact.target.sql} UNSET TAG "
-            + ", ".join(_safe_qualified_identifier(tag) for tag in stale_tags)
+            sql(
+                "ALTER AGENT {agent} UNSET TAG {tags}",
+                agent=agent,
+                tags=join(", ", stale_tags),
+            )
         )
     return tuple(statements)
 
 
-def _safe_identifier(value: str) -> str:
-    """Spell a shown name as SQL: unquoted only when that reads back as exactly the same name."""
+def _safe_identifier(value: str) -> Sql | None:
+    """Spell a shown name as SQL: unquoted only when that reads back as exactly the same name.
+
+    Returns:
+        The identifier; None for a name no identifier can spell, such as an empty one.
+    """
     try:
         parsed = Identifier.parse(value)
     except ValueError:
-        return Identifier(value, quoted=True).sql
-    return parsed.sql if parsed.folded == value else Identifier(value, quoted=True).sql
-
-
-def _safe_qualified_identifier(value: str) -> str:
-    """Spell a shown dotted name as SQL, quoting part by part when it does not parse whole."""
+        parsed = Identifier(value, quoted=True)
     try:
-        return QualifiedName.parse(value).sql
+        return ident(parsed if parsed.folded == value else Identifier(value, quoted=True))
     except ValueError:
-        return ".".join(_safe_identifier(part) for part in value.split("."))
+        return None
+
+
+def _safe_qualified_identifier(value: str) -> Sql | None:
+    """Spell a shown dotted name as SQL, quoting part by part when it does not parse whole.
+
+    Returns:
+        The name; None when a part is one no identifier can spell.
+    """
+    try:
+        return qname(QualifiedName.parse(value))
+    except ValueError:
+        parts = tuple(_safe_identifier(part) for part in value.split("."))
+    if any(part is None for part in parts):
+        return None
+    return join(".", (part for part in parts if part is not None))

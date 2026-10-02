@@ -16,6 +16,7 @@ from snowflake_semantic_tools.domain.model.project import SemanticViewProject
 from snowflake_semantic_tools.domain.model.semantic_view import Column, ColumnKind, SemanticView, Table
 from snowflake_semantic_tools.domain.model.skill import Plugin, Skill, SkillFile
 from tests.helpers.project_inputs import InMemoryProjectInputs
+from tests.helpers.sql_values import authored
 
 _Compiled = TypeVar("_Compiled")
 
@@ -51,7 +52,7 @@ def view(name: str) -> SemanticView:
     return SemanticView(
         fqn=f"DB.SCH.{name}",
         tables=(Table(logical_name="T", fqn="DB.SCH.T", primary_key=("ID",)),),
-        columns=(Column(table="T", name="C", kind=ColumnKind.DIMENSION, expr="T.C"),),
+        columns=(Column(table="T", name="C", kind=ColumnKind.DIMENSION, expr=authored("T.C")),),
     )
 
 

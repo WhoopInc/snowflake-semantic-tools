@@ -28,7 +28,7 @@ class _Recorded(SnowflakeConnector):
         self.statements: list[tuple[str, object]] = []
 
     def query(self, sql, params=None):  # type: ignore[no-untyped-def]
-        self.statements.append((sql, params))
+        self.statements.append((str(sql), params))
         result = self._results.pop(0)
         if isinstance(result, Exception):
             raise result
@@ -38,8 +38,8 @@ class _Recorded(SnowflakeConnector):
 def test_columns_are_read_from_the_databases_information_schema_by_stored_name() -> None:
     port = _Recorded(QueryResult(("COLUMN_NAME", "DATA_TYPE"), (("ORDER_ID", "TEXT"), ("Total", "NUMBER"))))
     assert port.relation_columns(ORDERS) == (WarehouseColumn("ORDER_ID", "TEXT"), WarehouseColumn("Total", "NUMBER"))
-    assert port.statements == [(columns_sql(ORDERS), ("SCH", "Orders"))]
-    assert columns_sql(ORDERS).startswith("SELECT COLUMN_NAME, DATA_TYPE FROM DB.INFORMATION_SCHEMA.COLUMNS ")
+    assert port.statements == [(str(columns_sql(ORDERS)), ("SCH", "Orders"))]
+    assert str(columns_sql(ORDERS)).startswith("SELECT COLUMN_NAME, DATA_TYPE FROM DB.INFORMATION_SCHEMA.COLUMNS ")
 
 
 @pytest.mark.parametrize(
@@ -68,11 +68,11 @@ def test_values_are_sampled_in_groups_of_columns_and_mapped_back_by_position() -
     values = port.distinct_values(ORDERS, columns, 26)
     assert values["C0"] == ("b", "a") and values["C2"] == () and values[columns[-1]] == ("z",)
     assert len(port.statements) == 2
-    assert port.statements[1] == (distinct_values_sql(ORDERS, columns[-1:], 26), None)
+    assert port.statements[1] == (str(distinct_values_sql(ORDERS, columns[-1:], 26)), None)
 
 
 def test_the_sampling_statement_quotes_names_and_orders_deterministically() -> None:
-    sql = distinct_values_sql(ORDERS, ["STATUS", "Mixed Case"], 26)
+    sql = str(distinct_values_sql(ORDERS, ["STATUS", "Mixed Case"], 26))
     branches = sql.split("\nUNION ALL\n")
     assert branches[0] == (
         '(SELECT 0 AS COLUMN_INDEX, TO_VARCHAR(STATUS) AS VALUE, COUNT(*) AS ROW_COUNT FROM DB.SCH."Orders" '
@@ -87,7 +87,7 @@ def test_cortex_is_asked_through_a_bound_statement_with_the_schema_as_a_constant
     assert port.complete_json("claude-sonnet-4-6", "prompt", TABLE_SYNONYMS_SCHEMA) == {"synonyms": ["sales"]}
     sql, params = port.statements[0]
     assert params == ("claude-sonnet-4-6", "prompt")
-    assert sql == completion_sql(TABLE_SYNONYMS_SCHEMA)
+    assert sql == str(completion_sql(TABLE_SYNONYMS_SCHEMA))
     assert "{'temperature': 0}" in sql and "'additionalProperties': FALSE" in sql
     assert _Recorded(QueryResult(("RESPONSE",), ())).complete_json("m", "p", {}) is None
 
@@ -101,7 +101,7 @@ def test_a_model_that_is_not_a_plain_name_is_refused_before_any_statement() -> N
 
 def test_object_constants_quote_every_string_and_double_percent_signs() -> None:
     value = {"it's": ["a%b", 1, 2.5, True, False, None]}
-    assert object_constant(value) == "{'it''s': ['a%%b', 1, 2.5, TRUE, FALSE, NULL]}"
+    assert str(object_constant(value)) == "{'it''s': ['a%%b', 1, 2.5, TRUE, FALSE, NULL]}"
     with pytest.raises(SnowflakePortError, match="cannot write set"):
         object_constant({"bad": {1}})
 

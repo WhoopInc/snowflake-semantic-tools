@@ -29,14 +29,15 @@ from snowflake_semantic_tools.domain.model.eval import (
     EvalRunConfig,
     render_eval_name_template,
 )
+from snowflake_semantic_tools.domain.model.identifier import SchemaScope
 from snowflake_semantic_tools.domain.model.lifecycle import Action
-from snowflake_semantic_tools.domain.model.sql import string_literal
 from snowflake_semantic_tools.domain.ports.snowflake import (
     ClockPort,
     SnowflakePort,
     SnowflakePortError,
     StagedFileMetadata,
 )
+from snowflake_semantic_tools.domain.sql import Sql, ident, literal, scope, sql
 from snowflake_semantic_tools.domain.state import APPLIED, Manifest, State
 
 _PARTIAL_STATUSES = frozenset(("INVOCATION_PARTIALLY_COMPLETED", "PARTIALLY_COMPLETED"))
@@ -345,8 +346,8 @@ class RunEvalSuite:
         """Start a run in the agent's schema; its SST-APL023 diagnostic when Snowflake refuses."""
         result = self._port.execute_script(
             (
-                f"USE DATABASE {compiled.agent_target.database.sql}",
-                f"USE SCHEMA {compiled.agent_target.database.sql}.{compiled.agent_target.schema.sql}",
+                sql("USE DATABASE {database}", database=ident(compiled.agent_target.database)),
+                sql("USE SCHEMA {schema}", schema=scope(SchemaScope.from_qualified_name(compiled.agent_target))),
                 _evaluation_call("START", run_name, config_path),
             )
         )
@@ -500,10 +501,12 @@ def _retrieved(attempt: EvalRunAttempt) -> bool:
     return attempt.terminal_status in EVAL_PASS_STATUSES and attempt.retrieval_error is None
 
 
-def _evaluation_call(job: str, run_name: str, config_path: str) -> str:
-    return (
-        f"CALL EXECUTE_AI_EVALUATION({string_literal(job)}, "
-        f"OBJECT_CONSTRUCT('run_name', {string_literal(run_name)}), {string_literal(config_path)})"
+def _evaluation_call(job: str, run_name: str, config_path: str) -> Sql:
+    return sql(
+        "CALL EXECUTE_AI_EVALUATION({job}, OBJECT_CONSTRUCT('run_name', {run_name}), {config})",
+        job=literal(job),
+        run_name=literal(run_name),
+        config=literal(config_path),
     )
 
 

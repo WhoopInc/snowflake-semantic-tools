@@ -24,6 +24,7 @@ from snowflake_semantic_tools.domain.model.registry import SEMANTIC_REGISTRY
 from snowflake_semantic_tools.domain.plan import build_changeset, dependency_waves, topological_order
 from snowflake_semantic_tools.domain.state import STATE_SCHEMA_VERSION, AppliedEntry, ImpactIndex, Manifest, State
 from tests.helpers.manifests import build_minimal_manifest
+from tests.helpers.sql_values import statement
 
 
 def target() -> TargetIdentity:
@@ -35,7 +36,7 @@ def rendered(name: str, ddl: str | None = None, depends_on: tuple[str, ...] = ()
         key=f"semantic_view:{name.casefold()}",
         artifact_type="semantic_view",
         target=QualifiedName.from_parts("db", "sch", name),
-        ddl=ddl or f"create semantic view {name}",
+        ddl=statement(ddl or f"create semantic view {name}"),
         depends_on=depends_on,
     )
 
@@ -256,7 +257,7 @@ def test_plan_conservatively_updates_without_trusted_state_and_blocks_errors() -
         key=moved.key,
         artifact_type=moved.artifact_type,
         target=QualifiedName.from_parts("db", "new_schema", "v"),
-        ddl=moved.ddl,
+        ddl=statement(moved.ddl),
     )
     moved_manifest, _ = context({moved.key: moved}, {})
     prior = applied(value, moved_manifest.manifest_id)
@@ -497,7 +498,7 @@ def test_plan_uses_composite_lifecycle_action_observation_and_diagnostics() -> N
         key="eval:sales",
         artifact_type="eval",
         target=QualifiedName.from_parts("db", "sch", "sales_eval"),
-        ddl="payload",
+        ddl=statement("payload"),
         shape=PublishShape(""),
         composite=CompositeFacts(),
     )
@@ -528,7 +529,7 @@ def _versioned(key: str, artifact_type: str, depends_on: tuple[str, ...] = ()) -
         key=key,
         artifact_type=artifact_type,
         target=QualifiedName.from_parts("db", "sch", key.split(":", 1)[1].replace("-", "_")),
-        ddl=f"payload {key}",
+        ddl=statement(f"payload {key}"),
         shape=PublishShape("AGENT" if artifact_type == "agent" else ""),
         composite=None if artifact_type == "agent" else CompositeFacts(),
         depends_on=depends_on,

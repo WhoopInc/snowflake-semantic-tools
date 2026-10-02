@@ -24,6 +24,7 @@ from snowflake_semantic_tools.app.compile import CompiledView
 from snowflake_semantic_tools.domain.model.semantic_view import SemanticView
 from snowflake_semantic_tools.domain.render.semantic_view import render
 from tests.helpers.projects import load_views
+from tests.helpers.sql_values import statement
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 FIXTURE = REPO_ROOT / "tests" / "fixtures" / "reference_project"
@@ -71,7 +72,7 @@ def test_folder_route_folds_over_the_base_semantic_view_target(views: dict[str, 
 
 
 def assert_matches_golden(view: SemanticView, name: str) -> None:
-    rendered = render(view)
+    rendered = str(render(view))
     expected = golden_ddl(name)
     if rendered != expected:
         diff = "\n".join(
@@ -147,6 +148,6 @@ def test_every_golden_fingerprint_is_its_compiled_canonical_ddl(views: dict[str,
         view = views[name.upper()]
         compiled = CompiledView(view, render(view))
         expected = golden_ddl(name)
-        expected_compiled = CompiledView(view, expected)
+        expected_compiled = CompiledView(view, statement(expected))
         assert compiled.byte_length == expected_compiled.byte_length
         assert compiled.fingerprint == expected_compiled.fingerprint

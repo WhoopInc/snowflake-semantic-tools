@@ -17,6 +17,7 @@ from typing import Any
 from snowflake_semantic_tools.adapters.errors import ProjectError
 from snowflake_semantic_tools.adapters.yaml.fields import mapping
 from snowflake_semantic_tools.adapters.yaml.semantic.defs import FilterDef, InstructionDef, MetricDef, VerifiedQueryDef
+from snowflake_semantic_tools.domain.model.artifact_key import artifact_key
 from snowflake_semantic_tools.domain.model.compiler import (
     FILTER_EXPR,
     METRIC_EXPR,
@@ -26,7 +27,7 @@ from snowflake_semantic_tools.domain.model.compiler import (
     resolve_scalar,
 )
 from snowflake_semantic_tools.domain.model.dbt import DbtCatalog
-from snowflake_semantic_tools.domain.model.diagnostic import D, Origin
+from snowflake_semantic_tools.domain.model.diagnostic import D, Diagnostic, Origin
 from snowflake_semantic_tools.domain.model.reference import scan_template_calls, single_template_call
 from snowflake_semantic_tools.domain.model.semantic_view import (
     Column,
@@ -38,6 +39,41 @@ from snowflake_semantic_tools.domain.model.semantic_view import (
     VerifiedQuery,
     Window,
 )
+from snowflake_semantic_tools.domain.model.sql_checks import checked_expression, checked_query, name_problem
+from snowflake_semantic_tools.domain.sql import AuthoredExpression, AuthoredQuery
+
+
+def _require(found: Diagnostic | None) -> None:
+    """Raise the diagnostic a check returned, if it returned one.
+
+    Raises:
+        ProjectError: `found` is a diagnostic; the error carries it.
+    """
+    if found is not None:
+        raise ProjectError(found.message, diagnostics=(found,))
+
+
+def _expression(text: str, *, kind: str, name: str, subject: str, origin: Origin | None) -> AuthoredExpression:
+    """Guard one resolved member expression before any model holds it.
+
+    Raises:
+        ProjectError: the guard refused the expression (SST-VAL418).
+    """
+    guarded = checked_expression(text, kind=kind, name=name, subject=subject, origin=origin)
+    if isinstance(guarded, Diagnostic):
+        raise ProjectError(guarded.message, diagnostics=(guarded,))
+    return guarded
+
+
+def _names(values: tuple[str, ...], subject: str, origin: Origin | None) -> tuple[str, ...]:
+    """Upper-case each name, once each is known to render as one identifier.
+
+    Raises:
+        ProjectError: a name is not a valid identifier (SST-PRS005).
+    """
+    for value in values:
+        _require(name_problem(value, artifact=subject, subject=subject, origin=origin))
+    return tuple(value.upper() for value in values)
 
 
 def _resolve_expression(
@@ -171,20 +207,42 @@ def _view_metric(metric: MetricDef, relationships: tuple[Relationship, ...], res
             subject=resolver.view_key,
         )
         raise ProjectError(diagnostic.message, diagnostics=(diagnostic,))
-    expr = resolver.resolve(metric.expr, METRIC_EXPR, metric.origin, "metric.expression")
+    subject = artifact_key("metric", metric.name.casefold())
+    (name,) = _names((metric.name,), subject, metric.origin)
+    resolved = resolver.resolve(metric.expr, METRIC_EXPR, metric.origin, "metric.expression")
+    expr = _expression(resolved, kind="metric", name=metric.name, subject=subject, origin=metric.origin)
     window: Window | None = None
     if metric.window is not None and owner is not None:
         window = _view_window(metric, owner, relationships, resolver)
     return Metric(
-        name=metric.name.upper(),
+        name=name,
         expr=expr,
         table=owner,
         comment=metric.description,
         synonyms=metric.synonyms,
-        using_relationships=metric.using_relationships,
-        non_additive_by=tuple(entry.key for entry in metric.non_additive),
+        using_relationships=_names(metric.using_relationships, subject, metric.origin),
+        non_additive_by=tuple(
+            _sort_key(entry.names, entry.descending, entry.nulls_first, metric, subject)
+            for entry in metric.non_additive
+        ),
         access_modifier=metric.access_modifier,
         window=window,
+    )
+
+
+def _sort_key(
+    names: tuple[str, ...], descending: bool | None, nulls_first: bool | None, metric: MetricDef, subject: str
+) -> SortKey:
+    """Build one `NON ADDITIVE BY` key from the names it is written from, each checked first.
+
+    Raises:
+        ProjectError: a name is not a valid identifier (SST-PRS005).
+    """
+    text = ".".join(_names(names, subject, metric.origin))
+    return SortKey(
+        _expression(text, kind="metric", name=metric.name, subject=subject, origin=metric.origin),
+        descending,
+        nulls_first,
     )
 
 
@@ -200,14 +258,21 @@ def _view_window(metric: MetricDef, owner: str, relationships: tuple[Relationshi
     assert window is not None
     _require_reachable(metric, owner, relationships, resolver.logical_by_model, resolver.view_key)
 
-    def resolve(text: str) -> str:
-        return resolver.resolve(text, METRIC_EXPR, metric.origin, "metric.window")
+    subject = artifact_key("metric", metric.name.casefold())
+
+    def resolve(text: str) -> AuthoredExpression:
+        resolved = resolver.resolve(text, METRIC_EXPR, metric.origin, "metric.window")
+        return _expression(resolved, kind="metric", name=metric.name, subject=subject, origin=metric.origin)
 
     return Window(
         partition_by=tuple(resolve(text) for text in window.partition_by),
         partition_excluding=tuple(resolve(text) for text in window.partition_excluding),
         order_by=tuple(SortKey(resolve(entry.ref), entry.descending, entry.nulls_first) for entry in window.order_by),
-        frame=window.frame,
+        frame=(
+            _expression(window.frame, kind="metric", name=metric.name, subject=subject, origin=metric.origin)
+            if window.frame
+            else None
+        ),
     )
 
 
@@ -281,12 +346,14 @@ def _entity_filter(filter_def: FilterDef, resolver: _Resolver) -> Column:
     if len(referenced) != 1:
         raise ProjectError(f"filter {filter_def.name!r} must resolve to exactly one table")
     model_name = referenced[0].casefold()
-    expr = resolver.resolve(filter_def.expr, FILTER_EXPR, filter_def.origin, "filter.expression")
+    subject = artifact_key("filter", filter_def.name.casefold())
+    (name,) = _names((filter_def.name,), subject, filter_def.origin)
+    resolved = resolver.resolve(filter_def.expr, FILTER_EXPR, filter_def.origin, "filter.expression")
     return Column(
         table=resolver.logical_by_model[model_name],
-        name=filter_def.name.upper(),
+        name=name,
         kind=ColumnKind.FILTER,
-        expr=expr,
+        expr=_expression(resolved, kind="filter", name=filter_def.name, subject=subject, origin=filter_def.origin),
         comment=filter_def.description,
     )
 
@@ -333,19 +400,37 @@ def _view_verified_queries(
 
     Raises:
         ProjectError: A query's SQL does not resolve in this view, such as a `metric()` of a metric
-            the view does not hold.
+            the view does not hold; its name is not an identifier (SST-PRS005); or its resolved
+            SQL is not one SELECT or WITH query (SST-VAL418).
     """
-    return tuple(
-        VerifiedQuery(
-            name=query.name.upper(),
-            question=query.question,
-            sql=_resolve_verified_query_sql(query, logical_by_model, metric_names, config, catalog),
-            verified_at=query.verified_at,
-            verified_by=query.verified_by,
-            onboarding_question=query.onboarding_question,
+    built: list[VerifiedQuery] = []
+    for query in queries:
+        subject = artifact_key("verified_query", query.name.casefold())
+        (name,) = _names((query.name,), subject, query.origin)
+        resolved = _resolve_verified_query_sql(query, logical_by_model, metric_names, config, catalog)
+        built.append(
+            VerifiedQuery(
+                name=name,
+                question=query.question,
+                sql=_query(resolved, name=query.name, subject=subject, origin=query.origin),
+                verified_at=query.verified_at,
+                verified_by=query.verified_by,
+                onboarding_question=query.onboarding_question,
+            )
         )
-        for query in queries
-    )
+    return tuple(built)
+
+
+def _query(text: str, *, name: str, subject: str, origin: Origin | None) -> AuthoredQuery:
+    """Guard one resolved verified query before any model holds it.
+
+    Raises:
+        ProjectError: the guard refused the query (SST-VAL418).
+    """
+    guarded = checked_query(text, kind="verified_query", name=name, subject=subject, origin=origin)
+    if isinstance(guarded, Diagnostic):
+        raise ProjectError(guarded.message, diagnostics=(guarded,))
+    return guarded
 
 
 def _resolve_verified_query_sql(
@@ -385,20 +470,17 @@ def _with_variable_names(
 
 
 def _replace_metric_variable_name(metric: Metric, variable_name: str) -> Metric:
-    expr = re.sub(
-        rf"\b{re.escape(variable_name)}\b",
-        variable_name.upper(),
-        metric.expr,
-        flags=re.IGNORECASE,
-    )
-    return replace(metric, expr=expr)
+    return replace(metric, expr=_upper_variable(metric.expr, variable_name, "metric", metric.name))
 
 
 def _replace_column_variable_name(column: Column, variable_name: str) -> Column:
-    expr = re.sub(
-        rf"\b{re.escape(variable_name)}\b",
-        variable_name.upper(),
-        column.expr,
-        flags=re.IGNORECASE,
-    )
-    return replace(column, expr=expr)
+    return replace(column, expr=_upper_variable(column.expr, variable_name, column.kind.value, column.name))
+
+
+def _upper_variable(expression: AuthoredExpression, variable_name: str, kind: str, name: str) -> AuthoredExpression:
+    """Upper-case a variable's name where an expression uses it, and guard the result again.
+
+    Changing a word's case cannot change what the guard decides, so the new guard always passes.
+    """
+    text = re.sub(rf"\b{re.escape(variable_name)}\b", variable_name.upper(), expression.text, flags=re.IGNORECASE)
+    return _expression(text, kind=kind, name=name, subject=artifact_key(kind, name.casefold()), origin=None)

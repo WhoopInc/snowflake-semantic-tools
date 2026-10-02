@@ -17,8 +17,10 @@ from snowflake_semantic_tools.domain.model.lifecycle import (
     ShowRow,
 )
 from snowflake_semantic_tools.domain.ports.snowflake import SnowflakePortError, StagedFileMetadata, StageObservation
+from snowflake_semantic_tools.domain.sql import sql
 from snowflake_semantic_tools.domain.state import AppliedEntry
 from tests.helpers.recorded_snowflake import ReadOnlySnowflake, RecordedSnowflake, ScriptedSnowflake
+from tests.helpers.sql_values import statement, statements
 
 
 def values() -> tuple[QualifiedName, SchemaScope, OwnershipMarker, ShowRow, GrantRow, AppliedEntry]:
@@ -67,10 +69,10 @@ def test_offline_adapters_implement_the_full_read_write_contract(adapter_type: t
     assert port.resolve_agent_version(name, "committed") == "VERSION$1"
     assert port.current_role()
     assert port.current_account_locator()
-    assert port.query("select 1").rows == ()
-    assert port.query_in_context(scope, "select 1").rows == ()
-    assert port.execute_script(("one",)).ok
-    assert port.try_execute("two").ok
+    assert port.query(sql("select 1")).rows == ()
+    assert port.query_in_context(scope, sql("select 1")).rows == ()
+    assert port.execute_script(statements("one")).ok
+    assert port.try_execute(statement("two")).ok
     assert port.read_state(name, "dev") == {"semantic_view:v": entry}
     port.write_state(name, "dev", "m", {})
     assert port.read_state(name, "dev") == {}
@@ -82,21 +84,21 @@ def test_offline_adapters_implement_the_full_read_write_contract(adapter_type: t
 def test_scripted_and_read_only_behavior() -> None:
     failure = ExecResult(False, error=ExecutionError("bad"))
     scripted = ScriptedSnowflake((failure,), (QueryResult(("value",), ((1,),)),))
-    assert not scripted.execute_script(("bad",)).ok
+    assert not scripted.execute_script(statements("bad")).ok
     scripted.query_failures.append(SnowflakePortError("offline"))
     with pytest.raises(SnowflakePortError):
-        scripted.query("select 1")
-    assert scripted.query("select 1").rows == ((1,),)
-    assert scripted.query("select 2").rows == ()
+        scripted.query(sql("select 1"))
+    assert scripted.query(sql("select 1")).rows == ((1,),)
+    assert scripted.query(sql("select 2")).rows == ()
 
     readonly = ReadOnlySnowflake(RecordedSnowflake(role="R"))
     assert readonly.current_role() == "R"
     with pytest.raises(SnowflakePortError):
-        readonly.execute_script(("write",))
+        readonly.execute_script(statements("write"))
     with pytest.raises(SnowflakePortError):
         readonly.upload("@DB.SCH.STAGE/file", b"x")
     with pytest.raises(SnowflakePortError):
-        readonly.try_execute("write")
+        readonly.try_execute(statement("write"))
     with pytest.raises(SnowflakePortError):
         readonly.write_state(values()[0], "dev", "m", MappingProxyType({}))
     with pytest.raises(SnowflakePortError):

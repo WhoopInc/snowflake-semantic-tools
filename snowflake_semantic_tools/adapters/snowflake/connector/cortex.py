@@ -12,15 +12,15 @@ import re
 from collections.abc import Mapping
 
 from snowflake_semantic_tools.adapters.snowflake.connector.session import Session, _variant_value
-from snowflake_semantic_tools.domain.model.sql import string_literal
 from snowflake_semantic_tools.domain.ports.enrich import CortexPort
 from snowflake_semantic_tools.domain.ports.snowflake import SnowflakePortError
+from snowflake_semantic_tools.domain.sql import Sql, boolean, bound_literal, join, null, number, sql
 
 # A model name as Cortex spells one, such as `mistral-large2` or `claude-sonnet-4-6`.
 _MODEL_NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]*")
 
 
-def object_constant(value: object) -> str:
+def object_constant(value: object) -> Sql:
     """Return a JSON-shaped value as the Snowflake constant that equals it.
 
     A mapping is an OBJECT constant, a list an ARRAY constant, and every string a quoted
@@ -30,25 +30,34 @@ def object_constant(value: object) -> str:
         SnowflakePortError: the value holds something JSON cannot, such as a set.
     """
     if isinstance(value, Mapping):
-        entries = ", ".join(f"{object_constant(str(key))}: {object_constant(item)}" for key, item in value.items())
-        return "{" + entries + "}"
+        entries = join(
+            ", ",
+            (
+                sql("{key}: {item}", key=object_constant(str(key)), item=object_constant(item))
+                for key, item in value.items()
+            ),
+        )
+        return sql("{{{entries}}}", entries=entries)
     if isinstance(value, (list, tuple)):
-        return "[" + ", ".join(object_constant(item) for item in value) + "]"
+        return sql("[{items}]", items=join(", ", (object_constant(item) for item in value)))
     if isinstance(value, bool):
-        return "TRUE" if value else "FALSE"
+        return boolean(value)
     if isinstance(value, (int, float)):
-        return repr(value)
+        return number(value)
     if isinstance(value, str):
-        return string_literal(value).replace("%", "%%")
+        return bound_literal(value)
     if value is None:
-        return "NULL"
+        return null()
     raise SnowflakePortError(f"cannot write {type(value).__name__} into a Cortex response schema")
 
 
-def completion_sql(schema: Mapping[str, object]) -> str:
+def completion_sql(schema: Mapping[str, object]) -> Sql:
     """Return the statement asking one model for JSON following `schema`; it binds model and prompt."""
     response_format = object_constant({"type": "json", "schema": schema})
-    return f"SELECT AI_COMPLETE(%s, %s, {{'temperature': 0}}, {response_format}) AS RESPONSE"
+    return sql(
+        "SELECT AI_COMPLETE(%s, %s, {{'temperature': 0}}, {response_format}) AS RESPONSE",
+        response_format=response_format,
+    )
 
 
 class CortexMethods(Session, CortexPort):

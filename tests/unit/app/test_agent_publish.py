@@ -7,6 +7,7 @@ from snowflake_semantic_tools.domain.model.agent import AgentModel, AgentProfile
 from snowflake_semantic_tools.domain.model.diagnostic import Origin
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
 from snowflake_semantic_tools.domain.model.lifecycle import Action, ObservedArtifact
+from tests.helpers.sql_values import texts
 
 
 def compiled(*, alias: str | None = "promoted") -> CompiledAgent:
@@ -33,7 +34,7 @@ def test_permanent_agent_create_uses_exact_stage_path_then_alias_and_tags() -> N
     ).rendered_artifact
     assert value.upload_path == "@DB.S.AGENT_SPECS/agent/abc1234/agent_spec.yaml"
     assert value.upload_content == value.ddl.encode("utf-8")
-    assert value.statements == (
+    assert texts(value.statements) == (
         "CREATE AGENT DB.S.AGENT\n  FROM @DB.S.AGENT_SPECS/agent/abc1234/",
         'ALTER AGENT DB.S.AGENT\n  MODIFY VERSION "LAST" SET ALIAS = PROMOTED',
         "ALTER AGENT DB.S.AGENT\n  SET TAG DOMAIN = 'sales'",
@@ -46,12 +47,12 @@ def test_permanent_agent_update_commits_live_before_add_version_alias_and_tags()
         stage=QualifiedName.parse("DB.S.AGENT_SPECS"),
         git_sha="abc1234",
     ).rendered_artifact
-    assert value.update_live_statements[0] == "ALTER AGENT DB.S.AGENT COMMIT"
-    assert value.update_live_statements[1] == (
+    assert str(value.update_live_statements[0]) == "ALTER AGENT DB.S.AGENT COMMIT"
+    assert str(value.update_live_statements[1]) == (
         "ALTER AGENT DB.S.AGENT\n  ADD VERSION FROM @DB.S.AGENT_SPECS/agent/abc1234/\n  COMMENT = 'git:abc1234'"
     )
-    assert value.update_live_statements[2].endswith("ALIAS = PROMOTED")
-    assert value.update_live_statements[3].endswith("DOMAIN = 'sales'")
+    assert str(value.update_live_statements[2]).endswith("ALIAS = PROMOTED")
+    assert str(value.update_live_statements[3]).endswith("DOMAIN = 'sales'")
     observed = ObservedArtifact(
         value.key,
         value.target.name.folded,
@@ -86,8 +87,8 @@ def test_temporary_agent_is_inline_and_has_no_upload() -> None:
     ).rendered_artifact
     assert value.temporary
     assert value.upload_path is None and value.upload_content is None
-    assert value.statements[0].startswith("CREATE OR REPLACE TEMPORARY AGENT DB.S.AGENT")
-    assert "FROM SPECIFICATION $$" in value.statements[0]
+    assert str(value.statements[0]).startswith("CREATE OR REPLACE TEMPORARY AGENT DB.S.AGENT")
+    assert "FROM SPECIFICATION $$" in str(value.statements[0])
 
 
 def test_agent_publish_appends_profile_comment_marker_and_secure_metadata() -> None:
@@ -109,11 +110,12 @@ def test_agent_publish_appends_profile_comment_marker_and_secure_metadata() -> N
         stage=QualifiedName.parse("DB.S.AGENT_SPECS"),
         git_sha="abc1234",
     ).rendered_for_publish("b" * 64)
-    assert any("SET PROFILE" in statement for statement in published.statements)
+    assert any("SET PROFILE" in str(statement) for statement in published.statements)
     assert any(
-        f"[sst:{'b' * 64}:{published.fingerprint}] Scope comment" in statement for statement in published.statements
+        f"[sst:{'b' * 64}:{published.fingerprint}] Scope comment" in str(statement)
+        for statement in published.statements
     )
-    assert published.statements[-1] == "ALTER AGENT DB.S.AGENT SET SECURE = TRUE"
+    assert str(published.statements[-1]) == "ALTER AGENT DB.S.AGENT SET SECURE = TRUE"
 
 
 def test_agent_update_unsets_removed_aliases_and_tags_and_clears_profile() -> None:
@@ -135,9 +137,9 @@ def test_agent_update_unsets_removed_aliases_and_tags_and_clears_profile() -> No
         tags=("DB.S.OLD_TAG",),
     )
     update = value.for_action(Action.UPDATE, observed)
-    assert any("SET PROFILE = '{}'" in statement for statement in value.statements)
-    assert any("OLD_ALIAS UNSET ALIAS" in statement for statement in update.statements)
-    assert any("UNSET TAG DB.S.OLD_TAG" in statement for statement in update.statements)
+    assert any("SET PROFILE = '{}'" in str(statement) for statement in value.statements)
+    assert any("OLD_ALIAS UNSET ALIAS" in str(statement) for statement in update.statements)
+    assert any("UNSET TAG DB.S.OLD_TAG" in str(statement) for statement in update.statements)
 
 
 def test_profile_with_dollar_delimiter_is_sql_string_escaped() -> None:
@@ -148,4 +150,4 @@ def test_profile_with_dollar_delimiter_is_sql_string_escaped() -> None:
         stage=QualifiedName.parse("DB.S.AGENT_SPECS"),
         git_sha="abc1234",
     ).rendered_for_publish("b" * 64)
-    assert any("Agent $$" in statement and "SET PROFILE = '" in statement for statement in value.statements)
+    assert any("Agent $$" in text and "SET PROFILE = '" in text for text in texts(value.statements))

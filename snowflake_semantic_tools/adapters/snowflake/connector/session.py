@@ -1,7 +1,8 @@
 """The connector's session: one driver connection, the lock each statement takes, and SQL execution.
 
 Concurrent evals share one connection, so every statement runs on a cursor opened under the
-session lock. A driver or transport failure surfaces as `SnowflakePortError`, carrying the
+session lock. Statements arrive as `Sql` and become text only in `_execute`, the one place
+this adapter hands SQL to the driver. A driver or transport failure surfaces as `SnowflakePortError`, carrying the
 diagnostic a command reports; any other exception is an SST bug and propagates unwrapped.
 The private helpers here are shared by the role modules beside this one.
 """
@@ -24,6 +25,7 @@ from snowflake_semantic_tools.domain.model.diagnostic import D, Diagnostic
 from snowflake_semantic_tools.domain.model.identifier import SchemaScope
 from snowflake_semantic_tools.domain.model.lifecycle import ExecResult, ExecutionError, QueryResult
 from snowflake_semantic_tools.domain.ports.snowflake import ExecutionPort, SnowflakePortError
+from snowflake_semantic_tools.domain.sql import Sql, ident, scope, sql
 
 # What a statement or fetch raises when Snowflake or the network fails: the driver's own
 # errors, and the OSError family (its vendored `requests` errors, socket timeouts) that it
@@ -61,29 +63,29 @@ class Session(ExecutionPort):
         with self._lock:
             self._connection.close()
 
-    def query(self, sql: str, params: Sequence[object] | Mapping[str, object] | None = None) -> QueryResult:
+    def query(self, sql: Sql, params: Sequence[object] | Mapping[str, object] | None = None) -> QueryResult:
         with _as_port_errors(), self._cursor() as cursor:
             return _fetch(cursor, sql, params)
 
     def query_in_context(
         self,
         scope: SchemaScope,
-        sql: str,
+        sql: Sql,
         params: Sequence[object] | Mapping[str, object] | None = None,
     ) -> QueryResult:
         # The USE pair and the statement share one lock hold, so no concurrent statement
         # runs between them; the session keeps `scope` afterwards.
         with _as_port_errors(), self._cursor() as cursor:
-            cursor.execute(f"USE DATABASE {scope.database.sql}")
-            cursor.execute(f"USE SCHEMA {scope.sql}")
+            for use in _use_statements(scope):
+                _execute(cursor, use)
             return _fetch(cursor, sql, params)
 
-    def execute_script(self, statements: Sequence[str]) -> ExecResult:
+    def execute_script(self, statements: Sequence[Sql]) -> ExecResult:
         query_ids: list[str] = []
         try:
             with self._cursor() as cursor:
                 for statement in statements:
-                    cursor.execute(statement)
+                    _execute(cursor, statement)
                     query_ids.append(str(cursor.sfqid or ""))
             return ExecResult(True, tuple(query_ids), rows_affected=0)
         except Exception as exc:
@@ -99,7 +101,7 @@ class Session(ExecutionPort):
                 rows_affected=(1 if write_succeeded else 0),
             )
 
-    def try_execute(self, sql: str) -> ExecResult:
+    def try_execute(self, sql: Sql) -> ExecResult:
         return self.execute_script((sql,))
 
     @contextlib.contextmanager
@@ -116,14 +118,14 @@ class Session(ExecutionPort):
             finally:
                 cursor.close()
 
-    def _dict_rows(self, sql: str) -> tuple[dict[str, Any], ...]:
+    def _dict_rows(self, sql: Sql) -> tuple[dict[str, Any], ...]:
         """Run one statement without parameters and return its rows keyed by lowercase column name.
 
         Raises:
             SnowflakePortError: the statement failed, or the driver returned a positional row.
         """
         with _as_port_errors(), self._cursor(DictCursor) as cursor:
-            cursor.execute(sql)
+            _execute(cursor, sql)
             rows = cursor.fetchall()
             if any(not isinstance(row, dict) for row in rows):
                 raise SnowflakePortError("dictionary cursor returned a positional row")
@@ -143,10 +145,33 @@ def _as_port_errors() -> Iterator[None]:
         raise _port_error(exc) from exc
 
 
-def _fetch(cursor: SnowflakeCursor, sql: str, params: Sequence[object] | Mapping[str, object] | None) -> QueryResult:
-    """Run one statement on `cursor` with `params` bound, and return its columns and rows."""
+def _execute(
+    cursor: SnowflakeCursor,
+    statement: Sql,
+    params: Sequence[object] | Mapping[str, object] | None = None,
+) -> None:
+    """Hand one statement to the driver with `params` bound: the only place `Sql` becomes text.
+
+    Raises:
+        TypeError: `statement` is not `Sql`, so nothing built from a plain string reaches the driver.
+    """
+    if not isinstance(statement, Sql):
+        raise TypeError(f"the connector runs only Sql, found {type(statement).__name__}")
     connector_params = cast(Sequence[Any] | dict[Any, Any] | None, params)
-    cursor.execute(sql, connector_params)
+    cursor.execute(str(statement), connector_params)
+
+
+def _use_statements(target: SchemaScope) -> tuple[Sql, Sql]:
+    """The USE DATABASE and USE SCHEMA pair that makes `target` the session's current schema."""
+    return (
+        sql("USE DATABASE {database}", database=ident(target.database)),
+        sql("USE SCHEMA {schema}", schema=scope(target)),
+    )
+
+
+def _fetch(cursor: SnowflakeCursor, sql: Sql, params: Sequence[object] | Mapping[str, object] | None) -> QueryResult:
+    """Run one statement on `cursor` with `params` bound, and return its columns and rows."""
+    _execute(cursor, sql, params)
     columns = tuple(item[0] for item in (cursor.description or ()))
     rows = tuple(tuple(row) for row in cursor.fetchall()) if cursor.description else ()
     return QueryResult(columns, rows)

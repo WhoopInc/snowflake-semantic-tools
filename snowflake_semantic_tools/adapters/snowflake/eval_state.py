@@ -12,8 +12,8 @@ from snowflake_semantic_tools.domain.model.eval import (
     EvalRegression,
 )
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
-from snowflake_semantic_tools.domain.model.sql import string_literal
 from snowflake_semantic_tools.domain.ports.snowflake import SnowflakePort, SnowflakePortError
+from snowflake_semantic_tools.domain.sql import Sql, literal, qname, sql
 
 
 class SnowflakeEvalStateStore:
@@ -45,8 +45,10 @@ class SnowflakeEvalStateStore:
         if not self._port.object_exists("TABLE", self._table):
             return None
         result = self._port.query(
-            f"SELECT PAYLOAD FROM {self._table.sql} "
-            "WHERE TARGET_NAME = %s AND EVAL_KEY = %s AND RECORD_KIND = 'baseline'",
+            sql(
+                "SELECT PAYLOAD FROM {table} WHERE TARGET_NAME = %s AND EVAL_KEY = %s AND RECORD_KIND = 'baseline'",
+                table=qname(self._table),
+            ),
             (target_name, eval_key),
         )
         if not result.rows:
@@ -79,9 +81,9 @@ class SnowflakeEvalStateStore:
             self._merge_sql(target_name, baseline.eval_key, "baseline", _baseline_payload(baseline))
             for baseline in baselines
         )
-        result = self._port.execute_script(("BEGIN", *statements, "COMMIT"))
+        result = self._port.execute_script((sql("BEGIN"), *statements, sql("COMMIT")))
         if not result.ok:
-            self._port.try_execute("ROLLBACK")
+            self._port.try_execute(sql("ROLLBACK"))
             raise SnowflakePortError(result.error.message if result.error else "eval baseline batch write failed")
 
     def read_gate(self, target_name: str, eval_key: str) -> EvalGateState | None:
@@ -97,7 +99,10 @@ class SnowflakeEvalStateStore:
         if not self._port.object_exists("TABLE", self._table):
             return None
         result = self._port.query(
-            f"SELECT PAYLOAD FROM {self._table.sql} WHERE TARGET_NAME = %s AND EVAL_KEY = %s AND RECORD_KIND = 'gate'",
+            sql(
+                "SELECT PAYLOAD FROM {table} WHERE TARGET_NAME = %s AND EVAL_KEY = %s AND RECORD_KIND = 'gate'",
+                table=qname(self._table),
+            ),
             (target_name, eval_key),
         )
         if not result.rows:
@@ -117,10 +122,13 @@ class SnowflakeEvalStateStore:
     def _ensure_table(self) -> None:
         result = self._port.execute_script(
             (
-                f"CREATE TABLE IF NOT EXISTS {self._table.sql} ("
-                "TARGET_NAME VARCHAR NOT NULL, EVAL_KEY VARCHAR NOT NULL, "
-                "RECORD_KIND VARCHAR NOT NULL, PAYLOAD OBJECT NOT NULL, UPDATED_AT TIMESTAMP_TZ NOT NULL, "
-                "PRIMARY KEY (TARGET_NAME, EVAL_KEY, RECORD_KIND))",
+                sql(
+                    "CREATE TABLE IF NOT EXISTS {table} ("
+                    "TARGET_NAME VARCHAR NOT NULL, EVAL_KEY VARCHAR NOT NULL, "
+                    "RECORD_KIND VARCHAR NOT NULL, PAYLOAD OBJECT NOT NULL, UPDATED_AT TIMESTAMP_TZ NOT NULL, "
+                    "PRIMARY KEY (TARGET_NAME, EVAL_KEY, RECORD_KIND))",
+                    table=qname(self._table),
+                ),
             )
         )
         if not result.ok:
@@ -132,18 +140,23 @@ class SnowflakeEvalStateStore:
         if not result.ok:
             raise SnowflakePortError(result.error.message if result.error else "eval state write failed")
 
-    def _merge_sql(self, target_name: str, eval_key: str, kind: str, payload: Mapping[str, object]) -> str:
-        return (
-            f"MERGE INTO {self._table.sql} AS target USING (SELECT "
-            f"{string_literal(target_name)} TARGET_NAME, {string_literal(eval_key)} EVAL_KEY, "
-            f"{string_literal(kind)} RECORD_KIND, "
-            f"PARSE_JSON({string_literal(json.dumps(payload, sort_keys=True, separators=(',', ':')))}) PAYLOAD, "
+    def _merge_sql(self, target_name: str, eval_key: str, kind: str, payload: Mapping[str, object]) -> Sql:
+        return sql(
+            "MERGE INTO {table} AS target USING (SELECT "
+            "{target_name} TARGET_NAME, {eval_key} EVAL_KEY, "
+            "{kind} RECORD_KIND, "
+            "PARSE_JSON({payload}) PAYLOAD, "
             "CURRENT_TIMESTAMP() UPDATED_AT) source "
             "ON target.TARGET_NAME = source.TARGET_NAME AND target.EVAL_KEY = source.EVAL_KEY "
             "AND target.RECORD_KIND = source.RECORD_KIND "
             "WHEN MATCHED THEN UPDATE SET PAYLOAD = source.PAYLOAD, UPDATED_AT = source.UPDATED_AT "
             "WHEN NOT MATCHED THEN INSERT (TARGET_NAME, EVAL_KEY, RECORD_KIND, PAYLOAD, UPDATED_AT) "
-            "VALUES (source.TARGET_NAME, source.EVAL_KEY, source.RECORD_KIND, source.PAYLOAD, source.UPDATED_AT)"
+            "VALUES (source.TARGET_NAME, source.EVAL_KEY, source.RECORD_KIND, source.PAYLOAD, source.UPDATED_AT)",
+            table=qname(self._table),
+            target_name=literal(target_name),
+            eval_key=literal(eval_key),
+            kind=literal(kind),
+            payload=literal(json.dumps(payload, sort_keys=True, separators=(",", ":"))),
         )
 
 

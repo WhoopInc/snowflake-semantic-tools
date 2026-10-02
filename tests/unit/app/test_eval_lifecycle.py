@@ -29,6 +29,7 @@ from snowflake_semantic_tools.domain.model.lifecycle import (
     RenderedArtifact,
 )
 from snowflake_semantic_tools.domain.ports.snowflake import SnowflakePortError
+from snowflake_semantic_tools.domain.sql import Sql
 from snowflake_semantic_tools.domain.state import (
     STATE_SCHEMA_VERSION,
     AppliedEntry,
@@ -41,6 +42,7 @@ from tests.helpers.app_ports import FixedClock, InMemorySnowflake, InMemoryState
 from tests.helpers.artifact_builders import changeset, target
 from tests.helpers.compile_builders import compiled_as
 from tests.helpers.eval_builders import compile_eval, resolved_eval
+from tests.helpers.sql_values import statement, texts
 
 ORIGIN = Origin("dataset.yml", 1, 1)
 
@@ -644,9 +646,9 @@ def test_eval_source_table_must_exist_after_create() -> None:
     change = planned_change(artifact, manifest, port, handler, state_with(None, ""))
     original_execute = port.execute_script
 
-    def omit_source_create(statements: Sequence[str]) -> ExecResult:
-        if statements[0].lstrip().upper().startswith("CREATE TABLE "):
-            port.scripts.append(tuple(statements))
+    def omit_source_create(statements: Sequence[Sql]) -> ExecResult:
+        if str(statements[0]).lstrip().upper().startswith("CREATE TABLE "):
+            port.scripts.append(texts(statements))
             return ExecResult(True)
         return original_execute(statements)
 
@@ -713,7 +715,7 @@ def test_eval_source_row_count_rejects_unusable_query_results(
 ) -> None:
     _manifest, artifact, port, handler = setup_eval()
 
-    def return_result(sql: str, params: object = None) -> QueryResult:
+    def return_result(sql: Sql, params: object = None) -> QueryResult:
         del sql, params
         return query_result
 
@@ -764,9 +766,9 @@ def test_eval_dataset_must_exist_after_successful_creation() -> None:
     change = planned_change(artifact, manifest, port, handler, state_with(None, ""))
     original_execute = port.execute_script
 
-    def omit_dataset_create(statements: Sequence[str]) -> ExecResult:
-        if "SYSTEM$CREATE_EVALUATION_DATASET" in statements[0].upper():
-            port.scripts.append(tuple(statements))
+    def omit_dataset_create(statements: Sequence[Sql]) -> ExecResult:
+        if "SYSTEM$CREATE_EVALUATION_DATASET" in str(statements[0]).upper():
+            port.scripts.append(texts(statements))
             return ExecResult(True)
         return original_execute(statements)
 
@@ -806,9 +808,9 @@ def test_eval_stage_must_exist_after_successful_creation() -> None:
     change = planned_change(artifact, manifest, port, handler, prior)
     original_execute = port.execute_script
 
-    def omit_stage_create(statements: Sequence[str]) -> ExecResult:
-        if statements[0].lstrip().upper().startswith("CREATE STAGE "):
-            port.scripts.append(tuple(statements))
+    def omit_stage_create(statements: Sequence[Sql]) -> ExecResult:
+        if str(statements[0]).lstrip().upper().startswith("CREATE STAGE "):
+            port.scripts.append(texts(statements))
             return ExecResult(True)
         return original_execute(statements)
 
@@ -829,9 +831,9 @@ def test_eval_stage_format_is_verified_after_creation() -> None:
     change = planned_change(artifact, manifest, port, handler, prior)
     original_execute = port.execute_script
 
-    def create_wrong_stage(statements: Sequence[str]) -> ExecResult:
+    def create_wrong_stage(statements: Sequence[Sql]) -> ExecResult:
         result = original_execute(statements)
-        if statements[0].lstrip().upper().startswith("CREATE STAGE "):
+        if str(statements[0]).lstrip().upper().startswith("CREATE STAGE "):
             port.stage_formats["DB.S.EVAL_CONFIGS"] = "TYPE='CSV' FIELD_DELIMITER=','"
         return result
 
@@ -1001,7 +1003,7 @@ def test_eval_helper_invariants_reject_malformed_artifacts() -> None:
     with pytest.raises(ValueError, match="one TABLE and one DATASET"):
         handler._resources_by_type(replace(artifact, physical_resources=artifact.physical_resources[:1]))
 
-    without_statements = replace(artifact, create_statements=("",))
+    without_statements = replace(artifact, create_statements=(statement(""),))
     with pytest.raises(ValueError, match="CREATE TABLE and INSERT"):
         handler._source_statements(without_statements)
     with pytest.raises(ValueError, match="requires a dataset statement"):
