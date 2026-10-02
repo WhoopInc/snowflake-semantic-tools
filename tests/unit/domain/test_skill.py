@@ -356,7 +356,7 @@ def test_file_names_a_stage_rejects_fail_validation_at_the_file() -> None:
 
 def test_skill_bundle_budgets_limits_and_empty_folders() -> None:
     bundle, diagnostics = build_skill_bundle(skill(files={"reference/steps.md": "s"}))
-    assert bundle is not None and diagnostics == ()
+    assert bundle is not None and [item.code for item in diagnostics] == ["SST-VAL816"]
     assert [entry.path for entry in bundle.entries] == [
         "skills/month-close/SKILL.md",
         "skills/month-close/reference__steps.md",
@@ -365,11 +365,11 @@ def test_skill_bundle_budgets_limits_and_empty_folders() -> None:
     over_budget, diagnostics = build_skill_bundle(
         skill(files={"SKILL.md": SKILL_MD.format(name="month-close", body=big), "reference/steps.md": "s"})
     )
-    assert over_budget is not None and codes(diagnostics) == ["SST-VAL812"]
+    assert over_budget is not None and codes(diagnostics) == ["SST-VAL812", "SST-VAL816"]
     heavy, diagnostics = build_skill_bundle(
         skill(files={"reference/steps.md": "s", "data.bin": b"\0" * (BUNDLE_BUDGET_BYTES + 1)})
     )
-    assert heavy is not None and codes(diagnostics) == ["SST-VAL813", "SST-VAL811"]
+    assert heavy is not None and codes(diagnostics) == ["SST-VAL813", "SST-VAL811", "SST-VAL816"]
     many = {f"part{index}.md": "p" for index in range(SCAN_MAX_FILES)}
     too_many, diagnostics = build_skill_bundle(skill(files={"reference/steps.md": "s", **many}))
     assert too_many is None and "SST-VAL834" in codes(diagnostics)

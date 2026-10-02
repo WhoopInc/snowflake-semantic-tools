@@ -40,6 +40,8 @@ from tests.helpers.recorded_snowflake import RecordedSnowflake
 from tests.helpers.sql_values import statement, texts
 
 STAGE = QualifiedName.parse("DB.S.SKILL_BUNDLES")
+# The byte split and publication-surface notes every compiled extension reports.
+NOTES = frozenset(("SST-VAL816", "SST-VAL831"))
 CHANNEL = CatalogChannel("DB", "S", STAGE)
 
 
@@ -95,7 +97,7 @@ def test_compiled_skill_and_plugin_render_bundle_manifests_with_aliases() -> Non
         ),
     )
     result = CompileSkills(catalog, CHANNEL).run_result()
-    assert [item.code for item in result.diagnostics] == ["SST-VAL835"]
+    assert [item.code for item in result.diagnostics if item.code not in NOTES] == ["SST-VAL835"]
     catalog = replace(catalog, plugins=(replace(catalog.plugins[0], members=("month-close",)),))
     compiled = compile_catalog(catalog)
     skill_item = compiled["skill:month-close"]
@@ -132,7 +134,7 @@ def test_catalog_channel_absent_or_invalid_prefix_compiles_nothing() -> None:
     kit = Plugin("kit", "plugins/kit", "p", "d", None, ("month-close",), Origin("p"))
     result = CompileSkills(SkillCatalog((unsafe,), (kit,)), CHANNEL).run_result()
     assert result.compiled == ()
-    assert [(item.code, item.subject) for item in result.diagnostics if item.code != "SST-VAL813"] == [
+    assert [(item.code, item.subject) for item in result.diagnostics if item.code not in {"SST-VAL813", *NOTES}] == [
         ("SST-VAL857", "skill:month-close"),
         ("SST-VAL836", "plugin:kit"),
     ]

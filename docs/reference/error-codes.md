@@ -20,7 +20,7 @@ cannot be downgraded by any setting.
 - [Loading (LOD)](#loading-lod) -- 8 codes
 - [References (REF)](#references-ref) -- 29 codes
 - [Membership (MEM)](#membership-mem) -- 2 codes
-- [Validation (VAL)](#validation-val) -- 168 codes
+- [Validation (VAL)](#validation-val) -- 173 codes
 - [dbt (DBT)](#dbt-dbt) -- 5 codes
 - [Rendering (RND)](#rendering-rnd) -- 2 codes
 - [Manifest and state (MAN)](#manifest-and-state-man) -- 11 codes
@@ -1784,6 +1784,14 @@ Fix: fix what regressed, or capture a new baseline with a reason if the change i
 
 Fix: put SKILL.md at the folder root, with scripts beside it
 
+### SST-VAL802
+
+**Skill is not published as a typed CORTEX EXTENSION** (error)
+
+`skill '<artifact>': TYPE is <found>`
+
+Fix: publish with an explicit TYPE of SKILL or PLUGIN
+
 ### SST-VAL804
 
 **Extension version referenced by no agent** (warning)
@@ -1791,6 +1799,14 @@ Fix: put SKILL.md at the folder root, with scripts beside it
 `<artifact>: version <value> is referenced by no agent`
 
 Fix: reference it, or stop publishing it
+
+### SST-VAL805
+
+**Repo and catalog disagree** (warning)
+
+`skill reconciliation: <value>`
+
+Fix: publish the missing sources, and reap the orphan objects
 
 ### SST-VAL808
 
@@ -1856,6 +1872,12 @@ Fix: enable code_execution, or drop the script
 
 Fix: parameterise it; a path that resolves locally will not resolve in the sandbox
 
+### SST-VAL816
+
+**SKILL.md and bundle byte split** (info)
+
+`skill '<artifact>': <value>`
+
 ### SST-VAL817
 
 **No publication channel configured** (error)
@@ -1888,6 +1910,14 @@ Fix: set it false
 
 Fix: set layout to by_type
 
+### SST-VAL824
+
+**Deleted file survives into the next version** (error)
+
+`skill '<artifact>': '<path>' was deleted and is still published`
+
+Fix: build each version from empty, or issue explicit removals
+
 ### SST-VAL830
 
 **Skill reaches neither channel** (warning)
@@ -1895,6 +1925,12 @@ Fix: set layout to by_type
 `skill '<artifact>' is published nowhere`
 
 Fix: reference it from a profile, or enable a channel
+
+### SST-VAL831
+
+**CORTEX EXTENSION DDL surface used** (info)
+
+`skill '<artifact>': <value>`
 
 ### SST-VAL832
 

@@ -36,6 +36,7 @@ def build_skill_bundle(skill: Skill) -> tuple[SkillBundle | None, DiagnosticBag]
         SST-VAL812: SKILL.md is over its size budget.
         SST-VAL834: the bundle breaks a scan limit on its file count or file or total size.
         SST-VAL811: the bundle is over its size budget, and within the scan limit on total size.
+        SST-VAL816: how the bundle's bytes split between SKILL.md and the rest, once it builds (info).
     """
     files, renames, diagnostics = flatten_skill(skill)
     found: list[Diagnostic] = list(diagnostics)
@@ -61,7 +62,16 @@ def build_skill_bundle(skill: Skill) -> tuple[SkillBundle | None, DiagnosticBag]
     bag = DiagnosticBag(found)
     if bag.has_errors or not entries:
         return None, bag
-    return SkillBundle("SKILL", skill.name, entries, renames), bag
+    split = _byte_split(skill, entries)
+    return SkillBundle("SKILL", skill.name, entries, renames), DiagnosticBag((*bag, split))
+
+
+def _byte_split(skill: Skill, entries: tuple[BundleEntry, ...]) -> Diagnostic:
+    """Report how a bundle's bytes split between SKILL.md and the files read on demand (SST-VAL816)."""
+    total = sum(entry.size for entry in entries)
+    skill_md = sum(entry.size for entry in entries if entry.path == f"skills/{skill.name}/{SKILL_FILE}")
+    value = f"SKILL.md is {skill_md} of the bundle's {total} bytes; {total - skill_md} are read only on demand"
+    return D("SST-VAL816", origin=skill.origin, subject=skill.key, artifact=skill.name, value=value)
 
 
 def plugin_manifest_json(plugin: Plugin) -> str:

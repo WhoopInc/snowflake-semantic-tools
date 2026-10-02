@@ -611,10 +611,11 @@ def test_eval_validation_covers_ground_truth_free_rows_valid_unique_runs_and_no_
 def test_eval_placement_accepts_bare_and_same_schema_names_and_reports_any_other_schema() -> None:
     target = QualifiedName.parse("DB.S.SALES")
     value = _resolved_eval()
-    assert value.config.dataset is not None
+    base = value.config.dataset
+    assert base is not None
 
     def placed(name: str | None, source: str | None) -> list[str]:
-        dataset = replace(value.config.dataset, name_template=name, source_table_template=source)  # type: ignore[arg-type]
+        dataset = replace(base, name_template=name, source_table_template=source)
         resolved = replace(value, config=replace(value.config, dataset=dataset))
         return [item.context["found"] for item in eval_placement(resolved, target)]
 

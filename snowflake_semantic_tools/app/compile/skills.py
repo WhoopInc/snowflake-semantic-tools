@@ -154,6 +154,8 @@ class CompileSkills:
             SST-VAL801: a skill or plugin's extension name starts with a digit, so it cannot
                 name a Snowflake object; it does not compile.
             SST-VAL836: a plugin member has errors, so the plugin is blocked.
+            SST-VAL831: each compiled skill and plugin publishes through the CORTEX EXTENSION
+                statements (info).
         """
         diagnostics: list[Diagnostic] = list(validate_skill_catalog(self._catalog))
         channel = self._channel
@@ -193,6 +195,7 @@ class CompileSkills:
             diagnostics.extend(unnamed)
             return None
         release = self._release(skill.key, "SKILL", skill.extension_name, skill.description or "", bundle)
+        diagnostics.append(_extension_surface(release, skill.name, skill.origin))
         return CompiledExtension(release, skill.source_files, scripts=_scripts_of((skill,)))
 
     def _compile_plugin(
@@ -228,6 +231,7 @@ class CompileSkills:
             dict.fromkeys((plugin.manifest_file, *(path for skill in carried for path in skill.source_files)))
         )
         release = self._release(plugin.key, "PLUGIN", plugin.extension_name, plugin.description or "", bundle)
+        diagnostics.append(_extension_surface(release, plugin.name, plugin.origin))
         return CompiledExtension(
             release,
             sources,
@@ -248,6 +252,13 @@ class CompileSkills:
             certified=channel.certified,
             bundle=bundle,
         )
+
+
+def _extension_surface(release: ExtensionRelease, name: str, origin: Origin) -> Diagnostic:
+    """SST-VAL831: the statements a release publishes through, which the public SQL reference omits."""
+    kind = release.extension_type.lower()
+    value = f"publishes as a {kind} Cortex Extension version, a statement surface the public SQL reference omits"
+    return D("SST-VAL831", origin=origin, subject=release.key, artifact=name, value=value)
 
 
 def _scripts_of(skills: Iterable[Skill]) -> tuple[tuple[str, str], ...]:

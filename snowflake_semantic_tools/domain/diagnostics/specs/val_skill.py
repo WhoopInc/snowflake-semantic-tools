@@ -19,11 +19,25 @@ SPECS: tuple[ErrorSpec, ...] = (
         "put SKILL.md at the folder root, with scripts beside it",
     ),
     spec(
+        "SST-VAL802",
+        Severity.ERROR,
+        "Skill is not published as a typed CORTEX EXTENSION",
+        "skill '{artifact}': TYPE is {found}",
+        "publish with an explicit TYPE of SKILL or PLUGIN",
+    ),
+    spec(
         "SST-VAL804",
         Severity.WARNING,
         "Extension version referenced by no agent",
         "{artifact}: version {value} is referenced by no agent",
         "reference it, or stop publishing it",
+    ),
+    spec(
+        "SST-VAL805",
+        Severity.WARNING,
+        "Repo and catalog disagree",
+        "skill reconciliation: {value}",
+        "publish the missing sources, and reap the orphan objects",
     ),
     spec(
         "SST-VAL808",
@@ -82,6 +96,13 @@ SPECS: tuple[ErrorSpec, ...] = (
         "parameterise it; a path that resolves locally will not resolve in the sandbox",
     ),
     spec(
+        "SST-VAL816",
+        Severity.INFO,
+        "SKILL.md and bundle byte split",
+        "skill '{artifact}': {value}",
+        None,
+    ),
+    spec(
         "SST-VAL817",
         Severity.ERROR,
         "No publication channel configured",
@@ -110,11 +131,25 @@ SPECS: tuple[ErrorSpec, ...] = (
         "set layout to by_type",
     ),
     spec(
+        "SST-VAL824",
+        Severity.ERROR,
+        "Deleted file survives into the next version",
+        "skill '{artifact}': '{path}' was deleted and is still published",
+        "build each version from empty, or issue explicit removals",
+    ),
+    spec(
         "SST-VAL830",
         Severity.WARNING,
         "Skill reaches neither channel",
         "skill '{artifact}' is published nowhere",
         "reference it from a profile, or enable a channel",
+    ),
+    spec(
+        "SST-VAL831",
+        Severity.INFO,
+        "CORTEX EXTENSION DDL surface used",
+        "skill '{artifact}': {value}",
+        None,
     ),
     spec(
         "SST-VAL832",

@@ -536,4 +536,7 @@ def test_report_only_prunes_are_listed_but_are_not_changes(tmp_path: Path, monke
         payload = json.loads(planned.output)
         assert payload["status"] == "ok" and payload["data"]["report_only"] == ["skill:month-close"]
         assert [(item["action"], item["report_only"]) for item in payload["data"]["changes"]] == [("prune", True)]
-        assert [(item["code"], item["severity"]) for item in payload["diagnostics"]] == [("SST-PLN021", "info")]
+        assert [(item["code"], item["severity"]) for item in payload["diagnostics"]] == [
+            ("SST-PLN021", "info"),
+            ("SST-VAL805", "warning"),
+        ]

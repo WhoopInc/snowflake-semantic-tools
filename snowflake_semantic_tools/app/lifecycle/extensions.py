@@ -9,7 +9,7 @@ drops, grants, un-certifies, or changes discoverability.
 from __future__ import annotations
 
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from hashlib import sha256
 from threading import Lock
 from types import MappingProxyType
@@ -45,6 +45,8 @@ from snowflake_semantic_tools.domain.sql import Sql, ident, literal, qname, sql
 from snowflake_semantic_tools.domain.state import FAILED_AFTER_WRITE, AppliedEntry
 
 CERTIFIED = "CERTIFIED"
+# The TYPEs a CORTEX EXTENSION is created with; an extension without one cannot be a skill.
+EXTENSION_TYPES = frozenset(("SKILL", "PLUGIN"))
 
 
 @dataclass(frozen=True, slots=True)
@@ -129,6 +131,21 @@ class ExtensionLifecycleHandler(CompositeHandler[ExtensionRelease, _Observed, Ca
         if planned is None or _stale(planned.details, self._observation(release, current).details):
             return failed(change, f"{release.target.sql} changed since the plan", code="SST-APL012")
         return _Run(self._port, change, artifact, release, current, self._stage_lock).publish()
+
+    def report_prune(self, artifact_key: str, state_entry: AppliedEntry) -> Change:
+        """Report an extension the project no longer has a source for, which SST never drops.
+
+        Diagnostics:
+            SST-PLN021: the resources SST keeps, and what to do before removing them.
+            SST-VAL805: the repository and the catalog disagree: the extension has no source.
+        """
+        change = super().report_prune(artifact_key, state_entry)
+        orphan = D(
+            "SST-VAL805",
+            subject=artifact_key,
+            value=f"{state_entry.qualified_name or artifact_key} is published and {artifact_key} has no source",
+        )
+        return replace(change, diagnostics=DiagnosticBag((*change.diagnostics, orphan)))
 
     def _apply_prune(self, change: Change, options: ApplyOptions) -> ApplyOutcome:
         """Skip a prune, which is report-only, with the artifact's text if the change carries one."""
@@ -373,8 +390,11 @@ def _refusal(
     Diagnostics:
         SST-PLN026: the bundle stage encrypts client-side.
         SST-PLN024: the extension exists, but state does not record it as SST's.
+        SST-VAL802: the extension exists with no TYPE, or one SST does not recognise.
         SST-PLN002: the extension exists with another type.
         SST-PLN027: the alias names a version whose files are not the bundle's.
+        SST-VAL824: the bundle's stage prefix holds a file the bundle no longer has, which
+            ADD VERSION would publish.
     """
     if observed.stage_type is not None and observed.stage_type.upper() != SSE_STAGE_TYPE:
         return blocked(
@@ -389,6 +409,13 @@ def _refusal(
                 D("SST-PLN024", subject=key, artifact=key, value=release.target.sql),
                 ChangeReason.UNMANAGED_OBJECT,
             )
+        if extension.extension_type.upper() not in EXTENSION_TYPES:
+            found = repr(extension.extension_type) if extension.extension_type else "absent"
+            return blocked(
+                observation,
+                D("SST-VAL802", subject=key, artifact=release.bundle.name, found=found),
+                ChangeReason.UNMANAGED_OBJECT,
+            )
         if extension.extension_type != release.extension_type:
             return blocked(
                 observation,
@@ -401,6 +428,12 @@ def _refusal(
                 ),
                 ChangeReason.UNMANAGED_OBJECT,
             )
+    leftover = sorted(set(observed.staged) - set(release.paths))
+    if observed.version is None and leftover:
+        return blocked(
+            observation,
+            D("SST-VAL824", subject=key, artifact=release.bundle.name, path=f"{release.prefix}{leftover[0]}"),
+        )
     if observed.version is not None and observed.version_files != tuple(sorted(release.paths)):
         return blocked(
             observation,

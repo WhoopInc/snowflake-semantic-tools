@@ -207,7 +207,7 @@ def empty_state() -> State:
 
 
 def publish_extensions(
-    port: RecordedSnowflake, compiled: dict[str, CompiledExtension], previous: State
+    port: RecordedSnowflake, compiled: dict[str, CompiledExtension], previous: State, *, include_prune: bool = False
 ) -> tuple[ChangeSet, State]:
     """Plan and apply the compiled extensions; return the plan and the state apply left."""
     releases = {key: item.release for key, item in compiled.items()}
@@ -215,7 +215,7 @@ def publish_extensions(
     rendered = {key: item.rendered_artifact for key, item in compiled.items()}
     manifest = build_manifest(CompileSkills(SkillCatalog(), None).run_result())
     changeset = PlanArtifacts(port, lifecycle_handlers=handlers).run(
-        rendered, manifest, previous, target(), fetched_at="now"
+        rendered, manifest, previous, target(), fetched_at="now", include_prune=include_prune
     )
     store = InMemoryStateStore(previous)
     ApplyArtifacts(
