@@ -30,6 +30,7 @@ from snowflake_semantic_tools.adapters.yaml.semantic.checks.expressions import (
     _expression_reference_diagnostics,
     _filter_diagnostics,
 )
+from snowflake_semantic_tools.adapters.yaml.semantic.checks.fidelity import _renderer_fidelity_diagnostics
 from snowflake_semantic_tools.adapters.yaml.semantic.checks.instructions import _instruction_diagnostics
 from snowflake_semantic_tools.adapters.yaml.semantic.checks.metrics import _metric_cycles, _metric_diagnostics
 from snowflake_semantic_tools.adapters.yaml.semantic.checks.shape import (
@@ -224,6 +225,7 @@ def _document_diagnostics(
         *_folder_route_diagnostics(context.config, context.views_dir),
         *_stray_view_diagnostics(documents, context.views_dir),
         *_authored_key_diagnostics(documents),
+        *_renderer_fidelity_diagnostics(documents),
         *_deprecated_key_diagnostics(documents),
         *_member_name_diagnostics(documents),
         *_description_diagnostics(parsed.views, metrics),

@@ -51,7 +51,7 @@ AUTHORED_KEYS: Mapping[str, frozenset[str]] = MappingProxyType(
                 "visibility",
             )
         ),
-        # `synonyms` is read only to report it (SST-VAL011): a filter cannot carry them.
+        # `synonyms` is not read: a filter cannot carry them (SST-VAL406).
         "filter": frozenset(("name", "expr", "description", "tables", "labels")),
         # Snowflake has no clause for a description on the next three: it documents
         # the YAML for its readers and is never published.
