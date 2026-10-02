@@ -11,7 +11,14 @@ import json
 from collections.abc import Mapping
 
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, DiagnosticBag, Origin
-from snowflake_semantic_tools.domain.model.skill.model import SKILL_FILE, BundleEntry, Plugin, Skill, SkillBundle
+from snowflake_semantic_tools.domain.model.skill.model import (
+    SKILL_FILE,
+    BundleEntry,
+    Plugin,
+    Skill,
+    SkillBundle,
+    SkillFile,
+)
 from snowflake_semantic_tools.domain.render.skill_flatten import flatten_skill
 from snowflake_semantic_tools.domain.validate.shared import Emitter
 
@@ -34,12 +41,17 @@ def build_skill_bundle(skill: Skill) -> tuple[SkillBundle | None, DiagnosticBag]
 
     Diagnostics:
         SST-VAL812: SKILL.md is over its size budget.
+        SST-RND032: SKILL.md is within its size budget as authored and over it once flattened.
+        SST-RND030: the flattened files hold no SKILL.md for the version to open with.
         SST-VAL834: the bundle breaks a scan limit on its file count or file or total size.
         SST-VAL811: the bundle is over its size budget, and within the scan limit on total size.
     """
     files, renames, diagnostics = flatten_skill(skill)
     found: list[Diagnostic] = list(diagnostics)
     skill_md = next((item for item in skill.files if item.path == SKILL_FILE), None)
+    found.extend(
+        _rendered_skill_md(skill, files, authored_over=skill_md is not None and skill_md.size > SKILL_MD_BUDGET_BYTES)
+    )
     if skill_md is not None and skill_md.size > SKILL_MD_BUDGET_BYTES:
         found.append(
             D(
@@ -62,6 +74,27 @@ def build_skill_bundle(skill: Skill) -> tuple[SkillBundle | None, DiagnosticBag]
     if bag.has_errors or not entries:
         return None, bag
     return SkillBundle("SKILL", skill.name, entries, renames), bag
+
+
+def _rendered_skill_md(skill: Skill, files: tuple[SkillFile, ...], *, authored_over: bool) -> tuple[Diagnostic, ...]:
+    """Check the flattened SKILL.md: present whenever anything is, and within budget if it was authored so."""
+    rendered = next((item for item in files if item.path == SKILL_FILE), None)
+    if rendered is None:
+        if not files:
+            return ()
+        return (D("SST-RND030", origin=skill.origin, subject=skill.key, artifact=skill.name, path=SKILL_FILE),)
+    if authored_over or rendered.size <= SKILL_MD_BUDGET_BYTES:
+        return ()
+    return (
+        D(
+            "SST-RND032",
+            origin=skill.origin,
+            subject=skill.key,
+            artifact=skill.name,
+            size=rendered.size,
+            expected=SKILL_MD_BUDGET_BYTES,
+        ),
+    )
 
 
 def plugin_manifest_json(plugin: Plugin) -> str:
@@ -88,6 +121,7 @@ def build_plugin_bundle(
 
     Diagnostics:
         SST-VAL836: a member has errors, so it cannot be bundled.
+        SST-RND030: no member was bundled, so the manifest's `./skills/` names nothing.
         SST-VAL834: the bundle breaks a scan limit on its file count or file or total size.
         SST-VAL811: the bundle is over its size budget, and within the scan limit on total size.
     """
@@ -107,6 +141,10 @@ def build_plugin_bundle(
         entries.extend(BundleEntry(f"skills/{name}/{item.path}", item.content) for item in files)
         renames.extend((f"{name}/{authored}", f"{name}/{published}") for authored, published in member_renames)
     ordered = tuple(sorted(entries, key=lambda entry: entry.path))
+    if not any(entry.path.startswith("skills/") for entry in ordered) and not diagnostics:
+        diagnostics.append(
+            D("SST-RND030", origin=plugin.origin, subject=plugin.key, artifact=plugin.name, path="./skills/")
+        )
     diagnostics.extend(_limit_diagnostics(plugin.key, plugin.name, plugin.origin, ordered))
     bag = DiagnosticBag(diagnostics)
     if bag.has_errors:

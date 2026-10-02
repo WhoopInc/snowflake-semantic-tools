@@ -26,7 +26,12 @@ from snowflake_semantic_tools.domain.model.agent import (
     ResolvedAgentTool,
 )
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
-from snowflake_semantic_tools.domain.render.agent import desired_agent_definition, render_agent_json, render_agent_spec
+from snowflake_semantic_tools.domain.render.agent import (
+    agent_render_checks,
+    desired_agent_definition,
+    render_agent_json,
+    render_agent_spec,
+)
 from snowflake_semantic_tools.domain.validate.agent import (
     AgentIdentities,
     agent_rules,
@@ -62,8 +67,9 @@ class CompileAgents:
         project's extensions are checked for references only when it has agents.
 
         Each agent reports, in order: its name clashes, what `resolve_tool` reports for each
-        tool, its tool name clashes and agent-wide rules, what `resolve_skills` reports, and
-        its spec size. SST-REF022, then SST-VAL804, follow the last agent.
+        tool, its tool name clashes and agent-wide rules, what `resolve_skills` reports, its
+        spec size, and what `agent_render_checks` reports. SST-REF022, then SST-VAL804, follow
+        the last agent.
 
         Diagnostics:
             SST-VAL001: an agent name repeats, ignoring case.
@@ -77,6 +83,7 @@ class CompileAgents:
             SST-VAL546: an agent enables analytical search without a cortex_search tool.
             SST-VAL511: a rendered spec is over the 100,000-byte limit.
             SST-VAL512: a rendered spec is over 80% of that limit.
+            SST-RND010, SST-RND011, SST-RND013: as `agent_render_checks` reports them.
             SST-REF022: agents delegate to one another in a cycle.
             SST-VAL804: a published skill or plugin is referenced by no agent and consumed by
                 no plugin or profile.
@@ -103,10 +110,11 @@ class CompileAgents:
         return CompileResult(tuple(compiled), DiagnosticBag(diagnostics))
 
     def _resolve(self, model: AgentModel) -> tuple[ResolvedAgent, str, tuple[Diagnostic, ...]]:
-        """Resolve the agent with its inherited defaults, then render and size-check its spec."""
+        """Resolve the agent with its inherited defaults, then render, size-check, and check its spec."""
         resolved, problems = _resolve_agent(_inherit(model, self._context), self._context)
         payload = render_agent_json(resolved.model, resolved.tools)
-        return resolved, payload, (*problems, *spec_size(resolved, payload))
+        checks = agent_render_checks(resolved.model, resolved.tools, payload)
+        return resolved, payload, (*problems, *spec_size(resolved, payload), *checks)
 
     def _compile(self, model: AgentModel, resolved: ResolvedAgent, payload: str) -> CompiledAgent:
         spec = render_agent_spec(resolved.model, resolved.tools)

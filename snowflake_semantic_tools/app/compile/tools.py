@@ -4,12 +4,18 @@ from __future__ import annotations
 
 from dataclasses import dataclass, replace
 
-from snowflake_semantic_tools.app.compile.base import CompileResult, StandaloneArtifact, compile_each
+from snowflake_semantic_tools.app.compile.base import CompileResult, StandaloneArtifact, compile_checked
+from snowflake_semantic_tools.domain.diagnostics import Diagnostic
 from snowflake_semantic_tools.domain.model.artifact_key import artifact_key
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
 from snowflake_semantic_tools.domain.model.lifecycle import OwnershipMarker, RenderedArtifact
 from snowflake_semantic_tools.domain.model.tool import ToolCatalog, ToolKind, ToolMember
-from snowflake_semantic_tools.domain.render.tool import render_tool, routine_signature, search_service_statement
+from snowflake_semantic_tools.domain.render.tool import (
+    render_tool,
+    routine_signature,
+    search_service_statement,
+    tool_render_checks,
+)
 from snowflake_semantic_tools.domain.sql import keyword, literal, qname, sql
 
 
@@ -122,14 +128,16 @@ class CompileTools:
     def run_result(self) -> CompileResult:
         """Compile the managed members in casefolded name order.
 
-        The diagnostics are the catalog's, then any SST-INT902. A member that any catalog
-        diagnostic names, whatever its severity, is not compiled.
+        The diagnostics are the catalog's, then each member's render checks or SST-INT902. A
+        member that any catalog diagnostic names, whatever its severity, is not compiled, nor
+        is one a render check refuses.
 
         Diagnostics:
+            SST-RND040, SST-RND041: as `tool_render_checks` reports them.
             SST-INT902: rendering a member raised KeyError, TypeError or ValueError.
         """
         poisoned = {diagnostic.subject for diagnostic in self._catalog.diagnostics if diagnostic.subject}
-        return compile_each(
+        return compile_checked(
             sorted(self._catalog.managed, key=lambda item: item.name.casefold()),
             key=lambda member: artifact_key("tool", member.name.casefold()),
             render=self._compile,
@@ -140,7 +148,7 @@ class CompileTools:
             origin=lambda member: member.origin,
         )
 
-    def _compile(self, member: ToolMember) -> CompiledTool:
+    def _compile(self, member: ToolMember) -> tuple[CompiledTool | None, tuple[Diagnostic, ...]]:
         effective = _defaults(
             member,
             warehouse=self._warehouse,
@@ -154,7 +162,10 @@ class CompileTools:
             if member.on_model in self._dbt_relations
             else None
         )
-        return CompiledTool(effective, render_tool(effective, target, source))
+        refused = tool_render_checks(effective, source)
+        if refused:
+            return None, refused
+        return CompiledTool(effective, render_tool(effective, target, source)), ()
 
 
 def _defaults(

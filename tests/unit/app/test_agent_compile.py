@@ -751,7 +751,7 @@ def test_skill_references_pin_owned_versions_and_check_consumed_ones() -> None:
         ),
     )
     result = CompileAgents((agent,), DiagnosticBag(), context()).run_result()
-    assert [item.code for item in result.diagnostics] == ["SST-VAL814"]
+    assert [item.code for item in result.diagnostics] == ["SST-VAL814", "SST-RND010"]
     payload = compiled_as(result, CompiledAgent).payload
     assert '"path": "DB.S.TOOLKIT"' in payload and '"version": "SST_0123456789AB"' in payload
     assert '"path": "DB.EXT.VENDOR_PACK"' in payload and '"version": "V2"' in payload
@@ -785,6 +785,7 @@ def test_skill_references_pin_owned_versions_and_check_consumed_ones() -> None:
         "SST-VAL840",
         "SST-VAL839",
         "SST-REF013",
+        "SST-RND010",
         "SST-VAL804",
         "SST-VAL804",
     ]
@@ -826,7 +827,10 @@ def test_unreferenced_extensions_are_reported_only_in_projects_with_agents() -> 
     lonely = AgentModel("lonely", Origin("agent.yml"), ("agent.yml",))
     consumed = replace(context(), consumed=frozenset(("skill:semantics",)))
     diagnostics = CompileAgents((lonely,), DiagnosticBag(), consumed).run_result().diagnostics
-    assert [(item.code, item.subject) for item in diagnostics] == [("SST-VAL804", "plugin:toolkit")]
+    assert [(item.code, item.subject) for item in diagnostics] == [
+        ("SST-RND010", "agent:lonely"),
+        ("SST-VAL804", "plugin:toolkit"),
+    ]
 
 
 def test_agent_tools_resolve_by_type_and_unknown_types_resolve_to_nothing() -> None:
