@@ -1,4 +1,4 @@
-"""Apply codes: a refusal or failure while SST executes changes and runs checks in Snowflake."""
+"""Apply codes (APL): a refusal or failure while SST executes changes and runs checks in Snowflake."""
 
 from __future__ import annotations
 
@@ -52,6 +52,13 @@ SPECS: tuple[ErrorSpec, ...] = (
         demotable=False,
     ),
     spec(
+        "SST-APL007",
+        Severity.ERROR,
+        "Tag application failed after a successful create",
+        "{artifact}: {detail}",
+        "re-run apply; the version exists and only its certification tag is missing",
+    ),
+    spec(
         "SST-APL008",
         Severity.WARNING,
         "Grants could not be verified",
@@ -94,6 +101,13 @@ SPECS: tuple[ErrorSpec, ...] = (
         "{artifact}: {detail}",
         "re-apply after reconciling the recorded physical resources",
         demotable=False,
+    ),
+    spec(
+        "SST-APL018",
+        Severity.ERROR,
+        "Registry pointer write failed after an upload",
+        "{artifact}: uploaded {path}, pointer write failed: {detail}",
+        "re-run apply; the uploaded trees are content-addressed and are reused",
     ),
     spec(
         "SST-APL022",
@@ -141,19 +155,5 @@ SPECS: tuple[ErrorSpec, ...] = (
         "applied {found} outcomes for {expected} changes",
         "report this as a bug",
         demotable=False,
-    ),
-    spec(
-        "SST-APL018",
-        Severity.ERROR,
-        "Registry pointer write failed after an upload",
-        "{artifact}: uploaded {path}, pointer write failed: {detail}",
-        "re-run apply; the uploaded trees are content-addressed and are reused",
-    ),
-    spec(
-        "SST-APL007",
-        Severity.ERROR,
-        "Tag application failed after a successful create",
-        "{artifact}: {detail}",
-        "re-run apply; the version exists and only its certification tag is missing",
     ),
 )

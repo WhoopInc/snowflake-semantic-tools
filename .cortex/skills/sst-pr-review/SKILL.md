@@ -48,7 +48,7 @@ Read the diff carefully. Focus on:
 **Consistency with project conventions**
 - Read `AGENTS.md` and `CONTRIBUTING.md` for current conventions
 - ruff-formatted and lint-clean (line length 120), and strictly typed for mypy
-- Each new problem is a new diagnostic in its code family's module under `domain/model/diagnostic/specs/`: a new `SST-` code (never a reused one) with an actionable suggestion
+- Each new problem is a new diagnostic in its code area's module under `domain/model/diagnostic/specs/`: a new `SST-` code (never a reused one) with an actionable suggestion
 - A new `sst_config.yml` key is declared in `domain/model/config_schema/keys.py`
 - A change to diagnostics, config keys, CLI options, or artifact types ships the regenerated `docs/reference/*.md` (`sst docs`)
 - `--output json` prints exactly one envelope on stdout; exit codes match `docs/reference/cli.md`

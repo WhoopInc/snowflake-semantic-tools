@@ -1,4 +1,4 @@
-"""Tool validation codes, SST-VAL600 to SST-VAL699: tool groups, members, types, and sources."""
+"""Validation codes 6xx (VAL): agent tools -- members, types, ownership, and sources."""
 
 from __future__ import annotations
 

@@ -1,4 +1,4 @@
-"""Reference codes: a reference that does not resolve, takes a rejected form, or forms a cycle."""
+"""Reference codes (REF): a reference that does not resolve, takes a rejected form, or forms a cycle."""
 
 from __future__ import annotations
 
@@ -15,18 +15,18 @@ SPECS: tuple[ErrorSpec, ...] = (
         "run dbt parse, or correct the model name",
     ),
     spec(
-        "SST-REF005",
-        Severity.ERROR,
-        "metric() reference cycle",
-        "metric reference cycle: {cycle}",
-        "break the cycle",
-    ),
-    spec(
         "SST-REF002",
         Severity.ERROR,
         "ref() column not on the model",
         "{{{{ ref('{model}','{column}') }}}}: '{column}' is not a column on {model}",
         "correct the column name, or add it to the model",
+    ),
+    spec(
+        "SST-REF005",
+        Severity.ERROR,
+        "metric() reference cycle",
+        "metric reference cycle: {cycle}",
+        "break the cycle",
     ),
     spec(
         "SST-REF006",
@@ -36,18 +36,11 @@ SPECS: tuple[ErrorSpec, ...] = (
         "correct the name or declare the metric",
     ),
     spec(
-        "SST-REF034",
+        "SST-REF010",
         Severity.ERROR,
-        "Legacy table() global is rejected",
-        "{file}:{line}:{col}: table('{model}') is not a reference in 1.0; use ref('{model}')",
-        "run sst migrate refs",
-    ),
-    spec(
-        "SST-REF035",
-        Severity.ERROR,
-        "Legacy column() global is rejected",
-        "{file}:{line}:{col}: column('{model}','{column}') is not a reference in 1.0; use ref('{model}','{column}')",
-        "run sst migrate refs",
+        "Tool reference does not resolve",
+        "{{{{ tool('{group}','{name}') }}}} does not resolve",
+        "declare the group and member, or correct the reference",
     ),
     spec(
         "SST-REF011",
@@ -78,34 +71,6 @@ SPECS: tuple[ErrorSpec, ...] = (
         "create the sidecar, or correct the path",
     ),
     spec(
-        "SST-REF022",
-        Severity.ERROR,
-        "Agent delegation graph has a cycle",
-        "agent delegation cycle: {cycle}",
-        "break the delegation cycle",
-    ),
-    spec(
-        "SST-REF026",
-        Severity.ERROR,
-        "Eval metric reference does not resolve",
-        "{{{{ eval_metric('{name}') }}}} does not resolve",
-        "declare the metric in the eval_metrics/ tree, or correct the name",
-    ),
-    spec(
-        "SST-REF027",
-        Severity.ERROR,
-        "File sidecar escapes the project root",
-        "{{{{ file('{path}') }}}} resolves outside the project root",
-        "use a path inside the project",
-    ),
-    spec(
-        "SST-REF010",
-        Severity.ERROR,
-        "Tool reference does not resolve",
-        "{{{{ tool('{group}','{name}') }}}} does not resolve",
-        "declare the group and member, or correct the reference",
-    ),
-    spec(
         "SST-REF018",
         Severity.ERROR,
         "Reference has no current-target location",
@@ -127,6 +92,13 @@ SPECS: tuple[ErrorSpec, ...] = (
         "point the reference at a compatible object type",
     ),
     spec(
+        "SST-REF022",
+        Severity.ERROR,
+        "Agent delegation graph has a cycle",
+        "agent delegation cycle: {cycle}",
+        "break the delegation cycle",
+    ),
+    spec(
         "SST-REF023",
         Severity.WARNING,
         "Multiple targets resolve to one writable object",
@@ -134,11 +106,39 @@ SPECS: tuple[ErrorSpec, ...] = (
         "map each writable target explicitly, or mark the group immutable",
     ),
     spec(
+        "SST-REF026",
+        Severity.ERROR,
+        "Eval metric reference does not resolve",
+        "{{{{ eval_metric('{name}') }}}} does not resolve",
+        "declare the metric in the eval_metrics/ tree, or correct the name",
+    ),
+    spec(
+        "SST-REF027",
+        Severity.ERROR,
+        "File sidecar escapes the project root",
+        "{{{{ file('{path}') }}}} resolves outside the project root",
+        "use a path inside the project",
+    ),
+    spec(
         "SST-REF032",
         Severity.ERROR,
         "skill() target not declared",
         "{{{{ skill('{name}') }}}} does not resolve",
         "declare the skill under the skills directory, or correct the name",
+    ),
+    spec(
+        "SST-REF034",
+        Severity.ERROR,
+        "Legacy table() global is rejected",
+        "{file}:{line}:{col}: table('{model}') is not a reference in 1.0; use ref('{model}')",
+        "run sst migrate refs",
+    ),
+    spec(
+        "SST-REF035",
+        Severity.ERROR,
+        "Legacy column() global is rejected",
+        "{file}:{line}:{col}: column('{model}','{column}') is not a reference in 1.0; use ref('{model}','{column}')",
+        "run sst migrate refs",
     ),
     spec(
         "SST-REF036",

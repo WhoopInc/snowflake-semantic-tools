@@ -1,7 +1,7 @@
 """Structured diagnostics shared by every compiler phase.
 
 A diagnostic is a registered code plus the context its message template formats. `core`
-holds the value types and `spec`; `specs` holds every code, one module per code family.
+holds the value types and `spec`; `specs` holds every code, one module per code area.
 This module builds `ERROR_REGISTRY` from those modules and re-exports the `core` names,
 so importers never reach into the submodules. `D`, `Diagnostic`, and `render_diagnostic`
 look `ERROR_REGISTRY` up as a global of this module on each call, so replacing it here
@@ -27,17 +27,27 @@ from snowflake_semantic_tools.domain.model.diagnostic.core import (
 from snowflake_semantic_tools.domain.model.diagnostic.specs import (
     apl,
     cfg,
-    internal,
-    loading,
+    dbt,
+    dis,
+    int_,
+    lod,
     man,
+    mem,
     pln,
     prs,
+    prt,
     ref,
-    snowflake,
+    reg,
+    rnd,
+    sno,
     val_agent,
     val_eval,
-    val_extension,
+    val_filter,
+    val_metric,
+    val_relationship,
     val_semantic_view,
+    val_shared,
+    val_skill,
     val_tool,
 )
 
@@ -140,20 +150,30 @@ def build_registry(specs: tuple[ErrorSpec, ...]) -> Mapping[str, ErrorSpec]:
 # Iteration order is not a contract: the error reference sorts the codes of each section.
 ERROR_REGISTRY = build_registry(
     (
+        *reg.SPECS,
         *cfg.SPECS,
+        *dis.SPECS,
+        *lod.SPECS,
         *prs.SPECS,
-        *loading.SPECS,
         *ref.SPECS,
+        *mem.SPECS,
+        *dbt.SPECS,
+        *val_shared.SPECS,
+        *val_metric.SPECS,
+        *val_relationship.SPECS,
         *val_semantic_view.SPECS,
+        *val_filter.SPECS,
         *val_agent.SPECS,
         *val_tool.SPECS,
         *val_eval.SPECS,
-        *val_extension.SPECS,
-        *man.SPECS,
+        *val_skill.SPECS,
+        *rnd.SPECS,
         *pln.SPECS,
         *apl.SPECS,
-        *snowflake.SPECS,
-        *internal.SPECS,
+        *man.SPECS,
+        *sno.SPECS,
+        *prt.SPECS,
+        *int_.SPECS,
     )
 )
 

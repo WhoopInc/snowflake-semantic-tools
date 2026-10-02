@@ -1,4 +1,4 @@
-"""Cortex Agent validation codes, SST-VAL500 to SST-VAL599.
+"""Validation codes 5xx (VAL): Cortex Agents.
 
 The rendered spec's size, its tools (names, descriptions, resources, and inputs), skill
 sources, orchestration settings, and display names.
@@ -110,6 +110,13 @@ SPECS: tuple[ErrorSpec, ...] = (
         "reference a versioned Cortex Extension",
     ),
     spec(
+        "SST-VAL540",
+        Severity.ERROR,
+        "SKILL-type extension source has no name",
+        "agent '{artifact}': the skill source for skill('{path}') omits name",
+        "declare name; it is optional only for a plugin",
+    ),
+    spec(
         "SST-VAL543",
         Severity.ERROR,
         "Orchestration model is not allowed",
@@ -136,12 +143,5 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Agent display name collides",
         "agent '{artifact}': display_name '{value}' is shared with {other}",
         "give each agent a distinct display name",
-    ),
-    spec(
-        "SST-VAL540",
-        Severity.ERROR,
-        "SKILL-type extension source has no name",
-        "agent '{artifact}': the skill source for skill('{path}') omits name",
-        "declare name; it is optional only for a plugin",
     ),
 )

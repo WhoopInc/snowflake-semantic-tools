@@ -1,4 +1,4 @@
-"""Extension validation codes, SST-VAL800 to SST-VAL899.
+"""Validation codes 8xx (VAL): skills, plugins, and CoCo Desktop profiles.
 
 Skill and plugin bundles, their publication channels and stages, and CoCo Desktop
 profiles with the hooks, MCP configs, and commands they name.
@@ -12,39 +12,18 @@ TITLE: str = "Validation"
 
 SPECS: tuple[ErrorSpec, ...] = (
     spec(
-        "SST-VAL817",
-        Severity.ERROR,
-        "No publication channel configured",
-        "{key}: configures neither the catalog nor the stage channel",
-        "configure skills.catalog, skills.stage, or both",
-    ),
-    spec(
-        "SST-VAL818",
-        Severity.ERROR,
-        "Flatten setting is wrong for its channel",
-        "config key '{key}' is {found}; it must be {expected}",
-        "set skills.catalog.+flatten true and skills.stage.+flatten false",
-    ),
-    spec(
-        "SST-VAL819",
-        Severity.ERROR,
-        "Stage auto_compress is enabled",
-        "config key '{key}' is {found}; it must be {expected}",
-        "set it false; compressed uploads are invisible to Desktop",
-    ),
-    spec(
-        "SST-VAL821",
-        Severity.ERROR,
-        "Stage layout is not by_type",
-        "config key '{key}' value {found} is outside {expected}",
-        "set skills.stage.+layout to by_type",
-    ),
-    spec(
         "SST-VAL801",
         Severity.ERROR,
         "Skill folder layout or name is wrong",
         "'{artifact}': {detail}",
         "name the folder in lowercase kebab-case and repeat that name in the frontmatter",
+    ),
+    spec(
+        "SST-VAL804",
+        Severity.WARNING,
+        "Published extension is referenced by no agent",
+        "{artifact}: version {value} is referenced by no agent",
+        "reference it from an agent, or accept that it serves the catalog and Desktop only",
     ),
     spec(
         "SST-VAL808",
@@ -89,11 +68,53 @@ SPECS: tuple[ErrorSpec, ...] = (
         "reference it, or remove it",
     ),
     spec(
+        "SST-VAL814",
+        Severity.WARNING,
+        "Bundle carries a script no consuming agent can run",
+        "agent '{artifact}': {name} bundles scripts, and the agent declares no code_execution tool",
+        "enable code_execution on the agent, or drop the scripts",
+    ),
+    spec(
         "SST-VAL815",
         Severity.WARNING,
         "Bundled file reads a credential or an absolute local path",
         "skill '{artifact}': '{path}' contains {detail}",
         "parameterise it; a path that resolves on one machine does not resolve in the sandbox",
+    ),
+    spec(
+        "SST-VAL817",
+        Severity.ERROR,
+        "No publication channel configured",
+        "{key}: configures neither the catalog nor the stage channel",
+        "configure skills.catalog, skills.stage, or both",
+    ),
+    spec(
+        "SST-VAL818",
+        Severity.ERROR,
+        "Flatten setting is wrong for its channel",
+        "config key '{key}' is {found}; it must be {expected}",
+        "set skills.catalog.+flatten true and skills.stage.+flatten false",
+    ),
+    spec(
+        "SST-VAL819",
+        Severity.ERROR,
+        "Stage auto_compress is enabled",
+        "config key '{key}' is {found}; it must be {expected}",
+        "set it false; compressed uploads are invisible to Desktop",
+    ),
+    spec(
+        "SST-VAL821",
+        Severity.ERROR,
+        "Stage layout is not by_type",
+        "config key '{key}' value {found} is outside {expected}",
+        "set skills.stage.+layout to by_type",
+    ),
+    spec(
+        "SST-VAL830",
+        Severity.WARNING,
+        "Skill reaches neither channel",
+        "skill '{artifact}' is published nowhere",
+        "enable the catalog channel, or add the skill to a profile",
     ),
     spec(
         "SST-VAL832",
@@ -138,20 +159,6 @@ SPECS: tuple[ErrorSpec, ...] = (
         "list each member once",
     ),
     spec(
-        "SST-VAL804",
-        Severity.WARNING,
-        "Published extension is referenced by no agent",
-        "{artifact}: version {value} is referenced by no agent",
-        "reference it from an agent, or accept that it serves the catalog and Desktop only",
-    ),
-    spec(
-        "SST-VAL814",
-        Severity.WARNING,
-        "Bundle carries a script no consuming agent can run",
-        "agent '{artifact}': {name} bundles scripts, and the agent declares no code_execution tool",
-        "enable code_execution on the agent, or drop the scripts",
-    ),
-    spec(
         "SST-VAL838",
         Severity.ERROR,
         "Version set on a project-published extension",
@@ -186,13 +193,6 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Two artifacts publish to one Snowflake name",
         "{a} and {b} both publish to {target}",
         "rename one of them; plans and reports that name the object become ambiguous",
-    ),
-    spec(
-        "SST-VAL830",
-        Severity.WARNING,
-        "Skill reaches neither channel",
-        "skill '{artifact}' is published nowhere",
-        "enable the catalog channel, or add the skill to a profile",
     ),
     spec(
         "SST-VAL844",

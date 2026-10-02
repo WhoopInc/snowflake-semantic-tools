@@ -138,7 +138,7 @@ Imports run one way, `cli` → (`app` | `adapters`) → `domain`:
 
 ### Diagnostics
 
-Every problem SST reports is a diagnostic registered in `snowflake_semantic_tools/domain/model/diagnostic/specs/`, in the module for its code family: a stable code (`SST-`, a three-letter subsystem, and a number, such as `SST-VAL116`), a severity, a message template, and a suggestion that says how to fix it. Build one with `D("SST-...", ...)`. A new problem gets a new code; codes are never reused, even after the diagnostic that used one is removed.
+Every problem SST reports is a diagnostic registered in `snowflake_semantic_tools/domain/model/diagnostic/specs/`, in the module for its code area (VAL is split by hundreds, `val_metric` for 1xx and so on): a stable code (`SST-`, a three-letter subsystem, and a number, such as `SST-VAL116`), a severity, a message template, and a suggestion that says how to fix it. Build one with `D("SST-...", ...)`. A new problem gets a new code; codes are never reused, even after the diagnostic that used one is removed.
 
 ### Generated Reference Pages
 

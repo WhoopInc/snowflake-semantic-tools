@@ -1,4 +1,4 @@
-"""Configuration codes: `sst_config.yml` keys and values, folder routes, and dbt profiles."""
+"""Configuration codes (CFG): `sst_config.yml` keys and values, folder routes, and dbt profiles."""
 
 from __future__ import annotations
 
@@ -7,20 +7,6 @@ from snowflake_semantic_tools.domain.model.diagnostic.core import ErrorSpec, Sev
 TITLE: str = "Configuration"
 
 SPECS: tuple[ErrorSpec, ...] = (
-    spec(
-        "SST-CFG010",
-        Severity.ERROR,
-        "Profile or target not found",
-        "target '{target}' is absent from profile '{profile}'",
-        "add the target, or pass --target with a declared name",
-    ),
-    spec(
-        "SST-CFG041",
-        Severity.ERROR,
-        "Folder route names a directory that does not exist",
-        "config key '{key}' in block '{block}' names no directory under '{root}'",
-        "create the directory, or remove the key",
-    ),
     spec(
         "SST-CFG003",
         Severity.WARNING,
@@ -57,6 +43,13 @@ SPECS: tuple[ErrorSpec, ...] = (
         "use an allowed value",
     ),
     spec(
+        "SST-CFG010",
+        Severity.ERROR,
+        "Profile or target not found",
+        "target '{target}' is absent from profile '{profile}'",
+        "add the target, or pass --target with a declared name",
+    ),
+    spec(
         "SST-CFG015",
         Severity.ERROR,
         "evals block declares a database or schema",
@@ -64,11 +57,33 @@ SPECS: tuple[ErrorSpec, ...] = (
         "remove +database and +schema from evals:; eval objects resolve to the agent's schema",
     ),
     spec(
+        "SST-CFG036",
+        Severity.ERROR,
+        "Name-map entry cannot be qualified",
+        "{block}: '{name}' cannot be qualified -- no fqn: and {reason}",
+        "set fqn: on the entry, or set default_prefix on the block",
+    ),
+    spec(
+        "SST-CFG038",
+        Severity.ERROR,
+        "Sample-value collection is disabled",
+        "--include {components} reads row data, and enrichment.allow_sample_value_collection is false",
+        "leave sample-values and enums out of --include; authored sample_values are still read",
+        demotable=False,
+    ),
+    spec(
         "SST-CFG040",
         Severity.ERROR,
         "sha_version is declared in vars",
         "vars.sha_version is supplied by SST and must not be declared",
         "remove it from vars:",
+    ),
+    spec(
+        "SST-CFG041",
+        Severity.ERROR,
+        "Folder route names a directory that does not exist",
+        "config key '{key}' in block '{block}' names no directory under '{root}'",
+        "create the directory, or remove the key",
     ),
     spec(
         "SST-CFG042",
@@ -129,20 +144,5 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Unsupported authentication configuration",
         "target '{target}': {detail}",
         "authenticate with a key pair, a password, SSO (authenticator), or an OAuth access token (token)",
-    ),
-    spec(
-        "SST-CFG036",
-        Severity.ERROR,
-        "Name-map entry cannot be qualified",
-        "{block}: '{name}' cannot be qualified -- no fqn: and {reason}",
-        "set fqn: on the entry, or set default_prefix on the block",
-    ),
-    spec(
-        "SST-CFG038",
-        Severity.ERROR,
-        "Sample-value collection is disabled",
-        "--include {components} reads row data, and enrichment.allow_sample_value_collection is false",
-        "leave sample-values and enums out of --include; authored sample_values are still read",
-        demotable=False,
     ),
 )

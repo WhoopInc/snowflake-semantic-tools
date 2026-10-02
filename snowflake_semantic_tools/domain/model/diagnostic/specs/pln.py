@@ -1,4 +1,4 @@
-"""Planning codes: live observation, ownership, drift, dependency cycles, pruning, and partial runs."""
+"""Planning codes (PLN): observation, ownership, drift, dependency cycles, pruning, and partial runs."""
 
 from __future__ import annotations
 

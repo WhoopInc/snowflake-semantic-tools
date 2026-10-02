@@ -1,4 +1,4 @@
-"""Manifest and state codes: reading the SST manifest and the recorded state, and their schemas."""
+"""Manifest and state codes (MAN): reading the SST manifest and the recorded state, and their schemas."""
 
 from __future__ import annotations
 

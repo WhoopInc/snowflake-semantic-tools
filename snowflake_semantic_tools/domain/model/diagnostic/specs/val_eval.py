@@ -1,4 +1,4 @@
-"""Agent eval validation codes, SST-VAL700 to SST-VAL799.
+"""Validation codes 7xx (VAL): Cortex Agent evaluations.
 
 Datasets and their rows, run names and pinned versions, system and custom metrics,
 judge prompts and scoring ranges, thresholds, and baselines.
@@ -180,43 +180,6 @@ SPECS: tuple[ErrorSpec, ...] = (
         "measure first, then set the threshold",
     ),
     spec(
-        "SST-VAL758",
-        Severity.ERROR,
-        "Eval baseline is absent",
-        "eval '{artifact}' has no captured baseline",
-        "capture a baseline explicitly with a reason",
-    ),
-    spec(
-        "SST-VAL759",
-        Severity.ERROR,
-        "Eval baseline is incompatible",
-        "eval '{artifact}' baseline is incompatible: {detail}",
-        "capture a new baseline for the current dataset, agent version and metrics",
-    ),
-    spec(
-        "SST-VAL760",
-        Severity.WARNING,
-        "Eval baseline is nearing expiry",
-        "eval '{artifact}' baseline expires on {date}",
-        "capture a replacement baseline before it expires",
-    ),
-    spec(
-        "SST-VAL761",
-        Severity.ERROR,
-        "Eval baseline is expired",
-        "eval '{artifact}' baseline expired on {date}",
-        "capture a replacement baseline with a reason",
-        demotable=False,
-    ),
-    spec(
-        "SST-VAL763",
-        Severity.ERROR,
-        "Blocking eval regressed",
-        "eval '{artifact}' regressed on {count} question/metric pair(s): {detail}",
-        "fix what regressed, or capture a new baseline with a reason if the change is intended",
-        demotable=False,
-    ),
-    spec(
         "SST-VAL737",
         Severity.ERROR,
         "Custom metric shadows a system metric name",
@@ -280,10 +243,47 @@ SPECS: tuple[ErrorSpec, ...] = (
         "narrow the scale",
     ),
     spec(
+        "SST-VAL758",
+        Severity.ERROR,
+        "Eval baseline is absent",
+        "eval '{artifact}' has no captured baseline",
+        "capture a baseline explicitly with a reason",
+    ),
+    spec(
+        "SST-VAL759",
+        Severity.ERROR,
+        "Eval baseline is incompatible",
+        "eval '{artifact}' baseline is incompatible: {detail}",
+        "capture a new baseline for the current dataset, agent version and metrics",
+    ),
+    spec(
+        "SST-VAL760",
+        Severity.WARNING,
+        "Eval baseline is nearing expiry",
+        "eval '{artifact}' baseline expires on {date}",
+        "capture a replacement baseline before it expires",
+    ),
+    spec(
+        "SST-VAL761",
+        Severity.ERROR,
+        "Eval baseline is expired",
+        "eval '{artifact}' baseline expired on {date}",
+        "capture a replacement baseline with a reason",
+        demotable=False,
+    ),
+    spec(
         "SST-VAL762",
         Severity.ERROR,
         "Eval dataset template is missing",
         "eval '{artifact}': dataset.{field} is not set",
         "set dataset.name_template and dataset.source_table_template in the eval's config.yml",
+    ),
+    spec(
+        "SST-VAL763",
+        Severity.ERROR,
+        "Blocking eval regressed",
+        "eval '{artifact}' regressed on {count} question/metric pair(s): {detail}",
+        "fix what regressed, or capture a new baseline with a reason if the change is intended",
+        demotable=False,
     ),
 )

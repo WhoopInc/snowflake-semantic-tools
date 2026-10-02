@@ -1,8 +1,7 @@
-"""Internal codes (INT), which report a defect in SST itself, and rendering codes (RND).
+"""Internal codes (INT): a defect in SST itself.
 
 `D` emits SST-INT900 for an unregistered code and SST-INT901 for missing template
-context, so both must stay registered. Each prefix keeps its own section title in
-`SUBSYSTEMS`; `TITLE` is the title of INT.
+context, so both must stay registered. The module is `int_` so it does not shadow the builtin.
 """
 
 from __future__ import annotations
@@ -35,19 +34,5 @@ SPECS: tuple[ErrorSpec, ...] = (
         "domain invariant violated: {detail}",
         "report this as a bug",
         demotable=False,
-    ),
-    spec(
-        "SST-RND012",
-        Severity.ERROR,
-        "Unknown agent tool type",
-        "agent '{artifact}': tool type '{found}' is unknown to the renderer",
-        "use a supported type, or extend the allowlist",
-    ),
-    spec(
-        "SST-RND031",
-        Severity.WARNING,
-        "Skill body is empty",
-        "skill '{artifact}': SKILL.md has no instructions after its frontmatter",
-        "add the instructions the skill carries",
     ),
 )
