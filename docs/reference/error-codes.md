@@ -20,7 +20,7 @@ cannot be downgraded by any setting.
 - [Discovery (DIS)](#discovery-dis) -- 12 codes
 - [Parsing (PRS)](#parsing-prs) -- 58 codes
 - [Loading (LOD)](#loading-lod) -- 24 codes
-- [References (REF)](#references-ref) -- 38 codes
+- [References (REF)](#references-ref) -- 37 codes
 - [Membership (MEM)](#membership-mem) -- 24 codes
 - [Validation (VAL)](#validation-val) -- 279 codes
 - [dbt (DBT)](#dbt-dbt) -- 30 codes
@@ -1569,14 +1569,6 @@ Fix: declare the plugin under the plugins directory, or correct the name
 `agent '<artifact>': extension('<name>') names a <kind> this project publishes`
 
 Fix: reference it with skill() or plugin(), which pins the published version
-
-### SST-REF038
-
-**Unknown project variable** (error)
-
-`<artifact>: var('<name>') names no project variable`
-
-Fix: declare it under vars: in sst_config.yml, or fix the name
 
 ### SST-REF041
 

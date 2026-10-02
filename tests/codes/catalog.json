@@ -3613,11 +3613,11 @@
   "code": "SST-REF038",
   "area": "REF",
   "number": 38,
-  "severity": "ERROR",
+  "severity": "RETIRED",
   "non_demotable": false,
-  "title": "Unknown project variable",
-  "message": "{artifact}: var('{name}') names no project variable",
-  "precheck": "local"
+  "title": "Unknown project variable -- number burned, never reused",
+  "message": "--",
+  "precheck": "--"
  },
  {
   "code": "SST-REF041",
