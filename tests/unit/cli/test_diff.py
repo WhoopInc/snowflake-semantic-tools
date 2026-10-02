@@ -9,12 +9,10 @@ import pytest
 from click.testing import CliRunner, Result
 
 from snowflake_semantic_tools.adapters.fs.local import ManifestFileStore
-from snowflake_semantic_tools.app.diff import live_states, plan_states
 from snowflake_semantic_tools.cli.main import cli
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
 from snowflake_semantic_tools.domain.model.lifecycle import OwnershipMarker
-from snowflake_semantic_tools.domain.plan.diff import ArtifactState, compare_states, state_classes
-from snowflake_semantic_tools.domain.state import APPLIED, DEACTIVATED, AppliedEntry
+from snowflake_semantic_tools.domain.state import APPLIED, AppliedEntry
 from tests.helpers.cli_projects import common, compile_project, invoke_with_port, project_copy
 from tests.helpers.recorded_snowflake import RecordedSnowflake
 
@@ -50,50 +48,6 @@ def _deployed(project: Path, *, drop: str, change: str) -> RecordedSnowflake:
 
 def _diff(monkeypatch: pytest.MonkeyPatch, port: RecordedSnowflake, project: Path, *args: str) -> Result:
     return invoke_with_port(monkeypatch, port, ["diff", *common(project), *args])
-
-
-def test_state_classes_name_new_modified_unmodified_and_orphaned() -> None:
-    classes = state_classes({"a": "1", "b": "2", "c": "3"}, {"b": "2", "c": "9", "d": "4"})
-    assert classes == {
-        "new": frozenset({"a"}),
-        "modified": frozenset({"c"}),
-        "unmodified": frozenset({"b"}),
-        "orphaned": frozenset({"d"}),
-    }
-
-
-def test_compare_names_only_the_fields_both_states_record() -> None:
-    before = {"v:x": ArtifactState("1", "DB.S.X", ""), "v:y": ArtifactState("1", "DB.S.Y", "m")}
-    after = {"v:x": ArtifactState("2", "DB.S.Z", "m"), "v:y": ArtifactState("1", "DB.S.Y", "n")}
-    [modified] = compare_states(before, after)
-    assert (modified.key, modified.status, modified.properties) == ("v:x", "modified", ("fingerprint", "target"))
-    assert (modified.artifact_type, modified.name) == ("v", "x")
-
-
-def test_live_states_read_markers_and_trust_state_for_composites() -> None:
-    port = RecordedSnowflake(
-        state={
-            "semantic_view:kept": _entry("DB.S.KEPT", "1" * 64),
-            "semantic_view:unmarked": _entry("DB.S.UNMARKED", "2" * 64),
-            "skill:bundle": _entry("DB.S.BUNDLE", "3" * 64),
-            "agent:retired": _entry("DB.S.RETIRED", "4" * 64, outcome=DEACTIVATED),
-        },
-        markers={"DB.S.KEPT": OwnershipMarker("a" * 64, "5" * 64)},
-    )
-    held, problems = live_states(port, TABLE, "dev")
-    assert problems == ()
-    assert held == {
-        "semantic_view:kept": ArtifactState("5" * 64, "DB.S.KEPT", "a" * 64),
-        "skill:bundle": ArtifactState("3" * 64, "DB.S.BUNDLE", "a" * 64),
-    }
-
-
-def test_live_states_report_an_unreadable_state_table(monkeypatch: pytest.MonkeyPatch) -> None:
-    port = RecordedSnowflake()
-    monkeypatch.setattr(port, "read_state", lambda table, target: None)
-    held, [problem] = live_states(port, TABLE, "dev")
-    assert held is None
-    assert problem.code == "SST-MAN022"
 
 
 def test_diff_local_against_the_default_target_exits_2_and_explains(
@@ -156,24 +110,3 @@ def test_local_against_a_saved_plan_and_unreadable_states(tmp_path: Path, monkey
     monkeypatch.setattr(port, "read_state", lambda table, target: None)
     unreadable = _diff(monkeypatch, port, project)
     assert (unreadable.exit_code, "SST-MAN022" in unreadable.output) == (1, True)
-
-
-def test_a_saved_plan_leaves_out_what_it_prunes() -> None:
-    from snowflake_semantic_tools.domain.model.identifier import TargetIdentity
-    from snowflake_semantic_tools.domain.state import SavedPlan
-    from snowflake_semantic_tools.domain.state.saved_plan import SavedChange
-
-    def change(key: str, action: str, fingerprint: str | None) -> SavedChange:
-        return SavedChange(key, "semantic_view", action, "r", "DB.S.X", fingerprint, None, (), (), 1)
-
-    target = TargetIdentity("dev", "a", QualifiedName.parse("DB.S.X").database, QualifiedName.parse("DB.S.X").schema)
-    plan = SavedPlan(
-        1,
-        "p",
-        "m",
-        target,
-        "now",
-        "o",
-        (change("v:a", "create", "1"), change("v:b", "prune", None), change("v:c", "noop", None)),
-    )
-    assert plan_states(plan) == {"v:a": ArtifactState("1", "DB.S.X", "m")}

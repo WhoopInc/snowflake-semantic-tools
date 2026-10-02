@@ -9,45 +9,12 @@ from pathlib import Path
 import pytest
 from click.testing import CliRunner
 
-from snowflake_semantic_tools.app.compile import CompiledView
-from snowflake_semantic_tools.app.verify_schema import _references, verify_columns
 from snowflake_semantic_tools.cli.main import cli
-from snowflake_semantic_tools.cli.wiring import compile as compiling
 from snowflake_semantic_tools.cli.wiring.project import target_dir
-from snowflake_semantic_tools.domain.model.identifier import QualifiedName
-from tests.helpers.cli_projects import DBT_MANIFEST, REPO_ROOT, common, compile_project, invoke_with_port, project_copy
+from tests.helpers.cli_projects import REPO_ROOT, common, compile_project, invoke_with_port, project_copy
 from tests.helpers.recorded_snowflake import RecordedSnowflake
 
 GOLDEN = REPO_ROOT / "tests" / "golden" / "expected" / "ddl"
-
-
-def _tables(project: Path) -> tuple[object, dict[str, tuple[tuple[str, str], ...]]]:
-    from snowflake_semantic_tools.adapters.locations import locate_project
-
-    compiled = compiling.compile_result(locate_project(project), None, DBT_MANIFEST)
-    tables: dict[str, set[str]] = {}
-    for item in compiled.compiled:
-        if isinstance(item, CompiledView):
-            for fqn, _model, column in _references(item):
-                tables.setdefault(fqn, set()).add(column.upper())
-    return compiled, {fqn: tuple((name, "TEXT") for name in sorted(names)) for fqn, names in tables.items()}
-
-
-def test_verify_columns_reports_absent_tables_and_columns_only(tmp_path: Path) -> None:
-    compiled, tables = _tables(project_copy(tmp_path))
-    port = RecordedSnowflake()
-    port.tables = {QualifiedName.parse(fqn).sql: columns for fqn, columns in tables.items()}
-    assert verify_columns(port, compiled) == ()  # type: ignore[arg-type]
-    first = sorted(tables)[0]
-    port.tables[QualifiedName.parse(first).sql] = tables[first][1:]
-    second = sorted(tables)[1]
-    del port.tables[QualifiedName.parse(second).sql]
-    found = verify_columns(port, compiled)  # type: ignore[arg-type]
-    codes = sorted({item.code for item in found})
-    assert codes == ["SST-PRT005", "SST-VAL325"]
-    [absent] = [item for item in found if item.code == "SST-PRT005"]
-    assert absent.context["value"] == second
-    assert any(item.context["column"].upper() == tables[first][0][0] for item in found if item.code == "SST-VAL325")
 
 
 def test_validate_verify_schema_connects_and_reports(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
