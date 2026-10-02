@@ -1,0 +1,18 @@
+{
+  "domain": {
+    "line": 100.0,
+    "branch": 100.0
+  },
+  "app": {
+    "line": 99.5,
+    "branch": 98.4
+  },
+  "cli": {
+    "line": 97.6,
+    "branch": 91.3
+  },
+  "adapters": {
+    "line": 94.9,
+    "branch": 90.8
+  }
+}
