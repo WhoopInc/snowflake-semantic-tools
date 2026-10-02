@@ -21,7 +21,8 @@ from snowflake_semantic_tools.domain.ports.snowflake.preflight import PreflightP
 from snowflake_semantic_tools.domain.state import State
 
 ValueT = TypeVar("ValueT")
-_Folded = tuple[str, ...]
+_Scope = tuple[str, str]
+_Name = tuple[str, str, str]
 
 # The verb of the schema privilege a create needs, such as CREATE SEMANTIC VIEW.
 _CREATE = "CREATE"
@@ -103,7 +104,7 @@ def read_preflight(
 
 def _containers(
     reader: _Reader, rendered: Mapping[str, RenderedArtifact]
-) -> tuple[frozenset[str], frozenset[_Folded], tuple[SchemaScope, ...]]:
+) -> tuple[frozenset[str], frozenset[_Scope], tuple[SchemaScope, ...]]:
     """Return the missing databases, the missing schemas, and the scopes that exist, in target order."""
     scopes = tuple(dict.fromkeys(SchemaScope.from_qualified_name(item.target) for item in rendered.values()))
     databases = tuple(dict.fromkeys(scope.database for scope in scopes))
@@ -112,7 +113,7 @@ def _containers(
         for database in databases
         if not reader.holds(f"database {database.sql}", partial(reader.port.database_exists, database), refused=True)
     )
-    missing_schemas: set[_Folded] = set()
+    missing_schemas: set[_Scope] = set()
     present: list[SchemaScope] = []
     for scope in scopes:
         if scope.database.folded in missing_databases:
@@ -128,7 +129,7 @@ def _missing_relations(
     reader: _Reader, rendered: Mapping[str, RenderedArtifact]
 ) -> dict[str, tuple[QualifiedName, ...]]:
     """Return, by key, the required relations that do not exist; each relation is read once."""
-    exists: dict[_Folded, bool] = {}
+    exists: dict[_Name, bool] = {}
     for artifact in rendered.values():
         for relation in artifact.required_relations:
             if relation.folded not in exists:
@@ -144,9 +145,9 @@ def _missing_relations(
 
 def _missing_privileges(
     reader: _Reader, created: Mapping[str, RenderedArtifact], present: tuple[SchemaScope, ...]
-) -> dict[_Folded, tuple[str, ...]]:
+) -> dict[_Scope, tuple[str, ...]]:
     """Return, by existing scope, the create privileges the role lacks for what it would create there."""
-    lacking: dict[_Folded, tuple[str, ...]] = {}
+    lacking: dict[_Scope, tuple[str, ...]] = {}
     for scope in present:
         needed = tuple(
             sorted(
@@ -185,7 +186,7 @@ def _occupied(
     )
 
 
-def _locked(reader: _Reader, present: tuple[SchemaScope, ...]) -> frozenset[_Folded]:
+def _locked(reader: _Reader, present: tuple[SchemaScope, ...]) -> frozenset[_Name]:
     """Return the folded names, in the existing scopes, another session holds a lock on."""
     return frozenset(
         name.folded
@@ -198,7 +199,7 @@ def _referenced(
     reader: _Reader,
     rendered: Mapping[str, RenderedArtifact],
     observation: SnowflakeObservation,
-    managed: set[tuple[str, str, str]],
+    managed: set[_Name],
 ) -> dict[str, tuple[QualifiedName, ...]]:
     """Return, by prune candidate's key, the objects outside SST's management that name it."""
     found: dict[str, tuple[QualifiedName, ...]] = {}

@@ -60,7 +60,7 @@ _PRIVILEGE = ErrorKind.PRIVILEGE
 _NOT_FOUND = ErrorKind.NOT_FOUND
 _SYNTAX = ErrorKind.SYNTAX
 _TRANSIENT = ErrorKind.TRANSIENT
-_DURATION = _words(r"(\d+\s*(?:seconds?|minutes?|hours?|s|ms))")
+_DURATION = _words(r"(\d+\s*(?:(?:second|minute|hour)(?:\(s\)|s)?|ms|s)(?![a-z]))")
 
 # The table. Specific rows come before general ones that share their wording, so the
 # message pass reads a missing schema as a schema before it reads it as an object.
@@ -85,7 +85,9 @@ SIGNATURES: tuple[Signature, ...] = (
         _PRIVILEGE,
     ),
     Signature("SST-SNO011", 630, "57014", _words(r"\bstatement or warehouse timeout\b"), extract=_DURATION),
-    Signature("SST-SNO015", None, None, _words(r"\bmax_staleness\b"), extract=_words(r"max_staleness\D*?(\d+\s*\w*)")),
+    Signature(
+        "SST-SNO015", None, None, _words(r"\bmax_staleness\b"), extract=_words(r"max_staleness\W*'?(\d+(?:\s*[a-z]+)?)")
+    ),
     Signature(
         "SST-SNO016",
         None,
@@ -104,7 +106,12 @@ SIGNATURES: tuple[Signature, ...] = (
         extract=_DURATION,
     ),
     Signature(
-        "SST-SNO022", None, None, _words(r"\block\b.*\b(?:timeout|wait)|\bdeadlock\b|\bconcurrent\b"), _TRANSIENT, True
+        "SST-SNO022",
+        None,
+        None,
+        _words(r"\block\b.*\b(?:timeout|wait)|\b(?:timeout|wait).*\block\b|\bdeadlock\b|\bconcurrent\b"),
+        _TRANSIENT,
+        True,
     ),
     Signature("SST-SNO010", None, None, _words(r"\bSQL execution internal error\b|\bincident\s+\d+")),
     Signature("SST-SNO009", 1003, "42000", _words(r"\bsyntax error\b|\bSQL compilation error\b"), _SYNTAX),

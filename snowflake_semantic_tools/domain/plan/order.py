@@ -101,19 +101,23 @@ def order_changes(changes: tuple[Change, ...]) -> tuple[tuple[Change, ...], Diag
     ordered, cycle = topological_order(changes)
     if cycle:
         return (), D("SST-PLN005", cycle=" -> ".join(cycle))
-    violation = order_violation(ordered)
+    violation = check_order(ordered)
     if violation is not None:
-        return (), D("SST-PLN900", value=violation)
+        return (), violation
     return ordered, None
 
 
-def order_violation(ordered: tuple[Change, ...]) -> str | None:
-    """Name the first change placed before a change in `ordered` it depends on; None when there is none."""
+def check_order(ordered: tuple[Change, ...]) -> Diagnostic | None:
+    """Report the first change `ordered` places before a change it depends on; None when there is none.
+
+    Diagnostics:
+        SST-PLN900: a change comes before one of its dependencies.
+    """
     position = {change.key: index for index, change in enumerate(ordered)}
     for index, change in enumerate(ordered):
         for dependency in change.depends_on:
             if position.get(dependency, -1) > index:
-                return f"'{change.key}' before its dependency '{dependency}'"
+                return D("SST-PLN900", value=f"'{change.key}' before its dependency '{dependency}'")
     return None
 
 

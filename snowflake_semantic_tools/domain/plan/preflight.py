@@ -22,13 +22,14 @@ from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, Diagnosti
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName, SchemaScope
 from snowflake_semantic_tools.domain.model.lifecycle import Action, Change, ChangeReason
 
-_Folded = tuple[str, ...]
+_Scope = tuple[str, str]
+_Name = tuple[str, str, str]
 
 # The verb of the schema privilege a create needs, such as CREATE SEMANTIC VIEW.
 _CREATE = "CREATE"
 
 
-def _scope_key(scope: SchemaScope) -> _Folded:
+def _scope_key(scope: SchemaScope) -> _Scope:
     return scope.database.folded, scope.schema.folded
 
 
@@ -55,11 +56,11 @@ class Preflight:
     target_name: str
     role: str
     missing_databases: frozenset[str] = frozenset()
-    missing_schemas: frozenset[_Folded] = frozenset()
+    missing_schemas: frozenset[_Scope] = frozenset()
     missing_relations: Mapping[str, tuple[QualifiedName, ...]] = field(default_factory=lambda: MappingProxyType({}))
-    missing_privileges: Mapping[_Folded, tuple[str, ...]] = field(default_factory=lambda: MappingProxyType({}))
+    missing_privileges: Mapping[_Scope, tuple[str, ...]] = field(default_factory=lambda: MappingProxyType({}))
     occupied: frozenset[str] = frozenset()
-    locked: frozenset[_Folded] = frozenset()
+    locked: frozenset[_Name] = frozenset()
     referenced: Mapping[str, tuple[QualifiedName, ...]] = field(default_factory=lambda: MappingProxyType({}))
     warehouse: str | None = None
     warehouse_usable: bool = True
@@ -97,7 +98,7 @@ def check_preflight(
         SST-PLN019: another session holds a lock on a change's object.
     """
     checked: list[Change] = []
-    scoped: dict[_Folded, Diagnostic] = {}
+    scoped: dict[_Scope, Diagnostic] = {}
     reported: list[Diagnostic] = []
     for change in changes:
         blocking, warnings = _change_findings(change, preflight, scoped)
@@ -110,7 +111,7 @@ def check_preflight(
 
 
 def _change_findings(
-    change: Change, preflight: Preflight, scoped: dict[_Folded, Diagnostic]
+    change: Change, preflight: Preflight, scoped: dict[_Scope, Diagnostic]
 ) -> tuple[tuple[Diagnostic, ...], tuple[Diagnostic, ...]]:
     """Return a change's blocking diagnostics and its warnings; record each missing scope once in `scoped`."""
     if change.action is Action.PRUNE:
@@ -136,7 +137,7 @@ def _change_findings(
 
 
 def _missing_scope(
-    target: QualifiedName, preflight: Preflight, scoped: dict[_Folded, Diagnostic]
+    target: QualifiedName, preflight: Preflight, scoped: dict[_Scope, Diagnostic]
 ) -> tuple[Diagnostic, ...]:
     """Return the diagnostic for a target whose database or schema does not exist, once per scope."""
     scope = SchemaScope.from_qualified_name(target)
