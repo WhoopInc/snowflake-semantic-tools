@@ -278,6 +278,13 @@ SPECS: tuple[ErrorSpec, ...] = (
         "add the branch; otherwise the judge invents one per call",
     ),
     spec(
+        "SST-VAL744",
+        Severity.ERROR,
+        "Custom metric is not versioned",
+        "eval metric '{artifact}' declares no version",
+        "version it; an edited prompt is a new metric",
+    ),
+    spec(
         "SST-VAL745",
         Severity.ERROR,
         "In-place edit to a metric a retained run references",

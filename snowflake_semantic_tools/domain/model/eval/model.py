@@ -10,8 +10,10 @@ a file or calls Snowflake.
 
 from __future__ import annotations
 
+import json
 from collections.abc import Mapping
 from dataclasses import dataclass, field
+from hashlib import sha256
 from types import MappingProxyType
 
 from snowflake_semantic_tools.domain.diagnostics import DiagnosticBag, Origin
@@ -272,6 +274,21 @@ class CustomEvalMetric:
     threshold_default: ThresholdRange | None = None
     enabled: bool = True
     meta: Mapping[str, object] = field(default_factory=lambda: MappingProxyType({}))
+
+    @property
+    def definition_digest(self) -> str:
+        """Identify what the judge scores with: 12 hex characters of its model, prompt and bands.
+
+        A custom metric has no Snowflake version, so this digest is the only thing that tells
+        an edited prompt or scale apart from the one a score was recorded under.
+        """
+        ranges = self.score_ranges
+        definition = {
+            "model": self.model,
+            "prompt": self.prompt,
+            "score_ranges": [ranges.min_score, ranges.median_score, ranges.max_score] if ranges is not None else None,
+        }
+        return sha256(json.dumps(definition, sort_keys=True).encode("utf-8")).hexdigest()[:12]
 
 
 @dataclass(frozen=True, slots=True)

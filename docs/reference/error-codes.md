@@ -22,7 +22,7 @@ cannot be downgraded by any setting.
 - [Loading (LOD)](#loading-lod) -- 24 codes
 - [References (REF)](#references-ref) -- 37 codes
 - [Membership (MEM)](#membership-mem) -- 24 codes
-- [Validation (VAL)](#validation-val) -- 282 codes
+- [Validation (VAL)](#validation-val) -- 283 codes
 - [dbt (DBT)](#dbt-dbt) -- 30 codes
 - [Rendering (RND)](#rendering-rnd) -- 16 codes
 - [Manifest and state (MAN)](#manifest-and-state-man) -- 21 codes
@@ -3559,6 +3559,14 @@ Fix: ask for a number in a fixed position
 `eval metric '<artifact>': the rubric has no <detail> branch`
 
 Fix: add the branch; otherwise the judge invents one per call
+
+### SST-VAL744
+
+**Custom metric is not versioned** (error)
+
+`eval metric '<artifact>' declares no version`
+
+Fix: version it; an edited prompt is a new metric
 
 ### SST-VAL745
 

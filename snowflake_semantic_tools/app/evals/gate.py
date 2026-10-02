@@ -7,10 +7,8 @@ with `datetime`, which the pure ring may not import.
 
 from __future__ import annotations
 
-import json
 import re
 from datetime import UTC, datetime, timedelta
-from hashlib import sha256
 
 from snowflake_semantic_tools.app.compile.evals import CompiledEval
 from snowflake_semantic_tools.app.evals.run import EvalRunResult
@@ -361,14 +359,7 @@ def _custom_version(metric: CustomEvalMetric) -> str:
     A custom metric has no Snowflake version, so an edited prompt or scale is told apart only
     by this digest.
     """
-    ranges = metric.score_ranges
-    definition = {
-        "model": metric.model,
-        "prompt": metric.prompt,
-        "score_ranges": [ranges.min_score, ranges.median_score, ranges.max_score] if ranges is not None else None,
-    }
-    digest = sha256(json.dumps(definition, sort_keys=True).encode("utf-8")).hexdigest()[:12]
-    return f"custom:{metric.model or ''}:{digest}"
+    return f"custom:{metric.model or ''}:{metric.definition_digest}"
 
 
 def _edited_metric(compiled: CompiledEval, baseline: EvalBaselineRecord) -> str | None:

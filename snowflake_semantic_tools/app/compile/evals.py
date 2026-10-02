@@ -27,6 +27,9 @@ from snowflake_semantic_tools.domain.render.eval import (
 from snowflake_semantic_tools.domain.resolve.eval_name import render_eval_name_template
 from snowflake_semantic_tools.domain.validate.eval import eval_placement
 
+# The component fingerprint prefix that names one custom metric an eval renders.
+METRIC_COMPONENT_PREFIX = "metric:"
+
 
 @dataclass(frozen=True, slots=True)
 class CompiledEval(StandaloneArtifact):
@@ -80,6 +83,7 @@ class CompiledEval(StandaloneArtifact):
                     ("dataset", self.rendered.dataset_fingerprint),
                     ("config", self.rendered.config_fingerprint),
                     *((("mint", EVAL_MINT_NEVER),) if not self.mints else ()),
+                    *self.metric_fingerprints,
                 ),
                 physical_resources=(
                     (("TABLE", self.source_table), ("DATASET", self.dataset_target))
@@ -90,6 +94,18 @@ class CompiledEval(StandaloneArtifact):
             depends_on=self.resolved.depends_on,
         )
         return replace(artifact, fingerprint=combined)
+
+    @property
+    def metric_fingerprints(self) -> tuple[tuple[str, str], ...]:
+        """Each custom metric the config renders, as `metric:<casefolded name>` and its definition digest.
+
+        State keeps them, so a later plan can tell a metric edited under its own name.
+        """
+        return tuple(
+            (f"{METRIC_COMPONENT_PREFIX}{metric.name.casefold()}", metric.definition_digest)
+            for metric in self.resolved.custom_metrics
+            if metric.enabled
+        )
 
     @property
     def mints(self) -> bool:

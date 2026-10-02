@@ -8,6 +8,7 @@ from hashlib import md5, sha256
 from threading import Lock
 from types import MappingProxyType
 
+from snowflake_semantic_tools.app.compile.evals import METRIC_COMPONENT_PREFIX
 from snowflake_semantic_tools.app.lifecycle.composite import (
     CompositeHandler,
     PublicationRun,
@@ -139,11 +140,16 @@ class EvalLifecycleHandler(CompositeHandler[RenderedArtifact, CompositeObservati
         """Decide an eval's change; a non-minting eval is decided by `_decide_unminted`.
 
         Diagnostics:
+            SST-VAL744: a custom metric is rendered under the name state recorded with another
+                definition, as `edited_metrics` reports.
             SST-PLN024: an object the eval publishes exists, and state does not record it as SST's.
         """
         del subject
         if observation.diagnostics.has_errors:
             return CompositePlan(Action.BLOCKED, ChangeReason.VALIDATION_ERRORS, observation, observation.diagnostics)
+        edited = edited_metrics(artifact, state_entry)
+        if edited:
+            return CompositePlan(Action.BLOCKED, ChangeReason.VALIDATION_ERRORS, observation, DiagnosticBag(edited))
         if not mints(artifact):
             return self._decide_unminted(artifact, state_entry, observation)
         recorded_resources = self._recorded_resource_identity(state_entry)
@@ -580,6 +586,27 @@ def _diagnosed(
         component_fingerprints=component_fingerprints,
         physical_resources=physical_resources,
     )
+
+
+def edited_metrics(artifact: RenderedArtifact, state_entry: AppliedEntry | None) -> tuple[Diagnostic, ...]:
+    """Report each custom metric the eval renders under a name state recorded with another definition.
+
+    A custom metric has no Snowflake version: its name is the score's column and chart, so an
+    edited prompt published under the same name would read as a continuous trend across a change
+    of judge. A metric versions by taking a new name.
+
+    Diagnostics:
+        SST-VAL744: the metric's definition digest differs from the one state recorded for its name.
+    """
+    if state_entry is None:
+        return ()
+    recorded = dict(state_entry.component_fingerprints)
+    edited = (
+        key.removeprefix(METRIC_COMPONENT_PREFIX)
+        for key, digest in artifact.component_fingerprints
+        if key.startswith(METRIC_COMPONENT_PREFIX) and recorded.get(key, digest) != digest
+    )
+    return tuple(D("SST-VAL744", subject=f"eval_metric:{name}", artifact=name) for name in edited)
 
 
 def mints(artifact: RenderedArtifact) -> bool:

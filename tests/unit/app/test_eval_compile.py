@@ -29,7 +29,11 @@ def test_compile_eval_projects_composite_metadata_and_manifest_impact() -> None:
     assert rendered.depends_on == ("agent:sales_agent",)
     assert not rendered.generic_apply_safe
     assert rendered.statements == ()
-    assert tuple(name for name, _ in rendered.component_fingerprints) == ("dataset", "config")
+    # Each custom metric is recorded under its name, so a later plan can tell it was edited in place.
+    assert tuple(name for name, _ in rendered.component_fingerprints) == ("dataset", "config", "metric:grounding")
+    assert (
+        dict(rendered.component_fingerprints)["metric:grounding"] == resolved_eval().custom_metrics[0].definition_digest
+    )
     assert tuple(object_type for object_type, _ in rendered.physical_resources) == ("TABLE", "DATASET")
     assert compiled.source_files == (
         "agents/sales/evals/dataset.yml",
