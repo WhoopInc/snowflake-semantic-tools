@@ -111,6 +111,14 @@ _COMMAND_OPTION_HELP: Mapping[tuple[str, str], str] = {
     ("sst test", "--reason"): "Why the baseline is changing; stored with it.",
     ("sst test", "--fail-fast"): "Stop at the first failing golden, probe, or eval.",
     ("sst validate", "--show-info"): "Also report which registered type owns each semantic-model file.",
+    ("sst explain", "--aliases"): "Also list the SST 0.3 codes that resolve to the code, and what each became.",
+    ("sst format", "--check"): "Write nothing; exit 2 when a file would change.",
+    ("sst format", "--dry-run"): "Write nothing; print each file's change as a diff.",
+    ("sst format", "--force"): "Rewrite every file, even one already in canonical form.",
+    ("sst format", "--sanitize"): (
+        "Also repair apostrophes in synonyms and sample values, and Jinja delimiters in descriptions."
+    ),
+    ("sst format", "--no-detailed-exitcode"): "With `--check`, exit 0 when files would change, instead of 2.",
 }
 
 

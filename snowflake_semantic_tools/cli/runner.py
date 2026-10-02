@@ -67,10 +67,15 @@ _EXPIRY_WARNING_DAYS = 30
 
 
 class ConfigNeed(Enum):
-    """Whether a command needs a configuration file: `init`, `debug`, and `docs` run without one."""
+    """Whether a command needs a configuration file: `init`, `debug`, and `docs` run without one.
+
+    NONE never looks for one, nor for a baseline: `explain` and `drop` must work when the project
+    itself is what is broken.
+    """
 
     REQUIRED = "required"
     OPTIONAL = "optional"
+    NONE = "none"
 
 
 @dataclasses.dataclass(frozen=True)
@@ -190,22 +195,14 @@ class _Run:
             self.refusals(**{key: value for key, value in {**self.given, **supplied}.items() if key in names})
         logging.basicConfig(level=_LOG_LEVELS[options.log_level], stream=sys.stderr)
         use_render_policy(_render_policy(options))
-        files = dataclasses.replace(
-            locate_project(
-                options.project_dir,
-                options.config,
-                profiles_dir=options.profiles_dir,
-                required=self.config is ConfigNeed.REQUIRED,
-            ),
-            allow_unsupported_manifest_schema=options.allow_unsupported_manifest_schema,
-        )
+        files = self._files()
         resolve_invocation(
             project_dir=options.project_dir,
             config_file=files.config_file,
             target=self.given.get("target_name"),
             overrides=options.overrides,
         )
-        baseline = _baseline(options)
+        baseline = None if self.config is ConfigNeed.NONE else _baseline(options)
         result = self.body(**self._arguments(files))
         diagnostics, exit_code = with_policy(
             self.name,
@@ -218,6 +215,21 @@ class _Run:
         )
         result = dataclasses.replace(result, diagnostics=diagnostics, exit_code=exit_code)
         _report(self.name, options, _with_baseline(result, baseline, files))
+
+    def _files(self) -> ProjectPaths:
+        """Resolve the project's files; a command that needs no configuration looks for none."""
+        options = self.options
+        if self.config is ConfigNeed.NONE:
+            return ProjectPaths(options.project_dir, None, profiles_dir=options.profiles_dir)
+        return dataclasses.replace(
+            locate_project(
+                options.project_dir,
+                options.config,
+                profiles_dir=options.profiles_dir,
+                required=self.config is ConfigNeed.REQUIRED,
+            ),
+            allow_unsupported_manifest_schema=options.allow_unsupported_manifest_schema,
+        )
 
     def _arguments(self, files: ProjectPaths) -> dict[str, Any]:
         """Return the body's arguments: its own parameters, and the resolved values it names."""

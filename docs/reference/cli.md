@@ -13,12 +13,14 @@ versioned JSON envelope on stdout and nothing else.
 | [`sst init`](#sst-init) | Scaffold SST into an existing dbt project without overwriting a file. |
 | [`sst debug`](#sst-debug) | Show the resolved configuration, profile, target, and registry, and test the connection. |
 | [`sst enrich`](#sst-enrich) | Fill dbt model column metadata from the warehouse, editing the model YAML in place. |
+| [`sst format`](#sst-format) | Rewrite YAML into canonical form: indentation, key order, and `\|-` block scalars. |
 | [`sst compile`](#sst-compile) | Compile every artifact and write the canonical manifest, offline. |
 | [`sst validate`](#sst-validate) | Validate every offline rule, with optional connected checks. |
 | [`sst list`](#sst-list) | List compiled artifacts and their cached application status, optionally of one TYPE. |
 | [`sst plan`](#sst-plan) | Observe live Snowflake state and compute a non-writing plan. |
 | [`sst apply`](#sst-apply) | Apply a current reviewed plan; smoke probes never run here. |
 | [`sst test`](#sst-test) | Run exact offline goldens or separate connected smoke probes. |
+| [`sst explain`](#sst-explain) | Explain one diagnostic code from the registry: no project, configuration, or connection. |
 | [`sst docs`](#sst-docs) | Write the generated reference pages under docs/reference/. |
 | [`sst clean`](#sst-clean) | Remove local SST build artifacts only; never touch Snowflake. |
 | [`sst migrate`](#sst-migrate) | Rewrite a 0.3 project into the 1.0 dialect. |
@@ -123,6 +125,33 @@ sst enrich [OPTIONS]
 | `--dry-run` | flag |  | Write nothing; print each file's change as a diff. |
 | `--no-detailed-exitcode` | flag |  | With `--check`, exit 0 when files would change, instead of 2. |
 | `--fail-fast` | flag |  | Stop at the first model that fails, and write nothing. |
+
+## sst format
+
+Rewrite YAML into canonical form: indentation, key order, and `|-` block scalars.
+
+Exit 0 when every file is formatted or already canonical, 1 when a file cannot be parsed
+or written, 2 with --check when a file would change, and 4 with no PATH and no
+configuration to find the paths in.
+
+Diagnostics:
+    SST-CFG001: no PATH was given and there is no configuration file.
+    SST-PRT100: a PATH names no YAML file; raised.
+    SST-PRT009: a file cannot be read.
+    SST-LOD001: a file is not YAML; it is left as it is.
+    SST-INT003: a file's canonical form would change its value; it is left as it is.
+
+```text
+sst format [OPTIONS]
+```
+
+| Option | Value | Default | Description |
+|---|---|---|---|
+| `--check` | flag |  | Write nothing; exit 2 when a file would change. |
+| `--dry-run` | flag |  | Write nothing; print each file's change as a diff. |
+| `--force` | flag |  | Rewrite every file, even one already in canonical form. |
+| `--sanitize` | flag |  | Also repair apostrophes in synonyms and sample values, and Jinja delimiters in descriptions. |
+| `--no-detailed-exitcode` | flag |  | With `--check`, exit 0 when files would change, instead of 2. |
 
 ## sst compile
 
@@ -251,6 +280,24 @@ sst test [OPTIONS]
 | `--fail-fast` | flag |  | Stop at the first failing golden, probe, or eval. |
 | `--capture-baseline` | flag |  | Record this eval run as the new baseline. Requires `--reason`. |
 | `--reason` | TEXT |  | Why the baseline is changing; stored with it. |
+
+## sst explain
+
+Explain one diagnostic code from the registry: no project, configuration, or connection.
+
+Exit 0 when the code is explained, and 3 when it is not a registered code, a 0.3 alias, or
+a retired number.
+
+Diagnostics:
+    SST-PRT100: the code is unknown; raised.
+
+```text
+sst explain [OPTIONS]
+```
+
+| Option | Value | Default | Description |
+|---|---|---|---|
+| `--aliases` | flag |  | Also list the SST 0.3 codes that resolve to the code, and what each became. |
 
 ## sst docs
 

@@ -41,6 +41,8 @@ EXIT_CODES = {
     "docs": {0, 1, 2, 3, 4},
     "clean": {0, 1, 3, 4},
     "migrate": {0, 1, 2, 3, 4},
+    "explain": {0, 3},
+    "format": {0, 1, 2, 3, 4},
 }
 GOLDEN = REPO_ROOT / "tests" / "golden" / "expected" / "ddl"
 Scenario = Callable[[Path, pytest.MonkeyPatch], Result]
@@ -67,6 +69,13 @@ def _interrupt(monkeypatch: pytest.MonkeyPatch) -> None:
 def _dbt_project(root: Path) -> Path:
     root.mkdir(parents=True, exist_ok=True)
     (root / "dbt_project.yml").write_text("name: p\nprofile: p\n", encoding="utf-8")
+    return root
+
+
+def _yaml_project(root: Path, text: str) -> Path:
+    (root / "sst_config.yml").write_text("project:\n  semantic_models_dir: semantic_models\n", encoding="utf-8")
+    (root / "semantic_models").mkdir()
+    (root / "semantic_models" / "views.yml").write_text(text, encoding="utf-8")
     return root
 
 
@@ -134,6 +143,13 @@ SCENARIOS: dict[tuple[str, int], Scenario] = {
     ("clean", 1): lambda tmp, mp: _clean_refused(tmp, mp),
     ("clean", 3): lambda tmp, _: _run("clean", "--force"),
     ("clean", 4): lambda tmp, _: _run("clean", "--project-dir", str(tmp)),
+    ("explain", 0): lambda tmp, _: _run("explain", "SST-VAL009", "--project-dir", str(tmp)),
+    ("explain", 3): lambda tmp, _: _run("explain", "SST-NOPE01"),
+    ("format", 0): lambda tmp, _: _run("format", "--project-dir", str(_yaml_project(tmp, "a: 1\n"))),
+    ("format", 1): lambda tmp, _: _run("format", "--project-dir", str(_yaml_project(tmp, "a: [1,\n"))),
+    ("format", 2): lambda tmp, _: _run("format", "--project-dir", str(_yaml_project(tmp, "a:   1\n")), "--check"),
+    ("format", 3): lambda tmp, _: _run("format", "--project-dir", str(_yaml_project(tmp, "a: 1\n")), "nothing.yml"),
+    ("format", 4): lambda tmp, _: _run("format", "--project-dir", str(tmp)),
     ("migrate", 0): lambda tmp, _: _run("migrate", "refs", "--project-dir", str(project_copy(tmp))),
     ("migrate", 3): lambda tmp, _: _run("migrate", "refs", "--bogus"),
     ("migrate", 4): lambda tmp, _: _run("migrate", "refs", "--project-dir", str(tmp)),
