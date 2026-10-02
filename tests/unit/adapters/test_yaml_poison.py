@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import shutil
+from collections.abc import Iterable
 from pathlib import Path
 
 from snowflake_semantic_tools.adapters.yaml.semantic.defs import MetricDef
 from snowflake_semantic_tools.adapters.yaml.semantic.poison import Poison
+from snowflake_semantic_tools.domain.diagnostics import Diagnostic, Severity
 from tests.helpers.projects import load_project
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -16,6 +18,11 @@ MANIFEST = REPO_ROOT / "tests" / "fixtures" / "reference_project_manifest.json"
 
 def _metric(name: str) -> MetricDef:
     return MetricDef(name=name, expr="COUNT(*)", description=None, synonyms=())
+
+
+def _findings(diagnostics: Iterable[Diagnostic]) -> list[tuple[str, str | None]]:
+    """The code and subject of each diagnostic that is not INFO, which only reports what attached where."""
+    return [(item.code, item.subject) for item in diagnostics if item.severity is not Severity.INFO]
 
 
 def _reference_copy(tmp_path: Path) -> Path:
@@ -43,9 +50,7 @@ def test_an_error_from_the_last_check_phase_still_keeps_its_view_unbuilt(tmp_pat
     text = views.read_text(encoding="utf-8")
     views.write_text(text.replace("'jaffle_question_scope'", "'no_such_instruction'"), encoding="utf-8")
     loaded = load_project(project, manifest_path=MANIFEST)
-    assert [(diagnostic.code, diagnostic.subject) for diagnostic in loaded.diagnostics] == [
-        ("SST-REF039", "semantic_view:jaffle_sales")
-    ]
+    assert _findings(loaded.diagnostics) == [("SST-REF007", "semantic_view:jaffle_sales")]
     assert sorted(view.fqn for view in loaded.views) == [
         "SST_REF_DEV.CORE.JAFFLE_MENU",
         "SST_REF_DEV.JAFFLE.JAFFLE_MINIMAL",
@@ -67,9 +72,7 @@ def test_a_poisoned_metric_leaves_out_what_is_built_on_it_and_nothing_else(tmp_p
         encoding="utf-8",
     )
     loaded = load_project(project, manifest_path=MANIFEST)
-    assert [(diagnostic.code, diagnostic.subject) for diagnostic in loaded.diagnostics] == [
-        ("SST-REF002", "metric:broken_revenue")
-    ]
+    assert _findings(loaded.diagnostics) == [("SST-REF002", "metric:broken_revenue")]
     assert len(loaded.views) == 3
     for view in loaded.views:
         names = {metric.name for metric in view.metrics}

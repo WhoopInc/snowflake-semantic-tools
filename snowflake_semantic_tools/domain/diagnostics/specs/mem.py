@@ -1,4 +1,4 @@
-"""Membership codes (MEM): a table that names no dbt model, or a member attached to no artifact."""
+"""Membership codes (MEM): how members attach to the artifacts that hold their tables."""
 
 from __future__ import annotations
 
@@ -8,6 +8,20 @@ TITLE: str = "Membership"
 
 SPECS: tuple[ErrorSpec, ...] = (
     spec(
+        "SST-MEM001",
+        Severity.WARNING,
+        "Member declares a table present in no artifact",
+        "{member} declares table '{name}', which no {type} lists",
+        "add the table to a view, or correct the member",
+    ),
+    spec(
+        "SST-MEM002",
+        Severity.WARNING,
+        "tables absent and nothing inferable",
+        "{member} declares no tables: and none can be inferred",
+        "declare tables: explicitly",
+    ),
+    spec(
         "SST-MEM003",
         Severity.ERROR,
         "Declared table does not name a known dbt model",
@@ -15,10 +29,150 @@ SPECS: tuple[ErrorSpec, ...] = (
         "use a dbt model name the manifest knows",
     ),
     spec(
+        "SST-MEM004",
+        Severity.ERROR,
+        "Member declares one table twice",
+        "{member} lists table '{name}' more than once",
+        "remove the duplicate entry",
+    ),
+    spec(
         "SST-MEM005",
         Severity.WARNING,
         "Member attached to zero artifacts",
         "{member} attaches to no {type}",
         "add its tables to a view, or delete the member",
+    ),
+    spec(
+        "SST-MEM006",
+        Severity.ERROR,
+        "Derived member declares tables",
+        "{member} is derived and declares tables:",
+        "remove tables:; derived members are view-scoped",
+    ),
+    spec(
+        "SST-MEM007",
+        Severity.ERROR,
+        "Composed member reaches outside its declared tables",
+        "{member}: transitive tables {outside} are not in its own tables:",
+        "widen tables:, or narrow the expression",
+    ),
+    spec(
+        "SST-MEM008",
+        Severity.ERROR,
+        "Member attaches to an artifact lacking a declared table",
+        "{member} attaches to {artifact}, which lacks table '{name}'",
+        "align the member's tables with the view",
+    ),
+    spec(
+        "SST-MEM009",
+        Severity.ERROR,
+        "Duplicate synonym within an artifact",
+        "{artifact}: synonym '{value}' is claimed by {a} and {b}",
+        "make synonyms unique within the view",
+    ),
+    spec(
+        "SST-MEM010",
+        Severity.WARNING,
+        "Member declares a table the artifact reaches only by relationship",
+        "{member} declares '{name}', reachable from {artifact} only through a join",
+        "declare the joined table explicitly",
+    ),
+    spec(
+        "SST-MEM011",
+        Severity.INFO,
+        "Member fan-out",
+        "{member} attaches to {count} artifacts",
+        None,
+    ),
+    spec(
+        "SST-MEM012",
+        Severity.INFO,
+        "Tables inferred for a member",
+        "{member}: tables inferred as {value}",
+        None,
+    ),
+    spec(
+        "SST-MEM013",
+        Severity.ERROR,
+        "Attachment differs between two membership calls",
+        "{member} attached to {a} then {b}",
+        "report this as a bug",
+    ),
+    spec(
+        "SST-MEM014",
+        Severity.ERROR,
+        "Member would be dropped at render after passing attachment",
+        "{member} passed attachment for {artifact} and would be dropped at render",
+        "fix the expression, or the view's table list",
+    ),
+    spec(
+        "SST-MEM015",
+        Severity.WARNING,
+        "Private member referenced from outside the view",
+        "{member} is private and is referenced by {artifact}",
+        "make it public, or drop the reference",
+    ),
+    spec(
+        "SST-MEM016",
+        Severity.ERROR,
+        "Member attaches to two artifacts with contradictory scoping",
+        "{member} attaches to {a} and {b} with conflicting scope",
+        "split the member",
+    ),
+    spec(
+        "SST-MEM100",
+        Severity.ERROR,
+        "Member attached to a type that accepts no members",
+        "{type} accepts no members; {member} was attached",
+        "move the member",
+    ),
+    spec(
+        "SST-MEM101",
+        Severity.WARNING,
+        "Inferred tables exceed declared tables",
+        "{member}: expression reaches {outside}, beyond its declared tables:",
+        "widen tables:, or narrow the expression",
+    ),
+    spec(
+        "SST-MEM103",
+        Severity.INFO,
+        "Artifact member counts",
+        "{artifact}: {value}",
+        None,
+    ),
+    spec(
+        "SST-MEM104",
+        Severity.ERROR,
+        "Artifact has no members and its type requires at least one",
+        "{artifact} resolves no members",
+        "attach at least one dimension or metric",
+    ),
+    spec(
+        "SST-MEM105",
+        Severity.WARNING,
+        "Two artifacts attach contradictory custom instructions to one table",
+        "{a} and {b} share table '{name}' with conflicting instructions",
+        "reconcile the instruction blocks",
+    ),
+    spec(
+        "SST-MEM106",
+        Severity.ERROR,
+        "Verified query attaches through a different membership rule",
+        "{member} used a verified-query-specific attachment path",
+        "use the one membership function",
+    ),
+    spec(
+        "SST-MEM107",
+        Severity.INFO,
+        "Attachment skipped for a poisoned member",
+        "{member} skipped: {count} unresolved references",
+        None,
+    ),
+    spec(
+        "SST-MEM900",
+        Severity.ERROR,
+        "Attachment not idempotent",
+        "attachment for {member} changed on a second pass",
+        "report this as a bug",
     ),
 )

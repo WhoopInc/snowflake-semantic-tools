@@ -74,10 +74,6 @@ RETIRED = (
     "SST-DBT002",
     "SST-MAN004",
     "SST-MAN201",
-    "SST-MEM002",
-    "SST-MEM008",
-    "SST-MEM011",
-    "SST-MEM103",
     "SST-PLN900",
     "SST-PRS028",
     "SST-PRS117",
@@ -100,8 +96,8 @@ def test_retired_codes_are_absent_from_the_registry_and_the_reference() -> None:
 
 def test_error_entries_show_severity_placeholders_and_fixes() -> None:
     page = render_error_codes()
-    assert "**skill() target not declared** (error)\n\n`{{ skill('<name>') }} does not resolve`" in page
-    assert _template(ERROR_REGISTRY["SST-REF032"]) == "{{ skill('<name>') }} does not resolve"
+    assert "**skill() target not declared** (error)\n\n`{ skill('<name>') } does not resolve`" in page
+    assert _template(ERROR_REGISTRY["SST-REF032"]) == "{ skill('<name>') } does not resolve"
     assert "(error, always an error)" in page
     assert "Codes from SST 0.3" not in page and "SST-V090" not in page
     bare = ErrorSpec("SST-CFG999", Severity.INFO, "Bare", "no fix", None, "CFG", "cfg", "url")

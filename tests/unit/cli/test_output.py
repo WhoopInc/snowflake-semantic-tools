@@ -40,12 +40,14 @@ def test_validate_json_emits_one_v2_envelope() -> None:
     assert envelope["invocation"]["started_at"]
     assert envelope["invocation"]["duration_s"] >= 0
     assert envelope["status"] == "ok"
-    # One info is SST-VAL854: the fixture's profile registry is not Desktop's. The
-    # one warning is SST-VAL528; the plugin has a consumer now, the operator profile.
+    # One info is SST-VAL854: the fixture's profile registry is not Desktop's. Eighteen
+    # report what attached where: SST-MEM011 for each of the fifteen members both jaffle
+    # views hold, and SST-MEM103 for each of the three views. The one warning is
+    # SST-VAL528; the plugin has a consumer now, the operator profile.
     assert envelope["summary"] == {
         "error": 0,
         "warning": 1,
-        "info": 5,
+        "info": 23,
         "promoted": 0,
         "suppressed_cascade": 0,
         "baselined": 0,

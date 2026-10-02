@@ -23,7 +23,7 @@ from snowflake_semantic_tools.adapters.yaml.semantic.defs import _frame
 from snowflake_semantic_tools.adapters.yaml.semantic.relationships import _relationship_parse_diagnostics
 from snowflake_semantic_tools.adapters.yaml.semantic.target import _folder_route_diagnostics
 from snowflake_semantic_tools.domain.diagnostics import ERROR_REGISTRY
-from tests.helpers.projects import load_project, load_views
+from tests.helpers.projects import findings, load_project, load_views
 
 
 def write_project(root: Path) -> Path:
@@ -123,8 +123,8 @@ def test_unknown_view_model_isolated_from_healthy_views(tmp_path: Path) -> None:
     )
     project = load_project(tmp_path, manifest_path=manifest)
     assert [view.fqn for view in project.views] == ["DB.SCH.HEALTHY"]
-    assert [diagnostic.code for diagnostic in project.diagnostics] == ["SST-REF001"]
-    assert project.diagnostics[0].subject == "semantic_view:poisoned"
+    assert [diagnostic.code for diagnostic in findings(project.diagnostics)] == ["SST-REF001"]
+    assert findings(project.diagnostics)[0].subject == "semantic_view:poisoned"
 
 
 def test_duplicate_view_names_are_diagnosed_and_not_manifest_candidates(tmp_path: Path) -> None:
@@ -415,7 +415,7 @@ def test_view_tags_must_be_a_list_and_an_empty_file_only_warns(tmp_path: Path) -
     (views / "empty.yml").write_text("# nothing here yet\n", encoding="utf-8")
     project = load_project(tmp_path, manifest_path=manifest)
     assert project.views == ()
-    assert [(item.code, item.severity.name) for item in project.diagnostics] == [
+    assert [(item.code, item.severity.name) for item in findings(project.diagnostics)] == [
         ("SST-LOD003", "WARNING"),
         ("SST-PRS027", "ERROR"),
     ]
@@ -428,7 +428,7 @@ def test_a_meta_sst_data_type_that_disagrees_with_dbt_warns(tmp_path: Path) -> N
     column["meta"]["sst"]["data_type"] = "number(38, 0)"
     manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
     project = load_project(tmp_path, manifest_path=manifest_path)
-    assert [(item.code, item.message) for item in project.diagnostics] == [
+    assert [(item.code, item.message) for item in findings(project.diagnostics)] == [
         (
             "SST-DBT004",
             "model 'products': column 'product_id' is VARCHAR in dbt and number(38, 0) in the semantic layer",
@@ -590,10 +590,10 @@ def test_a_window_dimension_the_metric_cannot_reach_fails_the_view(tmp_path: Pat
     )
     project = load_project(tmp_path, manifest_path=manifest_path)
     assert project.views == ()
-    assert [(item.code, item.subject, item.context["field"]) for item in project.diagnostics] == [
+    assert [(item.code, item.subject, item.context["field"]) for item in findings(project.diagnostics)] == [
         ("SST-VAL125", "semantic_view:catalog", "order_by[0]")
     ]
-    assert "a dimension PRODUCTS reaches in this view" in project.diagnostics[0].message
+    assert "a dimension PRODUCTS reaches in this view" in findings(project.diagnostics)[0].message
 
 
 def test_a_non_additive_table_outside_the_view_fails_the_view(tmp_path: Path) -> None:
@@ -628,7 +628,7 @@ def test_a_non_additive_table_outside_the_view_fails_the_view(tmp_path: Path) ->
     )
     project = load_project(tmp_path, manifest_path=manifest_path)
     assert project.views == ()
-    assert [(item.code, item.subject, item.context["value"]) for item in project.diagnostics] == [
+    assert [(item.code, item.subject, item.context["value"]) for item in findings(project.diagnostics)] == [
         ("SST-VAL118", "semantic_view:catalog", "calendar.month")
     ]
 
@@ -660,13 +660,13 @@ def test_0_3_key_forms_and_unknown_meta_keys_are_reported_where_a_view_uses_the_
     node["columns"]["product_id"]["meta"]["sst"]["privacy_category"] = "none"
     manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
     project = load_project(tmp_path, manifest_path=manifest_path)
-    assert [(item.code, item.severity.name, item.subject) for item in project.diagnostics] == [
+    assert [(item.code, item.severity.name, item.subject) for item in findings(project.diagnostics)] == [
         ("SST-DBT005", "ERROR", "dbt_model:products"),
         ("SST-PRS004", "WARNING", "dbt_model:products"),
         ("SST-PRS004", "WARNING", "dbt_column:products.product_id"),
     ]
-    assert project.diagnostics[1].context["field"] == "meta.sst.cortex_searchable"
-    assert project.diagnostics[2].context["field"] == "meta.sst.privacy_category"
+    assert findings(project.diagnostics)[1].context["field"] == "meta.sst.cortex_searchable"
+    assert findings(project.diagnostics)[2].context["field"] == "meta.sst.privacy_category"
 
 
 def test_filter_labels_must_be_a_list_of_strings(tmp_path: Path) -> None:
@@ -695,8 +695,8 @@ def test_a_view_list_outside_the_views_folder_is_reported_not_dropped_silently(t
     )
     project = load_project(tmp_path, manifest_path=manifest)
     assert [view.fqn for view in project.views] == ["DB.SCH.CATALOG"]
-    assert [(item.code, item.context["artifact"], item.context["field"]) for item in project.diagnostics] == [
+    assert [(item.code, item.context["artifact"], item.context["field"]) for item in findings(project.diagnostics)] == [
         ("SST-PRS004", relative, "semantic_views")
     ]
-    origin = project.diagnostics[0].origin
+    origin = findings(project.diagnostics)[0].origin
     assert origin is not None and (origin.file, origin.line) == (relative, 2)

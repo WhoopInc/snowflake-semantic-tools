@@ -32,9 +32,10 @@ def invoke(*args: str) -> tuple[int, dict[str, Any]]:
 
 
 def codes(payload: dict[str, object]) -> Counter[tuple[str, str]]:
+    """Count each code and severity, leaving out the info that reports what attached where."""
     diagnostics = payload["diagnostics"]
     assert isinstance(diagnostics, list)
-    return Counter((item["code"], item["severity"]) for item in diagnostics)
+    return Counter((item["code"], item["severity"]) for item in diagnostics if item["severity"] != "info")
 
 
 def converted_copy(tmp_path: Path) -> Path:
@@ -101,7 +102,11 @@ def test_codemod_converts_idempotently_and_the_result_renders_the_committed_ddl(
     exit_code, payload = invoke("compile", "--project-dir", str(project), "--manifest", str(MANIFEST))
     assert exit_code == 1
     assert codes(payload) == Counter({("SST-PRS020", "error"): 3})
-    renames = {(item["params"]["field"], item["params"]["expected"]) for item in payload["diagnostics"]}
+    renames = {
+        (item["params"]["field"], item["params"]["expected"])
+        for item in payload["diagnostics"]
+        if item["code"] == "SST-PRS020"
+    }
     assert renames == {
         ("sql_generation", "ai_sql_generation"),
         ("question_categorization", "ai_question_categorization"),
