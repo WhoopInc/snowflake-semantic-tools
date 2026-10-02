@@ -8,7 +8,7 @@ the view are built in `build_members`.
 from __future__ import annotations
 
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any, NoReturn, TypeVar
 
@@ -26,6 +26,7 @@ from snowflake_semantic_tools.adapters.yaml.semantic.build_members import (
     _view_verified_queries,
     _with_variable_names,
 )
+from snowflake_semantic_tools.adapters.yaml.semantic.checks.scope import view_scope
 from snowflake_semantic_tools.adapters.yaml.semantic.defs import FilterDef, InstructionDef, MetricDef, VerifiedQueryDef
 from snowflake_semantic_tools.adapters.yaml.semantic.nodes import _as_str_tuple
 from snowflake_semantic_tools.domain.diagnostics import D
@@ -40,6 +41,7 @@ from snowflake_semantic_tools.domain.model.semantic_view import (
     Table,
     Tag,
     Variable,
+    ViewScope,
 )
 from snowflake_semantic_tools.domain.parse.template import single_template_call
 from snowflake_semantic_tools.domain.sql import Sql, boolean, datatype, is_datatype, literal, number
@@ -59,8 +61,8 @@ def _build_view(
     """Build one view from its node and the members attached to it, one phase at a time.
 
     The phases run in this order, and each raises `ProjectError` at the first problem it finds,
-    so the order decides which problem a broken view reports: select the attached members, set
-    up the context, then tables, columns, metric names, metrics and their windows, filters,
+    so the order decides which problem a broken view reports: select the attached members the
+    view's scope admits, set up the context, then tables, columns, metric names, metrics and their windows, filters,
     instructions, verified queries, variables, tags, and assemble. A phase reads only what the
     earlier phases returned.
 
@@ -69,10 +71,11 @@ def _build_view(
             name the problem; one without diagnostics is reported by its message.
     """
     name = str(node["name"])
-    selected = _select_members(artifact_key("semantic_view", name), members, attachment)
+    scope = view_scope(node)
+    selected = _scoped(_select_members(artifact_key("semantic_view", name), members, attachment), scope)
     view = _View(name, path, models, DbtCatalog("v12", None, None, tuple(models.values())), mapping(config.get("vars")))
     tables, logical_by_model = _view_tables(node, view)
-    columns = _view_columns(models, logical_by_model)
+    columns = [column for column in _view_columns(models, logical_by_model) if scope.admits_column(column)]
     resolver = _member_resolver(view, logical_by_model, selected)
     metrics = _view_metrics(selected.metrics, selected.relationships, resolver)
     entity_filters, standalone_filters = _view_filters(selected.filters, resolver)
@@ -106,6 +109,7 @@ def _build_view(
         source_path=source_path,
         source_files=source_files,
         referenced_models=tuple(sorted(logical_by_model)),
+        scope=scope,
     )
 
 
@@ -142,6 +146,19 @@ def _select_members(
         },
         verified_queries=_sources(attached, "verified_query", VerifiedQueryDef),
         relationships=_sources(attached, "relationship", Relationship),
+    )
+
+
+def _scoped(selected: _Members, scope: ViewScope) -> _Members:
+    """Keep the attached metrics and relationships the view's scope admits.
+
+    The metrics are narrowed before any expression resolves, so a metric that reads one the
+    scope removed fails to resolve rather than rendering a reference the view cannot satisfy.
+    """
+    return replace(
+        selected,
+        metrics=tuple(metric for metric in selected.metrics if scope.admits_metric(metric.name)),
+        relationships=tuple(item for item in selected.relationships if scope.admits_relationship(item.name)),
     )
 
 

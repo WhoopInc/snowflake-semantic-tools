@@ -7,6 +7,7 @@ from types import MappingProxyType
 from typing import Any
 
 from snowflake_semantic_tools.adapters.yaml.documents import NodePath, RawDocument, RawDocuments
+from snowflake_semantic_tools.adapters.yaml.semantic.checks.scope import SCOPE_KEYS
 from snowflake_semantic_tools.adapters.yaml.semantic.nodes import _node_origin, _node_root
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, Origin
 from snowflake_semantic_tools.domain.model.artifact_key import artifact_key
@@ -28,6 +29,7 @@ AUTHORED_KEYS: Mapping[str, frozenset[str]] = MappingProxyType(
                 "tags",
                 "max_staleness",
                 "enabled",
+                *SCOPE_KEYS,
             )
         ),
         "metric": frozenset(

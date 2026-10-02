@@ -234,8 +234,8 @@ def test_derived_window_and_unattached_relationship_diagnostics() -> None:
         (("semantic_view:sales", frozenset(("customers", "orders"))),),
     )
     assert [(diagnostic.code, diagnostic.severity.name, diagnostic.caused_by) for diagnostic in diagnostics] == [
-        ("SST-VAL203", "ERROR", None),
-        ("SST-MEM005", "WARNING", "SST-VAL203"),
+        ("SST-VAL205", "ERROR", None),
+        ("SST-MEM005", "WARNING", "SST-VAL205"),
     ]
 
 
@@ -564,7 +564,7 @@ SNAPSHOT = "{{ ref('supplies', 'snapshot_month') }}"
 def _window_codes(*metrics: MetricDef) -> list[tuple[str, str, object]]:
     other_model = dataclasses.replace(_supplies(), unique_id="model.fixture.products", name="products")
     diagnostics = _metric_diagnostics(metrics, {"supplies": _supplies(), "products": other_model})
-    window_codes = ("SST-VAL101", "SST-VAL102", "SST-VAL125", "SST-VAL126", "SST-VAL127", "SST-VAL128")
+    window_codes = ("SST-VAL101", "SST-VAL102", "SST-VAL129", "SST-VAL126", "SST-VAL127", "SST-VAL128")
     return [
         (item.code, item.context["metric"], item.context.get("field") or item.context.get("function"))
         for item in diagnostics
@@ -617,7 +617,7 @@ def test_window_entries_resolve_to_a_reachable_dimension_or_a_sibling_metric() -
         windowed,
         _supply_metric("bad_entries", "SUM({{ metric('supply_total') }})", window),
     )
-    assert [field for code, metric, field in found if code == "SST-VAL125"] == [
+    assert [field for code, metric, field in found if code == "SST-VAL129"] == [
         "partition_by[0]",
         "partition_by[1]",
         "partition_by[2]",

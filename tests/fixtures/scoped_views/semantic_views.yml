@@ -1,0 +1,62 @@
+---
+# Two views that narrow what their tables attach. Each kind -- columns, metrics,
+# relationships -- is either listed (include mode) or excluded (exclude mode),
+# never both (SST-VAL329). tests/unit/test_golden_ddl.py copies this file into
+# semantic_models/semantic_views/scoped/ of a copy of the reference project.
+
+semantic_views:
+  # Include mode: only the listed members render. line_item_count and
+  # opening_supply_cost attach through these tables and are left out; so is
+  # every column not listed. The kept non-additive metric sorts by
+  # supplies.snapshot_month, so that column is listed too (SST-VAL318).
+  - name: jaffle_product_costs
+    description: |-
+      Line-item revenue against the monthly cost of supplying each product.
+      Use this view for questions about product margin and supply cost by
+      product or product type.
+    tables:
+      - "{{ ref('order_items') }}"
+      - "{{ ref('products') }}"
+      - "{{ ref('supplies') }}"
+    columns:
+      - "{{ ref('order_items', 'order_item_id') }}"
+      - "{{ ref('order_items', 'product_id') }}"
+      - "{{ ref('order_items', 'item_price') }}"
+      - "{{ ref('products', 'product_id') }}"
+      - "{{ ref('products', 'product_name') }}"
+      - "{{ ref('products', 'product_type') }}"
+      - "{{ ref('supplies', 'product_id') }}"
+      - "{{ ref('supplies', 'snapshot_month') }}"
+      - "{{ ref('supplies', 'supply_cost') }}"
+    metrics:
+      - "{{ metric('total_line_item_revenue') }}"
+      - "{{ metric('total_supply_cost') }}"
+      - "{{ metric('gross_margin') }}"
+      - "{{ metric('gross_margin_rate') }}"
+      - product_count
+    relationships:
+      - order_items_to_products
+      - supplies_to_products
+
+  # Exclude mode: everything its tables attach renders except what is named.
+  # Filters are never scoped, so is_large_order still needs large_order_cents.
+  - name: jaffle_customer_orders
+    description: |-
+      Orders and the customers who placed them, without customer names or tax.
+      Use this view for questions about order volume and value by customer
+      type, and how many customers order.
+    tables:
+      - "{{ ref('orders') }}"
+      - "{{ ref('customers') }}"
+    variables:
+      - name: large_order_cents
+        data_type: NUMBER
+        description: |-
+          Threshold above which an order counts as large.
+        default_value: 1000
+    exclude_columns:
+      - "{{ ref('customers', 'customer_name') }}"
+      - "{{ ref('orders', 'tax_paid') }}"
+    exclude_metrics:
+      - "{{ metric('total_tax_collected') }}"
+      - "{{ metric('revenue_on_policy') }}"

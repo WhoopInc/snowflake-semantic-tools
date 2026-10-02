@@ -27,16 +27,15 @@ def _relationship_diagnostics(
 ) -> tuple[Diagnostic, ...]:
     """Check each relationship against the views that hold its tables and the keys of its right table.
 
-    A relationship whose two tables no one view holds is reported against the view holding the
-    most of them (the first such view, or `semantic_view:<none>` without views), naming the
-    first table in name order that view lacks, and is checked no further. Otherwise, when
+    A relationship whose two tables no one view holds is reported, naming both tables, and is
+    checked no further. Otherwise, when
     `models` has its right table and it is neither an ASOF nor a range join, that table's keys
     are checked. Names compare casefolded; each subject is the relationship's casefolded key,
     and each origin is the one `origins` holds under its casefolded name.
 
     Diagnostics:
-        SST-VAL203: when no view holds both of the relationship's tables.
-        SST-MEM005: with each SST-VAL203, since the relationship then attaches to no view.
+        SST-VAL205: when no view holds both of the relationship's tables.
+        SST-MEM005: with each SST-VAL205, since the relationship then attaches to no view.
         SST-VAL311: when the right table declares neither `primary_key` nor `unique_keys`.
         SST-VAL210: when no key of the right table lies within the join's right-hand columns.
     """
@@ -49,18 +48,12 @@ def _relationship_diagnostics(
         }
         subject = artifact_key("relationship", relationship.name.casefold())
         if not any(endpoints.issubset(tables) for _, tables in view_table_sets):
-            closest_name, closest_tables = max(
-                view_table_sets,
-                key=lambda item: len(endpoints.intersection(item[1])),
-                default=("semantic_view:<none>", frozenset()),
-            )
-            missing = sorted(endpoints - closest_tables)[0]
             diagnostics.append(
                 D(
-                    "SST-VAL203",
+                    "SST-VAL205",
                     relationship=relationship.name.casefold(),
-                    name=missing,
-                    artifact=closest_name,
+                    a=relationship.from_table.casefold(),
+                    b=relationship.to_table.casefold(),
                     subject=subject,
                     origin=origin,
                 )
@@ -71,7 +64,7 @@ def _relationship_diagnostics(
                     member=subject,
                     type="semantic_view",
                     subject=subject,
-                    caused_by="SST-VAL203",
+                    caused_by="SST-VAL205",
                     origin=origin,
                 )
             )

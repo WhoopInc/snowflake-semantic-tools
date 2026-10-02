@@ -184,6 +184,46 @@ class Tag:
 
 
 @dataclass(frozen=True, slots=True)
+class ViewScope:
+    """Which of its tables' members a view exposes: its scope lists, include or exclude.
+
+    The lists are `columns:`, `metrics:` and `relationships:`, or their `exclude_`
+    counterparts. For each kind, an include list of None admits every member and an exclude
+    list removes the members it names; validation refuses a view that sets both for one
+    kind. Names are upper-cased: a column is `TABLE.COLUMN` under its logical table, a metric
+    or a relationship its name. A filter is a dimension the scope never removes: filters are
+    attached by their own tables, not listed.
+    """
+
+    columns: tuple[str, ...] | None = None
+    exclude_columns: tuple[str, ...] = ()
+    metrics: tuple[str, ...] | None = None
+    exclude_metrics: tuple[str, ...] = ()
+    relationships: tuple[str, ...] | None = None
+    exclude_relationships: tuple[str, ...] = ()
+
+    def admits_column(self, column: Column) -> bool:
+        """Report whether the view exposes `column`; a filter it always does."""
+        return column.kind is ColumnKind.FILTER or self.admits_column_name(column.qualified_name)
+
+    def admits_column_name(self, name: str) -> bool:
+        """Report whether the view exposes the fact or dimension `TABLE.COLUMN`, compared upper-cased."""
+        return _admits(name.upper(), self.columns, self.exclude_columns)
+
+    def admits_metric(self, name: str) -> bool:
+        """Report whether the view exposes the metric named `name`, compared upper-cased."""
+        return _admits(name.upper(), self.metrics, self.exclude_metrics)
+
+    def admits_relationship(self, name: str) -> bool:
+        """Report whether the view keeps the relationship named `name`, compared upper-cased."""
+        return _admits(name.upper(), self.relationships, self.exclude_relationships)
+
+
+def _admits(name: str, included: tuple[str, ...] | None, excluded: tuple[str, ...]) -> bool:
+    return (included is None or name in included) and name not in excluded
+
+
+@dataclass(frozen=True, slots=True)
 class SemanticView:
     """A complete semantic view, resolved and ready to render.
 
@@ -211,6 +251,7 @@ class SemanticView:
     source_files: tuple[str, ...] = ()
     referenced_models: tuple[str, ...] = ()
     ownership_marker: str | None = None
+    scope: ViewScope = ViewScope()
 
     facts: tuple[Column, ...] = field(init=False, repr=False, compare=False)
     dimensions: tuple[Column, ...] = field(init=False, repr=False, compare=False)

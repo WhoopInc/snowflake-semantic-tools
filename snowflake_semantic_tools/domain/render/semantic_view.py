@@ -23,6 +23,10 @@ with `LABELS = (FILTER)`, verified queries become `AI_VERIFIED_QUERIES`, and
 custom instructions become `AI_SQL_GENERATION` and `AI_QUESTION_CATEGORIZATION`
 after `COMMENT`. The goldens, each created in Snowflake, hold this shape.
 
+SCOPE. A view's `scope` decides which of its columns, metrics and relationships render; a
+member it does not admit is left out of its clause, so a view built with every attached
+member still publishes only the subset its author listed.
+
 ORDERING. `TABLES` renders in DECLARATION order, because that is the order the
 author wrote and the golden preserves it. Every other member list renders SORTED
 by its qualified name. The difference is not an inconsistency: table order is
@@ -43,6 +47,7 @@ from snowflake_semantic_tools.domain.model.semantic_view import (
     Table,
     Variable,
     VerifiedQuery,
+    ViewScope,
     Window,
 )
 from snowflake_semantic_tools.domain.sql import (
@@ -304,14 +309,14 @@ def render(view: SemanticView) -> Sql:
 
     lines: list[Sql] = [sql("{head} {fqn}", head=join("", head), fqn=qname(QualifiedName.parse(view.fqn)))]
 
+    scope = view.scope
+    relationships = sorted((r for r in view.relationships if scope.admits_relationship(r.name)), key=lambda r: r.name)
     lines += _block(sql("TABLES"), [render_table(t) for t in view.tables])
-    lines += _block(
-        sql("RELATIONSHIPS"), [render_relationship(r) for r in sorted(view.relationships, key=lambda r: r.name)]
-    )
+    lines += _block(sql("RELATIONSHIPS"), [render_relationship(r) for r in relationships])
     lines += _block(sql("VARIABLES"), [render_variable(v) for v in view.variables])
-    lines += _block(sql("FACTS"), [render_column(c) for c in _sorted_columns(view.facts)])
-    lines += _block(sql("DIMENSIONS"), [render_column(c) for c in _sorted_columns(view.dimensions)])
-    lines += _block(sql("METRICS"), [render_metric(m) for m in _sorted_metrics(view.metrics)])
+    lines += _block(sql("FACTS"), [render_column(c) for c in _sorted_columns(view.facts, scope)])
+    lines += _block(sql("DIMENSIONS"), [render_column(c) for c in _sorted_columns(view.dimensions, scope)])
+    lines += _block(sql("METRICS"), [render_metric(m) for m in _sorted_metrics(view.metrics, scope)])
 
     comment = view.comment
     if view.ownership_marker:
@@ -346,9 +351,9 @@ def render(view: SemanticView) -> Sql:
     return join("\n", lines)
 
 
-def _sorted_columns(columns: tuple[Column, ...]) -> list[Column]:
-    return sorted(columns, key=lambda c: c.qualified_name)
+def _sorted_columns(columns: tuple[Column, ...], scope: ViewScope) -> list[Column]:
+    return sorted((c for c in columns if scope.admits_column(c)), key=lambda c: c.qualified_name)
 
 
-def _sorted_metrics(metrics: tuple[Metric, ...]) -> list[Metric]:
-    return sorted(metrics, key=lambda m: (m.table is None, m.qualified_name))
+def _sorted_metrics(metrics: tuple[Metric, ...], scope: ViewScope) -> list[Metric]:
+    return sorted((m for m in metrics if scope.admits_metric(m.name)), key=lambda m: (m.table is None, m.qualified_name))

@@ -17,6 +17,7 @@ from snowflake_semantic_tools.adapters.errors import ProjectError
 from snowflake_semantic_tools.adapters.yaml.documents import RawDocuments, discover_yaml, load_documents
 from snowflake_semantic_tools.adapters.yaml.parse import parse_yaml_bytes, read_yaml_mapping
 from snowflake_semantic_tools.adapters.yaml.semantic.build import _build_view
+from snowflake_semantic_tools.adapters.yaml.semantic.checks.scope import _scope_diagnostics
 from snowflake_semantic_tools.adapters.yaml.semantic.collect import parse_semantic_project
 from snowflake_semantic_tools.adapters.yaml.semantic.defs import MetricDef
 from snowflake_semantic_tools.adapters.yaml.semantic.phases import (
@@ -84,7 +85,8 @@ def load_semantic_views_result(
        view is poisoned.
     7. The healthy metrics' `using_relationships`; a metric naming a relationship that is
        missing or starts elsewhere is poisoned.
-    8. View instructions: each view's `custom_instructions()` entries.
+    8. View instructions and scope: each view's `custom_instructions()` entries, then the
+       columns, metrics and relationships it lists or excludes.
     9. Poisoned views: each view an error of phases 1-8 names, whose name repeats, whose
        tables are malformed, or whose file uses the legacy globals.
     10. Attach every unpoisoned member to the views it belongs to.
@@ -116,6 +118,7 @@ def load_semantic_views_result(
     using_diagnostics, misrouted = _using_checks(members, healthy)
     poison = poison.with_members(unattached | misrouted)
     instruction_names, instruction_diagnostics = _view_instructions(parsed.views, members.instruction_names)
+    scope_diagnostics = _scope_diagnostics(parsed.views, members.metrics, members.relationships, context.models)
     reported = (
         *parsed.diagnostics,
         *structure.diagnostics,
@@ -123,6 +126,7 @@ def load_semantic_views_result(
         *relationship_diagnostics,
         *using_diagnostics,
         *instruction_diagnostics,
+        *scope_diagnostics,
     )
     # After every check: the views left unbuilt are read from the errors reported so far.
     poison = _view_poison(poison, parsed.views, reported, structure.duplicate_views, structure.legacy_files)

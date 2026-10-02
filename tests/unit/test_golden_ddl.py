@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import dataclasses
 import difflib
+import shutil
 from pathlib import Path
 
 import pytest
@@ -23,12 +24,15 @@ from _pytest.outcomes import Failed
 from snowflake_semantic_tools.app.compile import CompiledView
 from snowflake_semantic_tools.domain.model.semantic_view import SemanticView
 from snowflake_semantic_tools.domain.render.semantic_view import render
+from tests.helpers.cli_projects import project_copy
 from tests.helpers.projects import load_views
 from tests.helpers.sql_values import statement
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 FIXTURE = REPO_ROOT / "tests" / "fixtures" / "reference_project"
 GOLDEN_DIR = REPO_ROOT / "tests" / "golden" / "expected" / "ddl"
+MANIFEST = REPO_ROOT / "tests" / "fixtures" / "reference_project_manifest.json"
+SCOPED_VIEWS = REPO_ROOT / "tests" / "fixtures" / "scoped_views" / "semantic_views.yml"
 
 
 def golden_ddl(name: str) -> str:
@@ -51,8 +55,10 @@ def test_fixture_and_goldens_are_present() -> None:
     """Guard the paths above, so a bad path cannot be mistaken for a passing suite."""
     assert (FIXTURE / "sst_config.yml").is_file(), f"fixture missing at {FIXTURE}"
     assert sorted(p.name for p in GOLDEN_DIR.glob("*.sql")) == [
+        "jaffle_customer_orders.sql",
         "jaffle_menu.sql",
         "jaffle_minimal.sql",
+        "jaffle_product_costs.sql",
         "jaffle_sales.sql",
     ]
 
@@ -100,6 +106,46 @@ def test_jaffle_sales_matches_its_golden(views: dict[str, SemanticView]) -> None
 def test_jaffle_menu_matches_its_golden(views: dict[str, SemanticView]) -> None:
     """Rung 3: aliasing, temporal joins, semi-additive metrics and SQL sidecars."""
     assert_matches_golden(views["JAFFLE_MENU"], "jaffle_menu")
+
+
+@pytest.fixture(scope="module")
+def scoped_views(tmp_path_factory: pytest.TempPathFactory) -> dict[str, SemanticView]:
+    """The reference project with the two scoped views added under semantic_views/scoped/."""
+    project = project_copy(tmp_path_factory.mktemp("scoped"))
+    folder = project / "semantic_models" / "semantic_views" / "scoped"
+    folder.mkdir()
+    shutil.copy(SCOPED_VIEWS, folder / "semantic_views.yml")
+    return {view.fqn.rsplit(".", 1)[-1]: view for view in load_views(project, manifest_path=MANIFEST)}
+
+
+def test_an_include_mode_view_matches_its_golden(scoped_views: dict[str, SemanticView]) -> None:
+    """Only the listed columns, metrics and relationships render."""
+    assert_matches_golden(scoped_views["JAFFLE_PRODUCT_COSTS"], "jaffle_product_costs")
+
+
+def test_an_exclude_mode_view_matches_its_golden(scoped_views: dict[str, SemanticView]) -> None:
+    """Everything the tables attach renders except what the view names."""
+    assert_matches_golden(scoped_views["JAFFLE_CUSTOMER_ORDERS"], "jaffle_customer_orders")
+
+
+def test_the_renderer_applies_a_scope_the_build_did_not(views: dict[str, SemanticView]) -> None:
+    """A view holding every attached member still renders only what its scope admits."""
+    sales = views["JAFFLE_SALES"]
+    scoped = dataclasses.replace(
+        sales,
+        scope=dataclasses.replace(
+            sales.scope,
+            exclude_columns=("ORDERS.TAX_PAID",),
+            metrics=("TOTAL_REVENUE",),
+            relationships=("ORDERS_TO_LOCATIONS",),
+        ),
+    )
+    ddl = str(render(scoped))
+    assert "ORDERS.TAX_PAID AS" not in ddl and "ORDERS.ORDER_TOTAL AS" in ddl
+    assert "ORDERS.TOTAL_REVENUE AS" in ddl and "ORDERS.ORDER_COUNT AS" not in ddl
+    assert "ORDERS_TO_LOCATIONS AS" in ddl and "ORDERS_TO_CUSTOMERS AS" not in ddl
+    # Filters are never scoped.
+    assert "IS_COMPLETED_ORDER LABELS = (FILTER)" in ddl
 
 
 def test_rendering_is_deterministic(views: dict[str, SemanticView]) -> None:
