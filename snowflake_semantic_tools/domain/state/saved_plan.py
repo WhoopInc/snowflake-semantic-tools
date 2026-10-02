@@ -25,6 +25,9 @@ from snowflake_semantic_tools.domain.state.codec import (
 from snowflake_semantic_tools.domain.state.documents import content_hash
 
 PLAN_SCHEMA_VERSION = 2
+# How long the Snowflake observation a saved plan recorded may be trusted; apply re-observes
+# either way, and reports a saved observation older than this as ignored.
+OBSERVATION_TTL_SECONDS = 60 * 60
 
 
 @dataclass(frozen=True, slots=True)

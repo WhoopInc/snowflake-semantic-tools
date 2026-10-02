@@ -259,7 +259,8 @@ def test_lost_race_bad_pointer_and_merge_failure_are_reported() -> None:
 
     dangling.desktop_profile_rows = broken_pointer  # type: ignore[method-assign]
     _, result, _ = publish(dangling, compiled, state())
-    assert result.outcomes[0].error is not None and "does not resolve" in result.outcomes[0].error.message
+    assert result.outcomes[0].error is not None and result.outcomes[0].error.code == "SST-APL017"
+    assert "the stage does not hold @DB.S.PROFILES/prompts/analyst/NOPE/AGENTS.md" in result.outcomes[0].error.message
 
     vanished = RecordedSnowflake(existing=())
     vanished.desktop_profile_rows = lambda registry: ()  # type: ignore[method-assign]
@@ -504,7 +505,8 @@ def test_a_registry_or_stage_that_cannot_be_created_fails_before_any_row_is_writ
     narrow = NarrowRegistry(existing=())
     _, result, after = publish(narrow, compiled, state())
     outcome = result.outcomes[0]
-    assert outcome.error is not None and outcome.error.code == "SST-APL016"
+    assert outcome.error is not None and outcome.error.code == "SST-APL027"
+    assert outcome.error.value == "DB.S.PROFILE_REGISTRY"
     assert "lacks" in outcome.error.message and "after creation" in outcome.error.message
     assert (outcome.attempts, outcome.write_succeeded, after.applied) == (1, False, {})
 

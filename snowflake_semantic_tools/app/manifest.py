@@ -1,7 +1,9 @@
-"""Build the deterministic compiled manifest from one compile result.
+"""Build the deterministic compiled manifest from one compile result, and check one read back.
 
 `manifest_for` builds it from what `ProjectInputs.manifest_sources` read about the project's
-files; `stale_manifest` says why a run must not start when `sst compile` wrote another one.
+files; `stale_manifest` says why a run must not start when `sst compile` wrote another one,
+and `target_mismatch` when it compiled for another target. `read_notes` reports how a stored
+manifest was read, and `dbt_manifest_moved` a dbt manifest rewritten while a run read it.
 `build_manifest` does the building: every index lists its artifact keys sorted, and the id
 hashes the canonical document, so the order of the compiled artifacts never changes the id,
 while the SST version and each recorded checksum do. Artifact names are recorded casefolded,
@@ -13,7 +15,7 @@ from __future__ import annotations
 from types import MappingProxyType
 
 from snowflake_semantic_tools.app.compile import CompiledArtifact, CompileResult
-from snowflake_semantic_tools.domain.diagnostics import Severity
+from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, Severity
 from snowflake_semantic_tools.domain.ports.project import ManifestSources
 from snowflake_semantic_tools.domain.state import SST_VERSION, ArtifactEntry, ImpactIndex, Manifest
 
@@ -31,6 +33,7 @@ def manifest_for(result: CompileResult, sources: ManifestSources) -> Manifest:
         dbt_digest=sources.dbt_digest,
         model_count=sources.model_count,
         file_checksums=dict(sources.file_checksums),
+        target_name=sources.target_name,
     )
 
 
@@ -47,6 +50,46 @@ def stale_manifest(compiled: Manifest, current: Manifest, *, before: str) -> str
     return None
 
 
+def target_mismatch(compiled: Manifest, current: Manifest) -> Diagnostic | None:
+    """Report a compiled manifest made for another target than the run's; None when they agree.
+
+    A manifest that records no target, as one written before targets were recorded, agrees
+    with every target.
+
+    Diagnostics:
+        SST-MAN006: the compiled manifest records another target than the current one.
+    """
+    found = str(compiled.project.get("target") or "")
+    expected = str(current.project.get("target") or "")
+    if found and expected and found != expected:
+        return D("SST-MAN006", found=found, expected=expected)
+    return None
+
+
+def read_notes(manifest: Manifest, path: str) -> tuple[Diagnostic, ...]:
+    """Report how a stored manifest was read: migrated in memory from an older schema, or as written.
+
+    Diagnostics:
+        SST-MAN201: the manifest declared an older schema and was migrated in memory; the file
+            is left as it is.
+    """
+    if manifest.migrated_from is None:
+        return ()
+    return (D("SST-MAN201", path=path, found=manifest.migrated_from, expected=manifest.schema_version),)
+
+
+def dbt_manifest_moved(before: ManifestSources, after: ManifestSources) -> Diagnostic | None:
+    """Report a dbt manifest whose models changed between two reads of one run; None when they agree.
+
+    Diagnostics:
+        SST-MAN031: the dbt manifest's model digest differs between the two reads, so the run
+            compiled from one manifest and would record another.
+    """
+    if before.dbt_digest != after.dbt_digest:
+        return D("SST-MAN031")
+    return None
+
+
 def build_manifest(
     result: CompileResult,
     *,
@@ -59,8 +102,14 @@ def build_manifest(
     dbt_digest: str = "",
     model_count: int = 0,
     file_checksums: dict[str, str] | None = None,
+    target_name: str = "",
 ) -> Manifest:
-    """Build the manifest of `result`, with what the keyword arguments say about the project."""
+    """Build the manifest of `result`, with what the keyword arguments say about the project.
+
+    Args:
+        target_name: The target the artifacts were compiled for; recorded under `project.target`
+            unless empty.
+    """
     artifacts: dict[str, ArtifactEntry] = {}
     by_file: dict[str, tuple[str, ...]] = {}
     by_dbt_model: dict[str, tuple[str, ...]] = {}
@@ -97,6 +146,7 @@ def build_manifest(
                 "semantic_path": semantic_path,
                 "dbt_project_name": dbt_project_name,
                 "config_checksum": config_checksum,
+                **({"target": target_name} if target_name else {}),
             }
         ),
         sources=MappingProxyType(

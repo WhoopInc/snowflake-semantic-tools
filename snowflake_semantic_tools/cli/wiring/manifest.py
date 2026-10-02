@@ -8,15 +8,17 @@ from snowflake_semantic_tools.adapters.errors import ProjectError
 from snowflake_semantic_tools.adapters.fs.local import ManifestFileStore
 from snowflake_semantic_tools.adapters.project_source import YamlProjectInputs
 from snowflake_semantic_tools.app.compile import CompileResult
-from snowflake_semantic_tools.app.manifest import manifest_for, stale_manifest
+from snowflake_semantic_tools.app.manifest import manifest_for, stale_manifest, target_mismatch
 from snowflake_semantic_tools.cli.wiring.project import project_inputs, target_dir
 from snowflake_semantic_tools.domain.diagnostics import D
 from snowflake_semantic_tools.domain.state import Manifest
 
 
-def build_manifest(project_dir: Path, result: CompileResult, manifest_path: Path | None) -> Manifest:
-    """Build the manifest `result` publishes, reading what it records about the project's files now."""
-    return manifest_for(result, project_inputs(project_dir, None, manifest_path).manifest_sources())
+def build_manifest(
+    project_dir: Path, result: CompileResult, manifest_path: Path | None, target_name: str | None = None
+) -> Manifest:
+    """Build the manifest `result` publishes for `target_name`, reading the project's files now."""
+    return manifest_for(result, project_inputs(project_dir, target_name, manifest_path).manifest_sources())
 
 
 def compiled_manifest(project_dir: Path) -> Manifest:
@@ -37,10 +39,14 @@ def current_manifest(project_dir: Path, result: CompileResult, inputs: YamlProje
     """Return the manifest `result` publishes, refusing the run when `sst compile` wrote another.
 
     Raises:
-        ProjectError: no compiled manifest exists (SST-MAN001), or it is stale.
+        ProjectError: no compiled manifest exists (SST-MAN001), it was compiled for another
+            target (SST-MAN006), or it is stale.
     """
     compiled = compiled_manifest(project_dir)
     current = manifest_for(result, inputs.manifest_sources())
+    mismatch = target_mismatch(compiled, current)
+    if mismatch is not None:
+        raise ProjectError(mismatch.message, diagnostics=(mismatch,))
     stale = stale_manifest(compiled, current, before=before)
     if stale is not None:
         raise ProjectError(stale)

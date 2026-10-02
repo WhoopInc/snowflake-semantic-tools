@@ -19,9 +19,9 @@ from snowflake_semantic_tools.app.compile.skills import CompiledExtension
 from snowflake_semantic_tools.app.lifecycle.evals import EvalLifecycleConfig, EvalLifecycleHandler
 from snowflake_semantic_tools.app.lifecycle.extensions import ExtensionLifecycleHandler
 from snowflake_semantic_tools.app.lifecycle.profiles import ProfileLifecycleHandler, ProfilePublicationPort
-from snowflake_semantic_tools.app.manifest import manifest_for, stale_manifest
+from snowflake_semantic_tools.app.manifest import manifest_for, stale_manifest, target_mismatch
 from snowflake_semantic_tools.app.partial import PartialSplit, partial_refusal, partial_split
-from snowflake_semantic_tools.app.state import read_state
+from snowflake_semantic_tools.app.state import change_summary, read_state
 from snowflake_semantic_tools.app.validate import ValidateArtifacts
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, DiagnosticBag
 from snowflake_semantic_tools.domain.model.artifact_key import artifact_key
@@ -480,7 +480,8 @@ class PreparePlan:
         3. Refuse on a compile error the split did not set aside, adding SST-PLN033 with
            `--partial` when the error names no artifact.
         4. Read the `validation:` defaults, and build the manifest of what may publish.
-        5. Refuse when it is not the manifest `sst compile` wrote.
+        5. Refuse when it is not the manifest `sst compile` wrote, naming the targets when
+           `sst compile` wrote it for another one.
 
         Args:
             compiled_manifest: The manifest `sst compile` wrote.
@@ -491,6 +492,7 @@ class PreparePlan:
         Diagnostics:
             SST-PLN033: with `--partial`, a compile error names no artifact, so nothing can
                 be split off.
+            SST-MAN006: the compiled manifest was written for another target.
         """
         split = partial_split(full) if partial and not full.success else None
         source = split.healthy if split is not None else full
@@ -502,6 +504,9 @@ class PreparePlan:
             return PlanRefused(DiagnosticBag((*selected.diagnostics, *((refusal,) if refusal else ()))))
         effective_strict, effective_connected = self._inputs.validation_defaults().resolve(strict, connected)
         manifest = manifest_for(source, self._inputs.manifest_sources())
+        mismatch = target_mismatch(compiled_manifest, manifest)
+        if mismatch is not None:
+            return PlanRefused(DiagnosticBag((mismatch,)))
         stale = stale_manifest(compiled_manifest, manifest, before="plan or apply")
         if stale is not None:
             return PlanRefused(reason=stale)
@@ -517,6 +522,7 @@ class PreparePlan:
         *,
         target: TargetIdentity,
         state_table: QualifiedName,
+        temporary: bool = False,
     ) -> PlanReady | PlanRefused:
         """Validate the candidates, read authoritative state, and plan against what Snowflake shows now.
 
@@ -534,11 +540,14 @@ class PreparePlan:
 
         Args:
             target: The live target, with the account and role the connection reported.
+            temporary: Render each agent as a session-scoped temporary agent, as
+                `apply --temporary` publishes it.
 
         Diagnostics:
             SST-PLN032: with `--partial`, an artifact is left out of the plan.
             SST-PLN033: with `--partial`, a validation error names no artifact.
-            Those of validation, of `read_state`, and of `PlanArtifacts`.
+            Those of validation, of `read_state`, and of `PlanArtifacts`, then the plan's
+            `change_summary`.
         """
         validation = ValidateArtifacts(port if candidates.connected else None).run(
             candidates.selected,
@@ -550,7 +559,7 @@ class PreparePlan:
             return result
         state, state_diagnostics = read_state(state_store, port, state_table=state_table, target=target)
         apply_config = config_block(self._inputs.config().tree.get("apply"))
-        publish = self._publication(result, candidates.manifest, apply_config, target)
+        publish = self._publication(result, candidates.manifest, apply_config, target, temporary=temporary)
         handlers = _lifecycle_handlers(port, candidates.full, apply_config)
         observation_targets = _observation_targets(candidates.full, state)
         scope = candidates.scope
@@ -565,8 +574,10 @@ class PreparePlan:
             prune_keys=scope.prune_keys,
             observation_targets=observation_targets,
         )
-        if state_diagnostics:
-            changeset = replace(changeset, diagnostics=DiagnosticBag((*state_diagnostics, *changeset.diagnostics)))
+        summary = change_summary(changeset)
+        changeset = replace(
+            changeset, diagnostics=DiagnosticBag((*state_diagnostics, *changeset.diagnostics, *summary))
+        )
         return PlanReady(result, candidates.manifest, state, changeset, MappingProxyType(handlers))
 
     def _publication(
@@ -575,6 +586,8 @@ class PreparePlan:
         manifest: Manifest,
         apply_config: Mapping[str, object],
         target: TargetIdentity,
+        *,
+        temporary: bool = False,
     ) -> dict[str, RenderedArtifact]:
         """Render each selected artifact as apply publishes it, by key, agents staged for publication.
 
@@ -591,7 +604,7 @@ class PreparePlan:
         )
         compiled = tuple(
             (
-                for_publication(item, stage=stage, git_sha=self._inputs.git_sha())
+                for_publication(item, stage=stage, git_sha=self._inputs.git_sha(), temporary=temporary)
                 if isinstance(item, CompiledAgent)
                 else item
             )

@@ -271,7 +271,7 @@ def test_project_without_dbt_refuses_dbt_only_configuration(tmp_path: Path) -> N
     project = skills_only_project(tmp_path / "skills", "project:\n  target_profile: skills\nsemantic_views: {}\n")
     result = CliRunner().invoke(cli, ["compile", "--project-dir", str(project), "--output", "json"])
     assert result.exit_code == 1
-    assert [item["code"] for item in json.loads(result.output)["diagnostics"]] == ["SST-CFG046"]
+    assert [item["code"] for item in json.loads(result.output)["diagnostics"]] == ["SST-CFG046", "SST-MAN008"]
 
 
 def test_project_without_dbt_or_target_profile_is_a_config_error(tmp_path: Path) -> None:
@@ -288,13 +288,13 @@ def test_a_configured_directory_that_does_not_exist_is_an_error(tmp_path: Path) 
     result = CliRunner().invoke(cli, ["compile", "--project-dir", str(project), "--output", "json"])
     assert result.exit_code == 1
     diagnostics = json.loads(result.output)["diagnostics"]
-    assert [item["code"] for item in diagnostics] == ["SST-CFG047"]
+    assert [item["code"] for item in diagnostics] == ["SST-CFG047", "SST-MAN008"]
     assert diagnostics[0]["message"] == "project.profiles_dir is profilez, which is not a directory in the project"
 
     # A dbt-only directory in a project without dbt is reported once, as CFG046.
     dbt_only = skills_only_project(tmp_path / "other", "project:\n  target_profile: skills\n  agents_dir: nowhere\n")
     result = CliRunner().invoke(cli, ["compile", "--project-dir", str(dbt_only), "--output", "json"])
-    assert [item["code"] for item in json.loads(result.output)["diagnostics"]] == ["SST-CFG046"]
+    assert [item["code"] for item in json.loads(result.output)["diagnostics"]] == ["SST-CFG046", "SST-MAN008"]
 
 
 def test_a_plugin_with_a_broken_member_blocks_the_profile(tmp_path: Path) -> None:

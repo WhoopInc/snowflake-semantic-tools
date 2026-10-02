@@ -46,6 +46,9 @@ _COMMAND_OPTION_HELP: Mapping[tuple[str, str], str] = {
     ("sst apply", "--plan"): "Apply this saved plan. It must still match the compiled project.",
     ("sst apply", "--yes"): "Apply without asking for confirmation.",
     ("sst apply", "--break-stale-lock"): "Take over a state lock left behind by a run that no longer exists.",
+    ("sst apply", "--temporary"): (
+        "Publish agents as session-scoped temporary agents; refused for a production-like target."
+    ),
     ("sst compile", "--emit-ddl"): "Write each semantic view's rendered DDL into this directory.",
     ("sst compile", "--print-ddl"): "Print the rendered DDL to stdout.",
     ("sst compile", "--ddl-output-dir"): "Same as `--emit-ddl`.",

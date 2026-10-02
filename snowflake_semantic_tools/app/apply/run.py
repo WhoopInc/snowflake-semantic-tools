@@ -23,6 +23,7 @@ from snowflake_semantic_tools.app.apply.errors import (
 from snowflake_semantic_tools.app.apply.lock import LockPolicy, RunLease
 from snowflake_semantic_tools.app.apply.one import ChangeApplier
 from snowflake_semantic_tools.app.apply.state import EntryStamp, _applied_after, _run_outcome
+from snowflake_semantic_tools.app.apply.temporary import temporary_notes, temporary_refusal
 from snowflake_semantic_tools.app.lifecycle.composite import CatalogPublicationPort
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, DiagnosticBag
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
@@ -101,7 +102,8 @@ class ApplyArtifacts:
         The run goes through these phases in order:
 
         1. Refusal, before the lock: a plan with an error diagnostic is refused with it, and so
-           is a plan with blocked changes unless the policy is CONTINUE.
+           is a plan with blocked changes unless the policy is CONTINUE, and a `--temporary`
+           run against a production-like target.
         2. Lock: the local lock, then the target's lock in Snowflake; either held by another
            run refuses the run, and an expired one is taken over only when
            `options.break_stale_lock` allows it. A heartbeat extends the remote lock while
@@ -129,6 +131,9 @@ class ApplyArtifacts:
             SST-APL008: an object's grants could not be verified.
             SST-APL010: the run took over an expired lock.
             SST-APL011: another run holds the lock, or broke it while this run held it.
+            SST-APL013: a temporary artifact would publish to a production-like target.
+            SST-APL014: a temporary artifact now shadows the permanent object of its name.
+            SST-APL015: a temporary artifact's alias was ignored.
             SST-APL900: the outcomes do not account for every planned change.
             Each failed change reports the diagnostic its error names; see `_outcome_diagnostic`.
         """
@@ -146,7 +151,7 @@ class ApplyArtifacts:
             self._lock_policy,
         )
         locked, lock_diagnostics = lease.acquire(break_stale=options.break_stale_lock)
-        reported = (*changeset.diagnostics, *lock_diagnostics)
+        reported = (*changeset.diagnostics, *temporary_notes(changeset), *lock_diagnostics)
         if not locked:
             return self._refused(reported, run_id, started)
         try:
@@ -279,7 +284,8 @@ class _WaveRun:
     - CONTINUE runs every change in parallel, whatever failed before.
 
     The outcomes are recorded wave by wave: a wave's skipped changes, then those it ran, each
-    in key order, and STOP_ALL's skips last, in plan order. An outcome whose grants could not be
+    in key order, and STOP_ALL's skips last, in plan order. An applied temporary artifact the
+    plan saw a permanent object for reports SST-APL014; an outcome whose grants could not be
     verified reports SST-APL008 before its failure's diagnostic. Once `lost` reports the run
     lock broken, no further wave starts: every change without an outcome is skipped, in plan
     order, after one SST-APL011.
@@ -347,6 +353,8 @@ class _WaveRun:
         """Record the wave's outcomes with their diagnostics; a failure under STOP_ALL skips the rest."""
         for change, outcome in zip(runnable, wave_outcomes, strict=False):
             self._outcomes.append(outcome)
+            if _shadows(change, outcome):
+                self._diagnostics.append(D("SST-APL014", artifact=change.key))
             if outcome.grants is GrantCheck.UNREADABLE:
                 self._diagnostics.append(D("SST-APL008", artifact=change.key))
             if outcome.status is OutcomeStatus.FAILED:
@@ -364,14 +372,29 @@ class _WaveRun:
         )
 
 
+def _shadows(change: Change, outcome: ApplyOutcome) -> bool:
+    """Report whether an applied temporary artifact took the name of a permanent object plan saw."""
+    rendered = change.rendered
+    return (
+        outcome.status is OutcomeStatus.APPLIED
+        and rendered is not None
+        and rendered.temporary
+        and change.observed is not None
+    )
+
+
 def _refusal(changeset: ChangeSet, options: ApplyOptions) -> tuple[Diagnostic, ...] | None:
     """Return what a plan is refused with before the lock is taken; None when it may run.
 
     Diagnostics:
         SST-APL003: a blocked change, unless the policy is CONTINUE; one per blocked change.
+        SST-APL013: a temporary artifact against a production-like target; one per artifact.
     """
     if changeset.diagnostics.has_errors:
         return tuple(changeset.diagnostics)
+    refused_temporary = temporary_refusal(changeset, options)
+    if refused_temporary:
+        return (*changeset.diagnostics, *refused_temporary)
     if changeset.blocked and options.on_failure is not FailurePolicy.CONTINUE:
         return (
             *changeset.diagnostics,

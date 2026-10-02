@@ -85,6 +85,8 @@ class ManifestSources:
         dbt_schema_version, dbt_digest, model_count: The dbt manifest's schema version, the
             SHA-256 of its model projection, and its model count.
         file_checksums: The SHA-256 of every input file, by project-relative path.
+        target_name: The `profiles.yml` target the artifacts were compiled for; empty when
+            none resolves.
     """
 
     semantic_path: str
@@ -95,6 +97,7 @@ class ManifestSources:
     dbt_digest: str
     model_count: int
     file_checksums: Mapping[str, str]
+    target_name: str = ""
 
 
 class ProjectInputs(SemanticViewSource, Protocol):

@@ -83,14 +83,15 @@ def _record_outcome(
 ) -> None:
     """Record one outcome: a prune retires or keeps its entry; a write records what it published.
 
-    A change that wrote nothing, or has nothing rendered, leaves the entries as they are.
+    A change that wrote nothing, has nothing rendered, or published a temporary artifact,
+    which lasts only for its session, leaves the entries as they are.
     """
     if change.action is Action.PRUNE:
         _record_prune(applied, change, outcome, previous, manifest_id, stamp, lifecycle_handlers)
         return
     if outcome.status is not OutcomeStatus.APPLIED and not outcome.write_succeeded:
         return
-    if change.rendered is None:
+    if change.rendered is None or change.rendered.temporary:
         return
     applied[change.key] = _written_entry(
         change,

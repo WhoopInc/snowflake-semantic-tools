@@ -334,3 +334,29 @@ def migrate_state(value: Mapping[str, object]) -> dict[str, object]:
     migrated["schema_version"] = STATE_SCHEMA_VERSION
     migrated["applied"] = applied
     return migrated
+
+
+def written_by_newer(writer_version: str, current_version: str) -> bool:
+    """Report whether a document's writer is a later SST release than `current_version`.
+
+    Releases compare by their leading dotted numbers, so a pre-release or development suffix
+    never makes a writer newer, and a version with no leading number is never newer.
+    """
+    return _release(writer_version) > _release(current_version)
+
+
+def _release(version: str) -> tuple[int, ...]:
+    """The leading dotted numbers of a version, such as (1, 0, 2) for `1.0.2.dev3`."""
+    numbers: list[int] = []
+    for part in version.split("."):
+        digits = ""
+        for character in part:
+            if not character.isdigit():
+                break
+            digits += character
+        if not digits:
+            break
+        numbers.append(int(digits))
+        if len(digits) != len(part):
+            break
+    return tuple(numbers)

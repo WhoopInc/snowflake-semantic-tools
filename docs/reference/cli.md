@@ -67,6 +67,7 @@ sst apply [OPTIONS]
 | `--yes` | flag |  | Apply without asking for confirmation. |
 | `--fail-fast` | flag |  | Stop at the first failure instead of continuing. |
 | `--break-stale-lock` | flag |  | Take over a state lock left behind by a run that no longer exists. |
+| `--temporary` | flag |  | Publish agents as session-scoped temporary agents; refused for a production-like target. |
 | `--sql-out` | DIRECTORY |  | Also write the statements for each change into this directory. |
 | `--strict / --no-strict` | flag |  | Promote every warning to an error. Defaults to `validation.strict`. |
 | `--snowflake-syntax-check / --no-snowflake-syntax-check` | flag |  | Compile expressions against Snowflake. Defaults to `validation.snowflake_syntax_check`. |

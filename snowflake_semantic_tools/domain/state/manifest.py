@@ -2,8 +2,9 @@
 
 `Manifest.as_dict` is the `manifest.json` document. Its `manifest_id` is the `content_hash`
 of everything but the id and the schema version, so `Manifest.from_dict` detects an edited
-manifest. A schema-1 manifest is migrated in memory and a newer schema refused; nothing here
-rewrites the file.
+manifest, and it refuses one whose impact index leaves out a file an artifact came from. A
+schema-1 manifest is migrated in memory, and records the schema it was read from; an older
+schema, which has no migration, and a newer one are refused. Nothing here rewrites the file.
 """
 
 from __future__ import annotations
@@ -167,6 +168,8 @@ class Manifest:
     Attributes:
         generator: The writer's name and SST version.
         diagnostics_summary: How many diagnostics compile reported, per severity.
+        migrated_from: The schema the stored document declared when `from_dict` migrated it
+            in memory; None when it was current. Never written, hashed, or compared.
     """
 
     schema_version: int
@@ -180,6 +183,7 @@ class Manifest:
     files: Mapping[str, object]
     impact: ImpactIndex
     diagnostics_summary: Mapping[str, int]
+    migrated_from: int | None = field(default=None, compare=False)
 
     def hash_material(self) -> dict[str, object]:
         """Return what `manifest_id` hashes: the document without the id and the schema version."""
@@ -216,7 +220,8 @@ class Manifest:
             StoredDocumentError: SST-MAN002 when the document is not an object; SST-MAN003 when
                 it lacks an integer `schema_version` or an `artifacts` object; SST-MAN203 when
                 its schema is newer; SST-MAN202 when an older schema has no migration; and
-                SST-MAN005 when its `manifest_id` is not the hash of its content.
+                SST-MAN005 when its `manifest_id` is not the hash of its content; and SST-MAN004
+                when the impact index does not list an artifact under a file it came from.
             ValueError: another part is malformed, such as an artifact entry or the summary.
             KeyError: an artifact entry lacks a required key.
         """
@@ -234,9 +239,9 @@ class Manifest:
                 found=version,
                 expected=MANIFEST_SCHEMA_VERSION,
             )
-        if version < MANIFEST_SCHEMA_VERSION:
+        migrated_from = version if version < MANIFEST_SCHEMA_VERSION else None
+        if migrated_from is not None:
             value = migrate_manifest(value)
-            version = MANIFEST_SCHEMA_VERSION
         raw_artifacts = value.get("artifacts")
         if not isinstance(raw_artifacts, dict):
             raise StoredDocumentError("SST-MAN003", "manifest artifacts is required", key="artifacts")
@@ -249,7 +254,24 @@ class Manifest:
                 found=manifest.manifest_id,
                 expected=expected,
             )
+        if migrated_from is not None:
+            # The schema it migrated from had no impact index to be incomplete.
+            return replace(manifest, migrated_from=migrated_from)
+        unindexed = manifest.unindexed()
+        if unindexed is not None:
+            raise StoredDocumentError("SST-MAN004", f"{unindexed} has no reverse-index entry", artifact=unindexed)
         return manifest
+
+    def unindexed(self) -> str | None:
+        """Return the first artifact, by key, that the impact index leaves out under a file it came from.
+
+        Returns:
+            The artifact's key; None when the index lists every artifact under each of its files.
+        """
+        for key, entry in sorted(self.artifacts.items()):
+            if any(key not in self.impact.by_file.get(path, ()) for path in entry.source_files):
+                return key
+        return None
 
 
 def migrate_manifest(value: Mapping[str, object]) -> dict[str, object]:

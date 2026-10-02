@@ -28,7 +28,7 @@ from snowflake_semantic_tools.cli.runner import CommandResult, command_body
 from snowflake_semantic_tools.cli.wiring import compile as compiling
 from snowflake_semantic_tools.cli.wiring.manifest import build_manifest
 from snowflake_semantic_tools.cli.wiring.project import target_dir
-from snowflake_semantic_tools.domain.diagnostics import DiagnosticBag
+from snowflake_semantic_tools.domain.diagnostics import D, DiagnosticBag, Severity
 from snowflake_semantic_tools.domain.state import Manifest
 
 
@@ -61,12 +61,22 @@ def compile(
     split = partial_split(full_result) if partial and not full_result.success else None
     if not full_result.success and split is None:
         refusal = partial_refusal(full_result) if partial else None
-        return CommandResult(ERROR, DiagnosticBag((*full_result.diagnostics, *((refusal,) if refusal else ()))))
+        errors = full_result.diagnostics.count(Severity.ERROR)
+        unwritten = D("SST-MAN008", detail=f"{errors} error(s); no manifest was written")
+        return CommandResult(
+            ERROR, DiagnosticBag((*full_result.diagnostics, *((refusal,) if refusal else ()), unwritten))
+        )
     # `--partial` writes the manifest for what can publish and still exits 1.
     healthy = full_result if split is None else split.healthy
     shown = full_result.diagnostics if split is None else DiagnosticBag((*healthy.diagnostics, *split.notices))
     excluded = None if split is None else split.excluded
-    result, destination, manifest = _write_manifests(project_dir, healthy, selected, manifest_output, manifest_path)
+    try:
+        result, destination, manifest = _write_manifests(
+            project_dir, healthy, selected, manifest_output, manifest_path, target_name
+        )
+    except OSError as exc:
+        failed = D("SST-MAN007", path=str(exc.filename or target_dir(project_dir)), detail=exc.strerror or str(exc))
+        return CommandResult(ERROR, DiagnosticBag((*shown, failed)))
     ddl_dir = emit_ddl_dir or ddl_output_dir
     return CommandResult(
         OK if split is None else ERROR,
@@ -83,6 +93,7 @@ def _write_manifests(
     selected: str | None,
     manifest_output: Path | None,
     manifest_path: Path | None,
+    target_name: str | None,
 ) -> tuple[CompileResult, Path, Manifest]:
     """Write the canonical manifest and any `--manifest-output`; return what to report, and where.
 
@@ -92,15 +103,16 @@ def _write_manifests(
     Raises:
         SstUsageError: the selector cannot be parsed.
         ProjectError: the selector matched no artifact.
+        OSError: a manifest could not be written.
     """
     default_manifest = target_dir(project_dir) / "manifest.json"
-    full_manifest = build_manifest(project_dir, result, manifest_path)
+    full_manifest = build_manifest(project_dir, result, manifest_path, target_name)
     ManifestFileStore(default_manifest).write(full_manifest)
     if selected is not None:
         chosen = compiling.selected_result(project_dir, result, selected)
         if manifest_output is None:
             return chosen, default_manifest, full_manifest
-        manifest = build_manifest(project_dir, chosen, manifest_path)
+        manifest = build_manifest(project_dir, chosen, manifest_path, target_name)
         ManifestFileStore(manifest_output).write(manifest)
         return chosen, manifest_output, manifest
     if manifest_output is not None and manifest_output != default_manifest:

@@ -16,6 +16,7 @@ from snowflake_semantic_tools.adapters.errors import ProjectError
 from snowflake_semantic_tools.adapters.fs.local import PlanFileStore
 from snowflake_semantic_tools.adapters.snowflake.connector import ConnectorPool
 from snowflake_semantic_tools.app.apply import ApplyArtifacts
+from snowflake_semantic_tools.app.apply.observation import stale_observation
 from snowflake_semantic_tools.app.plan import PlanRefused
 from snowflake_semantic_tools.cli.exit_codes import ERROR, OK
 from snowflake_semantic_tools.cli.group import SstUsageError
@@ -55,6 +56,7 @@ from snowflake_semantic_tools.domain.state import SavedPlan
 @click.option("--yes", "confirmed", is_flag=True)
 @fail_fast_option()
 @click.option("--break-stale-lock", is_flag=True)
+@click.option("--temporary", is_flag=True)
 @sql_out_option()
 @validation_options()
 @output_option()
@@ -71,6 +73,7 @@ def apply(
     confirmed: bool,
     fail_fast: bool,
     break_stale_lock: bool,
+    temporary: bool,
     sql_out: Path | None,
     strict: bool | None,
     snowflake_syntax_check: bool | None,
@@ -83,7 +86,16 @@ def apply(
         raise SstUsageError("--prune requires --yes")
     refuse_partial_prune(partial, prune)
     request = PlanRequest(
-        project_dir, target_name, manifest_path, selected, excluded, prune, partial, strict, snowflake_syntax_check
+        project_dir,
+        target_name,
+        manifest_path,
+        selected,
+        excluded,
+        prune,
+        partial,
+        strict,
+        snowflake_syntax_check,
+        temporary,
     )
     saved = _saved_plan(plan_path, request)
     planned = request.following(saved)
@@ -91,7 +103,7 @@ def apply(
     if isinstance(session, PlanRefused):
         return CommandResult(ERROR, session.diagnostics)
     with closed_on_error(session.port):
-        options = _confirmed_options(
+        options, notes = _confirmed_options(
             planned,
             session,
             saved,
@@ -101,7 +113,7 @@ def apply(
             fail_fast=fail_fast,
             break_stale_lock=break_stale_lock,
         )
-    return _apply_plan(planned, session, options)
+    return _apply_plan(planned, session, options, notes)
 
 
 def _saved_plan(plan_path: Path | None, request: PlanRequest) -> SavedPlan | None:
@@ -140,10 +152,11 @@ def _confirmed_options(
     confirmed: bool,
     fail_fast: bool,
     break_stale_lock: bool,
-) -> ApplyOptions:
+) -> tuple[ApplyOptions, DiagnosticBag]:
     """Check a saved plan still applies, write the statements, and confirm; return how to apply.
 
-    Asks before applying a plan that writes, unless `--yes` was given.
+    Asks before applying a plan that writes, unless `--yes` was given. Returns the options,
+    and what checking the saved plan reported without refusing it.
 
     Raises:
         ProjectError: the saved plan cannot be applied, as `SavedPlan.check_applicable` says.
@@ -157,24 +170,33 @@ def _confirmed_options(
         include_prune=request.prune,
         partial=request.partial,
     )
+    notes = DiagnosticBag()
     if saved is not None:
         mismatch = saved.check_applicable(current, source=str(plan_path))
         if mismatch is not None:
             raise ProjectError(mismatch.message, diagnostics=mismatch.diagnostics)
+        stale = stale_observation(saved, current, source=str(plan_path))
+        notes = DiagnosticBag((stale,) if stale is not None else ())
     write_plan_sql(request.project_dir, changeset, sql_out)
     if changeset.writes and not confirmed:
         print_plan(changeset)
         click.confirm("Apply this plan?", abort=True)
-    return ApplyOptions(
+    options = ApplyOptions(
         parallelism=apply_parallelism(request.project_dir),
         on_failure=(FailurePolicy.STOP_ALL if fail_fast else FailurePolicy.STOP_DEPENDENTS),
         allow_prune=request.prune,
         break_stale_lock=break_stale_lock,
+        temporary=request.temporary,
     )
+    return options, notes
 
 
-def _apply_plan(request: PlanRequest, session: PlanSession, options: ApplyOptions) -> CommandResult:
+def _apply_plan(
+    request: PlanRequest, session: PlanSession, options: ApplyOptions, notes: DiagnosticBag
+) -> CommandResult:
     """Apply the plan, close the connection, and report each outcome; exit 1 unless everything applied.
+
+    `notes` are reported first, then what the plan left out, then the run's own diagnostics.
 
     A partial apply publishes the healthy changes and still exits 1 while errors remain.
     """
@@ -198,7 +220,7 @@ def _apply_plan(request: PlanRequest, session: PlanSession, options: ApplyOption
     finally:
         session.port.close()
     left_out = ready.result.diagnostics if request.partial else DiagnosticBag()
-    shown = DiagnosticBag((*left_out, *apply_result.diagnostics))
+    shown = DiagnosticBag((*notes, *left_out, *apply_result.diagnostics))
     exit_code = OK if apply_result.success and not left_out.has_errors else ERROR
     data: dict[str, object] = {
         "run_id": apply_result.run_id,

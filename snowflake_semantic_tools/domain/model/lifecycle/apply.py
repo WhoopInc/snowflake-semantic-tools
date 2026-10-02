@@ -60,6 +60,8 @@ class ApplyOptions:
             which runs them one at a time.
         allow_prune: Whether a planned prune executes; without it the prune is skipped.
         break_stale_lock: Whether to take over a state lock whose holder has expired.
+        temporary: Whether the run publishes session-scoped temporary artifacts, which a
+            production-like target refuses.
     """
 
     parallelism: int = 4
@@ -67,6 +69,7 @@ class ApplyOptions:
     retry: RetryPolicy = RetryPolicy()
     allow_prune: bool = False
     break_stale_lock: bool = False
+    temporary: bool = False
 
 
 class GrantCheck(Enum):
@@ -102,6 +105,8 @@ class ClassifiedError:
     Attributes:
         retryable: Whether retrying the same statements may succeed.
         sqlstate: The SQLSTATE the failure carried; None when it carried none.
+        value: What the failure names besides the artifact, such as the path, version, or
+            table its code's message reports; empty when it names nothing else.
     """
 
     code: str
@@ -109,6 +114,7 @@ class ClassifiedError:
     kind: ErrorKind
     retryable: bool = False
     sqlstate: str | None = None
+    value: str = ""
 
 
 @dataclass(frozen=True, slots=True)
