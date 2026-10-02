@@ -24,6 +24,7 @@ versioned JSON envelope on stdout and nothing else.
 | [`sst list`](#sst-list) | List compiled artifacts and their cached application status, optionally of one TYPE. |
 | [`sst plan`](#sst-plan) | Observe live Snowflake state and compute a non-writing plan. |
 | [`sst apply`](#sst-apply) | Apply a current reviewed plan; smoke probes never run here. |
+| [`sst diff`](#sst-diff) | Compare two states -- local, a dbt target, or a saved plan -- and list what differs. |
 | [`sst test`](#sst-test) | Run exact offline goldens or separate connected smoke probes. |
 | [`sst explain`](#sst-explain) | Explain one diagnostic code from the registry: no project, configuration, or connection. |
 | [`sst docs`](#sst-docs) | Write the generated reference pages under docs/reference/. |
@@ -62,7 +63,7 @@ These go before the command name.
 |---:|---|---|
 | 0 | `OK` | Success. For `sst plan`, nothing to change. |
 | 1 | `ERROR` | Errors were reported, or an apply, a test suite, or a check failed. |
-| 2 | `CHANGES` | Declared and actual state differ: `sst plan` found changes, or `enrich --check`, `docs --check`, or `migrate refs` found something to rewrite. |
+| 2 | `CHANGES` | Declared and actual state differ: `sst plan` found changes, `sst diff` found the two states differ, or `enrich --check`, `format --check`, `docs --check`, or `migrate refs` found something to rewrite. |
 | 3 | `USAGE` | The command line is invalid. |
 | 4 | `CONFIG` | The project, its configuration, or a saved plan cannot be used. |
 | 5 | `CONNECTION` | Snowflake could not be reached. |
@@ -351,6 +352,33 @@ sst apply [OPTIONS]
 | `--sql-out` | DIRECTORY |  | Also write the statements for each change into this directory. |
 | `--strict / --no-strict` | flag |  | Promote every warning to an error, else `$SST_STRICT`. Defaults to `validation.strict`. |
 | `--snowflake-syntax-check / --no-snowflake-syntax-check` | flag |  | Compile expressions against Snowflake. Defaults to `validation.snowflake_syntax_check`. |
+
+## sst diff
+
+Compare two states -- local, a dbt target, or a saved plan -- and list what differs.
+
+Exit 0 when they agree, 2 when they differ, 1 when a state cannot be read, and 5 when a
+target cannot be reached.
+
+Diagnostics:
+    SST-MAN001: `local` was asked for and `sst compile` has written no manifest.
+    SST-PRT009: a saved plan named by path does not exist, or cannot be read.
+    SST-MAN022: a target's state table exists and cannot be read.
+
+```text
+sst diff [OPTIONS]
+```
+
+| Option | Value | Default | Description |
+|---|---|---|---|
+| `--from` | TEXT | `local` | The state compared from: `local` (default), a dbt target, or a saved plan's `.json` path. |
+| `--to` | TEXT |  | The state compared with: `local`, a dbt target (default: the resolved one), or a saved plan. |
+| `--select` | TEXT, repeatable |  | Only these artifacts: a name (globs allowed), `type:<type>`, `path:<glob>`, `state:<state>`, or `<type>:<name>`. |
+| `--exclude` | TEXT, repeatable |  | Leave these artifacts out; same forms as `--select`. |
+| `--target / -t` | TEXT |  | Target from `profiles.yml` that `--to` defaults to, else `$SST_TARGET`, else the profile's. |
+| `--full` | flag |  | Also name which recorded fields of a modified artifact differ. |
+| `--names-only` | flag |  | Print the name of each differing artifact, one per line, and nothing else. |
+| `--no-detailed-exitcode` | flag |  | Exit 0 when the states differ, instead of 2. |
 
 ## sst test
 

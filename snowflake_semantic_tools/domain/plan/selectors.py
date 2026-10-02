@@ -17,10 +17,10 @@ from fnmatch import fnmatchcase
 
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic
 from snowflake_semantic_tools.domain.model.artifact_key import artifact_key
+from snowflake_semantic_tools.domain.plan.diff import STATES, state_classes
 
 # The selector kinds the grammar registers, in the order a refusal lists them.
 SELECTOR_KINDS = ("type", "path", "tag", "state", "model", "source")
-STATES = ("new", "modified", "unmodified", "orphaned")
 _GLOB = frozenset("*?[")
 
 
@@ -139,14 +139,7 @@ def _state(
     if state not in STATES:
         return _unsupported(value, f"unknown state '{state}'; one of {', '.join(STATES)}")
     current = {item.key: item.fingerprint for item in artifacts}
-    if state == "orphaned":
-        return "key", frozenset(key for key in previous if key not in current)
-    if state == "new":
-        return "key", frozenset(key for key in current if key not in previous)
-    unchanged = frozenset(key for key, fingerprint in current.items() if previous.get(key) == fingerprint)
-    if state == "unmodified":
-        return "key", unchanged
-    return "key", frozenset(key for key in current if key in previous and key not in unchanged)
+    return "key", state_classes(current, previous)[state]
 
 
 def _unsupported(value: str, detail: str) -> Diagnostic:

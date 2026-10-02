@@ -42,6 +42,7 @@ EXIT_CODES = {
     "clean": {0, 1, 3, 4},
     "migrate": {0, 1, 2, 3, 4},
     "explain": {0, 3},
+    "diff": {0, 1, 2, 3, 4, 5},
     "baseline": {0, 1, 3, 4},
     "format": {0, 1, 2, 3, 4},
 }
@@ -148,6 +149,12 @@ SCENARIOS: dict[tuple[str, int], Scenario] = {
     ("baseline", 1): lambda tmp, _: _run("baseline", "add", "SST-VAL116", *common(project_copy(tmp))),
     ("baseline", 3): lambda tmp, _: _run("baseline", "renew"),
     ("baseline", 4): lambda tmp, _: _run("baseline", "add", "SST-CFG018", "--project-dir", str(tmp)),
+    ("diff", 0): lambda tmp, mp: _diff(tmp, mp, "--from", "dev", "--to", "prod"),
+    ("diff", 1): lambda tmp, _: _run("diff", *common(project_copy(tmp)), "--to", "saved.json"),
+    ("diff", 2): lambda tmp, mp: _diff(tmp, mp),
+    ("diff", 3): lambda tmp, _: _run("diff", "--select", "a,b"),
+    ("diff", 4): lambda tmp, _: _run("diff", "--project-dir", str(tmp)),
+    ("diff", 5): lambda tmp, mp: _connected(tmp, mp, "diff"),
     ("explain", 0): lambda tmp, _: _run("explain", "SST-VAL009", "--project-dir", str(tmp)),
     ("explain", 3): lambda tmp, _: _run("explain", "SST-NOPE01"),
     ("format", 0): lambda tmp, _: _run("format", "--project-dir", str(_yaml_project(tmp, "a: 1\n"))),
@@ -170,6 +177,12 @@ def _debug_unreachable(tmp: Path, monkeypatch: pytest.MonkeyPatch) -> Result:
 def _plan(tmp: Path, monkeypatch: pytest.MonkeyPatch, *flags: str) -> Result:
     project = project_copy(tmp)
     return invoke_with_port(monkeypatch, RecordedSnowflake(state={}), ["plan", *common(project), *flags])
+
+
+def _diff(tmp: Path, monkeypatch: pytest.MonkeyPatch, *flags: str) -> Result:
+    project = project_copy(tmp)
+    compile_project(project)
+    return invoke_with_port(monkeypatch, RecordedSnowflake(state={}), ["diff", *common(project), *flags])
 
 
 def _plan_broken(tmp: Path, monkeypatch: pytest.MonkeyPatch) -> Result:

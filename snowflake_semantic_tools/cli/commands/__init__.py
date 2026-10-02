@@ -13,6 +13,7 @@ from snowflake_semantic_tools.cli.commands import (
     clean,
     compile,
     debug,
+    diff,
     docs,
     enrich,
     explain,
@@ -44,6 +45,7 @@ for _command in (
     explain.explain_command,
     format.format_command,
     baseline.baseline,
+    diff.diff,
 ):
     cli.add_command(_command)
 document_options(cli)

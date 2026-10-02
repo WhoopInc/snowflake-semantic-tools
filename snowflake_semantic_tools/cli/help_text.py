@@ -125,6 +125,18 @@ _COMMAND_OPTION_HELP: Mapping[tuple[str, str], str] = {
     ("sst baseline show", "--expired"): "Show the entries only once the baseline has expired.",
     ("sst baseline renew", "--reason"): "Required. Why the baseline is renewed; written into the file.",
     ("sst baseline renew", "--expires-in"): "Days until the renewed baseline expires, at most 365.",
+    ("sst diff", "--from"): "The state compared from: `local` (default), a dbt target, or a saved plan's `.json` path.",
+    (
+        "sst diff",
+        "--to",
+    ): "The state compared with: `local`, a dbt target (default: the resolved one), or a saved plan.",
+    (
+        "sst diff",
+        "--target",
+    ): "Target from `profiles.yml` that `--to` defaults to, else `$SST_TARGET`, else the profile's.",
+    ("sst diff", "--full"): "Also name which recorded fields of a modified artifact differ.",
+    ("sst diff", "--names-only"): "Print the name of each differing artifact, one per line, and nothing else.",
+    ("sst diff", "--no-detailed-exitcode"): "Exit 0 when the states differ, instead of 2.",
     ("sst explain", "--aliases"): "Also list the SST 0.3 codes that resolve to the code, and what each became.",
     ("sst format", "--check"): "Write nothing; exit 2 when a file would change.",
     ("sst format", "--dry-run"): "Write nothing; print each file's change as a diff.",
