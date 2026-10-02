@@ -26,5 +26,5 @@ def test_sst_dis003_fires(tmp_path: Path) -> None:
 
 
 def test_sst_dis003_silent(tmp_path: Path) -> None:
-    models(tmp_path, "views/views.yaml")
+    models(tmp_path, "views/views.yml")
     assert discover_yaml(tmp_path, "semantic_models").diagnostics == ()

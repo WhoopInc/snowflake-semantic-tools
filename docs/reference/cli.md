@@ -59,6 +59,7 @@ sst apply [OPTIONS]
 | `--project-dir` | DIRECTORY | `.` | Project root: the directory that holds `sst_config.yml`. |
 | `--target` | TEXT |  | Target from `profiles.yml`; defaults to the profile's own default target. |
 | `--manifest` | FILE |  | Read this dbt `manifest.json` instead of running `dbt parse`. |
+| `--allow-unsupported-manifest-schema` | flag |  | Read a dbt manifest whose schema version SST does not support or cannot read, at your own risk. |
 | `--select` | TEXT, repeatable |  | Only these artifacts: a semantic view name, `type:<type>`, or `<type>:<name>`. |
 | `--exclude` | TEXT, repeatable |  | Leave these artifacts out; same forms as `--select`. |
 | `--plan` | FILE |  | Apply this saved plan. It must still match the compiled project. |
@@ -104,6 +105,7 @@ sst compile [OPTIONS]
 | `--partial` | flag |  | Go ahead with every artifact that has no errors and depends on nothing that does; still exits 1 while errors remain. Cannot be combined with `--prune`. |
 | `--target` | TEXT |  | Target from `profiles.yml`; defaults to the profile's own default target. |
 | `--manifest` | FILE |  | Read this dbt `manifest.json` instead of running `dbt parse`. |
+| `--allow-unsupported-manifest-schema` | flag |  | Read a dbt manifest whose schema version SST does not support or cannot read, at your own risk. |
 | `--output` | human\|json | `human` | `human` for readable text, or `json` for one machine-readable envelope. |
 
 ## sst debug
@@ -160,6 +162,7 @@ sst enrich [OPTIONS]
 | `--project-dir` | DIRECTORY | `.` | Project root: the directory that holds `sst_config.yml`. |
 | `--target` | TEXT |  | Target from `profiles.yml`; defaults to the profile's own default target. |
 | `--manifest` | FILE |  | Read this dbt `manifest.json` instead of running `dbt parse`. |
+| `--allow-unsupported-manifest-schema` | flag |  | Read a dbt manifest whose schema version SST does not support or cannot read, at your own risk. |
 | `--select` | TEXT, repeatable |  | Only these dbt models: `model:<name>` or a bare name; globs such as `fct_*` work. |
 | `--exclude` | TEXT, repeatable |  | Leave these dbt models out; same forms as `--select`. |
 | `--include` | TEXT, repeatable |  | Components to fill, repeatable or comma-separated: column-types, data-types, sample-values, enums, column-synonyms, table-synonyms, synonyms, all. Defaults to column-types and data-types. |
@@ -234,6 +237,7 @@ sst plan [OPTIONS]
 | `--project-dir` | DIRECTORY | `.` | Project root: the directory that holds `sst_config.yml`. |
 | `--target` | TEXT |  | Target from `profiles.yml`; defaults to the profile's own default target. |
 | `--manifest` | FILE |  | Read this dbt `manifest.json` instead of running `dbt parse`. |
+| `--allow-unsupported-manifest-schema` | flag |  | Read a dbt manifest whose schema version SST does not support or cannot read, at your own risk. |
 | `--select` | TEXT, repeatable |  | Only these artifacts: a semantic view name, `type:<type>`, or `<type>:<name>`. |
 | `--exclude` | TEXT, repeatable |  | Leave these artifacts out; same forms as `--select`. |
 | `--prune` | flag |  | Also act on managed artifacts whose source was deleted, as far as each type allows: drop, deactivate, or report. |
@@ -260,6 +264,7 @@ sst test [OPTIONS]
 | `--suite` | golden\|smoke\|evals, required |  | `golden` compares outputs with committed goldens offline; `smoke` probes deployed objects; `evals` runs agent evaluations. |
 | `--target` | TEXT |  | Target from `profiles.yml`; defaults to the profile's own default target. |
 | `--manifest` | FILE |  | Read this dbt `manifest.json` instead of running `dbt parse`. |
+| `--allow-unsupported-manifest-schema` | flag |  | Read a dbt manifest whose schema version SST does not support or cannot read, at your own risk. |
 | `--golden-dir` | DIRECTORY | `expected/ddl` | Directory of the semantic view DDL goldens; the other goldens sit beside it. |
 | `--fail-fast` | flag |  | Stop at the first failing golden, probe, or eval. |
 | `--capture-baseline` | flag |  | Record this eval run as the new baseline. Requires `--reason`. |
@@ -279,6 +284,7 @@ sst validate [OPTIONS]
 | `--project-dir` | DIRECTORY | `.` | Project root: the directory that holds `sst_config.yml`. |
 | `--target` | TEXT |  | Target from `profiles.yml`; defaults to the profile's own default target. |
 | `--manifest` | FILE |  | Read this dbt `manifest.json` instead of running `dbt parse`. |
+| `--allow-unsupported-manifest-schema` | flag |  | Read a dbt manifest whose schema version SST does not support or cannot read, at your own risk. |
 | `--strict / --no-strict` | flag |  | Promote every warning to an error. Defaults to `validation.strict`. |
 | `--snowflake-syntax-check / --no-snowflake-syntax-check` | flag |  | Compile expressions against Snowflake. Defaults to `validation.snowflake_syntax_check`. |
 | `--show-info` | flag |  | Also report which registered type owns each semantic-model file. |

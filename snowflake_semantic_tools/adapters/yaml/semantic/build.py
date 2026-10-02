@@ -30,7 +30,7 @@ from snowflake_semantic_tools.adapters.yaml.semantic.defs import FilterDef, Inst
 from snowflake_semantic_tools.adapters.yaml.semantic.nodes import _as_str_tuple
 from snowflake_semantic_tools.domain.diagnostics import D
 from snowflake_semantic_tools.domain.model.artifact_key import artifact_key
-from snowflake_semantic_tools.domain.model.dbt import DbtCatalog, DbtColumn, DbtModel, DbtTarget
+from snowflake_semantic_tools.domain.model.dbt import DbtCatalog, DbtColumn, DbtModel, DbtSource, DbtTarget
 from snowflake_semantic_tools.domain.model.project import ParsedMember
 from snowflake_semantic_tools.domain.model.semantic_view import (
     Column,
@@ -55,6 +55,7 @@ def _build_view(
     members: tuple[ParsedMember, ...],
     attachment: Mapping[str, tuple[str, ...]],
     config: dict[str, Any],
+    sources: tuple[DbtSource, ...] = (),
 ) -> SemanticView:
     """Build one view from its node and the members attached to it, one phase at a time.
 
@@ -70,7 +71,8 @@ def _build_view(
     """
     name = str(node["name"])
     selected = _select_members(artifact_key("semantic_view", name), members, attachment)
-    view = _View(name, path, models, DbtCatalog("v12", None, None, tuple(models.values())), mapping(config.get("vars")))
+    catalog = DbtCatalog("v12", None, None, tuple(models.values()), sources=sources)
+    view = _View(name, path, models, catalog, mapping(config.get("vars")))
     tables, logical_by_model = _view_tables(node, view)
     columns = _view_columns(models, logical_by_model)
     resolver = _member_resolver(view, logical_by_model, selected)
@@ -193,9 +195,13 @@ def _member_resolver(view: _View, logical_by_model: dict[str, str], selected: _M
 def _view_tables(node: Mapping[str, Any], view: _View) -> tuple[tuple[Table, ...], dict[str, str]]:
     """Build the view's tables, and each table's logical name by lower-cased model name.
 
+    Diagnostics:
+        SST-PRS109: when a `table_config` key names a model no table entry names.
+
     Raises:
         ProjectError: A table entry is not a one-argument `ref()`, names no model or one an
-            earlier entry names, or has a malformed `table_config` entry.
+            earlier entry names, or has a malformed `table_config` entry; or `table_config`
+            names a table that is not in `tables`.
     """
     # Tables keep DECLARATION order -- that is authored information and the golden
     # preserves it. Members are sorted later, by the renderer.
@@ -206,6 +212,14 @@ def _view_tables(node: Mapping[str, Any], view: _View) -> tuple[tuple[Table, ...
         model_key, table = _view_table(raw, view, table_config, logical_by_model)
         logical_by_model[model_key] = table.logical_name
         tables.append(table)
+    stray = (
+        [str(key) for key in table_config if str(key).lower() not in logical_by_model]
+        if isinstance(table_config, dict)
+        else []
+    )
+    if stray:
+        diagnostic = D("SST-PRS109", artifact=view.key, name=stray[0], subject=view.key)
+        raise ProjectError(diagnostic.message, diagnostics=(diagnostic,))
     return tuple(tables), logical_by_model
 
 
@@ -215,6 +229,7 @@ def _view_table(
     """Build one table entry against the dbt models and the entries declared before it.
 
     Diagnostics:
+        SST-DBT011, as `_source_table` reports it, when the entry is one `{{ source() }}` call.
         SST-REF044: when the entry is not one `{{ ref('<model>') }}` call.
         SST-REF001: when the entry names no dbt model.
         SST-PRS006: when the entry names a model an earlier entry names.
@@ -223,6 +238,9 @@ def _view_table(
         ProjectError: For each diagnostic above, and when the table's `table_config` entry has
             malformed synonyms or `distinct_range`.
     """
+    source = single_template_call(str(raw), "source")
+    if source is not None and len(source.args) == 2:
+        return _source_table(source.args, view, table_config, logical_by_model)
     call = single_template_call(str(raw), "ref")
     if call is None or len(call.args) != 1:
         diagnostic = D("SST-REF044", artifact=view.key, found=repr(raw))
@@ -255,6 +273,46 @@ def _view_table(
     )
 
 
+def _source_table(
+    args: tuple[str, ...], view: _View, table_config: object, logical_by_model: Mapping[str, str]
+) -> tuple[str, Table]:
+    """Build a table from one `{{ source('<source>', '<table>') }}` entry: a relation without columns.
+
+    Its key is `<source>.<table>`, casefolded, and its logical name the table's name.
+
+    Diagnostics:
+        SST-DBT011: when no dbt source declares the pair, or it has no relation.
+        SST-PRS006: when an earlier entry names a table of the same logical name.
+
+    Raises:
+        ProjectError: For each diagnostic above.
+    """
+    source_name, table_name = args
+    pair = f"{source_name}.{table_name}"
+    found = next(
+        (
+            item
+            for item in view.catalog.sources
+            if item.relation_name and f"{item.source_name}.{item.name}".casefold() == pair.casefold()
+        ),
+        None,
+    )
+    if found is None or found.relation_name is None:
+        diagnostic = D("SST-DBT011", value=pair, subject=view.key)
+        raise ProjectError(diagnostic.message, diagnostics=(diagnostic,))
+    (logical,) = _names((table_name.upper(),), view.key, None)
+    if logical in logical_by_model.values():
+        diagnostic = D("SST-PRS006", type="table", name=table_name)
+        raise ProjectError(diagnostic.message, diagnostics=(diagnostic,))
+    per_table = table_config.get(table_name) if isinstance(table_config, dict) else None
+    synonyms = _as_str_tuple(per_table.get("synonyms")) if isinstance(per_table, dict) else ()
+    relation = found.relation_name.upper()
+    _require(qualified_name_problem(relation, artifact=view.key, subject=view.key))
+    return pair.casefold(), Table(
+        logical_name=logical, fqn=relation, primary_key=(), unique_keys=(), synonyms=synonyms, distinct_range=None
+    )
+
+
 def _distinct_range(
     per_table: object,
     *,
@@ -266,7 +324,10 @@ def _distinct_range(
         return None
     value = per_table["distinct_range"]
     if not isinstance(value, dict) or not value.get("start") or not value.get("end"):
-        raise ProjectError(f"{path}: view {view_name} table {table_name} has an invalid distinct_range")
+        view_key = artifact_key("semantic_view", view_name)
+        detail = f"table_config.{table_name}.distinct_range needs a start and an end column"
+        diagnostic = D("SST-PRS028", artifact=view_key, detail=detail, subject=view_key)
+        raise ProjectError(diagnostic.message, diagnostics=(diagnostic,))
     start, end = _names((str(value["start"]), str(value["end"])), artifact_key("semantic_view", view_name), None)
     return start, end
 
@@ -279,7 +340,10 @@ def _view_columns(models: Mapping[str, DbtModel], logical_by_model: Mapping[str,
     """
     columns: list[Column] = []
     for model_key, logical in logical_by_model.items():
-        model = models[model_key]
+        model = models.get(model_key)
+        if model is None:
+            # A dbt source: SST reads no columns of one.
+            continue
         columns.extend(
             _view_column(model, column, logical)
             for column in model.columns
@@ -413,26 +477,30 @@ def _tag(value: object, *, config: dict[str, Any], target: DbtTarget, path: Path
     """Build one tag: its name a `tag()` call naming a tag under `tags:` in `sst_config.yml`.
 
     Diagnostics:
-        SST-REF040: when the entry lacks a name or a value, its name is not one `tag()` call, or
-            the call names no declared tag.
+        SST-PRS027: when the entry lacks a name or a value, or its name is not one `tag()` call.
+        SST-REF040: when the call names no declared tag.
+        SST-PRS026: when the value is longer than 256 characters.
 
     Raises:
-        ProjectError: For the diagnostic above.
+        ProjectError: For each diagnostic above.
     """
+    view_key = artifact_key("semantic_view", view_name)
 
-    def invalid(detail: str) -> NoReturn:
-        diagnostic = D("SST-REF040", artifact=artifact_key("semantic_view", view_name), detail=detail)
+    def invalid(code: str, **context: Any) -> NoReturn:
+        diagnostic = D(code, artifact=view_key, **context)
         raise ProjectError(diagnostic.message, diagnostics=(diagnostic,))
 
     if not isinstance(value, dict) or not value.get("name") or "value" not in value:
-        invalid(f"tag {value!r} needs a name and a value")
+        invalid("SST-PRS027", found=f"the entry {value!r}, which needs a name and a value")
     call = single_template_call(str(value["name"]), "tag")
     if call is None or len(call.args) != 1:
-        invalid(f"tag name must be one tag() call, found {value['name']!r}")
+        invalid("SST-PRS027", found=f"the name {value['name']!r}, which is not one tag() call")
     tags = config.get("tags") or {}
     tag_name = call.args[0]
     if not isinstance(tags, dict) or tag_name not in tags:
-        invalid(f"tag('{tag_name}') names no tag under tags: in sst_config.yml")
+        invalid("SST-REF040", detail=f"tag('{tag_name}') names no tag under tags: in sst_config.yml")
+    if len(str(value["value"])) > 256:
+        invalid("SST-PRS026", field=tag_name, size=len(str(value["value"])))
     prefix = (
         str(tags.get("default_prefix") or "")
         .replace("{{ target.database }}", target.database)
@@ -459,8 +527,8 @@ def _source_files(
     source_files = {source_path}
     source_files.update(member.origin.file for member in attached)
     for model_key in logical_by_model:
-        model = models[model_key]
-        model_path = model.patch_path or model.original_file_path
+        model = models.get(model_key)
+        model_path = (model.patch_path or model.original_file_path) if model is not None else None
         if model_path:
             source_files.add(model_path)
     return source_path, tuple(sorted(source_files))

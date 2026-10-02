@@ -210,11 +210,11 @@ def test_dbt_column_and_key_validation_cover_semantic_metadata() -> None:
         "model.fixture.legacy", "legacy", "DB.SCH.LEGACY", ("id",), (), (DbtColumn("id", "Key.", "VARCHAR", None),)
     )
     legacy = dataclasses.replace(legacy, legacy_key_fields=("primary_key", "unique_keys"))
-    assert [item.code for item in _dbt_model_diagnostics({"legacy": legacy})] == ["SST-DBT005", "SST-DBT005"]
+    assert [item.code for item in _dbt_model_diagnostics({"legacy": legacy})] == ["SST-DBT032", "SST-DBT032"]
     # Keys written in the 0.3 form are unread, so the model is keyless -- but that is
     # the same fault, and reporting it twice would bury the fix.
     unread = dataclasses.replace(legacy, primary_key=(), legacy_key_fields=("primary_key",))
-    assert [item.code for item in _dbt_model_diagnostics({"legacy": unread})] == ["SST-DBT005"]
+    assert [item.code for item in _dbt_model_diagnostics({"legacy": unread})] == ["SST-DBT032"]
     assert _dbt_model_diagnostics({"legacy": legacy}, frozenset()) == ()
 
 

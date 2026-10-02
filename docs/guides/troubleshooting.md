@@ -11,7 +11,7 @@ SST runs `dbt parse --project-dir <project> --profiles-dir <project>` itself.
   `~/.dbt/profiles.yml`. Move or generate the file into the project, or run
   `dbt parse` yourself and pass the manifest with `--manifest target/manifest.json`.
 - **Packages are not installed.** Run `dbt deps` first.
-- **`SST-PRT007`.** The manifest's schema version is not the one SST supports;
+- **`SST-DBT017`.** The manifest's schema version is not the one SST supports;
   use a dbt version that writes manifest schema v12.
 
 ## A metric or filter is missing from a view

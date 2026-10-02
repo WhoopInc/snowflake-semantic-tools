@@ -6,7 +6,7 @@ import re
 from collections.abc import Mapping
 from pathlib import Path
 from types import MappingProxyType
-from typing import Any
+from typing import Any, TypeVar
 
 from snowflake_semantic_tools.adapters.errors import ProjectError
 from snowflake_semantic_tools.adapters.paths import resolve_within
@@ -22,7 +22,10 @@ from snowflake_semantic_tools.adapters.yaml.parse import parse_yaml_bytes
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, DiagnosticBag, Origin
 from snowflake_semantic_tools.domain.model.agent import AgentEvalFiles, AgentModel, AgentProfile, AgentSkill, AgentTool
 from snowflake_semantic_tools.domain.model.artifact_key import artifact_key
+from snowflake_semantic_tools.domain.parse.passthrough import AGENT_SPEC_KEYS, TOOL_SPEC_KEYS, passthrough_diagnostics
 from snowflake_semantic_tools.domain.parse.template import TemplateSyntaxError, scan_template_calls
+
+_Block = TypeVar("_Block", bound=Mapping[Any, Any])
 
 
 def load_agents(project_dir: Path, *, agents_dir: str = "agents") -> tuple[tuple[AgentModel, ...], DiagnosticBag]:
@@ -35,7 +38,7 @@ def load_agents(project_dir: Path, *, agents_dir: str = "agents") -> tuple[tuple
 
     Diagnostics:
         SST-LOD004: when a file cannot be read, or a template in it is malformed.
-        SST-PRS122: when a file or an instruction sidecar is not UTF-8.
+        SST-LOD006: when a file or an instruction sidecar is not UTF-8.
         SST-LOD001: when a file is not valid YAML.
         SST-LOD005: when a file writes a key twice in one mapping.
         SST-LOD003: when a file holds only whitespace or comments.
@@ -70,7 +73,7 @@ def load_agents(project_dir: Path, *, agents_dir: str = "agents") -> tuple[tuple
             diagnostics.append(D("SST-LOD004", file=relative, line=1, col=1, reason=str(exc)))
             continue
         agent, problems = _parse_agent(project_dir, path.parent, relative, dict(parsed.tree), parsed.line_index)
-        diagnostics.extend(problems)
+        diagnostics.extend((*parsed.diagnostics, *problems))
         if agent is not None:
             agents.append(agent)
     return tuple(agents), DiagnosticBag(diagnostics)
@@ -109,21 +112,9 @@ def _parse_agent(
     capabilities = mapping(orchestration.get("capabilities"))
     instructions = mapping(spec.get("instructions"))
     source_files = [relative]
-    orchestration_text = _instruction(
-        project_dir,
-        agent_dir,
-        relative,
-        instructions.get("orchestration"),
-        source_files,
-        diagnostics,
-    )
-    response_text = _instruction(
-        project_dir,
-        agent_dir,
-        relative,
-        instructions.get("response"),
-        source_files,
-        diagnostics,
+    orchestration_text, response_text = (
+        _instruction(project_dir, agent_dir, relative, instructions.get(key), source_files, diagnostics)
+        for key in ("orchestration", "response")
     )
     tools = _parse_tools(relative, listed(spec.get("tools"), "spec.tools"), lines, diagnostics, subject)
     skills = tuple(
@@ -140,6 +131,9 @@ def _parse_agent(
     )
     meta = mapped(tree.get("meta"), "meta")
     passthrough = mapped(spec.get("passthrough"), "spec.passthrough")
+    diagnostics.extend(
+        passthrough_diagnostics(f"{name}.spec", passthrough, AGENT_SPEC_KEYS, subject=subject, origin=origin)
+    )
     eval_files = _parse_eval_files(project_dir, agent_dir, relative, tree.get("evals"), diagnostics)
     return (
         AgentModel(
@@ -277,7 +271,7 @@ def _instruction(
         SST-REF014: when the text holds templates other than one `file()` call that is all of it.
         SST-REF027: when the sidecar resolves outside the project root.
         SST-LOD018: when the sidecar cannot be read.
-        SST-PRS122: when the sidecar is not UTF-8.
+        SST-LOD006: when the sidecar is not UTF-8.
         SST-LOD019: when the sidecar holds only whitespace.
     """
     if not isinstance(value, str):
@@ -304,7 +298,7 @@ def _instruction(
         diagnostics.append(D("SST-LOD018", file=source_file, path=requested, origin=Origin(source_file)))
         return None
     except UnicodeDecodeError as exc:
-        diagnostics.append(D("SST-PRS122", origin=Origin(relative), file=relative, offset=exc.start))
+        diagnostics.append(D("SST-LOD006", origin=Origin(relative), file=relative, offset=exc.start))
         return None
     if not content.strip():
         diagnostics.append(D("SST-LOD019", path=requested, file=source_file, origin=Origin(source_file)))
@@ -354,6 +348,7 @@ def _parse_tool(
         SST-PRS002: when it declares no string `type`.
         SST-PRS003: when a mapping field, such as `filter` or `input_schema`, holds another type.
         SST-LOD004: when a template in a reference field is malformed.
+        SST-PRS023, SST-PRS024: as `passthrough_diagnostics` reports `tool_spec_passthrough`.
     """
     if not isinstance(value, dict):
         diagnostics.append(
@@ -404,8 +399,28 @@ def _parse_tool(
         columns_and_descriptions=mapped("columns_and_descriptions"),
         input_schema=mapped("input_schema"),
         passthrough=mapped("passthrough"),
-        tool_spec_passthrough=mapped("tool_spec_passthrough"),
+        tool_spec_passthrough=_checked_passthrough(
+            mapped("tool_spec_passthrough"),
+            f"{subject}.tools[{index}].tool_spec_passthrough",
+            TOOL_SPEC_KEYS,
+            subject,
+            origin,
+            diagnostics,
+        ),
     )
+
+
+def _checked_passthrough(
+    block: _Block,
+    artifact: str,
+    rendered: frozenset[str],
+    subject: str,
+    origin: Origin,
+    diagnostics: list[Diagnostic],
+) -> _Block:
+    """Return a passthrough block, reporting its keys as `passthrough_diagnostics` does."""
+    diagnostics.extend(passthrough_diagnostics(artifact, block, rendered, subject=subject, origin=origin))
+    return block
 
 
 def _parse_skill(

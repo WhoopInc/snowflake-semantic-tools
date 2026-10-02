@@ -73,7 +73,7 @@ def _metric_parse_diagnostics(
         SST-PRS113: when `expr` is not a string.
         SST-PRS003: when `tables`, `using_relationships`, `non_additive_dimensions`, `window`
             or a part of either block has the wrong type.
-        SST-PRS013: when `access_modifier`, a `sort_direction` or a `null_order` is not an
+        SST-PRS103: when `access_modifier`, a `sort_direction` or a `null_order` is not an
             allowed value.
         SST-PRS014: when a window comes with `using_relationships` or `non_additive_dimensions`,
             or declares both `partition_by` and `partition_by_excluding`.
@@ -138,7 +138,7 @@ def _metric_parse_diagnostics(
         if access is not None and str(access) not in allowed_access:
             diagnostics.append(
                 D(
-                    "SST-PRS013",
+                    "SST-PRS103",
                     artifact=subject,
                     field="access_modifier",
                     found=access,
@@ -254,7 +254,7 @@ def _order_by_entry(
         if key in entry and (not isinstance(entry[key], str) or entry[key] not in allowed):
             diagnostics.append(
                 D(
-                    "SST-PRS013",
+                    "SST-PRS103",
                     artifact=subject,
                     field=f"{field}.{key}",
                     found=entry[key],
@@ -321,7 +321,7 @@ def _non_additive_parse_diagnostics(value: object, subject: str, origin: Origin)
             if key in entry and (not isinstance(entry[key], str) or entry[key] not in allowed):
                 diagnostics.append(
                     D(
-                        "SST-PRS013",
+                        "SST-PRS103",
                         artifact=subject,
                         field=f"{field}.{key}",
                         found=entry[key],
@@ -348,7 +348,7 @@ def _verified_query_diagnostics(
         SST-VAL412: when an entry declares both `sql` and `sql_file`, or neither.
         SST-LOD018: when the `sql_file:` is not a file.
         SST-LOD019: when the `sql_file:` holds no bytes.
-        SST-PRS122: when the `sql_file:` is not UTF-8.
+        SST-LOD006: when the `sql_file:` is not UTF-8.
     """
     root = project_dir / semantic_models_dir / "verified_queries"
     diagnostics: list[Diagnostic] = []
@@ -399,10 +399,10 @@ def _verified_query_diagnostics(
 def _utf8_diagnostics(
     content: bytes, document_path: str, sql_file: str, subject: str, origin: Origin
 ) -> tuple[Diagnostic, ...]:
-    """Report SST-PRS122 when `content` is not UTF-8, naming the file as its document's sibling path."""
+    """Report SST-LOD006 when `content` is not UTF-8, naming the file as its document's sibling path."""
     try:
         content.decode("utf-8")
     except UnicodeDecodeError as exc:
         file = posixpath.normpath(posixpath.join(posixpath.dirname(document_path), sql_file))
-        return (D("SST-PRS122", file=file, offset=exc.start, subject=subject, origin=origin),)
+        return (D("SST-LOD006", file=file, offset=exc.start, subject=subject, origin=origin),)
     return ()

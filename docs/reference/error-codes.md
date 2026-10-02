@@ -18,12 +18,12 @@ cannot be downgraded by any setting.
 - [Registry (REG)](#registry-reg) -- 23 codes
 - [Configuration (CFG)](#configuration-cfg) -- 19 codes
 - [Discovery (DIS)](#discovery-dis) -- 12 codes
-- [Parsing (PRS)](#parsing-prs) -- 35 codes
-- [Loading (LOD)](#loading-lod) -- 8 codes
+- [Parsing (PRS)](#parsing-prs) -- 58 codes
+- [Loading (LOD)](#loading-lod) -- 24 codes
 - [References (REF)](#references-ref) -- 29 codes
 - [Membership (MEM)](#membership-mem) -- 2 codes
 - [Validation (VAL)](#validation-val) -- 173 codes
-- [dbt (DBT)](#dbt-dbt) -- 6 codes
+- [dbt (DBT)](#dbt-dbt) -- 30 codes
 - [Rendering (RND)](#rendering-rnd) -- 16 codes
 - [Manifest and state (MAN)](#manifest-and-state-man) -- 21 codes
 - [Planning (PLN)](#planning-pln) -- 18 codes
@@ -468,6 +468,14 @@ Fix: widen the selector, or check the artifact name
 
 ## Parsing (PRS)
 
+### SST-PRS001
+
+**Unknown top-level key** (warning)
+
+`no registered type owns root key '<key>'`
+
+Fix: remove the block, or register a type that owns it
+
 ### SST-PRS002
 
 **Required field missing** (error)
@@ -508,6 +516,30 @@ Fix: start an unquoted name with a letter or underscore and use only letters, di
 
 Fix: rename one declaration
 
+### SST-PRS007
+
+**Name is not unique across the artifact set** (error)
+
+`<type> '<name>' collides with <other>`
+
+Fix: rename one of them
+
+### SST-PRS008
+
+**Name collides with a derived member name** (error)
+
+`metric '<name>' collides with a derived metric name`
+
+Fix: rename one of them
+
+### SST-PRS009
+
+**Name is not a valid tool identifier** (error)
+
+`'<name>' does not resolve to a 1-64 char tool identifier`
+
+Fix: shorten or simplify the name
+
 ### SST-PRS010
 
 **Identifier exceeds the object name limit** (error)
@@ -516,13 +548,29 @@ Fix: rename one declaration
 
 Fix: shorten the name
 
+### SST-PRS011
+
+**Identifier requires quoting and quoting is not declared** (error)
+
+`'<name>' needs quoting to render safely`
+
+Fix: rename it, or declare it quoted
+
+### SST-PRS012
+
+**Non-ASCII identifier** (warning)
+
+`'<name>' contains non-ASCII characters`
+
+Fix: use ASCII identifiers
+
 ### SST-PRS013
 
-**Value outside allowed set** (error)
+**Value outside the allowed set for a closed field** (error)
 
 `<artifact>: '<field>' is '<found>', expected one of <expected>`
 
-Fix: use an allowed value
+Fix: use one of the values the message lists
 
 ### SST-PRS014
 
@@ -542,11 +590,19 @@ Fix: declare both, or neither
 
 ### SST-PRS016
 
-**Numeric value is outside its allowed range** (error)
+**Numeric value out of range** (error)
 
 `<artifact>: '<field>' is <found>, expected <expected>`
 
 Fix: use a value within the allowed range
+
+### SST-PRS017
+
+**Unparseable timestamp** (error)
+
+`<artifact>: '<field>' value '<found>' is not an epoch or ISO timestamp`
+
+Fix: use an integer epoch or an ISO-8601 string
 
 ### SST-PRS018
 
@@ -566,19 +622,59 @@ Fix: use true or false
 
 ### SST-PRS020
 
-**Field was renamed in 1.0** (error)
+**Deprecated field spelling** (warning)
 
-`<artifact>: '<field>' was renamed in 1.0; use '<expected>'`
+`<artifact>: '<field>' is deprecated; use '<expected>'`
 
 Fix: rename the field
 
+### SST-PRS021
+
+**Deprecated relationship column shape** (error)
+
+`<artifact>: relationship_columns / left_column / right_column is not supported`
+
+Fix: use relationship_conditions
+
+### SST-PRS022
+
+**Unknown field within edit distance of a known field** (error)
+
+`<artifact>: unknown field '<field>'; did you mean '<expected>'?`
+
+Fix: correct the spelling
+
+### SST-PRS023
+
+**Passthrough block collides with a modelled key** (error)
+
+`<artifact>: passthrough key '<key>' is already rendered by SST`
+
+Fix: remove the key from passthrough
+
+### SST-PRS024
+
+**Passthrough block is non-empty** (warning)
+
+`<artifact>: <count> passthrough keys will be rendered unvalidated`
+
+Fix: promote the keys to first-class fields where possible
+
 ### SST-PRS025
 
-**Reserved agent alias used** (error)
+**Reserved alias used** (error)
 
 `<artifact>: alias '<value>' is reserved`
 
 Fix: choose a non-reserved alias
+
+### SST-PRS026
+
+**Tag value exceeds the length limit** (error)
+
+`<artifact>: tag '<field>' value is <size> chars, over 256`
+
+Fix: shorten the tag value
 
 ### SST-PRS027
 
@@ -587,6 +683,14 @@ Fix: choose a non-reserved alias
 `<artifact>: tags must be a list of name and value entries, found <found>`
 
 Fix: write tags as a list of {name: ..., value: ...} entries
+
+### SST-PRS028
+
+**Constraints block has the wrong shape** (error)
+
+`<artifact>: constraints block is invalid: <detail>`
+
+Fix: correct the constraints block
 
 ### SST-PRS029
 
@@ -604,9 +708,17 @@ Fix: use a list of strings
 
 Fix: remove the punctuation
 
+### SST-PRS031
+
+**Name collides with a reserved word** (warning)
+
+`'<name>' is a reserved word`
+
+Fix: rename it, or accept the quoted identifier
+
 ### SST-PRS032
 
-**Tool input uses unsupported object type** (error)
+**Input schema property has a forbidden type** (error)
 
 `<artifact>: input_schema property '<field>' has type '<found>'`
 
@@ -614,7 +726,7 @@ Fix: use a supported scalar or array type
 
 ### SST-PRS033
 
-**Required input is not a declared property** (error)
+**Required input-schema name is not a declared property** (error)
 
 `<artifact>: input_schema.required names '<field>', absent from properties`
 
@@ -627,6 +739,14 @@ Fix: declare the property, or remove it from required
 `<artifact>: SKILL.md frontmatter omits '<field>'`
 
 Fix: declare name and description in the frontmatter
+
+### SST-PRS100
+
+**Name collides with a reserved identifier namespace** (warning)
+
+`'<name>' is in a reserved namespace`
+
+Fix: rename it
 
 ### SST-PRS101
 
@@ -644,6 +764,30 @@ Fix: declare at least one entry, or remove the key
 
 Fix: declare the tables the member attaches to
 
+### SST-PRS103
+
+**Value outside the allowed enum** (error)
+
+`<artifact>: '<field>' is '<found>', expected one of <expected>`
+
+Fix: use one of the values the message lists
+
+### SST-PRS104
+
+**Member declared under two owners** (error)
+
+`<member> is declared under both <a> and <b>`
+
+Fix: declare it once
+
+### SST-PRS105
+
+**Member type not accepted by its owner** (error)
+
+`<type> does not accept members of type <member_type>`
+
+Fix: move the member
+
 ### SST-PRS106
 
 **Duplicate member name within an owner** (error)
@@ -654,19 +798,43 @@ Fix: rename one member
 
 ### SST-PRS107
 
-**Member declares no name** (error)
+**Member declares no distinguishing key** (error)
 
 `<artifact>: <member_type> entry <index> has no name`
 
 Fix: name the member
 
+### SST-PRS109
+
+**table_config names a table not in tables** (error)
+
+`<artifact>: table_config key '<name>' is not in tables:`
+
+Fix: remove the entry, or add the table
+
 ### SST-PRS110
 
-**Relationship condition shape is invalid** (error)
+**Condition does not parse to one column pair** (error)
 
 `<artifact>: condition '<value>' does not parse to one left/right pair`
 
 Fix: express one pair per condition
+
+### SST-PRS111
+
+**Range condition names one column twice** (error)
+
+`<artifact>: range condition uses '<name>' for both start and end`
+
+Fix: name two different columns
+
+### SST-PRS112
+
+**More than one asof condition** (error)
+
+`<artifact>: <count> asof conditions declared`
+
+Fix: declare at most one
 
 ### SST-PRS113
 
@@ -686,7 +854,7 @@ Fix: make the ranges contiguous with min-inclusive, max-inclusive boundaries
 
 ### SST-PRS115
 
-**Custom metric threshold has no usable bound** (error)
+**threshold_default declares no usable bound inside the scale** (error)
 
 `<artifact>: threshold_default <found> is not a usable bound within max_score <expected>`
 
@@ -700,9 +868,17 @@ Fix: declare min, optionally max, with min &lt;= max and both inside max_score
 
 Fix: use a supported placeholder
 
+### SST-PRS117
+
+**Dataset row has no question or no expected field** (error)
+
+`<artifact>: row <index> has <detail>`
+
+Fix: give every row a question and at least one expectation
+
 ### SST-PRS118
 
-**Sample question entry has the wrong shape** (error)
+**Sample question entry is a bare string** (error)
 
 `<artifact>: sample_questions[<index>] is a string, expected a mapping`
 
@@ -716,13 +892,13 @@ Fix: use {question: ...} mappings
 
 Fix: move the nested skill beside its parent; one skill per folder
 
-### SST-PRS122
+### SST-PRS120
 
-**File is not UTF-8** (error)
+**SKILL.md is not at the folder root** (error)
 
-`<file>: cannot be decoded as UTF-8 at byte <offset>`
+`<artifact>: SKILL.md found at <path>`
 
-Fix: save the file as UTF-8
+Fix: move SKILL.md to the folder root
 
 ### SST-PRS123
 
@@ -747,6 +923,14 @@ Fix: write each bound as UNBOUNDED PRECEDING, UNBOUNDED FOLLOWING, CURRENT ROW, 
 `<file>: writing it changes lines sst enrich did not edit`
 
 Fix: review the change with sst enrich --dry-run; once the file is written, later runs keep its formatting exactly
+
+### SST-PRS900
+
+**Parser returned a non-frozen record** (error)
+
+`<type> parser returned <cls>, which is mutable`
+
+Fix: return a frozen dataclass
 
 ## Loading (LOD)
 
@@ -790,6 +974,22 @@ Fix: close the template, remove nesting, or correct the call grammar
 
 Fix: remove one of the two keys
 
+### SST-LOD006
+
+**File is not valid UTF-8** (error)
+
+`<file>: invalid UTF-8 at byte <offset>`
+
+Fix: re-save the file as UTF-8
+
+### SST-LOD007
+
+**File exceeds the size limit** (error)
+
+`<file> is <size> bytes, over the <expected> limit`
+
+Fix: split the file
+
 ### SST-LOD008
 
 **Multi-document YAML stream** (error)
@@ -798,9 +998,81 @@ Fix: remove one of the two keys
 
 Fix: keep one document per file
 
+### SST-LOD009
+
+**Unquoted colon inside a plain scalar** (error)
+
+`<file>:<line>: '<key>' value contains an unquoted ':'`
+
+Fix: quote the value
+
+### SST-LOD010
+
+**Tab character used for indentation** (error)
+
+`<file>:<line>: tab used for indentation`
+
+Fix: indent with spaces
+
+### SST-LOD011
+
+**Folded scalar used for a multi-line value** (warning)
+
+`<file>:<line>: '<key>' uses a folded scalar`
+
+Fix: use |- so line breaks survive
+
+### SST-LOD012
+
+**Trailing whitespace or CRLF line endings** (warning)
+
+`<file>: <detail>`
+
+Fix: remove the trailing whitespace and save the file with LF line endings
+
+### SST-LOD013
+
+**Anchor or alias used** (error)
+
+`<file>:<line>: YAML anchors are not supported`
+
+Fix: expand the anchor: write the value out wherever the alias stands
+
+### SST-LOD014
+
+**Merge key used** (error)
+
+`<file>:<line>: merge keys are not supported`
+
+Fix: expand the merge: write the merged keys into the mapping
+
+### SST-LOD015
+
+**Non-string mapping key** (error)
+
+`<file>:<line>: mapping key <found> is not a string`
+
+Fix: quote the key
+
+### SST-LOD016
+
+**Implicit boolean or null coercion** (warning)
+
+`<file>:<line>: '<key>' value <found> coerced to <expected>`
+
+Fix: quote the value if it is meant as a string
+
+### SST-LOD017
+
+**Byte-order mark present** (error)
+
+`<file> begins with a BOM`
+
+Fix: re-save without a BOM
+
 ### SST-LOD018
 
-**Referenced sidecar is missing** (error)
+**Sidecar file referenced by a document is missing** (error)
 
 `<file> references <path>, which does not exist`
 
@@ -808,11 +1080,45 @@ Fix: create the file, or correct the path
 
 ### SST-LOD019
 
-**Referenced sidecar is empty** (error)
+**Sidecar file is empty** (error)
 
 `<path>, referenced by <file>, is empty`
 
 Fix: add content, or remove the reference
+
+### SST-LOD020
+
+**Unrecognised file extension accepted** (warning)
+
+`<file> uses '<found>'`
+
+Fix: standardise on .yml
+
+### SST-LOD021
+
+**Document declares no recognised root key** (error)
+
+`<file> declares no recognised root key`
+
+Fix: add the artifact's root key, or move the file out of the semantic models directory
+
+### SST-LOD200
+
+**.yaml extension accepted** (info)
+
+`<file> uses .yaml; accepted`
+
+### SST-LOD201
+
+**File loaded from cache** (info)
+
+`<file> served from the load cache`
+
+### SST-LOD202
+
+**Line-ending normalisation applied on read** (info)
+
+`<file> normalised <count> line endings on read`
 
 ## References (REF)
 
@@ -2440,9 +2746,25 @@ Fix: name a plugin folder that has a plugin.yml
 
 ## dbt (DBT)
 
+### SST-DBT001
+
+**dbt manifest absent or empty** (error)
+
+`no dbt models available`
+
+Fix: check that the dbt project has models; under --manifest, check the path
+
+### SST-DBT002
+
+**dbt model referenced but absent from the manifest** (error)
+
+`model '<model>' is not in the dbt manifest`
+
+Fix: correct the model name, or add the model to the dbt project
+
 ### SST-DBT003
 
-**Unknown dbt semantic role** (error)
+**config.meta.sst names an unknown role** (error)
 
 `model '<model>': meta.sst role '<found>' is not a known role`
 
@@ -2450,7 +2772,7 @@ Fix: correct the role name
 
 ### SST-DBT004
 
-**dbt and semantic column types disagree** (warning)
+**Column type in dbt disagrees with the declared type** (warning)
 
 `model '<model>': column '<column>' is <found> in dbt and <expected> in the semantic layer`
 
@@ -2458,11 +2780,81 @@ Fix: reconcile the two types, or add a dbt contract
 
 ### SST-DBT005
 
-**Key metadata is written in the 0.3 form** (error)
+**dbt manifest is stale relative to the models on disk** (error)
 
-`model '<model>': meta.sst.<field> is written in the 0.3 form`
+`manifest is older than <value>`
 
-Fix: write primary_key as a list of columns and unique_keys as a list of column lists
+Fix: drop --manifest and let SST parse, or rebuild the manifest you passed
+
+### SST-DBT006
+
+**Resolved relation differs from the model name** (error)
+
+`model '<model>' resolves to relation '<value>'`
+
+Fix: point the semantic layer at the resolved relation: name the model with {{ ref() }}
+
+### SST-DBT009
+
+**Consumed model is disabled or ephemeral** (error)
+
+`model '<model>' is <found> and produces no relation`
+
+Fix: enable it, or change the materialisation to a table or a view
+
+### SST-DBT010
+
+**Collapse safety rule violated** (error)
+
+`models <a> and <b> collapse to '<value>' and differ in <column>`
+
+Fix: rename one relation, or align the columns
+
+### SST-DBT011
+
+**Source referenced by the semantic layer is not declared in dbt** (error)
+
+`source '<value>' is not declared in dbt`
+
+Fix: declare the source in the dbt project
+
+### SST-DBT012
+
+**Duplicate source name or source.table pair** (warning)
+
+`source '<value>' is declared more than once`
+
+Fix: rename one of them
+
+### SST-DBT013
+
+**Model node has no name** (error)
+
+`dbt node <value> has no name and was skipped`
+
+Fix: report this against dbt; a named node is a manifest invariant
+
+### SST-DBT014
+
+**Model node has no database or schema** (error)
+
+`model '<model>' has empty <key>`
+
+Fix: set database and schema for this target in profiles.yml or dbt_project.yml
+
+### SST-DBT015
+
+**Model checksum absent on both sides of a comparison** (error)
+
+`model '<model>' has no checksum; change detection is unusable`
+
+Fix: check that the dbt installation populates checksum.checksum
+
+### SST-DBT016
+
+**Model to artifact fan-out** (info)
+
+`model '<model>' feeds <count> artifacts`
 
 ### SST-DBT017
 
@@ -2470,11 +2862,105 @@ Fix: write primary_key as a list of columns and unique_keys as a list of column 
 
 `manifest schema '<found>'; supported: <expected>`
 
-Fix: upgrade or downgrade dbt to a version that emits a supported manifest schema
+Fix: upgrade or downgrade dbt to a version that emits a supported schema, or pass --allow-unsupported-manifest-schema
+
+### SST-DBT018
+
+**dbt manifest schema version key is absent or unparseable** (error)
+
+`manifest schema version is <found>`
+
+Fix: check the dbt version; pass --allow-unsupported-manifest-schema only if you accept the risk
+
+### SST-DBT019
+
+**dbt profile could not be parsed** (error)
+
+`<path>: <detail>`
+
+Fix: fix profiles.yml
+
+### SST-DBT020
+
+**dbt installation type could not be determined** (warning)
+
+`dbt type detection returned <found>`
+
+Fix: ignore this if a valid manifest exists; the manifest is the contract
+
+### SST-DBT021
+
+**auto_compile requested under an installation that cannot compile a non-default target** (error)
+
+`defer.auto_compile is true under <found>`
+
+Fix: pass --manifest with a manifest built for the target instead
+
+### SST-DBT022
+
+**model-paths is unreadable and defaulted** (error)
+
+`model-paths could not be read; defaulted to <expected>`
+
+Fix: declare model-paths explicitly as a list of directories
+
+### SST-DBT023
+
+**dbt model referenced with no tests at all** (warning)
+
+`model '<model>' has no tests`
+
+Fix: add at least a uniqueness test on the declared grain
+
+### SST-DBT024
+
+**dbt model feeding an artifact has no contract** (warning)
+
+`model '<model>' has no contract`
+
+Fix: add an enforced contract to the model
+
+### SST-DBT025
+
+**dbt seam summary** (info)
+
+`<value>`
+
+### SST-DBT026
+
+**dbt packages are not installed** (error)
+
+`<count> package(s) in packages.yml are not installed`
+
+Fix: run dbt deps
+
+### SST-DBT027
+
+**dbt could not be invoked** (error)
+
+`dbt could not be executed: <detail>`
+
+Fix: install dbt, or pass --manifest to read a manifest that already exists
+
+### SST-DBT028
+
+**`dbt parse` exited non-zero** (error)
+
+`dbt parse exited <found>`
+
+Fix: read dbt's own output above; the failure is in the dbt project
+
+### SST-DBT029
+
+**`dbt parse` reported success but wrote no manifest** (error)
+
+`dbt parse exited 0 and <path> was not written`
+
+Fix: check --project-dir and dbt's target-path; dbt wrote its manifest elsewhere
 
 ### SST-DBT030
 
-**Forbidden meta.sst location key** (error)
+**Forbidden `meta.sst` location key** (error)
 
 `model '<model>': meta.sst.<key> is forbidden -- delete it`
 
@@ -2487,6 +2973,14 @@ Fix: delete the key; relation location comes from dbt's resolved manifest
 `model '<model>' has no relation, so sst enrich has no columns to read`
 
 Fix: materialize the model as a table or a view; an ephemeral model has nothing to enrich
+
+### SST-DBT032
+
+**Key metadata is written in the 0.3 form** (error)
+
+`model '<model>': meta.sst.<field> is written in the 0.3 form`
+
+Fix: write primary_key as a list of columns and unique_keys as a list of column lists
 
 ## Rendering (RND)
 

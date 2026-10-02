@@ -10,8 +10,8 @@ from types import MappingProxyType
 from typing import Any, TypeAlias
 
 from snowflake_semantic_tools.adapters.errors import ProjectError
-from snowflake_semantic_tools.adapters.yaml.discover import FileSet
-from snowflake_semantic_tools.domain.diagnostics import Diagnostic
+from snowflake_semantic_tools.adapters.yaml.discover import DiscoveredFile, FileSet
+from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, Origin
 
 NodePath: TypeAlias = tuple[str | int, ...]
 
@@ -47,14 +47,17 @@ class ParsedYaml:
         tree: The root mapping, read-only, with string keys at the top level; nested values are
             as YAML typed them, and every template is restored, as written, in every string.
         line_index: Where the value at each node path starts: the path is the mapping keys and
-            list indexes from the root, `()` for the root itself. A key a merge (`<<`) brings in
-            is indexed under `<<`. Empty for a document that is only `null`.
+            list indexes from the root, `()` for the root itself. Empty for a document that is
+            only `null`.
         templates: Each template, by the placeholder that stood in for it while YAML parsed.
+        diagnostics: What the parse found that does not stop the file loading, such as CRLF
+            line endings or a folded scalar, in the order found.
     """
 
     tree: Mapping[str, Any]
     line_index: Mapping[NodePath, SourcePosition]
     templates: Mapping[str, TemplateSource]
+    diagnostics: tuple[Diagnostic, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -93,7 +96,8 @@ class RawDocuments:
         by_path: The same documents, by `RawDocument.path`.
         failed: The paths, as diagnostics name them, of the files that could not be parsed; none
             of them is in `documents`.
-        diagnostics: The discovery diagnostics, then each failed file's, in discovery order.
+        diagnostics: The discovery diagnostics, then each file's in discovery order: why a file
+            failed, or what a loaded file's formatting was found to be.
     """
 
     documents: tuple[RawDocument, ...]
@@ -115,22 +119,72 @@ class RawDocuments:
         )
 
 
+class LoadCache:
+    """The parses of files already read in this run, by resolved path and the SHA-256 of their bytes.
+
+    A file is served from the cache only while its bytes are unchanged, so an edit between two
+    reads is always parsed again.
+    """
+
+    def __init__(self) -> None:
+        self._parsed: dict[tuple[Path, str], ParsedYaml] = {}
+
+    def get(self, path: Path, checksum: str) -> ParsedYaml | None:
+        """Return the parse of `path` with these bytes, or None when it was not read with them."""
+        return self._parsed.get((path.resolve(), checksum))
+
+    def put(self, path: Path, checksum: str, parsed: ParsedYaml) -> None:
+        """Remember the parse of `path` with these bytes."""
+        self._parsed[(path.resolve(), checksum)] = parsed
+
+
+def _parsed(
+    discovered: DiscoveredFile,
+    raw_bytes: bytes,
+    checksum: str,
+    parse_document: Callable[[bytes, str], ParsedYaml],
+    cache: LoadCache | None,
+) -> tuple[ParsedYaml, tuple[Diagnostic, ...]]:
+    """Parse one file's bytes, or serve the parse the cache holds for them.
+
+    Raises:
+        ProjectError: As `parse_document` raises; a file that does not parse is never cached.
+
+    Diagnostics:
+        SST-LOD201: the parse came from the cache; the parse's own findings follow it.
+    """
+    cached = cache.get(discovered.abs_path, checksum) if cache is not None else None
+    if cached is not None:
+        note = D("SST-LOD201", origin=Origin(discovered.path), file=discovered.path)
+        return cached, (note, *cached.diagnostics)
+    parsed = parse_document(raw_bytes, discovered.path)
+    if cache is not None:
+        cache.put(discovered.abs_path, checksum, parsed)
+    return parsed, parsed.diagnostics
+
+
 def load_documents(
     files: FileSet,
     parse_document: Callable[[bytes, str], ParsedYaml],
+    cache: LoadCache | None = None,
 ) -> RawDocuments:
-    """Read, hash, and parse each discovered file once."""
+    """Read, hash, and parse each discovered file once, or take its parse from `cache`.
+
+    Diagnostics:
+        SST-LOD201: as `_parsed` reports it, for a file the cache served.
+    """
     documents: list[RawDocument] = []
     failed: list[str] = []
     diagnostics: list[Diagnostic] = list(files.diagnostics)
     for discovered in files.files:
         try:
             raw_bytes = discovered.abs_path.read_bytes()
-            parsed = parse_document(raw_bytes, discovered.path)
+            parsed, found = _parsed(discovered, raw_bytes, sha256(raw_bytes).hexdigest(), parse_document, cache)
         except ProjectError as exc:
             failed.append(discovered.path)
             diagnostics.extend(exc.diagnostics)
             continue
+        diagnostics.extend(found)
         document = RawDocument(
             path=discovered.path,
             abs_path=discovered.abs_path.resolve(),

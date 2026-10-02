@@ -13,6 +13,7 @@ they stay with resolution here rather than in `domain.validate`.
 
 from __future__ import annotations
 
+import re
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from types import MappingProxyType
@@ -27,6 +28,9 @@ from snowflake_semantic_tools.domain.model.tool import ToolKind, ToolMember
 _SEARCH_SERVICES = (ToolKind.CORTEX_SEARCH_SERVICE.value,)
 _ROUTINES = (ToolKind.PROCEDURE.value, ToolKind.FUNCTION.value)
 _INPUT_TYPES = frozenset(("string", "number", "integer", "boolean", "array"))
+
+# What an agent tool's name may hold: letters, digits, `_` and `-`.
+_TOOL_IDENTIFIER = re.compile(r"[A-Za-z0-9_-]+")
 
 
 @dataclass(frozen=True, slots=True)
@@ -72,6 +76,7 @@ def resolve_tool(
         SST-REF012: an agent tool's `agent()` names no enabled agent.
         SST-VAL528: an agent tool resolved, so this spec no longer fixes the tool surface.
         SST-VAL513: the resolved name is empty or longer than 64 characters.
+        SST-PRS009: the resolved name holds a character a tool identifier may not.
         SST-VAL517: a web_search tool is not named web_search.
         SST-VAL518: the resolved tool has no description.
         SST-PRS016: the tool's `query_timeout` is not positive.
@@ -274,6 +279,8 @@ def _finish(
     name = resolution.name
     if not name or not 1 <= len(name) <= 64:
         diagnostics.append(D("SST-VAL513", artifact=agent.name, name=name, size=len(name), subject=agent.key))
+    elif not _TOOL_IDENTIFIER.fullmatch(name):
+        diagnostics.append(D("SST-PRS009", name=name, subject=agent.key))
     if authored.type == "web_search" and name != "web_search":
         diagnostics.append(D("SST-VAL517", artifact=agent.name, name=name, subject=agent.key))
     if not resolution.description:

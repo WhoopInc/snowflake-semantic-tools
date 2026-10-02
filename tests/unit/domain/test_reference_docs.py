@@ -71,14 +71,11 @@ def test_every_help_url_names_a_heading_in_the_error_reference() -> None:
 # Retired in 1.0: never raised, or reported by another code. Numbers are not reused.
 RETIRED = (
     "SST-CFG045",
-    "SST-DBT002",
     "SST-MEM002",
     "SST-MEM008",
     "SST-MEM011",
     "SST-MEM103",
     "SST-PLN900",
-    "SST-PRS028",
-    "SST-PRS117",
     "SST-PRS121",
     "SST-VAL010",
     "SST-VAL012",

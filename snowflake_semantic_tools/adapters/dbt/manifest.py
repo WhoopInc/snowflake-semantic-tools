@@ -3,15 +3,22 @@
 from __future__ import annotations
 
 import json
+import re
 from collections.abc import Mapping
 from pathlib import Path
+from types import MappingProxyType
 from typing import Any
 
 from snowflake_semantic_tools.adapters.errors import ProjectError
-from snowflake_semantic_tools.domain.diagnostics import D
-from snowflake_semantic_tools.domain.model.dbt import DbtCatalog, DbtColumn, DbtModel
+from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic
+from snowflake_semantic_tools.domain.model.dbt import DbtCatalog, DbtColumn, DbtModel, DbtSource
 
 SUPPORTED_SCHEMA = "https://schemas.getdbt.com/dbt/manifest/v12.json"
+# The manifest schema versions SST reads: an explicit set, never a range, since dbt makes no
+# promise that a later version is a superset of an earlier one.
+SUPPORTED_SCHEMA_VERSIONS = frozenset((12,))
+# Both spellings dbt has written: `.../manifest/v12.json` and `.../manifest/v12/manifest.json`.
+_SCHEMA_URL = re.compile(r"^https?://schemas\.getdbt\.com/dbt/manifest/v(\d+)(?:\.json|/manifest\.json)$")
 
 # The `meta.sst` keys SST reads. `database` and `schema` are read only to be
 # refused (SST-DBT030); anything else is reported where a view uses the model.
@@ -140,11 +147,8 @@ def _text(value: object) -> str | None:
     return str(value or "").strip() or None
 
 
-def _relation_name(node: Mapping[str, Any], *, path: str) -> str:
-    relation = str(node.get("relation_name") or "").strip()
-    if not relation:
-        raise ProjectError(f"dbt manifest {path}.relation_name is required for an SST model")
-    return relation.upper()
+def _relation_name(node: Mapping[str, Any]) -> str:
+    return str(node.get("relation_name") or "").strip().upper()
 
 
 def _patch_file(patch_path: str | None) -> str | None:
@@ -183,14 +187,24 @@ def _key_test_columns(nodes: Mapping[str, Any]) -> dict[str, frozenset[str]]:
     return {model: frozenset(columns) for model, columns in found.items()}
 
 
-def _model(unique_id: object, raw_node: object, key_columns: frozenset[str]) -> DbtModel | str | None:
-    """Project one manifest node; the name of a model with nothing to read; None for any other node.
+def _model(
+    unique_id: object, raw_node: object, key_columns: frozenset[str], test_count: int = 0
+) -> DbtModel | tuple[str, str] | Diagnostic | None:
+    """Project one manifest node, or say why the catalog leaves it out.
 
-    Every node must be a mapping; only a model is read, and a model with neither a relation
-    nor SST metadata is left out, its name returned so the catalog can say it has no relation.
+    Every node must be a mapping; only a model is read. A model with no relation is returned
+    as its name and its materialisation, so the catalog can say why it has none.
+
+    Returns:
+        The model; `(name, materialisation)` for a model with no relation; the diagnostic of a
+        model SST cannot use; None for any other node.
 
     Raises:
-        ProjectError: The node is not a mapping, or the model has no name or a malformed part.
+        ProjectError: The node is not a mapping, or the model has a malformed part.
+
+    Diagnostics:
+        SST-DBT013: the model has no name; it is skipped.
+        SST-DBT014: the model has a relation but an empty `database` or `schema`; it is skipped.
     """
     path = f"nodes.{unique_id}"
     node = _mapping(raw_node, path=path)
@@ -198,13 +212,17 @@ def _model(unique_id: object, raw_node: object, key_columns: frozenset[str]) -> 
         return None
     name = str(node.get("name") or "").strip()
     if not name:
-        raise ProjectError(f"dbt manifest {path}.name is required")
+        return D("SST-DBT013", value=str(unique_id))
+    if not str(node.get("relation_name") or "").strip():
+        # An ephemeral model has no relation to query: a view that names it gets SST-DBT009.
+        config = node.get("config")
+        materialized = config.get("materialized") if isinstance(config, dict) else None
+        return name, str(materialized or "ephemeral")
+    empty = next((key for key in ("database", "schema") if key in node and not _text(node.get(key))), None)
+    if empty is not None:
+        return D("SST-DBT014", model=name, key=empty, subject=f"dbt_model:{name}")
     meta = _sst_meta(node, path=path)
-    if not meta and not str(node.get("relation_name") or "").strip():
-        # An ephemeral model has no relation to query and, without SST
-        # metadata, nothing to validate; a view that names it gets SST-MEM003.
-        return name
-    return _build_model(unique_id, name, node, meta, path=path, key_columns=key_columns)
+    return _build_model(unique_id, name, node, meta, path=path, key_columns=key_columns, test_count=test_count)
 
 
 def _build_model(
@@ -215,14 +233,14 @@ def _build_model(
     *,
     path: str,
     key_columns: frozenset[str] = frozenset(),
+    test_count: int = 0,
 ) -> DbtModel:
-    """Read a model's columns, keys and relation, in that order, into its domain value.
+    """Read a model's columns, then its keys, into its domain value.
 
-    The order decides which problem a malformed model reports: its first bad column, then its
-    keys, then a missing relation.
+    The order decides which problem a malformed model reports: its first bad column, then its keys.
 
     Raises:
-        ProjectError: A column or key has the wrong shape, or the model has no relation name.
+        ProjectError: A column or key has the wrong shape.
     """
     raw_columns = _mapping(node.get("columns") or {}, path=f"{path}.columns")
     columns = tuple(_column(str(column_name), value, node_path=path) for column_name, value in raw_columns.items())
@@ -231,7 +249,7 @@ def _build_model(
     return DbtModel(
         unique_id=str(unique_id),
         name=name,
-        relation_name=_relation_name(node, path=path),
+        relation_name=_relation_name(node),
         primary_key=primary_key,
         unique_keys=unique_keys,
         columns=columns,
@@ -249,54 +267,170 @@ def _build_model(
         package_name=_text(node.get("package_name")),
         raw_relation_name=_text(node.get("relation_name")),
         patch_file=_patch_file(_text(node.get("patch_path"))),
+        checksum=_checksum(node),
+        has_contract=_has_contract(node),
+        test_count=test_count,
     )
 
 
-def catalog_from_document(document: object) -> DbtCatalog:
+def _checksum(node: Mapping[str, Any]) -> str | None:
+    """Return dbt's checksum of the model's file, or None when the manifest records none."""
+    checksum = node.get("checksum")
+    return _text(checksum.get("checksum")) if isinstance(checksum, dict) else None
+
+
+def _has_contract(node: Mapping[str, Any]) -> bool:
+    """Report whether the model enforces a contract, read from the node or its config."""
+    config = node.get("config")
+    places = (node.get("contract"), config.get("contract") if isinstance(config, dict) else None)
+    return any(isinstance(contract, dict) and contract.get("enforced") is True for contract in places)
+
+
+def _test_counts(nodes: Mapping[str, Any]) -> dict[str, int]:
+    """Count the test nodes attached to each model, by the model's unique id."""
+    counts: dict[str, int] = {}
+    for node in nodes.values():
+        if not isinstance(node, dict) or node.get("resource_type") != "test":
+            continue
+        attached = node.get("attached_node")
+        depends_on = node.get("depends_on")
+        targets = (
+            {attached}
+            if isinstance(attached, str)
+            else {item for item in (depends_on.get("nodes") or []) if isinstance(item, str)}
+            if isinstance(depends_on, dict)
+            else set()
+        )
+        for target in targets:
+            counts[target] = counts.get(target, 0) + 1
+    return counts
+
+
+def schema_version_number(value: object) -> int | None:
+    """Return the version a manifest's `dbt_schema_version` URL names, or None when it names none."""
+    match = _SCHEMA_URL.fullmatch(value) if isinstance(value, str) else None
+    return int(match.group(1)) if match else None
+
+
+def check_schema_version(metadata: Mapping[str, Any], *, allow_unsupported: bool = False) -> None:
+    """Refuse a manifest whose schema version SST does not read, unless told to accept the risk.
+
+    Raises:
+        ProjectError: As the diagnostics say, unless `allow_unsupported`.
+
+    Diagnostics:
+        SST-DBT018: `dbt_schema_version` is absent or names no version; raised.
+        SST-DBT017: it names a version outside `SUPPORTED_SCHEMA_VERSIONS`; raised.
+    """
+    if allow_unsupported:
+        return
+    value = metadata.get("dbt_schema_version")
+    number = schema_version_number(value)
+    if number is None:
+        diagnostic = D("SST-DBT018", found="absent" if value in (None, "") else repr(value))
+        raise ProjectError(diagnostic.message, diagnostics=(diagnostic,))
+    if number not in SUPPORTED_SCHEMA_VERSIONS:
+        supported = ", ".join(f"v{version}" for version in sorted(SUPPORTED_SCHEMA_VERSIONS))
+        diagnostic = D("SST-DBT017", found=str(value), expected=supported)
+        raise ProjectError(diagnostic.message, diagnostics=(diagnostic,))
+
+
+def _disabled_models(root: Mapping[str, Any]) -> tuple[str, ...]:
+    """Return the names of the models dbt moved to the `disabled` map, sorted."""
+    disabled = root.get("disabled")
+    names = {
+        str(node.get("name"))
+        for entries in (disabled.values() if isinstance(disabled, dict) else ())
+        for node in (entries if isinstance(entries, list) else ())
+        if isinstance(node, dict) and node.get("resource_type") == "model" and node.get("name")
+    }
+    return tuple(sorted(names))
+
+
+def _sources(root: Mapping[str, Any]) -> tuple[tuple[DbtSource, ...], tuple[Diagnostic, ...]]:
+    """Read the declared sources, in sorted unique-id order, and each `source.table` pair that repeats.
+
+    Diagnostics:
+        SST-DBT012: a `source.table` pair is declared more than once, once per pair.
+    """
+    raw = root.get("sources")
+    sources = tuple(
+        DbtSource(
+            unique_id=str(unique_id),
+            source_name=str(node.get("source_name") or ""),
+            name=str(node.get("name") or ""),
+            relation_name=_text(node.get("relation_name")),
+        )
+        for unique_id, node in sorted((raw if isinstance(raw, dict) else {}).items())
+        if isinstance(node, dict) and node.get("source_name") and node.get("name")
+    )
+    counts: dict[str, int] = {}
+    for source in sources:
+        pair = f"{source.source_name}.{source.name}".casefold()
+        counts[pair] = counts.get(pair, 0) + 1
+    return sources, tuple(D("SST-DBT012", value=pair) for pair, count in sorted(counts.items()) if count > 1)
+
+
+def catalog_from_document(document: object, *, allow_unsupported_schema: bool = False) -> DbtCatalog:
     """Project a decoded manifest document into immutable domain values.
 
     Nodes are read in sorted unique-id order, and the catalog keeps their models in that order.
+    A model SST cannot use is left out with a diagnostic in `DbtCatalog.diagnostics`.
+
+    Args:
+        allow_unsupported_schema: Read a manifest whose schema version is unsupported or unreadable.
 
     Raises:
-        ProjectError: The schema version is not `SUPPORTED_SCHEMA`, or a part SST reads has the
-            wrong shape, such as a model without a name or a relation.
+        ProjectError: The schema version is refused, or a part SST reads has the wrong shape.
 
     Diagnostics:
-        SST-DBT017: the manifest's `dbt_schema_version` is not `SUPPORTED_SCHEMA`; raised.
+        SST-DBT018, SST-DBT017: as `check_schema_version` raises them.
+        SST-DBT013, SST-DBT014: a model has no name, or no database or schema; it is skipped.
+        SST-DBT012: a source pair is declared more than once.
     """
     root = _mapping(document, path="root")
     metadata = _mapping(root.get("metadata"), path="metadata")
-    schema_version = str(metadata.get("dbt_schema_version") or "")
-    if schema_version != SUPPORTED_SCHEMA:
-        diagnostic = D("SST-DBT017", found=schema_version, expected=SUPPORTED_SCHEMA)
-        raise ProjectError(diagnostic.message, diagnostics=(diagnostic,))
-
+    check_schema_version(metadata, allow_unsupported=allow_unsupported_schema)
     nodes = _mapping(root.get("nodes"), path="nodes")
     key_tests = _key_test_columns(nodes)
+    test_counts = _test_counts(nodes)
     models: list[DbtModel] = []
     relationless: list[str] = []
+    unreadable: dict[str, str] = {}
+    diagnostics: list[Diagnostic] = []
     for unique_id, raw_node in sorted(nodes.items()):
-        model = _model(unique_id, raw_node, key_tests.get(str(unique_id), frozenset()))
+        model = _model(unique_id, raw_node, key_tests.get(str(unique_id), frozenset()), test_counts.get(unique_id, 0))
         if isinstance(model, DbtModel):
             models.append(model)
+        elif isinstance(model, Diagnostic):
+            diagnostics.append(model)
         elif model is not None:
-            relationless.append(model)
-
+            relationless.append(model[0])
+            unreadable[model[0].casefold()] = model[1]
+    unreadable.update({name.casefold(): "disabled" for name in _disabled_models(root)})
+    sources, duplicate_sources = _sources(root)
     return DbtCatalog(
-        schema_version=schema_version,
+        schema_version=str(metadata.get("dbt_schema_version") or ""),
         dbt_version=_text(metadata.get("dbt_version")),
         project_name=_text(metadata.get("project_name")),
         models=tuple(models),
         relationless_models=tuple(relationless),
+        unreadable_models=MappingProxyType(unreadable),
+        sources=sources,
+        diagnostics=(*diagnostics, *duplicate_sources),
     )
 
 
-def load_manifest_catalog(path: Path) -> DbtCatalog:
-    """Read and decode one dbt manifest without consulting dbt model YAML."""
+def load_manifest_catalog(path: Path, *, allow_unsupported_schema: bool = False) -> DbtCatalog:
+    """Read and decode one dbt manifest without consulting dbt model YAML.
+
+    Args:
+        allow_unsupported_schema: As `catalog_from_document` takes it.
+    """
     try:
         document = json.loads(path.read_text(encoding="utf-8"))
     except OSError as exc:
         raise ProjectError(f"cannot read dbt manifest {path}: {exc}") from exc
     except json.JSONDecodeError as exc:
         raise ProjectError(f"dbt manifest {path} is not valid JSON: {exc}") from exc
-    return catalog_from_document(document)
+    return catalog_from_document(document, allow_unsupported_schema=allow_unsupported_schema)

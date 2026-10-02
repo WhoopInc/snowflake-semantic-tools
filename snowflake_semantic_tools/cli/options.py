@@ -44,12 +44,33 @@ def target_option() -> Decorator:
     return click.option("--target", "target_name")
 
 
+# Where `--allow-unsupported-manifest-schema` is kept for the run, in the click context's `meta`.
+ALLOW_UNSUPPORTED_MANIFEST_SCHEMA = "sst.allow_unsupported_manifest_schema"
+
+
+def _remember_schema_override(context: click.Context, _param: click.Parameter, value: bool) -> bool:
+    context.meta[ALLOW_UNSUPPORTED_MANIFEST_SCHEMA] = value
+    return value
+
+
 def manifest_option() -> Decorator:
-    """`--manifest`, an existing dbt `manifest.json`, passed as `manifest_path`."""
-    return click.option(
-        "--manifest",
-        "manifest_path",
-        type=click.Path(exists=True, dir_okay=False, path_type=Path),
+    """`--manifest`, an existing dbt `manifest.json`, passed as `manifest_path`.
+
+    With it comes `--allow-unsupported-manifest-schema`, which is not passed to the command: the
+    project wiring reads it from the click context, so every command that reads a manifest takes it.
+    """
+    return stacked(
+        click.option(
+            "--manifest",
+            "manifest_path",
+            type=click.Path(exists=True, dir_okay=False, path_type=Path),
+        ),
+        click.option(
+            "--allow-unsupported-manifest-schema",
+            is_flag=True,
+            expose_value=False,
+            callback=_remember_schema_override,
+        ),
     )
 
 

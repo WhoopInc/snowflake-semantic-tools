@@ -37,8 +37,9 @@ def _list_of(value: object) -> list[Any]:
 def _table_refs(value: object) -> tuple[str, ...]:
     """Read a `tables:` list as the models it names, casefolded and in order.
 
-    Each entry is a `{{ ref('<model>') }}` call, a legacy `{{ table('<model>') }}` call, or a
-    bare model name; a value that is not a list names none. Both callers swallow the error:
+    Each entry is a `{{ ref('<model>') }}` call, a `{{ source('<source>', '<table>') }}` call,
+    named `<source>.<table>`, a legacy `{{ table('<model>') }}` call, or a bare model name; a
+    value that is not a list names none. Both callers swallow the error:
     `_safe_table_refs` reads it as no tables, and `_table_refs_poisoned` as poison.
 
     Raises:
@@ -65,6 +66,10 @@ def _table_refs(value: object) -> tuple[str, ...]:
             if len(call.args) != 1:
                 raise ProjectError(f"table attachment ref() must have one argument, found {raw!r}")
             refs.append(call.args[0].casefold())
+            continue
+        source = single_template_call(str(raw), "source")
+        if source is not None and len(source.args) == 2:
+            refs.append(".".join(source.args).casefold())
             continue
         legacy = single_template_call(str(raw), "table")
         if legacy is not None and len(legacy.args) == 1:

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
+from functools import partial
 from pathlib import Path
 from types import MappingProxyType
 from typing import Any
@@ -17,11 +18,12 @@ from snowflake_semantic_tools.adapters.yaml.semantic.readers import (
     load_verified_queries,
 )
 from snowflake_semantic_tools.adapters.yaml.semantic.relationships import load_relationships
-from snowflake_semantic_tools.domain.diagnostics import DiagnosticBag, Origin
+from snowflake_semantic_tools.domain.diagnostics import Diagnostic, DiagnosticBag, Origin
 from snowflake_semantic_tools.domain.model.dbt import DbtModel
 from snowflake_semantic_tools.domain.model.project import ParsedMember, ParsedProject, ParsedView
 from snowflake_semantic_tools.domain.model.registry import SEMANTIC_REGISTRY
 from snowflake_semantic_tools.domain.model.semantic_view import ColumnKind, Relationship
+from snowflake_semantic_tools.domain.parse.records import mutable_records, registered_root_keys, root_key_diagnostics
 from snowflake_semantic_tools.domain.parse.template import TemplateCall, TemplateSyntaxError, scan_template_calls
 
 
@@ -37,6 +39,11 @@ def parse_semantic_project(
     filters, custom instructions, verified queries, relationships -- and then the fact and
     dimension columns of the dbt models. The readers run in that order too, so when more
     than one cannot read its members, the first one's error is the one raised.
+
+    Diagnostics:
+        SST-LOD021, SST-PRS001: a document's root keys are not registered, as
+            `root_key_diagnostics` reports them, after the documents' own diagnostics.
+        SST-PRS900: a parser returned a record that is not immutable, after the root keys.
     """
     views = _parse_views(documents)
     metrics = load_metrics(documents, project_dir, semantic_models_dir)
@@ -51,7 +58,29 @@ def parse_semantic_project(
         *_relationship_members(relationship_records),
         *_column_members(models),
     )
-    return ParsedProject(views, members, DiagnosticBag((*documents.diagnostics, *relationship_diagnostics)))
+    known = registered_root_keys(SEMANTIC_REGISTRY)
+    shape = tuple(
+        diagnostic
+        for document in documents.documents
+        for diagnostic in root_key_diagnostics(document.path, document.root_keys, known, partial(_key_line, document))
+    )
+    mutable = (
+        *mutable_records("semantic_view", views),
+        *(diagnostic for type_name in SEMANTIC_REGISTRY.members for diagnostic in _mutable_members(type_name, members)),
+    )
+    return ParsedProject(
+        views, members, DiagnosticBag((*documents.diagnostics, *shape, *mutable, *relationship_diagnostics))
+    )
+
+
+def _key_line(document: RawDocument, key: str) -> int | None:
+    position = document.position((key,))
+    return position.line if position is not None else None
+
+
+def _mutable_members(type_name: str, members: tuple[ParsedMember, ...]) -> tuple[Diagnostic, ...]:
+    """Report the parsed members of one type whose record a parser left mutable (SST-PRS900)."""
+    return mutable_records(type_name, (member.source for member in members if member.type_name == type_name))
 
 
 def _parse_views(documents: RawDocuments) -> tuple[ParsedView, ...]:

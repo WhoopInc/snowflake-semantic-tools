@@ -15,8 +15,8 @@ from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, Origin
 from snowflake_semantic_tools.domain.model.artifact_key import artifact_key
 from snowflake_semantic_tools.domain.model.dbt import DbtModel
 from snowflake_semantic_tools.domain.model.semantic_view import Relationship
+from snowflake_semantic_tools.domain.parse.names import identifier_problem
 from snowflake_semantic_tools.domain.parse.template import TemplateSyntaxError, scan_template_calls
-from snowflake_semantic_tools.domain.validate.sql import name_problem
 
 
 def _relationship_diagnostics(
@@ -271,9 +271,12 @@ def load_relationships(
     Diagnostics:
         SST-REF045: when an endpoint is written as a `{{ ref() }}` call.
         SST-PRS110: when a condition is not an equality, an ASOF comparison or a range.
+        SST-PRS111: when a range names one column for both its start and its end.
         SST-VAL204: when a condition's column is on a table other than its side's endpoint.
+        SST-PRS112: when more than one condition is an ASOF comparison.
         SST-REF001: when an endpoint names no dbt model.
         SST-REF002: when a condition names a column its endpoint's model does not have.
+        SST-PRS011: when the name, an endpoint, or a column is a valid identifier only quoted.
         SST-PRS005: when the name, an endpoint, or a column is not a valid identifier.
     """
     root = project_dir / semantic_models_dir / "relationships"
@@ -337,9 +340,12 @@ def _read_relationship(
     Diagnostics:
         SST-REF045: when an endpoint is written as a `{{ ref() }}` call.
         SST-PRS110: when a condition is not an equality, an ASOF comparison or a range.
+        SST-PRS111: when a range names one column for both its start and its end.
         SST-VAL204: when a condition's column is on a table other than its side's endpoint.
+        SST-PRS112: when more than one condition is an ASOF comparison.
         SST-REF001: when an endpoint names no dbt model.
         SST-REF002: when a condition names a column its endpoint's model does not have.
+        SST-PRS011: when the name, an endpoint, or a column is a valid identifier only quoted.
         SST-PRS005: when the name, an endpoint, or a column is not a valid identifier.
     """
     subject = artifact_key("relationship", node["name"])
@@ -364,7 +370,7 @@ def _read_relationship(
     invalid = next(
         (
             found
-            for found in (name_problem(name, artifact=subject, subject=subject, origin=origin) for name in names)
+            for found in (identifier_problem(name, artifact=subject, subject=subject, origin=origin) for name in names)
             if found
         ),
         None,
@@ -387,19 +393,24 @@ def _parse_conditions(
 ) -> _Conditions | Diagnostic:
     """Parse every condition in order, or return the first one that is malformed or misplaced.
 
-    The last ASOF condition sets the ASOF column and the last range sets the range bounds.
+    The range sets the range bounds; a relationship may declare one ASOF condition.
 
     Diagnostics:
         SST-PRS110: when a condition is not an equality, an ASOF comparison or a range.
+        SST-PRS111: when a range names one column for both its start and its end.
         SST-VAL204: when a condition's column is on a table other than its side's endpoint.
+        SST-PRS112: when more than one condition is an ASOF comparison, once per relationship.
     """
     pairs: list[tuple[str, str]] = []
     asof_index: int | None = None
+    asof_count = 0
     range_bounds: tuple[str, str] | None = None
     for condition in raw_conditions:
         parsed = _parse_condition(condition)
         if parsed is None:
             return D("SST-PRS110", origin=origin, subject=subject, artifact=subject, value=condition)
+        if parsed.range_bounds is not None and parsed.range_bounds[0] == parsed.range_bounds[1]:
+            return D("SST-PRS111", origin=origin, subject=subject, artifact=subject, name=parsed.right_column)
         mismatch = _endpoint_mismatch(parsed, endpoints)
         if mismatch is not None:
             table, column, endpoint = mismatch
@@ -413,9 +424,12 @@ def _parse_conditions(
             )
         if parsed.asof:
             asof_index = len(pairs)
+            asof_count += 1
         if parsed.range_bounds is not None:
             range_bounds = parsed.range_bounds
         pairs.append((parsed.left_column.upper(), parsed.right_column.upper()))
+    if asof_count > 1:
+        return D("SST-PRS112", origin=origin, subject=subject, artifact=subject, count=asof_count)
     return _Conditions(tuple(pairs), asof_index, range_bounds)
 
 

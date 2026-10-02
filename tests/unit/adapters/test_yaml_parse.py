@@ -35,10 +35,18 @@ def test_a_block_scalar_is_read_as_text_with_no_template_recorded() -> None:
     assert parsed.templates == {}
 
 
-def test_top_level_keys_become_strings_and_nested_values_keep_their_yaml_types() -> None:
-    parsed = parse_yaml_bytes(b"2: two\ntrue: yes\nnested:\n  3: three\n", "m.yml")
-    assert dict(parsed.tree) == {"2": "two", "True": True, "nested": {3: "three"}}
+def test_nested_values_keep_their_yaml_types_and_word_boolean_keys_stay_strings() -> None:
+    parsed = parse_yaml_bytes(b"on: x\nnested:\n  count: 3\n  enabled: true\n", "m.yml")
+    assert dict(parsed.tree) == {"on": "x", "nested": {"count": 3, "enabled": True}}
     assert isinstance(parsed.tree, MappingProxyType)
+
+
+def test_keys_that_are_not_strings_are_refused_all_at_once() -> None:
+    error = _raised(b"2: two\nnested:\n  true: three\n")
+    assert [(item.code, item.context["found"]) for item in error.diagnostics] == [
+        ("SST-LOD015", "2"),
+        ("SST-LOD015", "True"),
+    ]
 
 
 @pytest.mark.parametrize("raw", (b"---\n", b"~\n", b"null\n"), ids=("bare-marker", "tilde", "null"))
@@ -53,9 +61,9 @@ def test_a_file_without_a_document_is_lod003(raw: bytes) -> None:
     assert _raised(raw, "empty.yml").diagnostics == (D("SST-LOD003", file="empty.yml"),)
 
 
-def test_bytes_that_are_not_utf8_are_prs122_at_their_offset() -> None:
+def test_bytes_that_are_not_utf8_are_lod006_at_their_offset() -> None:
     error = _raised(b"a: \xff\n", "bad.yml")
-    assert error.diagnostics == (D("SST-PRS122", origin=Origin("bad.yml"), file="bad.yml", offset=3),)
+    assert error.diagnostics == (D("SST-LOD006", origin=Origin("bad.yml"), file="bad.yml", offset=3),)
     assert isinstance(error.__cause__, UnicodeDecodeError)
 
 
@@ -86,11 +94,6 @@ def test_a_syntax_error_is_lod001_at_the_mark_and_keeps_the_yaml_error_as_cause(
     (diagnostic,) = error.diagnostics
     assert (diagnostic.code, diagnostic.context["file"], diagnostic.context["line"]) == ("SST-LOD001", "s.yml", 3)
     assert error.__cause__ is not None
-
-
-def test_an_earlier_merged_mapping_wins_over_a_later_one() -> None:
-    parsed = parse_yaml_bytes(b"a: &a {k: 1}\nb: &b {k: 2, j: 2}\nuse:\n  <<: [*a, *b]\n", "m.yml")
-    assert parsed.tree["use"] == {"k": 1, "j": 2}
 
 
 def test_read_yaml_mapping_returns_a_plain_dict_and_names_the_file_by_its_path(tmp_path: Path) -> None:

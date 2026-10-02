@@ -96,6 +96,35 @@ def _read_yaml(path: Path) -> dict[str, Any]:
     return {str(key): item for key, item in value.items()}
 
 
+def _read_profiles(project_dir: Path) -> dict[str, Any]:
+    """Read the project's `profiles.yml` as dbt does, as plain YAML.
+
+    Raises:
+        ProjectError: The file is not YAML, or not a mapping of profiles (SST-DBT019).
+        OSError: The file cannot be read.
+
+    Diagnostics:
+        SST-DBT019: the file does not parse, or its root is not a mapping; raised.
+    """
+    text = (project_dir / "profiles.yml").read_text(encoding="utf-8")
+    try:
+        value = yaml.safe_load(text)
+    except yaml.YAMLError as exc:
+        mark = getattr(exc, "problem_mark", None)
+        where = f"line {mark.line + 1}: " if mark is not None else ""
+        _refuse_profiles(f"{where}{getattr(exc, 'problem', None) or exc}", exc)
+    if not isinstance(value, dict):
+        _refuse_profiles(f"the root is {type(value).__name__}, not a mapping of profiles")
+    return {str(key): item for key, item in value.items()}
+
+
+def _refuse_profiles(detail: str, cause: Exception | None = None) -> NoReturn:
+    diagnostic = D(
+        "SST-DBT019", origin=Origin("profiles.yml"), subject="config:profiles.yml", path="profiles.yml", detail=detail
+    )
+    raise ProjectError(diagnostic.message, diagnostics=(diagnostic,)) from cause
+
+
 class ProfileTarget:
     """One resolved dbt target: its connection arguments, identity, and state table.
 
@@ -182,7 +211,7 @@ def profile_output(project_dir: Path, target_name: str | None = None) -> tuple[s
     filter there cannot stop a run.
     """
     profile_name = resolve_profile_name(project_dir)
-    profiles = _read_yaml(project_dir / "profiles.yml")
+    profiles = _read_profiles(project_dir)
     profile = profiles.get(profile_name)
     if not isinstance(profile, dict):
         raise ValueError(f"profiles.yml has no profile {profile_name!r}")

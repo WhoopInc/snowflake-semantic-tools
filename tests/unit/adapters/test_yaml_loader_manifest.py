@@ -66,7 +66,8 @@ def write_project(root: Path) -> Path:
                 "name": "products",
                 "description": "Products available to semantic views.",
                 "relation_name": "physical_db.physical_schema.product_catalog",
-                "config": {"meta": {"sst": {"primary_key": ["product_id"]}}},
+                "checksum": {"name": "sha256", "checksum": "0" * 64},
+                "config": {"contract": {"enforced": True}, "meta": {"sst": {"primary_key": ["product_id"]}}},
                 "columns": {
                     "product_id": {
                         "name": "product_id",
@@ -75,7 +76,12 @@ def write_project(root: Path) -> Path:
                         "meta": {"sst": {"column_type": "dimension"}},
                     }
                 },
-            }
+            },
+            "test.fixture.not_null_products_product_id": {
+                "resource_type": "test",
+                "attached_node": "model.fixture.products",
+                "test_metadata": {"name": "not_null"},
+            },
         },
     }
     path = root / "manifest.json"
@@ -242,7 +248,7 @@ def test_a_vq_sql_file_that_is_not_utf8_is_reported_instead_of_raising(
 
     project = load_project(Path("."), manifest_path=manifest)
 
-    assert [(item.subject, dict(item.context)) for item in project.diagnostics if item.code == "SST-PRS122"] == [
+    assert [(item.subject, dict(item.context)) for item in project.diagnostics if item.code == "SST-LOD006"] == [
         ("verified_query:latin1", {"file": "semantic_models/verified_queries/latin1.sql", "offset": 11})
     ]
 
@@ -278,12 +284,12 @@ def test_metric_parse_diagnostics_preserve_missing_empty_and_wrong_types(tmp_pat
         "SST-PRS113",
         "SST-PRS003",
         "SST-PRS003",
-        "SST-PRS013",
+        "SST-PRS103",
         "SST-PRS029",
     ]
 
 
-def test_every_unread_key_is_reported_and_0_3_spellings_are_errors(tmp_path: Path) -> None:
+def test_every_unread_key_is_reported_and_0_3_spellings_are_named(tmp_path: Path) -> None:
     write_project(tmp_path)
     root = tmp_path / "semantic_models"
     (root / "semantic_views" / "views.yml").write_text(
@@ -333,31 +339,31 @@ def test_every_unread_key_is_reported_and_0_3_spellings_are_errors(tmp_path: Pat
         (root / folder / f"{folder}.yml").write_text(text, encoding="utf-8")
     documents = load_documents(discover_yaml(tmp_path, "semantic_models"), parse_yaml_bytes)
     found = [
-        (item.code, item.severity.name, item.subject, item.context["field"], item.context.get("expected"))
+        (item.code, item.severity.name, item.subject, item.context.get("field"), item.context.get("expected"))
         for item in _authored_key_diagnostics(documents)
     ]
-    assert sorted(found) == sorted(
+    assert sorted(found, key=str) == sorted(
         [
             ("SST-PRS004", "WARNING", "semantic_view:catalog", "owner", None),
             ("SST-PRS004", "WARNING", "semantic_view:catalog", "table_config.products.alias", None),
             ("SST-PRS004", "WARNING", "semantic_view:catalog", "variables[0].unit", None),
             ("SST-PRS004", "WARNING", "semantic_view:catalog", "tags[0].note", None),
-            ("SST-PRS020", "ERROR", "metric:product_count", "visibility", "access_modifier"),
-            ("SST-PRS020", "ERROR", "metric:product_count", "non_additive_by", "non_additive_dimensions"),
+            ("SST-PRS020", "WARNING", "metric:product_count", "visibility", "access_modifier"),
+            ("SST-PRS020", "WARNING", "metric:product_count", "non_additive_by", "non_additive_dimensions"),
             ("SST-PRS004", "WARNING", "metric:product_count", "non_additive_dimensions[0].grain", None),
             (
                 "SST-PRS020",
-                "ERROR",
+                "WARNING",
                 "metric:product_count",
                 "non_additive_dimensions[0].order",
                 "sort_direction",
             ),
-            ("SST-PRS020", "ERROR", "metric:product_count", "non_additive_dimensions[0].nulls", "null_order"),
+            ("SST-PRS020", "WARNING", "metric:product_count", "non_additive_dimensions[0].nulls", "null_order"),
             ("SST-PRS004", "WARNING", "metric:product_count", "default_aggregation", None),
-            ("SST-PRS020", "ERROR", "custom_instruction:tone", "sql_generation", "ai_sql_generation"),
+            ("SST-PRS020", "WARNING", "custom_instruction:tone", "sql_generation", "ai_sql_generation"),
             (
                 "SST-PRS020",
-                "ERROR",
+                "WARNING",
                 "custom_instruction:tone",
                 "question_categorization",
                 "ai_question_categorization",
@@ -366,11 +372,14 @@ def test_every_unread_key_is_reported_and_0_3_spellings_are_errors(tmp_path: Pat
             ("SST-PRS004", "WARNING", "filter:cheap", "synonyms", None),
             ("SST-PRS004", "WARNING", "verified_query:how_many", "tags", None),
             ("SST-PRS004", "WARNING", "relationship:self", "join_type", None),
-            ("SST-PRS020", "ERROR", "relationship:self", "relationship_columns", "relationship_conditions"),
-        ]
+            ("SST-PRS021", "ERROR", "relationship:self", None, None),
+        ],
+        key=str,
     )
-    visibility = next(item for item in _authored_key_diagnostics(documents) if item.context["field"] == "visibility")
-    assert visibility.message == "metric:product_count: 'visibility' was renamed in 1.0; use 'access_modifier'"
+    visibility = next(
+        item for item in _authored_key_diagnostics(documents) if item.context.get("field") == "visibility"
+    )
+    assert visibility.message == "metric:product_count: 'visibility' is deprecated; use 'access_modifier'"
     assert visibility.origin is not None and visibility.origin.line == 5
     # The renamed relationship shape is not also reported as having no conditions.
     assert _relationship_parse_diagnostics(documents, tmp_path, "semantic_models") == ()
@@ -398,7 +407,7 @@ def test_nameless_and_duplicate_members_are_reported(tmp_path: Path) -> None:
         for item in _member_name_diagnostics(documents)
     )
     assert found == [
-        ("SST-PRS106", "custom_instruction:tone", "tone"),
+        ("SST-PRS007", "custom_instruction:tone", "tone"),
         ("SST-PRS107", "filter:0", 0),
         ("SST-PRS107", "filter:1", 1),
         ("SST-PRS107", "metric:0", 0),
@@ -461,8 +470,8 @@ def test_non_additive_entries_are_shape_checked(tmp_path: Path) -> None:
         ("SST-PRS003", "metric:bad_entries", "non_additive_dimensions[0]"),
         ("SST-PRS002", "metric:bad_entries", "non_additive_dimensions[1].dimension"),
         ("SST-PRS003", "metric:bad_entries", "non_additive_dimensions[2].table"),
-        ("SST-PRS013", "metric:bad_entries", "non_additive_dimensions[2].sort_direction"),
-        ("SST-PRS013", "metric:bad_entries", "non_additive_dimensions[2].null_order"),
+        ("SST-PRS103", "metric:bad_entries", "non_additive_dimensions[2].sort_direction"),
+        ("SST-PRS103", "metric:bad_entries", "non_additive_dimensions[2].null_order"),
     ]
 
 
@@ -496,8 +505,8 @@ def test_window_blocks_are_shape_checked(tmp_path: Path) -> None:
         ("SST-PRS014", "metric:exclusive", "window.partition_by"),
         ("SST-PRS003", "metric:bad_order", "window.order_by[0]"),
         ("SST-PRS002", "metric:bad_order", "window.order_by[1].ref"),
-        ("SST-PRS013", "metric:bad_order", "window.order_by[1].sort_direction"),
-        ("SST-PRS013", "metric:bad_order", "window.order_by[1].null_order"),
+        ("SST-PRS103", "metric:bad_order", "window.order_by[1].sort_direction"),
+        ("SST-PRS103", "metric:bad_order", "window.order_by[1].null_order"),
         ("SST-PRS124", "metric:bad_order", "ROWS 2 PRECEDING"),
         ("SST-PRS003", "metric:order_not_a_list", "window.order_by"),
         ("SST-PRS124", "metric:order_not_a_list", 7),
@@ -529,7 +538,7 @@ def test_a_frame_is_snowflakes_frame_grammar_and_nothing_else(authored: object, 
     assert _frame(authored) == canonical
 
 
-def test_window_keys_are_checked_and_0_3_order_spellings_are_errors(tmp_path: Path) -> None:
+def test_window_keys_are_checked_and_typos_and_0_3_order_spellings_are_named(tmp_path: Path) -> None:
     write_project(tmp_path)
     (tmp_path / "semantic_models" / "metrics" / "windows.yml").write_text(
         "snowflake_metrics:\n"
@@ -549,7 +558,7 @@ def test_window_keys_are_checked_and_0_3_order_spellings_are_errors(tmp_path: Pa
         (item.code, item.context["field"], item.context.get("expected"))
         for item in _authored_key_diagnostics(documents)
     ] == [
-        ("SST-PRS004", "window.partiton_by", None),
+        ("SST-PRS022", "window.partiton_by", "window.partition_by"),
         ("SST-PRS020", "window.order_by[0].column", "ref"),
         ("SST-PRS020", "window.order_by[0].direction", "sort_direction"),
         ("SST-PRS004", "window.order_by[0].nulls", None),
@@ -564,7 +573,8 @@ def test_a_window_dimension_the_metric_cannot_reach_fails_the_view(tmp_path: Pat
         "name": "calendar",
         "description": "Calendar months.",
         "relation_name": "db.sch.calendar",
-        "config": {"meta": {"sst": {"primary_key": ["month"]}}},
+        "checksum": {"name": "sha256", "checksum": "1" * 64},
+        "config": {"contract": {"enforced": True}, "meta": {"sst": {"primary_key": ["month"]}}},
         "columns": {
             "month": {
                 "name": "month",
@@ -573,6 +583,11 @@ def test_a_window_dimension_the_metric_cannot_reach_fails_the_view(tmp_path: Pat
                 "meta": {"sst": {"column_type": "time_dimension"}},
             }
         },
+    }
+    manifest["nodes"]["test.fixture.not_null_calendar_month"] = {
+        "resource_type": "test",
+        "attached_node": "model.fixture.calendar",
+        "test_metadata": {"name": "not_null"},
     }
     manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
     (tmp_path / "semantic_models" / "semantic_views" / "views.yml").write_text(
@@ -605,7 +620,8 @@ def test_a_non_additive_table_outside_the_view_fails_the_view(tmp_path: Path) ->
         "name": "calendar",
         "description": "Calendar months.",
         "relation_name": "db.sch.calendar",
-        "config": {"meta": {"sst": {"primary_key": ["month"]}}},
+        "checksum": {"name": "sha256", "checksum": "1" * 64},
+        "config": {"contract": {"enforced": True}, "meta": {"sst": {"primary_key": ["month"]}}},
         "columns": {
             "month": {
                 "name": "month",
@@ -614,6 +630,11 @@ def test_a_non_additive_table_outside_the_view_fails_the_view(tmp_path: Path) ->
                 "meta": {"sst": {"column_type": "time_dimension"}},
             }
         },
+    }
+    manifest["nodes"]["test.fixture.not_null_calendar_month"] = {
+        "resource_type": "test",
+        "attached_node": "model.fixture.calendar",
+        "test_metadata": {"name": "not_null"},
     }
     manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
     (tmp_path / "semantic_models" / "metrics" / "metrics.yml").write_text(
@@ -662,7 +683,7 @@ def test_0_3_key_forms_and_unknown_meta_keys_are_reported_where_a_view_uses_the_
     manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
     project = load_project(tmp_path, manifest_path=manifest_path)
     assert [(item.code, item.severity.name, item.subject) for item in project.diagnostics] == [
-        ("SST-DBT005", "ERROR", "dbt_model:products"),
+        ("SST-DBT032", "ERROR", "dbt_model:products"),
         ("SST-PRS004", "WARNING", "dbt_model:products"),
         ("SST-PRS004", "WARNING", "dbt_column:products.product_id"),
     ]

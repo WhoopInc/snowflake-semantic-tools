@@ -75,7 +75,7 @@ def load_profile_catalog(
         SST-VAL853: when an MCP config folder has no `mcp.json` or an unusable one.
         SST-VAL859: when a command is not UTF-8, or its frontmatter is malformed or holds a value
             of the wrong type.
-        SST-PRS122: when a manifest, an `AGENTS.md` prompt or a shared rule is not UTF-8; the
+        SST-LOD006: when a manifest, an `AGENTS.md` prompt or a shared rule is not UTF-8; the
             prompt or rule is left out.
         SST-LOD001: when a manifest is not valid YAML.
         SST-LOD004: when a template in a manifest is malformed.
@@ -139,6 +139,7 @@ def _parse(project_dir: Path, path: Path, subject: str, diagnostics: list[Diagno
         found = exc.diagnostics or (D("SST-LOD001", origin=Origin(file), file=file, line=1, col=1, detail=str(exc)),)
         diagnostics.extend(replace(item, subject=subject) for item in found)
         return None
+    diagnostics.extend(replace(item, subject=subject) for item in parsed.diagnostics)
     return dict(parsed.tree)
 
 
@@ -157,14 +158,14 @@ def _prompt(project_dir: Path, path: Path, subject: str, diagnostics: list[Diagn
 
 
 def _read_text(project_dir: Path, path: Path, subject: str, diagnostics: list[Diagnostic]) -> str | None:
-    """Return a file's UTF-8 text; None, reporting SST-PRT009 or SST-PRS122, if linked or not UTF-8."""
+    """Return a file's UTF-8 text; None, reporting SST-PRT009 or SST-LOD006, if linked or not UTF-8."""
     if refused(project_dir, path, diagnostics, subject=subject):
         return None
     try:
         return path.read_text(encoding="utf-8")
     except UnicodeDecodeError as exc:
         file = project_relative(project_dir, path)
-        diagnostics.append(D("SST-PRS122", origin=Origin(file), subject=subject, file=file, offset=exc.start))
+        diagnostics.append(D("SST-LOD006", origin=Origin(file), subject=subject, file=file, offset=exc.start))
         return None
 
 
@@ -185,7 +186,7 @@ def _load_profile(project_dir: Path, folder: Path, diagnostics: list[Diagnostic]
         SST-VAL851: when an unread key is one SST refuses, which names the reason.
         SST-PRS004: when any other key is not one SST reads.
         SST-PRS003: when a text field is not a string, or a name list not a list of strings.
-        SST-PRS122: when `AGENTS.md` is not UTF-8; the profile then has no prompt.
+        SST-LOD006: when `AGENTS.md` is not UTF-8; the profile then has no prompt.
     """
     subject = artifact_key("profile", folder.name)
     manifest, problem = _manifest(folder, PROFILE_FILES)
@@ -265,7 +266,7 @@ def _load_shared(project_dir: Path, folder: Path, diagnostics: list[Diagnostic])
         SST-VAL801: when the folder holds both `profile.yml` and `profile.yaml`.
         SST-PRS004: when the manifest holds a key other than `skills` and `commands`.
         SST-PRS003: when `skills` or `commands` is not a list of strings.
-        SST-PRS122: when `AGENTS.md` or a rule is not UTF-8; it is left out of the layer.
+        SST-LOD006: when `AGENTS.md` or a rule is not UTF-8; it is left out of the layer.
     """
     subject = "profile:shared"
     origin = Origin(project_relative(project_dir, folder))

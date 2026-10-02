@@ -153,7 +153,7 @@ def test_a_sidecar_that_is_not_utf8_is_reported_instead_of_raising(tmp_path: Pat
     agents, diagnostics = load_agents(tmp_path)
 
     assert [(item.code, dict(item.context)) for item in diagnostics] == [
-        ("SST-PRS122", {"file": "agents/sales/instructions.md", "offset": 6})
+        ("SST-LOD006", {"file": "agents/sales/instructions.md", "offset": 6})
     ]
     assert agents[0].orchestration_instructions is None
     assert agents[0].source_files == ("agents/sales/agent.yml",)

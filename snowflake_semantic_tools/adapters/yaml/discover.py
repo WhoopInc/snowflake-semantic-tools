@@ -20,11 +20,12 @@ from pathlib import Path, PurePosixPath
 from types import MappingProxyType
 
 from snowflake_semantic_tools.adapters.errors import ProjectError
-from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic
+from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, Origin
 from snowflake_semantic_tools.domain.model.config_schema import CONFIG_KEYS, configured_dir
 from snowflake_semantic_tools.domain.model.registry import SEMANTIC_REGISTRY, Registry
 
 YAML_SUFFIXES = frozenset((".yml", ".yaml"))
+CANONICAL_SUFFIX = ".yml"
 # How many directories deep below the semantic-models directory a file may sit.
 MAX_DEPTH = 32
 
@@ -105,7 +106,7 @@ def discover_yaml(
     Diagnostics:
         SST-DIS007: two artifact types' directories are one directory, or one holds the other.
         SST-DIS003: the walk found no YAML file.
-        SST-DIS004, SST-DIS005, SST-DIS006: as `_walk` reports them.
+        SST-DIS004, SST-DIS005, SST-DIS006, SST-LOD200, SST-LOD020: as `_walk` reports them.
     """
     root = project_dir / semantic_models_dir
     if not root.exists():
@@ -166,6 +167,7 @@ def _walk(project_dir: Path, root: Path) -> tuple[list[DiscoveredFile], list[Dia
         SST-DIS005: a directory link points back into the tree, or a directory is deeper than
             `MAX_DEPTH`; it is not walked.
         SST-DIS006: a path equals an earlier one under case folding; the later is left out.
+        SST-LOD200, SST-LOD020: as `_extension_notes` reports them, for each file found.
     """
     found: list[DiscoveredFile] = []
     problems: list[Diagnostic] = []
@@ -194,9 +196,24 @@ def _walk(project_dir: Path, root: Path) -> tuple[list[DiscoveredFile], list[Dia
                 problems.append(D("SST-DIS004", path=relative))
             else:
                 folded[key] = relative
+                problems.extend(_extension_notes(relative, entry.suffix))
                 found.append(_discovered(entry, relative, root))
         pending.extend(reversed(children))
     return sorted(found, key=lambda item: PurePosixPath(item.path).parts), problems
+
+
+def _extension_notes(relative: str, suffix: str) -> tuple[Diagnostic, ...]:
+    """Say when a file is read under an extension other than `.yml`.
+
+    Diagnostics:
+        SST-LOD200: the file uses `.yaml`, which SST accepts as it does `.yml`.
+        SST-LOD020: the file uses another spelling SST tolerates, such as `.YML`.
+    """
+    if suffix == CANONICAL_SUFFIX:
+        return ()
+    if suffix == ".yaml":
+        return (D("SST-LOD200", origin=Origin(relative), file=relative),)
+    return (D("SST-LOD020", origin=Origin(relative), file=relative, found=suffix),)
 
 
 def fold_key(path: str) -> str:

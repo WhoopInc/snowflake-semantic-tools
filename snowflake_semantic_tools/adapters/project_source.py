@@ -14,21 +14,22 @@ from collections.abc import Callable
 from hashlib import sha256
 from pathlib import Path
 
+from snowflake_semantic_tools.adapters.dbt.invoke import DbtRunner, parse_project, subprocess_runner
 from snowflake_semantic_tools.adapters.dbt.manifest import load_manifest_catalog
 from snowflake_semantic_tools.adapters.dbt.profiles import load_profile_target, profile_output, resolve_profile_name
 from snowflake_semantic_tools.adapters.dbt.project import (
     check_model_paths,
     dbt_project_name,
-    load_models,
+    model_paths,
     resolve_target,
-    run_dbt_parse,
+    stale_models,
     target_path,
 )
 from snowflake_semantic_tools.adapters.errors import ProjectError
 from snowflake_semantic_tools.adapters.yaml.agents import load_agents
 from snowflake_semantic_tools.adapters.yaml.config import load_project_config, read_config_document
 from snowflake_semantic_tools.adapters.yaml.discover import discover_yaml
-from snowflake_semantic_tools.adapters.yaml.documents import load_documents
+from snowflake_semantic_tools.adapters.yaml.documents import LoadCache, load_documents
 from snowflake_semantic_tools.adapters.yaml.evals import load_eval_catalog, parse_eval_defaults
 from snowflake_semantic_tools.adapters.yaml.fields import strings
 from snowflake_semantic_tools.adapters.yaml.parse import parse_yaml_bytes, read_yaml_mapping
@@ -36,7 +37,7 @@ from snowflake_semantic_tools.adapters.yaml.profiles import load_profile_catalog
 from snowflake_semantic_tools.adapters.yaml.semantic import load_semantic_views_result, read_semantic_inputs
 from snowflake_semantic_tools.adapters.yaml.skills import _published, load_skill_catalog
 from snowflake_semantic_tools.adapters.yaml.tools import load_tool_catalog
-from snowflake_semantic_tools.domain.diagnostics import DiagnosticBag
+from snowflake_semantic_tools.domain.diagnostics import Diagnostic, DiagnosticBag
 from snowflake_semantic_tools.domain.model.agent import AgentModel
 from snowflake_semantic_tools.domain.model.config_schema import config_block, configured_dir, skills_configured
 from snowflake_semantic_tools.domain.model.dbt import DbtCatalog
@@ -53,6 +54,7 @@ from snowflake_semantic_tools.domain.ports.project import (
     ValidationDefaults,
 )
 from snowflake_semantic_tools.domain.state import canonical_json
+from snowflake_semantic_tools.domain.validate.dbt_seam import empty_catalog
 
 
 class YamlProjectSource:
@@ -70,12 +72,19 @@ class YamlProjectSource:
         target_name: str | None = None,
         manifest_path: Path | None = None,
         invoke_dbt: bool = True,
+        dbt_runner: DbtRunner = subprocess_runner,
+        allow_unsupported_manifest_schema: bool = False,
+        load_cache: LoadCache | None = None,
     ) -> None:
         self._project_dir = project_dir
         self._target_name = target_name
         self._manifest_path = manifest_path
         self._invoke_dbt = invoke_dbt
+        self._load_cache = load_cache
+        self._runner = dbt_runner
+        self._allow_unsupported = allow_unsupported_manifest_schema
         self._parsed = False
+        self._parse_warnings: tuple[Diagnostic, ...] = ()
 
     @property
     def project_dir(self) -> Path:
@@ -103,9 +112,17 @@ class YamlProjectSource:
         path = self.manifest_file()
         if self._manifest_path is None and self._invoke_dbt and not self._parsed:
             check_model_paths(self._project_dir, read_yaml_mapping)
-            run_dbt_parse(self._project_dir, self._target_name)
+            self._parse_warnings = parse_project(
+                self._project_dir, self._target_name, path, runner=self._runner, auto_compile=self._auto_compile()
+            )
             self._parsed = True
         return path
+
+    def _auto_compile(self) -> bool:
+        """Read `defer.auto_compile`, the 0.3 key that asked SST to build the manifest for a target."""
+        config = read_config_document(self._project_dir)
+        defer = config.get("defer") if isinstance(config, dict) else None
+        return isinstance(defer, dict) and defer.get("auto_compile") is True
 
     def dbt_catalog(self) -> DbtCatalog:
         """Return the dbt manifest's models, running `dbt parse` first as `load_project` does.
@@ -113,7 +130,26 @@ class YamlProjectSource:
         Raises:
             ProjectError: dbt fails, or the manifest is absent, unreadable, or of another schema.
         """
-        return load_manifest_catalog(self._parsed_manifest())
+        return load_manifest_catalog(self._parsed_manifest(), allow_unsupported_schema=self._allow_unsupported)
+
+    def _seam_diagnostics(self, catalog: DbtCatalog) -> tuple[Diagnostic, ...]:
+        """What the dbt seam found before any semantic file is checked against the models.
+
+        A manifest given with `--manifest` is checked against the model files, since SST did not
+        produce it; one `dbt parse` just wrote cannot be stale.
+
+        Diagnostics:
+            SST-DBT020: from running dbt.
+            SST-DBT013, SST-DBT014, SST-DBT012: from reading the manifest.
+            SST-DBT001: the manifest holds no model.
+            SST-DBT022: `model-paths` cannot be read.
+            SST-DBT005: under `--manifest`, a model file changed after the manifest was written.
+        """
+        found = [*self._parse_warnings, *catalog.diagnostics, *empty_catalog(catalog)]
+        if self._manifest_path is not None and (self._project_dir / "dbt_project.yml").is_file():
+            paths, unreadable = model_paths(self._project_dir, read_yaml_mapping)
+            found.extend((*unreadable, *stale_models(self._project_dir, catalog, paths)))
+        return tuple(found)
 
     def load_project(self) -> SemanticViewProject:
         """Load the semantic views, with every diagnostic the semantic load collected.
@@ -127,16 +163,14 @@ class YamlProjectSource:
         """
         # SST's own files first, then the dbt target and models: a problem in either is
         # reported in that order, and before dbt is run.
-        inputs = read_semantic_inputs(self._project_dir)
+        inputs = read_semantic_inputs(self._project_dir, self._load_cache)
         target = resolve_target(self._project_dir, self._target_name)
-        models = load_models(
-            self._project_dir,
-            read_yaml=read_yaml_mapping,
-            target_name=self._target_name,
-            manifest_path=self._parsed_manifest(),
-            invoke_dbt=False,
+        catalog = self.dbt_catalog()
+        models = {model.name.casefold(): model for model in catalog.models}
+        project = load_semantic_views_result(self._project_dir, inputs, target=target, models=models, catalog=catalog)
+        return SemanticViewProject(
+            project.views, DiagnosticBag((*self._seam_diagnostics(catalog), *project.diagnostics))
         )
-        return load_semantic_views_result(self._project_dir, inputs, target=target, models=models)
 
     def load_tools(self) -> ToolCatalog:
         """Load the tool groups under `project.tools_dir`, checked against the dbt manifest and target.
@@ -149,7 +183,7 @@ class YamlProjectSource:
                 `profiles.yml` cannot be read.
             ValueError: The profile cannot be resolved, or `profiles.yml` does not declare the target.
         """
-        dbt = load_manifest_catalog(self._parsed_manifest())
+        dbt = self.dbt_catalog()
         config = read_yaml_mapping(self._project_dir / "sst_config.yml")
         project = config.get("project")
         tools_dir = str(project.get("tools_dir") or "tools") if isinstance(project, dict) else "tools"
@@ -227,14 +261,22 @@ class YamlProjectInputs(ProjectInputs):
         target_name: str | None,
         manifest_path: Path | None,
         git_sha: Callable[[], str],
+        dbt_runner: DbtRunner = subprocess_runner,
+        allow_unsupported_manifest_schema: bool = False,
+        load_cache: LoadCache | None = None,
     ) -> None:
         self._project_dir = project_dir
         self._target_name = target_name
+        self._allow_unsupported = allow_unsupported_manifest_schema
+        self._load_cache = load_cache or LoadCache()
         self._source = YamlProjectSource(
             project_dir,
             target_name=target_name,
             manifest_path=manifest_path,
             invoke_dbt=manifest_path is None,
+            dbt_runner=dbt_runner,
+            allow_unsupported_manifest_schema=allow_unsupported_manifest_schema,
+            load_cache=self._load_cache,
         )
         self._git_sha = git_sha
 
@@ -303,7 +345,7 @@ class YamlProjectInputs(ProjectInputs):
             dbt_schema_version=catalog.schema_version,
             dbt_digest=sha256(canonical_json(projection)).hexdigest(),
             model_count=len(catalog.models),
-            file_checksums=_file_checksums(self._project_dir),
+            file_checksums=_file_checksums(self._project_dir, self._load_cache),
             target_name=self._selected_target(),
         )
 
@@ -323,7 +365,7 @@ class YamlProjectInputs(ProjectInputs):
             return "", DbtCatalog(schema_version="", dbt_version=None, project_name=None, models=()), ""
         dbt_path = self._source.manifest_file()
         name = dbt_project_name(self._project_dir)
-        catalog = load_manifest_catalog(dbt_path)
+        catalog = load_manifest_catalog(dbt_path, allow_unsupported_schema=self._allow_unsupported)
         try:
             recorded = dbt_path.resolve().relative_to(self._project_dir.resolve()).as_posix()
         except ValueError:
@@ -347,6 +389,7 @@ def _dbt_projection(catalog: DbtCatalog) -> list[dict[str, object]]:
         {
             "name": model.name,
             "relation": model.relation_name,
+            "checksum": model.checksum,
             "primary_key": list(model.primary_key),
             "unique_keys": [list(key) for key in model.unique_keys],
             "columns": [
@@ -362,7 +405,7 @@ def _dbt_projection(catalog: DbtCatalog) -> list[dict[str, object]]:
     ]
 
 
-def _file_checksums(project_dir: Path) -> dict[str, str]:
+def _file_checksums(project_dir: Path, cache: LoadCache | None = None) -> dict[str, str]:
     """Checksum every input file the manifest records, by project-relative path.
 
     With a dbt project, each semantic model document; then every file under the tools,
@@ -374,7 +417,7 @@ def _file_checksums(project_dir: Path) -> dict[str, str]:
     checksums: dict[str, str] = {}
     if (project_dir / "dbt_project.yml").is_file():
         semantic_models_dir = configured_dir(config, "semantic_models_dir", "semantic_models")
-        documents = load_documents(discover_yaml(project_dir, semantic_models_dir), parse_yaml_bytes)
+        documents = load_documents(discover_yaml(project_dir, semantic_models_dir), parse_yaml_bytes, cache)
         checksums.update({document.path: document.checksum for document in documents.documents})
     directories = [
         configured_dir(config, "tools_dir", "tools"),

@@ -1,7 +1,7 @@
 """External-system codes (PRT): a failure at the boundary with an external system.
 
-The Snowflake connection, a transient failure, a refused privilege, a missing object, an
-unsupported dbt manifest schema, or a file SST refuses to read.
+The Snowflake connection, a transient failure, a refused privilege, a missing object, or a
+file SST refuses to read.
 """
 
 from __future__ import annotations
