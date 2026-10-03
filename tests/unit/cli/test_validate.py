@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 from click.testing import CliRunner
 
+from snowflake_semantic_tools.app.validate import CONNECTED_RULES, VALIDATION_RULES
 from snowflake_semantic_tools.cli.main import cli
 from tests.helpers.cli_projects import FIXTURE, MANIFEST, project_copy
 
@@ -93,3 +95,20 @@ def test_validate_reports_an_agent_loader_error_once(tmp_path: Path) -> None:
     assert result.exit_code == 1, result.output
     # The eval catalog once carried the agent loader's diagnostics too, so each was reported twice.
     assert result.output.count("'meta' expects a mapping, found str") == 1
+
+
+def test_validate_json_data_counts_rules_artifacts_and_what_the_baseline_suppresses(tmp_path: Path) -> None:
+    project = project_copy(tmp_path)
+    args = ["--project-dir", str(project), "--manifest", str(MANIFEST), "--no-strict", "-o", "json"]
+    plain = CliRunner().invoke(cli, ["validate", *args])
+    data = json.loads(plain.output)["data"]
+    assert data == {
+        "rules_run": len(VALIDATION_RULES) - len(CONNECTED_RULES),
+        "artifacts_checked": 14,
+        "suppressed_by_baseline": 0,
+    }
+    added = CliRunner().invoke(cli, ["baseline", "add", "--all-warnings", "--yes", *args[:4]])
+    assert added.exit_code == 0, added.output
+    baselined = CliRunner().invoke(cli, ["validate", *args])
+    envelope = json.loads(baselined.output)
+    assert envelope["data"]["suppressed_by_baseline"] == envelope["summary"]["baselined"] == 6
