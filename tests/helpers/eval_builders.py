@@ -1,8 +1,8 @@
 """A compiled eval and the Snowflake double its runs poll, for the eval compile, run, gate, and lifecycle tests.
 
 `resolved_eval` is one agent with one question, one system metric, and one custom metric;
-`compile_eval` compiles it against `DB.S.SALES_AGENT`. `EvalSnowflake` answers queries from a
-queue of results, in order, and fails a test on any query it was not given an answer for.
+`compile_eval` compiles it against `DB.S.SALES_AGENT`. `EvalSnowflake` is the Snowflake fake
+with every query scripted: it fails a test on any query it was not given an answer for.
 `gated_eval`, `attempt` and `run_result` build what the gate judges: a blocking eval with two
 baseline runs, one completed attempt's pass flags, and a run of attempts.
 """
@@ -10,9 +10,8 @@ baseline runs, one completed attempt's pass flags, and a run of attempts.
 from __future__ import annotations
 
 import json
-from collections import deque
-from collections.abc import Sequence
 from dataclasses import replace
+from typing import Any
 
 from snowflake_semantic_tools.app.compile.base import CompileResult
 from snowflake_semantic_tools.app.compile.evals import CompiledEval, CompileEvals
@@ -39,7 +38,7 @@ from snowflake_semantic_tools.domain.model.identifier import QualifiedName, Sche
 from snowflake_semantic_tools.domain.model.lifecycle import ExecResult, QueryResult, RenderedArtifact
 from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
 from snowflake_semantic_tools.domain.sql import Sql
-from tests.helpers.app_ports import InMemorySnowflake
+from tests.helpers.snowflake_fake import FakeSnowflake, Sent
 
 ORIGIN = Origin("agent.yml", 1, 1)
 
@@ -97,7 +96,7 @@ def compile_eval(resolved: ResolvedEval | None = None, *, git_sha: str = GIT_SHA
     return replace(result, compiled=stamped)
 
 
-def seed_dataset_version(artifact: RenderedArtifact, port: InMemorySnowflake) -> None:
+def seed_dataset_version(artifact: RenderedArtifact, port: FakeSnowflake) -> None:
     """Record SST's version on the eval's dataset, as a publish that finished leaves it."""
     version = dict(artifact.component_fingerprints)["dataset_version"]
     dataset = next(name for kind, name in artifact.physical_resources if kind == "DATASET")
@@ -169,32 +168,26 @@ RESULT_COLUMNS = (
 )
 
 
-class EvalSnowflake(InMemorySnowflake):
-    def __init__(self, results: list[QueryResult | Exception]) -> None:
-        super().__init__()
-        self.results = deque(results)
-        self.start_results: deque[ExecResult] = deque()
+class EvalSnowflake(FakeSnowflake):
+    """The fake with every query scripted, which runs START on the eval's scoped session.
 
-    def execute_script(self, statements: Sequence[Sql]) -> ExecResult:
-        self.scripts.append(tuple(str(statement) for statement in statements))
-        return self.start_results.popleft() if self.start_results else ExecResult(True)
+    Each query takes the next of `results` (an exception raises), and a query with none left
+    fails the test. A START is the one scoped call that writes: it takes the next of
+    `execute_results`, is logged as a script `("IN <scope>", <statement>)`, and raises when
+    that result failed, as `query_in_context` raises for a refused statement.
+    """
 
-    def query(self, sql: Sql, params: object = None) -> QueryResult:
-        self.queries.append((str(sql), params))
-        if not self.results:
-            raise AssertionError(f"unexpected query: {sql}")
-        result = self.results.popleft()
-        if isinstance(result, Exception):
-            raise result
-        return result
+    def __init__(self, results: list[QueryResult | Exception], **world: Any) -> None:
+        super().__init__(query_results=tuple(results), **world)
+        self.answer_unscripted = False
+        # The agent `compile_eval` targets has one committed version.
+        self.agent_versions.setdefault(("DB.S.SALES_AGENT", "committed"), "VERSION$1")
 
     def query_in_context(self, scope: SchemaScope, sql: Sql, params: object = None) -> QueryResult:
-        # A START is the one scoped call that writes; it is answered by `start_results`, and
-        # recorded with the scope it ran in, as the connector runs it on its scoped session.
         if "EXECUTE_AI_EVALUATION('START'" not in str(sql):
-            return self.query(sql, params)
-        self.scripts.append((f"IN {scope.sql}", str(sql)))
-        result = self.start_results.popleft() if self.start_results else ExecResult(True)
+            return super().query_in_context(scope, sql, params)
+        self.log.append(Sent("script", (f"IN {scope.sql}", str(sql))))
+        result = self.execute_results.pop(0) if self.execute_results else ExecResult(True)
         if not result.ok:
             raise SnowflakePortError(result.error.message if result.error else "start failed")
         return QueryResult()

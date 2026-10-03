@@ -11,6 +11,7 @@ from collections.abc import Callable, Sequence
 
 from click.testing import CliRunner
 from run_recorded_plan import recorded
+from snowflake_fake import Sent
 
 from snowflake_semantic_tools.adapters.locations import locate_project
 from snowflake_semantic_tools.app.compile.evals import CompiledEval
@@ -105,7 +106,7 @@ def main() -> None:
             prefix = "SELECT COUNT(*) AS ROW_COUNT FROM "
             text = str(sql)
             if text.startswith(prefix) and text[len(prefix) :] in row_counts:
-                port.queries.append((text, params))
+                port.log.append(Sent("query", (text,), params))
                 return QueryResult(("ROW_COUNT",), ((row_counts[text[len(prefix) :]],),))
             return original_query(sql, params)
 

@@ -16,9 +16,9 @@ from snowflake_semantic_tools.domain.diagnostics import ERROR_REGISTRY, Severity
 from snowflake_semantic_tools.domain.model.eval import ResolvedEval
 from snowflake_semantic_tools.domain.model.lifecycle import Action, RenderedArtifact
 from snowflake_semantic_tools.domain.state import AppliedEntry
-from tests.helpers.app_ports import InMemorySnowflake
 from tests.helpers.compile_builders import compiled_as
 from tests.helpers.eval_builders import compile_eval, resolved_eval
+from tests.helpers.snowflake_fake import FakeSnowflake
 
 
 def _published(resolved: ResolvedEval) -> RenderedArtifact:
@@ -50,7 +50,7 @@ def _plan(before: ResolvedEval, after: ResolvedEval) -> tuple[Action, list[tuple
     previous = _published(before)
     result = compile_eval(after)
     current = compiled_as(result, CompiledEval).rendered_for_publish(build_manifest(result).manifest_id)
-    port = InMemorySnowflake()
+    port = FakeSnowflake()
     port.existing = set()
     planned = EvalLifecycleHandler(port).plan(current, _entry(previous), build_manifest(result))
     return planned.action, [(item.code, item.message, item.subject) for item in planned.diagnostics]

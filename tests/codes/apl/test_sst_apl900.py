@@ -15,12 +15,12 @@ from snowflake_semantic_tools.app.apply.run import _unaccounted
 from snowflake_semantic_tools.domain.diagnostics import Severity
 from snowflake_semantic_tools.domain.model.lifecycle import ApplyOptions, ExecResult, ExecutionError, FailurePolicy
 from snowflake_semantic_tools.domain.sql import Sql
-from tests.helpers.app_ports import InMemorySnowflake
 from tests.helpers.apply_runs import apply_plan, codes
 from tests.helpers.artifact_builders import change, changeset, rendered
+from tests.helpers.snowflake_fake import FakeSnowflake
 
 
-class FailingNames(InMemorySnowflake):
+class FailingNames(FakeSnowflake):
     def __init__(self, failing: frozenset[str]) -> None:
         super().__init__()
         self.failing = failing

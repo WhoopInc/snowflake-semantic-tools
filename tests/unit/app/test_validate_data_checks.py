@@ -24,12 +24,13 @@ from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePort
 from snowflake_semantic_tools.domain.render.semantic_view import render
 from snowflake_semantic_tools.domain.sql import Sql
 from snowflake_semantic_tools.domain.state import SavedPlan
-from tests.helpers.app_ports import FixedClock, InMemorySnowflake
 from tests.helpers.artifact_builders import target
+from tests.helpers.clocks import FixedClock
+from tests.helpers.snowflake_fake import FakeSnowflake
 from tests.helpers.sql_values import authored, authored_query
 
 
-class Scripted(InMemorySnowflake):
+class Scripted(FakeSnowflake):
     """A port that answers each read whose text holds a marker with that marker's rows, or fails it."""
 
     def __init__(self, answers: Mapping[str, tuple[tuple[object, ...], ...] | Exception]) -> None:

@@ -3,14 +3,14 @@
 from __future__ import annotations
 
 from snowflake_semantic_tools.domain.diagnostics import Severity
-from tests.helpers.app_ports import InMemorySnowflake
 from tests.helpers.apply_runs import apply_plan, codes, only
 from tests.helpers.artifact_builders import change, changeset, rendered
+from tests.helpers.snowflake_fake import FakeSnowflake
 
 
 def test_sst_apl012_fires() -> None:
     artifact = rendered()
-    port = InMemorySnowflake()
+    port = FakeSnowflake()
     port.existing = {artifact.target.sql, *(relation.sql for relation in artifact.required_relations)}
     diagnostic = only(apply_plan(changeset(change(artifact)), port), "SST-APL012")
     assert diagnostic.severity is Severity.ERROR

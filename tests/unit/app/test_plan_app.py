@@ -24,15 +24,15 @@ from snowflake_semantic_tools.domain.model.registry import (
 )
 from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
 from snowflake_semantic_tools.domain.state import AppliedEntry, AppliedResourceInput, Manifest
-from tests.helpers.app_ports import InMemorySnowflake
 from tests.helpers.artifact_builders import change, manifest, rendered, state, target
+from tests.helpers.snowflake_fake import FakeSnowflake
 from tests.helpers.sql_values import statement
 
 
 def test_observe_collects_markers_grants_and_errors() -> None:
-    port = InMemorySnowflake()
+    port = FakeSnowflake()
     artifact = rendered()
-    port.rows = (ShowRow("V", "DB", "SCHEMA", "OWNER", "now", f"comment [sst:{'a' * 64}:{'b' * 64}]"),)
+    port.show(ShowRow("V", "DB", "SCHEMA", "OWNER", "now", f"comment [sst:{'a' * 64}:{'b' * 64}]"))
     port.grants[artifact.target.sql] = (GrantRow("SELECT", "ROLE", "R"),)
     observation, diagnostics = observe(
         port,
@@ -51,15 +51,15 @@ def test_observe_collects_markers_grants_and_errors() -> None:
     unrelated, quiet = observe(port, SEMANTIC_REGISTRY, (artifact.target,), fetched_at="now")
     assert unrelated.artifacts[artifact.key].grants is None and quiet == ()
 
-    port.show_error = SnowflakePortError("offline")
+    port.fail("show_objects", SnowflakePortError("offline"))
     empty, failed = observe(port, SEMANTIC_REGISTRY, (artifact.target,), fetched_at="later")
     assert empty.artifacts == {} and failed[0].code == "SST-PLN001"
 
 
 def test_observe_options_skip_grants_and_capture_the_prior_definition() -> None:
-    port = InMemorySnowflake()
+    port = FakeSnowflake()
     artifact = rendered()
-    port.rows = (ShowRow("V", "DB", "SCHEMA", "OWNER", "now"),)
+    port.show(ShowRow("V", "DB", "SCHEMA", "OWNER", "now"))
     port.grants[artifact.target.sql] = (GrantRow("SELECT", "ROLE", "R"),)
     port.definitions[artifact.target.sql] = "create semantic view V"
     desired = {artifact.key: artifact}
@@ -92,9 +92,9 @@ def test_observe_options_skip_grants_and_capture_the_prior_definition() -> None:
 
 
 def test_plan_use_case_merges_observation_diagnostics() -> None:
-    port = InMemorySnowflake()
+    port = FakeSnowflake()
     artifact = rendered()
-    port.show_error = SnowflakePortError("no privilege")
+    port.fail("show_objects", SnowflakePortError("no privilege"))
     value = PlanArtifacts(port).run(
         {artifact.key: artifact},
         manifest({artifact.key: artifact}),
@@ -107,10 +107,10 @@ def test_plan_use_case_merges_observation_diagnostics() -> None:
 
 
 def test_observe_grant_failure_keeps_unknown_not_empty() -> None:
-    port = InMemorySnowflake()
+    port = FakeSnowflake()
     artifact = rendered()
-    port.rows = (ShowRow("V", "DB", "SCHEMA", "O", "now"),)
-    port.grant_error = SnowflakePortError("denied")
+    port.show(ShowRow("V", "DB", "SCHEMA", "O", "now"))
+    port.fail("show_grants", SnowflakePortError("denied"))
     observation, diagnostics = observe(
         port, SEMANTIC_REGISTRY, (artifact.target,), fetched_at="now", desired_artifacts={artifact.key: artifact}
     )
@@ -138,8 +138,8 @@ def test_observe_skips_types_without_objects_and_merges_healthy_changes_without_
         ),
         MappingProxyType({}),
     )
-    port = InMemorySnowflake()
-    port.show_error = SnowflakePortError("composite artifacts have no generic object observation")
+    port = FakeSnowflake()
+    port.fail("show_objects", SnowflakePortError("composite artifacts have no generic object observation"))
     observation, diagnostics = observe(
         port,
         registry,
@@ -150,7 +150,7 @@ def test_observe_skips_types_without_objects_and_merges_healthy_changes_without_
     )
     assert observation.artifacts == {} and diagnostics == ()
 
-    port = InMemorySnowflake()
+    port = FakeSnowflake()
     artifact = rendered()
     value = PlanArtifacts(port).run(
         {artifact.key: artifact},
@@ -163,7 +163,7 @@ def test_observe_skips_types_without_objects_and_merges_healthy_changes_without_
 
 
 def test_observe_queries_only_requested_artifact_types() -> None:
-    port = InMemorySnowflake()
+    port = FakeSnowflake()
     artifact = rendered()
     observation, diagnostics = observe(
         port,
@@ -186,8 +186,8 @@ def test_observe_agent_live_version_selects_update_program() -> None:
         update_statements=(statement("ALTER AGENT ADD VERSION"),),
         update_live_statements=(statement("ALTER AGENT COMMIT"), statement("ALTER AGENT ADD VERSION")),
     )
-    port = InMemorySnowflake()
-    port.rows = (ShowRow("V", "DB", "SCHEMA", "OWNER", "now", object_type="AGENT"),)
+    port = FakeSnowflake()
+    port.show(ShowRow("V", "DB", "SCHEMA", "OWNER", "now", object_type="AGENT"))
     port.live_agents.add(artifact.target.sql)
     observation, diagnostics = observe(
         port,
@@ -220,7 +220,7 @@ def test_plan_reports_composite_prune_when_generic_observation_has_no_change() -
     )
     prior = replace(prior, applied=MappingProxyType({"virtual:old": entry}))
     handler = _CompositeHandler()
-    result = PlanArtifacts(InMemorySnowflake(), lifecycle_handlers={"virtual": handler}).run(
+    result = PlanArtifacts(FakeSnowflake(), lifecycle_handlers={"virtual": handler}).run(
         {artifact.key: artifact},
         manifest({artifact.key: artifact}),
         prior,

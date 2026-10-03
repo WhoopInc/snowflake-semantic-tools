@@ -15,7 +15,7 @@ from snowflake_semantic_tools.domain.model.lifecycle import OutcomeStatus
 from snowflake_semantic_tools.domain.sql import sql
 from snowflake_semantic_tools.domain.validate.publication import statement_diagnostic
 from tests.helpers.publications import compiled_skill, publish_skill
-from tests.helpers.recorded_snowflake import RecordedSnowflake
+from tests.helpers.snowflake_fake import FakeSnowflake
 
 RAW = "CREATE CORTEX EXTENSION DB.S.X; DROP TABLE T"
 
@@ -33,7 +33,7 @@ def test_sst_val827_fires() -> None:
 
 def test_sst_val827_refuses_raw_text_before_it_runs(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(_Run, "_create_extension", lambda run: run._run_statement(RAW))
-    port = RecordedSnowflake(existing=())
+    port = FakeSnowflake(existing=())
     _, result, _ = publish_skill(port, compiled_skill())
     [outcome] = result.outcomes
     assert outcome.status is OutcomeStatus.FAILED
@@ -45,5 +45,5 @@ def test_sst_val827_refuses_raw_text_before_it_runs(monkeypatch: pytest.MonkeyPa
 
 def test_sst_val827_silent() -> None:
     assert statement_diagnostic("skill:month-close", sql("SELECT 1"), certification_pending=False) is None
-    _, result, _ = publish_skill(RecordedSnowflake(existing=()), compiled_skill())
+    _, result, _ = publish_skill(FakeSnowflake(existing=()), compiled_skill())
     assert result.success, result.outcomes

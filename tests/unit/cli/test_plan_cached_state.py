@@ -22,7 +22,7 @@ from tests.helpers.cli_projects import (
     project_copy,
     skill_project,
 )
-from tests.helpers.recorded_snowflake import RecordedSnowflake
+from tests.helpers.snowflake_fake import FakeSnowflake
 
 VIEW = "jaffle_minimal"
 RECORDED = "c" * 64
@@ -36,19 +36,19 @@ class _Refusing:
         raise AssertionError(f"a plan from a recorded observation read {name} from Snowflake")
 
 
-def _published(target: str) -> RecordedSnowflake:
+def _published(target: str) -> FakeSnowflake:
     """Snowflake holding the view as an earlier manifest published it, with one explicit grant."""
     database, schema, name = target.split(".")
     row = ShowRow(name, database, schema, "OWNER", "now", f"[sst:{OTHER_MANIFEST}:{RECORDED}]")
     entry = AppliedEntry(RECORDED, target, "now", "run", "applied", RECORDED, OTHER_MANIFEST)
-    return RecordedSnowflake(
+    return FakeSnowflake(
         objects={("SEMANTIC VIEW", f"{database}.{schema}"): (row,)},
         grants={target: (GrantRow("SELECT", "ROLE", "ANALYST"),)},
         state={f"semantic_view:{VIEW}": entry},
     )
 
 
-def _live(project: Path, monkeypatch: pytest.MonkeyPatch, port: RecordedSnowflake, *flags: str) -> Result:
+def _live(project: Path, monkeypatch: pytest.MonkeyPatch, port: FakeSnowflake, *flags: str) -> Result:
     return invoke_with_port(monkeypatch, port, ["plan", *common(project), "--no-plan-out", "-o", "json", *flags])
 
 
@@ -68,7 +68,7 @@ def _cached(project: Path, monkeypatch: pytest.MonkeyPatch, *flags: str, state: 
 
 
 def _target(project: Path, monkeypatch: pytest.MonkeyPatch) -> str:
-    first = _live(project, monkeypatch, RecordedSnowflake(state={}), "--select", VIEW)
+    first = _live(project, monkeypatch, FakeSnowflake(state={}), "--select", VIEW)
     return str(json.loads(first.stdout)["data"]["changes"][0]["target"])
 
 
@@ -110,7 +110,7 @@ def test_a_live_plan_records_what_it_read_and_a_cached_plan_reuses_it_without_co
 
 def test_a_cached_plan_says_how_old_its_observation_is(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     project = project_copy(tmp_path)
-    _live(project, monkeypatch, RecordedSnowflake(state={}), "--select", VIEW)
+    _live(project, monkeypatch, FakeSnowflake(state={}), "--select", VIEW)
     path = observation_file(target_dir(project), "dev")
     document = json.loads(path.read_text(encoding="utf-8"))
     document["fetched_at"] = "2020-01-01T00:00:00+00:00"
@@ -161,7 +161,7 @@ def test_a_cached_plan_refuses_a_missing_or_foreign_observation(
         f"could not read {empty / 'observation.dev.json'}: no observation is recorded there; "
         "run sst plan without --use-cached-state to record one"
     )
-    _live(project, monkeypatch, RecordedSnowflake(state={}), "--select", VIEW)
+    _live(project, monkeypatch, FakeSnowflake(state={}), "--select", VIEW)
     path = observation_file(target_dir(project), "dev")
     document = json.loads(path.read_text(encoding="utf-8"))
     database = document["target"]["database"]
@@ -191,7 +191,7 @@ def test_a_cached_plan_refuses_what_fails_validation_without_connecting(
 ) -> None:
     project = project_copy(tmp_path)
     compile_project(project)
-    _live(project, monkeypatch, RecordedSnowflake(state={}))
+    _live(project, monkeypatch, FakeSnowflake(state={}))
     strict = _cached(project, monkeypatch, "--strict", "-o", "json")
     assert strict.exit_code == 1, strict.output
     assert "SST-PLN016" not in {item["code"] for item in _diagnostics(strict)}
@@ -218,7 +218,7 @@ def test_a_cached_plan_blocks_a_composite_artifact(tmp_path: Path, monkeypatch: 
     project = skill_project(tmp_path / "skills")
     assert CliRunner().invoke(cli, ["compile", "--project-dir", str(project)]).exit_code == 0
     live = invoke_with_port(
-        monkeypatch, RecordedSnowflake(state={}), ["plan", "--project-dir", str(project), "--no-plan-out"]
+        monkeypatch, FakeSnowflake(state={}), ["plan", "--project-dir", str(project), "--no-plan-out"]
     )
     assert live.exit_code == 2, live.output
     args = ["--use-cached-state", "--state", str(target_dir(project)), "--no-plan-out", "-o", "json"]

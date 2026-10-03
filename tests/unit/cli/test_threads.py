@@ -61,11 +61,11 @@ class _Session:
 
     def __init__(self, owner: JitteredSnowflake) -> None:
         # Imported here: the recorded double's module is large, and only these tests subclass it.
-        from tests.helpers.recorded_snowflake import RecordedSnowflake
+        from tests.helpers.snowflake_fake import FakeSnowflake
 
         self._owner = owner
-        self._recorded = RecordedSnowflake()
-        self._recorded.preflight.refused = {"locked_objects"}
+        self._recorded = FakeSnowflake()
+        self._recorded.refuse("locked_objects")
         self.closed = False
 
     def close(self) -> None:

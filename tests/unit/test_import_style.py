@@ -76,7 +76,7 @@ ALLOWED = [
     pytest.param("snowflake_semantic_tools/m.py", "from __future__ import annotations\n", id="future"),
     pytest.param("tests/unit/test_m.py", "from tests.helpers.app_ports import FixedClock\n", id="helpers-module"),
     pytest.param("tests/unit/test_m.py", "from tests.helpers import import_rules\n", id="helpers-package"),
-    pytest.param("tests/helpers/run_m.py", "from recorded_snowflake import RecordedSnowflake\n", id="script-sibling"),
+    pytest.param("tests/helpers/run_m.py", "from snowflake_fake import FakeSnowflake\n", id="script-sibling"),
 ]
 
 

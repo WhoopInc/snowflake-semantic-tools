@@ -8,12 +8,12 @@ from collections.abc import Mapping
 from snowflake_semantic_tools.domain.diagnostics import Severity
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
 from tests.helpers.publications import compiled_profile, publish_profile
-from tests.helpers.recorded_snowflake import RecordedSnowflake
+from tests.helpers.snowflake_fake import FakeSnowflake
 
 MISSING = "@DB.S.PROFILES/prompts/analyst/NOPE/AGENTS.md"
 
 
-class DanglingPointer(RecordedSnowflake):
+class DanglingPointer(FakeSnowflake):
     """The registry row lands, but it points at a tree the stage does not hold."""
 
     def desktop_profile_rows(self, registry: QualifiedName) -> tuple[Mapping[str, object], ...]:
@@ -33,5 +33,5 @@ def test_sst_apl017_fires() -> None:
 
 
 def test_sst_apl017_silent() -> None:
-    _, result, _ = publish_profile(RecordedSnowflake(existing=()), compiled_profile())
+    _, result, _ = publish_profile(FakeSnowflake(existing=()), compiled_profile())
     assert [item.code for item in result.diagnostics] == [] and result.success

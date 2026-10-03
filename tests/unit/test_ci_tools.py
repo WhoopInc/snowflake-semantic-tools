@@ -19,7 +19,7 @@ from snowflake_semantic_tools.domain.model.lifecycle import (
 from tests.helpers import coverage_ratchet, session_recorder, sweep_scratch
 from tests.helpers.live_project import live_view, orders_table
 from tests.helpers.live_snowflake import SCRATCH_MARKER, LiveAccount, scratch_schema_name, scratch_scope
-from tests.helpers.recorded_snowflake import RecordedSnowflake, ScriptedSnowflake
+from tests.helpers.snowflake_fake import FakeSnowflake
 
 NOW = datetime(2026, 1, 1, 12, 0, tzinfo=UTC)
 ACCOUNT = LiveAccount("acct", "ci_user", "/keys/ci.p8", "CI_ROLE", "CI_WH", "SCRATCH_DB")
@@ -94,7 +94,9 @@ def test_the_sweep_drops_what_it_chose_and_reports_a_drop_that_failed() -> None:
         ("created_on", "name", "comment"),
         (("x", old, SCRATCH_MARKER), ("x", older, SCRATCH_MARKER), ("x", "ANALYTICS", ""), ("x", "SST_IT_OTHER", None)),
     )
-    port = ScriptedSnowflake((ExecResult(True), ExecResult(False, error=ExecutionError("no"))), (shown,))
+    port = FakeSnowflake(
+        execute_results=(ExecResult(True), ExecResult(False, error=ExecutionError("no"))), query_results=(shown,)
+    )
     dropped, failed = sweep_scratch.sweep(port, ACCOUNT, NOW, older_than=timedelta(hours=6), run=None, dry_run=False)
     assert (dropped, failed) == ([old], [older])
     assert port.queries[0][0] == "SHOW SCHEMAS LIKE 'SST_IT_%' IN DATABASE SCRATCH_DB"
@@ -102,7 +104,7 @@ def test_the_sweep_drops_what_it_chose_and_reports_a_drop_that_failed() -> None:
         (f"DROP SCHEMA IF EXISTS SCRATCH_DB.{old} CASCADE",),
         (f"DROP SCHEMA IF EXISTS SCRATCH_DB.{older} CASCADE",),
     ]
-    dry = ScriptedSnowflake((), (shown,))
+    dry = FakeSnowflake(query_results=(shown,))
     assert sweep_scratch.sweep(dry, ACCOUNT, NOW, older_than=timedelta(hours=6), run="R2", dry_run=True) == (
         [older],
         [],
@@ -120,7 +122,7 @@ def test_a_recording_names_no_account_and_no_run_and_compares_byte_for_byte(tmp_
     schema = scratch_scope(ACCOUNT, session_recorder.RECORDING_SCHEMA)
     view = live_view(schema)
     marker = OwnershipMarker("a" * 64, "b" * 64)
-    port = RecordedSnowflake(
+    port = FakeSnowflake(
         objects={
             ("SEMANTIC VIEW", schema.sql): (
                 ShowRow(view.name.value, "SCRATCH_DB", schema.schema.value, "CI_ROLE", "2026-01-01", marker.text),

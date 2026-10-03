@@ -8,15 +8,15 @@ from __future__ import annotations
 
 from snowflake_semantic_tools.domain.diagnostics import Severity
 from tests.helpers.eval_inputs import codes, only
-from tests.helpers.recorded_snowflake import RecordedSnowflake
 from tests.helpers.skill_inputs import compile_extensions, empty_state, publish_extensions, skill, skill_catalog
+from tests.helpers.snowflake_fake import FakeSnowflake
 
 FIRST = compile_extensions(skill_catalog(skill()))
 SECOND = compile_extensions(skill_catalog(skill(files={"reference/steps.md": "Steps, revised.\n"})))
 
 
 def test_sst_val841_fires() -> None:
-    port = RecordedSnowflake(existing=())
+    port = FakeSnowflake(existing=())
     _, published = publish_extensions(port, FIRST, empty_state())
     _, changed = publish_extensions(port, SECOND, published)
     changeset, _ = publish_extensions(port, FIRST, changed)
@@ -31,7 +31,7 @@ def test_sst_val841_fires() -> None:
 
 
 def test_sst_val841_silent() -> None:
-    port = RecordedSnowflake(existing=())
+    port = FakeSnowflake(existing=())
     _, published = publish_extensions(port, FIRST, empty_state())
     changeset, _ = publish_extensions(port, FIRST, published)
     assert "SST-VAL841" not in codes(changeset.diagnostics)

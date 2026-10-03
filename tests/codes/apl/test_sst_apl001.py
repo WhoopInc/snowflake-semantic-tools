@@ -3,13 +3,13 @@
 from __future__ import annotations
 
 from snowflake_semantic_tools.domain.diagnostics import Severity
-from tests.helpers.app_ports import InMemorySnowflake, failed
 from tests.helpers.apply_runs import apply_plan, codes, only
 from tests.helpers.artifact_builders import change, changeset, rendered
+from tests.helpers.snowflake_fake import FakeSnowflake, failed
 
 
 def test_sst_apl001_fires() -> None:
-    port = InMemorySnowflake()
+    port = FakeSnowflake()
     port.execute_results = [failed("Warehouse 'W' cannot be resumed")]
     diagnostic = only(apply_plan(changeset(change(rendered())), port), "SST-APL001")
     assert diagnostic.severity is Severity.ERROR

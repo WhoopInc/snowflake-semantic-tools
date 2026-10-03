@@ -12,16 +12,16 @@ from snowflake_semantic_tools.app.manifest import build_manifest
 from snowflake_semantic_tools.domain.diagnostics import ERROR_REGISTRY, Severity
 from snowflake_semantic_tools.domain.model.lifecycle import Action, GrantRow
 from snowflake_semantic_tools.domain.state import AppliedEntry
-from tests.helpers.app_ports import InMemorySnowflake
 from tests.helpers.compile_builders import compiled_as
 from tests.helpers.eval_builders import compile_eval
+from tests.helpers.snowflake_fake import FakeSnowflake
 
 
 def _plan(grants: tuple[GrantRow, ...]) -> tuple[Action, list[str], list[str]]:
     result = compile_eval()
     manifest = build_manifest(result)
     artifact = compiled_as(result, CompiledEval).rendered_for_publish(manifest.manifest_id)
-    port = InMemorySnowflake()
+    port = FakeSnowflake()
     port.existing = {name.sql for _, name in artifact.physical_resources} | {"DB.S.EVAL_CONFIGS"}
     port.stage_formats["DB.S.EVAL_CONFIGS"] = EVAL_STAGE_FILE_FORMAT
     dataset = dict(artifact.physical_resources)["DATASET"]

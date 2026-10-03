@@ -6,16 +6,16 @@ from dataclasses import replace
 
 from snowflake_semantic_tools.domain.diagnostics import Severity
 from snowflake_semantic_tools.domain.model.lifecycle import ApplyOptions
-from tests.helpers.app_ports import InMemorySnowflake
 from tests.helpers.apply_runs import apply_plan, codes, only
 from tests.helpers.artifact_builders import change, changeset, marker, observed, rendered
+from tests.helpers.snowflake_fake import FakeSnowflake
 
 TEMPORARY = ApplyOptions(temporary=True)
 
 
 def test_sst_apl014_fires() -> None:
     artifact = replace(rendered(), temporary=True)
-    port = InMemorySnowflake()
+    port = FakeSnowflake()
     result = apply_plan(
         changeset(change(artifact, live=observed(artifact, ownership=marker(artifact)))), port, options=TEMPORARY
     )

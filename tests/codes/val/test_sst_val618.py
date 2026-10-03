@@ -4,11 +4,11 @@ from __future__ import annotations
 
 from snowflake_semantic_tools.domain.diagnostics import Diagnostic, Severity
 from tests.helpers.agent_builders import compile_tools, found, observe, search_member
-from tests.helpers.app_ports import InMemorySnowflake
+from tests.helpers.snowflake_fake import FakeSnowflake
 
 
 def _tracked(state: str) -> list[Diagnostic]:
-    port = InMemorySnowflake()
+    port = FakeSnowflake()
     port.show_rows["TABLE DB.MARTS.PRODUCT_DOCS"] = {"change_tracking": state}
     return found(observe(port, compile_tools((search_member(),))), "SST-VAL618")
 

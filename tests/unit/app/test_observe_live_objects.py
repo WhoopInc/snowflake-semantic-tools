@@ -23,14 +23,14 @@ from tests.helpers.agent_builders import (
     search_member,
     search_tool,
 )
-from tests.helpers.app_ports import InMemorySnowflake
+from tests.helpers.snowflake_fake import FakeSnowflake
 
 
 def _codes(found: tuple[Diagnostic, ...] | list[Diagnostic]) -> list[str]:
     return [item.code for item in found]
 
 
-class _Columns(InMemorySnowflake):
+class _Columns(FakeSnowflake):
     """A catalog whose indexed relation holds the column types given."""
 
     def __init__(self, kind: str = "VARCHAR") -> None:
@@ -56,11 +56,11 @@ class _Broken(_Columns):
 
 
 def test_a_secure_agent_owned_by_another_role_shared_and_tagged_with_no_tag_object() -> None:
-    port = InMemorySnowflake()
+    port = FakeSnowflake()
     port.show_rows["AGENT DB.S.SALES_AGENT"] = {"owner": "AGENT_ADMIN", "is_secure": "true"}
     owned = observe(port, compile_agents(agent("sales_agent", secure=True, tags=(("COST_CENTER", "x"),))))
     assert _codes(owned) == ["SST-VAL506", "SST-VAL508"]
-    port = InMemorySnowflake()
+    port = FakeSnowflake()
     port.show_rows["AGENT DB.S.SALES_AGENT"] = {"owner": "TEST_ROLE", "is_secure": "yes"}
     port.grants["DB.S.SALES_AGENT"] = (GrantRow("USAGE", "SHARE", "PARTNER"), GrantRow("USAGE", "ROLE", "ANALYST"))
     port.existing = {"DB.S.COST_CENTER"}
@@ -72,7 +72,7 @@ def test_an_agent_published_unchanged_must_still_match_its_rendered_spec() -> No
     result = compile_agents(agent("sales_agent", analyst_tool(query_timeout=600)))
     [compiled] = compiled_agents(result)
     spec = render_agent_spec(compiled.resolved.model, compiled.resolved.tools)
-    port = InMemorySnowflake()
+    port = FakeSnowflake()
     port.show_rows["AGENT DB.S.SALES_AGENT"] = {"owner": "TEST_ROLE"}
     port.descriptions["AGENT DB.S.SALES_AGENT"] = {"agent_spec": json.dumps({**spec, "models": {"x": 1}})}
     port.markers["DB.S.SALES_AGENT"] = OwnershipMarker("a" * 64, compiled.definition_fingerprint)
@@ -87,8 +87,8 @@ def test_an_agent_published_unchanged_must_still_match_its_rendered_spec() -> No
 def test_a_called_routine_must_exist_match_its_schema_be_usable_and_confirm_its_resources() -> None:
     result = compile_agents(agent("sales_agent", generic_tool()), tools=catalog(procedure_member()))
     # Without a live spec, the generic tool's resource key is not confirmed either.
-    assert _codes(observe(InMemorySnowflake(), result)) == ["SST-VAL533", "SST-VAL531"]
-    port = InMemorySnowflake()
+    assert _codes(observe(FakeSnowflake(), result)) == ["SST-VAL533", "SST-VAL531"]
+    port = FakeSnowflake()
     port.existing = {"DB.DEV.LOOKUP"}
     port.show_rows["PROCEDURE DB.DEV.LOOKUP"] = {"arguments": "LOOKUP(NUMBER, NUMBER) RETURN VARCHAR"}
     port.grants["DB.DEV.LOOKUP"] = (GrantRow("USAGE", "ROLE", "ANALYST"),)
@@ -106,7 +106,7 @@ def test_a_called_routine_must_exist_match_its_schema_be_usable_and_confirm_its_
 
 def test_a_pinned_extension_must_be_readable_by_the_consuming_role() -> None:
     skill = AgentSkill("vendor", "CORTEX_EXTENSION", "vendor_pack", "V2", ref="extension")
-    port = InMemorySnowflake()
+    port = FakeSnowflake()
     port.grants["DB.EXT.VENDOR_PACK"] = (GrantRow("READ", "ROLE", "ANALYST"),)
     assert _codes(observe(port, compile_agents(agent("sales_agent", skills=(skill,))))) == ["SST-VAL542"]
     port.grants["DB.EXT.VENDOR_PACK"] = (GrantRow("READ", "ROLE", "TEST_ROLE"),)

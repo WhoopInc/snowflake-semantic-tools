@@ -4,11 +4,11 @@ from __future__ import annotations
 
 from snowflake_semantic_tools.domain.diagnostics import Diagnostic, Severity
 from tests.helpers.agent_builders import agent, analyst_tool, compile_agents, found, observe
-from tests.helpers.app_ports import InMemorySnowflake
+from tests.helpers.snowflake_fake import FakeSnowflake
 
 
 def _limited(limit: str) -> list[Diagnostic]:
-    port = InMemorySnowflake()
+    port = FakeSnowflake()
     port.object_parameters[("WAREHOUSE", "WH", "STATEMENT_TIMEOUT_IN_SECONDS")] = limit
     result = compile_agents(agent("sales_agent", analyst_tool(query_timeout=600)))
     return found(observe(port, result), "SST-VAL534")

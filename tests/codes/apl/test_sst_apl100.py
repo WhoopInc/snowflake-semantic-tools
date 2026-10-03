@@ -9,8 +9,8 @@ from snowflake_semantic_tools.domain.diagnostics import Severity
 from snowflake_semantic_tools.domain.model.lifecycle import ProbeKind, RenderedArtifact, SmokeProbe
 from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
 from snowflake_semantic_tools.domain.sql import sql
-from tests.helpers.app_ports import InMemorySnowflake
 from tests.helpers.artifact_builders import rendered
+from tests.helpers.snowflake_fake import FakeSnowflake
 
 
 def probed() -> RenderedArtifact:
@@ -20,8 +20,8 @@ def probed() -> RenderedArtifact:
 
 
 def test_sst_apl100_fires() -> None:
-    port = InMemorySnowflake()
-    port.query_error = SnowflakePortError("invalid identifier 'REVENUE'")
+    port = FakeSnowflake()
+    port.fail("query", SnowflakePortError("invalid identifier 'REVENUE'"))
     [diagnostic, _] = RunSmokeSuite(port).run((probed(),)).diagnostics
     assert (diagnostic.code, diagnostic.severity) == ("SST-APL100", Severity.ERROR)
     assert diagnostic.message == "verified_query:v.top_customers: smoke probe failed: invalid identifier 'REVENUE'"
@@ -29,4 +29,4 @@ def test_sst_apl100_fires() -> None:
 
 
 def test_sst_apl100_silent() -> None:
-    assert "SST-APL100" not in [item.code for item in RunSmokeSuite(InMemorySnowflake()).run((probed(),)).diagnostics]
+    assert "SST-APL100" not in [item.code for item in RunSmokeSuite(FakeSnowflake()).run((probed(),)).diagnostics]

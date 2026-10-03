@@ -37,9 +37,10 @@ from snowflake_semantic_tools.domain.model.profile import (
 from snowflake_semantic_tools.domain.model.skill import Plugin, Skill, SkillCatalog, SkillFile
 from snowflake_semantic_tools.domain.model.tool import ToolCatalog
 from snowflake_semantic_tools.domain.state import STATE_SCHEMA_VERSION, State
-from tests.helpers.app_ports import FixedClock, InMemoryStateStore
+from tests.helpers.app_ports import InMemoryStateStore
 from tests.helpers.artifact_builders import target
-from tests.helpers.recorded_snowflake import RecordedSnowflake
+from tests.helpers.clocks import FixedClock
+from tests.helpers.snowflake_fake import FakeSnowflake
 
 SKILL_MD = "---\nname: {name}\ndescription: Does things.\n---\n# Close\nRead reference/steps.md.\n"
 
@@ -207,7 +208,7 @@ def empty_state() -> State:
 
 
 def publish_extensions(
-    port: RecordedSnowflake, compiled: dict[str, CompiledExtension], previous: State, *, include_prune: bool = False
+    port: FakeSnowflake, compiled: dict[str, CompiledExtension], previous: State, *, include_prune: bool = False
 ) -> tuple[ChangeSet, State]:
     """Plan and apply the compiled extensions; return the plan and the state apply left."""
     releases = {key: item.release for key, item in compiled.items()}

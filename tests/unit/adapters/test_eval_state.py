@@ -21,7 +21,7 @@ from snowflake_semantic_tools.domain.model.identifier import QualifiedName
 from snowflake_semantic_tools.domain.model.lifecycle import QueryResult
 from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
 from tests.helpers.eval_state_store import InMemoryEvalStateStore
-from tests.helpers.recorded_snowflake import ReadOnlySnowflake, RecordedSnowflake, ScriptedSnowflake
+from tests.helpers.snowflake_fake import FakeSnowflake, ReadOnlySnowflake
 
 TABLE = QualifiedName.parse("DB.S.SST_STATE_EVALS")
 
@@ -99,7 +99,7 @@ def _payload_row(payload: dict[str, object]) -> QueryResult:
 
 
 def test_reading_eval_state_never_creates_the_table_so_a_read_only_role_can_read() -> None:
-    recorded = ScriptedSnowflake(
+    recorded = FakeSnowflake(
         query_results=(_payload_row(_baseline_payload(baseline())),),
         existing=(TABLE.sql,),
     )
@@ -111,7 +111,7 @@ def test_reading_eval_state_never_creates_the_table_so_a_read_only_role_can_read
 
 
 def test_a_missing_eval_state_table_reads_as_no_baseline() -> None:
-    recorded = RecordedSnowflake(existing=())
+    recorded = FakeSnowflake(existing=())
     store = SnowflakeEvalStateStore(ReadOnlySnowflake(recorded), TABLE)
 
     assert store.read_baseline("dev", "eval:a") is None
@@ -119,7 +119,7 @@ def test_a_missing_eval_state_table_reads_as_no_baseline() -> None:
 
 
 def test_writing_eval_state_still_ensures_the_table_first() -> None:
-    port = ScriptedSnowflake()
+    port = FakeSnowflake()
     store = SnowflakeEvalStateStore(port, TABLE)
 
     store.write_gate("dev", gate())

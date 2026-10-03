@@ -11,7 +11,7 @@ from dataclasses import replace
 from snowflake_semantic_tools.app.compile.evals import CompiledEval
 from snowflake_semantic_tools.app.evals.run import EvalRunOptions, RunEvalSuite
 from snowflake_semantic_tools.domain.diagnostics import Severity
-from tests.helpers.app_ports import FixedClock
+from tests.helpers.clocks import FixedClock
 from tests.helpers.eval_builders import EvalSnowflake, compiled_eval_of, status_result
 from tests.helpers.eval_inputs import codes, only
 

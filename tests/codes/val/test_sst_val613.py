@@ -4,11 +4,11 @@ from __future__ import annotations
 
 from snowflake_semantic_tools.domain.diagnostics import Diagnostic, Severity
 from tests.helpers.agent_builders import compile_tools, found, observe, search_member
-from tests.helpers.app_ports import InMemorySnowflake
+from tests.helpers.snowflake_fake import FakeSnowflake
 
 
 def _live(columns: str) -> list[Diagnostic]:
-    port = InMemorySnowflake()
+    port = FakeSnowflake()
     port.descriptions["CORTEX SEARCH SERVICE DB.S.DOCS_SEARCH"] = {"columns": columns}
     return found(observe(port, compile_tools((search_member(),))), "SST-VAL613")
 

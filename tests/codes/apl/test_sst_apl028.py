@@ -7,9 +7,9 @@ from snowflake_semantic_tools.app.compile.evals import CompiledEval
 from snowflake_semantic_tools.app.lifecycle.evals import EVAL_STAGE_FILE_FORMAT, EvalLifecycleHandler
 from snowflake_semantic_tools.app.manifest import build_manifest
 from snowflake_semantic_tools.domain.diagnostics import Diagnostic, Severity
-from tests.helpers.app_ports import InMemorySnowflake
 from tests.helpers.compile_builders import compiled_as
 from tests.helpers.eval_builders import compile_eval
+from tests.helpers.snowflake_fake import FakeSnowflake
 
 WRONG = "TYPE='CSV' FIELD_DELIMITER=','"
 
@@ -19,7 +19,7 @@ def planned(file_format: str) -> tuple[Diagnostic, ...]:
     result = compile_eval()
     manifest = build_manifest(result)
     artifact = compiled_as(result, CompiledEval).rendered_for_publish(manifest.manifest_id)
-    port = InMemorySnowflake()
+    port = FakeSnowflake()
     port.existing = {"DB.S.EVAL_CONFIGS"}
     port.stage_formats["DB.S.EVAL_CONFIGS"] = file_format
     return tuple(EvalLifecycleHandler(port).plan(artifact, None, manifest).diagnostics)

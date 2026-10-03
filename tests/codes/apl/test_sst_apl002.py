@@ -4,9 +4,9 @@ from __future__ import annotations
 
 from snowflake_semantic_tools.domain.diagnostics import Severity
 from snowflake_semantic_tools.domain.model.lifecycle import RenderedArtifact
-from tests.helpers.app_ports import InMemorySnowflake, failed
 from tests.helpers.apply_runs import apply_plan, codes, only
 from tests.helpers.artifact_builders import change, changeset, rendered
+from tests.helpers.snowflake_fake import FakeSnowflake, failed
 
 
 def plan_of_two() -> tuple[RenderedArtifact, RenderedArtifact]:
@@ -16,7 +16,7 @@ def plan_of_two() -> tuple[RenderedArtifact, RenderedArtifact]:
 
 def test_sst_apl002_fires() -> None:
     first, second = plan_of_two()
-    port = InMemorySnowflake()
+    port = FakeSnowflake()
     port.execute_results = [failed("denied")]
     diagnostic = only(apply_plan(changeset(change(first), change(second)), port), "SST-APL002")
     assert diagnostic.severity is Severity.WARNING

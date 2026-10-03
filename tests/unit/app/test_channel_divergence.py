@@ -7,11 +7,11 @@ from snowflake_semantic_tools.app.lifecycle.channels import _skill_pointers, cha
 from snowflake_semantic_tools.domain.diagnostics import DiagnosticBag
 from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
 from tests.helpers.publications import compiled_profile, compiled_skill, publish_profile, publish_skill, skill
-from tests.helpers.recorded_snowflake import RecordedSnowflake
+from tests.helpers.snowflake_fake import FakeSnowflake
 
 
-def _published() -> tuple[RecordedSnowflake, CompileResult]:
-    port = RecordedSnowflake(existing=())
+def _published() -> tuple[FakeSnowflake, CompileResult]:
+    port = FakeSnowflake(existing=())
     extension = compiled_skill()
     profile = compiled_profile(skill())
     publish_skill(port, extension)
@@ -22,7 +22,7 @@ def _published() -> tuple[RecordedSnowflake, CompileResult]:
 def test_a_profile_with_no_registry_row_or_a_skill_with_no_extension_compares_nothing() -> None:
     port, result = _published()
     profile = result.compiled[1]
-    assert channel_divergence(RecordedSnowflake(existing=()), result) == ()
+    assert channel_divergence(FakeSnowflake(existing=()), result) == ()
     # A skill the profile ships that this run compiled no extension for is not compared.
     assert channel_divergence(port, CompileResult((profile,), DiagnosticBag())) == ()
     port.extensions.clear()
@@ -36,7 +36,7 @@ def test_an_extension_without_a_default_version_or_an_unreadable_channel_compare
             version["is_default"] = False
     assert channel_divergence(port, result) == ()
 
-    class Unreadable(RecordedSnowflake):
+    class Unreadable(FakeSnowflake):
         def list_location(self, location: str) -> tuple[str, ...]:
             raise SnowflakePortError("LIST refused")
 

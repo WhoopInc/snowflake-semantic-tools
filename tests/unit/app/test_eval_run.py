@@ -51,8 +51,8 @@ from snowflake_semantic_tools.domain.model.lifecycle import ExecResult, Executio
 from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
 from snowflake_semantic_tools.domain.ports.snowflake.stage import StagedFileMetadata
 from snowflake_semantic_tools.domain.state import STATE_SCHEMA_VERSION, AppliedEntry, State
-from tests.helpers.app_ports import FixedClock, InMemorySnowflake
 from tests.helpers.artifact_builders import target
+from tests.helpers.clocks import FixedClock
 from tests.helpers.eval_builders import (
     RESULT_COLUMNS,
     STATUS_COLUMNS,
@@ -64,6 +64,7 @@ from tests.helpers.eval_builders import (
     seed_dataset_version,
     status_result,
 )
+from tests.helpers.snowflake_fake import FakeSnowflake, Sent
 
 
 class ResolveErrorSnowflake(EvalSnowflake):
@@ -97,7 +98,7 @@ class ConfigReadbackSnowflake(EvalSnowflake):
         return self.observations.popleft()
 
     def upload(self, stage_path: str, content: bytes) -> None:
-        self.uploads.append((stage_path, content))
+        self.log.append(Sent("upload", (stage_path,), content=content))
         self.upload_content = content
 
     def read_staged_file(self, stage_path: str) -> bytes | None:
@@ -242,7 +243,7 @@ def test_eval_runner_runs_and_retains_every_configured_attempt() -> None:
 
     assert result.success
     assert len(result.evals[0].attempts) == 4
-    assert not port.results
+    assert not port.query_results
 
 
 def test_baseline_capture_runs_until_configured_completed_attempt_count() -> None:
@@ -279,7 +280,7 @@ def test_baseline_capture_runs_until_configured_completed_attempt_count() -> Non
 
 def test_eval_runner_distinguishes_start_status_and_retrieval_failures() -> None:
     start_port = EvalSnowflake([])
-    start_port.start_results.append(ExecResult(False, error=ExecutionError("cannot start")))
+    start_port.execute_results.append(ExecResult(False, error=ExecutionError("cannot start")))
     start_runner, compiled = runner(start_port)
     start = start_runner.run((compiled,), options=EvalRunOptions("abcdef0", timestamp="20260928T010203Z"))
     assert start.evals[0].attempts[0].terminal_status == "START_FAILED"
@@ -378,7 +379,7 @@ def test_eval_publication_preflight_refuses_unapplied_state() -> None:
         (compiled,),
         manifest,
         state,
-        EvalLifecycleHandler(InMemorySnowflake()),
+        EvalLifecycleHandler(FakeSnowflake()),
     )
 
     assert diagnostics[0].code == "SST-APL012"
@@ -592,7 +593,7 @@ def test_ensure_config_rejects_failed_repairs_and_readback_mismatches(
 
 def test_eval_runner_reports_a_refused_start_with_the_error_snowflake_gave() -> None:
     port = EvalSnowflake([])
-    port.start_results.append(ExecResult(False, error=ExecutionError("Insufficient privileges to operate on task")))
+    port.execute_results.append(ExecResult(False, error=ExecutionError("Insufficient privileges to operate on task")))
 
     result = run_once(port)
 
@@ -858,7 +859,7 @@ def test_eval_publication_preflight_refuses_manifest_mismatch() -> None:
         (compiled,),
         manifest,
         state,
-        EvalLifecycleHandler(InMemorySnowflake()),
+        EvalLifecycleHandler(FakeSnowflake()),
     )
 
     assert diagnostics[0].code == "SST-APL012"
@@ -891,7 +892,7 @@ def test_eval_publication_preflight_allows_unrelated_rows_from_older_manifests()
         None,
         MappingProxyType({compiled.artifact_key: eval_entry, "agent:old": unrelated}),
     )
-    port = InMemorySnowflake()
+    port = FakeSnowflake()
     port.existing = {name.sql for _, name in artifact.physical_resources}
     seed_dataset_version(artifact, port)
     port.existing.add("DB.S.EVAL_CONFIGS")
@@ -935,16 +936,13 @@ def test_eval_publication_preflight_accepts_a_live_noop() -> None:
         None,
         MappingProxyType({compiled.artifact_key: entry}),
     )
-    port = InMemorySnowflake()
+    port = FakeSnowflake()
     port.existing = {name.sql for _, name in artifact.physical_resources}
     seed_dataset_version(artifact, port)
     port.existing.add("DB.S.EVAL_CONFIGS")
     port.stage_formats["DB.S.EVAL_CONFIGS"] = EVAL_STAGE_FILE_FORMAT
     config_path = EvalLifecycleHandler(port).config_path(artifact)
-    port.stage_files.add(config_path)
-    port.staged_file_sizes[config_path] = len(content)
-    port.staged_file_md5s[config_path] = stage_digest
-    port.staged_file_contents[config_path] = content
+    port.stage_file(config_path, content)
 
     diagnostics = validate_eval_publication(
         (compiled,),
@@ -979,7 +977,7 @@ def test_eval_publication_preflight_reports_plan_diagnostics() -> None:
         None,
         MappingProxyType({compiled.artifact_key: entry}),
     )
-    port = InMemorySnowflake()
+    port = FakeSnowflake()
     port.existing = {name.sql for _, name in artifact.physical_resources}
     seed_dataset_version(artifact, port)
     port.existing.add("DB.S.EVAL_CONFIGS")
@@ -1023,7 +1021,7 @@ def test_eval_publication_preflight_refuses_a_live_non_noop_plan() -> None:
         (compiled,),
         manifest,
         state,
-        EvalLifecycleHandler(InMemorySnowflake()),
+        EvalLifecycleHandler(FakeSnowflake()),
     )
 
     assert diagnostics[0].code == "SST-APL012"

@@ -9,11 +9,11 @@ from snowflake_semantic_tools.domain.model.lifecycle import QueryResult
 from snowflake_semantic_tools.domain.model.semantic_view import Metric, Relationship, SemanticView, Table
 from snowflake_semantic_tools.domain.render.semantic_view import render
 from snowflake_semantic_tools.domain.sql import Sql
-from tests.helpers.app_ports import InMemorySnowflake
+from tests.helpers.snowflake_fake import FakeSnowflake
 from tests.helpers.sql_values import authored
 
 
-class Scripted(InMemorySnowflake):
+class Scripted(FakeSnowflake):
     """A port that answers the spot-check reads with one fixed row."""
 
     def __init__(self, answers: dict[str, tuple[object, ...]]) -> None:

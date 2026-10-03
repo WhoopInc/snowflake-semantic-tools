@@ -11,11 +11,11 @@ from snowflake_semantic_tools.app.compile import CompileResult
 from snowflake_semantic_tools.app.lifecycle.channels import channel_divergence
 from snowflake_semantic_tools.domain.diagnostics import DiagnosticBag, Severity
 from tests.helpers.publications import compiled_profile, compiled_skill, publish_profile, publish_skill, skill
-from tests.helpers.recorded_snowflake import RecordedSnowflake
+from tests.helpers.snowflake_fake import FakeSnowflake
 
 
-def _both_channels_published() -> tuple[RecordedSnowflake, CompileResult]:
-    port = RecordedSnowflake(existing=())
+def _both_channels_published() -> tuple[FakeSnowflake, CompileResult]:
+    port = FakeSnowflake(existing=())
     extension = compiled_skill()
     profile = compiled_profile(skill())
     publish_skill(port, extension)

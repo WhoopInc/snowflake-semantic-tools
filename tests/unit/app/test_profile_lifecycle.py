@@ -40,9 +40,10 @@ from snowflake_semantic_tools.domain.state import (
     AppliedEntry,
     State,
 )
-from tests.helpers.app_ports import FixedClock, InMemoryStateStore
+from tests.helpers.app_ports import InMemoryStateStore
 from tests.helpers.artifact_builders import target
-from tests.helpers.recorded_snowflake import PROFILE_REGISTRY_SHAPE, RecordedSnowflake
+from tests.helpers.clocks import FixedClock
+from tests.helpers.snowflake_fake import PROFILE_REGISTRY_SHAPE, FakeSnowflake
 
 STAGE = QualifiedName.parse("DB.S.PROFILES")
 REGISTRY = QualifiedName.parse("DB.S.PROFILE_REGISTRY")
@@ -96,7 +97,7 @@ def state(applied: dict[str, AppliedEntry] | None = None) -> State:
 
 
 def publish(
-    port: RecordedSnowflake, compiled: dict[str, CompiledProfile], previous: State, *, prune: bool = False
+    port: FakeSnowflake, compiled: dict[str, CompiledProfile], previous: State, *, prune: bool = False
 ) -> tuple[ChangeSet, ApplyResult, State]:
     handler = ProfileLifecycleHandler(port, compiled)
     rendered = {key: item.rendered_artifact for key, item in compiled.items()}
@@ -172,7 +173,7 @@ def test_a_profile_whose_plugin_cannot_be_bundled_does_not_publish() -> None:
 
 
 def test_first_publish_creates_registry_uploads_trees_and_reads_back_like_desktop() -> None:
-    port = RecordedSnowflake(existing=())
+    port = FakeSnowflake(existing=())
     compiled = compile_profiles(catalog())
     changeset, result, after = publish(port, compiled, state())
     assert [(change.action, change.reason) for change in changeset.changes] == [
@@ -206,7 +207,7 @@ def test_first_publish_creates_registry_uploads_trees_and_reads_back_like_deskto
 def test_unmanaged_concurrent_wrong_shape_and_client_side_stage_block() -> None:
     compiled = compile_profiles(catalog())
     version = compiled["profile:analyst"].release.version
-    port = RecordedSnowflake(existing=())
+    port = FakeSnowflake(existing=())
     port.ensure_profile_registry(REGISTRY)
     port.merge_profile_row(REGISTRY, {"CONFIG_NAME": "analyst", "VERSION": "66.00000"}, expected_version=None)
     changeset, _, _ = publish(port, compiled, state())
@@ -219,7 +220,7 @@ def test_unmanaged_concurrent_wrong_shape_and_client_side_stage_block() -> None:
     changeset, _, _ = publish(port, compiled, state({"profile:analyst": owned}))
     assert [item.code for item in changeset.diagnostics] == ["SST-PLN028"]
 
-    shape = RecordedSnowflake(existing=())
+    shape = FakeSnowflake(existing=())
     shape.tables[REGISTRY.sql] = (("CONFIG_NAME", "VARCHAR"), ("VERSION", "NUMBER(38,0)"))
     changeset, _, _ = publish(shape, compiled, state())
     assert [item.code for item in changeset.diagnostics] == ["SST-PLN029"]
@@ -228,7 +229,7 @@ def test_unmanaged_concurrent_wrong_shape_and_client_side_stage_block() -> None:
     wrong = tuple((name, "VARCHAR" if name == "ACTIVE" else kind) for name, kind in PROFILE_REGISTRY_SHAPE)
     assert _shape_problem(wrong) == "types ACTIVE VARCHAR differ"
 
-    client_side = RecordedSnowflake(existing=())
+    client_side = FakeSnowflake(existing=())
     client_side.stage_types[STAGE.sql] = "INTERNAL"
     changeset, _, _ = publish(client_side, compiled, state())
     assert [item.code for item in changeset.diagnostics] == ["SST-PLN026"]
@@ -237,7 +238,7 @@ def test_unmanaged_concurrent_wrong_shape_and_client_side_stage_block() -> None:
 
 def test_lost_race_bad_pointer_and_merge_failure_are_reported() -> None:
     compiled = compile_profiles(catalog())
-    race = RecordedSnowflake(existing=())
+    race = FakeSnowflake(existing=())
     original = race.merge_profile_row
 
     def rival_first(registry: QualifiedName, row: Mapping[str, object], *, expected_version: str | None) -> int:
@@ -248,7 +249,7 @@ def test_lost_race_bad_pointer_and_merge_failure_are_reported() -> None:
     _, result, _ = publish(race, compiled, state())
     assert result.outcomes[0].error is not None and result.outcomes[0].error.code == "SST-APL012"
 
-    dangling = RecordedSnowflake(existing=())
+    dangling = FakeSnowflake(existing=())
     original_rows = dangling.desktop_profile_rows
 
     def broken_pointer(registry: QualifiedName) -> tuple[Mapping[str, object], ...]:
@@ -262,24 +263,24 @@ def test_lost_race_bad_pointer_and_merge_failure_are_reported() -> None:
     assert result.outcomes[0].error is not None and result.outcomes[0].error.code == "SST-APL017"
     assert "the stage does not hold @DB.S.PROFILES/prompts/analyst/NOPE/AGENTS.md" in result.outcomes[0].error.message
 
-    vanished = RecordedSnowflake(existing=())
+    vanished = FakeSnowflake(existing=())
     vanished.desktop_profile_rows = lambda registry: ()  # type: ignore[method-assign]
     _, result, _ = publish(vanished, compiled, state())
     assert result.outcomes[0].error is not None and "no active row" in result.outcomes[0].error.message
 
-    refusing = RecordedSnowflake(existing=())
+    refusing = FakeSnowflake(existing=())
     refusing.refused = ("MERGE",)
     _, result, _ = publish(refusing, compiled, state())
     assert result.outcomes[0].error is not None and result.outcomes[0].error.code == "SST-APL018"
 
-    tampered = RecordedSnowflake(existing=())
+    tampered = FakeSnowflake(existing=())
     tampered.read_staged_file = lambda stage_path: b"x"  # type: ignore[method-assign]
     _, result, _ = publish(tampered, compiled, state())
     assert result.outcomes[0].error is not None and "byte for byte" in result.outcomes[0].error.message
 
 
 def test_prune_deactivates_only_under_prune_and_only_the_recorded_version() -> None:
-    port = RecordedSnowflake(existing=())
+    port = FakeSnowflake(existing=())
     compiled = compile_profiles(catalog())
     _, _, after = publish(port, compiled, state())
     changeset, result, _ = publish(port, {}, after)
@@ -319,7 +320,7 @@ def test_prune_deactivates_only_under_prune_and_only_the_recorded_version() -> N
 
 
 def test_stale_plan_and_desktop_pointer_rules() -> None:
-    port = RecordedSnowflake(existing=())
+    port = FakeSnowflake(existing=())
     compiled = compile_profiles(catalog())
     handler = ProfileLifecycleHandler(port, compiled)
     artifact = compiled["profile:analyst"].rendered_artifact
@@ -372,7 +373,7 @@ def test_stale_plan_and_desktop_pointer_rules() -> None:
     ) == ("@DB.S.P/a/",)
 
 
-class FlakyProfilePort(RecordedSnowflake):
+class FlakyProfilePort(FakeSnowflake):
     """Injects one transient failure at a chosen step of a profile publish."""
 
     def __init__(self) -> None:
@@ -440,7 +441,7 @@ def test_a_failed_read_back_after_the_row_is_written_keeps_ownership() -> None:
         assert retried.success and converged.applied["profile:analyst"].outcome == "applied"
 
 
-class DroppedConnection(RecordedSnowflake):
+class DroppedConnection(FakeSnowflake):
     """The MERGE commits, its reply is lost, and the re-read fails on the same dead connection."""
 
     def __init__(self) -> None:
@@ -484,7 +485,7 @@ def test_an_unknown_merge_outcome_is_recorded_only_when_no_row_existed() -> None
 
 
 def test_deactivating_a_row_that_is_gone_retires_it() -> None:
-    port = RecordedSnowflake(existing=())
+    port = FakeSnowflake(existing=())
     compiled = compile_profiles(catalog())
     _, _, after = publish(port, compiled, state())
     port.profile_rows.clear()
@@ -492,7 +493,7 @@ def test_deactivating_a_row_that_is_gone_retires_it() -> None:
     assert result.success and pruned.applied["profile:analyst"].outcome == DEACTIVATED
 
 
-class NarrowRegistry(RecordedSnowflake):
+class NarrowRegistry(FakeSnowflake):
     """Creating the registry leaves a table without the columns SST writes."""
 
     def ensure_profile_registry(self, qualified_name: QualifiedName) -> None:
@@ -510,7 +511,7 @@ def test_a_registry_or_stage_that_cannot_be_created_fails_before_any_row_is_writ
     assert "lacks" in outcome.error.message and "after creation" in outcome.error.message
     assert (outcome.attempts, outcome.write_succeeded, after.applied) == (1, False, {})
 
-    refusing = RecordedSnowflake(existing=())
+    refusing = FakeSnowflake(existing=())
     refusing.refused = ("CREATE STAGE",)
     _, result, after = publish(refusing, compiled, state())
     outcome = result.outcomes[0]

@@ -21,8 +21,9 @@ from snowflake_semantic_tools.domain.model.agent import AgentTool
 from snowflake_semantic_tools.domain.model.eval import EvalCatalog, EvalDefaults
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
 from snowflake_semantic_tools.domain.state.lock import LockClaim
-from tests.helpers.app_ports import FixedClock, InMemoryStateStore
+from tests.helpers.app_ports import InMemoryStateStore
 from tests.helpers.artifact_builders import target
+from tests.helpers.clocks import FixedClock
 from tests.helpers.eval_builders import EvalSnowflake, compile_eval, resolved_eval
 from tests.helpers.eval_state_store import InMemoryEvalStateStore
 from tests.helpers.project_inputs import InMemoryProjectInputs

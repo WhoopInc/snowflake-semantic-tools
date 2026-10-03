@@ -22,11 +22,13 @@ from snowflake_semantic_tools.domain.model.lifecycle import (
 )
 from snowflake_semantic_tools.domain.ports.project import ValidationDefaults
 from snowflake_semantic_tools.domain.state import AppliedEntry, State
-from tests.helpers.app_ports import FixedClock, InMemorySnowflake, InMemoryStateStore
+from tests.helpers.app_ports import InMemoryStateStore
 from tests.helpers.artifact_builders import change, rendered
+from tests.helpers.clocks import FixedClock
 from tests.helpers.compile_builders import compiled
 from tests.helpers.plan_codes import entry, live, manifest_of, state_of, view
 from tests.helpers.project_inputs import EMPTY_SOURCES, InMemoryProjectInputs, dev_target
+from tests.helpers.snowflake_fake import FakeSnowflake
 
 EVERYTHING = PlanScope((), None, None, None, None, False)
 
@@ -43,7 +45,7 @@ def _observation(*observed: ObservedArtifact) -> SnowflakeObservation:
 
 
 def test_preflight_reads_each_container_relation_privilege_lock_reference_and_warehouse_once() -> None:
-    port = InMemorySnowflake()
+    port = FakeSnowflake()
     port.existing = {"DB.SCH.TAKEN"}
     answers = port.preflight
     answers.missing_databases.add("GONE")
@@ -82,10 +84,8 @@ def test_preflight_reads_each_container_relation_privilege_lock_reference_and_wa
 
 
 def test_a_refused_preflight_read_is_reported_and_never_blocks_on_its_own() -> None:
-    port = InMemorySnowflake()
-    port.preflight.refused.update(
-        {"database_exists", "relation_exists", "warehouse_exists", "locked_objects", "external_references"}
-    )
+    port = FakeSnowflake()
+    port.refuse("database_exists", "relation_exists", "warehouse_exists", "locked_objects", "external_references")
     orphan = view("orphan")
     marked = live(orphan, marker=OwnershipMarker("a" * 64, orphan.fingerprint))
     sales = view("sales", relations=("DB.SCH.ORDERS",))
@@ -105,8 +105,8 @@ def test_a_refused_preflight_read_is_reported_and_never_blocks_on_its_own() -> N
 
 
 def test_a_schema_or_privilege_read_refused_leaves_the_write_unblocked() -> None:
-    port = InMemorySnowflake()
-    port.preflight.refused.update({"schema_exists", "missing_privileges"})
+    port = FakeSnowflake()
+    port.refuse("schema_exists", "missing_privileges")
     sales = view("sales")
     preflight, failures = read_preflight(
         port, {sales.key: sales}, _observation(), state_of(manifest_of()), dev_target(), include_prune=False
@@ -119,8 +119,8 @@ def test_a_schema_or_privilege_read_refused_leaves_the_write_unblocked() -> None
 
 
 def test_an_unparseable_warehouse_is_unusable_and_an_unnamed_one_is_not_read() -> None:
-    port = InMemorySnowflake()
-    port.preflight.refused.add("warehouse_exists")
+    port = FakeSnowflake()
+    port.refuse("warehouse_exists")
     named, _ = read_preflight(
         port,
         {},
@@ -152,7 +152,7 @@ def _select(
 
 
 def test_run_preflights_through_the_port_it_is_given() -> None:
-    port = InMemorySnowflake()
+    port = FakeSnowflake()
     port.preflight.missing_schemas.add("DB.SCH")
     ready = PreparePlan(InMemoryProjectInputs(), FixedClock()).run(
         _select(compiled()),
@@ -176,7 +176,7 @@ class _SlowClock(FixedClock):
 def test_a_plan_that_outlives_its_observation_reports_it() -> None:
     ready = PreparePlan(InMemoryProjectInputs(), _SlowClock()).run(
         _select(compiled()),
-        InMemorySnowflake(),
+        FakeSnowflake(),
         InMemoryStateStore(State.empty(dev_target())),
         target=dev_target(),
         state_table=STATE_TABLE,
@@ -203,7 +203,7 @@ def test_a_partial_plans_manifest_covers_only_what_stays_healthy_after_validatio
     assert isinstance(candidates, PlanCandidates) and candidates.split is None
     ready = use_case.run(
         candidates,
-        InMemorySnowflake(),
+        FakeSnowflake(),
         InMemoryStateStore(State.empty(dev_target())),
         target=dev_target(),
         state_table=STATE_TABLE,
@@ -231,8 +231,8 @@ def test_a_report_only_prune_restamps_state_until_state_records_it_under_the_pla
 
 
 def test_observation_rows_still_reach_the_plan() -> None:
-    port = InMemorySnowflake()
-    port.rows = (ShowRow("OTHER", "DB", "SCH", "OWNER", "now", None),)
+    port = FakeSnowflake()
+    port.show(ShowRow("OTHER", "DB", "SCH", "OWNER", "now", None))
     ready = PreparePlan(InMemoryProjectInputs(), FixedClock()).run(
         _select(compiled()),
         port,

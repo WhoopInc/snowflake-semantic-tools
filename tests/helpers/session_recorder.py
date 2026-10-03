@@ -1,6 +1,6 @@
 """Capture what Snowflake shows of a published project, and compare it with the committed recording.
 
-The offline tests trust `RecordedSnowflake` to answer the way Snowflake does; a recording is only
+The offline tests trust `FakeSnowflake` to answer the way Snowflake does; a recording is only
 honest if it was captured. `python -m tests.helpers.session_recorder` publishes the live project
 (`tests/helpers/live_project.py`) into `RECORDING_SCHEMA`, a schema nothing but this script
 writes, observes it through the real connector -- SHOW, the ownership marker, the table it reads,

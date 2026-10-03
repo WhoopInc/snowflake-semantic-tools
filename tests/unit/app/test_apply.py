@@ -34,15 +34,17 @@ from snowflake_semantic_tools.domain.model.registry import GrantPreservation
 from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
 from snowflake_semantic_tools.domain.sql import Sql
 from snowflake_semantic_tools.domain.state import FAILED_AFTER_WRITE, AppliedEntry, AppliedResourceInput, Manifest
-from tests.helpers.app_ports import FixedClock, InMemorySnowflake, InMemoryStateStore, failed
+from tests.helpers.app_ports import InMemoryStateStore
 from tests.helpers.artifact_builders import change, changeset, manifest, marker, observed, rendered, state, target
+from tests.helpers.clocks import FixedClock
+from tests.helpers.snowflake_fake import FakeSnowflake, failed
 from tests.helpers.sql_values import statement, texts
 
 
 def runner(
-    port: InMemorySnowflake | None = None, store: InMemoryStateStore | None = None, clock: FixedClock | None = None
-) -> tuple[ApplyArtifacts, InMemorySnowflake, InMemoryStateStore, FixedClock]:
-    port = port or InMemorySnowflake()
+    port: FakeSnowflake | None = None, store: InMemoryStateStore | None = None, clock: FixedClock | None = None
+) -> tuple[ApplyArtifacts, FakeSnowflake, InMemoryStateStore, FixedClock]:
+    port = port or FakeSnowflake()
     store = store or InMemoryStateStore()
     clock = clock or FixedClock()
     return (
@@ -91,7 +93,7 @@ def test_apply_create_writes_remote_then_local_state() -> None:
 
 def test_remote_state_failure_does_not_publish_uncommitted_local_state() -> None:
     artifact = rendered()
-    port = InMemorySnowflake()
+    port = FakeSnowflake()
     store = InMemoryStateStore()
 
     def fail_state(*args: object, **kwargs: object) -> None:
@@ -110,7 +112,7 @@ def test_remote_state_failure_does_not_publish_uncommitted_local_state() -> None
 
 def test_apply_create_refuses_object_that_appears_after_plan() -> None:
     artifact = rendered()
-    port = InMemorySnowflake()
+    port = FakeSnowflake()
     port.existing = {
         artifact.target.sql,
         *(relation.sql for relation in artifact.required_relations),
@@ -163,7 +165,7 @@ def test_apply_breaks_stale_lock_and_retries_transient_failure() -> None:
     store.locked = True
     store.stale = True
     store.holder = "dead"
-    port = InMemorySnowflake()
+    port = FakeSnowflake()
     port.execute_results = [failed("timeout", "08001")]
     clock = FixedClock()
     use_case, _, _, _ = runner(port, store, clock)
@@ -181,7 +183,7 @@ def test_apply_update_rechecks_marker_preserves_or_detects_grants() -> None:
     artifact = rendered()
     ownership = marker(artifact)
     live = observed(artifact, ownership=ownership)
-    port = InMemorySnowflake()
+    port = FakeSnowflake()
     port.markers[artifact.target.sql] = ownership
     grant = GrantRow("SELECT", "ROLE", "R")
     port.grants[artifact.target.sql] = (grant,)
@@ -189,7 +191,7 @@ def test_apply_update_rechecks_marker_preserves_or_detects_grants() -> None:
     good = use_case.run(changeset(change(artifact, Action.UPDATE, live=live)), state())
     assert good.success and good.outcomes[0].grants is GrantCheck.PRESERVED
 
-    port = InMemorySnowflake()
+    port = FakeSnowflake()
     port.markers[artifact.target.sql] = ownership
     calls = 0
 
@@ -209,9 +211,9 @@ def test_apply_update_rechecks_marker_preserves_or_detects_grants() -> None:
     assert port.remote_state is not None
     assert port.remote_state[artifact.key].fingerprint == artifact.fingerprint
 
-    port = InMemorySnowflake()
+    port = FakeSnowflake()
     port.markers[artifact.target.sql] = ownership
-    port.grant_error = SnowflakePortError("cannot read baseline")
+    port.fail("show_grants", SnowflakePortError("cannot read baseline"))
     use_case, _, _, _ = runner(port)
     unreadable = use_case.run(changeset(change(artifact, Action.UPDATE, live=live)), state())
     assert not unreadable.success
@@ -224,7 +226,7 @@ def test_apply_update_refuses_marker_drift_and_unsafe_replace() -> None:
     artifact = rendered()
     ownership = marker(artifact)
     live = observed(artifact, ownership=ownership)
-    port = InMemorySnowflake()
+    port = FakeSnowflake()
     port.markers[artifact.target.sql] = OwnershipMarker("b" * 64, artifact.fingerprint)
     use_case, _, _, _ = runner(port)
     drift = use_case.run(changeset(change(artifact, Action.UPDATE, live=live)), state())
@@ -243,7 +245,7 @@ def test_apply_prune_requires_permission_and_marker_and_updates_state() -> None:
     ownership = marker(artifact)
     live = observed(artifact, ownership=ownership)
     prune = change(artifact, Action.PRUNE, live=live)
-    port = InMemorySnowflake()
+    port = FakeSnowflake()
     port.markers[artifact.target.sql] = ownership
     from snowflake_semantic_tools.domain.state import AppliedEntry
 
@@ -265,7 +267,7 @@ def test_apply_prune_requires_permission_and_marker_and_updates_state() -> None:
     applied = use_case.run(changeset(prune), prior, ApplyOptions(allow_prune=True))
     assert applied.success and port.scripts[-1][0].startswith("DROP SEMANTIC VIEW")
 
-    port = InMemorySnowflake()
+    port = FakeSnowflake()
     port.markers[artifact.target.sql] = ownership
     use_case, _, _, _ = runner(port)
     # The plan saw an entry the state table no longer holds: re-read under the lock, it refuses.
@@ -285,13 +287,13 @@ def test_apply_prune_requires_permission_and_marker_and_updates_state() -> None:
 def test_apply_preflight_and_failure_policies_account_for_every_change() -> None:
     upstream = rendered("UP")
     downstream = rendered("DOWN", depends_on=(upstream.key,))
-    port = InMemorySnowflake()
+    port = FakeSnowflake()
     port.existing = {"OTHER"}
     use_case, _, _, _ = runner(port)
     missing = use_case.run(changeset(change(upstream), change(downstream)), state())
     assert len(missing.outcomes) == 2 and not missing.success
 
-    port = InMemorySnowflake()
+    port = FakeSnowflake()
     port.execute_results = [failed("syntax error", "42000")]
     use_case, _, _, _ = runner(port)
     stopped = use_case.run(
@@ -302,7 +304,7 @@ def test_apply_preflight_and_failure_policies_account_for_every_change() -> None
     assert [item.status for item in stopped.outcomes] == [OutcomeStatus.FAILED, OutcomeStatus.SKIPPED]
     assert {item.code for item in stopped.diagnostics} >= {"SST-APL001", "SST-APL002"}
 
-    port = InMemorySnowflake()
+    port = FakeSnowflake()
     port.execute_results = [failed("syntax error", "42000")]
     use_case, _, _, _ = runner(port)
     stop_all = use_case.run(
@@ -319,7 +321,7 @@ def test_partial_apply_state_retains_observed_managed_entries() -> None:
     downstream = rendered("DOWN", depends_on=(upstream.key,))
     ownership = marker(downstream)
     live_downstream = observed(downstream, ownership=ownership)
-    port = InMemorySnowflake()
+    port = FakeSnowflake()
     port.execute_results = [failed("syntax error", "42000")]
     use_case, _, store, _ = runner(port)
     result = use_case.run(
@@ -336,7 +338,7 @@ def test_stop_dependents_propagates_skips_transitively() -> None:
     upstream = rendered("UP")
     middle = rendered("MID", depends_on=(upstream.key,))
     downstream = rendered("DOWN", depends_on=(middle.key,))
-    port = InMemorySnowflake()
+    port = FakeSnowflake()
     port.execute_results = [failed("syntax error", "42000")]
     use_case, _, _, _ = runner(port)
     result = use_case.run(
@@ -370,7 +372,7 @@ def test_apply_covers_noop_blocked_prune_drift_and_missing_render() -> None:
     ownership = marker(artifact)
     live = observed(artifact, ownership=ownership)
     prune = change(artifact, Action.PRUNE, live=live)
-    port = InMemorySnowflake()
+    port = FakeSnowflake()
     port.markers[artifact.target.sql] = OwnershipMarker("b" * 64, artifact.fingerprint)
     use_case, _, _, _ = runner(port)
     drift = use_case.run(changeset(prune), state(), ApplyOptions(allow_prune=True))
@@ -386,7 +388,7 @@ def test_apply_handles_unreadable_grants_and_unknown_execution_errors() -> None:
     artifact = rendered()
     ownership = marker(artifact)
     live = observed(artifact, ownership=ownership)
-    port = InMemorySnowflake()
+    port = FakeSnowflake()
     port.markers[artifact.target.sql] = ownership
     calls = 0
 
@@ -406,7 +408,7 @@ def test_apply_handles_unreadable_grants_and_unknown_execution_errors() -> None:
     assert result.outcomes[0].grants is GrantCheck.UNREADABLE
     assert result.diagnostics[0].code == "SST-APL008"
 
-    port = InMemorySnowflake()
+    port = FakeSnowflake()
     port.execute_results = [ExecResult(False)]
     use_case, _, _, _ = runner(port)
     unknown = use_case.run(changeset(change(artifact)), state())
@@ -435,7 +437,7 @@ def test_apply_honors_parallelism_within_a_dependency_wave() -> None:
 
     first = rendered("FIRST")
     second = rendered("SECOND")
-    port = InMemorySnowflake()
+    port = FakeSnowflake()
     barrier = Barrier(2)
     original = port.execute_script
 
@@ -455,7 +457,7 @@ def test_apply_honors_parallelism_within_a_dependency_wave() -> None:
 
 def test_post_write_actor_metadata_never_queries_snowflake() -> None:
     artifact = rendered()
-    port = InMemorySnowflake()
+    port = FakeSnowflake()
     port.current_role = lambda: (_ for _ in ()).throw(SnowflakePortError("metadata down"))  # type: ignore[method-assign]
     use_case, _, store, _ = runner(port)
     result = use_case.run(changeset(change(artifact)), state())
@@ -469,7 +471,7 @@ def test_worker_exception_becomes_outcome_and_persists_sibling_success() -> None
     second = rendered("SECOND")
     ownership = marker(second)
     live_second = observed(second, ownership=ownership)
-    port = InMemorySnowflake()
+    port = FakeSnowflake()
     port.markers[second.target.sql] = ownership
 
     def marker_with_failure(
@@ -507,7 +509,7 @@ def test_grant_preservation_ignores_grantor_drift() -> None:
     artifact = rendered()
     ownership = marker(artifact)
     live = observed(artifact, ownership=ownership)
-    port = InMemorySnowflake()
+    port = FakeSnowflake()
     port.markers[artifact.target.sql] = ownership
     calls = 0
 
@@ -549,7 +551,7 @@ def test_search_service_update_replays_and_verifies_explicit_grants() -> None:
     )
     ownership = marker(artifact)
     live = replace(observed(artifact, ownership=ownership), object_type="CORTEX SEARCH SERVICE")
-    port = InMemorySnowflake()
+    port = FakeSnowflake()
     port.markers[artifact.target.sql] = ownership
     grant = GrantRow("USAGE", "ROLE", "READER", grant_option=True)
     port.grants[artifact.target.sql] = (grant,)
@@ -574,7 +576,7 @@ def test_search_service_replay_failure_retains_truthful_write_state() -> None:
     )
     ownership = marker(artifact)
     live = replace(observed(artifact, ownership=ownership), object_type="CORTEX SEARCH SERVICE")
-    port = InMemorySnowflake()
+    port = FakeSnowflake()
     port.markers[artifact.target.sql] = ownership
     port.grants[artifact.target.sql] = (GrantRow("USAGE", "ROLE", "READER"),)
     port.execute_results = [ExecResult(True), failed("grant denied", "28000")]
@@ -606,7 +608,7 @@ def test_agent_apply_uploads_spec_before_executing_version_program() -> None:
 
 def test_partial_statement_failure_records_truthful_recovery_state() -> None:
     artifact = rendered()
-    port = InMemorySnowflake()
+    port = FakeSnowflake()
     port.execute_results = [ExecResult(False, ("query-1",), error=ExecutionError("later failed"))]
     use_case, _, store, _ = runner(port)
     result = use_case.run(changeset(change(artifact)), state())
@@ -636,17 +638,17 @@ def test_an_error_reading_the_marker_back_after_create_keeps_ownership() -> None
     published = manifest({base.key: base})
     ownership = OwnershipMarker(published.manifest_id, base.fingerprint)
     artifact = replace(base, expected_marker=ownership)
-    port = InMemorySnowflake()
+    port = FakeSnowflake()
     # The CREATE succeeds; the SHOW that reads its marker back then fails.
-    port.marker_error = SnowflakePortError("connection reset", sqlstate="08001")
+    port.fail("describe_marker", SnowflakePortError("connection reset", sqlstate="08001"))
     use_case, _, store, _ = runner(port)
 
     result = use_case.run(replace(changeset(change(artifact)), manifest_id=published.manifest_id), state())
 
     assert port.scripts == [texts(artifact.statements)]
     assert store.state is not None
-    port.marker_error = None
-    port.rows = (ShowRow("V", "DB", "SCHEMA", "OWNER", "now", f"published {ownership.text}"),)
+    port.heal("describe_marker")
+    port.show(ShowRow("V", "DB", "SCHEMA", "OWNER", "now", f"published {ownership.text}"))
     replanned = PlanArtifacts(port).run({artifact.key: artifact}, published, store.state, target(), fetched_at="later")
     # The view is SST's: the next plan must not call it unmanaged.
     assert [item.code for item in replanned.diagnostics] == []
@@ -660,7 +662,7 @@ def test_an_error_rechecking_grants_after_update_records_the_write() -> None:
     artifact = rendered()
     ownership = marker(artifact)
     live = observed(artifact, ownership=ownership)
-    port = InMemorySnowflake()
+    port = FakeSnowflake()
     port.markers[artifact.target.sql] = ownership
     reads = 0
 
@@ -699,7 +701,7 @@ def test_database_role_grant_replay_uses_snowflake_spelling() -> None:
     )
     ownership = marker(artifact)
     live = replace(observed(artifact, ownership=ownership), object_type="CORTEX SEARCH SERVICE")
-    port = InMemorySnowflake()
+    port = FakeSnowflake()
     port.markers[artifact.target.sql] = ownership
     port.grants[artifact.target.sql] = (GrantRow("USAGE", "DATABASE_ROLE", "DB.READER"),)
     use_case, _, _, _ = runner(port)
@@ -719,7 +721,7 @@ def test_grant_replay_quotes_special_role_names() -> None:
     )
     ownership = marker(artifact)
     live = replace(observed(artifact, ownership=ownership), object_type="CORTEX SEARCH SERVICE")
-    port = InMemorySnowflake()
+    port = FakeSnowflake()
     port.markers[artifact.target.sql] = ownership
     port.grants[artifact.target.sql] = (GrantRow("USAGE", "ROLE", "Mixed Role"),)
     use_case, _, _, _ = runner(port)
@@ -732,7 +734,7 @@ def test_apply_stop_all_processes_successes_before_first_failure() -> None:
     first = rendered("FIRST")
     second = rendered("SECOND")
     third = rendered("THIRD")
-    port = InMemorySnowflake()
+    port = FakeSnowflake()
     port.execute_results = [ExecResult(True), failed("syntax error", "42000")]
     use_case, _, _, _ = runner(port)
     result = use_case.run(
@@ -746,7 +748,7 @@ def test_apply_stop_all_processes_successes_before_first_failure() -> None:
         OutcomeStatus.SKIPPED,
     ]
 
-    port = InMemorySnowflake()
+    port = FakeSnowflake()
     use_case, _, _, _ = runner(port)
     successful = use_case.run(
         changeset(change(first), change(second)),
@@ -801,7 +803,7 @@ def test_apply_lifecycle_handler_merges_resources_and_dispatches_diagnostic() ->
 
 def test_apply_upload_failure_and_empty_grant_replay() -> None:
     artifact = replace(rendered(), upload_path="@DB.S.FILE", upload_content=b"payload")
-    port = InMemorySnowflake()
+    port = FakeSnowflake()
 
     def fail_upload(stage_path: str, content: bytes) -> None:
         del stage_path, content
@@ -819,7 +821,7 @@ def test_apply_upload_failure_and_empty_grant_replay() -> None:
     )
     ownership = marker(replay)
     live = replace(observed(replay, ownership=ownership), object_type="CORTEX SEARCH SERVICE")
-    port = InMemorySnowflake()
+    port = FakeSnowflake()
     port.markers[replay.target.sql] = ownership
     use_case, _, _, _ = runner(port)
     empty = use_case.run(changeset(change(replay, Action.UPDATE, live=live)), state())
@@ -829,7 +831,7 @@ def test_apply_upload_failure_and_empty_grant_replay() -> None:
 
 def test_apply_exhausts_retry_and_classifies_marker_lookup_exception() -> None:
     artifact = rendered()
-    port = InMemorySnowflake()
+    port = FakeSnowflake()
     port.execute_results = [failed("timeout", "08001"), failed("timeout", "08001")]
     use_case, _, _, _ = runner(port)
     exhausted = use_case.run(
@@ -842,8 +844,8 @@ def test_apply_exhausts_retry_and_classifies_marker_lookup_exception() -> None:
 
     ownership = marker(artifact)
     live = observed(artifact, ownership=ownership)
-    port = InMemorySnowflake()
-    port.marker_error = SnowflakePortError("denied", sqlstate="28000")
+    port = FakeSnowflake()
+    port.fail("describe_marker", SnowflakePortError("denied", sqlstate="28000"))
     use_case, _, _, _ = runner(port)
     failed_lookup = use_case.run(changeset(change(artifact, Action.UPDATE, live=live)), state())
     assert failed_lookup.outcomes[0].error.kind is ErrorKind.PRIVILEGE  # type: ignore[union-attr]

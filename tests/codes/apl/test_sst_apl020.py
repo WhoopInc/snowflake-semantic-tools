@@ -15,15 +15,15 @@ from snowflake_semantic_tools.domain.diagnostics import Severity
 from snowflake_semantic_tools.domain.model.lifecycle import ExecResult, ExecutionError
 from snowflake_semantic_tools.domain.sql import Sql
 from tests.helpers.publications import compiled_skill, publish_skill
-from tests.helpers.recorded_snowflake import RecordedSnowflake
+from tests.helpers.snowflake_fake import FakeSnowflake, Sent
 
 
-class MintedElsewhere(RecordedSnowflake):
+class MintedElsewhere(FakeSnowflake):
     """Another deploy added the same version name a moment before this one."""
 
     def execute_script(self, statements: Sequence[Sql]) -> ExecResult:
         if any(" ADD VERSION " in str(statement) for statement in statements):
-            self.scripts.append(tuple(str(statement) for statement in statements))
+            self.log.append(Sent("script", tuple(str(statement) for statement in statements)))
             return ExecResult(False, error=ExecutionError("Version alias already exists.", "42710"))
         return super().execute_script(statements)
 
@@ -37,7 +37,7 @@ def test_sst_apl020_fires() -> None:
 
 
 def test_sst_apl020_silent() -> None:
-    _, result, _ = publish_skill(RecordedSnowflake(existing=()), compiled_skill())
+    _, result, _ = publish_skill(FakeSnowflake(existing=()), compiled_skill())
     assert "SST-APL020" not in [item.code for item in result.diagnostics]
 
 

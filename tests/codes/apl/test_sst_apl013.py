@@ -7,9 +7,9 @@ from dataclasses import replace
 from snowflake_semantic_tools.domain.diagnostics import Severity
 from snowflake_semantic_tools.domain.model.identifier import production_like
 from snowflake_semantic_tools.domain.model.lifecycle import ApplyOptions, ChangeSet
-from tests.helpers.app_ports import InMemorySnowflake
 from tests.helpers.apply_runs import apply_plan, codes, only
 from tests.helpers.artifact_builders import change, changeset, rendered, target
+from tests.helpers.snowflake_fake import FakeSnowflake
 
 TEMPORARY = ApplyOptions(temporary=True)
 
@@ -20,7 +20,7 @@ def temporary_plan(target_name: str) -> ChangeSet:
 
 
 def test_sst_apl013_fires() -> None:
-    port = InMemorySnowflake()
+    port = FakeSnowflake()
     result = apply_plan(temporary_plan("prod_us"), port, options=TEMPORARY)
     diagnostic = only(result, "SST-APL013")
     assert diagnostic.severity is Severity.ERROR

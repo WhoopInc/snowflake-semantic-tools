@@ -29,7 +29,7 @@ from tests.helpers.cli_projects import (
     skills_only_project,
 )
 from tests.helpers.enrich_ports import ScriptedEnrich
-from tests.helpers.recorded_snowflake import RecordedSnowflake
+from tests.helpers.snowflake_fake import FakeSnowflake
 
 # Which exit codes each command may return.
 EXIT_CODES = {
@@ -62,14 +62,14 @@ def _run(*args: str) -> Result:
 
 
 def _unreachable(monkeypatch: pytest.MonkeyPatch) -> None:
-    def refuse(params: object) -> RecordedSnowflake:
+    def refuse(params: object) -> FakeSnowflake:
         raise SnowflakePortError("unreachable", diagnostic=None)
 
     monkeypatch.setattr("snowflake_semantic_tools.cli.main.SnowflakeConnector", refuse)
 
 
 def _interrupt(monkeypatch: pytest.MonkeyPatch) -> None:
-    def interrupt(params: object) -> RecordedSnowflake:
+    def interrupt(params: object) -> FakeSnowflake:
         raise KeyboardInterrupt
 
     monkeypatch.setattr("snowflake_semantic_tools.cli.main.SnowflakeConnector", interrupt)
@@ -272,7 +272,7 @@ def _debug_unreachable(tmp: Path, monkeypatch: pytest.MonkeyPatch) -> Result:
 
 def _plan(tmp: Path, monkeypatch: pytest.MonkeyPatch, *flags: str) -> Result:
     project = project_copy(tmp)
-    return invoke_with_port(monkeypatch, RecordedSnowflake(state={}), ["plan", *common(project), *flags])
+    return invoke_with_port(monkeypatch, FakeSnowflake(state={}), ["plan", *common(project), *flags])
 
 
 def _plan_cached(tmp: Path, monkeypatch: pytest.MonkeyPatch, *, recorded: bool) -> Result:
@@ -282,7 +282,7 @@ def _plan_cached(tmp: Path, monkeypatch: pytest.MonkeyPatch, *, recorded: bool) 
     view = ("--select", "jaffle_minimal", "--no-plan-out")
     state = target_dir(project)
     if recorded:
-        invoke_with_port(monkeypatch, RecordedSnowflake(state={}), ["plan", *common(project), *view])
+        invoke_with_port(monkeypatch, FakeSnowflake(state={}), ["plan", *common(project), *view])
     else:
         state = tmp / "previous"
         state.mkdir()
@@ -293,7 +293,7 @@ def _plan_cached(tmp: Path, monkeypatch: pytest.MonkeyPatch, *, recorded: bool) 
 def _diff(tmp: Path, monkeypatch: pytest.MonkeyPatch, *flags: str) -> Result:
     project = project_copy(tmp)
     compile_project(project)
-    return invoke_with_port(monkeypatch, RecordedSnowflake(state={}), ["diff", *common(project), *flags])
+    return invoke_with_port(monkeypatch, FakeSnowflake(state={}), ["diff", *common(project), *flags])
 
 
 def _drop_project(tmp: Path) -> Path:
@@ -305,7 +305,7 @@ def _drop_project(tmp: Path) -> Path:
 
 def _drop(tmp: Path, monkeypatch: pytest.MonkeyPatch, *, exists: bool) -> Result:
     marker = OwnershipMarker("a" * 64, "b" * 64)
-    port = RecordedSnowflake(existing=("DB.S.V",) if exists else (), markers={"DB.S.V": marker})
+    port = FakeSnowflake(existing=("DB.S.V",) if exists else (), markers={"DB.S.V": marker})
     return invoke_with_port(monkeypatch, port, ["drop", *DROP, "--project-dir", str(_drop_project(tmp))])
 
 
@@ -321,14 +321,14 @@ def _plan_broken(tmp: Path, monkeypatch: pytest.MonkeyPatch, *flags: str) -> Res
     project = project_copy(tmp)
     compile_project(project)
     break_menu_view(project)
-    return invoke_with_port(monkeypatch, RecordedSnowflake(state={}), ["plan", *common(project), *flags])
+    return invoke_with_port(monkeypatch, FakeSnowflake(state={}), ["plan", *common(project), *flags])
 
 
 def _apply_nothing(tmp: Path, monkeypatch: pytest.MonkeyPatch, *flags: str) -> Result:
     project = skills_only_project(tmp / "skills")
     assert _run("compile", "--project-dir", str(project)).exit_code == 0
     return invoke_with_port(
-        monkeypatch, RecordedSnowflake(state={}), ["apply", "--project-dir", str(project), "--yes", *flags]
+        monkeypatch, FakeSnowflake(state={}), ["apply", "--project-dir", str(project), "--yes", *flags]
     )
 
 
@@ -336,7 +336,7 @@ def _apply_broken(tmp: Path, monkeypatch: pytest.MonkeyPatch, *flags: str) -> Re
     project = project_copy(tmp)
     compile_project(project)
     break_menu_view(project)
-    return invoke_with_port(monkeypatch, RecordedSnowflake(state={}), ["apply", *common(project), "--yes", *flags])
+    return invoke_with_port(monkeypatch, FakeSnowflake(state={}), ["apply", *common(project), "--yes", *flags])
 
 
 def _interrupted(tmp: Path, monkeypatch: pytest.MonkeyPatch, *args: str) -> Result:

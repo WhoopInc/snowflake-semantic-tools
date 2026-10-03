@@ -5,11 +5,11 @@ from __future__ import annotations
 from snowflake_semantic_tools.domain.diagnostics import Diagnostic, Severity
 from snowflake_semantic_tools.domain.model.lifecycle import GrantRow
 from tests.helpers.agent_builders import agent, catalog, compile_agents, found, generic_tool, observe, procedure_member
-from tests.helpers.app_ports import InMemorySnowflake
+from tests.helpers.snowflake_fake import FakeSnowflake
 
 
 def _granted(*grants: GrantRow) -> list[Diagnostic]:
-    port = InMemorySnowflake()
+    port = FakeSnowflake()
     port.existing = {"DB.DEV.LOOKUP"}
     port.grants["DB.DEV.LOOKUP"] = grants
     result = compile_agents(agent("sales_agent", generic_tool()), tools=catalog(procedure_member()))

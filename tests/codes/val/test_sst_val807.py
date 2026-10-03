@@ -15,7 +15,6 @@ from snowflake_semantic_tools.domain.model.identifier import QualifiedName
 from snowflake_semantic_tools.domain.model.lifecycle import Action
 from snowflake_semantic_tools.domain.state import State
 from tests.helpers.eval_inputs import codes, only
-from tests.helpers.recorded_snowflake import RecordedSnowflake
 from tests.helpers.skill_inputs import (
     CATALOG_CHANNEL,
     compile_extensions,
@@ -23,10 +22,11 @@ from tests.helpers.skill_inputs import (
     publish_extensions,
     skill_catalog,
 )
+from tests.helpers.snowflake_fake import FakeSnowflake
 
 
-def _published() -> tuple[RecordedSnowflake, State]:
-    port = RecordedSnowflake(existing=("DB.S.SKILL_BUNDLES",))
+def _published() -> tuple[FakeSnowflake, State]:
+    port = FakeSnowflake(existing=("DB.S.SKILL_BUNDLES",))
     _, state = publish_extensions(port, compile_extensions(skill_catalog()), empty_state())
     return port, state
 

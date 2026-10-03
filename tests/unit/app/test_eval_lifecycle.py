@@ -39,27 +39,29 @@ from snowflake_semantic_tools.domain.state import (
     ResourceStatus,
     State,
 )
-from tests.helpers.app_ports import FixedClock, InMemorySnowflake, InMemoryStateStore
+from tests.helpers.app_ports import InMemoryStateStore
 from tests.helpers.artifact_builders import changeset, target
+from tests.helpers.clocks import FixedClock
 from tests.helpers.compile_builders import compiled_as
 from tests.helpers.eval_builders import GIT_SHA, compile_eval, resolved_eval, seed_dataset_version
+from tests.helpers.snowflake_fake import FakeSnowflake, Sent
 from tests.helpers.sql_values import statement, texts
 
 ORIGIN = Origin("dataset.yml", 1, 1)
 
 
-def setup_eval() -> tuple[Manifest, RenderedArtifact, InMemorySnowflake, EvalLifecycleHandler]:
+def setup_eval() -> tuple[Manifest, RenderedArtifact, FakeSnowflake, EvalLifecycleHandler]:
     result = compile_eval()
     manifest = build_manifest(result)
     compiled = compiled_as(result, CompiledEval)
     artifact = compiled.rendered_for_publish(manifest.manifest_id)
-    port = InMemorySnowflake()
+    port = FakeSnowflake()
     port.existing = set()
     handler = EvalLifecycleHandler(port)
     return manifest, artifact, port, handler
 
 
-def existing(port: InMemorySnowflake) -> set[str]:
+def existing(port: FakeSnowflake) -> set[str]:
     """Return the objects `port` reports as existing; `setup_eval` starts it empty, never None."""
     assert port.existing is not None
     return port.existing
@@ -97,7 +99,7 @@ def state_with(entry: AppliedEntry | None, manifest_id: str) -> State:
 def planned_change(
     artifact: RenderedArtifact,
     manifest: Manifest,
-    port: InMemorySnowflake,
+    port: FakeSnowflake,
     handler: EvalLifecycleHandler,
     prior: State,
 ) -> Change:
@@ -114,7 +116,7 @@ def planned_change(
     )
 
 
-def seed_existing_resources(artifact: RenderedArtifact, port: InMemorySnowflake) -> None:
+def seed_existing_resources(artifact: RenderedArtifact, port: FakeSnowflake) -> None:
     for _, name in artifact.physical_resources:
         existing(port).add(name.sql)
     seed_dataset_version(artifact, port)
@@ -132,10 +134,7 @@ def test_eval_plan_uses_component_fingerprints_and_live_resources() -> None:
     existing(port).add("DB.S.EVAL_CONFIGS")
     port.stage_formats["DB.S.EVAL_CONFIGS"] = EVAL_STAGE_FILE_FORMAT
     config_path = handler._config_path(artifact)
-    port.stage_files.add(config_path)
-    port.staged_file_sizes[config_path] = len(artifact.ddl.encode("utf-8"))
-    port.staged_file_md5s[config_path] = md5(artifact.ddl.encode("utf-8"), usedforsecurity=False).hexdigest()
-    port.staged_file_contents[config_path] = artifact.ddl.encode("utf-8")
+    port.stage_file(config_path, artifact.ddl.encode("utf-8"))
     assert handler.plan(artifact, entry, manifest).action is Action.NOOP
 
     changed = replace(
@@ -176,7 +175,8 @@ def test_eval_apply_mints_dataset_creates_exact_stage_uploads_yaml_and_verifies(
     assert dict(entry.component_fingerprints)["dataset"] == dict(artifact.component_fingerprints)["dataset"]
     assert dict(entry.component_fingerprints)["config"] == dict(artifact.component_fingerprints)["config"]
     assert (
-        dict(entry.component_fingerprints)["config_stage_md5"] == port.staged_file_md5s[handler._config_path(artifact)]
+        dict(entry.component_fingerprints)["config_stage_md5"]
+        == port.staged_file_metadata[handler._config_path(artifact)].md5
     )
     assert len(entry.physical_resources) == 2
 
@@ -202,10 +202,7 @@ def test_eval_ignores_encrypted_stage_size_when_readback_bytes_match() -> None:
     existing(port).add("DB.S.EVAL_CONFIGS")
     port.stage_formats["DB.S.EVAL_CONFIGS"] = EVAL_STAGE_FILE_FORMAT
     config_path = handler._config_path(artifact)
-    port.stage_files.add(config_path)
-    port.staged_file_sizes[config_path] = 1
-    port.staged_file_md5s[config_path] = "0" * 32
-    port.staged_file_contents[config_path] = artifact.ddl.encode("utf-8")
+    port.stage_file(config_path, artifact.ddl.encode("utf-8"), size=1, md5="0" * 32)
     change = planned_change(artifact, manifest, port, handler, state_with(entry, manifest.manifest_id))
 
     outcome = handler.apply(change, ApplyOptions())
@@ -225,10 +222,9 @@ def test_eval_same_size_wrong_staged_config_is_overwritten() -> None:
     existing(port).add("DB.S.EVAL_CONFIGS")
     port.stage_formats["DB.S.EVAL_CONFIGS"] = EVAL_STAGE_FILE_FORMAT
     config_path = handler._config_path(artifact)
-    port.stage_files.add(config_path)
-    port.staged_file_sizes[config_path] = len(artifact.ddl.encode("utf-8"))
-    port.staged_file_md5s[config_path] = "0" * 32
-    port.staged_file_contents[config_path] = b"x" * len(artifact.ddl.encode("utf-8"))
+    port.stage_file(
+        config_path, b"x" * len(artifact.ddl.encode("utf-8")), size=len(artifact.ddl.encode("utf-8")), md5="0" * 32
+    )
 
     change = planned_change(artifact, manifest, port, handler, state_with(entry, manifest.manifest_id))
     outcome = handler.apply(change, ApplyOptions())
@@ -412,7 +408,7 @@ def two_evals_in_one_schema() -> tuple[Manifest, dict[str, RenderedArtifact]]:
 
 def test_evals_sharing_a_config_stage_this_run_creates_all_apply() -> None:
     manifest, artifacts = two_evals_in_one_schema()
-    port = InMemorySnowflake()
+    port = FakeSnowflake()
     port.existing = set()
     handler = EvalLifecycleHandler(port)
     prior = state_with(None, "")
@@ -661,7 +657,7 @@ def test_eval_source_table_must_exist_after_create() -> None:
 
     def omit_source_create(statements: Sequence[Sql]) -> ExecResult:
         if str(statements[0]).lstrip().upper().startswith("CREATE TABLE "):
-            port.scripts.append(texts(statements))
+            port.log.append(Sent("script", texts(statements)))
             return ExecResult(True)
         return original_execute(statements)
 
@@ -687,7 +683,7 @@ def test_eval_source_row_count_port_errors_are_classified_by_write_state(
     else:
         prior = state_with(None, "")
     change = planned_change(artifact, manifest, port, handler, prior)
-    port.query_error = SnowflakePortError("count denied")
+    port.fail("query", SnowflakePortError("count denied"))
 
     outcome = handler.apply(change, ApplyOptions())
 
@@ -781,7 +777,7 @@ def test_eval_dataset_must_exist_after_successful_creation() -> None:
 
     def omit_dataset_create(statements: Sequence[Sql]) -> ExecResult:
         if "SYSTEM$CREATE_EVALUATION_DATASET" in str(statements[0]).upper():
-            port.scripts.append(texts(statements))
+            port.log.append(Sent("script", texts(statements)))
             return ExecResult(True)
         return original_execute(statements)
 
@@ -823,7 +819,7 @@ def test_eval_stage_must_exist_after_successful_creation() -> None:
 
     def omit_stage_create(statements: Sequence[Sql]) -> ExecResult:
         if str(statements[0]).lstrip().upper().startswith("CREATE STAGE "):
-            port.scripts.append(texts(statements))
+            port.log.append(Sent("script", texts(statements)))
             return ExecResult(True)
         return original_execute(statements)
 
@@ -895,12 +891,10 @@ def test_eval_uploaded_config_readback_is_verified(failure_mode: str, expected_m
     change = planned_change(artifact, manifest, port, handler, prior)
 
     def broken_upload(stage_path: str, content: bytes) -> None:
-        port.uploads.append((stage_path, content))
+        port.log.append(Sent("upload", (stage_path,), content=content))
         if failure_mode == "absent":
             return
-        port.stage_files.add(stage_path)
-        port.staged_file_sizes[stage_path] = len(content)
-        port.staged_file_md5s[stage_path] = md5(content, usedforsecurity=False).hexdigest()
+        port.stage_file(stage_path, size=len(content), md5=md5(content, usedforsecurity=False).hexdigest())
         if failure_mode == "size":
             port.staged_file_contents[stage_path] = b"x"
 
@@ -1046,10 +1040,7 @@ def test_an_eval_recorded_under_another_manifest_is_rerecorded_then_unchanged() 
     port.stage_formats["DB.S.EVAL_CONFIGS"] = EVAL_STAGE_FILE_FORMAT
     config_path = handler._config_path(artifact)
     content = artifact.ddl.encode("utf-8")
-    port.stage_files.add(config_path)
-    port.staged_file_sizes[config_path] = len(content)
-    port.staged_file_md5s[config_path] = md5(content, usedforsecurity=False).hexdigest()
-    port.staged_file_contents[config_path] = content
+    port.stage_file(config_path, content)
     prior = state_with(entry, "an-older-manifest")
     plan = handler.plan(artifact, entry, manifest)
     assert (plan.action, plan.reason) == (Action.UPDATE, ChangeReason.STATE_MANIFEST_MISMATCH)
@@ -1074,7 +1065,7 @@ def test_an_eval_that_does_not_mint_requires_its_dataset_and_publishes_only_its_
     manifest = build_manifest(result)
     artifact = compiled_as(result, CompiledEval).rendered_for_publish(manifest.manifest_id)
     assert artifact.create_statements == () and [kind for kind, _ in artifact.physical_resources] == ["DATASET"]
-    port = InMemorySnowflake()
+    port = FakeSnowflake()
     port.existing = set()
     handler = EvalLifecycleHandler(port)
 
@@ -1094,7 +1085,7 @@ def test_an_eval_that_does_not_mint_requires_its_dataset_and_publishes_only_its_
     assert planned_change(artifact, manifest, port, handler, store.state).action is Action.NOOP
 
 
-def _versionless_update(port: InMemorySnowflake) -> tuple[Change, RenderedArtifact, EvalLifecycleHandler]:
+def _versionless_update(port: FakeSnowflake) -> tuple[Change, RenderedArtifact, EvalLifecycleHandler]:
     """Plan the retry of a publish that minted the dataset and stopped before its version."""
     manifest, artifact, _, handler = setup_eval()
     handler = EvalLifecycleHandler(port)
@@ -1110,7 +1101,7 @@ def _versionless_update(port: InMemorySnowflake) -> tuple[Change, RenderedArtifa
 
 
 def test_a_dataset_minted_without_its_version_gets_it_on_the_next_apply() -> None:
-    port = InMemorySnowflake()
+    port = FakeSnowflake()
     change, artifact, handler = _versionless_update(port)
     outcome = handler.apply(change, ApplyOptions())
     assert outcome.status is OutcomeStatus.APPLIED
@@ -1119,7 +1110,7 @@ def test_a_dataset_minted_without_its_version_gets_it_on_the_next_apply() -> Non
 
 
 def test_a_version_another_run_added_after_the_plan_is_not_added_again() -> None:
-    port = InMemorySnowflake()
+    port = FakeSnowflake()
     change, artifact, handler = _versionless_update(port)
     seed_dataset_version(artifact, port)
     assert handler.apply(change, ApplyOptions()).status is OutcomeStatus.APPLIED
@@ -1127,7 +1118,7 @@ def test_a_version_another_run_added_after_the_plan_is_not_added_again() -> None
 
 
 def test_a_dataset_whose_owner_changed_after_the_plan_fails_before_any_version_is_added() -> None:
-    port = InMemorySnowflake()
+    port = FakeSnowflake()
     change, artifact, handler = _versionless_update(port)
     dataset = dict(artifact.physical_resources)["DATASET"]
     port.grants[dataset.sql] = (GrantRow("OWNERSHIP", "ROLE", "ADMIN"),)
@@ -1141,13 +1132,13 @@ def test_a_dataset_whose_owner_changed_after_the_plan_fails_before_any_version_i
 
 
 def test_a_refused_or_unrecorded_add_version_fails_the_publish() -> None:
-    refused = InMemorySnowflake()
+    refused = FakeSnowflake()
     change, _, handler = _versionless_update(refused)
     refused.execute_results = [ExecResult(False, error=ExecutionError("Insufficient privileges", "42501"))]
     outcome = handler.apply(change, ApplyOptions())
     assert outcome.error is not None and outcome.error.code == "SST-APL022"
 
-    class Forgetful(InMemorySnowflake):
+    class Forgetful(FakeSnowflake):
         def dataset_versions(self, qualified_name: QualifiedName) -> tuple[str, ...]:
             return ()
 

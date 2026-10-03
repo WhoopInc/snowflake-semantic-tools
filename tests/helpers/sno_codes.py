@@ -21,10 +21,12 @@ from snowflake_semantic_tools.domain.enrich import resolve_options
 from snowflake_semantic_tools.domain.model.dbt import DbtCatalog, DbtColumn, DbtModel
 from snowflake_semantic_tools.domain.model.lifecycle import ExecResult, RetryPolicy
 from snowflake_semantic_tools.domain.sql import sql
-from tests.helpers.app_ports import FixedClock, InMemorySnowflake, InMemoryStateStore
+from tests.helpers.app_ports import InMemoryStateStore
 from tests.helpers.artifact_builders import change, changeset, rendered, state
+from tests.helpers.clocks import FixedClock
 from tests.helpers.enrich_ports import InMemoryFiles, ScriptedEnrich
 from tests.helpers.project_inputs import InMemoryProjectInputs
+from tests.helpers.snowflake_fake import FakeSnowflake
 
 
 class _RefusingSession:
@@ -64,7 +66,7 @@ def driver_result(error: BaseException) -> ExecResult:
 
 def refusal(error: BaseException) -> list[Diagnostic]:
     """Apply one create the driver refuses with `error`; return the SNO diagnostics apply reports."""
-    port = InMemorySnowflake()
+    port = FakeSnowflake()
     # A transient refusal is retried; every attempt meets the same refusal.
     port.execute_results = [driver_result(error)] * RetryPolicy().max_attempts
     artifact = rendered()

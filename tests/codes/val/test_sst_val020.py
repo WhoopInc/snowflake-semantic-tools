@@ -5,7 +5,7 @@ from __future__ import annotations
 from snowflake_semantic_tools.app.compile import CompileResult
 from snowflake_semantic_tools.app.validate import ValidateArtifacts
 from snowflake_semantic_tools.domain.diagnostics import Severity
-from tests.helpers.app_ports import InMemorySnowflake
+from tests.helpers.snowflake_fake import FakeSnowflake
 
 
 def test_sst_val020_fires() -> None:
@@ -16,5 +16,5 @@ def test_sst_val020_fires() -> None:
 
 
 def test_sst_val020_silent() -> None:
-    result = ValidateArtifacts(InMemorySnowflake()).run(CompileResult(()), strict=False, connected=True)
+    result = ValidateArtifacts(FakeSnowflake()).run(CompileResult(()), strict=False, connected=True)
     assert [item.code for item in result.diagnostics] == []

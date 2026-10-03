@@ -5,14 +5,14 @@ from __future__ import annotations
 from snowflake_semantic_tools.domain.diagnostics import Severity
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
 from snowflake_semantic_tools.domain.model.lifecycle import Action, ApplyResult, GrantRow
-from tests.helpers.app_ports import InMemorySnowflake
 from tests.helpers.apply_runs import apply_plan, codes, only
 from tests.helpers.artifact_builders import change, changeset, marker, observed, rendered
+from tests.helpers.snowflake_fake import FakeSnowflake
 
 GRANT = GrantRow("SELECT", "ROLE", "ANALYST")
 
 
-class GrantsAfter(InMemorySnowflake):
+class GrantsAfter(FakeSnowflake):
     def __init__(self, after: tuple[GrantRow, ...]) -> None:
         super().__init__()
         self.after = after

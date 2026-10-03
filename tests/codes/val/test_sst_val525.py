@@ -14,10 +14,10 @@ from tests.helpers.agent_builders import (
     search_member,
     search_tool,
 )
-from tests.helpers.app_ports import InMemorySnowflake
+from tests.helpers.snowflake_fake import FakeSnowflake
 
 
-class _Columns(InMemorySnowflake):
+class _Columns(FakeSnowflake):
     def __init__(self, kind: str) -> None:
         super().__init__()
         self.kind = kind

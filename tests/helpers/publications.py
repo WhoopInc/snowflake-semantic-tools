@@ -23,9 +23,10 @@ from snowflake_semantic_tools.domain.model.profile import DesktopProfile, Profil
 from snowflake_semantic_tools.domain.model.skill import Skill, SkillCatalog, SkillFile
 from snowflake_semantic_tools.domain.ports.lifecycle import CompositeLifecycleHandler
 from snowflake_semantic_tools.domain.state import STATE_SCHEMA_VERSION, AppliedEntry, State
-from tests.helpers.app_ports import FixedClock, InMemoryStateStore
+from tests.helpers.app_ports import InMemoryStateStore
 from tests.helpers.artifact_builders import target
-from tests.helpers.recorded_snowflake import RecordedSnowflake
+from tests.helpers.clocks import FixedClock
+from tests.helpers.snowflake_fake import FakeSnowflake
 
 SKILL_STAGE = QualifiedName.parse("DB.S.SKILL_BUNDLES")
 PROFILE_STAGE = QualifiedName.parse("DB.S.PROFILES")
@@ -52,7 +53,7 @@ def empty_state(applied: dict[str, AppliedEntry] | None = None) -> State:
 
 
 def _run(
-    port: RecordedSnowflake,
+    port: FakeSnowflake,
     handlers: dict[str, CompositeLifecycleHandler],
     rendered: dict[str, object],
     previous: State,
@@ -73,14 +74,14 @@ def _run(
 
 
 def publish_skill(
-    port: RecordedSnowflake, compiled: CompiledExtension, previous: State | None = None
+    port: FakeSnowflake, compiled: CompiledExtension, previous: State | None = None
 ) -> tuple[ChangeSet, ApplyResult, State]:
     handler = ExtensionLifecycleHandler(port, {compiled.artifact_key: compiled.release}, "skill")
     return _run(
         port,
         {"skill": handler},
         {compiled.artifact_key: compiled.rendered_artifact},
-        previous or empty_state(dict(port.state)),
+        previous or empty_state(dict(port.remote_state or {})),
     )
 
 
@@ -112,8 +113,11 @@ def compiled_profile(*shipped: Skill) -> CompiledProfile:
     return compiled
 
 
-def publish_profile(port: RecordedSnowflake, compiled: CompiledProfile) -> tuple[ChangeSet, ApplyResult, State]:
+def publish_profile(port: FakeSnowflake, compiled: CompiledProfile) -> tuple[ChangeSet, ApplyResult, State]:
     handler = ProfileLifecycleHandler(port, {compiled.artifact_key: compiled})
     return _run(
-        port, {"profile": handler}, {compiled.artifact_key: compiled.rendered_artifact}, empty_state(dict(port.state))
+        port,
+        {"profile": handler},
+        {compiled.artifact_key: compiled.rendered_artifact},
+        empty_state(dict(port.remote_state or {})),
     )

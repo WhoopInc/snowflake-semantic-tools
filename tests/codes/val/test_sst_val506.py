@@ -4,11 +4,11 @@ from __future__ import annotations
 
 from snowflake_semantic_tools.domain.diagnostics import Diagnostic, Severity
 from tests.helpers.agent_builders import agent, compile_agents, found, observe
-from tests.helpers.app_ports import InMemorySnowflake
+from tests.helpers.snowflake_fake import FakeSnowflake
 
 
 def _owned_by(owner: str) -> list[Diagnostic]:
-    port = InMemorySnowflake()
+    port = FakeSnowflake()
     port.show_rows["AGENT DB.S.SALES_AGENT"] = {"owner": owner}
     return found(observe(port, compile_agents(agent("sales_agent", secure=True))), "SST-VAL506")
 

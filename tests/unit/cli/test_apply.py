@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Mapping, Sequence
+from collections.abc import Sequence
 from pathlib import Path
 
 import pytest
@@ -11,7 +11,7 @@ from click.testing import CliRunner
 
 from snowflake_semantic_tools.cli.main import cli
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
-from snowflake_semantic_tools.domain.model.lifecycle import ExecResult, OwnershipMarker, QueryResult
+from snowflake_semantic_tools.domain.model.lifecycle import ExecResult, OwnershipMarker
 from snowflake_semantic_tools.domain.sql import Sql
 from snowflake_semantic_tools.domain.state import content_hash
 from tests.helpers.cli_projects import (
@@ -26,11 +26,11 @@ from tests.helpers.cli_projects import (
     project_copy,
     skill_project,
 )
-from tests.helpers.recorded_snowflake import RecordedSnowflake
+from tests.helpers.snowflake_fake import FakeSnowflake
 from tests.helpers.sql_values import texts
 
 
-def configure_eval_apply(port: RecordedSnowflake, changes: list[dict[str, object]]) -> None:
+def configure_eval_apply(port: FakeSnowflake, changes: list[dict[str, object]]) -> None:
     eval_change = next(item for item in changes if item["artifact_type"] == "eval")
     resources = eval_change["physical_resources"]
     assert isinstance(resources, list)
@@ -68,24 +68,14 @@ def configure_eval_apply(port: RecordedSnowflake, changes: list[dict[str, object
         return result
 
     port.execute_script = execute_with_eval_resources  # type: ignore[method-assign]
-    original_query = port.query
-
-    def query_with_eval_row_count(
-        sql: Sql, params: Sequence[object] | Mapping[str, object] | None = None
-    ) -> QueryResult:
-        if str(sql) == f"SELECT COUNT(*) AS ROW_COUNT FROM {source_table}":
-            port.queries.append((str(sql), params))
-            return QueryResult(("ROW_COUNT",), ((4,),))
-        return original_query(sql, params)
-
-    port.query = query_with_eval_row_count  # type: ignore[method-assign]
+    port.table_row_counts[source_table] = 4
 
 
 def test_apply_requires_confirmation_and_accepts_current_saved_plan(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     project = project_copy(tmp_path)
-    plan_port = RecordedSnowflake(state={})
+    plan_port = FakeSnowflake(state={})
     planned = invoke_with_port(
         monkeypatch,
         plan_port,
@@ -167,7 +157,7 @@ def test_partial_runs_publish_what_is_healthy_and_still_exit_one(
     assert "semantic_view:jaffle_sales" in kept and not kept & excluded and manifest_file.is_file()
     assert sum(item["code"] == "SST-PLN032" for item in payload["diagnostics"]) == len(excluded)
 
-    port = RecordedSnowflake(state={})
+    port = FakeSnowflake(state={})
     whole = invoke_with_port(monkeypatch, port, ["plan", *common(project), "--target", "dev", "--output", "json"])
     assert whole.exit_code == 1
     planned = invoke_with_port(
@@ -217,7 +207,7 @@ def test_apply_reuses_saved_plan_selection_without_repeated_selectors(
     project = project_copy(tmp_path)
     planned = invoke_with_port(
         monkeypatch,
-        RecordedSnowflake(state={}),
+        FakeSnowflake(state={}),
         [
             "plan",
             *common(project),
@@ -234,7 +224,7 @@ def test_apply_reuses_saved_plan_selection_without_repeated_selectors(
     saved = json.loads(Path(plan_path).read_text(encoding="utf-8"))
     assert saved["selection"]["selected"] == ["jaffle_minimal"]
 
-    port = RecordedSnowflake(state={})
+    port = FakeSnowflake(state={})
     applied = invoke_with_port(
         monkeypatch,
         port,
@@ -257,7 +247,7 @@ def test_apply_reuses_saved_plan_selection_without_repeated_selectors(
 
 def test_apply_refuses_stale_saved_plan(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     project = project_copy(tmp_path)
-    port = RecordedSnowflake(state={})
+    port = FakeSnowflake(state={})
     planned = invoke_with_port(
         monkeypatch,
         port,
@@ -269,7 +259,7 @@ def test_apply_refuses_stale_saved_plan(tmp_path: Path, monkeypatch: pytest.Monk
     path.write_text(json.dumps(document), encoding="utf-8")
     refused = invoke_with_port(
         monkeypatch,
-        RecordedSnowflake(state={}),
+        FakeSnowflake(state={}),
         ["apply", *common(project), "--target", "dev", "--plan", str(path), "--yes", "--output", "json"],
     )
     assert refused.exit_code == 4
@@ -279,7 +269,7 @@ def test_apply_refuses_a_saved_plan_made_for_another_target(tmp_path: Path, monk
     project = project_copy(tmp_path)
     planned = invoke_with_port(
         monkeypatch,
-        RecordedSnowflake(state={}),
+        FakeSnowflake(state={}),
         ["plan", *common(project), "--target", "dev", "--output", "json"],
     )
     path = Path(json.loads(planned.output)["data"]["plan_path"])
@@ -289,7 +279,7 @@ def test_apply_refuses_a_saved_plan_made_for_another_target(tmp_path: Path, monk
     path.write_text(json.dumps(document), encoding="utf-8")
     refused = invoke_with_port(
         monkeypatch,
-        RecordedSnowflake(state={}),
+        FakeSnowflake(state={}),
         ["apply", *common(project), "--target", "dev", "--plan", str(path), "--yes", "--output", "json"],
     )
     assert refused.exit_code == 4
@@ -303,13 +293,13 @@ def test_apply_closes_its_connection_when_it_stops_before_applying(
     project = project_copy(tmp_path)
     compile_project(project)
     declined, closes = invoke_counting_closes(
-        monkeypatch, RecordedSnowflake(state={}), ["apply", *common(project), "--target", "dev"]
+        monkeypatch, FakeSnowflake(state={}), ["apply", *common(project), "--target", "dev"]
     )
     assert declined.exit_code == 130 and "Apply this plan?" in declined.output
     assert closes == ["closed"]
 
     planned = invoke_with_port(
-        monkeypatch, RecordedSnowflake(state={}), ["plan", *common(project), "--target", "dev", "--output", "json"]
+        monkeypatch, FakeSnowflake(state={}), ["plan", *common(project), "--target", "dev", "--output", "json"]
     )
     path = Path(json.loads(planned.output)["data"]["plan_path"])
     document = json.loads(path.read_text(encoding="utf-8"))
@@ -318,7 +308,7 @@ def test_apply_closes_its_connection_when_it_stops_before_applying(
     path.write_text(json.dumps(document), encoding="utf-8")
     stale, closes = invoke_counting_closes(
         monkeypatch,
-        RecordedSnowflake(state={}),
+        FakeSnowflake(state={}),
         ["apply", *common(project), "--target", "dev", "--plan", str(path), "--yes", "--output", "json"],
     )
     assert stale.exit_code == 4 and "saved plan is stale" in json.loads(stale.output)["data"]["error"]
@@ -333,7 +323,7 @@ def test_skills_only_project_publishes_through_plan_and_apply(tmp_path: Path, mo
     assert [item["artifact_key"] for item in artifacts] == ["skill:month-close"]
     assert artifacts[0]["target"] == "DB.SCH.MONTH_CLOSE"
 
-    port = RecordedSnowflake(existing=())
+    port = FakeSnowflake(existing=())
     planned = invoke_with_port(monkeypatch, port, ["plan", "--project-dir", str(project), "--output", "json"])
     assert planned.exit_code == 2, planned.output
     change = json.loads(planned.output)["data"]["changes"][0]
@@ -378,7 +368,7 @@ def test_profiles_publish_then_deactivate_under_prune(tmp_path: Path, monkeypatc
     assert [item["artifact_key"] for item in json.loads(compiled.output)["data"]["artifacts"]] == ["profile:analyst"]
     assert json.loads(compiled.output)["data"]["artifacts"][0]["target"] == "DB.SCH.PROFILE_REGISTRY"
 
-    port = RecordedSnowflake(existing=())
+    port = FakeSnowflake(existing=())
     applied = invoke_with_port(monkeypatch, port, ["apply", "--project-dir", str(project), "--yes", "--output", "json"])
     assert applied.exit_code == 0, applied.output
     row = port.desktop_profile_rows(QualifiedName.parse("DB.SCH.PROFILE_REGISTRY"))[0]
@@ -406,7 +396,7 @@ def test_profile_commands_and_plugins_publish_and_every_pointer_resolves(
     project = profile_with_commands_and_plugin(tmp_path / "skills")
     compiled = CliRunner().invoke(cli, ["compile", "--project-dir", str(project), "--output", "json"])
     assert compiled.exit_code == 0, compiled.output
-    port = RecordedSnowflake(existing=())
+    port = FakeSnowflake(existing=())
     applied = invoke_with_port(monkeypatch, port, ["apply", "--project-dir", str(project), "--yes", "--output", "json"])
     assert applied.exit_code == 0, applied.output
     row = port.desktop_profile_rows(QualifiedName.parse("DB.SCH.PROFILE_REGISTRY"))[0]

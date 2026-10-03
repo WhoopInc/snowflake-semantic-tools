@@ -4,11 +4,11 @@ from __future__ import annotations
 
 from snowflake_semantic_tools.domain.diagnostics import Severity
 from tests.helpers.publications import compiled_profile, publish_profile
-from tests.helpers.recorded_snowflake import RecordedSnowflake
+from tests.helpers.snowflake_fake import FakeSnowflake
 
 
 def test_sst_apl018_fires() -> None:
-    port = RecordedSnowflake(existing=())
+    port = FakeSnowflake(existing=())
     port.refused = ("MERGE",)
     _, result, _ = publish_profile(port, compiled_profile())
     [diagnostic] = [item for item in result.diagnostics if item.code == "SST-APL018"]
@@ -21,7 +21,7 @@ def test_sst_apl018_fires() -> None:
 
 def test_sst_apl018_silent() -> None:
     # A failure before any tree is uploaded is not a half-complete publish.
-    port = RecordedSnowflake(existing=())
+    port = FakeSnowflake(existing=())
     port.refused = ("CREATE TABLE",)
     _, result, _ = publish_profile(port, compiled_profile())
     assert "SST-APL018" not in [item.code for item in result.diagnostics] and not port.uploads

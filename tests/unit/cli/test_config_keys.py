@@ -24,8 +24,8 @@ from snowflake_semantic_tools.cli.wiring.project import view_timeout
 from snowflake_semantic_tools.domain.model.agent import AgentModel
 from tests.helpers.cli_projects import MANIFEST, common, project_copy
 from tests.helpers.projects import project_paths
-from tests.helpers.recorded_snowflake import RecordedSnowflake
 from tests.helpers.seam_projects import FakeDbt, SmallProject, manifest
+from tests.helpers.snowflake_fake import FakeSnowflake
 
 
 def _append(project: Path, text: str) -> None:
@@ -39,10 +39,10 @@ def test_plan_sessions_bound_every_statement_by_the_view_timeout(
     project = project_copy(tmp_path)
     _append(project, "\ngeneration:\n  view_timeout: 120\n")
     opened: list[dict[str, Any]] = []
-    port = RecordedSnowflake(state={})
+    port = FakeSnowflake(state={})
     port.close = lambda: None  # type: ignore[attr-defined]
 
-    def connector(params: dict[str, Any]) -> RecordedSnowflake:
+    def connector(params: dict[str, Any]) -> FakeSnowflake:
         opened.append(params)
         return port
 

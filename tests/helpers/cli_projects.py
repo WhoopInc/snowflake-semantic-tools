@@ -9,7 +9,7 @@ import pytest
 from click.testing import CliRunner, Result
 
 from snowflake_semantic_tools.cli.main import cli
-from tests.helpers.recorded_snowflake import RecordedSnowflake
+from tests.helpers.snowflake_fake import FakeSnowflake
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 FIXTURE = REPO_ROOT / "tests" / "fixtures" / "reference_project"
@@ -32,7 +32,7 @@ def project_copy(tmp_path: Path) -> Path:
     return project
 
 
-def invoke_with_port(monkeypatch: pytest.MonkeyPatch, port: RecordedSnowflake, args: list[str]) -> Result:
+def invoke_with_port(monkeypatch: pytest.MonkeyPatch, port: FakeSnowflake, args: list[str]) -> Result:
     if "--project-dir" in args and args[0] in ("plan", "apply"):
         project = Path(args[args.index("--project-dir") + 1])
         if not (project / "target" / "sst" / "manifest.json").is_file():
@@ -60,7 +60,7 @@ def break_menu_view(project: Path) -> None:
 
 
 def invoke_counting_closes(
-    monkeypatch: pytest.MonkeyPatch, port: RecordedSnowflake, args: list[str]
+    monkeypatch: pytest.MonkeyPatch, port: FakeSnowflake, args: list[str]
 ) -> tuple[Result, list[str]]:
     """Run `sst` against `port`, recording every close() so a test can prove the connection was released."""
     closes: list[str] = []

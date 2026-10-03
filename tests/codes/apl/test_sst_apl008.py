@@ -6,22 +6,22 @@ from snowflake_semantic_tools.domain.diagnostics import Severity
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
 from snowflake_semantic_tools.domain.model.lifecycle import Action, ApplyResult, GrantRow, OutcomeStatus
 from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
-from tests.helpers.app_ports import InMemorySnowflake
 from tests.helpers.apply_runs import apply_plan, codes, only
 from tests.helpers.artifact_builders import change, changeset, marker, observed, rendered
+from tests.helpers.snowflake_fake import FakeSnowflake
 
 
-class SecondReadFails(InMemorySnowflake):
+class SecondReadFails(FakeSnowflake):
     def __init__(self, *, fail: bool) -> None:
         super().__init__()
         self.reads = 0
-        self.fail = fail
+        self.fails = fail
 
     def show_grants(
         self, object_type: str, qualified_name: QualifiedName, routine_signature: tuple[str, ...] = ()
     ) -> tuple[GrantRow, ...]:
         self.reads += 1
-        if self.fail and self.reads == 2:
+        if self.fails and self.reads == 2:
             raise SnowflakePortError("SHOW GRANTS timed out")
         return (GrantRow("SELECT", "ROLE", "ANALYST"),)
 

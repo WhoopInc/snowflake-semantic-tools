@@ -6,11 +6,11 @@ import json
 
 from snowflake_semantic_tools.domain.diagnostics import Diagnostic, Severity
 from tests.helpers.agent_builders import agent, catalog, compile_agents, found, generic_tool, observe, procedure_member
-from tests.helpers.app_ports import InMemorySnowflake
+from tests.helpers.snowflake_fake import FakeSnowflake
 
 
 def _described(resources: dict[str, object]) -> list[Diagnostic]:
-    port = InMemorySnowflake()
+    port = FakeSnowflake()
     port.existing = {"DB.DEV.LOOKUP"}
     port.show_rows["AGENT DB.S.SALES_AGENT"] = {"owner": "TEST_ROLE"}
     port.descriptions["AGENT DB.S.SALES_AGENT"] = {"agent_spec": json.dumps({"tool_resources": {"lookup": resources}})}

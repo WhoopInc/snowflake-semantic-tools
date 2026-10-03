@@ -6,11 +6,11 @@ from snowflake_semantic_tools.domain.diagnostics import Diagnostic, Severity
 from snowflake_semantic_tools.domain.model.agent import AgentSkill
 from snowflake_semantic_tools.domain.model.lifecycle import GrantRow
 from tests.helpers.agent_builders import agent, compile_agents, found, observe
-from tests.helpers.app_ports import InMemorySnowflake
+from tests.helpers.snowflake_fake import FakeSnowflake
 
 
 def _read_by(*grants: GrantRow) -> list[Diagnostic]:
-    port = InMemorySnowflake()
+    port = FakeSnowflake()
     port.grants["DB.EXT.VENDOR_PACK"] = grants
     skill = AgentSkill("vendor", "CORTEX_EXTENSION", "vendor_pack", "V2", ref="extension")
     return found(observe(port, compile_agents(agent("sales_agent", skills=(skill,)))), "SST-VAL542")

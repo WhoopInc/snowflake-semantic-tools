@@ -24,10 +24,11 @@ from snowflake_semantic_tools.domain.model.lifecycle import ApplyOptions, ApplyO
 from snowflake_semantic_tools.domain.model.skill import SkillCatalog
 from snowflake_semantic_tools.domain.ports.lifecycle import CompositeLifecycleHandler
 from snowflake_semantic_tools.domain.validate.publication import channel_outcome_diagnostics
-from tests.helpers.app_ports import FixedClock, InMemoryStateStore
+from tests.helpers.app_ports import InMemoryStateStore
 from tests.helpers.artifact_builders import target
+from tests.helpers.clocks import FixedClock
 from tests.helpers.publications import compiled_profile, compiled_skill, empty_state, publish_skill, skill
-from tests.helpers.recorded_snowflake import RecordedSnowflake
+from tests.helpers.snowflake_fake import FakeSnowflake
 
 
 def test_sst_val828_fires() -> None:
@@ -43,7 +44,7 @@ def test_sst_val828_fails_a_run_where_one_channel_reports_for_the_other(monkeypa
         return skipped(replace(change, key="skill:month-close"))
 
     monkeypatch.setattr(ProfileLifecycleHandler, "_publish", misfiled)
-    port = RecordedSnowflake(existing=())
+    port = FakeSnowflake(existing=())
     extension = compiled_skill()
     profile = compiled_profile(skill())
     handlers: dict[str, CompositeLifecycleHandler] = {
@@ -73,6 +74,6 @@ def test_sst_val828_fails_a_run_where_one_channel_reports_for_the_other(monkeypa
 
 def test_sst_val828_silent() -> None:
     assert channel_outcome_diagnostics((("skill:a", "skill"), ("semantic_view:v", "semantic_view")), ["skill:a"]) == ()
-    _, result, _ = publish_skill(RecordedSnowflake(existing=()), compiled_skill())
+    _, result, _ = publish_skill(FakeSnowflake(existing=()), compiled_skill())
     assert result.success, result.outcomes
     assert "SST-VAL828" not in [item.code for item in result.diagnostics]

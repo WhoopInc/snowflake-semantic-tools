@@ -16,7 +16,7 @@ from snowflake_semantic_tools.domain.model.lifecycle import OutcomeStatus
 from snowflake_semantic_tools.domain.sql import Sql, ident, qname, sql
 from snowflake_semantic_tools.domain.validate.publication import statement_diagnostic
 from tests.helpers.publications import compiled_skill, publish_skill
-from tests.helpers.recorded_snowflake import RecordedSnowflake
+from tests.helpers.snowflake_fake import FakeSnowflake
 
 TARGET = QualifiedName.parse("DB.S.MONTH_CLOSE")
 
@@ -45,7 +45,7 @@ def test_sst_val826_fires() -> None:
 
 def test_sst_val826_refuses_a_grant_before_the_version_is_certified(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(_Run, "_create_extension", lambda run: run._run_statement(_grant(TYPED)))
-    port = RecordedSnowflake(existing=())
+    port = FakeSnowflake(existing=())
     _, result, _ = publish_skill(port, compiled_skill(certified=True))
     [outcome] = result.outcomes
     assert outcome.status is OutcomeStatus.FAILED
@@ -58,7 +58,7 @@ def test_sst_val826_refuses_a_grant_before_the_version_is_certified(monkeypatch:
 def test_sst_val826_silent() -> None:
     # A typed grant once certification succeeded passes; a certified publish sends none at all.
     assert statement_diagnostic("skill:month-close", _grant(TYPED), certification_pending=False) is None
-    port = RecordedSnowflake(existing=())
+    port = FakeSnowflake(existing=())
     _, result, _ = publish_skill(port, compiled_skill(certified=True))
     assert result.success, result.outcomes
     assert "SST-VAL826" not in [item.code for item in result.diagnostics]

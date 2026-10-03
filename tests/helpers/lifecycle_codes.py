@@ -27,9 +27,10 @@ from snowflake_semantic_tools.domain.model.profile import (
 )
 from snowflake_semantic_tools.domain.model.skill import Skill, SkillCatalog, SkillFile
 from snowflake_semantic_tools.domain.state import STATE_SCHEMA_VERSION, AppliedEntry, State
-from tests.helpers.app_ports import FixedClock, InMemoryStateStore
+from tests.helpers.app_ports import InMemoryStateStore
 from tests.helpers.artifact_builders import target
-from tests.helpers.recorded_snowflake import RecordedSnowflake
+from tests.helpers.clocks import FixedClock
+from tests.helpers.snowflake_fake import FakeSnowflake
 
 BUNDLE_STAGE = QualifiedName.parse("DB.S.SKILL_BUNDLES")
 PROFILE_STAGE = QualifiedName.parse("DB.S.PROFILES")
@@ -63,7 +64,7 @@ def month_close() -> dict[str, CompiledExtension]:
 
 
 def plan_skills(
-    port: RecordedSnowflake, compiled: dict[str, CompiledExtension], previous: State, *, prune: bool = False
+    port: FakeSnowflake, compiled: dict[str, CompiledExtension], previous: State, *, prune: bool = False
 ) -> ChangeSet:
     """Plan the skills against `port` through their lifecycle handler."""
     releases = {key: item.release for key, item in compiled.items()}
@@ -75,7 +76,7 @@ def plan_skills(
     )
 
 
-def publish_skills(port: RecordedSnowflake, compiled: dict[str, CompiledExtension], previous: State) -> State:
+def publish_skills(port: FakeSnowflake, compiled: dict[str, CompiledExtension], previous: State) -> State:
     """Plan and apply the skills, returning the state apply leaves."""
     releases = {key: item.release for key, item in compiled.items()}
     handlers = {"skill": ExtensionLifecycleHandler(port, releases, "skill")}
@@ -123,7 +124,7 @@ def analyst_profile() -> dict[str, CompiledProfile]:
     return {item.artifact_key: item for item in result.compiled if isinstance(item, CompiledProfile)}
 
 
-def plan_profiles(port: RecordedSnowflake, compiled: dict[str, CompiledProfile], previous: State) -> ChangeSet:
+def plan_profiles(port: FakeSnowflake, compiled: dict[str, CompiledProfile], previous: State) -> ChangeSet:
     """Plan the profiles against `port` through their lifecycle handler."""
     handler = ProfileLifecycleHandler(port, compiled)
     rendered = {key: item.rendered_artifact for key, item in compiled.items()}

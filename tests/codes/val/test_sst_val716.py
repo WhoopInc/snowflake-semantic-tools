@@ -15,9 +15,9 @@ from snowflake_semantic_tools.app.manifest import build_manifest
 from snowflake_semantic_tools.domain.diagnostics import Severity
 from snowflake_semantic_tools.domain.model.lifecycle import Action, RenderedArtifact
 from snowflake_semantic_tools.domain.validate.publication import run_config_diagnostics
-from tests.helpers.app_ports import InMemorySnowflake
 from tests.helpers.compile_builders import compiled_as
 from tests.helpers.eval_builders import compile_eval
+from tests.helpers.snowflake_fake import FakeSnowflake
 
 CONFIG = "evaluation:\n  agent_params: {}\nmetrics:\n  - name: correctness\n"
 
@@ -28,7 +28,7 @@ def _artifact() -> RenderedArtifact:
 
 
 def _plan(artifact: RenderedArtifact) -> tuple[Action, list[str]]:
-    port = InMemorySnowflake()
+    port = FakeSnowflake()
     # The dataset exists, so the plan sees it as it would on any run after the first.
     port.existing = {name.sql for kind, name in artifact.physical_resources if kind == "DATASET"}
     planned = EvalLifecycleHandler(port).plan(artifact, None, build_manifest(compile_eval()))
