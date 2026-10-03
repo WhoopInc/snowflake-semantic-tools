@@ -4,7 +4,13 @@ from __future__ import annotations
 
 import pytest
 
-from snowflake_semantic_tools.domain.model.identifier import Identifier, QualifiedName, SchemaScope, TargetIdentity
+from snowflake_semantic_tools.domain.model.identifier import (
+    Identifier,
+    QualifiedName,
+    SchemaScope,
+    TargetIdentity,
+    production_like,
+)
 
 
 def test_identifier_folding_and_quoting() -> None:
@@ -111,3 +117,18 @@ def test_target_identity_key_changes_with_role_and_warehouse() -> None:
 def test_target_identity_rejects_incomplete_values(value: object) -> None:
     with pytest.raises(ValueError):
         TargetIdentity.from_dict(value)
+
+
+@pytest.mark.parametrize(
+    ("name", "production"),
+    [
+        ("prod", True),
+        ("PROD_us", True),
+        ("eu-production", True),
+        ("prd.east", True),
+        ("product", False),
+        ("dev", False),
+    ],
+)
+def test_a_target_is_production_like_only_by_a_whole_word_of_its_name(name: str, production: bool) -> None:
+    assert production_like(name) is production
