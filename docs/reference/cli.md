@@ -319,8 +319,10 @@ sst baseline show [OPTIONS]
 
 List compiled artifacts and their cached application status, optionally of one TYPE.
 
-With --no-manifest the project's files are compiled in memory instead of reading the
-manifest `sst compile` wrote, and nothing is written.
+TYPE is an artifact type such as semantic-views or agents, a member type such as
+metrics or verified-queries, or tables. With --no-manifest the project's files are
+compiled in memory instead of reading the manifest `sst compile` wrote, and nothing
+is written.
 
 ```text
 sst list [OPTIONS]

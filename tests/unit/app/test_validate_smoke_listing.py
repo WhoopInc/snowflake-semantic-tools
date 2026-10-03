@@ -4,7 +4,7 @@ from dataclasses import replace
 from types import MappingProxyType
 
 from snowflake_semantic_tools.app.compile import CompiledView, CompileResult
-from snowflake_semantic_tools.app.listing import list_artifacts
+from snowflake_semantic_tools.app.listing import list_artifacts, list_members, list_tables
 from snowflake_semantic_tools.app.manifest import build_manifest
 from snowflake_semantic_tools.app.smoke import RunSmokeSuite
 from snowflake_semantic_tools.app.validate import ValidateArtifacts
@@ -188,3 +188,21 @@ class _NonViewArtifact:
     def rendered_for_publish(self, manifest_id: str) -> RenderedArtifact:
         del manifest_id
         return self.rendered_artifact
+
+
+def test_listing_members_and_tables_reads_only_well_formed_manifest_entries() -> None:
+    manifest = replace(
+        build_manifest(compile_result()),
+        members=MappingProxyType(
+            {"metric:b": {"attached_to": ["semantic_view:v2", "semantic_view:v1"]}, "metric:a": {}, "filter:f": []}
+        ),
+        dbt_models=MappingProxyType({"orders": {"relation": "DB.S.ORDERS", "referenced_by": "x"}, "odd": []}),
+    )
+    assert [(item.key, item.name, item.artifacts) for item in list_members(manifest, "metric")] == [
+        ("metric:a", "a", ()),
+        ("metric:b", "b", ("semantic_view:v1", "semantic_view:v2")),
+    ]
+    assert [(item.key, item.relation, item.artifacts) for item in list_tables(manifest)] == [
+        ("table:odd", "", ()),
+        ("table:orders", "DB.S.ORDERS", ()),
+    ]

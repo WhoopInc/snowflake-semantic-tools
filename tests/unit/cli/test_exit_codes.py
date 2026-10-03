@@ -256,7 +256,7 @@ def _interrupted(tmp: Path, monkeypatch: pytest.MonkeyPatch, *args: str) -> Resu
 def _listed(tmp: Path) -> Result:
     project = project_copy(tmp)
     compile_project(project)
-    return _run("list", "--project-dir", str(project), "semantic_view", "--long", "--exclude", "jaffle_menu")
+    return _run("list", "--project-dir", str(project), "semantic-views", "--long", "--exclude", "jaffle_menu")
 
 
 def _docs_unwritable(tmp: Path) -> Result:

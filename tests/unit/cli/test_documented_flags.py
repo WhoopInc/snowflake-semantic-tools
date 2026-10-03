@@ -50,7 +50,7 @@ def test_semantic_reads_another_directory_and_dbt_replaces_model_paths(tmp_path:
 def test_list_without_a_manifest_compiles_in_memory_and_writes_nothing(tmp_path: Path) -> None:
     project = project_copy(tmp_path)
     assert CliRunner().invoke(cli, ["list", *common(project)]).exit_code == 4
-    listed = CliRunner().invoke(cli, ["list", *common(project), "--no-manifest", "semantic_view", "-o", "json"])
+    listed = CliRunner().invoke(cli, ["list", *common(project), "--no-manifest", "semantic-views", "-o", "json"])
     assert listed.exit_code == 0, listed.output
     assert json.loads(listed.stdout)["data"]["count"] == 3
     assert not target_dir(project).exists()
