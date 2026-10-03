@@ -40,7 +40,7 @@ LIST_OUTPUTS = ("table", "plain", "json", "yaml", "csv")
 
 
 def type_name(registered: str) -> str:
-    """Name a registered type as `TYPE` spells it: plural and hyphenated, `verified_query` as `verified-queries`."""
+    """Name a registered type as `TYPE` spells it: plural and hyphenated, as `verified-queries`."""
     stem = registered.replace("_", "-")
     return f"{stem[:-1]}ies" if stem.endswith("y") else f"{stem}s"
 
