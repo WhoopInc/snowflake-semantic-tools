@@ -17,6 +17,7 @@ from snowflake_semantic_tools.app.compile import CompiledArtifact, CompileResult
 from snowflake_semantic_tools.app.compile.evals import CompiledEval
 from snowflake_semantic_tools.app.compile.profiles import CompiledProfile
 from snowflake_semantic_tools.app.compile.skills import CompiledExtension
+from snowflake_semantic_tools.domain.file_names import file_name
 from snowflake_semantic_tools.domain.ports.golden import GoldenPath, GoldenStore
 
 # Optional goldens a reference project may commit for an extension: where each lives, and
@@ -110,12 +111,13 @@ class CompareGoldens:
 def golden_payloads(item: CompiledArtifact, store: GoldenStore) -> tuple[GoldenPayload, ...]:
     """Route an artifact's payloads to their goldens: one explicit route per registered type.
 
-    An optional golden is routed only when the store has it.
+    An optional golden is routed only when the store has it. A golden is named after its
+    artifact by `file_name`, as `sst compile --emit-ddl` names the file it writes.
 
     Raises:
         ValueError: the artifact's type has no golden route.
     """
-    name = item.name.casefold()
+    name = file_name(item.name.casefold())
     artifact_type = item.artifact_type
     if isinstance(item, CompiledEval):
         return (
@@ -160,8 +162,8 @@ def _extension_payloads(
             False,
         )
     ]
-    file_name, member_path = _OPTIONAL_EXTENSION_GOLDENS[artifact_type]
-    golden = GoldenPath(artifact_type, (file_name.format(name=name),))
+    golden_name, member_path = _OPTIONAL_EXTENSION_GOLDENS[artifact_type]
+    golden = GoldenPath(artifact_type, (golden_name.format(name=name),))
     member = member_path.format(name=name)
     entry = next((entry for entry in item.release.bundle.entries if entry.path == member), None)
     if store.exists(golden) and entry is not None:
