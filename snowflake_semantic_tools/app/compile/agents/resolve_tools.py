@@ -69,7 +69,7 @@ def resolve_tool(
         The resolved tool, or None, and every diagnostic in the order it was found.
 
     Diagnostics:
-        SST-RND012: the tool type is unknown to the renderer.
+        SST-RND012: the tool type is unknown to the renderer, and `snowflake.tool_types` adds no such type.
         SST-VAL516: the tool declares a key another tool type takes and its own does not.
         SST-VAL520: an Analyst tool names no semantic view, or is given a name as well.
         SST-VAL016: an Analyst tool's semantic view is one the project declares and does not
@@ -99,7 +99,7 @@ def resolve_tool(
         SST-PRS016: the tool's `query_timeout` is not positive.
     """
     diagnostics: list[Diagnostic] = []
-    if authored.type not in KNOWN_AGENT_TOOL_TYPES:
+    if authored.type not in KNOWN_AGENT_TOOL_TYPES | context.extra_tool_types:
         diagnostics.append(
             D("SST-RND012", artifact=agent.name, found=authored.type, subject=agent.key, origin=authored.origin)
         )

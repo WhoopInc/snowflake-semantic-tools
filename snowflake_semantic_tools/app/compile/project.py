@@ -309,7 +309,26 @@ class CompileProject:
             unpublished=MappingProxyType(dict(unpublished)),
             allow_unknown_keys=settings.block("snowflake").get("allow_unknown_keys") is not False,
             avatar_allowlist=_avatar_allowlist(settings.block("snowflake")),
+            secure=config_bool(defaults.get("+secure")) is True,
+            tags=_tag_pairs(defaults.get("+tags")),
+            extra_tool_types=_extra_tool_types(settings.block("snowflake")),
         )
+
+
+def _tag_pairs(value: object) -> tuple[tuple[str, str], ...]:
+    """Read `agents.+tags`: each `{name, value}` entry as a pair, in authored order."""
+    entries = value if isinstance(value, list) else []
+    return tuple(
+        (str(entry["name"]), str(entry["value"]))
+        for entry in entries
+        if isinstance(entry, Mapping) and entry.get("name") is not None and entry.get("value") is not None
+    )
+
+
+def _extra_tool_types(snowflake: Mapping[str, object]) -> frozenset[str]:
+    """Read `snowflake.tool_types`: the tool types the project adds to the shipped ones."""
+    value = snowflake.get("tool_types")
+    return frozenset(str(item) for item in value if isinstance(item, str)) if isinstance(value, list) else frozenset()
 
 
 def _consumed_collisions(skills: CompileResult, consumed: Mapping[str, QualifiedName]) -> tuple[Diagnostic, ...]:

@@ -125,7 +125,7 @@ def desired_agent_definition(model: AgentModel, spec: Mapping[str, object]) -> b
         canonical_json(
             {
                 "comment": model.comment,
-                "secure": model.secure,
+                "secure": model.secure is True,
                 "profile": {
                     "display_name": model.profile.display_name,
                     "avatar": model.profile.avatar,

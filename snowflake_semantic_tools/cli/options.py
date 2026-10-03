@@ -87,24 +87,14 @@ def validation_options() -> Decorator:
     )
 
 
-def _refuse_defer(ctx: click.Context, param: click.Parameter, value: Any) -> Any:
-    if value:
-        # Imported here: the root group imports this module.
-        from snowflake_semantic_tools.cli.group import SstUsageError
-
-        raise SstUsageError(
-            "--defer-target is not supported in this release: SST reads the manifest dbt resolves for --target, "
-            "so configure deferral in dbt",
-            ctx,
-        )
-    return value
-
-
 def defer_target_option() -> Decorator:
-    """`--defer-target` (else `$SST_DEFER_TARGET`), refused, and `--no-defer`, which defer never needs."""
+    """`--defer-target` (else `$SST_DEFER_TARGET`), the target dbt objects resolve to, and `--no-defer`.
+
+    The runner carries both onto the run's `ProjectPaths`, which `adapters.deferral` reads.
+    """
     return stacked(
-        click.option("--defer-target", envvar="SST_DEFER_TARGET", expose_value=False, callback=_refuse_defer),
-        click.option("--no-defer", is_flag=True, expose_value=False),
+        click.option("--defer-target", "defer_target", envvar="SST_DEFER_TARGET"),
+        click.option("--no-defer", "no_defer", is_flag=True),
     )
 
 

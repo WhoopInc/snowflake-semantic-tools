@@ -140,15 +140,21 @@ def parse_project(
     auto_compile: bool = False,
     echo: Callable[[str], object] = sys.stderr.write,
     profiles_dir: Path | None = None,
+    target_path: Path | None = None,
+    command: str = "parse",
 ) -> tuple[Diagnostic, ...]:
-    """Run `dbt parse` for the target named, with the profiles SST resolved.
+    """Run `dbt parse` (or `dbt.command`) for the target named, with the profiles SST resolved.
 
     Args:
-        manifest_path: Where dbt_project.yml says dbt writes the manifest.
+        manifest_path: Where dbt writes the manifest: under dbt_project.yml's target path, or
+            under `target_path` when it is given.
         profiles_dir: The directory of the `profiles.yml` SST resolves targets against; the
             project directory when None.
         auto_compile: `defer.auto_compile` as `sst_config.yml` sets it.
         echo: Where dbt's own output goes when it fails, so the user reads dbt's words.
+        target_path: The directory dbt writes its artifacts to instead of its own target path,
+            as `--target-path` asks; a deferred target's manifest is written there.
+        command: The dbt command that writes the manifest, `parse` or `compile` (`dbt.command`).
 
     Returns:
         The warnings the run found; anything worse is raised.
@@ -166,10 +172,12 @@ def parse_project(
     if missing:
         raise _refuse(D("SST-DBT026", origin=Origin("packages.yml"), count=missing))
     warnings = _installation(runner, project_dir, auto_compile)
-    command = ["dbt", "parse", "--project-dir", str(project_dir), "--profiles-dir", str(profiles_dir or project_dir)]
+    arguments = ["dbt", command, "--project-dir", str(project_dir), "--profiles-dir", str(profiles_dir or project_dir)]
     if target_name:
-        command.extend(("--target", target_name))
-    completed = _run(runner, command, project_dir)
+        arguments.extend(("--target", target_name))
+    if target_path is not None:
+        arguments.extend(("--target-path", str(target_path)))
+    completed = _run(runner, arguments, project_dir)
     if completed.returncode != 0:
         echo(completed.stdout + completed.stderr)
         raise _refuse(D("SST-DBT028", found=completed.returncode))

@@ -296,10 +296,16 @@ def _build_views(
     diagnostics: list[Diagnostic] = []
     for path, node in nodes:
         view_target = _semantic_view_target(context.config, path, context.views_dir, context.target)
-        default_staleness = _semantic_view_defaults(context.config, path, context.views_dir).get("max_staleness")
-        if "max_staleness" not in node and default_staleness is not None:
-            # A view's own max_staleness wins; only an unset one takes the folder routes' default.
-            node = {**node, "max_staleness": default_staleness}
+        defaults = _semantic_view_defaults(context.config, path, context.views_dir)
+        # A view's own max_staleness and tags win; only an unset one takes the folder routes' default.
+        node = {
+            **node,
+            **{
+                key: defaults[key]
+                for key in ("max_staleness", "tags")
+                if key not in node and defaults.get(key) is not None
+            },
+        }
         try:
             views[artifact_key("semantic_view", str(node["name"]).casefold())] = _build_view(
                 node,

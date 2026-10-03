@@ -7,10 +7,10 @@ from snowflake_semantic_tools.domain.validate.config import validate_config
 
 
 def test_sst_cfg044_fires() -> None:
-    [diagnostic] = [item for item in validate_config({"dbt": {}}) if item.code == "SST-CFG044"]
+    [diagnostic] = [item for item in validate_config({"agents": {"core": {}}}) if item.code == "SST-CFG044"]
     assert diagnostic.severity is Severity.ERROR
-    assert diagnostic.message == "config key 'dbt' is not supported in this release"
-    assert diagnostic.subject == "config:dbt"
+    assert diagnostic.message == "config key 'agents.core' is not supported in this release"
+    assert diagnostic.subject == "config:agents.core"
 
 
 def test_sst_cfg044_silent() -> None:

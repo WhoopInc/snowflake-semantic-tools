@@ -43,8 +43,11 @@ _OPTION_HELP: Mapping[str, str] = {
     ),
     "--exclude": "Leave these artifacts out; same forms as `--select`.",
     "--state": "Previous run's build directory, else `$SST_STATE_DIR`, for `state:` selectors.",
-    "--defer-target": "Not supported in this release: SST reads the manifest dbt resolves for `--target`.",
-    "--no-defer": "Accepted: SST never defers.",
+    "--defer-target": (
+        "Resolve dbt objects to this `profiles.yml` target's relations while publishing to `--target`, "
+        "else `$SST_DEFER_TARGET`, else `defer.target`."
+    ),
+    "--no-defer": "Defer to no target, whatever `defer.target` says.",
     "--threads": (
         "Snowflake sessions to work on at once, 1 to 16, else `$SST_THREADS`, else `generation.threads`, "
         "else 1. Output is the same for any count."

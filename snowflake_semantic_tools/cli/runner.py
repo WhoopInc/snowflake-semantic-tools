@@ -220,14 +220,18 @@ class _Run:
         _report(self.name, options, _with_baseline(result, baseline, files))
 
     def _files(self) -> ProjectPaths:
-        """Resolve the project's files, and the target its configuration resolves against.
+        """Resolve the project's files, the target its configuration resolves against, and its deferral.
 
         A command that needs no configuration looks for none.
         """
         options = self.options
-        target = self.given.get("target_name")
+        run: dict[str, Any] = {
+            "target_name": self.given.get("target_name"),
+            "defer_target": self.given.get("defer_target"),
+            "defer_disabled": bool(self.given.get("no_defer")),
+        }
         if self.config is ConfigNeed.NONE:
-            return ProjectPaths(options.project_dir, None, profiles_dir=options.profiles_dir, target_name=target)
+            return ProjectPaths(options.project_dir, None, profiles_dir=options.profiles_dir, **run)
         return dataclasses.replace(
             locate_project(
                 options.project_dir,
@@ -236,7 +240,7 @@ class _Run:
                 required=self.config is ConfigNeed.REQUIRED,
             ),
             allow_unsupported_manifest_schema=options.allow_unsupported_manifest_schema,
-            target_name=target,
+            **run,
         )
 
     def _arguments(self, files: ProjectPaths) -> dict[str, Any]:

@@ -16,12 +16,13 @@ import os
 import unicodedata
 from collections.abc import Mapping
 from dataclasses import dataclass
+from fnmatch import fnmatchcase
 from pathlib import Path, PurePosixPath
 from types import MappingProxyType
 
 from snowflake_semantic_tools.adapters.errors import ProjectError
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, Origin
-from snowflake_semantic_tools.domain.model.config_schema import CONFIG_KEYS, configured_dir
+from snowflake_semantic_tools.domain.model.config_schema import CONFIG_KEYS, config_block, configured_dir
 from snowflake_semantic_tools.domain.model.registry import SEMANTIC_REGISTRY, Registry
 
 YAML_SUFFIXES = frozenset((".yml", ".yaml"))
@@ -96,8 +97,9 @@ def discover_yaml(
     The diagnostics are the directory claims first, then the walk's, in path order.
 
     Args:
-        config: The parsed `sst_config.yml`, whose directories are checked against each other;
-            None checks the defaults.
+        config: The parsed `sst_config.yml`, whose directories are checked against each other,
+            and whose `validation.exclude_dirs` globs name what the walk skips; None checks the
+            defaults and skips nothing.
 
     Raises:
         ProjectError: SST-DIS001 or SST-DIS002, carried as its diagnostic: the directory is
@@ -116,7 +118,7 @@ def discover_yaml(
         diagnostic = D("SST-DIS002", path=semantic_models_dir)
         raise ProjectError(diagnostic.message, diagnostics=(diagnostic,))
     claims = shared_directories(registry_roots(config or {}, registry), registry)
-    found, problems = _walk(project_dir, root)
+    found, problems = _walk(project_dir, root, excluded_globs(config or {}))
     if not found:
         problems.append(D("SST-DIS003", path=semantic_models_dir))
     return FileSet(tuple(found), MappingProxyType({"semantic_models": semantic_models_dir}), (*claims, *problems))
@@ -159,8 +161,24 @@ def _inner(first: PurePosixPath, second: PurePosixPath) -> PurePosixPath | None:
     return None
 
 
-def _walk(project_dir: Path, root: Path) -> tuple[list[DiscoveredFile], list[Diagnostic]]:
+def excluded_globs(config: Mapping[str, object]) -> tuple[str, ...]:
+    """Return `validation.exclude_dirs`: globs of project-relative paths discovery skips."""
+    globs = config_block(config.get("validation")).get("exclude_dirs")
+    return tuple(str(item) for item in globs if isinstance(item, str) and item) if isinstance(globs, list) else ()
+
+
+def _excluded(relative: str, globs: tuple[str, ...]) -> bool:
+    """Report whether a project-relative path matches one of the excluded globs."""
+    return any(fnmatchcase(relative, glob.rstrip("/")) for glob in globs)
+
+
+def _walk(
+    project_dir: Path, root: Path, excluded: tuple[str, ...] = ()
+) -> tuple[list[DiscoveredFile], list[Diagnostic]]:
     """Walk `root` depth first, in name order, for the YAML files it holds.
+
+    A directory or file whose project-relative path matches an `excluded` glob is skipped, and an
+    excluded directory is not descended into.
 
     Diagnostics:
         SST-DIS004: a file cannot be read.
@@ -178,6 +196,8 @@ def _walk(project_dir: Path, root: Path) -> tuple[list[DiscoveredFile], list[Dia
         children: list[tuple[Path, int]] = []
         for entry in sorted(directory.iterdir()):
             relative = entry.relative_to(project_dir).as_posix()
+            if _excluded(relative, excluded):
+                continue
             if entry.is_dir():
                 if entry.is_symlink():
                     if _loops(entry, root):

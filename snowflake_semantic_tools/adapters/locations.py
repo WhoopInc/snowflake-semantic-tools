@@ -43,6 +43,9 @@ class ProjectPaths:
         target_name: The `profiles.yml` target the run names with `--target` or `$SST_TARGET`;
             None selects the profile's default. The configuration's target conditionals resolve
             against it.
+        defer_target: The target `--defer-target` or `$SST_DEFER_TARGET` names, whose relations
+            dbt objects resolve to; None leaves it to `defer.target`.
+        defer_disabled: `--no-defer`: the run defers to no target, whatever is configured.
         resolved: The run's configuration, resolved once per target and read from here after;
             `adapters.resolved_config` fills it. Not part of equality.
     """
@@ -56,6 +59,8 @@ class ProjectPaths:
     semantic_models_dir: str | None = None
     model_paths: tuple[str, ...] | None = None
     target_name: str | None = None
+    defer_target: str | None = None
+    defer_disabled: bool = False
     resolved: dict[tuple[str | None, str | None], ProjectConfig] = field(
         default_factory=dict, compare=False, hash=False, repr=False
     )

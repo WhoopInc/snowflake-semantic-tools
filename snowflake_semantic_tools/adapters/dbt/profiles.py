@@ -206,6 +206,21 @@ class ProfileTarget:
             params["private_key"] = _inline_private_key(self.target_name, value, passphrase)
         return params
 
+    def with_session_parameters(self, parameters: Mapping[str, object]) -> ProfileTarget:
+        """Return this target with `parameters` added to the session parameters every connection sets."""
+        params = dict(self._params)
+        session = params.get("session_parameters")
+        params["session_parameters"] = {**(session if isinstance(session, dict) else {}), **parameters}
+        return ProfileTarget(
+            profile_name=self.profile_name,
+            target_name=self.target_name,
+            connection_params=params,
+            identity=self.identity,
+            state_table=self.state_table,
+            diagnostics=self.diagnostics,
+            inline_key=self._inline_key,
+        )
+
     @property
     def connection_warnings(self) -> tuple[Diagnostic, ...]:
         """Report each setting a connection would leave to the account's defaults.

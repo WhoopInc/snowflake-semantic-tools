@@ -61,13 +61,9 @@ def test_unsupported_and_removed_0_3_keys_are_errors(tmp_path: Path) -> None:
     )
     _write(tmp_path, {"dbt_project.yml": "profile: sst\n", "sst_config.yml": config})
     loaded = load_project_config(project_paths(tmp_path))
-    # enrichment: is read again; the 0.3 blocks around it are not.
+    # enrichment:, dbt:, defer:, exclude_dirs and tool_types are read; the removed 0.3 key is not.
     assert [(item.code, item.subject, item.severity.name) for item in loaded.diagnostics] == [
-        ("SST-CFG044", "config:dbt", "ERROR"),
-        ("SST-CFG043", "config:validation.exclude_dirs", "ERROR"),
         ("SST-CFG043", "config:generation.use_create_or_alter", "ERROR"),
-        ("SST-CFG043", "config:defer", "ERROR"),
-        ("SST-CFG044", "config:snowflake.tool_types", "ERROR"),
     ]
     # apply.fail_fast is read again: the --fail-fast flag pair overrides it for one run.
     assert dict(loaded.tree)["apply"] == {"fail_fast": True}

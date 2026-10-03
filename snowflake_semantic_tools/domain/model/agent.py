@@ -110,19 +110,20 @@ class AgentModel:
     """One agent as its `agent.yml` declares it, before its tools and skills resolve.
 
     Compile fills what the agent leaves unset from the `agents:` defaults: the orchestration
-    model, budget, `tool_not_accessible`, `analytical_search`, and alias.
+    model, budget, `tool_not_accessible`, `analytical_search`, alias, `secure`, and tags.
 
     Attributes:
         source_files: The `agent.yml` and each instruction file it reads, relative to the
             project root, in the order they were read.
         orchestration_model: "auto" when unset.
+        secure: None when unset, which compile resolves from `agents.+secure`, else False.
         analytical_search: None when unset, which is not the same as False.
         orchestration_instructions: The instruction text, or the content of the file its
             `{{ file('<path>') }}` names; None when unset or the file cannot be used.
         response_instructions: As `orchestration_instructions`, for the response instructions.
         enabled: False leaves the agent out of the compiled project.
         meta: Free-form metadata; it counts toward the agent's definition fingerprint.
-        tags: `(tag name, value)` pairs, in authored order.
+        tags: `(tag name, value)` pairs, in authored order; none takes `agents.+tags`.
         passthrough: Keys added last to the rendered spec, so they override the computed ones.
         evals: None when the agent declares no `evals:`.
         deprecated: The agent is retired from use; no alias may still point at a version of it.
@@ -134,7 +135,7 @@ class AgentModel:
     origin: Origin
     source_files: tuple[str, ...]
     comment: str | None = None
-    secure: bool = False
+    secure: bool | None = None
     profile: AgentProfile = AgentProfile()
     orchestration_model: str = "auto"
     budget_seconds: int | None = None

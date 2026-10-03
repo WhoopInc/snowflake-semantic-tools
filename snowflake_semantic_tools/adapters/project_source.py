@@ -26,6 +26,7 @@ from snowflake_semantic_tools.adapters.dbt.project import (
     stale_models,
     target_path,
 )
+from snowflake_semantic_tools.adapters.deferral import resolve_deferral
 from snowflake_semantic_tools.adapters.errors import ProjectError
 from snowflake_semantic_tools.adapters.locations import ProjectPaths
 from snowflake_semantic_tools.adapters.resolved_config import resolved_config
@@ -46,6 +47,7 @@ from snowflake_semantic_tools.domain.model.config_schema import (
     config_block,
     config_bool,
     configured_dir,
+    dbt_settings,
     skills_configured,
 )
 from snowflake_semantic_tools.domain.model.dbt import DbtCatalog
@@ -62,6 +64,7 @@ from snowflake_semantic_tools.domain.ports.project import (
     ProjectTarget,
     ValidationDefaults,
 )
+from snowflake_semantic_tools.domain.resolve.defer import defer_relations
 from snowflake_semantic_tools.domain.state import canonical_json
 from snowflake_semantic_tools.domain.validate.dbt_seam import empty_catalog
 
@@ -95,6 +98,7 @@ class YamlProjectSource:
         self._load_cache = load_cache
         self._parsed = False
         self._parse_warnings: tuple[Diagnostic, ...] = ()
+        self._deferred: DbtCatalog | None = None
 
     @property
     def project_dir(self) -> Path:
@@ -110,17 +114,19 @@ class YamlProjectSource:
         return self._manifest_path or target_path(self._project_dir, read_yaml_mapping)
 
     def _parsed_manifest(self) -> Path:
-        """Return the manifest to read, running `dbt parse` first the first time dbt may be run.
+        """Return the manifest to read, running dbt first the first time dbt may be run.
 
-        The manifest path is resolved before dbt runs, and dbt runs at most once per source, so a
-        command that reads both the models and the tools parses the project once.
+        dbt runs only when no manifest was given and `dbt.invoke` is not false, as `dbt.command`
+        says. The manifest path is resolved before dbt runs, and dbt runs at most once per source,
+        so a command that reads both the models and the tools parses the project once.
 
         Raises:
             ProjectError: `dbt_project.yml` cannot be read or names a `model-paths` entry that
                 is not a directory (SST-DIS009), or dbt fails.
         """
         path = self.manifest_file()
-        if self._manifest_path is None and self._invoke_dbt and not self._parsed:
+        settings = dbt_settings(self._config_tree())
+        if self._manifest_path is None and self._invoke_dbt and settings.invoke and not self._parsed:
             check_model_paths(self._project_dir, read_yaml_mapping)
             self._parse_warnings = parse_project(
                 self._project_dir,
@@ -129,22 +135,59 @@ class YamlProjectSource:
                 runner=self._runner,
                 auto_compile=self._auto_compile(),
                 profiles_dir=self._files.profiles_directory(),
+                command=settings.command,
             )
             self._parsed = True
         return path
 
     def _auto_compile(self) -> bool:
-        """Read `defer.auto_compile`, the 0.3 key that asked SST to build the manifest for a target."""
+        """Read `defer.auto_compile`: SST produces the deferred target's manifest itself."""
         return config_bool(config_block(self._config_tree().get("defer")).get("auto_compile")) is True
 
     def dbt_catalog(self) -> DbtCatalog:
         """Return the dbt manifest's models, running `dbt parse` first as `load_project` does.
 
+        With a deferral, each model and source the deferred target's manifest holds reads that
+        target's relation, as `defer_relations` says.
+
         Raises:
-            ProjectError: dbt fails, or the manifest is absent, unreadable, or of another schema.
+            ProjectError: dbt fails, or a manifest is absent, unreadable, or of another schema;
+                or the deferred target is not declared (SST-CFG010).
         """
+        return self.deferred(self._read_catalog(self._parsed_manifest()))
+
+    def deferred(self, catalog: DbtCatalog) -> DbtCatalog:
+        """Return `catalog` with its relations resolved to the deferred target's; itself without a deferral.
+
+        The deferred target's manifest is read once per source, and produced first with
+        `defer.auto_compile` when dbt may be run.
+
+        Raises:
+            ProjectError: as `dbt_catalog` raises.
+        """
+        deferral = resolve_deferral(self._files)
+        if deferral is None:
+            return catalog
+        if self._deferred is None:
+            if deferral.produce and self._invoke_dbt and dbt_settings(self._config_tree()).invoke:
+                parse_project(
+                    self._project_dir,
+                    deferral.target,
+                    deferral.manifest,
+                    runner=self._runner,
+                    auto_compile=True,
+                    profiles_dir=self._files.profiles_directory(),
+                    target_path=deferral.state_dir,
+                    command=dbt_settings(self._config_tree()).command,
+                )
+            self._deferred = self._read_catalog(deferral.manifest)
+        return defer_relations(catalog, self._deferred)
+
+    def _read_catalog(self, path: Path) -> DbtCatalog:
         return load_manifest_catalog(
-            self._parsed_manifest(), allow_unsupported_schema=self._files.allow_unsupported_manifest_schema
+            path,
+            allow_unsupported_schema=self._files.allow_unsupported_manifest_schema,
+            supported_versions=dbt_settings(self._config_tree()).manifest_schema_versions,
         )
 
     def _seam_diagnostics(self, catalog: DbtCatalog) -> tuple[Diagnostic, ...]:
@@ -384,8 +427,12 @@ class YamlProjectInputs(ProjectInputs):
             return "", DbtCatalog(schema_version="", dbt_version=None, project_name=None, models=()), ""
         dbt_path = self._source.manifest_file()
         name = dbt_project_name(self._project_dir)
-        catalog = load_manifest_catalog(
-            dbt_path, allow_unsupported_schema=self._files.allow_unsupported_manifest_schema
+        catalog = self._source.deferred(
+            load_manifest_catalog(
+                dbt_path,
+                allow_unsupported_schema=self._files.allow_unsupported_manifest_schema,
+                supported_versions=dbt_settings(self.config().tree).manifest_schema_versions,
+            )
         )
         try:
             recorded = dbt_path.resolve().relative_to(self._project_dir.resolve()).as_posix()

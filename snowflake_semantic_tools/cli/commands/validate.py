@@ -14,6 +14,7 @@ from snowflake_semantic_tools.cli.exit_codes import ERROR, OK
 from snowflake_semantic_tools.cli.globals import GlobalOptions
 from snowflake_semantic_tools.cli.options import (
     database_option,
+    defer_target_option,
     model_path_options,
     selection_options,
     target_option,
@@ -34,6 +35,7 @@ from snowflake_semantic_tools.domain.diagnostics import DiagnosticBag, Severity
 
 @click.command()
 @target_option()
+@defer_target_option()
 @selection_options()
 @database_option()
 @validation_options()

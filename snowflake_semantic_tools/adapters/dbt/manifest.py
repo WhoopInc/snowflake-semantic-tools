@@ -314,26 +314,33 @@ def schema_version_number(value: object) -> int | None:
     return int(match.group(1)) if match else None
 
 
-def check_schema_version(metadata: Mapping[str, Any], *, allow_unsupported: bool = False) -> None:
+def check_schema_version(
+    metadata: Mapping[str, Any], *, allow_unsupported: bool = False, supported: frozenset[int] | None = None
+) -> None:
     """Refuse a manifest whose schema version SST does not read, unless told to accept the risk.
+
+    Args:
+        supported: The versions accepted, as `dbt.manifest_schema_versions` sets them; None
+            accepts `SUPPORTED_SCHEMA_VERSIONS`, the versions this release is tested against.
 
     Raises:
         ProjectError: As the diagnostics say, unless `allow_unsupported`.
 
     Diagnostics:
         SST-DBT018: `dbt_schema_version` is absent or names no version; raised.
-        SST-DBT017: it names a version outside `SUPPORTED_SCHEMA_VERSIONS`; raised.
+        SST-DBT017: it names a version outside the supported set; raised.
     """
     if allow_unsupported:
         return
+    accepted = SUPPORTED_SCHEMA_VERSIONS if supported is None else supported
     value = metadata.get("dbt_schema_version")
     number = schema_version_number(value)
     if number is None:
         diagnostic = D("SST-DBT018", found="absent" if value in (None, "") else repr(value))
         raise ProjectError(diagnostic.message, diagnostics=(diagnostic,))
-    if number not in SUPPORTED_SCHEMA_VERSIONS:
-        supported = ", ".join(f"v{version}" for version in sorted(SUPPORTED_SCHEMA_VERSIONS))
-        diagnostic = D("SST-DBT017", found=str(value), expected=supported)
+    if number not in accepted:
+        expected = ", ".join(f"v{version}" for version in sorted(accepted))
+        diagnostic = D("SST-DBT017", found=str(value), expected=expected)
         raise ProjectError(diagnostic.message, diagnostics=(diagnostic,))
 
 
@@ -373,18 +380,18 @@ def _sources(root: Mapping[str, Any]) -> tuple[tuple[DbtSource, ...], tuple[Diag
     return sources, tuple(D("SST-DBT012", value=pair) for pair, count in sorted(counts.items()) if count > 1)
 
 
-def catalog_from_document(document: object, *, allow_unsupported_schema: bool = False) -> DbtCatalog:
+def catalog_from_document(
+    document: object, *, allow_unsupported_schema: bool = False, supported_versions: frozenset[int] | None = None
+) -> DbtCatalog:
     """Project a decoded manifest document into immutable domain values.
 
     Nodes are read in sorted unique-id order, and the catalog keeps their models in that order.
     A model SST cannot use is left out with a diagnostic in `DbtCatalog.diagnostics`.
 
     Args:
-        allow_unsupported_schema: Read a manifest whose schema version is unsupported or unreadable.
-
-    Args:
         allow_unsupported_schema: Read a manifest of another schema version for this one run,
             as `--allow-unsupported-manifest-schema` asks, instead of refusing it.
+        supported_versions: As `check_schema_version` takes them.
 
     Raises:
         ProjectError: The schema version is refused, or a part SST reads has the wrong shape.
@@ -396,7 +403,7 @@ def catalog_from_document(document: object, *, allow_unsupported_schema: bool = 
     """
     root = _mapping(document, path="root")
     metadata = _mapping(root.get("metadata"), path="metadata")
-    check_schema_version(metadata, allow_unsupported=allow_unsupported_schema)
+    check_schema_version(metadata, allow_unsupported=allow_unsupported_schema, supported=supported_versions)
     nodes = _mapping(root.get("nodes"), path="nodes")
     key_tests = _key_test_columns(nodes)
     test_counts = _test_counts(nodes)
@@ -427,11 +434,13 @@ def catalog_from_document(document: object, *, allow_unsupported_schema: bool = 
     )
 
 
-def load_manifest_catalog(path: Path, *, allow_unsupported_schema: bool = False) -> DbtCatalog:
+def load_manifest_catalog(
+    path: Path, *, allow_unsupported_schema: bool = False, supported_versions: frozenset[int] | None = None
+) -> DbtCatalog:
     """Read and decode one dbt manifest without consulting dbt model YAML.
 
     Args:
-        allow_unsupported_schema: As `catalog_from_document` takes it.
+        allow_unsupported_schema, supported_versions: As `catalog_from_document` takes them.
 
     Raises:
         ProjectError: the manifest is absent (SST-PRT006), cannot be read (SST-PRT009), is not
@@ -451,4 +460,6 @@ def load_manifest_catalog(path: Path, *, allow_unsupported_schema: bool = False)
         raise ProjectError(diagnostic.message, diagnostics=(diagnostic,)) from exc
     except json.JSONDecodeError as exc:
         raise ProjectError(f"dbt manifest {path} is not valid JSON: {exc}") from exc
-    return catalog_from_document(document, allow_unsupported_schema=allow_unsupported_schema)
+    return catalog_from_document(
+        document, allow_unsupported_schema=allow_unsupported_schema, supported_versions=supported_versions
+    )
