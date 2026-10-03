@@ -14,7 +14,7 @@ def test_sst_val302_fires() -> None:
     by_model_name = (Table("PRICING_PERIODS", "DB.S.PRICING_PERIODS"),)
     [found] = relation_diagnostics(by_model_name, RELATIONS, artifact="semantic_view:menu")
     assert found.severity is Severity.ERROR
-    assert found.message == "semantic_view:menu: table 'pricing_periods' resolves to relation 'DB.S.PRICING_PERIODS'"
+    assert found.message == "semantic_view:menu: table 'pricing_periods' resolves to relation 'DB.S.PRICING_CALENDAR'"
     assert found.subject == "semantic_view:menu"
 
 
