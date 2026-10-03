@@ -16,7 +16,7 @@ from snowflake_semantic_tools.domain.model.project import ParsedMember, ParsedVi
 AUTHORED_TYPES = ("metric", "filter", "relationship", "verified_query", "custom_instruction")
 
 
-def _attachment_diagnostics(
+def attachment_diagnostics(
     views: tuple[ParsedView, ...],
     members: tuple[ParsedMember, ...],
     attachment: Mapping[str, tuple[str, ...]],

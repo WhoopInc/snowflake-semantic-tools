@@ -7,28 +7,15 @@ from pathlib import Path
 
 from snowflake_semantic_tools.adapters.errors import ProjectError
 from snowflake_semantic_tools.adapters.yaml.documents import RawDocuments
-from snowflake_semantic_tools.adapters.yaml.semantic.checks.deprecated import honoured
-from snowflake_semantic_tools.adapters.yaml.semantic.defs import (
-    FilterDef,
-    InstructionDef,
-    MetricDef,
-    VerifiedQueryDef,
-    _non_additive,
-    _window,
-)
-from snowflake_semantic_tools.adapters.yaml.semantic.nodes import (
-    _as_str_tuple,
-    _list_of,
-    _load_nodes,
-    _member_root,
-    _node_origin,
-    _safe_table_refs,
-    _table_refs_poisoned,
-)
+from snowflake_semantic_tools.adapters.yaml.semantic.defs import _non_additive, _window
+from snowflake_semantic_tools.adapters.yaml.semantic.nodes import _as_str_tuple, _safe_table_refs, _table_refs_poisoned
 from snowflake_semantic_tools.domain.diagnostics import D
 from snowflake_semantic_tools.domain.model.artifact_key import artifact_key
+from snowflake_semantic_tools.domain.model.authored import FilterDef, InstructionDef, MetricDef, VerifiedQueryDef
 from snowflake_semantic_tools.domain.parse.template import TemplateSyntaxError, scan_template_calls
 from snowflake_semantic_tools.domain.resolve.calls import member_reference
+from snowflake_semantic_tools.domain.validate.semantic.deprecated import honoured
+from snowflake_semantic_tools.domain.validate.semantic.nodes import list_of, load_nodes, member_root, node_origin
 
 
 def _relationship_name(text: str) -> str:
@@ -46,9 +33,8 @@ def load_metrics(documents: RawDocuments, project_dir: Path, semantic_models_dir
     Raises:
         ProjectError: An entry's `synonyms` is a mapping, which cannot be read as text.
     """
-    metrics_dir = project_dir / semantic_models_dir / "metrics"
     out: list[MetricDef] = []
-    for document, index, node in _load_nodes(documents, metrics_dir, _member_root("metric")):
+    for document, index, node in load_nodes(documents, member_root("metric")):
         if not node.get("name") or not node.get("expr"):
             continue
         expression = str(node["expr"])
@@ -74,14 +60,14 @@ def load_metrics(documents: RawDocuments, project_dir: Path, semantic_models_dir
                 ),
                 non_additive=tuple(
                     _non_additive(value)
-                    for value in _list_of(node.get("non_additive_dimensions"))
+                    for value in list_of(node.get("non_additive_dimensions"))
                     if isinstance(value, dict)
                     and isinstance(value.get("dimension"), str)
                     and value["dimension"].strip()
                 ),
                 access_modifier=str(honoured(node, "access_modifier", "metric") or "public_access"),
                 has_tables_key="tables" in node,
-                origin=_node_origin(document, _member_root("metric"), index),
+                origin=node_origin(document, member_root("metric"), index),
                 template_calls=template_calls,
                 poisoned=_table_refs_poisoned(node.get("tables")),
                 window=_window(node.get("window")),
@@ -98,8 +84,7 @@ def load_filters(documents: RawDocuments, project_dir: Path, semantic_models_dir
     compare casefolded, and a `labels:` value that is not a list holds none.
     """
     out: list[FilterDef] = []
-    root = project_dir / semantic_models_dir / "filters"
-    for document, index, node in _load_nodes(documents, root, _member_root("filter")):
+    for document, index, node in load_nodes(documents, member_root("filter")):
         if not node.get("name") or not node.get("expr"):
             continue
         labels = node.get("labels")
@@ -116,7 +101,7 @@ def load_filters(documents: RawDocuments, project_dir: Path, semantic_models_dir
                 description=str(node.get("description") or "").strip() or None,
                 tables=_safe_table_refs(node.get("tables")),
                 entity_level="filter" in labels,
-                origin=_node_origin(document, _member_root("filter"), index),
+                origin=node_origin(document, member_root("filter"), index),
                 template_calls=template_calls,
                 poisoned=_table_refs_poisoned(node.get("tables")),
                 labeled="labels" in node,
@@ -134,9 +119,8 @@ def load_instructions(
     Of two entries whose names casefold alike the later is kept; the name checks report the
     repeat (SST-PRS106).
     """
-    root = project_dir / semantic_models_dir / "custom_instructions"
     out: dict[str, InstructionDef] = {}
-    for document, index, node in _load_nodes(documents, root, _member_root("custom_instruction")):
+    for document, index, node in load_nodes(documents, member_root("custom_instruction")):
         if not node.get("name"):
             continue
         name = str(node["name"])
@@ -147,7 +131,7 @@ def load_instructions(
                 honoured(node, "ai_question_categorization", "custom_instruction") or ""
             ).strip()
             or None,
-            origin=_node_origin(document, _member_root("custom_instruction"), index),
+            origin=node_origin(document, member_root("custom_instruction"), index),
             renamed="sql_generation" in node or "question_categorization" in node,
         )
     return out
@@ -199,9 +183,8 @@ def load_verified_queries(
         ProjectError: An entry's `verified_at` is neither an integer nor an ISO-8601 string; an
             unquoted date, which YAML reads as a date, is refused too (SST-PRS017).
     """
-    root = project_dir / semantic_models_dir / "verified_queries"
     out: list[VerifiedQueryDef] = []
-    for document, index, node in _load_nodes(documents, root, _member_root("verified_query")):
+    for document, index, node in load_nodes(documents, member_root("verified_query")):
         if not node.get("name") or not node.get("question"):
             continue
         has_sql = node.get("sql") is not None
@@ -210,7 +193,7 @@ def load_verified_queries(
             continue
         sql = str(node.get("sql") or "")
         if not sql and node.get("sql_file"):
-            sql_path = document.abs_path.parent / str(node["sql_file"])
+            sql_path = documents.by_path[document.path].abs_path.parent / str(node["sql_file"])
             try:
                 sql = sql_path.read_text(encoding="utf-8").rstrip("\n")
             except (OSError, UnicodeDecodeError):
@@ -234,7 +217,7 @@ def load_verified_queries(
                 onboarding_question=(
                     bool(node["use_as_onboarding_question"]) if "use_as_onboarding_question" in node else None
                 ),
-                origin=_node_origin(document, _member_root("verified_query"), index),
+                origin=node_origin(document, member_root("verified_query"), index),
                 template_calls=template_calls,
                 poisoned=_table_refs_poisoned(node.get("tables")),
             )

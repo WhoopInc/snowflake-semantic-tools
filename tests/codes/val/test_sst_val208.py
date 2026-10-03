@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-from snowflake_semantic_tools.adapters.yaml.semantic.checks.joins import key_diagnostic
 from snowflake_semantic_tools.domain.diagnostics import Severity
 from snowflake_semantic_tools.domain.model.semantic_view import Relationship
+from snowflake_semantic_tools.domain.validate.semantic.joins import key_diagnostic
 from tests.helpers.semantic_members import BALANCES
 
 

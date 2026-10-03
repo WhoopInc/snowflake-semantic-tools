@@ -9,20 +9,20 @@ from pathlib import Path
 from typing import Any
 
 from snowflake_semantic_tools.adapters.yaml.documents import RawDocuments
-from snowflake_semantic_tools.adapters.yaml.semantic.checks.joins import (
+from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, Origin
+from snowflake_semantic_tools.domain.model.artifact_key import artifact_key
+from snowflake_semantic_tools.domain.model.authored import MetricDef
+from snowflake_semantic_tools.domain.model.dbt import DbtModel
+from snowflake_semantic_tools.domain.model.semantic_view import Relationship
+from snowflake_semantic_tools.domain.parse.names import identifier_problem
+from snowflake_semantic_tools.domain.parse.template import TemplateSyntaxError, scan_template_calls
+from snowflake_semantic_tools.domain.validate.semantic.joins import (
     dropped_condition,
     is_self_loop,
     key_diagnostic,
     unparsable_condition,
 )
-from snowflake_semantic_tools.adapters.yaml.semantic.defs import MetricDef
-from snowflake_semantic_tools.adapters.yaml.semantic.nodes import _load_nodes, _member_root, _node_origin
-from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, Origin
-from snowflake_semantic_tools.domain.model.artifact_key import artifact_key
-from snowflake_semantic_tools.domain.model.dbt import DbtModel
-from snowflake_semantic_tools.domain.model.semantic_view import Relationship
-from snowflake_semantic_tools.domain.parse.names import identifier_problem
-from snowflake_semantic_tools.domain.parse.template import TemplateSyntaxError, scan_template_calls
+from snowflake_semantic_tools.domain.validate.semantic.nodes import load_nodes, member_root, node_origin
 
 
 def _relationship_diagnostics(
@@ -146,9 +146,8 @@ def _relationship_parse_diagnostics(
     project_dir: Path,
     semantic_models_dir: str,
 ) -> tuple[Diagnostic, ...]:
-    root = project_dir / semantic_models_dir / "relationships"
     diagnostics: list[Diagnostic] = []
-    for document, index, node in _load_nodes(documents, root, _member_root("relationship")):
+    for document, index, node in load_nodes(documents, member_root("relationship")):
         if not node.get("name"):
             continue
         conditions = node.get("relationship_conditions")
@@ -160,7 +159,7 @@ def _relationship_parse_diagnostics(
                     "SST-VAL201",
                     relationship=name,
                     subject=artifact_key("relationship", name),
-                    origin=_node_origin(document, _member_root("relationship"), index),
+                    origin=node_origin(document, member_root("relationship"), index),
                 )
             )
     return tuple(diagnostics)
@@ -269,10 +268,9 @@ def load_relationships(
         SST-PRS011: when the name, an endpoint, or a column is a valid identifier only quoted.
         SST-PRS005: when the name, an endpoint, or a column is not a valid identifier.
     """
-    root = project_dir / semantic_models_dir / "relationships"
     out: list[tuple[Relationship, Origin]] = []
     diagnostics: list[Diagnostic] = []
-    for document, index, node in _load_nodes(documents, root, _member_root("relationship")):
+    for document, index, node in load_nodes(documents, member_root("relationship")):
         raw_conditions = node.get("relationship_conditions")
         if not node.get("name") or not isinstance(raw_conditions, list) or not raw_conditions:
             continue
@@ -280,7 +278,7 @@ def load_relationships(
             # SST-REF034/SST-REF035 report the legacy globals; parsing further
             # would only bury that diagnostic under a condition-shape error.
             continue
-        origin = _node_origin(document, _member_root("relationship"), index)
+        origin = node_origin(document, member_root("relationship"), index)
         read = _read_relationship(node, raw_conditions, origin, models)
         if isinstance(read, Relationship):
             out.append((read, origin))

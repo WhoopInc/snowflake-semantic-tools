@@ -6,9 +6,9 @@ from pathlib import Path
 from typing import Any
 
 from snowflake_semantic_tools.adapters.yaml.documents import RawDocuments
-from snowflake_semantic_tools.adapters.yaml.semantic.nodes import _node_root
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, Origin
 from snowflake_semantic_tools.domain.model.dbt import DbtTarget
+from snowflake_semantic_tools.domain.validate.semantic.nodes import node_root
 
 
 def _render_target_value(value: object, target: DbtTarget) -> str:
@@ -86,7 +86,7 @@ def _stray_view_diagnostics(documents: RawDocuments, views_dir: Path) -> tuple[D
     Views are validated from every file but built only from files under `views_dir`, so
     such a list would otherwise be dropped without a word.
     """
-    root_key = _node_root("semantic_view")
+    root_key = node_root("semantic_view")
     built = {document.path for document in documents.under(views_dir, root_key)}
     diagnostics: list[Diagnostic] = []
     for document in documents.documents:

@@ -11,20 +11,18 @@ from snowflake_semantic_tools.adapters.dbt.manifest import SUPPORTED_SCHEMA
 from snowflake_semantic_tools.adapters.yaml.discover import discover_yaml
 from snowflake_semantic_tools.adapters.yaml.documents import load_documents
 from snowflake_semantic_tools.adapters.yaml.parse import parse_yaml_bytes
-from snowflake_semantic_tools.adapters.yaml.semantic.checks.authored_keys import (
-    _authored_key_diagnostics,
-    _legacy_reference_diagnostics,
-    _member_name_diagnostics,
-)
-from snowflake_semantic_tools.adapters.yaml.semantic.checks.deprecated import _deprecated_key_diagnostics
-from snowflake_semantic_tools.adapters.yaml.semantic.checks.shape import (
-    _metric_parse_diagnostics,
-    _verified_query_diagnostics,
-)
-from snowflake_semantic_tools.adapters.yaml.semantic.defs import _frame
+from snowflake_semantic_tools.adapters.yaml.semantic.file_reads import _verified_query_diagnostics
 from snowflake_semantic_tools.adapters.yaml.semantic.relationships import _relationship_parse_diagnostics
 from snowflake_semantic_tools.adapters.yaml.semantic.target import _folder_route_diagnostics
 from snowflake_semantic_tools.domain.diagnostics import ERROR_REGISTRY
+from snowflake_semantic_tools.domain.parse.frame import canonical_frame
+from snowflake_semantic_tools.domain.validate.semantic.authored_keys import (
+    authored_key_diagnostics,
+    legacy_reference_diagnostics,
+    member_name_diagnostics,
+)
+from snowflake_semantic_tools.domain.validate.semantic.deprecated import deprecated_key_diagnostics
+from snowflake_semantic_tools.domain.validate.semantic.shape import metric_parse_diagnostics
 from tests.helpers.projects import findings, load_project, load_views
 
 
@@ -172,10 +170,8 @@ def test_vq_exclusivity_and_legacy_globals_are_structured_diagnostics(tmp_path: 
         encoding="utf-8",
     )
     documents = load_documents(discover_yaml(tmp_path, "semantic_models"), parse_yaml_bytes)
-    assert [diagnostic.code for diagnostic in _verified_query_diagnostics(documents, tmp_path, "semantic_models")] == [
-        "SST-VAL412"
-    ]
-    assert [diagnostic.code for diagnostic in _legacy_reference_diagnostics(documents)] == [
+    assert [diagnostic.code for diagnostic in _verified_query_diagnostics(documents)] == ["SST-VAL412"]
+    assert [diagnostic.code for diagnostic in legacy_reference_diagnostics(documents)] == [
         "SST-REF034",
         "SST-REF035",
     ]
@@ -214,7 +210,7 @@ def test_vq_sources_and_relationship_conditions_fail_with_registered_codes(tmp_p
     )
     documents = load_documents(discover_yaml(tmp_path, "semantic_models"), parse_yaml_bytes)
 
-    assert [diagnostic.code for diagnostic in _verified_query_diagnostics(documents, tmp_path, "semantic_models")] == [
+    assert [diagnostic.code for diagnostic in _verified_query_diagnostics(documents)] == [
         "SST-VAL412",
         "SST-LOD018",
         "SST-LOD019",
@@ -280,7 +276,7 @@ def test_metric_parse_diagnostics_preserve_missing_empty_and_wrong_types(tmp_pat
         encoding="utf-8",
     )
     documents = load_documents(discover_yaml(tmp_path, "semantic_models"), parse_yaml_bytes)
-    diagnostics = _metric_parse_diagnostics(documents, tmp_path, "semantic_models")
+    diagnostics = metric_parse_diagnostics(documents)
     assert [diagnostic.code for diagnostic in diagnostics] == [
         "SST-PRS002",
         "SST-PRS113",
@@ -342,7 +338,7 @@ def test_every_unread_key_is_reported_and_0_3_spellings_are_named(tmp_path: Path
     documents = load_documents(discover_yaml(tmp_path, "semantic_models"), parse_yaml_bytes)
     found = [
         (item.code, item.severity.name, item.subject, item.context.get("field"), item.context.get("expected"))
-        for item in _authored_key_diagnostics(documents)
+        for item in authored_key_diagnostics(documents)
     ]
     assert sorted(found, key=str) == sorted(
         [
@@ -371,14 +367,14 @@ def test_every_unread_key_is_reported_and_0_3_spellings_are_named(tmp_path: Path
     # their own codes instead.
     assert [
         (item.code, item.severity.name, item.subject, item.context.get("field"))
-        for item in _deprecated_key_diagnostics(documents)
+        for item in deprecated_key_diagnostics(documents)
     ] == [
         ("SST-VAL012", "WARNING", "custom_instruction:tone", "sql_generation"),
         ("SST-VAL012", "WARNING", "custom_instruction:tone", "question_categorization"),
         ("SST-VAL122", "WARNING", "metric:product_count", None),
         ("SST-VAL211", "WARNING", "relationship:self", "join_type"),
     ]
-    visibility = next(item for item in _deprecated_key_diagnostics(documents) if item.code == "SST-VAL122")
+    visibility = next(item for item in deprecated_key_diagnostics(documents) if item.code == "SST-VAL122")
     assert visibility.message == "metric 'product_count' uses visibility; the current key is access_modifier"
     assert visibility.origin is not None and visibility.origin.line == 5
     # The renamed relationship shape is not also reported as having no conditions.
@@ -404,7 +400,7 @@ def test_nameless_and_duplicate_members_are_reported(tmp_path: Path) -> None:
     documents = load_documents(discover_yaml(tmp_path, "semantic_models"), parse_yaml_bytes)
     found = sorted(
         (item.code, item.subject, item.context.get("index", item.context.get("name")))
-        for item in _member_name_diagnostics(documents)
+        for item in member_name_diagnostics(documents)
     )
     assert found == [
         ("SST-PRS007", "custom_instruction:tone", "tone"),
@@ -462,10 +458,7 @@ def test_non_additive_entries_are_shape_checked(tmp_path: Path) -> None:
         encoding="utf-8",
     )
     documents = load_documents(discover_yaml(tmp_path, "semantic_models"), parse_yaml_bytes)
-    assert [
-        (item.code, item.subject, item.context["field"])
-        for item in _metric_parse_diagnostics(documents, tmp_path, "semantic_models")
-    ] == [
+    assert [(item.code, item.subject, item.context["field"]) for item in metric_parse_diagnostics(documents)] == [
         ("SST-PRS003", "metric:not_a_list", "non_additive_dimensions"),
         ("SST-PRS003", "metric:bad_entries", "non_additive_dimensions[0]"),
         ("SST-PRS002", "metric:bad_entries", "non_additive_dimensions[1].dimension"),
@@ -495,7 +488,7 @@ def test_window_blocks_are_shape_checked(tmp_path: Path) -> None:
     documents = load_documents(discover_yaml(tmp_path, "semantic_models"), parse_yaml_bytes)
     found = [
         (item.code, item.subject, item.context.get("field") or item.context.get("value"))
-        for item in _metric_parse_diagnostics(documents, tmp_path, "semantic_models")
+        for item in metric_parse_diagnostics(documents)
     ]
     assert found == [
         ("SST-PRS003", "metric:not_a_mapping", "window"),
@@ -511,7 +504,7 @@ def test_window_blocks_are_shape_checked(tmp_path: Path) -> None:
         ("SST-PRS003", "metric:order_not_a_list", "window.order_by"),
         ("SST-PRS124", "metric:order_not_a_list", 7),
     ]
-    others = [item.context["other"] for item in _metric_parse_diagnostics(documents, tmp_path, "semantic_models")[1:3]]
+    others = [item.context["other"] for item in metric_parse_diagnostics(documents)[1:3]]
     assert others == ["using_relationships", "non_additive_dimensions"]
 
 
@@ -535,7 +528,7 @@ def test_window_blocks_are_shape_checked(tmp_path: Path) -> None:
     ],
 )
 def test_a_frame_is_snowflakes_frame_grammar_and_nothing_else(authored: object, canonical: str | None) -> None:
-    assert _frame(authored) == canonical
+    assert canonical_frame(authored) == canonical
 
 
 def test_window_keys_are_checked_and_typos_and_0_3_order_spellings_are_named(tmp_path: Path) -> None:
@@ -555,8 +548,7 @@ def test_window_keys_are_checked_and_typos_and_0_3_order_spellings_are_named(tmp
     )
     documents = load_documents(discover_yaml(tmp_path, "semantic_models"), parse_yaml_bytes)
     assert [
-        (item.code, item.context["field"], item.context.get("expected"))
-        for item in _authored_key_diagnostics(documents)
+        (item.code, item.context["field"], item.context.get("expected")) for item in authored_key_diagnostics(documents)
     ] == [
         ("SST-PRS022", "window.partiton_by", "window.partition_by"),
         ("SST-PRS020", "window.order_by[0].column", "ref"),

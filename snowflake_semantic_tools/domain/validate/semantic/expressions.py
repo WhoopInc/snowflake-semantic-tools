@@ -5,9 +5,9 @@ from __future__ import annotations
 import re
 from collections.abc import Mapping
 
-from snowflake_semantic_tools.adapters.yaml.semantic.defs import FilterDef, VerifiedQueryDef
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, Origin
 from snowflake_semantic_tools.domain.model.artifact_key import artifact_key
+from snowflake_semantic_tools.domain.model.authored import FilterDef, VerifiedQueryDef
 from snowflake_semantic_tools.domain.model.dbt import DbtModel
 from snowflake_semantic_tools.domain.parse.template import TemplateCall, TemplateSyntaxError, scan_template_calls
 from snowflake_semantic_tools.domain.resolve.calls import call_problem, syntax_problem, variable_problem
@@ -15,7 +15,7 @@ from snowflake_semantic_tools.domain.resolve.template import FILTER_EXPR, VQR_SQ
 from snowflake_semantic_tools.domain.validate.expression import is_boolean_expression as _is_boolean_expression
 
 
-def _expression_reference_diagnostics(
+def expression_reference_diagnostics(
     members: tuple[FilterDef | VerifiedQueryDef, ...],
     models: dict[str, DbtModel],
     *,
@@ -38,7 +38,7 @@ def _expression_reference_diagnostics(
         declared = {table.casefold() for table in member.tables}
         if isinstance(member, VerifiedQueryDef):
             diagnostics.extend(_undeclared_table_diagnostics(member, subject, declared, models))
-        calls = _scan_expression(text, member.origin, subject)
+        calls = scan_expression(text, member.origin, subject)
         if isinstance(calls, Diagnostic):
             diagnostics.append(calls)
             continue
@@ -67,12 +67,12 @@ def _undeclared_table_diagnostics(
             member=member.name,
             relation=model.relation_name if (model := models.get(table_name)) is not None else table_name,
         )
-        for table_name in _sql_tables(member.sql)
+        for table_name in sql_tables(member.sql)
         if declared and table_name not in declared
     ]
 
 
-def _scan_expression(text: str, origin: Origin | None, subject: str) -> tuple[TemplateCall, ...] | Diagnostic:
+def scan_expression(text: str, origin: Origin | None, subject: str) -> tuple[TemplateCall, ...] | Diagnostic:
     """Return an expression's template calls, or the diagnostic for a template that does not parse.
 
     Diagnostics:
@@ -168,7 +168,7 @@ def _ref_call_diagnostics(
     return []
 
 
-def _filter_diagnostics(
+def filter_diagnostics(
     filters: tuple[FilterDef, ...], models: Mapping[str, DbtModel], variables: Mapping[str, object]
 ) -> tuple[Diagnostic, ...]:
     """Check each filter's shape, then the columns its expression names bare, filter by filter.
@@ -193,12 +193,12 @@ def _filter_diagnostics(
             diagnostics.append(D(code, member=filter_def.name, subject=subject, origin=filter_def.origin))
         diagnostics.extend(
             D("SST-VAL404", member=filter_def.name, column=column, subject=subject, origin=filter_def.origin)
-            for column in _bare_column_identifiers(filter_def.expr, filter_def.tables, models, variables)
+            for column in bare_column_identifiers(filter_def.expr, filter_def.tables, models, variables)
         )
     return tuple(diagnostics)
 
 
-def _bare_column_identifiers(
+def bare_column_identifiers(
     expression: str,
     tables: tuple[str, ...],
     models: Mapping[str, DbtModel],
@@ -235,7 +235,7 @@ def _bare_column_identifiers(
     )
 
 
-def _sql_tables(sql: str) -> tuple[str, ...]:
+def sql_tables(sql: str) -> tuple[str, ...]:
     """The logical tables a verified query reads: FROM/JOIN names that are not its own CTEs.
 
     String literals are masked first, so `IN ('Join Flow')` is not read as a join.

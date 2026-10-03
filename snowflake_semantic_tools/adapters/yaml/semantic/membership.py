@@ -10,8 +10,8 @@ from __future__ import annotations
 from collections.abc import Iterable, Mapping
 from dataclasses import replace
 
-from snowflake_semantic_tools.adapters.yaml.semantic.defs import InstructionDef, MetricDef, VerifiedQueryDef
 from snowflake_semantic_tools.domain.diagnostics import Diagnostic
+from snowflake_semantic_tools.domain.model.authored import InstructionDef, MetricDef, VerifiedQueryDef
 from snowflake_semantic_tools.domain.model.project import ArtifactKey, MemberKey, ParsedMember
 from snowflake_semantic_tools.domain.model.registry import SEMANTIC_REGISTRY
 from snowflake_semantic_tools.domain.model.semantic_view import Relationship, ViewScope

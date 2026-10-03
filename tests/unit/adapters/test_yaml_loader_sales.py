@@ -8,13 +8,12 @@ from typing import Any
 
 import pytest
 
-from snowflake_semantic_tools.adapters.yaml.semantic.checks.dbt import _dbt_column_diagnostics, _dbt_model_diagnostics
-from snowflake_semantic_tools.adapters.yaml.semantic.checks.expressions import (
-    _expression_reference_diagnostics,
-    _filter_diagnostics,
+from snowflake_semantic_tools.adapters.yaml.semantic.relationships import (
+    _multipath_diagnostics,
+    _relationship_cycle_diagnostics,
+    _relationship_diagnostics,
 )
-from snowflake_semantic_tools.adapters.yaml.semantic.checks.metrics import _metric_cycles, _metric_diagnostics
-from snowflake_semantic_tools.adapters.yaml.semantic.defs import (
+from snowflake_semantic_tools.domain.model.authored import (
     FilterDef,
     MetricDef,
     NonAdditiveDef,
@@ -22,14 +21,15 @@ from snowflake_semantic_tools.adapters.yaml.semantic.defs import (
     WindowDef,
     WindowOrderDef,
 )
-from snowflake_semantic_tools.adapters.yaml.semantic.relationships import (
-    _multipath_diagnostics,
-    _relationship_cycle_diagnostics,
-    _relationship_diagnostics,
-)
 from snowflake_semantic_tools.domain.model.dbt import DbtColumn, DbtModel
 from snowflake_semantic_tools.domain.model.semantic_view import Relationship, SemanticView
 from snowflake_semantic_tools.domain.validate.expression import is_aggregate_expression
+from snowflake_semantic_tools.domain.validate.semantic.dbt import dbt_column_diagnostics, dbt_model_diagnostics
+from snowflake_semantic_tools.domain.validate.semantic.expressions import (
+    expression_reference_diagnostics,
+    filter_diagnostics,
+)
+from snowflake_semantic_tools.domain.validate.semantic.metrics import metric_cycles, metric_diagnostics
 from tests.helpers.projects import load_views
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -101,7 +101,7 @@ def test_metric_cycle_is_reported_once_with_a_stable_path() -> None:
         MetricDef("cycle_b", "{{ metric('cycle_c') }}", None, ()),
         MetricDef("cycle_c", "{{ metric('cycle_a') }}", None, ()),
     )
-    assert _metric_cycles(metrics) == (("cycle_a", "cycle_b", "cycle_c", "cycle_a"),)
+    assert metric_cycles(metrics) == (("cycle_a", "cycle_b", "cycle_c", "cycle_a"),)
 
 
 def test_every_metric_on_a_cycle_is_in_a_reported_cycle() -> None:
@@ -114,7 +114,7 @@ def test_every_metric_on_a_cycle_is_in_a_reported_cycle() -> None:
         MetricDef("self_ref", "{{ metric('self_ref') }}", None, ()),
         MetricDef("tail", "{{ metric('cyc_a') }} + {{ metric('missing') }}", None, ()),
     )
-    assert _metric_cycles(metrics) == (
+    assert metric_cycles(metrics) == (
         ("cyc_a", "cyc_b", "cyc_a"),
         ("self_ref", "self_ref"),
         ("cyc_a", "cyc_c", "cyc_b", "cyc_a"),
@@ -145,7 +145,7 @@ def test_metric_diagnostics_cover_unknown_columns_empty_tables_and_duplicates() 
         MetricDef("duplicate", "COUNT(1)", None, (), ("orders",), False, (), (), has_tables_key=True),
         MetricDef("empty", "COUNT(1)", None, ()),
     )
-    assert [diagnostic.code for diagnostic in _metric_diagnostics(metrics, {"orders": model})] == [
+    assert [diagnostic.code for diagnostic in metric_diagnostics(metrics, {"orders": model})] == [
         "SST-VAL001",
         "SST-VAL109",
     ]
@@ -167,7 +167,7 @@ def test_table_scoped_metrics_require_an_aggregate_expression() -> None:
         (),
         has_tables_key=True,
     )
-    assert [diagnostic.code for diagnostic in _metric_diagnostics((metric,), {})] == [
+    assert [diagnostic.code for diagnostic in metric_diagnostics((metric,), {})] == [
         "SST-VAL101",
         "SST-REF001",
     ]
@@ -188,11 +188,11 @@ def test_dbt_column_and_key_validation_cover_semantic_metadata() -> None:
             DbtColumn("unknown_type", "Unknown type.", None, "dimension"),
         ),
     )
-    assert [diagnostic.code for diagnostic in _dbt_model_diagnostics({"orders": model})] == [
+    assert [diagnostic.code for diagnostic in dbt_model_diagnostics({"orders": model})] == [
         "SST-VAL310",
         "SST-VAL223",
     ]
-    assert [diagnostic.code for diagnostic in _dbt_column_diagnostics({"orders": model})] == [
+    assert [diagnostic.code for diagnostic in dbt_column_diagnostics({"orders": model})] == [
         "SST-VAL003",
         "SST-VAL305",
         "SST-VAL306",
@@ -202,7 +202,7 @@ def test_dbt_column_and_key_validation_cover_semantic_metadata() -> None:
     ]
 
     keyless = DbtModel("model.fixture.keyless", "keyless", "DB.SCH.KEYLESS", (), (), ())
-    assert [diagnostic.code for diagnostic in _dbt_model_diagnostics({"keyless": keyless})] == [
+    assert [diagnostic.code for diagnostic in dbt_model_diagnostics({"keyless": keyless})] == [
         "SST-VAL312",
     ]
 
@@ -210,12 +210,12 @@ def test_dbt_column_and_key_validation_cover_semantic_metadata() -> None:
         "model.fixture.legacy", "legacy", "DB.SCH.LEGACY", ("id",), (), (DbtColumn("id", "Key.", "VARCHAR", None),)
     )
     legacy = dataclasses.replace(legacy, legacy_key_fields=("primary_key", "unique_keys"))
-    assert [item.code for item in _dbt_model_diagnostics({"legacy": legacy})] == ["SST-DBT032", "SST-DBT032"]
+    assert [item.code for item in dbt_model_diagnostics({"legacy": legacy})] == ["SST-DBT032", "SST-DBT032"]
     # Keys written in the 0.3 form are unread, so the model is keyless -- but that is
     # the same fault, and reporting it twice would bury the fix.
     unread = dataclasses.replace(legacy, primary_key=(), legacy_key_fields=("primary_key",))
-    assert [item.code for item in _dbt_model_diagnostics({"legacy": unread})] == ["SST-DBT032"]
-    assert _dbt_model_diagnostics({"legacy": legacy}, frozenset()) == ()
+    assert [item.code for item in dbt_model_diagnostics({"legacy": unread})] == ["SST-DBT032"]
+    assert dbt_model_diagnostics({"legacy": legacy}, frozenset()) == ()
 
 
 def test_derived_window_and_unattached_relationship_diagnostics() -> None:
@@ -227,7 +227,7 @@ def test_derived_window_and_unattached_relationship_diagnostics() -> None:
         (),
         True,
     )
-    assert [diagnostic.code for diagnostic in _metric_diagnostics((metric,), {})] == ["SST-VAL102", "SST-REF006"]
+    assert [diagnostic.code for diagnostic in metric_diagnostics((metric,), {})] == ["SST-VAL102", "SST-REF006"]
     relationship = Relationship("CUSTOMERS_TO_LOCATIONS", "CUSTOMERS", ("ID",), "LOCATIONS", ("ID",))
     diagnostics = _relationship_diagnostics(
         (relationship,),
@@ -313,7 +313,7 @@ def test_expression_reference_diagnostics_cover_filters_and_verified_queries() -
         None,
         None,
     )
-    diagnostics = _expression_reference_diagnostics(
+    diagnostics = expression_reference_diagnostics(
         (filter_def, query),
         {"orders": model},
         metric_names=frozenset(),
@@ -351,10 +351,10 @@ def test_excluded_columns_are_diagnosed_in_metric_and_filter_references() -> Non
         True,
     )
 
-    assert "SST-VAL318" in {diagnostic.code for diagnostic in _metric_diagnostics((metric,), {"orders": model})}
+    assert "SST-VAL318" in {diagnostic.code for diagnostic in metric_diagnostics((metric,), {"orders": model})}
     assert [
         diagnostic.code
-        for diagnostic in _expression_reference_diagnostics(
+        for diagnostic in expression_reference_diagnostics(
             (filter_def,),
             {"orders": model},
             metric_names=frozenset(),
@@ -378,12 +378,12 @@ def test_entity_filters_require_boolean_expressions() -> None:
             )
         )
     )
-    assert [diagnostic.code for diagnostic in _filter_diagnostics((invalid, *valid), {}, {})] == ["SST-VAL401"]
+    assert [diagnostic.code for diagnostic in filter_diagnostics((invalid, *valid), {}, {})] == ["SST-VAL401"]
 
 
 def test_unknown_metric_reference_is_a_diagnostic() -> None:
     metric = MetricDef("derived", "{{ metric('missing') }}", None, (), derived=True)
-    diagnostics = _metric_diagnostics((metric,), {})
+    diagnostics = metric_diagnostics((metric,), {})
     assert [diagnostic.code for diagnostic in diagnostics] == ["SST-REF006"]
 
 
@@ -410,7 +410,7 @@ def test_metric_relationship_and_expression_diagnostics_use_public_codes() -> No
     )
     codes = [
         diagnostic.code
-        for diagnostic in _metric_diagnostics(
+        for diagnostic in metric_diagnostics(
             (metric,),
             {"orders": orders_with_amount},
         )
@@ -440,7 +440,7 @@ def test_metric_relationship_and_expression_diagnostics_use_public_codes() -> No
     )
     assert [
         diagnostic.code
-        for diagnostic in _metric_diagnostics(
+        for diagnostic in metric_diagnostics(
             (outside,),
             {"orders": orders, "customers": customers},
         )
@@ -474,7 +474,7 @@ def test_bare_identifier_warning_uses_manifest_columns_not_sql_tokens() -> None:
     )
     warnings = [
         diagnostic
-        for diagnostic in _metric_diagnostics(
+        for diagnostic in metric_diagnostics(
             (metric,),
             {"orders": orders},
             {"threshold_value": 1},
@@ -516,7 +516,7 @@ def test_critical_metric_restrictions_are_non_demotable_diagnostics() -> None:
         unique_keys=(),
         columns=(DbtColumn("order_id", None, None, "dimension"),),
     )
-    codes = [diagnostic.code for diagnostic in _metric_diagnostics(metrics, {"orders": model})]
+    codes = [diagnostic.code for diagnostic in metric_diagnostics(metrics, {"orders": model})]
     assert {"SST-VAL103", "SST-VAL104", "SST-VAL105", "SST-VAL106", "SST-VAL107"} <= set(codes)
 
 
@@ -543,7 +543,7 @@ def test_non_additive_dimensions_resolve_to_a_dimension_of_their_table() -> None
         )
         return [
             item.context["value"]
-            for item in _metric_diagnostics((metric,), {"supplies": _supplies()})
+            for item in metric_diagnostics((metric,), {"supplies": _supplies()})
             if item.code == "SST-VAL118"
         ]
 
@@ -563,7 +563,7 @@ SNAPSHOT = "{{ ref('supplies', 'snapshot_month') }}"
 
 def _window_codes(*metrics: MetricDef) -> list[tuple[str, str, object]]:
     other_model = dataclasses.replace(_supplies(), unique_id="model.fixture.products", name="products")
-    diagnostics = _metric_diagnostics(metrics, {"supplies": _supplies(), "products": other_model})
+    diagnostics = metric_diagnostics(metrics, {"supplies": _supplies(), "products": other_model})
     window_codes = ("SST-VAL101", "SST-VAL102", "SST-VAL129", "SST-VAL126", "SST-VAL127", "SST-VAL128")
     return [
         (item.code, item.context["metric"], item.context.get("field") or item.context.get("function"))
@@ -670,7 +670,7 @@ def test_two_windows_over_one_expression_are_not_duplicates() -> None:
         name="monthly",
         window=WindowDef(order_by=(WindowOrderDef(SNAPSHOT),), frame="ROWS BETWEEN 29 PRECEDING AND CURRENT ROW"),
     )
-    diagnostics = _metric_diagnostics((base, weekly, monthly), {"supplies": _supplies()})
+    diagnostics = metric_diagnostics((base, weekly, monthly), {"supplies": _supplies()})
     assert [item.code for item in diagnostics if item.code == "SST-VAL124"] == []
 
 
@@ -687,7 +687,7 @@ def test_the_same_sum_at_another_snapshot_is_not_a_duplicate_metric() -> None:
         latest, name="earliest", non_additive=(NonAdditiveDef("snapshot_month", descending=True),)
     )
     twin = dataclasses.replace(latest, name="twin")
-    diagnostics = _metric_diagnostics((latest, earliest, twin), {"supplies": _supplies()})
+    diagnostics = metric_diagnostics((latest, earliest, twin), {"supplies": _supplies()})
     assert [(item.code, item.context["metric"]) for item in diagnostics if item.code == "SST-VAL124"] == [
         ("SST-VAL124", "twin")
     ]
@@ -719,7 +719,7 @@ def test_relationship_targets_need_a_key_and_the_graph_no_cycle() -> None:
 
 
 def test_verified_query_tables_skip_ctes_and_string_literals() -> None:
-    from snowflake_semantic_tools.adapters.yaml.semantic.checks.expressions import _sql_tables
+    from snowflake_semantic_tools.domain.validate.semantic.expressions import sql_tables
 
     sql = (
         "WITH flow AS (SELECT * FROM orders WHERE source IN ('Join Flow')),\n"
@@ -727,4 +727,4 @@ def test_verified_query_tables_skip_ctes_and_string_literals() -> None:
         "SELECT * FROM recent JOIN customers ON TRUE\n"
         "-- FROM commented_out\n"
     )
-    assert _sql_tables(sql) == ("orders", "customers")
+    assert sql_tables(sql) == ("orders", "customers")

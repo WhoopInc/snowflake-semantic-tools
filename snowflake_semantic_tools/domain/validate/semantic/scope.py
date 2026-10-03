@@ -16,9 +16,9 @@ from __future__ import annotations
 from collections.abc import Iterator, Mapping
 from dataclasses import dataclass
 
-from snowflake_semantic_tools.adapters.yaml.semantic.defs import MetricDef
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic
 from snowflake_semantic_tools.domain.model.artifact_key import artifact_key
+from snowflake_semantic_tools.domain.model.authored import MetricDef
 from snowflake_semantic_tools.domain.model.dbt import DbtModel
 from snowflake_semantic_tools.domain.model.project import ParsedView
 from snowflake_semantic_tools.domain.model.semantic_view import Relationship, ViewScope
@@ -142,7 +142,7 @@ class _ScopeContext:
         return artifact_key("semantic_view", self.view.name)
 
 
-def _scope_diagnostics(
+def scope_diagnostics(
     views: tuple[ParsedView, ...],
     metrics: tuple[MetricDef, ...],
     relationships: tuple[Relationship, ...],
@@ -222,7 +222,7 @@ def _entry_problem(entry: ScopeEntry, context: _ScopeContext) -> Diagnostic | No
         metric = context.metrics.get(entry.name)
         if metric is None:
             return _unknown(entry, context, "does not exist")
-        if not _metric_tables(metric, context.metrics) <= context.tables:
+        if not metric_tables(metric, context.metrics) <= context.tables:
             return _unknown(entry, context, "does not attach to this view")
         return None
     relationship = context.relationships.get(entry.name)
@@ -278,7 +278,7 @@ def _unknown(entry: ScopeEntry, context: _ScopeContext, reason: str) -> Diagnost
     )
 
 
-def _metric_tables(
+def metric_tables(
     metric: MetricDef, metrics: Mapping[str, MetricDef], seen: frozenset[str] = frozenset()
 ) -> frozenset[str]:
     """The tables a metric needs a view to hold: its own, and those of the metrics it reads."""
@@ -286,7 +286,7 @@ def _metric_tables(
     for name in metric.referenced_metrics:
         referenced = metrics.get(name)
         if referenced is not None and name not in seen:
-            tables |= _metric_tables(referenced, metrics, seen | {metric.name.casefold()})
+            tables |= metric_tables(referenced, metrics, seen | {metric.name.casefold()})
     return frozenset(tables)
 
 
@@ -302,7 +302,7 @@ def _kept_metric_diagnostics(context: _ScopeContext) -> Iterator[Diagnostic]:
     scope = view_scope(context.view.source)
     for name in sorted(context.metrics):
         metric = context.metrics[name]
-        if not _metric_tables(metric, context.metrics) <= context.tables or not scope.admits_metric(metric.name):
+        if not metric_tables(metric, context.metrics) <= context.tables or not scope.admits_metric(metric.name):
             continue
         for relationship in metric.using_relationships:
             if not scope.admits_relationship(relationship) or not _held(relationship, context):

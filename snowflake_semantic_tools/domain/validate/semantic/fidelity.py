@@ -9,19 +9,18 @@ take it for published.
 from __future__ import annotations
 
 from collections.abc import Iterator, Mapping
-from pathlib import Path
 from typing import Any
 
-from snowflake_semantic_tools.adapters.yaml.documents import RawDocuments
-from snowflake_semantic_tools.adapters.yaml.semantic.nodes import _load_nodes, _member_root, _node_origin
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, Origin
 from snowflake_semantic_tools.domain.model.artifact_key import artifact_key
+from snowflake_semantic_tools.domain.model.authored import AuthoredDocuments
+from snowflake_semantic_tools.domain.validate.semantic.nodes import load_nodes, member_root, node_origin
 
 # The one label `LABELS = (...)` renders; every other label is read and dropped.
 RENDERED_LABEL = "filter"
 
 
-def _renderer_fidelity_diagnostics(documents: RawDocuments) -> tuple[Diagnostic, ...]:
+def renderer_fidelity_diagnostics(documents: AuthoredDocuments) -> tuple[Diagnostic, ...]:
     """Report, filters then verified queries in document order, each value the renderer would not keep.
 
     Diagnostics:
@@ -32,31 +31,31 @@ def _renderer_fidelity_diagnostics(documents: RawDocuments) -> tuple[Diagnostic,
     return (*_filter_labels(documents), *_verifiers(documents))
 
 
-def _filter_labels(documents: RawDocuments) -> Iterator[Diagnostic]:
-    root = _member_root("filter")
-    for document, index, node in _load_nodes(documents, Path(), root):
+def _filter_labels(documents: AuthoredDocuments) -> Iterator[Diagnostic]:
+    root = member_root("filter")
+    for document, index, node in load_nodes(documents, root):
         labels = node.get("labels")
         if not node.get("name") or not isinstance(labels, list):
             continue
         name = str(node["name"])
-        origin = _node_origin(document, root, index)
+        origin = node_origin(document, root, index)
         for label in labels:
             # A label that is not text is SST-PRS003's to report.
             if isinstance(label, str) and label.casefold() != RENDERED_LABEL:
                 yield _dropped("filter", name, f"labels: {label}", "dropped", origin)
 
 
-def _verifiers(documents: RawDocuments) -> Iterator[Diagnostic]:
-    root = _member_root("verified_query")
-    for document, index, node in _load_nodes(documents, Path(), root):
-        detail = _verifier_change(node)
+def _verifiers(documents: AuthoredDocuments) -> Iterator[Diagnostic]:
+    root = member_root("verified_query")
+    for document, index, node in load_nodes(documents, root):
+        detail = verifier_change(node)
         if node.get("name") and detail is not None:
             yield _dropped(
-                "verified_query", str(node["name"]), "verified_by", detail, _node_origin(document, root, index)
+                "verified_query", str(node["name"]), "verified_by", detail, node_origin(document, root, index)
             )
 
 
-def _verifier_change(node: Mapping[str, Any]) -> str | None:
+def verifier_change(node: Mapping[str, Any]) -> str | None:
     """Say what the loader would do to `verified_by`; None when it reaches the DDL as written."""
     value = node.get("verified_by")
     if value is None:

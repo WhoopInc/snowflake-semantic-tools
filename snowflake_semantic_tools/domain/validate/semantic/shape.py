@@ -2,17 +2,15 @@
 
 from __future__ import annotations
 
-import posixpath
 from collections.abc import Callable, Mapping
-from pathlib import Path
 from typing import Any
 
-from snowflake_semantic_tools.adapters.yaml.documents import RawDocuments
-from snowflake_semantic_tools.adapters.yaml.semantic.defs import NULL_ORDERS, SORT_DIRECTIONS, _frame
-from snowflake_semantic_tools.adapters.yaml.semantic.nodes import _load_nodes, _member_root, _node_origin
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, Origin
 from snowflake_semantic_tools.domain.model.artifact_key import artifact_key
+from snowflake_semantic_tools.domain.model.authored import NULL_ORDERS, SORT_DIRECTIONS, AuthoredDocuments
+from snowflake_semantic_tools.domain.parse.frame import canonical_frame
 from snowflake_semantic_tools.domain.validate.column_metadata import printable, synonym_problem
+from snowflake_semantic_tools.domain.validate.semantic.nodes import load_nodes, member_root, node_origin
 
 
 def _synonyms_diagnostics(
@@ -56,10 +54,8 @@ def _synonyms_diagnostics(
     return tuple(diagnostics)
 
 
-def _metric_parse_diagnostics(
-    documents: RawDocuments,
-    project_dir: Path,
-    semantic_models_dir: str,
+def metric_parse_diagnostics(
+    documents: AuthoredDocuments,
 ) -> tuple[Diagnostic, ...]:
     """Check the shape of every `snowflake_metrics:` entry, so a key of the wrong type is reported.
 
@@ -81,13 +77,12 @@ def _metric_parse_diagnostics(
         SST-PRS029: when `synonyms` is not a list of strings.
         SST-PRS030: when a synonym holds a quote or a control character.
     """
-    metrics_dir = project_dir / semantic_models_dir / "metrics"
     diagnostics: list[Diagnostic] = []
     allowed_access = ("private_access", "public_access")
-    for document, index, node in _load_nodes(documents, metrics_dir, _member_root("metric")):
+    for document, index, node in load_nodes(documents, member_root("metric")):
         name = str(node.get("name") or "<unnamed>")
         subject = artifact_key("metric", name)
-        origin = _node_origin(document, _member_root("metric"), index)
+        origin = node_origin(document, member_root("metric"), index)
         if "expr" not in node:
             diagnostics.append(
                 D(
@@ -153,19 +148,16 @@ def _metric_parse_diagnostics(
     return tuple(diagnostics)
 
 
-def _filter_parse_diagnostics(
-    documents: RawDocuments,
-    project_dir: Path,
-    semantic_models_dir: str,
+def filter_parse_diagnostics(
+    documents: AuthoredDocuments,
 ) -> tuple[Diagnostic, ...]:
     """Shape checks on filter keys whose wrong type would otherwise be read silently.
 
     Diagnostics:
         SST-PRS003: `labels` is not a list of strings.
     """
-    filters_dir = project_dir / semantic_models_dir / "filters"
     diagnostics: list[Diagnostic] = []
-    for document, index, node in _load_nodes(documents, filters_dir, _member_root("filter")):
+    for document, index, node in load_nodes(documents, member_root("filter")):
         labels = node.get("labels")
         if labels is None or (isinstance(labels, list) and all(isinstance(label, str) for label in labels)):
             continue
@@ -178,7 +170,7 @@ def _filter_parse_diagnostics(
                 expected="a list of strings",
                 found=type(labels).__name__,
                 subject=subject,
-                origin=_node_origin(document, _member_root("filter"), index),
+                origin=node_origin(document, member_root("filter"), index),
             )
         )
     return tuple(diagnostics)
@@ -230,7 +222,7 @@ def _window_parse_diagnostics(node: Mapping[str, Any], subject: str, origin: Ori
     for position, entry in enumerate(order_by if isinstance(order_by, list) else ()):
         diagnostics.extend(_order_by_entry(entry, f"window.order_by[{position}]", subject, origin, wrong_type))
     frame = value.get("frame")
-    if frame is not None and _frame(frame) is None:
+    if frame is not None and canonical_frame(frame) is None:
         diagnostics.append(D("SST-PRS124", artifact=subject, value=frame, subject=subject, origin=origin))
     return tuple(diagnostics)
 
@@ -331,78 +323,3 @@ def _non_additive_parse_diagnostics(value: object, subject: str, origin: Origin)
                     )
                 )
     return tuple(diagnostics)
-
-
-def _verified_query_diagnostics(
-    documents: RawDocuments, project_dir: Path, semantic_models_dir: str
-) -> tuple[Diagnostic, ...]:
-    """Check that each `snowflake_verified_queries:` entry has exactly one SQL source, and a usable one.
-
-    Entries come from files in any folder; one with no name is called `<unnamed>`. A
-    `sql_file:` is resolved against the entry's own file.
-
-    Raises:
-        OSError: A `sql_file:` exists and cannot be read.
-
-    Diagnostics:
-        SST-VAL412: when an entry declares both `sql` and `sql_file`, or neither.
-        SST-LOD018: when the `sql_file:` is not a file.
-        SST-LOD019: when the `sql_file:` holds no bytes.
-        SST-LOD006: when the `sql_file:` is not UTF-8.
-    """
-    root = project_dir / semantic_models_dir / "verified_queries"
-    diagnostics: list[Diagnostic] = []
-    for document, index, node in _load_nodes(documents, root, _member_root("verified_query")):
-        name = str(node.get("name") or "<unnamed>")
-        subject = artifact_key("verified_query", name)
-        origin = _node_origin(document, _member_root("verified_query"), index)
-        has_sql = node.get("sql") is not None
-        has_sql_file = node.get("sql_file") is not None
-        if has_sql == has_sql_file:
-            diagnostics.append(
-                D(
-                    "SST-VAL412",
-                    member=name,
-                    detail=("sql and sql_file are both present" if has_sql else "neither sql nor sql_file is present"),
-                    subject=subject,
-                    origin=origin,
-                )
-            )
-            continue
-        if has_sql_file:
-            sql_path = document.abs_path.parent / str(node["sql_file"])
-            if not sql_path.is_file():
-                diagnostics.append(
-                    D(
-                        "SST-LOD018",
-                        file=document.path,
-                        path=str(node["sql_file"]),
-                        subject=subject,
-                        origin=origin,
-                    )
-                )
-            elif not (content := sql_path.read_bytes()):
-                diagnostics.append(
-                    D(
-                        "SST-LOD019",
-                        path=str(node["sql_file"]),
-                        file=document.path,
-                        subject=subject,
-                        origin=origin,
-                    )
-                )
-            else:
-                diagnostics.extend(_utf8_diagnostics(content, document.path, str(node["sql_file"]), subject, origin))
-    return tuple(diagnostics)
-
-
-def _utf8_diagnostics(
-    content: bytes, document_path: str, sql_file: str, subject: str, origin: Origin
-) -> tuple[Diagnostic, ...]:
-    """Report SST-LOD006 when `content` is not UTF-8, naming the file as its document's sibling path."""
-    try:
-        content.decode("utf-8")
-    except UnicodeDecodeError as exc:
-        file = posixpath.normpath(posixpath.join(posixpath.dirname(document_path), sql_file))
-        return (D("SST-LOD006", file=file, offset=exc.start, subject=subject, origin=origin),)
-    return ()

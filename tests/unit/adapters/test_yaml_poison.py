@@ -6,9 +6,9 @@ import shutil
 from collections.abc import Iterable
 from pathlib import Path
 
-from snowflake_semantic_tools.adapters.yaml.semantic.defs import MetricDef
 from snowflake_semantic_tools.adapters.yaml.semantic.poison import Poison
 from snowflake_semantic_tools.domain.diagnostics import Diagnostic, Severity
+from snowflake_semantic_tools.domain.model.authored import MetricDef
 from tests.helpers.projects import load_project
 
 REPO_ROOT = Path(__file__).resolve().parents[3]

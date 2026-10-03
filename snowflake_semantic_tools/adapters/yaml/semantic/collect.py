@@ -9,8 +9,7 @@ from types import MappingProxyType
 from typing import Any
 
 from snowflake_semantic_tools.adapters.yaml.documents import RawDocument, RawDocuments
-from snowflake_semantic_tools.adapters.yaml.semantic.defs import FilterDef, InstructionDef, MetricDef, VerifiedQueryDef
-from snowflake_semantic_tools.adapters.yaml.semantic.nodes import _node_origin, _safe_table_refs
+from snowflake_semantic_tools.adapters.yaml.semantic.nodes import _safe_table_refs
 from snowflake_semantic_tools.adapters.yaml.semantic.readers import (
     load_filters,
     load_instructions,
@@ -19,12 +18,14 @@ from snowflake_semantic_tools.adapters.yaml.semantic.readers import (
 )
 from snowflake_semantic_tools.adapters.yaml.semantic.relationships import load_relationships
 from snowflake_semantic_tools.domain.diagnostics import Diagnostic, DiagnosticBag, Origin
+from snowflake_semantic_tools.domain.model.authored import FilterDef, InstructionDef, MetricDef, VerifiedQueryDef
 from snowflake_semantic_tools.domain.model.dbt import DbtModel
 from snowflake_semantic_tools.domain.model.project import ParsedMember, ParsedProject, ParsedView
 from snowflake_semantic_tools.domain.model.registry import SEMANTIC_REGISTRY
 from snowflake_semantic_tools.domain.model.semantic_view import ColumnKind, Relationship
 from snowflake_semantic_tools.domain.parse.records import mutable_records, registered_root_keys, root_key_diagnostics
 from snowflake_semantic_tools.domain.parse.template import TemplateCall, TemplateSyntaxError, scan_template_calls
+from snowflake_semantic_tools.domain.validate.semantic.nodes import node_origin
 
 
 def parse_semantic_project(
@@ -107,7 +108,7 @@ def _parsed_view(document: RawDocument, view_root: str, index: int, node: dict[s
             malformed = True
     return ParsedView(
         name=str(node["name"]),
-        origin=_node_origin(document, view_root, index),
+        origin=node_origin(document, view_root, index),
         source_path=document.path,
         source=MappingProxyType({str(key): value for key, value in node.items()}),
         declared_tables=_safe_table_refs(node.get("tables")),

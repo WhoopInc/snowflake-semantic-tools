@@ -4,10 +4,10 @@ from __future__ import annotations
 
 from typing import Any
 
-from snowflake_semantic_tools.adapters.yaml.semantic.checks.metrics import _metric_diagnostics
-from snowflake_semantic_tools.adapters.yaml.semantic.defs import MetricDef
 from snowflake_semantic_tools.domain.diagnostics import Diagnostic
+from snowflake_semantic_tools.domain.model.authored import MetricDef
 from snowflake_semantic_tools.domain.model.dbt import DbtColumn, DbtModel
+from snowflake_semantic_tools.domain.validate.semantic.metrics import metric_diagnostics
 
 
 def column(name: str, data_type: str, column_type: str | None, **fields: Any) -> DbtColumn:
@@ -64,4 +64,4 @@ def metric(name: str, expr: str, *, tables: tuple[str, ...] = ("orders",), **cha
 
 def metric_findings(*metrics: MetricDef, code: str) -> list[Diagnostic]:
     """What the metric checks report under `code`, against `MODELS`."""
-    return [item for item in _metric_diagnostics(metrics, dict(MODELS), {}) if item.code == code]
+    return [item for item in metric_diagnostics(metrics, dict(MODELS), {}) if item.code == code]

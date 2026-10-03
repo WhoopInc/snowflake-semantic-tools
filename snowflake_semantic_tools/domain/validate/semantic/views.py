@@ -11,14 +11,14 @@ import re
 from collections.abc import Iterator, Mapping
 from dataclasses import dataclass, field
 
-from snowflake_semantic_tools.adapters.yaml.semantic.checks.scope import _metric_tables, view_scope
-from snowflake_semantic_tools.adapters.yaml.semantic.defs import FilterDef, InstructionDef, MetricDef
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic
 from snowflake_semantic_tools.domain.model.artifact_key import artifact_key
+from snowflake_semantic_tools.domain.model.authored import FilterDef, InstructionDef, MetricDef
 from snowflake_semantic_tools.domain.model.dbt import DbtModel
 from snowflake_semantic_tools.domain.model.project import ParsedView
 from snowflake_semantic_tools.domain.model.semantic_view import ColumnKind, Relationship, ViewScope
 from snowflake_semantic_tools.domain.sql import is_datatype
+from snowflake_semantic_tools.domain.validate.semantic.scope import metric_tables, view_scope
 from snowflake_semantic_tools.domain.validate.shared import lacks_invocation
 
 DIMENSION_TYPES = frozenset(("dimension", "time_dimension"))
@@ -185,7 +185,7 @@ def _attached(view: ParsedView, inputs: ViewInputs) -> _Attached:
         tuple(
             metric
             for metric in inputs.metrics
-            if _metric_tables(metric, by_name) <= tables and scope.admits_metric(metric.name)
+            if metric_tables(metric, by_name) <= tables and scope.admits_metric(metric.name)
         ),
         tuple(item for item in inputs.filters if _filter_tables(item) <= tables),
         tuple(
@@ -201,7 +201,7 @@ def _filter_tables(filter_def: FilterDef) -> frozenset[str]:
     return frozenset((*filter_def.tables, *(name.casefold() for name in referenced)))
 
 
-def _view_rule_diagnostics(views: tuple[ParsedView, ...], inputs: ViewInputs) -> tuple[Diagnostic, ...]:
+def view_rule_diagnostics(views: tuple[ParsedView, ...], inputs: ViewInputs) -> tuple[Diagnostic, ...]:
     """Run every view rule on every readable view, view by view, then the rules across views.
 
     Diagnostics:
