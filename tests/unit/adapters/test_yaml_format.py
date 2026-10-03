@@ -55,12 +55,48 @@ def test_format_is_idempotent_and_never_changes_a_value(tree: object, style: str
     assert formatting_problem(once) is None
 
 
-def test_multi_line_strings_become_literal_blocks_and_folded_ones_stop_folding() -> None:
+def test_multi_line_strings_become_literal_blocks_and_block_scalars_keep_their_style() -> None:
     text = 'a: "one\\ntwo"\nb: >\n  folded\n  text\n\n  para\nc: |\n  ends\n  in newline\n'
-    assert (
-        canonical_yaml(text, "f.yml")
-        == "a: |-\n  one\n  two\nb: |\n  folded text\n  para\nc: |\n  ends\n  in newline\n"
-    )
+    assert canonical_yaml(text, "f.yml") == "a: |-\n  one\n  two\n" + text[text.index("b:") :]
+
+
+_BLOCK_LINES = st.lists(
+    st.text(alphabet=st.characters(codec="utf-8", exclude_categories=("Cs", "Cc", "Zs")), min_size=1, max_size=12),
+    min_size=1,
+    max_size=4,
+)
+
+
+@settings(max_examples=200)
+@given(
+    st.sampled_from(("|", ">")),
+    st.sampled_from(("", "-", "+")),
+    _BLOCK_LINES,
+    st.lists(st.booleans(), min_size=4, max_size=4),
+    st.booleans(),
+)
+def test_format_keeps_every_block_scalar_style_and_value(
+    indicator: str, chomping: str, lines: list[str], indents: list[bool], followed: bool
+) -> None:
+    # Blank and more-indented lines are where a folded scalar's value differs from a literal's.
+    body = [
+        ("  " if indent and index else "") + line
+        for index, (line, indent) in enumerate(zip(lines, indents[: len(lines)], strict=True))
+    ]
+    if len(body) > 2:
+        body[1] = ""
+    text = f"sources:\n  - name: s\n    freshness: {indicator}{chomping}\n"
+    text += "".join(f"      {line}\n" if line else "\n" for line in body)
+    text += "    loader: x\n" if followed else ""
+    try:
+        expected = _value(text)
+    except Exception:  # a line the YAML scanner reads as structure is not this test's input
+        return
+    once = canonical_yaml(text, "f.yml")
+    assert _value(once) == expected
+    assert canonical_yaml(once, "f.yml") == once
+    [header] = [line for line in once.split("\n") if "freshness:" in line]
+    assert header.split(": ", 1)[1][0] == indicator
 
 
 def test_layout_name_order_comments_quotes_and_nulls_survive() -> None:
