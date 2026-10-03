@@ -2,7 +2,9 @@
 
 `observe` lists each artifact type's objects in every schema the targets name, once per
 schema, reading an object's grants only when the plan may replace it. A failed read is
-reported and observation goes on, so one missing privilege never hides the rest.
+reported and observation goes on, so one missing privilege never hides the rest. Each
+listing, with the reads of the objects it lists, is one unit a `Fanout` may run on a
+session of its own; the units are merged in the order they would run one at a time.
 """
 
 from __future__ import annotations
@@ -10,6 +12,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from types import MappingProxyType
 
+from snowflake_semantic_tools.app.fanout import Fanout
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, DiagnosticBag
 from snowflake_semantic_tools.domain.model.artifact_key import artifact_key
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName, SchemaScope
@@ -26,6 +29,8 @@ from snowflake_semantic_tools.domain.ports.snowflake.catalog import CatalogPort
 from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
 
 _FoldedName = tuple[str, str, str]
+# One listing: an artifact type's objects of one object type in one schema.
+_Unit = tuple[ArtifactType, str, SchemaScope]
 
 
 def observe(
@@ -37,6 +42,7 @@ def observe(
     artifact_types: frozenset[str] | None = None,
     observed_object_types: Mapping[str, frozenset[str]] | None = None,
     desired_artifacts: Mapping[str, RenderedArtifact] | None = None,
+    readers: Fanout[CatalogPort] | None = None,
 ) -> tuple[SnowflakeObservation, DiagnosticBag]:
     """Observe every object of the requested artifact types in the targets' schemas, by artifact key.
 
@@ -50,6 +56,8 @@ def observe(
             leaves out or empty lists the registry's object types instead.
         desired_artifacts: The rendered artifacts; the grants of an object one of them may
             replace are read, and its routine signature addresses it.
+        readers: Sessions to run the listings on concurrently; None lists on `port`, one
+            at a time. Either way the observation and its diagnostics are the same.
 
     Diagnostics:
         SST-PLN001: listing an object type in a schema, or reading an object's grants, failed.
@@ -58,14 +66,19 @@ def observe(
     diagnostics: list[Diagnostic] = []
     scopes = tuple(dict.fromkeys(SchemaScope.from_qualified_name(target) for target in targets))
     desired = {artifact.target.folded: artifact for artifact in (desired_artifacts or {}).values()}
-    for artifact_type in sorted(registry.artifacts.values(), key=lambda item: item.ddl_position):
-        if artifact_types is not None and artifact_type.name not in artifact_types:
-            continue
-        for object_type in _active_object_types(artifact_type, observed_object_types):
-            for scope in scopes:
-                observed, scope_diagnostics = _observe_scope(port, artifact_type, object_type, scope, desired)
-                diagnostics.extend(scope_diagnostics)
-                found.update((artifact.key, artifact) for artifact in observed)
+    units: list[_Unit] = [
+        (artifact_type, object_type, scope)
+        for artifact_type in sorted(registry.artifacts.values(), key=lambda item: item.ddl_position)
+        if artifact_types is None or artifact_type.name in artifact_types
+        for object_type in _active_object_types(artifact_type, observed_object_types)
+        for scope in scopes
+    ]
+    results = (readers or Fanout(port)).map(
+        lambda session, unit: _observe_scope(session, unit[0], unit[1], unit[2], desired), units
+    )
+    for observed, scope_diagnostics in results:
+        diagnostics.extend(scope_diagnostics)
+        found.update((artifact.key, artifact) for artifact in observed)
     return SnowflakeObservation(MappingProxyType(found), fetched_at), DiagnosticBag(diagnostics)
 
 

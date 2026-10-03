@@ -28,10 +28,10 @@ from snowflake_semantic_tools.app.evals.run import (
     EvalSuiteResult,
     RunEvalSuite,
     _compact_timestamp,
-    _suite_concurrency,
     empty_eval_suite_json,
     eval_suite_json,
     retention_class,
+    suite_concurrency,
     validate_eval_publication,
 )
 from snowflake_semantic_tools.app.lifecycle.evals import EVAL_STAGE_FILE_FORMAT, EvalLifecycleHandler
@@ -1089,10 +1089,10 @@ def test_suite_concurrency_prefers_the_project_setting_then_the_largest_request(
     )
     without_run = replace(first, resolved=replace(first.resolved, config=replace(first.resolved.config, run=None)))
 
-    assert _suite_concurrency((first, requesting), EvalDefaults(concurrency=5)) == 5
-    assert _suite_concurrency((first, requesting), EvalDefaults(concurrency=-2)) == 1
-    assert _suite_concurrency((first, requesting, without_run), EvalDefaults()) == 3
-    assert _suite_concurrency((first, without_run), EvalDefaults()) == 1
+    assert suite_concurrency((first, requesting), EvalDefaults(concurrency=5)) == 5
+    assert suite_concurrency((first, requesting), EvalDefaults(concurrency=-2)) == 1
+    assert suite_concurrency((first, requesting, without_run), EvalDefaults()) == 3
+    assert suite_concurrency((first, without_run), EvalDefaults()) == 1
 
 
 class FixedReadbackSnowflake(ConfigReadbackSnowflake):

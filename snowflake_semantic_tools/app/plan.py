@@ -12,12 +12,14 @@ from __future__ import annotations
 from collections.abc import Mapping
 from dataclasses import dataclass, replace
 from types import MappingProxyType
+from typing import Protocol
 
 from snowflake_semantic_tools.app.compile import CompiledArtifact, CompileResult
 from snowflake_semantic_tools.app.compile.agents import CompiledAgent, for_publication
 from snowflake_semantic_tools.app.compile.evals import CompiledEval
 from snowflake_semantic_tools.app.compile.profiles import CompiledProfile
 from snowflake_semantic_tools.app.compile.skills import CompiledExtension
+from snowflake_semantic_tools.app.fanout import Fanout
 from snowflake_semantic_tools.app.lifecycle.channels import channel_divergence
 from snowflake_semantic_tools.app.lifecycle.evals import EvalLifecycleConfig, EvalLifecycleHandler
 from snowflake_semantic_tools.app.lifecycle.extensions import ExtensionLifecycleHandler
@@ -57,11 +59,20 @@ from snowflake_semantic_tools.domain.state import DEACTIVATED, Manifest, State
 OBSERVATION_TTL_MS = 15 * 60 * 1000
 
 
+class PlanReadPort(SnowflakePort, PreflightPort, Protocol):
+    """A session a plan reads on: validation's checks, observation, and the preflight reads."""
+
+
 class PlanArtifacts:
     """Plan the changes that bring a target to the rendered artifacts, writing nothing.
 
     Composite artifacts are planned by their lifecycle handlers, keyed by artifact type; every
     other artifact is planned from what `observe` finds in Snowflake.
+
+    Args:
+        readers: Sessions, opened from `port` and `preflight`, to run the observation's
+            listings and each phase of preflight reads on concurrently; None reads on `port`
+            and `preflight`, one at a time. Either way the change set is the same.
     """
 
     def __init__(
@@ -71,11 +82,13 @@ class PlanArtifacts:
         registry: Registry = SEMANTIC_REGISTRY,
         lifecycle_handlers: Mapping[str, CompositeLifecycleHandler] | None = None,
         preflight: PreflightPort | None = None,
+        readers: Fanout[PlanReadPort] | None = None,
     ) -> None:
         self._port = port
         self._registry = registry
         self._lifecycle_handlers = dict(lifecycle_handlers or {})
         self._preflight = preflight
+        self._readers = readers
 
     def run(
         self,
@@ -121,7 +134,13 @@ class PlanArtifacts:
         preflight = None
         if self._preflight is not None:
             preflight, failures = read_preflight(
-                self._preflight, rendered, observation, state, target, include_prune=include_prune
+                self._preflight,
+                rendered,
+                observation,
+                state,
+                target,
+                include_prune=include_prune,
+                readers=self._readers,
             )
             diagnostics = DiagnosticBag((*diagnostics, *failures))
         changeset: ChangeSet = build_changeset(
@@ -178,6 +197,7 @@ class PlanArtifacts:
             artifact_types=self._observed_artifact_types(rendered, include_prune, prune_types),
             observed_object_types=self._observed_object_types(rendered),
             desired_artifacts=rendered,
+            readers=self._readers,
         )
 
     def _observed_artifact_types(
@@ -465,6 +485,7 @@ class PreparePlan:
         state_table: QualifiedName,
         temporary: bool = False,
         preflight: PreflightPort | None = None,
+        readers: Fanout[PlanReadPort] | None = None,
     ) -> PlanReady | PlanRefused:
         """Validate the candidates, read authoritative state, and plan against what Snowflake shows now.
 
@@ -487,6 +508,10 @@ class PreparePlan:
             temporary: Render each agent as a session-scoped temporary agent, as
                 `apply --temporary` publishes it.
             preflight: The port the preflight checks read the target through; None skips them.
+            readers: Sessions, opened from `port`, to run the connected validation checks,
+                the observation, and the preflight reads on concurrently, as
+                `ValidateArtifacts` and `PlanArtifacts` do; None runs them on `port`, one at a
+                time. Either way the plan and its diagnostics are the same.
 
         Diagnostics:
             SST-PLN018: observing and planning took longer than the observation stays current.
@@ -496,7 +521,9 @@ class PreparePlan:
             `channel_divergence`'s, then the plan's `change_summary` and `plan_notices`.
         """
         live = port if candidates.connected else None
-        validation = ValidateArtifacts(live, catalog=live, target=target.name).run(
+        validation = ValidateArtifacts(
+            live, catalog=live, target=target.name, readers=readers if candidates.connected else None
+        ).run(
             candidates.selected,
             strict=candidates.strict,
             connected=candidates.connected,
@@ -512,7 +539,7 @@ class PreparePlan:
         scope = candidates.scope
         fetched_at = self._clock.now_iso()
         started = self._clock.monotonic_ms()
-        changeset = PlanArtifacts(port, lifecycle_handlers=handlers, preflight=preflight).run(
+        changeset = PlanArtifacts(port, lifecycle_handlers=handlers, preflight=preflight, readers=readers).run(
             self._publication(result, manifest, apply_config, target, temporary=temporary),
             manifest,
             state,

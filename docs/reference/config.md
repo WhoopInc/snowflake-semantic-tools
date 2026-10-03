@@ -65,6 +65,14 @@ What `sst enrich` collects from the warehouse, and how much.
 | `enrichment.synonym_max_count` | integer, 1 to 20 | `4` | Synonyms written per column and per table. |
 | `enrichment.allow_sample_value_collection` | boolean | `true` | False refuses every run that reads row data: `--include sample-values` and `enums` (SST-CFG038). |
 
+## generation
+
+How the commands that reach Snowflake pace their work.
+
+| Key | Type | Default | Description |
+|---|---|---|---|
+| `generation.threads` | integer, 1 to 16 | `1` | Sessions `plan`, `apply` and `test` work on at once, unless `--threads` or `$SST_THREADS` says. |
+
 ## vars
 
 Values read by `{{ var('<name>') }}`.
@@ -215,6 +223,7 @@ reads it, so a setting cannot look as though it takes effect when it does not.
 
 | Key | Type | Description |
 |---|---|---|
+| `generation.view_timeout` | integer | Per-view statement timeout, in seconds. |
 | `dbt` | block | How SST invokes dbt. |
 | `semantic_views.+tags` | list | Default view tags. |
 | `agents.+secure` | boolean | Default agent security flag. |
@@ -242,7 +251,10 @@ as though it still does.
 | `validation.expression_rules` | the expression rules it disabled are no longer optional | [`SST-CFG043`](error-codes.md#sst-cfg043) |
 | `validation.multipath_check` | multi-path relationship analysis is always on | [`SST-CFG043`](error-codes.md#sst-cfg043) |
 | `validation.smoke_query` | smoke probes run only under sst test --suite smoke | [`SST-CFG043`](error-codes.md#sst-cfg043) |
-| `generation` | SST 1.0 renders DDL directly | [`SST-CFG043`](error-codes.md#sst-cfg043) |
+| `generation.publish_via` | SST 1.0 renders DDL directly | [`SST-CFG043`](error-codes.md#sst-cfg043) |
+| `generation.filters_to_instructions` | standalone filter prose always renders into the view | [`SST-CFG043`](error-codes.md#sst-cfg043) |
+| `generation.use_create_or_alter` | SST 1.0 renders DDL directly | [`SST-CFG043`](error-codes.md#sst-cfg043) |
+| `generation.emit_relationship_type` | relationship and join types are never rendered | [`SST-CFG043`](error-codes.md#sst-cfg043) |
 | `defer` | SST reads the manifest dbt resolves; configure deferral in dbt | [`SST-CFG043`](error-codes.md#sst-cfg043) |
 | `vars.sha_version` | SST supplies sha_version from the commit being published | [`SST-CFG040`](error-codes.md#sst-cfg040) |
 | `tools.+enabled` | omit the tools instead | [`SST-CFG043`](error-codes.md#sst-cfg043) |

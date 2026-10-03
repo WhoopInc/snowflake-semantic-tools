@@ -24,11 +24,29 @@ def semantic_models_dir(paths: ProjectPaths) -> str:
     return configured_dir(project_config(paths), "semantic_models_dir", "semantic_models")
 
 
-def apply_parallelism(paths: ProjectPaths, threads: int | None = None) -> int:
-    """Return how many changes of one wave apply runs at once: `--threads`, else `skills.+threads`, else 4."""
+def threads_setting(paths: ProjectPaths, threads: int | None) -> int:
+    """Return how many sessions a command reads on at once: `--threads`, else `generation.threads`, else 1.
+
+    `--threads` already stands for `$SST_THREADS` when the flag is not given.
+    """
     if threads is not None:
         return threads
-    return config_int(config_block(project_config(paths).get("skills")).get("+threads")) or 4
+    return _generation_threads(project_config(paths)) or 1
+
+
+def apply_parallelism(paths: ProjectPaths, threads: int | None = None) -> int:
+    """Return how many changes of one wave apply runs at once.
+
+    `--threads` (else `$SST_THREADS`), else `generation.threads`, else `skills.+threads`, else 4.
+    """
+    if threads is not None:
+        return threads
+    tree = project_config(paths)
+    return _generation_threads(tree) or config_int(config_block(tree.get("skills")).get("+threads")) or 4
+
+
+def _generation_threads(tree: dict[str, object]) -> int | None:
+    return config_int(config_block(tree.get("generation")).get("threads"))
 
 
 def apply_fail_fast(paths: ProjectPaths, flag: bool | None) -> bool:

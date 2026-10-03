@@ -45,7 +45,10 @@ _OPTION_HELP: Mapping[str, str] = {
     "--state": "Previous run's build directory, else `$SST_STATE_DIR`, for `state:` selectors.",
     "--defer-target": "Not supported in this release: SST reads the manifest dbt resolves for `--target`.",
     "--no-defer": "Accepted: SST never defers.",
-    "--threads": "Changes applied at once, 1 to 16, else `$SST_THREADS`; defaults to `skills.+threads`, else 4.",
+    "--threads": (
+        "Snowflake sessions to work on at once, 1 to 16, else `$SST_THREADS`, else `generation.threads`, "
+        "else 1. Output is the same for any count."
+    ),
     "--database": "Read from this database instead of the target's; never where an artifact is published.",
     "--no-detailed-exitcode": "Exit 0 instead of 2 when there are differences.",
     "--strict": "Promote every warning to an error, else `$SST_STRICT`. Defaults to `validation.strict`.",
@@ -67,6 +70,18 @@ _OPTION_HELP: Mapping[str, str] = {
 }
 _COMMAND_OPTION_HELP: Mapping[tuple[str, str], str] = {
     ("sst apply", "--fail-fast"): "Stop at the first failure instead of continuing. Defaults to `apply.fail_fast`.",
+    ("sst apply", "--threads"): (
+        "Sessions to plan and apply on at once, 1 to 16, else `$SST_THREADS`, else `generation.threads`. "
+        "Planning defaults to 1; applying to `skills.+threads`, else 4."
+    ),
+    ("sst plan", "--threads"): (
+        "Sessions to validate and observe on at once, 1 to 16, else `$SST_THREADS`, else `generation.threads`, "
+        "else 1. The plan is the same for any count."
+    ),
+    ("sst test", "--threads"): (
+        "Smoke probes, and evals no `concurrency` setting paces, run at once, 1 to 16, else `$SST_THREADS`, "
+        "else `generation.threads`, else 1."
+    ),
     ("sst compile", "--database"): "Resolve refs against this database instead of the target's.",
     ("sst compile", "--emit-agent-spec"): "Write each agent's rendered specification into this directory.",
     ("sst debug", "--no-connect"): "Report everything but the connection, offline.",
