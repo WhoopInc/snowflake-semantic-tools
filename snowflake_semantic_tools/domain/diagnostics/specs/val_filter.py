@@ -13,6 +13,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Filter expression is not boolean",
         "filter '{member}' carries labels: [filter] and its expr is not boolean",
         "make the expression boolean",
+        condition="an enforced filter's expression does not evaluate to a boolean",
     ),
     spec(
         "SST-VAL402",
@@ -20,6 +21,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Filter label applied to a metric",
         "'{member}' carries labels: [filter] and is a metric",
         "remove the label, or declare a filter",
+        condition="an enforcement label is attached to a metric",
     ),
     spec(
         "SST-VAL403",
@@ -28,6 +30,8 @@ SPECS: tuple[ErrorSpec, ...] = (
         "filter '{member}' uses the legacy inline form",
         "declare filters as named objects with labels:",
         demotable=False,
+        condition="the removed inline filter form is in use",
+        note="Forbidden.",
     ),
     spec(
         "SST-VAL404",
@@ -35,6 +39,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Filter expression contains an unwrapped bare identifier",
         "filter '{member}' expression contains bare identifier '{column}'",
         "wrap it in {{ ref('<model>','<column>') }}",
+        condition="a filter expression carries an unchecked column reference",
     ),
     spec(
         "SST-VAL405",
@@ -42,6 +47,8 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Boolean standalone filter",
         "filter '{member}' is boolean-valued and declares no labels: key",
         "add labels: [filter] so it renders as a native LABELS = (FILTER) dimension on its table",
+        condition="a boolean filter declares no `labels:` key, so it has no clause left to render into",
+        note="It would be authored and emitted nowhere.",
     ),
     spec(
         "SST-VAL406",
@@ -49,6 +56,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Filter synonyms declared but not emitted",
         "filter '{member}' declares synonyms that the renderer drops",
         "remove the synonyms until the renderer emits them",
+        condition="synonyms are declared on an object whose renderer ignores them",
     ),
     spec(
         "SST-VAL407",
@@ -56,6 +64,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Custom instruction block has no non-empty channel",
         "custom_instruction '{member}' declares no non-empty channel",
         "populate at least one channel",
+        condition="every channel on a block is empty or absent",
     ),
     spec(
         "SST-VAL408",
@@ -63,6 +72,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Legacy custom-instruction rendering",
         "custom_instruction '{member}' would render as a bare string",
         "emit module_custom_instructions or the ai_-prefixed clauses",
+        condition="the legacy bare-string form would be emitted",
     ),
     spec(
         "SST-VAL409",
@@ -70,6 +80,8 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Instruction placed in the wrong channel",
         "custom_instruction '{member}': a {found} rule appears in the {expected} channel",
         "move the rule to the channel that acts on it",
+        condition="a categorization rule sits in sql_generation, or the reverse",
+        note="Silently inert.",
     ),
     spec(
         "SST-VAL410",
@@ -77,6 +89,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Two instruction blocks on one view contradict each other",
         "{artifact}: '{a}' and '{b}' give contradictory directives",
         "reconcile the two blocks",
+        condition="two attached blocks issue conflicting guidance",
     ),
     spec(
         "SST-VAL411",
@@ -84,6 +97,8 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Instruction uses Cortex Analyst state keywords",
         "custom_instruction '{member}' uses {found} keywords, which an agent does not need",
         "write the instruction as plain natural language",
+        condition="UNCLEAR-style keywords are present",
+        note="Unconditional, because every 1.0 consumer is an agent.",
     ),
     spec(
         "SST-VAL412",
@@ -91,6 +106,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Verified query declares neither sql nor sql_file, or both",
         "verified_query '{member}': {detail}",
         "declare exactly one of sql or sql_file",
+        condition="the two source forms are both present or both absent",
     ),
     spec(
         "SST-VAL413",
@@ -98,6 +114,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Verified query question text is not unique within a view",
         "{artifact}: question text is shared by '{a}' and '{b}'",
         "make the question text unique",
+        condition="selection is by question text, so duplicates are ambiguous",
     ),
     spec(
         "SST-VAL414",
@@ -105,6 +122,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Verified query SQL references a table not in its table list",
         "verified_query '{member}' queries '{relation}', absent from tables:",
         "add the table to tables:, which decides the views the query attaches to",
+        condition="attachment is computed from tables:, so the VQ may land on a view lacking the table",
     ),
     spec(
         "SST-VAL415",
@@ -112,6 +130,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Verified query returns no rows",
         "verified_query '{member}' executed and returned {row_count} rows in {elapsed_ms}ms",
         "fix the query, or widen the fixture",
+        condition="a VQ runs successfully and returns nothing, so it teaches nothing",
     ),
     spec(
         "SST-VAL416",
@@ -119,6 +138,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Verified query SQL contains a relative date",
         "verified_query '{member}' contains relative date '{value}'",
         "pin the date, or accept that it is runtime guidance only",
+        condition="a VQ that doubles as eval ground truth re-evaluates over time",
     ),
     spec(
         "SST-VAL417",
@@ -126,6 +146,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Question text is shared across three different sets",
         "'{value}' appears as a VQ question, an agent sample_question and an eval row",
         "keep the three sets distinct",
+        condition="one question string serves purposes that should not overlap",
     ),
     spec(
         "SST-VAL418",
@@ -134,5 +155,6 @@ SPECS: tuple[ErrorSpec, ...] = (
         "{type} '{name}': expression failed to compile: {detail}",
         "fix the expression so Snowflake compiles it; SST also refuses, before sending it, a `;`, a "
         "comment, `$$`, an unbalanced bracket, or a statement keyword outside quotes",
+        condition="snowflake_syntax_check is enabled and the expression does not compile",
     ),
 )

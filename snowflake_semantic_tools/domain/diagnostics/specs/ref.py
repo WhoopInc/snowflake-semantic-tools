@@ -13,6 +13,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "ref() model not in the dbt catalog",
         "{{ ref('{model}') }} is not a model in the dbt manifest",
         "run dbt compile, or correct the model name",
+        condition="a single-argument ref names a model the manifest does not list",
     ),
     spec(
         "SST-REF002",
@@ -20,6 +21,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "ref() column not on the model",
         "{{ ref('{model}','{column}') }}: '{column}' is not a column on {model}",
         "correct the column name, or add it to the model's columns: block",
+        condition="a two-argument ref names a column absent from the model",
     ),
     spec(
         "SST-REF003",
@@ -27,6 +29,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Malformed template expression",
         "{file}:{line}:{col}: malformed template expression '{value}'",
         "correct the expression syntax",
+        condition="a {{ }} expression does not parse",
     ),
     spec(
         "SST-REF004",
@@ -35,6 +38,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "'{ref_function}' is not a template function",
         "use one of agent, column, custom_instructions, eval_metric, extension, file, filter, metric, "
         "plugin, ref, relationship, semantic_view, skill, table, tag, tool, var, verified_query",
+        condition="a {{ }} expression names a function no type registers",
     ),
     spec(
         "SST-REF005",
@@ -42,6 +46,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "metric() reference cycle",
         "metric reference cycle: {cycle}",
         "break the cycle",
+        condition="the metric() reference graph is not acyclic",
     ),
     spec(
         "SST-REF006",
@@ -49,6 +54,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "metric() target not found",
         "{{ metric('{name}') }} does not resolve",
         "correct the name, or declare the metric",
+        condition="a metric reference names an undeclared metric",
     ),
     spec(
         "SST-REF007",
@@ -56,6 +62,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "custom_instructions() target not found",
         "{{ custom_instructions('{name}') }} does not resolve",
         "declare the block, or correct the name",
+        condition="a custom-instruction reference names an undeclared block",
     ),
     spec(
         "SST-REF008",
@@ -63,6 +70,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Ref used in a field that forbids it",
         "{artifact}: '{field}' does not accept template expressions",
         "move the reference, or inline the value",
+        condition="a ref appears in a field declared literal",
     ),
     spec(
         "SST-REF009",
@@ -70,6 +78,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Ref resolved to an empty string",
         "{{ {ref_function}('{name}') }} resolved to an empty string",
         "check the referenced object's name",
+        condition="resolution succeeds and yields nothing",
     ),
     spec(
         "SST-REF010",
@@ -77,6 +86,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "tool() target not found",
         "{{ tool('{group}','{name}') }} does not resolve",
         "declare the member in specs/tools/",
+        condition="a tool reference names an undeclared group or member",
     ),
     spec(
         "SST-REF011",
@@ -84,6 +94,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "semantic_view() target not found",
         "{{ semantic_view('{name}') }} does not resolve",
         "declare the view, or correct the name",
+        condition="a semantic-view reference names an undeclared view",
     ),
     spec(
         "SST-REF012",
@@ -91,6 +102,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "agent() target not found",
         "{{ agent('{name}') }} does not resolve",
         "declare the agent, or correct the name",
+        condition="an agent reference names an undeclared agent",
     ),
     spec(
         "SST-REF013",
@@ -98,6 +110,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "extension() target not found",
         "{{ extension('{name}') }} does not resolve",
         "declare the extension source, or correct the name",
+        condition="an extension reference names an undeclared extension",
     ),
     spec(
         "SST-REF014",
@@ -105,6 +118,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "file() sidecar does not resolve",
         "{{ file('{path}') }} does not resolve to a file",
         "create the file, or correct the path",
+        condition="a file reference names a missing sidecar",
     ),
     spec(
         "SST-REF015",
@@ -112,6 +126,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Ref has the wrong arity",
         "{{ {ref_function}() }} takes {expected} arguments, found {found}",
         "supply the documented arguments",
+        condition="a template function is called with the wrong number of arguments",
     ),
     spec(
         "SST-REF018",
@@ -119,6 +134,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Ref resolves outside the declared target",
         "{{ {ref_function}('{name}') }} has no entry for target '{target}'",
         "declare a relation for every target you publish to",
+        condition="a registry entry covers some target and not the current one",
     ),
     spec(
         "SST-REF019",
@@ -126,6 +142,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Relation is not a three-part name",
         "'{value}' is not a three-part fully-qualified name",
         "use database.schema.object",
+        condition="a reference: relation is not fully qualified",
     ),
     spec(
         "SST-REF020",
@@ -133,6 +150,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Ref resolves to an incompatible object type",
         "{{ {ref_function}('{name}') }} resolves to {found}, expected {expected}",
         "point the reference at a compatible object",
+        condition="a tool ref resolves to an object of the wrong kind",
     ),
     spec(
         "SST-REF022",
@@ -140,6 +158,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Agent reference graph has a cycle",
         "agent delegation cycle: {cycle}",
         "break the cycle",
+        condition="an agent toolset reference graph is not acyclic",
     ),
     spec(
         "SST-REF023",
@@ -147,6 +166,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Ref target resolves to the same object across targets",
         "{{ {ref_function}('{name}') }} resolves to {value} for both dev and prod",
         "use per-target relations for anything writable",
+        condition="two targets resolve one reference to one object",
     ),
     spec(
         "SST-REF026",
@@ -154,6 +174,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "eval_metric() target not found",
         "{{ eval_metric('{name}') }} does not resolve",
         "declare the metric in the eval_metrics/ tree, or correct the name",
+        condition="an eval-metric reference names a metric absent from the eval_metrics/ tree",
     ),
     spec(
         "SST-REF027",
@@ -161,6 +182,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "file() path escapes the project root",
         "{{ file('{path}') }} resolves outside the project root",
         "use a path inside the project",
+        condition="a file reference traverses above the project root",
     ),
     spec(
         "SST-REF028",
@@ -168,6 +190,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "tag() target not declared",
         "{{ tag('{name}') }} does not resolve",
         "declare the entry under tags: in sst_config.yml, or correct the name",
+        condition="a tag reference names an entry absent from the tags: block",
     ),
     spec(
         "SST-REF029",
@@ -175,6 +198,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "relationship() target not declared",
         "{{ relationship('{name}') }} does not resolve",
         "declare the relationship, or correct the name",
+        condition="a relationship reference names a relationship absent from the project",
     ),
     spec(
         "SST-REF030",
@@ -182,6 +206,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "filter() target not declared",
         "{{ filter('{name}') }} does not resolve",
         "declare the filter, or correct the name",
+        condition="a filter reference names a filter absent from the project",
     ),
     spec(
         "SST-REF031",
@@ -189,6 +214,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "verified_query() target not declared",
         "{{ verified_query('{name}') }} does not resolve",
         "declare the verified query, or correct the name",
+        condition="a verified-query reference names a query absent from the project",
     ),
     spec(
         "SST-REF032",
@@ -196,6 +222,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "skill() target not declared",
         "{{ skill('{name}') }} does not resolve",
         "declare the skill under skills/, or correct the name",
+        condition="a skill reference names a skill absent from the project",
     ),
     spec(
         "SST-REF033",
@@ -203,6 +230,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Template does not match the ref grammar",
         "{file}:{line}:{col}: '{text}' is not a valid reference: {detail}",
         "write each reference as {{ fn('arg') }}, naming one of the documented template functions",
+        condition="a `{{ ... }}` span does not match `{{ fn(args) }}`",
     ),
     spec(
         "SST-REF034",
@@ -210,6 +238,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Legacy table() global is rejected",
         "{file}:{line}:{col}: '{{ table('{model}') }}' is not a reference in 1.0; use '{{ ref('{model}') }}'",
         "run `sst migrate refs`, which is a pure rename",
+        condition="the legacy single-argument global appears anywhere in the project",
     ),
     spec(
         "SST-REF035",
@@ -218,6 +247,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "{file}:{line}:{col}: '{{ column('{model}','{column}') }}' is not a reference in 1.0; "
         "use '{{ ref('{model}','{column}') }}'",
         "run `sst migrate refs`, which is a pure rename",
+        condition="the legacy two-argument global appears anywhere in the project",
     ),
     spec(
         "SST-REF036",
@@ -225,6 +255,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "plugin() target not declared",
         "{{ plugin('{name}') }} does not resolve",
         "declare the plugin under the plugins directory, or correct the name",
+        condition="plugin() names a plugin the project does not declare",
     ),
     spec(
         "SST-REF037",
@@ -232,6 +263,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "extension() names an extension this project publishes",
         "agent '{artifact}': extension('{name}') names a {kind} this project publishes",
         "reference it with skill() or plugin(), which pins the published version",
+        condition="extension() names an extension this project publishes itself",
     ),
     spec(
         "SST-REF041",
@@ -239,6 +271,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Template function not allowed in this field",
         "{artifact}: {function}() is not allowed in {field}",
         "remove the call; each field accepts only the functions its reference page lists",
+        condition="a template call uses a function the field does not allow",
     ),
     spec(
         "SST-REF043",
@@ -246,6 +279,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Expression references a table outside the view",
         "{artifact}: ref('{model}') is not one of the view's tables",
         "add the model to the view's tables:, or reference one of them",
+        condition="a member expression's ref() names a model outside the member's non-empty tables:",
     ),
     spec(
         "SST-REF044",
@@ -253,6 +287,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "View table entry is not a ref()",
         "{artifact}: table entry {found} is not a {{ ref('<model>') }} call",
         "write each tables: entry as {{ ref('<model>') }}",
+        condition="a view tables: entry is not exactly one `{{ ref('<model>') }}` call",
     ),
     spec(
         "SST-REF045",
@@ -260,6 +295,9 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Relationship endpoint is written as a ref() call",
         "{artifact}: {field} is written as {found}; it takes the bare model name",
         "run sst migrate refs --write, or write the model name",
+        condition=(
+            "a relationship left_table/right_table is written as a {{ ref() }} call instead of the bare model name"
+        ),
     ),
     spec(
         "SST-REF900",
@@ -267,5 +305,6 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Resolver exceeded max depth",
         "resolution depth {found} exceeded the limit {expected}",
         "reduce the nesting of metric() references",
+        condition="the resolver recursed past its depth cap",
     ),
 )

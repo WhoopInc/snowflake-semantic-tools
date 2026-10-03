@@ -14,6 +14,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "metric '{metric}' is table-scoped and its expr is not an aggregate",
         "wrap the expression in an aggregate; if the expression is a WINDOW function, compute it in the dbt "
         "model -- do NOT make the metric derived",
+        condition="a table-scoped metric's expression has no aggregate at its root",
     ),
     spec(
         "SST-VAL102",
@@ -22,6 +23,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "window function {function} in derived metric '{metric}'",
         "compute the window in the dbt model and aggregate the resulting column",
         demotable=False,
+        condition="a derived metric's expression contains a window function",
     ),
     spec(
         "SST-VAL103",
@@ -30,6 +32,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "derived metric '{metric}' aggregates '{other}'",
         "reference the metric without an outer aggregate",
         demotable=False,
+        condition="a derived metric wraps a metric reference in an aggregate",
     ),
     spec(
         "SST-VAL104",
@@ -38,6 +41,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "derived metric '{metric}' references column '{column}'",
         "reference metrics only, or make the metric table-scoped",
         demotable=False,
+        condition="a derived metric's expression names a physical column",
     ),
     spec(
         "SST-VAL105",
@@ -46,6 +50,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "derived metric '{metric}' references un-aggregated {member_type} '{other}'",
         "aggregate it in a table-scoped metric first",
         demotable=False,
+        condition="a derived metric reaches an un-aggregated member",
     ),
     spec(
         "SST-VAL106",
@@ -54,6 +59,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "metric '{metric}' is table-scoped and references derived metric '{other}'",
         "make the metric derived, or inline the expression",
         demotable=False,
+        condition="a table-scoped metric references a view-scoped metric",
     ),
     spec(
         "SST-VAL107",
@@ -62,6 +68,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "metric '{metric}' references '{other}', which declares non_additive_dimensions",
         "remove the reference, or drop the non-additive declaration",
         demotable=False,
+        condition="a table-scoped metric references a metric with non-additive dimensions",
     ),
     spec(
         "SST-VAL108",
@@ -69,6 +76,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Derived metric declares a table list",
         "derived metric '{metric}' declares tables:",
         "remove tables:; a derived metric is view-scoped by definition",
+        condition="a derived metric carries a table list",
     ),
     spec(
         "SST-VAL109",
@@ -76,6 +84,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Table-scoped metric declares no table list",
         "metric '{metric}' is table-scoped and declares no tables:",
         "declare tables: explicitly",
+        condition="a non-derived metric omits its table list",
     ),
     spec(
         "SST-VAL110",
@@ -83,6 +92,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Metric expression contains an unwrapped bare identifier",
         "metric '{metric}' expression contains bare identifier '{column}'",
         "wrap it in {{ ref('<model>','<column>') }} so it is checked",
+        condition="a raw expression carries what looks like a column and is not ref-checked",
     ),
     spec(
         "SST-VAL111",
@@ -90,6 +100,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Division with no zero guard",
         "metric '{metric}' divides without DIV0 or NULLIF on the denominator",
         "wrap the denominator in NULLIF, or use DIV0",
+        condition="a division appears with an unguarded denominator",
     ),
     spec(
         "SST-VAL112",
@@ -97,6 +108,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Metric expression touches a table outside the view",
         "metric '{metric}' in {artifact} reaches {outside}",
         "add the table to the view, or narrow the expression",
+        condition="an expression's table origins are not all in the attached artifact",
     ),
     spec(
         "SST-VAL113",
@@ -104,6 +116,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "using_relationships declared on a derived metric",
         "derived metric '{metric}' declares using_relationships",
         "remove using_relationships; derived metrics have no join path",
+        condition="a view-scoped metric declares a join path",
     ),
     spec(
         "SST-VAL114",
@@ -111,6 +124,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "using_relationships does not start from the metric's table",
         "metric '{metric}': relationship '{other}' does not start from '{name}'",
         "name a relationship whose left side is the metric's table",
+        condition="a declared join path begins elsewhere",
     ),
     spec(
         "SST-VAL115",
@@ -118,6 +132,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "using_relationships is a chain",
         "metric '{metric}' declares a chain of {count} relationships",
         "declare one relationship, not a path",
+        condition="using_relationships lists more than one hop",
     ),
     spec(
         "SST-VAL116",
@@ -125,6 +140,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "using_relationships absent where the join path is ambiguous",
         "metric '{metric}' has {count} paths to '{name}' and declares no using_relationships",
         "declare using_relationships to pick the path",
+        condition="more than one relationship path exists and none is declared",
     ),
     spec(
         "SST-VAL117",
@@ -132,6 +148,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Snapshot-grain metric declares no non-additive dimensions",
         "metric '{metric}' is over a snapshot grain and declares no non_additive_dimensions",
         "declare the non-additive dimension, or confirm additivity",
+        condition="a balance or snapshot measure is treated as additive",
     ),
     spec(
         "SST-VAL118",
@@ -139,6 +156,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "non_additive_dimensions target does not resolve",
         "metric '{metric}': non_additive_dimensions names {value}, which does not resolve",
         "correct the table and dimension names",
+        condition="a non-additive declaration names a missing table or dimension",
     ),
     spec(
         "SST-VAL119",
@@ -146,6 +164,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Effective non-additive dimension order",
         "metric '{metric}': effective non_additive_dimensions order is {value}",
         None,
+        condition="the declared order is significant and is surfaced",
     ),
     spec(
         "SST-VAL120",
@@ -153,6 +172,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Metric declares a sort with no ordering semantics",
         "metric '{metric}' declares sort_direction with no null_order",
         "declare null_order explicitly",
+        condition="half of an ordering pair is declared",
     ),
     spec(
         "SST-VAL121",
@@ -160,6 +180,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "access_modifier holds an unrecognised value",
         "metric '{metric}': access_modifier is '{found}'",
         "use public_access or private_access",
+        condition="the access modifier is outside the closed set",
     ),
     spec(
         "SST-VAL122",
@@ -167,6 +188,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "visibility used instead of access_modifier",
         "metric '{metric}' uses visibility; the current key is access_modifier",
         "rename the key",
+        condition="the deprecated access spelling is in use",
     ),
     spec(
         "SST-VAL123",
@@ -174,6 +196,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Metric-level restriction set not enforced before publish",
         "metric '{metric}' would publish without the derived-metric restriction check",
         "re-enable the restriction rules; Snowflake enforces none of them",
+        condition="the critical set was bypassed for a metric about to be published",
     ),
     spec(
         "SST-VAL124",
@@ -181,6 +204,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Duplicate metric expression under two names",
         "metric '{metric}' has the same expression as '{other}'",
         "keep one, and synonym the other",
+        condition="two metrics compute the same thing",
     ),
     spec(
         "SST-VAL125",
@@ -188,6 +212,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Metric fan-out",
         "metric '{metric}' attaches to {count} views",
         None,
+        condition="attachment is implicit; the reach is reported",
     ),
     spec(
         "SST-VAL126",
@@ -196,6 +221,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "metric '{metric}': {function} must apply to a metric or an aggregate to be a window metric",
         "pass {{ metric() }} or an aggregate such as SUM(...); a row-level window belongs in a fact or dimension",
         demotable=False,
+        condition="a window metric's function applies to a row-level column, not a metric or aggregate",
     ),
     spec(
         "SST-VAL127",
@@ -204,6 +230,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "metric '{metric}': window frame '{value}' needs an order_by",
         "add order_by, or remove the frame",
         demotable=False,
+        condition="a window declares a frame and no order_by",
     ),
     spec(
         "SST-VAL128",
@@ -213,6 +240,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "reference the metric the window applies to instead; Snowflake does not allow a window metric in "
         "another metric",
         demotable=False,
+        condition="a metric references a window-function metric",
     ),
     spec(
         "SST-VAL129",
@@ -221,5 +249,10 @@ SPECS: tuple[ErrorSpec, ...] = (
         "metric '{metric}': window {field} names {value}, which is not {expected}",
         "name a dimension the metric's table can reach, or a metric of the same table",
         demotable=False,
+        condition=(
+            "a window partition_by / partition_by_excluding / order_by entry names something that is "
+            "not a dimension (or metric of the same table), or a dimension the metric's table cannot "
+            "reach in this view"
+        ),
     ),
 )

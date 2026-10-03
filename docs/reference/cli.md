@@ -12,6 +12,8 @@ versioned JSON envelope on stdout and nothing else.
 |---|---|
 | [`sst init`](#sst-init) | Scaffold SST into an existing dbt project without overwriting a file. |
 | [`sst debug`](#sst-debug) | Show the resolved configuration, profile, target, and registry, and test the connection. |
+| [`sst migrate`](#sst-migrate) | Rewrite a 0.3 project into the 1.0 dialect. |
+| [`sst migrate refs`](#sst-migrate-refs) | Rewrite legacy table()/column() globals to ref(), and label boolean filters. |
 | [`sst enrich`](#sst-enrich) | Fill dbt model column metadata from the warehouse, editing the model YAML in place. |
 | [`sst format`](#sst-format) | Rewrite YAML into canonical form: indentation, key order, and `\|-` block scalars. |
 | [`sst compile`](#sst-compile) | Compile every artifact and write the canonical manifest, offline. |
@@ -29,8 +31,6 @@ versioned JSON envelope on stdout and nothing else.
 | [`sst explain`](#sst-explain) | Explain one diagnostic code from the registry: no project, configuration, or connection. |
 | [`sst docs`](#sst-docs) | Write the generated reference pages under docs/reference/. |
 | [`sst clean`](#sst-clean) | Remove local SST build artifacts only; never touch Snowflake. |
-| [`sst migrate`](#sst-migrate) | Rewrite a 0.3 project into the 1.0 dialect. |
-| [`sst migrate refs`](#sst-migrate-refs) | Rewrite legacy table()/column() globals to ref(), and label boolean filters. |
 | [`sst drop`](#sst-drop) | Break-glass: drop exactly one object SST owns from one target, and forget it in state. |
 
 ## Global options
@@ -108,6 +108,27 @@ sst debug [OPTIONS]
 | `--target / -t` | TEXT |  | Target from `profiles.yml`, else `$SST_TARGET`; defaults to the profile's own default target. |
 | `--no-connect` | flag |  | Report everything but the connection, offline. |
 | `--snowflake-signatures` | flag |  | Report how often Snowflake refusals went unrecognised, from the run log. |
+
+## sst migrate
+
+Rewrite a 0.3 project into the 1.0 dialect.
+
+Subcommands: [`sst migrate refs`](#sst-migrate-refs).
+
+## sst migrate refs
+
+Rewrite legacy table()/column() globals to ref(), and label boolean filters.
+
+Dry-run by default: exit 2 when rewrites are pending, 0 when there are none,
+and 1 when a table() call sits where no rewrite is safe.
+
+```text
+sst migrate refs [OPTIONS]
+```
+
+| Option | Value | Default | Description |
+|---|---|---|---|
+| `--write` | flag |  | Rewrite files in place instead of reporting. |
 
 ## sst enrich
 
@@ -445,10 +466,10 @@ sst explain [OPTIONS]
 
 Write the generated reference pages under docs/reference/.
 
-The artifact, error-code, configuration, and command-line references are
-rendered from the engine's own registries, so they cannot drift from what the
-engine accepts. With --check, nothing is written and the command exits 2 when
-a committed page differs.
+The error-code, coverage, artifact, command-line, and configuration references are
+rendered from the engine's own registries, so they cannot drift from what the engine
+accepts. With --check, nothing is written and the command exits 2 when a committed page
+differs.
 
 ```text
 sst docs [OPTIONS]
@@ -457,6 +478,7 @@ sst docs [OPTIONS]
 | Option | Value | Default | Description |
 |---|---|---|---|
 | `--check` | flag |  | Write nothing; exit 2 when a committed reference page is out of date. |
+| `--only` | errors\|coverage\|artifacts\|cli\|config, repeatable |  | Repeatable. Generate only these references: `errors`, `coverage` (the code-to-test matrix), `artifacts`, `cli`, `config`. Defaults to all of them. |
 | `--output-dir` | DIRECTORY |  | Write the pages here instead of `docs/reference`. |
 | `--no-detailed-exitcode` | flag |  | Exit 0 instead of 2 when there are differences. |
 
@@ -476,27 +498,6 @@ sst clean [OPTIONS]
 | Option | Value | Default | Description |
 |---|---|---|---|
 | `--dry-run` | flag |  | List what would be removed; remove nothing. |
-
-## sst migrate
-
-Rewrite a 0.3 project into the 1.0 dialect.
-
-Subcommands: [`sst migrate refs`](#sst-migrate-refs).
-
-## sst migrate refs
-
-Rewrite legacy table()/column() globals to ref(), and label boolean filters.
-
-Dry-run by default: exit 2 when rewrites are pending, 0 when there are none,
-and 1 when a table() call sits where no rewrite is safe.
-
-```text
-sst migrate refs [OPTIONS]
-```
-
-| Option | Value | Default | Description |
-|---|---|---|---|
-| `--write` | flag |  | Rewrite files in place instead of reporting. |
 
 ## sst drop
 

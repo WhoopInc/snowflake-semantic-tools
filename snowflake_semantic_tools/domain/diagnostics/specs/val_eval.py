@@ -17,6 +17,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Dataset name is not unique within the agent schema",
         "dataset '{artifact}' is declared twice in {value}",
         "rename one of them",
+        condition="two datasets resolve to one name in one schema",
     ),
     spec(
         "SST-VAL702",
@@ -24,6 +25,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Dataset name exceeds the object limit",
         "dataset '{artifact}' is {size} chars, over 128",
         "shorten the name",
+        condition="the DATASET object name limit is exceeded",
     ),
     spec(
         "SST-VAL703",
@@ -31,6 +33,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Dataset declares its own database or schema",
         "dataset '{artifact}' declares +{key}",
         "remove it; eval objects resolve to the agent's schema",
+        condition="targeting keys are set on an eval object",
     ),
     spec(
         "SST-VAL704",
@@ -38,6 +41,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Resolved eval schema differs from the agent schema",
         "dataset '{artifact}' resolves to {found}; agent '{value}' resolves to {expected}",
         "align the eval with its agent, per target",
+        condition="a scratch agent's evals would land outside scratch",
     ),
     spec(
         "SST-VAL705",
@@ -45,6 +49,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Dataset row is incomplete",
         "dataset '{artifact}': row {index} {detail}",
         "give every row a question and at least one expectation",
+        condition="a row has no question, or no expected field",
     ),
     spec(
         "SST-VAL706",
@@ -52,6 +57,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Relative date in an eval question or expected answer",
         "dataset '{artifact}': row {index} contains relative date '{value}'",
         "pin the date",
+        condition="the single most common eval defect: the dataset silently changes meaning over time",
     ),
     spec(
         "SST-VAL707",
@@ -59,6 +65,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Eval question duplicates an agent sample question",
         "dataset '{artifact}': row {index} is byte-identical to a sample_question",
         "choose questions that would catch the agent failing",
+        condition="overlap means the eval proves nothing",
     ),
     spec(
         "SST-VAL708",
@@ -66,6 +73,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "ground_truth_invocations names a tool the agent does not have",
         "dataset '{artifact}': row {index} expects tool '{name}', absent from agent '{value}'",
         "correct the tool name, or add the tool",
+        condition="an expectation names a nonexistent tool",
     ),
     spec(
         "SST-VAL709",
@@ -73,6 +81,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "web_search expectation uses a non-canonical name",
         "dataset '{artifact}': row {index} expects '{name}'",
         "use the literal name web_search",
+        condition="the trace name is not configurable",
     ),
     spec(
         "SST-VAL710",
@@ -80,6 +89,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Dataset has fewer rows than the configured floor",
         "dataset '{artifact}' has {count} rows, under {expected}",
         "add rows; a thin dataset cannot support range thresholds",
+        condition="the row count is below the floor",
     ),
     spec(
         "SST-VAL711",
@@ -87,6 +97,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Question-set tool coverage",
         "dataset '{artifact}': {value} of the agent's tools are exercised by no question",
         None,
+        condition="an untested tool is the likeliest place for a regression to hide",
     ),
     spec(
         "SST-VAL712",
@@ -94,6 +105,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "CREATE DATASET takes no properties",
         "dataset '{artifact}': versions and provenance are added by ALTER, not CREATE",
         None,
+        condition="the DDL surface is reported so the authored YAML matches it",
     ),
     spec(
         "SST-VAL713",
@@ -101,6 +113,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Dataset version requires ownership",
         "dataset '{artifact}': {value} holds {found}, not OWNERSHIP",
         "grant OWNERSHIP, or add the version as the owner",
+        condition="adding a version needs ownership, not a lesser privilege",
     ),
     spec(
         "SST-VAL714",
@@ -108,6 +121,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Dataset metadata carries no commit provenance",
         "dataset '{artifact}': METADATA has no git SHA",
         "write the SHA into METADATA",
+        condition="the eval API cannot select a version, so METADATA is the only place provenance can live",
     ),
     spec(
         "SST-VAL715",
@@ -115,6 +129,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Sensitive data in dataset metadata or comment",
         "dataset '{artifact}': {field} matches {detail}",
         "remove it; Snowflake treats both as metadata fields",
+        condition="personal, sensitive, export-controlled or regulated data appears in METADATA or COMMENT",
     ),
     spec(
         "SST-VAL716",
@@ -122,6 +137,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "dataset block present for an existing dataset",
         "dataset '{artifact}' emits a dataset: block and the object already exists",
         "remove the dataset: block once the object is minted",
+        condition="CREATE would be attempted on every run and fail",
     ),
     spec(
         "SST-VAL717",
@@ -129,6 +145,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "run_name is not unique for the agent",
         "run_name '{value}' is already used for {artifact}",
         "choose a distinct run_name",
+        condition="the (db, schema, agent, run_name) 4-tuple is the primary key of a result set",
     ),
     spec(
         "SST-VAL718",
@@ -136,6 +153,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "run_name carries no commit SHA",
         "run_name '{value}' does not include the git SHA",
         "include the SHA so a score is attributable to a commit",
+        condition="the run name is not traceable to a revision",
     ),
     spec(
         "SST-VAL719",
@@ -143,6 +161,8 @@ SPECS: tuple[ErrorSpec, ...] = (
         "agent_version is LIVE or omitted",
         "eval config for '{artifact}': agent_version is '{found}'",
         "use committed or alias:<name>",
+        condition="LIVE, or an omitted version, targets the default version",
+        note="Silent drift.",
     ),
     spec(
         "SST-VAL720",
@@ -150,6 +170,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Referenced agent version does not exist",
         "eval config for '{artifact}': version '{value}' does not exist or is dropped",
         "pin an existing version",
+        condition="the referenced agent version is absent",
     ),
     spec(
         "SST-VAL721",
@@ -157,6 +178,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Metric is neither a system metric nor a declared custom metric",
         "eval config for '{artifact}': metric '{name}' is unknown",
         "declare the custom metric, or use a system metric",
+        condition="a metric name resolves to nothing",
     ),
     spec(
         "SST-VAL722",
@@ -164,6 +186,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "metric_version is not pinned",
         "eval config for '{artifact}': metric '{name}' declares no metric_version",
         "pin the version",
+        condition="unversioned metrics roll forward on deprecation and scores shift silently",
     ),
     spec(
         "SST-VAL723",
@@ -171,6 +194,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "metric_version pins a legacy judge",
         "eval config for '{artifact}': metric '{name}' pins legacy version '{found}'",
         "move to a current version, and record the score shift",
+        condition="a legacy judge version is pinned",
     ),
     spec(
         "SST-VAL724",
@@ -178,6 +202,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "judge_model set for a system metric",
         "eval config for '{artifact}': metric '{name}' is a system metric and declares judge_model",
         "remove judge_model; the version carries the judge",
+        condition="setting it is a silent no-op",
     ),
     spec(
         "SST-VAL725",
@@ -185,6 +210,11 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Metric evaluation mechanics",
         "eval config for '{artifact}': metric '{name}' {detail}",
         None,
+        condition=(
+            "how a metric is actually computed: tool_selection_accuracy uses no LLM judge, a custom "
+            "judge metric costs one model call per row, and an agent run executes whatever SQL its "
+            "text2sql tool generates, so it costs warehouse time on top"
+        ),
     ),
     spec(
         "SST-VAL726",
@@ -192,6 +222,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "logical_consistency used as a gate",
         "eval config for '{artifact}': logical_consistency is a blocking metric",
         "report it rather than gate on it",
+        condition="it is reference-free, which makes it a weak gate",
     ),
     spec(
         "SST-VAL727",
@@ -199,6 +230,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Eval privileges are spread across secondary roles",
         "eval config for '{artifact}': {detail}",
         "put every eval privilege on one primary role",
+        condition="runs execute as TASKS and tasks ignore secondary roles",
     ),
     spec(
         "SST-VAL728",
@@ -206,6 +238,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Eval role lacks a required schema privilege",
         "eval config for '{artifact}': {value} lacks {detail}",
         "grant CREATE TASK, CREATE STAGE and CREATE FILE FORMAT",
+        condition="the executing role cannot create the objects a run needs",
     ),
     spec(
         "SST-VAL729",
@@ -213,6 +246,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Config stage file format is wrong",
         "eval config for '{artifact}': stage file format is {found}",
         "use TYPE='CSV' with every delimiter and escape disabled",
+        condition="EXECUTE_AI_EVALUATION cannot parse the YAML it is handed",
     ),
     spec(
         "SST-VAL730",
@@ -220,6 +254,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Partial completion treated as a pass",
         "eval run for '{artifact}': status '{found}' is not a pass",
         "treat INVOCATION_PARTIALLY_COMPLETED and PARTIALLY_COMPLETED as failures",
+        condition="a partial terminal status was accepted",
     ),
     spec(
         "SST-VAL731",
@@ -227,6 +262,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Eval concurrency exceeds the configured ceiling",
         "eval config for '{artifact}': concurrency {found} exceeds {expected}",
         "lower concurrency; runs re-invoke the agent, so this is real load and real spend",
+        condition="the run would re-invoke the agent beyond the ceiling",
     ),
     spec(
         "SST-VAL732",
@@ -234,6 +270,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Unsupported tool types are skipped during evals",
         "eval config for '{artifact}': {value} will be skipped, not failed",
         None,
+        condition="MCP tools are never invoked; the eval looks healthier than the agent is",
     ),
     spec(
         "SST-VAL733",
@@ -241,6 +278,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Blocking threshold declares no usable bound",
         "eval config for '{artifact}': metric '{name}' threshold has {detail}",
         "declare min, max, or both, with min <= max",
+        condition="a gated metric's threshold map is empty or inverted, so the gate cannot fire",
     ),
     spec(
         "SST-VAL734",
@@ -248,6 +286,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Threshold gates before the baseline runs complete",
         "eval config for '{artifact}': {count} baseline_runs completed, {expected} required",
         "complete the baseline first",
+        condition="a gate is active with no baseline",
     ),
     spec(
         "SST-VAL735",
@@ -255,6 +294,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Threshold set with no baseline",
         "eval config for '{artifact}': metric '{name}' has a threshold and no baseline",
         "measure first, then set the threshold",
+        condition="a guess is wearing the costume of a measurement",
     ),
     spec(
         "SST-VAL737",
@@ -262,6 +302,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Custom metric shadows a system metric name",
         "eval metric '{artifact}' shadows system metric '{name}'",
         "rename the custom metric",
+        condition="a custom metric takes a reserved name",
     ),
     spec(
         "SST-VAL738",
@@ -269,6 +310,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Custom metric declares no explicit judge model",
         "eval metric '{artifact}': judge_model is '{found}'",
         "name the judge model explicitly",
+        condition="auto makes score movement unattributable",
     ),
     spec(
         "SST-VAL739",
@@ -276,6 +318,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "judge_model is not in the allowlist",
         "eval metric '{artifact}': judge_model '{found}' is not in the allowlist",
         "add it to the config allowlist, or use an allowed model",
+        condition="the judge model is outside the configured set",
     ),
     spec(
         "SST-VAL740",
@@ -283,6 +326,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Custom metric duplicates a system metric's intent",
         "eval metric '{artifact}' duplicates '{name}'",
         "use the system metric; it is cheaper, versioned and comparable",
+        condition="a custom metric restates a system metric",
     ),
     spec(
         "SST-VAL741",
@@ -290,6 +334,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Judge prompt declares no output contract",
         "eval metric '{artifact}': the prompt declares no scale or allowed values",
         "state the scale and the allowed values in the prompt",
+        condition="the declared scale and the thresholds cannot be reconciled",
     ),
     spec(
         "SST-VAL742",
@@ -297,6 +342,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Judge prompt asks for reasoning with no parseable score",
         "eval metric '{artifact}': the prompt has no parseable score instruction",
         "ask for a number in a fixed position",
+        condition="unparseable output scores as a failure, not a skip",
     ),
     spec(
         "SST-VAL743",
@@ -304,6 +350,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Rubric has no tie-break or insufficient-information branch",
         "eval metric '{artifact}': the rubric has no {detail} branch",
         "add the branch; otherwise the judge invents one per call",
+        condition="the rubric is underdetermined",
     ),
     spec(
         "SST-VAL744",
@@ -311,6 +358,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Custom metric is not versioned",
         "eval metric '{artifact}' declares no version",
         "version it; an edited prompt is a new metric",
+        condition="an unversioned prompt can change while the score keeps its name",
     ),
     spec(
         "SST-VAL745",
@@ -318,6 +366,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "In-place edit to a metric a retained run references",
         "eval metric '{artifact}' is referenced by retained run '{value}'",
         "publish a new version instead",
+        condition="editing it invalidates every historical comparison",
     ),
     spec(
         "SST-VAL746",
@@ -325,6 +374,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "System judge versions move on Snowflake's cadence",
         "eval metric '{artifact}': judge for version '{value}' recorded",
         None,
+        condition="record which judge each version maps to so a score shift can be explained",
     ),
     spec(
         "SST-VAL747",
@@ -332,6 +382,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Scoring instruction produces a number outside the declared ranges",
         "eval metric '{artifact}': the prompt can produce {found}, outside {expected}",
         "align the prompt with score_ranges",
+        condition="the prompt and the ranges disagree",
     ),
     spec(
         "SST-VAL748",
@@ -339,6 +390,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Judged range is wider than three bands for an invariant",
         "eval metric '{artifact}' declares {count} bands for an invariant",
         "narrow the scale",
+        condition="an invariant is being graded on a wide scale",
     ),
     spec(
         "SST-VAL755",
@@ -346,6 +398,10 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Agent eval run overlaps a semantic view regenerate",
         "eval config for '{artifact}': the run overlaps a regenerate of view '{value}', which the agent uses",
         "serialise the run against the publish, or move one of the two",
+        condition=(
+            "an agent eval run would interleave with a regenerate of a view the agent reads; no "
+            "coordination exists in Snowflake, so SST serialises"
+        ),
     ),
     spec(
         "SST-VAL758",
@@ -353,6 +409,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Eval baseline is absent",
         "eval '{artifact}' has no captured baseline",
         "capture a baseline explicitly with a reason",
+        condition="the eval gate finds no captured baseline",
     ),
     spec(
         "SST-VAL759",
@@ -360,6 +417,10 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Eval baseline is incompatible",
         "eval '{artifact}' baseline is incompatible: {detail}",
         "capture a new baseline for the current dataset, agent version and metrics",
+        condition=(
+            "the baseline was captured for another payload, agent version, dataset, metric set or "
+            "question/metric vector"
+        ),
     ),
     spec(
         "SST-VAL760",
@@ -367,6 +428,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Eval baseline is nearing expiry",
         "eval '{artifact}' baseline expires on {date}",
         "capture a replacement baseline before it expires",
+        condition="the eval baseline expires within BASELINE_WARNING_DAYS",
     ),
     spec(
         "SST-VAL761",
@@ -375,6 +437,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "eval '{artifact}' baseline expired on {date}",
         "capture a replacement baseline with a reason",
         demotable=False,
+        condition="the eval baseline has expired",
     ),
     spec(
         "SST-VAL762",
@@ -382,6 +445,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Eval dataset template is missing",
         "eval '{artifact}': dataset.{field} is not set",
         "set dataset.name_template and dataset.source_table_template in the eval's config.yml",
+        condition="dataset.name_template or dataset.source_table_template is not set in the eval config",
     ),
     spec(
         "SST-VAL763",
@@ -390,5 +454,6 @@ SPECS: tuple[ErrorSpec, ...] = (
         "eval '{artifact}' regressed on {count} question/metric pair(s): {detail}",
         "fix what regressed, or capture a new baseline with a reason if the change is intended",
         demotable=False,
+        condition="a blocking-tier eval regressed on one or more question/metric pairs",
     ),
 )

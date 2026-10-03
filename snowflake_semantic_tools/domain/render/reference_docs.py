@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import re
 import string
-from collections.abc import Iterable, Mapping
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass
 
 from snowflake_semantic_tools.domain.diagnostics import ERROR_REGISTRY, ErrorSpec
@@ -71,18 +71,61 @@ class CommandDoc:
     subcommands: tuple[str, ...] = ()
 
 
+@dataclass(frozen=True, slots=True)
+class CodeCoverage:
+    """Where one code is raised and tested, as the coverage reference shows it.
+
+    Attributes:
+        raise_sites: The package modules that name the code outside the registry; empty when
+            none does.
+        test_file: The code's test file, when it holds both its `fires` and `silent` tests.
+        precheck: Where the condition can first be detected: `local`, `observe`, or `runtime`.
+    """
+
+    raise_sites: tuple[str, ...] = ()
+    test_file: str | None = None
+    precheck: str = ""
+
+
+# Each reference `sst docs --only` names, and the page it is written to, in the order they render.
+REFERENCES: Mapping[str, str] = {
+    "errors": "error-codes.md",
+    "coverage": "coverage.md",
+    "artifacts": "artifacts.md",
+    "cli": "cli.md",
+    "config": "config.md",
+}
+
+
 def reference_pages(
     commands: tuple[CommandDoc, ...],
     global_options: tuple[OptionDoc, ...],
     exit_codes: tuple[tuple[int, str, str], ...],
+    coverage: Mapping[str, CodeCoverage],
+    *,
+    only: Iterable[str] | None = None,
 ) -> dict[str, str]:
-    """Every generated page, keyed by its path relative to the repository root."""
-    return {
-        f"{REFERENCE_DIR}/artifacts.md": render_artifacts(),
-        f"{REFERENCE_DIR}/cli.md": render_cli(commands, global_options, exit_codes),
-        f"{REFERENCE_DIR}/config.md": render_config(),
-        f"{REFERENCE_DIR}/error-codes.md": render_error_codes(),
+    """The generated pages `only` names, else every one, keyed by path relative to the repository root.
+
+    Args:
+        coverage: By code, where it is raised and tested; a code it leaves out has neither.
+        only: Names from `REFERENCES`; None renders them all.
+
+    Raises:
+        ValueError: `only` names a reference `REFERENCES` does not list.
+    """
+    chosen = tuple(REFERENCES) if only is None else tuple(dict.fromkeys(only))
+    unknown = [name for name in chosen if name not in REFERENCES]
+    if unknown:
+        raise ValueError(f"unknown references: {', '.join(unknown)}")
+    renderers: dict[str, Callable[[], str]] = {
+        "errors": render_error_codes,
+        "coverage": lambda: render_coverage(coverage),
+        "artifacts": render_artifacts,
+        "cli": lambda: render_cli(commands, global_options, exit_codes),
+        "config": render_config,
     }
+    return {f"{REFERENCE_DIR}/{REFERENCES[name]}": renderers[name]() for name in REFERENCES if name in chosen}
 
 
 def error_anchor(code: str) -> str:
@@ -232,8 +275,12 @@ def _error_entry(spec: ErrorSpec) -> list[str]:
         "",
         _code(_template(spec)),
     ]
+    if spec.condition:
+        entry.extend(("", f"Raised when {_prose(spec.condition)}."))
     if spec.suggestion:
         entry.extend(("", f"Fix: {_prose(spec.suggestion)}"))
+    if spec.note:
+        entry.extend(("", f"Note: {_prose(spec.note)}"))
     return entry
 
 
@@ -245,6 +292,50 @@ def _template(spec: ErrorSpec) -> str:
         if field is not None:
             parts.append(f"<{field}>")
     return "".join(parts)
+
+
+# ---------------------------------------------------------------------------- coverage
+
+
+def render_coverage(coverage: Mapping[str, CodeCoverage], registry: Mapping[str, ErrorSpec] = ERROR_REGISTRY) -> str:
+    """Render the coverage matrix: one row per registered code, in code order.
+
+    Each row names the code's area, severity, and pre-check, the modules that raise it, and
+    its test file. A code no module raises, or with no complete test file, shows `MISSING`;
+    the summary counts both, so the page cannot quietly under-report.
+    """
+    codes = sorted(registry)
+    facts = {code: coverage.get(code, CodeCoverage()) for code in codes}
+    unraised = sum(1 for code in codes if not facts[code].raise_sites)
+    untested = sum(1 for code in codes if facts[code].test_file is None)
+    lines = [
+        "# Coverage matrix",
+        "",
+        GENERATED,
+        "",
+        "Every registered code, where it is raised, and the test file that proves it fires on",
+        "bad input and stays silent on the nearest valid input. A test file counts only when it",
+        "defines both tests. The pre-check column says where the condition can first be",
+        "detected: `local` needs no connection, `observe` needs a read of Snowflake, and",
+        "`runtime` is seen only while a statement runs.",
+        "",
+        f"- Codes: {len(codes)}",
+        f"- Raised from no module: {unraised}",
+        f"- Without a complete test file: {untested}",
+        "",
+        "| Code | Area | Severity | Pre-check | Raised from | Test |",
+        "|---|---|---|---|---|---|",
+    ]
+    for code in codes:
+        spec = registry[code]
+        fact = facts[code]
+        sites = "<br>".join(f"`{site}`" for site in fact.raise_sites) or "MISSING"
+        test = f"`{fact.test_file}`" if fact.test_file else "MISSING"
+        lines.append(
+            f"| [`{code}`](error-codes.md#{error_anchor(code)}) | {spec.subsystem} | {spec.severity.name.lower()} "
+            f"| {fact.precheck or '-'} | {sites} | {test} |"
+        )
+    return "\n".join(lines) + "\n"
 
 
 # ------------------------------------------------------------------------------ config

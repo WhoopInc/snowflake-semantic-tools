@@ -100,6 +100,10 @@ _COMMAND_OPTION_HELP: Mapping[tuple[str, str], str] = {
     ("sst compile", "--emit-ddl"): "Write each artifact's rendered payload into this directory, offline.",
     ("sst compile", "--select"): "Report and emit only these artifacts; the manifest still holds everything.",
     ("sst docs", "--check"): "Write nothing; exit 2 when a committed reference page is out of date.",
+    ("sst docs", "--only"): (
+        "Repeatable. Generate only these references: `errors`, `coverage` (the code-to-test matrix), "
+        "`artifacts`, `cli`, `config`. Defaults to all of them."
+    ),
     ("sst enrich", "--select"): "Only these dbt models: `model:<name>` or a bare name; globs such as `fct_*` work.",
     ("sst enrich", "--exclude"): "Leave these dbt models out; same forms as `--select`.",
     ("sst enrich", "--include"): (

@@ -22,6 +22,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "report this as a bug, with the code and the full message",
         demotable=False,
         internal_detail=True,
+        condition="an exception crossed a phase boundary unhandled",
     ),
     spec(
         "SST-INT002",
@@ -30,6 +31,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "{value} attempted I/O from a pure ring",
         _BUG,
         demotable=False,
+        condition="a domain function reached the filesystem, the network or the clock",
     ),
     spec(
         "SST-INT003",
@@ -38,6 +40,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "{value} returned {found}, expected {expected}",
         _BUG,
         demotable=False,
+        condition="a phase's output fails its declared postcondition",
     ),
     spec(
         "SST-INT004",
@@ -46,6 +49,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "diagnostic for {value} was constructed directly",
         _BUG,
         demotable=False,
+        condition="a Diagnostic was built without going through emit()",
     ),
     spec(
         "SST-INT005",
@@ -54,6 +58,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "{value} emitted with no location",
         _BUG,
         demotable=False,
+        condition="a LOD, PRS, REF or VAL code was emitted with a knowable location omitted",
     ),
     spec(
         "SST-INT006",
@@ -62,6 +67,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "fingerprint for {value} changed between identical runs",
         _BUG,
         demotable=False,
+        condition="a volatile param reached the fingerprint",
     ),
     spec(
         "SST-INT007",
@@ -70,6 +76,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "{value} resolved severity outside diagnostics/",
         _BUG,
         demotable=False,
+        condition="a command re-derived effective severity",
     ),
     spec(
         "SST-INT008",
@@ -78,6 +85,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "{value} carries a caused_by naming no diagnostic in the run",
         _BUG,
         demotable=False,
+        condition="a diagnostic carries a `caused_by` naming no diagnostic in the run",
     ),
     spec(
         "SST-INT009",
@@ -86,6 +94,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "baseline entry {value} matched {count} diagnostics",
         "re-generate the baseline",
         demotable=False,
+        condition="a fingerprint is not unique within one run",
     ),
     spec(
         "SST-INT900",
@@ -94,6 +103,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "unregistered code {value}",
         _BUG,
         demotable=False,
+        condition="emit() received a code the registry does not contain",
     ),
     spec(
         "SST-INT901",
@@ -102,6 +112,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "{value} template needs {placeholder}, which was not supplied",
         _BUG,
         demotable=False,
+        condition="a template placeholder had no value at format time",
     ),
     spec(
         "SST-INT902",
@@ -110,5 +121,6 @@ SPECS: tuple[ErrorSpec, ...] = (
         "domain invariant violated: {detail}",
         _BUG,
         demotable=False,
+        condition="an engine invariant assertion failed",
     ),
 )

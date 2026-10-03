@@ -13,6 +13,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "relationship_conditions is empty",
         "relationship '{relationship}' declares no conditions",
         "declare at least one condition",
+        condition="a relationship has an empty or absent condition list",
     ),
     spec(
         "SST-VAL202",
@@ -21,6 +22,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "relationship '{relationship}': condition '{value}' would be dropped from the DDL",
         "fix the condition so it renders, or remove it",
         demotable=False,
+        condition="a parsed condition would not survive rendering",
     ),
     spec(
         "SST-VAL203",
@@ -28,6 +30,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Relationship names a table not in the view",
         "relationship '{relationship}' names '{name}', absent from {artifact}",
         "add the table to the view, or drop the relationship",
+        condition="a relationship side is not in the attached view's table list",
     ),
     spec(
         "SST-VAL204",
@@ -35,6 +38,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Join condition column is not on the named table",
         "relationship '{relationship}': '{column}' is not on '{name}'",
         "correct the column, or swap the sides",
+        condition="a condition column does not resolve on its own side",
     ),
     spec(
         "SST-VAL205",
@@ -42,6 +46,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Relationship sides never appear together in any view",
         "relationship '{relationship}' joins '{a}' and '{b}', which share no view",
         "add both tables to one view, or drop the relationship",
+        condition="the two sides are never co-present",
     ),
     spec(
         "SST-VAL206",
@@ -49,6 +54,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Range relationship target declares no distinct_range",
         "relationship '{relationship}' is a range join and '{name}' declares no distinct_range",
         "declare distinct_range on the target table",
+        condition="a range join's target lacks the required declaration",
     ),
     spec(
         "SST-VAL207",
@@ -56,6 +62,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Self-loop on a single logical table",
         "relationship '{relationship}' joins '{name}' to itself",
         "declare two logical names over the one model",
+        condition="a relationship's two sides are the same logical table",
     ),
     spec(
         "SST-VAL208",
@@ -63,6 +70,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Equality join to a finer-grained table",
         "relationship '{relationship}' joins '{a}' to '{b}', whose grain is finer than one row per key",
         "use an asof join, or aggregate the target",
+        condition="the fan-out trap: an equality join multiplies rows",
     ),
     spec(
         "SST-VAL209",
@@ -70,6 +78,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Ambiguous join path between two tables",
         "{artifact}: {count} paths between '{a}' and '{b}'",
         "declare using_relationships on the affected metrics",
+        condition="more than one distinct relationship path connects two logical tables",
     ),
     spec(
         "SST-VAL210",
@@ -77,6 +86,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Join target declares no key covering the join columns",
         "relationship '{relationship}': '{name}' declares neither primary_key nor unique_keys over {value}",
         "declare the key; it is the cheapest fan-out protection",
+        condition="cardinality will be guessed from data",
     ),
     spec(
         "SST-VAL211",
@@ -84,6 +94,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "relationship_type or join_type declared",
         "relationship '{relationship}' declares '{field}', which is not emitted",
         "remove the key",
+        condition="a persisted-but-inert attribute is declared",
     ),
     spec(
         "SST-VAL212",
@@ -91,6 +102,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Declared cardinality disagrees with the data",
         "relationship '{relationship}' declares cardinality {found}; the spot-check found {value}",
         "correct the declaration, or fix the grain",
+        condition="a cardinality spot-check contradicts the declaration",
     ),
     spec(
         "SST-VAL213",
@@ -98,6 +110,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Multi-column condition is not expressible",
         "relationship '{relationship}': condition '{value}' spans multiple columns per side",
         "split it into one condition per column pair",
+        condition="a condition cannot be rendered as a single column pair",
     ),
     spec(
         "SST-VAL214",
@@ -105,6 +118,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "using_relationships names an undeclared relationship",
         "metric '{metric}' names relationship '{relationship}', which is not declared",
         "declare the relationship, or correct the name",
+        condition="a join-path declaration names a missing relationship",
     ),
     spec(
         "SST-VAL215",
@@ -112,6 +126,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Relationship graph has a cycle that changes results",
         "{artifact}: relationship cycle {cycle}",
         "break the cycle, or split into role-playing tables",
+        condition="the join graph contains a cycle that is not a role-playing pair",
     ),
     spec(
         "SST-VAL216",
@@ -119,6 +134,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Inferred many-to-many path through a bridge table",
         "{artifact}: many-to-many path {value} inferred through '{name}'",
         None,
+        condition="a bridge-table path was detected and deduplicated",
     ),
     spec(
         "SST-VAL217",
@@ -126,6 +142,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Join graph summary",
         "{artifact}: {count} tables, {value}",
         None,
+        condition="per-view join graph shape, reported on request",
     ),
     spec(
         "SST-VAL218",
@@ -134,6 +151,10 @@ SPECS: tuple[ErrorSpec, ...] = (
         "relationship '{relationship}': '{name}' declares distinct_range over ({a}, {b}) but the ranges "
         "overlap, for example {value}",
         "make the ranges disjoint, or narrow the range columns",
+        condition=(
+            "a range join's target declares `distinct_range` and the target's own rows overlap, so "
+            "one source row joins more than one target row"
+        ),
     ),
     spec(
         "SST-VAL219",
@@ -141,6 +162,8 @@ SPECS: tuple[ErrorSpec, ...] = (
         "A scoped bare column does not exist on its model",
         "{artifact}: table_config.{model}.{field} names column '{column}', which does not exist on {model}",
         "correct the column name, or add it to the dbt model",
+        condition=("a column under `table_config.<model>.distinct_range` is absent from `<model>` in the dbt manifest"),
+        note="Primary and unique keys live on the dbt model; their existence check is `SST-VAL310`.",
     ),
     spec(
         "SST-VAL220",
@@ -148,6 +171,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "A declared view variable is never referenced",
         "{artifact}: variable '{name}' is declared and never used",
         "reference it in an expr, or remove it",
+        condition="a name in `variables:` appears in no `expr:` on the view",
     ),
     spec(
         "SST-VAL221",
@@ -155,6 +179,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "A bare identifier in an expr matches no column and no declared variable",
         "{artifact}: '{name}' in {field} is neither a column nor a declared variable",
         "declare the variable, correct the name, or wrap the column in a two-arg ref",
+        condition="an unrecognised bare identifier in an `expr:`",
     ),
     spec(
         "SST-VAL222",
@@ -162,6 +187,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Dimension declares a private access modifier",
         "{artifact}: dimension '{member}' declares access_modifier '{value}'; SST does not support a private dimension",
         "remove the key",
+        condition="a `dimension` carries `access_modifier: private_access`",
     ),
     spec(
         "SST-VAL223",
@@ -169,5 +195,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "A primary-key column is also declared unique",
         "{artifact}: column '{column}' on '{model}' appears in both primary_key and unique_keys",
         "remove it from unique_keys -- a primary key is already unique",
+        condition="a column appears in both a model's `config.meta.sst.primary_key` and `.unique_keys`",
+        note="`{artifact}` is the model, not a view.",
     ),
 )

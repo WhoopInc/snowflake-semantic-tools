@@ -13,6 +13,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "YAML syntax error",
         "{file}:{line}:{col}: {detail}",
         "fix the YAML syntax at the reported position",
+        condition="yaml.safe_load raises; line and column come from the marker",
     ),
     spec(
         "SST-LOD002",
@@ -20,14 +21,27 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Document root is not a mapping",
         "{file} root is {found}, expected a mapping",
         "make the document a top-level mapping",
+        condition="the parsed root is a list, scalar or null",
     ),
-    spec("SST-LOD003", Severity.WARNING, "File is empty", "{file} is empty", "add content, or delete the file"),
+    spec(
+        "SST-LOD003",
+        Severity.WARNING,
+        "File is empty",
+        "{file} is empty",
+        "add content, or delete the file",
+        condition="the file has zero bytes, or parses to None",
+    ),
     spec(
         "SST-LOD004",
         Severity.ERROR,
         "Template expression is malformed",
         "{file}:{line}:{col}: malformed template: {reason}",
         "close the template, remove nesting, or correct the call grammar",
+        condition="an unterminated or nested `{{ }}`",
+        note=(
+            "Not an unquoted `{{`: unquoted is the majority spelling and is not valid YAML, so it is "
+            "neutralised at the load boundary rather than rejected."
+        ),
     ),
     spec(
         "SST-LOD005",
@@ -35,6 +49,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Duplicate key in a YAML mapping",
         "{file}:{line}: duplicate key '{key}'",
         "remove one of the two keys",
+        condition="a mapping declares one key twice; the later silently wins in stock YAML",
     ),
     spec(
         "SST-LOD006",
@@ -42,6 +57,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "File is not valid UTF-8",
         "{file}: invalid UTF-8 at byte {offset}",
         "re-save the file as UTF-8",
+        condition="decoding fails",
     ),
     spec(
         "SST-LOD007",
@@ -49,6 +65,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "File exceeds the size limit",
         "{file} is {size} bytes, over the {expected} limit",
         "split the file",
+        condition="a candidate file is larger than the configured cap",
     ),
     spec(
         "SST-LOD008",
@@ -56,6 +73,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Multi-document YAML stream",
         "{file} contains {count} documents",
         "keep one document per file",
+        condition="the file uses --- separators",
     ),
     spec(
         "SST-LOD009",
@@ -63,6 +81,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Unquoted colon inside a plain scalar",
         "{file}:{line}: '{key}' value contains an unquoted ':'",
         "quote the value",
+        condition="a description or prose value contains a bare colon-space",
     ),
     spec(
         "SST-LOD010",
@@ -70,6 +89,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Tab character used for indentation",
         "{file}:{line}: tab used for indentation",
         "indent with spaces",
+        condition="YAML forbids tabs in indentation",
     ),
     spec(
         "SST-LOD011",
@@ -77,6 +97,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Folded scalar used for a multi-line value",
         "{file}:{line}: '{key}' uses a folded scalar",
         "use |- so line breaks survive",
+        condition="a multi-line value uses > or >-, which reflows the text",
     ),
     spec(
         "SST-LOD012",
@@ -84,6 +105,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Trailing whitespace or CRLF line endings",
         "{file}: {detail}",
         "remove the trailing whitespace and save the file with LF line endings",
+        condition="the file is not canonically formatted at byte level",
     ),
     spec(
         "SST-LOD013",
@@ -91,6 +113,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Anchor or alias used",
         "{file}:{line}: YAML anchors are not supported",
         "expand the anchor: write the value out wherever the alias stands",
+        condition="the document uses & or *",
     ),
     spec(
         "SST-LOD014",
@@ -98,6 +121,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Merge key used",
         "{file}:{line}: merge keys are not supported",
         "expand the merge: write the merged keys into the mapping",
+        condition="the document uses <<:",
     ),
     spec(
         "SST-LOD015",
@@ -105,6 +129,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Non-string mapping key",
         "{file}:{line}: mapping key {found} is not a string",
         "quote the key",
+        condition="a key parses to an int, bool, date or null",
     ),
     spec(
         "SST-LOD016",
@@ -112,14 +137,23 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Implicit boolean or null coercion",
         "{file}:{line}: '{key}' value {found} coerced to {expected}",
         "quote the value if it is meant as a string",
+        condition="YAML 1.1 coerces yes, no, on, off, ~ or an empty value",
     ),
-    spec("SST-LOD017", Severity.ERROR, "Byte-order mark present", "{file} begins with a BOM", "re-save without a BOM"),
+    spec(
+        "SST-LOD017",
+        Severity.ERROR,
+        "Byte-order mark present",
+        "{file} begins with a BOM",
+        "re-save without a BOM",
+        condition="the file starts with U+FEFF",
+    ),
     spec(
         "SST-LOD018",
         Severity.ERROR,
         "Sidecar file referenced by a document is missing",
         "{file} references {path}, which does not exist",
         "create the file, or correct the path",
+        condition="a file(), body_file or sql_file path does not resolve at load",
     ),
     spec(
         "SST-LOD019",
@@ -127,6 +161,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Sidecar file is empty",
         "{path}, referenced by {file}, is empty",
         "add content, or remove the reference",
+        condition="a referenced sidecar resolves and has zero bytes",
     ),
     spec(
         "SST-LOD020",
@@ -134,6 +169,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Unrecognised file extension accepted",
         "{file} uses '{found}'",
         "standardise on .yml",
+        condition="a candidate file uses a tolerated but non-canonical extension",
     ),
     spec(
         "SST-LOD021",
@@ -141,14 +177,30 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Document declares no recognised root key",
         "{file} declares no recognised root key",
         "add the artifact's root key, or move the file out of the semantic models directory",
+        condition="the root mapping has keys, none of which any type claims",
     ),
-    spec("SST-LOD200", Severity.INFO, ".yaml extension accepted", "{file} uses .yaml; accepted", None),
-    spec("SST-LOD201", Severity.INFO, "File loaded from cache", "{file} served from the load cache", None),
+    spec(
+        "SST-LOD200",
+        Severity.INFO,
+        ".yaml extension accepted",
+        "{file} uses .yaml; accepted",
+        None,
+        condition="a .yaml file was loaded",
+    ),
+    spec(
+        "SST-LOD201",
+        Severity.INFO,
+        "File loaded from cache",
+        "{file} served from the load cache",
+        None,
+        condition="the file digest is unchanged since the last run",
+    ),
     spec(
         "SST-LOD202",
         Severity.INFO,
         "Line-ending normalisation applied on read",
         "{file} normalised {count} line endings on read",
         None,
+        condition="CRLF was normalised in memory, leaving the file untouched",
     ),
 )

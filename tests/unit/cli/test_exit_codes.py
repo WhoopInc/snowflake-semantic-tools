@@ -145,7 +145,7 @@ SCENARIOS: dict[tuple[str, int], Scenario] = {
     ("docs", 0): lambda tmp, _: _run("docs", "--project-dir", str(REPO_ROOT), "--check"),
     ("docs", 1): lambda tmp, _: _docs_unwritable(tmp),
     ("docs", 2): lambda tmp, _: _run("docs", "--project-dir", str(tmp), "--check"),
-    ("docs", 3): lambda tmp, _: _run("docs", "--only", "errors"),
+    ("docs", 3): lambda tmp, _: _run("docs", "--only", "everything"),
     ("clean", 0): lambda tmp, _: _run("clean", "--project-dir", str(project_copy(tmp))),
     ("clean", 1): lambda tmp, mp: _clean_refused(tmp, mp),
     ("clean", 3): lambda tmp, _: _run("clean", "--force"),
