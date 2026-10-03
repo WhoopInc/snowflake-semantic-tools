@@ -96,7 +96,8 @@ def test_an_eval_minting_a_version_has_its_metadata_and_comment_checked() -> Non
     artifact = replace(
         rendered("E"),
         ddl="dataset:\n  name: D\n",
-        component_fingerprints=(("dataset_version", "SST_0123456789AB"), ("version_metadata", '{"who":"x"}')),
+        component_fingerprints=(("dataset_version", "SST_0123456789AB"),),
+        version_metadata='{"who":"x"}',
     )
     dataset = PhysicalResource("dataset", QualifiedName.parse("DB.S.D"), True)
     found = eval_publication_diagnostics(artifact, CompositeObservation(artifact.key, resources=(dataset,)))

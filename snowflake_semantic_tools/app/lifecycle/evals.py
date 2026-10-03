@@ -726,7 +726,7 @@ def _with_provenance(artifact: RenderedArtifact, plan: CompositePlan) -> Composi
     adds_version = plan.action is Action.CREATE or (
         plan.action is Action.UPDATE and dict(plan.observation.details).get("dataset_version") != "present"
     )
-    metadata = dict(artifact.component_fingerprints).get("version_metadata")
+    metadata = artifact.version_metadata
     if not adds_version or metadata is None or "git_sha" in json.loads(metadata):
         return plan
     warning = D("SST-VAL714", subject=artifact.key, artifact=artifact.key)

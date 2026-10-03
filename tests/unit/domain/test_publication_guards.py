@@ -76,8 +76,8 @@ def test_an_artifact_that_mints_no_version_has_only_its_config_checked() -> None
 
 
 def test_an_eval_has_its_minted_version_checked_against_an_existing_dataset() -> None:
-    components = (("dataset_version", "SST_0123456789AB"), ("version_metadata", '{"owner":"x"}'))
-    artifact = replace(rendered(), component_fingerprints=components)
+    components = (("dataset_version", "SST_0123456789AB"),)
+    artifact = replace(rendered(), component_fingerprints=components, version_metadata='{"owner":"x"}')
     resources = (
         PhysicalResource("TABLE", TARGET, True),
         PhysicalResource("dataset", QualifiedName.parse("DB.S.QUESTIONS"), False),
