@@ -85,7 +85,8 @@ class CommandResult:
         exit_code: The process's exit code, which the envelope reports as well.
         diagnostics: Listed in the envelope; human output renders them on stderr before
             `human` runs, unless `show_diagnostics` is false.
-        data: The envelope's `data`, `{}` when None.
+        data: The envelope's `data`, `{}` when None; a callable builds it as the envelope is
+            built, after the baseline is matched.
         human: Prints the human report; it is not called for `--output json`.
         promoted: The envelope's `summary.promoted`: the warnings `--strict` made errors.
         show_diagnostics: False where human output leaves the diagnostics to `--output json`.

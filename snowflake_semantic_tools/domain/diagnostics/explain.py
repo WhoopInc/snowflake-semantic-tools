@@ -33,6 +33,8 @@ class Explanation:
         kind: `code` for a registered code, `alias` for a 0.3 code, `retired` for a burned number.
         severity, phase, message_template, suggestion_template: From the registry entry; None
             for an alias or a retired number, which has none.
+        condition, note: When the code is raised, and what that implies; from the registry entry,
+            None for an alias or a retired number.
         non_demotable: Whether no setting or baseline may lower the code.
         origin: The 0.3 codes that resolve to this code.
         aliases: For a registered or retired code, the 0.3 codes that resolve to it; for an
@@ -49,6 +51,8 @@ class Explanation:
     phase: str | None = None
     message_template: str | None = None
     suggestion_template: str | None = None
+    condition: str | None = None
+    note: str | None = None
     non_demotable: bool = False
     deprecated_in: str | None = None
     origin: tuple[str, ...] = ()
@@ -105,6 +109,8 @@ def _registered(spec: ErrorSpec) -> Explanation:
         phase=spec.phase,
         message_template=spec.template,
         suggestion_template=spec.suggestion,
+        condition=spec.condition,
+        note=spec.note,
         non_demotable=not spec.demotable,
         deprecated_in=spec.deprecated_in,
         superseded_by=spec.superseded_by,

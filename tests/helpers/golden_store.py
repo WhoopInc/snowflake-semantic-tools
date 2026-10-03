@@ -1,4 +1,4 @@
-"""An in-memory `GoldenStore` for application tests: goldens held as text, by location."""
+"""An in-memory `GoldenWriter` for application tests: goldens held as text, by location."""
 
 from __future__ import annotations
 
@@ -21,3 +21,6 @@ class InMemoryGoldenStore:
 
     def name(self, path: GoldenPath) -> str:
         return "/".join(("golden", path.beside or "ddl", *path.parts))
+
+    def write(self, path: GoldenPath, text: str) -> None:
+        self.goldens[path] = text

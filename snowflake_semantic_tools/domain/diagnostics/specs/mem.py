@@ -13,6 +13,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Member declares a table present in no artifact",
         "{member} declares table '{name}', which no {type} lists",
         "add the table to a view, or correct the member",
+        condition="a declared table appears in no artifact of the owning type",
     ),
     spec(
         "SST-MEM002",
@@ -20,6 +21,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "tables absent and nothing inferable",
         "{member} declares no tables: and none can be inferred",
         "declare tables: explicitly",
+        condition="the expression yields no table origins",
     ),
     spec(
         "SST-MEM003",
@@ -27,6 +29,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Declared table does not name a known dbt model",
         "{member} declares table '{name}', which is not a known dbt model",
         "use a dbt model name the manifest knows",
+        condition="a declared table does not name a model in the dbt manifest",
     ),
     spec(
         "SST-MEM004",
@@ -34,6 +37,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Member declares one table twice",
         "{member} lists table '{name}' more than once",
         "remove the duplicate entry",
+        condition="a tables: list contains a repeated entry",
     ),
     spec(
         "SST-MEM005",
@@ -41,6 +45,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Member attached to zero artifacts",
         "{member} attaches to no {type}",
         "add its tables to a view, or delete the member",
+        condition="the membership function returns an empty artifact set",
     ),
     spec(
         "SST-MEM006",
@@ -48,6 +53,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Derived member declares tables",
         "{member} is derived and declares tables:",
         "remove tables:; derived members are view-scoped",
+        condition="a derived metric declares a table list",
     ),
     spec(
         "SST-MEM007",
@@ -55,6 +61,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Composed member reaches outside its declared tables",
         "{member}: transitive tables {outside} are not in its own tables:",
         "widen tables:, or narrow the expression",
+        condition="a composed member's transitive tables are not a subset of its declared list",
     ),
     spec(
         "SST-MEM008",
@@ -62,6 +69,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Member attaches to an artifact lacking a declared table",
         "{member} attaches to {artifact}, which lacks table '{name}'",
         "align the member's tables with the view",
+        condition="attachment would place a member on an artifact missing one of its tables",
     ),
     spec(
         "SST-MEM009",
@@ -69,6 +77,10 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Duplicate synonym within an artifact",
         "{artifact}: synonym '{value}' is claimed by {a} and {b}",
         "make synonyms unique within the view",
+        condition=(
+            "two claimants in one view share a synonym and at least one of them is a metric; a table "
+            "and its columns may share one"
+        ),
     ),
     spec(
         "SST-MEM010",
@@ -76,6 +88,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Member declares a table the artifact reaches only by relationship",
         "{member} declares '{name}', reachable from {artifact} only through a join",
         "declare the joined table explicitly",
+        condition="a declared table is present transitively rather than directly",
     ),
     spec(
         "SST-MEM011",
@@ -83,6 +96,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Member fan-out",
         "{member} attaches to {count} artifacts",
         None,
+        condition="attachment is implicit, so the reach is reported",
     ),
     spec(
         "SST-MEM012",
@@ -90,6 +104,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Tables inferred for a member",
         "{member}: tables inferred as {value}",
         None,
+        condition="a member's tables were derived from its expression origins",
     ),
     spec(
         "SST-MEM013",
@@ -97,6 +112,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Attachment differs between two membership calls",
         "{member} attached to {a} then {b}",
         "report this as a bug",
+        condition="one membership function produced two answers for one member",
     ),
     spec(
         "SST-MEM014",
@@ -104,6 +120,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Member would be dropped at render after passing attachment",
         "{member} passed attachment for {artifact} and would be dropped at render",
         "fix the expression, or the view's table list",
+        condition="a member passes membership and a render-time filter would remove it",
     ),
     spec(
         "SST-MEM015",
@@ -111,6 +128,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Private member referenced from outside the view",
         "{member} is private and is referenced by {artifact}",
         "make it public, or drop the reference",
+        condition="a private member is named by an agent tool or a verified query",
     ),
     spec(
         "SST-MEM016",
@@ -118,6 +136,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Member attaches to two artifacts with contradictory scoping",
         "{member} attaches to {a} and {b} with conflicting scope",
         "split the member",
+        condition="one member would render with different semantics in two artifacts",
     ),
     spec(
         "SST-MEM100",
@@ -125,6 +144,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Member attached to a type that accepts no members",
         "{type} accepts no members; {member} was attached",
         "move the member",
+        condition="attachment targets an artifact type with no member model",
     ),
     spec(
         "SST-MEM101",
@@ -132,6 +152,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Inferred tables exceed declared tables",
         "{member}: expression reaches {outside}, beyond its declared tables:",
         "widen tables:, or narrow the expression",
+        condition="the expression's table origins are a superset of the declared list",
     ),
     spec(
         "SST-MEM103",
@@ -139,6 +160,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Artifact member counts",
         "{artifact}: {value}",
         None,
+        condition="per-artifact member counts after attachment",
     ),
     spec(
         "SST-MEM104",
@@ -146,6 +168,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Artifact has no members and its type requires at least one",
         "{artifact} resolves no members",
         "attach at least one dimension or metric",
+        condition="an artifact type that requires members has none",
     ),
     spec(
         "SST-MEM105",
@@ -153,6 +176,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Two artifacts attach contradictory custom instructions to one table",
         "{a} and {b} share table '{name}' with conflicting instructions",
         "reconcile the instruction blocks",
+        condition="one table carries contradictory guidance in two views",
     ),
     spec(
         "SST-MEM106",
@@ -160,6 +184,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Verified query attaches through a different membership rule",
         "{member} used a verified-query-specific attachment path",
         "use the one membership function",
+        condition="a VQ attachment does not go through the single membership function",
     ),
     spec(
         "SST-MEM107",
@@ -167,6 +192,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Attachment skipped for a poisoned member",
         "{member} skipped: {count} unresolved references",
         None,
+        condition="attachment did not run because the member's refs did not resolve",
     ),
     spec(
         "SST-MEM900",
@@ -174,5 +200,6 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Attachment not idempotent",
         "attachment for {member} changed on a second pass",
         "report this as a bug",
+        condition="running attachment twice produced different results",
     ),
 )

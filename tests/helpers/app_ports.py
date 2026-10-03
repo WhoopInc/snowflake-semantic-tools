@@ -24,6 +24,7 @@ from snowflake_semantic_tools.domain.ports.snowflake.catalog import (
     ExtensionObservation,
     ExtensionVersion,
 )
+from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
 from snowflake_semantic_tools.domain.ports.snowflake.stage import StagedFileMetadata
 from snowflake_semantic_tools.domain.sql import Sql
 from snowflake_semantic_tools.domain.state import AppliedEntry, State
@@ -36,6 +37,8 @@ class InMemorySnowflake(PreflightDouble):
     def __init__(self) -> None:
         self.rows: tuple[ShowRow, ...] = ()
         self.grants: dict[str, tuple[GrantRow, ...]] = {}
+        # GET_DDL's answer by qualified name; an object missing here has no readable definition.
+        self.definitions: dict[str, str] = {}
         self.markers: dict[str, OwnershipMarker | None] = {}
         self.queries: list[tuple[str, object]] = []
         self.scripts: list[tuple[str, ...]] = []
@@ -83,6 +86,11 @@ class InMemorySnowflake(PreflightDouble):
         if self.grant_error:
             raise self.grant_error
         return self.grants.get(qualified_name.sql, ())
+
+    def get_ddl(self, object_type: str, qualified_name: QualifiedName) -> str:
+        if qualified_name.sql not in self.definitions:
+            raise SnowflakePortError(f"GET_DDL refused for {object_type} {qualified_name.sql}")
+        return self.definitions[qualified_name.sql]
 
     def describe_marker(
         self,

@@ -13,6 +13,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "DDL execution failed",
         "{artifact}: {value} failed: {detail}",
         "read internal_detail, then fix the statement or the account",
+        condition="Snowflake rejected the statement",
     ),
     spec(
         "SST-APL002",
@@ -20,6 +21,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Skipped: a dependency failed",
         "{artifact} skipped: {blocker} failed",
         "fix the dependency, then re-apply",
+        condition="an earlier artifact in the order failed",
     ),
     spec(
         "SST-APL003",
@@ -27,6 +29,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Refused: artifact is blocked",
         "{artifact} is BLOCKED by {count} errors",
         "fix the errors, then re-apply",
+        condition="apply refuses an artifact carrying unresolved errors",
     ),
     spec(
         "SST-APL004",
@@ -35,6 +38,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "{artifact}: replace statement omits COPY GRANTS",
         "emit COPY GRANTS; this is not configurable",
         demotable=False,
+        condition="the statement about to execute would silently revoke consumer access",
     ),
     spec(
         "SST-APL005",
@@ -42,6 +46,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Refused: plan was not computed for this target",
         "{artifact}: plan target '{found}' differs from the apply target '{expected}'",
         "re-run plan against the apply target",
+        condition="the plan and the connection disagree about the environment",
     ),
     spec(
         "SST-APL006",
@@ -50,6 +55,8 @@ SPECS: tuple[ErrorSpec, ...] = (
         "{count} published probes failed",
         "fix the metrics, then re-apply",
         demotable=False,
+        condition=("one or more smoke queries failed in `sst test --suite smoke`, so the suite is not a success"),
+        note="Smoke queries are not part of a deployment, so this can never fail an `apply`.",
     ),
     spec(
         "SST-APL007",
@@ -57,6 +64,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Tag application failed after a successful create",
         "{artifact}: tags could not be applied: {detail}",
         "grant the tag privilege, then re-apply",
+        condition="the separate ALTER that sets tags failed",
     ),
     spec(
         "SST-APL008",
@@ -64,6 +72,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Grants could not be re-read after a replace",
         "{artifact}: grants could not be verified after replace",
         "check the grants by hand",
+        condition="the post-replace grant read failed",
     ),
     spec(
         "SST-APL009",
@@ -72,6 +81,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "{artifact}: grant {value} was present before replace and is absent after",
         "confirm COPY GRANTS was emitted",
         demotable=False,
+        condition="the regression check for grants dropped by a replace failed",
     ),
     spec(
         "SST-APL010",
@@ -79,6 +89,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Stale lock broken",
         "broke a stale lock held by {value}",
         "confirm no other run is live; a broken lock means the previous run did not exit cleanly",
+        condition="a lock past its expiry was reclaimed",
     ),
     spec(
         "SST-APL011",
@@ -86,6 +97,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Lock held by a live run",
         "{value} holds the apply lock",
         "wait for the other run, or clear the lock",
+        condition="a concurrent apply is in progress",
     ),
     spec(
         "SST-APL012",
@@ -93,6 +105,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Object changed between plan and apply",
         "{artifact}: {value} changed since the plan",
         "re-run plan",
+        condition="the target changed after the plan was computed",
     ),
     spec(
         "SST-APL013",
@@ -100,6 +113,10 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Write refused: target is a production-like environment under --temporary",
         "{artifact}: --temporary against target '{target}' is not permitted",
         "drop --temporary, or point at a scratch target",
+        condition=(
+            "a session-scoped artifact was requested against a prod-like target: one whose name, "
+            "split on `_`, `-` and `.`, has a part `prod`, `production` or `prd`"
+        ),
     ),
     spec(
         "SST-APL014",
@@ -107,6 +124,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Temporary artifact shadows a permanent one",
         "{artifact} shadows a permanent object of the same name for this session",
         "remember the change is local",
+        condition="a temporary apply masks the deployed artifact",
     ),
     spec(
         "SST-APL015",
@@ -114,6 +132,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "alias ignored under --temporary",
         "{artifact}: alias is meaningless under --temporary and was ignored",
         "no action; the same committed file is reusable for a permanent apply",
+        condition="the committed file is reused for a temporary apply",
     ),
     spec(
         "SST-APL016",
@@ -121,6 +140,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Partial write left the artifact in an unusable state",
         "{artifact}: {detail}",
         "re-apply, or drop and re-create",
+        condition="a multi-statement publish failed part way and could not be unwound",
     ),
     spec(
         "SST-APL017",
@@ -128,6 +148,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Per-channel publish reported aggregate success",
         "{artifact}: {detail}",
         "report per-channel status separately",
+        condition="a multi-channel publish hid a failed channel",
     ),
     spec(
         "SST-APL018",
@@ -135,6 +156,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Registry pointer write failed after an upload",
         "{artifact}: uploaded {path}, pointer write failed: {detail}",
         "re-run apply; the publish is half complete",
+        condition="the stage upload succeeded and the registry write did not",
     ),
     spec(
         "SST-APL019",
@@ -142,6 +164,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Deletion of a removed bundle file failed",
         "{artifact}: '{path}' could not be removed from the published version",
         "re-publish from empty",
+        condition="a removal that the version requires did not happen",
     ),
     spec(
         "SST-APL020",
@@ -149,6 +172,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Version name collided under a parallel deploy",
         "{artifact}: version '{value}' was minted twice",
         "retry; derive versions from the content SHA",
+        condition="two concurrent deploys produced one version name",
     ),
     spec(
         "SST-APL021",
@@ -156,6 +180,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Grant issued before certification completed",
         "{artifact}: grants were issued and certification did not succeed",
         "revoke, certify, then grant",
+        condition="the publish order was violated at apply time",
     ),
     spec(
         "SST-APL022",
@@ -163,6 +188,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Dataset version could not be added",
         "dataset '{artifact}': ADD VERSION failed: {detail}",
         "check OWNERSHIP on the dataset",
+        condition="the version statement was rejected",
     ),
     spec(
         "SST-APL023",
@@ -170,6 +196,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Eval run could not be started",
         "eval '{artifact}': {detail}",
         "check CREATE TASK, CREATE STAGE and the file format",
+        condition="EXECUTE_AI_EVALUATION could not be invoked",
     ),
     spec(
         "SST-APL024",
@@ -177,6 +204,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Eval run reported a partial terminal status",
         "eval '{artifact}': status '{found}'",
         "treat this as a failure and re-run",
+        condition="the run terminated partially completed",
     ),
     spec(
         "SST-APL027",
@@ -184,6 +212,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Metadata table absent or the wrong shape",
         "{value}: {detail}",
         "re-run sst extract, then apply",
+        condition="an SM_* metadata table is missing or does not match its expected shape",
     ),
     spec(
         "SST-APL028",
@@ -191,6 +220,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Eval config stage has the wrong FILE FORMAT",
         "eval config stage '{value}': FILE FORMAT is {found}, expected {expected}",
         "run one ALTER STAGE to set the required FILE FORMAT; SST will not alter a stage it did not create",
+        condition="a pre-existing eval config stage does not carry the file format eval runs read",
     ),
     spec(
         "SST-APL100",
@@ -198,6 +228,11 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Smoke query failed",
         "{artifact}: smoke probe failed: {detail}",
         "fix the metric; a created view is not a working view",
+        condition=(
+            "a smoke probe of anything other than a metric failed, observed by `sst test --suite "
+            "smoke` rather than by `apply`"
+        ),
+        note="A metric probe reports `SST-PLN100`.",
     ),
     spec(
         "SST-APL900",
@@ -205,5 +240,6 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Outcome count does not match change count",
         "applied {found} outcomes for {expected} changes",
         "report this as a bug",
+        condition="apply did not account for every planned change",
     ),
 )

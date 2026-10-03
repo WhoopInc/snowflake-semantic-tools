@@ -105,6 +105,12 @@ def baselined_fingerprints() -> frozenset[str]:
     return value if isinstance(value, frozenset) else frozenset()
 
 
+def suppressed_by_baseline(diagnostics: Iterable[Diagnostic]) -> int:
+    """Count the diagnostics this run's baseline holds, so suppresses; call once the baseline is matched."""
+    baselined = baselined_fingerprints()
+    return sum(stable_fingerprint(item) in baselined for item in diagnostics)
+
+
 def diagnostic_json(value: Diagnostic, *, baselined: bool = False) -> dict[str, object]:
     """Return one diagnostic as the envelope lists it, with its registered severity and suggestion.
 
@@ -166,8 +172,12 @@ def json_envelope(
     """Build the one JSON document `--output json` prints for a run of `command`.
 
     Without `exit_code`, the run exits 1 when a diagnostic is an error and 0 otherwise;
-    without `status`, it follows the exit code: `ok`, `changes` for 2, else `error`.
+    without `status`, it follows the exit code: `ok`, `changes` for 2, else `error`. A callable
+    `data` is called here, once the run's baseline is matched, for a payload that counts what
+    the baseline suppressed.
     """
+    if callable(data):
+        data = data()
     baselined = baselined_fingerprints()
     marked = [(diagnostic, stable_fingerprint(diagnostic) in baselined) for diagnostic in diagnostics]
     errors = diagnostics.count(Severity.ERROR)

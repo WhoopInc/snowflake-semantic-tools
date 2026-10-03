@@ -50,7 +50,7 @@ def test_semantic_reads_another_directory_and_dbt_replaces_model_paths(tmp_path:
 def test_list_without_a_manifest_compiles_in_memory_and_writes_nothing(tmp_path: Path) -> None:
     project = project_copy(tmp_path)
     assert CliRunner().invoke(cli, ["list", *common(project)]).exit_code == 4
-    listed = CliRunner().invoke(cli, ["list", *common(project), "--no-manifest", "semantic_view", "-o", "json"])
+    listed = CliRunner().invoke(cli, ["list", *common(project), "--no-manifest", "semantic-views", "-o", "json"])
     assert listed.exit_code == 0, listed.output
     assert json.loads(listed.stdout)["data"]["count"] == 3
     assert not target_dir(project).exists()
@@ -65,7 +65,7 @@ def test_test_runs_every_applicable_suite_by_default(tmp_path: Path) -> None:
     human = CliRunner().invoke(cli, ["test", *common(project), "--golden-dir", str(GOLDEN)])
     assert "1 suite(s) passed, 0 failed, 2 skipped" in human.output
     failing = CliRunner().invoke(cli, ["test", *common(project), "--golden-dir", str(tmp_path), "--fail-fast"])
-    assert failing.exit_code == 1
+    assert failing.exit_code == 4
 
 
 def test_compiled_projects_add_the_connected_suites(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

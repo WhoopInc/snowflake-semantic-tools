@@ -18,6 +18,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "secure: true requires the owner role to round-trip",
         "agent '{artifact}' is secure; the round-trip check needs the owner role",
         "run CI as the owner role, or accept that the round-trip is skipped",
+        condition="a secure agent cannot be re-read for comparison by a non-owner",
     ),
     spec(
         "SST-VAL507",
@@ -25,6 +26,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "secure: false transition blocked by a share or application role",
         "agent '{artifact}' is granted to {value}; it cannot become non-secure",
         "keep secure: true, or revoke the share grant first",
+        condition="a secure-to-non-secure transition is attempted on a shared object",
     ),
     spec(
         "SST-VAL508",
@@ -32,6 +34,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Tag name does not resolve",
         "agent '{artifact}': tag '{field}' does not resolve to a tag object",
         "create the tag, or correct the name",
+        condition="a declared tag name has no tag object",
     ),
     spec(
         "SST-VAL509",
@@ -39,6 +42,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Rendered spec differs from the live spec",
         "agent '{artifact}': re-render differs from the live spec at {value}",
         "apply, or reconcile the authored file with the live object",
+        condition="a round-trip comparison of the rendered spec against the live spec differs",
     ),
     spec(
         "SST-VAL510",
@@ -47,6 +51,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "agent '{artifact}': rendered spec omits {value}",
         "emit the complete spec; a partial spec deletes fields on the live agent",
         demotable=False,
+        condition="the renderer produced fewer top-level keys than the model carries",
     ),
     spec(
         "SST-VAL511",
@@ -54,6 +59,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Rendered spec exceeds the size limit",
         "agent '{artifact}': rendered spec is {size} bytes, over the 100,000 limit",
         "move instructions into referenced files",
+        condition="the rendered spec exceeds the hard byte limit",
     ),
     spec(
         "SST-VAL512",
@@ -61,6 +67,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Rendered spec is near the size limit",
         "agent '{artifact}': rendered spec is {size} bytes, over 80% of the limit",
         "trim the instruction surface",
+        condition="the rendered spec is between 80% and 100% of the limit",
     ),
     spec(
         "SST-VAL513",
@@ -68,6 +75,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Resolved tool name is not 1-64 characters",
         "agent '{artifact}': resolved tool name '{name}' is {size} chars",
         "shorten the source name; for Analyst tools this is the derived name",
+        condition="a derived or declared tool name fails the length rule",
     ),
     spec(
         "SST-VAL514",
@@ -75,6 +83,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Resolved tool names collide case-sensitively",
         "agent '{artifact}': tool name '{name}' is declared twice",
         "rename one of them",
+        condition="two tools resolve to the same name",
     ),
     spec(
         "SST-VAL515",
@@ -82,6 +91,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Resolved tool names collide case-insensitively",
         "agent '{artifact}': '{a}' and '{b}' differ only by case",
         "rename one; an eval must match the trace name exactly",
+        condition="two tool names differ only in case",
     ),
     spec(
         "SST-VAL516",
@@ -89,6 +99,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Tool type and key combination is illegal",
         "agent '{artifact}': tool '{name}' of type {found} declares '{key}'",
         "remove the key, or change the tool type",
+        condition="a key is declared that the tool type does not accept",
     ),
     spec(
         "SST-VAL517",
@@ -96,6 +107,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "web_search tool is not named web_search",
         "agent '{artifact}': web_search tool is named '{name}'",
         "rename it to web_search; the trace name is not configurable",
+        condition="a web search tool carries any other name",
     ),
     spec(
         "SST-VAL518",
@@ -103,6 +115,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Tool has no description",
         "agent '{artifact}': tool '{name}' has no description",
         "write a description; it is the router",
+        condition="a tool omits the description the orchestrator routes on",
     ),
     spec(
         "SST-VAL519",
@@ -110,6 +123,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Two tool descriptions are near-duplicates",
         "agent '{artifact}': '{a}' and '{b}' have near-identical descriptions",
         "differentiate them",
+        condition="the dominant cause of tool_selection_accuracy loss",
     ),
     spec(
         "SST-VAL520",
@@ -117,6 +131,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Analyst tool does not declare exactly one semantic view",
         "agent '{artifact}': tool '{name}' declares {count} semantic views",
         "declare exactly one semantic_view and no name",
+        condition="a cortex_analyst_text_to_sql tool is misdeclared",
     ),
     spec(
         "SST-VAL521",
@@ -124,6 +139,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Cortex Search tool omits a required key",
         "agent '{artifact}': tool '{name}' omits '{field}'",
         "declare search_service and name",
+        condition="a cortex_search tool is missing a required key",
     ),
     spec(
         "SST-VAL522",
@@ -131,6 +147,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "stage_path and relative_path_column not declared together",
         "agent '{artifact}': tool '{name}' declares '{field}' without '{other}'",
         "declare both, or neither; one alone is a silent no-op",
+        condition="half of a required pair is declared",
     ),
     spec(
         "SST-VAL523",
@@ -138,6 +155,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Filter column is not marked filterable",
         "agent '{artifact}': tool '{name}' filters on '{column}', not marked filterable",
         "mark the column filterable: true",
+        condition="a filter names a column that is not filterable",
     ),
     spec(
         "SST-VAL524",
@@ -145,6 +163,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "columns_and_descriptions entry is malformed",
         "agent '{artifact}': tool '{name}' column '{column}': {detail}",
         "use type string or datetime, with boolean searchable and filterable",
+        condition="a column descriptor fails its schema",
     ),
     spec(
         "SST-VAL525",
@@ -152,6 +171,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Searchable column is a vector index column",
         "agent '{artifact}': tool '{name}' marks vector column '{column}' searchable",
         "clear searchable on the vector column",
+        condition="Cortex Search does not support searching a vector index column",
     ),
     spec(
         "SST-VAL526",
@@ -159,6 +179,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "generic tool declares no object input schema",
         "agent '{artifact}': tool '{name}' input_schema is {found}",
         "declare input_schema with type: object",
+        condition="a generic tool omits or mis-types its input schema",
     ),
     spec(
         "SST-VAL527",
@@ -166,6 +187,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "generic tool declares no warehouse",
         "agent '{artifact}': tool '{name}' declares no warehouse",
         "declare a warehouse",
+        condition="a generic tool has a null warehouse",
     ),
     spec(
         "SST-VAL528",
@@ -173,6 +195,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Agent toolset makes the tool surface non-static",
         "agent '{artifact}' declares an agent toolset",
         "accept that tool-name uniqueness and eval coverage are incomplete here",
+        condition="delegation means the effective tool surface is not statically knowable",
     ),
     spec(
         "SST-VAL529",
@@ -180,6 +203,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Built-in tool type emits a tool_resources entry",
         "agent '{artifact}': built-in tool '{name}' would emit tool_resources",
         "remove the resources entry",
+        condition="a built-in type carries a resource block it must not",
     ),
     spec(
         "SST-VAL530",
@@ -187,6 +211,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "tool_resources key matches no rendered tool",
         "agent '{artifact}': tool_resources key '{key}' matches no tools[].name",
         "align the key with the rendered tool name",
+        condition="a resource key is orphaned in the rendered spec",
     ),
     spec(
         "SST-VAL531",
@@ -194,6 +219,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Resolved external object does not exist in the target",
         "agent '{artifact}': '{value}' does not exist in target '{target}'",
         "publish it first, or correct the reference",
+        condition="a pre-flight lookup finds no object at the resolved name",
     ),
     spec(
         "SST-VAL532",
@@ -201,6 +227,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "External object signature disagrees with the input schema",
         "agent '{artifact}': '{value}' signature {found} differs from input_schema {expected}",
         "align the schema with the object",
+        condition="arity, names or types differ between the declaration and the live object",
     ),
     spec(
         "SST-VAL533",
@@ -208,6 +235,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "generic tool resource key unverified",
         "agent '{artifact}': resource key '{key}' for a generic tool is unverified",
         "confirm against DESCRIBE AGENT on a live agent",
+        condition="Snowsight and the REST docs disagree and CREATE AGENT was unavailable to test",
     ),
     spec(
         "SST-VAL534",
@@ -216,6 +244,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "agent '{artifact}': query_timeout {found} exceeds STATEMENT_TIMEOUT_IN_SECONDS {expected}, "
         "which silently wins",
         "lower query_timeout, or raise the warehouse setting",
+        condition="the agent timeout is larger than the warehouse timeout",
     ),
     spec(
         "SST-VAL535",
@@ -223,6 +252,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Instructions name a tool that does not exist",
         "agent '{artifact}': instructions name tool '{name}', absent from tools:",
         "correct the instruction, or add the tool",
+        condition="the most common stale-instruction defect",
     ),
     spec(
         "SST-VAL536",
@@ -230,6 +260,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Instructions contradict a tool description",
         "agent '{artifact}': instructions route {value} to '{name}', documented as excluding it",
         "reconcile the instruction and the description",
+        condition="orchestration guidance contradicts a tool's own description",
     ),
     spec(
         "SST-VAL537",
@@ -237,6 +268,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Sample question is a relative-dated duplicate of an eval question",
         "agent '{artifact}': sample question '{value}' is relative-dated and matches an eval row",
         "pin the date, and keep the two sets distinct",
+        condition="a sample question is both relative-dated and byte-identical to an eval question",
     ),
     spec(
         "SST-VAL538",
@@ -244,6 +276,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Skill source does not pin an immutable version",
         "agent '{artifact}': skill source '{name}' does not pin an immutable version",
         "pin a committed version; `LIVE` and an omitted version are both refused HERE -- Snowflake refuses neither",
+        condition="a skill reference resolves to a moving target",
     ),
     spec(
         "SST-VAL539",
@@ -251,6 +284,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Skill source points at a mutable stage path",
         "agent '{artifact}': skill source '{name}' is a STAGE path into a mutable bundle",
         "reference a CORTEX EXTENSION version instead",
+        condition="a stage-type skill reference changes behaviour with no version and no error",
     ),
     spec(
         "SST-VAL540",
@@ -258,6 +292,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "SKILL-type extension source has no name",
         "agent '{artifact}': the skill source for skill('{path}') omits name",
         "declare name; it is optional only for PLUGIN-type",
+        condition="a single-skill extension source omits its name",
     ),
     spec(
         "SST-VAL541",
@@ -265,6 +300,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Two skill entries contribute the same member name",
         "agent '{artifact}': '{a}' and '{b}' both contribute '{name}'; the later wins",
         "rename one of them",
+        condition="precedence is silent and neither case errors",
     ),
     spec(
         "SST-VAL542",
@@ -272,6 +308,12 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Consuming role lacks READ on an extension",
         "agent '{artifact}': {value} lacks READ on extension '{name}'",
         "grant READ before publishing",
+        condition="a pre-flight grant check fails for an extension",
+        note=(
+            "A warning rather than an error because SST cannot observe the consuming role's grants at "
+            "compile time, and `does not exist or not authorized` conflates absent with unauthorized, "
+            "so a negative reading is not proof of a missing grant."
+        ),
     ),
     spec(
         "SST-VAL543",
@@ -279,6 +321,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Orchestration model is not in the allowlist",
         "agent '{artifact}': models.orchestration '{found}' is not in the allowlist",
         "add it to the config allowlist, or use an allowed model",
+        condition="the orchestration model is outside the configured set",
     ),
     spec(
         "SST-VAL544",
@@ -286,6 +329,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Orchestration model is auto while a blocking eval exists",
         "agent '{artifact}': models.orchestration is auto and a blocking eval is configured",
         "pin the model explicitly",
+        condition="score movement would be unattributable",
     ),
     spec(
         "SST-VAL545",
@@ -293,6 +337,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "tool_not_accessible is misplaced or invalid",
         "agent '{artifact}': tool_not_accessible {detail}",
         "set it to accept, reject or legacy on the top-level orchestration key",
+        condition="the key holds a bad value, or sits under models. or instructions",
     ),
     spec(
         "SST-VAL546",
@@ -300,6 +345,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "analytical_search enabled with no Cortex Search tool",
         "agent '{artifact}': analytical_search is true and no cortex_search tool is declared",
         "declare a cortex_search tool, or disable analytical_search",
+        condition="the flag has nothing to act on",
     ),
     spec(
         "SST-VAL547",
@@ -307,6 +353,10 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Token budget read as a cost ceiling",
         "agent '{artifact}': budget.tokens covers orchestration only",
         "treat it as an orchestration bound, not a spend cap",
+        condition=(
+            "the agent sets budget.tokens itself, with no comment saying it bounds orchestration "
+            "only; a project-wide agents: default is not reported per agent"
+        ),
     ),
     spec(
         "SST-VAL548",
@@ -314,6 +364,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Profile value outside its declared allowlist or form",
         "agent '{artifact}': {field} '{found}' {detail}",
         "use an allowlisted avatar, or a plain colour name or var(--token)",
+        condition="avatar or colour falls outside the optional project allowlist or the known forms",
     ),
     spec(
         "SST-VAL549",
@@ -321,6 +372,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "display_name collides with another agent",
         "agent '{artifact}': display_name '{value}' is shared with {other}",
         "rename one of them; it is the conversational handle",
+        condition="two agents share a display name",
     ),
     spec(
         "SST-VAL550",
@@ -328,5 +380,6 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Deprecated or dropped version is still referenced",
         "agent '{artifact}': {detail}",
         "clear the alias, or retain the version",
+        condition=("a deprecated agent has an alias, or a version referenced by a retained run would be dropped"),
     ),
 )

@@ -106,6 +106,14 @@ class CatalogMethods(Session, CatalogPort):
         rows = self._show_like(object_type, qualified_name, str.upper)
         return extract_marker(_show_comment(rows[0])) if rows else None
 
+    def get_ddl(self, object_type: str, qualified_name: QualifiedName) -> str:
+        # GET_DDL names the type with underscores for spaces, as `SEMANTIC_VIEW`.
+        kind = _object_type(object_type).replace(" ", "_")
+        result = self.query(sql("SELECT GET_DDL({kind}, {name})", kind=literal(kind), name=literal(qualified_name.sql)))
+        if not result.rows or result.rows[0][0] is None:
+            raise SnowflakePortError(f"GET_DDL returned nothing for {object_type} {qualified_name.sql}")
+        return str(result.rows[0][0])
+
     def current_role(self) -> str:
         return str(self.query(sql("SELECT CURRENT_ROLE()")).rows[0][0])
 

@@ -1,9 +1,9 @@
-"""The port the golden suite reads committed goldens through.
+"""The ports the golden suite reads committed goldens through, and rewrites them through.
 
 A golden is addressed by a `GoldenPath`: in the semantic view DDL directory the suite was
 given, or in a directory beside it named for an artifact type. The store owns where those
 directories are and how a report names a golden, so the suite compares text and never
-touches a file.
+touches a file. Only `--update-golden` writes, through a `GoldenWriter`.
 """
 
 from __future__ import annotations
@@ -52,5 +52,17 @@ class GoldenStore(Protocol):
         """Return how a report names the golden at `path`: its path, as the directory was given.
 
         Pure; the same location always has the same name, whether or not a file is there.
+        """
+        ...
+
+
+class GoldenWriter(GoldenStore, Protocol):
+    """Committed goldens that `sst test --update-golden` may also rewrite."""
+
+    def write(self, path: GoldenPath, text: str) -> None:
+        """Write `text` as the golden at `path`, in UTF-8, creating its directory when missing.
+
+        Raises:
+            OSError: the file or its directory cannot be written.
         """
         ...

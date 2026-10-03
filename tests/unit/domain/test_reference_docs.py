@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import dataclasses
 import re
 
 import pytest
@@ -9,6 +10,7 @@ from snowflake_semantic_tools.domain.model.config_schema import CONFIG_SCHEMA, C
 from snowflake_semantic_tools.domain.model.registry import ARTIFACT_REGISTRY
 from snowflake_semantic_tools.domain.render.reference_docs import (
     REFERENCE_DIR,
+    CodeCoverage,
     CommandDoc,
     OptionDoc,
     _code,
@@ -18,6 +20,7 @@ from snowflake_semantic_tools.domain.render.reference_docs import (
     error_anchor,
     reference_pages,
     render_config,
+    render_coverage,
     render_error_codes,
 )
 
@@ -39,8 +42,10 @@ EXITS = ((0, "OK", "Success."), (2, "CHANGES", "Changes are pending."))
 
 
 def test_pages_cover_every_registry_entry() -> None:
-    pages = reference_pages(COMMANDS, GLOBAL, EXITS)
-    assert sorted(pages) == [f"{REFERENCE_DIR}/{name}.md" for name in ("artifacts", "cli", "config", "error-codes")]
+    pages = reference_pages(COMMANDS, GLOBAL, EXITS, {})
+    assert sorted(pages) == [
+        f"{REFERENCE_DIR}/{name}.md" for name in ("artifacts", "cli", "config", "coverage", "error-codes")
+    ]
     artifacts = pages[f"{REFERENCE_DIR}/artifacts.md"]
     for artifact in ARTIFACT_REGISTRY.artifacts.values():
         assert f"\n## {artifact.name}\n" in artifacts
@@ -89,7 +94,42 @@ def test_error_entries_show_severity_placeholders_and_fixes() -> None:
     assert "(error, always an error)" in page
     assert "Codes from SST 0.3" not in page and "SST-V090" not in page
     bare = ErrorSpec("SST-CFG999", Severity.INFO, "Bare", "no fix", None, "CFG", "cfg", "url")
-    assert "Fix:" not in render_error_codes({bare.code: bare}).split("### SST-CFG999", 1)[1]
+    entry = render_error_codes({bare.code: bare}).split("### SST-CFG999", 1)[1]
+    assert "Fix:" not in entry and "Raised when" not in entry and "Note:" not in entry
+    told = dataclasses.replace(bare, condition="a `<key>` is bare", note="Nothing else.")
+    entry = render_error_codes({told.code: told}).split("### SST-CFG999", 1)[1]
+    assert "\n\nRaised when a `<key>` is bare.\n\nNote: Nothing else." in entry
+
+
+def test_every_registered_code_states_when_it_is_raised_without_a_planning_identifier() -> None:
+    planning = re.compile(r"(?<![\w$-])[A-Z]\d{1,3}(?![\w-])")
+    assert [code for code, spec in ERROR_REGISTRY.items() if not spec.condition] == []
+    leaks = [
+        code
+        for code, spec in ERROR_REGISTRY.items()
+        if planning.search(spec.condition or "") or planning.search(spec.note or "") or ".md" in (spec.note or "")
+    ]
+    assert leaks == []
+
+
+def test_reference_pages_render_only_what_is_named_and_refuse_an_unknown_reference() -> None:
+    pages = reference_pages(COMMANDS, GLOBAL, EXITS, {}, only=("config", "errors", "config"))
+    assert sorted(pages) == [f"{REFERENCE_DIR}/config.md", f"{REFERENCE_DIR}/error-codes.md"]
+    with pytest.raises(ValueError, match="unknown references: nope"):
+        reference_pages(COMMANDS, GLOBAL, EXITS, {}, only=("nope",))
+
+
+def test_coverage_lists_every_code_and_counts_what_is_missing() -> None:
+    spec = ErrorSpec("SST-CFG001", Severity.ERROR, "T", "m", None, "CFG", "cfg", "url")
+    other = dataclasses.replace(spec, code="SST-CFG002", severity=Severity.WARNING)
+    facts = {"SST-CFG001": CodeCoverage(("a.b", "a.c"), "tests/codes/cfg/test_sst_cfg001.py", "local")}
+    page = render_coverage(facts, {spec.code: spec, other.code: other})
+    assert "- Codes: 2\n- Raised from no module: 1\n- Without a complete test file: 1\n" in page
+    assert (
+        "| [`SST-CFG001`](error-codes.md#sst-cfg001) | CFG | error | local | `a.b`<br>`a.c` "
+        "| `tests/codes/cfg/test_sst_cfg001.py` |"
+    ) in page
+    assert "| [`SST-CFG002`](error-codes.md#sst-cfg002) | CFG | warning | - | MISSING | MISSING |" in page
 
 
 def test_error_codes_refuse_a_subsystem_without_a_section() -> None:

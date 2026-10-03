@@ -58,6 +58,8 @@ class ErrorSpec:
             template; only INT and SNO codes may.
         deprecated_in: The release that deprecated the code; None while it is current.
         superseded_by: The code that replaces a deprecated one; required with `deprecated_in`.
+        condition: When the code is raised, as `sst explain` and the error reference state it.
+        note: What the condition implies beyond itself; None when there is nothing to add.
     """
 
     code: str
@@ -72,6 +74,8 @@ class ErrorSpec:
     internal_detail: bool = False
     deprecated_in: str | None = None
     superseded_by: str | None = None
+    condition: str | None = None
+    note: str | None = None
 
     @property
     def always_error(self) -> bool:
@@ -113,12 +117,15 @@ def spec(
     internal_detail: bool = False,
     deprecated_in: str | None = None,
     superseded_by: str | None = None,
+    condition: str | None = None,
+    note: str | None = None,
 ) -> ErrorSpec:
     """Build the registry entry for one code, deriving its subsystem, phase, and help URL.
 
     Args:
         demotable: False for an error that no setting may downgrade.
-        internal_detail, deprecated_in, superseded_by: As `ErrorSpec` documents them.
+        internal_detail, deprecated_in, superseded_by, condition, note: As `ErrorSpec`
+            documents them.
     """
     return ErrorSpec(
         code=code,
@@ -133,6 +140,8 @@ def spec(
         internal_detail=internal_detail,
         deprecated_in=deprecated_in,
         superseded_by=superseded_by,
+        condition=condition,
+        note=note,
     )
 
 

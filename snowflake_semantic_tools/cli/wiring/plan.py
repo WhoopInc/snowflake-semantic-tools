@@ -18,6 +18,7 @@ from snowflake_semantic_tools.adapters.fs.local import ManifestFileStore, StateF
 from snowflake_semantic_tools.adapters.locations import ProjectPaths
 from snowflake_semantic_tools.adapters.snowflake.connector import ConnectorPool, SnowflakeConnector
 from snowflake_semantic_tools.app.fanout import Fanout
+from snowflake_semantic_tools.app.observe import ObserveOptions
 from snowflake_semantic_tools.app.plan import PlanReady, PlanRefused, PlanScope, PreparePlan
 from snowflake_semantic_tools.cli.group import SstUsageError
 from snowflake_semantic_tools.cli.wiring import compile as compiling
@@ -47,6 +48,9 @@ class PlanRequest:
         state_dir: `--state`, the previous run's build directory `state:` selectors compare with,
             and whose `manifest.json` `state:modified` scopes the plan by.
         threads: How many sessions planning reads on at once, as `--threads` resolved.
+        observe_options: `plan --grants/--no-grants` and `--capture-prior`: which per-object
+            reads the observation makes.
+        validate: False under `--no-validate`, which skips validation.
     """
 
     paths: ProjectPaths
@@ -61,6 +65,8 @@ class PlanRequest:
     temporary: bool = False
     state_dir: Path | None = None
     threads: int = 1
+    observe_options: ObserveOptions = ObserveOptions()
+    validate: bool = True
 
     @property
     def project_dir(self) -> Path:
@@ -210,6 +216,8 @@ def plan_runtime(request: PlanRequest) -> PlanSession | PlanRefused:
             temporary=request.temporary,
             preflight=port,
             readers=Fanout(port, pool, request.threads),
+            observe_options=request.observe_options,
+            validate=request.validate,
         )
     if isinstance(outcome, PlanRefused):
         port.close()
@@ -233,6 +241,19 @@ def refuse_partial_prune(partial: bool, prune: bool) -> None:
     """
     if partial and prune:
         refuse_together("--partial", "--prune")
+
+
+def refuse_unvalidated(no_validate: bool, snowflake_syntax_check: bool | None) -> None:
+    """Refuse `--no-validate` with `--snowflake-syntax-check`, for `sst plan` and `sst apply` alike.
+
+    The syntax check is part of validation, so asking for it while skipping validation
+    asks for two contradictory things.
+
+    Raises:
+        SstUsageError: both flags were given (SST-PRT104).
+    """
+    if no_validate and snowflake_syntax_check:
+        refuse_together("--no-validate", "--snowflake-syntax-check")
 
 
 def refuse_together(first: str, second: str) -> NoReturn:

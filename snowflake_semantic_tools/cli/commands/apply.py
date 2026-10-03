@@ -28,6 +28,7 @@ from snowflake_semantic_tools.cli.group import SstUsageError
 from snowflake_semantic_tools.cli.options import (
     defer_target_option,
     fail_fast_pair,
+    no_validate_option,
     partial_option,
     prune_option,
     selection_options,
@@ -52,24 +53,41 @@ from snowflake_semantic_tools.cli.wiring.plan import (
     partial_excluded,
     plan_runtime,
     refuse_partial_prune,
+    refuse_unvalidated,
 )
 from snowflake_semantic_tools.cli.wiring.project import closed_on_error
 from snowflake_semantic_tools.domain.diagnostics import D, DiagnosticBag
-from snowflake_semantic_tools.domain.model.lifecycle import ApplyOptions, ApplyOutcome, FailurePolicy
+from snowflake_semantic_tools.domain.model.lifecycle import (
+    Action,
+    ApplyOptions,
+    ApplyOutcome,
+    FailurePolicy,
+    OutcomeStatus,
+)
 from snowflake_semantic_tools.domain.state import SavedPlan
 
 
-def _refuse_invocation(options: GlobalOptions, confirmed: bool, prune: bool, partial: bool) -> None:
-    """Refuse a command line apply cannot run: JSON or a prune without `--yes`, or a partial prune.
+def _refuse_invocation(
+    options: GlobalOptions,
+    confirmed: bool,
+    prune: bool,
+    partial: bool,
+    no_validate: bool,
+    snowflake_syntax_check: bool | None,
+) -> None:
+    """Refuse a command line apply cannot run.
+
+    JSON or a prune without `--yes`, a partial prune, or a syntax check with `--no-validate`.
 
     Raises:
-        SstUsageError: as `_require_yes` and `refuse_partial_prune` say.
+        SstUsageError: as `_require_yes`, `refuse_partial_prune` and `refuse_unvalidated` say.
     """
     if options.output == "json" and not confirmed:
         _require_yes("sst apply --output json")
     if prune and not confirmed:
         _require_yes("sst apply --prune")
     refuse_partial_prune(partial, prune)
+    refuse_unvalidated(no_validate, snowflake_syntax_check)
 
 
 @click.command()
@@ -85,6 +103,7 @@ def _refuse_invocation(options: GlobalOptions, confirmed: bool, prune: bool, par
 @threads_option()
 @click.option("--break-stale-lock", is_flag=True)
 @click.option("--temporary", is_flag=True)
+@no_validate_option()
 @sql_out_option()
 @validation_options()
 @command_body("apply", refusals=_refuse_invocation)
@@ -103,6 +122,7 @@ def apply(
     threads: int | None,
     break_stale_lock: bool,
     temporary: bool,
+    no_validate: bool,
     sql_out: Path | None,
     strict: bool | None,
     snowflake_syntax_check: bool | None,
@@ -125,6 +145,7 @@ def apply(
         temporary=temporary,
         state_dir=state_dir,
         threads=threads_setting(paths, threads),
+        validate=not no_validate,
     )
     saved = _saved_plan(plan_path, request)
     planned = request.following(saved)
@@ -132,7 +153,7 @@ def apply(
     if isinstance(session, PlanRefused):
         return CommandResult(ERROR, session.diagnostics)
     with closed_on_error(session.port):
-        apply_options, notes = _confirmed_options(
+        apply_options, notes, sql_path = _confirmed_options(
             planned,
             session,
             saved,
@@ -143,7 +164,7 @@ def apply(
             threads=threads,
             break_stale_lock=break_stale_lock,
         )
-    result = _apply_plan(planned, session, apply_options, notes)
+    result = _apply_plan(planned, session, apply_options, notes, sql_path)
     disagreement = strict_disagreement(paths, strict)
     return dataclasses.replace(result, diagnostics=DiagnosticBag((*disagreement, *result.diagnostics)))
 
@@ -198,11 +219,11 @@ def _confirmed_options(
     fail_fast: bool,
     threads: int | None,
     break_stale_lock: bool,
-) -> tuple[ApplyOptions, DiagnosticBag]:
+) -> tuple[ApplyOptions, DiagnosticBag, Path]:
     """Check a saved plan still applies, write the statements, and confirm; return how to apply.
 
     Asks before applying a plan that writes, unless `--yes` was given. Returns the options,
-    and what checking the saved plan reported without refusing it.
+    what checking the saved plan reported without refusing it, and where the statements are.
 
     Raises:
         ProjectError: the saved plan cannot be applied, as `SavedPlan.check_applicable` says.
@@ -223,7 +244,7 @@ def _confirmed_options(
             raise ProjectError(mismatch.message, diagnostics=mismatch.diagnostics)
         stale = stale_observation(saved, current, source=str(plan_path))
         notes = DiagnosticBag((stale,) if stale is not None else ())
-    write_plan_sql(request.project_dir, changeset, sql_out)
+    sql_path = write_plan_sql(request.project_dir, changeset, sql_out)
     if changeset.writes and not confirmed:
         print_plan(changeset)
         click.confirm("Apply this plan?", abort=True)
@@ -234,11 +255,11 @@ def _confirmed_options(
         break_stale_lock=break_stale_lock,
         temporary=request.temporary,
     )
-    return options, notes
+    return options, notes, sql_path
 
 
 def _apply_plan(
-    request: PlanRequest, session: PlanSession, options: ApplyOptions, notes: DiagnosticBag
+    request: PlanRequest, session: PlanSession, options: ApplyOptions, notes: DiagnosticBag, sql_path: Path
 ) -> CommandResult:
     """Apply the plan, close the connection, and report each outcome; exit 1 unless everything applied.
 
@@ -271,14 +292,26 @@ def _apply_plan(
     left_out = ready.result.diagnostics if request.partial else DiagnosticBag()
     shown = DiagnosticBag((*notes, *left_out, *apply_result.diagnostics))
     exit_code = OK if apply_result.success and not left_out.has_errors else ERROR
+    outcomes = apply_result.outcomes
     data: dict[str, object] = {
         "run_id": apply_result.run_id,
         "state_written": apply_result.state_written,
-        "outcomes": [outcome_json(outcome) for outcome in apply_result.outcomes],
+        "applied": _keys(outcomes, OutcomeStatus.APPLIED, prune=False),
+        "failed": [outcome.key for outcome in outcomes if outcome.status is OutcomeStatus.FAILED],
+        "pruned": _keys(outcomes, OutcomeStatus.APPLIED, prune=True),
+        "sql_path": str(sql_path),
+        "outcomes": [outcome_json(outcome) for outcome in outcomes],
     }
     if request.partial:
         data["partial"] = {"excluded": partial_excluded(ready.result.diagnostics)}
     return CommandResult(exit_code, shown, data, human=lambda: _print_outcomes(apply_result.outcomes))
+
+
+def _keys(outcomes: tuple[ApplyOutcome, ...], status: OutcomeStatus, *, prune: bool) -> list[str]:
+    """Return the keys of the outcomes with `status`: the prunes' when `prune`, else every other's."""
+    return [
+        outcome.key for outcome in outcomes if outcome.status is status and (outcome.action is Action.PRUNE) == prune
+    ]
 
 
 def _print_outcomes(outcomes: tuple[ApplyOutcome, ...]) -> None:

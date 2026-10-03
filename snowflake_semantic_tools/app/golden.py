@@ -1,15 +1,16 @@
-"""Compare compiled payloads with committed goldens, offline.
+"""Compare compiled payloads with committed goldens offline, and rewrite them on request.
 
 Each artifact type has one route to its goldens: a semantic view's DDL sits in the golden
 directory itself, and every other type's payload in a directory beside it named for the
 type. Some goldens are optional -- a flattened skill, a plugin manifest, a profile's prompt
 and MCP files -- and are compared only when committed. `CompareGoldens` reads them through a
-`GoldenStore`, so it touches no file.
+`GoldenStore`, so it touches no file; `UpdateGoldens` writes through a `GoldenWriter`.
 """
 
 from __future__ import annotations
 
 import difflib
+import itertools
 from collections.abc import Callable
 from dataclasses import dataclass
 
@@ -18,7 +19,7 @@ from snowflake_semantic_tools.app.compile.evals import CompiledEval
 from snowflake_semantic_tools.app.compile.profiles import CompiledProfile
 from snowflake_semantic_tools.app.compile.skills import CompiledExtension
 from snowflake_semantic_tools.domain.file_names import file_name
-from snowflake_semantic_tools.domain.ports.golden import GoldenPath, GoldenStore
+from snowflake_semantic_tools.domain.ports.golden import GoldenPath, GoldenStore, GoldenWriter
 
 # Optional goldens a reference project may commit for an extension: where each lives, and
 # the bundle member it pins.
@@ -49,9 +50,11 @@ class GoldenReport:
 
     Attributes:
         failures: `missing golden <name>`, or a unified diff from the golden to the payload.
+        missing: The name of each golden that does not exist, also listed in `failures`.
     """
 
     failures: tuple[str, ...]
+    missing: tuple[str, ...] = ()
 
     @property
     def passed(self) -> bool:
@@ -81,14 +84,17 @@ class CompareGoldens:
             OSError: a golden exists but cannot be read.
         """
         failures: list[str] = []
+        missing: list[str] = []
         for item in result.compiled:
             for payload in golden_payloads(item, self._store):
-                failure = self._compare(payload)
+                failure = self.compare(payload)
                 if failure is not None:
                     failures.append(failure)
-        return GoldenReport(tuple(failures))
+                if not self._store.exists(payload.golden):
+                    missing.append(self._store.name(payload.golden))
+        return GoldenReport(tuple(failures), tuple(missing))
 
-    def _compare(self, payload: GoldenPayload) -> str | None:
+    def compare(self, payload: GoldenPayload) -> str | None:
         """Return how a payload fails its golden: missing, or a diff; None when they are equal."""
         text = self._store.read(payload.golden)
         name = self._store.name(payload.golden)
@@ -106,6 +112,47 @@ class CompareGoldens:
             lineterm="",
         )
         return "\n".join(diff)
+
+
+class UpdateGoldens:
+    """Rewrite every golden a compiled payload no longer equals, as `--update-golden` asks.
+
+    A golden is rewritten only when `CompareGoldens` would fail it, and as it would expect it:
+    trailing whitespace dropped, one final newline, and `GIT_<commit>` as `GIT_0000000`. A DDL
+    golden keeps the leading blank and `--` comment lines it already has.
+    """
+
+    def __init__(self, store: GoldenWriter, git_sha: Callable[[], str]) -> None:
+        self._store = store
+        self._git_sha = git_sha
+        self._goldens = CompareGoldens(store, git_sha)
+
+    def run(self, result: CompileResult) -> tuple[str, ...]:
+        """Write each missing or differing golden, in compile order; return the names written.
+
+        Raises:
+            ValueError: as `CompareGoldens.run` raises.
+            OSError: a golden cannot be read or written.
+        """
+        written: list[str] = []
+        for item in result.compiled:
+            for payload in golden_payloads(item, self._store):
+                if self._goldens.compare(payload) is None:
+                    continue
+                existing = self._store.read(payload.golden)
+                header = _header(existing) if payload.ddl else ""
+                text = header + _normalized(payload.content, self._git_sha()).rstrip() + "\n"
+                self._store.write(payload.golden, text)
+                written.append(self._store.name(payload.golden))
+        return tuple(written)
+
+
+def _header(existing: str | None) -> str:
+    """Return a golden's leading blank and `--` comment lines, which a rewrite keeps; empty without any."""
+    if existing is None:
+        return ""
+    lines = existing.splitlines(keepends=True)
+    return "".join(itertools.takewhile(lambda line: not line.strip() or line.lstrip().startswith("--"), lines))
 
 
 def golden_payloads(item: CompiledArtifact, store: GoldenStore) -> tuple[GoldenPayload, ...]:

@@ -17,6 +17,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Snowflake connection failed",
         "could not connect to {value}: {detail}",
         "check the account, the network and the credential",
+        condition="the connector could not establish a session",
     ),
     spec(
         "SST-PRT002",
@@ -24,6 +25,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Authentication failed",
         "authentication failed for {value}",
         "refresh the credential",
+        condition="the session was rejected at authentication",
     ),
     spec(
         "SST-PRT003",
@@ -31,6 +33,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Query timed out",
         "query timed out after {detail}",
         "retry; this is retryable",
+        condition="a port-level statement exceeded its deadline",
     ),
     spec(
         "SST-PRT004",
@@ -38,6 +41,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Insufficient privilege",
         "{value} lacks {detail}",
         "grant the privilege",
+        condition="the port reported a privilege failure",
     ),
     spec(
         "SST-PRT005",
@@ -45,6 +49,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Object not found",
         "Snowflake object {value} was not found: {detail}",
         "publish it, or correct the name",
+        condition="the port could not resolve an object",
     ),
     spec(
         "SST-PRT006",
@@ -52,6 +57,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "dbt manifest not found",
         "no dbt manifest at {path}",
         "run dbt compile, or set the manifest path",
+        condition="the dbt artifact port found no manifest",
     ),
     spec(
         "SST-PRT008",
@@ -59,6 +65,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Filesystem write failed",
         "could not write {path}: {detail}",
         "check the permissions and the free space",
+        condition="a write through the filesystem port failed",
     ),
     spec(
         "SST-PRT009",
@@ -66,6 +73,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Filesystem read failed",
         "could not read {path}: {detail}",
         "check the permissions",
+        condition="a read through the filesystem port failed",
     ),
     spec(
         "SST-PRT010",
@@ -73,6 +81,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Path could not be removed",
         "could not remove {path}: {detail}",
         "remove it by hand",
+        condition="sst clean could not delete a generated artifact",
     ),
     spec(
         "SST-PRT011",
@@ -80,6 +89,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Credential resolved to an empty value",
         "{value} resolved to an empty credential",
         "set the environment variable, or the profile field",
+        condition="a secret resolved to nothing",
     ),
     spec(
         "SST-PRT012",
@@ -87,6 +97,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Secret would be rendered in plain text",
         "{value} would be rendered verbatim",
         "wrap the value in Secret",
+        condition="a credential reached a formatting boundary unredacted",
     ),
     spec(
         "SST-PRT100",
@@ -94,6 +105,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Invalid invocation",
         "{detail}",
         "see sst <command> --help",
+        condition="a flag, value or combination is not accepted",
     ),
     spec(
         "SST-PRT101",
@@ -101,6 +113,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Comma in a selector",
         "selector '{value}' contains a comma",
         "use space-separated selectors; intersection is not supported",
+        condition="a comma appears in --select or --exclude",
     ),
     spec(
         "SST-PRT102",
@@ -108,6 +121,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Unknown selector kind",
         "selector '{value}' names an unknown kind",
         "use one of {expected}",
+        condition="a selector prefix is not registered",
     ),
     spec(
         "SST-PRT103",
@@ -115,6 +129,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Selector requires state that was not supplied",
         "selector '{value}' requires --state",
         "pass --state",
+        condition="a state: selector was used with no state file",
     ),
     spec(
         "SST-PRT104",
@@ -122,6 +137,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Mutually exclusive flags",
         "{a} and {b} cannot be combined",
         "pass one of them",
+        condition="two flags that exclude each other were both given",
     ),
     spec(
         "SST-PRT105",
@@ -129,6 +145,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Invalid source or model selector",
         "'{value}' is not a valid {detail} selector",
         "use the documented form",
+        condition="an enrich selector does not parse",
     ),
     spec(
         "SST-PRT106",
@@ -136,6 +153,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Output format is not supported by this command",
         "'{found}' is not a supported format for {command}; supported: {expected}",
         "pass one of {expected}",
+        condition="an `--output` value the command does not support",
     ),
     spec(
         "SST-PRT107",
@@ -143,6 +161,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Run interrupted",
         "interrupted after {detail}; {value}",
         None,
+        condition="SIGINT was received; partial work may have been applied",
     ),
     spec(
         "SST-PRT108",
@@ -150,6 +169,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Object name is not fully qualified",
         "{command} requires a fully-qualified name; '{value}' is not one",
         "pass <database>.<schema>.<object>",
+        condition="a positional object name is not a three-part name",
     ),
     spec(
         "SST-PRT109",
@@ -157,6 +177,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Mandatory confirmation flag absent",
         "{command} requires --yes",
         "re-run with --yes; there is no interactive prompt",
+        condition="a command whose confirmation is mandatory was invoked without --yes",
     ),
     spec(
         "SST-PRT110",
@@ -164,5 +185,6 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Selector passed to a command that has none",
         "{command} takes no selector; '{value}' is not accepted",
         "name one object, or use apply --prune for set-based removal",
+        condition="--select or --exclude was passed to a command with no selector",
     ),
 )

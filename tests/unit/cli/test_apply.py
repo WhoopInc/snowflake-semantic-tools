@@ -343,7 +343,10 @@ def test_skills_only_project_publishes_through_plan_and_apply(tmp_path: Path, mo
 
     applied = invoke_with_port(monkeypatch, port, ["apply", "--project-dir", str(project), "--yes", "--output", "json"])
     assert applied.exit_code == 0, applied.output
-    assert json.loads(applied.output)["data"]["outcomes"][0]["status"] == "applied"
+    applied_data = json.loads(applied.output)["data"]
+    assert applied_data["outcomes"][0]["status"] == "applied"
+    assert (applied_data["applied"], applied_data["failed"], applied_data["pruned"]) == (["skill:month-close"], [], [])
+    assert Path(applied_data["sql_path"]) == project / "target" / "sst" / "sql"
     assert "DB.SCH.MONTH_CLOSE" in port.extensions
 
     replanned = invoke_with_port(monkeypatch, port, ["plan", "--project-dir", str(project), "--output", "json"])
@@ -356,7 +359,7 @@ def test_skills_only_project_publishes_through_plan_and_apply(tmp_path: Path, mo
         cli,
         ["test", "--project-dir", str(project), "--suite", "golden", "--golden-dir", str(golden), "--output", "json"],
     )
-    assert missing.exit_code == 1
+    assert missing.exit_code == 4
     assert json.loads(missing.output)["data"]["failures"] == [
         f"missing golden {tmp_path / 'golden' / 'skill' / 'month-close.bundle.json'}"
     ]
@@ -393,6 +396,7 @@ def test_profiles_publish_then_deactivate_under_prune(tmp_path: Path, monkeypatc
         monkeypatch, port, ["apply", "--project-dir", str(project), "--prune", "--yes", "--output", "json"]
     )
     assert pruned.exit_code == 0, pruned.output
+    assert json.loads(pruned.output)["data"]["pruned"] == ["profile:analyst"]
     assert port.desktop_profile_rows(QualifiedName.parse("DB.SCH.PROFILE_REGISTRY")) == ()
 
 

@@ -68,6 +68,10 @@ _OPTION_HELP: Mapping[str, str] = {
     ),
     "--sql-out": "Also write the statements for each change into this directory.",
     "--fail-fast": "Stop at the first failure instead of continuing.",
+    "--no-validate": (
+        "Skip validation: no cycle check, connected check, or strict promotion. Only when `sst validate` "
+        "already ran on the same tree; compile errors still stop the run."
+    ),
     "--dbt": "Read the dbt models from this directory instead of `dbt_project.yml`'s `model-paths`.",
     "--semantic": "Read the semantic models from this directory instead of `project.semantic_models_dir`.",
 }
@@ -103,6 +107,10 @@ _COMMAND_OPTION_HELP: Mapping[tuple[str, str], str] = {
     ("sst compile", "--emit-ddl"): "Write each artifact's rendered payload into this directory, offline.",
     ("sst compile", "--select"): "Report and emit only these artifacts; the manifest still holds everything.",
     ("sst docs", "--check"): "Write nothing; exit 2 when a committed reference page is out of date.",
+    ("sst docs", "--only"): (
+        "Repeatable. Generate only these references: `errors`, `coverage` (the code-to-test matrix), "
+        "`artifacts`, `cli`, `config`. Defaults to all of them."
+    ),
     ("sst enrich", "--select"): "Only these dbt models: `model:<name>` or a bare name; globs such as `fct_*` work.",
     ("sst enrich", "--exclude"): "Leave these dbt models out; same forms as `--select`.",
     ("sst enrich", "--include"): (
@@ -118,6 +126,16 @@ _COMMAND_OPTION_HELP: Mapping[tuple[str, str], str] = {
     ("sst enrich", "--fail-fast"): "Stop at the first model that fails, and write nothing.",
     ("sst plan", "--plan-out"): "Write the saved plan here instead of `target/sst/plan.json`.",
     ("sst plan", "--no-plan-out"): "Do not write a saved plan.",
+    ("sst plan", "--grants"): (
+        "Read the grants on each object an update replaces, one `SHOW GRANTS` each, to report what a "
+        "replace would drop (SST-PLN013). On by default; `--no-grants` skips the reads."
+    ),
+    ("sst plan", "--capture-prior"): (
+        "Read the current definition of each live object a planned artifact names, one `GET_DDL` "
+        "each; needs REFERENCES or OWNERSHIP. Shown by `--full` and as `prior_definition` in JSON."
+    ),
+    ("sst plan", "--full"): "Also print, under each update, the properties it changes on the object.",
+    ("sst plan", "--names-only"): "Print the name of each changed artifact, one per line, and nothing else.",
     ("sst plan", "--no-detailed-exitcode"): "Exit 0 when changes are pending, instead of 2.",
     ("sst plan", "--state"): (
         "Directory holding the previous run's `manifest.json`, which `--select state:modified` compares with."
@@ -127,6 +145,10 @@ _COMMAND_OPTION_HELP: Mapping[tuple[str, str], str] = {
         "objects; `evals` runs agent evaluations. Defaults to every suite that applies."
     ),
     ("sst test", "--golden-dir"): "Directory of the semantic view DDL goldens; the other goldens sit beside it.",
+    ("sst test", "--update-golden"): (
+        "Rewrite each golden the current output no longer equals, and create missing ones; runs the "
+        "golden suite only. Refused with `--suite smoke` or `evals`, and whenever `$CI` is set."
+    ),
     ("sst test", "--capture-baseline"): "Record this eval run as the new baseline. Requires `--reason`.",
     ("sst test", "--reason"): "Why the baseline is changing; stored with it.",
     ("sst test", "--fail-fast"): "Stop at the first failing golden, probe, or eval.",

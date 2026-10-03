@@ -13,6 +13,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Unknown top-level key",
         "no registered type owns root key '{key}'",
         "remove the block, or register a type that owns it",
+        condition="a root key has no owner in the registry",
     ),
     spec(
         "SST-PRS002",
@@ -20,6 +21,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Required field missing",
         "{artifact}: required field '{field}' is missing",
         "add {field}",
+        condition="a field with no default is absent from a known block",
     ),
     spec(
         "SST-PRS003",
@@ -27,6 +29,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Field has the wrong type",
         "{artifact}: '{field}' expects {expected}, found {found}",
         "change the value to {expected}",
+        condition="a field value fails its declared type",
     ),
     spec(
         "SST-PRS004",
@@ -34,6 +37,12 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Unknown field in a known block",
         "{artifact}: unknown field '{field}'",
         "remove the field, or check the spelling",
+        condition="a block contains a key the type does not model",
+        note=(
+            "Distinct from `SST-VAL013`/`SST-VAL014`: this is a key inside a block SST does model, so "
+            "it is a typo or an SST-schema gap. Gated by `validation.strict`, not by "
+            "`snowflake.allow_unknown_keys`."
+        ),
     ),
     spec(
         "SST-PRS005",
@@ -41,6 +50,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Name is not a valid identifier",
         "{artifact}: '{value}' is not a valid identifier",
         "use letters, digits and underscores, starting with a letter",
+        condition="a name fails the identifier grammar",
     ),
     spec(
         "SST-PRS006",
@@ -48,6 +58,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Duplicate name within a type",
         "{type} '{name}' is declared more than once",
         "rename one of them",
+        condition="two records of one type share a name",
     ),
     spec(
         "SST-PRS007",
@@ -55,6 +66,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Name is not unique across the artifact set",
         "{type} '{name}' collides with {other}",
         "rename one of them",
+        condition="a name is unique within a file and not across files",
     ),
     spec(
         "SST-PRS008",
@@ -62,6 +74,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Name collides with a derived member name",
         "metric '{name}' collides with a derived metric name",
         "rename one of them",
+        condition="a table-scoped and a view-scoped member share a name",
     ),
     spec(
         "SST-PRS009",
@@ -69,6 +82,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Name is not a valid tool identifier",
         "'{name}' does not resolve to a 1-64 char tool identifier",
         "shorten or simplify the name",
+        condition="a derived agent-tool identifier fails the 1-64 char rule",
     ),
     spec(
         "SST-PRS010",
@@ -76,6 +90,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Identifier exceeds the object name limit",
         "'{name}' is {size} chars, over the {expected} limit",
         "shorten the name",
+        condition="an identifier is longer than the Snowflake object limit",
     ),
     spec(
         "SST-PRS011",
@@ -83,6 +98,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Identifier requires quoting and quoting is not declared",
         "'{name}' needs quoting to render safely",
         "rename it, or declare it quoted",
+        condition="a name contains characters that force a quoted identifier",
     ),
     spec(
         "SST-PRS012",
@@ -90,6 +106,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Non-ASCII identifier",
         "'{name}' contains non-ASCII characters",
         "use ASCII identifiers",
+        condition="an identifier contains characters outside ASCII",
     ),
     spec(
         "SST-PRS013",
@@ -97,6 +114,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Value outside the allowed set for a closed field",
         "{artifact}: '{field}' is '{found}', expected one of {expected}",
         "use one of {expected}",
+        condition="a closed-enum field holds an unrecognised value",
     ),
     spec(
         "SST-PRS014",
@@ -104,6 +122,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Mutually exclusive fields both present",
         "{artifact}: '{field}' and '{other}' are mutually exclusive",
         "declare exactly one",
+        condition="two fields that exclude each other are both set",
     ),
     spec(
         "SST-PRS015",
@@ -111,6 +130,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Paired fields not declared together",
         "{artifact}: '{field}' requires '{other}'",
         "declare both, or neither",
+        condition="one half of a required pair is present",
     ),
     spec(
         "SST-PRS016",
@@ -118,6 +138,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Numeric value out of range",
         "{artifact}: '{field}' is {found}, expected {expected}",
         "use a value in {expected}",
+        condition="a numeric field is zero, negative or beyond its bound",
     ),
     spec(
         "SST-PRS017",
@@ -125,6 +146,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Unparseable timestamp",
         "{artifact}: '{field}' value '{found}' is not an epoch or ISO timestamp",
         "use an integer epoch or an ISO-8601 string",
+        condition="a timestamp field parses as neither form",
     ),
     spec(
         "SST-PRS018",
@@ -132,6 +154,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Collection element has the wrong shape",
         "{artifact}: '{field}'[{index}] expects {expected}, found {found}",
         "correct the element",
+        condition="a list element fails the element schema",
     ),
     spec(
         "SST-PRS019",
@@ -139,6 +162,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Boolean field holds a non-boolean",
         "{artifact}: '{field}' is '{found}', expected a boolean",
         "use true or false",
+        condition="a boolean field holds a string or number",
     ),
     spec(
         "SST-PRS020",
@@ -146,6 +170,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Deprecated field spelling",
         "{artifact}: '{field}' is deprecated; use '{expected}'",
         "rename the field",
+        condition="a superseded key spelling is in use",
     ),
     spec(
         "SST-PRS021",
@@ -153,6 +178,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Deprecated relationship column shape",
         "{artifact}: relationship_columns / left_column / right_column is not supported",
         "use relationship_conditions",
+        condition="the removed relationship shape is declared",
     ),
     spec(
         "SST-PRS022",
@@ -160,6 +186,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Unknown field within edit distance of a known field",
         "{artifact}: unknown field '{field}'; did you mean '{expected}'?",
         "correct the spelling",
+        condition="an unknown key is 1-2 edits from a modelled key, so it is a typo",
     ),
     spec(
         "SST-PRS023",
@@ -167,6 +194,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Passthrough block collides with a modelled key",
         "{artifact}: passthrough key '{key}' is already rendered by SST",
         "remove the key from passthrough",
+        condition="a passthrough or tool_spec_passthrough key duplicates a rendered key",
     ),
     spec(
         "SST-PRS024",
@@ -174,6 +202,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Passthrough block is non-empty",
         "{artifact}: {count} passthrough keys will be rendered unvalidated",
         "promote the keys to first-class fields where possible",
+        condition="a passthrough block carries values SST does not model",
     ),
     spec(
         "SST-PRS025",
@@ -181,6 +210,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Reserved alias used",
         "{artifact}: alias '{value}' is reserved",
         "choose a different alias",
+        condition="an alias uses LIVE, FIRST, LAST or DEFAULT",
     ),
     spec(
         "SST-PRS026",
@@ -188,6 +218,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Tag value exceeds the length limit",
         "{artifact}: tag '{field}' value is {size} chars, over 256",
         "shorten the tag value",
+        condition="a tag value is longer than 256 characters",
     ),
     spec(
         "SST-PRS027",
@@ -195,6 +226,10 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Tags block has the wrong shape",
         "{artifact}: tags must be a list of name and value entries, found {found}",
         "correct the tags block",
+        condition=(
+            "the tags block fails its schema: it is not a list of name and value entries, an entry "
+            "lacks name or value, or an entry name is not one tag() call"
+        ),
     ),
     spec(
         "SST-PRS028",
@@ -202,6 +237,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Constraints block has the wrong shape",
         "{artifact}: constraints block is invalid: {detail}",
         "correct the constraints block",
+        condition="the constraints block fails its schema",
     ),
     spec(
         "SST-PRS029",
@@ -209,6 +245,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Synonyms block has the wrong type",
         "{artifact}: synonyms must be a list of strings, found {found}",
         "use a list of strings",
+        condition="the synonyms value is not a list of strings",
     ),
     spec(
         "SST-PRS030",
@@ -216,6 +253,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Synonym contains problematic characters",
         "{artifact}: synonym '{value}' contains {detail}",
         "remove the punctuation",
+        condition="a synonym carries characters that break matching",
     ),
     spec(
         "SST-PRS031",
@@ -223,6 +261,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Name collides with a reserved word",
         "'{name}' is a reserved word",
         "rename it, or accept the quoted identifier",
+        condition="a name matches a SQL reserved word",
     ),
     spec(
         "SST-PRS032",
@@ -230,6 +269,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Input schema property has a forbidden type",
         "{artifact}: input_schema property '{field}' has type '{found}'",
         "use string, number, integer, boolean or array",
+        condition="a generic tool input_schema property declares an unsupported type",
     ),
     spec(
         "SST-PRS033",
@@ -237,6 +277,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Required input-schema name is not a declared property",
         "{artifact}: input_schema.required names '{field}', absent from properties",
         "declare the property, or drop it from required",
+        condition="a required entry has no matching property",
     ),
     spec(
         "SST-PRS034",
@@ -244,6 +285,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Frontmatter missing a required key",
         "{artifact}: SKILL.md frontmatter omits '{field}'",
         "declare name and description in the frontmatter",
+        condition="a skill SKILL.md frontmatter lacks name or description",
     ),
     spec(
         "SST-PRS100",
@@ -251,6 +293,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Name collides with a reserved identifier namespace",
         "'{name}' is in a reserved namespace",
         "rename it",
+        condition="a name uses an SST- or SNOWFLAKE-reserved prefix",
     ),
     spec(
         "SST-PRS101",
@@ -258,6 +301,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Required collection is empty",
         "{artifact}: '{field}' is present and empty",
         "declare at least one entry, or remove the key",
+        condition="a collection that must be non-empty has zero entries",
     ),
     spec(
         "SST-PRS102",
@@ -266,6 +310,8 @@ SPECS: tuple[ErrorSpec, ...] = (
         "{artifact}: 'tables: []' is not accepted",
         "declare the tables the member attaches to",
         demotable=False,
+        condition="a member declares tables: []",
+        note="FORBIDDEN, never an inference trigger.",
     ),
     spec(
         "SST-PRS103",
@@ -273,6 +319,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Value outside the allowed enum",
         "{artifact}: '{field}' is '{found}', expected one of {expected}",
         "use one of {expected}",
+        condition="a member-level enum field holds an unrecognised value",
     ),
     spec(
         "SST-PRS104",
@@ -280,6 +327,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Member declared under two owners",
         "{member} is declared under both {a} and {b}",
         "declare it once",
+        condition="one member record appears under two owning artifacts",
     ),
     spec(
         "SST-PRS105",
@@ -287,6 +335,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Member type not accepted by its owner",
         "{type} does not accept members of type {member_type}",
         "move the member",
+        condition="a member is declared under a type that does not model it",
     ),
     spec(
         "SST-PRS106",
@@ -294,6 +343,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Duplicate member name within an owner",
         "{artifact}: {member_type} '{name}' is declared twice",
         "rename one of them",
+        condition="two members of one type under one owner share a name",
     ),
     spec(
         "SST-PRS107",
@@ -301,6 +351,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Member declares no distinguishing key",
         "{artifact}: {member_type} entry {index} has no name",
         "name the member",
+        condition="a member entry has no name field",
     ),
     spec(
         "SST-PRS109",
@@ -308,6 +359,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "table_config names a table not in tables",
         "{artifact}: table_config key '{name}' is not in tables:",
         "remove the entry, or add the table",
+        condition="a per-table config block names an unlisted table",
     ),
     spec(
         "SST-PRS110",
@@ -315,6 +367,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Condition does not parse to one column pair",
         "{artifact}: condition '{value}' does not parse to one left/right pair",
         "express one pair per condition",
+        condition="a relationship condition parses to zero or multiple pairs",
     ),
     spec(
         "SST-PRS111",
@@ -322,6 +375,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Range condition names one column twice",
         "{artifact}: range condition uses '{name}' for both start and end",
         "name two different columns",
+        condition="a range condition repeats a column",
     ),
     spec(
         "SST-PRS112",
@@ -329,6 +383,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "More than one asof condition",
         "{artifact}: {count} asof conditions declared",
         "declare at most one",
+        condition="a relationship declares multiple asof conditions",
     ),
     spec(
         "SST-PRS113",
@@ -336,6 +391,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Expression field is not a string",
         "{artifact}: '{field}' expects a SQL string, found {found}",
         "supply the expression as a string",
+        condition="a metric or filter expression is a list or mapping",
     ),
     spec(
         "SST-PRS114",
@@ -343,6 +399,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Score ranges are not contiguous",
         "{artifact}: score_ranges leave a gap or overlap at {value}",
         "make the ranges contiguous with min-inclusive, max-inclusive boundaries",
+        condition="a judge metric's score ranges do not tile the scale",
     ),
     spec(
         "SST-PRS115",
@@ -350,6 +407,10 @@ SPECS: tuple[ErrorSpec, ...] = (
         "threshold_default declares no usable bound inside the scale",
         "{artifact}: threshold_default {found} is not a usable bound within max_score {expected}",
         "declare min, optionally max, with min <= max and both inside max_score",
+        condition=(
+            "a custom metric's threshold_default map omits min, inverts its bounds, or places one "
+            "outside the declared scale"
+        ),
     ),
     spec(
         "SST-PRS116",
@@ -357,6 +418,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Unsupported template placeholder in a judge prompt",
         "{artifact}: '{placeholder}' is not one of the 12 supported names",
         "use a supported placeholder",
+        condition="a judge prompt placeholder is not in the supported set",
     ),
     spec(
         "SST-PRS117",
@@ -364,6 +426,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Dataset row has no question or no expected field",
         "{artifact}: row {index} has {detail}",
         "give every row a question and at least one expectation",
+        condition="an eval dataset row is incomplete",
     ),
     spec(
         "SST-PRS118",
@@ -371,6 +434,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Sample question entry is a bare string",
         "{artifact}: sample_questions[{index}] is a string, expected a mapping",
         "use {{question: ...}} maps",
+        condition="sample questions are declared as bare strings",
     ),
     spec(
         "SST-PRS119",
@@ -378,6 +442,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Skill folder contains another skill folder",
         "{artifact}: nested skill folder at {path}",
         "flatten the layout; one skill per folder",
+        condition="a skill folder contains a second SKILL.md below its root",
     ),
     spec(
         "SST-PRS120",
@@ -385,6 +450,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "SKILL.md is not at the folder root",
         "{artifact}: SKILL.md found at {path}",
         "move SKILL.md to the folder root",
+        condition="SKILL.md is nested, so Snowflake will not find it",
     ),
     spec(
         "SST-PRS123",
@@ -392,16 +458,16 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Semantic view definition is malformed",
         "{artifact}: {detail}",
         "fix the field the message names; the semantic views guide lists each field's form",
+        condition="a semantic view definition fails structural parsing (catch-all)",
     ),
     spec(
         "SST-PRS124",
         Severity.ERROR,
         "Window frame is not a frame clause",
         "{artifact}: window frame '{value}' is not ROWS or RANGE BETWEEN <bound> AND <bound>",
-        (
-            "write each bound as UNBOUNDED PRECEDING, UNBOUNDED FOLLOWING, CURRENT ROW, or <n> or `INTERVAL '<n> "
-            "<unit>'` followed by PRECEDING or FOLLOWING"
-        ),
+        "write each bound as UNBOUNDED PRECEDING, UNBOUNDED FOLLOWING, CURRENT ROW, or <n> or `INTERVAL '<n> "
+        "<unit>'` followed by PRECEDING or FOLLOWING",
+        condition="a window frame is not `ROWS/RANGE BETWEEN <bound> AND <bound>`",
     ),
     spec(
         "SST-PRS125",
@@ -409,6 +475,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "File formatting is not preserved",
         "{file}: writing it changes lines sst enrich did not edit",
         "review the change with sst enrich --dry-run; once the file is written, later runs keep its formatting exactly",
+        condition="sst enrich would rewrite lines it did not edit while writing a file",
     ),
     spec(
         "SST-PRS900",
@@ -416,5 +483,6 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Parser returned a non-frozen record",
         "{type} parser returned {cls}, which is mutable",
         "return a frozen dataclass",
+        condition="a parser returns a record the model layer cannot treat as immutable",
     ),
 )

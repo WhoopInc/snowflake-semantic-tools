@@ -8,20 +8,20 @@ sites are the package modules that name the code, found by reading the installed
 
 from __future__ import annotations
 
-import ast
 import dataclasses
 import functools
 from pathlib import Path
 
 import click
 
+from snowflake_semantic_tools.adapters.code_coverage import raise_sites as package_raise_sites
 from snowflake_semantic_tools.cli.group import SstUsageError
 from snowflake_semantic_tools.cli.runner import CommandResult, ConfigNeed, command_body
 from snowflake_semantic_tools.domain.diagnostics import D
 from snowflake_semantic_tools.domain.diagnostics.explain import Explanation, explain
 
-_PACKAGE = Path(__file__).resolve().parents[2]
-_REGISTRY_SPECS = _PACKAGE / "domain" / "diagnostics" / "specs"
+PACKAGE = Path(__file__).resolve().parents[2]
+REGISTRY_SPECS = PACKAGE / "domain" / "diagnostics" / "specs"
 
 
 @click.command(name="explain")
@@ -55,10 +55,10 @@ def _data(explanation: Explanation, sites: tuple[str, ...]) -> dict[str, object]
         "severity": explanation.severity,
         "non_demotable": explanation.non_demotable,
         "phase": explanation.phase,
-        "condition": None,
+        "condition": explanation.condition,
         "message_template": explanation.message_template,
         "suggestion_template": explanation.suggestion_template,
-        "note": None,
+        "note": explanation.note,
         "help_url": explanation.help_url,
         "origin": list(explanation.origin),
         "aliases": [dataclasses.asdict(row) | {"targets": list(row.targets)} for row in explanation.aliases],
@@ -84,8 +84,12 @@ def _print(explanation: Explanation, sites: tuple[str, ...], *, show_aliases: bo
         flag = ", non-demotable" if explanation.non_demotable else ""
         click.echo(f"  severity: {explanation.severity}{flag}")
         click.echo(f"  phase: {explanation.phase}")
+        if explanation.condition:
+            click.echo(f"  raised when: {explanation.condition}")
         click.echo(f"  message: {explanation.message_template}")
         click.echo(f"  suggestion: {explanation.suggestion_template or '-'}")
+        if explanation.note:
+            click.echo(f"  note: {explanation.note}")
         if explanation.deprecated_in:
             click.echo(f"  deprecated in {explanation.deprecated_in}; use {explanation.superseded_by}")
         if sites:
@@ -100,24 +104,10 @@ def _print(explanation: Explanation, sites: tuple[str, ...], *, show_aliases: bo
 
 def raise_sites(code: str) -> tuple[str, ...]:
     """Return the package modules that name `code` as a string constant, outside the registry."""
-    return _sites().get(code, ())
+    return package_sites().get(code, ())
 
 
 @functools.cache
-def _sites() -> dict[str, tuple[str, ...]]:
+def package_sites() -> dict[str, tuple[str, ...]]:
     """Index every exact code constant in the installed package, by code, as module paths."""
-    found: dict[str, list[str]] = {}
-    for path in sorted(_PACKAGE.rglob("*.py")):
-        if path.is_relative_to(_REGISTRY_SPECS):
-            continue
-        try:
-            tree = ast.parse(path.read_text(encoding="utf-8"))
-        except (OSError, SyntaxError, UnicodeDecodeError):
-            continue
-        module = path.relative_to(_PACKAGE.parent).with_suffix("").as_posix().replace("/", ".")
-        for node in ast.walk(tree):
-            if isinstance(node, ast.Constant) and isinstance(node.value, str) and node.value.startswith("SST-"):
-                sites = found.setdefault(node.value, [])
-                if module not in sites:
-                    sites.append(module)
-    return {code: tuple(sites) for code, sites in found.items()}
+    return package_raise_sites(PACKAGE, exclude=REGISTRY_SPECS)

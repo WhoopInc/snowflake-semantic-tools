@@ -25,12 +25,13 @@ from snowflake_semantic_tools.app.lifecycle.evals import EvalLifecycleConfig, Ev
 from snowflake_semantic_tools.app.lifecycle.extensions import ExtensionLifecycleHandler
 from snowflake_semantic_tools.app.lifecycle.profiles import ProfileLifecycleHandler, ProfilePublicationPort
 from snowflake_semantic_tools.app.manifest import manifest_for, stale_manifest, target_mismatch
-from snowflake_semantic_tools.app.observe import observe
+from snowflake_semantic_tools.app.observe import DEFAULT_OBSERVE_OPTIONS, ObserveOptions, observe
 from snowflake_semantic_tools.app.partial import PartialSplit, partial_refusal, partial_split
 from snowflake_semantic_tools.app.preflight import read_preflight
 from snowflake_semantic_tools.app.state import change_summary, read_state
 from snowflake_semantic_tools.app.validate import ValidateArtifacts
-from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, DiagnosticBag
+from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, DiagnosticBag, Severity
+from snowflake_semantic_tools.domain.diagnostics.policy import apply_overrides
 from snowflake_semantic_tools.domain.model.config_schema import config_block, config_text
 from snowflake_semantic_tools.domain.model.eval import DEFAULT_EVAL_CONFIG_STAGE
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName, TargetIdentity
@@ -75,6 +76,7 @@ class PlanArtifacts:
         readers: Sessions, opened from `port` and `preflight`, to run the observation's
             listings and each phase of preflight reads on concurrently; None reads on `port`
             and `preflight`, one at a time. Either way the change set is the same.
+        observe_options: Which per-object reads the observation makes, as `ObserveOptions` says.
     """
 
     def __init__(
@@ -85,12 +87,14 @@ class PlanArtifacts:
         lifecycle_handlers: Mapping[str, CompositeLifecycleHandler] | None = None,
         preflight: PreflightPort | None = None,
         readers: Fanout[PlanReadPort] | None = None,
+        observe_options: ObserveOptions = DEFAULT_OBSERVE_OPTIONS,
     ) -> None:
         self._port = port
         self._registry = registry
         self._lifecycle_handlers = dict(lifecycle_handlers or {})
         self._preflight = preflight
         self._readers = readers
+        self._observe_options = observe_options
 
     def run(
         self,
@@ -200,6 +204,7 @@ class PlanArtifacts:
             observed_object_types=self._observed_object_types(rendered),
             desired_artifacts=rendered,
             readers=self._readers,
+            options=self._observe_options,
         )
 
     def _observed_artifact_types(
@@ -484,12 +489,15 @@ class PreparePlan:
         temporary: bool = False,
         preflight: PreflightPort | None = None,
         readers: Fanout[PlanReadPort] | None = None,
+        observe_options: ObserveOptions = DEFAULT_OBSERVE_OPTIONS,
+        validate: bool = True,
     ) -> PlanReady | PlanRefused:
         """Validate the candidates, read authoritative state, and plan against what Snowflake shows now.
 
         Steps, in order:
 
-        1. Validate the selection, with connected checks when the settings ask for them.
+        1. Validate the selection, with connected checks when the settings ask for them;
+           without `validate`, take the compile's diagnostics as they are.
         2. With `--partial`, split again on what validation reported, narrow the selection
            to what is still healthy, and build the manifest of what is; otherwise refuse on
            an error.
@@ -510,6 +518,11 @@ class PreparePlan:
                 the observation, and the preflight reads on concurrently, as
                 `ValidateArtifacts` and `PlanArtifacts` do; None runs them on `port`, one at a
                 time. Either way the plan and its diagnostics are the same.
+            observe_options: Which per-object reads the observation makes, as `ObserveOptions` says.
+            validate: False skips validation, as `--no-validate` asks once `sst validate` ran on
+                the same tree: no cycle check, no connected check, and no strict promotion. The
+                project's severity overrides still apply, and the compile's own errors still
+                refuse the plan, or with `--partial` split it.
 
         Diagnostics:
             SST-PLN018: observing and planning took longer than the observation stays current.
@@ -518,16 +531,13 @@ class PreparePlan:
             Those of validation, of `read_state`, and of `PlanArtifacts`, then
             `channel_divergence`'s, then the plan's `change_summary` and `plan_notices`.
         """
-        live = port if candidates.connected else None
-        validation = ValidateArtifacts(
-            live, catalog=live, target=target.name, readers=readers if candidates.connected else None
-        ).run(
-            candidates.selected,
-            strict=candidates.strict,
-            connected=candidates.connected,
-            overrides=severity_overrides(self._inputs.config().tree),
+        overrides = severity_overrides(self._inputs.config().tree)
+        diagnostics = (
+            _validation(candidates, port, target, readers, overrides)
+            if validate
+            else apply_overrides(candidates.selected.diagnostics, overrides)
         )
-        validated = _validated(candidates, validation.diagnostics)
+        validated = _validated(candidates, diagnostics)
         if isinstance(validated, PlanRefused):
             return validated
         result, healthy = validated
@@ -538,7 +548,10 @@ class PreparePlan:
         scope = candidates.scope
         fetched_at = self._clock.now_iso()
         started = self._clock.monotonic_ms()
-        changeset = PlanArtifacts(port, lifecycle_handlers=handlers, preflight=preflight, readers=readers).run(
+        planner = PlanArtifacts(
+            port, lifecycle_handlers=handlers, preflight=preflight, readers=readers, observe_options=observe_options
+        )
+        changeset = planner.run(
             self._publication(result, manifest, apply_config, target, temporary=temporary),
             manifest,
             state,
@@ -595,6 +608,27 @@ class PreparePlan:
             artifact.key: artifact
             for artifact in replace(result, compiled=compiled).rendered_for_publish(manifest.manifest_id)
         }
+
+
+def _validation(
+    candidates: PlanCandidates,
+    port: SnowflakePort,
+    target: TargetIdentity,
+    readers: Fanout[PlanReadPort] | None,
+    overrides: Mapping[str, Severity],
+) -> DiagnosticBag:
+    """Validate the selection, connected when the settings ask for it; return what validation reported."""
+    live = port if candidates.connected else None
+    return (
+        ValidateArtifacts(live, catalog=live, target=target.name, readers=readers if candidates.connected else None)
+        .run(
+            candidates.selected,
+            strict=candidates.strict,
+            connected=candidates.connected,
+            overrides=overrides,
+        )
+        .diagnostics
+    )
 
 
 def _validated(

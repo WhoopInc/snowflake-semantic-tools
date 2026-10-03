@@ -40,6 +40,8 @@ cannot be downgraded by any setting.
 
 `registration for <type> omits required field '<field>'`
 
+Raised when a register() or artifact-type registration call omits a field the generator needs.
+
 Fix: add {field} to the register() call
 
 ### SST-REG002
@@ -47,6 +49,8 @@ Fix: add {field} to the register() call
 **Duplicate registration** (error, always an error)
 
 `<type> is already registered`
+
+Raised when two register() calls use the same name or code.
 
 Fix: choose a different name, or delete the duplicate registration
 
@@ -56,6 +60,8 @@ Fix: choose a different name, or delete the duplicate registration
 
 `root_key '<root_key>' is claimed by <types>`
 
+Raised when two artifact types declare the same YAML root key.
+
 Fix: give each artifact type a distinct root_key
 
 ### SST-REG004
@@ -63,6 +69,8 @@ Fix: give each artifact type a distinct root_key
 **Duplicate ddl_position or clause_position** (error, always an error)
 
 `position <position> is claimed by <types>`
+
+Raised when two types or members share an ordering position.
 
 Fix: renumber one of the colliding positions
 
@@ -72,6 +80,8 @@ Fix: renumber one of the colliding positions
 
 `ref_function '<ref_function>' is claimed twice`
 
+Raised when two types register the same "{{ }}" function name.
+
 Fix: give each referenceable type its own template function
 
 ### SST-REG006
@@ -79,6 +89,8 @@ Fix: give each referenceable type its own template function
 **Type names an unregistered rule** (error, always an error)
 
 `<type> names rule '<rule_id>', which is not registered`
+
+Raised when a type's rule list names a rule id with no register_rule().
 
 Fix: register the rule, or remove it from the type
 
@@ -88,6 +100,8 @@ Fix: register the rule, or remove it from the type
 
 `<type> names '<member_type>', which is not registered`
 
+Raised when a type references a member type or owner type that does not exist.
+
 Fix: register the member type, or correct the name
 
 ### SST-REG010
@@ -95,6 +109,8 @@ Fix: register the member type, or correct the name
 **ddl_position contradicts dependency_edges** (error, always an error)
 
 `<type> is ordered at <position> but depends on <blocker>, ordered later`
+
+Raised when the declared publish order disagrees with the declared dependency graph.
 
 Fix: renumber ddl_position so dependents follow their dependencies
 
@@ -104,6 +120,8 @@ Fix: renumber ddl_position so dependents follow their dependencies
 
 `type dependency cycle: <cycle>`
 
+Raised when the artifact-type dependency graph is not acyclic.
+
 Fix: break the cycle by removing one dependency_edge
 
 ### SST-REG012
@@ -111,6 +129,8 @@ Fix: break the cycle by removing one dependency_edge
 **Code registered with a malformed identifier** (error, always an error)
 
 `'<code>' does not match SST-<AREA><NNN>`
+
+Raised when register() receives a code that fails the scheme regex.
 
 Fix: use three uppercase letters and three digits
 
@@ -120,6 +140,8 @@ Fix: use three uppercase letters and three digits
 
 `'<code>' declares subsystem <subsystem>`
 
+Raised when the area extracted from the code differs from the registered subsystem.
+
 Fix: make the area letters and the subsystem field agree
 
 ### SST-REG014
@@ -127,6 +149,8 @@ Fix: make the area letters and the subsystem field agree
 **Internal-band code is not a non-demotable ERROR** (error, always an error)
 
 `'<code>' is in the 900 band with severity <severity>`
+
+Raised when a 900-band code is registered WARNING or INFO, or an INT or REG 900-band code is registered demotable.
 
 Fix: declare 900-band codes ERROR, and non_demotable in INT and REG
 
@@ -136,6 +160,8 @@ Fix: declare 900-band codes ERROR, and non_demotable in INT and REG
 
 `<module> compares severities outside diagnostics/`
 
+Raised when a command module re-derives blocking-ness instead of reading effective severity.
+
 Fix: route the decision through the resolved severity on the diagnostic
 
 ### SST-REG016
@@ -143,6 +169,8 @@ Fix: route the decision through the resolved severity on the diagnostic
 **Message template placeholder is not supplied** (error, always an error)
 
 `'<code>' template names <placeholder>, absent from declared params`
+
+Raised when a template placeholder has no corresponding declared param.
 
 Fix: add the placeholder to the code's params, or correct the template
 
@@ -152,6 +180,8 @@ Fix: add the placeholder to the code's params, or correct the template
 
 `'<code>' was retired in <version> and cannot be reused`
 
+Raised when a register() call reuses a tombstoned number.
+
 Fix: allocate the next free number in the band
 
 ### SST-REG018
@@ -159,6 +189,8 @@ Fix: allocate the next free number in the band
 **Deprecation without a successor** (error, always an error)
 
 `'<code>' is deprecated_in <version> with no superseded_by`
+
+Raised when deprecated_in is set and superseded_by is not.
 
 Fix: name the successor code, or do not deprecate
 
@@ -168,6 +200,8 @@ Fix: name the successor code, or do not deprecate
 
 `'<code>' declares internal_detail but its area is <area>`
 
+Raised when a non-INT, non-SNO code declares the internal_detail field.
+
 Fix: drop internal_detail, or move the raw text into params
 
 ### SST-REG020
@@ -175,6 +209,8 @@ Fix: drop internal_detail, or move the raw text into params
 **Resolver set and registry `ref_function`s disagree** (error, always an error)
 
 `'<ref_function>' -- <direction>`
+
+Raised when a resolver addresses no registered type, or a type names no registered resolver.
 
 Fix: register the type, or remove the resolver
 
@@ -184,6 +220,8 @@ Fix: register the type, or remove the resolver
 
 `type '<artifact>' -- <reason>`
 
+Raised when a grantable type claims `NONE`, or a type that never replaces claims to preserve.
+
 Fix: correct the registration against the probe result
 
 ### SST-REG022
@@ -191,6 +229,8 @@ Fix: correct the registration against the probe result
 **Non-`semantic_view` artifact type declares `member_types`** (error, always an error)
 
 `artifact type '<artifact>' declares member_types <member_types>; only semantic_view may`
+
+Raised when an artifact type other than `semantic_view` registers a non-empty `member_types` tuple.
 
 Fix: leave `member_types` empty, or register the members as their own top-level type
 
@@ -200,6 +240,8 @@ Fix: leave `member_types` empty, or register the members as their own top-level 
 
 `MemberIndex covers <covered>; semantic_view declares <declared>`
 
+Raised when the set of member types in `MemberIndex` is not the set named by `semantic_view.member_types`.
+
 Fix: index every declared member type
 
 ### SST-REG024
@@ -208,6 +250,8 @@ Fix: index every declared member type
 
 `ref policy '<policy>': <detail>`
 
+Raised when a policy named by `ref_field(...)` is not declared, or a declared policy is bound to no field and carries no stated reason.
+
 Fix: declare the policy, bind it to a field, or state why it is unbound
 
 ### SST-REG900
@@ -215,6 +259,8 @@ Fix: declare the policy, bind it to a field, or state why it is unbound
 **Registry mutated after freeze** (error, always an error)
 
 `registry mutated after freeze: <detail>`
+
+Raised when register() is called after the registry is frozen.
 
 Fix: move the registration to import time
 
@@ -226,6 +272,8 @@ Fix: move the registration to import time
 
 `no sst_config.yml at <path>`
 
+Raised when the explicit project root has no config file.
+
 Fix: create sst_config.yml at the project root, or pass --project-dir
 
 ### SST-CFG002
@@ -233,6 +281,8 @@ Fix: create sst_config.yml at the project root, or pass --project-dir
 **Config is not valid YAML** (error)
 
 `<path> is not valid YAML: <detail>`
+
+Raised when the config file fails to parse.
 
 Fix: fix the YAML syntax at the reported position
 
@@ -242,6 +292,8 @@ Fix: fix the YAML syntax at the reported position
 
 `unknown config key '<key>'`
 
+Raised when a config key is not in the known key set.
+
 Fix: remove the key, or check it against sst docs config
 
 ### SST-CFG004
@@ -249,6 +301,8 @@ Fix: remove the key, or check it against sst docs config
 **Config value has the wrong type** (error)
 
 `config key '<key>' expects <expected>, found <found>`
+
+Raised when a config value fails its declared type.
 
 Fix: correct the value type
 
@@ -258,6 +312,8 @@ Fix: correct the value type
 
 `<count> candidate config files found; used <used>, shadowed <shadowed>`
 
+Raised when more than one config file is discoverable from the project root.
+
 Fix: delete the shadowed files, or pass --project-dir
 
 ### SST-CFG006
@@ -265,6 +321,8 @@ Fix: delete the shadowed files, or pass --project-dir
 **Required config key missing** (error)
 
 `required config key '<key>' is absent`
+
+Raised when a key with no default is absent.
 
 Fix: add {key} to sst_config.yml
 
@@ -274,6 +332,8 @@ Fix: add {key} to sst_config.yml
 
 `unknown top-level key '<key>'; did you mean '<suggestion>'?`
 
+Raised when an unknown top-level key is within edit distance 1-2 of a known key.
+
 Fix: correct the spelling
 
 ### SST-CFG008
@@ -281,6 +341,8 @@ Fix: correct the spelling
 **Config value outside its allowed domain** (error)
 
 `config key '<key>' value <found> is outside <expected>`
+
+Raised when a value passes its type and fails its domain.
 
 Fix: use one of {expected}
 
@@ -290,6 +352,8 @@ Fix: use one of {expected}
 
 `no profiles.yml at any searched location`
 
+Raised when the dbt profile file is absent everywhere searched.
+
 Fix: create profiles.yml, or set DBT_PROFILES_DIR
 
 ### SST-CFG010
@@ -297,6 +361,8 @@ Fix: create profiles.yml, or set DBT_PROFILES_DIR
 **Profile or target not found** (error)
 
 `target '<target>' is absent from profile '<profile>'`
+
+Raised when the requested target is not in profiles.yml.
 
 Fix: add the target, or pass --target with a declared name
 
@@ -306,6 +372,8 @@ Fix: add the target, or pass --target with a declared name
 
 `profile '<profile>' declares type '<found>'`
 
+Raised when the resolved dbt profile is for another adapter.
+
 Fix: point SST at a Snowflake profile
 
 ### SST-CFG012
@@ -313,6 +381,8 @@ Fix: point SST at a Snowflake profile
 **Credential field missing from the resolved profile** (error)
 
 `profile '<profile>' has no <field>`
+
+Raised when account or user is absent or empty in the resolved target.
 
 Fix: set {field} in profiles.yml or its env var
 
@@ -322,6 +392,8 @@ Fix: set {field} in profiles.yml or its env var
 
 `env_var('<var>') is unset and has no default`
 
+Raised when a profile env_var() has no value and no default.
+
 Fix: set {var}, or give env_var() a default
 
 ### SST-CFG014
@@ -329,6 +401,8 @@ Fix: set {var}, or give env_var() a default
 **Profile field silently empty** (warning)
 
 `profile '<profile>' leaves <field> empty`
+
+Raised when role, warehouse, database or schema is absent from the resolved target.
 
 Fix: set {field} explicitly rather than relying on account defaults
 
@@ -338,6 +412,8 @@ Fix: set {field} explicitly rather than relying on account defaults
 
 `evals: declares <key>, which is structurally invalid`
 
+Raised when eval targeting keys are set; eval objects resolve to the agent schema.
+
 Fix: remove +database and +schema from evals:
 
 ### SST-CFG016
@@ -345,6 +421,8 @@ Fix: remove +database and +schema from evals:
 **Targeting value does not resolve for the current target** (error)
 
 `+<key> does not resolve for target '<target>'`
+
+Raised when a +database or +schema resolves for some target and not the current one.
 
 Fix: declare the value for every target you publish to
 
@@ -354,6 +432,8 @@ Fix: declare the value for every target you publish to
 
 `{ tool('<group>','<name>') } does not resolve`
 
+Raised when a config tool() ref names an undeclared group or member.
+
 Fix: declare the group and member in the tools directory
 
 ### SST-CFG018
@@ -361,6 +441,8 @@ Fix: declare the group and member in the tools directory
 **Declared tool member referenced by nothing** (warning)
 
 `tool member '<group>.<name>' is referenced by nothing`
+
+Raised when a declared tool member has no consumer.
 
 Fix: reference it from an agent, or delete it
 
@@ -370,6 +452,8 @@ Fix: reference it from an agent, or delete it
 
 `'<name>' appears under both define: and reference:`
 
+Raised when a member is listed in both blocks.
+
 Fix: choose one; a member is owned or referenced, never both
 
 ### SST-CFG020
@@ -377,6 +461,8 @@ Fix: choose one; a member is owned or referenced, never both
 **Per-group tools override names an unknown or reference-only group** (error)
 
 `tools: override names group '<group>', which <reason>`
+
+Raised when a per-group override names a missing group, or a reference-only group.
 
 Fix: target a group that exists and contains define: members
 
@@ -386,6 +472,8 @@ Fix: target a group that exists and contains define: members
 
 `+max_staleness is <found>; the minimum is 120`
 
+Raised when a target-level max_staleness is set below 120 seconds.
+
 Fix: raise max_staleness to at least 120
 
 ### SST-CFG025
@@ -393,6 +481,8 @@ Fix: raise max_staleness to at least 120
 **Value absent from an allowlist** (warning)
 
 `<kind> '<found>' is absent from <key>`
+
+Raised when a tool type or model is used that neither the shipped default nor the allowlist names.
 
 Fix: add it to {key}, or use an allowed value
 
@@ -402,6 +492,8 @@ Fix: add it to {key}, or use an allowed value
 
 `{ var('<var>') } is not declared in config`
 
+Raised when a var() reference resolves to nothing.
+
 Fix: declare {var} under vars:
 
 ### SST-CFG031
@@ -410,13 +502,19 @@ Fix: declare {var} under vars:
 
 `validation.snowflake_syntax_check is unset`
 
+Raised when the key is absent.
+
 Fix: set it true or false explicitly
+
+Note: 1.0 defaults it true, but whether expressions are compiled decides what a green validate proves, so intent must be stated.
 
 ### SST-CFG032
 
 **Config file shadows another config file** (warning)
 
 `using <used>; shadowed <shadowed>`
+
+Raised when discovery found a usable file and at least one shadowed candidate.
 
 Fix: delete the shadowed file
 
@@ -426,6 +524,8 @@ Fix: delete the shadowed file
 
 `severity_overrides <code>: <found> is not permitted (<reason>)`
 
+Raised when an override breaks the demotion floor, or --strict and strict: disagree.
+
 Fix: promote instead of demoting, or remove the override
 
 ### SST-CFG034
@@ -433,6 +533,8 @@ Fix: promote instead of demoting, or remove the override
 **Strict flag and config key disagree** (warning)
 
 `--strict <flag> disagrees with validation.strict <config>; the flag wins`
+
+Raised when both are set and they disagree.
 
 Fix: remove one of the two
 
@@ -442,6 +544,8 @@ Fix: remove one of the two
 
 `baseline expires on <date>; <count> entries remain`
 
+Raised when the baseline file expires within 30 days.
+
 Fix: fix the baselined diagnostics, or run sst baseline renew --reason
 
 ### SST-CFG036
@@ -449,6 +553,8 @@ Fix: fix the baselined diagnostics, or run sst baseline renew --reason
 **Name-map entry cannot be qualified** (error)
 
 `<block>: '<name>' cannot be qualified -- no fqn: and <reason>`
+
+Raised when a `tags:` or `skills.extensions:` entry has no `fqn:` and either the block sets no `default_prefix` or the entry key contains a dot, which would render a four-part name; also two entries in one block that qualify to the same name.
 
 Fix: set fqn: on the entry, or set default_prefix on the block
 
@@ -458,7 +564,11 @@ Fix: set fqn: on the entry, or set default_prefix on the block
 
 `validation.strict: true is enforced from 1.0; <count> warnings now block`
 
+Raised when the first 1.0 `validate`, `plan` or `apply` in a project that declares `strict: true` and has no baseline file.
+
 Fix: run sst baseline add to hold the current warning count, then fix them
+
+Note: Once only, per project.
 
 ### SST-CFG038
 
@@ -466,13 +576,19 @@ Fix: run sst baseline add to hold the current warning count, then fix them
 
 `--include <components> reads row data, and enrichment.allow_sample_value_collection is false`
 
+Raised when `sst enrich` is invoked with `--include sample-values` or `--all` while `enrichment.allow_sample_value_collection: false`.
+
 Fix: remove --include sample-values, or change the key in sst_config.yml
+
+Note: Fires on COLLECTION only -- an authored `sample_values` in project YAML is legal and must not trip it.
 
 ### SST-CFG039
 
 **Baseline is past its expiry** (error)
 
 `baseline expired on <date>; <count> entries resume blocking`
+
+Raised when the baseline file is past its `expires_on`, so baselined diagnostics resume blocking.
 
 Fix: fix the baselined diagnostics, or run sst baseline renew --reason
 
@@ -482,13 +598,19 @@ Fix: fix the baselined diagnostics, or run sst baseline renew --reason
 
 `vars.sha_version is supplied by SST and must not be declared`
 
+Raised when `sha_version` is declared in `vars:`.
+
 Fix: remove it from `vars:`; SST resolves it from the commit being published
+
+Note: `sha_version` pins an agent's Cortex Extension reference, so it is the published skill's version identity. Resolved from the commit it agrees by construction; typed by hand it goes stale silently, and `CREATE AGENT` accepts a nonexistent version alias, so a stale value produces an agent that reports success and has no skill.
 
 ### SST-CFG041
 
 **Folder route names a directory that does not exist** (error)
 
 `config key '<key>' in block '<block>' names no directory under '<root>'`
+
+Raised when an unprefixed key inside an artifact block does not match a directory under that block's root.
 
 Fix: create the directory, or remove the key
 
@@ -498,6 +620,8 @@ Fix: create the directory, or remove the key
 
 `<block>: declares a folder route '<key>'`
 
+Raised when an unprefixed path-segment key appears inside `evals:`.
+
 Fix: remove it -- `evals:` location is structural, and `skills:`'s unprefixed keys are its `catalog`/`stage` sub-blocks
 
 ### SST-CFG043
@@ -505,6 +629,8 @@ Fix: remove it -- `evals:` location is structural, and `skills:`'s unprefixed ke
 **Config key was removed** (error)
 
 `config key '<key>' was removed: <reason>`
+
+Raised when a key the schema records as removed is set; the message names what replaced it.
 
 Fix: delete the key
 
@@ -514,6 +640,8 @@ Fix: delete the key
 
 `config key '<key>' is not supported in this release`
 
+Raised when a key reserved for a later release is set.
+
 Fix: delete the key
 
 ### SST-CFG046
@@ -521,6 +649,8 @@ Fix: delete the key
 **Configuration requires a dbt project** (error)
 
 `<key> requires a dbt project, and the project has no dbt_project.yml`
+
+Raised when configuration that needs dbt (semantic_views, evals, ...) is present and dbt_project.yml is absent.
 
 Fix: add dbt_project.yml, or remove the configuration; a project without dbt publishes skills, plugins, and profiles only
 
@@ -530,6 +660,8 @@ Fix: add dbt_project.yml, or remove the configuration; a project without dbt pub
 
 `<key> is <value>, which is not a directory in the project`
 
+Raised when a project.*_dir key names a path that is not a directory.
+
 Fix: fix the path, or remove the key to use the default; otherwise SST finds nothing there, and --prune would remove everything that directory published
 
 ### SST-CFG048
@@ -537,6 +669,8 @@ Fix: fix the path, or remove the key to use the default; otherwise SST finds not
 **profiles.yml field is not used by SST** (warning)
 
 `target '<target>': '<key>' is not a setting SST reads, so it is ignored`
+
+Raised when a profiles.yml target carries a field SST does not read.
 
 Fix: check the spelling; SST passes only connection settings to Snowflake, so a misspelled credential field would otherwise be dropped silently
 
@@ -546,6 +680,8 @@ Fix: check the spelling; SST passes only connection settings to Snowflake, so a 
 
 `target '<target>': '<key>' <problem>`
 
+Raised when a profiles.yml value holds a template other than env_var(), or a whole-number/boolean field holds another value.
+
 Fix: SST renders {{ env_var('NAME') }} and {{ env_var('NAME', 'default') }} anywhere in a value, and no other template; write numbers and booleans without filters such as as_number
 
 ### SST-CFG050
@@ -553,6 +689,8 @@ Fix: SST renders {{ env_var('NAME') }} and {{ env_var('NAME', 'default') }} anyw
 **Unsupported authentication configuration** (error)
 
 `target '<target>': <detail>`
+
+Raised when the profile asks for an unsupported auth mode (refresh-token exchange, OAuth client credentials, two private keys) or an unreadable private_key.
 
 Fix: authenticate with a key pair, a password, SSO (authenticator), or an OAuth access token (token)
 
@@ -562,6 +700,8 @@ Fix: authenticate with a key pair, a password, SSO (authenticator), or an OAuth 
 
 `target '<target>': insecure_mode is true, so OCSP certificate revocation checks are off for this connection`
 
+Raised when a profiles.yml target sets insecure_mode: true.
+
 Fix: remove insecure_mode, or set it to false; it is a debugging switch, and with it on a revoked certificate is still accepted
 
 ### SST-CFG200
@@ -569,6 +709,8 @@ Fix: remove insecure_mode, or set it to false; it is a debugging switch, and wit
 **Deprecated config key** (warning)
 
 `config key '<key>' is deprecated; use '<expected>'`
+
+Raised when a deprecated key is present.
 
 Fix: rename the key
 
@@ -580,6 +722,8 @@ Fix: rename the key
 
 `<path> does not exist`
 
+Raised when the configured semantic path is absent.
+
 Fix: create the directory, or correct semantic_path
 
 ### SST-DIS002
@@ -587,6 +731,8 @@ Fix: create the directory, or correct semantic_path
 **Semantic path is not a directory** (error)
 
 `<path> is not a directory`
+
+Raised when the configured semantic path is a file.
 
 Fix: point semantic_path at a directory
 
@@ -596,6 +742,8 @@ Fix: point semantic_path at a directory
 
 `no candidate files under <path>`
 
+Raised when discovery walked the tree and matched nothing.
+
 Fix: check semantic_path and the file-name conventions
 
 ### SST-DIS004
@@ -603,6 +751,8 @@ Fix: check semantic_path and the file-name conventions
 **File not readable** (error)
 
 `<path> is not readable`
+
+Raised when a candidate file cannot be opened.
 
 Fix: fix the file permissions
 
@@ -612,6 +762,8 @@ Fix: fix the file permissions
 
 `<path> exceeds the traversal depth limit`
 
+Raised when traversal revisits a directory, or exceeds the depth cap.
+
 Fix: remove the symlink loop, or flatten the tree
 
 ### SST-DIS006
@@ -619,6 +771,8 @@ Fix: remove the symlink loop, or flatten the tree
 **Two paths collide under case folding** (error)
 
 `<a> and <b> collide under case folding`
+
+Raised when two discovered paths differ only by case.
 
 Fix: rename one file
 
@@ -628,6 +782,8 @@ Fix: rename one file
 
 `<path> is claimed by <types>`
 
+Raised when two registered types both claim a discovered path.
+
 Fix: move the file, or make its root key unambiguous
 
 ### SST-DIS008
@@ -635,6 +791,8 @@ Fix: move the file, or make its root key unambiguous
 **File matches no artifact type** (warning)
 
 `<path> matches no registered artifact type`
+
+Raised when a discovered file is not classified.
 
 Fix: remove the file, or add its root key to a type
 
@@ -644,6 +802,8 @@ Fix: remove the file, or add its root key to a type
 
 `dbt model-paths entry <path> does not exist`
 
+Raised when a configured dbt model directory is absent.
+
 Fix: correct model-paths in dbt_project.yml
 
 ### SST-DIS010
@@ -651,6 +811,8 @@ Fix: correct model-paths in dbt_project.yml
 **Selector matched nothing** (warning)
 
 `--select <selector> matched no artifact`
+
+Raised when a selector expression selects an empty set.
 
 Fix: widen the selector, or check the artifact name
 
@@ -660,11 +822,15 @@ Fix: widen the selector, or check the artifact name
 
 `<path> assigned to <type>`
 
+Raised when discovery classified a file; reported under --show-info.
+
 ### SST-DIS201
 
 **Files excluded by selector** (info)
 
 `<count> files excluded by --exclude`
+
+Raised when an exclude selector removed files from the run.
 
 ## Parsing (PRS)
 
@@ -674,6 +840,8 @@ Fix: widen the selector, or check the artifact name
 
 `no registered type owns root key '<key>'`
 
+Raised when a root key has no owner in the registry.
+
 Fix: remove the block, or register a type that owns it
 
 ### SST-PRS002
@@ -681,6 +849,8 @@ Fix: remove the block, or register a type that owns it
 **Required field missing** (error)
 
 `<artifact>: required field '<field>' is missing`
+
+Raised when a field with no default is absent from a known block.
 
 Fix: add {field}
 
@@ -690,6 +860,8 @@ Fix: add {field}
 
 `<artifact>: '<field>' expects <expected>, found <found>`
 
+Raised when a field value fails its declared type.
+
 Fix: change the value to {expected}
 
 ### SST-PRS004
@@ -698,13 +870,19 @@ Fix: change the value to {expected}
 
 `<artifact>: unknown field '<field>'`
 
+Raised when a block contains a key the type does not model.
+
 Fix: remove the field, or check the spelling
+
+Note: Distinct from `SST-VAL013`/`SST-VAL014`: this is a key inside a block SST does model, so it is a typo or an SST-schema gap. Gated by `validation.strict`, not by `snowflake.allow_unknown_keys`.
 
 ### SST-PRS005
 
 **Name is not a valid identifier** (error)
 
 `<artifact>: '<value>' is not a valid identifier`
+
+Raised when a name fails the identifier grammar.
 
 Fix: use letters, digits and underscores, starting with a letter
 
@@ -714,6 +892,8 @@ Fix: use letters, digits and underscores, starting with a letter
 
 `<type> '<name>' is declared more than once`
 
+Raised when two records of one type share a name.
+
 Fix: rename one of them
 
 ### SST-PRS007
@@ -721,6 +901,8 @@ Fix: rename one of them
 **Name is not unique across the artifact set** (error)
 
 `<type> '<name>' collides with <other>`
+
+Raised when a name is unique within a file and not across files.
 
 Fix: rename one of them
 
@@ -730,6 +912,8 @@ Fix: rename one of them
 
 `metric '<name>' collides with a derived metric name`
 
+Raised when a table-scoped and a view-scoped member share a name.
+
 Fix: rename one of them
 
 ### SST-PRS009
@@ -737,6 +921,8 @@ Fix: rename one of them
 **Name is not a valid tool identifier** (error)
 
 `'<name>' does not resolve to a 1-64 char tool identifier`
+
+Raised when a derived agent-tool identifier fails the 1-64 char rule.
 
 Fix: shorten or simplify the name
 
@@ -746,6 +932,8 @@ Fix: shorten or simplify the name
 
 `'<name>' is <size> chars, over the <expected> limit`
 
+Raised when an identifier is longer than the Snowflake object limit.
+
 Fix: shorten the name
 
 ### SST-PRS011
@@ -753,6 +941,8 @@ Fix: shorten the name
 **Identifier requires quoting and quoting is not declared** (error)
 
 `'<name>' needs quoting to render safely`
+
+Raised when a name contains characters that force a quoted identifier.
 
 Fix: rename it, or declare it quoted
 
@@ -762,6 +952,8 @@ Fix: rename it, or declare it quoted
 
 `'<name>' contains non-ASCII characters`
 
+Raised when an identifier contains characters outside ASCII.
+
 Fix: use ASCII identifiers
 
 ### SST-PRS013
@@ -769,6 +961,8 @@ Fix: use ASCII identifiers
 **Value outside the allowed set for a closed field** (error)
 
 `<artifact>: '<field>' is '<found>', expected one of <expected>`
+
+Raised when a closed-enum field holds an unrecognised value.
 
 Fix: use one of {expected}
 
@@ -778,6 +972,8 @@ Fix: use one of {expected}
 
 `<artifact>: '<field>' and '<other>' are mutually exclusive`
 
+Raised when two fields that exclude each other are both set.
+
 Fix: declare exactly one
 
 ### SST-PRS015
@@ -785,6 +981,8 @@ Fix: declare exactly one
 **Paired fields not declared together** (error)
 
 `<artifact>: '<field>' requires '<other>'`
+
+Raised when one half of a required pair is present.
 
 Fix: declare both, or neither
 
@@ -794,6 +992,8 @@ Fix: declare both, or neither
 
 `<artifact>: '<field>' is <found>, expected <expected>`
 
+Raised when a numeric field is zero, negative or beyond its bound.
+
 Fix: use a value in {expected}
 
 ### SST-PRS017
@@ -801,6 +1001,8 @@ Fix: use a value in {expected}
 **Unparseable timestamp** (error)
 
 `<artifact>: '<field>' value '<found>' is not an epoch or ISO timestamp`
+
+Raised when a timestamp field parses as neither form.
 
 Fix: use an integer epoch or an ISO-8601 string
 
@@ -810,6 +1012,8 @@ Fix: use an integer epoch or an ISO-8601 string
 
 `<artifact>: '<field>'[<index>] expects <expected>, found <found>`
 
+Raised when a list element fails the element schema.
+
 Fix: correct the element
 
 ### SST-PRS019
@@ -817,6 +1021,8 @@ Fix: correct the element
 **Boolean field holds a non-boolean** (error)
 
 `<artifact>: '<field>' is '<found>', expected a boolean`
+
+Raised when a boolean field holds a string or number.
 
 Fix: use true or false
 
@@ -826,6 +1032,8 @@ Fix: use true or false
 
 `<artifact>: '<field>' is deprecated; use '<expected>'`
 
+Raised when a superseded key spelling is in use.
+
 Fix: rename the field
 
 ### SST-PRS021
@@ -833,6 +1041,8 @@ Fix: rename the field
 **Deprecated relationship column shape** (error)
 
 `<artifact>: relationship_columns / left_column / right_column is not supported`
+
+Raised when the removed relationship shape is declared.
 
 Fix: use relationship_conditions
 
@@ -842,6 +1052,8 @@ Fix: use relationship_conditions
 
 `<artifact>: unknown field '<field>'; did you mean '<expected>'?`
 
+Raised when an unknown key is 1-2 edits from a modelled key, so it is a typo.
+
 Fix: correct the spelling
 
 ### SST-PRS023
@@ -849,6 +1061,8 @@ Fix: correct the spelling
 **Passthrough block collides with a modelled key** (error)
 
 `<artifact>: passthrough key '<key>' is already rendered by SST`
+
+Raised when a passthrough or tool_spec_passthrough key duplicates a rendered key.
 
 Fix: remove the key from passthrough
 
@@ -858,6 +1072,8 @@ Fix: remove the key from passthrough
 
 `<artifact>: <count> passthrough keys will be rendered unvalidated`
 
+Raised when a passthrough block carries values SST does not model.
+
 Fix: promote the keys to first-class fields where possible
 
 ### SST-PRS025
@@ -865,6 +1081,8 @@ Fix: promote the keys to first-class fields where possible
 **Reserved alias used** (error)
 
 `<artifact>: alias '<value>' is reserved`
+
+Raised when an alias uses LIVE, FIRST, LAST or DEFAULT.
 
 Fix: choose a different alias
 
@@ -874,6 +1092,8 @@ Fix: choose a different alias
 
 `<artifact>: tag '<field>' value is <size> chars, over 256`
 
+Raised when a tag value is longer than 256 characters.
+
 Fix: shorten the tag value
 
 ### SST-PRS027
@@ -881,6 +1101,8 @@ Fix: shorten the tag value
 **Tags block has the wrong shape** (error)
 
 `<artifact>: tags must be a list of name and value entries, found <found>`
+
+Raised when the tags block fails its schema: it is not a list of name and value entries, an entry lacks name or value, or an entry name is not one tag() call.
 
 Fix: correct the tags block
 
@@ -890,6 +1112,8 @@ Fix: correct the tags block
 
 `<artifact>: constraints block is invalid: <detail>`
 
+Raised when the constraints block fails its schema.
+
 Fix: correct the constraints block
 
 ### SST-PRS029
@@ -897,6 +1121,8 @@ Fix: correct the constraints block
 **Synonyms block has the wrong type** (error)
 
 `<artifact>: synonyms must be a list of strings, found <found>`
+
+Raised when the synonyms value is not a list of strings.
 
 Fix: use a list of strings
 
@@ -906,6 +1132,8 @@ Fix: use a list of strings
 
 `<artifact>: synonym '<value>' contains <detail>`
 
+Raised when a synonym carries characters that break matching.
+
 Fix: remove the punctuation
 
 ### SST-PRS031
@@ -913,6 +1141,8 @@ Fix: remove the punctuation
 **Name collides with a reserved word** (warning)
 
 `'<name>' is a reserved word`
+
+Raised when a name matches a SQL reserved word.
 
 Fix: rename it, or accept the quoted identifier
 
@@ -922,6 +1152,8 @@ Fix: rename it, or accept the quoted identifier
 
 `<artifact>: input_schema property '<field>' has type '<found>'`
 
+Raised when a generic tool input_schema property declares an unsupported type.
+
 Fix: use string, number, integer, boolean or array
 
 ### SST-PRS033
@@ -929,6 +1161,8 @@ Fix: use string, number, integer, boolean or array
 **Required input-schema name is not a declared property** (error)
 
 `<artifact>: input_schema.required names '<field>', absent from properties`
+
+Raised when a required entry has no matching property.
 
 Fix: declare the property, or drop it from required
 
@@ -938,6 +1172,8 @@ Fix: declare the property, or drop it from required
 
 `<artifact>: SKILL.md frontmatter omits '<field>'`
 
+Raised when a skill SKILL.md frontmatter lacks name or description.
+
 Fix: declare name and description in the frontmatter
 
 ### SST-PRS100
@@ -945,6 +1181,8 @@ Fix: declare name and description in the frontmatter
 **Name collides with a reserved identifier namespace** (warning)
 
 `'<name>' is in a reserved namespace`
+
+Raised when a name uses an SST- or SNOWFLAKE-reserved prefix.
 
 Fix: rename it
 
@@ -954,6 +1192,8 @@ Fix: rename it
 
 `<artifact>: '<field>' is present and empty`
 
+Raised when a collection that must be non-empty has zero entries.
+
 Fix: declare at least one entry, or remove the key
 
 ### SST-PRS102
@@ -962,13 +1202,19 @@ Fix: declare at least one entry, or remove the key
 
 `<artifact>: 'tables: []' is not accepted`
 
+Raised when a member declares tables: [].
+
 Fix: declare the tables the member attaches to
+
+Note: FORBIDDEN, never an inference trigger.
 
 ### SST-PRS103
 
 **Value outside the allowed enum** (error)
 
 `<artifact>: '<field>' is '<found>', expected one of <expected>`
+
+Raised when a member-level enum field holds an unrecognised value.
 
 Fix: use one of {expected}
 
@@ -978,6 +1224,8 @@ Fix: use one of {expected}
 
 `<member> is declared under both <a> and <b>`
 
+Raised when one member record appears under two owning artifacts.
+
 Fix: declare it once
 
 ### SST-PRS105
@@ -985,6 +1233,8 @@ Fix: declare it once
 **Member type not accepted by its owner** (error)
 
 `<type> does not accept members of type <member_type>`
+
+Raised when a member is declared under a type that does not model it.
 
 Fix: move the member
 
@@ -994,6 +1244,8 @@ Fix: move the member
 
 `<artifact>: <member_type> '<name>' is declared twice`
 
+Raised when two members of one type under one owner share a name.
+
 Fix: rename one of them
 
 ### SST-PRS107
@@ -1001,6 +1253,8 @@ Fix: rename one of them
 **Member declares no distinguishing key** (error)
 
 `<artifact>: <member_type> entry <index> has no name`
+
+Raised when a member entry has no name field.
 
 Fix: name the member
 
@@ -1010,6 +1264,8 @@ Fix: name the member
 
 `<artifact>: table_config key '<name>' is not in tables:`
 
+Raised when a per-table config block names an unlisted table.
+
 Fix: remove the entry, or add the table
 
 ### SST-PRS110
@@ -1017,6 +1273,8 @@ Fix: remove the entry, or add the table
 **Condition does not parse to one column pair** (error)
 
 `<artifact>: condition '<value>' does not parse to one left/right pair`
+
+Raised when a relationship condition parses to zero or multiple pairs.
 
 Fix: express one pair per condition
 
@@ -1026,6 +1284,8 @@ Fix: express one pair per condition
 
 `<artifact>: range condition uses '<name>' for both start and end`
 
+Raised when a range condition repeats a column.
+
 Fix: name two different columns
 
 ### SST-PRS112
@@ -1033,6 +1293,8 @@ Fix: name two different columns
 **More than one asof condition** (error)
 
 `<artifact>: <count> asof conditions declared`
+
+Raised when a relationship declares multiple asof conditions.
 
 Fix: declare at most one
 
@@ -1042,6 +1304,8 @@ Fix: declare at most one
 
 `<artifact>: '<field>' expects a SQL string, found <found>`
 
+Raised when a metric or filter expression is a list or mapping.
+
 Fix: supply the expression as a string
 
 ### SST-PRS114
@@ -1049,6 +1313,8 @@ Fix: supply the expression as a string
 **Score ranges are not contiguous** (error)
 
 `<artifact>: score_ranges leave a gap or overlap at <value>`
+
+Raised when a judge metric's score ranges do not tile the scale.
 
 Fix: make the ranges contiguous with min-inclusive, max-inclusive boundaries
 
@@ -1058,6 +1324,8 @@ Fix: make the ranges contiguous with min-inclusive, max-inclusive boundaries
 
 `<artifact>: threshold_default <found> is not a usable bound within max_score <expected>`
 
+Raised when a custom metric's threshold_default map omits min, inverts its bounds, or places one outside the declared scale.
+
 Fix: declare min, optionally max, with min &lt;= max and both inside max_score
 
 ### SST-PRS116
@@ -1065,6 +1333,8 @@ Fix: declare min, optionally max, with min &lt;= max and both inside max_score
 **Unsupported template placeholder in a judge prompt** (error)
 
 `<artifact>: '<placeholder>' is not one of the 12 supported names`
+
+Raised when a judge prompt placeholder is not in the supported set.
 
 Fix: use a supported placeholder
 
@@ -1074,6 +1344,8 @@ Fix: use a supported placeholder
 
 `<artifact>: row <index> has <detail>`
 
+Raised when an eval dataset row is incomplete.
+
 Fix: give every row a question and at least one expectation
 
 ### SST-PRS118
@@ -1081,6 +1353,8 @@ Fix: give every row a question and at least one expectation
 **Sample question entry is a bare string** (error)
 
 `<artifact>: sample_questions[<index>] is a string, expected a mapping`
+
+Raised when sample questions are declared as bare strings.
 
 Fix: use {{question: ...}} maps
 
@@ -1090,6 +1364,8 @@ Fix: use {{question: ...}} maps
 
 `<artifact>: nested skill folder at <path>`
 
+Raised when a skill folder contains a second SKILL.md below its root.
+
 Fix: flatten the layout; one skill per folder
 
 ### SST-PRS120
@@ -1097,6 +1373,8 @@ Fix: flatten the layout; one skill per folder
 **SKILL.md is not at the folder root** (error)
 
 `<artifact>: SKILL.md found at <path>`
+
+Raised when SKILL.md is nested, so Snowflake will not find it.
 
 Fix: move SKILL.md to the folder root
 
@@ -1106,6 +1384,8 @@ Fix: move SKILL.md to the folder root
 
 `<artifact>: <detail>`
 
+Raised when a semantic view definition fails structural parsing (catch-all).
+
 Fix: fix the field the message names; the semantic views guide lists each field's form
 
 ### SST-PRS124
@@ -1113,6 +1393,8 @@ Fix: fix the field the message names; the semantic views guide lists each field'
 **Window frame is not a frame clause** (error)
 
 `<artifact>: window frame '<value>' is not ROWS or RANGE BETWEEN <bound> AND <bound>`
+
+Raised when a window frame is not `ROWS/RANGE BETWEEN <bound> AND <bound>`.
 
 Fix: write each bound as UNBOUNDED PRECEDING, UNBOUNDED FOLLOWING, CURRENT ROW, or &lt;n&gt; or `INTERVAL '<n> <unit>'` followed by PRECEDING or FOLLOWING
 
@@ -1122,6 +1404,8 @@ Fix: write each bound as UNBOUNDED PRECEDING, UNBOUNDED FOLLOWING, CURRENT ROW, 
 
 `<file>: writing it changes lines sst enrich did not edit`
 
+Raised when sst enrich would rewrite lines it did not edit while writing a file.
+
 Fix: review the change with sst enrich --dry-run; once the file is written, later runs keep its formatting exactly
 
 ### SST-PRS900
@@ -1129,6 +1413,8 @@ Fix: review the change with sst enrich --dry-run; once the file is written, late
 **Parser returned a non-frozen record** (error)
 
 `<type> parser returned <cls>, which is mutable`
+
+Raised when a parser returns a record the model layer cannot treat as immutable.
 
 Fix: return a frozen dataclass
 
@@ -1140,6 +1426,8 @@ Fix: return a frozen dataclass
 
 `<file>:<line>:<col>: <detail>`
 
+Raised when yaml.safe_load raises; line and column come from the marker.
+
 Fix: fix the YAML syntax at the reported position
 
 ### SST-LOD002
@@ -1147,6 +1435,8 @@ Fix: fix the YAML syntax at the reported position
 **Document root is not a mapping** (error)
 
 `<file> root is <found>, expected a mapping`
+
+Raised when the parsed root is a list, scalar or null.
 
 Fix: make the document a top-level mapping
 
@@ -1156,6 +1446,8 @@ Fix: make the document a top-level mapping
 
 `<file> is empty`
 
+Raised when the file has zero bytes, or parses to None.
+
 Fix: add content, or delete the file
 
 ### SST-LOD004
@@ -1164,13 +1456,19 @@ Fix: add content, or delete the file
 
 `<file>:<line>:<col>: malformed template: <reason>`
 
+Raised when an unterminated or nested `{{ }}`.
+
 Fix: close the `}}`, or remove the nested `{{`
+
+Note: Not an unquoted `{{`: unquoted is the majority spelling and is not valid YAML, so it is neutralised at the load boundary rather than rejected.
 
 ### SST-LOD005
 
 **Duplicate key in a YAML mapping** (error)
 
 `<file>:<line>: duplicate key '<key>'`
+
+Raised when a mapping declares one key twice; the later silently wins in stock YAML.
 
 Fix: remove one of the two keys
 
@@ -1180,6 +1478,8 @@ Fix: remove one of the two keys
 
 `<file>: invalid UTF-8 at byte <offset>`
 
+Raised when decoding fails.
+
 Fix: re-save the file as UTF-8
 
 ### SST-LOD007
@@ -1187,6 +1487,8 @@ Fix: re-save the file as UTF-8
 **File exceeds the size limit** (error)
 
 `<file> is <size> bytes, over the <expected> limit`
+
+Raised when a candidate file is larger than the configured cap.
 
 Fix: split the file
 
@@ -1196,6 +1498,8 @@ Fix: split the file
 
 `<file> contains <count> documents`
 
+Raised when the file uses --- separators.
+
 Fix: keep one document per file
 
 ### SST-LOD009
@@ -1203,6 +1507,8 @@ Fix: keep one document per file
 **Unquoted colon inside a plain scalar** (error)
 
 `<file>:<line>: '<key>' value contains an unquoted ':'`
+
+Raised when a description or prose value contains a bare colon-space.
 
 Fix: quote the value
 
@@ -1212,6 +1518,8 @@ Fix: quote the value
 
 `<file>:<line>: tab used for indentation`
 
+Raised when YAML forbids tabs in indentation.
+
 Fix: indent with spaces
 
 ### SST-LOD011
@@ -1219,6 +1527,8 @@ Fix: indent with spaces
 **Folded scalar used for a multi-line value** (warning)
 
 `<file>:<line>: '<key>' uses a folded scalar`
+
+Raised when a multi-line value uses &gt; or &gt;-, which reflows the text.
 
 Fix: use |- so line breaks survive
 
@@ -1228,6 +1538,8 @@ Fix: use |- so line breaks survive
 
 `<file>: <detail>`
 
+Raised when the file is not canonically formatted at byte level.
+
 Fix: run sst format
 
 ### SST-LOD013
@@ -1235,6 +1547,8 @@ Fix: run sst format
 **Anchor or alias used** (error)
 
 `<file>:<line>: YAML anchors are not supported`
+
+Raised when the document uses & or *.
 
 Fix: expand the anchor
 
@@ -1244,6 +1558,8 @@ Fix: expand the anchor
 
 `<file>:<line>: merge keys are not supported`
 
+Raised when the document uses &lt;&lt;:.
+
 Fix: expand the merge
 
 ### SST-LOD015
@@ -1251,6 +1567,8 @@ Fix: expand the merge
 **Non-string mapping key** (error)
 
 `<file>:<line>: mapping key <found> is not a string`
+
+Raised when a key parses to an int, bool, date or null.
 
 Fix: quote the key
 
@@ -1260,6 +1578,8 @@ Fix: quote the key
 
 `<file>:<line>: '<key>' value <found> coerced to <expected>`
 
+Raised when YAML 1.1 coerces yes, no, on, off, ~ or an empty value.
+
 Fix: quote the value if it is meant as a string
 
 ### SST-LOD017
@@ -1267,6 +1587,8 @@ Fix: quote the value if it is meant as a string
 **Byte-order mark present** (error)
 
 `<file> begins with a BOM`
+
+Raised when the file starts with U+FEFF.
 
 Fix: re-save without a BOM
 
@@ -1276,6 +1598,8 @@ Fix: re-save without a BOM
 
 `<file> references <path>, which does not exist`
 
+Raised when a file(), body_file or sql_file path does not resolve at load.
+
 Fix: create the file, or correct the path
 
 ### SST-LOD019
@@ -1283,6 +1607,8 @@ Fix: create the file, or correct the path
 **Sidecar file is empty** (error)
 
 `<path>, referenced by <file>, is empty`
+
+Raised when a referenced sidecar resolves and has zero bytes.
 
 Fix: add content, or remove the reference
 
@@ -1292,6 +1618,8 @@ Fix: add content, or remove the reference
 
 `<file> uses '<found>'`
 
+Raised when a candidate file uses a tolerated but non-canonical extension.
+
 Fix: standardise on .yml
 
 ### SST-LOD021
@@ -1299,6 +1627,8 @@ Fix: standardise on .yml
 **Document declares no recognised root key** (error)
 
 `<file> declares no recognised root key`
+
+Raised when the root mapping has keys, none of which any type claims.
 
 Fix: add the artifact's root key
 
@@ -1308,17 +1638,23 @@ Fix: add the artifact's root key
 
 `<file> uses .yaml; accepted`
 
+Raised when a .yaml file was loaded.
+
 ### SST-LOD201
 
 **File loaded from cache** (info)
 
 `<file> served from the load cache`
 
+Raised when the file digest is unchanged since the last run.
+
 ### SST-LOD202
 
 **Line-ending normalisation applied on read** (info)
 
 `<file> normalised <count> line endings on read`
+
+Raised when CRLF was normalised in memory, leaving the file untouched.
 
 ## References (REF)
 
@@ -1328,6 +1664,8 @@ Fix: add the artifact's root key
 
 `{ ref('<model>') } is not a model in the dbt manifest`
 
+Raised when a single-argument ref names a model the manifest does not list.
+
 Fix: run dbt compile, or correct the model name
 
 ### SST-REF002
@@ -1335,6 +1673,8 @@ Fix: run dbt compile, or correct the model name
 **ref() column not on the model** (error)
 
 `{ ref('<model>','<column>') }: '<column>' is not a column on <model>`
+
+Raised when a two-argument ref names a column absent from the model.
 
 Fix: correct the column name, or add it to the model's columns: block
 
@@ -1344,6 +1684,8 @@ Fix: correct the column name, or add it to the model's columns: block
 
 `<file>:<line>:<col>: malformed template expression '<value>'`
 
+Raised when a {{ }} expression does not parse.
+
 Fix: correct the expression syntax
 
 ### SST-REF004
@@ -1351,6 +1693,8 @@ Fix: correct the expression syntax
 **Unknown template function** (error)
 
 `'<ref_function>' is not a template function`
+
+Raised when a {{ }} expression names a function no type registers.
 
 Fix: use one of {expected}
 
@@ -1360,6 +1704,8 @@ Fix: use one of {expected}
 
 `metric reference cycle: <cycle>`
 
+Raised when the metric() reference graph is not acyclic.
+
 Fix: break the cycle
 
 ### SST-REF006
@@ -1367,6 +1713,8 @@ Fix: break the cycle
 **metric() target not found** (error)
 
 `{ metric('<name>') } does not resolve`
+
+Raised when a metric reference names an undeclared metric.
 
 Fix: correct the name, or declare the metric
 
@@ -1376,6 +1724,8 @@ Fix: correct the name, or declare the metric
 
 `{ custom_instructions('<name>') } does not resolve`
 
+Raised when a custom-instruction reference names an undeclared block.
+
 Fix: declare the block, or correct the name
 
 ### SST-REF008
@@ -1383,6 +1733,8 @@ Fix: declare the block, or correct the name
 **Ref used in a field that forbids it** (error)
 
 `<artifact>: '<field>' does not accept template expressions`
+
+Raised when a ref appears in a field declared literal.
 
 Fix: move the reference, or inline the value
 
@@ -1392,6 +1744,8 @@ Fix: move the reference, or inline the value
 
 `{ <ref_function>('<name>') } resolved to an empty string`
 
+Raised when resolution succeeds and yields nothing.
+
 Fix: check the referenced object's name
 
 ### SST-REF010
@@ -1399,6 +1753,8 @@ Fix: check the referenced object's name
 **tool() target not found** (error)
 
 `{ tool('<group>','<name>') } does not resolve`
+
+Raised when a tool reference names an undeclared group or member.
 
 Fix: declare the member in the tools directory
 
@@ -1408,6 +1764,8 @@ Fix: declare the member in the tools directory
 
 `{ semantic_view('<name>') } does not resolve`
 
+Raised when a semantic-view reference names an undeclared view.
+
 Fix: declare the view, or correct the name
 
 ### SST-REF012
@@ -1415,6 +1773,8 @@ Fix: declare the view, or correct the name
 **agent() target not found** (error)
 
 `{ agent('<name>') } does not resolve`
+
+Raised when an agent reference names an undeclared agent.
 
 Fix: declare the agent, or correct the name
 
@@ -1424,6 +1784,8 @@ Fix: declare the agent, or correct the name
 
 `{ extension('<name>') } does not resolve`
 
+Raised when an extension reference names an undeclared extension.
+
 Fix: declare the extension source, or correct the name
 
 ### SST-REF014
@@ -1431,6 +1793,8 @@ Fix: declare the extension source, or correct the name
 **file() sidecar does not resolve** (error)
 
 `{ file('<path>') } does not resolve to a file`
+
+Raised when a file reference names a missing sidecar.
 
 Fix: create the file, or correct the path
 
@@ -1440,6 +1804,8 @@ Fix: create the file, or correct the path
 
 `{ <ref_function>() } takes <expected> arguments, found <found>`
 
+Raised when a template function is called with the wrong number of arguments.
+
 Fix: supply the documented arguments
 
 ### SST-REF018
@@ -1447,6 +1813,8 @@ Fix: supply the documented arguments
 **Ref resolves outside the declared target** (error)
 
 `{ <ref_function>('<name>') } has no entry for target '<target>'`
+
+Raised when a registry entry covers some target and not the current one.
 
 Fix: declare a relation for every target you publish to
 
@@ -1456,6 +1824,8 @@ Fix: declare a relation for every target you publish to
 
 `'<value>' is not a three-part fully-qualified name`
 
+Raised when a reference: relation is not fully qualified.
+
 Fix: use database.schema.object
 
 ### SST-REF020
@@ -1463,6 +1833,8 @@ Fix: use database.schema.object
 **Ref resolves to an incompatible object type** (error)
 
 `{ <ref_function>('<name>') } resolves to <found>, expected <expected>`
+
+Raised when a tool ref resolves to an object of the wrong kind.
 
 Fix: point the reference at a compatible object
 
@@ -1472,6 +1844,8 @@ Fix: point the reference at a compatible object
 
 `agent delegation cycle: <cycle>`
 
+Raised when an agent toolset reference graph is not acyclic.
+
 Fix: break the cycle
 
 ### SST-REF023
@@ -1479,6 +1853,8 @@ Fix: break the cycle
 **Ref target resolves to the same object across targets** (warning)
 
 `{ <ref_function>('<name>') } resolves to <value> for both dev and prod`
+
+Raised when two targets resolve one reference to one object.
 
 Fix: use per-target relations for anything writable
 
@@ -1488,6 +1864,8 @@ Fix: use per-target relations for anything writable
 
 `{ eval_metric('<name>') } does not resolve`
 
+Raised when an eval-metric reference names a metric absent from the eval_metrics/ tree.
+
 Fix: declare the metric in the eval_metrics/ tree, or correct the name
 
 ### SST-REF027
@@ -1495,6 +1873,8 @@ Fix: declare the metric in the eval_metrics/ tree, or correct the name
 **file() path escapes the project root** (error)
 
 `{ file('<path>') } resolves outside the project root`
+
+Raised when a file reference traverses above the project root.
 
 Fix: use a path inside the project
 
@@ -1504,6 +1884,8 @@ Fix: use a path inside the project
 
 `{ tag('<name>') } does not resolve`
 
+Raised when a tag reference names an entry absent from the tags: block.
+
 Fix: declare the entry under tags: in sst_config.yml, or correct the name
 
 ### SST-REF029
@@ -1511,6 +1893,8 @@ Fix: declare the entry under tags: in sst_config.yml, or correct the name
 **relationship() target not declared** (error)
 
 `{ relationship('<name>') } does not resolve`
+
+Raised when a relationship reference names a relationship absent from the project.
 
 Fix: declare the relationship, or correct the name
 
@@ -1520,6 +1904,8 @@ Fix: declare the relationship, or correct the name
 
 `{ filter('<name>') } does not resolve`
 
+Raised when a filter reference names a filter absent from the project.
+
 Fix: declare the filter, or correct the name
 
 ### SST-REF031
@@ -1527,6 +1913,8 @@ Fix: declare the filter, or correct the name
 **verified_query() target not declared** (error)
 
 `{ verified_query('<name>') } does not resolve`
+
+Raised when a verified-query reference names a query absent from the project.
 
 Fix: declare the verified query, or correct the name
 
@@ -1536,6 +1924,8 @@ Fix: declare the verified query, or correct the name
 
 `{ skill('<name>') } does not resolve`
 
+Raised when a skill reference names a skill absent from the project.
+
 Fix: declare the skill under skills/, or correct the name
 
 ### SST-REF033
@@ -1543,6 +1933,8 @@ Fix: declare the skill under skills/, or correct the name
 **Template does not match the ref grammar** (error)
 
 `<file>:<line>:<col>: '<text>' is not a valid reference: <detail>`
+
+Raised when a `{{ ... }}` span does not match `{{ fn(args) }}`.
 
 Fix: use `{{ fn('arg') }}`
 
@@ -1552,6 +1944,8 @@ Fix: use `{{ fn('arg') }}`
 
 `<file>:<line>:<col>: '{ table('<model>') }' is not a reference in 1.0; use '{ ref('<model>') }'`
 
+Raised when the legacy single-argument global appears anywhere in the project.
+
 Fix: run `sst migrate refs`, which is a pure rename
 
 ### SST-REF035
@@ -1559,6 +1953,8 @@ Fix: run `sst migrate refs`, which is a pure rename
 **Legacy column() global is rejected** (error)
 
 `<file>:<line>:<col>: '{ column('<model>','<column>') }' is not a reference in 1.0; use '{ ref('<model>','<column>') }'`
+
+Raised when the legacy two-argument global appears anywhere in the project.
 
 Fix: run `sst migrate refs`, which is a pure rename
 
@@ -1568,6 +1964,8 @@ Fix: run `sst migrate refs`, which is a pure rename
 
 `{ plugin('<name>') } does not resolve`
 
+Raised when plugin() names a plugin the project does not declare.
+
 Fix: declare the plugin under the plugins directory, or correct the name
 
 ### SST-REF037
@@ -1575,6 +1973,8 @@ Fix: declare the plugin under the plugins directory, or correct the name
 **extension() names an extension this project publishes** (error)
 
 `agent '<artifact>': extension('<name>') names a <kind> this project publishes`
+
+Raised when extension() names an extension this project publishes itself.
 
 Fix: reference it with skill() or plugin(), which pins the published version
 
@@ -1584,6 +1984,8 @@ Fix: reference it with skill() or plugin(), which pins the published version
 
 `<artifact>: <function>() is not allowed in <field>`
 
+Raised when a template call uses a function the field does not allow.
+
 Fix: remove the call; each field accepts only the functions its reference page lists
 
 ### SST-REF043
@@ -1591,6 +1993,8 @@ Fix: remove the call; each field accepts only the functions its reference page l
 **Expression references a table outside the view** (error)
 
 `<artifact>: ref('<model>') is not one of the view's tables`
+
+Raised when a member expression's ref() names a model outside the member's non-empty tables:.
 
 Fix: add the model to the view's tables:, or reference one of them
 
@@ -1600,6 +2004,8 @@ Fix: add the model to the view's tables:, or reference one of them
 
 `<artifact>: table entry <found> is not a { ref('<model>') } call`
 
+Raised when a view tables: entry is not exactly one `{{ ref('<model>') }}` call.
+
 Fix: write each tables: entry as `{{ ref('<model>') }}`
 
 ### SST-REF045
@@ -1608,6 +2014,8 @@ Fix: write each tables: entry as `{{ ref('<model>') }}`
 
 `<artifact>: <field> is written as <found>; it takes the bare model name`
 
+Raised when a relationship left_table/right_table is written as a {{ ref() }} call instead of the bare model name.
+
 Fix: run sst migrate refs --write, or write the model name
 
 ### SST-REF900
@@ -1615,6 +2023,8 @@ Fix: run sst migrate refs --write, or write the model name
 **Resolver exceeded max depth** (error)
 
 `resolution depth <found> exceeded the limit <expected>`
+
+Raised when the resolver recursed past its depth cap.
 
 Fix: reduce the nesting of metric() references
 
@@ -1626,6 +2036,8 @@ Fix: reduce the nesting of metric() references
 
 `<member> declares table '<name>', which no <type> lists`
 
+Raised when a declared table appears in no artifact of the owning type.
+
 Fix: add the table to a view, or correct the member
 
 ### SST-MEM002
@@ -1633,6 +2045,8 @@ Fix: add the table to a view, or correct the member
 **tables absent and nothing inferable** (warning)
 
 `<member> declares no tables: and none can be inferred`
+
+Raised when the expression yields no table origins.
 
 Fix: declare tables: explicitly
 
@@ -1642,6 +2056,8 @@ Fix: declare tables: explicitly
 
 `<member> declares table '<name>', which is not a known dbt model`
 
+Raised when a declared table does not name a model in the dbt manifest.
+
 Fix: use a dbt model name the manifest knows
 
 ### SST-MEM004
@@ -1649,6 +2065,8 @@ Fix: use a dbt model name the manifest knows
 **Member declares one table twice** (error)
 
 `<member> lists table '<name>' more than once`
+
+Raised when a tables: list contains a repeated entry.
 
 Fix: remove the duplicate entry
 
@@ -1658,6 +2076,8 @@ Fix: remove the duplicate entry
 
 `<member> attaches to no <type>`
 
+Raised when the membership function returns an empty artifact set.
+
 Fix: add its tables to a view, or delete the member
 
 ### SST-MEM006
@@ -1665,6 +2085,8 @@ Fix: add its tables to a view, or delete the member
 **Derived member declares tables** (error)
 
 `<member> is derived and declares tables:`
+
+Raised when a derived metric declares a table list.
 
 Fix: remove tables:; derived members are view-scoped
 
@@ -1674,6 +2096,8 @@ Fix: remove tables:; derived members are view-scoped
 
 `<member>: transitive tables <outside> are not in its own tables:`
 
+Raised when a composed member's transitive tables are not a subset of its declared list.
+
 Fix: widen tables:, or narrow the expression
 
 ### SST-MEM008
@@ -1681,6 +2105,8 @@ Fix: widen tables:, or narrow the expression
 **Member attaches to an artifact lacking a declared table** (error)
 
 `<member> attaches to <artifact>, which lacks table '<name>'`
+
+Raised when attachment would place a member on an artifact missing one of its tables.
 
 Fix: align the member's tables with the view
 
@@ -1690,6 +2116,8 @@ Fix: align the member's tables with the view
 
 `<artifact>: synonym '<value>' is claimed by <a> and <b>`
 
+Raised when two claimants in one view share a synonym and at least one of them is a metric; a table and its columns may share one.
+
 Fix: make synonyms unique within the view
 
 ### SST-MEM010
@@ -1697,6 +2125,8 @@ Fix: make synonyms unique within the view
 **Member declares a table the artifact reaches only by relationship** (warning)
 
 `<member> declares '<name>', reachable from <artifact> only through a join`
+
+Raised when a declared table is present transitively rather than directly.
 
 Fix: declare the joined table explicitly
 
@@ -1706,17 +2136,23 @@ Fix: declare the joined table explicitly
 
 `<member> attaches to <count> artifacts`
 
+Raised when attachment is implicit, so the reach is reported.
+
 ### SST-MEM012
 
 **Tables inferred for a member** (info)
 
 `<member>: tables inferred as <value>`
 
+Raised when a member's tables were derived from its expression origins.
+
 ### SST-MEM013
 
 **Attachment differs between two membership calls** (error)
 
 `<member> attached to <a> then <b>`
+
+Raised when one membership function produced two answers for one member.
 
 Fix: report this as a bug
 
@@ -1726,6 +2162,8 @@ Fix: report this as a bug
 
 `<member> passed attachment for <artifact> and would be dropped at render`
 
+Raised when a member passes membership and a render-time filter would remove it.
+
 Fix: fix the expression, or the view's table list
 
 ### SST-MEM015
@@ -1733,6 +2171,8 @@ Fix: fix the expression, or the view's table list
 **Private member referenced from outside the view** (warning)
 
 `<member> is private and is referenced by <artifact>`
+
+Raised when a private member is named by an agent tool or a verified query.
 
 Fix: make it public, or drop the reference
 
@@ -1742,6 +2182,8 @@ Fix: make it public, or drop the reference
 
 `<member> attaches to <a> and <b> with conflicting scope`
 
+Raised when one member would render with different semantics in two artifacts.
+
 Fix: split the member
 
 ### SST-MEM100
@@ -1749,6 +2191,8 @@ Fix: split the member
 **Member attached to a type that accepts no members** (error)
 
 `<type> accepts no members; <member> was attached`
+
+Raised when attachment targets an artifact type with no member model.
 
 Fix: move the member
 
@@ -1758,6 +2202,8 @@ Fix: move the member
 
 `<member>: expression reaches <outside>, beyond its declared tables:`
 
+Raised when the expression's table origins are a superset of the declared list.
+
 Fix: widen tables:, or narrow the expression
 
 ### SST-MEM103
@@ -1766,11 +2212,15 @@ Fix: widen tables:, or narrow the expression
 
 `<artifact>: <value>`
 
+Raised when per-artifact member counts after attachment.
+
 ### SST-MEM104
 
 **Artifact has no members and its type requires at least one** (error)
 
 `<artifact> resolves no members`
+
+Raised when an artifact type that requires members has none.
 
 Fix: attach at least one dimension or metric
 
@@ -1780,6 +2230,8 @@ Fix: attach at least one dimension or metric
 
 `<a> and <b> share table '<name>' with conflicting instructions`
 
+Raised when one table carries contradictory guidance in two views.
+
 Fix: reconcile the instruction blocks
 
 ### SST-MEM106
@@ -1787,6 +2239,8 @@ Fix: reconcile the instruction blocks
 **Verified query attaches through a different membership rule** (error)
 
 `<member> used a verified-query-specific attachment path`
+
+Raised when a VQ attachment does not go through the single membership function.
 
 Fix: use the one membership function
 
@@ -1796,11 +2250,15 @@ Fix: use the one membership function
 
 `<member> skipped: <count> unresolved references`
 
+Raised when attachment did not run because the member's refs did not resolve.
+
 ### SST-MEM900
 
 **Attachment not idempotent** (error)
 
 `attachment for <member> changed on a second pass`
+
+Raised when running attachment twice produced different results.
 
 Fix: report this as a bug
 
@@ -1812,6 +2270,8 @@ Fix: report this as a bug
 
 `<type> '<name>' is declared more than once`
 
+Raised when two artifacts or members of one type share a name, across all files.
+
 Fix: rename one of them
 
 ### SST-VAL002
@@ -1819,6 +2279,8 @@ Fix: rename one of them
 **Name is not unique across the extension namespace** (error)
 
 `<type> '<name>' collides with <other> in another namespace`
+
+Raised when global uniqueness is required and two declarations collide.
 
 Fix: rename one of them
 
@@ -1828,6 +2290,8 @@ Fix: rename one of them
 
 `<type> '<name>' has no description`
 
+Raised when a describable object has no description.
+
 Fix: add a description; it is how Analyst chooses between objects
 
 ### SST-VAL004
@@ -1835,6 +2299,8 @@ Fix: add a description; it is how Analyst chooses between objects
 **Description shorter than the configured floor** (warning)
 
 `<type> '<name>' description is <size> chars, under <expected>`
+
+Raised when a description is present and below the length floor.
 
 Fix: expand the description
 
@@ -1844,13 +2310,19 @@ Fix: expand the description
 
 `<type> '<name>' description describes what it is, not when to use it`
 
+Raised when a description omits invocation guidance for a routed object.
+
 Fix: state the trigger condition
+
+Note: It is the only text the agent matches against, so a description that never states a trigger means the object is silently never invoked, which is indistinguishable from not publishing it.
 
 ### SST-VAL006
 
 **Hardcoded fully-qualified name in an authored file** (error)
 
 `<type> '<name>': '<field>' hardcodes '<value>'`
+
+Raised when a literal three-part name appears in an authored artifact.
 
 Fix: resolve the object through sst_config.yml or a reference: block
 
@@ -1860,6 +2332,8 @@ Fix: resolve the object through sst_config.yml or a reference: block
 
 `<type> '<name>' is referenced by nothing`
 
+Raised when a declared object has no consumer anywhere in the project.
+
 Fix: reference it, or delete it
 
 ### SST-VAL008
@@ -1867,6 +2341,8 @@ Fix: reference it, or delete it
 **Multi-line string uses a folded scalar** (error)
 
 `<type> '<name>': '<field>' uses a folded scalar`
+
+Raised when a multi-line value uses &gt; or &gt;-, which reflows prose the model reads.
 
 Fix: use |- so line breaks survive
 
@@ -1876,6 +2352,8 @@ Fix: use |- so line breaks survive
 
 `<path> is not canonically formatted`
 
+Raised when sst format would change the file.
+
 Fix: run sst format
 
 ### SST-VAL010
@@ -1883,6 +2361,8 @@ Fix: run sst format
 **Reference graph contains a cycle** (error)
 
 `<type> reference cycle: <cycle>`
+
+Raised when a declared reference graph of one kind is not acyclic.
 
 Fix: break the cycle
 
@@ -1892,6 +2372,8 @@ Fix: break the cycle
 
 `<type> '<name>': '<field>' would be <detail> by the renderer`
 
+Raised when a declared value is validated and would not reach the published object intact.
+
 Fix: emit the value unmodified, or stop declaring it
 
 ### SST-VAL012
@@ -1899,6 +2381,8 @@ Fix: emit the value unmodified, or stop declaring it
 **Deprecated key spelling in use** (warning)
 
 `<type> '<name>' uses '<field>'; the current spelling is '<expected>'`
+
+Raised when a superseded key spelling is present and still honoured.
 
 Fix: rename the key
 
@@ -1908,6 +2392,8 @@ Fix: rename the key
 
 `<type> '<name>': '<key>' is not modelled and would be rendered as-is`
 
+Raised when an off-spec key reaches the renderer without validation and `snowflake.allow_unknown_keys` is `false`.
+
 Fix: promote the key, remove it, or set `snowflake.allow_unknown_keys: true` to render it with a warning instead
 
 ### SST-VAL014
@@ -1915,6 +2401,8 @@ Fix: promote the key, remove it, or set `snowflake.allow_unknown_keys: true` to 
 **Unmodelled key reported** (warning)
 
 `<type> '<name>': <count> unmodelled keys rendered`
+
+Raised when off-spec usage is present and visible and `snowflake.allow_unknown_keys` is `true`, its default.
 
 Fix: promote the keys to first-class fields if they are load-bearing
 
@@ -1924,13 +2412,19 @@ Fix: promote the keys to first-class fields if they are load-bearing
 
 `<type> '<name>' would publish before <blocker>, which it depends on`
 
+Raised when a dependent artifact is ordered before its dependency.
+
 Fix: include the blocker in the selection, or break the dependency -- the ORDER is not authorable
+
+Note: Publish order is the registry's type order, which is proven a valid topological sort, so this means the selection is missing the blocker, or the project has a dependency the registry's type order cannot satisfy.
 
 ### SST-VAL016
 
 **Referenced object is not published by this project or declared external** (error)
 
 `<type> '<name>' references '<value>', which is neither published nor declared`
+
+Raised when a reference names an object with no owner.
 
 Fix: publish it, or declare it under reference:
 
@@ -1940,6 +2434,8 @@ Fix: publish it, or declare it under reference:
 
 `<type> '<name>' duplicates <other>`
 
+Raised when a filter and a custom instruction, or two near-duplicate descriptions, overlap.
+
 Fix: say it once, in the enforceable place
 
 ### SST-VAL018
@@ -1947,6 +2443,8 @@ Fix: say it once, in the enforceable place
 **Composed prose surface exceeds the configured budget** (warning)
 
 `<artifact>: composed instruction surface is <size> chars, over <expected>`
+
+Raised when descriptions plus instructions plus tool text exceed the budget.
 
 Fix: move bulk content into a referenced file
 
@@ -1956,6 +2454,8 @@ Fix: move bulk content into a referenced file
 
 `<type> '<name>': prose names '<value>', which does not resolve`
 
+Raised when free text references a filter, metric, dimension, table or tool that is absent.
+
 Fix: correct the name, or remove the mention
 
 ### SST-VAL020
@@ -1964,11 +2464,15 @@ Fix: correct the name, or remove the mention
 
 `<rule_id> skipped: <detail>`
 
+Raised when a rule needs an observation, a connection or a cap that was unavailable.
+
 ### SST-VAL101
 
 **Metric expression is not an aggregate** (error)
 
 `metric '<metric>' is table-scoped and its expr is not an aggregate`
+
+Raised when a table-scoped metric's expression has no aggregate at its root.
 
 Fix: wrap the expression in an aggregate; if the expression is a WINDOW function, compute it in the dbt model -- do NOT make the metric derived
 
@@ -1978,6 +2482,8 @@ Fix: wrap the expression in an aggregate; if the expression is a WINDOW function
 
 `window function <function> in derived metric '<metric>'`
 
+Raised when a derived metric's expression contains a window function.
+
 Fix: compute the window in the dbt model and aggregate the resulting column
 
 ### SST-VAL103
@@ -1985,6 +2491,8 @@ Fix: compute the window in the dbt model and aggregate the resulting column
 **Derived metric aggregates another metric** (error, always an error)
 
 `derived metric '<metric>' aggregates '<other>'`
+
+Raised when a derived metric wraps a metric reference in an aggregate.
 
 Fix: reference the metric without an outer aggregate
 
@@ -1994,6 +2502,8 @@ Fix: reference the metric without an outer aggregate
 
 `derived metric '<metric>' references column '<column>'`
 
+Raised when a derived metric's expression names a physical column.
+
 Fix: reference metrics only, or make the metric table-scoped
 
 ### SST-VAL105
@@ -2001,6 +2511,8 @@ Fix: reference metrics only, or make the metric table-scoped
 **Derived metric references an un-aggregated fact or dimension** (error, always an error)
 
 `derived metric '<metric>' references un-aggregated <member_type> '<other>'`
+
+Raised when a derived metric reaches an un-aggregated member.
 
 Fix: aggregate it in a table-scoped metric first
 
@@ -2010,6 +2522,8 @@ Fix: aggregate it in a table-scoped metric first
 
 `metric '<metric>' is table-scoped and references derived metric '<other>'`
 
+Raised when a table-scoped metric references a view-scoped metric.
+
 Fix: make '{metric}' derived, or inline the expression
 
 ### SST-VAL107
@@ -2017,6 +2531,8 @@ Fix: make '{metric}' derived, or inline the expression
 **Regular metric references a non-additive metric** (error, always an error)
 
 `metric '<metric>' references '<other>', which declares non_additive_dimensions`
+
+Raised when a table-scoped metric references a metric with non-additive dimensions.
 
 Fix: remove the reference, or drop the non-additive declaration
 
@@ -2026,6 +2542,8 @@ Fix: remove the reference, or drop the non-additive declaration
 
 `derived metric '<metric>' declares tables:`
 
+Raised when a derived metric carries a table list.
+
 Fix: remove tables:; a derived metric is view-scoped by definition
 
 ### SST-VAL109
@@ -2033,6 +2551,8 @@ Fix: remove tables:; a derived metric is view-scoped by definition
 **Table-scoped metric declares no table list** (error)
 
 `metric '<metric>' is table-scoped and declares no tables:`
+
+Raised when a non-derived metric omits its table list.
 
 Fix: declare tables: explicitly
 
@@ -2042,6 +2562,8 @@ Fix: declare tables: explicitly
 
 `metric '<metric>' expression contains bare identifier '<column>'`
 
+Raised when a raw expression carries what looks like a column and is not ref-checked.
+
 Fix: wrap it in {{ ref('&lt;model&gt;','&lt;column&gt;') }} so it is checked
 
 ### SST-VAL111
@@ -2049,6 +2571,8 @@ Fix: wrap it in {{ ref('&lt;model&gt;','&lt;column&gt;') }} so it is checked
 **Division with no zero guard** (warning)
 
 `metric '<metric>' divides without DIV0 or NULLIF on the denominator`
+
+Raised when a division appears with an unguarded denominator.
 
 Fix: wrap the denominator in NULLIF, or use DIV0
 
@@ -2058,6 +2582,8 @@ Fix: wrap the denominator in NULLIF, or use DIV0
 
 `metric '<metric>' in <artifact> reaches <outside>`
 
+Raised when an expression's table origins are not all in the attached artifact.
+
 Fix: add the table to the view, or narrow the expression
 
 ### SST-VAL113
@@ -2065,6 +2591,8 @@ Fix: add the table to the view, or narrow the expression
 **using_relationships declared on a derived metric** (error)
 
 `derived metric '<metric>' declares using_relationships`
+
+Raised when a view-scoped metric declares a join path.
 
 Fix: remove using_relationships; derived metrics have no join path
 
@@ -2074,6 +2602,8 @@ Fix: remove using_relationships; derived metrics have no join path
 
 `metric '<metric>': relationship '<other>' does not start from '<name>'`
 
+Raised when a declared join path begins elsewhere.
+
 Fix: name a relationship whose left side is the metric's table
 
 ### SST-VAL115
@@ -2081,6 +2611,8 @@ Fix: name a relationship whose left side is the metric's table
 **using_relationships is a chain** (error)
 
 `metric '<metric>' declares a chain of <count> relationships`
+
+Raised when using_relationships lists more than one hop.
 
 Fix: declare one relationship, not a path
 
@@ -2090,6 +2622,8 @@ Fix: declare one relationship, not a path
 
 `metric '<metric>' has <count> paths to '<name>' and declares no using_relationships`
 
+Raised when more than one relationship path exists and none is declared.
+
 Fix: declare using_relationships to pick the path
 
 ### SST-VAL117
@@ -2097,6 +2631,8 @@ Fix: declare using_relationships to pick the path
 **Snapshot-grain metric declares no non-additive dimensions** (warning)
 
 `metric '<metric>' is over a snapshot grain and declares no non_additive_dimensions`
+
+Raised when a balance or snapshot measure is treated as additive.
 
 Fix: declare the non-additive dimension, or confirm additivity
 
@@ -2106,6 +2642,8 @@ Fix: declare the non-additive dimension, or confirm additivity
 
 `metric '<metric>': non_additive_dimensions names <value>, which does not resolve`
 
+Raised when a non-additive declaration names a missing table or dimension.
+
 Fix: correct the table and dimension names
 
 ### SST-VAL119
@@ -2114,11 +2652,15 @@ Fix: correct the table and dimension names
 
 `metric '<metric>': effective non_additive_dimensions order is <value>`
 
+Raised when the declared order is significant and is surfaced.
+
 ### SST-VAL120
 
 **Metric declares a sort with no ordering semantics** (warning)
 
 `metric '<metric>' declares sort_direction with no null_order`
+
+Raised when half of an ordering pair is declared.
 
 Fix: declare null_order explicitly
 
@@ -2128,6 +2670,8 @@ Fix: declare null_order explicitly
 
 `metric '<metric>': access_modifier is '<found>'`
 
+Raised when the access modifier is outside the closed set.
+
 Fix: use public_access or private_access
 
 ### SST-VAL122
@@ -2135,6 +2679,8 @@ Fix: use public_access or private_access
 **visibility used instead of access_modifier** (warning)
 
 `metric '<metric>' uses visibility; the current key is access_modifier`
+
+Raised when the deprecated access spelling is in use.
 
 Fix: rename the key
 
@@ -2144,6 +2690,8 @@ Fix: rename the key
 
 `metric '<metric>' would publish without the derived-metric restriction check`
 
+Raised when the critical set was bypassed for a metric about to be published.
+
 Fix: re-enable the restriction rules; Snowflake enforces none of them
 
 ### SST-VAL124
@@ -2151,6 +2699,8 @@ Fix: re-enable the restriction rules; Snowflake enforces none of them
 **Duplicate metric expression under two names** (warning)
 
 `metric '<metric>' has the same expression as '<other>'`
+
+Raised when two metrics compute the same thing.
 
 Fix: keep one, and synonym the other
 
@@ -2160,11 +2710,15 @@ Fix: keep one, and synonym the other
 
 `metric '<metric>' attaches to <count> views`
 
+Raised when attachment is implicit; the reach is reported.
+
 ### SST-VAL126
 
 **Window applies to a column** (error, always an error)
 
 `metric '<metric>': <function> must apply to a metric or an aggregate to be a window metric`
+
+Raised when a window metric's function applies to a row-level column, not a metric or aggregate.
 
 Fix: pass {{ metric() }} or an aggregate such as SUM(...); a row-level window belongs in a fact or dimension
 
@@ -2174,6 +2728,8 @@ Fix: pass {{ metric() }} or an aggregate such as SUM(...); a row-level window be
 
 `metric '<metric>': window frame '<value>' needs an order_by`
 
+Raised when a window declares a frame and no order_by.
+
 Fix: add order_by, or remove the frame
 
 ### SST-VAL128
@@ -2181,6 +2737,8 @@ Fix: add order_by, or remove the frame
 **Metric references a window metric** (error, always an error)
 
 `metric '<metric>' references '<other>', a window function metric`
+
+Raised when a metric references a window-function metric.
 
 Fix: reference the metric the window applies to instead; Snowflake does not allow a window metric in another metric
 
@@ -2190,6 +2748,8 @@ Fix: reference the metric the window applies to instead; Snowflake does not allo
 
 `metric '<metric>': window <field> names <value>, which is not <expected>`
 
+Raised when a window partition_by / partition_by_excluding / order_by entry names something that is not a dimension (or metric of the same table), or a dimension the metric's table cannot reach in this view.
+
 Fix: name a dimension the metric's table can reach, or a metric of the same table
 
 ### SST-VAL201
@@ -2197,6 +2757,8 @@ Fix: name a dimension the metric's table can reach, or a metric of the same tabl
 **relationship_conditions is empty** (error)
 
 `relationship '<relationship>' declares no conditions`
+
+Raised when a relationship has an empty or absent condition list.
 
 Fix: declare at least one condition
 
@@ -2206,6 +2768,8 @@ Fix: declare at least one condition
 
 `relationship '<relationship>': condition '<value>' would be dropped from the DDL`
 
+Raised when a parsed condition would not survive rendering.
+
 Fix: fix the condition so it renders, or remove it
 
 ### SST-VAL203
@@ -2213,6 +2777,8 @@ Fix: fix the condition so it renders, or remove it
 **Relationship names a table not in the view** (error)
 
 `relationship '<relationship>' names '<name>', absent from <artifact>`
+
+Raised when a relationship side is not in the attached view's table list.
 
 Fix: add the table to the view, or drop the relationship
 
@@ -2222,6 +2788,8 @@ Fix: add the table to the view, or drop the relationship
 
 `relationship '<relationship>': '<column>' is not on '<name>'`
 
+Raised when a condition column does not resolve on its own side.
+
 Fix: correct the column, or swap the sides
 
 ### SST-VAL205
@@ -2229,6 +2797,8 @@ Fix: correct the column, or swap the sides
 **Relationship sides never appear together in any view** (error)
 
 `relationship '<relationship>' joins '<a>' and '<b>', which share no view`
+
+Raised when the two sides are never co-present.
 
 Fix: add both tables to one view, or drop the relationship
 
@@ -2238,6 +2808,8 @@ Fix: add both tables to one view, or drop the relationship
 
 `relationship '<relationship>' is a range join and '<name>' declares no distinct_range`
 
+Raised when a range join's target lacks the required declaration.
+
 Fix: declare distinct_range on the target table
 
 ### SST-VAL207
@@ -2245,6 +2817,8 @@ Fix: declare distinct_range on the target table
 **Self-loop on a single logical table** (error)
 
 `relationship '<relationship>' joins '<name>' to itself`
+
+Raised when a relationship's two sides are the same logical table.
 
 Fix: declare two logical names over the one model
 
@@ -2254,6 +2828,8 @@ Fix: declare two logical names over the one model
 
 `relationship '<relationship>' joins '<a>' to '<b>', whose grain is finer than one row per key`
 
+Raised when the fan-out trap: an equality join multiplies rows.
+
 Fix: use an asof join, or aggregate the target
 
 ### SST-VAL209
@@ -2261,6 +2837,8 @@ Fix: use an asof join, or aggregate the target
 **Ambiguous join path between two tables** (warning)
 
 `<artifact>: <count> paths between '<a>' and '<b>'`
+
+Raised when more than one distinct relationship path connects two logical tables.
 
 Fix: declare using_relationships on the affected metrics
 
@@ -2270,6 +2848,8 @@ Fix: declare using_relationships on the affected metrics
 
 `relationship '<relationship>': '<name>' declares neither primary_key nor unique_keys over <value>`
 
+Raised when cardinality will be guessed from data.
+
 Fix: declare the key; it is the cheapest fan-out protection
 
 ### SST-VAL211
@@ -2277,6 +2857,8 @@ Fix: declare the key; it is the cheapest fan-out protection
 **relationship_type or join_type declared** (warning)
 
 `relationship '<relationship>' declares '<field>', which is not emitted`
+
+Raised when a persisted-but-inert attribute is declared.
 
 Fix: remove the key
 
@@ -2286,6 +2868,8 @@ Fix: remove the key
 
 `relationship '<relationship>' declares cardinality <found>; the spot-check found <value>`
 
+Raised when a cardinality spot-check contradicts the declaration.
+
 Fix: correct the declaration, or fix the grain
 
 ### SST-VAL213
@@ -2293,6 +2877,8 @@ Fix: correct the declaration, or fix the grain
 **Multi-column condition is not expressible** (error)
 
 `relationship '<relationship>': condition '<value>' spans multiple columns per side`
+
+Raised when a condition cannot be rendered as a single column pair.
 
 Fix: split it into one condition per column pair
 
@@ -2302,6 +2888,8 @@ Fix: split it into one condition per column pair
 
 `metric '<metric>' names relationship '<relationship>', which is not declared`
 
+Raised when a join-path declaration names a missing relationship.
+
 Fix: declare the relationship, or correct the name
 
 ### SST-VAL215
@@ -2309,6 +2897,8 @@ Fix: declare the relationship, or correct the name
 **Relationship graph has a cycle that changes results** (error)
 
 `<artifact>: relationship cycle <cycle>`
+
+Raised when the join graph contains a cycle that is not a role-playing pair.
 
 Fix: break the cycle, or split into role-playing tables
 
@@ -2318,17 +2908,23 @@ Fix: break the cycle, or split into role-playing tables
 
 `<artifact>: many-to-many path <value> inferred through '<name>'`
 
+Raised when a bridge-table path was detected and deduplicated.
+
 ### SST-VAL217
 
 **Join graph summary** (info)
 
 `<artifact>: <count> tables, <value>`
 
+Raised when per-view join graph shape, reported on request.
+
 ### SST-VAL218
 
 **Range join target has overlapping ranges** (error)
 
 `relationship '<relationship>': '<name>' declares distinct_range over (<a>, <b>) but the ranges overlap, for example <value>`
+
+Raised when a range join's target declares `distinct_range` and the target's own rows overlap, so one source row joins more than one target row.
 
 Fix: make the ranges disjoint, or narrow the range columns
 
@@ -2338,13 +2934,19 @@ Fix: make the ranges disjoint, or narrow the range columns
 
 `<artifact>: table_config.<model>.<field> names column '<column>', which does not exist on <model>`
 
+Raised when a column under `table_config.<model>.distinct_range` is absent from `<model>` in the dbt manifest.
+
 Fix: correct the column name, or add it to the dbt model
+
+Note: Primary and unique keys live on the dbt model; their existence check is `SST-VAL310`.
 
 ### SST-VAL220
 
 **A declared view variable is never referenced** (warning)
 
 `<artifact>: variable '<name>' is declared and never used`
+
+Raised when a name in `variables:` appears in no `expr:` on the view.
 
 Fix: reference it in an expr, or remove it
 
@@ -2354,6 +2956,8 @@ Fix: reference it in an expr, or remove it
 
 `<artifact>: '<name>' in <field> is neither a column nor a declared variable`
 
+Raised when an unrecognised bare identifier in an `expr:`.
+
 Fix: declare the variable, correct the name, or wrap the column in a two-arg ref
 
 ### SST-VAL222
@@ -2361,6 +2965,8 @@ Fix: declare the variable, correct the name, or wrap the column in a two-arg ref
 **Dimension declares a private access modifier** (error)
 
 `<artifact>: dimension '<member>' declares access_modifier '<value>'; SST does not support a private dimension`
+
+Raised when a `dimension` carries `access_modifier: private_access`.
 
 Fix: remove the key
 
@@ -2370,13 +2976,19 @@ Fix: remove the key
 
 `<artifact>: column '<column>' on '<model>' appears in both primary_key and unique_keys`
 
+Raised when a column appears in both a model's `config.meta.sst.primary_key` and `.unique_keys`.
+
 Fix: remove it from `unique_keys` -- a primary key is already unique
+
+Note: `{artifact}` is the model, not a view.
 
 ### SST-VAL301
 
 **View resolves no dimensions and no metrics** (error)
 
 `<artifact> resolves no dimension and no metric`
+
+Raised when a semantic view has no queryable member from any source.
 
 Fix: attach at least one member, or enrich the base models
 
@@ -2386,6 +2998,8 @@ Fix: attach at least one member, or enrich the base models
 
 `<artifact>: table '<name>' resolves to relation '<value>'`
 
+Raised when an alias: makes the dbt relation differ from the model name.
+
 Fix: point base_table at the resolved relation, not the model name
 
 ### SST-VAL303
@@ -2393,6 +3007,8 @@ Fix: point base_table at the resolved relation, not the model name
 **View references a disabled or ephemeral model** (error)
 
 `<artifact>: '<name>' is <found> in dbt and produces no relation`
+
+Raised when a referenced model is enabled: false or ephemeral.
 
 Fix: enable the model, or change its materialisation
 
@@ -2402,6 +3018,8 @@ Fix: enable the model, or change its materialisation
 
 `<artifact>: max_staleness is <found>; the minimum is 120`
 
+Raised when a view declares max_staleness under 120 seconds.
+
 Fix: raise max_staleness to at least 120
 
 ### SST-VAL305
@@ -2409,6 +3027,8 @@ Fix: raise max_staleness to at least 120
 **Fact column is not numeric** (error)
 
 `<artifact>: fact '<member>' has type <found>`
+
+Raised when a fact is declared over a non-numeric column.
 
 Fix: use a numeric column, or make it a dimension
 
@@ -2418,6 +3038,8 @@ Fix: use a numeric column, or make it a dimension
 
 `<artifact>: time_dimension '<member>' has type <found>`
 
+Raised when a time dimension is declared over a non-temporal column.
+
 Fix: use a date or timestamp column, or change column_type
 
 ### SST-VAL307
@@ -2426,13 +3048,19 @@ Fix: use a date or timestamp column, or change column_type
 
 `<artifact> would be replaced without COPY GRANTS or CREATE OR ALTER`
 
+Raised when a replace path omits grant preservation.
+
 Fix: emit COPY GRANTS on every replace
+
+Note: Forbidden.
 
 ### SST-VAL308
 
 **column_type metadata is absent** (error)
 
 `<artifact>: column '<member>' declares no column_type`
+
+Raised when a column consumed by the semantic layer has no column_type.
 
 Fix: declare dimension, time_dimension or fact
 
@@ -2442,6 +3070,8 @@ Fix: declare dimension, time_dimension or fact
 
 `<artifact>: column '<member>' declares no data_type`
 
+Raised when a column has no data_type from dbt or from meta.sst.
+
 Fix: declare the Snowflake type
 
 ### SST-VAL310
@@ -2449,6 +3079,8 @@ Fix: declare the Snowflake type
 **Primary key column is not on the table** (error)
 
 `<artifact>: primary_key names '<column>', absent from '<name>'`
+
+Raised when a column named in a model's `config.meta.sst.primary_key` or `.unique_keys` does not exist on that model.
 
 Fix: correct the primary_key list
 
@@ -2458,6 +3090,8 @@ Fix: correct the primary_key list
 
 `<artifact>: '<name>' declares neither primary_key nor unique_keys, and a relationship references it`
 
+Raised when a table that must declare a key does not.
+
 Fix: declare primary_key in config.meta.sst
 
 ### SST-VAL312
@@ -2465,6 +3099,8 @@ Fix: declare primary_key in config.meta.sst
 **Table declares no primary key or unique keys** (warning)
 
 `<artifact>: '<name>' declares neither primary_key nor unique_keys`
+
+Raised when a table leaves the cheapest fan-out protection unused.
 
 Fix: declare one; cardinality is otherwise guessed from data
 
@@ -2474,6 +3110,8 @@ Fix: declare one; cardinality is otherwise guessed from data
 
 `<artifact>: '<member>' is is_enum and declares no sample_values`
 
+Raised when a closed value set is asserted with no values.
+
 Fix: populate sample_values, or clear is_enum
 
 ### SST-VAL315
@@ -2481,6 +3119,8 @@ Fix: populate sample_values, or clear is_enum
 **Non-enum column declares sample values that look exhaustive** (warning)
 
 `<artifact>: '<member>' declares <count> sample_values and is not is_enum`
+
+Raised when a sampled value set may be being read as complete.
 
 Fix: set is_enum if the set is genuinely closed
 
@@ -2490,6 +3130,8 @@ Fix: set is_enum if the set is genuinely closed
 
 `<artifact>: '<member>'.<field> contains '<value>'`
 
+Raised when an auto-managed field holds nan, NaN, None, null or `<NA>`.
+
 Fix: re-run sst enrich; the value came from a pandas round-trip
 
 ### SST-VAL317
@@ -2497,6 +3139,8 @@ Fix: re-run sst enrich; the value came from a pandas round-trip
 **Auto-managed field hand-edited** (warning)
 
 `<artifact>: '<member>'.<field> differs from the enriched value`
+
+Raised when a field SST manages was edited by hand.
 
 Fix: let sst enrich own the field
 
@@ -2506,6 +3150,8 @@ Fix: let sst enrich own the field
 
 `<artifact>: '<member>' references excluded column '<column>'`
 
+Raised when an expression names a column marked exclude.
+
 Fix: un-exclude the column, or change the expression
 
 ### SST-VAL319
@@ -2514,11 +3160,15 @@ Fix: un-exclude the column, or change the expression
 
 `<artifact>: <value>`
 
+Raised when attachment is implicit, so the reach is reported per view.
+
 ### SST-VAL320
 
 **Drift comparison not normalised on both sides** (error)
 
 `<artifact>: drift comparison compared raw DDL`
+
+Raised when a definition comparison did not normalise the live side.
 
 Fix: normalise both sides before comparing
 
@@ -2528,6 +3178,8 @@ Fix: normalise both sides before comparing
 
 `<artifact>: tags would be set by CREATE OR ALTER, which cannot set them`
 
+Raised when tag application is fused to the create path.
+
 Fix: apply tags in a separate ALTER
 
 ### SST-VAL322
@@ -2535,6 +3187,8 @@ Fix: apply tags in a separate ALTER
 **Two views share a table with contradictory descriptions** (warning)
 
 `<a> and <b> share '<name>' with conflicting descriptions`
+
+Raised when one table is described differently in two views.
 
 Fix: reconcile the two descriptions
 
@@ -2544,6 +3198,8 @@ Fix: reconcile the two descriptions
 
 `<artifact>: '<name>' has no columns: block in dbt`
 
+Raised when a referenced model exposes no column metadata.
+
 Fix: add a columns: block so column refs can be checked
 
 ### SST-VAL324
@@ -2551,6 +3207,8 @@ Fix: add a columns: block so column refs can be checked
 **Base model has no contract and no tests** (warning)
 
 `<artifact>: '<name>' has <detail>`
+
+Raised when a model feeding a view has no contract or no tests at all.
 
 Fix: add a contract, or at least a uniqueness test on the grain
 
@@ -2560,6 +3218,8 @@ Fix: add a contract, or at least a uniqueness test on the grain
 
 `model '<model>': column '<column>' is described in YAML and absent from the relation`
 
+Raised when `enrich` found a `nodes.<id>.columns` entry the warehouse relation does not have.
+
 Fix: remove the stale column entry, or add the column to the model
 
 ### SST-VAL326
@@ -2568,13 +3228,19 @@ Fix: remove the stale column entry, or add the column to the model
 
 `view '<view>': member '<member>' references '<identifier>', which is neither a column on the view's tables nor a variable the view declares`
 
+Raised when an attached member's `expr:` carries a bare identifier the view cannot resolve.
+
 Fix: declare the variable on this view, or correct the identifier
+
+Note: Snowflake would reject the whole CREATE with `invalid identifier`
 
 ### SST-VAL327
 
 **Declared data type differs from the relation** (warning)
 
 `model '<model>': column '<column>' declares data_type <declared>, and the relation has <found>`
+
+Raised when a written meta.sst.data_type differs from the relation's type.
 
 Fix: correct data_type, or run sst enrich --force data-types
 
@@ -2584,6 +3250,8 @@ Fix: correct data_type, or run sst enrich --force data-types
 
 `model '<model>': column '<column>' carries pii_tags and <count> sample_values`
 
+Raised when a column with pii_tags carries sample_values.
+
 Fix: delete the sample_values; sst enrich never samples a column with pii_tags
 
 ### SST-VAL329
@@ -2591,6 +3259,8 @@ Fix: delete the sample_values; sst enrich never samples a column with pii_tags
 **View scope declares include and exclude for one kind** (error)
 
 `<artifact>: '<field>' and '<other>' are both declared; a view either includes or excludes <kind>`
+
+Raised when a semantic view declares an include list and the matching exclude list for one kind: columns with exclude_columns, metrics with exclude_metrics, or relationships with exclude_relationships.
 
 Fix: keep one of the two lists
 
@@ -2600,6 +3270,8 @@ Fix: keep one of the two lists
 
 `<artifact>: <field> names <kind> '<name>', which <reason>`
 
+Raised when an entry in columns, metrics, relationships or their exclude_ lists names nothing the view's tables provide, or an include list (columns) names a column excluded globally.
+
 Fix: correct the name, or remove the entry
 
 ### SST-VAL331
@@ -2607,6 +3279,8 @@ Fix: correct the name, or remove the entry
 **Excluded column is already excluded globally** (warning)
 
 `<artifact>: exclude_columns names '<column>', which is already excluded globally`
+
+Raised when an exclude_columns entry names a column whose dbt metadata already excludes it, so the entry changes nothing.
 
 Fix: remove the entry; the column is excluded from every view
 
@@ -2616,6 +3290,8 @@ Fix: remove the entry; the column is excluded from every view
 
 `<artifact>: metric '<metric>' needs relationship '<relationship>', which this view excludes`
 
+Raised when a metric left in the view's scope names, in using_relationships, a relationship the view's scope removes.
+
 Fix: include the relationship, or exclude the metric
 
 ### SST-VAL401
@@ -2623,6 +3299,8 @@ Fix: include the relationship, or exclude the metric
 **Filter expression is not boolean** (error)
 
 `filter '<member>' carries labels: [filter] and its expr is not boolean`
+
+Raised when an enforced filter's expression does not evaluate to a boolean.
 
 Fix: make the expression boolean
 
@@ -2632,6 +3310,8 @@ Fix: make the expression boolean
 
 `'<member>' carries labels: [filter] and is a metric`
 
+Raised when an enforcement label is attached to a metric.
+
 Fix: remove the label, or declare a filter
 
 ### SST-VAL403
@@ -2640,13 +3320,19 @@ Fix: remove the label, or declare a filter
 
 `filter '<member>' uses the legacy inline form`
 
+Raised when the removed inline filter form is in use.
+
 Fix: declare filters as named objects with labels:
+
+Note: Forbidden.
 
 ### SST-VAL404
 
 **Filter expression contains an unwrapped bare identifier** (warning)
 
 `filter '<member>' expression contains bare identifier '<column>'`
+
+Raised when a filter expression carries an unchecked column reference.
 
 Fix: wrap it in {{ ref('&lt;model&gt;','&lt;column&gt;') }}
 
@@ -2656,13 +3342,19 @@ Fix: wrap it in {{ ref('&lt;model&gt;','&lt;column&gt;') }}
 
 `filter '<member>' is boolean-valued and declares no labels: key`
 
+Raised when a boolean filter declares no `labels:` key, so it has no clause left to render into.
+
 Fix: add `labels: [filter]` so it renders as a native `LABELS = (FILTER)` dimension on its table
+
+Note: It would be authored and emitted nowhere.
 
 ### SST-VAL406
 
 **Filter synonyms declared but not emitted** (warning)
 
 `filter '<member>' declares synonyms that the renderer drops`
+
+Raised when synonyms are declared on an object whose renderer ignores them.
 
 Fix: remove the synonyms until the renderer emits them
 
@@ -2672,6 +3364,8 @@ Fix: remove the synonyms until the renderer emits them
 
 `custom_instruction '<member>' declares no non-empty channel`
 
+Raised when every channel on a block is empty or absent.
+
 Fix: populate at least one channel
 
 ### SST-VAL408
@@ -2679,6 +3373,8 @@ Fix: populate at least one channel
 **Legacy custom-instruction rendering** (error)
 
 `custom_instruction '<member>' would render as a bare string`
+
+Raised when the legacy bare-string form would be emitted.
 
 Fix: emit module_custom_instructions or the ai_-prefixed clauses
 
@@ -2688,13 +3384,19 @@ Fix: emit module_custom_instructions or the ai_-prefixed clauses
 
 `custom_instruction '<member>': a <found> rule appears in the <expected> channel`
 
+Raised when a categorization rule sits in sql_generation, or the reverse.
+
 Fix: move the rule to the channel that acts on it
+
+Note: Silently inert.
 
 ### SST-VAL410
 
 **Two instruction blocks on one view contradict each other** (warning)
 
 `<artifact>: '<a>' and '<b>' give contradictory directives`
+
+Raised when two attached blocks issue conflicting guidance.
 
 Fix: reconcile the two blocks
 
@@ -2704,13 +3406,19 @@ Fix: reconcile the two blocks
 
 `custom_instruction '<member>' uses <found> keywords, which an agent does not need`
 
+Raised when UNCLEAR-style keywords are present.
+
 Fix: write the instruction as plain natural language
+
+Note: Unconditional, because every 1.0 consumer is an agent.
 
 ### SST-VAL412
 
 **Verified query declares neither sql nor sql_file, or both** (error)
 
 `verified_query '<member>': <detail>`
+
+Raised when the two source forms are both present or both absent.
 
 Fix: declare exactly one of sql or sql_file
 
@@ -2720,6 +3428,8 @@ Fix: declare exactly one of sql or sql_file
 
 `<artifact>: question text is shared by '<a>' and '<b>'`
 
+Raised when selection is by question text, so duplicates are ambiguous.
+
 Fix: make the question text unique
 
 ### SST-VAL414
@@ -2727,6 +3437,8 @@ Fix: make the question text unique
 **Verified query SQL references a table not in its table list** (warning)
 
 `verified_query '<member>' queries '<relation>', absent from tables:`
+
+Raised when attachment is computed from tables:, so the VQ may land on a view lacking the table.
 
 Fix: add the table to tables:
 
@@ -2736,6 +3448,8 @@ Fix: add the table to tables:
 
 `verified_query '<member>' executed and returned <row_count> rows in <elapsed_ms>ms`
 
+Raised when a VQ runs successfully and returns nothing, so it teaches nothing.
+
 Fix: fix the query, or widen the fixture
 
 ### SST-VAL416
@@ -2743,6 +3457,8 @@ Fix: fix the query, or widen the fixture
 **Verified query SQL contains a relative date** (warning)
 
 `verified_query '<member>' contains relative date '<value>'`
+
+Raised when a VQ that doubles as eval ground truth re-evaluates over time.
 
 Fix: pin the date, or accept that it is runtime guidance only
 
@@ -2752,6 +3468,8 @@ Fix: pin the date, or accept that it is runtime guidance only
 
 `'<value>' appears as a VQ question, an agent sample_question and an eval row`
 
+Raised when one question string serves purposes that should not overlap.
+
 Fix: keep the three sets distinct
 
 ### SST-VAL418
@@ -2759,6 +3477,8 @@ Fix: keep the three sets distinct
 **Expression does not compile against Snowflake** (error)
 
 `<type> '<name>': expression failed to compile: <detail>`
+
+Raised when snowflake_syntax_check is enabled and the expression does not compile.
 
 Fix: fix the expression
 
@@ -2768,6 +3488,8 @@ Fix: fix the expression
 
 `agent '<artifact>' is secure; the round-trip check needs the owner role`
 
+Raised when a secure agent cannot be re-read for comparison by a non-owner.
+
 Fix: run CI as the owner role, or accept that the round-trip is skipped
 
 ### SST-VAL507
@@ -2775,6 +3497,8 @@ Fix: run CI as the owner role, or accept that the round-trip is skipped
 **secure: false transition blocked by a share or application role** (error)
 
 `agent '<artifact>' is granted to <value>; it cannot become non-secure`
+
+Raised when a secure-to-non-secure transition is attempted on a shared object.
 
 Fix: keep secure: true, or revoke the share grant first
 
@@ -2784,6 +3508,8 @@ Fix: keep secure: true, or revoke the share grant first
 
 `agent '<artifact>': tag '<field>' does not resolve to a tag object`
 
+Raised when a declared tag name has no tag object.
+
 Fix: create the tag, or correct the name
 
 ### SST-VAL509
@@ -2791,6 +3517,8 @@ Fix: create the tag, or correct the name
 **Rendered spec differs from the live spec** (error)
 
 `agent '<artifact>': re-render differs from the live spec at <value>`
+
+Raised when a round-trip comparison of the rendered spec against the live spec differs.
 
 Fix: apply, or reconcile the authored file with the live object
 
@@ -2800,6 +3528,8 @@ Fix: apply, or reconcile the authored file with the live object
 
 `agent '<artifact>': rendered spec omits <value>`
 
+Raised when the renderer produced fewer top-level keys than the model carries.
+
 Fix: emit the complete spec; a partial spec deletes fields on the live agent
 
 ### SST-VAL511
@@ -2807,6 +3537,8 @@ Fix: emit the complete spec; a partial spec deletes fields on the live agent
 **Rendered spec exceeds the size limit** (error)
 
 `agent '<artifact>': rendered spec is <size> bytes, over the 100,000 limit`
+
+Raised when the rendered spec exceeds the hard byte limit.
 
 Fix: move instructions into referenced files
 
@@ -2816,6 +3548,8 @@ Fix: move instructions into referenced files
 
 `agent '<artifact>': rendered spec is <size> bytes, over 80% of the limit`
 
+Raised when the rendered spec is between 80% and 100% of the limit.
+
 Fix: trim the instruction surface
 
 ### SST-VAL513
@@ -2823,6 +3557,8 @@ Fix: trim the instruction surface
 **Resolved tool name is not 1-64 characters** (error)
 
 `agent '<artifact>': resolved tool name '<name>' is <size> chars`
+
+Raised when a derived or declared tool name fails the length rule.
 
 Fix: shorten the source name; for Analyst tools this is the derived name
 
@@ -2832,6 +3568,8 @@ Fix: shorten the source name; for Analyst tools this is the derived name
 
 `agent '<artifact>': tool name '<name>' is declared twice`
 
+Raised when two tools resolve to the same name.
+
 Fix: rename one of them
 
 ### SST-VAL515
@@ -2839,6 +3577,8 @@ Fix: rename one of them
 **Resolved tool names collide case-insensitively** (warning)
 
 `agent '<artifact>': '<a>' and '<b>' differ only by case`
+
+Raised when two tool names differ only in case.
 
 Fix: rename one; an eval must match the trace name exactly
 
@@ -2848,6 +3588,8 @@ Fix: rename one; an eval must match the trace name exactly
 
 `agent '<artifact>': tool '<name>' of type <found> declares '<key>'`
 
+Raised when a key is declared that the tool type does not accept.
+
 Fix: remove the key, or change the tool type
 
 ### SST-VAL517
@@ -2855,6 +3597,8 @@ Fix: remove the key, or change the tool type
 **web_search tool is not named web_search** (error)
 
 `agent '<artifact>': web_search tool is named '<name>'`
+
+Raised when a web search tool carries any other name.
 
 Fix: rename it to web_search; the trace name is not configurable
 
@@ -2864,6 +3608,8 @@ Fix: rename it to web_search; the trace name is not configurable
 
 `agent '<artifact>': tool '<name>' has no description`
 
+Raised when a tool omits the description the orchestrator routes on.
+
 Fix: write a description; it is the router
 
 ### SST-VAL519
@@ -2871,6 +3617,8 @@ Fix: write a description; it is the router
 **Two tool descriptions are near-duplicates** (warning)
 
 `agent '<artifact>': '<a>' and '<b>' have near-identical descriptions`
+
+Raised when the dominant cause of tool_selection_accuracy loss.
 
 Fix: differentiate them
 
@@ -2880,6 +3628,8 @@ Fix: differentiate them
 
 `agent '<artifact>': tool '<name>' declares <count> semantic views`
 
+Raised when a cortex_analyst_text_to_sql tool is misdeclared.
+
 Fix: declare exactly one semantic_view and no name
 
 ### SST-VAL521
@@ -2887,6 +3637,8 @@ Fix: declare exactly one semantic_view and no name
 **Cortex Search tool omits a required key** (error)
 
 `agent '<artifact>': tool '<name>' omits '<field>'`
+
+Raised when a cortex_search tool is missing a required key.
 
 Fix: declare search_service and name
 
@@ -2896,6 +3648,8 @@ Fix: declare search_service and name
 
 `agent '<artifact>': tool '<name>' declares '<field>' without '<other>'`
 
+Raised when half of a required pair is declared.
+
 Fix: declare both, or neither; one alone is a silent no-op
 
 ### SST-VAL523
@@ -2903,6 +3657,8 @@ Fix: declare both, or neither; one alone is a silent no-op
 **Filter column is not marked filterable** (error)
 
 `agent '<artifact>': tool '<name>' filters on '<column>', not marked filterable`
+
+Raised when a filter names a column that is not filterable.
 
 Fix: mark the column filterable: true
 
@@ -2912,6 +3668,8 @@ Fix: mark the column filterable: true
 
 `agent '<artifact>': tool '<name>' column '<column>': <detail>`
 
+Raised when a column descriptor fails its schema.
+
 Fix: use type string or datetime, with boolean searchable and filterable
 
 ### SST-VAL525
@@ -2919,6 +3677,8 @@ Fix: use type string or datetime, with boolean searchable and filterable
 **Searchable column is a vector index column** (warning)
 
 `agent '<artifact>': tool '<name>' marks vector column '<column>' searchable`
+
+Raised when Cortex Search does not support searching a vector index column.
 
 Fix: clear searchable on the vector column
 
@@ -2928,6 +3688,8 @@ Fix: clear searchable on the vector column
 
 `agent '<artifact>': tool '<name>' input_schema is <found>`
 
+Raised when a generic tool omits or mis-types its input schema.
+
 Fix: declare input_schema with type: object
 
 ### SST-VAL527
@@ -2935,6 +3697,8 @@ Fix: declare input_schema with type: object
 **generic tool declares no warehouse** (error)
 
 `agent '<artifact>': tool '<name>' declares no warehouse`
+
+Raised when a generic tool has a null warehouse.
 
 Fix: declare a warehouse
 
@@ -2944,6 +3708,8 @@ Fix: declare a warehouse
 
 `agent '<artifact>' declares an agent toolset`
 
+Raised when delegation means the effective tool surface is not statically knowable.
+
 Fix: accept that tool-name uniqueness and eval coverage are incomplete here
 
 ### SST-VAL529
@@ -2951,6 +3717,8 @@ Fix: accept that tool-name uniqueness and eval coverage are incomplete here
 **Built-in tool type emits a tool_resources entry** (error)
 
 `agent '<artifact>': built-in tool '<name>' would emit tool_resources`
+
+Raised when a built-in type carries a resource block it must not.
 
 Fix: remove the resources entry
 
@@ -2960,6 +3728,8 @@ Fix: remove the resources entry
 
 `agent '<artifact>': tool_resources key '<key>' matches no tools[].name`
 
+Raised when a resource key is orphaned in the rendered spec.
+
 Fix: align the key with the rendered tool name
 
 ### SST-VAL531
@@ -2967,6 +3737,8 @@ Fix: align the key with the rendered tool name
 **Resolved external object does not exist in the target** (warning)
 
 `agent '<artifact>': '<value>' does not exist in target '<target>'`
+
+Raised when a pre-flight lookup finds no object at the resolved name.
 
 Fix: publish it first, or correct the reference
 
@@ -2976,6 +3748,8 @@ Fix: publish it first, or correct the reference
 
 `agent '<artifact>': '<value>' signature <found> differs from input_schema <expected>`
 
+Raised when arity, names or types differ between the declaration and the live object.
+
 Fix: align the schema with the object
 
 ### SST-VAL533
@@ -2983,6 +3757,8 @@ Fix: align the schema with the object
 **generic tool resource key unverified** (info)
 
 `agent '<artifact>': resource key '<key>' for a generic tool is unverified`
+
+Raised when Snowsight and the REST docs disagree and CREATE AGENT was unavailable to test.
 
 Fix: confirm against DESCRIBE AGENT on a live agent
 
@@ -2992,6 +3768,8 @@ Fix: confirm against DESCRIBE AGENT on a live agent
 
 `agent '<artifact>': query_timeout <found> exceeds STATEMENT_TIMEOUT_IN_SECONDS <expected>, which silently wins`
 
+Raised when the agent timeout is larger than the warehouse timeout.
+
 Fix: lower query_timeout, or raise the warehouse setting
 
 ### SST-VAL535
@@ -2999,6 +3777,8 @@ Fix: lower query_timeout, or raise the warehouse setting
 **Instructions name a tool that does not exist** (warning)
 
 `agent '<artifact>': instructions name tool '<name>', absent from tools:`
+
+Raised when the most common stale-instruction defect.
 
 Fix: correct the instruction, or add the tool
 
@@ -3008,6 +3788,8 @@ Fix: correct the instruction, or add the tool
 
 `agent '<artifact>': instructions route <value> to '<name>', documented as excluding it`
 
+Raised when orchestration guidance contradicts a tool's own description.
+
 Fix: reconcile the instruction and the description
 
 ### SST-VAL537
@@ -3015,6 +3797,8 @@ Fix: reconcile the instruction and the description
 **Sample question is a relative-dated duplicate of an eval question** (warning)
 
 `agent '<artifact>': sample question '<value>' is relative-dated and matches an eval row`
+
+Raised when a sample question is both relative-dated and byte-identical to an eval question.
 
 Fix: pin the date, and keep the two sets distinct
 
@@ -3024,6 +3808,8 @@ Fix: pin the date, and keep the two sets distinct
 
 `agent '<artifact>': skill source '<name>' does not pin an immutable version`
 
+Raised when a skill reference resolves to a moving target.
+
 Fix: pin a committed version; `LIVE` and an omitted version are both refused HERE -- Snowflake refuses neither
 
 ### SST-VAL539
@@ -3031,6 +3817,8 @@ Fix: pin a committed version; `LIVE` and an omitted version are both refused HER
 **Skill source points at a mutable stage path** (error)
 
 `agent '<artifact>': skill source '<name>' is a STAGE path into a mutable bundle`
+
+Raised when a stage-type skill reference changes behaviour with no version and no error.
 
 Fix: reference a CORTEX EXTENSION version instead
 
@@ -3040,6 +3828,8 @@ Fix: reference a CORTEX EXTENSION version instead
 
 `agent '<artifact>': the skill source for skill('<path>') omits name`
 
+Raised when a single-skill extension source omits its name.
+
 Fix: declare name; it is optional only for PLUGIN-type
 
 ### SST-VAL541
@@ -3047,6 +3837,8 @@ Fix: declare name; it is optional only for PLUGIN-type
 **Two skill entries contribute the same member name** (warning)
 
 `agent '<artifact>': '<a>' and '<b>' both contribute '<name>'; the later wins`
+
+Raised when precedence is silent and neither case errors.
 
 Fix: rename one of them
 
@@ -3056,13 +3848,19 @@ Fix: rename one of them
 
 `agent '<artifact>': <value> lacks READ on extension '<name>'`
 
+Raised when a pre-flight grant check fails for an extension.
+
 Fix: grant READ before publishing
+
+Note: A warning rather than an error because SST cannot observe the consuming role's grants at compile time, and `does not exist or not authorized` conflates absent with unauthorized, so a negative reading is not proof of a missing grant.
 
 ### SST-VAL543
 
 **Orchestration model is not in the allowlist** (error)
 
 `agent '<artifact>': models.orchestration '<found>' is not in the allowlist`
+
+Raised when the orchestration model is outside the configured set.
 
 Fix: add it to the config allowlist, or use an allowed model
 
@@ -3072,6 +3870,8 @@ Fix: add it to the config allowlist, or use an allowed model
 
 `agent '<artifact>': models.orchestration is auto and a blocking eval is configured`
 
+Raised when score movement would be unattributable.
+
 Fix: pin the model explicitly
 
 ### SST-VAL545
@@ -3079,6 +3879,8 @@ Fix: pin the model explicitly
 **tool_not_accessible is misplaced or invalid** (error)
 
 `agent '<artifact>': tool_not_accessible <detail>`
+
+Raised when the key holds a bad value, or sits under models. or instructions.
 
 Fix: set it to accept, reject or legacy on the top-level orchestration key
 
@@ -3088,6 +3890,8 @@ Fix: set it to accept, reject or legacy on the top-level orchestration key
 
 `agent '<artifact>': analytical_search is true and no cortex_search tool is declared`
 
+Raised when the flag has nothing to act on.
+
 Fix: declare a cortex_search tool, or disable analytical_search
 
 ### SST-VAL547
@@ -3095,6 +3899,8 @@ Fix: declare a cortex_search tool, or disable analytical_search
 **Token budget read as a cost ceiling** (warning)
 
 `agent '<artifact>': budget.tokens covers orchestration only`
+
+Raised when the agent sets budget.tokens itself, with no comment saying it bounds orchestration only; a project-wide agents: default is not reported per agent.
 
 Fix: treat it as an orchestration bound, not a spend cap
 
@@ -3104,6 +3910,8 @@ Fix: treat it as an orchestration bound, not a spend cap
 
 `agent '<artifact>': <field> '<found>' <detail>`
 
+Raised when avatar or colour falls outside the optional project allowlist or the known forms.
+
 Fix: use an allowlisted avatar, or a plain colour name or var(--token)
 
 ### SST-VAL549
@@ -3111,6 +3919,8 @@ Fix: use an allowlisted avatar, or a plain colour name or var(--token)
 **display_name collides with another agent** (warning)
 
 `agent '<artifact>': display_name '<value>' is shared with <other>`
+
+Raised when two agents share a display name.
 
 Fix: rename one of them; it is the conversational handle
 
@@ -3120,6 +3930,8 @@ Fix: rename one of them; it is the conversational handle
 
 `agent '<artifact>': <detail>`
 
+Raised when a deprecated agent has an alias, or a version referenced by a retained run would be dropped.
+
 Fix: clear the alias, or retain the version
 
 ### SST-VAL601
@@ -3127,6 +3939,8 @@ Fix: clear the alias, or retain the version
 **Tool member name is not unique within its group** (error)
 
 `tool group '<a>': member '<name>' is declared twice`
+
+Raised when two members of one group share a name.
 
 Fix: rename one of them
 
@@ -3136,6 +3950,8 @@ Fix: rename one of them
 
 `tool member '<name>' is declared in <a> and <b>`
 
+Raised when a member name repeats across groups.
+
 Fix: rename one; the single-argument ref form is unavailable for this name
 
 ### SST-VAL603
@@ -3143,6 +3959,8 @@ Fix: rename one; the single-argument ref form is unavailable for this name
 **Tool type is not recognised** (error)
 
 `tool member '<name>': type '<found>' is not a known tool type`
+
+Raised when a member declares an unregistered type.
 
 Fix: use one of {expected}
 
@@ -3152,6 +3970,8 @@ Fix: use one of {expected}
 
 `tool member '<name>' is under define: and declares neither on: nor body_file:`
 
+Raised when an owned member has nothing to create from.
+
 Fix: declare on: or body_file:, or move it to reference:
 
 ### SST-VAL605
@@ -3159,6 +3979,8 @@ Fix: declare on: or body_file:, or move it to reference:
 **reference member carries creation properties** (error)
 
 `tool member '<name>' is under reference: and declares '<key>'`
+
+Raised when an external member declares how to build itself.
 
 Fix: remove the creation property; a reference is not owned
 
@@ -3168,6 +3990,8 @@ Fix: remove the creation property; a reference is not owned
 
 `tool group '<a>' is immutable: true and declares define:`
 
+Raised when an immutable group claims ownership of an object.
+
 Fix: remove the define: block
 
 ### SST-VAL607
@@ -3175,6 +3999,8 @@ Fix: remove the define: block
 **Defined procedure signature does not match the consuming input schema** (error)
 
 `tool member '<name>': signature <found> differs from input_schema <expected>`
+
+Raised when arity, names or types differ between the procedure and its agent tool.
 
 Fix: align the signature and the schema
 
@@ -3184,6 +4010,8 @@ Fix: align the signature and the schema
 
 `tool member '<name>': on: '<value>' is not a model in the dbt manifest`
 
+Raised when a defined search service indexes a model the manifest does not list.
+
 Fix: correct the model name, or run dbt compile
 
 ### SST-VAL609
@@ -3191,6 +4019,8 @@ Fix: correct the model name, or run dbt compile
 **search_column or attribute_columns not on the indexed model** (error)
 
 `tool member '<name>': '<column>' is not on '<value>'`
+
+Raised when a search service names a column the model does not have.
 
 Fix: correct the column list
 
@@ -3200,6 +4030,8 @@ Fix: correct the column list
 
 `tool member '<name>' runs as owner and is reachable from agent '<artifact>'`
 
+Raised when a deliberate privilege escalation is reachable from an agent tool.
+
 Fix: review the privilege escalation, or run as caller
 
 ### SST-VAL611
@@ -3207,6 +4039,8 @@ Fix: review the privilege escalation, or run as caller
 **embedding_model is null on an eval-gated search service** (warning)
 
 `tool member '<name>' declares embedding_model: null and is read by a gated agent`
+
+Raised when retrieval would change silently between deploys.
 
 Fix: pin the embedding model
 
@@ -3216,6 +4050,8 @@ Fix: pin the embedding model
 
 `tool member '<name>' is under reference: and DDL was rendered for it`
 
+Raised when an external object would be created or pruned by SST.
+
 Fix: emit no DDL for referenced members
 
 ### SST-VAL613
@@ -3223,6 +4059,8 @@ Fix: emit no DDL for referenced members
 **Declared column is absent from the live object** (warning)
 
 `tool member '<name>': column '<column>' is absent from the live object`
+
+Raised when a columns_and_descriptions entry has no counterpart live.
 
 Fix: align the declaration with the object
 
@@ -3232,7 +4070,11 @@ Fix: align the declaration with the object
 
 `tool member '<name>' would publish before '<value>', which it indexes`
 
+Raised when a defined search service is ordered before its source relation.
+
 Fix: include the source relation in the selection, or let dbt build it first -- the ORDER is not authorable
+
+Note: `tool` publishes after every semantic view and the relation it indexes is a dbt model built before SST runs, so a violation is a missing selection or an unbuilt model, never a misordered config.
 
 ### SST-VAL615
 
@@ -3240,11 +4082,15 @@ Fix: include the source relation in the selection, or let dbt build it first -- 
 
 `agent '<artifact>': tool '<name>' overrides <value>`
 
+Raised when every inherited value an agent tool overrides is reported; the tool's own description is not an override, because it routes the agent.
+
 ### SST-VAL616
 
 **Referenced object privilege pre-flight failed** (warning)
 
 `tool member '<name>': <value> lacks <detail>`
+
+Raised when a deploying or consuming role lacks USAGE or READ on a referenced object.
 
 Fix: grant the privilege before publishing
 
@@ -3254,6 +4100,8 @@ Fix: grant the privilege before publishing
 
 `tool member '<name>' indexes <value>, materialized '<detail>' -- every dbt run rebuilds the relation, disabling change tracking and forcing a full re-embed`
 
+Raised when a search service's source relation is a dbt model whose materialization replaces it on every run, while the service is `INCREMENTAL`.
+
 Fix: make the model `incremental`, or set `refresh_mode: FULL` and accept the cost explicitly
 
 ### SST-VAL618
@@ -3261,6 +4109,8 @@ Fix: make the model `incremental`, or set `refresh_mode: FULL` and accept the co
 **Search service source lost change tracking** (warning)
 
 `<value> has change_tracking = OFF; service '<name>' cannot refresh incrementally and is serving stale data`
+
+Raised when the observed source relation has change tracking disabled while the service is `INCREMENTAL`.
 
 Fix: re-enable change tracking on the source, or replace the service
 
@@ -3270,6 +4120,8 @@ Fix: re-enable change tracking on the source, or replace the service
 
 `tool member '<name>': <detail> explicit grant(s) will be captured and replayed -- they do not exist between commit and replay`
 
+Raised when an artifact whose `grant_preservation` is `REPLAY` is in a `ChangeSet` with explicit grants on the live object.
+
 Fix: none -- Snowflake provides no `COPY GRANTS` for this object type
 
 ### SST-VAL701
@@ -3277,6 +4129,8 @@ Fix: none -- Snowflake provides no `COPY GRANTS` for this object type
 **Dataset name is not unique within the agent schema** (error)
 
 `dataset '<artifact>' is declared twice in <value>`
+
+Raised when two datasets resolve to one name in one schema.
 
 Fix: rename one of them
 
@@ -3286,6 +4140,8 @@ Fix: rename one of them
 
 `dataset '<artifact>' is <size> chars, over 128`
 
+Raised when the DATASET object name limit is exceeded.
+
 Fix: shorten the name
 
 ### SST-VAL703
@@ -3293,6 +4149,8 @@ Fix: shorten the name
 **Dataset declares its own database or schema** (error)
 
 `dataset '<artifact>' declares +<key>`
+
+Raised when targeting keys are set on an eval object.
 
 Fix: remove it; eval objects resolve to the agent's schema
 
@@ -3302,6 +4160,8 @@ Fix: remove it; eval objects resolve to the agent's schema
 
 `dataset '<artifact>' resolves to <found>; agent '<value>' resolves to <expected>`
 
+Raised when a scratch agent's evals would land outside scratch.
+
 Fix: align the eval with its agent, per target
 
 ### SST-VAL705
@@ -3309,6 +4169,8 @@ Fix: align the eval with its agent, per target
 **Dataset row is incomplete** (error)
 
 `dataset '<artifact>': row <index> <detail>`
+
+Raised when a row has no question, or no expected field.
 
 Fix: give every row a question and at least one expectation
 
@@ -3318,6 +4180,8 @@ Fix: give every row a question and at least one expectation
 
 `dataset '<artifact>': row <index> contains relative date '<value>'`
 
+Raised when the single most common eval defect: the dataset silently changes meaning over time.
+
 Fix: pin the date
 
 ### SST-VAL707
@@ -3325,6 +4189,8 @@ Fix: pin the date
 **Eval question duplicates an agent sample question** (warning)
 
 `dataset '<artifact>': row <index> is byte-identical to a sample_question`
+
+Raised when overlap means the eval proves nothing.
 
 Fix: choose questions that would catch the agent failing
 
@@ -3334,6 +4200,8 @@ Fix: choose questions that would catch the agent failing
 
 `dataset '<artifact>': row <index> expects tool '<name>', absent from agent '<value>'`
 
+Raised when an expectation names a nonexistent tool.
+
 Fix: correct the tool name, or add the tool
 
 ### SST-VAL709
@@ -3341,6 +4209,8 @@ Fix: correct the tool name, or add the tool
 **web_search expectation uses a non-canonical name** (error)
 
 `dataset '<artifact>': row <index> expects '<name>'`
+
+Raised when the trace name is not configurable.
 
 Fix: use the literal name web_search
 
@@ -3350,6 +4220,8 @@ Fix: use the literal name web_search
 
 `dataset '<artifact>' has <count> rows, under <expected>`
 
+Raised when the row count is below the floor.
+
 Fix: add rows; a thin dataset cannot support range thresholds
 
 ### SST-VAL711
@@ -3358,17 +4230,23 @@ Fix: add rows; a thin dataset cannot support range thresholds
 
 `dataset '<artifact>': <value> of the agent's tools are exercised by no question`
 
+Raised when an untested tool is the likeliest place for a regression to hide.
+
 ### SST-VAL712
 
 **CREATE DATASET takes no properties** (info)
 
 `dataset '<artifact>': versions and provenance are added by ALTER, not CREATE`
 
+Raised when the DDL surface is reported so the authored YAML matches it.
+
 ### SST-VAL713
 
 **Dataset version requires ownership** (error)
 
 `dataset '<artifact>': <value> holds <found>, not OWNERSHIP`
+
+Raised when adding a version needs ownership, not a lesser privilege.
 
 Fix: grant OWNERSHIP, or add the version as the owner
 
@@ -3378,6 +4256,8 @@ Fix: grant OWNERSHIP, or add the version as the owner
 
 `dataset '<artifact>': METADATA has no git SHA`
 
+Raised when the eval API cannot select a version, so METADATA is the only place provenance can live.
+
 Fix: write the SHA into METADATA
 
 ### SST-VAL715
@@ -3385,6 +4265,8 @@ Fix: write the SHA into METADATA
 **Sensitive data in dataset metadata or comment** (error)
 
 `dataset '<artifact>': <field> matches <detail>`
+
+Raised when personal, sensitive, export-controlled or regulated data appears in METADATA or COMMENT.
 
 Fix: remove it; Snowflake treats both as metadata fields
 
@@ -3394,6 +4276,8 @@ Fix: remove it; Snowflake treats both as metadata fields
 
 `dataset '<artifact>' emits a dataset: block and the object already exists`
 
+Raised when CREATE would be attempted on every run and fail.
+
 Fix: remove the dataset: block once the object is minted
 
 ### SST-VAL717
@@ -3401,6 +4285,8 @@ Fix: remove the dataset: block once the object is minted
 **run_name is not unique for the agent** (error)
 
 `run_name '<value>' is already used for <artifact>`
+
+Raised when the (db, schema, agent, run_name) 4-tuple is the primary key of a result set.
 
 Fix: choose a distinct run_name
 
@@ -3410,6 +4296,8 @@ Fix: choose a distinct run_name
 
 `run_name '<value>' does not include the git SHA`
 
+Raised when the run name is not traceable to a revision.
+
 Fix: include the SHA so a score is attributable to a commit
 
 ### SST-VAL719
@@ -3418,13 +4306,19 @@ Fix: include the SHA so a score is attributable to a commit
 
 `eval config for '<artifact>': agent_version is '<found>'`
 
+Raised when LIVE, or an omitted version, targets the default version.
+
 Fix: use committed or alias:&lt;name&gt;
+
+Note: Silent drift.
 
 ### SST-VAL720
 
 **Referenced agent version does not exist** (error)
 
 `eval config for '<artifact>': version '<value>' does not exist or is dropped`
+
+Raised when the referenced agent version is absent.
 
 Fix: pin an existing version
 
@@ -3434,6 +4328,8 @@ Fix: pin an existing version
 
 `eval config for '<artifact>': metric '<name>' is unknown`
 
+Raised when a metric name resolves to nothing.
+
 Fix: declare the custom metric, or use a system metric
 
 ### SST-VAL722
@@ -3441,6 +4337,8 @@ Fix: declare the custom metric, or use a system metric
 **metric_version is not pinned** (error)
 
 `eval config for '<artifact>': metric '<name>' declares no metric_version`
+
+Raised when unversioned metrics roll forward on deprecation and scores shift silently.
 
 Fix: pin the version
 
@@ -3450,6 +4348,8 @@ Fix: pin the version
 
 `eval config for '<artifact>': metric '<name>' pins legacy version '<found>'`
 
+Raised when a legacy judge version is pinned.
+
 Fix: move to a current version, and record the score shift
 
 ### SST-VAL724
@@ -3457,6 +4357,8 @@ Fix: move to a current version, and record the score shift
 **judge_model set for a system metric** (error)
 
 `eval config for '<artifact>': metric '<name>' is a system metric and declares judge_model`
+
+Raised when setting it is a silent no-op.
 
 Fix: remove judge_model; the version carries the judge
 
@@ -3466,11 +4368,15 @@ Fix: remove judge_model; the version carries the judge
 
 `eval config for '<artifact>': metric '<name>' <detail>`
 
+Raised when how a metric is actually computed: tool_selection_accuracy uses no LLM judge, a custom judge metric costs one model call per row, and an agent run executes whatever SQL its text2sql tool generates, so it costs warehouse time on top.
+
 ### SST-VAL726
 
 **logical_consistency used as a gate** (warning)
 
 `eval config for '<artifact>': logical_consistency is a blocking metric`
+
+Raised when it is reference-free, which makes it a weak gate.
 
 Fix: report it rather than gate on it
 
@@ -3480,6 +4386,8 @@ Fix: report it rather than gate on it
 
 `eval config for '<artifact>': <detail>`
 
+Raised when runs execute as TASKS and tasks ignore secondary roles.
+
 Fix: put every eval privilege on one primary role
 
 ### SST-VAL728
@@ -3487,6 +4395,8 @@ Fix: put every eval privilege on one primary role
 **Eval role lacks a required schema privilege** (error)
 
 `eval config for '<artifact>': <value> lacks <detail>`
+
+Raised when the executing role cannot create the objects a run needs.
 
 Fix: grant CREATE TASK, CREATE STAGE and CREATE FILE FORMAT
 
@@ -3496,6 +4406,8 @@ Fix: grant CREATE TASK, CREATE STAGE and CREATE FILE FORMAT
 
 `eval config for '<artifact>': stage file format is <found>`
 
+Raised when EXECUTE_AI_EVALUATION cannot parse the YAML it is handed.
+
 Fix: use TYPE='CSV' with every delimiter and escape disabled
 
 ### SST-VAL730
@@ -3503,6 +4415,8 @@ Fix: use TYPE='CSV' with every delimiter and escape disabled
 **Partial completion treated as a pass** (error)
 
 `eval run for '<artifact>': status '<found>' is not a pass`
+
+Raised when a partial terminal status was accepted.
 
 Fix: treat INVOCATION_PARTIALLY_COMPLETED and PARTIALLY_COMPLETED as failures
 
@@ -3512,6 +4426,8 @@ Fix: treat INVOCATION_PARTIALLY_COMPLETED and PARTIALLY_COMPLETED as failures
 
 `eval config for '<artifact>': concurrency <found> exceeds <expected>`
 
+Raised when the run would re-invoke the agent beyond the ceiling.
+
 Fix: lower concurrency; runs re-invoke the agent, so this is real load and real spend
 
 ### SST-VAL732
@@ -3520,11 +4436,15 @@ Fix: lower concurrency; runs re-invoke the agent, so this is real load and real 
 
 `eval config for '<artifact>': <value> will be skipped, not failed`
 
+Raised when MCP tools are never invoked; the eval looks healthier than the agent is.
+
 ### SST-VAL733
 
 **Blocking threshold declares no usable bound** (error)
 
 `eval config for '<artifact>': metric '<name>' threshold has <detail>`
+
+Raised when a gated metric's threshold map is empty or inverted, so the gate cannot fire.
 
 Fix: declare min, max, or both, with min &lt;= max
 
@@ -3534,6 +4454,8 @@ Fix: declare min, max, or both, with min &lt;= max
 
 `eval config for '<artifact>': <count> baseline_runs completed, <expected> required`
 
+Raised when a gate is active with no baseline.
+
 Fix: complete the baseline first
 
 ### SST-VAL735
@@ -3541,6 +4463,8 @@ Fix: complete the baseline first
 **Threshold set with no baseline** (warning)
 
 `eval config for '<artifact>': metric '<name>' has a threshold and no baseline`
+
+Raised when a guess is wearing the costume of a measurement.
 
 Fix: measure first, then set the threshold
 
@@ -3550,6 +4474,8 @@ Fix: measure first, then set the threshold
 
 `eval metric '<artifact>' shadows system metric '<name>'`
 
+Raised when a custom metric takes a reserved name.
+
 Fix: rename the custom metric
 
 ### SST-VAL738
@@ -3557,6 +4483,8 @@ Fix: rename the custom metric
 **Custom metric declares no explicit judge model** (error)
 
 `eval metric '<artifact>': judge_model is '<found>'`
+
+Raised when auto makes score movement unattributable.
 
 Fix: name the judge model explicitly
 
@@ -3566,6 +4494,8 @@ Fix: name the judge model explicitly
 
 `eval metric '<artifact>': judge_model '<found>' is not in the allowlist`
 
+Raised when the judge model is outside the configured set.
+
 Fix: add it to the config allowlist, or use an allowed model
 
 ### SST-VAL740
@@ -3573,6 +4503,8 @@ Fix: add it to the config allowlist, or use an allowed model
 **Custom metric duplicates a system metric's intent** (warning)
 
 `eval metric '<artifact>' duplicates '<name>'`
+
+Raised when a custom metric restates a system metric.
 
 Fix: use the system metric; it is cheaper, versioned and comparable
 
@@ -3582,6 +4514,8 @@ Fix: use the system metric; it is cheaper, versioned and comparable
 
 `eval metric '<artifact>': the prompt declares no scale or allowed values`
 
+Raised when the declared scale and the thresholds cannot be reconciled.
+
 Fix: state the scale and the allowed values in the prompt
 
 ### SST-VAL742
@@ -3589,6 +4523,8 @@ Fix: state the scale and the allowed values in the prompt
 **Judge prompt asks for reasoning with no parseable score** (warning)
 
 `eval metric '<artifact>': the prompt has no parseable score instruction`
+
+Raised when unparseable output scores as a failure, not a skip.
 
 Fix: ask for a number in a fixed position
 
@@ -3598,6 +4534,8 @@ Fix: ask for a number in a fixed position
 
 `eval metric '<artifact>': the rubric has no <detail> branch`
 
+Raised when the rubric is underdetermined.
+
 Fix: add the branch; otherwise the judge invents one per call
 
 ### SST-VAL744
@@ -3605,6 +4543,8 @@ Fix: add the branch; otherwise the judge invents one per call
 **Custom metric is not versioned** (error)
 
 `eval metric '<artifact>' declares no version`
+
+Raised when an unversioned prompt can change while the score keeps its name.
 
 Fix: version it; an edited prompt is a new metric
 
@@ -3614,6 +4554,8 @@ Fix: version it; an edited prompt is a new metric
 
 `eval metric '<artifact>' is referenced by retained run '<value>'`
 
+Raised when editing it invalidates every historical comparison.
+
 Fix: publish a new version instead
 
 ### SST-VAL746
@@ -3622,11 +4564,15 @@ Fix: publish a new version instead
 
 `eval metric '<artifact>': judge for version '<value>' recorded`
 
+Raised when record which judge each version maps to so a score shift can be explained.
+
 ### SST-VAL747
 
 **Scoring instruction produces a number outside the declared ranges** (error)
 
 `eval metric '<artifact>': the prompt can produce <found>, outside <expected>`
+
+Raised when the prompt and the ranges disagree.
 
 Fix: align the prompt with score_ranges
 
@@ -3636,6 +4582,8 @@ Fix: align the prompt with score_ranges
 
 `eval metric '<artifact>' declares <count> bands for an invariant`
 
+Raised when an invariant is being graded on a wide scale.
+
 Fix: narrow the scale
 
 ### SST-VAL755
@@ -3643,6 +4591,8 @@ Fix: narrow the scale
 **Agent eval run overlaps a semantic view regenerate** (warning)
 
 `eval config for '<artifact>': the run overlaps a regenerate of view '<value>', which the agent uses`
+
+Raised when an agent eval run would interleave with a regenerate of a view the agent reads; no coordination exists in Snowflake, so SST serialises.
 
 Fix: serialise the run against the publish, or move one of the two
 
@@ -3652,6 +4602,8 @@ Fix: serialise the run against the publish, or move one of the two
 
 `eval '<artifact>' has no captured baseline`
 
+Raised when the eval gate finds no captured baseline.
+
 Fix: capture a baseline explicitly with a reason
 
 ### SST-VAL759
@@ -3659,6 +4611,8 @@ Fix: capture a baseline explicitly with a reason
 **Eval baseline is incompatible** (error)
 
 `eval '<artifact>' baseline is incompatible: <detail>`
+
+Raised when the baseline was captured for another payload, agent version, dataset, metric set or question/metric vector.
 
 Fix: capture a new baseline for the current dataset, agent version and metrics
 
@@ -3668,6 +4622,8 @@ Fix: capture a new baseline for the current dataset, agent version and metrics
 
 `eval '<artifact>' baseline expires on <date>`
 
+Raised when the eval baseline expires within BASELINE_WARNING_DAYS.
+
 Fix: capture a replacement baseline before it expires
 
 ### SST-VAL761
@@ -3675,6 +4631,8 @@ Fix: capture a replacement baseline before it expires
 **Eval baseline is expired** (error, always an error)
 
 `eval '<artifact>' baseline expired on <date>`
+
+Raised when the eval baseline has expired.
 
 Fix: capture a replacement baseline with a reason
 
@@ -3684,6 +4642,8 @@ Fix: capture a replacement baseline with a reason
 
 `eval '<artifact>': dataset.<field> is not set`
 
+Raised when dataset.name_template or dataset.source_table_template is not set in the eval config.
+
 Fix: set dataset.name_template and dataset.source_table_template in the eval's config.yml
 
 ### SST-VAL763
@@ -3691,6 +4651,8 @@ Fix: set dataset.name_template and dataset.source_table_template in the eval's c
 **Blocking eval regressed** (error, always an error)
 
 `eval '<artifact>' regressed on <count> question/metric pair(s): <detail>`
+
+Raised when a blocking-tier eval regressed on one or more question/metric pairs.
 
 Fix: fix what regressed, or capture a new baseline with a reason if the change is intended
 
@@ -3700,6 +4662,8 @@ Fix: fix what regressed, or capture a new baseline with a reason if the change i
 
 `'<artifact>': <detail>`
 
+Raised when SKILL.md is nested, or scripts live outside the folder.
+
 Fix: put SKILL.md at the folder root, with scripts beside it
 
 ### SST-VAL802
@@ -3707,6 +4671,8 @@ Fix: put SKILL.md at the folder root, with scripts beside it
 **Skill is not published as a typed CORTEX EXTENSION** (error)
 
 `skill '<artifact>': TYPE is <found>`
+
+Raised when the extension type is absent or unrecognised.
 
 Fix: publish with an explicit TYPE of SKILL or PLUGIN
 
@@ -3716,6 +4682,8 @@ Fix: publish with an explicit TYPE of SKILL or PLUGIN
 
 `skill '<artifact>': version '<value>' is not SHA-derived`
 
+Raised when a version could change content under a pinned reference.
+
 Fix: derive the version from the content hash, using +version_prefix
 
 ### SST-VAL804
@@ -3723,6 +4691,8 @@ Fix: derive the version from the content hash, using +version_prefix
 **Extension version referenced by no agent** (warning)
 
 `<artifact>: version <value> is referenced by no agent`
+
+Raised when a committed version has no consumer.
 
 Fix: reference it, or stop publishing it
 
@@ -3732,6 +4702,8 @@ Fix: reference it, or stop publishing it
 
 `skill reconciliation: <value>`
 
+Raised when orphan objects with no source file, or source files never published.
+
 Fix: publish the missing sources, and reap the orphan objects
 
 ### SST-VAL806
@@ -3739,6 +4711,8 @@ Fix: publish the missing sources, and reap the orphan objects
 **Folder-to-schema split introduced** (warning)
 
 `skill '<artifact>' would land in schema '<value>'`
+
+Raised when a new skill domain becomes an infrastructure PR before any agent can use it.
 
 Fix: split for confidentiality, not tidiness; the agent owner then needs USAGE per schema
 
@@ -3748,6 +4722,8 @@ Fix: split for confidentiality, not tidiness; the agent owner then needs USAGE p
 
 `skill '<artifact>': certification would change its schema`
 
+Raised when a schema move changes the FQN and breaks every pinned reference.
+
 Fix: certify with the SNOWFLAKE.CORE.CERTIFICATION_STATUS tag
 
 ### SST-VAL808
@@ -3755,6 +4731,8 @@ Fix: certify with the SNOWFLAKE.CORE.CERTIFICATION_STATUS tag
 **Referenced bundle path does not resolve** (error)
 
 `skill '<artifact>': '<path>' is referenced and absent from the bundle`
+
+Raised when a path named in SKILL.md is not in the published bundle.
 
 Fix: add the file, or correct the reference
 
@@ -3764,6 +4742,8 @@ Fix: add the file, or correct the reference
 
 `skill '<artifact>': '<a>' and '<b>' flatten to one name`
 
+Raised when two bundle files collide after flattening.
+
 Fix: rename one of the authored files
 
 ### SST-VAL810
@@ -3772,13 +4752,19 @@ Fix: rename one of the authored files
 
 `skill '<artifact>': '<path>' does not resolve inside the published bundle`
 
+Raised when the rewritten SKILL.md does not re-pass the path check.
+
 Fix: rewrite every subdirectory reference, then re-check the paths
+
+Note: Including a reference anchored at the authoring repository's root, which is rejected rather than rewritten.
 
 ### SST-VAL811
 
 **Flattened bundle exceeds the size budget** (warning)
 
 `'<artifact>': bundle is <size> bytes, over <expected>`
+
+Raised when skills are read on demand, so this is invocation latency and token cost.
 
 Fix: move bulk content out of the bundle
 
@@ -3788,6 +4774,8 @@ Fix: move bulk content out of the bundle
 
 `skill '<artifact>': SKILL.md is <size> bytes, over <expected>`
 
+Raised when SKILL.md is evaluated against every query, so its cost is paid continuously.
+
 Fix: move bulk content into a referenced file
 
 ### SST-VAL813
@@ -3795,6 +4783,8 @@ Fix: move bulk content into a referenced file
 **Bundled file is never referenced** (warning)
 
 `skill '<artifact>': '<path>' is never referenced from the skill's Markdown`
+
+Raised when dead payload still ships, still counts against size, and still has to be reviewed.
 
 Fix: reference it, or remove it
 
@@ -3804,6 +4794,8 @@ Fix: reference it, or remove it
 
 `skill '<artifact>': '<path>' is executable and no consuming agent enables code_execution`
 
+Raised when the skill loads and is selected; the script cannot run.
+
 Fix: enable code_execution, or drop the script
 
 ### SST-VAL815
@@ -3811,6 +4803,8 @@ Fix: enable code_execution, or drop the script
 **Bundled script reads a credential or an absolute local path** (warning)
 
 `skill '<artifact>': '<path>' contains <detail>`
+
+Raised when a script reaches for a secret or a machine-specific path.
 
 Fix: parameterise it; a path that resolves locally will not resolve in the sandbox
 
@@ -3820,11 +4814,15 @@ Fix: parameterise it; a path that resolves locally will not resolve in the sandb
 
 `skill '<artifact>': <value>`
 
+Raised when progressive disclosure is made visible rather than assumed.
+
 ### SST-VAL817
 
 **No publication channel configured** (error)
 
 `<key>: configures neither the catalog nor the stage channel`
+
+Raised when the skill would reach no consumer.
 
 Fix: configure at least one channel
 
@@ -3834,6 +4832,8 @@ Fix: configure at least one channel
 
 `config key '<key>' is <found>; it must be <expected>`
 
+Raised when a nested catalog bundle is unreadable by agents; a flattened stage bundle breaks Desktop.
+
 Fix: set catalog flatten true and stage flatten false
 
 ### SST-VAL819
@@ -3841,6 +4841,8 @@ Fix: set catalog flatten true and stage flatten false
 **Stage auto_compress is enabled** (error)
 
 `config key '<key>' is <found>; it must be <expected>`
+
+Raised when TRUE produces `<file>`/`<file>`.gz and silently hides skills from the local cache.
 
 Fix: set it false
 
@@ -3850,6 +4852,8 @@ Fix: set it false
 
 `skill '<artifact>': PUT target '<path>' does not end in '/'`
 
+Raised when the upload would land at the wrong path.
+
 Fix: append a trailing slash
 
 ### SST-VAL821
@@ -3857,6 +4861,8 @@ Fix: append a trailing slash
 **Stage layout is not by_type** (error)
 
 `config key '<key>' value <found> is outside <expected>`
+
+Raised when the prompts/, mcp/, hooks/ and skills/ prefixes are what Desktop reads and are not configurable.
 
 Fix: set layout to by_type
 
@@ -3866,6 +4872,8 @@ Fix: set layout to by_type
 
 `skill '<artifact>': '<path>' was uploaded with no PROFILE_REGISTRY pointer`
 
+Raised when a half-completed publish uploads a file and records nothing.
+
 Fix: write the pointer as part of the same publish
 
 ### SST-VAL823
@@ -3873,6 +4881,8 @@ Fix: write the pointer as part of the same publish
 **Profile content hash does not cover every shipped tree** (error)
 
 `skill '<artifact>': hash omits <value>`
+
+Raised when a change in an uncovered tree produces no new version.
 
 Fix: include every shipped tree in the hash
 
@@ -3882,6 +4892,8 @@ Fix: include every shipped tree in the hash
 
 `skill '<artifact>': '<path>' was deleted and is still published`
 
+Raised when a removed file persists in the published bundle.
+
 Fix: build each version from empty, or issue explicit removals
 
 ### SST-VAL825
@@ -3889,6 +4901,8 @@ Fix: build each version from empty, or issue explicit removals
 **Version name is not collision-free under parallel deploys** (error)
 
 `skill '<artifact>': version name '<value>' is not collision-free`
+
+Raised when two parallel deploys could mint one version name.
 
 Fix: derive the version from the content SHA
 
@@ -3898,6 +4912,8 @@ Fix: derive the version from the content SHA
 
 `skill '<artifact>': grants would be issued before certification`
 
+Raised when the order is wrong, or DATABASE ROLE versus ROLE is assumed.
+
 Fix: grant only after certification succeeds, and name the role TYPE explicitly
 
 ### SST-VAL827
@@ -3905,6 +4921,8 @@ Fix: grant only after certification succeeds, and name the role TYPE explicitly
 **Identifier interpolated into DDL without validation** (error)
 
 `skill '<artifact>': '<value>' reaches DDL unvalidated`
+
+Raised when an identifier is concatenated into DDL.
 
 Fix: validate every interpolated identifier at parse time
 
@@ -3914,6 +4932,8 @@ Fix: validate every interpolated identifier at parse time
 
 `skill '<artifact>': <detail>`
 
+Raised when an out-of-sync channel state is invisible.
+
 Fix: report per-channel status separately
 
 ### SST-VAL829
@@ -3921,6 +4941,8 @@ Fix: report per-channel status separately
 **Channel content hashes diverge beyond flattening** (warning)
 
 `skill '<artifact>': catalog and stage hashes diverge by <value>`
+
+Raised when divergence larger than flattening alone explains.
 
 Fix: compare the two bundles
 
@@ -3930,6 +4952,8 @@ Fix: compare the two bundles
 
 `skill '<artifact>' is published nowhere`
 
+Raised when catalog is false, no profile references it, and it is not shared.
+
 Fix: reference it from a profile, or enable a channel
 
 ### SST-VAL831
@@ -3938,11 +4962,15 @@ Fix: reference it from a profile, or enable a channel
 
 `skill '<artifact>': <value>`
 
+Raised when the surface is absent from the public SQL reference, so it carries upgrade risk.
+
 ### SST-VAL832
 
 **Skill name is not globally unique across extensions** (error)
 
 `'<artifact>' collides with '<other>' as one extension name`
+
+Raised when global uniqueness is what makes a flat schema viable.
 
 Fix: rename one of them
 
@@ -3952,6 +4980,8 @@ Fix: rename one of them
 
 `skill '<artifact>': '<path>' names '<target>', which the catalog bundle renames`
 
+Raised when a script names a nested path that catalog flattening renames.
+
 Fix: keep files a script reads beside SKILL.md, or pass the path in as an argument
 
 ### SST-VAL834
@@ -3959,6 +4989,8 @@ Fix: keep files a script reads beside SKILL.md, or pass the path in as an argume
 **Bundle exceeds the extension scan limits** (error)
 
 `'<artifact>': <detail>`
+
+Raised when a bundle breaks a Snowflake scan limit (50 files, 2 MiB/file, 10 MiB/version).
 
 Fix: split the bundle; Snowflake scans at most 50 files, 2 MiB per file, 10 MiB per version
 
@@ -3968,6 +5000,8 @@ Fix: split the bundle; Snowflake scans at most 50 files, 2 MiB per file, 10 MiB 
 
 `plugin '<artifact>': member '<name>' is not a skill in this project`
 
+Raised when a plugin lists a member that is not a skill in this project.
+
 Fix: add the skill under the skills directory, or remove it from the plugin
 
 ### SST-VAL836
@@ -3975,6 +5009,8 @@ Fix: add the skill under the skills directory, or remove it from the plugin
 **Plugin member cannot be bundled** (error)
 
 `plugin '<artifact>': member '<name>' has errors, so the plugin cannot be bundled`
+
+Raised when a plugin member skill has errors, so the plugin cannot be bundled.
 
 Fix: fix the member skill's errors
 
@@ -3984,6 +5020,8 @@ Fix: fix the member skill's errors
 
 `plugin '<artifact>': lists '<name>' more than once`
 
+Raised when a plugin lists one member more than once.
+
 Fix: list each member once
 
 ### SST-VAL838
@@ -3991,6 +5029,8 @@ Fix: list each member once
 **Version set on a project-published extension** (error)
 
 `agent '<artifact>': skill source '<name>' sets version, which SST manages for <kind>('<path>')`
+
+Raised when an agent skill source for a project-published extension sets version.
 
 Fix: delete version; SST pins the published content-hash alias
 
@@ -4000,6 +5040,8 @@ Fix: delete version; SST pins the published content-hash alias
 
 `agent '<artifact>': skill source '<name>' pins var('sha_version'), which names no published version`
 
+Raised when an agent skill source pins var('sha_version'), which names no published version.
+
 Fix: use skill() or plugin() with no version, or pin a real version of a consumed extension
 
 ### SST-VAL840
@@ -4007,6 +5049,8 @@ Fix: use skill() or plugin() with no version, or pin a real version of a consume
 **Skill source name does not match its extension** (error)
 
 `agent '<artifact>': skill source name '<name>' must be <expected>`
+
+Raised when an agent skill source name is not the skill's name or a member of the plugin.
 
 Fix: use the skill's name, or a member name of the plugin
 
@@ -4016,6 +5060,8 @@ Fix: use the skill's name, or a member name of the plugin
 
 `<artifact>: the catalog will serve <found> of <target>, not <value>, because <detail>`
 
+Raised when the catalog will serve a different version than the one published (certification ordering).
+
 Fix: agents pin their version and are unaffected; to serve this version in the catalog, set `+certified: true` and un-certify any later certified version in Snowsight
 
 ### SST-VAL843
@@ -4023,6 +5069,8 @@ Fix: agents pin their version and are unaffected; to serve this version in the c
 **Two artifacts publish to one Snowflake name** (warning)
 
 `<a> and <b> both publish to <target>`
+
+Raised when two artifacts of different types publish to one Snowflake name.
 
 Fix: rename one of them; plans and reports that name the object become ambiguous
 
@@ -4032,6 +5080,8 @@ Fix: rename one of them; plans and reports that name the object become ambiguous
 
 `profile '<artifact>': skill '<name>' is not a skill in this project`
 
+Raised when the shared layer or a profile names a skill the project does not have.
+
 Fix: add the skill under the skills directory, or remove it from the profile
 
 ### SST-VAL845
@@ -4039,6 +5089,8 @@ Fix: add the skill under the skills directory, or remove it from the profile
 **Profile repeats a shared skill or command** (warning)
 
 `profile '<artifact>': <kind> '<name>' already reaches every profile through shared/`
+
+Raised when a profile repeats a skill or command the shared layer already carries.
 
 Fix: remove it from the profile
 
@@ -4048,6 +5100,8 @@ Fix: remove it from the profile
 
 `profile '<artifact>': hook '<name>' is not defined under the hooks directory`
 
+Raised when a profile names a hook not defined under the hooks directory.
+
 Fix: add the hook, or remove it from the profile
 
 ### SST-VAL847
@@ -4055,6 +5109,8 @@ Fix: add the hook, or remove it from the profile
 **Profile names an unknown MCP config** (error)
 
 `profile '<artifact>': MCP config '<name>' is not defined under the MCP servers directory`
+
+Raised when a profile names an MCP config not defined under the MCP servers directory.
 
 Fix: add the config, or remove it from the profile
 
@@ -4064,6 +5120,8 @@ Fix: add the config, or remove it from the profile
 
 `profile '<artifact>': MCP server '<name>' is not a configuration object`
 
+Raised when an MCP server a profile uses is not a configuration object.
+
 Fix: replace the placeholder with a server definition, or stop referencing the config
 
 ### SST-VAL849
@@ -4071,6 +5129,8 @@ Fix: replace the placeholder with a server definition, or stop referencing the c
 **Two MCP configs define one server** (error)
 
 `profile '<artifact>': MCP server '<name>' is defined by both '<a>' and '<b>'`
+
+Raised when two MCP configs a profile uses define one server name.
 
 Fix: rename one server, or reference only one of the configs
 
@@ -4080,6 +5140,8 @@ Fix: rename one server, or reference only one of the configs
 
 `MCP config '<artifact>': server '<name>' sets '<key>' to a literal value`
 
+Raised when an MCP config sets a credential-like key to a literal value.
+
 Fix: use a ${VARIABLE} placeholder; published configs are readable by every profile user
 
 ### SST-VAL851
@@ -4087,6 +5149,8 @@ Fix: use a ${VARIABLE} placeholder; published configs are readable by every prof
 **Profile key is not accepted** (error)
 
 `profile '<artifact>': '<key>' is not accepted: <reason>`
+
+Raised when a profile declares a key SST refuses.
 
 Fix: delete the key
 
@@ -4096,6 +5160,8 @@ Fix: delete the key
 
 `hook '<artifact>': <detail>`
 
+Raised when a hook folder has no manifest or both spellings, or is not exactly one event/command/script.
+
 Fix: declare event, command, and exactly one script, naming it with script: when the folder holds several files
 
 ### SST-VAL853
@@ -4103,6 +5169,8 @@ Fix: declare event, command, and exactly one script, naming it with script: when
 **MCP config is not valid** (error)
 
 `MCP config '<artifact>': <detail>`
+
+Raised when an MCP config folder has no mcp.json, or it is not UTF-8 JSON of the mcpServers shape.
 
 Fix: write mcp.json as `{"mcpServers": {"<name>": {...}}}`
 
@@ -4112,6 +5180,8 @@ Fix: write mcp.json as `{"mcpServers": {"<name>": {...}}}`
 
 `profiles publish to <value>; CoCo Desktop reads only <expected>`
 
+Raised when profiles publish to a registry other than the one CoCo Desktop reads.
+
 Fix: point skills.stage at the Desktop registry to publish for real, or keep this for rehearsal
 
 ### SST-VAL855
@@ -4119,6 +5189,8 @@ Fix: point skills.stage at the Desktop registry to publish for real, or keep thi
 **Profile includes a skill or plugin with errors** (error)
 
 `profile '<artifact>': <kind> '<name>' has errors, so the profile cannot publish`
+
+Raised when a profile includes a skill or plugin that has errors.
 
 Fix: fix the errors reported for it
 
@@ -4128,6 +5200,8 @@ Fix: fix the errors reported for it
 
 `agent '<artifact>': <kind>('<name>') has no version to pin because <reason>`
 
+Raised when an agent references a declared extension that has no version to pin.
+
 Fix: fix the diagnostic that names the cause; the reference resolves once the extension publishes
 
 ### SST-VAL857
@@ -4135,6 +5209,8 @@ Fix: fix the diagnostic that names the cause; the reference resolves once the ex
 **File name cannot be published to a stage** (error)
 
 `<artifact>: <value> cannot be staged, because '<found>' is not made only of <expected>`
+
+Raised when a skill file, hook script or command path has a name a stage rejects.
 
 Fix: rename the file or folder; a stage rejects any other name, so apply would fail partway through
 
@@ -4144,6 +5220,8 @@ Fix: rename the file or folder; a stage rejects any other name, so apply would f
 
 `profile '<artifact>': command '<name>' is not a .md file under the commands directory`
 
+Raised when the shared layer or a profile names a command that is not a .md file under the commands directory.
+
 Fix: name a command by its path below project.commands_dir without .md, such as sql/check
 
 ### SST-VAL859
@@ -4152,6 +5230,8 @@ Fix: name a command by its path below project.commands_dir without .md, such as 
 
 `command '<artifact>': <detail>`
 
+Raised when a command file is not UTF-8, or its frontmatter is malformed or holds an unknown value.
+
 Fix: frontmatter is optional; when present it is a YAML mapping of description, allowed-tools, skill, and hidden
 
 ### SST-VAL860
@@ -4159,6 +5239,8 @@ Fix: frontmatter is optional; when present it is a YAML mapping of description, 
 **Profile names an unknown plugin** (error)
 
 `profile '<artifact>': plugin '<name>' is not a plugin under the plugins directory`
+
+Raised when a profile names a plugin not under the plugins directory.
 
 Fix: name a plugin folder that has a plugin.yml
 
@@ -4170,6 +5252,8 @@ Fix: name a plugin folder that has a plugin.yml
 
 `no dbt models available`
 
+Raised when the dbt catalog is empty at the validate seam.
+
 Fix: check that the dbt project has models; under --manifest, check the path
 
 ### SST-DBT002
@@ -4177,6 +5261,8 @@ Fix: check that the dbt project has models; under --manifest, check the path
 **dbt model referenced but absent from the manifest** (error)
 
 `model '<model>' is not in the dbt manifest`
+
+Raised when a referenced model has no manifest node.
 
 Fix: run dbt compile, or correct the name
 
@@ -4186,6 +5272,8 @@ Fix: run dbt compile, or correct the name
 
 `model '<model>': meta.sst role '<found>' is not a known role`
 
+Raised when a meta.sst role value is unrecognised.
+
 Fix: correct the role name
 
 ### SST-DBT004
@@ -4193,6 +5281,8 @@ Fix: correct the role name
 **Column type in dbt disagrees with the declared type** (warning)
 
 `model '<model>': column '<column>' is <found> in dbt and <expected> in the semantic layer`
+
+Raised when the dbt type and the semantic-layer type differ.
 
 Fix: reconcile the two, or add a contract
 
@@ -4202,6 +5292,8 @@ Fix: reconcile the two, or add a contract
 
 `manifest is older than <value>`
 
+Raised when a model file is newer than the manifest.
+
 Fix: drop --manifest and let SST parse, or rebuild the manifest you passed
 
 ### SST-DBT006
@@ -4209,6 +5301,8 @@ Fix: drop --manifest and let SST parse, or rebuild the manifest you passed
 **Resolved relation differs from the model name** (error)
 
 `model '<model>' resolves to relation '<value>'`
+
+Raised when an alias: makes the relation and the model name differ.
 
 Fix: point the semantic layer at the resolved relation
 
@@ -4218,6 +5312,8 @@ Fix: point the semantic layer at the resolved relation
 
 `model '<model>' is <found> and produces no relation`
 
+Raised when a consumed model produces no readable relation.
+
 Fix: enable it, or change the materialisation
 
 ### SST-DBT010
@@ -4225,6 +5321,8 @@ Fix: enable it, or change the materialisation
 **Collapse safety rule violated** (error)
 
 `models <a> and <b> collapse to '<value>' and differ in <column>`
+
+Raised when two models collapsing to one relation differ in referenced columns.
 
 Fix: rename one relation, or align the columns
 
@@ -4234,6 +5332,8 @@ Fix: rename one relation, or align the columns
 
 `source '<value>' is not declared in dbt`
 
+Raised when a source reference has no dbt declaration.
+
 Fix: declare the source
 
 ### SST-DBT012
@@ -4241,6 +5341,8 @@ Fix: declare the source
 **Duplicate source name or source.table pair** (warning)
 
 `source '<value>' is declared more than once`
+
+Raised when ambiguous source resolution that dbt tolerates and SST cannot.
 
 Fix: rename one of them
 
@@ -4250,6 +5352,8 @@ Fix: rename one of them
 
 `dbt node <value> has no name and was skipped`
 
+Raised when a manifest node is unusable.
+
 Fix: report this against dbt; a named node is a manifest invariant
 
 ### SST-DBT014
@@ -4257,6 +5361,8 @@ Fix: report this against dbt; a named node is a manifest invariant
 **Model node has no database or schema** (error)
 
 `model '<model>' has empty <key>`
+
+Raised when a node cannot be located.
 
 Fix: set database and schema for this target in profiles.yml or dbt_project.yml
 
@@ -4266,6 +5372,8 @@ Fix: set database and schema for this target in profiles.yml or dbt_project.yml
 
 `model '<model>' has no checksum; change detection is unusable`
 
+Raised when checksums compare None to None, so every model reads as unchanged.
+
 Fix: check that the dbt installation populates checksum.checksum
 
 ### SST-DBT016
@@ -4274,11 +5382,15 @@ Fix: check that the dbt installation populates checksum.checksum
 
 `model '<model>' feeds <count> artifacts`
 
+Raised when attachment is implicit by table membership, so blast radius exceeds what the model's tests imply.
+
 ### SST-DBT017
 
 **dbt manifest schema version is unsupported** (error)
 
 `manifest schema '<found>'; supported: <expected>`
+
+Raised when the manifest schema is outside the supported set.
 
 Fix: upgrade or downgrade dbt to a version that emits a supported schema, or pass --allow-unsupported-manifest-schema
 
@@ -4288,6 +5400,8 @@ Fix: upgrade or downgrade dbt to a version that emits a supported schema, or pas
 
 `manifest schema version is <found>`
 
+Raised when the schema version cannot be read.
+
 Fix: check the dbt version; pass --allow-unsupported-manifest-schema only if you accept the risk
 
 ### SST-DBT019
@@ -4295,6 +5409,8 @@ Fix: check the dbt version; pass --allow-unsupported-manifest-schema only if you
 **dbt profile could not be parsed** (error)
 
 `<path>: <detail>`
+
+Raised when profile parsing failed.
 
 Fix: fix profiles.yml
 
@@ -4304,6 +5420,8 @@ Fix: fix profiles.yml
 
 `dbt type detection returned <found>`
 
+Raised when dbt is absent from PATH, or its version output is unrecognised.
+
 Fix: ignore this if a valid manifest exists; the manifest is the contract
 
 ### SST-DBT021
@@ -4311,6 +5429,8 @@ Fix: ignore this if a valid manifest exists; the manifest is the contract
 **auto_compile requested under an installation that cannot compile a non-default target** (error)
 
 `defer.auto_compile is true under <found>`
+
+Raised when dbt Cloud CLI cannot compile a non-default target locally.
 
 Fix: use state_path instead
 
@@ -4320,6 +5440,8 @@ Fix: use state_path instead
 
 `model-paths could not be read; defaulted to <expected>`
 
+Raised when the configured model directories were not honoured.
+
 Fix: declare model-paths explicitly
 
 ### SST-DBT023
@@ -4327,6 +5449,8 @@ Fix: declare model-paths explicitly
 **dbt model referenced with no tests at all** (warning)
 
 `model '<model>' has no tests`
+
+Raised when the semantic layer asserts business meaning over unverified data.
 
 Fix: add at least a uniqueness test on the declared grain
 
@@ -4336,6 +5460,8 @@ Fix: add at least a uniqueness test on the declared grain
 
 `model '<model>' has no contract`
 
+Raised when a silent upstream type change re-infers every dependent data_type invisibly.
+
 Fix: add a contract
 
 ### SST-DBT025
@@ -4344,11 +5470,15 @@ Fix: add a contract
 
 `<value>`
 
+Raised when models read, sources read, refs resolved and columns checked.
+
 ### SST-DBT026
 
 **dbt packages are not installed** (error)
 
 `<count> package(s) in packages.yml are not installed`
+
+Raised when `packages.yml` declares packages that are absent from the packages install path.
 
 Fix: run dbt deps
 
@@ -4358,6 +5488,8 @@ Fix: run dbt deps
 
 `dbt could not be executed: <detail>`
 
+Raised when the dbt executable is absent from PATH or is not runnable, so no exit status is ever produced.
+
 Fix: install dbt, or pass --manifest to read a manifest that already exists
 
 ### SST-DBT028
@@ -4365,6 +5497,8 @@ Fix: install dbt, or pass --manifest to read a manifest that already exists
 **`dbt parse` exited non-zero** (error)
 
 `dbt parse exited <found>`
+
+Raised when the parse subprocess ran and reported failure.
 
 Fix: read dbt's own output above; the failure is in the dbt project
 
@@ -4374,6 +5508,8 @@ Fix: read dbt's own output above; the failure is in the dbt project
 
 `dbt parse exited 0 and <path> was not written`
 
+Raised when the parse subprocess exited zero and the expected manifest is absent or unreadable.
+
 Fix: check --project-dir and dbt's target-path; dbt wrote its manifest elsewhere
 
 ### SST-DBT030
@@ -4381,6 +5517,8 @@ Fix: check --project-dir and dbt's target-path; dbt wrote its manifest elsewhere
 **Forbidden `meta.sst` location key** (error)
 
 `model '<model>': meta.sst.<key> is forbidden -- delete it`
+
+Raised when an author mirrored the relation location into `meta.sst`, which 0.3 accepted and ignored.
 
 Fix: delete the key; the location comes from dbt's own `+database` / `+schema` and SST reads the RESOLVED value out of the manifest
 
@@ -4390,6 +5528,8 @@ Fix: delete the key; the location comes from dbt's own `+database` / `+schema` a
 
 `model '<model>' has no relation, so sst enrich has no columns to read`
 
+Raised when a model selected for sst enrich by name produces no relation (ephemeral).
+
 Fix: materialize the model as a table or a view; an ephemeral model has nothing to enrich
 
 ### SST-DBT032
@@ -4397,6 +5537,8 @@ Fix: materialize the model as a table or a view; an ephemeral model has nothing 
 **Key metadata is written in the 0.3 form** (error)
 
 `model '<model>': meta.sst.<field> is written in the 0.3 form`
+
+Raised when a model writes meta.sst.primary_key / unique_keys in the 0.3 value form, once per field.
 
 Fix: write primary_key as a list of columns and unique_keys as a list of column lists
 
@@ -4408,6 +5550,8 @@ Fix: write primary_key as a list of columns and unique_keys as a list of column 
 
 `<artifact>: the <value> dialect requires '<field>'`
 
+Raised when the model is valid and the renderer cannot produce DDL from it.
+
 Fix: supply the field
 
 ### SST-RND002
@@ -4415,6 +5559,8 @@ Fix: supply the field
 **Identifier cannot be safely quoted** (error)
 
 `<artifact>: '<name>' cannot be safely quoted`
+
+Raised when an identifier contains characters no quoting scheme survives.
 
 Fix: rename the object
 
@@ -4424,6 +5570,8 @@ Fix: rename the object
 
 `<artifact>: rendered DDL is <size> bytes, over the <expected> guess`
 
+Raised when the rendered statement is larger than the assumed statement limit.
+
 Fix: split the view, or reduce the member count
 
 ### SST-RND010
@@ -4431,6 +5579,8 @@ Fix: split the view, or reduce the member count
 **Agent has no tools** (warning)
 
 `agent '<artifact>' renders with no tools`
+
+Raised when the rendered agent spec has an empty tool list.
 
 Fix: declare at least one tool
 
@@ -4440,6 +5590,8 @@ Fix: declare at least one tool
 
 `agent '<artifact>': spec contains '$$' at <value>`
 
+Raised when the rendered spec would break dollar-quoting in the DDL.
+
 Fix: remove or escape the sequence
 
 ### SST-RND012
@@ -4447,6 +5599,8 @@ Fix: remove or escape the sequence
 **Unknown agent tool type at render** (error)
 
 `agent '<artifact>': tool type '<found>' is unknown to the renderer`
+
+Raised when a tool type reaches the renderer unrecognised.
 
 Fix: add the type to snowflake.tool_types
 
@@ -4456,6 +5610,8 @@ Fix: add the type to snowflake.tool_types
 
 `agent '<artifact>': tool_resources for '<name>' is not validated by Snowflake`
 
+Raised when a `generic` tool's resources are rendered, and nothing downstream validates them.
+
 Fix: confirm the key and the backing object yourself; `CREATE AGENT` will accept a wrong one
 
 ### SST-RND020
@@ -4463,6 +5619,8 @@ Fix: confirm the key and the backing object yourself; `CREATE AGENT` will accept
 **Unknown eval expectation kind** (error)
 
 `eval '<artifact>': expectation kind '<found>' is unknown`
+
+Raised when an eval row declares an expectation the renderer cannot express.
 
 Fix: use a supported expectation kind
 
@@ -4472,6 +5630,8 @@ Fix: use a supported expectation kind
 
 `eval '<artifact>' renders with no cases`
 
+Raised when the rendered eval has an empty case list.
+
 Fix: add rows to the dataset
 
 ### SST-RND022
@@ -4479,6 +5639,8 @@ Fix: add rows to the dataset
 **SQL_MATCH expectation is brittle** (warning)
 
 `eval '<artifact>': row <index> uses SQL_MATCH`
+
+Raised when a textual SQL match will break on any formatting change.
 
 Fix: prefer a result-set comparison
 
@@ -4488,6 +5650,8 @@ Fix: prefer a result-set comparison
 
 `skill '<artifact>': '<path>' does not exist at render`
 
+Raised when a bundle path is unresolvable at render.
+
 Fix: add the file, or correct the reference
 
 ### SST-RND031
@@ -4495,6 +5659,8 @@ Fix: add the file, or correct the reference
 **Skill body is empty** (warning)
 
 `skill '<artifact>': SKILL.md has no instructions after its frontmatter`
+
+Raised when the rendered SKILL.md has no body.
 
 Fix: add content
 
@@ -4504,6 +5670,8 @@ Fix: add content
 
 `skill '<artifact>': rendered body is <size> bytes, over <expected>`
 
+Raised when the rendered body is over the soft cap.
+
 Fix: move bulk content into a referenced file
 
 ### SST-RND040
@@ -4511,6 +5679,8 @@ Fix: move bulk content into a referenced file
 **Unsupported tool kind at render** (error)
 
 `tool '<artifact>': kind '<found>' has no renderer`
+
+Raised when a tool kind reaches the renderer with no implementation.
 
 Fix: register a renderer, or change the kind
 
@@ -4520,6 +5690,8 @@ Fix: register a renderer, or change the kind
 
 `tool '<artifact>': rendered source query is empty`
 
+Raised when the rendered tool body has no statement.
+
 Fix: supply on: or body_file: content
 
 ### SST-RND900
@@ -4527,6 +5699,8 @@ Fix: supply on: or body_file: content
 **Rendered member count differs from the model's** (error)
 
 `<artifact>: rendered <found> members, model carries <expected>`
+
+Raised when render is not total over the model.
 
 Fix: report this as a bug
 
@@ -4538,6 +5712,8 @@ Fix: report this as a bug
 
 `no SST manifest at <path>`
 
+Raised when the compiled manifest is absent.
+
 Fix: run sst compile
 
 ### SST-MAN002
@@ -4545,6 +5721,8 @@ Fix: run sst compile
 **manifest.json is not valid JSON** (error)
 
 `<path> is not a readable SST manifest: <detail>`
+
+Raised when the manifest fails to parse.
 
 Fix: delete it and re-run sst compile
 
@@ -4554,6 +5732,8 @@ Fix: delete it and re-run sst compile
 
 `<path> omits required key '<key>'`
 
+Raised when the manifest is structurally incomplete.
+
 Fix: re-run sst compile
 
 ### SST-MAN004
@@ -4561,6 +5741,8 @@ Fix: re-run sst compile
 **Impact index incomplete** (error)
 
 `<artifact> has no reverse-index entry`
+
+Raised when an artifact is absent from the impact index.
 
 Fix: re-run sst compile
 
@@ -4570,6 +5752,8 @@ Fix: re-run sst compile
 
 `manifest_id <found>, recomputed <expected>`
 
+Raised when the manifest content hash disagrees with its recorded id.
+
 Fix: re-run sst compile; the manifest is tampered or truncated
 
 ### SST-MAN006
@@ -4577,6 +5761,8 @@ Fix: re-run sst compile; the manifest is tampered or truncated
 **Manifest written for a different target** (error)
 
 `manifest target '<found>', current target '<expected>'`
+
+Raised when the manifest and the run disagree about the target.
 
 Fix: drop --manifest and let SST parse for this target
 
@@ -4586,6 +5772,8 @@ Fix: drop --manifest and let SST parse for this target
 
 `could not write <path>: <detail>`
 
+Raised when the manifest could not be persisted.
+
 Fix: check the filesystem permissions
 
 ### SST-MAN008
@@ -4593,6 +5781,8 @@ Fix: check the filesystem permissions
 **Compile failed before a manifest could be written** (error)
 
 `compile failed: <detail>`
+
+Raised when compilation did not reach the write step.
 
 Fix: fix the reported errors, then re-compile
 
@@ -4602,6 +5792,8 @@ Fix: fix the reported errors, then re-compile
 
 `no state file; treating every artifact as new`
 
+Raised when change detection has no prior state.
+
 Fix: check `state.+table` is readable on this target; a full plan is the safe fallback, not the fix
 
 ### SST-MAN021
@@ -4609,6 +5801,8 @@ Fix: check `state.+table` is readable on this target; a full plan is the safe fa
 **state.manifest_id does not match the current manifest** (warning)
 
 `state was recorded against manifest <found>; current is <expected>`
+
+Raised when the state and the manifest are from different compiles.
 
 Fix: re-run plan; NOOP detection is disabled for this run
 
@@ -4618,6 +5812,8 @@ Fix: re-run plan; NOOP detection is disabled for this run
 
 `<path> is present and unreadable: <detail>`
 
+Raised when refusing rather than silently discarding, because discarding is what makes a prune unsafe.
+
 Fix: fix or delete the file explicitly
 
 ### SST-MAN023
@@ -4625,6 +5821,8 @@ Fix: fix or delete the file explicitly
 **State file schema is unrecognised** (error)
 
 `<path> declares schema <found>`
+
+Raised when the state file version is outside the supported set.
 
 Fix: delete it and re-run plan
 
@@ -4634,6 +5832,8 @@ Fix: delete it and re-run plan
 
 `<path> was written by SST <found>; this is <expected>`
 
+Raised when the state file is from a later version.
+
 Fix: upgrade SST, or delete the state file
 
 ### SST-MAN025
@@ -4641,6 +5841,8 @@ Fix: upgrade SST, or delete the state file
 **Two writers produced one state filename** (error)
 
 `<path> was written by <value>`
+
+Raised when the 0.3 two-schemas-one-filename clobber is detected.
 
 Fix: split the two files; one filename, one schema
 
@@ -4650,19 +5852,27 @@ Fix: split the two files; one filename, one schema
 
 `<value>`
 
+Raised when per-type counts of new, modified, unmodified and orphaned.
+
 ### SST-MAN027
 
 **Local state cache disagrees with the state table** (warning)
 
 `local state.json for target <value> disagrees with <detail>; the table wins`
 
+Raised when both the state table and the local state file are readable and their `applied` maps differ -- a switched branch, or an `apply` from another checkout.
+
 Fix: none -- the run proceeds from the table
+
+Note: The table is authoritative and the file is a cache, so the table wins. A warning rather than an error because a correct answer is available; an error would stop a deploy over a stale local file.
 
 ### SST-MAN030
 
 **Cached Snowflake observation past its TTL** (warning)
 
 `observation for <value> is <detail> old; ignored`
+
+Raised when apply took up a saved plan whose observation is more than 1 hour old, and planned afresh instead.
 
 Fix: no action; the observation was refreshed
 
@@ -4672,6 +5882,8 @@ Fix: no action; the observation was refreshed
 
 `dbt manifest digest changed during the run`
 
+Raised when the dbt manifest was rewritten while SST was reading it.
+
 Fix: re-run; a concurrent dbt compile is in progress
 
 ### SST-MAN201
@@ -4680,11 +5892,15 @@ Fix: re-run; a concurrent dbt compile is in progress
 
 `<path> schema <found> migrated to <expected> in memory`
 
+Raised when a read command migrated without rewriting the file.
+
 ### SST-MAN202
 
 **Older manifest schema with no migration** (warning)
 
 `<path> schema <found> has no migration; full recompile`
+
+Raised when an old schema cannot be migrated.
 
 Fix: re-run sst compile
 
@@ -4693,6 +5909,8 @@ Fix: re-run sst compile
 **Manifest schema newer than this binary supports** (error)
 
 `<path> schema <found>; this binary supports <expected>`
+
+Raised when a newer manifest may express types this binary cannot render.
 
 Fix: upgrade SST
 
@@ -4704,6 +5922,8 @@ Fix: upgrade SST
 
 `observation of <value> failed: <detail>`
 
+Raised when a query that reads current state failed.
+
 Fix: check the connection and the role, then re-run plan
 
 ### SST-PLN002
@@ -4711,6 +5931,8 @@ Fix: check the connection and the role, then re-run plan
 **An object of a different type exists at the target name** (error)
 
 `<artifact>: <value> exists as a <found>`
+
+Raised when the target name is occupied by another object kind.
 
 Fix: rename the artifact, or drop the existing object
 
@@ -4720,6 +5942,8 @@ Fix: rename the artifact, or drop the existing object
 
 `<value> has no SST ownership marker; skipped`
 
+Raised when an unmanaged object sits in the target schema.
+
 Fix: adopt it explicitly, or delete it by hand
 
 ### SST-PLN004
@@ -4727,6 +5951,8 @@ Fix: adopt it explicitly, or delete it by hand
 **Marked prune candidate is absent from local state** (warning)
 
 `<value> carries an SST marker and is absent from state; skipped`
+
+Raised when a marked object has no local record.
 
 Fix: reconcile state, or delete it by hand
 
@@ -4736,6 +5962,8 @@ Fix: reconcile state, or delete it by hand
 
 `artifact dependency cycle: <cycle>`
 
+Raised when the artifact-level dependency graph is not acyclic.
+
 Fix: break the cycle
 
 ### SST-PLN006
@@ -4743,6 +5971,8 @@ Fix: break the cycle
 **Impact-scoped plan requested with no previous manifest** (warning)
 
 `no previous manifest; a full plan was computed`
+
+Raised when impact scoping is unavailable.
 
 Fix: commit the manifest, or pass --state
 
@@ -4752,6 +5982,8 @@ Fix: commit the manifest, or pass --state
 
 `<artifact> references <value>, absent from target '<target>'`
 
+Raised when an observation shows a referenced object is missing.
+
 Fix: publish it first, or correct the reference
 
 ### SST-PLN008
@@ -4759,6 +5991,8 @@ Fix: publish it first, or correct the reference
 **Deploying role lacks a required privilege** (error)
 
 `<value> lacks <detail> on <target>`
+
+Raised when an observation shows the role cannot perform the planned write.
 
 Fix: grant the privilege
 
@@ -4768,6 +6002,8 @@ Fix: grant the privilege
 
 `<artifact>: <value> already exists`
 
+Raised when the planned create would collide with an existing object.
+
 Fix: use or_replace, or choose another name
 
 ### SST-PLN010
@@ -4775,6 +6011,8 @@ Fix: use or_replace, or choose another name
 **Target schema does not exist** (error)
 
 `schema <value> does not exist or is not authorised`
+
+Raised when the target schema is absent from the observation.
 
 Fix: create the schema, or correct the target
 
@@ -4784,6 +6022,8 @@ Fix: create the schema, or correct the target
 
 `database <value> does not exist or is not authorised`
 
+Raised when the target database is absent from the observation.
+
 Fix: create the database, or correct the target
 
 ### SST-PLN012
@@ -4791,6 +6031,8 @@ Fix: create the database, or correct the target
 **Warehouse does not exist or is not authorised** (error)
 
 `warehouse <value> does not exist or is not authorised`
+
+Raised when the configured warehouse is unusable.
 
 Fix: grant USAGE, or name an existing warehouse
 
@@ -4800,6 +6042,8 @@ Fix: grant USAGE, or name an existing warehouse
 
 `<artifact>: <count> explicit grants exist on <value>`
 
+Raised when plan surfaces what is at stake before a replace.
+
 Fix: confirm COPY GRANTS is emitted before applying
 
 ### SST-PLN014
@@ -4807,6 +6051,8 @@ Fix: confirm COPY GRANTS is emitted before applying
 **Live definition differs from the last recorded state** (warning)
 
 `<artifact> was changed out of band`
+
+Raised when an out-of-band edit is detectable from the marker.
 
 Fix: review the difference before applying
 
@@ -4816,17 +6062,23 @@ Fix: review the difference before applying
 
 `<artifact>: NOOP`
 
+Raised when the proposed definition matches the observation.
+
 ### SST-PLN016
 
 **Plan summary** (info)
 
 `<value>`
 
+Raised when per-type counts of create, replace, noop and prune.
+
 ### SST-PLN017
 
 **Prune would remove an object a consumer references by name** (warning)
 
 `<value> is referenced outside this project`
+
+Raised when a prune candidate is named by something SST does not manage.
 
 Fix: exclude it from prune, or migrate the consumer
 
@@ -4836,6 +6088,8 @@ Fix: exclude it from prune, or migrate the consumer
 
 `observation for <value> is <detail>`
 
+Raised when observing and planning in one run took longer than the 15-minute observation lifetime.
+
 Fix: re-run plan
 
 ### SST-PLN019
@@ -4843,6 +6097,8 @@ Fix: re-run plan
 **Concurrent DDL detected on the target** (warning)
 
 `<value> is being modified by another session`
+
+Raised when the observation shows a competing writer.
 
 Fix: retry, or serialise the publishers
 
@@ -4852,6 +6108,8 @@ Fix: retry, or serialise the publishers
 
 `<artifact>: no smoke query can be built for metric '<member>'`
 
+Raised when a public metric cannot be expressed as a query.
+
 Fix: make the metric selectable, or exclude it from smoke checks
 
 ### SST-PLN021
@@ -4859,6 +6117,8 @@ Fix: make the metric selectable, or exclude it from smoke checks
 **Prune reconciliation found objects the repo does not declare** (warning)
 
 `<count> objects in <value> are not declared here`
+
+Raised when the declared set and the live set differ after case folding.
 
 Fix: adopt or delete them explicitly
 
@@ -4868,6 +6128,8 @@ Fix: adopt or delete them explicitly
 
 `change order could not be computed: <detail>`
 
+Raised when topological ordering failed for a reason other than a cycle.
+
 Fix: resolve the dependency conflict
 
 ### SST-PLN023
@@ -4875,6 +6137,8 @@ Fix: resolve the dependency conflict
 **Declared name differs from the live object only by case** (warning)
 
 `<artifact>: declared '<value>', live object is '<found>'`
+
+Raised when an unquoted declared identifier matches a live object only after case folding.
 
 Fix: normalise the declaration to the rendered case
 
@@ -4884,6 +6148,8 @@ Fix: normalise the declaration to the rendered case
 
 `<artifact>: <value> exists without trusted SST ownership`
 
+Raised when an object holds the target name and state records no SST entry for it.
+
 Fix: adopt or remove the object explicitly before applying
 
 ### SST-PLN025
@@ -4891,6 +6157,8 @@ Fix: adopt or remove the object explicitly before applying
 **Artifact target moved** (error, always an error)
 
 `<artifact>: recorded target '<found>' differs from declared target '<expected>'`
+
+Raised when state records the artifact (or its resources) at a target other than the one declared.
 
 Fix: move the object explicitly, then reconcile state and re-run plan
 
@@ -4900,6 +6168,8 @@ Fix: move the object explicitly, then reconcile state and re-run plan
 
 `<artifact>: stage <value> is <found>, expected INTERNAL NO CSE`
 
+Raised when the bundle or profile stage is not INTERNAL with SNOWFLAKE_SSE encryption.
+
 Fix: point the configuration at an internal stage with SNOWFLAKE_SSE encryption; SST never alters a stage
 
 ### SST-PLN027
@@ -4907,6 +6177,8 @@ Fix: point the configuration at an internal stage with SNOWFLAKE_SSE encryption;
 **Version alias holds different content** (error, always an error)
 
 `<artifact>: version alias <value> holds files that differ from the bundle (<detail>)`
+
+Raised when a version alias SST would reuse holds files that differ from the bundle.
 
 Fix: an earlier publish left a damaged version under this alias; remove the alias in Snowflake, then plan again
 
@@ -4916,6 +6188,8 @@ Fix: an earlier publish left a damaged version under this alias; remove the alia
 
 `<artifact>: registry row '<value>' has VERSION <found>, and SST last wrote <expected>`
 
+Raised when a profile-registry row carries a VERSION neither state nor this release names.
+
 Fix: another writer changed the row; reconcile it, then plan again
 
 ### SST-PLN029
@@ -4923,6 +6197,8 @@ Fix: another writer changed the row; reconcile it, then plan again
 **Registry table has the wrong shape** (error, always an error)
 
 `<artifact>: <value> <detail>`
+
+Raised when the profile registry table lacks a column SST writes, or types it differently.
 
 Fix: SST never alters the registry; fix the table or point skills.stage at a compatible one
 
@@ -4932,6 +6208,8 @@ Fix: SST never alters the registry; fix the table or point skills.stage at a com
 
 `<artifact>: pins the published version of <value>; select <value> as well`
 
+Raised when a create or update pins the published version of an artifact this plan leaves out.
+
 Fix: plan the pinned artifact in the same run; when its version is already published it plans as NOOP
 
 ### SST-PLN032
@@ -4939,6 +6217,8 @@ Fix: plan the pinned artifact in the same run; when its version is already publi
 **Excluded from a partial run** (info)
 
 `<artifact> has errors, or depends on something that does, so this partial run leaves it unpublished`
+
+Raised when under --partial, an artifact with errors (or depending on one) is left out of the plan.
 
 Fix: fix the errors reported for it; what is live stays as it is, and state keeps its record
 
@@ -4948,6 +6228,8 @@ Fix: fix the errors reported for it; what is live stays as it is, and state keep
 
 `--partial publishes nothing: <found> on <value> cannot be traced to the artifacts it would change`
 
+Raised when under --partial, an error names no artifact, so nothing can be excluded and the run stops.
+
 Fix: fix that error first; a configuration error, or an error in a semantic view member such as a metric, stops every run, because the views it belongs to would otherwise publish without it
 
 ### SST-PLN034
@@ -4955,6 +6237,8 @@ Fix: fix that error first; a configuration error, or an error in a semantic view
 **Prune is report-only** (info)
 
 `<artifact> is no longer declared; SST never removes <value>: <detail>`
+
+Raised when an artifact recorded in state is no longer declared; prune reports the resources SST keeps and never executes.
 
 Fix: the plan lists it until the objects are removed by hand; it is never a write, and the plan exits 2 only until an apply records it
 
@@ -4964,6 +6248,8 @@ Fix: the plan lists it until the objects are removed by hand; it is never a writ
 
 `<artifact>: smoke query for metric '<member>' failed: <detail>`
 
+Raised when a smoke probe of a metric failed (`sst test --suite smoke`); any other probe reports `SST-APL100`.
+
 Fix: fix the metric; a created view is not a working view
 
 ### SST-PLN101
@@ -4972,11 +6258,15 @@ Fix: fix the metric; a created view is not a working view
 
 `<artifact>: smoke check skipped (<detail>)`
 
+Raised when smoke queries are disabled, or no connection was available.
+
 ### SST-PLN900
 
 **Change order is not a valid topological order** (error)
 
 `change order violates <value>`
+
+Raised when the computed order places a dependent before its dependency.
 
 Fix: report this as a bug
 
@@ -4988,6 +6278,8 @@ Fix: report this as a bug
 
 `<artifact>: <value> failed: <detail>`
 
+Raised when Snowflake rejected the statement.
+
 Fix: read internal_detail, then fix the statement or the account
 
 ### SST-APL002
@@ -4995,6 +6287,8 @@ Fix: read internal_detail, then fix the statement or the account
 **Skipped: a dependency failed** (warning)
 
 `<artifact> skipped: <blocker> failed`
+
+Raised when an earlier artifact in the order failed.
 
 Fix: fix the dependency, then re-apply
 
@@ -5004,6 +6298,8 @@ Fix: fix the dependency, then re-apply
 
 `<artifact> is BLOCKED by <count> errors`
 
+Raised when apply refuses an artifact carrying unresolved errors.
+
 Fix: fix the errors, then re-apply
 
 ### SST-APL004
@@ -5011,6 +6307,8 @@ Fix: fix the errors, then re-apply
 **Refused: replace would run without COPY GRANTS** (error, always an error)
 
 `<artifact>: replace statement omits COPY GRANTS`
+
+Raised when the statement about to execute would silently revoke consumer access.
 
 Fix: emit COPY GRANTS; this is not configurable
 
@@ -5020,6 +6318,8 @@ Fix: emit COPY GRANTS; this is not configurable
 
 `<artifact>: plan target '<found>' differs from the apply target '<expected>'`
 
+Raised when the plan and the connection disagree about the environment.
+
 Fix: re-run plan against the apply target
 
 ### SST-APL006
@@ -5028,13 +6328,19 @@ Fix: re-run plan against the apply target
 
 `<count> published probes failed`
 
+Raised when one or more smoke queries failed in `sst test --suite smoke`, so the suite is not a success.
+
 Fix: fix the metrics, then re-apply
+
+Note: Smoke queries are not part of a deployment, so this can never fail an `apply`.
 
 ### SST-APL007
 
 **Tag application failed after a successful create** (error)
 
 `<artifact>: tags could not be applied: <detail>`
+
+Raised when the separate ALTER that sets tags failed.
 
 Fix: grant the tag privilege, then re-apply
 
@@ -5044,6 +6350,8 @@ Fix: grant the tag privilege, then re-apply
 
 `<artifact>: grants could not be verified after replace`
 
+Raised when the post-replace grant read failed.
+
 Fix: check the grants by hand
 
 ### SST-APL009
@@ -5051,6 +6359,8 @@ Fix: check the grants by hand
 **Explicit grant did not survive a replace** (error, always an error)
 
 `<artifact>: grant <value> was present before replace and is absent after`
+
+Raised when the regression check for grants dropped by a replace failed.
 
 Fix: confirm COPY GRANTS was emitted
 
@@ -5060,6 +6370,8 @@ Fix: confirm COPY GRANTS was emitted
 
 `broke a stale lock held by <value>`
 
+Raised when a lock past its expiry was reclaimed.
+
 Fix: confirm no other run is live; a broken lock means the previous run did not exit cleanly
 
 ### SST-APL011
@@ -5067,6 +6379,8 @@ Fix: confirm no other run is live; a broken lock means the previous run did not 
 **Lock held by a live run** (error)
 
 `<value> holds the apply lock`
+
+Raised when a concurrent apply is in progress.
 
 Fix: wait for the other run, or clear the lock
 
@@ -5076,6 +6390,8 @@ Fix: wait for the other run, or clear the lock
 
 `<artifact>: <value> changed since the plan`
 
+Raised when the target changed after the plan was computed.
+
 Fix: re-run plan
 
 ### SST-APL013
@@ -5083,6 +6399,8 @@ Fix: re-run plan
 **Write refused: target is a production-like environment under --temporary** (error)
 
 `<artifact>: --temporary against target '<target>' is not permitted`
+
+Raised when a session-scoped artifact was requested against a prod-like target: one whose name, split on `_`, `-` and `.`, has a part `prod`, `production` or `prd`.
 
 Fix: drop --temporary, or point at a scratch target
 
@@ -5092,6 +6410,8 @@ Fix: drop --temporary, or point at a scratch target
 
 `<artifact> shadows a permanent object of the same name for this session`
 
+Raised when a temporary apply masks the deployed artifact.
+
 Fix: remember the change is local
 
 ### SST-APL015
@@ -5099,6 +6419,8 @@ Fix: remember the change is local
 **alias ignored under --temporary** (warning)
 
 `<artifact>: alias is meaningless under --temporary and was ignored`
+
+Raised when the committed file is reused for a temporary apply.
 
 Fix: no action; the same committed file is reusable for a permanent apply
 
@@ -5108,6 +6430,8 @@ Fix: no action; the same committed file is reusable for a permanent apply
 
 `<artifact>: <detail>`
 
+Raised when a multi-statement publish failed part way and could not be unwound.
+
 Fix: re-apply, or drop and re-create
 
 ### SST-APL017
@@ -5115,6 +6439,8 @@ Fix: re-apply, or drop and re-create
 **Per-channel publish reported aggregate success** (error)
 
 `<artifact>: <detail>`
+
+Raised when a multi-channel publish hid a failed channel.
 
 Fix: report per-channel status separately
 
@@ -5124,6 +6450,8 @@ Fix: report per-channel status separately
 
 `<artifact>: uploaded <path>, pointer write failed: <detail>`
 
+Raised when the stage upload succeeded and the registry write did not.
+
 Fix: re-run apply; the publish is half complete
 
 ### SST-APL019
@@ -5131,6 +6459,8 @@ Fix: re-run apply; the publish is half complete
 **Deletion of a removed bundle file failed** (error)
 
 `<artifact>: '<path>' could not be removed from the published version`
+
+Raised when a removal that the version requires did not happen.
 
 Fix: re-publish from empty
 
@@ -5140,6 +6470,8 @@ Fix: re-publish from empty
 
 `<artifact>: version '<value>' was minted twice`
 
+Raised when two concurrent deploys produced one version name.
+
 Fix: retry; derive versions from the content SHA
 
 ### SST-APL021
@@ -5147,6 +6479,8 @@ Fix: retry; derive versions from the content SHA
 **Grant issued before certification completed** (error)
 
 `<artifact>: grants were issued and certification did not succeed`
+
+Raised when the publish order was violated at apply time.
 
 Fix: revoke, certify, then grant
 
@@ -5156,6 +6490,8 @@ Fix: revoke, certify, then grant
 
 `dataset '<artifact>': ADD VERSION failed: <detail>`
 
+Raised when the version statement was rejected.
+
 Fix: check OWNERSHIP on the dataset
 
 ### SST-APL023
@@ -5163,6 +6499,8 @@ Fix: check OWNERSHIP on the dataset
 **Eval run could not be started** (error)
 
 `eval '<artifact>': <detail>`
+
+Raised when EXECUTE_AI_EVALUATION could not be invoked.
 
 Fix: check CREATE TASK, CREATE STAGE and the file format
 
@@ -5172,6 +6510,8 @@ Fix: check CREATE TASK, CREATE STAGE and the file format
 
 `eval '<artifact>': status '<found>'`
 
+Raised when the run terminated partially completed.
+
 Fix: treat this as a failure and re-run
 
 ### SST-APL027
@@ -5179,6 +6519,8 @@ Fix: treat this as a failure and re-run
 **Metadata table absent or the wrong shape** (error)
 
 `<value>: <detail>`
+
+Raised when an SM_* metadata table is missing or does not match its expected shape.
 
 Fix: re-run sst extract, then apply
 
@@ -5188,6 +6530,8 @@ Fix: re-run sst extract, then apply
 
 `eval config stage '<value>': FILE FORMAT is <found>, expected <expected>`
 
+Raised when a pre-existing eval config stage does not carry the file format eval runs read.
+
 Fix: run one ALTER STAGE to set the required FILE FORMAT; SST will not alter a stage it did not create
 
 ### SST-APL100
@@ -5196,13 +6540,19 @@ Fix: run one ALTER STAGE to set the required FILE FORMAT; SST will not alter a s
 
 `<artifact>: smoke probe failed: <detail>`
 
+Raised when a smoke probe of anything other than a metric failed, observed by `sst test --suite smoke` rather than by `apply`.
+
 Fix: fix the metric; a created view is not a working view
+
+Note: A metric probe reports `SST-PLN100`.
 
 ### SST-APL900
 
 **Outcome count does not match change count** (error)
 
 `applied <found> outcomes for <expected> changes`
+
+Raised when apply did not account for every planned change.
 
 Fix: report this as a bug
 
@@ -5214,6 +6564,8 @@ Fix: report this as a bug
 
 `Snowflake refused: <detail>`
 
+Raised when no registered signature matched the driver error.
+
 Fix: read internal_detail; if this recurs, add a signature
 
 ### SST-SNO002
@@ -5221,6 +6573,8 @@ Fix: read internal_detail; if this recurs, add a signature
 **Object already exists** (error)
 
 `<value> already exists`
+
+Raised when Snowflake reported 002002 / already exists.
 
 Fix: choose another name, or -- for a semantic view -- let the unconditional `CREATE OR REPLACE` handle it.
 
@@ -5230,6 +6584,8 @@ Fix: choose another name, or -- for a semantic view -- let the unconditional `CR
 
 `<value> does not exist or is not authorised`
 
+Raised when Snowflake reported 002003.
+
 Fix: publish the object, or grant access
 
 ### SST-SNO004
@@ -5237,6 +6593,8 @@ Fix: publish the object, or grant access
 **Insufficient privileges** (error)
 
 `insufficient privileges for <value>`
+
+Raised when Snowflake reported 003001.
 
 Fix: grant the privilege to the deploying role
 
@@ -5246,6 +6604,8 @@ Fix: grant the privilege to the deploying role
 
 `schema <value> does not exist or is not authorised`
 
+Raised when Snowflake reported 002043.
+
 Fix: create the schema, or correct the target
 
 ### SST-SNO006
@@ -5253,6 +6613,8 @@ Fix: create the schema, or correct the target
 **Database does not exist or is not authorised** (error)
 
 `database <value> does not exist or is not authorised`
+
+Raised when Snowflake reported a database-level resolution failure.
 
 Fix: create the database, or correct the target
 
@@ -5262,6 +6624,8 @@ Fix: create the database, or correct the target
 
 `warehouse <value> does not exist or is not authorised`
 
+Raised when Snowflake reported a warehouse resolution failure.
+
 Fix: grant USAGE, or name an existing warehouse
 
 ### SST-SNO008
@@ -5269,6 +6633,8 @@ Fix: grant USAGE, or name an existing warehouse
 **No active warehouse in the session** (error)
 
 `no active warehouse in the session`
+
+Raised when Snowflake reported no active warehouse.
 
 Fix: set a default warehouse for the connecting user
 
@@ -5278,6 +6644,8 @@ Fix: set a default warehouse for the connecting user
 
 `SQL compilation error: <detail>`
 
+Raised when Snowflake reported 001003.
+
 Fix: fix the statement
 
 ### SST-SNO010
@@ -5285,6 +6653,8 @@ Fix: fix the statement
 **SQL execution internal error** (error)
 
 `SQL execution internal error: <detail>`
+
+Raised when Snowflake reported an internal error or an incident id.
 
 Fix: this is the query-time class the derived-metric restrictions exist to prevent
 
@@ -5294,6 +6664,8 @@ Fix: this is the query-time class the derived-metric restrictions exist to preve
 
 `statement timed out after <detail>`
 
+Raised when Snowflake reported 000630.
+
 Fix: raise the timeout, or reduce the statement
 
 ### SST-SNO012
@@ -5301,6 +6673,8 @@ Fix: raise the timeout, or reduce the statement
 **Secure-object share restriction** (error)
 
 `<value>: share restriction`
+
+Raised when Snowflake reported 093932.
 
 Fix: keep the object secure, or revoke the share grant
 
@@ -5310,6 +6684,8 @@ Fix: keep the object secure, or revoke the share grant
 
 `authentication failed for <value>`
 
+Raised when Snowflake reported 250001.
+
 Fix: refresh the credential
 
 ### SST-SNO014
@@ -5317,6 +6693,8 @@ Fix: refresh the credential
 **Driver network failure** (error)
 
 `network failure: <detail>`
+
+Raised when the driver could not complete a round trip.
 
 Fix: retry
 
@@ -5326,6 +6704,8 @@ Fix: retry
 
 `max_staleness <found> rejected`
 
+Raised when Snowflake rejected the staleness value.
+
 Fix: raise it to at least 120
 
 ### SST-SNO016
@@ -5333,6 +6713,8 @@ Fix: raise it to at least 120
 **Semantic view feature not enabled** (error)
 
 `semantic views are not enabled on this account`
+
+Raised when Snowflake reported the feature as unavailable.
 
 Fix: ask an account administrator to enable the feature
 
@@ -5342,6 +6724,8 @@ Fix: ask an account administrator to enable the feature
 
 `CREATE AGENT required on <value>`
 
+Raised when Snowflake required CREATE AGENT.
+
 Fix: grant CREATE AGENT on the schema
 
 ### SST-SNO018
@@ -5349,6 +6733,8 @@ Fix: grant CREATE AGENT on the schema
 **CREATE DATASET privilege required** (error)
 
 `CREATE DATASET required on <value>`
+
+Raised when Snowflake required CREATE DATASET.
 
 Fix: grant CREATE DATASET on the schema
 
@@ -5358,6 +6744,8 @@ Fix: grant CREATE DATASET on the schema
 
 `duplicate synonym <value>`
 
+Raised when Snowflake rejected a repeated synonym.
+
 Fix: make synonyms unique within the view
 
 ### SST-SNO020
@@ -5365,6 +6753,8 @@ Fix: make synonyms unique within the view
 **Identifier too long** (error)
 
 `identifier <value> is too long`
+
+Raised when Snowflake rejected an over-length identifier.
 
 Fix: shorten the name
 
@@ -5374,6 +6764,8 @@ Fix: shorten the name
 
 `lock timeout on <value>`
 
+Raised when Snowflake reported a lock or concurrency failure.
+
 Fix: retry, or serialise the publishers
 
 ### SST-SNO023
@@ -5381,6 +6773,8 @@ Fix: retry, or serialise the publishers
 **Result set too large** (error)
 
 `result set too large for <value>`
+
+Raised when Snowflake refused to return the result.
 
 Fix: narrow the query
 
@@ -5390,6 +6784,8 @@ Fix: narrow the query
 
 `query queued beyond <detail>`
 
+Raised when Snowflake queued the statement past the wait cap.
+
 Fix: raise the queue limit, or use a larger warehouse
 
 ### SST-SNO025
@@ -5397,6 +6793,8 @@ Fix: raise the queue limit, or use a larger warehouse
 **Unexpected DESCRIBE output shape** (error)
 
 `DESCRIBE <value> returned an unexpected shape`
+
+Raised when a DESCRIBE result does not match the expected columns.
 
 Fix: report this as a Snowflake drift finding
 
@@ -5406,6 +6804,8 @@ Fix: report this as a Snowflake drift finding
 
 `model '<model>': <relation> does not exist, or the role cannot see it`
 
+Raised when during enrich, a model's relation does not exist or the role cannot see it.
+
 Fix: build the model in this target, or grant the role access to it
 
 ### SST-SNO031
@@ -5413,6 +6813,8 @@ Fix: build the model in this target, or grant the role access to it
 **Enrichment step failed** (error)
 
 `model '<model>': <step> failed: <detail>`
+
+Raised when an enrich step (reading values, Cortex call) fails for a model.
 
 Fix: fix the cause the message names, then run sst enrich again
 
@@ -5424,6 +6826,8 @@ Fix: fix the cause the message names, then run sst enrich again
 
 `could not connect to <value>: <detail>`
 
+Raised when the connector could not establish a session.
+
 Fix: check the account, the network and the credential
 
 ### SST-PRT002
@@ -5431,6 +6835,8 @@ Fix: check the account, the network and the credential
 **Authentication failed** (error)
 
 `authentication failed for <value>`
+
+Raised when the session was rejected at authentication.
 
 Fix: refresh the credential
 
@@ -5440,6 +6846,8 @@ Fix: refresh the credential
 
 `query timed out after <detail>`
 
+Raised when a port-level statement exceeded its deadline.
+
 Fix: retry; this is retryable
 
 ### SST-PRT004
@@ -5447,6 +6855,8 @@ Fix: retry; this is retryable
 **Insufficient privilege** (error)
 
 `<value> lacks <detail>`
+
+Raised when the port reported a privilege failure.
 
 Fix: grant the privilege
 
@@ -5456,6 +6866,8 @@ Fix: grant the privilege
 
 `Snowflake object <value> was not found: <detail>`
 
+Raised when the port could not resolve an object.
+
 Fix: publish it, or correct the name
 
 ### SST-PRT006
@@ -5463,6 +6875,8 @@ Fix: publish it, or correct the name
 **dbt manifest not found** (error)
 
 `no dbt manifest at <path>`
+
+Raised when the dbt artifact port found no manifest.
 
 Fix: run dbt compile, or set the manifest path
 
@@ -5472,6 +6886,8 @@ Fix: run dbt compile, or set the manifest path
 
 `could not write <path>: <detail>`
 
+Raised when a write through the filesystem port failed.
+
 Fix: check the permissions and the free space
 
 ### SST-PRT009
@@ -5479,6 +6895,8 @@ Fix: check the permissions and the free space
 **Filesystem read failed** (error)
 
 `could not read <path>: <detail>`
+
+Raised when a read through the filesystem port failed.
 
 Fix: check the permissions
 
@@ -5488,6 +6906,8 @@ Fix: check the permissions
 
 `could not remove <path>: <detail>`
 
+Raised when sst clean could not delete a generated artifact.
+
 Fix: remove it by hand
 
 ### SST-PRT011
@@ -5495,6 +6915,8 @@ Fix: remove it by hand
 **Credential resolved to an empty value** (error)
 
 `<value> resolved to an empty credential`
+
+Raised when a secret resolved to nothing.
 
 Fix: set the environment variable, or the profile field
 
@@ -5504,6 +6926,8 @@ Fix: set the environment variable, or the profile field
 
 `<value> would be rendered verbatim`
 
+Raised when a credential reached a formatting boundary unredacted.
+
 Fix: wrap the value in Secret
 
 ### SST-PRT100
@@ -5511,6 +6935,8 @@ Fix: wrap the value in Secret
 **Invalid invocation** (error)
 
 `<detail>`
+
+Raised when a flag, value or combination is not accepted.
 
 Fix: see sst &lt;command&gt; --help
 
@@ -5520,6 +6946,8 @@ Fix: see sst &lt;command&gt; --help
 
 `selector '<value>' contains a comma`
 
+Raised when a comma appears in --select or --exclude.
+
 Fix: use space-separated selectors; intersection is not supported
 
 ### SST-PRT102
@@ -5527,6 +6955,8 @@ Fix: use space-separated selectors; intersection is not supported
 **Unknown selector kind** (error)
 
 `selector '<value>' names an unknown kind`
+
+Raised when a selector prefix is not registered.
 
 Fix: use one of {expected}
 
@@ -5536,6 +6966,8 @@ Fix: use one of {expected}
 
 `selector '<value>' requires --state`
 
+Raised when a state: selector was used with no state file.
+
 Fix: pass --state
 
 ### SST-PRT104
@@ -5543,6 +6975,8 @@ Fix: pass --state
 **Mutually exclusive flags** (error)
 
 `<a> and <b> cannot be combined`
+
+Raised when two flags that exclude each other were both given.
 
 Fix: pass one of them
 
@@ -5552,6 +6986,8 @@ Fix: pass one of them
 
 `'<value>' is not a valid <detail> selector`
 
+Raised when an enrich selector does not parse.
+
 Fix: use the documented form
 
 ### SST-PRT106
@@ -5559,6 +6995,8 @@ Fix: use the documented form
 **Output format is not supported by this command** (error)
 
 `'<found>' is not a supported format for <command>; supported: <expected>`
+
+Raised when an `--output` value the command does not support.
 
 Fix: pass one of {expected}
 
@@ -5568,11 +7006,15 @@ Fix: pass one of {expected}
 
 `interrupted after <detail>; <value>`
 
+Raised when SIGINT was received; partial work may have been applied.
+
 ### SST-PRT108
 
 **Object name is not fully qualified** (error)
 
 `<command> requires a fully-qualified name; '<value>' is not one`
+
+Raised when a positional object name is not a three-part name.
 
 Fix: pass &lt;database&gt;.&lt;schema&gt;.&lt;object&gt;
 
@@ -5582,6 +7024,8 @@ Fix: pass &lt;database&gt;.&lt;schema&gt;.&lt;object&gt;
 
 `<command> requires --yes`
 
+Raised when a command whose confirmation is mandatory was invoked without --yes.
+
 Fix: re-run with --yes; there is no interactive prompt
 
 ### SST-PRT110
@@ -5589,6 +7033,8 @@ Fix: re-run with --yes; there is no interactive prompt
 **Selector passed to a command that has none** (error)
 
 `<command> takes no selector; '<value>' is not accepted`
+
+Raised when --select or --exclude was passed to a command with no selector.
 
 Fix: name one object, or use apply --prune for set-based removal
 
@@ -5600,6 +7046,8 @@ Fix: name one object, or use apply --prune for set-based removal
 
 `internal error: <detail>`
 
+Raised when an exception crossed a phase boundary unhandled.
+
 Fix: report this with the code and internal_detail
 
 ### SST-INT002
@@ -5607,6 +7055,8 @@ Fix: report this with the code and internal_detail
 **Pure function attempted I/O** (error, always an error)
 
 `<value> attempted I/O from a pure ring`
+
+Raised when a domain function reached the filesystem, the network or the clock.
 
 Fix: report this as a bug
 
@@ -5616,6 +7066,8 @@ Fix: report this as a bug
 
 `<value> returned <found>, expected <expected>`
 
+Raised when a phase's output fails its declared postcondition.
+
 Fix: report this as a bug
 
 ### SST-INT004
@@ -5623,6 +7075,8 @@ Fix: report this as a bug
 **Diagnostic constructed outside the emit function** (error, always an error)
 
 `diagnostic for <value> was constructed directly`
+
+Raised when a Diagnostic was built without going through emit().
 
 Fix: report this as a bug
 
@@ -5632,6 +7086,8 @@ Fix: report this as a bug
 
 `<value> emitted with no location`
 
+Raised when a LOD, PRS, REF or VAL code was emitted with a knowable location omitted.
+
 Fix: report this as a bug
 
 ### SST-INT006
@@ -5639,6 +7095,8 @@ Fix: report this as a bug
 **Fingerprint is not stable across identical runs** (error, always an error)
 
 `fingerprint for <value> changed between identical runs`
+
+Raised when a volatile param reached the fingerprint.
 
 Fix: report this as a bug
 
@@ -5648,6 +7106,8 @@ Fix: report this as a bug
 
 `<value> resolved severity outside diagnostics/`
 
+Raised when a command re-derived effective severity.
+
 Fix: report this as a bug
 
 ### SST-INT008
@@ -5655,6 +7115,8 @@ Fix: report this as a bug
 **Cascade attribution produced a dangling cause chain** (error, always an error)
 
 `<value> carries a caused_by naming no diagnostic in the run`
+
+Raised when a diagnostic carries a `caused_by` naming no diagnostic in the run.
 
 Fix: report this as a bug
 
@@ -5664,6 +7126,8 @@ Fix: report this as a bug
 
 `baseline entry <value> matched <count> diagnostics`
 
+Raised when a fingerprint is not unique within one run.
+
 Fix: re-generate the baseline
 
 ### SST-INT900
@@ -5671,6 +7135,8 @@ Fix: re-generate the baseline
 **Unregistered code passed to the emit function** (error, always an error)
 
 `unregistered code <value>`
+
+Raised when emit() received a code the registry does not contain.
 
 Fix: report this as a bug
 
@@ -5680,6 +7146,8 @@ Fix: report this as a bug
 
 `<value> template needs <placeholder>, which was not supplied`
 
+Raised when a template placeholder had no value at format time.
+
 Fix: report this as a bug
 
 ### SST-INT902
@@ -5687,5 +7155,7 @@ Fix: report this as a bug
 **Domain invariant violated** (error, always an error)
 
 `domain invariant violated: <detail>`
+
+Raised when an engine invariant assertion failed.
 
 Fix: report this as a bug

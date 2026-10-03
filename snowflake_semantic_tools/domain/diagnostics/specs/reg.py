@@ -19,6 +19,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "registration for {type} omits required field '{field}'",
         "add {field} to the register() call",
         demotable=False,
+        condition="a register() or artifact-type registration call omits a field the generator needs",
     ),
     spec(
         "SST-REG002",
@@ -27,6 +28,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "{type} is already registered",
         "choose a different name, or delete the duplicate registration",
         demotable=False,
+        condition="two register() calls use the same name or code",
     ),
     spec(
         "SST-REG003",
@@ -35,6 +37,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "root_key '{root_key}' is claimed by {types}",
         "give each artifact type a distinct root_key",
         demotable=False,
+        condition="two artifact types declare the same YAML root key",
     ),
     spec(
         "SST-REG004",
@@ -43,6 +46,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "position {position} is claimed by {types}",
         "renumber one of the colliding positions",
         demotable=False,
+        condition="two types or members share an ordering position",
     ),
     spec(
         "SST-REG005",
@@ -51,6 +55,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "ref_function '{ref_function}' is claimed twice",
         "give each referenceable type its own template function",
         demotable=False,
+        condition='two types register the same "{{ }}" function name',
     ),
     spec(
         "SST-REG006",
@@ -59,6 +64,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "{type} names rule '{rule_id}', which is not registered",
         "register the rule, or remove it from the type",
         demotable=False,
+        condition="a type's rule list names a rule id with no register_rule()",
     ),
     spec(
         "SST-REG007",
@@ -67,6 +73,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "{type} names '{member_type}', which is not registered",
         "register the member type, or correct the name",
         demotable=False,
+        condition="a type references a member type or owner type that does not exist",
     ),
     spec(
         "SST-REG010",
@@ -75,6 +82,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "{type} is ordered at {position} but depends on {blocker}, ordered later",
         "renumber ddl_position so dependents follow their dependencies",
         demotable=False,
+        condition="the declared publish order disagrees with the declared dependency graph",
     ),
     spec(
         "SST-REG011",
@@ -83,6 +91,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "type dependency cycle: {cycle}",
         "break the cycle by removing one dependency_edge",
         demotable=False,
+        condition="the artifact-type dependency graph is not acyclic",
     ),
     spec(
         "SST-REG012",
@@ -91,6 +100,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "'{code}' does not match SST-<AREA><NNN>",
         "use three uppercase letters and three digits",
         demotable=False,
+        condition="register() receives a code that fails the scheme regex",
     ),
     spec(
         "SST-REG013",
@@ -99,6 +109,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "'{code}' declares subsystem {subsystem}",
         "make the area letters and the subsystem field agree",
         demotable=False,
+        condition="the area extracted from the code differs from the registered subsystem",
     ),
     spec(
         "SST-REG014",
@@ -107,6 +118,9 @@ SPECS: tuple[ErrorSpec, ...] = (
         "'{code}' is in the 900 band with severity {severity}",
         "declare 900-band codes ERROR, and non_demotable in INT and REG",
         demotable=False,
+        condition=(
+            "a 900-band code is registered WARNING or INFO, or an INT or REG 900-band code is registered demotable"
+        ),
     ),
     spec(
         "SST-REG015",
@@ -115,6 +129,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "{module} compares severities outside diagnostics/",
         "route the decision through the resolved severity on the diagnostic",
         demotable=False,
+        condition="a command module re-derives blocking-ness instead of reading effective severity",
     ),
     spec(
         "SST-REG016",
@@ -123,6 +138,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "'{code}' template names {placeholder}, absent from declared params",
         "add the placeholder to the code's params, or correct the template",
         demotable=False,
+        condition="a template placeholder has no corresponding declared param",
     ),
     spec(
         "SST-REG017",
@@ -131,6 +147,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "'{code}' was retired in {version} and cannot be reused",
         "allocate the next free number in the band",
         demotable=False,
+        condition="a register() call reuses a tombstoned number",
     ),
     spec(
         "SST-REG018",
@@ -139,6 +156,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "'{code}' is deprecated_in {version} with no superseded_by",
         "name the successor code, or do not deprecate",
         demotable=False,
+        condition="deprecated_in is set and superseded_by is not",
     ),
     spec(
         "SST-REG019",
@@ -147,6 +165,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "'{code}' declares internal_detail but its area is {area}",
         "drop internal_detail, or move the raw text into params",
         demotable=False,
+        condition="a non-INT, non-SNO code declares the internal_detail field",
     ),
     spec(
         "SST-REG020",
@@ -155,6 +174,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "'{ref_function}' -- {direction}",
         "register the type, or remove the resolver",
         demotable=False,
+        condition="a resolver addresses no registered type, or a type names no registered resolver",
     ),
     spec(
         "SST-REG021",
@@ -163,6 +183,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "type '{artifact}' -- {reason}",
         "correct the registration against the probe result",
         demotable=False,
+        condition="a grantable type claims `NONE`, or a type that never replaces claims to preserve",
     ),
     spec(
         "SST-REG022",
@@ -171,6 +192,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "artifact type '{artifact}' declares member_types {member_types}; only semantic_view may",
         "leave `member_types` empty, or register the members as their own top-level type",
         demotable=False,
+        condition="an artifact type other than `semantic_view` registers a non-empty `member_types` tuple",
     ),
     spec(
         "SST-REG023",
@@ -179,6 +201,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "MemberIndex covers {covered}; semantic_view declares {declared}",
         "index every declared member type",
         demotable=False,
+        condition=("the set of member types in `MemberIndex` is not the set named by `semantic_view.member_types`"),
     ),
     spec(
         "SST-REG024",
@@ -187,6 +210,10 @@ SPECS: tuple[ErrorSpec, ...] = (
         "ref policy '{policy}': {detail}",
         "declare the policy, bind it to a field, or state why it is unbound",
         demotable=False,
+        condition=(
+            "a policy named by `ref_field(...)` is not declared, or a declared policy is bound to no "
+            "field and carries no stated reason"
+        ),
     ),
     spec(
         "SST-REG900",
@@ -195,5 +222,6 @@ SPECS: tuple[ErrorSpec, ...] = (
         "registry mutated after freeze: {detail}",
         "move the registration to import time",
         demotable=False,
+        condition="register() is called after the registry is frozen",
     ),
 )

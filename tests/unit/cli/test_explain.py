@@ -52,6 +52,19 @@ def test_explain_json_carries_the_spec_payload(tmp_path: Path) -> None:
         True,
         False,
     )
+    assert data["condition"] == "an override breaks the demotion floor, or --strict and strict: disagree"
+
+
+def test_explain_prints_when_a_code_is_raised_and_its_note(tmp_path: Path) -> None:
+    exit_code, output = _explain(tmp_path, "SST-VAL326")
+    assert exit_code == 0, output
+    assert "  raised when: an attached member's `expr:` carries a bare identifier the view cannot resolve\n" in output
+    assert "  note: Snowflake would reject the whole CREATE with `invalid identifier`\n" in output
+    exit_code, output = _explain(tmp_path, "SST-VAL326", "--output", "json")
+    data = json.loads(output)["data"]
+    assert data["note"] == "Snowflake would reject the whole CREATE with `invalid identifier`"
+    exit_code, output = _explain(tmp_path, "SST-V002", "--output", "json")
+    assert (json.loads(output)["data"]["condition"], json.loads(output)["data"]["note"]) == (None, None)
 
 
 def test_explain_aliases_lists_the_0_3_codes_and_what_they_became(tmp_path: Path) -> None:

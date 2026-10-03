@@ -8,7 +8,7 @@ import pytest
 
 from snowflake_semantic_tools.app.compile import CompileResult
 from snowflake_semantic_tools.app.compile.project import CompileProject
-from snowflake_semantic_tools.app.golden import CompareGoldens, golden_payloads
+from snowflake_semantic_tools.app.golden import CompareGoldens, UpdateGoldens, golden_payloads
 from snowflake_semantic_tools.domain.diagnostics import Origin
 from snowflake_semantic_tools.domain.model.eval import EvalCatalog
 from snowflake_semantic_tools.domain.model.profile import DesktopProfile, ProfileCatalog
@@ -168,3 +168,50 @@ def test_an_artifact_type_without_a_route_is_refused() -> None:
 
     with pytest.raises(ValueError, match="no golden route for artifact type 'dashboard'"):
         golden_payloads(Unknown(), InMemoryGoldenStore())  # type: ignore[arg-type]
+
+
+def test_a_missing_golden_is_reported_apart_from_a_differing_one() -> None:
+    result = project()
+    store = committed(result)
+    del store.goldens[GoldenPath("agent", ("sales_agent.json",))]
+    store.goldens[GoldenPath(None, ("sales.sql",))] += "-- drift\nSELECT 1"
+    report = CompareGoldens(store, lambda: "WORKTREE").run(result)
+    assert report.missing == ("golden/agent/sales_agent.json",)
+    assert len(report.failures) == 2
+
+
+def test_update_writes_only_what_differs_and_keeps_a_ddl_header() -> None:
+    result = project()
+    store = committed(result)
+    ddl = GoldenPath(None, ("sales.sql",))
+    compiled_ddl = store.goldens[ddl]
+    store.goldens[ddl] = "-- generated, do not edit\n\nSELECT 'stale'\n"
+    eval_source = GoldenPath("eval", ("sales_source.sql",))
+    store.goldens[eval_source] = "-- a comment the payload does not carry\n" + store.goldens[eval_source]
+    del store.goldens[GoldenPath("agent", ("sales_agent.json",))]
+
+    written = UpdateGoldens(store, lambda: "WORKTREE").run(result)
+
+    assert written == ("golden/ddl/sales.sql", "golden/agent/sales_agent.json", "golden/eval/sales_source.sql")
+    assert store.goldens[ddl] == "-- generated, do not edit\n\n" + compiled_ddl.rstrip() + "\n"
+    assert not store.goldens[eval_source].startswith("--")
+    assert CompareGoldens(store, lambda: "WORKTREE").run(result).passed
+    assert UpdateGoldens(store, lambda: "WORKTREE").run(result) == ()
+
+
+def test_update_writes_the_commit_as_zeros() -> None:
+    staged = Payload("helper", "agent", Rendered('{"stage": "@S/helper/GIT_abc1234"}'))
+    store = InMemoryGoldenStore()
+    assert UpdateGoldens(store, lambda: "abc1234").run(CompileResult((staged,))) == (  # type: ignore[arg-type]
+        "golden/agent/helper.json",
+    )
+    assert store.goldens[GoldenPath("agent", ("helper.json",))] == '{"stage": "@S/helper/GIT_0000000"}\n'
+
+
+def test_update_creates_a_missing_ddl_golden_without_a_header() -> None:
+    result = project()
+    store = committed(result)
+    ddl = GoldenPath(None, ("sales.sql",))
+    compiled_ddl = store.goldens.pop(ddl)
+    assert UpdateGoldens(store, lambda: "WORKTREE").run(result) == ("golden/ddl/sales.sql",)
+    assert store.goldens[ddl] == compiled_ddl.rstrip() + "\n"

@@ -20,7 +20,7 @@ from snowflake_semantic_tools.app.compile import CompiledView, CompileResult
 from snowflake_semantic_tools.app.compile.agents.observe import ObserveLiveObjects
 from snowflake_semantic_tools.app.fanout import Fanout
 from snowflake_semantic_tools.app.verify_schema import verify_columns
-from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, DiagnosticBag, Severity
+from snowflake_semantic_tools.domain.diagnostics import ERROR_REGISTRY, D, Diagnostic, DiagnosticBag, Severity
 from snowflake_semantic_tools.domain.diagnostics.policy import SeverityPolicy, apply_policy
 from snowflake_semantic_tools.domain.model.identifier import Identifier, QualifiedName, SchemaScope
 from snowflake_semantic_tools.domain.model.lifecycle import RenderedArtifact
@@ -51,11 +51,16 @@ class ValidationResult:
         rendered: Every rendered artifact of the compile, in compile order, whatever was found.
         diagnostics: The compile's diagnostics, then validation's own, after strict promotion.
         promoted: How many warnings strict mode made errors; 0 without it.
+        rules_run: How many of the registry's validation rules ran: every one, less the
+            connected rules skipped.
+        artifacts_checked: How many compiled artifacts were validated.
     """
 
     rendered: tuple[RenderedArtifact, ...]
     diagnostics: DiagnosticBag
     promoted: int = 0
+    rules_run: int = 0
+    artifacts_checked: int = 0
 
     @property
     def success(self) -> bool:
@@ -133,11 +138,13 @@ class ValidateArtifacts:
             Those of `verify_columns`, with `verify_schema` and a catalog.
         """
         found = [*compiled.diagnostics, *_cycle_diagnostics(compiled.rendered)]
+        skipped = 0
         if not connected or self._port is None:
             detail = (
                 "Snowflake syntax checking was disabled" if not connected else "no Snowflake connection was provided"
             )
             found.extend(D("SST-VAL020", rule_id=rule, detail=detail) for rule in CONNECTED_RULES)
+            skipped = len(CONNECTED_RULES)
         else:
             views = tuple(item for item in compiled.compiled if isinstance(item, CompiledView))
             checked = (self._readers or Fanout(self._port)).map(self._view_checks, views)
@@ -148,7 +155,13 @@ class ValidateArtifacts:
             found.extend(verify_columns(self._catalog, compiled))
         policy = SeverityPolicy(MappingProxyType(dict(overrides or {})), strict)
         resolved, promoted = apply_policy(DiagnosticBag(found), policy)
-        return ValidationResult(compiled.rendered, resolved, promoted)
+        return ValidationResult(
+            compiled.rendered,
+            resolved,
+            promoted,
+            rules_run=len(VALIDATION_RULES) - skipped,
+            artifacts_checked=len(compiled.compiled),
+        )
 
     def _view_checks(self, port: ExecutionPort, compiled_view: CompiledView) -> list[Diagnostic]:
         """Run one view's connected checks on `port`: its EXPLAINs and counts, then its spot checks."""
@@ -271,6 +284,8 @@ def _spot_check(port: ExecutionPort, relationship: Relationship, target: Table) 
 
 # The connected rules, which offline validation skips and reports as skipped.
 CONNECTED_RULES = ("SST-VAL418", "SST-VAL415", "SST-VAL212", "SST-VAL218")
+# Every validation rule in the registry: one per VAL code, the connected rules among them.
+VALIDATION_RULES = tuple(sorted(code for code, spec in ERROR_REGISTRY.items() if spec.subsystem == "VAL"))
 
 
 def _cycle_diagnostics(rendered: tuple[RenderedArtifact, ...]) -> tuple[Diagnostic, ...]:

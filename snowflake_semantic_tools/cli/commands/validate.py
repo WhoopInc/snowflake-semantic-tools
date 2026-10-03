@@ -21,6 +21,7 @@ from snowflake_semantic_tools.cli.options import (
     validation_options,
     with_model_paths,
 )
+from snowflake_semantic_tools.cli.output import suppressed_by_baseline
 from snowflake_semantic_tools.cli.runner import CommandResult, command_body
 from snowflake_semantic_tools.cli.settings import (
     project_config,
@@ -89,9 +90,16 @@ def validate(
     exit_code = OK if result.success else ERROR
     # `--show-info` also says which registered type owns each semantic-model file.
     owners = ownership_report(paths, project_config(paths)) if options.show_info else ()
+    diagnostics = DiagnosticBag((*strict_disagreement(paths, strict), *result.diagnostics, *owners))
     return CommandResult(
         exit_code,
-        DiagnosticBag((*strict_disagreement(paths, strict), *result.diagnostics, *owners)),
+        diagnostics,
+        # Built when the envelope is, once the runner has matched the baseline.
+        data=lambda: {
+            "rules_run": result.rules_run,
+            "artifacts_checked": result.artifacts_checked,
+            "suppressed_by_baseline": suppressed_by_baseline(diagnostics),
+        },
         human=None if exit_code else lambda: _print_counts(result),
         promoted=result.promoted,
         gated=True,

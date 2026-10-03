@@ -8,6 +8,7 @@ may return, and every case's code must be one of its command's.
 
 from __future__ import annotations
 
+import shutil
 from collections.abc import Callable
 from pathlib import Path
 
@@ -138,14 +139,14 @@ SCENARIOS: dict[tuple[str, int], Scenario] = {
     ("test", 0): lambda tmp, _: _run(
         "test", *common(project_copy(tmp)), "--suite", "golden", "--golden-dir", str(GOLDEN)
     ),
-    ("test", 1): lambda tmp, _: _run("test", *common(project_copy(tmp)), "--suite", "golden", "--golden-dir", str(tmp)),
+    ("test", 1): lambda tmp, _: _test_drifted(tmp),
     ("test", 3): lambda tmp, _: _run("test", "--suite", "every"),
     ("test", 4): lambda tmp, _: _run("test", "--project-dir", str(tmp), "--suite", "golden"),
     ("test", 5): lambda tmp, mp: _connected(tmp, mp, "test", "--suite", "smoke"),
     ("docs", 0): lambda tmp, _: _run("docs", "--project-dir", str(REPO_ROOT), "--check"),
     ("docs", 1): lambda tmp, _: _docs_unwritable(tmp),
     ("docs", 2): lambda tmp, _: _run("docs", "--project-dir", str(tmp), "--check"),
-    ("docs", 3): lambda tmp, _: _run("docs", "--only", "errors"),
+    ("docs", 3): lambda tmp, _: _run("docs", "--only", "everything"),
     ("clean", 0): lambda tmp, _: _run("clean", "--project-dir", str(project_copy(tmp))),
     ("clean", 1): lambda tmp, mp: _clean_refused(tmp, mp),
     ("clean", 3): lambda tmp, _: _run("clean", "--force"),
@@ -177,6 +178,55 @@ SCENARIOS: dict[tuple[str, int], Scenario] = {
     ("migrate", 3): lambda tmp, _: _run("migrate", "refs", "--bogus"),
     ("migrate", 4): lambda tmp, _: _run("migrate", "refs", "--project-dir", str(tmp)),
 }
+
+# Flags that change how a command exits, each by a real run: (command, code, scenario) by id.
+FLAG_SCENARIOS: dict[str, tuple[str, int, Scenario]] = {
+    "plan-no-grants": ("plan", 2, lambda tmp, mp: _plan(tmp, mp, "--no-grants")),
+    "plan-grants": ("plan", 2, lambda tmp, mp: _plan(tmp, mp, "--grants")),
+    "plan-capture-prior": ("plan", 2, lambda tmp, mp: _plan(tmp, mp, "--capture-prior")),
+    "plan-full": ("plan", 2, lambda tmp, mp: _plan(tmp, mp, "--full")),
+    "plan-names-only": ("plan", 2, lambda tmp, mp: _plan(tmp, mp, "--names-only")),
+    "plan-names-only-in-sync": ("plan", 0, lambda tmp, mp: _plan(tmp, mp, "--names-only", "--no-detailed-exitcode")),
+    "plan-no-validate": ("plan", 2, lambda tmp, mp: _plan(tmp, mp, "--no-validate")),
+    "plan-no-validate-broken": ("plan", 1, lambda tmp, mp: _plan_broken(tmp, mp, "--no-validate")),
+    "plan-no-validate-syntax-check": (
+        "plan",
+        3,
+        lambda tmp, _: _run("plan", "--no-validate", "--snowflake-syntax-check"),
+    ),
+    "apply-no-validate": ("apply", 0, lambda tmp, mp: _apply_nothing(tmp, mp, "--no-validate")),
+    "apply-no-validate-broken": ("apply", 1, lambda tmp, mp: _apply_broken(tmp, mp, "--no-validate")),
+    "apply-no-validate-syntax-check": (
+        "apply",
+        3,
+        lambda tmp, _: _run("apply", "--yes", "--no-validate", "--snowflake-syntax-check"),
+    ),
+    "test-select": ("test", 0, lambda tmp, _: _test_golden(tmp, GOLDEN, "--select", "jaffle_minimal")),
+    "test-exclude": ("test", 0, lambda tmp, _: _test_golden(tmp, GOLDEN, "--exclude", "type:agent")),
+    "test-select-matches-nothing": ("test", 4, lambda tmp, _: _test_golden(tmp, GOLDEN, "--select", "nothing")),
+    "test-missing-golden": ("test", 4, lambda tmp, _: _test_golden(tmp, tmp)),
+    "test-update-golden": ("test", 0, lambda tmp, mp: _test_update(tmp, mp, "")),
+    "test-update-golden-in-ci": ("test", 3, lambda tmp, mp: _test_update(tmp, mp, "true")),
+    "test-update-golden-smoke": ("test", 3, lambda tmp, _: _run("test", "--update-golden", "--suite", "smoke")),
+}
+
+
+def _test_golden(tmp: Path, golden_dir: Path, *flags: str) -> Result:
+    project = project_copy(tmp)
+    return _run("test", *common(project), "--suite", "golden", "--golden-dir", str(golden_dir), *flags)
+
+
+def _test_drifted(tmp: Path) -> Result:
+    goldens = tmp / "expected"
+    shutil.copytree(GOLDEN.parent, goldens)
+    drifted = goldens / "ddl" / "jaffle_minimal.sql"
+    drifted.write_text(drifted.read_text(encoding="utf-8").replace("Menu products only", "Drifted"), encoding="utf-8")
+    return _test_golden(tmp, goldens / "ddl")
+
+
+def _test_update(tmp: Path, monkeypatch: pytest.MonkeyPatch, ci: str) -> Result:
+    monkeypatch.setenv("CI", ci)
+    return _test_golden(tmp, tmp / "goldens", "--update-golden")
 
 
 def _debug_invalid(tmp: Path) -> Result:
@@ -226,24 +276,26 @@ def _drop_without_snowflake(
     return _run("drop", *DROP, "--project-dir", str(project))
 
 
-def _plan_broken(tmp: Path, monkeypatch: pytest.MonkeyPatch) -> Result:
+def _plan_broken(tmp: Path, monkeypatch: pytest.MonkeyPatch, *flags: str) -> Result:
     project = project_copy(tmp)
     compile_project(project)
     break_menu_view(project)
-    return invoke_with_port(monkeypatch, RecordedSnowflake(state={}), ["plan", *common(project)])
+    return invoke_with_port(monkeypatch, RecordedSnowflake(state={}), ["plan", *common(project), *flags])
 
 
-def _apply_nothing(tmp: Path, monkeypatch: pytest.MonkeyPatch) -> Result:
+def _apply_nothing(tmp: Path, monkeypatch: pytest.MonkeyPatch, *flags: str) -> Result:
     project = skills_only_project(tmp / "skills")
     assert _run("compile", "--project-dir", str(project)).exit_code == 0
-    return invoke_with_port(monkeypatch, RecordedSnowflake(state={}), ["apply", "--project-dir", str(project), "--yes"])
+    return invoke_with_port(
+        monkeypatch, RecordedSnowflake(state={}), ["apply", "--project-dir", str(project), "--yes", *flags]
+    )
 
 
-def _apply_broken(tmp: Path, monkeypatch: pytest.MonkeyPatch) -> Result:
+def _apply_broken(tmp: Path, monkeypatch: pytest.MonkeyPatch, *flags: str) -> Result:
     project = project_copy(tmp)
     compile_project(project)
     break_menu_view(project)
-    return invoke_with_port(monkeypatch, RecordedSnowflake(state={}), ["apply", *common(project), "--yes"])
+    return invoke_with_port(monkeypatch, RecordedSnowflake(state={}), ["apply", *common(project), "--yes", *flags])
 
 
 def _interrupted(tmp: Path, monkeypatch: pytest.MonkeyPatch, *args: str) -> Result:
@@ -256,7 +308,7 @@ def _interrupted(tmp: Path, monkeypatch: pytest.MonkeyPatch, *args: str) -> Resu
 def _listed(tmp: Path) -> Result:
     project = project_copy(tmp)
     compile_project(project)
-    return _run("list", "--project-dir", str(project), "semantic_view", "--long", "--exclude", "jaffle_menu")
+    return _run("list", "--project-dir", str(project), "semantic-views", "--long", "--exclude", "jaffle_menu")
 
 
 def _docs_unwritable(tmp: Path) -> Result:
@@ -280,6 +332,16 @@ def test_each_documented_exit_code_is_returned_by_a_real_invocation(
     command: str, code: int, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     result = SCENARIOS[(command, code)](tmp_path, monkeypatch)
+    assert result.exit_code == code, result.output
+    assert code in EXIT_CODES[command]
+
+
+@pytest.mark.parametrize("scenario", sorted(FLAG_SCENARIOS))
+def test_each_flag_exits_with_a_code_its_command_documents(
+    scenario: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    command, code, run = FLAG_SCENARIOS[scenario]
+    result = run(tmp_path, monkeypatch)
     assert result.exit_code == code, result.output
     assert code in EXIT_CODES[command]
 
