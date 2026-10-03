@@ -507,13 +507,17 @@ def _inline_key(target: str, present: Mapping[str, object]) -> tuple[str, object
 
 
 def load_profile_target(
-    files: ProjectPaths, target_name: str | None = None, *, profile: str | None = None
+    files: ProjectPaths,
+    target_name: str | None = None,
+    *,
+    profile: str | None = None,
+    state: Mapping[str, object] | None = None,
 ) -> ProfileTarget:
     """Resolve one profiles.yml target into its connection arguments, identity, and state table.
 
     `target_name` None selects the profile's default target, and `profile` None the profile the
-    project names. The state table is `SST_STATE` in
-    the target's database and schema unless `state:` in `sst_config.yml` overrides a part.
+    project names. The state table is `SST_STATE` in the target's database and schema unless
+    `state`, the resolved configuration's `state:` block, overrides a part.
 
     Raises:
         OSError: profiles.yml cannot be read.
@@ -546,7 +550,7 @@ def load_profile_target(
         str(resolved["role"]) if resolved.get("role") else None,
         str(resolved["warehouse"]) if resolved.get("warehouse") else None,
     )
-    state_table = _state_table(files, database, schema)
+    state_table = _state_table(state, database, schema)
     return ProfileTarget(
         profile_name=profile_name,
         target_name=selected,
@@ -558,18 +562,16 @@ def load_profile_target(
     )
 
 
-def _state_table(files: ProjectPaths, database: str, schema: str) -> QualifiedName:
+def _state_table(state_config: Mapping[str, object] | None, database: str, schema: str) -> QualifiedName:
     """Locate the state table: `SST_STATE` in the target's database and schema by default.
 
-    `state:` in the configuration overrides each part: `+table` with `env_var()` rendered, and
+    The `state:` block overrides each part: `+table` with `env_var()` rendered, and
     `+database` and `+schema` with `{{ target.database }}` and `{{ target.schema }}` replaced.
     """
-    config = _read_yaml(files.config_file) if files.config_file is not None else {}
-    state_config = config.get("state")
     state_name = "SST_STATE"
     state_database = database
     state_schema = schema
-    if isinstance(state_config, dict):
+    if isinstance(state_config, Mapping):
         raw_table = state_config.get("+table")
         raw_database = state_config.get("+database")
         raw_schema = state_config.get("+schema")

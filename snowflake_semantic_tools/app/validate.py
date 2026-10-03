@@ -12,13 +12,16 @@ findings are merged in compile order.
 from __future__ import annotations
 
 import re
+from collections.abc import Mapping
 from dataclasses import dataclass, replace
+from types import MappingProxyType
 
 from snowflake_semantic_tools.app.compile import CompiledView, CompileResult
 from snowflake_semantic_tools.app.compile.agents.observe import ObserveLiveObjects
 from snowflake_semantic_tools.app.fanout import Fanout
 from snowflake_semantic_tools.app.verify_schema import verify_columns
-from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, DiagnosticBag, resolve_severities
+from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, DiagnosticBag, Severity
+from snowflake_semantic_tools.domain.diagnostics.policy import SeverityPolicy, apply_policy
 from snowflake_semantic_tools.domain.model.identifier import Identifier, QualifiedName, SchemaScope
 from snowflake_semantic_tools.domain.model.lifecycle import RenderedArtifact
 from snowflake_semantic_tools.domain.model.semantic_view import Relationship, SemanticView, Table, VerifiedQuery
@@ -97,6 +100,7 @@ class ValidateArtifacts:
         strict: bool,
         connected: bool,
         verify_schema: bool = False,
+        overrides: Mapping[str, Severity] | None = None,
     ) -> ValidationResult:
         """Validate a compile result, asking Snowflake to check each semantic view when connected.
 
@@ -107,14 +111,15 @@ class ValidateArtifacts:
         a verified query as written. A verified query that compiles is then run under a row
         count. Then each equality relationship's target is read for a repeated join key, and
         each distinct range for overlapping ranges. With a catalog, the compiled agents and
-        tools are checked against their live objects. Strict mode then promotes every warning
-        to an error.
+        tools are checked against their live objects. The project's severity overrides then
+        apply, and strict mode promotes every warning to an error.
 
         Args:
             strict: Promote every warning, the compile's included, to an error.
             connected: Run the Snowflake checks; False skips them even with a port.
             verify_schema: With a catalog, also look each column a view reads up in the
                 warehouse, as `verify_columns` does.
+            overrides: The severity each code the project overrides reports at; None for none.
 
         Diagnostics:
             SST-VAL010: the compiled artifacts depend on one another in a cycle.
@@ -141,7 +146,8 @@ class ValidateArtifacts:
                 found.extend(ObserveLiveObjects(self._catalog, target=self._target).run(compiled))
         if verify_schema and self._catalog is not None:
             found.extend(verify_columns(self._catalog, compiled))
-        resolved, promoted = resolve_severities(DiagnosticBag(found), strict=strict)
+        policy = SeverityPolicy(MappingProxyType(dict(overrides or {})), strict)
+        resolved, promoted = apply_policy(DiagnosticBag(found), policy)
         return ValidationResult(compiled.rendered, resolved, promoted)
 
     def _view_checks(self, port: ExecutionPort, compiled_view: CompiledView) -> list[Diagnostic]:

@@ -21,7 +21,12 @@ from snowflake_semantic_tools.cli.options import (
     with_model_paths,
 )
 from snowflake_semantic_tools.cli.runner import CommandResult, command_body
-from snowflake_semantic_tools.cli.settings import strict_disagreement, validation_settings
+from snowflake_semantic_tools.cli.settings import (
+    project_config,
+    severity_overrides_setting,
+    strict_disagreement,
+    validation_settings,
+)
 from snowflake_semantic_tools.cli.wiring import compile as compiling
 from snowflake_semantic_tools.cli.wiring.project import connect
 from snowflake_semantic_tools.domain.diagnostics import DiagnosticBag, Severity
@@ -74,13 +79,14 @@ def validate(
             strict=effective_strict,
             connected=effective_connected,
             verify_schema=verify_schema,
+            overrides=severity_overrides_setting(paths),
         )
     finally:
         if port is not None:
             port.close()
     exit_code = OK if result.success else ERROR
     # `--show-info` also says which registered type owns each semantic-model file.
-    owners = ownership_report(paths) if options.show_info else ()
+    owners = ownership_report(paths, project_config(paths)) if options.show_info else ()
     return CommandResult(
         exit_code,
         DiagnosticBag((*strict_disagreement(paths, strict), *result.diagnostics, *owners)),

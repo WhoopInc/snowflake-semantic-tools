@@ -119,6 +119,7 @@ def diagnostic_json(value: Diagnostic, *, baselined: bool = False) -> dict[str, 
         "severity": value.severity.name.lower(),
         "declared_severity": spec.severity.name.lower(),
         "promoted_from": value.promoted_from.name.lower() if value.promoted_from is not None else None,
+        "demoted_from": value.demoted_from.name.lower() if value.demoted_from is not None else None,
         "baselined": baselined,
         "message": value.message,
         "suggestion": spec.suggestion,
@@ -373,6 +374,8 @@ def _render(diagnostic: Diagnostic, policy: RenderPolicy) -> str:
         replacement = click.style(label, fg=colour, bold=True)
     if declared is not None:
         replacement += f" (promoted from {declared.name.lower()})"
+    elif diagnostic.demoted_from is not None and not diagnostic.cascaded:
+        replacement += f" (demoted from {diagnostic.demoted_from.name.lower()})"
     text = text.replace(label, replacement, 1)
     if policy.verbose:
         text += f"\n  phase: {diagnostic.phase}; fingerprint: {stable_fingerprint(diagnostic)}"

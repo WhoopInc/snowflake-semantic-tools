@@ -28,7 +28,7 @@ from snowflake_semantic_tools.adapters.clock import SystemClock
 from snowflake_semantic_tools.adapters.dbt.profiles import resolve_profile_name
 from snowflake_semantic_tools.adapters.errors import ProjectError
 from snowflake_semantic_tools.adapters.locations import ProjectPaths, locate_project
-from snowflake_semantic_tools.adapters.yaml.config import load_project_config
+from snowflake_semantic_tools.adapters.resolved_config import resolved_config
 from snowflake_semantic_tools.app.drop import DropObject, DropRequest, DropResult
 from snowflake_semantic_tools.cli.exit_codes import ERROR, OK
 from snowflake_semantic_tools.cli.globals import GlobalOptions
@@ -174,7 +174,7 @@ def _state_files(paths: ProjectPaths) -> ProjectPaths:
     try:
         located = locate_project(paths.project_dir, None, profiles_dir=paths.profiles_dir, required=False)
         if located.config_file is not None:
-            load_project_config(located)
+            resolved_config(located)
     except (ProjectError, OSError, ValueError):
         return paths
     return located

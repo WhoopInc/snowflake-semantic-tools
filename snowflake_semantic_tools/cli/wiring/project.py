@@ -19,9 +19,11 @@ from snowflake_semantic_tools.adapters.dbt.profiles import ProfileTarget, load_p
 from snowflake_semantic_tools.adapters.fs.local import StateFileStore, state_file
 from snowflake_semantic_tools.adapters.locations import ProjectPaths
 from snowflake_semantic_tools.adapters.project_source import YamlProjectInputs
+from snowflake_semantic_tools.adapters.resolved_config import resolved_config
 from snowflake_semantic_tools.adapters.snowflake.connector import SnowflakeConnector
 from snowflake_semantic_tools.adapters.yaml.documents import LoadCache
 from snowflake_semantic_tools.cli.output import register_secrets
+from snowflake_semantic_tools.domain.model.config_schema import config_block
 from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
 
 # Where a command's shared `LoadCache` is kept, in the click context's `meta`.
@@ -96,7 +98,9 @@ def connect(
         ProjectError: the target cannot be connected to as declared, as `connection_params` says.
         SnowflakePortError: connecting failed, or the session's role is not the target's role.
     """
-    resolved_profile = load_profile_target(files, target_name, profile=profile)
+    resolved_profile = load_profile_target(
+        files, target_name, profile=profile, state=config_block(resolved_config(files, target_name).tree.get("state"))
+    )
     register_secrets(resolved_profile.secrets)
     port = open_connector(resolved_profile.connection_params)
     with ExitStack() as cleanup:

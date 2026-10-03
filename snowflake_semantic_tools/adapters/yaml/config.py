@@ -1,11 +1,16 @@
 """Read the configuration file a run resolved, once, with source positions, and check its shape.
 
 Which file that is was decided by `adapters.locations.locate_project`; nothing here looks for one.
+The tree is checked after its templates resolve, so a key whose value a target conditional
+chooses is checked as the value the run reads. `adapters.resolved_config` is the one reader
+the rest of SST goes through.
 """
 
 from __future__ import annotations
 
+from collections.abc import Callable, Mapping
 from types import MappingProxyType
+from typing import Any
 
 import yaml
 
@@ -16,6 +21,9 @@ from snowflake_semantic_tools.adapters.yaml.parse import parse_yaml_bytes
 from snowflake_semantic_tools.domain.diagnostics import D, DiagnosticBag, Origin
 from snowflake_semantic_tools.domain.ports.project import ProjectConfig
 from snowflake_semantic_tools.domain.validate.config import unstated_policy, validate_config
+
+# Resolves a parsed tree's templates, returning the tree and what did not resolve.
+Render = Callable[[Mapping[str, Any]], tuple[dict[str, Any], DiagnosticBag]]
 
 # Blocks and directory keys whose artifacts are compiled from a dbt project.
 DBT_ONLY_KEYS = (
@@ -46,8 +54,16 @@ PROJECT_DIR_KEYS = (
 )
 
 
-def load_project_config(files: ProjectPaths) -> ProjectConfig:
-    """Parse the resolved configuration file and validate it; an empty tree when there is none.
+def load_project_config(files: ProjectPaths, render: Render | None = None) -> ProjectConfig:
+    """Parse the resolved configuration file, resolve its templates, and validate it.
+
+    Args:
+        render: Resolves the parsed tree's target conditionals and `var()` calls; None checks
+            the file as written.
+
+    Returns:
+        The configuration; an empty tree when there is none. Its diagnostics are the checks of
+        the resolved tree, then what did not resolve.
 
     Raises:
         ProjectError: the file cannot be read (SST-PRT009), is not valid YAML (SST-CFG002), or
@@ -71,13 +87,13 @@ def load_project_config(files: ProjectPaths) -> ProjectConfig:
     positions = {
         key: (position.line, position.col) for key, position in parsed.line_index.items() if isinstance(key, tuple)
     }
+    tree, unresolved = render(parsed.tree) if render is not None else (dict(parsed.tree), DiagnosticBag())
     diagnostics = [
         *files.diagnostics,
         *parsed.diagnostics,
-        *validate_config(parsed.tree, positions=positions, file=name),
-        *unstated_policy(parsed.tree, file=name),
+        *validate_config(tree, positions=positions, file=name),
+        *unstated_policy(tree, file=name),
     ]
-    tree = dict(parsed.tree)
     if files.semantic_models_dir is not None:
         # `--semantic` stands in for the key, so every reader of the directory sees the override.
         tree["project"] = {
@@ -118,7 +134,7 @@ def load_project_config(files: ProjectPaths) -> ProjectConfig:
                         value=value,
                     )
                 )
-    return ProjectConfig(MappingProxyType(tree), DiagnosticBag(diagnostics), has_dbt_project, name)
+    return ProjectConfig(MappingProxyType(tree), DiagnosticBag((*diagnostics, *unresolved)), has_dbt_project, name)
 
 
 def _parse_config(files: ProjectPaths) -> ParsedYaml:

@@ -18,7 +18,7 @@ from snowflake_semantic_tools.adapters.locations import ProjectPaths
 from snowflake_semantic_tools.adapters.yaml.discover import discover_yaml
 from snowflake_semantic_tools.adapters.yaml.documents import LoadCache, RawDocuments, load_documents
 from snowflake_semantic_tools.adapters.yaml.ownership import assign_owners
-from snowflake_semantic_tools.adapters.yaml.parse import parse_yaml_bytes, read_yaml_mapping
+from snowflake_semantic_tools.adapters.yaml.parse import parse_yaml_bytes
 from snowflake_semantic_tools.adapters.yaml.semantic.build import _build_view
 from snowflake_semantic_tools.adapters.yaml.semantic.checks.fanout import _attachment_diagnostics
 from snowflake_semantic_tools.adapters.yaml.semantic.checks.instructions import _contradiction_diagnostics
@@ -59,7 +59,7 @@ class SemanticInputs:
 
 
 def read_semantic_inputs(
-    files: ProjectPaths, config: Mapping[str, Any] | None = None, cache: LoadCache | None = None
+    files: ProjectPaths, config: Mapping[str, Any], cache: LoadCache | None = None
 ) -> SemanticInputs:
     """Read the configuration, then discover, parse, and assign every semantic-model document once.
 
@@ -68,17 +68,16 @@ def read_semantic_inputs(
     discovery's diagnostics, then load's, then each file no registered type owns.
 
     Args:
-        config: The configuration with its templates resolved for the run's target; None reads
-            the file as written.
+        config: The run's configuration, with its templates resolved for the run's target.
         cache: The parses this run already holds, which an unchanged file is served from.
 
     Raises:
-        ProjectError: the run has no configuration file, or it or a document cannot be read.
+        ProjectError: the run has no configuration file, or a document cannot be read.
     """
     if files.config_file is None:
         raise ProjectError(f"no configuration file in {files.project_dir}")
     project_dir = files.project_dir
-    config = dict(config) if config is not None else read_yaml_mapping(files.config_file)
+    config = dict(config)
     semantic_models_dir = str((config.get("project") or {}).get("semantic_models_dir") or "semantic_models")
     documents = load_documents(discover_yaml(project_dir, semantic_models_dir, config=config), parse_yaml_bytes, cache)
     unowned, _ = assign_owners(documents)

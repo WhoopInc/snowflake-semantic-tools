@@ -11,13 +11,14 @@ from __future__ import annotations
 
 import os
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import NoReturn
 
 from snowflake_semantic_tools.adapters.errors import ProjectError
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, Origin
 from snowflake_semantic_tools.domain.model.config_schema import CONFIG_FILE, CONFIG_NAMES
+from snowflake_semantic_tools.domain.ports.project import ProjectConfig
 
 PROFILES_FILE = "profiles.yml"
 
@@ -39,6 +40,11 @@ class ProjectPaths:
             project, in place of `project.semantic_models_dir`; None keeps the configured one.
         model_paths: The dbt model paths `--dbt` names, relative to the project, in place of
             `dbt_project.yml`'s `model-paths`; None keeps dbt's.
+        target_name: The `profiles.yml` target the run names with `--target` or `$SST_TARGET`;
+            None selects the profile's default. The configuration's target conditionals resolve
+            against it.
+        resolved: The run's configuration, resolved once per target and read from here after;
+            `adapters.resolved_config` fills it. Not part of equality.
     """
 
     project_dir: Path
@@ -49,6 +55,10 @@ class ProjectPaths:
     allow_unsupported_manifest_schema: bool = False
     semantic_models_dir: str | None = None
     model_paths: tuple[str, ...] | None = None
+    target_name: str | None = None
+    resolved: dict[tuple[str | None, str | None], ProjectConfig] = field(
+        default_factory=dict, compare=False, hash=False, repr=False
+    )
 
     @property
     def config_name(self) -> str:
