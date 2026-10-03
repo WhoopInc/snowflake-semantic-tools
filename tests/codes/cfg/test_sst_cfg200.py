@@ -8,7 +8,7 @@ from snowflake_semantic_tools.domain.validate.config import validate_config
 
 def test_sst_cfg200_fires() -> None:
     [diagnostic] = [item for item in validate_config({"deploy": {"fail_fast": True}}) if item.code == "SST-CFG200"]
-    assert diagnostic.severity is Severity.WARNING
+    assert diagnostic.severity is Severity.ERROR
     assert diagnostic.message == "config key 'deploy' is deprecated; use 'apply'"
     assert diagnostic.subject == "config:deploy"
 

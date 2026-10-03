@@ -74,7 +74,7 @@ def test_legacy_globals_are_rejected_with_their_codes_and_render_nothing() -> No
             ("SST-REF035", "error"): 7,
             ("SST-VAL405", "error"): 1,
             ("SST-PRS021", "error"): 1,
-            ("SST-VAL012", "warning"): 2,
+            ("SST-VAL012", "error"): 2,
         }
     )
 
@@ -100,11 +100,11 @@ def test_codemod_converts_idempotently_and_the_result_renders_the_committed_ddl(
     assert again == 0 and report["data"]["files"] == []
 
     # The codemod rewrites references, not keys: the 0.3 spellings remain. The custom
-    # instruction spellings are honoured and named; the relationship shape is an error.
+    # instruction spellings are errors that name the 1.0 key; so is the relationship shape.
     exit_code, payload = invoke("compile", "--project-dir", str(project), "--manifest", str(MANIFEST))
     assert exit_code == 1
     assert codes(payload) == Counter(
-        {("SST-PRS021", "error"): 1, ("SST-VAL012", "warning"): 2, ("SST-MAN008", "error"): 1}
+        {("SST-PRS021", "error"): 1, ("SST-VAL012", "error"): 2, ("SST-MAN008", "error"): 1}
     )
     renames = {
         (item["params"]["field"], item["params"]["expected"])
@@ -132,7 +132,7 @@ def test_codemod_converts_idempotently_and_the_result_renders_the_committed_ddl(
     assert "AI_SQL_GENERATION 'Monetary columns" in ddl and "AI_QUESTION_CATEGORIZATION 'Decline" in ddl
 
 
-def test_a_0_3_spelling_beside_its_1_0_key_is_reported_and_not_read(tmp_path: Path) -> None:
+def test_a_0_3_spelling_beside_its_1_0_key_is_an_error(tmp_path: Path) -> None:
     project = converted_copy(tmp_path)
     CliRunner().invoke(cli, ["migrate", "refs", "--project-dir", str(project), "--write"])
     rename_0_3_keys(project)
@@ -144,5 +144,5 @@ def test_a_0_3_spelling_beside_its_1_0_key_is_reported_and_not_read(tmp_path: Pa
         encoding="utf-8",
     )
     exit_code, payload = invoke("compile", "--project-dir", str(project), "--manifest", str(MANIFEST))
-    assert exit_code == 0
-    assert codes(payload) == Counter({("SST-PRS020", "warning"): 1})
+    assert exit_code == 1
+    assert codes(payload) == Counter({("SST-PRS020", "error"): 1, ("SST-MAN008", "error"): 1})

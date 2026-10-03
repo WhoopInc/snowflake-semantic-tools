@@ -1,7 +1,9 @@
-"""Report the keys read only to say what becomes of them: honoured 0.3 spellings and inert keys.
+"""Report the keys read only to say what becomes of them: 0.3 spellings and inert keys, each an error.
 
-A 0.3 spelling SST still honours is named with its 1.0 key; a key that changes nothing in the
-DDL is named so it does not pass review looking as though it does.
+A 0.3 spelling is named with its 1.0 key; a key that changes nothing in the DDL is named so it
+does not pass review looking as though it does. Both are errors, so a project written for 0.3
+cannot publish under 1.0 until it is migrated; the old spelling is still read, so a run that
+demotes the error renders what the author meant.
 """
 
 from __future__ import annotations
@@ -15,8 +17,8 @@ from snowflake_semantic_tools.domain.model.artifact_key import artifact_key
 from snowflake_semantic_tools.domain.model.authored import AuthoredDocument, AuthoredDocuments
 from snowflake_semantic_tools.domain.validate.semantic.nodes import node_root
 
-# 0.3 spellings SST still reads, by node type: each maps to its 1.0 key. Written alone, the
-# old key is honoured and reported; written beside the 1.0 key, it is refused.
+# 0.3 spellings, by node type: each maps to its 1.0 key. Written alone, the old key is read and
+# reported; written beside the 1.0 key, it is refused.
 DEPRECATED_KEYS: Mapping[str, Mapping[str, str]] = MappingProxyType(
     {
         "custom_instruction": MappingProxyType(

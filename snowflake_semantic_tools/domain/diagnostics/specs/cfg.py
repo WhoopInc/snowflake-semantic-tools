@@ -391,7 +391,7 @@ SPECS: tuple[ErrorSpec, ...] = (
     ),
     spec(
         "SST-CFG200",
-        Severity.WARNING,
+        Severity.ERROR,
         "Deprecated config key",
         "config key '{key}' is deprecated; use '{expected}'",
         "rename the key",

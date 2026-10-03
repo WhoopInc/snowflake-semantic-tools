@@ -42,7 +42,7 @@ class KeyStatus(Enum):
     """Whether SST reads a key, reserves it, reads it under its new name, or no longer reads it."""
 
     CURRENT = "current"
-    # Read as its replacement, with a warning naming it.
+    # An error naming its replacement; the rest of the block is checked as that key.
     DEPRECATED = "deprecated"
     # Reserved for a later release: setting it is an error until SST reads it.
     UNSUPPORTED = "unsupported"

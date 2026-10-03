@@ -706,7 +706,7 @@ Fix: remove insecure_mode, or set it to false; it is a debugging switch, and wit
 
 ### SST-CFG200
 
-**Deprecated config key** (warning)
+**Deprecated config key** (error)
 
 `config key '<key>' is deprecated; use '<expected>'`
 
@@ -1028,7 +1028,7 @@ Fix: use true or false
 
 ### SST-PRS020
 
-**Deprecated field spelling** (warning)
+**Deprecated field spelling** (error)
 
 `<artifact>: '<field>' is deprecated; use '<expected>'`
 
@@ -2378,7 +2378,7 @@ Fix: emit the value unmodified, or stop declaring it
 
 ### SST-VAL012
 
-**Deprecated key spelling in use** (warning)
+**Deprecated key spelling in use** (error)
 
 `<type> '<name>' uses '<field>'; the current spelling is '<expected>'`
 
@@ -2676,7 +2676,7 @@ Fix: use public_access or private_access
 
 ### SST-VAL122
 
-**visibility used instead of access_modifier** (warning)
+**visibility used instead of access_modifier** (error)
 
 `metric '<metric>' uses visibility; the current key is access_modifier`
 
@@ -2854,7 +2854,7 @@ Fix: declare the key; it is the cheapest fan-out protection
 
 ### SST-VAL211
 
-**relationship_type or join_type declared** (warning)
+**relationship_type or join_type declared** (error)
 
 `relationship '<relationship>' declares '<field>', which is not emitted`
 

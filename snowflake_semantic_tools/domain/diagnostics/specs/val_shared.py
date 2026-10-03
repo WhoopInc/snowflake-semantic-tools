@@ -102,7 +102,7 @@ SPECS: tuple[ErrorSpec, ...] = (
     ),
     spec(
         "SST-VAL012",
-        Severity.WARNING,
+        Severity.ERROR,
         "Deprecated key spelling in use",
         "{type} '{name}' uses '{field}'; the current spelling is '{expected}'",
         "rename the key",

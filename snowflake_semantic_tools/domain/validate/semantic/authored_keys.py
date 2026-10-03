@@ -47,7 +47,7 @@ AUTHORED_KEYS: Mapping[str, frozenset[str]] = MappingProxyType(
                 "non_additive_dimensions",
                 "access_modifier",
                 "window",
-                # The 0.3 spelling of access_modifier, honoured with SST-VAL122.
+                # The 0.3 spelling of access_modifier, an error: SST-VAL122.
                 "visibility",
             )
         ),
@@ -61,7 +61,7 @@ AUTHORED_KEYS: Mapping[str, frozenset[str]] = MappingProxyType(
                 "description",
                 "ai_sql_generation",
                 "ai_question_categorization",
-                # The 0.3 spellings, honoured with SST-VAL012 unless the 1.0 key is also set.
+                # The 0.3 spellings, an error: SST-VAL012, or SST-PRS020 when the 1.0 key is also set.
                 *DEPRECATED_KEYS["custom_instruction"],
             )
         ),

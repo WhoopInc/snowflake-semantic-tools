@@ -12,7 +12,7 @@ def test_sst_prs020_fires(tmp_path: Path) -> None:
     # `visibility` is still honoured, and reported as SST-VAL122; this spelling is not read.
     files = metric_file("    expr: COUNT(*)\n    non_additive_by: []\n")
     [diagnostic] = found(SmallProject(tmp_path, files=files).load(), "SST-PRS020")
-    assert diagnostic.severity is Severity.WARNING
+    assert diagnostic.severity is Severity.ERROR
     assert diagnostic.message == "metric:total: 'non_additive_by' is deprecated; use 'non_additive_dimensions'"
     assert diagnostic.subject == "metric:total"
 

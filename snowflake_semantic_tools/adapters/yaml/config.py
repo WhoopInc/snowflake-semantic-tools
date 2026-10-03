@@ -101,7 +101,8 @@ def load_project_config(files: ProjectPaths, render: Render | None = None) -> Pr
             "semantic_models_dir": files.semantic_models_dir,
         }
     if "deploy" in tree and "apply" not in tree:
-        # The deprecated spelling is read as the block it was renamed to; SST-CFG200 says so.
+        # The deprecated spelling is an error, SST-CFG200; it is read as the block it was renamed
+        # to only so a run that demotes the error behaves as the block says.
         tree["apply"] = tree["deploy"]
     project = tree.get("project")
     dbt_only_dirs: set[str] = set()
