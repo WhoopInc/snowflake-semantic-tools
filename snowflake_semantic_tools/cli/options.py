@@ -133,6 +133,11 @@ def no_detailed_exitcode_option() -> Decorator:
     return click.option("--no-detailed-exitcode", is_flag=True)
 
 
+def no_validate_option() -> Decorator:
+    """The `--no-validate` flag, which plans without validating."""
+    return click.option("--no-validate", is_flag=True)
+
+
 def model_path_options() -> Decorator:
     """`--dbt` and `--semantic`, existing paths standing in for the dbt and semantic models paths."""
     existing = click.Path(exists=True, file_okay=False, path_type=Path)

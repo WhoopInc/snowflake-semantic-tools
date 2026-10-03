@@ -690,3 +690,24 @@ def test_every_put_targets_the_directory_of_its_file_so_it_ends_in_a_separator(s
     connector = RecordingUploadConnector()
     connector.upload(stage_path, b"x")
     assert connector.statements[0].endswith(f" {target} OVERWRITE=TRUE AUTO_COMPRESS=FALSE")
+
+
+class _DdlConnector(SnowflakeConnector):
+    def __init__(self, rows: tuple[tuple[object, ...], ...]) -> None:
+        self.rows = rows
+        self.statements: list[str] = []
+
+    def query(self, sql: Sql, params: object = None) -> QueryResult:
+        self.statements.append(str(sql))
+        return QueryResult(("DDL",), self.rows)
+
+
+def test_get_ddl_names_the_type_as_get_ddl_spells_it_and_refuses_an_empty_answer() -> None:
+    connector = _DdlConnector((("create semantic view V",),))
+    name = QualifiedName.parse("DB.S.V")
+    assert connector.get_ddl("semantic view", name) == "create semantic view V"
+    assert connector.statements == ["SELECT GET_DDL('SEMANTIC_VIEW', 'DB.S.V')"]
+    with pytest.raises(SnowflakePortError, match="GET_DDL returned nothing for AGENT DB.S.V"):
+        _DdlConnector(((None,),)).get_ddl("AGENT", name)
+    with pytest.raises(SnowflakePortError, match="GET_DDL returned nothing"):
+        _DdlConnector(()).get_ddl("AGENT", name)

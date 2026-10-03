@@ -1,8 +1,9 @@
 """Plans, apply outcomes, and eval runs as `sst` reports them, and each change's statements on disk.
 
 `change_json` and `outcome_json` are what `--output json` lists for each change and each
-outcome; `print_plan` and `print_eval_results` are the human reports; `write_plan_sql`
-writes what each create or update would execute; `plan_exit_code` is how a plan exits.
+outcome; `print_plan`, `print_changed_names` and `print_eval_results` are the human reports;
+`write_plan_sql` writes what each create or update would execute; `plan_exit_code` is how a
+plan exits.
 """
 
 from __future__ import annotations
@@ -20,6 +21,7 @@ from snowflake_semantic_tools.cli.wiring.project import target_dir
 from snowflake_semantic_tools.domain.diagnostics import DiagnosticBag
 from snowflake_semantic_tools.domain.model.artifact_key import split_artifact_key
 from snowflake_semantic_tools.domain.model.lifecycle import Action, ApplyOutcome, Change, ChangeSet
+from snowflake_semantic_tools.domain.plan.properties import changed_properties
 
 
 def plan_exit_code(ready: PlanReady, shown: DiagnosticBag, *, detailed: bool) -> int:
@@ -37,16 +39,19 @@ def plan_exit_code(ready: PlanReady, shown: DiagnosticBag, *, detailed: bool) ->
     return OK
 
 
-def change_json(change: Change) -> dict[str, object]:
+def change_json(change: Change, manifest_id: str) -> dict[str, object]:
     """Return one planned change as `--output json` lists it, with its target and fingerprints.
 
-    A prune `sst` will not execute is marked `report_only`.
+    A prune `sst` will not execute is marked `report_only`. `properties` names what an update
+    changes on the object, publishing under `manifest_id`, and `prior_definition` is the
+    object's definition when `--capture-prior` read it, else null.
     """
     rendered = change.rendered
     observed = change.observed
     return {
         "artifact_key": change.key,
         "artifact_type": change.artifact_type,
+        "name": split_artifact_key(change.key)[1],
         "action": change.action.value,
         "reason": change.reason.value,
         "target": (rendered.target.sql if rendered is not None else observed.qualified_name.sql if observed else None),
@@ -65,7 +70,20 @@ def change_json(change: Change) -> dict[str, object]:
         ),
         "prune_executable": change.prune_executable,
         "report_only": change.action is Action.PRUNE and not change.prune_executable,
+        "properties": [
+            {"property": item.name, "before": item.before, "after": item.after}
+            for item in changed_properties(change, manifest_id)
+        ],
+        "prior_definition": observed.definition if observed is not None else None,
     }
+
+
+def change_counts(changeset: ChangeSet) -> dict[str, int]:
+    """Count a plan's changes by action, a report-only prune counted apart from the prunes."""
+    counts = {action.value: sum(change.action is action for change in changeset.changes) for action in Action}
+    counts[Action.PRUNE.value] -= len(changeset.report_only)
+    counts["report_only"] = len(changeset.report_only)
+    return counts
 
 
 def outcome_json(outcome: ApplyOutcome) -> dict[str, object]:
@@ -82,18 +100,20 @@ def outcome_json(outcome: ApplyOutcome) -> dict[str, object]:
     }
 
 
-def print_plan(changeset: ChangeSet) -> None:
+def print_plan(changeset: ChangeSet, *, full: bool = False) -> None:
     """Print the plan's counts, then one line per change: its marker, key, action, target, and reason.
 
     A prune `sst` only reports is counted apart from the prunes and marked `(report only)`.
+    With `full`, each update is followed by the properties it changes and, when
+    `--capture-prior` read it, the definition it replaces.
     """
-    counts = {action: sum(change.action is action for change in changeset.changes) for action in Action}
-    report_only = len(changeset.report_only)
+    counts = change_counts(changeset)
+    report_only = counts["report_only"]
     click.echo(
         "Plan: "
-        f"{counts[Action.CREATE]} to create, {counts[Action.UPDATE]} to update, "
-        f"{counts[Action.PRUNE] - report_only} to prune, {counts[Action.NOOP]} unchanged, "
-        f"{counts[Action.BLOCKED]} blocked"
+        f"{counts['create']} to create, {counts['update']} to update, "
+        f"{counts['prune']} to prune, {counts['noop']} unchanged, "
+        f"{counts['blocked']} blocked"
         + (f", {report_only} report-only (SST never removes these)." if report_only else ".")
     )
     markers = {
@@ -117,6 +137,29 @@ def print_plan(changeset: ChangeSet) -> None:
             + (f" {alias}" if alias else "")
             + (" (report only)" if change.action is Action.PRUNE and not change.prune_executable else "")
         )
+        if full:
+            _print_detail(change, changeset.manifest_id)
+
+
+def _print_detail(change: Change, manifest_id: str) -> None:
+    """Print what an update changes, property by property, then the definition it replaces when read."""
+    for item in changed_properties(change, manifest_id):
+        click.echo(f"    {item.name}: {item.before or '-'} -> {item.after or '-'}")
+    if change.observed is not None and change.observed.definition is not None:
+        click.echo("    prior definition:")
+        for line in change.observed.definition.splitlines():
+            click.echo(f"      {line}")
+
+
+def print_changed_names(changeset: ChangeSet) -> None:
+    """Print the name of each artifact applying the plan would change, one per line, and nothing else.
+
+    Changed means created, updated or pruned, a report-only prune included, in plan order.
+    Unchanged and blocked artifacts are not listed.
+    """
+    for change in changeset.changes:
+        if change.action in (Action.CREATE, Action.UPDATE, Action.PRUNE):
+            click.echo(split_artifact_key(change.key)[1])
 
 
 def print_eval_results(result: EvalSuiteResult) -> None:

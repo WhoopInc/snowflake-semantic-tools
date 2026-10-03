@@ -343,6 +343,7 @@ Observe live Snowflake state and compute a non-writing plan.
 
 Exit 0 with nothing to change, 2 with changes pending, and 1 on an error or a blocked change.
 `--threads` observes on that many sessions at once; the plan is the same for any count.
+`--names-only` prints only the name of each changed artifact, and wins over `--full`.
 
 ```text
 sst plan [OPTIONS]
@@ -360,8 +361,13 @@ sst plan [OPTIONS]
 | `--partial` | flag |  | Go ahead with every artifact that has no errors and depends on nothing that does; still exits 1 while errors remain. Cannot be combined with `--prune`. |
 | `--plan-out` | FILE |  | Write the saved plan here instead of `target/sst/plan.json`. |
 | `--no-plan-out` | flag |  | Do not write a saved plan. |
+| `--grants / --no-grants` | flag |  | Read the grants on each object an update replaces, one `SHOW GRANTS` each, to report what a replace would drop (SST-PLN013). On by default; `--no-grants` skips the reads. |
+| `--capture-prior` | flag |  | Read the current definition of each live object a planned artifact names, one `GET_DDL` each; needs REFERENCES or OWNERSHIP. Shown by `--full` and as `prior_definition` in JSON. |
 | `--sql-out` | DIRECTORY |  | Also write the statements for each change into this directory. |
+| `--no-validate` | flag |  | Skip validation: no cycle check, connected check, or strict promotion. Only when `sst validate` already ran on the same tree; compile errors still stop the run. |
 | `--threads` | INTEGER RANGE |  | Sessions to validate and observe on at once, 1 to 16, else `$SST_THREADS`, else `generation.threads`, else 1. The plan is the same for any count. |
+| `--full` | flag |  | Also print, under each update, the properties it changes on the object. |
+| `--names-only` | flag |  | Print the name of each changed artifact, one per line, and nothing else. |
 | `--no-detailed-exitcode` | flag |  | Exit 0 when changes are pending, instead of 2. |
 | `--strict / --no-strict` | flag |  | Promote every warning to an error, else `$SST_STRICT`. Defaults to `validation.strict`. |
 | `--snowflake-syntax-check / --no-snowflake-syntax-check` | flag |  | Compile expressions against Snowflake. Defaults to `validation.snowflake_syntax_check`. |
@@ -392,6 +398,7 @@ sst apply [OPTIONS]
 | `--threads` | INTEGER RANGE |  | Sessions to plan and apply on at once, 1 to 16, else `$SST_THREADS`, else `generation.threads`. Planning defaults to 1; applying to `skills.+threads`, else 4. |
 | `--break-stale-lock` | flag |  | Take over a state lock left behind by a run that no longer exists. |
 | `--temporary` | flag |  | Publish agents as session-scoped temporary agents; refused for a production-like target. |
+| `--no-validate` | flag |  | Skip validation: no cycle check, connected check, or strict promotion. Only when `sst validate` already ran on the same tree; compile errors still stop the run. |
 | `--sql-out` | DIRECTORY |  | Also write the statements for each change into this directory. |
 | `--strict / --no-strict` | flag |  | Promote every warning to an error, else `$SST_STRICT`. Defaults to `validation.strict`. |
 | `--snowflake-syntax-check / --no-snowflake-syntax-check` | flag |  | Compile expressions against Snowflake. Defaults to `validation.snowflake_syntax_check`. |

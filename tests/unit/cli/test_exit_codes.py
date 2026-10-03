@@ -178,6 +178,30 @@ SCENARIOS: dict[tuple[str, int], Scenario] = {
     ("migrate", 4): lambda tmp, _: _run("migrate", "refs", "--project-dir", str(tmp)),
 }
 
+# Flags that change how a command exits, each by a real run: (command, code, scenario) by id.
+FLAG_SCENARIOS: dict[str, tuple[str, int, Scenario]] = {
+    "plan-no-grants": ("plan", 2, lambda tmp, mp: _plan(tmp, mp, "--no-grants")),
+    "plan-grants": ("plan", 2, lambda tmp, mp: _plan(tmp, mp, "--grants")),
+    "plan-capture-prior": ("plan", 2, lambda tmp, mp: _plan(tmp, mp, "--capture-prior")),
+    "plan-full": ("plan", 2, lambda tmp, mp: _plan(tmp, mp, "--full")),
+    "plan-names-only": ("plan", 2, lambda tmp, mp: _plan(tmp, mp, "--names-only")),
+    "plan-names-only-in-sync": ("plan", 0, lambda tmp, mp: _plan(tmp, mp, "--names-only", "--no-detailed-exitcode")),
+    "plan-no-validate": ("plan", 2, lambda tmp, mp: _plan(tmp, mp, "--no-validate")),
+    "plan-no-validate-broken": ("plan", 1, lambda tmp, mp: _plan_broken(tmp, mp, "--no-validate")),
+    "plan-no-validate-syntax-check": (
+        "plan",
+        3,
+        lambda tmp, _: _run("plan", "--no-validate", "--snowflake-syntax-check"),
+    ),
+    "apply-no-validate": ("apply", 0, lambda tmp, mp: _apply_nothing(tmp, mp, "--no-validate")),
+    "apply-no-validate-broken": ("apply", 1, lambda tmp, mp: _apply_broken(tmp, mp, "--no-validate")),
+    "apply-no-validate-syntax-check": (
+        "apply",
+        3,
+        lambda tmp, _: _run("apply", "--yes", "--no-validate", "--snowflake-syntax-check"),
+    ),
+}
+
 
 def _debug_invalid(tmp: Path) -> Result:
     project = project_copy(tmp)
@@ -226,24 +250,26 @@ def _drop_without_snowflake(
     return _run("drop", *DROP, "--project-dir", str(project))
 
 
-def _plan_broken(tmp: Path, monkeypatch: pytest.MonkeyPatch) -> Result:
+def _plan_broken(tmp: Path, monkeypatch: pytest.MonkeyPatch, *flags: str) -> Result:
     project = project_copy(tmp)
     compile_project(project)
     break_menu_view(project)
-    return invoke_with_port(monkeypatch, RecordedSnowflake(state={}), ["plan", *common(project)])
+    return invoke_with_port(monkeypatch, RecordedSnowflake(state={}), ["plan", *common(project), *flags])
 
 
-def _apply_nothing(tmp: Path, monkeypatch: pytest.MonkeyPatch) -> Result:
+def _apply_nothing(tmp: Path, monkeypatch: pytest.MonkeyPatch, *flags: str) -> Result:
     project = skills_only_project(tmp / "skills")
     assert _run("compile", "--project-dir", str(project)).exit_code == 0
-    return invoke_with_port(monkeypatch, RecordedSnowflake(state={}), ["apply", "--project-dir", str(project), "--yes"])
+    return invoke_with_port(
+        monkeypatch, RecordedSnowflake(state={}), ["apply", "--project-dir", str(project), "--yes", *flags]
+    )
 
 
-def _apply_broken(tmp: Path, monkeypatch: pytest.MonkeyPatch) -> Result:
+def _apply_broken(tmp: Path, monkeypatch: pytest.MonkeyPatch, *flags: str) -> Result:
     project = project_copy(tmp)
     compile_project(project)
     break_menu_view(project)
-    return invoke_with_port(monkeypatch, RecordedSnowflake(state={}), ["apply", *common(project), "--yes"])
+    return invoke_with_port(monkeypatch, RecordedSnowflake(state={}), ["apply", *common(project), "--yes", *flags])
 
 
 def _interrupted(tmp: Path, monkeypatch: pytest.MonkeyPatch, *args: str) -> Result:
@@ -280,6 +306,16 @@ def test_each_documented_exit_code_is_returned_by_a_real_invocation(
     command: str, code: int, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     result = SCENARIOS[(command, code)](tmp_path, monkeypatch)
+    assert result.exit_code == code, result.output
+    assert code in EXIT_CODES[command]
+
+
+@pytest.mark.parametrize("scenario", sorted(FLAG_SCENARIOS))
+def test_each_flag_exits_with_a_code_its_command_documents(
+    scenario: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    command, code, run = FLAG_SCENARIOS[scenario]
+    result = run(tmp_path, monkeypatch)
     assert result.exit_code == code, result.output
     assert code in EXIT_CODES[command]
 

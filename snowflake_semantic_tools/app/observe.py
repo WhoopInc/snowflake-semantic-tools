@@ -1,15 +1,17 @@
 """Observe what Snowflake holds for a plan: each object of the planned types, its marker and grants.
 
 `observe` lists each artifact type's objects in every schema the targets name, once per
-schema, reading an object's grants only when the plan may replace it. A failed read is
-reported and observation goes on, so one missing privilege never hides the rest. Each
-listing, with the reads of the objects it lists, is one unit a `Fanout` may run on a
-session of its own; the units are merged in the order they would run one at a time.
+schema, reading an object's grants only when the plan may replace it, and its definition only
+when asked to capture it. A failed read is reported and observation goes on, so one missing
+privilege never hides the rest. Each listing, with the reads of the objects it lists, is one
+unit a `Fanout` may run on a session of its own; the units are merged in the order they would
+run one at a time.
 """
 
 from __future__ import annotations
 
 from collections.abc import Mapping
+from dataclasses import dataclass
 from types import MappingProxyType
 
 from snowflake_semantic_tools.app.fanout import Fanout
@@ -33,6 +35,25 @@ _FoldedName = tuple[str, str, str]
 _Unit = tuple[ArtifactType, str, SchemaScope]
 
 
+@dataclass(frozen=True, slots=True)
+class ObserveOptions:
+    """Which per-object reads an observation makes, beyond listing each object and its marker.
+
+    Attributes:
+        grants: Read the grants of each object the plan may replace, one SHOW GRANTS each, so
+            the plan can report what a replace would drop; `plan --no-grants` turns it off.
+        capture_prior: Read the current definition of each object the plan may change, one
+            GET_DDL each, as `plan --capture-prior` asks.
+    """
+
+    grants: bool = True
+    capture_prior: bool = False
+
+
+# What a plan reads when no flag says otherwise: grants, and no definitions.
+DEFAULT_OBSERVE_OPTIONS = ObserveOptions()
+
+
 def observe(
     port: CatalogPort,
     registry: Registry,
@@ -43,6 +64,7 @@ def observe(
     observed_object_types: Mapping[str, frozenset[str]] | None = None,
     desired_artifacts: Mapping[str, RenderedArtifact] | None = None,
     readers: Fanout[CatalogPort] | None = None,
+    options: ObserveOptions = DEFAULT_OBSERVE_OPTIONS,
 ) -> tuple[SnowflakeObservation, DiagnosticBag]:
     """Observe every object of the requested artifact types in the targets' schemas, by artifact key.
 
@@ -58,9 +80,11 @@ def observe(
             replace are read, and its routine signature addresses it.
         readers: Sessions to run the listings on concurrently; None lists on `port`, one
             at a time. Either way the observation and its diagnostics are the same.
+        options: Which per-object reads to make, as `ObserveOptions` says.
 
     Diagnostics:
-        SST-PLN001: listing an object type in a schema, or reading an object's grants, failed.
+        SST-PLN001: listing an object type in a schema, or reading an object's grants or
+            definition, failed.
     """
     found: dict[str, ObservedArtifact] = {}
     diagnostics: list[Diagnostic] = []
@@ -74,7 +98,7 @@ def observe(
         for scope in scopes
     ]
     results = (readers or Fanout(port)).map(
-        lambda session, unit: _observe_scope(session, unit[0], unit[1], unit[2], desired), units
+        lambda session, unit: _observe_scope(session, unit[0], unit[1], unit[2], desired, options), units
     )
     for observed, scope_diagnostics in results:
         diagnostics.extend(scope_diagnostics)
@@ -101,6 +125,7 @@ def _observe_scope(
     object_type: str,
     scope: SchemaScope,
     desired: Mapping[_FoldedName, RenderedArtifact],
+    options: ObserveOptions,
 ) -> tuple[tuple[ObservedArtifact, ...], tuple[Diagnostic, ...]]:
     """Observe the objects of one type in one schema, in the order SHOW lists them."""
     try:
@@ -110,7 +135,7 @@ def _observe_scope(
     observed: list[ObservedArtifact] = []
     diagnostics: list[Diagnostic] = []
     for row in rows:
-        artifact, row_diagnostics = _observe_row(port, artifact_type, object_type, row, desired)
+        artifact, row_diagnostics = _observe_row(port, artifact_type, object_type, row, desired, options)
         diagnostics.extend(row_diagnostics)
         observed.append(artifact)
     return tuple(observed), tuple(diagnostics)
@@ -122,11 +147,17 @@ def _observe_row(
     object_type: str,
     row: ShowRow,
     desired: Mapping[_FoldedName, RenderedArtifact],
+    options: ObserveOptions,
 ) -> tuple[ObservedArtifact, tuple[Diagnostic, ...]]:
-    """Observe one listed object: its ownership marker, its grants, and whether an agent is live."""
+    """Observe one listed object: its marker, its grants and definition, and whether an agent is live."""
     desired_artifact = desired.get(row.qualified_name.folded)
     key = artifact_key(artifact_type.name, row.qualified_name.artifact_component)
-    grants, diagnostics = _replaceable_grants(port, artifact_type, object_type, row, desired_artifact)
+    grants, diagnostics = (
+        _replaceable_grants(port, artifact_type, object_type, row, desired_artifact) if options.grants else (None, ())
+    )
+    definition, definition_diagnostics = (
+        _prior_definition(port, object_type, row, desired_artifact) if options.capture_prior else (None, ())
+    )
     artifact = ObservedArtifact(
         key=key,
         raw_name=row.name,
@@ -137,9 +168,25 @@ def _observe_row(
         comment=row.comment,
         marker=extract_marker(row.comment),
         grants=grants,
+        definition=definition,
         has_live_version=(port.agent_has_live_version(row.qualified_name) if object_type == "AGENT" else False),
     )
-    return artifact, diagnostics
+    return artifact, (*diagnostics, *definition_diagnostics)
+
+
+def _prior_definition(
+    port: CatalogPort,
+    object_type: str,
+    row: ShowRow,
+    desired_artifact: RenderedArtifact | None,
+) -> tuple[str | None, tuple[Diagnostic, ...]]:
+    """Read the definition of an object this plan may change; None when it is not one or cannot be read."""
+    if desired_artifact is None:
+        return None, ()
+    try:
+        return port.get_ddl(object_type, row.qualified_name), ()
+    except SnowflakePortError as exc:
+        return None, (D("SST-PLN001", value=f"the definition of {row.qualified_name.sql}", detail=str(exc)),)
 
 
 def _replaceable_grants(

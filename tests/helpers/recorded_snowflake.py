@@ -54,9 +54,12 @@ class RecordedSnowflake(PreflightDouble):
         staged_file_metadata: Mapping[str, StagedFileMetadata] | None = None,
         staged_file_contents: Mapping[str, bytes] | None = None,
         agent_versions: Mapping[tuple[str, str], str] | None = None,
+        definitions: Mapping[str, str] | None = None,
     ) -> None:
         self.objects = dict(objects or {})
         self.grants = dict(grants or {})
+        # GET_DDL's answer by qualified name; an object missing here has no readable definition.
+        self.definitions = dict(definitions or {})
         self.markers = dict(markers or {})
         self.existing = set(existing) if existing is not None else None
         self.state = MappingProxyType(dict(state or {}))
@@ -189,6 +192,11 @@ class RecordedSnowflake(PreflightDouble):
     ) -> tuple[GrantRow, ...]:
         del object_type, routine_signature
         return self.grants.get(qualified_name.sql, ())
+
+    def get_ddl(self, object_type: str, qualified_name: QualifiedName) -> str:
+        if qualified_name.sql not in self.definitions:
+            raise SnowflakePortError(f"GET_DDL refused for {object_type} {qualified_name.sql}")
+        return self.definitions[qualified_name.sql]
 
     def describe_marker(
         self,

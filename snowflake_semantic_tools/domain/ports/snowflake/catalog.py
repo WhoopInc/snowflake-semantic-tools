@@ -100,6 +100,17 @@ class CatalogPort(Protocol):
         """
         ...
 
+    def get_ddl(self, object_type: str, qualified_name: QualifiedName) -> str:
+        """Return one object's current definition, as GET_DDL prints it.
+
+        Needs REFERENCES or OWNERSHIP on the object. Never writes.
+
+        Raises:
+            SnowflakePortError: GET_DDL failed, including for an object that does not exist or
+                a role that may not read its definition.
+        """
+        ...
+
     def object_exists(self, object_type: str, qualified_name: QualifiedName) -> bool:
         """Report whether an object of one type exists under a qualified name.
 

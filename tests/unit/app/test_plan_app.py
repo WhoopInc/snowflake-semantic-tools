@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import replace
 from types import MappingProxyType
 
-from snowflake_semantic_tools.app.observe import observe
+from snowflake_semantic_tools.app.observe import ObserveOptions, observe
 from snowflake_semantic_tools.app.plan import PlanArtifacts
 from snowflake_semantic_tools.domain.model.lifecycle import (
     Action,
@@ -54,6 +54,41 @@ def test_observe_collects_markers_grants_and_errors() -> None:
     port.show_error = SnowflakePortError("offline")
     empty, failed = observe(port, SEMANTIC_REGISTRY, (artifact.target,), fetched_at="later")
     assert empty.artifacts == {} and failed[0].code == "SST-PLN001"
+
+
+def test_observe_options_skip_grants_and_capture_the_prior_definition() -> None:
+    port = InMemorySnowflake()
+    artifact = rendered()
+    port.rows = (ShowRow("V", "DB", "SCHEMA", "OWNER", "now"),)
+    port.grants[artifact.target.sql] = (GrantRow("SELECT", "ROLE", "R"),)
+    port.definitions[artifact.target.sql] = "create semantic view V"
+    desired = {artifact.key: artifact}
+    targets = (artifact.target,)
+
+    skipped, quiet = observe(
+        port, SEMANTIC_REGISTRY, targets, fetched_at="now", desired_artifacts=desired, options=ObserveOptions(False)
+    )
+    assert skipped.artifacts[artifact.key].grants is None
+    assert skipped.artifacts[artifact.key].definition is None and quiet == ()
+
+    capture = ObserveOptions(capture_prior=True)
+    captured, quiet = observe(
+        port, SEMANTIC_REGISTRY, targets, fetched_at="now", desired_artifacts=desired, options=capture
+    )
+    assert captured.artifacts[artifact.key].definition == "create semantic view V" and quiet == ()
+    assert captured.artifacts[artifact.key].grants == (GrantRow("SELECT", "ROLE", "R"),)
+
+    # Only an object the plan renders is read; a prune candidate never is.
+    unrelated, quiet = observe(port, SEMANTIC_REGISTRY, targets, fetched_at="now", options=capture)
+    assert unrelated.artifacts[artifact.key].definition is None and quiet == ()
+
+    port.definitions.clear()
+    refused, failed = observe(
+        port, SEMANTIC_REGISTRY, targets, fetched_at="now", desired_artifacts=desired, options=capture
+    )
+    assert refused.artifacts[artifact.key].definition is None
+    assert {item.code for item in failed} == {"SST-PLN001"}
+    assert "the definition of DB.SCHEMA.V" in failed[0].message
 
 
 def test_plan_use_case_merges_observation_diagnostics() -> None:
