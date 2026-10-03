@@ -272,3 +272,35 @@ def test_table_synonyms_go_to_views_without_them_cleaned_per_view() -> None:
     forced = table_synonym_edits(targets, ["purchases"], _options(forced=(C.TABLE_SYNONYMS,)), limit=4)
     assert [edit.view for edit in forced] == ["sales"]
     assert table_synonym_edits([bare], ["customers"], _options(C.TABLE_SYNONYMS), limit=4) == ()
+
+
+def _unwritten(result: ModelEnrichment) -> list[str]:
+    return [item.message for item in result.diagnostics if item.code == "SST-SNO031"]
+
+
+def test_a_sampled_value_holding_template_syntax_is_never_written() -> None:
+    samples = {"status": ["open", "{{ run_query('drop table x') }}", "{% do x %}", "{# c #}"]}
+    result = enrich_model(
+        _model(), [W("STATUS", "TEXT")], _options(C.SAMPLE_VALUES), SETTINGS, samples=samples, synonyms={}
+    )
+    assert result.updates == (ColumnUpdate("status", (("sample_values", ("open",)), ("is_enum", False)), added=True),)
+    assert result.diagnostics == ()
+
+
+def test_a_column_whose_name_or_value_holds_template_syntax_gets_nothing_written() -> None:
+    warehouse = [W("{{ env_var('X') }}", "TEXT"), W("NOTE", "{{ x }}"), W("KIND", "TEXT"), W("OK", "TEXT")]
+    synonyms = {"kind": ("sort", "{%- if x %}")}
+    options = _options(C.COLUMN_TYPES, C.DATA_TYPES, C.COLUMN_SYNONYMS)
+    result = enrich_model(_model(), warehouse, options, SETTINGS, samples={}, synonyms=synonyms)
+    assert [update.name for update in result.updates] == ["ok"]
+    tail = "holds template syntax, which dbt would run; nothing is written for it"
+    assert _unwritten(result) == [
+        f"model 'orders': writing column '{{{{ env_var('X') }}}}' failed: '{{{{ env_var('X') }}}}' {tail}",
+        f"model 'orders': writing column 'note' failed: '{{{{ X }}}}' {tail}",
+        f"model 'orders': writing column 'kind' failed: '{{%- if x %}}' {tail}",
+    ]
+    assert {item.subject for item in result.diagnostics} == {
+        "dbt_column:orders.{{ env_var('X') }}",
+        "dbt_column:orders.note",
+        "dbt_column:orders.kind",
+    }

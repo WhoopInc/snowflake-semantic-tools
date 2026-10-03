@@ -263,7 +263,8 @@ class EnrichProject:
             SST-DBT031: a model selected by name has no relation.
             SST-DBT002: a name selected without a wildcard is no model the manifest knows.
             SST-SNO030: a model's relation is missing or not visible.
-            SST-SNO031: reading a model's values or asking Cortex failed.
+            SST-SNO031: reading a model's values or asking Cortex failed; or a column's name, or
+                a value enrich would write for it, holds template syntax, and it is not written.
             SST-PRS030: Cortex proposed a synonym that can never be written; it is dropped.
             SST-PRS125: a file enrich writes is also reformatted.
         """

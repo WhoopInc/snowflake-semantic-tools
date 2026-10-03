@@ -46,8 +46,14 @@ SAMPLED_TYPES = frozenset(
 MAX_SAMPLE_LENGTH = 500
 MAX_SYNONYM_LENGTH = 100
 
-# Text a template engine would read: a value or synonym holding it is never written.
+# Text a template engine would read: a value or synonym holding it is never written. dbt renders
+# the YAML enrich writes as Jinja, so a value holding one would run as code at the next parse.
 _TEMPLATE_MARKERS = ("{{", "{%", "{#")
+
+
+def has_template_syntax(text: str) -> bool:
+    """Report whether `text` opens a Jinja expression, statement or comment."""
+    return any(marker in text for marker in _TEMPLATE_MARKERS)
 
 
 def semantic_data_type(data_type: str) -> str:
@@ -87,7 +93,7 @@ def usable_sample(value: str) -> bool:
     """
     if not value.strip() or is_sentinel(value.strip()) or len(value) > MAX_SAMPLE_LENGTH:
         return False
-    if any(marker in value for marker in _TEMPLATE_MARKERS):
+    if has_template_syntax(value):
         return False
     return all(character == "\t" or character.isprintable() for character in value)
 
@@ -143,7 +149,7 @@ def proposed_synonym(candidate: object) -> tuple[str, str | None]:
     problem = synonym_problem(stripped)
     if problem is None and len(text) > MAX_SYNONYM_LENGTH:
         problem = f"more than {MAX_SYNONYM_LENGTH} characters"
-    if problem is None and any(marker in text for marker in _TEMPLATE_MARKERS):
+    if problem is None and has_template_syntax(text):
         problem = "template syntax"
     return text, problem
 
@@ -192,6 +198,18 @@ def rejected_synonyms(
             shown = printable(str(candidate).strip())
             found.append(D("SST-PRS030", artifact=artifact, value=shown, detail=problem, subject=subject))
     return tuple(found)
+
+
+def templated_text(update_name: str, values: Iterable[tuple[str, object]]) -> tuple[str, ...]:
+    """Return each text enrich would write for one column that holds template syntax.
+
+    The column's name and every text value, a list value's items among them, are checked:
+    whatever rule produced them, none reaches a file that dbt renders as Jinja.
+    """
+    texts = [update_name]
+    for _, value in values:
+        texts.extend(item for item in (value if isinstance(value, tuple) else (value,)) if isinstance(item, str))
+    return tuple(text for text in texts if has_template_syntax(text))
 
 
 def taken_names(names: Iterable[str], synonyms: Iterable[str]) -> frozenset[str]:
