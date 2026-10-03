@@ -112,16 +112,20 @@ def _run(runner: DbtRunner, argv: Sequence[str], cwd: Path) -> CompletedRun:
 def _installation(runner: DbtRunner, project_dir: Path, auto_compile: bool) -> tuple[Diagnostic, ...]:
     """Ask dbt what it is, and refuse what the installation cannot do.
 
+    A `dbt --version` that runs and exits non-zero names no installation either: dbt still ran,
+    so it is the `dbt parse` that follows which reports a broken install (SST-DBT028).
+
     Diagnostics:
-        SST-DBT027: `dbt --version` cannot be started, or exits non-zero; raised.
+        SST-DBT027: `dbt --version` cannot be started; raised.
         SST-DBT021: `defer.auto_compile` is set under the dbt Cloud CLI; raised.
-        SST-DBT020: the output names no installation SST knows; returned.
+        SST-DBT020: the output names no installation SST knows, or `dbt --version` exits
+            non-zero; returned.
     """
     completed = _run(runner, ("dbt", "--version"), project_dir)
     output = f"{completed.stdout}\n{completed.stderr}".strip()
     if completed.returncode != 0:
-        first = output.splitlines()[0] if output else f"exit {completed.returncode}"
-        raise _refuse(D("SST-DBT027", detail=f"dbt --version failed: {first}"))
+        first = output.splitlines()[0] if output else "no output"
+        return (D("SST-DBT020", found=f"{first!r} (exit {completed.returncode})"),)
     kind = installation_type(output)
     if kind == "cloud" and auto_compile:
         raise _refuse(D("SST-DBT021", origin=Origin("sst_config.yml"), found="the dbt Cloud CLI"))

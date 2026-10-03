@@ -31,11 +31,14 @@ def test_sst_dbt027_fires(tmp_path: Path) -> None:
     diagnostic = _refused(tmp_path, FakeDbt(version=FileNotFoundError(2, "No such file or directory")))
     assert (diagnostic.code, diagnostic.severity) == ("SST-DBT027", Severity.ERROR)
     assert diagnostic.message == "dbt could not be executed: dbt: No such file or directory"
-    failing = _refused(tmp_path, FakeDbt(version=CompletedRun(1, "", "dbt: broken install\n")))
-    assert failing.message == "dbt could not be executed: dbt --version failed: dbt: broken install"
 
 
 def test_sst_dbt027_silent(tmp_path: Path) -> None:
+    broken = _written(tmp_path)
+    broken.version = CompletedRun(1, "", "dbt: broken install\n")
+    assert [
+        item.code for item in parse_project(tmp_path, "dev", tmp_path / "target" / "manifest.json", runner=broken)
+    ] == ["SST-DBT020"]
     dbt = _written(tmp_path)
     assert parse_project(tmp_path, "dev", tmp_path / "target" / "manifest.json", runner=dbt) == ()
     assert dbt.runs[1] == (
