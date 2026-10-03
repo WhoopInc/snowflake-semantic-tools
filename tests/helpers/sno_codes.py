@@ -37,7 +37,7 @@ class _RefusingSession:
     def cursor(self, *args: object) -> _RefusingSession:
         return self
 
-    def execute(self, statement: str, params: object = None) -> None:
+    def execute(self, statement: str, params: object = None, *, num_statements: int | None = None) -> None:
         raise self.error
 
     def close(self) -> None:

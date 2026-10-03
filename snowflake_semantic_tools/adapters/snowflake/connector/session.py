@@ -325,13 +325,19 @@ def _execute(
 ) -> None:
     """Hand one statement to the driver with `params` bound: the only place `Sql` becomes text.
 
+    Snowflake is told to run exactly one statement, so text that a reader other than SST's
+    lexer splits into several is refused by the server rather than run. An empty `params` binds
+    nothing, so the text goes as built rather than with every `%` doubled for formatting the
+    driver then skips.
+
     Raises:
         TypeError: `statement` is not `Sql`, so nothing built from a plain string reaches the driver.
     """
     if not isinstance(statement, Sql):
         raise TypeError(f"the connector runs only Sql, found {type(statement).__name__}")
-    connector_params = cast(Sequence[Any] | dict[Any, Any] | None, params)
-    cursor.execute(statement.for_driver(bound=params is not None), connector_params)
+    bound = bool(params)
+    connector_params = cast(Sequence[Any] | dict[Any, Any] | None, params) if bound else None
+    cursor.execute(statement.for_driver(bound=bound), connector_params, num_statements=1)
 
 
 def _fetch(cursor: SnowflakeCursor, sql: Sql, params: Sequence[object] | Mapping[str, object] | None) -> QueryResult:
