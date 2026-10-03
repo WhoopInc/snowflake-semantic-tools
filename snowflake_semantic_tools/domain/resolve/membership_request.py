@@ -1,8 +1,9 @@
-"""Assemble the member-resolution request from the parsed project, and run it with the build.
+"""Assemble the member-resolution request from the parsed project's members.
 
 `domain.resolve.membership` decides attachment and reports what it means; this module reads
-what those checks need from the authored records -- which only the YAML adapter knows the
-shape of -- and hands them over as plain values.
+what those checks need from the authored records and hands it over as plain values. The
+checks that run before the build and member resolution itself read the one request, so they
+judge membership alike.
 """
 
 from __future__ import annotations
@@ -32,20 +33,49 @@ def membership(
 ) -> tuple[tuple[ParsedMember, ...], MembershipResult]:
     """Mark the poisoned members, then resolve every member's membership.
 
-    Args:
-        poisoned: The casefolded keys of the members the load leaves out.
-        reported_views: The keys of the views that will be built.
-        view_instructions: For each view, the casefolded names of the custom instructions it names.
-        known_models: The casefolded names of the dbt models.
-        reported: Every diagnostic reported so far, from which a poisoned member's unresolved
-            references are counted.
-        view_scopes: Each built view's include or exclude lists, by its key.
+    The arguments are those `membership_request` reads.
 
     Returns:
         Every member, the poisoned ones marked so, and what member resolution decided.
     """
+    request = membership_request(
+        members,
+        poisoned,
+        view_tables=view_tables,
+        reported_views=reported_views,
+        view_instructions=view_instructions,
+        known_models=known_models,
+        reported=reported,
+        view_scopes=view_scopes,
+    )
+    return request.members, resolve_membership(request)
+
+
+def membership_request(
+    members: tuple[ParsedMember, ...],
+    poisoned: frozenset[str],
+    *,
+    view_tables: Mapping[ArtifactKey, frozenset[str]],
+    view_instructions: Mapping[ArtifactKey, frozenset[str]],
+    view_scopes: Mapping[ArtifactKey, ViewScope] | None = None,
+    reported_views: frozenset[ArtifactKey] = frozenset(),
+    known_models: frozenset[str] = frozenset(),
+    reported: Iterable[Diagnostic] = (),
+) -> MembershipRequest:
+    """Mark the poisoned members, then read what member resolution needs of each.
+
+    Args:
+        poisoned: The casefolded keys of the members the load leaves out.
+        view_tables: Each view's casefolded tables, by its key.
+        view_instructions: For each view, the casefolded names of the custom instructions it names.
+        view_scopes: Each view's include or exclude lists, by its key.
+        reported_views: The keys of the views that will be built.
+        known_models: The casefolded names of the dbt models.
+        reported: Every diagnostic reported so far, from which a poisoned member's unresolved
+            references are counted.
+    """
     marked = tuple((replace(member, poisoned=True) if member.key in poisoned else member) for member in members)
-    request = MembershipRequest(
+    return MembershipRequest(
         members=marked,
         view_tables=view_tables,
         registry=SEMANTIC_REGISTRY,
@@ -66,7 +96,6 @@ def membership(
         unresolved=_unresolved({member.key for member in marked if member.poisoned}, reported),
         view_scopes=view_scopes or {},
     )
-    return marked, resolve_membership(request)
 
 
 def _facts(member: ParsedMember) -> MemberFacts | None:

@@ -22,7 +22,6 @@ from snowflake_semantic_tools.adapters.yaml.parse import parse_yaml_bytes, read_
 from snowflake_semantic_tools.adapters.yaml.semantic.build import _build_view
 from snowflake_semantic_tools.adapters.yaml.semantic.collect import parse_semantic_project
 from snowflake_semantic_tools.adapters.yaml.semantic.file_reads import file_texts
-from snowflake_semantic_tools.adapters.yaml.semantic.membership import membership
 from snowflake_semantic_tools.adapters.yaml.semantic.phases import (
     LoadContext,
     SemanticMembers,
@@ -48,6 +47,8 @@ from snowflake_semantic_tools.domain.model.project import (
 )
 from snowflake_semantic_tools.domain.model.registry import SEMANTIC_REGISTRY
 from snowflake_semantic_tools.domain.model.semantic_view import SemanticView
+from snowflake_semantic_tools.domain.resolve.membership import view_members
+from snowflake_semantic_tools.domain.resolve.membership_request import membership, membership_request
 from snowflake_semantic_tools.domain.resolve.rendered import rendered_diagnostics
 from snowflake_semantic_tools.domain.validate.dbt_seam import fan_out_diagnostics, seam_summary
 from snowflake_semantic_tools.domain.validate.semantic.fanout import attachment_diagnostics
@@ -162,7 +163,9 @@ def load_semantic_views_result(
     relationship_diagnostics, unattached = _relationship_checks(context, members, healthy, view_tables)
     using_diagnostics, misrouted = _using_checks(members, healthy)
     poison = poison.with_members(unattached | misrouted | unresolved_instructions)
-    instruction_names, view_diagnostics = _view_content_checks(context, parsed, members, instruction_text_diagnostics)
+    instruction_names, view_diagnostics = _view_content_checks(
+        context, parsed, members, poison.member_keys, instruction_text_diagnostics
+    )
     reported = (
         *parsed.diagnostics,
         *structure.diagnostics,
@@ -191,11 +194,16 @@ def _view_content_checks(
     context: LoadContext,
     parsed: ParsedProject,
     members: SemanticMembers,
+    poisoned: frozenset[str],
     instruction_text_diagnostics: tuple[Diagnostic, ...],
 ) -> tuple[dict[str, frozenset[str]], tuple[Diagnostic, ...]]:
     """Phase 8: each view's instructions, the pairs of them that contradict, its scope and its rules.
 
+    The scope and view rules judge what each view attaches as member resolution will, leaving
+    out the members phases 1-7 poisoned.
+
     Args:
+        poisoned: The casefolded keys of the members poisoned so far.
         instruction_text_diagnostics: Phase 1's findings on the instruction texts, reported
             after the views' own instruction findings.
 
@@ -205,18 +213,27 @@ def _view_content_checks(
     """
     instruction_names, instruction_found = _view_instructions(parsed.views, members.instruction_names)
     instructions = {item.name.casefold(): item for item in members.instructions}
+    attached = view_members(
+        membership_request(
+            parsed.members,
+            poisoned,
+            view_tables=dict(_view_tables(parsed.views)),
+            view_instructions=instruction_names,
+            view_scopes={artifact_key("semantic_view", view.name): view_scope(view.source) for view in parsed.views},
+        )
+    )
     return instruction_names, (
         *instruction_found,
         *instruction_text_diagnostics,
         *contradiction_diagnostics(instructions, instruction_names),
-        *scope_diagnostics(parsed.views, members.metrics, members.relationships, context.models),
+        *scope_diagnostics(parsed.views, members.metrics, members.relationships, context.models, attached),
         *rule_diagnostics(
             context.documents,
             file_texts(context.documents),
             parsed,
             context.models,
             context.config,
-            instruction_names,
+            attached,
             context.catalog.unreadable_models,
         ),
     )

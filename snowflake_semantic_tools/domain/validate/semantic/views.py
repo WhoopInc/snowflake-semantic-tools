@@ -1,8 +1,9 @@
 """Check each view against what it attaches, before it is built: one rule per concern, view by view.
 
-Attachment here is what a view's tables imply -- a metric or filter whose tables the view holds,
-a relationship joining two of them -- narrowed by the view's scope. The rules read that, the dbt
-models, and the view's own keys, so each can poison the view before a build would fail on it.
+What a view attaches is what member resolution decides (`domain.resolve.membership`), narrowed
+by the view's scope, so a rule judges a view by the members the build would give it. The rules
+read that, the dbt models, and the view's own keys, so each can poison the view before a build
+would fail on it.
 """
 
 from __future__ import annotations
@@ -17,8 +18,9 @@ from snowflake_semantic_tools.domain.model.authored import FilterDef, Instructio
 from snowflake_semantic_tools.domain.model.dbt import DbtModel
 from snowflake_semantic_tools.domain.model.project import ParsedView
 from snowflake_semantic_tools.domain.model.semantic_view import ColumnKind, Relationship, ViewScope
+from snowflake_semantic_tools.domain.resolve.membership import ViewMembers
 from snowflake_semantic_tools.domain.sql import is_datatype
-from snowflake_semantic_tools.domain.validate.semantic.scope import metric_tables, view_scope
+from snowflake_semantic_tools.domain.validate.semantic.scope import view_scope
 from snowflake_semantic_tools.domain.validate.shared import lacks_invocation
 
 DIMENSION_TYPES = frozenset(("dimension", "time_dimension"))
@@ -135,7 +137,7 @@ class ViewInputs:
     Attributes:
         models: The dbt models, by casefolded name.
         instructions: Every custom instruction, by casefolded name.
-        view_instructions: Each view's attached instruction names, casefolded, by view key.
+        members: What member resolution attaches to each view, and what its scope keeps.
         unavailable: The dbt models that produce no relation, casefolded, with why.
         description_floor: `validation.description_floor`; None checks no floor.
         instruction_budget: `validation.instruction_budget`; None checks no budget.
@@ -146,7 +148,7 @@ class ViewInputs:
     filters: tuple[FilterDef, ...]
     relationships: tuple[Relationship, ...]
     instructions: Mapping[str, InstructionDef]
-    view_instructions: Mapping[str, frozenset[str]]
+    members: ViewMembers
     unavailable: Mapping[str, str] = field(default_factory=dict)
     description_floor: int | None = None
     instruction_budget: int | None = None
@@ -162,6 +164,7 @@ class _Attached:
     metrics: tuple[MetricDef, ...]
     filters: tuple[FilterDef, ...]
     relationships: tuple[Relationship, ...]
+    instructions: tuple[InstructionDef, ...]
 
     @property
     def key(self) -> str:
@@ -169,36 +172,21 @@ class _Attached:
 
 
 def _attached(view: ParsedView, inputs: ViewInputs) -> _Attached:
-    """What a view's tables attach and its scope keeps: metrics, filters, and relationships.
+    """What member resolution attaches to a view and its scope keeps, each kind in project order."""
+    key = artifact_key("semantic_view", view.name)
 
-    A metric attaches when the view holds every table it and the metrics it reads need, a
-    filter when the view holds the tables it declares or refs, and a relationship when the view
-    holds both its tables.
-    """
-    tables = frozenset(view.declared_tables)
-    scope = view_scope(view.source)
-    by_name = {metric.name.casefold(): metric for metric in inputs.metrics}
+    def kept(type_name: str, name: str) -> bool:
+        return inputs.members.keeps(key, artifact_key(type_name, name.casefold()))
+
     return _Attached(
         view,
-        tables,
-        scope,
-        tuple(
-            metric
-            for metric in inputs.metrics
-            if metric_tables(metric, by_name) <= tables and scope.admits_metric(metric.name)
-        ),
-        tuple(item for item in inputs.filters if _filter_tables(item) <= tables),
-        tuple(
-            item
-            for item in inputs.relationships
-            if {item.from_table.casefold(), item.to_table.casefold()} <= tables and scope.admits_relationship(item.name)
-        ),
+        frozenset(view.declared_tables),
+        view_scope(view.source),
+        tuple(metric for metric in inputs.metrics if kept("metric", metric.name)),
+        tuple(item for item in inputs.filters if kept("filter", item.name)),
+        tuple(item for item in inputs.relationships if kept("relationship", item.name)),
+        tuple(item for name, item in sorted(inputs.instructions.items()) if kept("custom_instruction", name)),
     )
-
-
-def _filter_tables(filter_def: FilterDef) -> frozenset[str]:
-    referenced = re.findall(r"\bref\(\s*['\"]([^'\"]+)['\"]", filter_def.expr)
-    return frozenset((*filter_def.tables, *(name.casefold() for name in referenced)))
 
 
 def view_rule_diagnostics(views: tuple[ParsedView, ...], inputs: ViewInputs) -> tuple[Diagnostic, ...]:
@@ -265,11 +253,9 @@ def _prose_rules(item: _Attached, inputs: ViewInputs) -> Iterator[Diagnostic]:
         )
     if inputs.instruction_budget is None:
         return
-    names = inputs.view_instructions.get(item.key, frozenset())
     parts = [description] + [
         text
-        for name in sorted(names)
-        if (instruction := inputs.instructions.get(name)) is not None
+        for instruction in item.instructions
         for text in (instruction.ai_sql_generation, instruction.ai_question_categorization)
         if text
     ]

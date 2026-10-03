@@ -21,6 +21,7 @@ from snowflake_semantic_tools.domain.model.authored import (
 from snowflake_semantic_tools.domain.model.dbt import DbtModel
 from snowflake_semantic_tools.domain.model.project import ParsedProject
 from snowflake_semantic_tools.domain.model.semantic_view import Relationship
+from snowflake_semantic_tools.domain.resolve.membership import ViewMembers
 from snowflake_semantic_tools.domain.validate.semantic.files import file_diagnostics
 from snowflake_semantic_tools.domain.validate.semantic.text import (
     hardcoded_name_diagnostics,
@@ -49,13 +50,14 @@ def rule_diagnostics(
     parsed: ParsedProject,
     models: Mapping[str, DbtModel],
     config: Mapping[str, Any],
-    view_instructions: Mapping[str, frozenset[str]],
+    members: ViewMembers,
     unavailable: Mapping[str, str],
 ) -> tuple[Diagnostic, ...]:
     """Run the content rules in order: files, hardcoded names, metric descriptions, instructions, views.
 
     Args:
         texts: Each document's file as UTF-8 text, by its path, which the file rules read.
+        members: What member resolution attaches to each view, and what its scope keeps.
 
     Diagnostics:
         SST-VAL004: a metric's description is shorter than `validation.description_floor`.
@@ -79,7 +81,7 @@ def rule_diagnostics(
         filters,
         relationships,
         instructions,
-        view_instructions,
+        members,
         unavailable=unavailable,
         description_floor=floor,
         instruction_budget=_setting(config, "instruction_budget"),
