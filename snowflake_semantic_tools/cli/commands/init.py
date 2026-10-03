@@ -13,6 +13,7 @@ from pathlib import Path
 import click
 
 from snowflake_semantic_tools.adapters.locations import ProjectPaths
+from snowflake_semantic_tools.adapters.paths import make_folders_within, output_root
 from snowflake_semantic_tools.cli.exit_codes import CONFIG, ERROR, OK
 from snowflake_semantic_tools.cli.globals import GlobalOptions
 from snowflake_semantic_tools.cli.runner import CommandResult, ConfigNeed, command_body, write_text
@@ -84,11 +85,11 @@ def init(paths: ProjectPaths, skip_prompts: bool, check_only: bool, options: Glo
     if not config.exists():
         if not skip_prompts and options.output != "json" and sys.stdin.isatty():
             semantic_dir = click.prompt("Semantic models directory", default=_DEFAULT_SEMANTIC_DIR)
-        write_text(config, config_template(semantic_dir))
+        write_text(output_root(project_dir, config.parent), config, config_template(semantic_dir))
         created.append(config.name)
     directory = project_dir / semantic_dir / "semantic_views"
     if not directory.is_dir():
-        directory.mkdir(parents=True)
+        make_folders_within(project_dir, directory)
         created.append(str(directory.relative_to(project_dir)))
     skipped = [item for item in present if item not in created]
     data = {"created": created, "skipped": skipped, "status": "scaffolded"}

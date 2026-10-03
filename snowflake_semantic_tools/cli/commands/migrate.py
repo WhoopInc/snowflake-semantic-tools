@@ -8,7 +8,7 @@ from snowflake_semantic_tools.adapters.locations import ProjectPaths
 from snowflake_semantic_tools.adapters.yaml.migrate import filter_sites, semantic_files, write_file
 from snowflake_semantic_tools.app.migrate_refs import MigrateRefs, MigrationReport
 from snowflake_semantic_tools.cli.exit_codes import CHANGES, ERROR, OK
-from snowflake_semantic_tools.cli.runner import CommandResult, command_body
+from snowflake_semantic_tools.cli.runner import CommandResult, WriteFailure, command_body
 from snowflake_semantic_tools.cli.settings import semantic_models_dir
 
 
@@ -34,7 +34,10 @@ def migrate_refs_command(paths: ProjectPaths, write_files: bool) -> CommandResul
     report = MigrateRefs(files, filter_sites).run()
     if write_files:
         for item in report.changed:
-            write_file(project_dir, item.path, item.result.text)
+            try:
+                write_file(project_dir, item.path, item.result.text)
+            except OSError as exc:
+                raise WriteFailure(project_dir / item.path, exc) from exc
     if report.untouched:
         exit_code = ERROR
     elif report.changed and not write_files:

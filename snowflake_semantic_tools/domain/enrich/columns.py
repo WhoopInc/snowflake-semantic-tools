@@ -22,11 +22,13 @@ from snowflake_semantic_tools.domain.enrich.infer import (
     same_data_type,
     semantic_data_type,
     taken_names,
+    templated_text,
 )
 from snowflake_semantic_tools.domain.enrich.prompts import EXAMPLES_PER_COLUMN, PromptColumn
 from snowflake_semantic_tools.domain.model.config_schema import EnrichmentConfig
 from snowflake_semantic_tools.domain.model.dbt import DbtColumn, DbtModel
 from snowflake_semantic_tools.domain.model.identifier import Identifier
+from snowflake_semantic_tools.domain.validate.column_metadata import printable
 
 # The `meta.sst` keys enrich writes, in the order it adds them to a column.
 WRITTEN_KEYS = ("column_type", "data_type", "synonyms", "sample_values", "is_enum")
@@ -411,6 +413,28 @@ def _pii_samples(model: DbtModel, options: EnrichOptions) -> list[Diagnostic]:
     ]
 
 
+def _unwritten(model: DbtModel, name: str, refused: Sequence[str]) -> list[Diagnostic]:
+    """Report a column left unwritten because a text enrich would write for it holds template syntax.
+
+    dbt renders the YAML as Jinja, so the text would run as code at the next parse; the first
+    such text is named.
+
+    Diagnostics:
+        SST-SNO031: once for the column, when `refused` is not empty.
+    """
+    if not refused:
+        return []
+    return [
+        D(
+            "SST-SNO031",
+            model=model.name,
+            step=f"writing column '{printable(name)}'",
+            detail=f"'{printable(refused[0])}' holds template syntax, which dbt would run; nothing is written for it",
+            subject=_subject(model, name),
+        )
+    ]
+
+
 def enrich_model(
     model: DbtModel,
     warehouse: Sequence[WarehouseColumn],
@@ -431,6 +455,8 @@ def enrich_model(
         SST-VAL327: a written data type disagrees with the relation's.
         SST-VAL328: a column with `pii_tags` carries sample values, and the run reads row data.
         SST-VAL317: a written `is_enum: true` the sampled data contradicts.
+        SST-SNO031: a column's name, or a value enrich would write for it, holds template syntax,
+            and nothing is written for the column. A sampled value that does is not written.
     """
     diagnostics = _absent_columns(model, warehouse)
     updates: list[ColumnUpdate] = []
@@ -449,8 +475,10 @@ def enrich_model(
         found.update(_sample_values(existing, column_role, options, settings, fetched))
         diagnostics.extend(_hand_edited_enum(model, existing, column_role, options, settings, fetched))
         values = tuple((key, found[key]) for key in WRITTEN_KEYS if found.get(key) is not None)
-        if values:
-            name = existing.name if existing is not None else yaml_column_name(column.name)
+        name = existing.name if existing is not None else yaml_column_name(column.name)
+        refused = templated_text(name, values) if values else ()
+        diagnostics.extend(_unwritten(model, name, refused))
+        if values and not refused:
             updates.append(ColumnUpdate(name, values, added=existing is None))
     diagnostics.extend(_pii_samples(model, options))
     return ModelEnrichment(model.name, tuple(updates), tuple(diagnostics))

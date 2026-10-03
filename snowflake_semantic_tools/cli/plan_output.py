@@ -13,11 +13,13 @@ from typing import cast
 
 import click
 
+from snowflake_semantic_tools.adapters.paths import make_folders_within, output_root, write_within
 from snowflake_semantic_tools.app.evals.run import EvalSuiteResult, eval_suite_json
 from snowflake_semantic_tools.app.plan import PlanReady
 from snowflake_semantic_tools.cli.exit_codes import CHANGES, ERROR, OK
 from snowflake_semantic_tools.cli.wiring.project import target_dir
 from snowflake_semantic_tools.domain.diagnostics import DiagnosticBag
+from snowflake_semantic_tools.domain.file_names import file_name
 from snowflake_semantic_tools.domain.model.artifact_key import split_artifact_key
 from snowflake_semantic_tools.domain.model.lifecycle import Action, ApplyOutcome, Change, ChangeSet
 
@@ -154,10 +156,16 @@ def write_plan_sql(project_dir: Path, changeset: ChangeSet, sql_out: Path | None
     """Write what each create or update executes, one file per change; return the directory.
 
     The directory is `--sql-out`, else `target/sst/sql`. A JSON or YAML payload is written
-    as it is; statements are joined, each ending in a semicolon.
+    as it is; statements are joined, each ending in a semicolon. A file is named by
+    `file_name`, so no artifact key can place it outside the directory.
+
+    Raises:
+        UnsafeWrite: A symbolic link is on the way to the directory or at a file in it.
+        OSError: The directory or a file cannot be written.
     """
     output = sql_out or target_dir(project_dir) / "sql"
-    output.mkdir(parents=True, exist_ok=True)
+    root = output_root(project_dir, output)
+    make_folders_within(root, output)
     for change in changeset.changes:
         if change.rendered is None or change.action not in (
             Action.CREATE,
@@ -165,13 +173,14 @@ def write_plan_sql(project_dir: Path, changeset: ChangeSet, sql_out: Path | None
         ):
             continue
         suffix = artifact_suffix(change.rendered.render_dialect)
-        path = output / f"{change.artifact_type}__{split_artifact_key(change.key)[1].replace('/', '_')}{suffix}"
+        stem = f"{change.artifact_type}__{split_artifact_key(change.key)[1].replace('/', '_')}"
+        path = output / f"{file_name(stem)}{suffix}"
         content = (
             change.rendered.content
             if suffix in (".json", ".yaml")
             else ";\n\n".join(str(statement) for statement in change.rendered.statements) + ";\n"
         )
-        path.write_text(content, encoding="utf-8")
+        write_within(root, path, content)
     return output
 
 

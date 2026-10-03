@@ -10,6 +10,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from snowflake_semantic_tools.adapters.locations import ProjectPaths
+from snowflake_semantic_tools.adapters.paths import write_within
 from snowflake_semantic_tools.adapters.resolved_config import resolved_config
 from snowflake_semantic_tools.app.baseline import gate_baseline
 from snowflake_semantic_tools.app.policy import hold_to_policy
@@ -57,7 +58,7 @@ def with_policy(
     if held.blocks is not None and exit_code in (OK, ERROR):
         exit_code = ERROR if held.blocks else OK
     if held.notice_given:
-        _remember(marker)
+        _remember(paths.project_dir, marker)
     return held.diagnostics, exit_code
 
 
@@ -77,7 +78,6 @@ def with_baseline(
     return gate.diagnostics, exit_code, gate.baselined
 
 
-def _remember(marker: Path) -> None:
+def _remember(project_dir: Path, marker: Path) -> None:
     """Record that the strict-adoption notice was given, so it is given once per project."""
-    marker.parent.mkdir(parents=True, exist_ok=True)
-    marker.write_text("validation.strict is enforced; this notice is given once\n", encoding="utf-8")
+    write_within(project_dir, marker, "validation.strict is enforced; this notice is given once\n")

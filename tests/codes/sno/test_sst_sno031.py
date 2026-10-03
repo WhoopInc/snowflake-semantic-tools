@@ -16,6 +16,19 @@ def test_sst_sno031_fires() -> None:
     assert diagnostic.subject == "dbt_model:orders"
 
 
+def test_sst_sno031_fires_for_a_column_name_holding_template_syntax() -> None:
+    port = ScriptedEnrich(columns={"DB.SCH.ORDERS": [*ORDERS_COLUMNS, ("{{ env_var('X') }}", "TEXT")]})
+    report = enrich_orders(port).run(enrich_types())
+    [diagnostic] = report.diagnostics
+    assert (diagnostic.code, diagnostic.severity) == ("SST-SNO031", Severity.ERROR)
+    assert diagnostic.message == (
+        "model 'orders': writing column '{{ env_var('X') }}' failed: '{{ env_var('X') }}' holds template "
+        "syntax, which dbt would run; nothing is written for it"
+    )
+    assert diagnostic.subject == "dbt_column:orders.{{ env_var('X') }}"
+    assert all("{{" not in item.after for item in report.files)
+
+
 def test_sst_sno031_silent() -> None:
     port = ScriptedEnrich(columns={"DB.SCH.ORDERS": ORDERS_COLUMNS})
     assert [item.code for item in enrich_orders(port).run(enrich_types()).diagnostics] == []

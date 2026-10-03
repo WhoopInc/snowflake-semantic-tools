@@ -26,7 +26,7 @@ def test_sst_man007_fires(tmp_path: Path) -> None:
     exit_code, diagnostics = compile_json(project)
     [diagnostic] = [item for item in diagnostics if item["code"] == "SST-MAN007"]
     assert exit_code == 1 and diagnostic["severity"] == "error"
-    assert diagnostic["message"] == f"could not write {blocker}: File exists"
+    assert diagnostic["message"] == f"could not write {blocker / 'manifest.json'}: target/sst is not a folder"
 
 
 def test_sst_man007_silent(tmp_path: Path) -> None:

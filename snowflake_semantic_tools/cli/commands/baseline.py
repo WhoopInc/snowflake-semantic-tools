@@ -21,6 +21,7 @@ from snowflake_semantic_tools._version import __version__ as VERSION
 from snowflake_semantic_tools.adapters.clock import SystemClock
 from snowflake_semantic_tools.adapters.fs.baseline import BASELINE_FILE, baseline_text, read_baseline
 from snowflake_semantic_tools.adapters.locations import ProjectPaths
+from snowflake_semantic_tools.adapters.paths import output_root
 from snowflake_semantic_tools.app.baseline import clock_stamp, clock_today, days_after
 from snowflake_semantic_tools.app.validate import ValidateArtifacts
 from snowflake_semantic_tools.cli.exit_codes import ERROR
@@ -96,7 +97,7 @@ def add_command(
     if all_warnings:
         _confirm(options, len(chosen), assume_yes=assume_yes)
     written, added = with_entries(start, chosen, lambda found: note or f"pre-existing at adoption of {found}")
-    write_text(path, baseline_text(written))
+    write_text(output_root(paths.project_dir, path.parent), path, baseline_text(written))
     data = _data(path, written, added=added)
     return CommandResult(data=data, human=lambda: click.echo(f"baselined {len(added)} diagnostic(s) in {path}"))
 
@@ -124,7 +125,7 @@ def prune_command(
     diagnostics = _current(paths, manifest_path, selected, excluded)
     in_scope = _scope(paths, manifest_path, selected, excluded)
     written, pruned = without_stale(current, diagnostics, in_scope)
-    write_text(path, baseline_text(written))
+    write_text(output_root(paths.project_dir, path.parent), path, baseline_text(written))
     data = _data(path, written, pruned=pruned)
     return CommandResult(data=data, human=lambda: click.echo(f"pruned {len(pruned)} entry(ies) from {path}"))
 
@@ -181,7 +182,7 @@ def renew_command(paths: ProjectPaths, options: GlobalOptions, reason: str, expi
         return _absent(path)
     today = _today()
     written = renewed(current, today=today.isoformat(), expires_on=_date(today, expires_in), reason=reason)
-    write_text(path, baseline_text(written))
+    write_text(output_root(paths.project_dir, path.parent), path, baseline_text(written))
     data = _data(path, written)
     return CommandResult(data=data, human=lambda: click.echo(f"renewed {path}; expires on {written.expires_on}"))
 

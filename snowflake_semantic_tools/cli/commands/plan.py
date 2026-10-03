@@ -9,6 +9,7 @@ import click
 
 from snowflake_semantic_tools.adapters.fs.local import PlanFileStore
 from snowflake_semantic_tools.adapters.locations import ProjectPaths
+from snowflake_semantic_tools.adapters.paths import output_root
 from snowflake_semantic_tools.app.plan import PlanReady, PlanRefused
 from snowflake_semantic_tools.cli.exit_codes import ERROR
 from snowflake_semantic_tools.cli.options import (
@@ -128,7 +129,7 @@ def _save_plan(
         )
         destination = plan_out or target_dir(request.project_dir) / "plan.json"
         if not no_plan_out:
-            PlanFileStore(destination).write(saved)
+            PlanFileStore(destination, root=output_root(request.project_dir, destination.parent)).write(saved)
         sql_path = write_plan_sql(request.project_dir, changeset, sql_out)
     finally:
         session.port.close()

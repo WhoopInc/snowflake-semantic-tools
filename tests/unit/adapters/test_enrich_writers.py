@@ -8,7 +8,7 @@ import pytest
 
 from snowflake_semantic_tools.adapters.dbt.yaml_writer import write_model_updates
 from snowflake_semantic_tools.adapters.errors import ProjectError
-from snowflake_semantic_tools.adapters.fs.local import write_text_atomic
+from snowflake_semantic_tools.adapters.paths import write_within
 from snowflake_semantic_tools.adapters.roundtrip import CommentedMap, insert_key, load_editable, scalar
 from snowflake_semantic_tools.adapters.yaml.view_writer import write_table_synonyms
 from snowflake_semantic_tools.domain.enrich import ColumnUpdate, TableSynonymEdit
@@ -185,7 +185,7 @@ def test_a_view_without_tables_gets_table_config_at_its_end() -> None:
 
 def test_text_is_replaced_atomically(tmp_path: Path) -> None:
     target = tmp_path / "models" / "orders.yml"
-    write_text_atomic(target, "first\n")
-    write_text_atomic(target, "second ✓\n")
+    write_within(tmp_path, target, "first\n")
+    write_within(tmp_path, target, "second ✓\n")
     assert target.read_text(encoding="utf-8") == "second ✓\n"
     assert [path.name for path in target.parent.iterdir()] == ["orders.yml"]

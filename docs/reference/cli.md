@@ -149,7 +149,9 @@ configuration to find the paths in.
 Diagnostics:
     SST-CFG001: no PATH was given and there is no configuration file.
     SST-PRT100: a PATH names no YAML file; raised.
-    SST-PRT009: a file cannot be read.
+    SST-PRT009: a file cannot be read, or is a symbolic link or reached through one; it is
+        left as it is.
+    SST-PRT008: a file cannot be written; raised.
     SST-LOD001: a file is not YAML; it is left as it is.
     SST-INT003: a file's canonical form would change its value; it is left as it is.
 
@@ -468,10 +470,10 @@ sst docs [OPTIONS]
 
 Remove local SST build artifacts only; never touch Snowflake.
 
-Exit 1 when the build directory cannot be removed.
+Exit 1 when the build directory cannot be removed, or a symbolic link is on the way to it.
 
 Diagnostics:
-    SST-PRT010: the build directory could not be removed.
+    SST-PRT010: the build directory could not be removed, or is reached through a link.
 
 ```text
 sst clean [OPTIONS]

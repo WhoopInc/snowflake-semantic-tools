@@ -11,7 +11,7 @@ import click
 
 from snowflake_semantic_tools.adapters.errors import ProjectError
 from snowflake_semantic_tools.adapters.locations import ProjectPaths
-from snowflake_semantic_tools.app.enrich import EditedFile, EnrichReport, EnrichRequest, ModelReport
+from snowflake_semantic_tools.app.enrich import EditedFile, EnrichProject, EnrichReport, EnrichRequest, ModelReport
 from snowflake_semantic_tools.cli.exit_codes import CHANGES, ERROR, OK
 from snowflake_semantic_tools.cli.group import SstUsageError
 from snowflake_semantic_tools.cli.options import (
@@ -22,7 +22,7 @@ from snowflake_semantic_tools.cli.options import (
     stacked,
     target_option,
 )
-from snowflake_semantic_tools.cli.runner import CommandResult, command_body
+from snowflake_semantic_tools.cli.runner import CommandResult, WriteFailure, command_body
 from snowflake_semantic_tools.cli.wiring.enrich import (
     LazyEnrichPort,
     enrich_project,
@@ -173,7 +173,7 @@ def enrich(
         report = project.run(request)
         if not report.diagnostics.has_errors and report.selected == 0 and not report.stopped:
             raise ProjectError(f"no dbt model of the project in {project_dir} matched the selection")
-        written = () if check or dry_run else project.write(report)
+        written = () if check or dry_run else _write(project, report, project_dir)
     finally:
         port.close()
     exit_code = _exit_code(report, check=check, detailed=not no_detailed_exitcode)
@@ -183,6 +183,18 @@ def enrich(
         data=_report_data(report, options, written),
         human=lambda: _print_report(report, written, dry_run=dry_run),
     )
+
+
+def _write(project: EnrichProject, report: EnrichReport, project_dir: Path) -> tuple[str, ...]:
+    """Write the report's files; a file that cannot be written, or is refused, is a `WriteFailure`.
+
+    Raises:
+        WriteFailure: A file cannot be written, or a symbolic link is at it or on the way to it.
+    """
+    try:
+        return project.write(report)
+    except OSError as exc:
+        raise WriteFailure(Path(exc.filename) if exc.filename else project_dir, exc) from exc
 
 
 def _exit_code(report: EnrichReport, *, check: bool, detailed: bool) -> int:

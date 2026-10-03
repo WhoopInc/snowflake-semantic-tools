@@ -75,9 +75,9 @@ def test_debug_reports_a_refused_connection_and_the_signature_rate(
     assert [item["code"] for item in payload["diagnostics"]][-1] == "SST-PRT001"
 
     build = project / "target" / "sst"
-    append_run_log(build, (D("SST-PRT001", value="a", detail="b"),), command="plan")
+    append_run_log(project, build, (D("SST-PRT001", value="a", detail="b"),), command="plan")
     assert not (build / "run_log.jsonl").exists()
-    append_run_log(build, (D("SST-SNO001", detail="x"), D("SST-SNO002", value="y")), command="apply")
+    append_run_log(project, build, (D("SST-SNO001", detail="x"), D("SST-SNO002", value="y")), command="apply")
     (build / "run_log.jsonl").open("a", encoding="utf-8").write("not json\n")
     signatures = CliRunner().invoke(
         cli, ["debug", "--project-dir", str(project), "--snowflake-signatures", "--output", "json"]
