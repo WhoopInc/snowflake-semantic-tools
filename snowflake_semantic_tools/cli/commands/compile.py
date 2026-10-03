@@ -18,6 +18,7 @@ from snowflake_semantic_tools.adapters.paths import output_root
 from snowflake_semantic_tools.app.compile import CompileResult
 from snowflake_semantic_tools.app.partial import partial_refusal, partial_split
 from snowflake_semantic_tools.cli.exit_codes import ERROR, OK
+from snowflake_semantic_tools.cli.globals import SstCommand
 from snowflake_semantic_tools.cli.options import (
     database_option,
     defer_target_option,
@@ -39,7 +40,7 @@ from snowflake_semantic_tools.domain.state import Manifest
 _DIRECTORY = click.Path(file_okay=False, path_type=Path)
 
 
-@click.command()
+@click.command(cls=SstCommand)
 @target_option()
 @defer_target_option()
 @database_option()

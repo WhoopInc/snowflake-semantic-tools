@@ -6,9 +6,11 @@ import json
 from pathlib import Path
 from typing import Any
 
+import click
 import pytest
 from click.testing import CliRunner
 
+from snowflake_semantic_tools.cli.globals import SstCommand
 from snowflake_semantic_tools.cli.main import cli
 from tests.helpers.cli_projects import common, project_copy
 
@@ -24,6 +26,28 @@ def test_a_global_option_after_the_command_wins_over_one_before_it(tmp_path: Pat
     assert json.loads(result.output)["command"] == "validate"
     before = CliRunner().invoke(cli, ["--project-dir", str(project), "--manifest", str(common(project)[3]), "validate"])
     assert before.exit_code == 0 and "validated 14 artifact(s)" in before.output
+
+
+def _leaf_commands(group: click.Group, path: tuple[str, ...] = ()) -> list[tuple[tuple[str, ...], click.Command]]:
+    found: list[tuple[tuple[str, ...], click.Command]] = []
+    for name, command in sorted(group.commands.items()):
+        if isinstance(command, click.Group):
+            found.extend(_leaf_commands(command, (*path, name)))
+        else:
+            found.append(((*path, name), command))
+    return found
+
+
+def test_every_command_lists_the_global_options_in_its_own_help() -> None:
+    # Consumers check what a command accepts by reading `sst <command> --help`.
+    for path, command in _leaf_commands(cli):
+        assert isinstance(command, SstCommand), path
+        shown = CliRunner().invoke(cli, [*path, "--help"])
+        assert shown.exit_code == 0, path
+        own, _, global_section = shown.output.partition("\nGlobal options:\n")
+        own = own.partition("\nOptions:\n")[2]
+        assert "--output" in global_section and "--manifest" in global_section, path
+        assert "  -o, --output" not in own and "--help" in own, path
 
 
 def test_environment_variables_supply_global_and_command_options(tmp_path: Path) -> None:

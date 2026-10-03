@@ -13,6 +13,7 @@ from snowflake_semantic_tools.adapters.errors import ProjectError
 from snowflake_semantic_tools.adapters.locations import ProjectPaths
 from snowflake_semantic_tools.app.enrich import EditedFile, EnrichProject, EnrichReport, EnrichRequest, ModelReport
 from snowflake_semantic_tools.cli.exit_codes import CHANGES, ERROR, OK
+from snowflake_semantic_tools.cli.globals import SstCommand
 from snowflake_semantic_tools.cli.group import SstUsageError
 from snowflake_semantic_tools.cli.options import (
     Decorator,
@@ -116,7 +117,7 @@ def _refuse_invocation(
     relation_part(schema, "--schema")
 
 
-@click.command()
+@click.command(cls=SstCommand)
 @click.argument("path_arguments", metavar="[PATH]...", nargs=-1, type=click.Path(path_type=Path))
 @target_option()
 @click.option("--select", "selected", multiple=True)

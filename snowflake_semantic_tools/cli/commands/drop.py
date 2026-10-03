@@ -31,7 +31,7 @@ from snowflake_semantic_tools.adapters.locations import ProjectPaths, locate_pro
 from snowflake_semantic_tools.adapters.resolved_config import resolved_config
 from snowflake_semantic_tools.app.drop import DropObject, DropRequest, DropResult
 from snowflake_semantic_tools.cli.exit_codes import ERROR, OK
-from snowflake_semantic_tools.cli.globals import GlobalOptions
+from snowflake_semantic_tools.cli.globals import GlobalOptions, SstCommand
 from snowflake_semantic_tools.cli.group import SstUsageError
 from snowflake_semantic_tools.cli.runner import CommandResult, ConfigNeed, command_body
 from snowflake_semantic_tools.cli.wiring.project import connect, state_store
@@ -82,7 +82,7 @@ def _refuse(objects: tuple[str, ...], artifact_type: str | None, target_name: st
         _usage(D("SST-PRT109", subject="cli", command="sst drop"))
 
 
-@click.command()
+@click.command(cls=SstCommand)
 @click.argument("objects", metavar="<DB>.<SCHEMA>.<NAME>", nargs=-1)
 @click.option("--type", "artifact_type")
 @click.option("--target", "-t", "target_name")

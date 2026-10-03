@@ -15,7 +15,7 @@ import click
 from snowflake_semantic_tools.adapters.locations import ProjectPaths
 from snowflake_semantic_tools.adapters.paths import make_folders_within, output_root
 from snowflake_semantic_tools.cli.exit_codes import CONFIG, ERROR, OK
-from snowflake_semantic_tools.cli.globals import GlobalOptions
+from snowflake_semantic_tools.cli.globals import GlobalOptions, SstCommand
 from snowflake_semantic_tools.cli.runner import CommandResult, ConfigNeed, command_body, write_text
 from snowflake_semantic_tools.domain.diagnostics import D, DiagnosticBag
 from snowflake_semantic_tools.domain.model.config_schema import CONFIG_FILE, CONFIG_KEYS
@@ -54,7 +54,7 @@ def config_template(semantic_models_dir: str) -> str:
     )
 
 
-@click.command()
+@click.command(cls=SstCommand)
 @click.option("--skip-prompts", is_flag=True)
 @click.option("--check-only", is_flag=True)
 @command_body("init", config=ConfigNeed.OPTIONAL)

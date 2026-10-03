@@ -23,7 +23,7 @@ from snowflake_semantic_tools.app.apply import ApplyArtifacts
 from snowflake_semantic_tools.app.apply.observation import stale_observation
 from snowflake_semantic_tools.app.plan import PlanRefused
 from snowflake_semantic_tools.cli.exit_codes import ERROR, OK
-from snowflake_semantic_tools.cli.globals import GlobalOptions
+from snowflake_semantic_tools.cli.globals import GlobalOptions, SstCommand
 from snowflake_semantic_tools.cli.group import SstUsageError
 from snowflake_semantic_tools.cli.options import (
     defer_target_option,
@@ -90,7 +90,7 @@ def _refuse_invocation(
     refuse_unvalidated(no_validate, snowflake_syntax_check)
 
 
-@click.command()
+@click.command(cls=SstCommand)
 @target_option()
 @selection_options()
 @state_option()

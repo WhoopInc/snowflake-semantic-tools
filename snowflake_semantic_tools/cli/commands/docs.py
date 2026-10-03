@@ -18,6 +18,7 @@ from snowflake_semantic_tools.adapters.locations import ProjectPaths
 from snowflake_semantic_tools.adapters.paths import output_root
 from snowflake_semantic_tools.cli.commands.explain import package_sites
 from snowflake_semantic_tools.cli.exit_codes import CHANGES, EXIT_CODE_DOCS, OK
+from snowflake_semantic_tools.cli.globals import SstCommand
 from snowflake_semantic_tools.cli.group import cli
 from snowflake_semantic_tools.cli.help_text import command_docs, option_docs
 from snowflake_semantic_tools.cli.options import no_detailed_exitcode_option
@@ -29,7 +30,7 @@ from snowflake_semantic_tools.domain.render.reference_docs import REFERENCES, Co
 CODE_TESTS = Path("tests") / "codes"
 
 
-@click.command()
+@click.command(cls=SstCommand)
 @click.option("--check", is_flag=True)
 @click.option("--only", type=click.Choice(tuple(REFERENCES)), multiple=True)
 @click.option("--output-dir", type=click.Path(file_okay=False, path_type=Path))

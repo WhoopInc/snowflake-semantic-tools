@@ -15,6 +15,7 @@ from pathlib import Path
 import click
 
 from snowflake_semantic_tools.adapters.code_coverage import raise_sites as package_raise_sites
+from snowflake_semantic_tools.cli.globals import SstCommand
 from snowflake_semantic_tools.cli.group import SstUsageError
 from snowflake_semantic_tools.cli.runner import CommandResult, ConfigNeed, command_body
 from snowflake_semantic_tools.domain.diagnostics import D
@@ -24,7 +25,7 @@ PACKAGE = Path(__file__).resolve().parents[2]
 REGISTRY_SPECS = PACKAGE / "domain" / "diagnostics" / "specs"
 
 
-@click.command(name="explain")
+@click.command(cls=SstCommand, name="explain")
 @click.argument("code", metavar="CODE")
 @click.option("--aliases", "show_aliases", is_flag=True)
 @command_body("explain", config=ConfigNeed.NONE)

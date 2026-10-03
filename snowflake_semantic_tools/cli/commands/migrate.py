@@ -8,6 +8,7 @@ from snowflake_semantic_tools.adapters.locations import ProjectPaths
 from snowflake_semantic_tools.adapters.yaml.migrate import filter_sites, semantic_files, write_file
 from snowflake_semantic_tools.app.migrate_refs import MigrateRefs, MigrationReport
 from snowflake_semantic_tools.cli.exit_codes import CHANGES, ERROR, OK
+from snowflake_semantic_tools.cli.globals import SstCommand
 from snowflake_semantic_tools.cli.runner import CommandResult, WriteFailure, command_body
 from snowflake_semantic_tools.cli.settings import semantic_models_dir
 
@@ -20,7 +21,7 @@ def migrate(ctx: click.Context) -> None:
     ctx.default_map = {name: dict(inherited) for name in ("refs",)}
 
 
-@migrate.command(name="refs")
+@migrate.command(cls=SstCommand, name="refs")
 @click.option("--write", "write_files", is_flag=True, help="Rewrite files in place instead of reporting.")
 @command_body("migrate refs")
 def migrate_refs_command(paths: ProjectPaths, write_files: bool) -> CommandResult:

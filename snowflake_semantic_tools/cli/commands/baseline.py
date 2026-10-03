@@ -25,7 +25,7 @@ from snowflake_semantic_tools.adapters.paths import output_root
 from snowflake_semantic_tools.app.baseline import clock_stamp, clock_today, days_after
 from snowflake_semantic_tools.app.validate import ValidateArtifacts
 from snowflake_semantic_tools.cli.exit_codes import ERROR
-from snowflake_semantic_tools.cli.globals import GlobalOptions
+from snowflake_semantic_tools.cli.globals import GlobalOptions, SstCommand
 from snowflake_semantic_tools.cli.group import SstUsageError
 from snowflake_semantic_tools.cli.options import selection_options
 from snowflake_semantic_tools.cli.runner import CommandResult, command_body, project_path, write_text
@@ -54,7 +54,7 @@ def baseline(ctx: click.Context) -> None:
     ctx.default_map = {name: dict(inherited) for name in _SUBCOMMANDS}
 
 
-@baseline.command(name="add")
+@baseline.command(cls=SstCommand, name="add")
 @click.argument("code", metavar="[CODE]", required=False)
 @selection_options()
 @click.option("--all-warnings", is_flag=True)
@@ -102,7 +102,7 @@ def add_command(
     return CommandResult(data=data, human=lambda: click.echo(f"baselined {len(added)} diagnostic(s) in {path}"))
 
 
-@baseline.command(name="prune")
+@baseline.command(cls=SstCommand, name="prune")
 @selection_options()
 @command_body("baseline prune", applies_baseline=False)
 def prune_command(
@@ -130,7 +130,7 @@ def prune_command(
     return CommandResult(data=data, human=lambda: click.echo(f"pruned {len(pruned)} entry(ies) from {path}"))
 
 
-@baseline.command(name="show")
+@baseline.command(cls=SstCommand, name="show")
 @click.option("--code")
 @click.option("--expired", is_flag=True)
 @command_body("baseline show", applies_baseline=False)
@@ -161,7 +161,7 @@ def _require_reason(reason: str | None) -> None:
         raise SstUsageError(diagnostic.message, diagnostic=diagnostic)
 
 
-@baseline.command(name="renew")
+@baseline.command(cls=SstCommand, name="renew")
 @click.option("--reason")
 @click.option("--expires-in", type=click.IntRange(min=1), default=DEFAULT_EXPIRY_DAYS)
 @command_body("baseline renew", applies_baseline=False, refusals=_require_reason)
