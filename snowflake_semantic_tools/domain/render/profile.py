@@ -231,9 +231,16 @@ def _plugin_repositories(
     return [trees.pointer(tree, f"{name}/") for name in included], included
 
 
+def version_input(row: Mapping[str, object]) -> str:
+    """Return the text a row's VERSION digests: the canonical JSON of every column but VERSION."""
+    return json.dumps(
+        {key: value for key, value in row.items() if key != "VERSION"}, sort_keys=True, separators=(",", ":")
+    )
+
+
 def _version(row: Mapping[str, object], prefix: str) -> str:
     """Name the row's content: `prefix`, then 12 hex characters of its canonical JSON's digest."""
-    digest = sha256(json.dumps(row, sort_keys=True, separators=(",", ":")).encode("utf-8")).hexdigest()
+    digest = sha256(version_input(row).encode("utf-8")).hexdigest()
     return f"{prefix}{digest[:TREE_HASH_CHARACTERS].upper()}"
 
 

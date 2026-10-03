@@ -27,6 +27,13 @@ from snowflake_semantic_tools.domain.model.registry import GrantPreservation
 from snowflake_semantic_tools.domain.model.skill import DEFAULT_VERSION_PREFIX, Plugin, Skill, SkillBundle, SkillCatalog
 from snowflake_semantic_tools.domain.render.skill_bundle import build_plugin_bundle, build_skill_bundle
 from snowflake_semantic_tools.domain.sql import Sql, stage_path
+from snowflake_semantic_tools.domain.validate.publication import (
+    MintedVersion,
+    put_target_diagnostics,
+    schema_diagnostics,
+    version_collision_diagnostics,
+    version_diagnostics,
+)
 from snowflake_semantic_tools.domain.validate.skill import extension_name_diagnostics, validate_skill_catalog
 
 _ALIAS_PREFIX = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
@@ -74,6 +81,11 @@ class ExtensionRelease:
     def paths(self) -> tuple[str, ...]:
         """Return the path of each file in the bundle, in bundle order."""
         return tuple(entry.path for entry in self.bundle.entries)
+
+    @property
+    def minted(self) -> MintedVersion:
+        """Return the version this release mints, as the publication guards read it."""
+        return MintedVersion(self.key, self.bundle.name, self.target, self.alias, self.bundle.digest)
 
 
 @dataclass(frozen=True, slots=True)
@@ -160,6 +172,9 @@ class CompileSkills:
             SST-VAL836: a plugin member has errors, so the plugin is blocked.
             SST-VAL831: each compiled skill and plugin publishes through the CORTEX EXTENSION
                 statements (info).
+            SST-VAL803, SST-VAL806, SST-VAL820: as `_release_checks` reports them.
+            SST-VAL825: two releases name one extension's version alike for other content;
+                the later one does not compile.
         """
         diagnostics: list[Diagnostic] = list(validate_skill_catalog(self._catalog))
         channel = self._channel
@@ -187,7 +202,13 @@ class CompileSkills:
             extension = self._compile_plugin(plugin, members, diagnostics)
             if extension is not None:
                 compiled.append(extension)
-        return CompileResult(tuple(sorted(compiled, key=lambda item: item.artifact_key)), DiagnosticBag(diagnostics))
+        collisions = version_collision_diagnostics(item.release.minted for item in compiled)
+        diagnostics.extend(collisions)
+        collided = {item.subject for item in collisions}
+        kept = sorted(
+            (item for item in compiled if item.artifact_key not in collided), key=lambda item: item.artifact_key
+        )
+        return CompileResult(tuple(kept), DiagnosticBag(diagnostics))
 
     def _compile_skill(self, skill: Skill, diagnostics: list[Diagnostic]) -> CompiledExtension | None:
         bundle, bundle_diagnostics = build_skill_bundle(skill)
@@ -199,6 +220,8 @@ class CompileSkills:
             diagnostics.extend(unnamed)
             return None
         release = self._release(skill.key, "SKILL", skill.extension_name, skill.description or "", bundle)
+        if self._release_checks(release, diagnostics):
+            return None
         diagnostics.append(_extension_surface(release, skill.name, skill.origin))
         return CompiledExtension(release, skill.source_files, scripts=_scripts_of((skill,)))
 
@@ -235,6 +258,8 @@ class CompileSkills:
             dict.fromkeys((plugin.manifest_file, *(path for skill in carried for path in skill.source_files)))
         )
         release = self._release(plugin.key, "PLUGIN", plugin.extension_name, plugin.description or "", bundle)
+        if self._release_checks(release, diagnostics):
+            return None
         diagnostics.append(_extension_surface(release, plugin.name, plugin.origin))
         return CompiledExtension(
             release,
@@ -256,6 +281,29 @@ class CompileSkills:
             certified=channel.certified,
             bundle=bundle,
         )
+
+    def _release_checks(self, release: ExtensionRelease, diagnostics: list[Diagnostic]) -> bool:
+        """Append what the publication guards report for a release; True when one is an error.
+
+        `_release` names the version by its digest, in the channel's schema, under a prefix that
+        ends in a separator; these report a release that is not so, which then does not compile.
+
+        Diagnostics:
+            SST-VAL803: the alias is not the version prefix and the bundle digest.
+            SST-VAL806: the target is outside the catalog channel's schema (a warning).
+            SST-VAL820: the bundle's stage prefix does not end in `/`.
+        """
+        channel = self._channel
+        assert channel is not None
+        version = release.minted
+        catalog = QualifiedName.from_parts(channel.database, channel.schema, "X").folded[:2]
+        found = (
+            *version_diagnostics(version, channel.version_prefix),
+            *schema_diagnostics(version, catalog),
+            *put_target_diagnostics(release.key, release.bundle.name, (release.prefix,)),
+        )
+        diagnostics.extend(found)
+        return any(item.blocks for item in found)
 
 
 def _extension_surface(release: ExtensionRelease, name: str, origin: Origin) -> Diagnostic:

@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from hashlib import sha256
 
 from snowflake_semantic_tools.app.compile.base import CompileResult, StandaloneArtifact
+from snowflake_semantic_tools.app.desktop_contract import desktop_view, stage_pointers
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, DiagnosticBag
 from snowflake_semantic_tools.domain.model.artifact_key import artifact_key
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
@@ -19,13 +20,18 @@ from snowflake_semantic_tools.domain.model.lifecycle import (
 from snowflake_semantic_tools.domain.model.profile import DesktopProfile, ProfileCatalog, ProfileRelease
 from snowflake_semantic_tools.domain.model.registry import GrantPreservation
 from snowflake_semantic_tools.domain.model.skill import DEFAULT_VERSION_PREFIX, Plugin, Skill, SkillCatalog
-from snowflake_semantic_tools.domain.render.profile import build_profile
+from snowflake_semantic_tools.domain.render.profile import build_profile, version_input
 from snowflake_semantic_tools.domain.render.skill_bundle import build_plugin_bundle
 from snowflake_semantic_tools.domain.render.skill_flatten import flatten_skill
 from snowflake_semantic_tools.domain.validate.profile import (
     desktop_registry_diagnostics,
     unreached_skills,
     validate_profile_catalog,
+)
+from snowflake_semantic_tools.domain.validate.publication import (
+    put_target_diagnostics,
+    registry_pointer_diagnostics,
+    version_coverage_diagnostics,
 )
 
 
@@ -121,6 +127,8 @@ class CompileProfiles:
         Diagnostics:
             SST-VAL854: the channel's registry is not the one CoCo Desktop reads.
             SST-VAL855: a profile includes a skill or plugin with errors.
+            SST-VAL820, SST-VAL822, SST-VAL823: as `release_checks` reports them; the
+                profile does not compile.
         """
         skills = {skill.name: skill for skill in self._skills.skills}
         plugins = {plugin.name: plugin for plugin in self._skills.plugins}
@@ -145,7 +153,11 @@ class CompileProfiles:
             subjects = _blocking_subjects(profile, self._shared_commands())
             if any(item.blocks and item.subject in subjects for item in diagnostics):
                 continue
-            compiled.append(self._compile(profile, skills, plugins, channel))
+            item = self._compile(profile, skills, plugins, channel)
+            problems = release_checks(item)
+            diagnostics.extend(problems)
+            if not problems:
+                compiled.append(item)
         return CompileResult(tuple(compiled), DiagnosticBag(diagnostics))
 
     def _flatten_plugins(
@@ -223,6 +235,29 @@ class CompileProfiles:
     def _shared_commands(self) -> tuple[str, ...]:
         shared = self._catalog.shared
         return shared.commands if shared is not None else ()
+
+
+def release_checks(compiled: CompiledProfile) -> tuple[Diagnostic, ...]:
+    """Report what the publication guards find in a profile's release before anything uploads.
+
+    `build_profile` names each tree by its digest below a separator, points the row at every
+    tree, and digests the row into VERSION; these report a release that is not so.
+
+    Diagnostics:
+        SST-VAL820: a tree's upload location does not end in `/`.
+        SST-VAL822: no pointer in the row reaches a tree it uploads.
+        SST-VAL823: what VERSION digests does not name a tree's prefix.
+    """
+    release = compiled.release
+    stage = compiled.channel.stage.sql
+    uploads = tuple(f"@{stage}/{tree.prefix}" for tree in release.trees)
+    return (
+        *put_target_diagnostics(release.key, release.name, uploads),
+        *registry_pointer_diagnostics(release.key, release.name, uploads, stage_pointers(desktop_view(release.row))),
+        *version_coverage_diagnostics(
+            release.key, release.name, (tree.prefix for tree in release.trees), version_input(release.row)
+        ),
+    )
 
 
 def _blocking_subjects(profile: DesktopProfile, shared_commands: tuple[str, ...]) -> set[str]:

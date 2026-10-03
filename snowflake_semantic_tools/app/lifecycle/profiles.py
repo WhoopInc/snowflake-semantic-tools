@@ -288,11 +288,9 @@ class _ProfileRun(PublicationRun[ProfilePublicationPort]):
     def _ensure_stage(self) -> ApplyOutcome | None:
         if self._current.stage_type is not None:
             return None
-        result = self._port.execute_script((create_sse_stage_sql(self._compiled.channel.stage),))
-        self._attempts += 1
+        result = self._run_statement(create_sse_stage_sql(self._compiled.channel.stage))
         if not result.ok:
             return self.fail(result.error.message if result.error else "stage creation failed")
-        self._written = True
         return None
 
     def _upload_trees(self) -> ApplyOutcome | None:
