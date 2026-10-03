@@ -2,10 +2,14 @@
 
 from __future__ import annotations
 
+from snowflake_semantic_tools.domain.diagnostics import Origin
+from snowflake_semantic_tools.domain.model.agent import AgentTool
 from snowflake_semantic_tools.domain.model.dbt import DbtCatalog
 from snowflake_semantic_tools.domain.model.tool import ToolCatalog, ToolGroup, ToolOwnership
 from snowflake_semantic_tools.domain.validate.config import (
+    config_tool_calls,
     config_tool_references,
+    empty_is_block,
     unreferenced_tool_members,
     unstated_policy,
     validate_config,
@@ -18,6 +22,31 @@ def test_a_member_no_tool_call_names_is_referenced_by_nothing() -> None:
     tools = catalog(search_member("docs"), procedure_member("lookup"), procedure_member("audit"))
     found = unreferenced_tool_members(tools, [("PLATFORM", "docs"), ("lookup",), ("other", "audit")])
     assert [item.context["name"] for item in found] == ["audit"]
+
+
+def test_an_agent_tool_references_its_backing_or_by_name_the_member_it_delegates_to() -> None:
+    origin = Origin("agents/a.yml")
+    assert AgentTool("generic", origin, name="t", backing=("g", "m")).member_reference == ("g", "m")
+    assert AgentTool("agent", origin, name="partner").member_reference == ("partner",)
+    assert AgentTool("agent", origin, name="partner", agent_ref="own").member_reference == ()
+    assert AgentTool("agent", origin).member_reference == ()
+    assert AgentTool("data_to_chart", origin, name="chart").member_reference == ()
+
+
+def test_a_configuration_value_s_tool_calls_are_read_in_document_order() -> None:
+    tree = {"a": "{{ tool('g', 'one') }}", "b": ["x", "{{ tool('g', 'two') }}"], "c": 3}
+    assert config_tool_calls(tree) == (("g", "one"), ("g", "two"))
+
+
+def test_an_empty_value_is_meant_only_for_a_declared_block_or_map() -> None:
+    assert empty_is_block(("skills", "extensions", "partner-glossary"))
+    assert empty_is_block(("deploy",))
+    assert empty_is_block(("semantic_views", "marts", "finance"))
+    assert not empty_is_block(("semantic_views", "marts", "+schema"))
+    assert not empty_is_block(("skills", "extensions", "default_prefix"))
+    assert not empty_is_block(("no_such_block",))
+    assert not empty_is_block(("skills", 0))
+    assert not empty_is_block(())
 
 
 def test_a_tool_call_in_a_configuration_value_must_name_a_declared_member() -> None:
