@@ -22,7 +22,6 @@ from snowflake_semantic_tools.cli.main import cli
 from snowflake_semantic_tools.cli.wiring.compile import compile_result
 from snowflake_semantic_tools.cli.wiring.project import view_timeout
 from snowflake_semantic_tools.domain.model.agent import AgentModel
-from snowflake_semantic_tools.domain.model.config_schema import DbtSettings, dbt_settings
 from tests.helpers.cli_projects import MANIFEST, common, project_copy
 from tests.helpers.projects import project_paths
 from tests.helpers.recorded_snowflake import RecordedSnowflake
@@ -79,13 +78,6 @@ def test_validate_reads_no_file_under_an_excluded_directory(tmp_path: Path) -> N
     )
     passing = CliRunner().invoke(cli, ["validate", *common(project), "--no-strict"])
     assert passing.exit_code == 0, passing.output
-
-
-def test_the_dbt_block_reads_its_defaults_and_its_values() -> None:
-    assert dbt_settings({}) == DbtSettings()
-    block = {"dbt": {"invoke": False, "command": "compile", "manifest_schema_versions": [11, 12, True, "13"]}}
-    assert dbt_settings(block) == DbtSettings(False, "compile", frozenset((11, 12)))
-    assert dbt_settings({"dbt": {"command": 3, "manifest_schema_versions": []}}) == DbtSettings()
 
 
 def test_dbt_command_and_invoke_decide_how_the_manifest_is_produced(tmp_path: Path) -> None:

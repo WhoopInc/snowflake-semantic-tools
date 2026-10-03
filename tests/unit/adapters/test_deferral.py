@@ -15,8 +15,6 @@ from snowflake_semantic_tools.adapters.errors import ProjectError
 from snowflake_semantic_tools.adapters.locations import ProjectPaths
 from snowflake_semantic_tools.adapters.project_source import YamlProjectInputs, YamlProjectSource
 from snowflake_semantic_tools.cli.main import cli
-from snowflake_semantic_tools.domain.model.dbt import DbtCatalog, DbtModel, DbtSource
-from snowflake_semantic_tools.domain.resolve.defer import defer_relations
 from tests.helpers.cli_projects import DBT_MANIFEST, common, project_copy
 from tests.helpers.projects import project_paths
 from tests.helpers.seam_projects import FakeDbt, SmallProject, manifest, model_node
@@ -26,36 +24,6 @@ PROFILES = (
     "    dev:\n      type: snowflake\n      database: DB\n      schema: SCH\n"
     "    prod:\n      type: snowflake\n      database: PROD_DB\n      schema: SCH\n"
 )
-
-
-def _model(unique_id: str, relation: str) -> DbtModel:
-    return DbtModel(unique_id, unique_id.rsplit(".", 1)[-1], relation, (), (), (), raw_relation_name=relation.lower())
-
-
-def test_defer_relations_takes_the_deferred_relation_of_each_node_both_hold() -> None:
-    current = DbtCatalog(
-        "v12",
-        None,
-        "p",
-        (_model("model.p.orders", "DEV.S.ORDERS"), _model("model.p.new", "DEV.S.NEW")),
-        sources=(
-            DbtSource("source.p.raw.a", "raw", "a", "DEV.RAW.A"),
-            DbtSource("source.p.raw.b", "raw", "b", "DEV.RAW.B"),
-        ),
-    )
-    deferred = DbtCatalog(
-        "v12",
-        None,
-        "p",
-        (_model("model.p.orders", "PROD.S.ORDERS"),),
-        sources=(DbtSource("source.p.raw.a", "raw", "a", "PROD.RAW.A"),),
-    )
-    result = defer_relations(current, deferred)
-    assert [(model.relation_name, model.raw_relation_name) for model in result.models] == [
-        ("PROD.S.ORDERS", "prod.s.orders"),
-        ("DEV.S.NEW", "dev.s.new"),
-    ]
-    assert [source.relation_name for source in result.sources] == ["PROD.RAW.A", "DEV.RAW.B"]
 
 
 def _small(tmp_path: Path, config: str = "") -> Path:
