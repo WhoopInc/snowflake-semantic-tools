@@ -6,15 +6,15 @@ from collections.abc import Iterator, Mapping
 from types import MappingProxyType
 from typing import Any
 
-from snowflake_semantic_tools.adapters.yaml.documents import NodePath, RawDocument, RawDocuments
-from snowflake_semantic_tools.adapters.yaml.semantic.checks.deprecated import DEPRECATED_KEYS, INERT_KEYS
-from snowflake_semantic_tools.adapters.yaml.semantic.checks.scope import SCOPE_KEYS
-from snowflake_semantic_tools.adapters.yaml.semantic.nodes import _node_origin, _node_root
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, Origin
 from snowflake_semantic_tools.domain.model.artifact_key import artifact_key
+from snowflake_semantic_tools.domain.model.authored import AuthoredDocument, AuthoredDocuments, NodePath
 from snowflake_semantic_tools.domain.parse.fields import unknown_field
 from snowflake_semantic_tools.domain.parse.names import name_warnings
 from snowflake_semantic_tools.domain.parse.template import TemplateSyntaxError, scan_template_calls
+from snowflake_semantic_tools.domain.validate.semantic.deprecated import DEPRECATED_KEYS, INERT_KEYS
+from snowflake_semantic_tools.domain.validate.semantic.nodes import node_origin, node_root
+from snowflake_semantic_tools.domain.validate.semantic.scope import SCOPE_KEYS
 
 # The keys the loader reads, per semantic-model node. Anything else is reported,
 # because a key the loader skips changes nothing in the DDL and would otherwise
@@ -131,12 +131,12 @@ TYPE_FOLDERS: Mapping[str, str] = MappingProxyType(
 LEGACY_RELATIONSHIP_KEYS = frozenset(("relationship_columns", "left_column", "right_column"))
 
 
-def _authored_key_diagnostics(documents: RawDocuments) -> tuple[Diagnostic, ...]:
+def authored_key_diagnostics(documents: AuthoredDocuments) -> tuple[Diagnostic, ...]:
     """Every key the loader does not read, as `_unread_key` names it."""
     diagnostics: list[Diagnostic] = []
     for document in documents.documents:
         for node_type, allowed in AUTHORED_KEYS.items():
-            root_key = _node_root(node_type)
+            root_key = node_root(node_type)
             nodes = document.tree.get(root_key) if root_key in document.root_keys else None
             for index, node in enumerate(nodes if isinstance(nodes, list) else ()):
                 if isinstance(node, dict):
@@ -149,7 +149,7 @@ def _authored_key_diagnostics(documents: RawDocuments) -> tuple[Diagnostic, ...]
 _NAMED_ELSEWHERE = frozenset(("semantic_view", "metric"))
 
 
-def _member_name_diagnostics(documents: RawDocuments) -> tuple[Diagnostic, ...]:
+def member_name_diagnostics(documents: AuthoredDocuments) -> tuple[Diagnostic, ...]:
     """A node with no name (SST-PRS107), a risky name, or a name its type already uses.
 
     Either would otherwise be skipped or overwritten without a word. A repeat in the file that
@@ -157,14 +157,14 @@ def _member_name_diagnostics(documents: RawDocuments) -> tuple[Diagnostic, ...]:
     A risky name is reported as `name_warnings` reports it (SST-PRS012, SST-PRS031, SST-PRS100).
     """
     diagnostics: list[Diagnostic] = []
-    seen: dict[tuple[str, str], RawDocument] = {}
+    seen: dict[tuple[str, str], AuthoredDocument] = {}
     for document in documents.documents:
         diagnostics.extend(_foreign_members(document))
         for node_type in AUTHORED_KEYS:
-            root_key = _node_root(node_type)
+            root_key = node_root(node_type)
             nodes = document.tree.get(root_key) if root_key in document.root_keys else None
             for index, node in enumerate(nodes if isinstance(nodes, list) else ()):
-                origin = _node_origin(document, root_key, index)
+                origin = node_origin(document, root_key, index)
                 if not isinstance(node, dict) or not node.get("name"):
                     diagnostics.append(
                         D(
@@ -185,7 +185,7 @@ def _member_name_diagnostics(documents: RawDocuments) -> tuple[Diagnostic, ...]:
     return tuple(diagnostics)
 
 
-def _foreign_members(document: RawDocument) -> tuple[Diagnostic, ...]:
+def _foreign_members(document: AuthoredDocument) -> tuple[Diagnostic, ...]:
     """Report each member list in a type folder that belongs to another member type.
 
     Diagnostics:
@@ -197,17 +197,17 @@ def _foreign_members(document: RawDocument) -> tuple[Diagnostic, ...]:
     return tuple(
         D("SST-PRS105", origin=Origin(document.path), type=owner, member_type=node_type)
         for node_type in AUTHORED_KEYS
-        if node_type not in (owner, "semantic_view") and _node_root(node_type) in document.root_keys
+        if node_type not in (owner, "semantic_view") and node_root(node_type) in document.root_keys
     )
 
 
-def _owner(document: RawDocument) -> str | None:
+def _owner(document: AuthoredDocument) -> str | None:
     """The type that owns a document's folder: a member type's folder, or `semantic_views/`."""
     return "semantic_view" if document.hint_root == "semantic_views" else TYPE_FOLDERS.get(document.hint_root or "")
 
 
 def _repeated_name(
-    seen: dict[tuple[str, str], RawDocument], document: RawDocument, node_type: str, name: str, origin: Origin
+    seen: dict[tuple[str, str], AuthoredDocument], document: AuthoredDocument, node_type: str, name: str, origin: Origin
 ) -> tuple[Diagnostic, ...]:
     """Record where a name is first declared; report a later declaration of it.
 
@@ -235,7 +235,7 @@ def _repeated_name(
 
 
 def _unread_keys(
-    document: RawDocument,
+    document: AuthoredDocument,
     subject: str,
     scope: str,
     path: NodePath,
@@ -284,7 +284,13 @@ def _unread_keys(
 
 
 def _unread_key(
-    document: RawDocument, path: NodePath, scope: str, field: str, subject: str, value: object, allowed: frozenset[str]
+    document: AuthoredDocument,
+    path: NodePath,
+    scope: str,
+    field: str,
+    subject: str,
+    value: object,
+    allowed: frozenset[str],
 ) -> tuple[Diagnostic, ...]:
     """Report one key the loader does not read in `scope`, whose keys are `allowed`.
 
@@ -345,7 +351,7 @@ def _holds_filter(value: object) -> bool:
     return any(isinstance(label, str) and label.casefold() == "filter" for label in labels)
 
 
-def _legacy_reference_diagnostics(documents: RawDocuments) -> tuple[Diagnostic, ...]:
+def legacy_reference_diagnostics(documents: AuthoredDocuments) -> tuple[Diagnostic, ...]:
     """Report every legacy `table()` and `column()` global in every string of every document.
 
     Documents are read in order and each tree depth-first, so the calls come out in the order

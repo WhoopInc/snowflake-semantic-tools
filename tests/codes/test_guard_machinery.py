@@ -18,6 +18,7 @@ from tests.helpers.code_guards import (
     code_references,
     code_tests,
     project_catalog,
+    public_suggestion,
     ratchet,
     untested,
 )
@@ -37,8 +38,16 @@ def test_the_ratchet_rejects_new_gaps_changed_reasons_and_stale_entries() -> Non
 
 
 def test_divergence_reports_each_way_a_code_can_disagree() -> None:
-    def row(code: str, severity: str = "ERROR", *, non_demotable: bool = False, message: str = "m") -> CatalogRow:
-        return CatalogRow(code, code[4:7], int(code[7:]), severity, non_demotable, "t", message, "local")
+    def row(
+        code: str,
+        severity: str = "ERROR",
+        *,
+        non_demotable: bool = False,
+        message: str = "m",
+        title: str = "t",
+        suggestion: str | None = None,
+    ) -> CatalogRow:
+        return CatalogRow(code, code[4:7], int(code[7:]), severity, non_demotable, title, message, suggestion, "local")
 
     catalog = {
         "SST-AAA001": row("SST-AAA001"),
@@ -46,12 +55,14 @@ def test_divergence_reports_each_way_a_code_can_disagree() -> None:
         "SST-AAA003": row("SST-AAA003", "RETIRED", message="--"),
         "SST-AAA004": row("SST-AAA004", "RETIRED", message="--"),
         "SST-AAA005": row("SST-AAA005", "WARNING", non_demotable=True, message="other"),
+        "SST-AAA007": row("SST-AAA007", title="other", suggestion="fix it"),
     }
     registry = {
         "SST-AAA001": spec("SST-AAA001", Severity.ERROR, "t", "m", None),
         "SST-AAA004": spec("SST-AAA004", Severity.ERROR, "t", "m", None),
         "SST-AAA005": spec("SST-AAA005", Severity.ERROR, "t", "m", None),
         "SST-AAA006": spec("SST-AAA006", Severity.ERROR, "t", "m", None),
+        "SST-AAA007": spec("SST-AAA007", Severity.ERROR, "t", "m", "repair it"),
     }
     assert catalog_divergence(catalog, registry) == {
         "SST-AAA002": "declared by the catalog, not registered",
@@ -59,6 +70,7 @@ def test_divergence_reports_each_way_a_code_can_disagree() -> None:
         "SST-AAA005": "severity: catalog WARNING, engine ERROR; non-demotable: catalog True, engine False; "
         "template: catalog 'other', engine 'm'",
         "SST-AAA006": "registered, not in the catalog",
+        "SST-AAA007": "title: catalog 'other', engine 't'; suggestion: catalog 'fix it', engine 'repair it'",
     }
 
 
@@ -111,13 +123,43 @@ def test_the_catalog_projection_drops_rationale_and_refuses_planning_identifiers
     assert project_catalog([extracted]) == [
         {
             key: extracted[key]
-            for key in ("code", "area", "number", "severity", "non_demotable", "title", "message", "precheck")
+            for key in (
+                "code",
+                "area",
+                "number",
+                "severity",
+                "non_demotable",
+                "title",
+                "message",
+                "suggestion",
+                "precheck",
+            )
         }
     ]
     with pytest.raises(ValueError, match="planning identifier"):
         project_catalog([{**extracted, "title": "settled by D248"}])
     with pytest.raises(ValueError, match="repeats"):
         project_catalog([extracted, extracted])
+
+
+@pytest.mark.parametrize(
+    ("cell", "suggestion"),
+    [
+        ("--", None),
+        ("", None),
+        (
+            "break the dependency -- the ORDER is not authorable (`D999`)",
+            "break the dependency -- the ORDER is not authorable",
+        ),
+        ("rename it. **This used to read otherwise, which `D998` made wrong**: so it goes", "rename it."),
+        ("use `{{ fn('arg') }}` -- see specs/README section 4", "use `{{ fn('arg') }}`"),
+        ("declare the member in specs/tools/", "declare the member in the tools directory"),
+        ("pass `<database>`.`<schema>`", "pass <database>.<schema>"),
+        ("use `--manifest`", "use `--manifest`"),
+    ],
+)
+def test_a_suggestion_ships_without_the_catalogs_rationale(cell: str, suggestion: str | None) -> None:
+    assert public_suggestion(cell) == suggestion
 
 
 def test_the_live_registry_is_what_the_guards_read() -> None:

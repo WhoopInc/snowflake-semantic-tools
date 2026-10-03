@@ -7,7 +7,7 @@ replacing it here changes what every command compiles.
 from __future__ import annotations
 
 import dataclasses
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from pathlib import Path
 
 import click
@@ -21,7 +21,7 @@ from snowflake_semantic_tools.cli.group import SstUsageError
 from snowflake_semantic_tools.cli.wiring.project import project_inputs
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, DiagnosticBag
 from snowflake_semantic_tools.domain.model.registry import SEMANTIC_REGISTRY
-from snowflake_semantic_tools.domain.plan.selectors import Selectable, resolve_selectors
+from snowflake_semantic_tools.domain.plan.selectors import Selectable, Selection, SelectionScope, resolve_selectors
 from snowflake_semantic_tools.domain.state import Manifest
 
 
@@ -62,7 +62,20 @@ def selected_result(
         SstUsageError: a selector is refused, as `selection` says.
         ProjectError: the selectors matched no artifact (SST-DIS010).
     """
-    universe = tuple(
+    universe = compiled_universe(result.compiled)
+    scope = selection_scope(selected, excluded, universe)
+    compiled = tuple(item for item in result.compiled if scope.covers(item.artifact_type, item.artifact_key))
+    if not compiled:
+        raise ProjectError(
+            f"selector {' '.join(selected)!r} matched no artifact in {project_dir}",
+            diagnostics=tuple(D("SST-DIS010", selector=value) for value in selected),
+        )
+    return dataclasses.replace(result, compiled=compiled)
+
+
+def compiled_universe(compiled: Iterable[CompiledArtifact]) -> tuple[Selectable, ...]:
+    """Return each compiled artifact as a selector can name it."""
+    return tuple(
         Selectable(
             item.artifact_key,
             item.artifact_type,
@@ -70,26 +83,8 @@ def selected_result(
             item.rendered_artifact.fingerprint,
             item.source_files,
         )
-        for item in result.compiled
+        for item in compiled
     )
-    selected_types, selected_keys = selection(selected, universe)
-    excluded_types, excluded_keys = selection(excluded, universe)
-
-    def names(item: CompiledArtifact, types: frozenset[str] | None, keys: frozenset[str] | None) -> bool:
-        return (types is not None and item.artifact_type in types) or (keys is not None and item.artifact_key in keys)
-
-    compiled = tuple(
-        item
-        for item in result.compiled
-        if (not selected or names(item, selected_types, selected_keys))
-        and not names(item, excluded_types, excluded_keys)
-    )
-    if not compiled:
-        raise ProjectError(
-            f"selector {' '.join(selected)!r} matched no artifact in {project_dir}",
-            diagnostics=tuple(D("SST-DIS010", selector=value) for value in selected),
-        )
-    return dataclasses.replace(result, compiled=compiled)
 
 
 def manifest_universe(manifest: Manifest) -> tuple[Selectable, ...]:
@@ -102,8 +97,8 @@ def manifest_universe(manifest: Manifest) -> tuple[Selectable, ...]:
 
 def selection(
     values: tuple[str, ...], universe: tuple[Selectable, ...] = (), previous: Mapping[str, str] | None = None
-) -> tuple[frozenset[str] | None, frozenset[str] | None]:
-    """Resolve selectors into the artifact types and the artifact keys they name; None for neither.
+) -> Selection:
+    """Resolve selectors into the artifact types and the artifact keys they name.
 
     Args:
         universe: The compiled artifacts names, paths, and states resolve against.
@@ -117,7 +112,26 @@ def selection(
     )
     if isinstance(resolved, Diagnostic):
         raise SstUsageError(resolved.message, diagnostic=resolved)
-    return resolved.types, resolved.keys
+    return resolved
+
+
+def selection_scope(
+    selected: tuple[str, ...],
+    excluded: tuple[str, ...],
+    universe: tuple[Selectable, ...],
+    previous: Mapping[str, str] | None = None,
+) -> SelectionScope:
+    """Resolve `--select` and `--exclude` into the scope every command applies the same way.
+
+    No selector selects every artifact, and no exclusion leaves any out.
+
+    Raises:
+        SstUsageError: a selector is refused, as `selection` says.
+    """
+    return SelectionScope(
+        selection(selected, universe, previous) if selected else None,
+        selection(excluded, universe, previous) if excluded else None,
+    )
 
 
 def check_selectors(ctx: click.Context, param: click.Parameter, values: tuple[str, ...] | str | None) -> object:

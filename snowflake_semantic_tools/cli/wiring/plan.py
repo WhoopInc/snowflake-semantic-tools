@@ -108,8 +108,10 @@ def plan_scope(request: PlanRequest) -> PlanScope:
     universe = manifest_universe(compiled_manifest(request.project_dir)) if named or request.excluded else ()
     stateful = any(_is_state(value) for value in (*named, *request.excluded))
     previous = _previous_fingerprints(request.state_dir) if stateful else None
-    prune_types, prune_keys = selection(named, universe, previous)
-    excluded_types, excluded_keys = selection(request.excluded, universe, previous)
+    named_selection = selection(named, universe, previous)
+    excluded_selection = selection(request.excluded, universe, previous)
+    prune_types, prune_keys = named_selection.types, named_selection.keys
+    excluded_types, excluded_keys = excluded_selection.types, excluded_selection.keys
     if excluded_types is not None:
         prune_types = (
             frozenset(SEMANTIC_REGISTRY.artifacts) - excluded_types

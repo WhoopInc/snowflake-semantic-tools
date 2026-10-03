@@ -5,12 +5,12 @@ from __future__ import annotations
 import shutil
 from pathlib import Path
 
-from snowflake_semantic_tools.adapters.yaml.semantic.checks.dbt import _dbt_column_diagnostics
-from snowflake_semantic_tools.adapters.yaml.semantic.checks.metrics import _metric_diagnostics
-from snowflake_semantic_tools.adapters.yaml.semantic.defs import MetricDef
 from snowflake_semantic_tools.adapters.yaml.semantic.relationships import _Conditions, _parse_conditions
 from snowflake_semantic_tools.domain.diagnostics import Diagnostic, Origin, Severity
+from snowflake_semantic_tools.domain.model.authored import MetricDef
 from snowflake_semantic_tools.domain.model.dbt import DbtColumn, DbtModel
+from snowflake_semantic_tools.domain.validate.semantic.dbt import dbt_column_diagnostics
+from snowflake_semantic_tools.domain.validate.semantic.metrics import metric_diagnostics
 from tests.helpers.projects import load_project
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -42,7 +42,7 @@ def test_a_malformed_template_ends_its_metrics_checks_before_the_bare_identifier
         has_tables_key=True,
     )
     bare = MetricDef("bare", "SUM(amount)", "Bare.", (), ("orders",), has_tables_key=True)
-    diagnostics = _metric_diagnostics((broken, bare), {"orders": ORDERS})
+    diagnostics = metric_diagnostics((broken, bare), {"orders": ORDERS})
     # `broken` names `amount` bare too, but its template does not scan -- the call lacks its
     # closing parenthesis, so it is not a reference at all -- and only `bare` is reported.
     assert _codes(diagnostics) == ["SST-VAL121", "SST-REF033", "SST-VAL110"]
@@ -56,7 +56,7 @@ def test_a_repeated_metric_name_is_checked_no_further_but_still_counts_for_equiv
         MetricDef("DUP", expression, "Second.", (), ("orders",), has_tables_key=True),
         MetricDef("later", "sum({{ ref('orders',  'amount') }})", "Later.", (), ("orders",), has_tables_key=True),
     )
-    diagnostics = _metric_diagnostics(metrics, {"orders": ORDERS})
+    diagnostics = metric_diagnostics(metrics, {"orders": ORDERS})
     assert _codes(diagnostics) == ["SST-VAL001", "SST-VAL124"]
     # The second spelling of the repeated name takes the first's place as the metric compared against.
     assert dict(diagnostics[1].context) == {"metric": "later", "other": "DUP"}
@@ -74,7 +74,7 @@ def test_column_rules_run_in_order_and_only_sentinels_are_reported_on_an_unused_
     )
     used = DbtModel("model.fixture.used", "used", "DB.SCH.USED", ("c",), (), (column,))
     unused = DbtModel("model.fixture.unused", "unused", "DB.SCH.UNUSED", ("c",), (), (column,))
-    diagnostics = _dbt_column_diagnostics({"used": used, "unused": unused}, frozenset({"used"}))
+    diagnostics = dbt_column_diagnostics({"used": used, "unused": unused}, frozenset({"used"}))
     assert [(diagnostic.code, diagnostic.subject) for diagnostic in diagnostics] == [
         ("SST-VAL316", "dbt_column:unused.c"),
         ("SST-VAL308", "dbt_column:used.c"),
@@ -165,7 +165,7 @@ def test_an_explicit_is_enum_or_a_fact_silences_the_exhaustive_sample_warning() 
     fact = DbtColumn("f", "d", "NUMBER", "fact", sample_values=values)
     enum = DbtColumn("e", "d", "TEXT", "dimension", is_enum=True)
     model = DbtModel("model.fixture.m", "m", "DB.SCH.M", ("u",), (), (undecided, sample, fact, enum))
-    diagnostics = _dbt_column_diagnostics({"m": model})
+    diagnostics = dbt_column_diagnostics({"m": model})
     assert [(diagnostic.code, diagnostic.subject) for diagnostic in diagnostics] == [
         ("SST-VAL315", "dbt_column:m.u"),
         ("SST-VAL314", "dbt_column:m.e"),

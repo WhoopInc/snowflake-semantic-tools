@@ -1,11 +1,11 @@
-"""SST-VAL326: an attached member's expression holds a name only another view or table provides."""
+"""SST-VAL326: an expression a view is created with holds a bare name the view cannot resolve."""
 
 from __future__ import annotations
 
 from pathlib import Path
 
 from snowflake_semantic_tools.domain.diagnostics import Severity
-from tests.helpers.semantic_projects import found, view_names, with_view
+from tests.helpers.semantic_projects import FILTERS, METRICS, edited, found, view_names, with_view
 
 VIEW = """  - name: v
     description: |-
@@ -21,6 +21,7 @@ LARGE = """      - name: large_order_cents
         data_type: NUMBER
         default_value: 1000
 """
+EXPR = "    expr: \"SUM({{ ref('orders', 'order_total') }})\"\n"
 
 
 def test_sst_val326_fires(tmp_path: Path) -> None:
@@ -35,5 +36,28 @@ def test_sst_val326_fires(tmp_path: Path) -> None:
     assert "V" not in view_names(project)
 
 
+def test_sst_val326_fires_on_a_typo(tmp_path: Path) -> None:
+    project = edited(tmp_path, METRICS, EXPR, "    expr: \"SUM({{ ref('orders', 'order_total') }}) * fudge_factor\"\n")
+    diagnostic = next(item for item in found(project, "SST-VAL326") if item.subject == "semantic_view:jaffle_sales")
+    assert diagnostic.severity is Severity.ERROR
+    assert diagnostic.message == (
+        "view 'jaffle_sales': member 'total_revenue' references 'fudge_factor', which is neither a column on the "
+        "view's tables nor a variable the view declares"
+    )
+    assert found(project, "SST-VAL221") == []
+    assert "JAFFLE_SALES" not in view_names(project)
+
+
 def test_sst_val326_silent(tmp_path: Path) -> None:
     assert found(with_view(tmp_path, VIEW + LARGE), "SST-VAL326") == []
+    # A typo in a filter that renders as prose fails no create: SST-VAL221's warning, not this.
+    prose = edited(tmp_path / "prose", FILTERS, '    expr: "large_order_cents"\n', '    expr: "large_ordr_cents"\n')
+    assert found(prose, "SST-VAL326") == []
+    # Niladic SQL functions are SQL, not names.
+    niladic = edited(
+        tmp_path / "niladic",
+        METRICS,
+        EXPR,
+        "    expr: \"SUM({{ ref('orders', 'order_total') }}) + 0 * DATEDIFF(day, CURRENT_DATE, CURRENT_DATE)\"\n",
+    )
+    assert found(niladic, "SST-VAL326") == []

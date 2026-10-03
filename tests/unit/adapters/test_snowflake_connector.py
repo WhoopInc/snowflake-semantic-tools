@@ -12,7 +12,6 @@ from snowflake_semantic_tools.adapters.clock import SystemClock
 from snowflake_semantic_tools.adapters.snowflake.connector import SnowflakeConnector
 from snowflake_semantic_tools.domain.model.identifier import Identifier, QualifiedName, SchemaScope
 from snowflake_semantic_tools.domain.model.lifecycle import ExecResult, QueryResult
-from snowflake_semantic_tools.domain.ports.snowflake.catalog import StageObservation
 from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
 from snowflake_semantic_tools.domain.ports.snowflake.stage import StagedFileMetadata
 from snowflake_semantic_tools.domain.sql import Sql, sql
@@ -81,10 +80,9 @@ def test_stage_observation_preserves_the_exact_file_format() -> None:
         }
     )
 
-    assert connector.observe_stage(QualifiedName.parse("DB.SCH.EVAL_CONFIGS")) == StageObservation(
-        True,
+    assert connector.describe_stage_file_format(QualifiedName.parse("DB.SCH.EVAL_CONFIGS")) == (
         "TYPE=CSV FIELD_DELIMITER=NONE RECORD_DELIMITER=\\n SKIP_HEADER=0 "
-        "FIELD_OPTIONALLY_ENCLOSED_BY=NONE ESCAPE_UNENCLOSED_FIELD=NONE",
+        "FIELD_OPTIONALLY_ENCLOSED_BY=NONE ESCAPE_UNENCLOSED_FIELD=NONE"
     )
 
 
@@ -116,7 +114,6 @@ def test_staged_file_observation_is_exact_and_returns_metadata() -> None:
         "abc123",
         "Mon, 28 Sep 2026 00:00:00 GMT",
     )
-    assert connector.stage_file_exists(exact_path)
 
 
 def test_staged_file_observation_accepts_internal_stage_name_shape_only_for_exact_path() -> None:

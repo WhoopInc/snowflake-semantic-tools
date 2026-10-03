@@ -104,11 +104,11 @@ def test_no_path_and_no_configuration_exits_4_but_a_path_needs_none(tmp_path: Pa
 
 
 def test_validate_finding_is_cured_by_format(tmp_path: Path) -> None:
-    from snowflake_semantic_tools.adapters.yaml.semantic.checks.files import _formatting_problem
+    from snowflake_semantic_tools.domain.validate.semantic.files import formatting_problem
 
     project = _project(tmp_path)
     path = project / "semantic_models" / "views.yml"
     path.write_text(_MESSY.replace("\n", "\r\n"), encoding="utf-8")
-    assert _formatting_problem(path.read_bytes().decode("utf-8")) is not None
+    assert formatting_problem(path.read_bytes().decode("utf-8")) is not None
     assert _format(project, "semantic_models").exit_code == 0
-    assert _formatting_problem(path.read_bytes().decode("utf-8")) is None
+    assert formatting_problem(path.read_bytes().decode("utf-8")) is None

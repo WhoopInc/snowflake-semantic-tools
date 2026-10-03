@@ -7,21 +7,12 @@ from dataclasses import dataclass
 from hashlib import sha256
 from pathlib import Path
 from types import MappingProxyType
-from typing import Any, TypeAlias
+from typing import Any
 
 from snowflake_semantic_tools.adapters.errors import ProjectError
 from snowflake_semantic_tools.adapters.yaml.discover import DiscoveredFile, FileSet
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, Origin
-
-NodePath: TypeAlias = tuple[str | int, ...]
-
-
-@dataclass(frozen=True, slots=True)
-class SourcePosition:
-    """Where a YAML node starts in its file, as a 1-based line and a 1-based column."""
-
-    line: int
-    col: int
+from snowflake_semantic_tools.domain.model.authored import NodePath, SourcePosition
 
 
 @dataclass(frozen=True, slots=True)

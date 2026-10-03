@@ -50,9 +50,6 @@ class StageMethods(Session, StagePort):
             last_modified=str(row["last_modified"]) if row.get("last_modified") is not None else None,
         )
 
-    def stage_file_exists(self, stage_path: str) -> bool:
-        return self.observe_staged_file(stage_path) is not None
-
     def read_staged_file(self, stage_path: str) -> bytes | None:
         """Download one staged file and return its bytes; None when the stage holds no such file.
 

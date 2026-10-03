@@ -11,9 +11,9 @@ from __future__ import annotations
 import re
 from collections.abc import Iterator, Mapping
 
-from snowflake_semantic_tools.adapters.yaml.semantic.defs import FilterDef, InstructionDef, MetricDef, VerifiedQueryDef
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, Origin
 from snowflake_semantic_tools.domain.model.artifact_key import artifact_key
+from snowflake_semantic_tools.domain.model.authored import FilterDef, InstructionDef, MetricDef, VerifiedQueryDef
 from snowflake_semantic_tools.domain.model.project import ParsedView
 
 _NAME = r"(?:\"(?:[^\"]|\"\")+\"|[A-Za-z_][A-Za-z0-9_$]*)"
@@ -38,7 +38,7 @@ def hardcoded_names(text: str) -> tuple[str, ...]:
     return tuple(dict.fromkeys(match.group(0) for match in _THREE_PART.finditer(masked)))
 
 
-def _hardcoded_name_diagnostics(
+def hardcoded_name_diagnostics(
     views: tuple[ParsedView, ...],
     metrics: tuple[MetricDef, ...],
     filters: tuple[FilterDef, ...],
@@ -97,7 +97,7 @@ def _predicate(filter_def: FilterDef, variables: Mapping[str, object]) -> str:
     return _normal(bare)
 
 
-def _overlap_diagnostics(
+def overlap_diagnostics(
     filters: tuple[FilterDef, ...], instructions: Mapping[str, InstructionDef], variables: Mapping[str, object]
 ) -> tuple[Diagnostic, ...]:
     """Report each custom instruction that writes out a filter's predicate.
@@ -134,7 +134,7 @@ def _overlap_diagnostics(
     return tuple(diagnostics)
 
 
-def _unresolved_prose_diagnostics(
+def unresolved_prose_diagnostics(
     instructions: Mapping[str, InstructionDef], metric_names: frozenset[str], filter_names: frozenset[str]
 ) -> tuple[Diagnostic, ...]:
     """Report each metric or filter an instruction names that the project does not declare.

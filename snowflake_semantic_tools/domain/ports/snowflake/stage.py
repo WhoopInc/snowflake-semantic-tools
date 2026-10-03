@@ -47,16 +47,6 @@ class StagePort(Protocol):
         """
         ...
 
-    def stage_file_exists(self, stage_path: str) -> bool:
-        """Report whether a file is at a stage path, as `observe_staged_file` finds it.
-
-        Never writes.
-
-        Raises:
-            SnowflakePortError: as `observe_staged_file` raises it.
-        """
-        ...
-
     def read_staged_file(self, stage_path: str) -> bytes | None:
         """Download the file at a stage path and return its bytes.
 

@@ -15,31 +15,7 @@ from typing import Any
 
 from snowflake_semantic_tools.adapters.yaml.documents import RawDocuments
 from snowflake_semantic_tools.adapters.yaml.fields import mapping
-from snowflake_semantic_tools.adapters.yaml.semantic.checks.authored_keys import (
-    _authored_key_diagnostics,
-    _legacy_reference_diagnostics,
-    _member_name_diagnostics,
-)
-from snowflake_semantic_tools.adapters.yaml.semantic.checks.dbt import (
-    _dbt_column_diagnostics,
-    _dbt_model_diagnostics,
-    _description_diagnostics,
-)
-from snowflake_semantic_tools.adapters.yaml.semantic.checks.deprecated import _deprecated_key_diagnostics
-from snowflake_semantic_tools.adapters.yaml.semantic.checks.expressions import (
-    _expression_reference_diagnostics,
-    _filter_diagnostics,
-)
-from snowflake_semantic_tools.adapters.yaml.semantic.checks.fidelity import _renderer_fidelity_diagnostics
-from snowflake_semantic_tools.adapters.yaml.semantic.checks.instructions import _instruction_diagnostics
-from snowflake_semantic_tools.adapters.yaml.semantic.checks.metrics import _metric_cycles, _metric_diagnostics
-from snowflake_semantic_tools.adapters.yaml.semantic.checks.shape import (
-    _filter_parse_diagnostics,
-    _metric_parse_diagnostics,
-    _verified_query_diagnostics,
-)
-from snowflake_semantic_tools.adapters.yaml.semantic.checks.verified_queries import _relative_date_diagnostics
-from snowflake_semantic_tools.adapters.yaml.semantic.defs import FilterDef, InstructionDef, MetricDef, VerifiedQueryDef
+from snowflake_semantic_tools.adapters.yaml.semantic.file_reads import _verified_query_diagnostics
 from snowflake_semantic_tools.adapters.yaml.semantic.relationships import (
     _multipath_diagnostics,
     _relationship_cycle_diagnostics,
@@ -49,6 +25,7 @@ from snowflake_semantic_tools.adapters.yaml.semantic.relationships import (
 from snowflake_semantic_tools.adapters.yaml.semantic.target import _folder_route_diagnostics, _stray_view_diagnostics
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, Origin
 from snowflake_semantic_tools.domain.model.artifact_key import artifact_key
+from snowflake_semantic_tools.domain.model.authored import FilterDef, InstructionDef, MetricDef, VerifiedQueryDef
 from snowflake_semantic_tools.domain.model.dbt import DbtCatalog, DbtModel, DbtTarget
 from snowflake_semantic_tools.domain.model.project import ParsedProject, ParsedView
 from snowflake_semantic_tools.domain.model.semantic_view import Relationship
@@ -59,6 +36,26 @@ from snowflake_semantic_tools.domain.validate.dbt_seam import (
     consumed_model_diagnostics,
     unreadable_model,
 )
+from snowflake_semantic_tools.domain.validate.semantic.authored_keys import (
+    authored_key_diagnostics,
+    legacy_reference_diagnostics,
+    member_name_diagnostics,
+)
+from snowflake_semantic_tools.domain.validate.semantic.dbt import (
+    dbt_column_diagnostics,
+    dbt_model_diagnostics,
+    description_diagnostics,
+)
+from snowflake_semantic_tools.domain.validate.semantic.deprecated import deprecated_key_diagnostics
+from snowflake_semantic_tools.domain.validate.semantic.expressions import (
+    expression_reference_diagnostics,
+    filter_diagnostics,
+)
+from snowflake_semantic_tools.domain.validate.semantic.fidelity import renderer_fidelity_diagnostics
+from snowflake_semantic_tools.domain.validate.semantic.instructions import instruction_diagnostics
+from snowflake_semantic_tools.domain.validate.semantic.metrics import metric_cycles, metric_diagnostics
+from snowflake_semantic_tools.domain.validate.semantic.shape import filter_parse_diagnostics, metric_parse_diagnostics
+from snowflake_semantic_tools.domain.validate.semantic.verified_queries import relative_date_diagnostics
 
 
 @dataclass(frozen=True, slots=True)
@@ -86,7 +83,7 @@ class SemanticMembers:
     """The parsed members the checks read, by type, and the cycles among the metrics.
 
     Attributes:
-        cycles: The cycles of `metric()` references `_metric_cycles` lists, each once, as
+        cycles: The cycles of `metric()` references `metric_cycles` lists, each once, as
             casefolded metric names of which the last repeats the first; every metric on a
             cycle is in at least one.
         instruction_names: Casefolded names of every custom instruction.
@@ -117,7 +114,7 @@ def _typed_members(parsed: ParsedProject) -> SemanticMembers:
     )
     return SemanticMembers(
         metrics=metrics,
-        cycles=_metric_cycles(metrics),
+        cycles=metric_cycles(metrics),
         filters=tuple(member.source for member in by_type.get("filter", ()) if isinstance(member.source, FilterDef)),
         instruction_names=frozenset(instruction.name.casefold() for instruction in instructions),
         verified_queries=tuple(
@@ -157,8 +154,8 @@ def _structural_checks(context: LoadContext, parsed: ParsedProject, metrics: tup
     """
     declared, duplicate_views = _declaration_diagnostics(parsed)
     documents = _document_diagnostics(context, parsed, metrics)
-    legacy = _legacy_reference_diagnostics(context.documents)
-    queries = _verified_query_diagnostics(context.documents, context.project_dir, context.semantic_models_dir)
+    legacy = legacy_reference_diagnostics(context.documents)
+    queries = _verified_query_diagnostics(context.documents)
     files = (diagnostic.context.get("file") for diagnostic in legacy)
     return StructuralChecks(
         diagnostics=(*declared, *documents, *legacy, *queries),
@@ -224,17 +221,17 @@ def _document_diagnostics(
         *collapse_diagnostics(context.catalog, referenced_models),
         *_folder_route_diagnostics(context.config, context.views_dir),
         *_stray_view_diagnostics(documents, context.views_dir),
-        *_authored_key_diagnostics(documents),
-        *_renderer_fidelity_diagnostics(documents),
-        *_deprecated_key_diagnostics(documents),
-        *_member_name_diagnostics(documents),
-        *_description_diagnostics(parsed.views, metrics),
+        *authored_key_diagnostics(documents),
+        *renderer_fidelity_diagnostics(documents),
+        *deprecated_key_diagnostics(documents),
+        *member_name_diagnostics(documents),
+        *description_diagnostics(parsed.views, metrics),
         *_description_template_diagnostics(parsed),
-        *_metric_parse_diagnostics(documents, project_dir, models_dir),
-        *_filter_parse_diagnostics(documents, project_dir, models_dir),
+        *metric_parse_diagnostics(documents),
+        *filter_parse_diagnostics(documents),
         *_relationship_parse_diagnostics(documents, project_dir, models_dir),
-        *_dbt_model_diagnostics(context.models, referenced_models),
-        *_dbt_column_diagnostics(context.models, referenced_models),
+        *dbt_model_diagnostics(context.models, referenced_models),
+        *dbt_column_diagnostics(context.models, referenced_models),
     )
 
 
@@ -292,24 +289,24 @@ def _semantic_checks(context: LoadContext, members: SemanticMembers, legacy_file
     """
     variables: dict[str, object] = mapping(context.config.get("vars"))
     authored: tuple[FilterDef | VerifiedQueryDef, ...] = members.filters + members.verified_queries
-    expression_findings = _expression_reference_diagnostics(
+    expression_findings = expression_reference_diagnostics(
         authored,
         context.models,
         metric_names=frozenset(metric.name.casefold() for metric in members.metrics),
         variables=variables,
     )
-    filter_diagnostics = _filter_diagnostics(members.filters, context.models, variables)
-    metric_findings = _metric_diagnostics(members.metrics, context.models, variables)
-    metric_tables, unknown_table_metrics = _unknown_metric_tables(members.metrics, context.models, context.catalog)
+    filter_found = filter_diagnostics(members.filters, context.models, variables)
+    metric_findings = metric_diagnostics(members.metrics, context.models, variables)
+    table_findings, unknown_table_metrics = _unknown_metric_tables(members.metrics, context.models, context.catalog)
     member_tables, unknown_table_members = _unknown_member_tables(authored, context.models, context.catalog)
     return SemanticChecks(
         diagnostics=(
             *_outside_legacy_files(expression_findings, legacy_files),
-            *filter_diagnostics,
-            *_instruction_diagnostics(members.instructions),
-            *_relative_date_diagnostics(members.verified_queries),
+            *filter_found,
+            *instruction_diagnostics(members.instructions),
+            *relative_date_diagnostics(members.verified_queries),
             *_outside_legacy_files(metric_findings, legacy_files),
-            *metric_tables,
+            *table_findings,
             *member_tables,
             *_cycle_diagnostics(members),
         ),

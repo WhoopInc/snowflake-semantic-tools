@@ -24,7 +24,6 @@ def validate_skill_catalog(catalog: SkillCatalog) -> DiagnosticBag:
 
     Diagnostics:
         SST-VAL801: a skill folder or plugin name is not kebab-case, or the frontmatter disagrees.
-        SST-RND031: a skill has no instructions after its frontmatter.
         SST-VAL857: a skill file has a name a stage rejects.
         SST-VAL832: a skill or plugin takes an extension name an earlier one already took.
         SST-PRS002: a plugin lists no skills.
@@ -60,8 +59,6 @@ def _skill_rules(skill: Skill, other: str | None) -> tuple[Diagnostic, ...]:
         emit("SST-VAL801", detail=f"folder name '{skill.name}' is not {problem}")
     if skill.declared_name is not None and skill.declared_name != skill.name:
         emit("SST-VAL801", detail=f"frontmatter name '{skill.declared_name}' does not match the folder name")
-    if not skill.body.strip():
-        emit("SST-RND031")
     for file in sorted(skill.files, key=lambda item: item.path):
         unsafe = unsafe_segment(file.path)
         if unsafe is not None:

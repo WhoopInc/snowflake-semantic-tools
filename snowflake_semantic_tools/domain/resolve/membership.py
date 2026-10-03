@@ -10,12 +10,13 @@ request, split by what they read: `membership_tables` the members' own tables,
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from types import MappingProxyType
 
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, DiagnosticBag
 from snowflake_semantic_tools.domain.model.artifact_key import split_artifact_key
-from snowflake_semantic_tools.domain.model.project import ArtifactKey, ParsedMember
+from snowflake_semantic_tools.domain.model.project import ArtifactKey, MemberKey, ParsedMember
 from snowflake_semantic_tools.domain.model.registry import AttachRule, Registry
 from snowflake_semantic_tools.domain.model.semantic_view import ViewScope
 from snowflake_semantic_tools.domain.resolve.members import attach_members, attach_view_members, effective_tables
@@ -54,15 +55,64 @@ def resolve_membership(request: MembershipRequest) -> MembershipResult:
     return MembershipResult(attachment, DiagnosticBag(diagnostics))
 
 
+@dataclass(frozen=True, slots=True)
+class ViewMembers:
+    """What each view attaches, before and after its scope narrows it, as member resolution decides.
+
+    Attributes:
+        reached: Each view's key, mapped to the keys of the members its tables and the names it
+            lists attach, before its scope narrows them.
+        kept: The same, narrowed to the members the view's scope admits.
+        poisoned: The keys of the members the load leaves out, which attach to no view.
+    """
+
+    reached: Mapping[ArtifactKey, frozenset[MemberKey]]
+    kept: Mapping[ArtifactKey, frozenset[MemberKey]]
+    poisoned: frozenset[MemberKey] = frozenset()
+
+    def reaches(self, view: ArtifactKey, member: MemberKey) -> bool:
+        """Report whether `view`'s tables or names attach `member`, whatever its scope keeps."""
+        return member in self.reached.get(view, frozenset())
+
+    def keeps(self, view: ArtifactKey, member: MemberKey) -> bool:
+        """Report whether `member` attaches to `view` and its scope admits it."""
+        return member in self.kept.get(view, frozenset())
+
+
+def view_members(request: MembershipRequest) -> ViewMembers:
+    """Attach every member as `resolve_membership` does, and list what each view attaches.
+
+    The checks that run before the build read this, so they judge membership as the build does.
+    """
+    reached = _unscoped(request)
+    return ViewMembers(
+        _by_view(reached, request),
+        _by_view(_scoped(reached, request), request),
+        frozenset(member.key for member in request.members if member.poisoned),
+    )
+
+
+def _by_view(attachment: Attachment, request: MembershipRequest) -> Mapping[ArtifactKey, frozenset[MemberKey]]:
+    """Invert an attachment: each view's key, mapped to the keys of the members attached to it."""
+    members: dict[ArtifactKey, set[MemberKey]] = {view: set() for view in request.view_tables}
+    for member, views in attachment.items():
+        for view in views:
+            members.setdefault(view, set()).add(member)
+    return MappingProxyType({view: frozenset(keys) for view, keys in members.items()})
+
+
 def _attach(request: MembershipRequest) -> Attachment:
-    attachment = attach_view_members(
+    return _scoped(_unscoped(request), request)
+
+
+def _unscoped(request: MembershipRequest) -> Attachment:
+    return attach_view_members(
         request.view_tables,
         request.members,
         request.registry,
         view_named_members=request.view_named_members,
         metric_dependencies=request.metric_dependencies(),
     )
-    return _scoped(attachment, request)
 
 
 def _scoped(attachment: Attachment, request: MembershipRequest) -> Attachment:

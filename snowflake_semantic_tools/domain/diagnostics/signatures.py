@@ -3,10 +3,15 @@
 `SIGNATURES` is the table, one row per signature; `match_signature` is the one function
 that consults it. Matching is most specific first: a row whose `errno` equals the error's
 number, then a row whose `sqlstate` equals its SQLSTATE, then a row whose `pattern`
-searches its message, each pass in table order. An error no row matches is `UNRECOGNISED`,
+searches its message, each pass in table order. A number the driver gives several failures
+matches its row only when the wording does too. An error no row matches is `UNRECOGNISED`,
 SST-SNO001, and never a specific code. A row with neither a number nor a SQLSTATE matches
 on Snowflake's wording alone, so it is `fragile`, and `fragile_signatures` lists those rows
 so the set stays visible and can shrink as numbers are observed.
+
+`session_failure` reads a classified error as the session sees it -- a rejected credential,
+a missed deadline, a missing privilege -- so the connector's own errors are classified by
+the same table.
 
 `snowflake_diagnostic` reports a classified error, filling the code's placeholders from the
 message: the first quoted name for `{value}`, the message without its number and heading
@@ -17,6 +22,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
+from enum import Enum
 from string import Formatter
 from typing import Any
 
@@ -36,6 +42,8 @@ class Signature:
         retryable: Whether running the same statement again may succeed.
         extract: Where the code's `{detail}` or `{found}` comes from in the message: the
             first group of this pattern; None takes the whole message.
+        shared_errno: The driver gives `errno` to other failures too, so an error with it
+            matches this row only when `pattern` also searches its message.
     """
 
     code: str
@@ -45,6 +53,7 @@ class Signature:
     kind: ErrorKind = ErrorKind.UNKNOWN
     retryable: bool = False
     extract: re.Pattern[str] | None = None
+    shared_errno: bool = False
 
     @property
     def fragile(self) -> bool:
@@ -60,6 +69,7 @@ _PRIVILEGE = ErrorKind.PRIVILEGE
 _NOT_FOUND = ErrorKind.NOT_FOUND
 _SYNTAX = ErrorKind.SYNTAX
 _TRANSIENT = ErrorKind.TRANSIENT
+_AUTHENTICATION = _words(r"\bincorrect username or password\b|\bauthentication (?:failed|token)")
 _DURATION = _words(r"(\d+\s*(?:(?:second|minute|hour)(?:\(s\)|s)?|ms|s)(?![a-z]))")
 
 # The table. Specific rows come before general ones that share their wording, so the
@@ -77,12 +87,13 @@ SIGNATURES: tuple[Signature, ...] = (
     Signature("SST-SNO004", 3001, "42501", _words(r"\binsufficient privileges?\b|\bnot authori[sz]ed\b"), _PRIVILEGE),
     Signature("SST-SNO004", None, "28000", None, _PRIVILEGE),
     Signature("SST-SNO012", 93932, None, _words(r"\bsecure\b.*\bshare\b|\bshare\b.*\bsecure\b"), _PRIVILEGE),
-    Signature(
-        "SST-SNO013",
-        250001,
-        None,
-        _words(r"\bincorrect username or password\b|\bauthentication (?:failed|token)"),
-        _PRIVILEGE,
+    # 250001 is the driver's number for every failed login, a network failure included.
+    Signature("SST-SNO013", 250001, None, _AUTHENTICATION, _PRIVILEGE, shared_errno=True),
+    # Snowflake's numbers for a credential it rejected at login: a wrong password, an expired or
+    # invalid token, a rejected key pair, and a failed SSO or MFA exchange.
+    *(
+        Signature("SST-SNO013", number, None, None, _PRIVILEGE)
+        for number in (390100, 390144, 390195, 390302, 390303, 390318, 390422)
     ),
     Signature("SST-SNO011", 630, "57014", _words(r"\bstatement or warehouse timeout\b"), extract=_DURATION),
     Signature(
@@ -116,6 +127,11 @@ SIGNATURES: tuple[Signature, ...] = (
     Signature("SST-SNO010", None, None, _words(r"\bSQL execution internal error\b|\bincident\s+\d+")),
     Signature("SST-SNO009", 1003, "42000", _words(r"\bsyntax error\b|\bSQL compilation error\b"), _SYNTAX),
     Signature("SST-SNO009", None, "42601", None, _SYNTAX),
+    # The SQL-standard connection-exception states: 250002 is the driver closing a connection
+    # under a session, as 08003 says; 08006 is a connection that failed mid-statement.
+    Signature("SST-SNO014", 250002, "08003", None, _TRANSIENT, True),
+    Signature("SST-SNO014", None, "08000", None, _TRANSIENT, True),
+    Signature("SST-SNO014", None, "08006", None, _TRANSIENT, True),
     Signature(
         "SST-SNO014",
         None,
@@ -142,16 +158,54 @@ def match_signature(message: str, *, errno: int | None = None, sqlstate: str | N
     """
     if errno is not None:
         for row in SIGNATURES:
-            if row.errno == errno:
+            if row.errno == errno and not (row.shared_errno and not _searches(row, message)):
                 return row
     if sqlstate:
         for row in SIGNATURES:
             if row.sqlstate == sqlstate:
                 return row
     for row in SIGNATURES:
-        if row.pattern is not None and row.pattern.search(message):
+        if _searches(row, message):
             return row
     return UNRECOGNISED
+
+
+def _searches(row: Signature, message: str) -> bool:
+    return row.pattern is not None and row.pattern.search(message) is not None
+
+
+class SessionFailure(Enum):
+    """What a driver error means to the session that ran into it."""
+
+    AUTHENTICATION = "authentication"
+    DEADLINE = "deadline"
+    PRIVILEGE = "privilege"
+    NOT_VISIBLE = "not_visible"
+
+
+# The codes of an object the session's role cannot see: it is absent or not granted.
+_NOT_VISIBLE = frozenset(("SST-SNO003", "SST-SNO005", "SST-SNO006"))
+
+
+def session_failure(message: str, *, errno: int | None = None, sqlstate: str | None = None) -> SessionFailure | None:
+    """Read a driver error, as `match_signature` classifies it, as what it means to the session.
+
+    Returns:
+        AUTHENTICATION for a rejected credential (SST-SNO013); NOT_VISIBLE for a database,
+        schema or object that does not exist or is not granted; DEADLINE for a transient
+        failure or a statement timeout; PRIVILEGE for any other refused privilege; None for
+        anything else.
+    """
+    signature = match_signature(message, errno=errno, sqlstate=sqlstate)
+    if signature.code == "SST-SNO013":
+        return SessionFailure.AUTHENTICATION
+    if signature.code in _NOT_VISIBLE:
+        return SessionFailure.NOT_VISIBLE
+    if signature.kind is ErrorKind.TRANSIENT or signature.code == "SST-SNO011":
+        return SessionFailure.DEADLINE
+    if signature.kind is ErrorKind.PRIVILEGE:
+        return SessionFailure.PRIVILEGE
+    return None
 
 
 def fragile_signatures() -> tuple[Signature, ...]:

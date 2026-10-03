@@ -9,7 +9,6 @@ from snowflake_semantic_tools.domain.model.eval import (
     EvalBaselineMetric,
     EvalBaselineRecord,
     EvalGateState,
-    EvalRegression,
 )
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
 from snowflake_semantic_tools.domain.ports.snowflake import SnowflakePort
@@ -58,14 +57,6 @@ class SnowflakeEvalStateStore:
             raise SnowflakePortError(f"eval baseline state returned {len(result.rows)} rows")
         return _baseline_from_payload(result.rows[0][0])
 
-    def write_baseline(self, target_name: str, baseline: EvalBaselineRecord) -> None:
-        """Insert or replace one eval's baseline on one target, creating the table when it is absent.
-
-        Raises:
-            SnowflakePortError: Creating the table or the MERGE failed.
-        """
-        self._write(target_name, baseline.eval_key, "baseline", _baseline_payload(baseline))
-
     def write_baselines(self, target_name: str, baselines: tuple[EvalBaselineRecord, ...]) -> None:
         """Insert or replace several baselines on one target in one transaction, so a failure commits none.
 
@@ -86,31 +77,6 @@ class SnowflakeEvalStateStore:
         if not result.ok:
             self._port.try_execute(sql("ROLLBACK"))
             raise SnowflakePortError(result.error.message if result.error else "eval baseline batch write failed")
-
-    def read_gate(self, target_name: str, eval_key: str) -> EvalGateState | None:
-        """Return the gate state recorded for one eval on one target; None when there is none.
-
-        Never writes: a missing table reads as None.
-
-        Raises:
-            SnowflakePortError: The lookup or the query failed, more than one row matched, or the
-                stored payload does not have a gate state's shape.
-            ValueError: A stored `regression_count` is text that is not an integer.
-        """
-        if not self._port.object_exists("TABLE", self._table):
-            return None
-        result = self._port.query(
-            sql(
-                "SELECT PAYLOAD FROM {table} WHERE TARGET_NAME = %s AND EVAL_KEY = %s AND RECORD_KIND = 'gate'",
-                table=qname(self._table),
-            ),
-            (target_name, eval_key),
-        )
-        if not result.rows:
-            return None
-        if len(result.rows) != 1:
-            raise SnowflakePortError(f"eval gate state returned {len(result.rows)} rows")
-        return _gate_from_payload(result.rows[0][0])
 
     def write_gate(self, target_name: str, gate: EvalGateState) -> None:
         """Insert or replace one eval's gate state on one target, creating the table when it is absent.
@@ -257,42 +223,6 @@ def _gate_payload(value: EvalGateState) -> dict[str, object]:
         "evaluated_at": value.evaluated_at,
         "run_names": list(value.run_names),
     }
-
-
-def _gate_from_payload(value: object) -> EvalGateState:
-    """Decode a stored gate payload, given as a mapping or as its JSON text.
-
-    A missing field reads as empty: `""`, no regressions or run names, a count of 0, and not
-    unresolved. `regression_count` may be stored as a number or as numeric text.
-
-    Raises:
-        SnowflakePortError: The payload or a regression is not an object, `regressions` or
-            `run_names` is not an array, or `regression_count` is a boolean or not a number.
-        ValueError: `regression_count` is text that is not an integer.
-    """
-    payload = _mapping(value, "gate")
-    regressions = payload.get("regressions", [])
-    run_names = payload.get("run_names", [])
-    if not isinstance(regressions, list) or not isinstance(run_names, list):
-        raise SnowflakePortError("eval gate regressions must be an array")
-    regression_count = payload.get("regression_count", 0)
-    if isinstance(regression_count, bool) or not isinstance(regression_count, (int, float, str)):
-        raise SnowflakePortError("eval gate regression_count must be an integer")
-    return EvalGateState(
-        eval_key=str(payload.get("eval_key") or ""),
-        tier=str(payload.get("tier") or ""),
-        regression_count=int(regression_count),
-        regressions=tuple(
-            EvalRegression(
-                str(_mapping(item, "regression").get("question_key") or ""),
-                str(_mapping(item, "regression").get("metric_name") or ""),
-            )
-            for item in regressions
-        ),
-        unresolved=bool(payload.get("unresolved")),
-        evaluated_at=str(payload.get("evaluated_at") or ""),
-        run_names=tuple(str(item) for item in run_names),
-    )
 
 
 def _mapping(value: object, subject: str) -> dict[str, object]:

@@ -19,7 +19,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         Severity.ERROR,
         "dbt model referenced but absent from the manifest",
         "model '{model}' is not in the dbt manifest",
-        "correct the model name, or add the model to the dbt project",
+        "run dbt compile, or correct the name",
     ),
     spec(
         "SST-DBT003",
@@ -33,7 +33,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         Severity.WARNING,
         "Column type in dbt disagrees with the declared type",
         "model '{model}': column '{column}' is {found} in dbt and {expected} in the semantic layer",
-        "reconcile the two types, or add a dbt contract",
+        "reconcile the two, or add a contract",
     ),
     spec(
         "SST-DBT005",
@@ -47,14 +47,14 @@ SPECS: tuple[ErrorSpec, ...] = (
         Severity.ERROR,
         "Resolved relation differs from the model name",
         "model '{model}' resolves to relation '{value}'",
-        "point the semantic layer at the resolved relation: name the model with {{ ref() }}",
+        "point the semantic layer at the resolved relation",
     ),
     spec(
         "SST-DBT009",
         Severity.ERROR,
         "Consumed model is disabled or ephemeral",
         "model '{model}' is {found} and produces no relation",
-        "enable it, or change the materialisation to a table or a view",
+        "enable it, or change the materialisation",
     ),
     spec(
         "SST-DBT010",
@@ -68,7 +68,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         Severity.ERROR,
         "Source referenced by the semantic layer is not declared in dbt",
         "source '{value}' is not declared in dbt",
-        "declare the source in the dbt project",
+        "declare the source",
     ),
     spec(
         "SST-DBT012",
@@ -127,14 +127,14 @@ SPECS: tuple[ErrorSpec, ...] = (
         Severity.ERROR,
         "auto_compile requested under an installation that cannot compile a non-default target",
         "defer.auto_compile is true under {found}",
-        "pass --manifest with a manifest built for the target instead",
+        "use state_path instead",
     ),
     spec(
         "SST-DBT022",
         Severity.ERROR,
         "model-paths is unreadable and defaulted",
         "model-paths could not be read; defaulted to {expected}",
-        "declare model-paths explicitly as a list of directories",
+        "declare model-paths explicitly",
     ),
     spec(
         "SST-DBT023",
@@ -148,7 +148,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         Severity.WARNING,
         "dbt model feeding an artifact has no contract",
         "model '{model}' has no contract",
-        "add an enforced contract to the model",
+        "add a contract",
     ),
     spec("SST-DBT025", Severity.INFO, "dbt seam summary", "{value}", None),
     spec(
@@ -184,7 +184,10 @@ SPECS: tuple[ErrorSpec, ...] = (
         Severity.ERROR,
         "Forbidden `meta.sst` location key",
         "model '{model}': meta.sst.{key} is forbidden -- delete it",
-        "delete the key; relation location comes from dbt's resolved manifest",
+        (
+            "delete the key; the location comes from dbt's own `+database` / `+schema` and SST reads the RESOLVED "
+            "value out of the manifest"
+        ),
     ),
     spec(
         "SST-DBT031",

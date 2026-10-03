@@ -8,18 +8,9 @@ from __future__ import annotations
 import re
 from collections.abc import Mapping
 
-from snowflake_semantic_tools.adapters.yaml.semantic.checks.expressions import (
-    _bare_column_identifiers,
-    _scan_expression,
-)
-from snowflake_semantic_tools.adapters.yaml.semantic.checks.windows import (
-    DIMENSION_TYPES,
-    _metric_owner,
-    _window_diagnostics,
-)
-from snowflake_semantic_tools.adapters.yaml.semantic.defs import MetricDef, WindowDef
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic
 from snowflake_semantic_tools.domain.model.artifact_key import artifact_key
+from snowflake_semantic_tools.domain.model.authored import MetricDef, WindowDef
 from snowflake_semantic_tools.domain.model.dbt import DbtModel
 from snowflake_semantic_tools.domain.parse.template import TemplateCall
 from snowflake_semantic_tools.domain.resolve.calls import call_problem, variable_problem
@@ -27,9 +18,15 @@ from snowflake_semantic_tools.domain.resolve.template import METRIC_EXPR
 from snowflake_semantic_tools.domain.validate.column_metadata import is_temporal
 from snowflake_semantic_tools.domain.validate.expression import is_aggregate_expression
 from snowflake_semantic_tools.domain.validate.expression import root_function as _root_function
+from snowflake_semantic_tools.domain.validate.semantic.expressions import bare_column_identifiers, scan_expression
+from snowflake_semantic_tools.domain.validate.semantic.windows import (
+    DIMENSION_TYPES,
+    metric_owner,
+    window_diagnostics,
+)
 
 
-def _metric_cycles(metrics: tuple[MetricDef, ...]) -> tuple[tuple[str, ...], ...]:
+def metric_cycles(metrics: tuple[MetricDef, ...]) -> tuple[tuple[str, ...], ...]:
     """Find cycles of `metric()` references, each as casefolded names whose last repeats the first.
 
     A depth-first walk starts from each metric in name order; a reference to an unknown metric
@@ -39,7 +36,8 @@ def _metric_cycles(metrics: tuple[MetricDef, ...]) -> tuple[tuple[str, ...], ...
     cycle through it, in name order, so every metric on a cycle is in at least one.
     """
     graph = {metric.name.casefold(): metric.referenced_metrics for metric in metrics}
-    cycles: list[tuple[str, ...]] = []
+    # Insertion-ordered, so each cycle is listed once in the order the walk finds it.
+    cycles: dict[tuple[str, ...], None] = {}
     visited: set[str] = set()
     active: list[str] = []
 
@@ -67,12 +65,10 @@ def _metric_cycles(metrics: tuple[MetricDef, ...]) -> tuple[tuple[str, ...], ...
     return tuple(cycles)
 
 
-def _add_cycle(cycles: list[tuple[str, ...]], cycle: tuple[str, ...]) -> None:
-    """Append `cycle` rotated to start at its smallest name, unless that rotation is listed."""
+def _add_cycle(cycles: dict[tuple[str, ...], None], cycle: tuple[str, ...]) -> None:
+    """Record `cycle` rotated to start at its smallest name, unless that rotation is listed."""
     variants = [tuple(cycle[index:-1] + cycle[:index] + (cycle[index],)) for index in range(len(cycle) - 1)]
-    canonical = min(variants)
-    if canonical not in cycles:
-        cycles.append(canonical)
+    cycles.setdefault(min(variants))
 
 
 def _shortest_cycle(graph: Mapping[str, tuple[str, ...]], start: str) -> tuple[str, ...] | None:
@@ -99,7 +95,7 @@ def _shortest_cycle(graph: Mapping[str, tuple[str, ...]], start: str) -> tuple[s
     return None
 
 
-def _metric_diagnostics(
+def metric_diagnostics(
     metrics: tuple[MetricDef, ...],
     models: dict[str, DbtModel],
     variables: Mapping[str, object] | None = None,
@@ -177,7 +173,7 @@ def _one_metric_diagnostics(
     else:
         diagnostics.extend(_base_reference_diagnostics(metric, metric_by_name))
     diagnostics.extend(_referenced_metric_diagnostics(metric, metric_by_name))
-    calls = _scan_expression(metric.expr, metric.origin, artifact_key("metric", metric.name))
+    calls = scan_expression(metric.expr, metric.origin, artifact_key("metric", metric.name))
     if isinstance(calls, Diagnostic):
         diagnostics.append(calls)
         return diagnostics
@@ -223,7 +219,7 @@ def _non_additive_diagnostics(metric: MetricDef, models: Mapping[str, DbtModel])
     Diagnostics:
         SST-VAL118: when an entry names no column, an excluded column, or one that is not a dimension.
     """
-    owner = _metric_owner(metric)
+    owner = metric_owner(metric)
     diagnostics: list[Diagnostic] = []
     for entry in metric.non_additive:
         model = models.get((entry.table or owner or "").casefold())
@@ -280,7 +276,7 @@ def _additivity_diagnostics(metric: MetricDef, models: Mapping[str, DbtModel]) -
     """
     subject = artifact_key("metric", metric.name)
     diagnostics: list[Diagnostic] = []
-    owner = _metric_owner(metric)
+    owner = metric_owner(metric)
     model = models.get(owner) if owner is not None and not metric.derived else None
     if (
         model is not None
@@ -324,14 +320,14 @@ def _window_or_aggregate_diagnostics(
 ) -> list[Diagnostic]:
     """Check a table-scoped metric's window, or, when it has none, that its expression aggregates.
 
-    A window is checked by `windows._window_diagnostics`; a derived metric's window is the
+    A window is checked by `windows.window_diagnostics`; a derived metric's window is the
     derived rule's to report.
 
     Diagnostics:
         SST-VAL101: when a table-scoped metric without a window does not aggregate.
     """
     if not metric.derived and metric.window is not None:
-        return _window_diagnostics(metric, metric_by_name, models)
+        return window_diagnostics(metric, metric_by_name, models)
     if not metric.derived and metric.tables and not is_aggregate_expression(metric.expr):
         return [
             D(
@@ -539,7 +535,7 @@ def _bare_identifier_diagnostics(
     Diagnostics:
         SST-VAL110: when the expression names a column bare; only the first is reported.
     """
-    identifiers = _bare_column_identifiers(metric.expr, metric.tables, models, variables or {})
+    identifiers = bare_column_identifiers(metric.expr, metric.tables, models, variables or {})
     if not identifiers:
         return []
     return [

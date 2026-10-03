@@ -28,7 +28,7 @@ import yaml
 
 from snowflake_semantic_tools.adapters.errors import ProjectError
 from snowflake_semantic_tools.adapters.yaml.compose import compose_single, construct, formatting_findings
-from snowflake_semantic_tools.adapters.yaml.documents import NodePath, ParsedYaml, SourcePosition, TemplateSource
+from snowflake_semantic_tools.adapters.yaml.documents import ParsedYaml, TemplateSource
 from snowflake_semantic_tools.adapters.yaml.text_checks import (
     decoded_text,
     executable_lines,
@@ -36,6 +36,7 @@ from snowflake_semantic_tools.adapters.yaml.text_checks import (
     refuse_tab_indentation,
 )
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, Origin
+from snowflake_semantic_tools.domain.model.authored import NodePath, SourcePosition
 
 _PLACEHOLDER = "__SST_TPL_%d__"
 

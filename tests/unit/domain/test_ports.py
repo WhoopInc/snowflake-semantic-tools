@@ -42,7 +42,6 @@ def test_catalog_port_methods_are_declarations_only() -> None:
     assert CatalogPort.object_exists(source, "x", object()) is None  # type: ignore[arg-type]
     assert CatalogPort.dataset_exists(source, object()) is None  # type: ignore[arg-type]
     assert CatalogPort.table_columns(source, object()) is None  # type: ignore[arg-type]
-    assert CatalogPort.observe_stage(source, object()) is None  # type: ignore[arg-type]
     assert CatalogPort.describe_stage_file_format(source, object()) is None  # type: ignore[arg-type]
     assert CatalogPort.stage_type(source, object()) is None  # type: ignore[arg-type]
     assert CatalogPort.observe_extension(source, object()) is None  # type: ignore[arg-type]
@@ -60,7 +59,6 @@ def test_execution_and_stage_port_methods_are_declarations_only() -> None:
     assert ExecutionPort.execute_script(source, ()) is None  # type: ignore[arg-type]
     assert ExecutionPort.try_execute(source, "x") is None  # type: ignore[arg-type]
     assert StagePort.observe_staged_file(source, "@x") is None  # type: ignore[arg-type]
-    assert StagePort.stage_file_exists(source, "@x") is None  # type: ignore[arg-type]
     assert StagePort.read_staged_file(source, "@x") is None  # type: ignore[arg-type]
     StagePort.upload(source, "@x", b"")  # type: ignore[arg-type]
     assert StagePort.list_location(source, "@x/") is None  # type: ignore[arg-type]
@@ -106,9 +104,7 @@ def test_clock_and_state_store_protocol_methods_are_declarations_only() -> None:
 def test_eval_and_composite_lifecycle_protocol_methods_are_declarations_only() -> None:
     source = object()
     assert EvalStateStore.read_baseline(source, "target", "eval:a") is None  # type: ignore[arg-type]
-    EvalStateStore.write_baseline(source, "target", object())  # type: ignore[arg-type]
     EvalStateStore.write_baselines(source, "target", ())  # type: ignore[arg-type]
-    assert EvalStateStore.read_gate(source, "target", "eval:a") is None  # type: ignore[arg-type]
     EvalStateStore.write_gate(source, "target", object())  # type: ignore[arg-type]
     assert CompositeLifecycleHandler.plan(source, object(), None, object()) is None  # type: ignore[arg-type]
     assert CompositeLifecycleHandler.apply(source, object(), object()) is None  # type: ignore[arg-type]

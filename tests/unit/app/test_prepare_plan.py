@@ -80,12 +80,15 @@ def test_a_scope_covers_what_its_types_or_keys_select_less_what_it_excludes() ->
     by_key = PlanScope(("menu",), None, frozenset(("semantic_view:menu",)), None, None, False)
     excluding = PlanScope((), None, None, None, frozenset(("semantic_view:menu",)), False)
     no_views = PlanScope((), frozenset(("tool",)), None, frozenset(("semantic_view",)), None, False)
+    # A selector that names nothing, such as `path:` over no file, covers nothing, not everything.
+    named_nothing = PlanScope(("path:none/*",), None, frozenset(), None, None, False)
 
     covered = [
-        [item.artifact_key for item in result.compiled if scope.covers(item)] for scope in (by_key, excluding, no_views)
+        [item.artifact_key for item in result.compiled if scope.covers(item)]
+        for scope in (by_key, excluding, no_views, named_nothing)
     ]
 
-    assert covered == [["semantic_view:menu"], ["semantic_view:sales"], []]
+    assert covered == [["semantic_view:menu"], ["semantic_view:sales"], [], []]
 
 
 def test_a_compile_error_refuses_the_plan_and_partial_says_why_nothing_can_split_off() -> None:

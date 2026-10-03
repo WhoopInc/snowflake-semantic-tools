@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from hypothesis import strategies as st
 
-from snowflake_semantic_tools.adapters.yaml.semantic.defs import MetricDef
+from snowflake_semantic_tools.domain.model.authored import MetricDef
 from tests.helpers.semantic_members import metric
 
 # The derived-metric restrictions, SST-VAL102 to SST-VAL107.

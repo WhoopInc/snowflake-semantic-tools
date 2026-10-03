@@ -9,18 +9,22 @@ from __future__ import annotations
 import re
 from collections.abc import Iterator, Mapping
 
-from snowflake_semantic_tools.adapters.yaml.documents import NodePath, RawDocument, RawDocuments
-from snowflake_semantic_tools.adapters.yaml.semantic.checks.authored_keys import AUTHORED_KEYS
-from snowflake_semantic_tools.adapters.yaml.semantic.nodes import _node_root
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, Origin
 from snowflake_semantic_tools.domain.model.artifact_key import artifact_key
+from snowflake_semantic_tools.domain.model.authored import AuthoredDocument, AuthoredDocuments, NodePath
+from snowflake_semantic_tools.domain.validate.semantic.authored_keys import AUTHORED_KEYS
+from snowflake_semantic_tools.domain.validate.semantic.nodes import node_root
 
 # A block scalar header that folds: `key: >`, `key: >-`, `- >+2`, with an optional comment.
 _FOLDED = re.compile(r"^\s*(?:-\s+)*(?:[^\s#][^#]*?:\s+)?>[-+0-9]*\s*(?:#.*)?$")
 
 
-def _file_diagnostics(documents: RawDocuments) -> tuple[Diagnostic, ...]:
+def file_diagnostics(documents: AuthoredDocuments, texts: Mapping[str, str]) -> tuple[Diagnostic, ...]:
     """Report, file by file in discovery order, each folded scalar and then the file's formatting.
+
+    Args:
+        texts: Each document's file as UTF-8 text, by its path; a document without one is
+            not checked.
 
     Diagnostics:
         SST-VAL008: a multi-line string of a semantic-model node uses `>` or `>-`.
@@ -28,17 +32,16 @@ def _file_diagnostics(documents: RawDocuments) -> tuple[Diagnostic, ...]:
     """
     diagnostics: list[Diagnostic] = []
     for document in documents.documents:
-        try:
-            text = document.abs_path.read_bytes().decode("utf-8")
-        except (OSError, UnicodeDecodeError):
+        text = texts.get(document.path)
+        if text is None:
             continue
-        diagnostics.extend(_folded_scalars(document, text))
-        if _formatting_problem(text) is not None:
+        diagnostics.extend(folded_scalars(document, text))
+        if formatting_problem(text) is not None:
             diagnostics.append(D("SST-VAL009", origin=Origin(document.path), path=document.path))
     return tuple(diagnostics)
 
 
-def _formatting_problem(text: str) -> str | None:
+def formatting_problem(text: str) -> str | None:
     """Name the first way `text` is not canonically formatted; None when it is.
 
     Canonical is LF line endings, no tab in a line's indentation, no trailing whitespace, and
@@ -56,9 +59,9 @@ def _formatting_problem(text: str) -> str | None:
     return None
 
 
-def _folded_scalars(document: RawDocument, text: str) -> Iterator[Diagnostic]:
+def folded_scalars(document: AuthoredDocument, text: str) -> Iterator[Diagnostic]:
     """Report each folded block scalar that is a field of a semantic-model node."""
-    roots = {_node_root(node_type): node_type for node_type in AUTHORED_KEYS}
+    roots = {node_root(node_type): node_type for node_type in AUTHORED_KEYS}
     by_line = _paths_by_line(document.line_index)
     for number, line in enumerate(text.split("\n"), start=1):
         if not _FOLDED.match(line):

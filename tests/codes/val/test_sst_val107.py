@@ -8,8 +8,8 @@ from __future__ import annotations
 from hypothesis import given
 from hypothesis import strategies as st
 
-from snowflake_semantic_tools.adapters.yaml.semantic.defs import NonAdditiveDef
 from snowflake_semantic_tools.domain.diagnostics import ERROR_REGISTRY, Severity
+from snowflake_semantic_tools.domain.model.authored import NonAdditiveDef
 from tests.helpers.semantic_members import metric, metric_findings
 
 

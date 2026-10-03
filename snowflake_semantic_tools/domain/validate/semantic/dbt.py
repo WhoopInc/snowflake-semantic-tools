@@ -2,15 +2,15 @@
 
 from __future__ import annotations
 
-from snowflake_semantic_tools.adapters.yaml.semantic.defs import MetricDef
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic
 from snowflake_semantic_tools.domain.model.artifact_key import artifact_key
+from snowflake_semantic_tools.domain.model.authored import MetricDef
 from snowflake_semantic_tools.domain.model.dbt import DbtColumn, DbtModel
 from snowflake_semantic_tools.domain.model.project import ParsedView
 from snowflake_semantic_tools.domain.validate.column_metadata import is_numeric, is_sentinel, is_temporal
 
 
-def _dbt_column_diagnostics(
+def dbt_column_diagnostics(
     models: dict[str, DbtModel],
     referenced_models: frozenset[str] | None = None,
 ) -> tuple[Diagnostic, ...]:
@@ -177,7 +177,7 @@ def _sentinel_diagnostics(model: DbtModel, column: DbtColumn) -> list[Diagnostic
     ]
 
 
-def _dbt_model_diagnostics(
+def dbt_model_diagnostics(
     models: dict[str, DbtModel],
     referenced_models: frozenset[str] | None = None,
 ) -> tuple[Diagnostic, ...]:
@@ -249,7 +249,7 @@ def _dbt_model_diagnostics(
     return tuple(diagnostics)
 
 
-def _description_diagnostics(
+def description_diagnostics(
     views: tuple[ParsedView, ...],
     metrics: tuple[MetricDef, ...],
 ) -> tuple[Diagnostic, ...]:

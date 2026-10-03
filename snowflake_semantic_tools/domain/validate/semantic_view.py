@@ -70,7 +70,7 @@ def relation_diagnostics(
         SST-VAL302: a table's three-part name is not its model's resolved relation.
     """
     return tuple(
-        D("SST-VAL302", subject=artifact, artifact=artifact, name=table.logical_name.casefold(), value=table.fqn)
+        D("SST-VAL302", subject=artifact, artifact=artifact, name=table.logical_name.casefold(), value=relation)
         for table in tables
         if (relation := relations.get(table.logical_name)) is not None
         and QualifiedName.parse(table.fqn).folded != QualifiedName.parse(relation).folded

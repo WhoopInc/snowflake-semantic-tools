@@ -43,6 +43,7 @@ def build_skill_bundle(skill: Skill) -> tuple[SkillBundle | None, DiagnosticBag]
         SST-VAL812: SKILL.md is over its size budget.
         SST-RND032: SKILL.md is within its size budget as authored and over it once flattened.
         SST-RND030: the flattened files hold no SKILL.md for the version to open with.
+        SST-RND031: the rendered SKILL.md has no instructions after its frontmatter.
         SST-VAL834: the bundle breaks a scan limit on its file count or file or total size.
         SST-VAL811: the bundle is over its size budget, and within the scan limit on total size.
         SST-VAL816: how the bundle's bytes split between SKILL.md and the rest, once it builds (info).
@@ -87,15 +88,23 @@ def _byte_split(skill: Skill, entries: tuple[BundleEntry, ...]) -> Diagnostic:
 
 
 def _rendered_skill_md(skill: Skill, files: tuple[SkillFile, ...], *, authored_over: bool) -> tuple[Diagnostic, ...]:
-    """Check the flattened SKILL.md: present whenever anything is, and within budget if it was authored so."""
+    """Check the flattened SKILL.md: present whenever anything is, with a body, and within budget.
+
+    Flattening rewrites only references, so the rendered body is empty exactly when the
+    authored one is. A SKILL.md authored over budget is SST-VAL812's to report, not this check's.
+    """
     rendered = next((item for item in files if item.path == SKILL_FILE), None)
     if rendered is None:
         if not files:
             return ()
         return (D("SST-RND030", origin=skill.origin, subject=skill.key, artifact=skill.name, path=SKILL_FILE),)
+    empty = (
+        () if skill.body.strip() else (D("SST-RND031", origin=skill.origin, subject=skill.key, artifact=skill.name),)
+    )
     if authored_over or rendered.size <= SKILL_MD_BUDGET_BYTES:
-        return ()
+        return empty
     return (
+        *empty,
         D(
             "SST-RND032",
             origin=skill.origin,

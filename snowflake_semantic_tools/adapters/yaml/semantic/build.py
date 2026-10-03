@@ -26,11 +26,10 @@ from snowflake_semantic_tools.adapters.yaml.semantic.build_members import (
     _view_verified_queries,
     _with_variable_names,
 )
-from snowflake_semantic_tools.adapters.yaml.semantic.checks.scope import view_scope
-from snowflake_semantic_tools.adapters.yaml.semantic.defs import FilterDef, InstructionDef, MetricDef, VerifiedQueryDef
 from snowflake_semantic_tools.adapters.yaml.semantic.nodes import _as_str_tuple
 from snowflake_semantic_tools.domain.diagnostics import D, Origin
 from snowflake_semantic_tools.domain.model.artifact_key import artifact_key
+from snowflake_semantic_tools.domain.model.authored import FilterDef, InstructionDef, MetricDef, VerifiedQueryDef
 from snowflake_semantic_tools.domain.model.dbt import DbtCatalog, DbtColumn, DbtModel, DbtSource, DbtTarget
 from snowflake_semantic_tools.domain.model.project import ParsedMember
 from snowflake_semantic_tools.domain.model.semantic_view import (
@@ -46,6 +45,7 @@ from snowflake_semantic_tools.domain.model.semantic_view import (
 from snowflake_semantic_tools.domain.parse.template import single_template_call
 from snowflake_semantic_tools.domain.resolve.template import TAG_NAME, ResolveContext, resolve_scalar
 from snowflake_semantic_tools.domain.sql import Sql, boolean, datatype, is_datatype, literal, number
+from snowflake_semantic_tools.domain.validate.semantic.scope import view_scope
 from snowflake_semantic_tools.domain.validate.semantic_view import relation_diagnostics
 from snowflake_semantic_tools.domain.validate.sql import qualified_name_problem
 

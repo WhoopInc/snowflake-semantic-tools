@@ -11,19 +11,6 @@ from snowflake_semantic_tools.domain.model.lifecycle import GrantRow, OwnershipM
 
 
 @dataclass(frozen=True, slots=True)
-class StageObservation:
-    """Whether a stage exists and, when it does, the file format it declares.
-
-    Attributes:
-        file_format: The format as `CatalogPort.describe_stage_file_format` returns it; None
-            when the stage does not exist or declares none.
-    """
-
-    exists: bool
-    file_format: str | None = None
-
-
-@dataclass(frozen=True, slots=True)
 class ExtensionObservation:
     """One `SHOW CORTEX EXTENSIONS` row."""
 
@@ -141,20 +128,6 @@ class CatalogPort(Protocol):
 
         Raises:
             SnowflakePortError: the lookup or DESCRIBE TABLE failed.
-        """
-        ...
-
-    def observe_stage(self, qualified_name: QualifiedName) -> StageObservation:
-        """Report whether a stage exists and, when it does, the file format it declares.
-
-        Never writes.
-
-        Returns:
-            `exists=False` when there is no stage; otherwise the stage's file format, as
-            `describe_stage_file_format` returns it.
-
-        Raises:
-            SnowflakePortError: the lookup failed.
         """
         ...
 

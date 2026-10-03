@@ -232,7 +232,10 @@ SPECS: tuple[ErrorSpec, ...] = (
         Severity.INFO,
         "Prune is report-only",
         "{artifact} is no longer declared; SST never removes {value}: {detail}",
-        "the plan lists it until the objects are removed by hand; it never counts as a change",
+        (
+            "the plan lists it until the objects are removed by hand; it is never a write, and the plan exits 2 only "
+            "until an apply records it"
+        ),
     ),
     spec(
         "SST-PLN100",

@@ -10,10 +10,10 @@ from collections.abc import Iterator, Mapping
 from types import MappingProxyType
 from typing import Any
 
-from snowflake_semantic_tools.adapters.yaml.documents import RawDocument, RawDocuments
-from snowflake_semantic_tools.adapters.yaml.semantic.nodes import _node_root
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, Origin
 from snowflake_semantic_tools.domain.model.artifact_key import artifact_key
+from snowflake_semantic_tools.domain.model.authored import AuthoredDocument, AuthoredDocuments
+from snowflake_semantic_tools.domain.validate.semantic.nodes import node_root
 
 # 0.3 spellings SST still reads, by node type: each maps to its 1.0 key. Written alone, the
 # old key is honoured and reported; written beside the 1.0 key, it is refused.
@@ -43,7 +43,7 @@ def honoured(node: Mapping[str, Any], key: str, node_type: str) -> object:
     return value
 
 
-def _deprecated_key_diagnostics(documents: RawDocuments) -> tuple[Diagnostic, ...]:
+def deprecated_key_diagnostics(documents: AuthoredDocuments) -> tuple[Diagnostic, ...]:
     """Report every honoured 0.3 spelling and every inert key, node by node in document order.
 
     Diagnostics:
@@ -62,8 +62,8 @@ def _deprecated_key_diagnostics(documents: RawDocuments) -> tuple[Diagnostic, ..
     )
 
 
-def _nodes(document: RawDocument, node_type: str) -> Iterator[tuple[int, Mapping[str, Any]]]:
-    root_key = _node_root(node_type)
+def _nodes(document: AuthoredDocument, node_type: str) -> Iterator[tuple[int, Mapping[str, Any]]]:
+    root_key = node_root(node_type)
     nodes = document.tree.get(root_key) if root_key in document.root_keys else None
     for index, node in enumerate(nodes if isinstance(nodes, list) else ()):
         if isinstance(node, dict) and node.get("name"):
@@ -71,14 +71,14 @@ def _nodes(document: RawDocument, node_type: str) -> Iterator[tuple[int, Mapping
 
 
 def _node_diagnostics(
-    document: RawDocument, node_type: str, index: int, node: Mapping[str, Any]
+    document: AuthoredDocument, node_type: str, index: int, node: Mapping[str, Any]
 ) -> Iterator[Diagnostic]:
     """Report one node's honoured 0.3 spellings, then its inert keys, each in table order."""
     name = str(node["name"])
     subject = artifact_key(node_type, name)
 
     def origin(key: str) -> Origin:
-        position = document.position((_node_root(node_type), index, key))
+        position = document.position((node_root(node_type), index, key))
         return Origin(document.path, position.line if position else None, position.col if position else None)
 
     for old, new in DEPRECATED_KEYS.get(node_type, {}).items():

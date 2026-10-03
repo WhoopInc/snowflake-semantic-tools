@@ -22,7 +22,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         Severity.ERROR,
         "Identifier cannot be safely quoted",
         "{artifact}: '{name}' cannot be safely quoted",
-        "rename the object without control characters",
+        "rename the object",
     ),
     spec(
         "SST-RND003",
@@ -57,7 +57,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         Severity.WARNING,
         "generic tool resources emitted with no server-side check behind them",
         "agent '{artifact}': tool_resources for '{name}' is not validated by Snowflake",
-        "confirm the key and the backing object yourself; CREATE AGENT will accept a wrong one",
+        "confirm the key and the backing object yourself; `CREATE AGENT` will accept a wrong one",
     ),
     spec(
         "SST-RND020",

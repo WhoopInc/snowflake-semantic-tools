@@ -1,6 +1,6 @@
 """Run the content rules of the semantic load: files, prose, hardcoded names, and each view.
 
-`_rule_diagnostics` is the one call the load makes for them, after the view instructions are
+`rule_diagnostics` is the one call the load makes for them, after the view instructions are
 known and before views are poisoned, so an error here keeps its view from being built.
 """
 
@@ -9,21 +9,32 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import Any
 
-from snowflake_semantic_tools.adapters.yaml.documents import RawDocuments
-from snowflake_semantic_tools.adapters.yaml.fields import mapping
-from snowflake_semantic_tools.adapters.yaml.semantic.checks.files import _file_diagnostics
-from snowflake_semantic_tools.adapters.yaml.semantic.checks.text import (
-    _hardcoded_name_diagnostics,
-    _overlap_diagnostics,
-    _unresolved_prose_diagnostics,
-)
-from snowflake_semantic_tools.adapters.yaml.semantic.checks.views import ViewInputs, _view_rule_diagnostics
-from snowflake_semantic_tools.adapters.yaml.semantic.defs import FilterDef, InstructionDef, MetricDef, VerifiedQueryDef
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic
 from snowflake_semantic_tools.domain.model.artifact_key import artifact_key
+from snowflake_semantic_tools.domain.model.authored import (
+    AuthoredDocuments,
+    FilterDef,
+    InstructionDef,
+    MetricDef,
+    VerifiedQueryDef,
+)
 from snowflake_semantic_tools.domain.model.dbt import DbtModel
 from snowflake_semantic_tools.domain.model.project import ParsedProject
 from snowflake_semantic_tools.domain.model.semantic_view import Relationship
+from snowflake_semantic_tools.domain.resolve.membership import ViewMembers
+from snowflake_semantic_tools.domain.validate.semantic.files import file_diagnostics
+from snowflake_semantic_tools.domain.validate.semantic.text import (
+    hardcoded_name_diagnostics,
+    overlap_diagnostics,
+    unresolved_prose_diagnostics,
+)
+from snowflake_semantic_tools.domain.validate.semantic.views import ViewInputs, view_rule_diagnostics
+
+
+def _vars(config: Mapping[str, Any]) -> dict[str, Any]:
+    """The project's `vars:`, with string keys; empty when it is not a mapping."""
+    value = config.get("vars")
+    return {str(key): item for key, item in value.items()} if isinstance(value, dict) else {}
 
 
 def _setting(config: Mapping[str, Any], key: str) -> int | None:
@@ -33,20 +44,25 @@ def _setting(config: Mapping[str, Any], key: str) -> int | None:
     return value if isinstance(value, int) and not isinstance(value, bool) and value > 0 else None
 
 
-def _rule_diagnostics(
-    documents: RawDocuments,
+def rule_diagnostics(
+    documents: AuthoredDocuments,
+    texts: Mapping[str, str],
     parsed: ParsedProject,
     models: Mapping[str, DbtModel],
     config: Mapping[str, Any],
-    view_instructions: Mapping[str, frozenset[str]],
+    members: ViewMembers,
     unavailable: Mapping[str, str],
 ) -> tuple[Diagnostic, ...]:
     """Run the content rules in order: files, hardcoded names, metric descriptions, instructions, views.
 
+    Args:
+        texts: Each document's file as UTF-8 text, by its path, which the file rules read.
+        members: What member resolution attaches to each view, and what its scope keeps.
+
     Diagnostics:
         SST-VAL004: a metric's description is shorter than `validation.description_floor`.
-        As `_file_diagnostics`, `_hardcoded_name_diagnostics`, `_overlap_diagnostics`,
-        `_unresolved_prose_diagnostics` and `_view_rule_diagnostics` document them.
+        As `file_diagnostics`, `hardcoded_name_diagnostics`, `overlap_diagnostics`,
+        `unresolved_prose_diagnostics` and `view_rule_diagnostics` document them.
     """
     by_type = parsed.members_by_type
 
@@ -65,7 +81,7 @@ def _rule_diagnostics(
         filters,
         relationships,
         instructions,
-        view_instructions,
+        members,
         unavailable=unavailable,
         description_floor=floor,
         instruction_budget=_setting(config, "instruction_budget"),
@@ -84,14 +100,14 @@ def _rule_diagnostics(
         if floor is not None and metric.description is not None and len(metric.description) < floor
     )
     return (
-        *_file_diagnostics(documents),
-        *_hardcoded_name_diagnostics(parsed.views, metrics, filters, queries),
+        *file_diagnostics(documents, texts),
+        *hardcoded_name_diagnostics(parsed.views, metrics, filters, queries),
         *short_metrics,
-        *_overlap_diagnostics(filters, instructions, mapping(config.get("vars"))),
-        *_unresolved_prose_diagnostics(
+        *overlap_diagnostics(filters, instructions, _vars(config)),
+        *unresolved_prose_diagnostics(
             instructions,
             frozenset(metric.name.casefold() for metric in metrics),
             frozenset(item.name.casefold() for item in filters),
         ),
-        *_view_rule_diagnostics(parsed.views, inputs),
+        *view_rule_diagnostics(parsed.views, inputs),
     )

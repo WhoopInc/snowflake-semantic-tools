@@ -4,14 +4,14 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 
-from snowflake_semantic_tools.adapters.yaml.semantic.defs import VerifiedQueryDef
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic
 from snowflake_semantic_tools.domain.model.artifact_key import artifact_key
+from snowflake_semantic_tools.domain.model.authored import VerifiedQueryDef
 from snowflake_semantic_tools.domain.model.project import ParsedMember
 from snowflake_semantic_tools.domain.validate.relative_date import sql_relative_date
 
 
-def _relative_date_diagnostics(queries: tuple[VerifiedQueryDef, ...]) -> tuple[Diagnostic, ...]:
+def relative_date_diagnostics(queries: tuple[VerifiedQueryDef, ...]) -> tuple[Diagnostic, ...]:
     """Report each verified query whose SQL reads the clock, naming the first function that does.
 
     Diagnostics:
@@ -30,7 +30,7 @@ def _relative_date_diagnostics(queries: tuple[VerifiedQueryDef, ...]) -> tuple[D
     )
 
 
-def _duplicate_question_diagnostics(
+def duplicate_question_diagnostics(
     members: tuple[ParsedMember, ...], attachment: Mapping[str, tuple[str, ...]]
 ) -> tuple[Diagnostic, ...]:
     """Report, view by view, each verified query whose question an earlier one attached to it asks.

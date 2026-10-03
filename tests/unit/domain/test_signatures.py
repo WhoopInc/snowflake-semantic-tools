@@ -7,9 +7,11 @@ import pytest
 from snowflake_semantic_tools.domain.diagnostics.signatures import (
     SIGNATURES,
     UNRECOGNISED,
+    SessionFailure,
     detail_of,
     fragile_signatures,
     match_signature,
+    session_failure,
     signature_codes,
     snowflake_diagnostic,
 )
@@ -47,3 +49,32 @@ def test_only_a_signature_code_reports_as_a_snowflake_refusal() -> None:
     assert "SST-SNO001" in signature_codes() and "SST-APL001" not in signature_codes()
     with pytest.raises(KeyError):
         snowflake_diagnostic("SST-APL001", "x", value="y")
+
+
+def test_a_shared_number_matches_only_with_its_wording() -> None:
+    login = "250001 (08001): Failed to connect to DB: Incorrect username or password was specified."
+    assert match_signature(login, errno=250001, sqlstate="08001").code == "SST-SNO013"
+    network = "250001 (08001): Failed to connect to DB: Could not connect to Snowflake backend"
+    assert match_signature(network, errno=250001, sqlstate="08001").code == "SST-SNO014"
+    assert match_signature("JWT token is invalid", errno=390144).code == "SST-SNO013"
+
+
+@pytest.mark.parametrize(
+    ("message", "errno", "sqlstate", "failure"),
+    [
+        ("Incorrect username or password was specified.", 390100, None, SessionFailure.AUTHENTICATION),
+        ("Object 'DB.S.T' does not exist or not authorized.", 2003, "02000", SessionFailure.NOT_VISIBLE),
+        ("Schema 'DB.S' does not exist or not authorized.", None, None, SessionFailure.NOT_VISIBLE),
+        ("Database 'DB' does not exist or not authorized.", None, None, SessionFailure.NOT_VISIBLE),
+        ("Warehouse 'WH' does not exist or not authorized.", None, None, None),
+        ("Statement reached its statement or warehouse timeout of 10 seconds", None, None, SessionFailure.DEADLINE),
+        ("Connection is closed", 250002, "08003", SessionFailure.DEADLINE),
+        ("network drop", None, "08006", SessionFailure.DEADLINE),
+        ("Insufficient privileges to operate on schema 'S'", None, "42501", SessionFailure.PRIVILEGE),
+        ("SQL compilation error", None, "42000", None),
+    ],
+)
+def test_the_session_reads_a_failure_from_the_table(
+    message: str, errno: int | None, sqlstate: str | None, failure: SessionFailure | None
+) -> None:
+    assert session_failure(message, errno=errno, sqlstate=sqlstate) is failure

@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from snowflake_semantic_tools.adapters.yaml.semantic.defs import NonAdditiveDef
 from snowflake_semantic_tools.domain.diagnostics import Severity
+from snowflake_semantic_tools.domain.model.authored import NonAdditiveDef
 from tests.helpers.semantic_members import metric, metric_findings
 
 

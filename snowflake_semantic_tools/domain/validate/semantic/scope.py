@@ -16,13 +16,14 @@ from __future__ import annotations
 from collections.abc import Iterator, Mapping
 from dataclasses import dataclass
 
-from snowflake_semantic_tools.adapters.yaml.semantic.defs import MetricDef
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic
 from snowflake_semantic_tools.domain.model.artifact_key import artifact_key
+from snowflake_semantic_tools.domain.model.authored import MetricDef
 from snowflake_semantic_tools.domain.model.dbt import DbtModel
 from snowflake_semantic_tools.domain.model.project import ParsedView
 from snowflake_semantic_tools.domain.model.semantic_view import Relationship, ViewScope
 from snowflake_semantic_tools.domain.parse.template import TemplateSyntaxError, single_template_call
+from snowflake_semantic_tools.domain.resolve.membership import ViewMembers
 
 # Each kind's include key, exclude key, and the word a diagnostic names its members by.
 SCOPE_KINDS: tuple[tuple[str, str, str], ...] = (
@@ -129,6 +130,7 @@ class _ScopeContext:
         tables: The view's tables, casefolded.
         metrics: Every metric of the project, by casefolded name.
         relationships: Every relationship of the project, by casefolded name.
+        members: What member resolution attaches to each view, and what its scope keeps.
     """
 
     view: ParsedView
@@ -136,22 +138,25 @@ class _ScopeContext:
     models: Mapping[str, DbtModel]
     metrics: Mapping[str, MetricDef]
     relationships: Mapping[str, Relationship]
+    members: ViewMembers
 
     @property
     def key(self) -> str:
         return artifact_key("semantic_view", self.view.name)
 
 
-def _scope_diagnostics(
+def scope_diagnostics(
     views: tuple[ParsedView, ...],
     metrics: tuple[MetricDef, ...],
     relationships: tuple[Relationship, ...],
     models: Mapping[str, DbtModel],
+    members: ViewMembers,
 ) -> tuple[Diagnostic, ...]:
     """Check every readable view's scope, view by view in declaration order.
 
     For each view: the lists' shape and modes, then each entry in list order, then each
-    metric the scope keeps against the relationships and columns it removes.
+    metric the scope keeps against the relationships and columns it removes. A metric attaches
+    to a view, and is kept by it, as `members` says.
 
     Diagnostics:
         SST-PRS003: a scope key is not a list.
@@ -171,7 +176,9 @@ def _scope_diagnostics(
     for view in views:
         if view.poisoned:
             continue
-        context = _ScopeContext(view, frozenset(view.declared_tables), models, metric_by_name, relationship_by_name)
+        context = _ScopeContext(
+            view, frozenset(view.declared_tables), models, metric_by_name, relationship_by_name, members
+        )
         diagnostics.extend(_shape_diagnostics(context))
         diagnostics.extend(
             found for entry in scope_entries(view.source) if (found := _entry_problem(entry, context)) is not None
@@ -222,7 +229,9 @@ def _entry_problem(entry: ScopeEntry, context: _ScopeContext) -> Diagnostic | No
         metric = context.metrics.get(entry.name)
         if metric is None:
             return _unknown(entry, context, "does not exist")
-        if not _metric_tables(metric, context.metrics) <= context.tables:
+        member = artifact_key("metric", entry.name)
+        # A metric the load leaves out is reported already; naming it here is no second fault.
+        if member not in context.members.poisoned and not context.members.reaches(context.key, member):
             return _unknown(entry, context, "does not attach to this view")
         return None
     relationship = context.relationships.get(entry.name)
@@ -278,18 +287,6 @@ def _unknown(entry: ScopeEntry, context: _ScopeContext, reason: str) -> Diagnost
     )
 
 
-def _metric_tables(
-    metric: MetricDef, metrics: Mapping[str, MetricDef], seen: frozenset[str] = frozenset()
-) -> frozenset[str]:
-    """The tables a metric needs a view to hold: its own, and those of the metrics it reads."""
-    tables = set(metric.tables or metric.referenced_models)
-    for name in metric.referenced_metrics:
-        referenced = metrics.get(name)
-        if referenced is not None and name not in seen:
-            tables |= _metric_tables(referenced, metrics, seen | {metric.name.casefold()})
-    return frozenset(tables)
-
-
 def _kept_metric_diagnostics(context: _ScopeContext) -> Iterator[Diagnostic]:
     """Report what each metric the scope keeps needs and the scope removes.
 
@@ -302,7 +299,7 @@ def _kept_metric_diagnostics(context: _ScopeContext) -> Iterator[Diagnostic]:
     scope = view_scope(context.view.source)
     for name in sorted(context.metrics):
         metric = context.metrics[name]
-        if not _metric_tables(metric, context.metrics) <= context.tables or not scope.admits_metric(metric.name):
+        if not context.members.keeps(context.key, artifact_key("metric", name)):
             continue
         for relationship in metric.using_relationships:
             if not scope.admits_relationship(relationship) or not _held(relationship, context):

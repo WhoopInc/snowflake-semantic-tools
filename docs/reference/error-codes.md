@@ -40,7 +40,7 @@ cannot be downgraded by any setting.
 
 `registration for <type> omits required field '<field>'`
 
-Fix: add the field to the registration
+Fix: add {field} to the register() call
 
 ### SST-REG002
 
@@ -56,7 +56,7 @@ Fix: choose a different name, or delete the duplicate registration
 
 `root_key '<root_key>' is claimed by <types>`
 
-Fix: give each type a distinct root_key
+Fix: give each artifact type a distinct root_key
 
 ### SST-REG004
 
@@ -104,7 +104,7 @@ Fix: renumber ddl_position so dependents follow their dependencies
 
 `type dependency cycle: <cycle>`
 
-Fix: break the cycle by removing one dependency
+Fix: break the cycle by removing one dependency_edge
 
 ### SST-REG012
 
@@ -128,7 +128,7 @@ Fix: make the area letters and the subsystem field agree
 
 `'<code>' is in the 900 band with severity <severity>`
 
-Fix: declare 900-band codes ERROR, and INT and REG ones non-demotable
+Fix: declare 900-band codes ERROR, and non_demotable in INT and REG
 
 ### SST-REG015
 
@@ -136,7 +136,7 @@ Fix: declare 900-band codes ERROR, and INT and REG ones non-demotable
 
 `<module> compares severities outside diagnostics/`
 
-Fix: route the decision through the diagnostic's resolved severity, such as Diagnostic.blocks
+Fix: route the decision through the resolved severity on the diagnostic
 
 ### SST-REG016
 
@@ -144,7 +144,7 @@ Fix: route the decision through the diagnostic's resolved severity, such as Diag
 
 `'<code>' template names <placeholder>, absent from declared params`
 
-Fix: use a placeholder from the shared vocabulary, or correct the template
+Fix: add the placeholder to the code's params, or correct the template
 
 ### SST-REG017
 
@@ -168,7 +168,7 @@ Fix: name the successor code, or do not deprecate
 
 `'<code>' declares internal_detail but its area is <area>`
 
-Fix: drop internal_detail, or move the raw text into the template's params
+Fix: drop internal_detail, or move the raw text into params
 
 ### SST-REG020
 
@@ -184,7 +184,7 @@ Fix: register the type, or remove the resolver
 
 `type '<artifact>' -- <reason>`
 
-Fix: correct the registration so its grant handling matches how the type is published
+Fix: correct the registration against the probe result
 
 ### SST-REG022
 
@@ -192,7 +192,7 @@ Fix: correct the registration so its grant handling matches how the type is publ
 
 `artifact type '<artifact>' declares member_types <member_types>; only semantic_view may`
 
-Fix: leave member_types empty, or register the members as their own top-level type
+Fix: leave `member_types` empty, or register the members as their own top-level type
 
 ### SST-REG023
 
@@ -266,7 +266,7 @@ Fix: delete the shadowed files, or pass --project-dir
 
 `required config key '<key>' is absent`
 
-Fix: add the key to sst_config.yml
+Fix: add {key} to sst_config.yml
 
 ### SST-CFG007
 
@@ -282,7 +282,7 @@ Fix: correct the spelling
 
 `config key '<key>' value <found> is outside <expected>`
 
-Fix: use one of the allowed values
+Fix: use one of {expected}
 
 ### SST-CFG009
 
@@ -314,7 +314,7 @@ Fix: point SST at a Snowflake profile
 
 `profile '<profile>' has no <field>`
 
-Fix: set the field in profiles.yml or its env var
+Fix: set {field} in profiles.yml or its env var
 
 ### SST-CFG013
 
@@ -322,7 +322,7 @@ Fix: set the field in profiles.yml or its env var
 
 `env_var('<var>') is unset and has no default`
 
-Fix: set the variable, or give env_var() a default
+Fix: set {var}, or give env_var() a default
 
 ### SST-CFG014
 
@@ -330,7 +330,7 @@ Fix: set the variable, or give env_var() a default
 
 `profile '<profile>' leaves <field> empty`
 
-Fix: set it explicitly rather than relying on account defaults
+Fix: set {field} explicitly rather than relying on account defaults
 
 ### SST-CFG015
 
@@ -338,7 +338,7 @@ Fix: set it explicitly rather than relying on account defaults
 
 `evals: declares <key>, which is structurally invalid`
 
-Fix: remove +database and +schema from evals:; eval objects resolve to the agent's schema
+Fix: remove +database and +schema from evals:
 
 ### SST-CFG016
 
@@ -354,7 +354,7 @@ Fix: declare the value for every target you publish to
 
 `{ tool('<group>','<name>') } does not resolve`
 
-Fix: declare the group and member under the tools directory
+Fix: declare the group and member in the tools directory
 
 ### SST-CFG018
 
@@ -394,7 +394,7 @@ Fix: raise max_staleness to at least 120
 
 `<kind> '<found>' is absent from <key>`
 
-Fix: add it to the allowlist key, or use an allowed value
+Fix: add it to {key}, or use an allowed value
 
 ### SST-CFG029
 
@@ -402,7 +402,7 @@ Fix: add it to the allowlist key, or use an allowed value
 
 `{ var('<var>') } is not declared in config`
 
-Fix: declare it under vars:
+Fix: declare {var} under vars:
 
 ### SST-CFG031
 
@@ -466,7 +466,7 @@ Fix: run sst baseline add to hold the current warning count, then fix them
 
 `--include <components> reads row data, and enrichment.allow_sample_value_collection is false`
 
-Fix: leave sample-values and enums out of --include; authored sample_values are still read
+Fix: remove --include sample-values, or change the key in sst_config.yml
 
 ### SST-CFG039
 
@@ -482,7 +482,7 @@ Fix: fix the baselined diagnostics, or run sst baseline renew --reason
 
 `vars.sha_version is supplied by SST and must not be declared`
 
-Fix: remove it from vars:; SST resolves it from the commit being published
+Fix: remove it from `vars:`; SST resolves it from the commit being published
 
 ### SST-CFG041
 
@@ -498,7 +498,7 @@ Fix: create the directory, or remove the key
 
 `<block>: declares a folder route '<key>'`
 
-Fix: remove it; evals: location is structural, and skills: keeps only its catalog, stage, and extensions blocks
+Fix: remove it -- `evals:` location is structural, and `skills:`'s unprefixed keys are its `catalog`/`stage` sub-blocks
 
 ### SST-CFG043
 
@@ -562,7 +562,7 @@ Fix: authenticate with a key pair, a password, SSO (authenticator), or an OAuth 
 
 `target '<target>': insecure_mode is true, so OCSP certificate revocation checks are off for this connection`
 
-Fix: remove insecure_mode, or set it to false; with it on, a revoked certificate is still accepted
+Fix: remove insecure_mode, or set it to false; it is a debugging switch, and with it on a revoked certificate is still accepted
 
 ### SST-CFG200
 
@@ -580,7 +580,7 @@ Fix: rename the key
 
 `<path> does not exist`
 
-Fix: create the directory, or correct project.semantic_models_dir
+Fix: create the directory, or correct semantic_path
 
 ### SST-DIS002
 
@@ -588,7 +588,7 @@ Fix: create the directory, or correct project.semantic_models_dir
 
 `<path> is not a directory`
 
-Fix: point project.semantic_models_dir at a directory
+Fix: point semantic_path at a directory
 
 ### SST-DIS003
 
@@ -596,7 +596,7 @@ Fix: point project.semantic_models_dir at a directory
 
 `no candidate files under <path>`
 
-Fix: check project.semantic_models_dir and the file-name conventions
+Fix: check semantic_path and the file-name conventions
 
 ### SST-DIS004
 
@@ -628,7 +628,7 @@ Fix: rename one file
 
 `<path> is claimed by <types>`
 
-Fix: move the file, or give the types' directories distinct paths
+Fix: move the file, or make its root key unambiguous
 
 ### SST-DIS008
 
@@ -636,7 +636,7 @@ Fix: move the file, or give the types' directories distinct paths
 
 `<path> matches no registered artifact type`
 
-Fix: remove the file, or give it a root key a registered type owns
+Fix: remove the file, or add its root key to a type
 
 ### SST-DIS009
 
@@ -682,7 +682,7 @@ Fix: remove the block, or register a type that owns it
 
 `<artifact>: required field '<field>' is missing`
 
-Fix: add the required field
+Fix: add {field}
 
 ### SST-PRS003
 
@@ -690,7 +690,7 @@ Fix: add the required field
 
 `<artifact>: '<field>' expects <expected>, found <found>`
 
-Fix: change the value to the expected type
+Fix: change the value to {expected}
 
 ### SST-PRS004
 
@@ -706,7 +706,7 @@ Fix: remove the field, or check the spelling
 
 `<artifact>: '<value>' is not a valid identifier`
 
-Fix: start an unquoted name with a letter or underscore and use only letters, digits, `_` and `$`, or double-quote it
+Fix: use letters, digits and underscores, starting with a letter
 
 ### SST-PRS006
 
@@ -714,7 +714,7 @@ Fix: start an unquoted name with a letter or underscore and use only letters, di
 
 `<type> '<name>' is declared more than once`
 
-Fix: rename one declaration
+Fix: rename one of them
 
 ### SST-PRS007
 
@@ -770,7 +770,7 @@ Fix: use ASCII identifiers
 
 `<artifact>: '<field>' is '<found>', expected one of <expected>`
 
-Fix: use one of the values the message lists
+Fix: use one of {expected}
 
 ### SST-PRS014
 
@@ -794,7 +794,7 @@ Fix: declare both, or neither
 
 `<artifact>: '<field>' is <found>, expected <expected>`
 
-Fix: use a value within the allowed range
+Fix: use a value in {expected}
 
 ### SST-PRS017
 
@@ -866,7 +866,7 @@ Fix: promote the keys to first-class fields where possible
 
 `<artifact>: alias '<value>' is reserved`
 
-Fix: choose a non-reserved alias
+Fix: choose a different alias
 
 ### SST-PRS026
 
@@ -882,7 +882,7 @@ Fix: shorten the tag value
 
 `<artifact>: tags must be a list of name and value entries, found <found>`
 
-Fix: write tags as a list of {name: ..., value: ...} entries
+Fix: correct the tags block
 
 ### SST-PRS028
 
@@ -922,7 +922,7 @@ Fix: rename it, or accept the quoted identifier
 
 `<artifact>: input_schema property '<field>' has type '<found>'`
 
-Fix: use a supported scalar or array type
+Fix: use string, number, integer, boolean or array
 
 ### SST-PRS033
 
@@ -930,7 +930,7 @@ Fix: use a supported scalar or array type
 
 `<artifact>: input_schema.required names '<field>', absent from properties`
 
-Fix: declare the property, or remove it from required
+Fix: declare the property, or drop it from required
 
 ### SST-PRS034
 
@@ -970,7 +970,7 @@ Fix: declare the tables the member attaches to
 
 `<artifact>: '<field>' is '<found>', expected one of <expected>`
 
-Fix: use one of the values the message lists
+Fix: use one of {expected}
 
 ### SST-PRS104
 
@@ -994,7 +994,7 @@ Fix: move the member
 
 `<artifact>: <member_type> '<name>' is declared twice`
 
-Fix: rename one member
+Fix: rename one of them
 
 ### SST-PRS107
 
@@ -1082,7 +1082,7 @@ Fix: give every row a question and at least one expectation
 
 `<artifact>: sample_questions[<index>] is a string, expected a mapping`
 
-Fix: use {question: ...} mappings
+Fix: use {{question: ...}} maps
 
 ### SST-PRS119
 
@@ -1090,7 +1090,7 @@ Fix: use {question: ...} mappings
 
 `<artifact>: nested skill folder at <path>`
 
-Fix: move the nested skill beside its parent; one skill per folder
+Fix: flatten the layout; one skill per folder
 
 ### SST-PRS120
 
@@ -1114,7 +1114,7 @@ Fix: fix the field the message names; the semantic views guide lists each field'
 
 `<artifact>: window frame '<value>' is not ROWS or RANGE BETWEEN <bound> AND <bound>`
 
-Fix: write each bound as UNBOUNDED PRECEDING, UNBOUNDED FOLLOWING, CURRENT ROW, or &lt;n&gt; or INTERVAL '&lt;n&gt; &lt;unit&gt;' followed by PRECEDING or FOLLOWING
+Fix: write each bound as UNBOUNDED PRECEDING, UNBOUNDED FOLLOWING, CURRENT ROW, or &lt;n&gt; or `INTERVAL '<n> <unit>'` followed by PRECEDING or FOLLOWING
 
 ### SST-PRS125
 
@@ -1164,7 +1164,7 @@ Fix: add content, or delete the file
 
 `<file>:<line>:<col>: malformed template: <reason>`
 
-Fix: close the template, remove nesting, or correct the call grammar
+Fix: close the `}}`, or remove the nested `{{`
 
 ### SST-LOD005
 
@@ -1228,7 +1228,7 @@ Fix: use |- so line breaks survive
 
 `<file>: <detail>`
 
-Fix: remove the trailing whitespace and save the file with LF line endings
+Fix: run sst format
 
 ### SST-LOD013
 
@@ -1236,7 +1236,7 @@ Fix: remove the trailing whitespace and save the file with LF line endings
 
 `<file>:<line>: YAML anchors are not supported`
 
-Fix: expand the anchor: write the value out wherever the alias stands
+Fix: expand the anchor
 
 ### SST-LOD014
 
@@ -1244,7 +1244,7 @@ Fix: expand the anchor: write the value out wherever the alias stands
 
 `<file>:<line>: merge keys are not supported`
 
-Fix: expand the merge: write the merged keys into the mapping
+Fix: expand the merge
 
 ### SST-LOD015
 
@@ -1300,7 +1300,7 @@ Fix: standardise on .yml
 
 `<file> declares no recognised root key`
 
-Fix: add the artifact's root key, or move the file out of the semantic models directory
+Fix: add the artifact's root key
 
 ### SST-LOD200
 
@@ -1352,7 +1352,7 @@ Fix: correct the expression syntax
 
 `'<ref_function>' is not a template function`
 
-Fix: use one of agent, column, custom_instructions, eval_metric, extension, file, filter, metric, plugin, ref, relationship, semantic_view, skill, table, tag, tool, var, verified_query
+Fix: use one of {expected}
 
 ### SST-REF005
 
@@ -1400,7 +1400,7 @@ Fix: check the referenced object's name
 
 `{ tool('<group>','<name>') } does not resolve`
 
-Fix: declare the member in specs/tools/
+Fix: declare the member in the tools directory
 
 ### SST-REF011
 
@@ -1544,7 +1544,7 @@ Fix: declare the skill under skills/, or correct the name
 
 `<file>:<line>:<col>: '<text>' is not a valid reference: <detail>`
 
-Fix: write each reference as {{ fn('arg') }}, naming one of the documented template functions
+Fix: use `{{ fn('arg') }}`
 
 ### SST-REF034
 
@@ -1600,7 +1600,7 @@ Fix: add the model to the view's tables:, or reference one of them
 
 `<artifact>: table entry <found> is not a { ref('<model>') } call`
 
-Fix: write each tables: entry as {{ ref('&lt;model&gt;') }}
+Fix: write each tables: entry as `{{ ref('<model>') }}`
 
 ### SST-REF045
 
@@ -1908,7 +1908,7 @@ Fix: rename the key
 
 `<type> '<name>': '<key>' is not modelled and would be rendered as-is`
 
-Fix: promote the key, remove it, or set snowflake.allow_unknown_keys: true to render it with a warning instead
+Fix: promote the key, remove it, or set `snowflake.allow_unknown_keys: true` to render it with a warning instead
 
 ### SST-VAL014
 
@@ -1924,7 +1924,7 @@ Fix: promote the keys to first-class fields if they are load-bearing
 
 `<type> '<name>' would publish before <blocker>, which it depends on`
 
-Fix: include the blocker in the selection, or break the dependency; the publish order is not authorable
+Fix: include the blocker in the selection, or break the dependency -- the ORDER is not authorable
 
 ### SST-VAL016
 
@@ -2010,7 +2010,7 @@ Fix: aggregate it in a table-scoped metric first
 
 `metric '<metric>' is table-scoped and references derived metric '<other>'`
 
-Fix: make the metric derived, or inline the expression
+Fix: make '{metric}' derived, or inline the expression
 
 ### SST-VAL107
 
@@ -2370,7 +2370,7 @@ Fix: remove the key
 
 `<artifact>: column '<column>' on '<model>' appears in both primary_key and unique_keys`
 
-Fix: remove it from unique_keys -- a primary key is already unique
+Fix: remove it from `unique_keys` -- a primary key is already unique
 
 ### SST-VAL301
 
@@ -2656,7 +2656,7 @@ Fix: wrap it in {{ ref('&lt;model&gt;','&lt;column&gt;') }}
 
 `filter '<member>' is boolean-valued and declares no labels: key`
 
-Fix: add labels: [filter] so it renders as a native LABELS = (FILTER) dimension on its table
+Fix: add `labels: [filter]` so it renders as a native `LABELS = (FILTER)` dimension on its table
 
 ### SST-VAL406
 
@@ -2728,7 +2728,7 @@ Fix: make the question text unique
 
 `verified_query '<member>' queries '<relation>', absent from tables:`
 
-Fix: add the table to tables:, which decides the views the query attaches to
+Fix: add the table to tables:
 
 ### SST-VAL415
 
@@ -2760,7 +2760,7 @@ Fix: keep the three sets distinct
 
 `<type> '<name>': expression failed to compile: <detail>`
 
-Fix: fix the expression so Snowflake compiles it; SST also refuses, before sending it, a `;`, a comment, `$$`, an unbalanced bracket, or a statement keyword outside quotes
+Fix: fix the expression
 
 ### SST-VAL506
 
@@ -3024,7 +3024,7 @@ Fix: pin the date, and keep the two sets distinct
 
 `agent '<artifact>': skill source '<name>' does not pin an immutable version`
 
-Fix: pin a committed version; LIVE and an omitted version are both refused here, though Snowflake refuses neither
+Fix: pin a committed version; `LIVE` and an omitted version are both refused HERE -- Snowflake refuses neither
 
 ### SST-VAL539
 
@@ -3144,7 +3144,7 @@ Fix: rename one; the single-argument ref form is unavailable for this name
 
 `tool member '<name>': type '<found>' is not a known tool type`
 
-Fix: use one of the known tool types
+Fix: use one of {expected}
 
 ### SST-VAL604
 
@@ -3232,7 +3232,7 @@ Fix: align the declaration with the object
 
 `tool member '<name>' would publish before '<value>', which it indexes`
 
-Fix: include the source relation in the selection, or let dbt build it first; the order is not authorable
+Fix: include the source relation in the selection, or let dbt build it first -- the ORDER is not authorable
 
 ### SST-VAL615
 
@@ -3254,7 +3254,7 @@ Fix: grant the privilege before publishing
 
 `tool member '<name>' indexes <value>, materialized '<detail>' -- every dbt run rebuilds the relation, disabling change tracking and forcing a full re-embed`
 
-Fix: make the model incremental, or set refresh_mode: FULL and accept the cost explicitly
+Fix: make the model `incremental`, or set `refresh_mode: FULL` and accept the cost explicitly
 
 ### SST-VAL618
 
@@ -3270,7 +3270,7 @@ Fix: re-enable change tracking on the source, or replace the service
 
 `tool member '<name>': <detail> explicit grant(s) will be captured and replayed -- they do not exist between commit and replay`
 
-Fix: none -- Snowflake provides no COPY GRANTS for this object type
+Fix: none -- Snowflake provides no `COPY GRANTS` for this object type
 
 ### SST-VAL701
 
@@ -4104,7 +4104,7 @@ Fix: declare event, command, and exactly one script, naming it with script: when
 
 `MCP config '<artifact>': <detail>`
 
-Fix: write mcp.json as {"mcpServers": {"&lt;name&gt;": {...}}}
+Fix: write mcp.json as `{"mcpServers": {"<name>": {...}}}`
 
 ### SST-VAL854
 
@@ -4178,7 +4178,7 @@ Fix: check that the dbt project has models; under --manifest, check the path
 
 `model '<model>' is not in the dbt manifest`
 
-Fix: correct the model name, or add the model to the dbt project
+Fix: run dbt compile, or correct the name
 
 ### SST-DBT003
 
@@ -4194,7 +4194,7 @@ Fix: correct the role name
 
 `model '<model>': column '<column>' is <found> in dbt and <expected> in the semantic layer`
 
-Fix: reconcile the two types, or add a dbt contract
+Fix: reconcile the two, or add a contract
 
 ### SST-DBT005
 
@@ -4210,7 +4210,7 @@ Fix: drop --manifest and let SST parse, or rebuild the manifest you passed
 
 `model '<model>' resolves to relation '<value>'`
 
-Fix: point the semantic layer at the resolved relation: name the model with {{ ref() }}
+Fix: point the semantic layer at the resolved relation
 
 ### SST-DBT009
 
@@ -4218,7 +4218,7 @@ Fix: point the semantic layer at the resolved relation: name the model with {{ r
 
 `model '<model>' is <found> and produces no relation`
 
-Fix: enable it, or change the materialisation to a table or a view
+Fix: enable it, or change the materialisation
 
 ### SST-DBT010
 
@@ -4234,7 +4234,7 @@ Fix: rename one relation, or align the columns
 
 `source '<value>' is not declared in dbt`
 
-Fix: declare the source in the dbt project
+Fix: declare the source
 
 ### SST-DBT012
 
@@ -4312,7 +4312,7 @@ Fix: ignore this if a valid manifest exists; the manifest is the contract
 
 `defer.auto_compile is true under <found>`
 
-Fix: pass --manifest with a manifest built for the target instead
+Fix: use state_path instead
 
 ### SST-DBT022
 
@@ -4320,7 +4320,7 @@ Fix: pass --manifest with a manifest built for the target instead
 
 `model-paths could not be read; defaulted to <expected>`
 
-Fix: declare model-paths explicitly as a list of directories
+Fix: declare model-paths explicitly
 
 ### SST-DBT023
 
@@ -4336,7 +4336,7 @@ Fix: add at least a uniqueness test on the declared grain
 
 `model '<model>' has no contract`
 
-Fix: add an enforced contract to the model
+Fix: add a contract
 
 ### SST-DBT025
 
@@ -4382,7 +4382,7 @@ Fix: check --project-dir and dbt's target-path; dbt wrote its manifest elsewhere
 
 `model '<model>': meta.sst.<key> is forbidden -- delete it`
 
-Fix: delete the key; relation location comes from dbt's resolved manifest
+Fix: delete the key; the location comes from dbt's own `+database` / `+schema` and SST reads the RESOLVED value out of the manifest
 
 ### SST-DBT031
 
@@ -4416,7 +4416,7 @@ Fix: supply the field
 
 `<artifact>: '<name>' cannot be safely quoted`
 
-Fix: rename the object without control characters
+Fix: rename the object
 
 ### SST-RND003
 
@@ -4456,7 +4456,7 @@ Fix: add the type to snowflake.tool_types
 
 `agent '<artifact>': tool_resources for '<name>' is not validated by Snowflake`
 
-Fix: confirm the key and the backing object yourself; CREATE AGENT will accept a wrong one
+Fix: confirm the key and the backing object yourself; `CREATE AGENT` will accept a wrong one
 
 ### SST-RND020
 
@@ -4578,7 +4578,7 @@ Fix: re-run sst compile; the manifest is tampered or truncated
 
 `manifest target '<found>', current target '<expected>'`
 
-Fix: re-run sst compile for this target
+Fix: drop --manifest and let SST parse for this target
 
 ### SST-MAN007
 
@@ -4602,7 +4602,7 @@ Fix: fix the reported errors, then re-compile
 
 `no state file; treating every artifact as new`
 
-Fix: check that the state table is readable on this target; a full plan is the safe fallback, not the fix
+Fix: check `state.+table` is readable on this target; a full plan is the safe fallback, not the fix
 
 ### SST-MAN021
 
@@ -4656,7 +4656,7 @@ Fix: split the two files; one filename, one schema
 
 `local state.json for target <value> disagrees with <detail>; the table wins`
 
-Fix: none; the run proceeds from the table
+Fix: none -- the run proceeds from the table
 
 ### SST-MAN030
 
@@ -4956,7 +4956,7 @@ Fix: fix that error first; a configuration error, or an error in a semantic view
 
 `<artifact> is no longer declared; SST never removes <value>: <detail>`
 
-Fix: the plan lists it until the objects are removed by hand; it never counts as a change
+Fix: the plan lists it until the objects are removed by hand; it is never a write, and the plan exits 2 only until an apply records it
 
 ### SST-PLN100
 
@@ -5028,7 +5028,7 @@ Fix: re-run plan against the apply target
 
 `<count> published probes failed`
 
-Fix: fix the metrics, then re-run the smoke suite; this never fails an apply
+Fix: fix the metrics, then re-apply
 
 ### SST-APL007
 
@@ -5180,7 +5180,7 @@ Fix: treat this as a failure and re-run
 
 `<value>: <detail>`
 
-Fix: re-run sst compile, then apply
+Fix: re-run sst extract, then apply
 
 ### SST-APL028
 
@@ -5222,7 +5222,7 @@ Fix: read internal_detail; if this recurs, add a signature
 
 `<value> already exists`
 
-Fix: choose another name; a semantic view is created with CREATE OR REPLACE, and an agent takes create_mode: or_alter (to add a version) or if_not_exists
+Fix: choose another name, or -- for a semantic view -- let the unconditional `CREATE OR REPLACE` handle it.
 
 ### SST-SNO003
 
@@ -5464,7 +5464,7 @@ Fix: publish it, or correct the name
 
 `no dbt manifest at <path>`
 
-Fix: run dbt parse, or pass --manifest with the path of an existing manifest
+Fix: run dbt compile, or set the manifest path
 
 ### SST-PRT008
 
@@ -5480,7 +5480,7 @@ Fix: check the permissions and the free space
 
 `could not read <path>: <detail>`
 
-Fix: SST reads only regular files inside the project: replace a symbolic link with the file or folder it points to, and keep dbt's target-path inside the project
+Fix: check the permissions
 
 ### SST-PRT010
 
@@ -5504,7 +5504,7 @@ Fix: set the environment variable, or the profile field
 
 `<value> would be rendered verbatim`
 
-Fix: the output was withheld; report this as a bug, since SST never prints a credential
+Fix: wrap the value in Secret
 
 ### SST-PRT100
 
@@ -5512,7 +5512,7 @@ Fix: the output was withheld; report this as a bug, since SST never prints a cre
 
 `<detail>`
 
-Fix: see sst --help, and the command's own --help
+Fix: see sst &lt;command&gt; --help
 
 ### SST-PRT101
 
@@ -5528,7 +5528,7 @@ Fix: use space-separated selectors; intersection is not supported
 
 `selector '<value>' names an unknown kind`
 
-Fix: use a name, type:, path:, state:, or &lt;type&gt;:&lt;name&gt;; only a name takes * and ? globs
+Fix: use one of {expected}
 
 ### SST-PRT103
 
@@ -5552,7 +5552,7 @@ Fix: pass one of them
 
 `'<value>' is not a valid <detail> selector`
 
-Fix: use the documented form: model:&lt;name&gt;, or a model name
+Fix: use the documented form
 
 ### SST-PRT106
 
@@ -5560,7 +5560,7 @@ Fix: use the documented form: model:&lt;name&gt;, or a model name
 
 `'<found>' is not a supported format for <command>; supported: <expected>`
 
-Fix: pass one of the supported formats
+Fix: pass one of {expected}
 
 ### SST-PRT107
 
@@ -5590,7 +5590,7 @@ Fix: re-run with --yes; there is no interactive prompt
 
 `<command> takes no selector; '<value>' is not accepted`
 
-Fix: remove the selector; this command takes none, and set-based removal is apply --prune
+Fix: name one object, or use apply --prune for set-based removal
 
 ## Internal (INT)
 
@@ -5600,7 +5600,7 @@ Fix: remove the selector; this command takes none, and set-based removal is appl
 
 `internal error: <detail>`
 
-Fix: report this as a bug, with the code and the full message
+Fix: report this with the code and internal_detail
 
 ### SST-INT002
 

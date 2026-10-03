@@ -52,7 +52,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         Severity.ERROR,
         "Regular metric references a derived metric",
         "metric '{metric}' is table-scoped and references derived metric '{other}'",
-        "make the metric derived, or inline the expression",
+        "make '{metric}' derived, or inline the expression",
         demotable=False,
     ),
     spec(

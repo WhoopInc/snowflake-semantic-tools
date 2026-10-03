@@ -8,9 +8,9 @@ from __future__ import annotations
 
 from dataclasses import replace
 
-from snowflake_semantic_tools.adapters.yaml.semantic.defs import InstructionDef
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic
 from snowflake_semantic_tools.domain.model.artifact_key import artifact_key
+from snowflake_semantic_tools.domain.model.authored import InstructionDef
 from snowflake_semantic_tools.domain.model.dbt import DbtCatalog
 from snowflake_semantic_tools.domain.model.project import ParsedMember, ParsedProject, ParsedView
 from snowflake_semantic_tools.domain.parse.template import TemplateCall, TemplateSyntaxError, scan_template_calls

@@ -9,7 +9,7 @@ from ruamel.yaml import YAML
 
 from snowflake_semantic_tools.adapters.errors import ProjectError
 from snowflake_semantic_tools.adapters.yaml.format import canonical_yaml
-from snowflake_semantic_tools.adapters.yaml.semantic.checks.files import _formatting_problem
+from snowflake_semantic_tools.domain.validate.semantic.files import formatting_problem
 
 _KEYS = st.sampled_from(("name", "description", "expr", "synonyms", "tables", "sample_values", "x"))
 _TEXT = st.text(alphabet=st.characters(codec="utf-8", exclude_categories=("Cs", "Cc")), max_size=20)
@@ -52,7 +52,7 @@ def test_format_is_idempotent_and_never_changes_a_value(tree: object, style: str
     once = canonical_yaml(text, "f.yml")
     assert canonical_yaml(once, "f.yml") == once
     assert _value(once) == expected
-    assert _formatting_problem(once) is None
+    assert formatting_problem(once) is None
 
 
 def test_multi_line_strings_become_literal_blocks_and_folded_ones_stop_folding() -> None:

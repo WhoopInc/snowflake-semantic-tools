@@ -5,9 +5,9 @@ from __future__ import annotations
 from collections.abc import Mapping
 from itertools import combinations
 
-from snowflake_semantic_tools.adapters.yaml.semantic.defs import InstructionDef
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic
 from snowflake_semantic_tools.domain.model.artifact_key import artifact_key
+from snowflake_semantic_tools.domain.model.authored import InstructionDef
 from snowflake_semantic_tools.domain.validate.instruction import (
     CATEGORIZATION_CHANNEL,
     SQL_CHANNEL,
@@ -17,7 +17,7 @@ from snowflake_semantic_tools.domain.validate.instruction import (
 )
 
 
-def _instruction_diagnostics(instructions: tuple[InstructionDef, ...]) -> tuple[Diagnostic, ...]:
+def instruction_diagnostics(instructions: tuple[InstructionDef, ...]) -> tuple[Diagnostic, ...]:
     """Check each instruction's channels, instruction by instruction.
 
     A block that only spells its channels the 0.3 way is left to SST-PRS020, which names the
@@ -66,7 +66,7 @@ def _instruction_diagnostics(instructions: tuple[InstructionDef, ...]) -> tuple[
     return tuple(diagnostics)
 
 
-def _contradiction_diagnostics(
+def contradiction_diagnostics(
     instructions: Mapping[str, InstructionDef], view_instructions: Mapping[str, frozenset[str]]
 ) -> tuple[Diagnostic, ...]:
     """Report each pair of instructions one view attaches whose directives contradict, view by view.

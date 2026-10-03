@@ -4,9 +4,9 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 
-from snowflake_semantic_tools.adapters.yaml.semantic.defs import MetricDef, WindowDef
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic
 from snowflake_semantic_tools.domain.model.artifact_key import artifact_key
+from snowflake_semantic_tools.domain.model.authored import MetricDef, WindowDef
 from snowflake_semantic_tools.domain.model.dbt import DbtModel
 from snowflake_semantic_tools.domain.model.semantic_view import ColumnKind
 from snowflake_semantic_tools.domain.parse.template import TemplateSyntaxError, single_template_call
@@ -17,13 +17,13 @@ from snowflake_semantic_tools.domain.validate.expression import root_function as
 DIMENSION_TYPES = frozenset((ColumnKind.DIMENSION.value, ColumnKind.TIME_DIMENSION.value))
 
 
-def _metric_owner(metric: MetricDef) -> str | None:
+def metric_owner(metric: MetricDef) -> str | None:
     """Return the one table a metric belongs to, casefolded; None for a cross-table metric."""
     tables = metric.tables or metric.referenced_models
     return tables[0] if len(tables) == 1 else None
 
 
-def _window_diagnostics(
+def window_diagnostics(
     metric: MetricDef,
     metric_by_name: Mapping[str, MetricDef],
     models: Mapping[str, DbtModel],
@@ -36,7 +36,7 @@ def _window_diagnostics(
     window = metric.window
     assert window is not None
     diagnostics = _window_argument_diagnostics(metric)
-    owner = _metric_owner(metric)
+    owner = metric_owner(metric)
     diagnostics.extend(_window_owner_diagnostics(metric, owner))
     diagnostics.extend(_window_entry_diagnostics(metric, window, owner, metric_by_name, models))
     diagnostics.extend(_window_frame_diagnostics(metric, window))
@@ -146,7 +146,7 @@ def _window_entry_resolves(
             and not other.derived
             and other.window is None
             and owner is not None
-            and _metric_owner(other) == owner
+            and metric_owner(other) == owner
         )
     return False
 

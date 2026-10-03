@@ -11,7 +11,6 @@ from typing import Any, TypeVar
 
 from snowflake_semantic_tools.adapters.errors import ProjectError
 from snowflake_semantic_tools.adapters.paths import resolve_within
-from snowflake_semantic_tools.adapters.yaml.documents import NodePath, SourcePosition
 from snowflake_semantic_tools.adapters.yaml.fields import (
     checked_list,
     checked_mapping,
@@ -23,6 +22,7 @@ from snowflake_semantic_tools.adapters.yaml.parse import parse_yaml_bytes
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, DiagnosticBag, Origin
 from snowflake_semantic_tools.domain.model.agent import AgentEvalFiles, AgentModel, AgentProfile, AgentSkill, AgentTool
 from snowflake_semantic_tools.domain.model.artifact_key import artifact_key
+from snowflake_semantic_tools.domain.model.authored import NodePath, SourcePosition
 from snowflake_semantic_tools.domain.parse.passthrough import AGENT_SPEC_KEYS, TOOL_SPEC_KEYS, passthrough_diagnostics
 from snowflake_semantic_tools.domain.parse.template import TemplateSyntaxError, scan_template_calls
 from snowflake_semantic_tools.domain.resolve.calls import call_problem, malformed_field, syntax_problem

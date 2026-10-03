@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from snowflake_semantic_tools.adapters.yaml.semantic.checks.fidelity import _verifier_change
+from snowflake_semantic_tools.domain.validate.semantic.fidelity import verifier_change
 
 
 @pytest.mark.parametrize(
@@ -23,4 +23,4 @@ from snowflake_semantic_tools.adapters.yaml.semantic.checks.fidelity import _ver
 def test_a_verified_by_reaches_the_ddl_only_as_text_without_surrounding_whitespace(
     value: object, expected: str | None
 ) -> None:
-    assert _verifier_change({"verified_by": value}) == expected
+    assert verifier_change({"verified_by": value}) == expected

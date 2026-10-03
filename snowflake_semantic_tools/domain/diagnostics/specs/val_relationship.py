@@ -168,6 +168,6 @@ SPECS: tuple[ErrorSpec, ...] = (
         Severity.ERROR,
         "A primary-key column is also declared unique",
         "{artifact}: column '{column}' on '{model}' appears in both primary_key and unique_keys",
-        "remove it from unique_keys -- a primary key is already unique",
+        "remove it from `unique_keys` -- a primary key is already unique",
     ),
 )

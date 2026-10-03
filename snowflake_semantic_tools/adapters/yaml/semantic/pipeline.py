@@ -20,15 +20,11 @@ from snowflake_semantic_tools.adapters.yaml.documents import LoadCache, RawDocum
 from snowflake_semantic_tools.adapters.yaml.ownership import assign_owners
 from snowflake_semantic_tools.adapters.yaml.parse import parse_yaml_bytes
 from snowflake_semantic_tools.adapters.yaml.semantic.build import _build_view
-from snowflake_semantic_tools.adapters.yaml.semantic.checks.fanout import _attachment_diagnostics
-from snowflake_semantic_tools.adapters.yaml.semantic.checks.instructions import _contradiction_diagnostics
-from snowflake_semantic_tools.adapters.yaml.semantic.checks.rules import _rule_diagnostics
-from snowflake_semantic_tools.adapters.yaml.semantic.checks.scope import _scope_diagnostics, view_scope
-from snowflake_semantic_tools.adapters.yaml.semantic.checks.verified_queries import _duplicate_question_diagnostics
 from snowflake_semantic_tools.adapters.yaml.semantic.collect import parse_semantic_project
-from snowflake_semantic_tools.adapters.yaml.semantic.membership import membership
+from snowflake_semantic_tools.adapters.yaml.semantic.file_reads import file_texts
 from snowflake_semantic_tools.adapters.yaml.semantic.phases import (
     LoadContext,
+    SemanticMembers,
     _relationship_checks,
     _semantic_checks,
     _structural_checks,
@@ -42,11 +38,24 @@ from snowflake_semantic_tools.adapters.yaml.semantic.view_instructions import _i
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, DiagnosticBag, Origin
 from snowflake_semantic_tools.domain.model.artifact_key import artifact_key
 from snowflake_semantic_tools.domain.model.dbt import DbtCatalog, DbtModel, DbtTarget
-from snowflake_semantic_tools.domain.model.project import ParsedMember, ParsedView, ResolvedProject, SemanticViewProject
+from snowflake_semantic_tools.domain.model.project import (
+    ParsedMember,
+    ParsedProject,
+    ParsedView,
+    ResolvedProject,
+    SemanticViewProject,
+)
 from snowflake_semantic_tools.domain.model.registry import SEMANTIC_REGISTRY
 from snowflake_semantic_tools.domain.model.semantic_view import SemanticView
+from snowflake_semantic_tools.domain.resolve.membership import view_members
+from snowflake_semantic_tools.domain.resolve.membership_request import membership, membership_request
 from snowflake_semantic_tools.domain.resolve.rendered import rendered_diagnostics
 from snowflake_semantic_tools.domain.validate.dbt_seam import fan_out_diagnostics, seam_summary
+from snowflake_semantic_tools.domain.validate.semantic.fanout import attachment_diagnostics
+from snowflake_semantic_tools.domain.validate.semantic.instructions import contradiction_diagnostics
+from snowflake_semantic_tools.domain.validate.semantic.rules import rule_diagnostics
+from snowflake_semantic_tools.domain.validate.semantic.scope import scope_diagnostics, view_scope
+from snowflake_semantic_tools.domain.validate.semantic.verified_queries import duplicate_question_diagnostics
 
 
 @dataclass(frozen=True, slots=True)
@@ -113,7 +122,7 @@ def load_semantic_views_result(
     8. View instructions, scope and content: each view's `custom_instructions()` entries and
        the pairs of them one view attaches that contradict each other, the columns, metrics and
        relationships it lists or excludes, then the file, prose and per-view rules of
-       `checks.rules`.
+       `domain.validate.semantic.rules`.
     9. Poisoned views: each view an error of phases 1-8 names, whose name repeats, whose
        tables are malformed, or whose file uses the legacy globals.
     10. Member resolution: attach every unpoisoned member to the views it belongs to, and
@@ -153,10 +162,8 @@ def load_semantic_views_result(
     relationship_diagnostics, unattached = _relationship_checks(context, members, healthy, view_tables)
     using_diagnostics, misrouted = _using_checks(members, healthy)
     poison = poison.with_members(unattached | misrouted | unresolved_instructions)
-    instruction_names, instruction_diagnostics = _view_instructions(parsed.views, members.instruction_names)
-    scope_diagnostics = _scope_diagnostics(parsed.views, members.metrics, members.relationships, context.models)
-    rule_diagnostics = _rule_diagnostics(
-        context.documents, parsed, context.models, context.config, instruction_names, context.catalog.unreadable_models
+    instruction_names, view_diagnostics = _view_content_checks(
+        context, parsed, members, poison.member_keys, instruction_text_diagnostics
     )
     reported = (
         *parsed.diagnostics,
@@ -164,11 +171,7 @@ def load_semantic_views_result(
         *semantic.diagnostics,
         *relationship_diagnostics,
         *using_diagnostics,
-        *instruction_diagnostics,
-        *instruction_text_diagnostics,
-        *_contradiction_diagnostics({item.name.casefold(): item for item in members.instructions}, instruction_names),
-        *scope_diagnostics,
-        *rule_diagnostics,
+        *view_diagnostics,
     )
     # After every check: the views left unbuilt are read from the errors reported so far.
     poison = _view_poison(poison, parsed.views, reported, structure.duplicate_views, structure.legacy_files)
@@ -184,6 +187,55 @@ def load_semantic_views_result(
         diagnostics=DiagnosticBag((*reported, *diagnostics)),
     )
     return SemanticViewProject(resolved.views, resolved.diagnostics, _disabled_views(context))
+
+
+def _view_content_checks(
+    context: LoadContext,
+    parsed: ParsedProject,
+    members: SemanticMembers,
+    poisoned: frozenset[str],
+    instruction_text_diagnostics: tuple[Diagnostic, ...],
+) -> tuple[dict[str, frozenset[str]], tuple[Diagnostic, ...]]:
+    """Phase 8: each view's instructions, the pairs of them that contradict, its scope and its rules.
+
+    The scope and view rules judge what each view attaches as member resolution will, leaving
+    out the members phases 1-7 poisoned.
+
+    Args:
+        poisoned: The casefolded keys of the members poisoned so far.
+        instruction_text_diagnostics: Phase 1's findings on the instruction texts, reported
+            after the views' own instruction findings.
+
+    Returns:
+        The custom instructions each view attaches, by artifact key, and the phase's diagnostics
+        in report order.
+    """
+    instruction_names, instruction_found = _view_instructions(parsed.views, members.instruction_names)
+    instructions = {item.name.casefold(): item for item in members.instructions}
+    attached = view_members(
+        membership_request(
+            parsed.members,
+            poisoned,
+            view_tables=dict(_view_tables(parsed.views)),
+            view_instructions=instruction_names,
+            view_scopes={artifact_key("semantic_view", view.name): view_scope(view.source) for view in parsed.views},
+        )
+    )
+    return instruction_names, (
+        *instruction_found,
+        *instruction_text_diagnostics,
+        *contradiction_diagnostics(instructions, instruction_names),
+        *scope_diagnostics(parsed.views, members.metrics, members.relationships, context.models, attached),
+        *rule_diagnostics(
+            context.documents,
+            file_texts(context.documents),
+            parsed,
+            context.models,
+            context.config,
+            attached,
+            context.catalog.unreadable_models,
+        ),
+    )
 
 
 def _resolve_and_build(
@@ -215,7 +267,7 @@ def _resolve_and_build(
         view_scopes=scopes,
     )
     attachment = decided.attachment
-    orphans = _unreported_orphans(_attachment_diagnostics(views, attached_members, attachment), decided.diagnostics)
+    orphans = _unreported_orphans(attachment_diagnostics(views, attached_members, attachment), decided.diagnostics)
     built, build_diagnostics = _build_views(context, built_nodes, attached_members, attachment)
     return (
         built,
@@ -223,7 +275,7 @@ def _resolve_and_build(
         (
             *decided.diagnostics,
             *orphans,
-            *_duplicate_question_diagnostics(attached_members, attachment),
+            *duplicate_question_diagnostics(attached_members, attachment),
             *build_diagnostics,
             *_seam_diagnostics(built, context.catalog),
             *rendered_diagnostics(built, attached_members, attachment),

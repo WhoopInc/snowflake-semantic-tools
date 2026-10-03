@@ -42,4 +42,4 @@ def test_sst_prt103_silent(tmp_path: Path) -> None:
     assert keys("unmodified") == frozenset(("semantic_view:a",))
     assert keys("modified") == frozenset(("semantic_view:b",))
     assert keys("orphaned") == frozenset(("semantic_view:gone",))
-    assert keys("new") is None
+    assert keys("new") == frozenset()

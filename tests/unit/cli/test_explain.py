@@ -24,7 +24,7 @@ def test_explain_prints_a_registered_code_and_where_it_is_raised(tmp_path: Path)
     assert exit_code == 0, output
     assert "SST-VAL009: File is not canonically formatted" in output
     assert "suggestion: run sst format" in output
-    assert "raised from: snowflake_semantic_tools.adapters.yaml.semantic.checks.files" in output
+    assert "raised from: snowflake_semantic_tools.domain.validate.semantic.files" in output
 
 
 def test_explain_json_carries_the_spec_payload(tmp_path: Path) -> None:

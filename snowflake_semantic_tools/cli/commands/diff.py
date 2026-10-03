@@ -23,7 +23,7 @@ from snowflake_semantic_tools.app.diff import ArtifactStates, live_states, manif
 from snowflake_semantic_tools.cli.exit_codes import CHANGES, ERROR, OK
 from snowflake_semantic_tools.cli.options import no_detailed_exitcode_option, selection_options, target_option
 from snowflake_semantic_tools.cli.runner import CommandResult, command_body, project_path
-from snowflake_semantic_tools.cli.wiring.compile import selection
+from snowflake_semantic_tools.cli.wiring.compile import selection_scope
 from snowflake_semantic_tools.cli.wiring.manifest import compiled_manifest
 from snowflake_semantic_tools.cli.wiring.project import connect
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, DiagnosticBag
@@ -141,10 +141,8 @@ def _selected(
     """Keep the differences the selectors choose, resolved against every artifact either state holds."""
     if not (selected or excluded):
         return differences
-    universe = _universe(paths, states)
-    chosen = _keys(selected, universe) if selected else None
-    left_out = _keys(excluded, universe) if excluded else frozenset()
-    return tuple(item for item in differences if (chosen is None or item.key in chosen) and item.key not in left_out)
+    scope = selection_scope(selected, excluded, _universe(paths, states))
+    return tuple(item for item in differences if scope.covers(split_artifact_key(item.key)[0], item.key))
 
 
 def _universe(paths: ProjectPaths, states: tuple[ArtifactStates, ArtifactStates]) -> tuple[Selectable, ...]:
@@ -169,12 +167,6 @@ def _universe(paths: ProjectPaths, states: tuple[ArtifactStates, ArtifactStates]
 def _fingerprint(states: tuple[ArtifactStates, ArtifactStates], key: str) -> str:
     found = next((state[key] for state in states if key in state), None)
     return (found.fingerprint or "") if found is not None else ""
-
-
-def _keys(values: tuple[str, ...], universe: tuple[Selectable, ...]) -> frozenset[str]:
-    """Return the keys selectors name, a type expanding to every artifact of it."""
-    types, keys = selection(values, universe)
-    return frozenset((keys or set()) | {item.key for item in universe if types and item.type in types})
 
 
 def _reference(reference: str) -> dict[str, str]:

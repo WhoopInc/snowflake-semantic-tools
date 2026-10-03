@@ -243,7 +243,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         Severity.ERROR,
         "Skill source does not pin an immutable version",
         "agent '{artifact}': skill source '{name}' does not pin an immutable version",
-        "pin a committed version; LIVE and an omitted version are both refused here, though Snowflake refuses neither",
+        "pin a committed version; `LIVE` and an omitted version are both refused HERE -- Snowflake refuses neither",
     ),
     spec(
         "SST-VAL539",

@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from snowflake_semantic_tools.adapters.yaml.semantic.defs import WindowDef, WindowOrderDef
 from snowflake_semantic_tools.domain.diagnostics import ERROR_REGISTRY, Severity
+from snowflake_semantic_tools.domain.model.authored import WindowDef, WindowOrderDef
 from tests.helpers.semantic_members import metric, metric_findings
 
 FRAME = "ROWS BETWEEN 1 PRECEDING AND CURRENT ROW"

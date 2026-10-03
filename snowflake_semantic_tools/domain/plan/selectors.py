@@ -42,10 +42,43 @@ class Selectable:
 
 @dataclass(frozen=True, slots=True)
 class Selection:
-    """The types and keys a list of selectors names; None for each part they leave unnamed."""
+    """The types and keys a list of selectors names; None for each part they leave unnamed.
+
+    A part a selector names is a set even when it matched nothing, so a selection that names
+    nothing is told apart from no selection at all.
+    """
 
     types: frozenset[str] | None
     keys: frozenset[str] | None
+
+    def names(self, artifact_type: str, key: str) -> bool:
+        """Report whether the selection names an artifact, by its type or by its key."""
+        return (self.types is not None and artifact_type in self.types) or (self.keys is not None and key in self.keys)
+
+    def keys_in(self, universe: Iterable[Selectable]) -> frozenset[str]:
+        """Return the keys the selection names, each type expanded to its artifacts in `universe`."""
+        return frozenset(
+            (*(self.keys or ()), *(item.key for item in universe if self.types is not None and item.type in self.types))
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class SelectionScope:
+    """What `--select` and `--exclude` choose together: the one rule every command applies.
+
+    Attributes:
+        selected: What `--select` names; None when no selector was given, which selects every
+            artifact.
+        excluded: What `--exclude` names; None when no exclusion was given.
+    """
+
+    selected: Selection | None = None
+    excluded: Selection | None = None
+
+    def covers(self, artifact_type: str, key: str) -> bool:
+        """Report whether an artifact is chosen: selected, or nothing was, and not excluded."""
+        chosen = self.selected is None or self.selected.names(artifact_type, key)
+        return chosen and not (self.excluded is not None and self.excluded.names(artifact_type, key))
 
 
 def resolve_selectors(
@@ -74,15 +107,15 @@ def resolve_selectors(
     """
     known_types = frozenset(artifact_types)
     artifacts = tuple(universe)
-    types: set[str] = set()
-    keys: set[str] = set()
+    named: dict[str, set[str]] = {}
     for value in values:
         resolved = _resolve_one(value, known_types, artifacts, previous)
         if isinstance(resolved, Diagnostic):
             return resolved
         kind, names = resolved
-        (types if kind == "type" else keys).update(names)
-    return Selection(frozenset(types) or None, frozenset(keys) or None)
+        named.setdefault(kind, set()).update(names)
+    types, keys = named.get("type"), named.get("key")
+    return Selection(frozenset(types) if types is not None else None, frozenset(keys) if keys is not None else None)
 
 
 def _resolve_one(
