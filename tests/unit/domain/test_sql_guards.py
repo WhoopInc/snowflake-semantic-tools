@@ -126,10 +126,10 @@ def test_guards_take_only_text_and_report_lex_errors_as_refusals() -> None:
     [
         ("SELECT 1", "SELECT 1"),
         ("SELECT 1;", "SELECT 1"),
-        ("SELECT 1 ;\n", "SELECT 1 "),
+        ("SELECT 1 ;\n", "SELECT 1"),
         (
             "-- header\n/* note */\nWITH a AS (SELECT 1) SELECT * FROM a",
-            "-- header\n/* note */\nWITH a AS (SELECT 1) SELECT * FROM a",
+            "WITH a AS (SELECT 1) SELECT * FROM a",
         ),
         ("select 'a;b' from t", "select 'a;b' from t"),
         ("SELECT INSERT(a, 1, 1, 'x') FROM t", "SELECT INSERT(a, 1, 1, 'x') FROM t"),

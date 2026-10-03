@@ -33,7 +33,7 @@ def checked_expression(
     try:
         return guard_expression(text)
     except UnsafeSqlError as exc:
-        return _refused(exc, text, kind=kind, name=name, subject=subject, origin=origin)
+        return _refused(exc, kind=kind, name=name, subject=subject, origin=origin)
 
 
 def checked_query(
@@ -47,19 +47,16 @@ def checked_query(
     try:
         return guard_query(text)
     except UnsafeSqlError as exc:
-        return _refused(exc, text, kind=kind, name=name, subject=subject, origin=origin)
+        return _refused(exc, kind=kind, name=name, subject=subject, origin=origin)
 
 
-def _refused(
-    exc: UnsafeSqlError, text: str, *, kind: str, name: str, subject: str, origin: Origin | None
-) -> Diagnostic:
-    """The diagnostic for a refusal, quoting the text from where the guard stopped."""
-    near = text[exc.offset : exc.offset + 40]
+def _refused(exc: UnsafeSqlError, *, kind: str, name: str, subject: str, origin: Origin | None) -> Diagnostic:
+    """The diagnostic for a refusal, quoting the checked text from where the guard stopped."""
     return D(
         "SST-VAL418",
         type=kind,
         name=name,
-        detail=f"{exc.reason} at {near!r}, so SST will not send it to Snowflake",
+        detail=f"{exc.reason} at {exc.near!r}, so SST will not send it to Snowflake",
         subject=subject,
         origin=origin,
     )
