@@ -88,10 +88,10 @@ def _byte_split(skill: Skill, entries: tuple[BundleEntry, ...]) -> Diagnostic:
 
 
 def _rendered_skill_md(skill: Skill, files: tuple[SkillFile, ...], *, authored_over: bool) -> tuple[Diagnostic, ...]:
-    """Check the flattened SKILL.md: present whenever anything is, with a body, and within budget if it was authored so.
+    """Check the flattened SKILL.md: present whenever anything is, with a body, and within budget.
 
     Flattening rewrites only references, so the rendered body is empty exactly when the
-    authored one is.
+    authored one is. A SKILL.md authored over budget is SST-VAL812's to report, not this check's.
     """
     rendered = next((item for item in files if item.path == SKILL_FILE), None)
     if rendered is None:

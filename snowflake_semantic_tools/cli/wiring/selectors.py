@@ -8,9 +8,8 @@ from __future__ import annotations
 from collections.abc import Iterable
 
 from snowflake_semantic_tools.app.compile import CompiledArtifact
-from snowflake_semantic_tools.cli.wiring.compile import selection
+from snowflake_semantic_tools.cli.wiring.compile import compiled_universe, selection
 from snowflake_semantic_tools.domain.diagnostics import D, DiagnosticBag
-from snowflake_semantic_tools.domain.plan.selectors import Selectable
 
 
 def selector_report(
@@ -41,19 +40,5 @@ def selector_report(
 
 
 def _matching(artifacts: tuple[CompiledArtifact, ...], selectors: tuple[str, ...]) -> tuple[CompiledArtifact, ...]:
-    universe = tuple(
-        Selectable(
-            item.artifact_key,
-            item.artifact_type,
-            item.name.casefold(),
-            item.rendered_artifact.fingerprint,
-            item.source_files,
-        )
-        for item in artifacts
-    )
-    types, keys = selection(selectors, universe)
-    return tuple(
-        item
-        for item in artifacts
-        if (types is not None and item.artifact_type in types) or (keys is not None and item.artifact_key in keys)
-    )
+    named = selection(selectors, compiled_universe(artifacts))
+    return tuple(item for item in artifacts if named.names(item.artifact_type, item.artifact_key))

@@ -44,6 +44,7 @@ from snowflake_semantic_tools.domain.model.lifecycle import (
 from snowflake_semantic_tools.domain.model.registry import SEMANTIC_REGISTRY, Registry
 from snowflake_semantic_tools.domain.plan import build_changeset
 from snowflake_semantic_tools.domain.plan.impact import impact_scope
+from snowflake_semantic_tools.domain.plan.selectors import Selection, SelectionScope
 from snowflake_semantic_tools.domain.plan.summary import plan_notices
 from snowflake_semantic_tools.domain.ports.clock import ClockPort
 from snowflake_semantic_tools.domain.ports.lifecycle import CompositeLifecycleHandler
@@ -293,16 +294,12 @@ class PlanScope:
 
     def covers(self, item: CompiledArtifact) -> bool:
         """Report whether the plan covers an artifact: selected by type or key, and not excluded."""
-        selected = (
-            (self.prune_types is None and self.prune_keys is None)
-            or (self.prune_types is not None and item.artifact_type in self.prune_types)
-            or (self.prune_keys is not None and item.artifact_key in self.prune_keys)
+        named = self.prune_types is not None or self.prune_keys is not None
+        scope = SelectionScope(
+            Selection(self.prune_types, self.prune_keys) if named else None,
+            Selection(self.excluded_types, self.excluded_keys),
         )
-        return (
-            selected
-            and (self.excluded_types is None or item.artifact_type not in self.excluded_types)
-            and (self.excluded_keys is None or item.artifact_key not in self.excluded_keys)
-        )
+        return scope.covers(item.artifact_type, item.artifact_key)
 
 
 @dataclass(frozen=True, slots=True)

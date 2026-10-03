@@ -19,13 +19,12 @@ from snowflake_semantic_tools.app.manifest import read_notes
 from snowflake_semantic_tools.cli.options import model_path_options, selection_options, with_model_paths
 from snowflake_semantic_tools.cli.runner import CommandResult, command_body
 from snowflake_semantic_tools.cli.wiring import compile as compiling
-from snowflake_semantic_tools.cli.wiring.compile import manifest_universe, selection
+from snowflake_semantic_tools.cli.wiring.compile import manifest_universe, selection_scope
 from snowflake_semantic_tools.cli.wiring.manifest import build_manifest, compiled_manifest
 from snowflake_semantic_tools.cli.wiring.project import target_dir
 from snowflake_semantic_tools.domain.diagnostics import DiagnosticBag
 from snowflake_semantic_tools.domain.model.artifact_key import split_artifact_key
 from snowflake_semantic_tools.domain.model.registry import SEMANTIC_REGISTRY
-from snowflake_semantic_tools.domain.plan.selectors import Selectable
 
 LIST_OUTPUTS = ("table", "plain", "json", "yaml", "csv")
 
@@ -64,14 +63,12 @@ def list_command(
     states = tuple(sorted(target_dir(paths.project_dir).glob(STATE_FILE_GLOB)))
     state = StateFileStore(states[0]).read_local() if len(states) == 1 else None
     universe = manifest_universe(manifest)
-    chosen = _chosen(selected, universe)
-    left_out = _chosen(excluded, universe) or frozenset()
+    scope = selection_scope(selected, excluded, universe)
     summaries = tuple(
         item
         for item in list_artifacts(manifest, state)
         if (artifact_type is None or split_artifact_key(item.key)[0] == artifact_type)
-        and (chosen is None or item.key in chosen)
-        and item.key not in left_out
+        and scope.covers(split_artifact_key(item.key)[0], item.key)
     )
     items = [_item(item, manifest.artifacts[item.key].source_files if long_format else None) for item in summaries]
     data = {"type": artifact_type, "items": items, "count": len(items)}
@@ -81,16 +78,6 @@ def list_command(
         human=lambda: _print_summaries(summaries, long_format),
         rows=items,
     )
-
-
-def _chosen(values: tuple[str, ...], universe: tuple[Selectable, ...]) -> frozenset[str] | None:
-    """Return the keys the selectors name, a type expanding to its artifacts; None without selectors."""
-    if not values:
-        return None
-    types, keys = selection(values, universe)
-    named = set(keys or ())
-    named.update(item.key for item in universe if types and item.type in types)
-    return frozenset(named)
 
 
 def _item(summary: ArtifactSummary, source_files: tuple[str, ...] | None) -> dict[str, object]:

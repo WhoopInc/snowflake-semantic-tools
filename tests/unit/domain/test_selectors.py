@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 
 from snowflake_semantic_tools.domain.diagnostics import Diagnostic
-from snowflake_semantic_tools.domain.plan.selectors import Selectable, Selection, resolve_selectors
+from snowflake_semantic_tools.domain.plan.selectors import Selectable, Selection, SelectionScope, resolve_selectors
 
 TYPES = ("semantic_view", "agent", "tool")
 UNIVERSE = (
@@ -23,7 +23,7 @@ def test_names_globs_types_paths_and_keys_resolve_against_the_compiled_artifacts
     assert _resolve() == Selection(None, None)
     assert _resolve("ORDERS") == Selection(None, frozenset(("semantic_view:orders", "agent:orders")))
     assert _resolve("d*") == Selection(None, frozenset(("tool:docs",)))
-    assert _resolve("nothing*") == Selection(None, None)
+    assert _resolve("nothing*") == Selection(None, frozenset())
     # A plain name nothing compiled is still a view's key, so a deleted view can be pruned.
     assert _resolve("deleted") == Selection(None, frozenset(("semantic_view:deleted",)))
     assert _resolve("type:Agent", "tool:Docs") == Selection(frozenset(("agent",)), frozenset(("tool:docs",)))
@@ -83,3 +83,20 @@ def test_a_state_selector_without_state_and_a_typed_glob_are_refused() -> None:
     assert isinstance(without, Diagnostic) and without.message == "selector 'state:modified' requires --state"
     glob = _resolve("tool:d*")
     assert isinstance(glob, Diagnostic) and glob.code == "SST-PRT102"
+
+
+def test_a_selection_names_by_type_or_key_and_expands_its_types() -> None:
+    by_type = Selection(frozenset(("agent",)), frozenset(("tool:docs",)))
+    assert by_type.names("agent", "agent:orders") and by_type.names("tool", "tool:docs")
+    assert not by_type.names("semantic_view", "semantic_view:orders")
+    assert by_type.keys_in(UNIVERSE) == frozenset(("agent:orders", "tool:docs"))
+    assert Selection(None, None).keys_in(UNIVERSE) == frozenset()
+
+
+def test_one_scope_covers_selected_less_excluded_and_nothing_named_selects_nothing() -> None:
+    assert SelectionScope().covers("tool", "tool:docs")
+    excluding = SelectionScope(excluded=Selection(frozenset(("tool",)), None))
+    assert not excluding.covers("tool", "tool:docs") and excluding.covers("agent", "agent:orders")
+    named_nothing = _resolve("nothing*")
+    assert isinstance(named_nothing, Selection)
+    assert not SelectionScope(named_nothing).covers("tool", "tool:docs")
