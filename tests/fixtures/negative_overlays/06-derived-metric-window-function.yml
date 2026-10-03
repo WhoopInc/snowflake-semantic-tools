@@ -1,0 +1,13 @@
+---
+# A derived metric carrying a window: block.
+snowflake_metrics:
+  - name: windowed_derived
+    derived: true
+    description: |-
+      A derived metric cannot be a window function metric.
+    expr: "DIV0({{ metric('total_revenue') }}, {{ metric('order_count') }})"
+    window:
+      partition_by_excluding:
+        - "{{ ref('customers', 'first_ordered_at') }}"
+      order_by:
+        - ref: "{{ ref('customers', 'first_ordered_at') }}"

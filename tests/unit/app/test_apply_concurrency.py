@@ -336,9 +336,9 @@ def test_a_heartbeat_that_cannot_reach_snowflake_keeps_trying() -> None:
 def test_a_stale_local_lock_broken_is_reported_with_its_holder() -> None:
     port, store = InMemorySnowflake(), InMemoryStateStore()
     store.locked, store.holder, store.stale = True, "old-run", True
-    acquired, reported = RunLease(store, port, STATE_TABLE, "verify", LockClaim("run-a"), FAST).acquire(
-        break_stale=True
-    )
+    lease = RunLease(store, port, STATE_TABLE, "verify", LockClaim("run-a"), FAST)
+    acquired, reported = lease.acquire(break_stale=True)
+    lease.release()
     assert acquired and [(item.code, item.message) for item in reported] == [
         ("SST-APL010", "broke a stale lock held by old-run")
     ]

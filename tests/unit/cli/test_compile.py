@@ -168,8 +168,7 @@ def test_compile_selection_keeps_the_canonical_manifest_full(tmp_path: Path) -> 
     import shutil
 
     project = tmp_path / "project"
-    shutil.copytree(FIXTURE, project)
-    shutil.rmtree(project / "target", ignore_errors=True)
+    shutil.copytree(FIXTURE, project, ignore=shutil.ignore_patterns("target"))
     result = CliRunner().invoke(
         cli,
         [

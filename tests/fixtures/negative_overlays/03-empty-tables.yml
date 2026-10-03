@@ -1,0 +1,8 @@
+---
+# A table-scoped metric whose tables: is present and empty.
+snowflake_metrics:
+  - name: empty_tables_metric
+    tables: []
+    description: |-
+      Names no table.
+    expr: "COUNT(*)"

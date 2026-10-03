@@ -45,6 +45,9 @@ htmlcov/
 .tox/
 .nox/
 .coverage*
+# mutmut's working copy, and the coverage report the ratchet reads
+mutants/
+coverage.json
 .cache
 nosetests.xml
 coverage.xml

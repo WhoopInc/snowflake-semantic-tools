@@ -88,21 +88,38 @@ poetry run pre-commit install   # optional: the CI gates and file checks on ever
 poetry run sst --version
 ```
 
+### Changing dependencies
+
+`poetry.lock` must match `pyproject.toml`. After adding, removing, or re-pinning a dependency in
+`pyproject.toml`, regenerate the lock and commit both files together:
+
+```bash
+poetry lock
+```
+
+CI checks this first (`poetry check --lock`) and fails with that instruction when the lock is out of
+date. The lock on this branch predates the dev dependencies added for the hardening work (property
+tests, parallel runs, mutation testing, security scans, the per-test timeout), so it must be
+regenerated, on a machine that can reach PyPI, before CI can install.
+
 ### Running the Gates
 
 These are the checks `.github/workflows/test-and-lint.yml` runs on every pull request:
 
 ```bash
-poetry run pytest tests/ -n auto
+# The suite, with coverage over the whole of it, then the per-layer ratchet against
+# tests/coverage_baseline.json: line and branch coverage per layer may rise, never fall
+poetry run pytest tests/ -n auto --cov=snowflake_semantic_tools --cov-branch --cov-report=json:coverage.json
+poetry run python -m tests.helpers.coverage_ratchet check --coverage-json coverage.json
+poetry run coverage report --include='snowflake_semantic_tools/adapters/*' --fail-under=90
 
-# Branch-coverage floors, each measured on its own test paths; adapters' on the whole suite
+# Branch-coverage floors, each measured on its own test paths
 poetry run pytest -q --cov=snowflake_semantic_tools.domain --cov-branch --cov-fail-under=100 \
   tests/unit/domain tests/unit/test_render_semantic_view.py
 poetry run pytest -q --cov=snowflake_semantic_tools.app --cov-branch --cov-fail-under=95 \
   tests/unit/app tests/unit/test_compile_use_case.py tests/unit/test_manifest_v1.py
 poetry run pytest -q --cov=snowflake_semantic_tools.cli --cov-branch --cov-fail-under=90 \
   tests/unit/cli
-poetry run pytest -q -n auto --cov=snowflake_semantic_tools.adapters --cov-branch --cov-fail-under=90 tests/
 
 poetry run mypy snowflake_semantic_tools tests   # strict
 poetry run ruff format --check snowflake_semantic_tools/ tests/
@@ -110,6 +127,35 @@ poetry run ruff check snowflake_semantic_tools/ tests/
 poetry run lint-imports         # ring boundaries
 poetry run sst docs --check     # generated reference pages are current
 ```
+
+A coverage number that rises can be locked in with `coverage_ratchet raise`, which only ever moves
+a number up. Lowering one is an edit to `tests/coverage_baseline.json` in the pull request that
+needs it, where a reviewer sees it.
+
+Every test has a 120-second timeout (`pytest-timeout`, configured in `pyproject.toml`), so a test
+that deadlocks fails with every thread's stack rather than hanging the run. A test also fails if a
+thread it started is still running after it returns.
+
+### Tests against Snowflake
+
+Tests marked `live` connect to a real account and are deselected by default.
+`.github/workflows/slow.yml` runs them on every same-repository pull request; a fork's pull request
+gets no secrets, so the job is skipped there. To run them yourself, point them at an account with a
+key-pair user and a role that may create schemas in one scratch database:
+
+```bash
+export SST_TEST_SNOWFLAKE_ACCOUNT=... SST_TEST_SNOWFLAKE_USER=... SST_TEST_SNOWFLAKE_ROLE=...
+export SST_TEST_SNOWFLAKE_WAREHOUSE=... SST_TEST_SNOWFLAKE_DATABASE=...
+export SST_TEST_SNOWFLAKE_PRIVATE_KEY_PATH=~/.ssh/sst_test.p8
+poetry run pytest -m live tests/contract_live tests/integration tests/e2e
+```
+
+Each run creates its own `SST_IT_<UTC timestamp>_<run>_<worker>` schemas and drops them when it
+ends; `python -m tests.helpers.sweep_scratch --older-than-hours 6` drops any a killed run left
+behind, and never touches a schema without SST's marker comment. Without an account the tests skip;
+with `--require-snowflake` they fail instead, which is how CI runs them. Setting
+`SST_TEST_SNOWFLAKE_GRANTEE_ROLE` to a role the CI role may grant to adds the check that replacing
+a view keeps its grants.
 
 [tests/README.md](tests/README.md) describes the suite, the reference project, and the goldens.
 

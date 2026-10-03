@@ -20,8 +20,8 @@ MANIFEST = DBT_MANIFEST
 
 def project_copy(tmp_path: Path) -> Path:
     project = tmp_path / "project"
-    shutil.copytree(FIXTURE, project)
-    shutil.rmtree(project / "target", ignore_errors=True)
+    # Other tests compile the fixture in place, so its target/ may change while this copies.
+    shutil.copytree(FIXTURE, project, ignore=shutil.ignore_patterns("target"))
     config = project / "sst_config.yml"
     config.write_text(
         config.read_text(encoding="utf-8")

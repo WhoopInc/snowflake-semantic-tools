@@ -1,0 +1,12 @@
+---
+# A verified query with both sql: and sql_file:.
+snowflake_verified_queries:
+  - name: both_sql_forms
+    tables:
+      - orders
+    description: |-
+      Carries an inline query and a sidecar file.
+    question: "How many orders are there?"
+    sql: |-
+      SELECT COUNT(*) AS order_count FROM orders AS orders
+    sql_file: sql/product_mix_by_type.sql

@@ -41,6 +41,15 @@ jobs:
           virtualenvs-create: true
           virtualenvs-in-project: true
 
+      # poetry.lock must be regenerated (`poetry lock`) whenever pyproject.toml's dependencies
+      # change; say so here rather than let `poetry install` fail further down.
+      - name: Check that poetry.lock matches pyproject.toml
+        run: |
+          poetry check --lock || {
+            echo "::error::poetry.lock is out of date with pyproject.toml. Regenerate it with: poetry lock"
+            exit 1
+          }
+
       - name: Load cached venv
         id: cached-poetry-dependencies
         uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
@@ -54,9 +63,25 @@ jobs:
       - name: Install project
         run: poetry install --no-interaction
 
-      # Unit, contract, and diagnostic-code guard tests. None connects to Snowflake.
-      - name: Run tests
-        run: poetry run pytest tests/ -v -n auto
+      # Unit, contract, end-to-end (the offline negative corpus) and diagnostic-code guard tests,
+      # measured for coverage in the same run. Tests marked `live` are deselected by default;
+      # slow.yml runs them against Snowflake. pyproject.toml's per-test timeout fails a test that
+      # hangs, with every thread's stack, instead of letting the job run until GitHub kills it.
+      - name: Run tests with coverage
+        run: >-
+          poetry run pytest tests/ -v -n auto
+          --cov=snowflake_semantic_tools --cov-branch
+          --cov-report=term --cov-report=json:coverage.json
+
+      # Per-layer line and branch coverage over the whole suite may not fall below
+      # tests/coverage_baseline.json. Lowering a number is an edit to that file, in review.
+      - name: Check that coverage did not fall
+        run: poetry run python -m tests.helpers.coverage_ratchet check --coverage-json coverage.json
+
+      - name: Check adapters coverage
+        run: >-
+          poetry run coverage report --include='snowflake_semantic_tools/adapters/*'
+          --fail-under=90 --skip-covered
 
       - name: Check domain coverage
         run: >-
@@ -75,13 +100,6 @@ jobs:
           poetry run pytest -q --cov=snowflake_semantic_tools.cli --cov-branch
           --cov-report=term --cov-fail-under=90
           tests/unit/cli
-
-      # A ratchet, measured over the whole suite: raise the floor as coverage rises, never lower it.
-      - name: Check adapters coverage
-        run: >-
-          poetry run pytest -q -n auto --cov=snowflake_semantic_tools.adapters --cov-branch
-          --cov-report=term --cov-fail-under=90
-          tests/
 
       - name: Check strict typing
         run: poetry run mypy snowflake_semantic_tools tests

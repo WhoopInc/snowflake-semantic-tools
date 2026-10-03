@@ -42,6 +42,8 @@ types-PyYAML = "^6.0.12"
 ruff = ">=0.16"
 hypothesis = ">=6.100"
 pytest-xdist = ">=3.6"
+# A per-test timeout, so a deadlocked test fails with every thread's stack instead of hanging CI.
+pytest-timeout = ">=2.3"
 mutmut = ">=3.2"
 bandit = ">=1.8"
 pip-audit = ">=2.7"
@@ -98,6 +100,16 @@ skip_covered = true
 [tool.coverage.xml]
 output = "test-coverage-results/coverage.xml"
 
+# Mutation testing, over the pure ring only, by the nightly workflow. Report-only: a surviving
+# mutant is a test that executes a line without being able to fail on it. Run with
+# `mutmut run`, then `mutmut results`; it works in `mutants/`, which git ignores.
+[tool.mutmut]
+source_paths = ["snowflake_semantic_tools/"]
+only_mutate = ["snowflake_semantic_tools/domain/*"]
+pytest_add_cli_args = ["-p", "no:xdist", "-p", "no:cacheprovider", "-o", "addopts=", "-q"]
+pytest_add_cli_args_test_selection = ["tests/unit/domain", "tests/unit/test_render_semantic_view.py", "tests/codes"]
+mutate_only_covered_lines = true
+
 [tool.mypy]
 strict = true
 ignore_missing_imports = true
@@ -113,7 +125,18 @@ pythonpath = ["."]
 python_files = ["test_*.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
-addopts = "-v --tb=short --strict-markers --color=yes --durations=10"
+# `-m "not live"`: the tests that connect to Snowflake run only when asked for, with `-m live`
+# (the slow workflow does; a later `-m` replaces this one). Without credentials they skip, and
+# with `--require-snowflake` they fail instead, so a gate that cannot connect is never green.
+addopts = "-v --tb=short --strict-markers --color=yes --durations=10 -m 'not live'"
+markers = [
+    "live: connects to a real Snowflake account; deselected by default, run with -m live",
+    "e2e: drives the sst CLI over a whole project, as a user runs it",
+]
+# No test may run longer than this. The thread method dumps every thread's stack and ends the
+# worker, which a deadlocked lock wait cannot ignore the way it can ignore a signal.
+timeout = 120
+timeout_method = "thread"
 log_cli = true
 log_cli_level = "WARNING"
 log_cli_format = "%(asctime)s [%(levelname)s] %(message)s"

@@ -211,8 +211,10 @@ def _authored(kind: str) -> list[str]:
             for item in node:
                 walk(item)
 
-    # `target/` holds what compile wrote during other tests, not what a project authors.
-    for path in sorted(path for path in FIXTURES.rglob("*.yml") if "target" not in path.relative_to(FIXTURES).parts):
+    # `target/` holds what compile wrote during other tests, not what a project authors, and
+    # `negative_overlays/` is invalid on purpose.
+    skipped = {"target", "negative_overlays"}
+    for path in sorted(path for path in FIXTURES.rglob("*.yml") if not skipped & set(path.relative_to(FIXTURES).parts)):
         # The loader's own parser, which reads the 0.3 dialect's unquoted templates too.
         walk(parse_yaml_bytes(path.read_bytes(), str(path)).tree)
     if kind == "query":

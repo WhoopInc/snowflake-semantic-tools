@@ -11,7 +11,7 @@ poetry run pytest tests/unit/test_golden_ddl.py -q # one file
 poetry run pytest tests/ -q -k migrate_refs        # by name
 ```
 
-Run with the dev dependencies installed (`poetry install`): `test_ring_boundaries.py` calls the `lint-imports` script beside the running interpreter. The coverage floors and the other CI gates are in [CONTRIBUTING.md](../CONTRIBUTING.md#running-the-gates). There are no pytest markers; `pytest tests/` runs every test.
+Run with the dev dependencies installed (`poetry install`): `test_ring_boundaries.py` calls the `lint-imports` script beside the running interpreter. The coverage floors and the other CI gates are in [CONTRIBUTING.md](../CONTRIBUTING.md#running-the-gates). Two markers: `live` tests connect to Snowflake and are deselected by default (`-m live` runs them; see [CONTRIBUTING.md](../CONTRIBUTING.md#tests-against-snowflake)), and `e2e` tests drive the `sst` CLI in a subprocess over a whole project. Every other test runs offline under `pytest tests/`.
 
 ## Structure
 
@@ -35,10 +35,14 @@ tests/
 │   ├── catalog.json, allowlist/ # the catalog's declaration rows; shrink-only allowlists
 │   └── <area>/test_<code>.py    # a code's fires/silent pair
 ├── contract/                    # adapters against their ports: offline Snowflake ports, connector helpers, file stores, profile
+├── contract_live/               # live: the real connector against the same port contract, in a scratch schema
+├── integration/                 # live: apply in a real account; marker, metric query, re-plan, grants
+├── e2e/                         # the CLI end to end: the offline negative corpus, and the live lifecycle through smoke
 ├── fixtures/
 │   ├── reference_project/                # a dbt + SST project that uses every artifact type
 │   ├── reference_project_manifest.json   # its dbt manifest, so it compiles offline
-│   └── v1_dialect/                       # the 0.3 dialect corpus for `sst migrate refs`
+│   ├── v1_dialect/                       # the 0.3 dialect corpus for `sst migrate refs`
+│   └── negative_overlays/                # one bad file per case, laid over the reference project; expected.json
 ├── golden/
 │   ├── README.md
 │   └── expected/{ddl,agent,tool,eval,skill,plugin,profile,enrich}/

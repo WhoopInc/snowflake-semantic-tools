@@ -1,0 +1,15 @@
+---
+# Two metrics whose template expressions do not close.
+snowflake_metrics:
+  - name: unclosed_ref
+    tables:
+      - orders
+    description: |-
+      A ref() template with no closing braces.
+    expr: "SUM({{ ref('orders', 'order_total') )"
+  - name: unclosed_call
+    tables:
+      - orders
+    description: |-
+      A ref() call with no closing parenthesis.
+    expr: "SUM({{ ref('orders', 'order_total' }})"

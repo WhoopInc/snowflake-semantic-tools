@@ -1,0 +1,322 @@
+name: Nightly
+
+# Scheduled checks that are too slow, or too non-deterministic, to gate a pull request. None of
+# them blocks a merge: each reports, and a regression it finds is fixed in the next change.
+#
+#   mutation   mutmut over domain/; report-only, the results uploaded as an artifact
+#   property   the property tests under the deeper, randomised `nightly` Hypothesis profile
+#   recording  re-capture the recorded session and diff it against the committed recording
+#   sweep      drop SST_IT_* scratch schemas older than the window, the cleanup that survives a
+#              cancelled job or a killed runner
+#   evals      `sst test --suite evals` on the reference project, once its account is provisioned
+#
+# The jobs that connect skip themselves when the SST_TEST_SNOWFLAKE_* secrets are absent.
+on:
+  schedule:
+    - cron: "0 2 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  # Scratch schemas older than this are dead: the slow gate's budget is minutes, so a schema that
+  # has lived this long belongs to a job that died. Generous on purpose -- too short would drop a
+  # schema a long run is still using, and too long only costs storage the sweep report shows.
+  SWEEP_OLDER_THAN_HOURS: "6"
+
+jobs:
+  credentials:
+    name: Check for Snowflake credentials
+    runs-on: ubuntu-latest
+    outputs:
+      present: ${{ steps.check.outputs.present }}
+    steps:
+      - id: check
+        env:
+          ACCOUNT: ${{ secrets.SST_TEST_SNOWFLAKE_ACCOUNT }}
+        run: |
+          if [ -n "$ACCOUNT" ]; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::No Snowflake credentials: the sweep, recording and eval jobs are skipped."
+          fi
+
+  mutation:
+    name: Mutation testing over domain/
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: "3.11"
+
+      - name: Install Poetry
+        uses: snok/install-poetry@a783c322200f0519c7926aa6faa857c4e23e9263 # v1.4.2
+        with:
+          version: 2.2.1
+          virtualenvs-create: true
+          virtualenvs-in-project: true
+
+      - name: Install dependencies
+        run: poetry install --no-interaction
+
+      # [tool.mutmut] in pyproject.toml scopes the run to domain/ and the tests that cover it.
+      # Report-only: the step's own exit status is recorded, never acted on.
+      - name: Run mutmut
+        env:
+          HYPOTHESIS_PROFILE: ci
+        run: |
+          poetry run mutmut run --max-children 4 || echo "::warning::mutmut exited $?"
+          poetry run mutmut export-cicd-stats || true
+          poetry run mutmut results > mutants/mutmut-results.txt || true
+          tail -n 20 mutants/mutmut-results.txt || true
+
+      - name: Upload mutation results
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: mutmut-results
+          path: |
+            mutants/mutmut-cicd-stats.json
+            mutants/mutmut-results.txt
+          if-no-files-found: warn
+
+  property:
+    name: Property tests, nightly profile
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      HYPOTHESIS_PROFILE: nightly
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: "3.11"
+
+      - name: Install Poetry
+        uses: snok/install-poetry@a783c322200f0519c7926aa6faa857c4e23e9263 # v1.4.2
+        with:
+          version: 2.2.1
+          virtualenvs-create: true
+          virtualenvs-in-project: true
+
+      - name: Install dependencies
+        run: poetry install --no-interaction
+
+      - name: Run the suite under the nightly Hypothesis profile
+        run: poetry run pytest -q -n auto tests/
+
+  sweep:
+    name: Sweep stale scratch schemas
+    needs: credentials
+    if: needs.credentials.outputs.present == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      SST_TEST_SNOWFLAKE_ACCOUNT: ${{ secrets.SST_TEST_SNOWFLAKE_ACCOUNT }}
+      SST_TEST_SNOWFLAKE_USER: ${{ secrets.SST_TEST_SNOWFLAKE_USER }}
+      SST_TEST_SNOWFLAKE_ROLE: ${{ secrets.SST_TEST_SNOWFLAKE_ROLE }}
+      SST_TEST_SNOWFLAKE_WAREHOUSE: ${{ secrets.SST_TEST_SNOWFLAKE_WAREHOUSE }}
+      SST_TEST_SNOWFLAKE_DATABASE: ${{ secrets.SST_TEST_SNOWFLAKE_DATABASE }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: "3.11"
+
+      - name: Install Poetry
+        uses: snok/install-poetry@a783c322200f0519c7926aa6faa857c4e23e9263 # v1.4.2
+        with:
+          version: 2.2.1
+          virtualenvs-create: true
+          virtualenvs-in-project: true
+
+      - name: Install dependencies
+        run: poetry install --no-interaction
+
+      - name: Write the Snowflake private key
+        env:
+          PRIVATE_KEY: ${{ secrets.SST_TEST_SNOWFLAKE_PRIVATE_KEY }}
+        run: |
+          key_path="$RUNNER_TEMP/sst_test_snowflake.p8"
+          umask 077
+          printf '%s\n' "$PRIVATE_KEY" > "$key_path"
+          echo "SST_TEST_SNOWFLAKE_PRIVATE_KEY_PATH=$key_path" >> "$GITHUB_ENV"
+
+      # Drops only schemas named SST_IT_<stamp>_... that carry SST's marker comment, so nothing
+      # a person or another pipeline created is in reach. Anything it reports dropping on a night
+      # when every slow gate was green is a job that died unnoticed.
+      - name: Sweep
+        run: poetry run python -m tests.helpers.sweep_scratch --older-than-hours "$SWEEP_OLDER_THAN_HOURS"
+
+      - name: Remove the Snowflake private key
+        if: always()
+        run: rm -f "$RUNNER_TEMP/sst_test_snowflake.p8"
+
+  recording:
+    name: Re-capture the recorded session
+    needs: credentials
+    if: needs.credentials.outputs.present == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      SST_TEST_SNOWFLAKE_ACCOUNT: ${{ secrets.SST_TEST_SNOWFLAKE_ACCOUNT }}
+      SST_TEST_SNOWFLAKE_USER: ${{ secrets.SST_TEST_SNOWFLAKE_USER }}
+      SST_TEST_SNOWFLAKE_ROLE: ${{ secrets.SST_TEST_SNOWFLAKE_ROLE }}
+      SST_TEST_SNOWFLAKE_WAREHOUSE: ${{ secrets.SST_TEST_SNOWFLAKE_WAREHOUSE }}
+      SST_TEST_SNOWFLAKE_DATABASE: ${{ secrets.SST_TEST_SNOWFLAKE_DATABASE }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: "3.11"
+
+      - name: Install Poetry
+        uses: snok/install-poetry@a783c322200f0519c7926aa6faa857c4e23e9263 # v1.4.2
+        with:
+          version: 2.2.1
+          virtualenvs-create: true
+          virtualenvs-in-project: true
+
+      - name: Install dependencies
+        run: poetry install --no-interaction
+
+      - name: Write the Snowflake private key
+        env:
+          PRIVATE_KEY: ${{ secrets.SST_TEST_SNOWFLAKE_PRIVATE_KEY }}
+        run: |
+          key_path="$RUNNER_TEMP/sst_test_snowflake.p8"
+          umask 077
+          printf '%s\n' "$PRIVATE_KEY" > "$key_path"
+          echo "SST_TEST_SNOWFLAKE_PRIVATE_KEY_PATH=$key_path" >> "$GITHUB_ENV"
+
+      # A difference means Snowflake's answers moved: the project and the schema it is captured
+      # in are fixed. The capture is uploaded either way, so a reviewer can commit it.
+      - name: Capture and compare
+        run: poetry run python -m tests.helpers.session_recorder --out recording/live_project.json
+
+      - name: Upload the capture
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: recorded-session
+          path: recording/live_project.json
+          if-no-files-found: warn
+
+      - name: Remove the Snowflake private key
+        if: always()
+        run: rm -f "$RUNNER_TEMP/sst_test_snowflake.p8"
+
+  evals:
+    name: Evals on the reference project
+    needs: credentials
+    # Agents and evals need privileges the scratch role does not hold by default, and the
+    # reference project's tools must map the `verify` target. Set the repository variable
+    # SST_EVALS_ENABLED to "true" once the account provides both.
+    if: needs.credentials.outputs.present == 'true' && vars.SST_EVALS_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      HYPOTHESIS_PROFILE: ci
+      SST_TEST_SNOWFLAKE_ACCOUNT: ${{ secrets.SST_TEST_SNOWFLAKE_ACCOUNT }}
+      SST_TEST_SNOWFLAKE_USER: ${{ secrets.SST_TEST_SNOWFLAKE_USER }}
+      SST_TEST_SNOWFLAKE_ROLE: ${{ secrets.SST_TEST_SNOWFLAKE_ROLE }}
+      SST_TEST_SNOWFLAKE_WAREHOUSE: ${{ secrets.SST_TEST_SNOWFLAKE_WAREHOUSE }}
+      SST_TEST_SNOWFLAKE_DATABASE: ${{ secrets.SST_TEST_SNOWFLAKE_DATABASE }}
+      SST_EVALS_SCHEMA: ${{ vars.SST_EVALS_SCHEMA }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: "3.11"
+
+      - name: Install Poetry
+        uses: snok/install-poetry@a783c322200f0519c7926aa6faa857c4e23e9263 # v1.4.2
+        with:
+          version: 2.2.1
+          virtualenvs-create: true
+          virtualenvs-in-project: true
+
+      - name: Install dependencies
+        run: poetry install --no-interaction
+
+      - name: Write the Snowflake private key
+        env:
+          PRIVATE_KEY: ${{ secrets.SST_TEST_SNOWFLAKE_PRIVATE_KEY }}
+        run: |
+          key_path="$RUNNER_TEMP/sst_test_snowflake.p8"
+          umask 077
+          printf '%s\n' "$PRIVATE_KEY" > "$key_path"
+          echo "SST_TEST_SNOWFLAKE_PRIVATE_KEY_PATH=$key_path" >> "$GITHUB_ENV"
+
+      # The fixture's own `verify` target signs in through a browser; this one, with the same
+      # name, signs in with the key. Every value is an env_var reference, so the file holds no
+      # credential.
+      - name: Write a key-pair profile for the verify target
+        run: |
+          mkdir -p "$RUNNER_TEMP/profiles"
+          cat > "$RUNNER_TEMP/profiles/profiles.yml" <<'PROFILE'
+          sst_reference_impl:
+            target: verify
+            outputs:
+              verify:
+                type: snowflake
+                authenticator: snowflake_jwt
+                account: "{{ env_var('SST_TEST_SNOWFLAKE_ACCOUNT') }}"
+                user: "{{ env_var('SST_TEST_SNOWFLAKE_USER') }}"
+                private_key_path: "{{ env_var('SST_TEST_SNOWFLAKE_PRIVATE_KEY_PATH') }}"
+                role: "{{ env_var('SST_TEST_SNOWFLAKE_ROLE') }}"
+                warehouse: "{{ env_var('SST_TEST_SNOWFLAKE_WAREHOUSE') }}"
+                database: "{{ env_var('SST_TEST_SNOWFLAKE_DATABASE') }}"
+                schema: "{{ env_var('SST_EVALS_SCHEMA') }}"
+                threads: 4
+          PROFILE
+
+      - name: Run the eval suite
+        run: >-
+          poetry run sst --output json
+          --project-dir tests/fixtures/reference_project
+          --profiles-dir "$RUNNER_TEMP/profiles"
+          --manifest tests/fixtures/reference_project_manifest.json
+          test --suite evals --target verify
+          > evals.json
+
+      - name: Upload eval results
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: eval-results
+          path: evals.json
+          if-no-files-found: warn
+
+      - name: Remove the Snowflake private key
+        if: always()
+        run: rm -f "$RUNNER_TEMP/sst_test_snowflake.p8"
