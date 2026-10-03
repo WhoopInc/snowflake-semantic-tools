@@ -25,9 +25,8 @@ import threading
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
-from threading import RLock
 
-from snowflake_semantic_tools.adapters.snowflake.connector import SnowflakeConnector
+from tests.helpers.snowflake_fake.driver import FakeDriverConnector, FakeDriverSession, Rows
 
 LOCK = "DB.S.SST_STATE_LOCK"
 STATE = "DB.S.SST_STATE"
@@ -265,37 +264,7 @@ def _delete(matched: set[_Key]) -> _Write:
     return write
 
 
-class _Cursor:
-    def __init__(self, tables: LockTables, connection: int) -> None:
-        self._tables = tables
-        self._connection = connection
-        self.description: tuple[tuple[str], ...] | None = None
-        self.rowcount = 0
-        self.sfqid = "query-id"
-        self._rows: list[tuple[object, ...]] = []
-
-    def execute(self, statement: str, params: Sequence[object] | None = None) -> None:
-        rows, self.rowcount = self._tables.execute(self._connection, statement, tuple(params or ()))
-        self._rows = rows or []
-        self.description = (("RUN_ID",),) if rows is not None else None
-
-    def fetchall(self) -> list[tuple[object, ...]]:
-        return self._rows
-
-    def close(self) -> None:
-        pass
-
-
-class _Connection:
-    def __init__(self, tables: LockTables, connection: int) -> None:
-        self._tables = tables
-        self._number = connection
-
-    def cursor(self, *args: object) -> _Cursor:
-        return _Cursor(self._tables, self._number)
-
-
-class LockTablesConnector(SnowflakeConnector):
+class LockTablesConnector(FakeDriverConnector):
     """A connector on its own connection to `tables`: two of them are two Snowflake sessions."""
 
     _count = 0
@@ -303,9 +272,12 @@ class LockTablesConnector(SnowflakeConnector):
     def __init__(self, tables: LockTables) -> None:
         LockTablesConnector._count += 1
         self.number = LockTablesConnector._count
-        self._lock = RLock()
-        self._scoped_guard = threading.Lock()
-        self._connection = _Connection(tables, self.number)  # type: ignore[assignment]  # a double, not a driver
+        number = self.number
+
+        def respond(statement: str, binds: tuple[object, ...]) -> tuple[Rows | None, int]:
+            return tables.execute(number, statement, binds)
+
+        super().__init__(FakeDriverSession(respond=respond))
 
     def object_exists(self, object_type: str, qualified_name: object) -> bool:
         return True

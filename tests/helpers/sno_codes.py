@@ -8,11 +8,8 @@ own failures are SNO codes.
 
 from __future__ import annotations
 
-from threading import RLock
-
 from snowflake.connector.errors import ProgrammingError
 
-from snowflake_semantic_tools.adapters.snowflake.connector import SnowflakeConnector
 from snowflake_semantic_tools.app.apply import ApplyArtifacts
 from snowflake_semantic_tools.app.enrich import EnrichProject, EnrichRequest
 from snowflake_semantic_tools.domain.diagnostics import Diagnostic
@@ -27,29 +24,7 @@ from tests.helpers.clocks import FixedClock
 from tests.helpers.enrich_ports import InMemoryFiles, ScriptedEnrich
 from tests.helpers.project_inputs import InMemoryProjectInputs
 from tests.helpers.snowflake_fake import FakeSnowflake
-
-
-class _RefusingSession:
-    """A driver session whose every statement raises one error."""
-
-    def __init__(self, error: BaseException) -> None:
-        self.error = error
-        self.sfqid = "query-id"
-
-    def cursor(self, *args: object) -> _RefusingSession:
-        return self
-
-    def execute(self, statement: str, params: object = None) -> None:
-        raise self.error
-
-    def close(self) -> None:
-        pass
-
-
-class _RefusingConnector(SnowflakeConnector):
-    def __init__(self, error: BaseException) -> None:
-        self._lock = RLock()
-        self._connection = _RefusingSession(error)  # type: ignore[assignment]  # a double, not a driver connection
+from tests.helpers.snowflake_fake.driver import FakeDriverConnector, FakeDriverSession
 
 
 def driver_error(message: str, *, errno: int | None = None, sqlstate: str | None = None) -> ProgrammingError:
@@ -61,7 +36,9 @@ def driver_error(message: str, *, errno: int | None = None, sqlstate: str | None
 
 def driver_result(error: BaseException) -> ExecResult:
     """What the connector's `execute_script` returns when the driver raises `error`."""
-    return _RefusingConnector(error).execute_script((sql("CREATE SEMANTIC VIEW DB.SCHEMA.V"),))
+    return FakeDriverConnector(FakeDriverSession({"": error})).execute_script(
+        (sql("CREATE SEMANTIC VIEW DB.SCHEMA.V"),)
+    )
 
 
 def refusal(error: BaseException) -> list[Diagnostic]:

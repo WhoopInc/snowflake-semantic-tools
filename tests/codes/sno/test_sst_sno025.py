@@ -4,23 +4,19 @@ from __future__ import annotations
 
 import pytest
 
-from snowflake_semantic_tools.adapters.snowflake.connector import SnowflakeConnector
 from snowflake_semantic_tools.domain.diagnostics import Severity
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
 from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
-from snowflake_semantic_tools.domain.sql import Sql
+from tests.helpers.snowflake_fake.driver import FakeDriverConnector, FakeDriverSession
 
 TABLE = QualifiedName.parse("DB.SCH.ORDERS")
 
 
-class _Described(SnowflakeConnector):
+class _Described(FakeDriverConnector):
     """A connector whose table exists, and whose DESCRIBE TABLE returns the rows given."""
 
     def __init__(self, rows: dict[str, tuple[dict[str, object], ...]]) -> None:
-        self._rows = rows
-
-    def _dict_rows(self, sql: Sql) -> tuple[dict[str, object], ...]:
-        return next((rows for prefix, rows in self._rows.items() if str(sql).startswith(prefix)), ())
+        super().__init__(FakeDriverSession(rows=rows))
 
     def object_exists(self, object_type: str, qualified_name: QualifiedName) -> bool:
         return True
