@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Generic, TypeVar
 
 from snowflake_semantic_tools.adapters.errors import ProjectError
-from snowflake_semantic_tools.adapters.paths import create_within, write_within
+from snowflake_semantic_tools.adapters.paths import create_within, remove_within, write_within
 from snowflake_semantic_tools.domain.diagnostics import D
 from snowflake_semantic_tools.domain.model.config_schema import CONFIG_FILE
 from snowflake_semantic_tools.domain.plan.recorded import RecordedObservation
@@ -231,7 +231,7 @@ class StateFileStore(JsonStore[State]):
         with self._removing(instance) as removable:
             if not removable:
                 return False, self._lock_status(now)[0], False
-            self._lock_path.unlink()
+            remove_within(self.root, self._lock_path)
             if self._create_lock(payload):
                 return True, holder, True
         return False, self._lock_status(now)[0], False
@@ -276,7 +276,7 @@ class StateFileStore(JsonStore[State]):
         try:
             yield self._lock_bytes() == instance
         finally:
-            token.unlink(missing_ok=True)
+            remove_within(self.root, token)
 
     def _lock_status(self, now: datetime) -> tuple[str | None, bool]:
         """Read the lock file's holder, and whether it is stale; `(None, False)` when it cannot be read."""
@@ -293,7 +293,7 @@ class StateFileStore(JsonStore[State]):
             return
         with self._removing(instance) as removable:
             if removable:
-                self._lock_path.unlink(missing_ok=True)
+                remove_within(self.root, self._lock_path)
 
 
 def _lock_status(instance: bytes, now: datetime, ttl_seconds: int) -> tuple[str | None, bool]:
