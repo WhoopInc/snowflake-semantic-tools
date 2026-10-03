@@ -165,9 +165,9 @@ spec:
   # SKILLS
   # =========================================================================
   skills:
-    - # A skill this project publishes. `name` is required for a SKILL-type
+      # A skill this project publishes. `name` is required for a SKILL-type
       # extension (SST-VAL540) and optional for a plugin.
-      name: jaffle-semantics
+    - name: jaffle-semantics
       source:
         # A versioned Cortex Extension; a STAGE source is SST-VAL539.
         type: CORTEX_EXTENSION
@@ -177,9 +177,9 @@ spec:
         # No `version:`: SST pins the published content alias
         # (`skills.+version_prefix` plus 12 hex characters of the bundle digest).
         # An authored version is SST-VAL838; a sha_version pin is SST-VAL839.
-    - # A consumed extension: another project publishes it, so this reference
+      # A consumed extension: another project publishes it, so this reference
       # pins a version itself. No version, or LIVE, is SST-VAL538.
-      name: partner-glossary
+    - name: partner-glossary
       source:
         type: CORTEX_EXTENSION
         path: "{{ extension('partner-glossary') }}"

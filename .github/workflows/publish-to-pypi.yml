@@ -13,8 +13,18 @@ permissions:
   contents: read
 
 jobs:
+  # The whole fast gate -- tests, exit-code conformance, strict typing, lint, ring boundaries,
+  # generated docs, bandit, semgrep, pip-audit and the coverage floors and ratchet -- from the
+  # same workflow a pull request runs, so a release cannot pass a lighter gate than a merge.
+  fast-gate:
+    name: Fast gate
+    permissions:
+      contents: read
+    uses: ./.github/workflows/test-and-lint.yml
+
   build:
-    name: Build and test the distributions
+    name: Build the distributions
+    needs: fast-gate
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -67,10 +77,6 @@ jobs:
           fi
 
           echo "Tag and pyproject.toml versions match."
-
-      - name: Run the tests
-        # Unit and contract tests; neither connects to Snowflake.
-        run: poetry run pytest tests/ -n auto
 
       - name: Build source and wheel distributions
         # poetry build calls the same poetry-core backend as python -m build, without
