@@ -11,6 +11,7 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 
 from snowflake_semantic_tools.adapters.snowflake.connector.session import Session
+from snowflake_semantic_tools.domain.diagnostics.signatures import SessionFailure, session_failure
 from snowflake_semantic_tools.domain.enrich import WarehouseColumn
 from snowflake_semantic_tools.domain.model.identifier import Identifier, QualifiedName
 from snowflake_semantic_tools.domain.ports.enrich import RelationProfilerPort
@@ -19,11 +20,6 @@ from snowflake_semantic_tools.domain.sql import Sql, ident, join, number, qname,
 
 # Columns sampled by one statement; a relation with more is sampled in several.
 COLUMNS_PER_QUERY = 50
-
-# What Snowflake reports for a database or object the role cannot see.
-_NOT_VISIBLE_ERRNO = 2003
-_NOT_VISIBLE_SQLSTATE = "02000"
-_NOT_VISIBLE_TEXT = "DOES NOT EXIST OR NOT AUTHORIZED"
 
 
 def columns_sql(relation: QualifiedName) -> Sql:
@@ -64,11 +60,8 @@ def distinct_values_sql(relation: QualifiedName, columns: Sequence[str], limit: 
 
 
 def _not_visible(error: SnowflakePortError) -> bool:
-    return (
-        error.errno == _NOT_VISIBLE_ERRNO
-        or error.sqlstate == _NOT_VISIBLE_SQLSTATE
-        or _NOT_VISIBLE_TEXT in str(error).upper()
-    )
+    """Report whether the signature table reads the error as a database or object the role cannot see."""
+    return session_failure(str(error), errno=error.errno, sqlstate=error.sqlstate) is SessionFailure.NOT_VISIBLE
 
 
 class ProfilerMethods(Session, RelationProfilerPort):

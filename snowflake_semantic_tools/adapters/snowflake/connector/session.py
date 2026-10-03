@@ -25,6 +25,7 @@ from snowflake.connector.cursor import SnowflakeCursor
 from snowflake.connector.errors import Error as DriverError
 
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic
+from snowflake_semantic_tools.domain.diagnostics.signatures import SessionFailure, session_failure
 from snowflake_semantic_tools.domain.model.identifier import SchemaScope
 from snowflake_semantic_tools.domain.model.lifecycle import ExecResult, ExecutionError, QueryResult
 from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
@@ -258,16 +259,12 @@ def scrubbed_message(exc: BaseException) -> str:
     return _KEY_FILE.sub(_REDACTED, message)
 
 
-# Snowflake's error numbers for a credential it rejected at login: a wrong password, an expired or
-# invalid token, a rejected key pair, and a failed SSO or MFA exchange.
-_AUTHENTICATION_ERRNOS = frozenset((390100, 390144, 390195, 390302, 390303, 390318, 390422))
-
-
 def _port_error(exc: Exception, *, connecting_to: str | None = None) -> SnowflakePortError:
     """Build the port error for a connector failure, with the diagnostic a command reports for it.
 
     The error keeps the failure's SQLSTATE, errno, and message, scrubbed by `scrubbed_message`;
-    nothing else of the failure is copied.
+    nothing else of the failure is copied. What the failure means is the signature table's
+    reading of it (`signatures.session_failure`), from its message, errno and SQLSTATE.
 
     Diagnostics:
         SST-PRT002: Snowflake rejected the session's credential while connecting.
@@ -277,25 +274,18 @@ def _port_error(exc: Exception, *, connecting_to: str | None = None) -> Snowflak
     """
     message = scrubbed_message(exc)
     sqlstate = getattr(exc, "sqlstate", None)
-    state = sqlstate or ""
-    upper = message.upper()
+    errno = getattr(exc, "errno", None)
+    failure = session_failure(message, errno=errno, sqlstate=sqlstate)
     diagnostic: Diagnostic | None = None
-    if connecting_to is not None and (
-        getattr(exc, "errno", None) in _AUTHENTICATION_ERRNOS or "INCORRECT USERNAME OR PASSWORD" in upper
-    ):
+    if connecting_to is not None and failure is SessionFailure.AUTHENTICATION:
         diagnostic = D("SST-PRT002", value=connecting_to)
     elif connecting_to is not None:
         diagnostic = D("SST-PRT001", value=connecting_to, detail=message)
-    elif state.startswith("08") or state in {"57014", "57P01"} or "TIMEOUT" in upper:
+    elif failure is SessionFailure.DEADLINE:
         diagnostic = D("SST-PRT003", detail=f"its deadline ({message})")
-    elif state.startswith("28") or state == "42501" or "INSUFFICIENT PRIVILEGES" in upper:
+    elif failure is SessionFailure.PRIVILEGE:
         diagnostic = D("SST-PRT004", value="the session's role", detail=f"a privilege the statement needs ({message})")
-    return SnowflakePortError(
-        message,
-        sqlstate=sqlstate,
-        errno=getattr(exc, "errno", None),
-        diagnostic=diagnostic,
-    )
+    return SnowflakePortError(message, sqlstate=sqlstate, errno=errno, diagnostic=diagnostic)
 
 
 def _require_ok(result: ExecResult, failure: str) -> None:
