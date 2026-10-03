@@ -114,11 +114,14 @@ class LoadCache:
     """The parses of files already read in this run, by resolved path and the SHA-256 of their bytes.
 
     A file is served from the cache only while its bytes are unchanged, so an edit between two
-    reads is always parsed again.
+    reads is always parsed again. Whether a read was served is progress, not a finding about the
+    project: it is noted only when `note_hits` asks, as `--verbose` does, so a run's diagnostics
+    never depend on how often SST read a file.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, *, note_hits: bool = False) -> None:
         self._parsed: dict[tuple[Path, str], ParsedYaml] = {}
+        self.note_hits = note_hits
 
     def get(self, path: Path, checksum: str) -> ParsedYaml | None:
         """Return the parse of `path` with these bytes, or None when it was not read with them."""
@@ -142,16 +145,21 @@ def _parsed(
         ProjectError: As `parse_document` raises; a file that does not parse is never cached.
 
     Diagnostics:
-        SST-LOD201: the parse came from the cache; the parse's own findings follow it.
+        SST-LOD201: the parse came from a cache that notes its hits; the parse's own findings
+            follow it.
     """
-    cached = cache.get(discovered.abs_path, checksum) if cache is not None else None
-    if cached is not None:
-        note = D("SST-LOD201", origin=Origin(discovered.path), file=discovered.path)
-        return cached, (note, *cached.diagnostics)
-    parsed = parse_document(raw_bytes, discovered.path)
-    if cache is not None:
+    if cache is None:
+        parsed = parse_document(raw_bytes, discovered.path)
+        return parsed, parsed.diagnostics
+    cached = cache.get(discovered.abs_path, checksum)
+    if cached is None:
+        parsed = parse_document(raw_bytes, discovered.path)
         cache.put(discovered.abs_path, checksum, parsed)
-    return parsed, parsed.diagnostics
+        return parsed, parsed.diagnostics
+    if not cache.note_hits:
+        return cached, cached.diagnostics
+    note = D("SST-LOD201", origin=Origin(discovered.path), file=discovered.path)
+    return cached, (note, *cached.diagnostics)
 
 
 def load_documents(

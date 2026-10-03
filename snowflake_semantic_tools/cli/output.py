@@ -324,6 +324,11 @@ def use_render_policy(policy: RenderPolicy) -> None:
     _POLICY[0] = policy
 
 
+def verbose_run() -> bool:
+    """Report whether this run was asked for detailed progress, `--verbose`."""
+    return _POLICY[0].verbose
+
+
 def render_diagnostics(diagnostics: Iterable[Diagnostic]) -> None:
     """Print the diagnostics on stderr as this run's render policy shows them, then their counts.
 

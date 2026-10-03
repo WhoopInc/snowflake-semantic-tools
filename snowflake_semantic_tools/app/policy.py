@@ -1,9 +1,9 @@
 """The project policy every command result is held to: severity overrides and the strict notices.
 
 `diagnostics.severity_overrides` changes the severity a code reports at, and so the outcome of a
-command whose exit follows its diagnostics. The first validate, plan, or apply of a project that
-declares `validation.strict: true` with no baseline says, once, how many warnings now block. Both
-read the run's resolved configuration, the one every other reader sees.
+command whose exit follows its diagnostics. A strict validate, plan, or apply of a project that
+declares `validation.strict: true`, has no baseline, and has not yet run under 1.0 says how many
+warnings now block. Both read the run's resolved configuration, the one every other reader sees.
 """
 
 from __future__ import annotations
@@ -52,6 +52,7 @@ def hold_to_policy(
     promoted: int,
     baselined: bool,
     notice_due: bool,
+    strict: bool | None = None,
 ) -> PolicyResult:
     """Apply the project's overrides to a command's diagnostics, and give the strict notice when due.
 
@@ -59,16 +60,21 @@ def hold_to_policy(
         gated: Whether the command's exit follows its diagnostics, so an override can change it.
         promoted: How many warnings strict mode made errors, which the notice reports.
         baselined: Whether the run read a baseline; the notice is for a project without one.
-        notice_due: Whether the notice has not yet been given for this project.
+        notice_due: Whether the project has not yet run under 1.0, as a recorded fact says: the
+            notice is given until it has, never from a record of the notice itself.
+        strict: `--strict` or `--no-strict` as given, None when neither was. The flag wins over
+            `validation.strict`, so a run the flag makes lenient gets no notice that warnings block.
 
     Diagnostics:
-        SST-CFG037: the project declares `validation.strict: true` and has no baseline; once.
+        SST-CFG037: the project declares `validation.strict: true`, the run is strict, the project
+            has no baseline, and it has not run under 1.0 before.
     """
     overrides = severity_overrides(config.tree)
     held = apply_overrides(diagnostics, overrides)
     blocks = held.has_errors if gated and overrides else None
-    strict = config_bool(config_block(config.tree.get("validation")).get("strict"))
-    if not (command in STRICT_COMMANDS and strict and not baselined and notice_due):
+    declared = config_bool(config_block(config.tree.get("validation")).get("strict"))
+    enforced = declared and strict is not False
+    if not (command in STRICT_COMMANDS and enforced and not baselined and notice_due):
         return PolicyResult(held, blocks, notice_given=False)
     notice = D("SST-CFG037", origin=Origin(config.file), subject="config:validation.strict", count=promoted)
     return PolicyResult(DiagnosticBag((notice, *held)), blocks, notice_given=True)

@@ -55,7 +55,7 @@ from snowflake_semantic_tools.cli.output import (
     resolve_invocation,
     use_render_policy,
 )
-from snowflake_semantic_tools.cli.policy import with_baseline, with_policy
+from snowflake_semantic_tools.cli.policy import ran_under_1_0, with_baseline, with_policy
 from snowflake_semantic_tools.cli.run_log import append_run_log
 from snowflake_semantic_tools.cli.wiring.project import target_dir
 from snowflake_semantic_tools.domain.diagnostics import D, DiagnosticBag, audit
@@ -208,6 +208,8 @@ class _Run:
         )
         reads = self.applies_baseline and self.config is not ConfigNeed.NONE
         baseline = _baseline(options) if reads else None
+        # Read before the body, which may write the manifest this asks about.
+        first_run = not ran_under_1_0(files.project_dir)
         result = self.body(**self._arguments(files))
         diagnostics, exit_code = with_policy(
             self.name,
@@ -217,6 +219,8 @@ class _Run:
             promoted=result.promoted,
             paths=files,
             baselined=baseline is not None,
+            strict=self.given.get("strict"),
+            first_run=first_run,
         )
         result = dataclasses.replace(result, diagnostics=diagnostics, exit_code=exit_code)
         _report(self.name, options, _with_baseline(result, baseline, files))
