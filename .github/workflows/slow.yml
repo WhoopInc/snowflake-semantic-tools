@@ -7,13 +7,17 @@ name: Slow gate
 # was cancelled before either could run.
 #
 # The trigger is `pull_request`, never `pull_request_target`: a fork's pull request gets no
-# repository secrets, so the gate job is skipped there and the fast gate in test-and-lint.yml is
-# what such a change gets until it is merged. When the secrets are configured, the tests run with
-# --require-snowflake, so a credential that stops working fails the job rather than skipping it.
+# repository secrets, and neither does a Dependabot pull request, so on those two the gate job is
+# skipped and the fast gate in test-and-lint.yml is what such a change gets until it is merged.
+# Everywhere else -- a same-repository pull request, a push to main, a release tag, a manual run --
+# missing credentials fail the gate rather than skip it, and the tests run with
+# --require-snowflake, so a credential that stops working fails the job as well.
 on:
   push:
     branches:
       - main
+    tags:
+      - "v*.*.*"
   pull_request:
   workflow_dispatch:
 
@@ -34,12 +38,22 @@ jobs:
       - id: check
         env:
           ACCOUNT: ${{ secrets.SST_TEST_SNOWFLAKE_ACCOUNT }}
+          EVENT: ${{ github.event_name }}
+          REPOSITORY: ${{ github.repository }}
+          HEAD_REPOSITORY: ${{ github.event.pull_request.head.repo.full_name }}
+          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
         run: |
           if [ -n "$ACCOUNT" ]; then
             echo "present=true" >> "$GITHUB_OUTPUT"
-          else
+          elif [ "$EVENT" = "pull_request" ] && [ "$HEAD_REPOSITORY" != "$REPOSITORY" ]; then
             echo "present=false" >> "$GITHUB_OUTPUT"
-            echo "::notice::No Snowflake credentials (a fork, or the secrets are not configured): the slow gate is skipped."
+            echo "::notice::A fork's pull request gets no secrets: the slow gate is skipped and runs once the change is merged."
+          elif [ "$EVENT" = "pull_request" ] && [ "$PR_AUTHOR" = "dependabot[bot]" ]; then
+            echo "present=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::A Dependabot pull request gets no repository secrets: the slow gate is skipped and runs once the change is merged."
+          else
+            echo "::error::The SST_TEST_SNOWFLAKE_* secrets are not configured, so the slow gate cannot run. Outside a fork's pull request it fails rather than skips."
+            exit 1
           fi
 
   slow:
