@@ -6,6 +6,7 @@ plan must still match what the project compiles and what the target holds.
 
 from __future__ import annotations
 
+import contextlib
 import dataclasses
 import socket
 from pathlib import Path
@@ -246,10 +247,13 @@ def _apply_plan(
     """
     ready = session.ready
     params = session.profile.connection_params
-    # Parallel workers each lease a connection of their own; one at a time, the run stays on `port`.
-    parallel = options.parallelism > 1 and options.on_failure is not FailurePolicy.STOP_ALL
+    # Changes run on connections leased from the pool, never on `port`, which keeps the plan
+    # reads, the run lock, and the state write; the heartbeat has a connection of its own.
     try:
-        with ConnectorPool(session.port, options.parallelism, lambda: project.open_connector(params)) as pool:
+        with (
+            ConnectorPool(options.parallelism, lambda: project.open_connector(params)) as pool,
+            contextlib.closing(project.open_connector(params)) as heartbeat,
+        ):
             apply_result = ApplyArtifacts(
                 session.port,
                 session.state_store,
@@ -259,7 +263,8 @@ def _apply_plan(
                 actor=session.profile.identity.role or "",
                 host=socket.gethostname(),
                 lifecycle_handlers=ready.lifecycle_handlers,
-                sessions=pool if parallel else None,
+                sessions=pool,
+                heartbeat=heartbeat,
             ).run(ready.changeset, ready.state, options)
     finally:
         session.port.close()

@@ -98,7 +98,7 @@ def test_remote_state_failure_does_not_publish_uncommitted_local_state() -> None
         del args, kwargs
         raise SnowflakePortError("state table unavailable")
 
-    port.write_state = fail_state  # type: ignore[method-assign]
+    port.write_state = fail_state  # type: ignore[method-assign, assignment]
     use_case, _, _, _ = runner(port, store)
 
     with pytest.raises(SnowflakePortError, match="state table unavailable"):
@@ -268,12 +268,18 @@ def test_apply_prune_requires_permission_and_marker_and_updates_state() -> None:
     port = InMemorySnowflake()
     port.markers[artifact.target.sql] = ownership
     use_case, _, _, _ = runner(port)
+    # The plan saw an entry the state table no longer holds: re-read under the lock, it refuses.
     missing_remote_row = use_case.run(
         changeset(prune),
         prior,
         ApplyOptions(allow_prune=True),
     )
-    assert missing_remote_row.success
+    assert [item.code for item in missing_remote_row.diagnostics] == ["SST-APL012"]
+    assert missing_remote_row.diagnostics[0].message == (
+        "target verify: its state in DB.SCHEMA.STATE changed since the plan"
+    )
+    assert not missing_remote_row.state_written and port.scripts == []
+    assert port.run_locks.rows == {}
 
 
 def test_apply_preflight_and_failure_policies_account_for_every_change() -> None:
@@ -848,13 +854,14 @@ def test_apply_prune_non_executable_and_observed_marker_state_paths() -> None:
     ownership = marker(artifact)
     live = observed(artifact, ownership=ownership)
     non_executable = replace(change(artifact, Action.PRUNE, live=live), prune_executable=False)
-    use_case, _, store, _ = runner()
     from snowflake_semantic_tools.domain.state import AppliedEntry
 
     recorded = AppliedEntry(
         artifact.fingerprint, artifact.target.sql, "now", "prior", "applied", artifact.fingerprint, "o" * 64
     )
     prior = replace(state(), applied=MappingProxyType({artifact.key: recorded}))
+    use_case, port, store, _ = runner()
+    port.remote_state = prior.applied
     skipped = use_case.run(changeset(non_executable), prior, ApplyOptions(allow_prune=True))
     assert skipped.outcomes[0].status is OutcomeStatus.SKIPPED
     # Nothing executes, but the retained entry moves to this manifest so the plan reconciles.
@@ -988,6 +995,10 @@ def test_a_retry_policy_without_attempts_fails_the_change_without_running_it() -
 
 class _LifecycleHandler:
     artifact_type = "virtual"
+
+    def for_session(self, session: object) -> _LifecycleHandler:
+        del session
+        return self
 
     def __init__(self) -> None:
         self.applied = False

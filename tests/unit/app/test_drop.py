@@ -37,6 +37,25 @@ def _drop(port: RecordedSnowflake, store: InMemoryStateStore | None = None) -> o
     )
 
 
+def test_a_drop_whose_lock_was_broken_before_it_forgets_leaves_state_to_the_new_holder() -> None:
+    port = _port(**{"semantic_view:orders": _entry(VIEW.sql)})
+    store = _cache("semantic_view:orders")
+    execute = port.execute_script
+
+    def broken_meanwhile(statements: object) -> object:
+        port.run_locks.now = 10_000.0
+        assert port.run_locks.acquire_run_lock(TABLE, "dev", LockClaim("rival"), break_stale=True).acquired
+        return execute(statements)  # type: ignore[arg-type]
+
+    port.execute_script = broken_meanwhile  # type: ignore[assignment, method-assign]
+    result = DropObject(port, store, FixedClock(), state_table=TABLE).run(REQUEST)
+    assert (result.outcome, result.forgotten, result.dropped) == ("dropped", (), True)
+    assert [(item.code, item.message) for item in result.diagnostics] == [
+        ("SST-APL011", "another run, which broke this run's lock holds the apply lock")
+    ]
+    assert set(port.state) == {"semantic_view:orders"} and store.writes == []
+
+
 def test_a_drop_runs_one_statement_and_forgets_every_entry_naming_the_object() -> None:
     port = _port(**{"semantic_view:orders": _entry('"DB"."S"."ORDERS"'), "agent:orders": _entry(VIEW.sql)})
     store = _cache("semantic_view:orders", "agent:orders")

@@ -1,9 +1,10 @@
 """The port use cases run SQL through, and the pool that gives parallel workers their own sessions.
 
-Scope guarantee: no statement changes the scope another statement runs in. Every statement SST
-builds names its objects fully qualified, so it means the same thing whatever the session's
-current database and schema are; authored SQL that resolves unqualified names goes through
-`query_in_context`, which runs it on a dedicated session scoped for that call alone.
+Scope guarantee: no statement changes the scope another statement runs in, and SST runs no USE
+statement at all. Every statement SST builds names its objects fully qualified, so it means the
+same thing whatever the session's current database and schema are; authored SQL that resolves
+unqualified names goes through `query_in_context`, which runs it on a session that connected
+with that scope as its own and keeps it.
 """
 
 from __future__ import annotations
@@ -48,12 +49,13 @@ class ExecutionPort(Protocol):
         """Run one statement as `query` does, resolving its unqualified names in `scope`.
 
         For authored SQL, such as a verified query, that names objects relative to a schema.
-        The statement runs on a session kept for scoped calls: `scope` is made current on it
-        for this call, and no other statement, on this session or any other, runs in it or
-        sees its scope.
+        The statement runs on a session kept for `scope` alone, which connected with `scope` as
+        its current database and schema; no statement changes that session's scope, and no
+        other statement runs on it.
 
         Raises:
-            SnowflakePortError: switching to `scope` or the statement failed.
+            SnowflakePortError: the scoped session could not connect in `scope`, or the
+                statement failed.
         """
         ...
 
@@ -83,8 +85,9 @@ class ExecutionPort(Protocol):
 class SessionPool(Protocol[PortT]):
     """Sessions for parallel workers: each lease is a session no other worker uses meanwhile.
 
-    Every session is opened from the same connection settings as the one the pool was made
-    from, and shares nothing mutable with it; the pool's owner closes them all.
+    Every session is opened from the same connection settings as the command's own, and shares
+    nothing mutable with it; the pool never lends the command's own session, and its owner
+    closes every session it opened.
     """
 
     def lease(self) -> AbstractContextManager[PortT]:
@@ -92,5 +95,14 @@ class SessionPool(Protocol[PortT]):
 
         Raises:
             SnowflakePortError: a new session could not be opened.
+        """
+        ...
+
+    def halt(self, reason: str) -> None:
+        """Stop every session the pool has lent or will lend, before its next statement.
+
+        From the call on, each statement any of them would start raises `SnowflakePortError`
+        carrying `reason` instead of running; a statement already running finishes. Idempotent;
+        the first reason stands.
         """
         ...

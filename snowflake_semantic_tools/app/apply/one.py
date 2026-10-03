@@ -57,7 +57,9 @@ class ChangeApplier:
     """Apply the changes of a plan one by one; a run's parallel workers share one applier.
 
     It keeps no state between changes. The lifecycle handlers are the run's own mapping, not a
-    copy, so a handler registered on the run after construction is used here too.
+    copy, so a handler registered on the run after construction is used here too. With
+    `leased`, `port` is a session leased for this change, and each composite handler runs its
+    statements there too, through `for_session`, rather than on the session it was built on.
     """
 
     def __init__(
@@ -65,10 +67,13 @@ class ChangeApplier:
         port: CatalogPublicationPort,
         clock: ClockPort,
         lifecycle_handlers: Mapping[str, CompositeLifecycleHandler],
+        *,
+        leased: bool = False,
     ) -> None:
         self._port = port
         self._clock = clock
         self._lifecycle_handlers = lifecycle_handlers
+        self._leased = leased
 
     def apply(self, change: Change, options: ApplyOptions) -> ApplyOutcome:
         """Apply one change and report how it ended; an exception that escapes fails the change."""
@@ -85,6 +90,8 @@ class ChangeApplier:
         started = self._clock.monotonic_ms()
         lifecycle_handler = self._lifecycle_handlers.get(change.artifact_type)
         if lifecycle_handler is not None:
+            if self._leased:
+                lifecycle_handler = lifecycle_handler.for_session(self._port)
             return lifecycle_handler.apply(change, options)
         if change.action in (Action.NOOP, Action.BLOCKED):
             return _skipped(change, _rendered_ddl(change))

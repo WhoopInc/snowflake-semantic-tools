@@ -1,9 +1,10 @@
 """The run lock in Snowflake, and the change a run makes to the state table.
 
 One row per target in the lock table beside the state table says which run may apply to the
-target. A run claims it with a `LockClaim`; `LockAcquisition` says what the claim found.
-`StateWrite` is what a run's state write changes: the entries it inserts or replaces, and
-the keys it removes; `state_write` derives it from the state before and after the run.
+target. A run claims it with a `LockClaim`; `LockAcquisition` says what the claim found, and
+hands the winner its `LockFence`, which every later extension, release and state write must
+present. `StateWrite` is what a run's state write changes: the entries it inserts or replaces,
+and the keys it removes; `state_write` derives it from the state before and after the run.
 """
 
 from __future__ import annotations
@@ -67,6 +68,23 @@ class RunLock:
 
 
 @dataclass(frozen=True, slots=True)
+class LockFence:
+    """The fencing token of one claim: the run that holds the lock, and the generation it was issued.
+
+    Every claim a lock table grants is issued the next generation, so a run that took the lock
+    over holds a later one than the run it broke. Only a caller presenting the fence the lock
+    row still records may extend or release the lock or write state under it.
+
+    Attributes:
+        run_id: The run the claim was made for.
+        generation: The claim's generation, unique and increasing within one lock table.
+    """
+
+    run_id: str
+    generation: int
+
+
+@dataclass(frozen=True, slots=True)
 class LockAcquisition:
     """What claiming the lock found.
 
@@ -75,11 +93,13 @@ class LockAcquisition:
         holder: The lock that was there before the claim: the run that holds it when the claim
             failed, the expired one it replaced when it broke one; None when the lock was free.
         broke_stale: Whether the claim took over an expired lock.
+        fence: The claim's fencing token when it acquired the lock; None when it did not.
     """
 
     acquired: bool
     holder: RunLock | None = None
     broke_stale: bool = False
+    fence: LockFence | None = None
 
 
 @dataclass(frozen=True, slots=True)

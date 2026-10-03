@@ -197,7 +197,7 @@ def plan_runtime(request: PlanRequest) -> PlanSession | PlanRefused:
         return candidates
     profile, port = connect(request.paths, request.target_name)
     params = profile.connection_params
-    with closed_on_error(port), ConnectorPool(port, request.threads, lambda: open_connector(params)) as pool:
+    with closed_on_error(port), ConnectorPool(request.threads, lambda: open_connector(params)) as pool:
         store = state_store(request.paths, profile.target_name)
         outcome = prepare.run(
             candidates,

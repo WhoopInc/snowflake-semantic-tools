@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import contextlib
 import json
+from collections.abc import Callable, Iterator
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -57,3 +59,83 @@ def test_state_lock_enforces_exclusivity_and_stale_break(tmp_path: Path) -> None
     store.release_lock("old")
     assert store.acquire_lock("other", break_stale=False) == (False, "new", False)
     store.release_lock("new")
+
+
+NOW = datetime(2026, 1, 1, tzinfo=UTC)
+
+
+def _stale_lock(tmp_path: Path) -> Path:
+    """Leave a lock file an hour older than its time to live, held by run `old`."""
+    lock_path = tmp_path / "state.json.lock"
+    lock_path.write_text(json.dumps({"run_id": "old", "created_at": (NOW - timedelta(hours=1)).isoformat()}))
+    return lock_path
+
+
+class _Breaker(StateFileStore):
+    """A store that runs `meanwhile` once, after it judged the lock and before it takes the right to remove it."""
+
+    def __init__(self, path: Path, meanwhile: Callable[[], object]) -> None:
+        super().__init__(path, now=lambda: NOW)
+        self._meanwhile: Callable[[], object] | None = meanwhile
+
+    @contextlib.contextmanager
+    def _removing(self, instance: bytes) -> Iterator[bool]:
+        meanwhile, self._meanwhile = self._meanwhile, None
+        if meanwhile is not None:
+            meanwhile()
+        with super()._removing(instance) as removable:
+            yield removable
+
+
+def test_two_runs_breaking_one_stale_lock_never_remove_the_fresh_lock_the_first_took(tmp_path: Path) -> None:
+    lock_path = _stale_lock(tmp_path)
+    first = StateFileStore(tmp_path / "state.json", now=lambda: NOW)
+    # The second judged `old` stale; before it removes it, the first breaks it and takes the lock.
+    second = _Breaker(tmp_path / "state.json", lambda: first.acquire_lock("first", break_stale=True))
+    assert second.acquire_lock("second", break_stale=True) == (False, "first", False)
+    assert json.loads(lock_path.read_text())["run_id"] == "first"
+    assert sorted(path.name for path in tmp_path.iterdir()) == ["state.json.lock"]
+
+
+def test_a_stale_holder_releasing_while_its_lock_is_broken_never_removes_the_new_lock(tmp_path: Path) -> None:
+    lock_path = _stale_lock(tmp_path)
+    old = StateFileStore(tmp_path / "state.json", now=lambda: NOW)
+    breaker = StateFileStore(tmp_path / "state.json", now=lambda: NOW)
+    original = breaker._removing
+
+    @contextlib.contextmanager
+    def releasing_meanwhile(instance: bytes) -> Iterator[bool]:
+        with original(instance) as removable:
+            # The breaker holds the right to remove `old`; `old` releasing now leaves it be.
+            old.release_lock("old")
+            assert lock_path.exists()
+            yield removable
+
+    breaker._removing = releasing_meanwhile  # type: ignore[method-assign]
+    assert breaker.acquire_lock("new", break_stale=True) == (True, "old", True)
+    old.release_lock("old")
+    assert json.loads(lock_path.read_text())["run_id"] == "new"
+
+
+def test_a_lock_released_between_the_create_and_the_read_is_taken_like_a_free_one(tmp_path: Path) -> None:
+    store = StateFileStore(tmp_path / "state.json", now=lambda: NOW)
+    lock_path = tmp_path / "state.json.lock"
+    lock_path.write_text(json.dumps({"run_id": "gone", "created_at": NOW.isoformat()}))
+    read = store._lock_bytes
+
+    def released_first() -> bytes | None:
+        lock_path.unlink(missing_ok=True)
+        store._lock_bytes = read  # type: ignore[method-assign]
+        return None
+
+    store._lock_bytes = released_first  # type: ignore[method-assign]
+    assert store.acquire_lock("next", break_stale=False) == (True, None, False)
+    assert json.loads(lock_path.read_text())["run_id"] == "next"
+
+
+def test_a_lock_that_cannot_be_decoded_names_no_holder_and_is_never_broken(tmp_path: Path) -> None:
+    store = StateFileStore(tmp_path / "state.json", now=lambda: NOW)
+    (tmp_path / "state.json.lock").write_bytes(b"\xff not json")
+    assert store.acquire_lock("next", break_stale=True) == (False, None, False)
+    store.release_lock("next")
+    assert (tmp_path / "state.json.lock").exists()

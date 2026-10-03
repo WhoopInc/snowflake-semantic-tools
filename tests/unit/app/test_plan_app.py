@@ -202,6 +202,10 @@ def test_plan_reports_composite_prune_when_generic_observation_has_no_change() -
 class _CompositeHandler:
     artifact_type = "virtual"
 
+    def for_session(self, session: object) -> _CompositeHandler:
+        del session
+        return self
+
     # Plan reaches a handler only to report a prune, so this double answers nothing else.
     def plan(self, artifact: RenderedArtifact, state_entry: AppliedEntry | None, manifest: Manifest) -> CompositePlan:
         raise NotImplementedError

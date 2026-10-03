@@ -127,19 +127,28 @@ project against that record and against what is live.
 Only one `apply` runs against a target at a time. Before it writes anything,
 `apply` takes the target's row in a lock table beside the state table
 (`SST_STATE_LOCK` for the default `SST_STATE`), recording its run id, the role
-and machine it runs as, and when the lock expires. The lock is claimed with a
-compare-and-set `MERGE` and read back, so of two runs that race for it exactly
-one proceeds; the other stops with `SST-APL011` naming the holder. A long apply
-extends its lock as it runs, and releases it when it ends, however it ends.
-Expiry is judged by Snowflake's clock. A lock left behind by a run that was
-killed expires after 30 minutes; `--break-stale-lock` takes over an expired lock
-(`SST-APL010`), and never a live one. A run also keeps a lock file beside its
-local state cache, which guards one machine only.
+and machine it runs as, and when the lock expires. Every operation on the lock
+table runs as one transaction whose first statement writes the table's mutex
+row, so it waits for any other such transaction to end before it reads the
+lock; of any number of runs that race for it exactly one proceeds, and the
+others stop with `SST-APL011` naming the holder. The winner is issued the next
+*generation*, a fencing token it presents to extend or release the lock and to
+write state. A long apply extends its lock as it runs, on a connection of its
+own, and releases it when it ends, however it ends. Expiry is judged by
+Snowflake's clock. A lock left behind by a run that was killed expires after 30
+minutes; `--break-stale-lock` takes over an expired lock (`SST-APL010`), and
+never a live one. A run also keeps a lock file beside its local state cache,
+which guards one machine only.
 
-A run writes state once, after its changes: one `MERGE` per entry it changed and
-one `DELETE` per entry it retired, in a single transaction, then it stamps the
-manifest it applied on the target's rows. Entries the run did not touch are left
-exactly as they were.
+Once it holds the lock, a run reads the target's state again, and refuses the
+plan (`SST-APL012`) if another run changed it since the plan read it. If the run
+loses its lock while it runs, it starts no further statement and writes no state
+(`SST-APL011`): the run that took the lock over owns the target's state.
+
+A run writes state once, after its changes: in one transaction that first checks
+it still holds the lock with its token, one `MERGE` per entry it changed and one
+`DELETE` per entry it retired, then it stamps the manifest it applied on the
+target's rows. Entries the run did not touch are left exactly as they were.
 
 **State and lock table type.** Both tables are standard tables, a choice made in
 one place in the connector. From Snowflake's documented semantics:
@@ -150,13 +159,14 @@ one place in the connector. From Snowflake's documented semantics:
 | Concurrent `MERGE`/`UPDATE`/`DELETE` | serialised by a table lock | row-level locks |
 | Availability | every account | not every account or region |
 
-A standard table cannot enforce the lock row's key, so SST does not rely on it:
-after claiming, it reads the target's lock rows back and holds the lock only if
-its row is the only one, withdrawing otherwise. A hybrid table would reject the
-second insert outright and let state writes to different targets proceed without
-waiting on each other, at the cost of availability. Whether the table lock
-serialises two claims exactly as documented, and how a hybrid table behaves
-under SST's write pattern, has not yet been measured; a spike against a scratch
+A standard table cannot enforce the lock row's key, and `SELECT ... FOR UPDATE`
+is for hybrid tables only, so SST relies on neither: its lock transactions
+serialise on the table lock that an `UPDATE` of the mutex row takes and holds
+until `COMMIT`, and each then reads what the previous one committed. A hybrid
+table would reject a second insert outright and let state writes to different
+targets proceed without waiting on each other, at the cost of availability. How
+a hybrid table behaves under SST's write pattern has not yet been measured; a
+spike against a scratch
 schema is pending.
 
 SST changes only objects it published. An object that already exists and that

@@ -77,7 +77,10 @@ def publish_skill(
 ) -> tuple[ChangeSet, ApplyResult, State]:
     handler = ExtensionLifecycleHandler(port, {compiled.artifact_key: compiled.release}, "skill")
     return _run(
-        port, {"skill": handler}, {compiled.artifact_key: compiled.rendered_artifact}, previous or empty_state()
+        port,
+        {"skill": handler},
+        {compiled.artifact_key: compiled.rendered_artifact},
+        previous or empty_state(dict(port.state)),
     )
 
 
@@ -111,4 +114,6 @@ def compiled_profile(*shipped: Skill) -> CompiledProfile:
 
 def publish_profile(port: RecordedSnowflake, compiled: CompiledProfile) -> tuple[ChangeSet, ApplyResult, State]:
     handler = ProfileLifecycleHandler(port, {compiled.artifact_key: compiled})
-    return _run(port, {"profile": handler}, {compiled.artifact_key: compiled.rendered_artifact}, empty_state())
+    return _run(
+        port, {"profile": handler}, {compiled.artifact_key: compiled.rendered_artifact}, empty_state(dict(port.state))
+    )

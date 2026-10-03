@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import contextlib
+import hashlib
 import json
 import os
 import tempfile
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Generic, TypeVar
@@ -160,7 +162,9 @@ class StateFileStore(JsonStore[State]):
 
     The lock is the sibling file `<state file>.lock`, created exclusively and holding the run id
     and the time it was taken; it goes stale `LOCK_TTL_SECONDS` (30 minutes) after that time, by
-    the `now` clock, which is UTC by default. `config_path` is only reported back, never read.
+    the `now` clock, which is UTC by default. Removing it, to release or to take over a stale
+    one, first takes that claim's break token, `<lock>.<digest>.break`, so no run ever removes
+    a claim it did not judge. `config_path` is only reported back, never read.
     """
 
     LOCK_TTL_SECONDS = 30 * 60
@@ -208,55 +212,120 @@ class StateFileStore(JsonStore[State]):
     def acquire_lock(self, run_id: str, *, break_stale: bool) -> tuple[bool, str | None, bool]:
         """Take the apply lock for `run_id` unless another run holds it, without waiting.
 
-        The lock file is created exclusively, so of two runs racing for a free lock one wins. With
-        `break_stale`, a stale lock is deleted and taken over; a lock file that cannot be read, or
-        records no time, is never stale.
+        The lock file is created exclusively, so of two runs racing for a free lock one wins.
+        With `break_stale`, a stale lock is taken over; a lock file that cannot be read, or
+        records no time, is never stale. Taking one over never removes a lock that is not the
+        stale one judged: only the holder of that lock's break token may remove it, as
+        `_removing` explains, and the run then creates its own exclusively like any other.
 
         Returns:
             `(True, None, False)` when the lock was free; `(True, holder, True)` when a stale lock
-            was taken over; `(False, holder, False)` otherwise. `holder` is the run id the lock
-            file records, None when it records none or cannot be read.
+            was taken over; `(False, holder, False)` otherwise, including when another run took
+            the lock, or a stale one over, first. `holder` is the run id the lock file records,
+            None when it records none or cannot be read.
 
         Raises:
-            OSError: The lock file cannot be created or written, including `FileExistsError` when
-                another run takes the lock between this one deleting a stale lock and taking it.
+            OSError: The lock file cannot be created, written, or removed.
         """
         self._lock_path.parent.mkdir(parents=True, exist_ok=True)
         now = self._now()
         payload = canonical_json({"run_id": run_id, "created_at": now.isoformat()})
+        if self._create_lock(payload):
+            return True, None, False
+        instance = self._lock_bytes()
+        if instance is None:
+            # Released since; one more exclusive create decides, as for a free lock.
+            return (True, None, False) if self._create_lock(payload) else (False, self._lock_status(now)[0], False)
+        holder, stale = _lock_status(instance, now, self.LOCK_TTL_SECONDS)
+        if not (stale and break_stale):
+            return False, holder, False
+        with self._removing(instance) as removable:
+            if not removable:
+                return False, self._lock_status(now)[0], False
+            self._lock_path.unlink()
+            if self._create_lock(payload):
+                return True, holder, True
+        return False, self._lock_status(now)[0], False
+
+    def _create_lock(self, payload: bytes) -> bool:
+        """Create the lock file exclusively with `payload`; False when one exists."""
         try:
             descriptor = os.open(self._lock_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
         except FileExistsError:
-            holder, stale = self._lock_status(now)
-            if stale and break_stale:
-                self._lock_path.unlink(missing_ok=True)
-                descriptor = os.open(self._lock_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
-                os.write(descriptor, payload)
-                os.fsync(descriptor)
-                os.close(descriptor)
-                return True, holder, True
-            return False, holder, False
-        os.write(descriptor, payload)
-        os.fsync(descriptor)
-        os.close(descriptor)
-        return True, None, False
+            return False
+        try:
+            os.write(descriptor, payload)
+            os.fsync(descriptor)
+        finally:
+            os.close(descriptor)
+        return True
+
+    def _lock_bytes(self) -> bytes | None:
+        """Read the lock file's bytes; None when there is no lock file."""
+        try:
+            return self._lock_path.read_bytes()
+        except FileNotFoundError:
+            return None
+
+    @contextlib.contextmanager
+    def _removing(self, instance: bytes) -> Iterator[bool]:
+        """Hold the right to remove the lock file whose bytes are `instance`; yield whether it is still there.
+
+        The right is a break token beside the lock, named by a digest of `instance` and created
+        exclusively, so one caller at a time holds it; a caller that cannot take it yields
+        False. A lock file's bytes name one claim, run id and time, so while the token is held
+        the lock file is `instance` until its holder removes it: nobody else may remove that
+        claim, and nobody can create a lock file while one exists. Reading the file, then
+        removing it, therefore removes exactly the claim judged. The token is removed when the
+        block ends; a process killed in between leaves it, and that claim can then be released
+        or broken only once the token file is deleted by hand.
+
+        Raises:
+            OSError: the token cannot be created for another reason than that it exists.
+        """
+        token = self._lock_path.with_name(f"{self._lock_path.name}.{hashlib.sha256(instance).hexdigest()[:16]}.break")
+        try:
+            os.close(os.open(token, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600))
+        except FileExistsError:
+            yield False
+            return
+        try:
+            yield self._lock_bytes() == instance
+        finally:
+            token.unlink(missing_ok=True)
 
     def _lock_status(self, now: datetime) -> tuple[str | None, bool]:
-        try:
-            value = json.loads(self._lock_path.read_text(encoding="utf-8"))
-            holder = value.get("run_id") if isinstance(value, dict) else None
-            created = value.get("created_at") if isinstance(value, dict) else None
-            timestamp = datetime.fromisoformat(created) if isinstance(created, str) else None
-        except (OSError, json.JSONDecodeError, ValueError):
-            return None, False
-        stale = timestamp is not None and (now - timestamp).total_seconds() > self.LOCK_TTL_SECONDS
-        return holder if isinstance(holder, str) else None, stale
+        """Read the lock file's holder, and whether it is stale; `(None, False)` when it cannot be read."""
+        instance = self._lock_bytes()
+        return _lock_status(instance, now, self.LOCK_TTL_SECONDS) if instance is not None else (None, False)
 
     def release_lock(self, run_id: str) -> None:
-        """Delete the lock file when `run_id` holds the lock; otherwise leave it as it is."""
-        holder, _ = self._lock_status(self._now())
-        if holder == run_id:
-            self._lock_path.unlink(missing_ok=True)
+        """Delete the lock file when `run_id` holds the lock; otherwise leave it as it is.
+
+        A lock another run is taking over at that moment is left to that run.
+        """
+        instance = self._lock_bytes()
+        if instance is None or _lock_status(instance, self._now(), self.LOCK_TTL_SECONDS)[0] != run_id:
+            return
+        with self._removing(instance) as removable:
+            if removable:
+                self._lock_path.unlink(missing_ok=True)
+
+
+def _lock_status(instance: bytes, now: datetime, ttl_seconds: int) -> tuple[str | None, bool]:
+    """Return the holder a lock file's bytes record, and whether its claim is older than `ttl_seconds`.
+
+    Bytes that do not decode, or record no time, name no holder and are never stale.
+    """
+    try:
+        value = json.loads(instance.decode("utf-8"))
+        holder = value.get("run_id") if isinstance(value, dict) else None
+        created = value.get("created_at") if isinstance(value, dict) else None
+        timestamp = datetime.fromisoformat(created) if isinstance(created, str) else None
+    except (UnicodeDecodeError, json.JSONDecodeError, ValueError):
+        return None, False
+    stale = timestamp is not None and (now - timestamp).total_seconds() > ttl_seconds
+    return holder if isinstance(holder, str) else None, stale
 
 
 def _shape_problem(exc: Exception) -> str:

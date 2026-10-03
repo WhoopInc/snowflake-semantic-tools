@@ -114,7 +114,7 @@ def _smoke(result: CompileResult, manifest: Manifest, threads: int, *, foreign: 
         return made
 
     first = session()
-    with ConnectorPool(first, threads, session) as pool:
+    with ConnectorPool(threads, session) as pool:
         outcome = SmokePublished(first, InMemoryStateStore(), Fanout(first, pool, threads)).run(
             result, manifest, target=dev_target(), state_table=STATE_TABLE
         )
@@ -195,7 +195,7 @@ def _evals() -> tuple[CompiledEval, ...]:
 def _run_evals(threads: int) -> tuple[EvalSuiteResult, Opened]:
     opened = Opened()
     first = EvalSession(opened)
-    with ConnectorPool(first, threads, lambda: EvalSession(opened)) as pool:
+    with ConnectorPool(threads, lambda: EvalSession(opened)) as pool:
         suite = RunEvalSuite(first, FixedClock(), sessions=pool).run(
             _evals(),
             options=EvalRunOptions("abcdef0", timestamp="20260928T010203Z", poll_interval_ms=0),

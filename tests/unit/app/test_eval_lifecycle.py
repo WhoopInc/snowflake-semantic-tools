@@ -296,6 +296,8 @@ def test_eval_dataset_revision_retains_prior_immutable_resources_in_state() -> N
     changed_manifest = build_manifest(changed_result)
     changed = changed_result.compiled[0].rendered_for_publish(changed_manifest.manifest_id)
     change = planned_change(changed, manifest, port, handler, state_with(previous_entry, manifest.manifest_id))
+    # The plan read its previous state from the state table, which apply reads again under the lock.
+    port.remote_state = state_with(previous_entry, manifest.manifest_id).applied
     result = ApplyArtifacts(
         port,
         InMemoryStateStore(),
@@ -527,6 +529,7 @@ def test_eval_prune_is_report_only_even_when_prune_is_allowed() -> None:
     )
     prune = changeset_value.changes[0]
     assert prune.action is Action.PRUNE and not prune.prune_executable
+    port.remote_state = prior.applied
     result = ApplyArtifacts(
         port,
         InMemoryStateStore(),
@@ -1053,6 +1056,7 @@ def test_an_eval_recorded_under_another_manifest_is_rerecorded_then_unchanged() 
 
     store = InMemoryStateStore(prior)
     change = planned_change(artifact, manifest, port, handler, prior)
+    port.remote_state = prior.applied
     result = ApplyArtifacts(
         port, store, FixedClock(), state_table=artifact.target, lifecycle_handlers={"eval": handler}
     ).run(replace(changeset(change), manifest_id=manifest.manifest_id), prior)

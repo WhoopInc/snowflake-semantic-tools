@@ -472,15 +472,15 @@ def test_an_unknown_merge_outcome_is_recorded_only_when_no_row_existed() -> None
     port.fail_after_merge = True
     _, failed, after = publish(port, compiled, state())
     assert failed.outcomes[0].write_succeeded and after.applied["profile:analyst"].outcome == FAILED_AFTER_WRITE
-    retry, retried, _ = publish(port, compiled, after)
+    retry, retried, current = publish(port, compiled, after)
     assert [change.action for change in retry.changes] == [Action.UPDATE] and retried.success
 
     # Update: a row existed, so an unknown outcome keeps the entry SST knows is true.
     edited = compile_profiles(catalog(prompt="Be very careful.\n"))
     port.fail_after_merge = True
-    _, failed, updated = publish(port, edited, after)
+    _, failed, updated = publish(port, edited, current)
     assert not failed.outcomes[0].write_succeeded
-    assert updated.applied["profile:analyst"] == after.applied["profile:analyst"]
+    assert updated.applied["profile:analyst"] == current.applied["profile:analyst"]
 
 
 def test_deactivating_a_row_that_is_gone_retires_it() -> None:

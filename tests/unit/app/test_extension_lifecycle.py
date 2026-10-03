@@ -389,11 +389,11 @@ def test_served_version_prediction_edges() -> None:
     changed = compile_catalog(SkillCatalog((skill(body="Read reference/steps.md twice.\n"),)))
     _, _, after_change = publish(port, changed, after)
     # Nothing is certified, so a revert is served only if it is the default.
-    changeset, _, _ = publish(port, compiled, after_change)
+    changeset, _, reverted = publish(port, compiled, after_change)
     assert [message.split(", because ")[-1] for message in served_warnings(changeset)] == ["it is the default version"]
     # A certified revert with no later certified version becomes the one served.
     certified = compile_catalog(SkillCatalog((skill(),)), replace(CHANNEL, certified=True))
-    changeset, result, _ = publish(port, certified, after_change)
+    changeset, result, _ = publish(port, certified, reverted)
     assert result.success and served_warnings(changeset) == []
     assert observation(port, QualifiedName.parse("DB.S.MONTH_CLOSE")).effective_version == "VERSION$2"
     assert _version_number("VERSION$12") == 12 and _version_number("LIVE") == -1

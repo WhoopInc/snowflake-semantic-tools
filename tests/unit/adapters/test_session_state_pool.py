@@ -10,14 +10,15 @@ import pytest
 from snowflake.connector.errors import OperationalError, ProgrammingError
 
 from snowflake_semantic_tools.adapters.snowflake.connector import ConnectorPool, SnowflakeConnector
-from snowflake_semantic_tools.domain.model.identifier import QualifiedName, SchemaScope
+from snowflake_semantic_tools.domain.model.identifier import Identifier, QualifiedName, SchemaScope
 from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
 from snowflake_semantic_tools.domain.sql import sql
 from snowflake_semantic_tools.domain.state import AppliedEntry
-from snowflake_semantic_tools.domain.state.lock import StateWrite
+from snowflake_semantic_tools.domain.state.lock import LockFence, StateWrite
 
 STATE_TABLE = QualifiedName.parse("DB.S.SST_STATE")
 ENTRY = AppliedEntry("f" * 64, "DB.S.V", "2026-09-29T00:00:00Z", "run", "applied", "d" * 64, "m" * 64)
+FENCE = LockFence("run", 3)
 
 
 class _Driver:
@@ -110,23 +111,34 @@ def test_a_programming_error_inside_a_script_is_never_reported_as_a_snowflake_fa
         )
 
 
-def test_a_state_write_merges_each_change_in_one_transaction_with_every_value_bound() -> None:
-    driver = _Driver()
+def test_a_state_write_merges_each_change_in_one_fenced_transaction_with_every_value_bound() -> None:
+    driver = _Driver(rows={"SELECT RUN_ID, GENERATION": [("run", 3)]})
     hostile = "semantic_view:v'; DROP TABLE x; --"
-    DriverConnector(driver).write_state(
-        STATE_TABLE, "dev", "m" * 64, StateWrite({"skill:b": ENTRY, hostile: ENTRY}, ("agent:gone",))
+    assert DriverConnector(driver).write_state(
+        STATE_TABLE, "dev", "m" * 64, StateWrite({"skill:b": ENTRY, hostile: ENTRY}, ("agent:gone",)), FENCE
     )
     statements = driver.statements
     assert statements[0].startswith("CREATE TABLE IF NOT EXISTS DB.S.SST_STATE (")
     begin = statements.index("BEGIN")
     assert [statement.split(" ")[0] for statement in statements[begin:]] == [
         "BEGIN",
+        "UPDATE",
+        "SELECT",
         "MERGE",
         "MERGE",
         "DELETE",
         "UPDATE",
         "COMMIT",
     ]
+    # The mutex row first, then the fence, both on the lock table, before any state row.
+    assert driver.executed[begin + 1] == (
+        "UPDATE DB.S.SST_STATE_LOCK SET ACQUIRED_AT = CURRENT_TIMESTAMP() WHERE TARGET_NAME = %s",
+        ("",),
+    )
+    assert driver.executed[begin + 2] == (
+        "SELECT RUN_ID, GENERATION FROM DB.S.SST_STATE_LOCK WHERE TARGET_NAME = %s",
+        ("dev",),
+    )
     assert all("DROP TABLE x" not in statement for statement in statements)
     merged_keys = [params[1] for statement, params in driver.executed if statement.startswith("MERGE")]
     assert merged_keys == ["semantic_view:v'; DROP TABLE x; --", "skill:b"]
@@ -140,10 +152,20 @@ def test_a_state_write_merges_each_change_in_one_transaction_with_every_value_bo
     )
 
 
+def test_a_state_write_whose_fence_no_longer_holds_rolls_back_having_written_nothing() -> None:
+    driver = _Driver(rows={"SELECT RUN_ID, GENERATION": [("run", 4)]})
+    assert not DriverConnector(driver).write_state(STATE_TABLE, "dev", "m", StateWrite({"k": ENTRY}), FENCE)
+    assert driver.statements[-1] == "ROLLBACK"
+    assert not any(statement.startswith(("MERGE", "DELETE")) for statement in driver.statements)
+
+
 def test_a_state_write_that_fails_part_way_rolls_back_and_records_nothing() -> None:
-    driver = _Driver({"DELETE FROM": ProgrammingError(msg="lock timeout", errno=625, sqlstate="57014")})
+    driver = _Driver(
+        {"DELETE FROM": ProgrammingError(msg="lock timeout", errno=625, sqlstate="57014")},
+        rows={"SELECT RUN_ID, GENERATION": [("run", 3)]},
+    )
     with pytest.raises(SnowflakePortError, match="lock timeout"):
-        DriverConnector(driver).write_state(STATE_TABLE, "dev", "m", StateWrite({"k": ENTRY}, ("old",)))
+        DriverConnector(driver).write_state(STATE_TABLE, "dev", "m", StateWrite({"k": ENTRY}, ("old",)), FENCE)
     assert driver.statements[-1] == "ROLLBACK"
     assert "COMMIT" not in driver.statements
 
@@ -197,30 +219,105 @@ def test_a_sibling_connects_with_the_same_settings_and_shares_no_connection(monk
     assert second._connection is not first._connection
 
 
-def test_closing_a_session_closes_the_scoped_session_it_opened(monkeypatch: pytest.MonkeyPatch) -> None:
-    drivers: list[_Driver] = []
+def _connecting(
+    monkeypatch: pytest.MonkeyPatch, current: tuple[object, object] = ("DB", "S")
+) -> list[tuple[dict[str, object], _Driver]]:
+    """Make every connect open a recorded driver whose session starts in `current`."""
+    opened: list[tuple[dict[str, object], _Driver]] = []
 
     def connect(**params: object) -> _Driver:
-        drivers.append(_Driver(rows={"SELECT": [(1,)]}))
-        return drivers[-1]
+        driver = _Driver(rows={"SELECT CURRENT_DATABASE": [current], "SELECT 1": [(1,)]})
+        opened.append((params, driver))
+        return driver
 
     monkeypatch.setattr(
         "snowflake_semantic_tools.adapters.snowflake.connector.session.snowflake.connector.connect", connect
     )
-    connector = SnowflakeConnector({"account": "acme"})
+    return opened
+
+
+def test_query_in_context_connects_a_session_in_its_scope_and_never_runs_a_use(monkeypatch: pytest.MonkeyPatch) -> None:
+    opened = _connecting(monkeypatch)
+    connector = SnowflakeConnector({"account": "acme", "database": "OTHER"})
     scope = SchemaScope.from_qualified_name(STATE_TABLE)
     assert connector.query_in_context(scope, sql("SELECT 1")).rows == ((1,),)
     connector.query_in_context(scope, sql("SELECT 1"))
-    main, scoped = drivers
-    assert main.statements == [] and scoped.statements[:2] == ["USE DATABASE DB", "USE SCHEMA DB.S"]
+    (_, main), (settings, scoped) = opened
+    assert settings == {"account": "acme", "database": "DB", "schema": "S"}
+    assert main.statements == []
+    assert scoped.statements == ["SELECT CURRENT_DATABASE(), CURRENT_SCHEMA()", "SELECT 1", "SELECT 1"]
+    assert not any(statement.startswith("USE") for _, driver in opened for statement in driver.statements)
     connector.close()
-    assert main.closed and scoped.closed and len(drivers) == 2
+    assert main.closed and scoped.closed
+
+
+def test_each_scope_has_a_session_of_its_own_and_a_quoted_name_keeps_its_quotes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    opened = _connecting(monkeypatch, ("my db", "S"))
+    connector = SnowflakeConnector({"account": "acme"})
+    quoted = SchemaScope(Identifier("my db", quoted=True), Identifier("S"))
+    connector.query_in_context(quoted, sql("SELECT 1"))
+    assert opened[1][0] == {"account": "acme", "database": '"my db"', "schema": "S"}
+    with pytest.raises(SnowflakePortError, match="started in my db.S"):
+        connector.query_in_context(SchemaScope.from_qualified_name(STATE_TABLE), sql("SELECT 1"))
+    # The session that started elsewhere was closed, never kept for its scope.
+    assert opened[2][1].closed and len(opened) == 3
+    connector.close()
+
+
+def test_a_halted_session_starts_no_statement_and_halts_its_scoped_sessions(monkeypatch: pytest.MonkeyPatch) -> None:
+    opened = _connecting(monkeypatch)
+    connector = SnowflakeConnector({"account": "acme"})
+    scope = SchemaScope.from_qualified_name(STATE_TABLE)
+    connector.query_in_context(scope, sql("SELECT 1"))
+    connector.halt("the run lock was lost")
+    connector.halt("a later reason")
+    with pytest.raises(SnowflakePortError, match="the run lock was lost"):
+        connector.query(sql("SELECT 1"))
+    with pytest.raises(SnowflakePortError, match="the run lock was lost"):
+        connector.query_in_context(scope, sql("SELECT 1"))
+    result = connector.execute_script((sql("SELECT 1"),))
+    assert (result.ok, result.query_ids) == (False, ())
+    assert result.error is not None and result.error.message == "the run lock was lost"
+    assert opened[0][1].statements == [] and opened[1][1].statements == [
+        "SELECT CURRENT_DATABASE(), CURRENT_SCHEMA()",
+        "SELECT 1",
+    ]
+
+
+def test_a_script_halted_part_way_stops_before_its_next_statement() -> None:
+    driver = _Driver()
+    connector = DriverConnector(driver)
+    halting = driver.execute
+
+    def execute(statement: str, params: Sequence[object] | None = None) -> None:
+        halting(statement, params)
+        connector.halt("lost")
+
+    driver.execute = execute  # type: ignore[method-assign]
+    result = connector.execute_script((sql("SELECT 1"), sql("SELECT 2")))
+    assert (result.ok, result.query_ids) == (False, ("q1",))
+    assert result.error is not None and result.error.message == "lost"
+    assert driver.statements == ["SELECT 1"]
+
+
+def test_a_scoped_session_opened_after_a_halt_is_halted_too(monkeypatch: pytest.MonkeyPatch) -> None:
+    _connecting(monkeypatch)
+    connector = SnowflakeConnector({"account": "acme"})
+    connector.halt("lost")
+    with pytest.raises(SnowflakePortError, match="lost"):
+        connector.query_in_context(SchemaScope.from_qualified_name(STATE_TABLE), sql("SELECT 1"))
 
 
 class _Pooled:
     def __init__(self, name: str) -> None:
         self.name = name
         self.closed = False
+        self.halted: str | None = None
+
+    def halt(self, reason: str) -> None:
+        self.halted = reason
 
     def close(self) -> None:
         self.closed = True
@@ -228,30 +325,41 @@ class _Pooled:
             raise OSError("close failed")
 
 
-def test_a_pool_lends_the_first_connector_then_opens_siblings_only_as_leases_overlap() -> None:
-    first = _Pooled("first")
+def test_a_pool_opens_siblings_only_as_leases_overlap_and_never_lends_anything_else() -> None:
     opened: list[_Pooled] = []
 
     def open_sibling() -> _Pooled:
         opened.append(_Pooled(f"s{len(opened)}"))
         return opened[-1]
 
-    with ConnectorPool(first, 3, open_sibling) as pool:
+    with ConnectorPool(3, open_sibling) as pool:
         with pool.lease() as one:
-            assert one is first
+            assert one is opened[0]
         with pool.lease() as again:
-            assert again is first and opened == []
+            assert again is one and len(opened) == 1
         with pool.lease() as a, pool.lease() as b, pool.lease() as c:
-            assert len({id(a), id(b), id(c)}) == 3 and pool.opened == 2
+            assert {id(a), id(b), id(c)} == {id(item) for item in opened} and pool.opened == 3
             with pytest.raises(RuntimeError, match="exhausted"), pool.lease():
                 pass
-    assert [item.closed for item in opened] == [True, True] and not first.closed
+    assert [item.closed for item in opened] == [True, True, True] and pool.opened == 0
+
+
+def test_a_halted_pool_halts_every_sibling_it_opened_and_every_one_it_opens_later() -> None:
+    siblings = iter((_Pooled("a"), _Pooled("b")))
+    with ConnectorPool(2, lambda: next(siblings)) as pool:
+        with pool.lease() as early:
+            pass
+        pool.halt("lost")
+        pool.halt("later")
+        with pool.lease() as reused, pool.lease() as late:
+            assert reused is early
+        assert (early.halted, late.halted) == ("lost", "lost")
 
 
 def test_a_pool_closes_every_sibling_even_when_one_fails_to_close() -> None:
     siblings = iter((_Pooled("broken"), _Pooled("fine")))
-    pool = ConnectorPool(_Pooled("first"), 3, lambda: next(siblings))
-    with pool.lease(), pool.lease() as broken, pool.lease() as fine:
+    pool = ConnectorPool(3, lambda: next(siblings))
+    with pool.lease() as broken, pool.lease() as fine:
         pass
     with pytest.raises(OSError, match="close failed"):
         pool.close()
@@ -267,21 +375,20 @@ def test_a_sibling_that_cannot_open_frees_its_slot() -> None:
             raise SnowflakePortError("login failed")
         return _Pooled("late")
 
-    pool = ConnectorPool(_Pooled("first"), 2, open_sibling)
-    with pool.lease():
-        with pytest.raises(SnowflakePortError), pool.lease():
-            pass
-        with pool.lease() as late:
-            assert late.name == "late"
+    pool = ConnectorPool(1, open_sibling)
+    with pytest.raises(SnowflakePortError), pool.lease():
+        pass
+    with pool.lease() as late:
+        assert late.name == "late"
 
 
 def test_a_pool_needs_room_for_one_connector() -> None:
     with pytest.raises(ValueError, match="at least one"):
-        ConnectorPool(_Pooled("first"), 0, lambda: _Pooled("x"))
+        ConnectorPool(0, lambda: _Pooled("x"))
 
 
 def test_parallel_leases_never_share_a_connector() -> None:
-    pool = ConnectorPool(_Pooled("first"), 4, lambda: _Pooled("sibling"))
+    pool = ConnectorPool(4, lambda: _Pooled("sibling"))
     in_use: set[int] = set()
     clash: list[bool] = []
     guard = threading.Lock()

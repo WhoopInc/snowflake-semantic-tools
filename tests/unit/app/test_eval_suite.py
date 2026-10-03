@@ -95,7 +95,8 @@ def test_the_run_takes_the_remote_lock_an_apply_takes_and_releases_it() -> None:
     port = EvalSnowflake(completed_attempt())
     elsewhere = EvalSnowflake([])
     elsewhere.run_locks = port.run_locks
-    elsewhere.run_locks.acquire_run_lock(STATE_TABLE, "verify", LockClaim("eval-other"), break_stale=False)
+    other = elsewhere.run_locks.acquire_run_lock(STATE_TABLE, "verify", LockClaim("eval-other"), break_stale=False)
+    assert other.fence is not None
 
     refused, _, lock, _ = gate(port)
 
@@ -104,7 +105,7 @@ def test_the_run_takes_the_remote_lock_an_apply_takes_and_releases_it() -> None:
     # Another eval run regenerates nothing, so only the refusal is reported.
     assert [item.code for item in refused.diagnostics] == ["SST-APL011"]
     assert not lock.locked
-    port.run_locks.release_run_lock(STATE_TABLE, "verify", "eval-other")
+    port.run_locks.release_run_lock(STATE_TABLE, "verify", other.fence)
     outcome, _, _, _ = gate(port)
     assert isinstance(outcome, EvalGateOutcome)
     assert port.run_locks.claims[-1].startswith("eval-") and port.run_locks.rows == {}

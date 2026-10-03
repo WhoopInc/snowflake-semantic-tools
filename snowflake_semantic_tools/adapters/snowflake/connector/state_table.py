@@ -8,7 +8,10 @@ created before them reads the first two as NULL and records no manifest until
 
 A run writes only the entries it changed: one MERGE per changed entry and one DELETE per
 retired key, then one UPDATE that stamps the run's manifest on every row of the target, all
-in one transaction on one cursor with every value bound.
+in one transaction on one cursor with every value bound. That transaction is a lock
+transaction: it first takes the lock table's mutex, as `run_lock` explains, and writes only
+if the writer's fence still holds the target's lock, so a run whose lock was broken can never
+overwrite what the run that broke it recorded.
 """
 
 from __future__ import annotations
@@ -18,8 +21,13 @@ from datetime import UTC, datetime
 from types import MappingProxyType
 from typing import NamedTuple
 
+from snowflake_semantic_tools.adapters.snowflake.connector.lock_table import (
+    TABLE_KIND,
+    LockTableMethods,
+    fence_holds,
+    lock_table_sql,
+)
 from snowflake_semantic_tools.adapters.snowflake.connector.session import (
-    Session,
     _json_text,
     _require_ok,
     _variant_value,
@@ -30,11 +38,7 @@ from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePort
 from snowflake_semantic_tools.domain.ports.snowflake.state import StatePort
 from snowflake_semantic_tools.domain.sql import Sql, ident, join, qname, sql
 from snowflake_semantic_tools.domain.state import AppliedEntry, AppliedResource, pairs_from_json, pairs_to_json
-from snowflake_semantic_tools.domain.state.lock import StateWrite
-
-# The kind of table the state and lock tables are created as. A standard table, not a hybrid
-# one: "Concurrent applies and the run lock" in docs/concepts.md compares the two.
-TABLE_KIND = sql("TABLE")
+from snowflake_semantic_tools.domain.state.lock import LockFence, StateWrite
 
 
 class _StateColumn(NamedTuple):
@@ -72,7 +76,7 @@ STATE_COLUMNS = tuple(column.name for column in _COLUMNS)
 _STATE_MANIFEST = _StateColumn("STATE_MANIFEST_ID", sql("VARCHAR(64)"), added=True)
 
 
-class StateTableMethods(Session, StatePort, CatalogPort):
+class StateTableMethods(LockTableMethods, StatePort, CatalogPort):
     """Keep the state table: reads never change it, and every write creates and migrates it first.
 
     `CatalogPort` is a base for the one lookup a read starts with, whether the table exists,
@@ -139,7 +143,8 @@ class StateTableMethods(Session, StatePort, CatalogPort):
         target_name: str,
         manifest_id: str,
         write: StateWrite,
-    ) -> None:
+        fence: LockFence,
+    ) -> bool:
         self.ensure_state_table(state_table)
         table = qname(state_table)
         merge = _merge_sql(state_table)
@@ -147,13 +152,17 @@ class StateTableMethods(Session, StatePort, CatalogPort):
         stamp = sql(
             "UPDATE {table} SET {column} = %s WHERE TARGET_NAME = %s", table=table, column=_STATE_MANIFEST.identifier
         )
-        self._transaction(
-            (
-                *((merge, _state_values(target_name, key, entry)) for key, entry in sorted(write.upserts.items())),
-                *((delete, (target_name, key)) for key in write.deletes),
-                (stamp, (manifest_id, target_name)),
-            )
-        )
+        lock = lock_table_sql(state_table)
+        with self._lock_transaction(lock) as transaction:
+            if not fence_holds(transaction, lock, target_name, fence):
+                transaction.rollback()
+                return False
+            for key, entry in sorted(write.upserts.items()):
+                transaction.run(merge, _state_values(target_name, key, entry))
+            for key in write.deletes:
+                transaction.run(delete, (target_name, key))
+            transaction.run(stamp, (manifest_id, target_name))
+        return True
 
     def _column_names(self, table: QualifiedName) -> set[str]:
         """Return the names of the columns DESCRIBE TABLE lists for a table, uppercased."""
