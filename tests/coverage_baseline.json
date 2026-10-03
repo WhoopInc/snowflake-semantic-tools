@@ -5,14 +5,14 @@
   },
   "app": {
     "line": 99.5,
-    "branch": 98.4
+    "branch": 98.5
   },
   "cli": {
-    "line": 97.6,
-    "branch": 91.3
+    "line": 97.8,
+    "branch": 93.3
   },
   "adapters": {
-    "line": 94.9,
-    "branch": 90.8
+    "line": 94.6,
+    "branch": 90.2
   }
 }
