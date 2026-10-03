@@ -228,7 +228,7 @@ def _execute(
     if not isinstance(statement, Sql):
         raise TypeError(f"the connector runs only Sql, found {type(statement).__name__}")
     connector_params = cast(Sequence[Any] | dict[Any, Any] | None, params)
-    cursor.execute(str(statement), connector_params)
+    cursor.execute(statement.for_driver(bound=params is not None), connector_params)
 
 
 def _use_statements(target: SchemaScope) -> tuple[Sql, Sql]:

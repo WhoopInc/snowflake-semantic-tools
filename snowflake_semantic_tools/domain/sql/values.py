@@ -49,19 +49,6 @@ def literal(value: str) -> Sql:
     return _seal(_quoted(value))
 
 
-def bound_literal(value: str) -> Sql:
-    """Return `literal(value)` with each `%` doubled, for a statement the driver binds with `%s`.
-
-    The driver formats such a statement with Python's `%` operator, which reads `%%` as one
-    percent sign, so the literal reaches Snowflake as `literal` would write it.
-
-    Raises:
-        TypeError: as `literal` raises it.
-        ValueError: as `literal` raises it.
-    """
-    return _seal(literal(value).text.replace("%", "%%"))
-
-
 def number(value: int | float | Decimal) -> Sql:
     """Return a numeric literal: an integer, a finite float, or a finite decimal.
 

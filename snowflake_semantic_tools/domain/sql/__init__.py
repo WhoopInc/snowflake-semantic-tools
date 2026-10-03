@@ -24,7 +24,6 @@ from snowflake_semantic_tools.domain.sql.datatype import datatype, is_datatype
 from snowflake_semantic_tools.domain.sql.names import ident, keyword, privilege, qname, scope, stage_path
 from snowflake_semantic_tools.domain.sql.values import (
     boolean,
-    bound_literal,
     dollar_quoted,
     literal,
     local_file,
@@ -38,7 +37,6 @@ __all__ = [
     "Sql",
     "UnsafeSqlError",
     "boolean",
-    "bound_literal",
     "canonical",
     "datatype",
     "dollar_quoted",

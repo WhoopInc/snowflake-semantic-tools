@@ -14,7 +14,7 @@ from collections.abc import Mapping
 from snowflake_semantic_tools.adapters.snowflake.connector.session import Session, _variant_value
 from snowflake_semantic_tools.domain.ports.enrich import CortexPort
 from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
-from snowflake_semantic_tools.domain.sql import Sql, boolean, bound_literal, join, null, number, sql
+from snowflake_semantic_tools.domain.sql import Sql, boolean, join, literal, null, number, sql
 
 # A model name as Cortex spells one, such as `mistral-large2` or `claude-sonnet-4-6`.
 _MODEL_NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]*")
@@ -24,7 +24,8 @@ def object_constant(value: object) -> Sql:
     """Return a JSON-shaped value as the Snowflake constant that equals it.
 
     A mapping is an OBJECT constant, a list an ARRAY constant, and every string a quoted
-    literal; a percent sign is doubled, as the driver's parameter binding requires.
+    literal. A percent sign stays as written: the session escapes the whole statement when it
+    binds parameters (see `Sql.for_driver`).
 
     Raises:
         SnowflakePortError: the value holds something JSON cannot, such as a set.
@@ -45,7 +46,7 @@ def object_constant(value: object) -> Sql:
     if isinstance(value, (int, float)):
         return number(value)
     if isinstance(value, str):
-        return bound_literal(value)
+        return literal(value)
     if value is None:
         return null()
     raise SnowflakePortError(f"cannot write {type(value).__name__} into a Cortex response schema")

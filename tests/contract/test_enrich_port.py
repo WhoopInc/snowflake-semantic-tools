@@ -99,9 +99,9 @@ def test_a_model_that_is_not_a_plain_name_is_refused_before_any_statement() -> N
     assert port.statements == []
 
 
-def test_object_constants_quote_every_string_and_double_percent_signs() -> None:
+def test_object_constants_quote_every_string_and_keep_percent_signs_as_written() -> None:
     value = {"it's": ["a%b", 1, 2.5, True, False, None]}
-    assert str(object_constant(value)) == "{'it''s': ['a%%b', 1, 2.5, TRUE, FALSE, NULL]}"
+    assert str(object_constant(value)) == "{'it''s': ['a%b', 1, 2.5, TRUE, FALSE, NULL]}"
     with pytest.raises(SnowflakePortError, match="cannot write set"):
         object_constant({"bad": {1}})
 

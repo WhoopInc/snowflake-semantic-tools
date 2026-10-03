@@ -7,7 +7,7 @@ from decimal import Decimal
 
 import pytest
 
-from snowflake_semantic_tools.domain.sql import boolean, bound_literal, dollar_quoted, literal, local_file, null, number
+from snowflake_semantic_tools.domain.sql import boolean, dollar_quoted, literal, local_file, null, number
 from tests.helpers.sql_reference import snowflake_reads
 
 TRICKY = [
@@ -48,10 +48,6 @@ def test_a_literal_refuses_what_no_snowflake_string_holds() -> None:
         literal("a\ud800")
     with pytest.raises(TypeError, match="takes str"):
         literal(1)  # type: ignore[arg-type]
-
-
-def test_a_bound_literal_doubles_percent_signs_for_the_driver() -> None:
-    assert str(bound_literal("50% it's")) == "'50%% it''s'"
 
 
 def test_numbers_render_only_finite_numeric_values() -> None:
