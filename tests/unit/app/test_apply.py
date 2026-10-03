@@ -8,7 +8,7 @@ import pytest
 
 from snowflake_semantic_tools.app.apply import ApplyArtifacts, classify_error, preserves_grants
 from snowflake_semantic_tools.app.apply.errors import _outcome_diagnostic
-from snowflake_semantic_tools.app.plan import PlanArtifacts
+from snowflake_semantic_tools.app.plan_artifacts import PlanArtifacts
 from snowflake_semantic_tools.domain.diagnostics import D, DiagnosticBag
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
 from snowflake_semantic_tools.domain.model.lifecycle import (

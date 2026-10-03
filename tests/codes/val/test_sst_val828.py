@@ -17,7 +17,7 @@ from snowflake_semantic_tools.app.lifecycle.composite import skipped
 from snowflake_semantic_tools.app.lifecycle.extensions import ExtensionLifecycleHandler
 from snowflake_semantic_tools.app.lifecycle.profiles import ProfileLifecycleHandler
 from snowflake_semantic_tools.app.manifest import build_manifest
-from snowflake_semantic_tools.app.plan import PlanArtifacts
+from snowflake_semantic_tools.app.plan_artifacts import PlanArtifacts
 from snowflake_semantic_tools.domain.diagnostics import Severity
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
 from snowflake_semantic_tools.domain.model.lifecycle import ApplyOptions, ApplyOutcome, Change, RenderedArtifact

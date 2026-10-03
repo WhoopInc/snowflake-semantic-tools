@@ -138,6 +138,11 @@ _COMMAND_OPTION_HELP: Mapping[tuple[str, str], str] = {
         "Read the current definition of each live object a planned artifact names, one `GET_DDL` "
         "each; needs REFERENCES or OWNERSHIP. Shown by `--full` and as `prior_definition` in JSON."
     ),
+    ("sst plan", "--use-cached-state"): (
+        "Plan from the observation an earlier `sst plan` recorded in `--state` instead of reading "
+        "the target, without connecting; the plan says what the target held then, and its age is "
+        "reported. Requires `--state`; composite artifacts are blocked."
+    ),
     ("sst plan", "--full"): "Also print, under each update, the properties it changes on the object.",
     ("sst plan", "--names-only"): "Print the name of each changed artifact, one per line, and nothing else.",
     ("sst plan", "--no-detailed-exitcode"): "Exit 0 when changes are pending, instead of 2.",

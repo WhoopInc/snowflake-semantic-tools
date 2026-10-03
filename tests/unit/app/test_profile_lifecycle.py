@@ -13,7 +13,7 @@ from snowflake_semantic_tools.app.compile.skills import CatalogChannel, CompileS
 from snowflake_semantic_tools.app.desktop_contract import desktop_view, is_pointer, stage_pointers
 from snowflake_semantic_tools.app.lifecycle.profiles import ProfileLifecycleHandler, _shape_problem, _stale
 from snowflake_semantic_tools.app.manifest import build_manifest
-from snowflake_semantic_tools.app.plan import PlanArtifacts
+from snowflake_semantic_tools.app.plan_artifacts import PlanArtifacts
 from snowflake_semantic_tools.domain.diagnostics import DiagnosticBag, Origin, Severity
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
 from snowflake_semantic_tools.domain.model.lifecycle import (

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import replace
 
-from snowflake_semantic_tools.app.plan import PlanArtifacts
+from snowflake_semantic_tools.app.plan_artifacts import PlanArtifacts
 from snowflake_semantic_tools.domain.diagnostics import Severity
 from tests.helpers.app_ports import InMemorySnowflake
 from tests.helpers.artifact_builders import manifest, rendered, state, target

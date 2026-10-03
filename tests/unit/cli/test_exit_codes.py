@@ -16,6 +16,7 @@ import pytest
 from click.testing import CliRunner, Result
 
 from snowflake_semantic_tools.cli.main import cli
+from snowflake_semantic_tools.cli.wiring.project import target_dir
 from snowflake_semantic_tools.domain.model.lifecycle import OwnershipMarker
 from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
 from tests.helpers.cli_projects import (
@@ -185,6 +186,9 @@ FLAG_SCENARIOS: dict[str, tuple[str, int, Scenario]] = {
     "plan-no-grants": ("plan", 2, lambda tmp, mp: _plan(tmp, mp, "--no-grants")),
     "plan-grants": ("plan", 2, lambda tmp, mp: _plan(tmp, mp, "--grants")),
     "plan-capture-prior": ("plan", 2, lambda tmp, mp: _plan(tmp, mp, "--capture-prior")),
+    "plan-use-cached-state": ("plan", 2, lambda tmp, mp: _plan_cached(tmp, mp, recorded=True)),
+    "plan-use-cached-state-unrecorded": ("plan", 4, lambda tmp, mp: _plan_cached(tmp, mp, recorded=False)),
+    "plan-use-cached-state-without-state": ("plan", 3, lambda tmp, _: _run("plan", "--use-cached-state")),
     "plan-full": ("plan", 2, lambda tmp, mp: _plan(tmp, mp, "--full")),
     "plan-names-only": ("plan", 2, lambda tmp, mp: _plan(tmp, mp, "--names-only")),
     "plan-names-only-in-sync": ("plan", 0, lambda tmp, mp: _plan(tmp, mp, "--names-only", "--no-detailed-exitcode")),
@@ -269,6 +273,21 @@ def _debug_unreachable(tmp: Path, monkeypatch: pytest.MonkeyPatch) -> Result:
 def _plan(tmp: Path, monkeypatch: pytest.MonkeyPatch, *flags: str) -> Result:
     project = project_copy(tmp)
     return invoke_with_port(monkeypatch, RecordedSnowflake(state={}), ["plan", *common(project), *flags])
+
+
+def _plan_cached(tmp: Path, monkeypatch: pytest.MonkeyPatch, *, recorded: bool) -> Result:
+    """Plan one view from the observation a live plan recorded, or from a `--state` that holds none, offline."""
+    project = project_copy(tmp)
+    compile_project(project)
+    view = ("--select", "jaffle_minimal", "--no-plan-out")
+    state = target_dir(project)
+    if recorded:
+        invoke_with_port(monkeypatch, RecordedSnowflake(state={}), ["plan", *common(project), *view])
+    else:
+        state = tmp / "previous"
+        state.mkdir()
+    _unreachable(monkeypatch)
+    return _run("plan", *common(project), "--use-cached-state", "--state", str(state), *view)
 
 
 def _diff(tmp: Path, monkeypatch: pytest.MonkeyPatch, *flags: str) -> Result:

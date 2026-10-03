@@ -2,7 +2,8 @@
 
 Both commands describe what to plan as a `PlanRequest`. `plan_runtime` decides offline what
 can be planned, then connects and plans, and returns a `PlanSession` holding the open
-connection, or a `PlanRefused`.
+connection, or a `PlanRefused`. `recorded_plan`, for `plan --use-cached-state`, plans from
+the observation `--state` records instead and never connects.
 """
 
 from __future__ import annotations
@@ -14,12 +15,17 @@ from typing import NoReturn
 from snowflake_semantic_tools.adapters.clock import SystemClock
 from snowflake_semantic_tools.adapters.dbt.profiles import ProfileTarget
 from snowflake_semantic_tools.adapters.errors import ProjectError
-from snowflake_semantic_tools.adapters.fs.local import ManifestFileStore, StateFileStore
+from snowflake_semantic_tools.adapters.fs.local import (
+    ManifestFileStore,
+    ObservationFileStore,
+    StateFileStore,
+    observation_file,
+)
 from snowflake_semantic_tools.adapters.locations import ProjectPaths
 from snowflake_semantic_tools.adapters.snowflake.connector import ConnectorPool, SnowflakeConnector
 from snowflake_semantic_tools.app.fanout import Fanout
 from snowflake_semantic_tools.app.observe import ObserveOptions
-from snowflake_semantic_tools.app.plan import PlanReady, PlanRefused, PlanScope, PreparePlan
+from snowflake_semantic_tools.app.plan import PlanCandidates, PlanReady, PlanRefused, PlanScope, PreparePlan
 from snowflake_semantic_tools.cli.group import SstUsageError
 from snowflake_semantic_tools.cli.wiring import compile as compiling
 from snowflake_semantic_tools.cli.wiring.compile import manifest_universe, selection
@@ -30,11 +36,14 @@ from snowflake_semantic_tools.cli.wiring.project import (
     open_connector,
     project_inputs,
     state_store,
+    target_dir,
 )
 from snowflake_semantic_tools.cli.wiring.selectors import selector_report
-from snowflake_semantic_tools.domain.diagnostics import D, DiagnosticBag
+from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, DiagnosticBag
+from snowflake_semantic_tools.domain.model.identifier import TargetIdentity
 from snowflake_semantic_tools.domain.model.registry import SEMANTIC_REGISTRY
 from snowflake_semantic_tools.domain.plan.impact import STATE_MODIFIED
+from snowflake_semantic_tools.domain.plan.recorded import RecordedObservation
 from snowflake_semantic_tools.domain.state import Manifest, SavedPlan
 
 
@@ -51,6 +60,8 @@ class PlanRequest:
         observe_options: `plan --grants/--no-grants` and `--capture-prior`: which per-object
             reads the observation makes.
         validate: False under `--no-validate`, which skips validation.
+        use_cached_state: `plan --use-cached-state`: plan from the observation recorded in
+            `state_dir` instead of reading the target.
     """
 
     paths: ProjectPaths
@@ -67,6 +78,7 @@ class PlanRequest:
     threads: int = 1
     observe_options: ObserveOptions = ObserveOptions()
     validate: bool = True
+    use_cached_state: bool = False
 
     @property
     def project_dir(self) -> Path:
@@ -184,25 +196,10 @@ def plan_runtime(request: PlanRequest) -> PlanSession | PlanRefused:
         ProjectError: the selectors matched nothing, carrying SST-DIS010 for each, or the
             compiled manifest is stale.
     """
-    scope = plan_scope(request)
-    project_dir = request.project_dir
-    full_result = compiling.compile_result(request.paths, request.target_name, request.manifest_path)
-    selectors = selector_report(_named(request), request.excluded, full_result.compiled)
-    prepare = PreparePlan(project_inputs(request.paths, request.target_name, request.manifest_path), SystemClock())
-    candidates = prepare.select(
-        full_result,
-        compiled_manifest(project_dir),
-        scope,
-        partial=request.partial,
-        strict=request.strict,
-        connected=request.connected,
-        project=str(project_dir),
-        previous_manifest=previous_manifest(request) if scope.impact else None,
-    )
-    if isinstance(candidates, PlanRefused):
-        if candidates.reason is not None:
-            raise ProjectError(candidates.reason, diagnostics=tuple(selectors))
-        return candidates
+    prepared = _prepared(request)
+    if isinstance(prepared, PlanRefused):
+        return prepared
+    prepare, candidates, selectors = prepared
     profile, port = connect(request.paths, request.target_name, generating=True)
     params = profile.connection_params
     with closed_on_error(port), ConnectorPool(request.threads, lambda: open_connector(params)) as pool:
@@ -222,12 +219,129 @@ def plan_runtime(request: PlanRequest) -> PlanSession | PlanRefused:
     if isinstance(outcome, PlanRefused):
         port.close()
         return outcome
-    if selectors:
-        changeset = dataclasses.replace(
-            outcome.changeset, diagnostics=DiagnosticBag((*selectors, *outcome.changeset.diagnostics))
-        )
-        outcome = dataclasses.replace(outcome, changeset=changeset)
-    return PlanSession(outcome, profile, port, store)
+    return PlanSession(_with_selectors(outcome, selectors), profile, port, store)
+
+
+def recorded_plan(request: PlanRequest) -> PlanReady | PlanRefused:
+    """Compile and decide what to plan, then plan from the observation `--state` records; never connect.
+
+    The plan's diagnostics start with what `selector_report` says of the selectors.
+
+    Raises:
+        SstUsageError: the selectors cannot be resolved, as `plan_scope` says.
+        ProjectError: the selectors matched nothing, or the compiled manifest is stale; or no
+            usable observation of the target is recorded, as `recorded_observation` says.
+    """
+    prepared = _prepared(request)
+    if isinstance(prepared, PlanRefused):
+        return prepared
+    prepare, candidates, selectors = prepared
+    outcome = prepare.run_recorded(candidates, recorded_observation(request), validate=request.validate)
+    if isinstance(outcome, PlanRefused):
+        return outcome
+    return _with_selectors(outcome, selectors)
+
+
+def recorded_observation(request: PlanRequest) -> RecordedObservation:
+    """Read the observation `--state` records of the request's target, as `sst plan` recorded it.
+
+    The target is resolved without connecting, and the record must have been taken of it: the
+    same target name, account as the profile declares it, database, and schema.
+
+    Raises:
+        ProjectError: no observation of the target is recorded in `--state` (SST-PRT009), the
+            file cannot be used, or it records another account, database, or schema (SST-MAN025).
+
+    Diagnostics:
+        SST-PRT009: `--state` holds no observation of the target; raised.
+        SST-MAN025: the file under the target's name records another account, database, or
+            schema; raised.
+    """
+    target = _declared_target(request)
+    path = cached_observation_path(request)
+    recorded = ObservationFileStore(path, root=path.parent).read()
+    if recorded is None:
+        detail = "no observation is recorded there; run sst plan without --use-cached-state to record one"
+        _refuse(D("SST-PRT009", path=str(path), detail=detail))
+    foreign = recorded.foreign_to(target)
+    if foreign is not None:
+        _refuse(D("SST-MAN025", path=str(path), value=foreign))
+    return recorded
+
+
+def cached_observation_path(request: PlanRequest) -> Path:
+    """Return the file in `--state` that `--use-cached-state` reads the target's observation from.
+
+    Raises:
+        SstUsageError: carrying SST-PRT100, when the request names no `--state`.
+    """
+    if request.state_dir is None:
+        raise SstUsageError("--use-cached-state requires --state, the directory holding the recorded observation")
+    return observation_file(request.state_dir, _declared_target(request).name)
+
+
+def record_observation(request: PlanRequest, ready: PlanReady) -> Path | None:
+    """Record what a live plan read of its target in the build directory; None when it recorded nothing.
+
+    The record keeps the account the profile declares beside the one the session reported,
+    so a later `--use-cached-state`, which does not connect, can tell the target is the same.
+    A plan made from a record, or one whose reading had a refused read, records nothing.
+    """
+    if ready.recorded is None:
+        return None
+    recorded = dataclasses.replace(ready.recorded, declared_account=_declared_target(request).account_locator)
+    path = observation_file(target_dir(request.project_dir), recorded.target.name)
+    ObservationFileStore(path, root=request.project_dir).write(recorded)
+    return path
+
+
+def _declared_target(request: PlanRequest) -> TargetIdentity:
+    """The request's target as the profile declares it, resolved without connecting."""
+    return project_inputs(request.paths, request.target_name, request.manifest_path).target().identity
+
+
+def _refuse(diagnostic: Diagnostic) -> NoReturn:
+    raise ProjectError(diagnostic.message, diagnostics=(diagnostic,))
+
+
+def _prepared(request: PlanRequest) -> tuple[PreparePlan, PlanCandidates, DiagnosticBag] | PlanRefused:
+    """Resolve the scope, compile, and decide offline what may be planned, with the selectors' report.
+
+    Raises:
+        SstUsageError: the selectors cannot be resolved, as `plan_scope` says.
+        ProjectError: the selectors matched nothing, carrying SST-DIS010 for each, or the
+            compiled manifest is stale.
+    """
+    scope = plan_scope(request)
+    project_dir = request.project_dir
+    full_result = compiling.compile_result(request.paths, request.target_name, request.manifest_path)
+    selectors = selector_report(_named(request), request.excluded, full_result.compiled)
+    prepare = PreparePlan(project_inputs(request.paths, request.target_name, request.manifest_path), SystemClock())
+    candidates = prepare.select(
+        full_result,
+        compiled_manifest(project_dir),
+        scope,
+        partial=request.partial,
+        strict=request.strict,
+        connected=request.connected,
+        project=str(project_dir),
+        previous_manifest=previous_manifest(request) if scope.impact else None,
+    )
+    if isinstance(candidates, PlanRefused):
+        if candidates.reason is not None:
+            raise ProjectError(candidates.reason, diagnostics=tuple(selectors))
+        return candidates
+    return prepare, candidates, DiagnosticBag(tuple(selectors))
+
+
+def _with_selectors(ready: PlanReady, selectors: DiagnosticBag) -> PlanReady:
+    """Report what the selectors' report says ahead of the plan's own diagnostics."""
+    if not selectors:
+        return ready
+    changeset = dataclasses.replace(
+        ready.changeset, diagnostics=DiagnosticBag((*selectors, *ready.changeset.diagnostics))
+    )
+    return dataclasses.replace(ready, changeset=changeset)
 
 
 def refuse_partial_prune(partial: bool, prune: bool) -> None:

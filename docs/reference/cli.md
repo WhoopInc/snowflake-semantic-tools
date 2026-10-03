@@ -353,6 +353,9 @@ Observe live Snowflake state and compute a non-writing plan.
 Exit 0 with nothing to change, 2 with changes pending, and 1 on an error or a blocked change.
 `--threads` observes on that many sessions at once; the plan is the same for any count.
 `--names-only` prints only the name of each changed artifact, and wins over `--full`.
+What the plan read of the target is recorded beside the saved plan, as
+`observation.<target>.json`; `--use-cached-state` plans from the one `--state` holds
+instead, without connecting, and reports how old it is.
 
 ```text
 sst plan [OPTIONS]
@@ -371,6 +374,7 @@ sst plan [OPTIONS]
 | `--plan-out` | FILE |  | Write the saved plan here instead of `target/sst/plan.json`. |
 | `--no-plan-out` | flag |  | Do not write a saved plan. |
 | `--grants / --no-grants` | flag |  | Read the grants on each object an update replaces, one `SHOW GRANTS` each, to report what a replace would drop (SST-PLN013). On by default; `--no-grants` skips the reads. |
+| `--use-cached-state` | flag |  | Plan from the observation an earlier `sst plan` recorded in `--state` instead of reading the target, without connecting; the plan says what the target held then, and its age is reported. Requires `--state`; composite artifacts are blocked. |
 | `--capture-prior` | flag |  | Read the current definition of each live object a planned artifact names, one `GET_DDL` each; needs REFERENCES or OWNERSHIP. Shown by `--full` and as `prior_definition` in JSON. |
 | `--sql-out` | DIRECTORY |  | Also write the statements for each change into this directory. |
 | `--no-validate` | flag |  | Skip validation: no cycle check, connected check, or strict promotion. Only when `sst validate` already ran on the same tree; compile errors still stop the run. |

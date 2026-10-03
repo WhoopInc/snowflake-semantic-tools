@@ -14,6 +14,7 @@ from snowflake_semantic_tools.adapters.errors import ProjectError
 from snowflake_semantic_tools.adapters.paths import create_within, write_within
 from snowflake_semantic_tools.domain.diagnostics import D
 from snowflake_semantic_tools.domain.model.config_schema import CONFIG_FILE
+from snowflake_semantic_tools.domain.plan.recorded import RecordedObservation
 from snowflake_semantic_tools.domain.state import Manifest, SavedPlan, State, StoredDocumentError, canonical_json
 
 T = TypeVar("T")
@@ -116,6 +117,28 @@ class PlanFileStore(JsonStore[SavedPlan]):
 
 
 STATE_FILE_GLOB = "state.*.json"
+
+
+def observation_file(directory: Path, target_name: str) -> Path:
+    """Return where a plan records what it read of one target, in a build directory."""
+    return directory / f"observation.{target_name}.json"
+
+
+class ObservationFileStore(JsonStore[RecordedObservation]):
+    """The observation `sst plan` recorded of one target, which `--use-cached-state` plans from.
+
+    `read` raises `ProjectError` for a file that exists and cannot be used.
+
+    Diagnostics:
+        SST-PRT009: when the file is not JSON, or not a recorded observation of this schema.
+        SST-MAN022, SST-MAN023: when the state it records is not a state document of a
+            schema this release reads.
+    """
+
+    unreadable_code = "SST-PRT009"
+
+    def __init__(self, path: Path, *, root: Path | None = None) -> None:
+        super().__init__(path, RecordedObservation.from_dict, root=root)
 
 
 def state_file(target_dir: Path, target_name: str) -> Path:

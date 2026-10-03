@@ -17,7 +17,7 @@ import pytest
 from snowflake_semantic_tools.app.apply import ApplyArtifacts
 from snowflake_semantic_tools.app.apply.lock import EventTicker, LockPolicy, RunLease
 from snowflake_semantic_tools.app.lifecycle.ports import CatalogPublicationPort
-from snowflake_semantic_tools.app.plan import PlanArtifacts
+from snowflake_semantic_tools.app.plan_artifacts import PlanArtifacts
 from snowflake_semantic_tools.domain.model.lifecycle import (
     Action,
     ApplyOptions,
