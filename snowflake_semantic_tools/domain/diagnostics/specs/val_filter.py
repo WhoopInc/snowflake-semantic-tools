@@ -41,7 +41,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         Severity.ERROR,
         "Boolean standalone filter",
         "filter '{member}' is boolean-valued and declares no labels: key",
-        "add labels: [filter] so it renders as a native LABELS = (FILTER) dimension on its table",
+        "add `labels: [filter]` so it renders as a native `LABELS = (FILTER)` dimension on its table",
     ),
     spec(
         "SST-VAL406",
@@ -104,7 +104,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         Severity.WARNING,
         "Verified query SQL references a table not in its table list",
         "verified_query '{member}' queries '{relation}', absent from tables:",
-        "add the table to tables:, which decides the views the query attaches to",
+        "add the table to tables:",
     ),
     spec(
         "SST-VAL415",
@@ -132,7 +132,6 @@ SPECS: tuple[ErrorSpec, ...] = (
         Severity.ERROR,
         "Expression does not compile against Snowflake",
         "{type} '{name}': expression failed to compile: {detail}",
-        "fix the expression so Snowflake compiles it; SST also refuses, before sending it, a `;`, a "
-        "comment, `$$`, an unbalanced bracket, or a statement keyword outside quotes",
+        "fix the expression",
     ),
 )

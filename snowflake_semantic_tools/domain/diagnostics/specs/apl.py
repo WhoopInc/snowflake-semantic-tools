@@ -48,7 +48,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         Severity.ERROR,
         "Verification gate failed",
         "{count} published probes failed",
-        "fix the metrics, then re-run the smoke suite; this never fails an apply",
+        "fix the metrics, then re-apply",
         demotable=False,
     ),
     spec(
@@ -183,7 +183,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         Severity.ERROR,
         "Metadata table absent or the wrong shape",
         "{value}: {detail}",
-        "re-run sst compile, then apply",
+        "re-run sst extract, then apply",
     ),
     spec(
         "SST-APL028",

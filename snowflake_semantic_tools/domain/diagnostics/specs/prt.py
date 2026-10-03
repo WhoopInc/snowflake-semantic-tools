@@ -51,7 +51,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         Severity.ERROR,
         "dbt manifest not found",
         "no dbt manifest at {path}",
-        "run dbt parse, or pass --manifest with the path of an existing manifest",
+        "run dbt compile, or set the manifest path",
     ),
     spec(
         "SST-PRT008",
@@ -65,8 +65,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         Severity.ERROR,
         "Filesystem read failed",
         "could not read {path}: {detail}",
-        "SST reads only regular files inside the project: replace a symbolic link with the file or folder "
-        "it points to, and keep dbt's target-path inside the project",
+        "check the permissions",
     ),
     spec(
         "SST-PRT010",
@@ -87,14 +86,14 @@ SPECS: tuple[ErrorSpec, ...] = (
         Severity.ERROR,
         "Secret would be rendered in plain text",
         "{value} would be rendered verbatim",
-        "the output was withheld; report this as a bug, since SST never prints a credential",
+        "wrap the value in Secret",
     ),
     spec(
         "SST-PRT100",
         Severity.ERROR,
         "Invalid invocation",
         "{detail}",
-        "see sst --help, and the command's own --help",
+        "see sst <command> --help",
     ),
     spec(
         "SST-PRT101",
@@ -108,7 +107,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         Severity.ERROR,
         "Unknown selector kind",
         "selector '{value}' names an unknown kind",
-        "use a name, type:, path:, state:, or <type>:<name>; only a name takes * and ? globs",
+        "use one of {expected}",
     ),
     spec(
         "SST-PRT103",
@@ -129,14 +128,14 @@ SPECS: tuple[ErrorSpec, ...] = (
         Severity.ERROR,
         "Invalid source or model selector",
         "'{value}' is not a valid {detail} selector",
-        "use the documented form: model:<name>, or a model name",
+        "use the documented form",
     ),
     spec(
         "SST-PRT106",
         Severity.ERROR,
         "Output format is not supported by this command",
         "'{found}' is not a supported format for {command}; supported: {expected}",
-        "pass one of the supported formats",
+        "pass one of {expected}",
     ),
     spec(
         "SST-PRT107",
@@ -164,6 +163,6 @@ SPECS: tuple[ErrorSpec, ...] = (
         Severity.ERROR,
         "Selector passed to a command that has none",
         "{command} takes no selector; '{value}' is not accepted",
-        "remove the selector; this command takes none, and set-based removal is apply --prune",
+        "name one object, or use apply --prune for set-based removal",
     ),
 )

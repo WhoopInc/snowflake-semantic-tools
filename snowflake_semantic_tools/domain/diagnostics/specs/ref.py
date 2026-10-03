@@ -33,8 +33,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         Severity.ERROR,
         "Unknown template function",
         "'{ref_function}' is not a template function",
-        "use one of agent, column, custom_instructions, eval_metric, extension, file, filter, metric, "
-        "plugin, ref, relationship, semantic_view, skill, table, tag, tool, var, verified_query",
+        "use one of {expected}",
     ),
     spec(
         "SST-REF005",
@@ -76,7 +75,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         Severity.ERROR,
         "tool() target not found",
         "{{ tool('{group}','{name}') }} does not resolve",
-        "declare the member in specs/tools/",
+        "declare the member in the tools directory",
     ),
     spec(
         "SST-REF011",
@@ -202,7 +201,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         Severity.ERROR,
         "Template does not match the ref grammar",
         "{file}:{line}:{col}: '{text}' is not a valid reference: {detail}",
-        "write each reference as {{ fn('arg') }}, naming one of the documented template functions",
+        "use `{{ fn('arg') }}`",
     ),
     spec(
         "SST-REF034",
@@ -252,7 +251,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         Severity.ERROR,
         "View table entry is not a ref()",
         "{artifact}: table entry {found} is not a {{ ref('<model>') }} call",
-        "write each tables: entry as {{ ref('<model>') }}",
+        "write each tables: entry as `{{ ref('<model>') }}`",
     ),
     spec(
         "SST-REF045",

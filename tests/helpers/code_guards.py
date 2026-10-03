@@ -36,9 +36,32 @@ CODE = re.compile(r"^SST-[A-Z]{3}\d{3}$")
 CODE_TEST = re.compile(r"^test_sst_([a-z]{3})(\d{3})_(fires|silent)(?:_\w+)?$")
 # The catalog columns committed here. The others carry design rationale that cites documents and
 # decision identifiers which do not ship with this repository.
-CATALOG_FIELDS = ("code", "area", "number", "severity", "non_demotable", "title", "message", "precheck")
+CATALOG_FIELDS = ("code", "area", "number", "severity", "non_demotable", "title", "message", "suggestion", "precheck")
 # A planning identifier, as tests/unit/test_public_docs.py defines it; regeneration refuses one.
 PLANNING_ID = re.compile(r"(?<![\w$-])[A-Z]\d{3}(?![\w-])")
+# What the catalog's Suggestion column carries besides the suggestion itself, removed in order:
+# a parenthesised planning identifier, a bold aside and all after it, a pointer into the design
+# documents, and a placeholder backticked so the catalog's markdown keeps its angle brackets.
+_SUGGESTION_ASIDES = (
+    (re.compile(r"\s*\(`?[A-Z]\d{3}`?\)"), ""),
+    (re.compile(r"\s*\*\*.*$", re.DOTALL), ""),
+    (re.compile(r"\s+--\s+see\s+specs/.*$", re.DOTALL), ""),
+    (re.compile(r"(?<![\w/-])specs/(\w+)/"), r"the \1 directory"),
+    (re.compile(r"`(<[^<>`]+>)`"), r"\1"),
+)
+
+
+def public_suggestion(text: object) -> str | None:
+    """Return a catalog Suggestion cell as the engine registers it; None for `--`, which offers none.
+
+    The cell's rationale -- planning identifiers, bold asides, design-document pointers -- is
+    removed mechanically, by `_SUGGESTION_ASIDES`, so the suggestion ships without it.
+    """
+    if not isinstance(text, str) or text.strip() in ("", "--"):
+        return None
+    for pattern, replacement in _SUGGESTION_ASIDES:
+        text = pattern.sub(replacement, text)
+    return text.strip()
 
 
 @dataclass(frozen=True, slots=True)
@@ -48,6 +71,7 @@ class CatalogRow:
     Attributes:
         severity: ERROR, WARNING, or INFO for a live code; RETIRED for a number that is burned.
         message: The message template, in `str.format` syntax; "--" for a retired code.
+        suggestion: The Suggestion column as `public_suggestion` reads it; None when it offers none.
         precheck: Where the condition is first observable -- local, observe, or runtime -- as
             extracted; a malformed catalog row can leave something else here.
     """
@@ -59,6 +83,7 @@ class CatalogRow:
     non_demotable: bool
     title: str
     message: str
+    suggestion: str | None
     precheck: str
 
     @property
@@ -76,11 +101,17 @@ def load_catalog(path: Path = CATALOG_PATH) -> dict[str, CatalogRow]:
 def project_catalog(rows: Iterable[Mapping[str, object]]) -> list[dict[str, object]]:
     """Return the committed projection of extracted catalog rows: `CATALOG_FIELDS`, sorted by code.
 
+    The suggestion is projected through `public_suggestion`.
+
     Raises:
         ValueError: a code repeats, or a kept field carries a planning identifier.
     """
     projected = sorted(
-        ({field: row[field] for field in CATALOG_FIELDS} for row in rows), key=lambda row: str(row["code"])
+        (
+            {field: public_suggestion(row[field]) if field == "suggestion" else row[field] for field in CATALOG_FIELDS}
+            for row in rows
+        ),
+        key=lambda row: str(row["code"]),
     )
     codes = [row["code"] for row in projected]
     if len(codes) != len(set(codes)):
@@ -129,9 +160,9 @@ def ratchet(found: Mapping[str, str], allowed: Mapping[str, str], name: str) -> 
 def catalog_divergence(catalog: Mapping[str, CatalogRow], registry: Mapping[str, ErrorSpec]) -> dict[str, str]:
     """Return each code on which the catalog and the registry disagree, with every disagreement.
 
-    A live catalog code must be registered with the catalog's severity, non-demotable flag, and
-    message template; a retired one must not be registered; and a registered code must be in the
-    catalog at all.
+    A live catalog code must be registered with the catalog's severity, non-demotable flag,
+    title, message template, and suggestion; a retired one must not be registered; and a
+    registered code must be in the catalog at all.
     """
     divergence: dict[str, str] = {}
     for code in sorted(set(catalog) | set(registry)):
@@ -151,6 +182,10 @@ def catalog_divergence(catalog: Mapping[str, CatalogRow], registry: Mapping[str,
                 reasons.append(f"non-demotable: catalog {row.non_demotable}, engine {not spec.demotable}")
             if row.message != spec.template:
                 reasons.append(f"template: catalog {row.message!r}, engine {spec.template!r}")
+            if row.title != spec.title:
+                reasons.append(f"title: catalog {row.title!r}, engine {spec.title!r}")
+            if row.suggestion != spec.suggestion:
+                reasons.append(f"suggestion: catalog {row.suggestion!r}, engine {spec.suggestion!r}")
             if reasons:
                 divergence[code] = "; ".join(reasons)
     return divergence

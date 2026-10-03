@@ -133,6 +133,24 @@ class Diagnostic:
         return ERROR_REGISTRY[self.code].template.format(**self.context)
 
     @property
+    def suggestion(self) -> str | None:
+        """Return the code's suggestion, its placeholders filled from this diagnostic's context.
+
+        A suggestion that names no placeholder, or one the context lacks, or that does not parse
+        as a template, is returned as written. None when the code has no suggestion.
+        """
+        text = ERROR_REGISTRY[self.code].suggestion
+        if not text:
+            return None
+        try:
+            fields = _placeholders(text)
+        except ValueError:
+            return text
+        if not fields or not fields <= set(self.context):
+            return text
+        return text.format(**self.context)
+
+    @property
     def phase(self) -> str:
         """Name the phase that reports the code: its subsystem, in lowercase."""
         return ERROR_REGISTRY[self.code].phase
@@ -383,6 +401,6 @@ def render_diagnostic(diagnostic: Diagnostic) -> str:
     spec = ERROR_REGISTRY[diagnostic.code]
     rendered = f"{location}{diagnostic.severity.name.lower()}[{diagnostic.code}]: {diagnostic.message}"
     if spec.suggestion:
-        rendered += f"\n  help: {spec.suggestion}"
+        rendered += f"\n  help: {diagnostic.suggestion}"
     rendered += f"\n  docs: {diagnostic.help_url}"
     return rendered

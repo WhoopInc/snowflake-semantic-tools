@@ -47,7 +47,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         Severity.ERROR,
         "Manifest written for a different target",
         "manifest target '{found}', current target '{expected}'",
-        "re-run sst compile for this target",
+        "drop --manifest and let SST parse for this target",
     ),
     spec(
         "SST-MAN007",
@@ -68,7 +68,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         Severity.WARNING,
         "state.json absent",
         "no state file; treating every artifact as new",
-        "check that the state table is readable on this target; a full plan is the safe fallback, not the fix",
+        "check `state.+table` is readable on this target; a full plan is the safe fallback, not the fix",
     ),
     spec(
         "SST-MAN021",
@@ -117,7 +117,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         Severity.WARNING,
         "Local state cache disagrees with the state table",
         "local state.json for target {value} disagrees with {detail}; the table wins",
-        "none; the run proceeds from the table",
+        "none -- the run proceeds from the table",
     ),
     spec(
         "SST-MAN030",

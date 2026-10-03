@@ -19,7 +19,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         Severity.ERROR,
         "Unhandled internal exception",
         "internal error: {detail}",
-        "report this as a bug, with the code and the full message",
+        "report this with the code and internal_detail",
         demotable=False,
         internal_detail=True,
     ),

@@ -374,7 +374,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         Severity.ERROR,
         "MCP config is not valid",
         "MCP config '{artifact}': {detail}",
-        'write mcp.json as {"mcpServers": {"<name>": {...}}}',
+        'write mcp.json as `{"mcpServers": {"<name>": {...}}}`',
     ),
     spec(
         "SST-VAL854",

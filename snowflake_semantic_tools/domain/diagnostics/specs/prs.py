@@ -19,14 +19,14 @@ SPECS: tuple[ErrorSpec, ...] = (
         Severity.ERROR,
         "Required field missing",
         "{artifact}: required field '{field}' is missing",
-        "add the required field",
+        "add {field}",
     ),
     spec(
         "SST-PRS003",
         Severity.ERROR,
         "Field has the wrong type",
         "{artifact}: '{field}' expects {expected}, found {found}",
-        "change the value to the expected type",
+        "change the value to {expected}",
     ),
     spec(
         "SST-PRS004",
@@ -40,15 +40,14 @@ SPECS: tuple[ErrorSpec, ...] = (
         Severity.ERROR,
         "Name is not a valid identifier",
         "{artifact}: '{value}' is not a valid identifier",
-        "start an unquoted name with a letter or underscore and use only letters, digits, `_` and `$`, "
-        "or double-quote it",
+        "use letters, digits and underscores, starting with a letter",
     ),
     spec(
         "SST-PRS006",
         Severity.ERROR,
         "Duplicate name within a type",
         "{type} '{name}' is declared more than once",
-        "rename one declaration",
+        "rename one of them",
     ),
     spec(
         "SST-PRS007",
@@ -97,7 +96,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         Severity.ERROR,
         "Value outside the allowed set for a closed field",
         "{artifact}: '{field}' is '{found}', expected one of {expected}",
-        "use one of the values the message lists",
+        "use one of {expected}",
     ),
     spec(
         "SST-PRS014",
@@ -118,7 +117,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         Severity.ERROR,
         "Numeric value out of range",
         "{artifact}: '{field}' is {found}, expected {expected}",
-        "use a value within the allowed range",
+        "use a value in {expected}",
     ),
     spec(
         "SST-PRS017",
@@ -181,7 +180,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         Severity.ERROR,
         "Reserved alias used",
         "{artifact}: alias '{value}' is reserved",
-        "choose a non-reserved alias",
+        "choose a different alias",
     ),
     spec(
         "SST-PRS026",
@@ -195,7 +194,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         Severity.ERROR,
         "Tags block has the wrong shape",
         "{artifact}: tags must be a list of name and value entries, found {found}",
-        "write tags as a list of {name: ..., value: ...} entries",
+        "correct the tags block",
     ),
     spec(
         "SST-PRS028",
@@ -230,14 +229,14 @@ SPECS: tuple[ErrorSpec, ...] = (
         Severity.ERROR,
         "Input schema property has a forbidden type",
         "{artifact}: input_schema property '{field}' has type '{found}'",
-        "use a supported scalar or array type",
+        "use string, number, integer, boolean or array",
     ),
     spec(
         "SST-PRS033",
         Severity.ERROR,
         "Required input-schema name is not a declared property",
         "{artifact}: input_schema.required names '{field}', absent from properties",
-        "declare the property, or remove it from required",
+        "declare the property, or drop it from required",
     ),
     spec(
         "SST-PRS034",
@@ -273,7 +272,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         Severity.ERROR,
         "Value outside the allowed enum",
         "{artifact}: '{field}' is '{found}', expected one of {expected}",
-        "use one of the values the message lists",
+        "use one of {expected}",
     ),
     spec(
         "SST-PRS104",
@@ -294,7 +293,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         Severity.ERROR,
         "Duplicate member name within an owner",
         "{artifact}: {member_type} '{name}' is declared twice",
-        "rename one member",
+        "rename one of them",
     ),
     spec(
         "SST-PRS107",
@@ -371,14 +370,14 @@ SPECS: tuple[ErrorSpec, ...] = (
         Severity.ERROR,
         "Sample question entry is a bare string",
         "{artifact}: sample_questions[{index}] is a string, expected a mapping",
-        "use {question: ...} mappings",
+        "use {{question: ...}} maps",
     ),
     spec(
         "SST-PRS119",
         Severity.ERROR,
         "Skill folder contains another skill folder",
         "{artifact}: nested skill folder at {path}",
-        "move the nested skill beside its parent; one skill per folder",
+        "flatten the layout; one skill per folder",
     ),
     spec(
         "SST-PRS120",
@@ -399,8 +398,10 @@ SPECS: tuple[ErrorSpec, ...] = (
         Severity.ERROR,
         "Window frame is not a frame clause",
         "{artifact}: window frame '{value}' is not ROWS or RANGE BETWEEN <bound> AND <bound>",
-        "write each bound as UNBOUNDED PRECEDING, UNBOUNDED FOLLOWING, CURRENT ROW, or <n> or "
-        "INTERVAL '<n> <unit>' followed by PRECEDING or FOLLOWING",
+        (
+            "write each bound as UNBOUNDED PRECEDING, UNBOUNDED FOLLOWING, CURRENT ROW, or <n> or `INTERVAL '<n> "
+            "<unit>'` followed by PRECEDING or FOLLOWING"
+        ),
     ),
     spec(
         "SST-PRS125",

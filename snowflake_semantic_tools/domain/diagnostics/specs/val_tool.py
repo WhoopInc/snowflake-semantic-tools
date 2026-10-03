@@ -26,7 +26,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         Severity.ERROR,
         "Tool type is not recognised",
         "tool member '{name}': type '{found}' is not a known tool type",
-        "use one of the known tool types",
+        "use one of {expected}",
     ),
     spec(
         "SST-VAL604",
@@ -103,7 +103,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         Severity.ERROR,
         "Search service publish order violated",
         "tool member '{name}' would publish before '{value}', which it indexes",
-        "include the source relation in the selection, or let dbt build it first; the order is not authorable",
+        "include the source relation in the selection, or let dbt build it first -- the ORDER is not authorable",
     ),
     spec(
         "SST-VAL615",
@@ -125,7 +125,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Search service indexes a relation its dbt materialization rebuilds",
         "tool member '{name}' indexes {value}, materialized '{detail}' -- every dbt run rebuilds the "
         "relation, disabling change tracking and forcing a full re-embed",
-        "make the model incremental, or set refresh_mode: FULL and accept the cost explicitly",
+        "make the model `incremental`, or set `refresh_mode: FULL` and accept the cost explicitly",
     ),
     spec(
         "SST-VAL618",
@@ -140,6 +140,6 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Search service replace will not preserve grants atomically",
         "tool member '{name}': {detail} explicit grant(s) will be captured and replayed -- they do not "
         "exist between commit and replay",
-        "none -- Snowflake provides no COPY GRANTS for this object type",
+        "none -- Snowflake provides no `COPY GRANTS` for this object type",
     ),
 )

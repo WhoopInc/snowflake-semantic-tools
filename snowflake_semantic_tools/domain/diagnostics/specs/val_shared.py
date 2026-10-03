@@ -96,7 +96,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         Severity.ERROR,
         "Unmodelled key would be rendered unvalidated",
         "{type} '{name}': '{key}' is not modelled and would be rendered as-is",
-        "promote the key, remove it, or set snowflake.allow_unknown_keys: true to render it with a warning instead",
+        "promote the key, remove it, or set `snowflake.allow_unknown_keys: true` to render it with a warning instead",
     ),
     spec(
         "SST-VAL014",
@@ -110,7 +110,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         Severity.ERROR,
         "Deploy ordering violated",
         "{type} '{name}' would publish before {blocker}, which it depends on",
-        "include the blocker in the selection, or break the dependency; the publish order is not authorable",
+        "include the blocker in the selection, or break the dependency -- the ORDER is not authorable",
     ),
     spec(
         "SST-VAL016",

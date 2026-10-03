@@ -19,8 +19,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         Severity.ERROR,
         "Object already exists",
         "{value} already exists",
-        "choose another name; a semantic view is created with CREATE OR REPLACE, and an agent takes "
-        "create_mode: or_alter (to add a version) or if_not_exists",
+        "choose another name, or -- for a semantic view -- let the unconditional `CREATE OR REPLACE` handle it.",
     ),
     spec(
         "SST-SNO003",

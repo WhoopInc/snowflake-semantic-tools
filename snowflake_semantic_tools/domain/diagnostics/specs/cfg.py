@@ -47,7 +47,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         Severity.ERROR,
         "Required config key missing",
         "required config key '{key}' is absent",
-        "add the key to sst_config.yml",
+        "add {key} to sst_config.yml",
     ),
     spec(
         "SST-CFG007",
@@ -61,7 +61,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         Severity.ERROR,
         "Config value outside its allowed domain",
         "config key '{key}' value {found} is outside {expected}",
-        "use one of the allowed values",
+        "use one of {expected}",
     ),
     spec(
         "SST-CFG009",
@@ -89,28 +89,28 @@ SPECS: tuple[ErrorSpec, ...] = (
         Severity.ERROR,
         "Credential field missing from the resolved profile",
         "profile '{profile}' has no {field}",
-        "set the field in profiles.yml or its env var",
+        "set {field} in profiles.yml or its env var",
     ),
     spec(
         "SST-CFG013",
         Severity.ERROR,
         "env_var() resolved to an empty string",
         "env_var('{var}') is unset and has no default",
-        "set the variable, or give env_var() a default",
+        "set {var}, or give env_var() a default",
     ),
     spec(
         "SST-CFG014",
         Severity.WARNING,
         "Profile field silently empty",
         "profile '{profile}' leaves {field} empty",
-        "set it explicitly rather than relying on account defaults",
+        "set {field} explicitly rather than relying on account defaults",
     ),
     spec(
         "SST-CFG015",
         Severity.ERROR,
         "evals block declares a database or schema",
         "evals: declares {key}, which is structurally invalid",
-        "remove +database and +schema from evals:; eval objects resolve to the agent's schema",
+        "remove +database and +schema from evals:",
     ),
     spec(
         "SST-CFG016",
@@ -124,7 +124,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         Severity.ERROR,
         "tool() reference does not resolve from config",
         "{{ tool('{group}','{name}') }} does not resolve",
-        "declare the group and member under the tools directory",
+        "declare the group and member in the tools directory",
     ),
     spec(
         "SST-CFG018",
@@ -159,14 +159,14 @@ SPECS: tuple[ErrorSpec, ...] = (
         Severity.WARNING,
         "Value absent from an allowlist",
         "{kind} '{found}' is absent from {key}",
-        "add it to the allowlist key, or use an allowed value",
+        "add it to {key}, or use an allowed value",
     ),
     spec(
         "SST-CFG029",
         Severity.ERROR,
         "var() reference has no declaration",
         "{{ var('{var}') }} is not declared in config",
-        "declare it under vars:",
+        "declare {var} under vars:",
     ),
     spec(
         "SST-CFG031",
@@ -223,7 +223,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         Severity.ERROR,
         "Sample-value collection requested but the project refuses it",
         "--include {components} reads row data, and enrichment.allow_sample_value_collection is false",
-        "leave sample-values and enums out of --include; authored sample_values are still read",
+        "remove --include sample-values, or change the key in sst_config.yml",
         demotable=False,
     ),
     spec(
@@ -238,7 +238,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         Severity.ERROR,
         "`sha_version` is declared in `vars:`",
         "vars.sha_version is supplied by SST and must not be declared",
-        "remove it from vars:; SST resolves it from the commit being published",
+        "remove it from `vars:`; SST resolves it from the commit being published",
     ),
     spec(
         "SST-CFG041",
@@ -252,7 +252,10 @@ SPECS: tuple[ErrorSpec, ...] = (
         Severity.ERROR,
         "Folder route declared under `evals:` or `skills:`",
         "{block}: declares a folder route '{key}'",
-        "remove it; evals: location is structural, and skills: keeps only its catalog, stage, and extensions blocks",
+        (
+            "remove it -- `evals:` location is structural, and `skills:`'s unprefixed keys are its `catalog`/`stage` "
+            "sub-blocks"
+        ),
     ),
     spec(
         "SST-CFG043",
@@ -312,7 +315,10 @@ SPECS: tuple[ErrorSpec, ...] = (
         Severity.WARNING,
         "profiles.yml disables certificate revocation checks",
         "target '{target}': insecure_mode is true, so OCSP certificate revocation checks are off for this connection",
-        "remove insecure_mode, or set it to false; with it on, a revoked certificate is still accepted",
+        (
+            "remove insecure_mode, or set it to false; it is a debugging switch, and with it on a revoked certificate "
+            "is still accepted"
+        ),
     ),
     spec(
         "SST-CFG200",

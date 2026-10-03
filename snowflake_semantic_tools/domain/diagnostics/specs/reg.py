@@ -17,7 +17,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         Severity.ERROR,
         "Registration missing a required field",
         "registration for {type} omits required field '{field}'",
-        "add the field to the registration",
+        "add {field} to the register() call",
         demotable=False,
     ),
     spec(
@@ -33,7 +33,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         Severity.ERROR,
         "Two types claim one root_key",
         "root_key '{root_key}' is claimed by {types}",
-        "give each type a distinct root_key",
+        "give each artifact type a distinct root_key",
         demotable=False,
     ),
     spec(
@@ -81,7 +81,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         Severity.ERROR,
         "Type dependency graph has a cycle",
         "type dependency cycle: {cycle}",
-        "break the cycle by removing one dependency",
+        "break the cycle by removing one dependency_edge",
         demotable=False,
     ),
     spec(
@@ -105,7 +105,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         Severity.ERROR,
         "Internal-band code is not a non-demotable ERROR",
         "'{code}' is in the 900 band with severity {severity}",
-        "declare 900-band codes ERROR, and INT and REG ones non-demotable",
+        "declare 900-band codes ERROR, and non_demotable in INT and REG",
         demotable=False,
     ),
     spec(
@@ -113,7 +113,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         Severity.ERROR,
         "Severity comparison outside the diagnostics module",
         "{module} compares severities outside diagnostics/",
-        "route the decision through the diagnostic's resolved severity, such as Diagnostic.blocks",
+        "route the decision through the resolved severity on the diagnostic",
         demotable=False,
     ),
     spec(
@@ -121,7 +121,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         Severity.ERROR,
         "Message template placeholder is not supplied",
         "'{code}' template names {placeholder}, absent from declared params",
-        "use a placeholder from the shared vocabulary, or correct the template",
+        "add the placeholder to the code's params, or correct the template",
         demotable=False,
     ),
     spec(
@@ -145,7 +145,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         Severity.ERROR,
         "internal_detail declared outside INT and SNO",
         "'{code}' declares internal_detail but its area is {area}",
-        "drop internal_detail, or move the raw text into the template's params",
+        "drop internal_detail, or move the raw text into params",
         demotable=False,
     ),
     spec(
@@ -161,7 +161,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         Severity.ERROR,
         "`grant_preservation` contradicts the type's other fields",
         "type '{artifact}' -- {reason}",
-        "correct the registration so its grant handling matches how the type is published",
+        "correct the registration against the probe result",
         demotable=False,
     ),
     spec(
@@ -169,7 +169,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         Severity.ERROR,
         "Non-`semantic_view` artifact type declares `member_types`",
         "artifact type '{artifact}' declares member_types {member_types}; only semantic_view may",
-        "leave member_types empty, or register the members as their own top-level type",
+        "leave `member_types` empty, or register the members as their own top-level type",
         demotable=False,
     ),
     spec(

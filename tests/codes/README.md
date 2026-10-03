@@ -5,7 +5,7 @@ These tests hold the engine's diagnostic codes to the 1.0 error catalog. They ar
 
 | Test | Guard |
 |------|-------|
-| `test_catalog_parity.py` | Every live catalog code is registered with the catalog's severity, non-demotable flag, and message template; no retired code is registered; every registered code is in the catalog. |
+| `test_catalog_parity.py` | Every live catalog code is registered with the catalog's severity, non-demotable flag, title, message template, and suggestion; no retired code is registered; every registered code is in the catalog. |
 | `test_codes_emitted.py` | Every registered code is named by some package module outside `domain/diagnostics/specs/`, and every code the package names is registered. |
 | `test_codes_tested.py` | Every registered code has a `test_<code>_fires` and a `test_<code>_silent` test somewhere under `tests/`, such as `test_sst_cfg003_fires`. |
 | `test_guard_machinery.py` | The ratchet, the scans, and the catalog projection each fail on the shape they exist for. |
@@ -13,8 +13,8 @@ These tests hold the engine's diagnostic codes to the 1.0 error catalog. They ar
 ## `catalog.json`
 
 The 1.0 error catalog's declaration rows: for each code, its area, number, severity (`RETIRED` for
-a burned number), whether it is non-demotable, its title, its message template, and where its
-condition is first observable (`precheck`). It is the source of truth for what a code means and how
+a burned number), whether it is non-demotable, its title, its message template, its suggestion,
+and where its condition is first observable (`precheck`). It is the source of truth for what a code means and how
 severe it is; when the engine disagrees, the engine is what changes, or the disagreement is listed
 in the allowlist below.
 
@@ -28,6 +28,11 @@ poetry run python -m tests.helpers.code_guards path/to/extracted-catalog.json
 The projection keeps only the columns above, sorted by code. The catalog's rationale columns cite
 design documents that do not ship with this repository, so they are not committed, and the
 projection refuses any row whose kept columns would carry a planning identifier.
+
+The suggestion is projected mechanically (`public_suggestion`): the catalog's `--` reads as none, and
+the rationale its cell carries -- a parenthesised planning identifier, a bold aside, a pointer into
+the design documents, a backticked `<placeholder>` -- is removed, so the registered suggestion is
+exactly the projected one.
 
 ## Allowlists
 
