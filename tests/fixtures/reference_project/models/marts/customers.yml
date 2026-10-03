@@ -23,7 +23,7 @@ models:
           # A natural key that is unique but is not the join key. It renders as
           # UNIQUE (CUSTOMER_NAME); a column in both lists is SST-VAL223.
           unique_keys:
-            - - customer_name
+            -   - customer_name
     columns:
       # Identifiers are dimensions, never facts.
       - name: customer_id
