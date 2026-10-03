@@ -4,15 +4,15 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from snowflake_semantic_tools.domain.ports.golden import GoldenPath, GoldenStore
+from snowflake_semantic_tools.domain.ports.golden import GoldenPath, GoldenWriter
 
 
-class GoldenFileStore(GoldenStore):
-    """Goldens under one DDL directory and its siblings, read as UTF-8 and never written.
+class GoldenFileStore(GoldenWriter):
+    """Goldens under one DDL directory and its siblings, read and written as UTF-8.
 
-    Implements `domain.ports.golden.GoldenStore`, whose methods document the contract. A
+    Implements `domain.ports.golden.GoldenWriter`, whose methods document the contract. A
     golden's name is its path built from the directory exactly as given, so a relative
-    `--golden-dir` names relative paths.
+    `--golden-dir` names relative paths. Only `write` changes a file.
     """
 
     def __init__(self, ddl_dir: Path) -> None:
@@ -29,6 +29,11 @@ class GoldenFileStore(GoldenStore):
 
     def name(self, path: GoldenPath) -> str:
         return str(self._path(path))
+
+    def write(self, path: GoldenPath, text: str) -> None:
+        file = self._path(path)
+        file.parent.mkdir(parents=True, exist_ok=True)
+        file.write_text(text, encoding="utf-8")
 
     def _path(self, path: GoldenPath) -> Path:
         base = self._ddl_dir if path.beside is None else self._ddl_dir.parent / path.beside

@@ -65,7 +65,7 @@ def test_test_runs_every_applicable_suite_by_default(tmp_path: Path) -> None:
     human = CliRunner().invoke(cli, ["test", *common(project), "--golden-dir", str(GOLDEN)])
     assert "1 suite(s) passed, 0 failed, 2 skipped" in human.output
     failing = CliRunner().invoke(cli, ["test", *common(project), "--golden-dir", str(tmp_path), "--fail-fast"])
-    assert failing.exit_code == 1
+    assert failing.exit_code == 4
 
 
 def test_compiled_projects_add_the_connected_suites(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

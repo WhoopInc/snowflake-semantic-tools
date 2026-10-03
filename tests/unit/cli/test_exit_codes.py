@@ -8,6 +8,7 @@ may return, and every case's code must be one of its command's.
 
 from __future__ import annotations
 
+import shutil
 from collections.abc import Callable
 from pathlib import Path
 
@@ -138,7 +139,7 @@ SCENARIOS: dict[tuple[str, int], Scenario] = {
     ("test", 0): lambda tmp, _: _run(
         "test", *common(project_copy(tmp)), "--suite", "golden", "--golden-dir", str(GOLDEN)
     ),
-    ("test", 1): lambda tmp, _: _run("test", *common(project_copy(tmp)), "--suite", "golden", "--golden-dir", str(tmp)),
+    ("test", 1): lambda tmp, _: _test_drifted(tmp),
     ("test", 3): lambda tmp, _: _run("test", "--suite", "every"),
     ("test", 4): lambda tmp, _: _run("test", "--project-dir", str(tmp), "--suite", "golden"),
     ("test", 5): lambda tmp, mp: _connected(tmp, mp, "test", "--suite", "smoke"),
@@ -200,7 +201,32 @@ FLAG_SCENARIOS: dict[str, tuple[str, int, Scenario]] = {
         3,
         lambda tmp, _: _run("apply", "--yes", "--no-validate", "--snowflake-syntax-check"),
     ),
+    "test-select": ("test", 0, lambda tmp, _: _test_golden(tmp, GOLDEN, "--select", "jaffle_minimal")),
+    "test-exclude": ("test", 0, lambda tmp, _: _test_golden(tmp, GOLDEN, "--exclude", "type:agent")),
+    "test-select-matches-nothing": ("test", 4, lambda tmp, _: _test_golden(tmp, GOLDEN, "--select", "nothing")),
+    "test-missing-golden": ("test", 4, lambda tmp, _: _test_golden(tmp, tmp)),
+    "test-update-golden": ("test", 0, lambda tmp, mp: _test_update(tmp, mp, "")),
+    "test-update-golden-in-ci": ("test", 3, lambda tmp, mp: _test_update(tmp, mp, "true")),
+    "test-update-golden-smoke": ("test", 3, lambda tmp, _: _run("test", "--update-golden", "--suite", "smoke")),
 }
+
+
+def _test_golden(tmp: Path, golden_dir: Path, *flags: str) -> Result:
+    project = project_copy(tmp)
+    return _run("test", *common(project), "--suite", "golden", "--golden-dir", str(golden_dir), *flags)
+
+
+def _test_drifted(tmp: Path) -> Result:
+    goldens = tmp / "expected"
+    shutil.copytree(GOLDEN.parent, goldens)
+    drifted = goldens / "ddl" / "jaffle_minimal.sql"
+    drifted.write_text(drifted.read_text(encoding="utf-8").replace("Menu products only", "Drifted"), encoding="utf-8")
+    return _test_golden(tmp, goldens / "ddl")
+
+
+def _test_update(tmp: Path, monkeypatch: pytest.MonkeyPatch, ci: str) -> Result:
+    monkeypatch.setenv("CI", ci)
+    return _test_golden(tmp, tmp / "goldens", "--update-golden")
 
 
 def _debug_invalid(tmp: Path) -> Result:

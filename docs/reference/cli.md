@@ -436,8 +436,11 @@ Run the golden, smoke, and eval suites: those --suite names, else every one that
 
 The golden suite always applies; the connected suites apply once `sst compile` has written
 the manifest, the smoke suite when a semantic view compiles, the eval suite when an eval
-does. Exit 1 when any suite fails, and 5 when a connected suite cannot reach Snowflake.
-`--threads` runs the smoke probes, and the evals no setting paces, that many at once.
+does. `--select` and `--exclude` narrow every suite to those artifacts. Exit 1 when any
+suite fails, 4 when a selected artifact has no golden file, and 5 when a connected suite
+cannot reach Snowflake. `--threads` runs the smoke probes, and the evals no setting paces,
+that many at once. `--update-golden` runs the golden suite only, rewriting each golden the
+current output no longer equals.
 
 ```text
 sst test [OPTIONS]
@@ -446,8 +449,11 @@ sst test [OPTIONS]
 | Option | Value | Default | Description |
 |---|---|---|---|
 | `--suite` | golden\|smoke\|evals, repeatable |  | Repeatable. `golden` compares outputs with committed goldens offline; `smoke` probes deployed objects; `evals` runs agent evaluations. Defaults to every suite that applies. |
+| `--select` | TEXT, repeatable |  | Only these artifacts: a name (globs allowed), `type:<type>`, `path:<glob>`, `state:<state>`, or `<type>:<name>`. |
+| `--exclude` | TEXT, repeatable |  | Leave these artifacts out; same forms as `--select`. |
 | `--target / -t` | TEXT |  | Target from `profiles.yml`, else `$SST_TARGET`; defaults to the profile's own default target. |
 | `--golden-dir` | DIRECTORY | `expected/ddl` | Directory of the semantic view DDL goldens; the other goldens sit beside it. |
+| `--update-golden` | flag |  | Rewrite each golden the current output no longer equals, and create missing ones; runs the golden suite only. Refused with `--suite smoke` or `evals`, and whenever `$CI` is set. |
 | `--threads` | INTEGER RANGE |  | Smoke probes, and evals no `concurrency` setting paces, run at once, 1 to 16, else `$SST_THREADS`, else `generation.threads`, else 1. |
 | `--fail-fast` | flag |  | Stop at the first failing golden, probe, or eval. |
 | `--capture-baseline` | flag |  | Record this eval run as the new baseline. Requires `--reason`. |

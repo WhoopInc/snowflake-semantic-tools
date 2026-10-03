@@ -527,8 +527,9 @@ def test_golden_json_failure_missing_file_and_smoke_failure(tmp_path: Path, monk
         cli,
         ["test", *common(project), "--suite", "golden", "--golden-dir", str(empty_golden), "--output", "json"],
     )
-    assert missing.exit_code == 1
+    assert missing.exit_code == 4
     assert len(json.loads(missing.output)["data"]["failures"]) == 15
+    assert len(json.loads(missing.output)["data"]["missing"]) == 15
 
     from snowflake_semantic_tools.domain.model.lifecycle import OwnershipMarker
     from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError

@@ -142,6 +142,10 @@ _COMMAND_OPTION_HELP: Mapping[tuple[str, str], str] = {
         "objects; `evals` runs agent evaluations. Defaults to every suite that applies."
     ),
     ("sst test", "--golden-dir"): "Directory of the semantic view DDL goldens; the other goldens sit beside it.",
+    ("sst test", "--update-golden"): (
+        "Rewrite each golden the current output no longer equals, and create missing ones; runs the "
+        "golden suite only. Refused with `--suite smoke` or `evals`, and whenever `$CI` is set."
+    ),
     ("sst test", "--capture-baseline"): "Record this eval run as the new baseline. Requires `--reason`.",
     ("sst test", "--reason"): "Why the baseline is changing; stored with it.",
     ("sst test", "--fail-fast"): "Stop at the first failing golden, probe, or eval.",

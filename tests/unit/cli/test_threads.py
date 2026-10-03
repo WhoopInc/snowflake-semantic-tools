@@ -172,7 +172,7 @@ def test_test_takes_threads_from_the_flag_or_the_environment_within_one_to_sixte
     golden = ["test", *common(project), "--suite", "golden", "--output", "json"]
     for args, env in ((["--threads", "4"], None), ([], {"SST_THREADS": "4"})):
         result = CliRunner().invoke(cli, [*golden, *args], env=env)
-        assert json.loads(result.output)["command"] == "test" and result.exit_code in (0, 1), result.output
+        assert json.loads(result.output)["command"] == "test" and result.exit_code in (0, 1, 4), result.output
     # A bad flag is a usage error; a bad environment value is a configuration error.
     assert CliRunner().invoke(cli, [*golden, "--threads", "17"]).exit_code == 3
     refused = CliRunner().invoke(cli, golden, env={"SST_THREADS": "0"})

@@ -359,7 +359,7 @@ def test_skills_only_project_publishes_through_plan_and_apply(tmp_path: Path, mo
         cli,
         ["test", "--project-dir", str(project), "--suite", "golden", "--golden-dir", str(golden), "--output", "json"],
     )
-    assert missing.exit_code == 1
+    assert missing.exit_code == 4
     assert json.loads(missing.output)["data"]["failures"] == [
         f"missing golden {tmp_path / 'golden' / 'skill' / 'month-close.bundle.json'}"
     ]
