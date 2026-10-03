@@ -1,26 +1,24 @@
-"""The project policy every result is held to: severity overrides, and the strict-adoption notice.
+"""Hold a command's result to the project's policy and its baseline, as `app` decides them.
 
-Both read the configuration file once the body has run. `diagnostics.severity_overrides`
-changes the severity a code reports at, and so the exit code of a command whose exit follows its
-diagnostics. The first validate, plan, or apply of a project that declares `validation.strict:
-true` with no baseline says, once, how many warnings now block.
+The decisions are `app.policy` and `app.baseline`; this module passes them the run's resolved
+configuration and clock, maps what they decide onto exit codes, and keeps the one file the
+strict-adoption notice needs, which records that it was given.
 """
 
 from __future__ import annotations
 
-import dataclasses
 from pathlib import Path
 
 from snowflake_semantic_tools.adapters.locations import ProjectPaths
-from snowflake_semantic_tools.adapters.yaml.config import load_project_config
+from snowflake_semantic_tools.adapters.resolved_config import resolved_config
+from snowflake_semantic_tools.app.baseline import gate_baseline
+from snowflake_semantic_tools.app.policy import hold_to_policy
 from snowflake_semantic_tools.cli.exit_codes import ERROR, OK
 from snowflake_semantic_tools.cli.wiring.project import target_dir
-from snowflake_semantic_tools.domain.diagnostics import D, DiagnosticBag, Origin
-from snowflake_semantic_tools.domain.model.config_schema import config_block, config_bool
-from snowflake_semantic_tools.domain.validate.config import severity_overrides
+from snowflake_semantic_tools.domain.diagnostics import DiagnosticBag
+from snowflake_semantic_tools.domain.diagnostics.baseline import Baseline
+from snowflake_semantic_tools.domain.ports.clock import ClockPort
 
-# The commands whose result a strict project's warnings now block.
-_STRICT_COMMANDS = frozenset(("validate", "plan", "apply"))
 _STRICT_NOTICE = "strict-enforced"
 
 
@@ -42,30 +40,41 @@ def with_policy(
         baselined: Whether the run read a baseline; the notice is for a project without one.
 
     Diagnostics:
-        SST-CFG037: the project declares `validation.strict: true` and has no baseline; once.
+        SST-CFG037: as `app.policy.hold_to_policy` gives it.
     """
     if paths.config_file is None:
         return result_diagnostics, exit_code
-    tree = load_project_config(paths).tree
-    overrides = severity_overrides(tree)
-    diagnostics = DiagnosticBag(
-        dataclasses.replace(item, severity=overrides[item.code]) if item.code in overrides else item
-        for item in result_diagnostics
-    )
-    if gated and overrides and exit_code in (OK, ERROR):
-        exit_code = ERROR if diagnostics.has_errors else OK
-    strict = config_bool(config_block(tree.get("validation")).get("strict"))
     marker = target_dir(paths.project_dir) / _STRICT_NOTICE
-    if command in _STRICT_COMMANDS and strict and not baselined and not marker.exists():
-        notice = D(
-            "SST-CFG037",
-            origin=Origin(paths.config_name),
-            subject="config:validation.strict",
-            count=promoted,
-        )
-        diagnostics = DiagnosticBag((notice, *diagnostics))
+    held = hold_to_policy(
+        command,
+        result_diagnostics,
+        resolved_config(paths),
+        gated=gated,
+        promoted=promoted,
+        baselined=baselined,
+        notice_due=not marker.exists(),
+    )
+    if held.blocks is not None and exit_code in (OK, ERROR):
+        exit_code = ERROR if held.blocks else OK
+    if held.notice_given:
         _remember(marker)
-    return diagnostics, exit_code
+    return held.diagnostics, exit_code
+
+
+def with_baseline(
+    diagnostics: DiagnosticBag, exit_code: int, baseline: Baseline, *, gated: bool, clock: ClockPort
+) -> tuple[DiagnosticBag, int, frozenset[str]]:
+    """Return the diagnostics, exit code and baselined fingerprints once `baseline` holds the run.
+
+    A gated run whose every error the baseline holds exits 0; a passing run whose baseline has
+    expired exits 1.
+    """
+    gate = gate_baseline(diagnostics, baseline, clock=clock)
+    if gated and exit_code == ERROR and gate.forgiven:
+        exit_code = OK
+    if exit_code == OK and gate.expired:
+        exit_code = ERROR
+    return gate.diagnostics, exit_code, gate.baselined
 
 
 def _remember(marker: Path) -> None:

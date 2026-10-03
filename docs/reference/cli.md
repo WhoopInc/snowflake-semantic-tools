@@ -180,6 +180,8 @@ sst compile [OPTIONS]
 | Option | Value | Default | Description |
 |---|---|---|---|
 | `--target / -t` | TEXT |  | Target from `profiles.yml`, else `$SST_TARGET`; defaults to the profile's own default target. |
+| `--defer-target` | TEXT |  | Resolve dbt objects to this `profiles.yml` target's relations while publishing to `--target`, else `$SST_DEFER_TARGET`, else `defer.target`. |
+| `--no-defer` | flag |  | Defer to no target, whatever `defer.target` says. |
 | `--database` | TEXT |  | Resolve refs against this database instead of the target's. |
 | `--dbt` | DIRECTORY |  | Read the dbt models from this directory instead of `dbt_project.yml`'s `model-paths`. |
 | `--semantic` | DIRECTORY |  | Read the semantic models from this directory instead of `project.semantic_models_dir`. |
@@ -202,6 +204,8 @@ sst validate [OPTIONS]
 | Option | Value | Default | Description |
 |---|---|---|---|
 | `--target / -t` | TEXT |  | Target from `profiles.yml`, else `$SST_TARGET`; defaults to the profile's own default target. |
+| `--defer-target` | TEXT |  | Resolve dbt objects to this `profiles.yml` target's relations while publishing to `--target`, else `$SST_DEFER_TARGET`, else `defer.target`. |
+| `--no-defer` | flag |  | Defer to no target, whatever `defer.target` says. |
 | `--select` | TEXT, repeatable |  | Only these artifacts: a name (globs allowed), `type:<type>`, `path:<glob>`, `state:<state>`, or `<type>:<name>`. |
 | `--exclude` | TEXT, repeatable |  | Leave these artifacts out; same forms as `--select`. |
 | `--database` | TEXT |  | Read from this database instead of the target's; never where an artifact is published. |
@@ -331,8 +335,8 @@ sst plan [OPTIONS]
 | `--select` | TEXT, repeatable |  | Only these artifacts: a name (globs allowed), `type:<type>`, `path:<glob>`, `state:<state>`, or `<type>:<name>`. |
 | `--exclude` | TEXT, repeatable |  | Leave these artifacts out; same forms as `--select`. |
 | `--state` | DIRECTORY |  | Directory holding the previous run's `manifest.json`, which `--select state:modified` compares with. |
-| `--defer-target` | TEXT |  | Not supported in this release: SST reads the manifest dbt resolves for `--target`. |
-| `--no-defer` | flag |  | Accepted: SST never defers. |
+| `--defer-target` | TEXT |  | Resolve dbt objects to this `profiles.yml` target's relations while publishing to `--target`, else `$SST_DEFER_TARGET`, else `defer.target`. |
+| `--no-defer` | flag |  | Defer to no target, whatever `defer.target` says. |
 | `--prune` | flag |  | Also act on managed artifacts whose source was deleted, as far as each type allows: drop, deactivate, or report. |
 | `--partial` | flag |  | Go ahead with every artifact that has no errors and depends on nothing that does; still exits 1 while errors remain. Cannot be combined with `--prune`. |
 | `--plan-out` | FILE |  | Write the saved plan here instead of `target/sst/plan.json`. |
@@ -359,8 +363,8 @@ sst apply [OPTIONS]
 | `--select` | TEXT, repeatable |  | Only these artifacts: a name (globs allowed), `type:<type>`, `path:<glob>`, `state:<state>`, or `<type>:<name>`. |
 | `--exclude` | TEXT, repeatable |  | Leave these artifacts out; same forms as `--select`. |
 | `--state` | DIRECTORY |  | Previous run's build directory, else `$SST_STATE_DIR`, for `state:` selectors. |
-| `--defer-target` | TEXT |  | Not supported in this release: SST reads the manifest dbt resolves for `--target`. |
-| `--no-defer` | flag |  | Accepted: SST never defers. |
+| `--defer-target` | TEXT |  | Resolve dbt objects to this `profiles.yml` target's relations while publishing to `--target`, else `$SST_DEFER_TARGET`, else `defer.target`. |
+| `--no-defer` | flag |  | Defer to no target, whatever `defer.target` says. |
 | `--plan` | FILE |  | Apply this saved plan. It must still match the compiled project. |
 | `--prune` | flag |  | Also act on managed artifacts whose source was deleted, as far as each type allows: drop, deactivate, or report. |
 | `--partial` | flag |  | Go ahead with every artifact that has no errors and depends on nothing that does; still exits 1 while errors remain. Cannot be combined with `--prune`. |

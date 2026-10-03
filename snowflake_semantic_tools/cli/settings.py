@@ -1,22 +1,25 @@
 """Typed readers for the configuration settings the commands consult themselves.
 
-Everything else in the file reaches the use cases through `ProjectInputs`. A setting that has
-both a flag and a config key resolves here: a flag that is given wins, else the key, else the
-default.
+Everything else in the file reaches the use cases through `ProjectInputs`. Every reader here
+reads the run's resolved configuration, the one value `adapters.resolved_config` produces per
+invocation, so a target conditional means the same thing to each. A setting that has both a
+flag and a config key resolves here: a flag that is given wins, else the key, else the default.
 """
 
 from __future__ import annotations
 
+from collections.abc import Mapping
+
 from snowflake_semantic_tools.adapters.locations import ProjectPaths
-from snowflake_semantic_tools.adapters.yaml.config import load_project_config
-from snowflake_semantic_tools.cli.wiring.project import project_inputs
-from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, Origin
+from snowflake_semantic_tools.adapters.resolved_config import resolved_config
+from snowflake_semantic_tools.app import policy
+from snowflake_semantic_tools.domain.diagnostics import Diagnostic, Severity
 from snowflake_semantic_tools.domain.model.config_schema import config_block, config_bool, config_int, configured_dir
 
 
 def project_config(paths: ProjectPaths) -> dict[str, object]:
-    """Return the project's configuration file as a plain tree."""
-    return dict(load_project_config(paths).tree)
+    """Return the run's resolved configuration as a plain tree."""
+    return dict(resolved_config(paths).tree)
 
 
 def semantic_models_dir(paths: ProjectPaths) -> str:
@@ -58,24 +61,24 @@ def apply_fail_fast(paths: ProjectPaths, flag: bool | None) -> bool:
 
 def validation_settings(paths: ProjectPaths, *, strict: bool | None, connected: bool | None) -> tuple[bool, bool]:
     """Return whether to validate strictly, and against Snowflake: each flag given, else `validation:`."""
-    return project_inputs(paths, None, None).validation_defaults().resolve(strict, connected)
+    validation = config_block(project_config(paths).get("validation"))
+    configured_strict = config_bool(validation.get("strict"))
+    configured_check = config_bool(validation.get("snowflake_syntax_check"))
+    return (
+        strict if strict is not None else bool(configured_strict),
+        connected if connected is not None else configured_check is not False,
+    )
 
 
 def strict_disagreement(paths: ProjectPaths, strict: bool | None) -> tuple[Diagnostic, ...]:
     """Report a `--strict` or `--no-strict` flag that contradicts `validation.strict`; the flag wins.
 
     Diagnostics:
-        SST-CFG034: the flag and the config key are both set and disagree.
+        SST-CFG034: as `app.policy.strict_disagreement` reports it.
     """
-    configured = config_bool(config_block(project_config(paths).get("validation")).get("strict"))
-    if strict is None or configured is None or strict == configured:
-        return ()
-    return (
-        D(
-            "SST-CFG034",
-            origin=Origin(paths.config_name),
-            subject="config:validation.strict",
-            flag=str(strict).lower(),
-            config=str(configured).lower(),
-        ),
-    )
+    return policy.strict_disagreement(resolved_config(paths), strict)
+
+
+def severity_overrides_setting(paths: ProjectPaths) -> Mapping[str, Severity]:
+    """Return the severity each code `diagnostics.severity_overrides` overrides reports at."""
+    return policy.severity_policy(resolved_config(paths).tree).overrides

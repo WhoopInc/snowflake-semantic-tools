@@ -180,7 +180,10 @@ def _passthrough_keys(model: AgentModel) -> tuple[str, ...]:
 
 
 def _inherit(model: AgentModel, context: AgentCompileContext) -> AgentModel:
-    """Fill what the agent leaves unset from the `agents:` defaults; a model of `auto` counts as unset."""
+    """Fill what the agent leaves unset from the `agents:` defaults.
+
+    A model of `auto`, and no tags, count as unset.
+    """
     return replace(
         model,
         orchestration_model=(
@@ -193,6 +196,8 @@ def _inherit(model: AgentModel, context: AgentCompileContext) -> AgentModel:
             model.analytical_search if model.analytical_search is not None else context.analytical_search
         ),
         alias=model.alias or context.alias,
+        secure=model.secure if model.secure is not None else context.secure,
+        tags=model.tags or context.tags,
     )
 
 

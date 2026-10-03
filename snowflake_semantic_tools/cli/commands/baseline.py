@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import sys
 from collections.abc import Callable
-from datetime import UTC, date, datetime, timedelta
+from datetime import date
 from pathlib import Path
 
 import click
@@ -21,6 +21,7 @@ from snowflake_semantic_tools._version import __version__ as VERSION
 from snowflake_semantic_tools.adapters.clock import SystemClock
 from snowflake_semantic_tools.adapters.fs.baseline import BASELINE_FILE, baseline_text, read_baseline
 from snowflake_semantic_tools.adapters.locations import ProjectPaths
+from snowflake_semantic_tools.app.baseline import clock_stamp, clock_today, days_after
 from snowflake_semantic_tools.app.validate import ValidateArtifacts
 from snowflake_semantic_tools.cli.exit_codes import ERROR
 from snowflake_semantic_tools.cli.globals import GlobalOptions
@@ -307,12 +308,12 @@ def _print_entries(current: Baseline, shown: tuple[BaselineEntry, ...], *, lapse
 
 
 def _today() -> date:
-    return datetime.now(UTC).date()
+    return clock_today(SystemClock())
 
 
 def _now() -> str:
-    return datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+    return clock_stamp(SystemClock())
 
 
 def _date(today: date, days: int) -> str:
-    return (today + timedelta(days=days)).isoformat()
+    return days_after(today, days)

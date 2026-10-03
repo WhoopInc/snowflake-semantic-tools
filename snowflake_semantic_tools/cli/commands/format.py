@@ -21,7 +21,7 @@ import click
 from snowflake_semantic_tools.adapters.dbt.project import model_paths
 from snowflake_semantic_tools.adapters.errors import ProjectError
 from snowflake_semantic_tools.adapters.locations import ProjectPaths
-from snowflake_semantic_tools.adapters.yaml.config import load_project_config
+from snowflake_semantic_tools.adapters.resolved_config import resolved_config
 from snowflake_semantic_tools.adapters.yaml.discover import YAML_SUFFIXES, registry_roots
 from snowflake_semantic_tools.adapters.yaml.format import canonical_yaml
 from snowflake_semantic_tools.adapters.yaml.parse import read_yaml_mapping
@@ -166,7 +166,7 @@ def _files(paths: ProjectPaths, targets: tuple[str, ...]) -> tuple[list[Path], l
 
 def _configured(paths: ProjectPaths) -> tuple[str, ...]:
     """Return the configured directories: each artifact type's, then dbt's `model-paths`."""
-    roots = registry_roots(load_project_config(paths).tree)
+    roots = registry_roots(resolved_config(paths).tree)
     directories = [root for root in roots.values() if "*" not in root]
     if (paths.project_dir / "dbt_project.yml").is_file():
         directories.extend(model_paths(paths.project_dir, read_yaml_mapping)[0])

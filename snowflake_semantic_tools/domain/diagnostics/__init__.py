@@ -8,8 +8,9 @@ submodules. `D`, `Diagnostic`, and `render_diagnostic` look `ERROR_REGISTRY` up 
 of this module on each call, so replacing it here changes what all three see.
 
 `audit` and `unstable_fingerprints` check the emission invariants over a finished run: every
-diagnostic came from `D`, carries the location it knows, has the severity the registry and
-`resolve_severities` give it, and names a cause that is present.
+diagnostic came from `D`, carries the location it knows, declares its registered severity, has
+the effective severity a legal override and `resolve_severities` give it, and names a cause
+that is present. `policy` applies a project's severity overrides.
 """
 
 from __future__ import annotations
@@ -87,14 +88,18 @@ class Diagnostic:
     The message, phase, and help URL are read from `ERROR_REGISTRY` on access, never stored.
 
     Attributes:
-        severity: The registered severity, or ERROR once strict mode promotes a warning.
+        severity: The effective severity: the declared one, else the project's override of it,
+            then ERROR once strict mode promotes a warning.
         context: The template's placeholder values, read-only.
         subject: The artifact key of the artifact or member concerned; None when there is none.
         related: Further locations involved, such as the repeats of a duplicate declaration.
         caused_by: The code of the diagnostic this one cascades from; None when it stands alone.
         emitted: True when `D` built it, which `dataclasses.replace` keeps; `audit` reports one
             constructed any other way (SST-INT004). Not part of equality.
-            Not part of equality.
+        declared: The severity the registry declared when `D` built it; None for a diagnostic
+            built any other way, which `audit` reports as such.
+        override: The severity `diagnostics.severity_overrides` set for the code; None when the
+            project overrides nothing, or the override was not applied.
     """
 
     code: str
@@ -105,6 +110,8 @@ class Diagnostic:
     related: tuple[Origin, ...] = ()
     caused_by: str | None = None
     emitted: bool = field(default=False, repr=False, compare=False)
+    declared: Severity | None = None
+    override: Severity | None = None
 
     @property
     def blocks(self) -> bool:
@@ -123,9 +130,15 @@ class Diagnostic:
 
     @property
     def promoted_from(self) -> Severity | None:
-        """Return the registered severity when the resolved one differs from it; None otherwise."""
-        registered = ERROR_REGISTRY[self.code].severity
-        return registered if self.severity is not registered else None
+        """Return the declared severity when the effective one is higher; None otherwise."""
+        declared = self.declared or ERROR_REGISTRY[self.code].severity
+        return declared if self.severity > declared else None
+
+    @property
+    def demoted_from(self) -> Severity | None:
+        """Return the declared severity when the effective one is lower; None otherwise."""
+        declared = self.declared or ERROR_REGISTRY[self.code].severity
+        return declared if self.severity < declared else None
 
     @property
     def message(self) -> str:
@@ -262,6 +275,7 @@ def D(
         related=related,
         caused_by=caused_by,
         emitted=True,
+        declared=spec.severity,
     )
 
 
@@ -294,7 +308,10 @@ def override_refusal(code: str, wanted: Severity) -> str | None:
 
 
 def resolve_severities(diagnostics: DiagnosticBag, *, strict: bool) -> tuple[DiagnosticBag, int]:
-    """Apply strict-mode promotion once, preserving non-demotable errors."""
+    """Apply strict-mode promotion once: every warning, an overridden one included, becomes an error.
+
+    `policy.apply_policy` applies a project's overrides first, as the resolution order requires.
+    """
     if not strict:
         return diagnostics, 0
     promoted = tuple(
@@ -315,8 +332,9 @@ def audit(diagnostics: DiagnosticBag) -> DiagnosticBag:
     Diagnostics:
         SST-INT004: a diagnostic was not built by `D`.
         SST-INT005: a LOD, PRS, REF or VAL diagnostic names a file in its context and has no origin.
-        SST-INT007: a severity differs from the registered one other than by strict promotion
-            of a warning or a cascade downgrade to INFO.
+        SST-INT007: a diagnostic declares a severity other than the registered one, carries an
+            override the demotion floor forbids, or has an effective severity that neither its
+            override, strict promotion of a warning, nor a cascade downgrade to INFO gives.
         SST-INT008: the first diagnostic whose `caused_by` names no code in the run.
     """
     found: list[Diagnostic] = []
@@ -326,7 +344,7 @@ def audit(diagnostics: DiagnosticBag) -> DiagnosticBag:
             found.append(D("SST-INT004", value=item.code, subject=item.subject))
         if item.origin is None and spec.subsystem in _LOCATED_AREAS and isinstance(item.context.get("file"), str):
             found.append(D("SST-INT005", value=item.code, subject=item.subject))
-        if not _legal_severity(item, spec.severity):
+        if not _legal_severity(item, spec):
             found.append(D("SST-INT007", value=item.code, subject=item.subject))
     present = {item.code for item in diagnostics}
     dangling = next(
@@ -337,11 +355,21 @@ def audit(diagnostics: DiagnosticBag) -> DiagnosticBag:
     return DiagnosticBag((*diagnostics, *found)) if found else diagnostics
 
 
-def _legal_severity(item: Diagnostic, registered: Severity) -> bool:
-    """Report whether a resolved severity is one `resolve_severities` or a cascade could give."""
-    if item.severity is registered:
+def _legal_severity(item: Diagnostic, spec: ErrorSpec) -> bool:
+    """Report whether a diagnostic's severities are ones the registry and the policy could give.
+
+    Its declared severity is the registered one, its override is one the demotion floor permits,
+    and its effective severity is the override (else the declared one), a strict promotion of
+    that when it is a warning, or a cascade downgrade to INFO.
+    """
+    if item.declared is not None and item.declared is not spec.severity:
+        return False
+    if item.override is not None and override_refusal(item.code, item.override) is not None:
+        return False
+    base = item.override if item.override is not None else spec.severity
+    if item.severity is base:
         return True
-    if registered is Severity.WARNING and item.severity is Severity.ERROR:
+    if base is Severity.WARNING and item.severity is Severity.ERROR:
         return True
     return item.cascaded
 

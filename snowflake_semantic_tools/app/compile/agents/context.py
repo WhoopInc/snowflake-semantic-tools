@@ -58,6 +58,11 @@ class AgentCompileContext:
     allow_unknown_keys: bool = True
     # `snowflake.profile.avatar_allowlist`; None when it is not configured (SST-VAL548).
     avatar_allowlist: frozenset[str] | None = None
+    # `agents.+secure` and `agents.+tags`: what an agent that sets neither inherits.
+    secure: bool = False
+    tags: tuple[tuple[str, str], ...] = ()
+    # `snowflake.tool_types`: tool types this project adds to the ones SST renders (SST-RND012).
+    extra_tool_types: frozenset[str] = frozenset()
 
 
 @dataclass(frozen=True, slots=True)

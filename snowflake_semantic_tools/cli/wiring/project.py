@@ -9,7 +9,7 @@ A connection opened here is closed again if anything fails before it is handed b
 from __future__ import annotations
 
 import dataclasses
-from collections.abc import Iterator
+from collections.abc import Iterator, Mapping
 from contextlib import ExitStack, contextmanager
 from pathlib import Path
 
@@ -19,13 +19,17 @@ from snowflake_semantic_tools.adapters.dbt.profiles import ProfileTarget, load_p
 from snowflake_semantic_tools.adapters.fs.local import StateFileStore, state_file
 from snowflake_semantic_tools.adapters.locations import ProjectPaths
 from snowflake_semantic_tools.adapters.project_source import YamlProjectInputs
+from snowflake_semantic_tools.adapters.resolved_config import resolved_config
 from snowflake_semantic_tools.adapters.snowflake.connector import SnowflakeConnector
 from snowflake_semantic_tools.adapters.yaml.documents import LoadCache
 from snowflake_semantic_tools.cli.output import register_secrets
+from snowflake_semantic_tools.domain.model.config_schema import CONFIG_KEYS, config_block, config_int
 from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
 
 # Where a command's shared `LoadCache` is kept, in the click context's `meta`.
 LOAD_CACHE = "sst.load_cache"
+# `generation.view_timeout` unset: a generating statement runs for at most its default seconds.
+VIEW_TIMEOUT_SECONDS = int(CONFIG_KEYS["generation.view_timeout"].default or 0)
 
 
 def target_dir(project_dir: Path) -> Path:
@@ -84,7 +88,7 @@ def open_connector(connection_params: dict[str, object]) -> SnowflakeConnector:
 
 
 def connect(
-    files: ProjectPaths, target_name: str | None, *, profile: str | None = None
+    files: ProjectPaths, target_name: str | None, *, profile: str | None = None, generating: bool = False
 ) -> tuple[ProfileTarget, SnowflakeConnector]:
     """Connect to the project's target, and bind it to the live session's account and role.
 
@@ -92,11 +96,22 @@ def connect(
     connection is open closes it again. The target's credentials are
     registered with the output first, so no report of this run can print one.
 
+    Args:
+        generating: The session creates semantic views, as plan and apply's do: every statement
+            it runs is bounded by `generation.view_timeout` seconds, the session's
+            `STATEMENT_TIMEOUT_IN_SECONDS`. Sessions opened from the returned connection
+            parameters are bounded the same way.
+
     Raises:
         ProjectError: the target cannot be connected to as declared, as `connection_params` says.
         SnowflakePortError: connecting failed, or the session's role is not the target's role.
     """
-    resolved_profile = load_profile_target(files, target_name, profile=profile)
+    config = resolved_config(files, target_name).tree
+    resolved_profile = load_profile_target(files, target_name, profile=profile, state=config_block(config.get("state")))
+    if generating:
+        resolved_profile = resolved_profile.with_session_parameters(
+            {"STATEMENT_TIMEOUT_IN_SECONDS": view_timeout(config)}
+        )
     register_secrets(resolved_profile.secrets)
     port = open_connector(resolved_profile.connection_params)
     with ExitStack() as cleanup:
@@ -122,6 +137,11 @@ def connect(
         # Connected and bound: the caller owns the session from here, so nothing closes it.
         cleanup.pop_all()
     return resolved, port
+
+
+def view_timeout(config: Mapping[str, object]) -> int:
+    """Return `generation.view_timeout`, the seconds one generating statement may run; 300 when unset."""
+    return config_int(config_block(config.get("generation")).get("view_timeout")) or VIEW_TIMEOUT_SECONDS
 
 
 @contextmanager

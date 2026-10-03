@@ -14,6 +14,7 @@ from collections.abc import Mapping
 from typing import Any
 
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, DiagnosticBag, Origin
+from snowflake_semantic_tools.domain.model.config_schema.keys import CONFIG_KEYS, KeyKind
 
 _LITERAL = r"'([^']*)'"
 _ARM = re.compile(rf"\s*{_LITERAL}\s+if\s+target\.name\s*(==|!=)\s*{_LITERAL}\s*(?:else\b|$)")
@@ -55,7 +56,8 @@ def render_config(
         if not isinstance(value, str):
             return value
         rendered = _render_vars(value, declared, path, file, diagnostics)
-        return _render_conditional(rendered, target_name, path, file, diagnostics)
+        chosen = _render_conditional(rendered, target_name, path, file, diagnostics)
+        return _typed(path, chosen) if chosen is not rendered else chosen
 
     resolved = {key: (item if key == "vars" else render((key,), item)) for key, item in tree.items()}
     return resolved, DiagnosticBag(diagnostics)
@@ -86,6 +88,34 @@ def _render_vars(
         return match.group(0)
 
     return _VAR.sub(substitute, value)
+
+
+def _typed(path: tuple[str, ...], literal: str) -> Any:
+    """Read the literal a conditional chose as its key's type, so a boolean or integer key can take one.
+
+    `true` or `false` is a boolean for a boolean key, and decimal digits an integer for an integer
+    key; anything else stays text, which validation checks.
+    """
+    kind = _declared_kind(path)
+    if kind is KeyKind.BOOLEAN and literal.casefold() in ("true", "false"):
+        return literal.casefold() == "true"
+    if kind is KeyKind.INTEGER and literal.isascii() and literal.isdigit():
+        return int(literal)
+    return literal
+
+
+def _declared_kind(path: tuple[str, ...]) -> KeyKind | None:
+    """Return the declared kind of the key at `path`, reading a folder route as the block it routes."""
+    exact = CONFIG_KEYS.get(".".join(path))
+    if exact is not None:
+        return exact.kind
+    for index in range(1, len(path)):
+        if f"{'.'.join(path[:index])}.<route>" in CONFIG_KEYS:
+            return _declared_kind((*path[:index], *path[index + 1 :]))
+        named = CONFIG_KEYS.get(".".join((*path[:index], "<name>", *path[index + 1 :])))
+        if named is not None:
+            return named.kind
+    return None
 
 
 def _render_conditional(

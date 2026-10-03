@@ -88,13 +88,13 @@ def test_removed_keys_carry_a_reason_or_a_dedicated_code() -> None:
 
 
 def test_unsupported_keys_are_errors_and_are_not_descended() -> None:
-    diagnostics = validate_config({"dbt": {"invoke": True, "anything": True}})
+    diagnostics = validate_config({"agents": {"finance": {"+schema": "X", "anything": True}}})
     assert [(item.code, item.severity) for item in diagnostics] == [("SST-CFG044", Severity.ERROR)]
-    assert diagnostics[0].message == "config key 'dbt' is not supported in this release"
+    assert diagnostics[0].message == "config key 'agents.finance' is not supported in this release"
+    assert _codes({"dbt": {"invoke": True, "anything": True}}) == [("SST-CFG003", "config:dbt.anything")]
     assert _codes({"agents": {"finance": {"+schema": "X"}}}) == [("SST-CFG044", "config:agents.finance")]
     assert _codes({"tools": {"finance": {"+bogus": 1}}}) == [("SST-CFG003", "config:tools.finance.+bogus")]
     assert _codes({"semantic_views": {"+tags": [], "+max_staleness": 60}}) == [
-        ("SST-CFG044", "config:semantic_views.+tags"),
         ("SST-CFG023", "config:semantic_views.+max_staleness"),
     ]
 
@@ -102,9 +102,12 @@ def test_unsupported_keys_are_errors_and_are_not_descended() -> None:
 def test_0_3_blocks_are_removed_with_their_reasons_and_deploy_is_deprecated() -> None:
     assert _codes({"generation": {"threads": 1, "publish_via": "ddl"}, "defer": {}}) == [
         ("SST-CFG043", "config:generation.publish_via"),
-        ("SST-CFG043", "config:defer"),
     ]
-    assert _codes({"validation": {"exclude_dirs": []}}) == [("SST-CFG043", "config:validation.exclude_dirs")]
+    assert _codes({"validation": {"exclude_dirs": []}}) == []
+    assert _codes({"defer": {"auto_compile": "yes"}}) == [("SST-CFG004", "config:defer.auto_compile")]
+    assert _codes({"skills": {"catalog": {"+bundle_stage": "S", "+prune_deleted": False}}}) == [
+        ("SST-CFG008", "config:skills.catalog.+prune_deleted")
+    ]
     assert _codes({"deploy": {"agent_spec_stage": {"stage": "S"}}}) == [("SST-CFG200", "config:deploy")]
     assert _codes({"deploy": {"bogus": 1}}) == [("SST-CFG200", "config:deploy"), ("SST-CFG003", "config:deploy.bogus")]
     assert _codes({"apply": {"fail_fast": True}}) == []

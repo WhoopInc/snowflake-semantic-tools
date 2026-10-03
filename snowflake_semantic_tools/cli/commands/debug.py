@@ -19,13 +19,14 @@ from snowflake_semantic_tools._version import __version__ as VERSION
 from snowflake_semantic_tools.adapters.dbt.profiles import ProfileTarget, load_profile_target
 from snowflake_semantic_tools.adapters.errors import ProjectError
 from snowflake_semantic_tools.adapters.locations import ProjectPaths
-from snowflake_semantic_tools.adapters.yaml.config import load_project_config
+from snowflake_semantic_tools.adapters.resolved_config import resolved_config
 from snowflake_semantic_tools.cli.exit_codes import CONFIG, CONNECTION, ERROR, OK
 from snowflake_semantic_tools.cli.options import target_option
 from snowflake_semantic_tools.cli.run_log import signature_report
 from snowflake_semantic_tools.cli.runner import CommandResult, ConfigNeed, command_body
 from snowflake_semantic_tools.cli.wiring.project import open_connector, target_dir
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, DiagnosticBag
+from snowflake_semantic_tools.domain.model.config_schema import config_block
 from snowflake_semantic_tools.domain.model.registry import SEMANTIC_REGISTRY
 from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
 
@@ -70,8 +71,9 @@ def debug(
         missing = D("SST-CFG001", subject="config:discovery", path=str(paths.project_dir))
         return CommandResult(CONFIG, DiagnosticBag((missing,)), data, human=lambda: _print_fields(data))
     try:
-        checked = load_project_config(paths).diagnostics
-        profile = load_profile_target(paths, target_name)
+        checked = resolved_config(paths, target_name).diagnostics
+        state = config_block(resolved_config(paths, target_name).tree.get("state"))
+        profile = load_profile_target(paths, target_name, state=state)
     except ProjectError as exc:
         return CommandResult(CONFIG, DiagnosticBag(exc.diagnostics), data, human=lambda: _print_fields(data))
     data["target"] = _target(profile, paths)

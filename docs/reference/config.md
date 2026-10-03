@@ -43,6 +43,7 @@ What blocks a build.
 | `validation.snowflake_syntax_check` | boolean | `true` | Compile expressions against Snowflake during validate and plan. |
 | `validation.description_floor` | integer |  | Shortest description, in characters, a semantic view or metric may carry; unset checks none. |
 | `validation.instruction_budget` | integer |  | Longest composed comment and instructions, in characters, a semantic view may publish; unset checks none. |
+| `validation.exclude_dirs` | list | `[]` | Globs of project-relative directories discovery skips: no semantic model file under one is read. |
 
 ## diagnostics
 
@@ -72,6 +73,27 @@ How the commands that reach Snowflake pace their work.
 | Key | Type | Default | Description |
 |---|---|---|---|
 | `generation.threads` | integer, 1 to 16 | `1` | Sessions `plan`, `apply` and `test` work on at once, unless `--threads` or `$SST_THREADS` says. |
+| `generation.view_timeout` | integer | `300` | Seconds one statement of a plan or apply session may run (`STATEMENT_TIMEOUT_IN_SECONDS`). |
+
+## dbt
+
+How SST produces and reads the dbt manifest.
+
+| Key | Type | Default | Description |
+|---|---|---|---|
+| `dbt.invoke` | boolean | `true` | Run dbt before reading the manifest; false reads the one on disk. |
+| `dbt.command` | enum: `parse`, `compile` | `parse` | The dbt command that writes the manifest; `compile` needs a warehouse. |
+| `dbt.manifest_schema_versions` | list | the versions this release is tested against | Manifest schema versions read; any other is refused (SST-DBT017). |
+
+## defer
+
+Resolve dbt objects to another target's relations while publishing to `--target`.
+
+| Key | Type | Default | Description |
+|---|---|---|---|
+| `defer.target` | string |  | The `profiles.yml` target relations resolve to; `--defer-target` overrides it. |
+| `defer.state_path` | string | `target/sst/defer/<target>` | Directory holding that target's dbt `manifest.json`. |
+| `defer.auto_compile` | boolean | `false` | Run dbt for the deferred target to write its manifest under `state_path` (dbt Core only). |
 
 ## vars
 
@@ -124,6 +146,7 @@ Defaults for semantic views, overridable per folder.
 | `semantic_views.+database` | string | the target database | Database for semantic views. |
 | `semantic_views.+schema` | string | the target schema | Schema for semantic views. |
 | `semantic_views.+enabled` | boolean | `true` | Default for views that do not set `enabled` themselves. |
+| `semantic_views.+tags` | list |  | Tags, as a view's own `tags:` lists them, for views that set none; applied after the CREATE. |
 | `semantic_views.+max_staleness` | integer |  | Default `max_staleness`, in seconds, for views that set none; at least 120 (SST-CFG023). |
 | `semantic_views.<route>` | block |  | Folder route: overrides for views under that directory. |
 
@@ -144,6 +167,8 @@ Defaults for Cortex Agents.
 | `agents.+analytical_search` | boolean |  | Enable analytical search. |
 | `agents.+alias` | string |  | Version alias assigned after publication. |
 | `agents.+enabled` | boolean | `true` | Default for agents that do not set `enabled` themselves. |
+| `agents.+secure` | boolean | `false` | Default for agents that do not set `secure` themselves. |
+| `agents.+tags` | list |  | Tags, as an agent's own `tags:` lists them, for agents that set none. |
 
 ## evals
 
@@ -182,6 +207,7 @@ Declare at least one of `catalog`, `stage`.
 | `skills.catalog.+schema` | string | the target schema | Schema for extensions. |
 | `skills.catalog.+bundle_stage` | string, required |  | Internal stage that `ADD VERSION` reads from. Created when absent. |
 | `skills.catalog.+flatten` | boolean | `true` | Must be true: agents read supporting files beside `SKILL.md`. |
+| `skills.catalog.+prune_deleted` | boolean | `true` | Must be true: every version is built from the complete bundle, so a deleted file is gone from it. |
 | `skills.stage` | block |  | Publish CoCo Desktop profiles through a stage and the profile registry. |
 | `skills.stage.+database` | string | the target database | Database of the profile stage and registry. |
 | `skills.stage.+schema` | string | the target schema | Schema of the profile stage and registry. |
@@ -212,6 +238,7 @@ Allowlists for Snowflake surfaces the renderer accepts.
 | Key | Type | Default | Description |
 |---|---|---|---|
 | `snowflake.orchestration_models` | list | `[auto]` | Orchestration models agents may name. |
+| `snowflake.tool_types` | list |  | Agent tool types added to the ones SST renders, for a type Snowflake shipped since this release. |
 | `snowflake.allow_unknown_keys` | boolean | `true` | Render agent spec keys SST does not model with a warning; false makes each an error. |
 | `snowflake.profile` | block |  | Agent profile allowlists. |
 | `snowflake.profile.avatar_allowlist` | list |  | Avatars an agent profile may name; unset allows any. |
@@ -223,13 +250,7 @@ reads it, so a setting cannot look as though it takes effect when it does not.
 
 | Key | Type | Description |
 |---|---|---|
-| `generation.view_timeout` | integer | Per-view statement timeout, in seconds. |
-| `dbt` | block | How SST invokes dbt. |
-| `semantic_views.+tags` | list | Default view tags. |
-| `agents.+secure` | boolean | Default agent security flag. |
-| `agents.+tags` | list | Default agent tags. |
 | `agents.<route>` | block | Folder route. |
-| `snowflake.tool_types` | list | Extra agent tool types. |
 
 ## Deprecated keys
 
@@ -247,7 +268,6 @@ as though it still does.
 
 | Key | Why it was removed | Code |
 |---|---|---|
-| `validation.exclude_dirs` | every file under the configured directories is read; set enabled: false on a view to skip it | [`SST-CFG043`](error-codes.md#sst-cfg043) |
 | `validation.expression_rules` | the expression rules it disabled are no longer optional | [`SST-CFG043`](error-codes.md#sst-cfg043) |
 | `validation.multipath_check` | multi-path relationship analysis is always on | [`SST-CFG043`](error-codes.md#sst-cfg043) |
 | `validation.smoke_query` | smoke probes run only under sst test --suite smoke | [`SST-CFG043`](error-codes.md#sst-cfg043) |
@@ -255,7 +275,6 @@ as though it still does.
 | `generation.filters_to_instructions` | standalone filter prose always renders into the view | [`SST-CFG043`](error-codes.md#sst-cfg043) |
 | `generation.use_create_or_alter` | SST 1.0 renders DDL directly | [`SST-CFG043`](error-codes.md#sst-cfg043) |
 | `generation.emit_relationship_type` | relationship and join types are never rendered | [`SST-CFG043`](error-codes.md#sst-cfg043) |
-| `defer` | SST reads the manifest dbt resolves; configure deferral in dbt | [`SST-CFG043`](error-codes.md#sst-cfg043) |
 | `vars.sha_version` | SST supplies sha_version from the commit being published | [`SST-CFG040`](error-codes.md#sst-cfg040) |
 | `tools.+enabled` | omit the tools instead | [`SST-CFG043`](error-codes.md#sst-cfg043) |
 | `semantic_views.+meta` | put metadata on the view itself | [`SST-CFG043`](error-codes.md#sst-cfg043) |
@@ -270,4 +289,3 @@ as though it still does.
 | `skills.+enabled` | omit a channel block to disable it | [`SST-CFG043`](error-codes.md#sst-cfg043) |
 | `skills.<route>` | the unprefixed keys of skills: are its channel blocks | [`SST-CFG042`](error-codes.md#sst-cfg042) |
 | `skills.catalog.+registry_table` | SST state records every published version | [`SST-CFG043`](error-codes.md#sst-cfg043) |
-| `skills.catalog.+prune_deleted` | every version is built from a complete bundle | [`SST-CFG043`](error-codes.md#sst-cfg043) |

@@ -32,13 +32,13 @@ import json
 import logging
 import sys
 from collections.abc import Callable, Collection
-from datetime import UTC, datetime, timedelta
 from enum import Enum
 from pathlib import Path
 from typing import Any, NoReturn
 
 import click
 
+from snowflake_semantic_tools.adapters.clock import SystemClock
 from snowflake_semantic_tools.adapters.errors import ProjectError
 from snowflake_semantic_tools.adapters.fs.baseline import BASELINE_FILE, read_baseline
 from snowflake_semantic_tools.adapters.locations import ProjectPaths, locate_project
@@ -54,16 +54,14 @@ from snowflake_semantic_tools.cli.output import (
     resolve_invocation,
     use_render_policy,
 )
-from snowflake_semantic_tools.cli.policy import with_policy
+from snowflake_semantic_tools.cli.policy import with_baseline, with_policy
 from snowflake_semantic_tools.cli.run_log import append_run_log
 from snowflake_semantic_tools.cli.wiring.project import target_dir
 from snowflake_semantic_tools.domain.diagnostics import D, DiagnosticBag, audit
-from snowflake_semantic_tools.domain.diagnostics.baseline import Baseline, match_baseline, stable_fingerprint
+from snowflake_semantic_tools.domain.diagnostics.baseline import Baseline
 from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
 
 _LOG_LEVELS = {"debug": logging.DEBUG, "info": logging.INFO, "warn": logging.WARNING, "error": logging.ERROR}
-# A baseline expiring within this many days is reported as nearing expiry.
-_EXPIRY_WARNING_DAYS = 30
 
 
 class ConfigNeed(Enum):
@@ -222,10 +220,18 @@ class _Run:
         _report(self.name, options, _with_baseline(result, baseline, files))
 
     def _files(self) -> ProjectPaths:
-        """Resolve the project's files; a command that needs no configuration looks for none."""
+        """Resolve the project's files, the target its configuration resolves against, and its deferral.
+
+        A command that needs no configuration looks for none.
+        """
         options = self.options
+        run: dict[str, Any] = {
+            "target_name": self.given.get("target_name"),
+            "defer_target": self.given.get("defer_target"),
+            "defer_disabled": bool(self.given.get("no_defer")),
+        }
         if self.config is ConfigNeed.NONE:
-            return ProjectPaths(options.project_dir, None, profiles_dir=options.profiles_dir)
+            return ProjectPaths(options.project_dir, None, profiles_dir=options.profiles_dir, **run)
         return dataclasses.replace(
             locate_project(
                 options.project_dir,
@@ -234,6 +240,7 @@ class _Run:
                 required=self.config is ConfigNeed.REQUIRED,
             ),
             allow_unsupported_manifest_schema=options.allow_unsupported_manifest_schema,
+            **run,
         )
 
     def _arguments(self, files: ProjectPaths) -> dict[str, Any]:
@@ -305,36 +312,20 @@ def _baseline(options: GlobalOptions) -> Baseline | None:
 def _with_baseline(result: CommandResult, baseline: Baseline | None, files: ProjectPaths) -> CommandResult:
     """Mark what the baseline holds, add its expiry notices, and settle the exit code they decide.
 
-    A baselined diagnostic never blocks: a gated result whose every error is a baselined,
-    promoted warning exits 0. A baseline past its expiry is an error, and the run exits 1.
+    `app.baseline` decides, as of the system clock's today: a baselined diagnostic never blocks,
+    and a baseline past its expiry is an error.
     """
     if baseline is None:
         return result
-    today = datetime.now(UTC).date()
-    match = match_baseline(
-        result.diagnostics,
-        baseline,
-        today=today.isoformat(),
-        warn_from=(today + timedelta(days=_EXPIRY_WARNING_DAYS)).isoformat(),
+    diagnostics, exit_code, baselined = with_baseline(
+        result.diagnostics, result.exit_code, baseline, gated=result.gated, clock=SystemClock()
     )
     resolve_invocation(
         project_dir=files.project_dir,
         config_file=files.config_file,
         target=None,
-        baselined=match.baselined,
+        baselined=baselined,
     )
-    diagnostics = DiagnosticBag((*match.notices, *result.diagnostics))
-    exit_code = result.exit_code
-    errors = [item for item in result.diagnostics if item.blocks]
-    if (
-        result.gated
-        and exit_code == ERROR
-        and errors
-        and all(stable_fingerprint(item) in match.baselined for item in errors)
-    ):
-        exit_code = OK
-    if exit_code == OK and any(item.blocks for item in match.notices):
-        exit_code = ERROR
     return dataclasses.replace(result, diagnostics=diagnostics, exit_code=exit_code)
 
 

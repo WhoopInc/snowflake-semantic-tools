@@ -93,6 +93,40 @@ def _enrichment_default(name: str) -> str:
 
 
 @dataclass(frozen=True, slots=True)
+class DbtSettings:
+    """The `dbt:` block: how SST produces and reads the dbt manifest, each key at its default when unset.
+
+    Attributes:
+        invoke: Whether SST runs dbt before reading the manifest; false reads what is on disk.
+        command: The dbt command that writes the manifest: `parse`, or `compile`.
+        manifest_schema_versions: The manifest schema versions accepted; None accepts the ones
+            this release is tested against.
+    """
+
+    invoke: bool = True
+    command: str = "parse"
+    manifest_schema_versions: frozenset[int] | None = None
+
+
+def dbt_settings(config: Mapping[str, object]) -> DbtSettings:
+    """Read the `dbt:` block; a key that is absent or of the wrong type reads as its default."""
+    block = config_block(config.get("dbt"))
+    invoke = config_bool(block.get("invoke"))
+    command = block.get("command")
+    versions = block.get("manifest_schema_versions")
+    numbers = (
+        frozenset(item for item in versions if isinstance(item, int) and not isinstance(item, bool))
+        if isinstance(versions, list)
+        else None
+    )
+    return DbtSettings(
+        invoke=True if invoke is None else invoke,
+        command=command if isinstance(command, str) and command in ("parse", "compile") else "parse",
+        manifest_schema_versions=numbers or None,
+    )
+
+
+@dataclass(frozen=True, slots=True)
 class EnrichmentConfig:
     """The `enrichment:` block as `sst enrich` reads it, each key at its default when unset.
 

@@ -189,10 +189,12 @@ def test_threads_resolve_from_the_flag_then_generation_threads(tmp_path: Path) -
     (tmp_path / "sst_config.yml").write_text(
         "validation:\n  snowflake_syntax_check: false\nskills:\n  +threads: 6\n", encoding="utf-8"
     )
+    paths = project_paths(tmp_path)
     assert (threads_setting(paths, None), apply_parallelism(paths)) == (1, 6)
     (tmp_path / "sst_config.yml").write_text(
         "validation:\n  snowflake_syntax_check: false\ngeneration:\n  threads: 5\nskills:\n  +threads: 6\n",
         encoding="utf-8",
     )
+    paths = project_paths(tmp_path)
     assert (threads_setting(paths, None), apply_parallelism(paths)) == (5, 5)
     assert (threads_setting(paths, 2), apply_parallelism(paths, 2)) == (2, 2)

@@ -245,7 +245,7 @@ def _agent_metadata_statements(
     return (
         sql("ALTER AGENT {agent} SET PROFILE = {profile}", agent=agent, profile=literal(_profile_json(model))),
         sql("ALTER AGENT {agent} SET COMMENT = {comment}", agent=agent, comment=literal(comment)),
-        sql("ALTER AGENT {agent} SET SECURE = {secure}", agent=agent, secure=boolean(model.secure)),
+        sql("ALTER AGENT {agent} SET SECURE = {secure}", agent=agent, secure=boolean(model.secure is True)),
     )
 
 

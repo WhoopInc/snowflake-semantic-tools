@@ -19,7 +19,7 @@ snowflake:
   # The orchestration models agents may name (SST-VAL543). Snowflake's served
   # set is not an enum and changes, so this list is the gate. `auto` is what an
   # agent resolves to when neither it nor `agents:` names a model. `tool_types`
-  # is reserved (SST-CFG044).
+  # is absent: it only adds a type Snowflake shipped after this release.
   orchestration_models:
     - auto
     - claude-haiku-4-5
@@ -141,8 +141,8 @@ semantic_views:
   +enabled: true
 
   # Views publish as CREATE OR REPLACE SEMANTIC VIEW ... COPY GRANTS, so explicit
-  # grants survive a republish. `+tags` and `+max_staleness` are reserved
-  # (SST-CFG044); `+meta` is removed (SST-CFG043).
+  # grants survive a republish. `+tags` and `+max_staleness` are the defaults of
+  # views that set neither; `+meta` is removed (SST-CFG043).
 
 agents:
   # Evals publish into their agent's schema, so these also place the evals.
@@ -237,7 +237,8 @@ skills:
     # Must be true (SST-VAL818): agents read supporting files beside SKILL.md,
     # so reference/x.md publishes as reference__x.md.
     +flatten: true
-    # `+registry_table` and `+prune_deleted` are removed (SST-CFG043).
+    # `+registry_table` is removed (SST-CFG043). `+prune_deleted` may only be true:
+    # every version is built from the complete bundle.
 
   stage:
     +database: "{{ target.database }}"

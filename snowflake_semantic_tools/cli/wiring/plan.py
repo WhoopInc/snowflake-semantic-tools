@@ -195,7 +195,7 @@ def plan_runtime(request: PlanRequest) -> PlanSession | PlanRefused:
         if candidates.reason is not None:
             raise ProjectError(candidates.reason, diagnostics=tuple(selectors))
         return candidates
-    profile, port = connect(request.paths, request.target_name)
+    profile, port = connect(request.paths, request.target_name, generating=True)
     params = profile.connection_params
     with closed_on_error(port), ConnectorPool(request.threads, lambda: open_connector(params)) as pool:
         store = state_store(request.paths, profile.target_name)

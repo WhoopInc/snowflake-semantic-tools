@@ -165,7 +165,7 @@ def _parse_agent(
             origin=origin,
             source_files=tuple(dict.fromkeys(source_files)),
             comment=optional_string(tree.get("comment")),
-            secure=bool(tree.get("secure", False)),
+            secure=bool(tree["secure"]) if "secure" in tree else None,
             profile=AgentProfile(
                 optional_string(profile_node.get("display_name")),
                 optional_string(profile_node.get("avatar")),

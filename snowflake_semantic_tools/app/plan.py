@@ -53,6 +53,7 @@ from snowflake_semantic_tools.domain.ports.snowflake.catalog import CatalogPort
 from snowflake_semantic_tools.domain.ports.snowflake.preflight import PreflightPort
 from snowflake_semantic_tools.domain.ports.state import StateStore
 from snowflake_semantic_tools.domain.state import DEACTIVATED, Manifest, State
+from snowflake_semantic_tools.domain.validate.config import severity_overrides
 
 # How long an observation stays current. A plan that takes longer to observe and decide
 # reports SST-PLN018, because what it observed first may already have changed.
@@ -527,6 +528,7 @@ class PreparePlan:
             candidates.selected,
             strict=candidates.strict,
             connected=candidates.connected,
+            overrides=severity_overrides(self._inputs.config().tree),
         )
         validated = _validated(candidates, validation.diagnostics)
         if isinstance(validated, PlanRefused):
