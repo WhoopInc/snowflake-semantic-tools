@@ -38,7 +38,12 @@ from snowflake_semantic_tools.cli.options import (
 )
 from snowflake_semantic_tools.cli.plan_output import outcome_json, print_plan, write_plan_sql
 from snowflake_semantic_tools.cli.runner import CommandResult, command_body
-from snowflake_semantic_tools.cli.settings import apply_fail_fast, apply_parallelism, strict_disagreement
+from snowflake_semantic_tools.cli.settings import (
+    apply_fail_fast,
+    apply_parallelism,
+    strict_disagreement,
+    threads_setting,
+)
 from snowflake_semantic_tools.cli.wiring import project
 from snowflake_semantic_tools.cli.wiring.plan import (
     PlanRequest,
@@ -118,6 +123,7 @@ def apply(
         snowflake_syntax_check,
         temporary=temporary,
         state_dir=state_dir,
+        threads=threads_setting(paths, threads),
     )
     saved = _saved_plan(plan_path, request)
     planned = request.following(saved)

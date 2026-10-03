@@ -109,8 +109,10 @@ takes effect when it does not:
   (`SST-PRS004`), and an error under `--strict`;
 - a `sst_config.yml` key only 0.3 read is a removed key, an error that says what
   replaced it (`SST-CFG043`): `deploy:` (now `apply:`),
-  `generation`, `defer`, `validation.exclude_dirs`, and `apply.fail_fast` (now
-  the `--fail-fast` flag);
+  every `generation` key but `generation.threads`, `defer`, `validation.exclude_dirs`,
+  and `apply.fail_fast` (now the `--fail-fast` flag);
+- `generation.threads` is still read: it is how many Snowflake sessions `plan`,
+  `apply` and `test` work on at once, unless `--threads` or `SST_THREADS` says;
 - a key reserved for a later release is an error until SST reads it
   (`SST-CFG044`).
 

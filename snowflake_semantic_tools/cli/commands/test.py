@@ -16,8 +16,10 @@ from snowflake_semantic_tools.adapters.errors import ProjectError
 from snowflake_semantic_tools.adapters.fs.golden import GoldenFileStore
 from snowflake_semantic_tools.adapters.locations import ProjectPaths
 from snowflake_semantic_tools.adapters.project_source import YamlProjectInputs, YamlProjectSource
+from snowflake_semantic_tools.adapters.snowflake.connector import ConnectorPool
 from snowflake_semantic_tools.adapters.snowflake.eval_state import SnowflakeEvalStateStore
 from snowflake_semantic_tools.app.compile import CompiledView, CompileResult
+from snowflake_semantic_tools.app.evals.run import suite_concurrency
 from snowflake_semantic_tools.app.evals.suite import (
     EvalGateOutcome,
     EvalGateRefused,
@@ -25,18 +27,21 @@ from snowflake_semantic_tools.app.evals.suite import (
     RunEvalGate,
     compiled_evals,
 )
+from snowflake_semantic_tools.app.fanout import Fanout
 from snowflake_semantic_tools.app.golden import CompareGoldens, GoldenReport
 from snowflake_semantic_tools.app.smoke import SmokePublished
 from snowflake_semantic_tools.cli.exit_codes import CONFIG, CONNECTION, ERROR, OK
 from snowflake_semantic_tools.cli.group import SstUsageError
-from snowflake_semantic_tools.cli.options import fail_fast_option, target_option
+from snowflake_semantic_tools.cli.options import fail_fast_option, target_option, threads_option
 from snowflake_semantic_tools.cli.plan_output import print_eval_results
 from snowflake_semantic_tools.cli.runner import CommandResult, command_body
+from snowflake_semantic_tools.cli.settings import threads_setting
 from snowflake_semantic_tools.cli.wiring import compile as compiling
 from snowflake_semantic_tools.cli.wiring.manifest import current_manifest
 from snowflake_semantic_tools.cli.wiring.project import (
     closed_on_error,
     connect,
+    open_connector,
     project_inputs,
     state_store,
     target_dir,
@@ -57,6 +62,7 @@ _EXIT_RANK = {OK: 0, ERROR: 1, CONFIG: 2, CONNECTION: 3}
     type=click.Path(file_okay=False, path_type=Path),
     default=Path("expected/ddl"),
 )
+@threads_option()
 @fail_fast_option()
 @click.option("--capture-baseline", "capture_baseline_requested", is_flag=True)
 @click.option("--reason")
@@ -67,6 +73,7 @@ def test_command(
     target_name: str | None,
     manifest_path: Path | None,
     golden_dir: Path,
+    threads: int | None,
     fail_fast: bool,
     capture_baseline_requested: bool,
     reason: str | None,
@@ -76,11 +83,13 @@ def test_command(
     The golden suite always applies; the connected suites apply once `sst compile` has written
     the manifest, the smoke suite when a semantic view compiles, the eval suite when an eval
     does. Exit 1 when any suite fails, and 5 when a connected suite cannot reach Snowflake.
+    `--threads` runs the smoke probes, and the evals no setting paces, that many at once.
     """
     result = compiling.compile_result(paths, target_name, manifest_path)
     if not result.success:
         return CommandResult(ERROR, result.diagnostics)
     inputs = project_inputs(paths, target_name, manifest_path)
+    workers = threads_setting(paths, threads)
     chosen = suites or tuple(name for name in SUITES if _applies(name, paths, result))
     reports: list[tuple[str, CommandResult]] = []
     for name in dict.fromkeys(chosen):
@@ -88,10 +97,14 @@ def test_command(
             report = _golden(paths, target_name, manifest_path, golden_dir, result, inputs)
         elif name == "evals":
             report = _run_evals(
-                paths, target_name, result, inputs, EvalGateRequest(fail_fast, capture_baseline_requested, reason)
+                paths,
+                target_name,
+                result,
+                inputs,
+                EvalGateRequest(fail_fast, capture_baseline_requested, reason, threads=workers),
             )
         else:
-            report = _run_smoke(paths, target_name, result, inputs, fail_fast)
+            report = _run_smoke(paths, target_name, result, inputs, fail_fast, workers)
         reports.append((name, report))
         if fail_fast and report.exit_code:
             break
@@ -187,18 +200,25 @@ def _run_smoke(
     result: CompileResult,
     inputs: YamlProjectInputs,
     fail_fast: bool,
+    threads: int,
 ) -> CommandResult:
-    """Probe the published objects once SST is proven to own them; exit 1 when a check or probe fails."""
+    """Probe the published objects once SST is proven to own them; exit 1 when a check or probe fails.
+
+    The markers are read, and the probes run, on up to `threads` sessions at once; every
+    session but the first is closed before the connection is.
+    """
     manifest = current_manifest(paths.project_dir, result, inputs, before="smoke")
     profile, port = connect(paths, target_name)
+    params = profile.connection_params
     try:
-        smoke = SmokePublished(port, state_store(paths, profile.target_name)).run(
-            result,
-            manifest,
-            target=profile.identity,
-            state_table=profile.state_table,
-            fail_fast=fail_fast,
-        )
+        with ConnectorPool(port, threads, lambda: open_connector(params)) as pool:
+            smoke = SmokePublished(port, state_store(paths, profile.target_name), Fanout(port, pool, threads)).run(
+                result,
+                manifest,
+                target=profile.identity,
+                state_table=profile.state_table,
+                fail_fast=fail_fast,
+            )
     finally:
         port.close()
     exit_code = OK if smoke.success else ERROR
@@ -234,7 +254,9 @@ def _run_evals(
         raise ProjectError("no eval artifacts matched the project")
     manifest = current_manifest(paths.project_dir, result, inputs, before="evals")
     profile, port = connect(paths, target_name)
-    with closed_on_error(port):
+    params = profile.connection_params
+    workers = suite_concurrency(evals, inputs.eval_catalog().defaults, request.threads)
+    with closed_on_error(port), ConnectorPool(port, workers, lambda: open_connector(params)) as pool:
         store = state_store(paths, profile.target_name)
         eval_store = SnowflakeEvalStateStore(port, _eval_state_table(profile.state_table))
         outcome = RunEvalGate(
@@ -245,6 +267,7 @@ def _run_evals(
             SystemClock(),
             actor=profile.identity.role or "",
             host=socket.gethostname(),
+            sessions=pool,
         ).run(evals, manifest, request, target=profile.identity, state_table=profile.state_table)
     port.close()
     if isinstance(outcome, EvalGateRefused):

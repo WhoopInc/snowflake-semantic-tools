@@ -20,11 +20,12 @@ from snowflake_semantic_tools.cli.options import (
     sql_out_option,
     state_option,
     target_option,
+    threads_option,
     validation_options,
 )
 from snowflake_semantic_tools.cli.plan_output import change_json, plan_exit_code, print_plan, write_plan_sql
 from snowflake_semantic_tools.cli.runner import CommandResult, command_body
-from snowflake_semantic_tools.cli.settings import strict_disagreement
+from snowflake_semantic_tools.cli.settings import strict_disagreement, threads_setting
 from snowflake_semantic_tools.cli.wiring.plan import (
     PlanRequest,
     PlanSession,
@@ -59,6 +60,7 @@ def _refuse_invocation(plan_out: Path | None, no_plan_out: bool, partial: bool, 
 @click.option("--plan-out", type=click.Path(dir_okay=False, path_type=Path))
 @click.option("--no-plan-out", is_flag=True)
 @sql_out_option()
+@threads_option()
 @no_detailed_exitcode_option()
 @validation_options()
 @command_body("plan", refusals=_refuse_invocation)
@@ -74,6 +76,7 @@ def plan(
     plan_out: Path | None,
     no_plan_out: bool,
     sql_out: Path | None,
+    threads: int | None,
     no_detailed_exitcode: bool,
     strict: bool | None,
     snowflake_syntax_check: bool | None,
@@ -81,6 +84,7 @@ def plan(
     """Observe live Snowflake state and compute a non-writing plan.
 
     Exit 0 with nothing to change, 2 with changes pending, and 1 on an error or a blocked change.
+    `--threads` observes on that many sessions at once; the plan is the same for any count.
     """
     request = PlanRequest(
         paths,
@@ -93,6 +97,7 @@ def plan(
         strict,
         snowflake_syntax_check,
         state_dir=state_dir,
+        threads=threads_setting(paths, threads),
     )
     session = plan_runtime(request)
     if isinstance(session, PlanRefused):

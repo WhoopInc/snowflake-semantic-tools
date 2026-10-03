@@ -100,8 +100,8 @@ def test_unsupported_keys_are_errors_and_are_not_descended() -> None:
 
 
 def test_0_3_blocks_are_removed_with_their_reasons_and_deploy_is_deprecated() -> None:
-    assert _codes({"generation": {"threads": 1}, "defer": {}}) == [
-        ("SST-CFG043", "config:generation"),
+    assert _codes({"generation": {"threads": 1, "publish_via": "ddl"}, "defer": {}}) == [
+        ("SST-CFG043", "config:generation.publish_via"),
         ("SST-CFG043", "config:defer"),
     ]
     assert _codes({"validation": {"exclude_dirs": []}}) == [("SST-CFG043", "config:validation.exclude_dirs")]

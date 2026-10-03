@@ -16,13 +16,20 @@ from snowflake_semantic_tools.adapters.dbt.profiles import ProfileTarget
 from snowflake_semantic_tools.adapters.errors import ProjectError
 from snowflake_semantic_tools.adapters.fs.local import ManifestFileStore, StateFileStore
 from snowflake_semantic_tools.adapters.locations import ProjectPaths
-from snowflake_semantic_tools.adapters.snowflake.connector import SnowflakeConnector
+from snowflake_semantic_tools.adapters.snowflake.connector import ConnectorPool, SnowflakeConnector
+from snowflake_semantic_tools.app.fanout import Fanout
 from snowflake_semantic_tools.app.plan import PlanReady, PlanRefused, PlanScope, PreparePlan
 from snowflake_semantic_tools.cli.group import SstUsageError
 from snowflake_semantic_tools.cli.wiring import compile as compiling
 from snowflake_semantic_tools.cli.wiring.compile import manifest_universe, selection
 from snowflake_semantic_tools.cli.wiring.manifest import compiled_manifest
-from snowflake_semantic_tools.cli.wiring.project import closed_on_error, connect, project_inputs, state_store
+from snowflake_semantic_tools.cli.wiring.project import (
+    closed_on_error,
+    connect,
+    open_connector,
+    project_inputs,
+    state_store,
+)
 from snowflake_semantic_tools.cli.wiring.selectors import selector_report
 from snowflake_semantic_tools.domain.diagnostics import D, DiagnosticBag
 from snowflake_semantic_tools.domain.model.registry import SEMANTIC_REGISTRY
@@ -39,6 +46,7 @@ class PlanRequest:
         temporary: `apply --temporary`: agents publish as session-scoped temporary agents.
         state_dir: `--state`, the previous run's build directory `state:` selectors compare with,
             and whose `manifest.json` `state:modified` scopes the plan by.
+        threads: How many sessions planning reads on at once, as `--threads` resolved.
     """
 
     paths: ProjectPaths
@@ -52,6 +60,7 @@ class PlanRequest:
     connected: bool | None
     temporary: bool = False
     state_dir: Path | None = None
+    threads: int = 1
 
     @property
     def project_dir(self) -> Path:
@@ -156,7 +165,9 @@ def plan_runtime(request: PlanRequest) -> PlanSession | PlanRefused:
     """Compile and decide what to plan offline, then connect and plan; a refusal when nothing can be.
 
     A ready plan comes with its open connection, which the caller closes. Once connected, the
-    connection is closed here whenever planning raises or is refused.
+    connection is closed here whenever planning raises or is refused. With more than one
+    thread, planning reads on up to `threads` sessions at once, the connection and siblings
+    opened from the same settings; every sibling is closed before this returns or raises.
 
     The plan's diagnostics start with what `selector_report` says of the selectors.
 
@@ -185,7 +196,8 @@ def plan_runtime(request: PlanRequest) -> PlanSession | PlanRefused:
             raise ProjectError(candidates.reason, diagnostics=tuple(selectors))
         return candidates
     profile, port = connect(request.paths, request.target_name)
-    with closed_on_error(port):
+    params = profile.connection_params
+    with closed_on_error(port), ConnectorPool(port, request.threads, lambda: open_connector(params)) as pool:
         store = state_store(request.paths, profile.target_name)
         outcome = prepare.run(
             candidates,
@@ -195,6 +207,7 @@ def plan_runtime(request: PlanRequest) -> PlanSession | PlanRefused:
             state_table=profile.state_table,
             temporary=request.temporary,
             preflight=port,
+            readers=Fanout(port, pool, request.threads),
         )
     if isinstance(outcome, PlanRefused):
         port.close()

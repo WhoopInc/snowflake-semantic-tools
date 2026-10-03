@@ -57,7 +57,7 @@ def test_positions_and_the_deprecated_deploy_block(tmp_path: Path) -> None:
 def test_unsupported_and_removed_0_3_keys_are_errors(tmp_path: Path) -> None:
     config = (
         "dbt: {}\nvalidation:\n  exclude_dirs: []\n  snowflake_syntax_check: true\nenrichment: {}\n"
-        "generation: {}\ndefer: {}\napply:\n  fail_fast: true\nsnowflake:\n  tool_types: []\n"
+        "generation: {use_create_or_alter: true}\ndefer: {}\napply:\n  fail_fast: true\nsnowflake:\n  tool_types: []\n"
     )
     _write(tmp_path, {"dbt_project.yml": "profile: sst\n", "sst_config.yml": config})
     loaded = load_project_config(project_paths(tmp_path))
@@ -65,7 +65,7 @@ def test_unsupported_and_removed_0_3_keys_are_errors(tmp_path: Path) -> None:
     assert [(item.code, item.subject, item.severity.name) for item in loaded.diagnostics] == [
         ("SST-CFG044", "config:dbt", "ERROR"),
         ("SST-CFG043", "config:validation.exclude_dirs", "ERROR"),
-        ("SST-CFG043", "config:generation", "ERROR"),
+        ("SST-CFG043", "config:generation.use_create_or_alter", "ERROR"),
         ("SST-CFG043", "config:defer", "ERROR"),
         ("SST-CFG044", "config:snowflake.tool_types", "ERROR"),
     ]
