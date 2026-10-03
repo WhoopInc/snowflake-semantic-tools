@@ -10,12 +10,14 @@ code collapse to the first three, and none of it changes an exit code.
 
 from __future__ import annotations
 
+import contextlib
+import io
 import json
 import os
 import sys
 import time
 from collections import Counter
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from pathlib import Path
 from typing import NoReturn
 
@@ -37,7 +39,7 @@ from snowflake_semantic_tools.domain.model.artifact_key import split_artifact_ke
 from snowflake_semantic_tools.domain.model.registry import SEMANTIC_REGISTRY
 
 _INVOCATION: dict[str, object] = {}
-# Credential values resolved this run; no envelope or rendered diagnostic may carry one.
+# Credential values resolved this run; no envelope, report, or rendered diagnostic may carry one.
 _SECRETS: set[str] = set()
 _ARTIFACT_SUBJECTS = frozenset(SEMANTIC_REGISTRY.artifacts) | {"profile"}
 # Four or more diagnostics of one code collapse to the first few in the human render.
@@ -260,6 +262,32 @@ def emit_json(envelope: dict[str, object], exit_code: int) -> NoReturn:
     """Print `envelope`, and exit with `exit_code`; with 1 when it was refused for carrying a credential."""
     refused = print_envelope(envelope)
     raise click.exceptions.Exit(ERROR if refused else exit_code)
+
+
+def print_report(text: str, where: str) -> bool:
+    """Print a YAML, CSV, or human report on stdout as written, unless it would carry a credential.
+
+    A report that would is withheld, and SST-PRT012 is rendered on stderr in its place.
+
+    Args:
+        where: What the report is, as SST-PRT012 names it, such as `human report`.
+
+    Returns:
+        True when the report was withheld, so the run must exit 1.
+    """
+    if _leaks(text):
+        render_diagnostics(DiagnosticBag((_secret_refusal(where),)))
+        return True
+    click.echo(text, nl=False)
+    return False
+
+
+def captured(report: Callable[[], None]) -> str:
+    """Return what `report` prints on stdout, printing none of it, so it can be checked first."""
+    buffer = io.StringIO()
+    with contextlib.redirect_stdout(buffer):
+        report()
+    return buffer.getvalue()
 
 
 def interrupted(command: str, output: str, cause: BaseException) -> NoReturn:

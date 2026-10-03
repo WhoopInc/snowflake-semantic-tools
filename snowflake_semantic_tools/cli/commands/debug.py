@@ -23,6 +23,7 @@ from snowflake_semantic_tools.adapters.resolved_config import resolved_config
 from snowflake_semantic_tools.cli.exit_codes import CONFIG, CONNECTION, ERROR, OK
 from snowflake_semantic_tools.cli.globals import SstCommand
 from snowflake_semantic_tools.cli.options import target_option
+from snowflake_semantic_tools.cli.output import register_secrets
 from snowflake_semantic_tools.cli.run_log import signature_report
 from snowflake_semantic_tools.cli.runner import CommandResult, ConfigNeed, command_body
 from snowflake_semantic_tools.cli.wiring.project import open_connector, target_dir
@@ -77,6 +78,8 @@ def debug(
         profile = load_profile_target(paths, target_name, state=state)
     except ProjectError as exc:
         return CommandResult(CONFIG, DiagnosticBag(exc.diagnostics), data, human=lambda: _print_fields(data))
+    # As every connecting command does, so no output of this run can echo a credential.
+    register_secrets(profile.secrets)
     data["target"] = _target(profile, paths)
     invalid = (*checked, *_unsupported_manifest(manifest, allowed=paths.allow_unsupported_manifest_schema))
     diagnostics = DiagnosticBag((*invalid, *profile.diagnostics, *profile.connection_warnings))
