@@ -9,13 +9,13 @@ the CLI, without judging it -- the gate compares it with a baseline.
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping, Sequence
-from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from hashlib import md5
 
 from snowflake_semantic_tools.app.compile.evals import CompiledEval
 from snowflake_semantic_tools.app.evals.retrieve import _read_results, _read_status, _sum_costs
+from snowflake_semantic_tools.app.fanout import Fanout
 from snowflake_semantic_tools.app.lifecycle.evals import (
     EvalLifecycleConfig,
     EvalLifecycleHandler,
@@ -37,6 +37,7 @@ from snowflake_semantic_tools.domain.model.identifier import SchemaScope
 from snowflake_semantic_tools.domain.model.lifecycle import Action
 from snowflake_semantic_tools.domain.ports.clock import ClockPort
 from snowflake_semantic_tools.domain.ports.snowflake.errors import AgentVersionNotFound, SnowflakePortError
+from snowflake_semantic_tools.domain.ports.snowflake.execution import SessionPool
 from snowflake_semantic_tools.domain.ports.snowflake.stage import StagedFileMetadata
 from snowflake_semantic_tools.domain.resolve.eval_name import render_eval_name_template
 from snowflake_semantic_tools.domain.sql import Sql, literal, sql
@@ -126,6 +127,10 @@ class RunEvalSuite:
 
     Only reads and runs evaluations; it publishes nothing but each eval's config file, which it
     stages when the staged copy is missing or cannot be trusted.
+
+    Args:
+        sessions: Where evals running at once lease a session each, opened from `port`;
+            None runs every eval on `port`, one at a time, so no two share a session.
     """
 
     def __init__(
@@ -133,10 +138,12 @@ class RunEvalSuite:
         port: CatalogPublicationPort,
         clock: ClockPort,
         lifecycle_config: EvalLifecycleConfig = EvalLifecycleConfig(),
+        sessions: SessionPool[CatalogPublicationPort] | None = None,
     ) -> None:
         self._port = port
         self._clock = clock
         self._lifecycle_config = lifecycle_config
+        self._sessions = sessions
 
     def run(
         self,
@@ -147,23 +154,26 @@ class RunEvalSuite:
         fail_fast: bool = False,
         config_digests: Mapping[str, str] | None = None,
         baseline_capture: bool = False,
+        threads: int = 1,
     ) -> EvalSuiteResult:
         """Run every eval and collect their results in suite order.
 
         With `fail_fast`, or fewer than two evals, they run one at a time, and `fail_fast` stops
-        at the first eval not accepted. Otherwise they run in parallel, as many at once as
-        `defaults.concurrency` says, else as the most any eval's run configuration requests.
+        at the first eval not accepted. Otherwise they run on sessions of their own, as many at
+        once as `defaults.concurrency` says, else as the most any eval's run configuration
+        requests, else as `threads`; without a session pool, one at a time.
 
         Args:
             config_digests: The MD5 digest of each eval's staged config that state trusts, by
                 eval key; a staged config without one is staged again.
             baseline_capture: Run each eval until it has the completed attempts its baseline
                 needs, rather than its configured attempts.
+            threads: The evals run at once when neither the project nor any eval says.
         """
         config_digests = config_digests or {}
 
-        def run_one(item: CompiledEval) -> EvalRunResult:
-            return self._run_eval(
+        def run_one(port: CatalogPublicationPort, item: CompiledEval) -> EvalRunResult:
+            return self._on(port)._run_eval(
                 item,
                 defaults,
                 options,
@@ -173,12 +183,16 @@ class RunEvalSuite:
             )
 
         if fail_fast or len(compiled) < 2:
-            results = _in_order(compiled, run_one, fail_fast)
+            results = _in_order(compiled, lambda item: run_one(self._port, item), fail_fast)
         else:
-            with ThreadPoolExecutor(max_workers=_suite_concurrency(compiled, defaults)) as pool:
-                results = list(pool.map(run_one, compiled))
+            workers = suite_concurrency(compiled, defaults, threads)
+            results = list(Fanout(self._port, self._sessions, workers).map(run_one, compiled))
         diagnostics = [diagnostic for result in results for diagnostic in result.diagnostics]
         return EvalSuiteResult(tuple(results), DiagnosticBag(tuple(diagnostics)))
+
+    def _on(self, port: CatalogPublicationPort) -> RunEvalSuite:
+        """Return this suite, or one like it running on `port`, a session leased for one eval."""
+        return self if port is self._port else RunEvalSuite(port, self._clock, self._lifecycle_config)
 
     def _run_eval(
         self,
@@ -505,8 +519,11 @@ def _in_order(
     return results
 
 
-def _suite_concurrency(compiled: Sequence[CompiledEval], defaults: EvalDefaults) -> int:
-    """Return how many evals run at once: the project's setting, else the most any eval requests."""
+def suite_concurrency(compiled: Sequence[CompiledEval], defaults: EvalDefaults, threads: int = 1) -> int:
+    """Return how many evals run at once: the project's setting, else the most any eval asks.
+
+    With neither, `threads`: `--threads` paces the evals no setting paces.
+    """
     requested: list[int] = []
     for item in compiled:
         run = item.resolved.config.run
@@ -514,7 +531,7 @@ def _suite_concurrency(compiled: Sequence[CompiledEval], defaults: EvalDefaults)
             requested.append(run.concurrency)
     if defaults.concurrency:
         return max(1, defaults.concurrency)
-    return max(1, max(requested, default=1))
+    return max(1, max(requested, default=threads))
 
 
 def _run_name(compiled: CompiledEval, setup: _RunSetup, options: EvalRunOptions, attempt_number: int) -> str:

@@ -42,6 +42,7 @@ from snowflake_semantic_tools.domain.model.identifier import QualifiedName, Targ
 from snowflake_semantic_tools.domain.ports.clock import ClockPort
 from snowflake_semantic_tools.domain.ports.eval_state import EvalStateStore
 from snowflake_semantic_tools.domain.ports.project import ProjectInputs
+from snowflake_semantic_tools.domain.ports.snowflake.execution import SessionPool
 from snowflake_semantic_tools.domain.ports.snowflake.state import StatePort
 from snowflake_semantic_tools.domain.ports.state import StateStore
 from snowflake_semantic_tools.domain.state import Manifest, State
@@ -62,11 +63,14 @@ class EvalGateRequest:
 
     Attributes:
         reason: Why the baselines change; required to capture, and recorded with each one.
+        threads: The evals run at once when neither the project nor any eval says, as
+            `--threads` resolved.
     """
 
     fail_fast: bool = False
     capture_baseline: bool = False
     reason: str | None = None
+    threads: int = 1
 
 
 @dataclass(frozen=True, slots=True)
@@ -110,7 +114,9 @@ class RunEvalGate:
 
     The target's run lease -- the local lock and the remote one every `sst apply` takes -- is
     held from before state is read until the run ends, so no apply on any machine regenerates
-    what the evals run against. The lease is released however the run ends.
+    what the evals run against. The lease is released however the run ends. Evals that run at
+    once each lease a session from `sessions`, opened from `port`; without it they run one at
+    a time.
     """
 
     def __init__(
@@ -124,6 +130,7 @@ class RunEvalGate:
         actor: str = "",
         host: str = "",
         lock_policy: LockPolicy = _DEFAULT_LOCK_POLICY,
+        sessions: SessionPool[CatalogPublicationPort] | None = None,
     ) -> None:
         self._port = port
         self._inputs = inputs
@@ -133,6 +140,7 @@ class RunEvalGate:
         self._actor = actor
         self._host = host
         self._lock_policy = lock_policy
+        self._sessions = sessions
 
     def run(
         self,
@@ -219,13 +227,14 @@ class RunEvalGate:
             if (entry := state.applied.get(item.artifact_key)) is not None
             if (digest := dict(entry.component_fingerprints).get("config_stage_md5")) is not None
         }
-        suite = RunEvalSuite(self._port, self._clock, lifecycle_config).run(
+        suite = RunEvalSuite(self._port, self._clock, lifecycle_config, self._sessions).run(
             evals,
             defaults=defaults,
             options=EvalRunOptions(self._inputs.git_sha()),
             fail_fast=request.fail_fast,
             config_digests=config_digests,
             baseline_capture=request.capture_baseline,
+            threads=request.threads,
         )
         verdicts, captured, gate_diagnostics = self._gate(evals, suite, defaults, request, target_name)
         diagnostics = DiagnosticBag((*preflight, *suite.diagnostics, *gate_diagnostics))

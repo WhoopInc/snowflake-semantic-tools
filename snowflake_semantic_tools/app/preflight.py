@@ -3,15 +3,20 @@
 `read_preflight` makes the reads once per database, schema, relation, and object, and only
 for what the plan may write or prune. A read Snowflake refuses is reported and treated as
 "not known to be missing", so one refused read never blocks a write on its own.
+
+The reads run in phases -- databases, schemas, the role, relations, privileges, occupied
+names, locks, references, the warehouse -- and the reads of one phase are independent, so a
+`Fanout` may run them on sessions of their own. Their answers and refusals are taken in the
+order the phase lists them, which is the order they would run one at a time.
 """
 
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping
-from functools import partial
+from collections.abc import Callable, Mapping, Sequence
 from types import MappingProxyType
 from typing import TypeVar
 
+from snowflake_semantic_tools.app.fanout import Fanout
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic
 from snowflake_semantic_tools.domain.model.identifier import Identifier, QualifiedName, SchemaScope, TargetIdentity
 from snowflake_semantic_tools.domain.model.lifecycle import RenderedArtifact, SnowflakeObservation
@@ -20,41 +25,69 @@ from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePort
 from snowflake_semantic_tools.domain.ports.snowflake.preflight import PreflightPort
 from snowflake_semantic_tools.domain.state import State
 
+ItemT = TypeVar("ItemT")
 ValueT = TypeVar("ValueT")
 _Scope = tuple[str, str]
 _Name = tuple[str, str, str]
+# What one read answered, or why Snowflake refused it.
+_Answer = tuple[ValueT | None, str | None]
 
 # The verb of the schema privilege a create needs, such as CREATE SEMANTIC VIEW.
 _CREATE = "CREATE"
 
 
 class _Reader:
-    """Run preflight reads, recording each refused read as SST-PLN001."""
+    """Run each phase's preflight reads, recording each refused read as SST-PLN001."""
 
-    def __init__(self, port: PreflightPort) -> None:
-        self.port = port
+    def __init__(self, readers: Fanout[PreflightPort]) -> None:
+        self._readers = readers
         self.failures: list[Diagnostic] = []
 
-    def read(self, what: str, call: Callable[[], ValueT]) -> ValueT | None:
-        """Return what `call` reads; None when Snowflake refuses it.
+    def read_each(
+        self,
+        items: Sequence[ItemT],
+        read: Callable[[PreflightPort, ItemT], ValueT],
+        what: Callable[[ItemT], str],
+    ) -> tuple[ValueT | None, ...]:
+        """Return what `read` reads of each item, in item order; None where Snowflake refuses it.
 
         Diagnostics:
-            SST-PLN001: the read of `what` failed.
+            SST-PLN001: the read of an item failed; named by `what`, in item order.
         """
-        try:
-            return call()
-        except SnowflakePortError as exc:
-            self.failures.append(D("SST-PLN001", value=what, detail=str(exc)))
-            return None
 
-    def holds(self, what: str, call: Callable[[], bool], *, refused: bool) -> bool:
-        """Return what a yes-or-no read answers; `refused` when Snowflake refuses it."""
-        answer = self.read(what, call)
-        return refused if answer is None else answer
+        def attempt(port: PreflightPort, item: ItemT) -> _Answer[ValueT]:
+            try:
+                return read(port, item), None
+            except SnowflakePortError as exc:
+                return None, str(exc)
 
-    def names(self, what: str, call: Callable[[], tuple[QualifiedName, ...]]) -> tuple[QualifiedName, ...]:
-        """Return the names a read lists; none when Snowflake refuses it."""
-        return self.read(what, call) or ()
+        answers = self._readers.map(attempt, items)
+        self.failures.extend(
+            D("SST-PLN001", value=what(item), detail=error)
+            for item, (_, error) in zip(items, answers, strict=True)
+            if error is not None
+        )
+        return tuple(value for value, _ in answers)
+
+    def holds_each(
+        self,
+        items: Sequence[ItemT],
+        read: Callable[[PreflightPort, ItemT], bool],
+        what: Callable[[ItemT], str],
+        *,
+        refused: bool,
+    ) -> tuple[bool, ...]:
+        """Return what a yes-or-no read answers of each item; `refused` where Snowflake refuses it."""
+        return tuple(refused if answer is None else answer for answer in self.read_each(items, read, what))
+
+    def names_each(
+        self,
+        items: Sequence[ItemT],
+        read: Callable[[PreflightPort, ItemT], tuple[QualifiedName, ...]],
+        what: Callable[[ItemT], str],
+    ) -> tuple[tuple[QualifiedName, ...], ...]:
+        """Return the names a read lists of each item; none where Snowflake refuses it."""
+        return tuple(answer or () for answer in self.read_each(items, read, what))
 
 
 def read_preflight(
@@ -65,6 +98,7 @@ def read_preflight(
     target: TargetIdentity,
     *,
     include_prune: bool,
+    readers: Fanout[PreflightPort] | None = None,
 ) -> tuple[Preflight, tuple[Diagnostic, ...]]:
     """Read the target's containers, relations, privileges, locks, references, and warehouse.
 
@@ -73,6 +107,8 @@ def read_preflight(
         observation: What plan observed, which says what each artifact would create.
         state: The authoritative state, which names the objects SST manages.
         include_prune: Whether the plan prunes, so the objects a prune may remove are read.
+        readers: Sessions to run each phase's reads on concurrently; None reads on `port`,
+            one at a time. Either way the preflight and its failures are the same.
 
     Returns:
         What the reads found, and the failed reads.
@@ -80,7 +116,7 @@ def read_preflight(
     Diagnostics:
         SST-PLN001: a preflight read failed.
     """
-    reader = _Reader(port)
+    reader = _Reader(readers or Fanout(port))
     created = {key: artifact for key, artifact in rendered.items() if key not in observation.artifacts}
     missing_databases, missing_schemas, present = _containers(reader, rendered)
     managed = {artifact.target.folded for artifact in rendered.values()} | {
@@ -88,7 +124,7 @@ def read_preflight(
     }
     preflight = Preflight(
         target_name=target.name,
-        role=target.role or reader.read("the current role", port.current_role) or "the deploying role",
+        role=target.role or _current_role(reader) or "the deploying role",
         missing_databases=missing_databases,
         missing_schemas=missing_schemas,
         missing_relations=MappingProxyType(_missing_relations(reader, rendered)),
@@ -102,40 +138,55 @@ def read_preflight(
     return preflight, tuple(reader.failures)
 
 
+def _current_role(reader: _Reader) -> str | None:
+    """Return the session's current role; None when Snowflake refuses the read."""
+    [role] = reader.read_each(("the current role",), lambda port, _: port.current_role(), lambda what: what)
+    return role
+
+
 def _containers(
     reader: _Reader, rendered: Mapping[str, RenderedArtifact]
 ) -> tuple[frozenset[str], frozenset[_Scope], tuple[SchemaScope, ...]]:
     """Return the missing databases, the missing schemas, and the scopes that exist, in target order."""
     scopes = tuple(dict.fromkeys(SchemaScope.from_qualified_name(item.target) for item in rendered.values()))
     databases = tuple(dict.fromkeys(scope.database for scope in scopes))
-    missing_databases = frozenset(
-        database.folded
-        for database in databases
-        if not reader.holds(f"database {database.sql}", partial(reader.port.database_exists, database), refused=True)
+    exists = reader.holds_each(
+        databases,
+        lambda port, database: port.database_exists(database),
+        lambda item: f"database {item.sql}",
+        refused=True,
     )
-    missing_schemas: set[_Scope] = set()
-    present: list[SchemaScope] = []
-    for scope in scopes:
-        if scope.database.folded in missing_databases:
-            continue
-        if reader.holds(f"schema {scope.sql}", partial(reader.port.schema_exists, scope), refused=True):
-            present.append(scope)
-        else:
-            missing_schemas.add((scope.database.folded, scope.schema.folded))
-    return missing_databases, frozenset(missing_schemas), tuple(present)
+    missing_databases = frozenset(
+        database.folded for database, found in zip(databases, exists, strict=True) if not found
+    )
+    candidates = tuple(scope for scope in scopes if scope.database.folded not in missing_databases)
+    schema_exists = reader.holds_each(
+        candidates, lambda port, scope: port.schema_exists(scope), lambda item: f"schema {item.sql}", refused=True
+    )
+    present = tuple(scope for scope, found in zip(candidates, schema_exists, strict=True) if found)
+    missing_schemas = frozenset(
+        (scope.database.folded, scope.schema.folded)
+        for scope, found in zip(candidates, schema_exists, strict=True)
+        if not found
+    )
+    return missing_databases, missing_schemas, present
 
 
 def _missing_relations(
     reader: _Reader, rendered: Mapping[str, RenderedArtifact]
 ) -> dict[str, tuple[QualifiedName, ...]]:
     """Return, by key, the required relations that do not exist; each relation is read once."""
-    exists: dict[_Name, bool] = {}
+    first: dict[_Name, QualifiedName] = {}
     for artifact in rendered.values():
         for relation in artifact.required_relations:
-            if relation.folded not in exists:
-                exists[relation.folded] = reader.holds(
-                    f"relation {relation.sql}", partial(reader.port.relation_exists, relation), refused=True
-                )
+            first.setdefault(relation.folded, relation)
+    answers = reader.holds_each(
+        tuple(first.values()),
+        lambda port, relation: port.relation_exists(relation),
+        lambda item: f"relation {item.sql}",
+        refused=True,
+    )
+    exists = dict(zip(first, answers, strict=True))
     found = {
         key: tuple(relation for relation in artifact.required_relations if not exists[relation.folded])
         for key, artifact in rendered.items()
@@ -147,52 +198,59 @@ def _missing_privileges(
     reader: _Reader, created: Mapping[str, RenderedArtifact], present: tuple[SchemaScope, ...]
 ) -> dict[_Scope, tuple[str, ...]]:
     """Return, by existing scope, the create privileges the role lacks for what it would create there."""
-    lacking: dict[_Scope, tuple[str, ...]] = {}
-    for scope in present:
-        needed = tuple(
-            sorted(
-                {
-                    f"{_CREATE} {artifact.object_type.upper()}"
-                    for artifact in created.values()
-                    if artifact.object_type and SchemaScope.from_qualified_name(artifact.target) == scope
-                }
+    needs = tuple(
+        (scope, needed)
+        for scope in present
+        if (
+            needed := tuple(
+                sorted(
+                    {
+                        f"{_CREATE} {artifact.object_type.upper()}"
+                        for artifact in created.values()
+                        if artifact.object_type and SchemaScope.from_qualified_name(artifact.target) == scope
+                    }
+                )
             )
         )
-        missing = (
-            reader.read(f"grants on schema {scope.sql}", partial(reader.port.missing_privileges, scope, needed))
-            if needed
-            else None
-        )
-        if missing:
-            lacking[(scope.database.folded, scope.schema.folded)] = missing
-    return lacking
+    )
+    missing = reader.read_each(
+        needs,
+        lambda port, need: port.missing_privileges(need[0], need[1]),
+        lambda need: f"grants on schema {need[0].sql}",
+    )
+    return {
+        (scope.database.folded, scope.schema.folded): lacking
+        for (scope, _), lacking in zip(needs, missing, strict=True)
+        if lacking
+    }
 
 
 def _occupied(
     reader: _Reader, created: Mapping[str, RenderedArtifact], present: tuple[SchemaScope, ...]
 ) -> frozenset[str]:
     """Return the keys of what plan would create whose name an object of its type already holds."""
-    return frozenset(
-        key
+    candidates = tuple(
+        (key, artifact)
         for key, artifact in created.items()
         if artifact.object_type
         and not artifact.temporary
         and SchemaScope.from_qualified_name(artifact.target) in present
-        and reader.holds(
-            f"{artifact.object_type} {artifact.target.sql}",
-            partial(reader.port.object_exists, artifact.object_type, artifact.target),
-            refused=False,
-        )
     )
+    held = reader.holds_each(
+        candidates,
+        lambda port, item: port.object_exists(item[1].object_type, item[1].target),
+        lambda item: f"{item[1].object_type} {item[1].target.sql}",
+        refused=False,
+    )
+    return frozenset(key for (key, _), occupied in zip(candidates, held, strict=True) if occupied)
 
 
 def _locked(reader: _Reader, present: tuple[SchemaScope, ...]) -> frozenset[_Name]:
     """Return the folded names, in the existing scopes, another session holds a lock on."""
-    return frozenset(
-        name.folded
-        for scope in present
-        for name in reader.names(f"locks in {scope.sql}", partial(reader.port.locked_objects, scope))
+    listed = reader.names_each(
+        present, lambda port, scope: port.locked_objects(scope), lambda item: f"locks in {item.sql}"
     )
+    return frozenset(name.folded for names in listed for name in names)
 
 
 def _referenced(
@@ -202,12 +260,18 @@ def _referenced(
     managed: set[_Name],
 ) -> dict[str, tuple[QualifiedName, ...]]:
     """Return, by prune candidate's key, the objects outside SST's management that name it."""
+    candidates = tuple(
+        (key, observed.qualified_name)
+        for key, observed in sorted(observation.artifacts.items())
+        if key not in rendered and observed.marker is not None
+    )
+    listed = reader.names_each(
+        candidates,
+        lambda port, item: port.external_references(item[1]),
+        lambda item: f"references to {item[1].sql}",
+    )
     found: dict[str, tuple[QualifiedName, ...]] = {}
-    for key, observed in sorted(observation.artifacts.items()):
-        if key in rendered or observed.marker is None:
-            continue
-        name = observed.qualified_name
-        referrers = reader.names(f"references to {name.sql}", partial(reader.port.external_references, name))
+    for (key, _), referrers in zip(candidates, listed, strict=True):
         outside = tuple(referrer for referrer in referrers if referrer.folded not in managed)
         if outside:
             found[key] = outside
@@ -222,4 +286,7 @@ def _warehouse_usable(reader: _Reader, warehouse: str | None) -> bool:
         name = Identifier.parse(warehouse)
     except ValueError:
         return False
-    return reader.holds(f"warehouse {name.sql}", partial(reader.port.warehouse_exists, name), refused=True)
+    [usable] = reader.holds_each(
+        (name,), lambda port, item: port.warehouse_exists(item), lambda item: f"warehouse {item.sql}", refused=True
+    )
+    return usable

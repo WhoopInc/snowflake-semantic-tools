@@ -2,7 +2,9 @@
 
 `RunSmokeSuite` runs probes. `SmokePublished` is the smoke test suite's use case: it first
 proves SST owns each object it would probe, from authoritative state and the object's live
-ownership marker, and runs the probes only once it does.
+ownership marker, and runs the probes only once it does. Given a `Fanout`, both the marker
+reads and the probes run on sessions of their own; what they report is merged in probe
+order, so it is the same for any thread count.
 """
 
 from __future__ import annotations
@@ -11,6 +13,7 @@ from dataclasses import dataclass
 from typing import Protocol
 
 from snowflake_semantic_tools.app.compile import CompiledView, CompileResult
+from snowflake_semantic_tools.app.fanout import Fanout
 from snowflake_semantic_tools.app.state import read_state
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, DiagnosticBag
 from snowflake_semantic_tools.domain.model.artifact_key import artifact_key
@@ -42,10 +45,16 @@ class SmokeResult:
 
 
 class RunSmokeSuite:
-    """Run each rendered artifact's smoke probes, which read and never write."""
+    """Run each rendered artifact's smoke probes, which read and never write.
 
-    def __init__(self, port: ExecutionPort) -> None:
+    Args:
+        readers: Sessions, opened from `port`, to run the probes on concurrently; None
+            runs them on `port`, one at a time. `fail_fast` always runs them one at a time.
+    """
+
+    def __init__(self, port: ExecutionPort, readers: Fanout[ExecutionPort] | None = None) -> None:
         self._port = port
+        self._readers = readers
 
     def run(self, rendered: tuple[RenderedArtifact, ...], *, fail_fast: bool = False) -> SmokeResult:
         """Run every probe, in artifact order; with `fail_fast`, stop at the first that fails.
@@ -56,6 +65,8 @@ class RunSmokeSuite:
             SST-APL006: after the failures, how many probes failed.
             SST-PLN101: with `fail_fast`, an artifact whose probes did not run once one failed.
         """
+        if not fail_fast:
+            return self._run_all(rendered)
         attempted: list[SmokeProbe] = []
         failures: list[Diagnostic] = []
         skipped: list[Diagnostic] = []
@@ -74,6 +85,27 @@ class RunSmokeSuite:
                         break
         tally = (D("SST-APL006", count=len(failures)),) if failures else ()
         return SmokeResult(tuple(attempted), DiagnosticBag((*failures, *tally, *skipped)))
+
+    def _run_all(self, rendered: tuple[RenderedArtifact, ...]) -> SmokeResult:
+        """Run every probe, concurrently when given sessions, and report failures in probe order."""
+        probes = tuple((artifact, probe) for artifact in rendered for probe in artifact.smoke)
+        errors = (self._readers or Fanout(self._port)).map(_probe_error, probes)
+        failures = tuple(
+            _probe_failure(artifact, probe, error)
+            for (artifact, probe), error in zip(probes, errors, strict=True)
+            if error is not None
+        )
+        tally = (D("SST-APL006", count=len(failures)),) if failures else ()
+        return SmokeResult(tuple(probe for _, probe in probes), DiagnosticBag((*failures, *tally)))
+
+
+def _probe_error(port: ExecutionPort, item: tuple[RenderedArtifact, SmokeProbe]) -> str | None:
+    """Run one probe; why it failed, or None when it answered."""
+    try:
+        port.query(item[1].sql)
+    except SnowflakePortError as exc:
+        return str(exc)
+    return None
 
 
 def _probe_failure(artifact: RenderedArtifact, probe: SmokeProbe, detail: str) -> Diagnostic:
@@ -111,11 +143,16 @@ class SmokePublished:
 
     Ownership is proven from authoritative state and each object's live ownership marker, so
     no probe runs against an object some other run, or someone else, published.
+
+    Args:
+        readers: Sessions, opened from `port`, to read the markers and run the probes on
+            concurrently; None runs them on `port`, one at a time.
     """
 
-    def __init__(self, port: SmokePort, state_store: StateStore) -> None:
+    def __init__(self, port: SmokePort, state_store: StateStore, readers: Fanout[SmokePort] | None = None) -> None:
         self._port = port
         self._state_store = state_store
+        self._readers = readers
 
     def run(
         self,
@@ -159,23 +196,37 @@ class SmokePublished:
         problems.extend(unprobed_metrics(result))
         if problems:
             return SmokeResult((), DiagnosticBag(tuple(problems)))
-        return RunSmokeSuite(self._port).run(tuple(published.values()), fail_fast=fail_fast)
+        return RunSmokeSuite(self._port, self._readers).run(tuple(published.values()), fail_fast=fail_fast)
 
     def _unowned(self, result: CompileResult, manifest: Manifest, state: State) -> list[Diagnostic]:
         """Report each artifact with probes whose state entry or live marker is not apply's, in compile order.
 
         The live marker is read only for an artifact whose state entry matches.
         """
-        unowned: list[Diagnostic] = []
-        for artifact in (item for item in result.rendered if item.smoke):
-            entry = state.applied.get(artifact.key)
-            expected = OwnershipMarker(manifest.manifest_id, artifact.fingerprint)
-            if (
-                entry is None
-                or entry.fingerprint != artifact.fingerprint
-                or entry.manifest_id != manifest.manifest_id
-                or QualifiedName.parse(entry.qualified_name).folded != artifact.target.folded
-                or self._port.describe_marker(artifact.target) != expected
-            ):
-                unowned.append(D("SST-APL012", artifact=artifact.key, value=artifact.target.sql))
-        return unowned
+        probed = tuple(item for item in result.rendered if item.smoke)
+        recorded = tuple(artifact for artifact in probed if _recorded(artifact, manifest, state))
+        markers = dict(
+            zip(
+                (artifact.key for artifact in recorded),
+                (self._readers or Fanout(self._port)).map(
+                    lambda port, artifact: port.describe_marker(artifact.target), recorded
+                ),
+                strict=True,
+            )
+        )
+        return [
+            D("SST-APL012", artifact=artifact.key, value=artifact.target.sql)
+            for artifact in probed
+            if markers.get(artifact.key) != OwnershipMarker(manifest.manifest_id, artifact.fingerprint)
+        ]
+
+
+def _recorded(artifact: RenderedArtifact, manifest: Manifest, state: State) -> bool:
+    """Report whether state records the artifact as applied from `manifest`, at its fingerprint and target."""
+    entry = state.applied.get(artifact.key)
+    return (
+        entry is not None
+        and entry.fingerprint == artifact.fingerprint
+        and entry.manifest_id == manifest.manifest_id
+        and QualifiedName.parse(entry.qualified_name).folded == artifact.target.folded
+    )

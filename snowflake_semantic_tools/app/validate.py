@@ -4,7 +4,9 @@ The offline checks live in `domain.validate`. The connected checks stay here bec
 run SQL through the `ExecutionPort`: the syntax check (SST-VAL418) compiles each expression,
 the verified-query row count (SST-VAL415) runs each query that compiles, and the spot checks
 (SST-VAL212, SST-VAL218) read the joined tables. SST-VAL020 reports each one skipped. The
-live-object checks of agents and tools are in `app.compile.agents.observe`.
+live-object checks of agents and tools are in `app.compile.agents.observe`. A view's
+connected checks are one unit a `Fanout` may run on a session of its own; the views'
+findings are merged in compile order.
 """
 
 from __future__ import annotations
@@ -14,6 +16,7 @@ from dataclasses import dataclass, replace
 
 from snowflake_semantic_tools.app.compile import CompiledView, CompileResult
 from snowflake_semantic_tools.app.compile.agents.observe import ObserveLiveObjects
+from snowflake_semantic_tools.app.fanout import Fanout
 from snowflake_semantic_tools.app.verify_schema import verify_columns
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, DiagnosticBag, resolve_severities
 from snowflake_semantic_tools.domain.model.identifier import Identifier, QualifiedName, SchemaScope
@@ -68,6 +71,8 @@ class ValidateArtifacts:
             None skips those checks.
         target: The `profiles.yml` target being validated, which a missing object names.
         clock: Times each verified query's count; None reports it as taking 0ms.
+        readers: Sessions to check the views on concurrently, opened from `port`; None
+            checks them on `port`, one at a time. Either way the findings are the same.
     """
 
     def __init__(
@@ -77,11 +82,13 @@ class ValidateArtifacts:
         catalog: CatalogPort | None = None,
         target: str = "",
         clock: ClockPort | None = None,
+        readers: Fanout[ExecutionPort] | None = None,
     ) -> None:
         self._port = port
         self._catalog = catalog
         self._target = target
         self._clock = clock
+        self._readers = readers
 
     def run(
         self,
@@ -127,10 +134,9 @@ class ValidateArtifacts:
             )
             found.extend(D("SST-VAL020", rule_id=rule, detail=detail) for rule in CONNECTED_RULES)
         else:
-            for compiled_view in compiled.compiled:
-                if isinstance(compiled_view, CompiledView):
-                    found.extend(self._compile_checks(compiled_view))
-                    found.extend(self._data_checks(compiled_view))
+            views = tuple(item for item in compiled.compiled if isinstance(item, CompiledView))
+            checked = (self._readers or Fanout(self._port)).map(self._view_checks, views)
+            found.extend(diagnostic for diagnostics in checked for diagnostic in diagnostics)
             if self._catalog is not None:
                 found.extend(ObserveLiveObjects(self._catalog, target=self._target).run(compiled))
         if verify_schema and self._catalog is not None:
@@ -138,9 +144,12 @@ class ValidateArtifacts:
         resolved, promoted = resolve_severities(DiagnosticBag(found), strict=strict)
         return ValidationResult(compiled.rendered, resolved, promoted)
 
-    def _compile_checks(self, compiled_view: CompiledView) -> list[Diagnostic]:
+    def _view_checks(self, port: ExecutionPort, compiled_view: CompiledView) -> list[Diagnostic]:
+        """Run one view's connected checks on `port`: its EXPLAINs and counts, then its spot checks."""
+        return [*self._compile_checks(port, compiled_view), *self._data_checks(port, compiled_view)]
+
+    def _compile_checks(self, port: ExecutionPort, compiled_view: CompiledView) -> list[Diagnostic]:
         """EXPLAIN each metric, dimension and verified query of one view (SST-VAL418)."""
-        assert self._port is not None
         view = compiled_view.view
         projection = _validation_projection(view)
         checks: list[tuple[str, str, Sql]] = [
@@ -166,9 +175,9 @@ class ValidateArtifacts:
         for kind, name, statement in checks:
             try:
                 if kind == "verified_query":
-                    self._port.query_in_context(view_scope, statement)
+                    port.query_in_context(view_scope, statement)
                 else:
-                    self._port.query(statement)
+                    port.query(statement)
             except SnowflakePortError as exc:
                 diagnostics.append(
                     D("SST-VAL418", type=kind, name=name, detail=str(exc), subject=compiled_view.artifact_key)
@@ -176,7 +185,7 @@ class ValidateArtifacts:
         failed = {item.context["name"] for item in diagnostics if item.context["type"] == "verified_query"}
         for query in view.verified_queries:
             if query.name not in failed:
-                diagnostics.extend(self._row_count(self._port, compiled_view, query))
+                diagnostics.extend(self._row_count(port, compiled_view, query))
         return diagnostics
 
     def _row_count(self, port: ExecutionPort, compiled_view: CompiledView, query: VerifiedQuery) -> list[Diagnostic]:
@@ -206,13 +215,12 @@ class ValidateArtifacts:
             )
         ]
 
-    def _data_checks(self, compiled_view: CompiledView) -> list[Diagnostic]:
+    def _data_checks(self, port: ExecutionPort, compiled_view: CompiledView) -> list[Diagnostic]:
         """Read each equality join's target for repeated keys, and each distinct range for overlaps.
 
         A read that fails is not reported here: the EXPLAIN checks report a relation they
         cannot reach.
         """
-        assert self._port is not None
         view = compiled_view.view
         tables = {table.logical_name: table for table in view.tables}
         diagnostics: list[Diagnostic] = []
@@ -221,38 +229,38 @@ class ValidateArtifacts:
             if target is None or not view.scope.admits_relationship(relationship.name):
                 continue
             try:
-                found = self._spot_check(relationship, target)
+                found = _spot_check(port, relationship, target)
             except SnowflakePortError:
                 continue
             if found is not None:
                 diagnostics.append(replace(found, subject=compiled_view.artifact_key))
         return diagnostics
 
-    def _spot_check(self, relationship: Relationship, target: Table) -> Diagnostic | None:
-        """Run one relationship's spot check: duplicate keys, or overlapping ranges for a range join."""
-        assert self._port is not None
-        name = relationship.name.casefold()
-        if relationship.range_bounds is not None:
-            if target.distinct_range is None:
-                return None
-            start, end = target.distinct_range
-            rows = self._port.query(_overlap_query(target)).rows
-            if not rows:
-                return None
-            example = f"[{rows[0][0]}, {rows[0][1]}) and [{rows[0][2]}, {rows[0][3]})"
-            return D("SST-VAL218", relationship=name, name=target.logical_name, a=start, b=end, value=example)
-        if relationship.asof_index is not None:
+
+def _spot_check(port: ExecutionPort, relationship: Relationship, target: Table) -> Diagnostic | None:
+    """Run one relationship's spot check: duplicate keys, or overlapping ranges for a range join."""
+    name = relationship.name.casefold()
+    if relationship.range_bounds is not None:
+        if target.distinct_range is None:
             return None
-        rows = self._port.query(_duplicate_key_query(relationship, target)).rows
-        repeated = int(str(rows[0][0])) if rows and rows[0] and rows[0][0] is not None else 0
-        if repeated <= 0:
+        start, end = target.distinct_range
+        rows = port.query(_overlap_query(target)).rows
+        if not rows:
             return None
-        return D(
-            "SST-VAL212",
-            relationship=name,
-            found="many-to-one",
-            value=f"{repeated} rows of '{target.logical_name}' repeat a join key",
-        )
+        example = f"[{rows[0][0]}, {rows[0][1]}) and [{rows[0][2]}, {rows[0][3]})"
+        return D("SST-VAL218", relationship=name, name=target.logical_name, a=start, b=end, value=example)
+    if relationship.asof_index is not None:
+        return None
+    rows = port.query(_duplicate_key_query(relationship, target)).rows
+    repeated = int(str(rows[0][0])) if rows and rows[0] and rows[0][0] is not None else 0
+    if repeated <= 0:
+        return None
+    return D(
+        "SST-VAL212",
+        relationship=name,
+        found="many-to-one",
+        value=f"{repeated} rows of '{target.logical_name}' repeat a join key",
+    )
 
 
 # The connected rules, which offline validation skips and reports as skipped.
