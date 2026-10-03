@@ -65,6 +65,24 @@ def test_join_takes_only_sql_parts_and_a_string_separator() -> None:
         join(", ", ("a",))  # type: ignore[arg-type]
 
 
+def test_bound_text_doubles_every_percent_but_the_templates_own_placeholders() -> None:
+    built = sql("SELECT %s, {note} WHERE A = %(a)s", note=literal("50% off, %s"))
+    assert str(built) == "SELECT %s, '50% off, %s' WHERE A = %(a)s"
+    assert built.for_driver(bound=True) == "SELECT %s, '50%% off, %%s' WHERE A = %(a)s"
+    assert sql("SELECT {note}", note=literal("50%")).for_driver(bound=False) == "SELECT '50%'"
+    with pytest.raises(ValueError, match="no parameters are bound"):
+        built.for_driver(bound=False)
+
+
+def test_no_text_but_a_template_can_hold_the_placeholder_mark() -> None:
+    with pytest.raises(ValueError, match="may not hold a NUL"):
+        statement("SELECT \x00s")
+    with pytest.raises(ValueError, match="template may not hold a NUL"):
+        sql("SELECT \x00s")
+    with pytest.raises(ValueError, match="separator may not hold a NUL"):
+        join("\x00s", (sql("a"),))
+
+
 def test_canonical_strips_whitespace_only() -> None:
     assert str(canonical(statement("  A  \n  B '  \n'  \n\n"))) == "A\n  B '\n'"
     assert str(canonical(statement("  AS X  \n"), keep_indent=True)) == "  AS X"
