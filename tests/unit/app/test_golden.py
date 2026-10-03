@@ -206,3 +206,12 @@ def test_update_writes_the_commit_as_zeros() -> None:
         "golden/agent/helper.json",
     )
     assert store.goldens[GoldenPath("agent", ("helper.json",))] == '{"stage": "@S/helper/GIT_0000000"}\n'
+
+
+def test_update_creates_a_missing_ddl_golden_without_a_header() -> None:
+    result = project()
+    store = committed(result)
+    ddl = GoldenPath(None, ("sales.sql",))
+    compiled_ddl = store.goldens.pop(ddl)
+    assert UpdateGoldens(store, lambda: "WORKTREE").run(result) == ("golden/ddl/sales.sql",)
+    assert store.goldens[ddl] == compiled_ddl.rstrip() + "\n"
