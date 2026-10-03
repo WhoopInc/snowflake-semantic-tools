@@ -1,16 +1,22 @@
-"""SST-DBT024: a model a view consumes enforces no dbt contract."""
+"""SST-DBT024: a model a view consumes enforces no dbt contract and leaves a column's type to inference."""
 
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 
 from snowflake_semantic_tools.domain.diagnostics import Severity
 from tests.helpers.seam_projects import SmallProject, found, manifest, model_node
 
 
-def test_sst_dbt024_fires(tmp_path: Path) -> None:
-    node = model_node("products")
+def _uncontracted(column: dict[str, Any]) -> dict[str, Any]:
+    node = model_node("products", columns={"products_id": {"name": "products_id", "description": "The key.", **column}})
     node["config"]["contract"] = {"enforced": False}
+    return node
+
+
+def test_sst_dbt024_fires(tmp_path: Path) -> None:
+    node = _uncontracted({"meta": {"sst": {"column_type": "dimension"}}})
     [diagnostic] = found(
         SmallProject(tmp_path, document=manifest({"model.fixture.products": node})).load(), "SST-DBT024"
     )
@@ -21,3 +27,10 @@ def test_sst_dbt024_fires(tmp_path: Path) -> None:
 
 def test_sst_dbt024_silent(tmp_path: Path) -> None:
     assert found(SmallProject(tmp_path).load(), "SST-DBT024") == []
+
+
+def test_sst_dbt024_silent_for_an_uncontracted_model_that_types_every_column_in_meta(tmp_path: Path) -> None:
+    # Deliberately no contract: `meta.sst.data_type` is how most production columns are typed.
+    node = _uncontracted({"meta": {"sst": {"column_type": "dimension", "data_type": "VARCHAR"}}})
+    project = SmallProject(tmp_path, document=manifest({"model.fixture.products": node}))
+    assert found(project.load(), "SST-DBT024") == []

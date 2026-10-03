@@ -46,7 +46,9 @@ def consumed_model_diagnostics(catalog: DbtCatalog, consumed: Iterable[str]) -> 
     Diagnostics:
         SST-DBT015: the model has no checksum, so a change to it is invisible to change detection.
         SST-DBT023: no dbt test is attached to the model.
-        SST-DBT024: the model enforces no contract.
+        SST-DBT024: the model enforces no contract and leaves a column's type to inference, so an
+            upstream type change would re-infer it unseen. A model that types every column with
+            `meta.sst.data_type` (or dbt's own `data_type`) has pinned them without a contract.
     """
     wanted = {name.casefold() for name in consumed}
     diagnostics: list[Diagnostic] = []
@@ -57,9 +59,14 @@ def consumed_model_diagnostics(catalog: DbtCatalog, consumed: Iterable[str]) -> 
             diagnostics.append(D("SST-DBT015", model=model.name, subject=_subject(model)))
         if model.test_count == 0:
             diagnostics.append(D("SST-DBT023", model=model.name, subject=_subject(model)))
-        if not model.has_contract:
+        if not model.has_contract and _infers_a_type(model):
             diagnostics.append(D("SST-DBT024", model=model.name, subject=_subject(model)))
     return tuple(diagnostics)
+
+
+def _infers_a_type(model: DbtModel) -> bool:
+    """Report whether a column of the model declares no data type, or the model lists no column."""
+    return not model.columns or any(column.data_type is None for column in model.columns)
 
 
 def collapse_diagnostics(catalog: DbtCatalog, consumed: Iterable[str]) -> tuple[Diagnostic, ...]:
