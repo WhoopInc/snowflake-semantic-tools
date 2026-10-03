@@ -8,7 +8,7 @@ diagnostics; nothing here returns YAML's own exception.
 
 from __future__ import annotations
 
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from typing import Any, NoReturn
 
 import yaml
@@ -162,22 +162,29 @@ def _value(node: yaml.Node, path: str) -> Any:
         loader.dispose()
 
 
-def formatting_findings(node: yaml.Node, path: str) -> tuple[Diagnostic, ...]:
+def formatting_findings(
+    node: yaml.Node, path: str, *, null_means: Callable[[tuple[str | int, ...]], bool] | None = None
+) -> tuple[Diagnostic, ...]:
     """Report each value that loads as something other than it reads, in document order.
+
+    Args:
+        null_means: Whether an empty value at a key path has a documented meaning, so reads as
+            what it is: such a value is not reported. None gives no path that meaning.
 
     Diagnostics:
         SST-LOD011: a value is a folded scalar (`>` or `>-`), which joins its lines.
         SST-LOD016: a plain `yes`, `no`, `on`, `off`, `y` or `n` loads as a boolean, or a
-            `~` or empty value as null.
+            `~` or empty value as null where null means nothing documented.
     """
     findings: list[Diagnostic] = []
-    for key, value_node in _keyed_scalars(node, ""):
+    for key_path, value_node in _keyed_scalars(node, ()):
+        key = next(str(part) for part in reversed(key_path) if isinstance(part, str))
         line = value_node.start_mark.line + 1
         if value_node.style == ">":
             findings.append(D("SST-LOD011", origin=Origin(path, line), file=path, line=line, key=key))
             continue
         coerced = _coercion(value_node)
-        if coerced is not None:
+        if coerced is not None and not (coerced[1] == "null" and null_means is not None and null_means(key_path)):
             found, expected = coerced
             context: dict[str, Any] = {"file": path, "line": line, "key": key, "found": found, "expected": expected}
             findings.append(D("SST-LOD016", origin=Origin(path, line), **context))
@@ -195,13 +202,15 @@ def _coercion(node: yaml.ScalarNode) -> tuple[str, str] | None:
     return None
 
 
-def _keyed_scalars(node: yaml.Node, key: str) -> Iterator[tuple[str, yaml.ScalarNode]]:
-    """Yield each scalar value under a mapping key, with that key; a list item takes its list's key."""
+def _keyed_scalars(
+    node: yaml.Node, path: tuple[str | int, ...]
+) -> Iterator[tuple[tuple[str | int, ...], yaml.ScalarNode]]:
+    """Yield each scalar value under a mapping key, with its key path; a list item adds its index."""
     if isinstance(node, yaml.MappingNode):
         for key_node, value_node in node.value:
-            yield from _keyed_scalars(value_node, str(key_node.value))
+            yield from _keyed_scalars(value_node, (*path, str(key_node.value)))
     elif isinstance(node, yaml.SequenceNode):
-        for child in node.value:
-            yield from _keyed_scalars(child, key)
-    elif isinstance(node, yaml.ScalarNode) and key:
-        yield key, node
+        for index, child in enumerate(node.value):
+            yield from _keyed_scalars(child, (*path, index))
+    elif isinstance(node, yaml.ScalarNode) and any(isinstance(part, str) for part in path):
+        yield path, node

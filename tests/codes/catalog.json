@@ -1679,7 +1679,7 @@
   "non_demotable": false,
   "title": "Implicit boolean or null coercion",
   "message": "{file}:{line}: '{key}' value {found} coerced to {expected}",
-  "suggestion": "quote the value if it is meant as a string",
+  "suggestion": "quote the value if it is meant as a string, or write {} if it is meant as an empty block",
   "precheck": "local"
  },
  {

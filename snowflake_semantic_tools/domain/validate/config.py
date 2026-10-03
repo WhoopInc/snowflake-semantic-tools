@@ -203,7 +203,7 @@ def config_tool_references(tree: Mapping[str, Any], catalog: ToolCatalog, *, fil
 
 
 def config_tool_calls(tree: Mapping[str, Any]) -> tuple[tuple[str, str], ...]:
-    """Return the group and member of each `{{ tool(...) }}` a configuration value makes, in document order."""
+    """Return the group and member of each configuration value's `{{ tool(...) }}`, in document order."""
     return tuple((group, name) for _, group, name in _config_tool_calls(tree))
 
 
@@ -224,6 +224,28 @@ def _config_tool_calls(tree: Mapping[str, Any]) -> list[tuple[tuple[str, ...], s
 
     walk((), tree)
     return calls
+
+
+def empty_is_block(path: tuple[str | int, ...]) -> bool:
+    """Report whether an empty value at a configuration key path is an empty block, as documented.
+
+    A block or name map left empty is read as one with no entries -- a consumed extension with no
+    `fqn:` takes `default_prefix` -- so its null is meant; quoting it would make it a string.
+    A path through a list, or one the schema does not declare, has no such meaning.
+    """
+    entry, policy = "", ChildPolicy.DECLARED
+    spec: ConfigKey | None = None
+    for key in path:
+        if not isinstance(key, str):
+            return False
+        spec, route = _child_spec(CHILDREN.get(entry, {}), policy, key)
+        if spec is None:
+            return False
+        if spec.status is KeyStatus.DEPRECATED:
+            spec = CONFIG_KEYS[str(spec.replacement)]
+        if not route:
+            entry, policy = spec.path, spec.children
+    return spec is not None and spec.kind in (KeyKind.BLOCK, KeyKind.MAP)
 
 
 @dataclass(frozen=True, slots=True)

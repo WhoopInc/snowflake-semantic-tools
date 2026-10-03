@@ -19,7 +19,7 @@ A file holds exactly one document, and its root is a mapping.
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from pathlib import Path
 from types import MappingProxyType
 from typing import Any
@@ -119,7 +119,9 @@ def _node_path_index(node: yaml.Node) -> Mapping[NodePath, SourcePosition]:
     return MappingProxyType(positions)
 
 
-def parse_yaml_bytes(raw: bytes, path: str) -> ParsedYaml:
+def parse_yaml_bytes(
+    raw: bytes, path: str, *, null_means: Callable[[tuple[str | int, ...]], bool] | None = None
+) -> ParsedYaml:
     """Parse one YAML file's bytes into its tree, node positions, template sources, and findings.
 
     A document that is only `null` (`---`, `~`) parses as an empty tree. The tree's
@@ -127,6 +129,8 @@ def parse_yaml_bytes(raw: bytes, path: str) -> ParsedYaml:
 
     Args:
         path: How every diagnostic names the file, usually its project-relative path.
+        null_means: As `compose.formatting_findings` takes it: the key paths where an empty value
+            has a documented meaning, so is not reported as a coercion.
 
     Raises:
         ProjectError: The file does not parse; its `diagnostics` say why, as listed below.
@@ -161,7 +165,7 @@ def parse_yaml_bytes(raw: bytes, path: str) -> ParsedYaml:
         MappingProxyType({str(key): value for key, value in loaded.items()}),
         _node_path_index(composed),
         MappingProxyType(templates),
-        (*findings, *formatting_findings(composed, path)),
+        (*findings, *formatting_findings(composed, path, null_means=null_means)),
     )
 
 

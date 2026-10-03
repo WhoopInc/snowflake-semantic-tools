@@ -1578,9 +1578,9 @@ Fix: quote the key
 
 `<file>:<line>: '<key>' value <found> coerced to <expected>`
 
-Raised when YAML 1.1 coerces yes, no, on, off, ~ or an empty value.
+Raised when YAML 1.1 coerces yes, no, on, off, ~ or an empty value, where null has no documented meaning.
 
-Fix: quote the value if it is meant as a string
+Fix: quote the value if it is meant as a string, or write {} if it is meant as an empty block
 
 ### SST-LOD017
 

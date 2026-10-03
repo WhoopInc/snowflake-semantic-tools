@@ -136,8 +136,8 @@ SPECS: tuple[ErrorSpec, ...] = (
         Severity.WARNING,
         "Implicit boolean or null coercion",
         "{file}:{line}: '{key}' value {found} coerced to {expected}",
-        "quote the value if it is meant as a string",
-        condition="YAML 1.1 coerces yes, no, on, off, ~ or an empty value",
+        "quote the value if it is meant as a string, or write {} if it is meant as an empty block",
+        condition="YAML 1.1 coerces yes, no, on, off, ~ or an empty value, where null has no documented meaning",
     ),
     spec(
         "SST-LOD017",
