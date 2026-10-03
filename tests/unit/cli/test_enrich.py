@@ -41,7 +41,9 @@ class _Warehouse(ScriptedEnrich):
         self.closed += 1
 
 
-def _invoke(monkeypatch: pytest.MonkeyPatch, project: Path, port: object, *args: str) -> Result:
+def _invoke(
+    monkeypatch: pytest.MonkeyPatch, project: Path, port: object, *args: str, allow_non_prod: bool = True
+) -> Result:
     opened: list[object] = []
 
     def connector(params: object) -> object:
@@ -51,7 +53,10 @@ def _invoke(monkeypatch: pytest.MonkeyPatch, project: Path, port: object, *args:
         return port
 
     monkeypatch.setattr("snowflake_semantic_tools.cli.main.SnowflakeConnector", connector)
-    result = CliRunner().invoke(cli, ["enrich", *args, "--project-dir", str(project), "--manifest", str(DBT_MANIFEST)])
+    # The reference project's default target is `dev`, which enrich refuses without the flag.
+    flags = ["--allow-non-prod"] if allow_non_prod else []
+    command = ["enrich", *args, *flags, "--project-dir", str(project), "--manifest", str(DBT_MANIFEST)]
+    result = CliRunner().invoke(cli, command)
     result.opened = opened  # type: ignore[attr-defined]
     return result
 
@@ -156,6 +161,25 @@ def test_usage_errors_exit_3_before_connecting(
     assert result.exit_code == 3, result.output
     assert message in result.output
     assert result.opened == []  # type: ignore[attr-defined]
+
+
+def test_a_target_that_is_not_production_like_is_refused_without_allow_non_prod(
+    monkeypatch: pytest.MonkeyPatch, project: Path
+) -> None:
+    refused = _invoke(monkeypatch, project, _port(), "--select", "order_items", "-o", "json", allow_non_prod=False)
+    assert refused.exit_code == 3, refused.output
+    [diagnostic] = json.loads(refused.stdout)["diagnostics"]
+    assert (diagnostic["code"], diagnostic["severity"]) == ("SST-PRT100", "error")
+    assert "target 'dev', which is not production-like" in diagnostic["message"]
+    assert refused.opened == []  # type: ignore[attr-defined]
+    before = (project / YAML).read_text(encoding="utf-8")
+    allowed = _invoke(monkeypatch, project, _port(), "--select", "order_items", "--check")
+    assert allowed.exit_code == 2, allowed.output
+    production = _invoke(
+        monkeypatch, project, _port(), "--select", "order_items", "--target", "prod", "--check", allow_non_prod=False
+    )
+    assert production.exit_code == 2, production.output
+    assert (project / YAML).read_text(encoding="utf-8") == before
 
 
 def test_a_selection_naming_no_model_exits_1_without_connecting(monkeypatch: pytest.MonkeyPatch, project: Path) -> None:

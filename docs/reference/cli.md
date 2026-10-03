@@ -137,9 +137,11 @@ Fill dbt model column metadata from the warehouse, editing the model YAML in pla
 Reads each selected model's relation for its columns and types, and fills what the
 model YAML leaves out: column types and data types by default, and sample values,
 enums, and synonyms with --include. Values already written are kept unless --force
-names their component. PATH selects the models whose SQL or YAML file is under it.
+names their component. PATH selects the models whose SQL or YAML file is under it. A
+target that is not production-like is refused unless --allow-non-prod is given.
 
-Exit 0 when done, 1 when a model failed, and 2 under --check when files would change.
+Exit 0 when done, 1 when a model failed, 2 under --check when files would change, and 3
+for a target that is not production-like.
 
 ```text
 sst enrich [OPTIONS]
@@ -154,6 +156,7 @@ sst enrich [OPTIONS]
 | `--force` | TEXT, repeatable |  | Components to derive again over values already written; forcing one includes it. |
 | `--database` | TEXT |  | Read every relation from this database instead of the manifest's. |
 | `--schema` | TEXT |  | Read every relation from this schema instead of the manifest's. |
+| `--allow-non-prod` | flag |  | Enrich from the manifest of a target that is not production-like: one whose name has no `prod`, `production` or `prd` part. Refused without it. |
 | `--check` | flag |  | Write nothing; exit 2 when a file would change. |
 | `--dry-run` | flag |  | Write nothing; print each file's change as a diff. |
 | `--no-detailed-exitcode` | flag |  | With `--check`, exit 0 when files would change, instead of 2. |

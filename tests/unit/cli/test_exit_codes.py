@@ -27,6 +27,7 @@ from tests.helpers.cli_projects import (
     project_copy,
     skills_only_project,
 )
+from tests.helpers.enrich_ports import ScriptedEnrich
 from tests.helpers.recorded_snowflake import RecordedSnowflake
 
 # Which exit codes each command may return.
@@ -208,7 +209,28 @@ FLAG_SCENARIOS: dict[str, tuple[str, int, Scenario]] = {
     "test-update-golden": ("test", 0, lambda tmp, mp: _test_update(tmp, mp, "")),
     "test-update-golden-in-ci": ("test", 3, lambda tmp, mp: _test_update(tmp, mp, "true")),
     "test-update-golden-smoke": ("test", 3, lambda tmp, _: _run("test", "--update-golden", "--suite", "smoke")),
+    "enrich-not-production": ("enrich", 3, lambda tmp, _: _run("enrich", *common(project_copy(tmp)))),
+    "enrich-allow-non-prod": ("enrich", 0, lambda tmp, mp: _enrich_allowed(tmp, mp)),
 }
+
+
+class _EnrichSession(ScriptedEnrich):
+    """A scripted warehouse that answers what connecting asks of a session."""
+
+    def current_role(self) -> str:
+        return "ANALYST"
+
+    def current_account_locator(self) -> str:
+        return "ACCOUNT"
+
+    def close(self) -> None:
+        return None
+
+
+def _enrich_allowed(tmp: Path, monkeypatch: pytest.MonkeyPatch) -> Result:
+    port = _EnrichSession(columns={"SST_REF_DEV.JAFFLE.ORDER_ITEMS": [("ORDER_ITEM_ID", "TEXT")]})
+    monkeypatch.setattr("snowflake_semantic_tools.cli.main.SnowflakeConnector", lambda params: port)
+    return _run("enrich", *common(project_copy(tmp)), "--select", "order_items", "--allow-non-prod")
 
 
 def _test_golden(tmp: Path, golden_dir: Path, *flags: str) -> Result:

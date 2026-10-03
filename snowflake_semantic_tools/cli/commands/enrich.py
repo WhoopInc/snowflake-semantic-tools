@@ -28,6 +28,7 @@ from snowflake_semantic_tools.cli.wiring.enrich import (
     enrich_project,
     model_selectors,
     project_paths,
+    refuse_non_production,
     relation_part,
 )
 from snowflake_semantic_tools.domain.enrich import (
@@ -41,7 +42,6 @@ from snowflake_semantic_tools.domain.enrich import (
 # Each 0.3 flag `sst enrich` no longer takes, and what to pass instead.
 _REMOVED_FLAGS: tuple[tuple[tuple[str, ...], bool, str], ...] = (
     (("--models",), True, "pass --select model:<name> once per model"),
-    (("--allow-non-prod",), False, "enrich reads the manifest of the target you pass; check --target"),
     (("--column-types", "-ct"), False, "use --include column-types"),
     (("--data-types", "-dt"), False, "use --include data-types"),
     (("--sample-values", "-sv"), False, "use --include sample-values"),
@@ -125,6 +125,7 @@ def _refuse_invocation(
 @click.option("--force", "forced", multiple=True, metavar="COMPONENTS")
 @database_option()
 @click.option("--schema")
+@click.option("--allow-non-prod", is_flag=True)
 @click.option("--check", is_flag=True)
 @click.option("--dry-run", is_flag=True)
 @no_detailed_exitcode_option()
@@ -142,6 +143,7 @@ def enrich(
     forced: tuple[str, ...],
     database: str | None,
     schema: str | None,
+    allow_non_prod: bool,
     check: bool,
     dry_run: bool,
     no_detailed_exitcode: bool,
@@ -152,9 +154,11 @@ def enrich(
     Reads each selected model's relation for its columns and types, and fills what the
     model YAML leaves out: column types and data types by default, and sample values,
     enums, and synonyms with --include. Values already written are kept unless --force
-    names their component. PATH selects the models whose SQL or YAML file is under it.
+    names their component. PATH selects the models whose SQL or YAML file is under it. A
+    target that is not production-like is refused unless --allow-non-prod is given.
 
-    Exit 0 when done, 1 when a model failed, and 2 under --check when files would change.
+    Exit 0 when done, 1 when a model failed, 2 under --check when files would change, and 3
+    for a target that is not production-like.
     """
     options = resolve_options(_components(included, "--include"), _components(forced, "--force"))
     project_dir = paths.project_dir
@@ -167,6 +171,8 @@ def enrich(
         schema=relation_part(schema, "--schema"),
         fail_fast=fail_fast,
     )
+    if not allow_non_prod:
+        refuse_non_production(paths, target_name, manifest_path)
     port = LazyEnrichPort(paths, target_name)
     try:
         project = enrich_project(paths, target_name, manifest_path, port)

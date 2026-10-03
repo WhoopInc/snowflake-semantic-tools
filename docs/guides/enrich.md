@@ -91,6 +91,18 @@ package's; an ephemeral model has no relation to read (`SST-DBT031`).
 `--database` and `--schema` read every relation from another database or schema, such as a
 production clone, while the YAML stays where it is.
 
+## Production targets
+
+The YAML enrich writes is shared by every target, so it reads from production. A target whose
+name has no `prod`, `production` or `prd` part, split on `_`, `-` and `.`, is refused with
+exit 3 before anything is read; pass `--target` for a production target, or `--allow-non-prod`
+to enrich from this one anyway.
+
+```bash
+sst enrich --target prod models/marts
+sst enrich --allow-non-prod models/marts         # from the default target, deliberately
+```
+
 ## Writing files
 
 Every edit is computed in memory before any file is written. The YAML is edited in place:
@@ -137,7 +149,7 @@ the block's warnings and leaves the rest of the file to `sst validate`.
 | `--force-synonyms`, `--force-column-types`, `--force-data-types`, `--force-all` | `--force synonyms`, `column-types`, `data-types`, `all` |
 | `-d`, `-s`, `-t` | `--database`, `--schema`, `--target` |
 | `--include-sources`, `--sources-only`, `--source` | not supported: 1.0 enriches dbt models only |
-| `--allow-non-prod` | not needed: enrich reads the manifest of the target you pass |
+| `--allow-non-prod` | `--allow-non-prod`: still needed for a target that is not production-like |
 
 Each removed flag is refused with what replaces it. Two behaviours differ: `time_dimension` is
 no longer derived, and table synonyms are written into the semantic views' `table_config`

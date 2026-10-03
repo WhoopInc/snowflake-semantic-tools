@@ -18,7 +18,7 @@ from snowflake_semantic_tools.cli.group import SstUsageError
 from snowflake_semantic_tools.cli.wiring.project import connect, project_inputs
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic
 from snowflake_semantic_tools.domain.enrich import WarehouseColumn
-from snowflake_semantic_tools.domain.model.identifier import Identifier, QualifiedName
+from snowflake_semantic_tools.domain.model.identifier import Identifier, QualifiedName, production_like
 from snowflake_semantic_tools.domain.ports.enrich import EnrichPort
 
 
@@ -57,6 +57,30 @@ def enrich_project(
 ) -> EnrichProject:
     """Bind the use case to the project's files and inputs, reading the warehouse through `port`."""
     return EnrichProject(project_inputs(paths, target_name, manifest_path), port, ProjectFiles(paths.project_dir))
+
+
+def refuse_non_production(paths: ProjectPaths, target_name: str | None, manifest_path: Path | None) -> None:
+    """Refuse to enrich from the manifest of a target that is not production-like.
+
+    Enrich writes what it reads into the model YAML every target shares, so the relations it
+    reads must be the production ones: the manifest's target is the resolved one, and its name
+    must have a part `prod`, `production` or `prd`, as `production_like` says.
+
+    Raises:
+        SstUsageError: the target is not production-like, and `--allow-non-prod` was not given.
+        ProjectError: the target cannot be resolved.
+
+    Diagnostics:
+        SST-PRT100: the target is not production-like; raised.
+    """
+    name = project_inputs(paths, target_name, manifest_path).target().identity.name
+    if production_like(name):
+        return
+    detail = (
+        f"sst enrich reads the manifest of target '{name}', which is not production-like; "
+        "pass --target for a production target, or --allow-non-prod to enrich from this one"
+    )
+    raise SstUsageError(detail)
 
 
 def project_paths(project_dir: Path, paths: Sequence[Path]) -> tuple[str, ...]:
