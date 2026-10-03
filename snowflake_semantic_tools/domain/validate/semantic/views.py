@@ -19,15 +19,16 @@ from snowflake_semantic_tools.domain.model.dbt import DbtModel
 from snowflake_semantic_tools.domain.model.project import ParsedView
 from snowflake_semantic_tools.domain.model.semantic_view import ColumnKind, Relationship, ViewScope
 from snowflake_semantic_tools.domain.resolve.membership import ViewMembers
-from snowflake_semantic_tools.domain.sql import is_datatype
+from snowflake_semantic_tools.domain.sql import UnsafeSqlError, guard_expression, is_datatype
 from snowflake_semantic_tools.domain.validate.semantic.scope import view_scope
 from snowflake_semantic_tools.domain.validate.shared import lacks_invocation
 
 DIMENSION_TYPES = frozenset(("dimension", "time_dimension"))
 # Every `column_type` a column may declare; any other is SST-DBT003's to report.
 KNOWN_COLUMN_TYPES = frozenset(kind.value for kind in ColumnKind)
-# Words an expression may hold bare that are SQL rather than names. SST does not parse SQL, so
-# the list is incomplete by construction; a word it misses is only a warning (SST-VAL221).
+# Words an expression may hold bare that are SQL rather than names, including the functions
+# SQL calls without parentheses. SST does not parse SQL, so the list is incomplete by
+# construction: a word it misses in an expression the view is created with is SST-VAL326.
 SQL_WORDS = frozenset(
     [
         "all",
@@ -41,6 +42,9 @@ SQL_WORDS = frozenset(
         "case",
         "cast",
         "current",
+        "current_date",
+        "current_time",
+        "current_timestamp",
         "day",
         "days",
         "desc",
@@ -66,6 +70,8 @@ SQL_WORDS = frozenset(
         "is",
         "last",
         "like",
+        "localtime",
+        "localtimestamp",
         "microsecond",
         "millisecond",
         "minute",
@@ -104,8 +110,9 @@ SQL_WORDS = frozenset(
         "years",
     ]
 )
+_TEMPLATE = re.compile(r"\{\{.*?\}\}", re.DOTALL)
 _MASKS = (
-    re.compile(r"\{\{.*?\}\}", re.DOTALL),
+    _TEMPLATE,
     re.compile(r"'(?:''|[^'])*'"),
     re.compile(r"\"(?:\"\"|[^\"])*\""),
     re.compile(r"--[^\n]*|/\*.*?\*/", re.DOTALL),
@@ -128,6 +135,15 @@ def bare_identifiers(expression: str) -> tuple[str, ...]:
             word for word in _BARE.findall(text) if word.casefold() not in SQL_WORDS and not is_datatype(word.upper())
         )
     )
+
+
+def _splices(expression: str) -> bool:
+    """Report whether the SQL guard admits an expression, each template call standing for one value."""
+    try:
+        guard_expression(_TEMPLATE.sub("NULL", expression))
+    except UnsafeSqlError:
+        return False
+    return True
 
 
 @dataclass(frozen=True, slots=True)
@@ -199,8 +215,8 @@ def view_rule_diagnostics(views: tuple[ParsedView, ...], inputs: ViewInputs) -> 
         SST-VAL206: a range relationship attaches and its target declares no `distinct_range`.
         SST-VAL219: a `distinct_range` column does not exist on its model.
         SST-VAL220: a declared variable is used by no expression the view attaches.
-        SST-VAL221: an attached expression holds a bare word that names nothing SST knows.
-        SST-VAL326: an attached expression holds a bare name another table or view provides.
+        SST-VAL221: an attached prose filter's expression holds a bare word the view cannot resolve.
+        SST-VAL326: an expression the view is created with holds a bare word the view cannot resolve.
         SST-VAL301: the view resolves no dimension and no metric.
         SST-VAL304: `max_staleness` is under 120 seconds.
         SST-VAL303: a table names a dbt model that is disabled or ephemeral.
@@ -209,17 +225,11 @@ def view_rule_diagnostics(views: tuple[ParsedView, ...], inputs: ViewInputs) -> 
         SST-VAL322: two views give one table different descriptions.
     """
     readable = tuple(_attached(view, inputs) for view in views if not view.poisoned)
-    variables = {
-        str(entry.get("name")).casefold(): artifact_key("semantic_view", item.view.name)
-        for item in readable
-        for entry in _list(item.view.source.get("variables"))
-        if isinstance(entry, dict) and entry.get("name")
-    }
     diagnostics: list[Diagnostic] = []
     for item in readable:
         diagnostics.extend(_prose_rules(item, inputs))
         diagnostics.extend(_table_rules(item, inputs))
-        diagnostics.extend(_expression_rules(item, inputs, variables))
+        diagnostics.extend(_expression_rules(item, inputs))
         diagnostics.extend(_member_rules(item, inputs))
     diagnostics.extend(_shared_table_descriptions(readable))
     return tuple(diagnostics)
@@ -328,11 +338,15 @@ def _table_rules(item: _Attached, inputs: ViewInputs) -> Iterator[Diagnostic]:
             )
 
 
-def _expression_rules(item: _Attached, inputs: ViewInputs, variables: Mapping[str, str]) -> Iterator[Diagnostic]:
+def _expression_rules(item: _Attached, inputs: ViewInputs) -> Iterator[Diagnostic]:
     """Report each bare name an attached expression cannot resolve, then each unused variable.
 
-    A metric's bare column of its own table is left to SST-VAL110, and a filter that renders as
-    prose is read only for the variables it uses.
+    A bare word the view resolves is a column on one of its tables or a variable it declares; a
+    metric's bare column of its own table is left to SST-VAL110. Any other word in a metric or a
+    labelled filter, which the view is created with, would fail the create: SST-VAL326. In a
+    filter that renders as prose it fails nothing, and SST, which does not parse SQL, cannot be
+    sure it is a name: SST-VAL221. An expression the SQL guard refuses is SST-VAL418's to report,
+    so it is read only for the variables it uses.
     """
     declared = {
         str(entry.get("name")).casefold(): str(entry.get("name"))
@@ -345,23 +359,18 @@ def _expression_rules(item: _Attached, inputs: ViewInputs, variables: Mapping[st
         if (model := inputs.models.get(table))
         for column in model.columns
     }
-    other_columns = {
-        column.name.casefold()
-        for name, model in inputs.models.items()
-        if name not in item.tables
-        for column in model.columns
-    }
     members: list[tuple[str, str, bool]] = [(metric.name, metric.expr, True) for metric in item.metrics]
     members.extend((item_filter.name, item_filter.expr, item_filter.entity_level) for item_filter in item.filters)
     used: set[str] = set()
-    for member, expression, checked in members:
+    for member, expression, created in members:
+        judged = _splices(expression)
         for word in bare_identifiers(expression):
             folded = word.casefold()
             if folded in declared:
                 used.add(folded)
-            elif not checked or folded in view_columns:
+            elif not judged or folded in view_columns:
                 continue
-            elif folded in variables or folded in other_columns:
+            elif created:
                 yield D(
                     "SST-VAL326",
                     origin=item.view.origin,
