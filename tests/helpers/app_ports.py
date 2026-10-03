@@ -23,7 +23,6 @@ from snowflake_semantic_tools.domain.model.lifecycle import (
 from snowflake_semantic_tools.domain.ports.snowflake.catalog import (
     ExtensionObservation,
     ExtensionVersion,
-    StageObservation,
 )
 from snowflake_semantic_tools.domain.ports.snowflake.stage import StagedFileMetadata
 from snowflake_semantic_tools.domain.sql import Sql
@@ -175,9 +174,6 @@ class InMemorySnowflake(PreflightDouble):
     def object_parameter(self, object_type: str, name: str, parameter: str) -> str | None:
         return self.object_parameters.get((object_type.upper(), name.upper(), parameter.upper()))
 
-    def stage_file_exists(self, stage_path: str) -> bool:
-        return stage_path in self.stage_files
-
     def observe_staged_file(self, stage_path: str) -> StagedFileMetadata | None:
         if stage_path not in self.stage_files:
             return None
@@ -214,9 +210,6 @@ class InMemorySnowflake(PreflightDouble):
 
     def table_columns(self, qualified_name: QualifiedName) -> tuple[tuple[str, str], ...] | None:
         raise NotImplementedError(f"InMemorySnowflake does not model table_columns({qualified_name.sql})")
-
-    def observe_stage(self, qualified_name: QualifiedName) -> StageObservation:
-        raise NotImplementedError(f"InMemorySnowflake does not model observe_stage({qualified_name.sql})")
 
     def stage_type(self, qualified_name: QualifiedName) -> str | None:
         raise NotImplementedError(f"InMemorySnowflake does not model stage_type({qualified_name.sql})")

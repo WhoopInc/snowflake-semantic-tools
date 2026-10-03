@@ -16,7 +16,6 @@ from snowflake_semantic_tools.domain.model.lifecycle import (
     QueryResult,
     ShowRow,
 )
-from snowflake_semantic_tools.domain.ports.snowflake.catalog import StageObservation
 from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
 from snowflake_semantic_tools.domain.ports.snowflake.stage import StagedFileMetadata
 from snowflake_semantic_tools.domain.sql import sql
@@ -52,12 +51,10 @@ def test_offline_adapters_implement_the_full_read_write_contract(adapter_type: t
     assert port.describe_marker(name) == marker
     assert port.object_exists("TABLE", name)
     assert port.dataset_exists(name)
-    assert port.observe_stage(name) == StageObservation(True)
     assert port.describe_stage_file_format(name) is None
     assert port.observe_staged_file("@DB.SCH.STAGE/eval/abcdef0.yaml") is None
-    assert not port.stage_file_exists("@DB.SCH.STAGE/eval/abcdef0.yaml")
+    assert port.observe_staged_file("@DB.SCH.STAGE/eval/abcdef0.yaml") is None
     port.upload("@DB.SCH.STAGE/eval/abcdef0.yaml", b"{}")
-    assert port.stage_file_exists("@DB.SCH.STAGE/eval/abcdef0.yaml")
     assert port.read_staged_file("@DB.SCH.STAGE/eval/abcdef0.yaml") == b"{}"
     assert port.observe_staged_file("@DB.SCH.STAGE/eval/abcdef0.yaml") == StagedFileMetadata(
         "@DB.SCH.STAGE/eval/abcdef0.yaml",
@@ -67,7 +64,7 @@ def test_offline_adapters_implement_the_full_read_write_contract(adapter_type: t
     )
     stage = QualifiedName.from_parts("DB", "SCH", "EVAL_CONFIGS")
     port.stage_formats[stage.sql] = "TYPE='CSV' FIELD_DELIMITER=NONE"
-    assert port.observe_stage(stage) == StageObservation(True, "TYPE='CSV' FIELD_DELIMITER=NONE")
+    assert port.describe_stage_file_format(stage) == "TYPE='CSV' FIELD_DELIMITER=NONE"
     assert port.agent_has_live_version(name) is False
     assert port.resolve_agent_version(name, "committed") == "VERSION$1"
     assert port.current_role()

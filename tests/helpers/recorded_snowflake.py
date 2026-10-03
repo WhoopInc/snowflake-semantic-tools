@@ -27,7 +27,6 @@ from snowflake_semantic_tools.domain.ports.snowflake import SnowflakePort
 from snowflake_semantic_tools.domain.ports.snowflake.catalog import (
     ExtensionObservation,
     ExtensionVersion,
-    StageObservation,
 )
 from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
 from snowflake_semantic_tools.domain.ports.snowflake.stage import StagedFileMetadata
@@ -261,10 +260,6 @@ class RecordedSnowflake(PreflightDouble):
     def dataset_versions(self, qualified_name: QualifiedName) -> tuple[str, ...]:
         return tuple(self.dataset_version_names.get(qualified_name.sql, ()))
 
-    def observe_stage(self, qualified_name: QualifiedName) -> StageObservation:
-        exists = self.object_exists("STAGE", qualified_name)
-        return StageObservation(exists, self.stage_formats.get(qualified_name.sql) if exists else None)
-
     def describe_stage_file_format(self, qualified_name: QualifiedName) -> str | None:
         return self.stage_formats.get(qualified_name.sql)
 
@@ -272,9 +267,6 @@ class RecordedSnowflake(PreflightDouble):
         if stage_path not in self.stage_files:
             return None
         return self.staged_file_metadata.get(stage_path, _default_staged_file_metadata(stage_path))
-
-    def stage_file_exists(self, stage_path: str) -> bool:
-        return self.observe_staged_file(stage_path) is not None
 
     def read_staged_file(self, stage_path: str) -> bytes | None:
         return self.staged_file_contents.get(stage_path)

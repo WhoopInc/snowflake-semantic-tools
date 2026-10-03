@@ -9,7 +9,6 @@ from snowflake_semantic_tools.adapters.snowflake.eval_state import (
     SnowflakeEvalStateStore,
     _baseline_from_payload,
     _baseline_payload,
-    _gate_from_payload,
     _gate_payload,
 )
 from snowflake_semantic_tools.domain.model.eval import (
@@ -59,7 +58,15 @@ def test_eval_state_payloads_round_trip_without_raw_eval_data() -> None:
     gate_payload = _gate_payload(gate())
 
     assert _baseline_from_payload(baseline_payload) == baseline()
-    assert _gate_from_payload(gate_payload) == gate()
+    assert gate_payload == {
+        "eval_key": "eval:a",
+        "tier": "blocking",
+        "regression_count": 1,
+        "regressions": [{"question_key": "q", "metric_name": "answer_correctness"}],
+        "unresolved": True,
+        "evaluated_at": "2026-09-10T00:00:00Z",
+        "run_names": ["run-3"],
+    }
     document = repr((baseline_payload, gate_payload))
     assert "input_query" not in document
     assert "ground_truth" not in document
@@ -68,13 +75,12 @@ def test_eval_state_payloads_round_trip_without_raw_eval_data() -> None:
 
 def test_in_memory_eval_state_store_is_target_scoped() -> None:
     store = InMemoryEvalStateStore()
-    store.write_baseline("dev", baseline())
+    store.write_baselines("dev", (baseline(),))
     store.write_gate("dev", gate())
 
     assert store.read_baseline("dev", "eval:a") == baseline()
-    assert store.read_gate("dev", "eval:a") == gate()
+    assert store.gates == {("dev", "eval:a"): gate()}
     assert store.read_baseline("prod", "eval:a") is None
-    assert store.read_gate("prod", "eval:a") is None
 
 
 def test_in_memory_batch_baseline_write_publishes_all_records() -> None:
@@ -94,23 +100,21 @@ def _payload_row(payload: dict[str, object]) -> QueryResult:
 
 def test_reading_eval_state_never_creates_the_table_so_a_read_only_role_can_read() -> None:
     recorded = ScriptedSnowflake(
-        query_results=(_payload_row(_baseline_payload(baseline())), _payload_row(_gate_payload(gate()))),
+        query_results=(_payload_row(_baseline_payload(baseline())),),
         existing=(TABLE.sql,),
     )
     store = SnowflakeEvalStateStore(ReadOnlySnowflake(recorded), TABLE)
 
     assert store.read_baseline("dev", "eval:a") == baseline()
-    assert store.read_gate("dev", "eval:a") == gate()
     assert recorded.scripts == []
-    assert [sql.split(" WHERE ")[0] for sql, _ in recorded.queries] == [f"SELECT PAYLOAD FROM {TABLE.sql}"] * 2
+    assert [sql.split(" WHERE ")[0] for sql, _ in recorded.queries] == [f"SELECT PAYLOAD FROM {TABLE.sql}"]
 
 
-def test_a_missing_eval_state_table_reads_as_no_baseline_and_no_gate() -> None:
+def test_a_missing_eval_state_table_reads_as_no_baseline() -> None:
     recorded = RecordedSnowflake(existing=())
     store = SnowflakeEvalStateStore(ReadOnlySnowflake(recorded), TABLE)
 
     assert store.read_baseline("dev", "eval:a") is None
-    assert store.read_gate("dev", "eval:a") is None
     assert (recorded.scripts, recorded.queries) == ([], [])
 
 

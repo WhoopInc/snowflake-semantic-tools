@@ -19,7 +19,6 @@ from snowflake_semantic_tools.domain.ports.snowflake.catalog import (
     CatalogPort,
     ExtensionObservation,
     ExtensionVersion,
-    StageObservation,
 )
 from snowflake_semantic_tools.domain.ports.snowflake.errors import AgentVersionNotFound, SnowflakePortError
 from snowflake_semantic_tools.domain.sql import Sql, datatype, ident, join, keyword, literal, qname, scope, sql
@@ -182,11 +181,6 @@ class CatalogMethods(Session, CatalogPort):
     def dataset_versions(self, qualified_name: QualifiedName) -> tuple[str, ...]:
         rows = self._dict_rows(sql("SHOW VERSIONS IN DATASET {dataset}", dataset=qname(qualified_name)))
         return tuple(str(row.get("name") or "") for row in rows if row.get("name"))
-
-    def observe_stage(self, qualified_name: QualifiedName) -> StageObservation:
-        if not self.object_exists("STAGE", qualified_name):
-            return StageObservation(False)
-        return StageObservation(True, self.describe_stage_file_format(qualified_name))
 
     def describe_stage_file_format(self, qualified_name: QualifiedName) -> str | None:
         rows = self._dict_rows(sql("DESCRIBE STAGE {stage}", stage=qname(qualified_name)))

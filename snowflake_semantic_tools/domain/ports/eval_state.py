@@ -29,16 +29,6 @@ class EvalStateStore(Protocol):
         """
         ...
 
-    def write_baseline(self, target_name: str, baseline: EvalBaselineRecord) -> None:
-        """Insert or replace one eval's baseline on one target, keyed by its `eval_key`.
-
-        Creates the store first unless it exists.
-
-        Raises:
-            SnowflakePortError: creating the store or the write failed.
-        """
-        ...
-
     def write_baselines(self, target_name: str, baselines: tuple[EvalBaselineRecord, ...]) -> None:
         """Insert or replace several baselines on one target in one transaction: all of them or none.
 
@@ -47,19 +37,6 @@ class EvalStateStore(Protocol):
         Raises:
             SnowflakePortError: creating the store or the transaction failed; the transaction is
                 rolled back, so no baseline of the batch is written.
-        """
-        ...
-
-    def read_gate(self, target_name: str, eval_key: str) -> EvalGateState | None:
-        """Return the gate state the last gated run recorded for one eval on one target.
-
-        Never writes. A stored gate state that does not decode raises rather than reading as absent.
-
-        Returns:
-            The gate state; None when the store does not exist or holds none for the eval.
-
-        Raises:
-            SnowflakePortError: the read failed, or more than one gate state matched.
         """
         ...
 

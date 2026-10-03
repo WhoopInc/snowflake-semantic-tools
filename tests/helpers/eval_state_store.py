@@ -17,15 +17,9 @@ class InMemoryEvalStateStore:
     def read_baseline(self, target_name: str, eval_key: str) -> EvalBaselineRecord | None:
         return self.baselines.get((target_name, eval_key))
 
-    def write_baseline(self, target_name: str, baseline: EvalBaselineRecord) -> None:
-        self.baselines[(target_name, baseline.eval_key)] = baseline
-
     def write_baselines(self, target_name: str, baselines: tuple[EvalBaselineRecord, ...]) -> None:
         for baseline in baselines:
-            self.write_baseline(target_name, baseline)
-
-    def read_gate(self, target_name: str, eval_key: str) -> EvalGateState | None:
-        return self.gates.get((target_name, eval_key))
+            self.baselines[(target_name, baseline.eval_key)] = baseline
 
     def write_gate(self, target_name: str, gate: EvalGateState) -> None:
         self.gates[(target_name, gate.eval_key)] = gate

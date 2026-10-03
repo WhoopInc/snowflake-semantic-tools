@@ -217,7 +217,7 @@ def test_report_tier_does_not_block_and_gate_state_is_retrospective() -> None:
     store = InMemoryEvalStateStore()
     state = persist_gate(store, "dev", compiled, current, blocking, evaluated_at="2026-09-10T00:00:00Z")
     assert state.unresolved
-    assert store.read_gate("dev", compiled.artifact_key) == state
+    assert store.gates[("dev", compiled.artifact_key)] == state
 
 
 def test_default_tier_and_default_baseline_runs_are_honored() -> None:
