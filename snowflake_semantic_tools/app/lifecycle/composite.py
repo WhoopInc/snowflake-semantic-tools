@@ -38,6 +38,7 @@ from snowflake_semantic_tools.domain.ports.lifecycle import CompositeLifecycleHa
 from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
 from snowflake_semantic_tools.domain.sql import Sql, qname, sql
 from snowflake_semantic_tools.domain.state import AppliedEntry, AppliedResourceInput, Manifest
+from snowflake_semantic_tools.domain.validate.publication import statement_diagnostic
 
 # The type Snowflake reports for an internal stage with server-side encryption only.
 SSE_STAGE_TYPE = "INTERNAL NO CSE"
@@ -53,6 +54,19 @@ PortT = TypeVar("PortT", bound=PublicationPort)
 def create_sse_stage_sql(stage: QualifiedName) -> Sql:
     """Return the statement that creates a server-side encrypted stage unless it exists."""
     return sql("CREATE STAGE IF NOT EXISTS {stage} ENCRYPTION = (TYPE = 'SNOWFLAKE_SSE')", stage=qname(stage))
+
+
+class PublicationRefused(Exception):
+    """A statement a publisher must never send, refused before it ran.
+
+    It is not a `SnowflakePortError`, so a run's own error handling cannot report it as a
+    Snowflake failure; `CompositeHandler.apply` reports `outcome`, which the run built with
+    what it had written so far.
+    """
+
+    def __init__(self, outcome: ApplyOutcome) -> None:
+        super().__init__(outcome.error.message if outcome.error is not None else "publication refused")
+        self.outcome = outcome
 
 
 def skipped(change: Change, ddl: str = "") -> ApplyOutcome:
@@ -181,7 +195,11 @@ class CompositeHandler(CompositeLifecycleHandler, Generic[SubjectT, ObservedT, P
         return decided
 
     def apply(self, change: Change, options: ApplyOptions) -> ApplyOutcome:
-        """Carry out one planned change, dispatched as the class describes."""
+        """Carry out one planned change, dispatched as the class describes.
+
+        A statement the publication guards refuse fails the change with the guard's code, as
+        `PublicationRun._run_statement` describes.
+        """
         if change.action is Action.PRUNE:
             return self._apply_prune(change, options)
         artifact = change.rendered
@@ -189,7 +207,10 @@ class CompositeHandler(CompositeLifecycleHandler, Generic[SubjectT, ObservedT, P
             return self._apply_unrendered(change)
         if change.action in (Action.NOOP, Action.BLOCKED):
             return skipped(change, artifact.ddl)
-        return self._publish(change, artifact)
+        try:
+            return self._publish(change, artifact)
+        except PublicationRefused as refused:
+            return refused.outcome
 
     def report_prune(self, artifact_key: str, state_entry: AppliedEntry) -> Change:
         """Report an artifact the project no longer declares as a prune apply never executes.
@@ -316,6 +337,10 @@ class PublicationRun(Generic[PortT]):
         """Report whether state may record the run's writes as SST's: by default, any write."""
         return self._written
 
+    def _certification_pending(self) -> bool:
+        """Report whether the run certifies its artifact and has not yet succeeded: by default, never."""
+        return False
+
     def _recorded_resources(self) -> tuple[tuple[str, str], ...]:
         """Return the resources a failed run reports: by default each one verified, once."""
         return tuple(dict.fromkeys(self._verified))
@@ -330,7 +355,23 @@ class PublicationRun(Generic[PortT]):
         return None
 
     def _run_statement(self, statement: Sql) -> ExecResult:
-        """Execute one statement as an attempt; a success counts as a write."""
+        """Execute one statement as an attempt; a success counts as a write.
+
+        Every statement a run sends passes the publication guards first. One they refuse is
+        never sent: the run fails with what it wrote so far.
+
+        Raises:
+            PublicationRefused: the statement is raw text, or a grant issued before
+                certification succeeded or naming no role type.
+
+        Diagnostics:
+            SST-VAL826, SST-VAL827: as `statement_diagnostic` reports them, as the failure's code.
+        """
+        refused = statement_diagnostic(self._change.key, statement, certification_pending=self._certification_pending())
+        if refused is not None:
+            raise PublicationRefused(
+                self.fail(refused.message, refused.code, value=str(refused.context.get("value", "")))
+            )
         self._attempts += 1
         result = self._port.execute_script((statement,))
         if result.ok:

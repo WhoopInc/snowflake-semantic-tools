@@ -50,6 +50,7 @@ from snowflake_semantic_tools.domain.ports.snowflake.state import StatePort
 from snowflake_semantic_tools.domain.ports.state import StateStore
 from snowflake_semantic_tools.domain.state import SST_VERSION, STATE_SCHEMA_VERSION, LastRun, State
 from snowflake_semantic_tools.domain.state.lock import LockClaim, state_write
+from snowflake_semantic_tools.domain.validate.publication import channel_outcome_diagnostics
 
 _ApplyOne = Callable[[Change, ApplyOptions], ApplyOutcome]
 _DEFAULT_LOCK_POLICY = LockPolicy()
@@ -136,6 +137,8 @@ class ApplyArtifacts:
             SST-APL014: a temporary artifact now shadows the permanent object of its name.
             SST-APL015: a temporary artifact's alias was ignored.
             SST-APL900: the outcomes do not account for every planned change.
+            SST-VAL828: a skill, plugin or profile change, a publication channel's, has no
+                outcome or several, so the run's result would not show that channel's state.
             Each failed change reports the diagnostic its error names; see `_outcome_diagnostic`.
             A change Snowflake refused also reports the refusal under its SNO code; see
             `_cause_diagnostic`.
@@ -181,7 +184,14 @@ class ApplyArtifacts:
         wave_diagnostics: tuple[Diagnostic, ...] = ()
         if outcomes is None:
             outcomes, wave_diagnostics = _WaveRun(changeset, options, self._apply_one, lambda: lease.lost).run()
-        diagnostics = DiagnosticBag((*reported, *wave_diagnostics, *_unaccounted(changeset, outcomes)))
+        accounted = (
+            *_unaccounted(changeset, outcomes),
+            *channel_outcome_diagnostics(
+                ((change.key, change.artifact_type) for change in changeset.changes),
+                [outcome.key for outcome in outcomes],
+            ),
+        )
+        diagnostics = DiagnosticBag((*reported, *wave_diagnostics, *accounted))
         return self._persist(changeset, previous, outcomes, diagnostics, run_id, started)
 
     def _apply_one(self, change: Change, options: ApplyOptions) -> ApplyOutcome:

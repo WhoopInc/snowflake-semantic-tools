@@ -188,6 +188,7 @@ class _Run(PublicationRun[CatalogPublicationPort]):
         self._release = release
         self._current = current
         self._stage_lock = stage_lock
+        self._certification_done = False
 
     def publish(self) -> ApplyOutcome:
         """Publish the release, reporting a port error as a failure that keeps what was written."""
@@ -210,6 +211,9 @@ class _Run(PublicationRun[CatalogPublicationPort]):
         # content-addressed leftovers, and recording them would let a retry treat a
         # same-named extension someone else created as SST's.
         return self._written and ("CORTEX EXTENSION", self._release.target.sql) in self._verified
+
+    def _certification_pending(self) -> bool:
+        return self._release.certified and not self._certification_done
 
     def _ensure_stage(self) -> ApplyOutcome | None:
         stage = self._release.stage
@@ -325,6 +329,7 @@ class _Run(PublicationRun[CatalogPublicationPort]):
             return failure
         if release.certified and not _certified(self._current.extension, version):
             return self._certify()
+        self._certification_done = True
         return self._published(version)
 
     def _align_comment(self) -> ApplyOutcome | None:
@@ -381,6 +386,7 @@ class _Run(PublicationRun[CatalogPublicationPort]):
                 f"{release.alias} of {target} reports certification {found or 'unset'} after tagging",
                 "SST-APL007",
             )
+        self._certification_done = True
         return self._published(version)
 
     def _published(self, version: ExtensionVersion) -> ApplyOutcome:

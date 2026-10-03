@@ -110,6 +110,20 @@ SPECS: tuple[ErrorSpec, ...] = (
         "write the SHA into METADATA",
     ),
     spec(
+        "SST-VAL715",
+        Severity.ERROR,
+        "Sensitive data in dataset metadata or comment",
+        "dataset '{artifact}': {field} matches {detail}",
+        "remove it; Snowflake treats both as metadata fields",
+    ),
+    spec(
+        "SST-VAL716",
+        Severity.ERROR,
+        "dataset block present for an existing dataset",
+        "dataset '{artifact}' emits a dataset: block and the object already exists",
+        "remove the dataset: block once the object is minted",
+    ),
+    spec(
         "SST-VAL717",
         Severity.ERROR,
         "run_name is not unique for the agent",

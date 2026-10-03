@@ -15,6 +15,7 @@ from snowflake_semantic_tools.domain.diagnostics.signatures import (
     signature_codes,
     snowflake_diagnostic,
 )
+from snowflake_semantic_tools.domain.model.artifact_key import split_artifact_key
 from snowflake_semantic_tools.domain.model.lifecycle import (
     ApplyOutcome,
     Change,
@@ -108,11 +109,14 @@ def _outcome_diagnostic(change: Change, outcome: ApplyOutcome) -> Diagnostic:
         SST-APL022: a dataset version could not be added.
         SST-APL027: a metadata table a publish writes is absent or the wrong shape.
         SST-APL028: the plan's own diagnostic for an eval config stage with the wrong file format.
+        SST-VAL826, SST-VAL827: a statement the publication guards refused before it ran.
         SST-INT902: an SST-APL028 failure the plan never recorded.
     """
     assert outcome.error is not None
     error = outcome.error
     code = error.code
+    if code in ("SST-VAL826", "SST-VAL827"):
+        return D(code, subject=change.key, artifact=split_artifact_key(change.key)[1], value=error.value)
     if code in ("SST-APL004", "SST-APL008", "SST-APL021"):
         return D(code, artifact=change.key)
     if code == "SST-APL009":

@@ -228,6 +228,11 @@ def is_git_sha(value: str) -> bool:
     return _GIT_SHA.fullmatch(value) is not None
 
 
+def dataset_version_comment(version: str) -> str:
+    """Return the version's COMMENT: a fixed note and the version's hex, never authored text."""
+    return f"SST eval questions {version.removeprefix(DATASET_VERSION_PREFIX).lower()}"
+
+
 def dataset_version_metadata(
     *, agent_target: QualifiedName, source_table: QualifiedName, dataset_fingerprint: str, git_sha: str
 ) -> str:
@@ -268,7 +273,7 @@ def render_add_version_statement(
         dataset=qname(dataset_target),
         version=literal(version),
         source=qname(source_table),
-        comment=literal(f"SST eval questions {version.removeprefix(DATASET_VERSION_PREFIX).lower()}"),
+        comment=literal(dataset_version_comment(version)),
         metadata=literal(metadata),
     )
 

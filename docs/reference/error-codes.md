@@ -22,7 +22,7 @@ cannot be downgraded by any setting.
 - [Loading (LOD)](#loading-lod) -- 24 codes
 - [References (REF)](#references-ref) -- 37 codes
 - [Membership (MEM)](#membership-mem) -- 24 codes
-- [Validation (VAL)](#validation-val) -- 287 codes
+- [Validation (VAL)](#validation-val) -- 298 codes
 - [dbt (DBT)](#dbt-dbt) -- 30 codes
 - [Rendering (RND)](#rendering-rnd) -- 16 codes
 - [Manifest and state (MAN)](#manifest-and-state-man) -- 21 codes
@@ -3372,6 +3372,22 @@ Fix: grant OWNERSHIP, or add the version as the owner
 
 Fix: write the SHA into METADATA
 
+### SST-VAL715
+
+**Sensitive data in dataset metadata or comment** (error)
+
+`dataset '<artifact>': <field> matches <detail>`
+
+Fix: remove it; Snowflake treats both as metadata fields
+
+### SST-VAL716
+
+**dataset block present for an existing dataset** (error)
+
+`dataset '<artifact>' emits a dataset: block and the object already exists`
+
+Fix: remove the dataset: block once the object is minted
+
 ### SST-VAL717
 
 **run_name is not unique for the agent** (error)
@@ -3686,6 +3702,14 @@ Fix: put SKILL.md at the folder root, with scripts beside it
 
 Fix: publish with an explicit TYPE of SKILL or PLUGIN
 
+### SST-VAL803
+
+**Extension version is not immutable and SHA-derived** (error)
+
+`skill '<artifact>': version '<value>' is not SHA-derived`
+
+Fix: derive the version from the content hash, using +version_prefix
+
 ### SST-VAL804
 
 **Extension version referenced by no agent** (warning)
@@ -3701,6 +3725,14 @@ Fix: reference it, or stop publishing it
 `skill reconciliation: <value>`
 
 Fix: publish the missing sources, and reap the orphan objects
+
+### SST-VAL806
+
+**Folder-to-schema split introduced** (warning)
+
+`skill '<artifact>' would land in schema '<value>'`
+
+Fix: split for confidentiality, not tidiness; the agent owner then needs USAGE per schema
 
 ### SST-VAL807
 
@@ -3804,6 +3836,14 @@ Fix: set catalog flatten true and stage flatten false
 
 Fix: set it false
 
+### SST-VAL820
+
+**Stage PUT target does not end in a separator** (error)
+
+`skill '<artifact>': PUT target '<path>' does not end in '/'`
+
+Fix: append a trailing slash
+
 ### SST-VAL821
 
 **Stage layout is not by_type** (error)
@@ -3812,6 +3852,22 @@ Fix: set it false
 
 Fix: set layout to by_type
 
+### SST-VAL822
+
+**Uploaded artifact has no registry pointer** (error)
+
+`skill '<artifact>': '<path>' was uploaded with no PROFILE_REGISTRY pointer`
+
+Fix: write the pointer as part of the same publish
+
+### SST-VAL823
+
+**Profile content hash does not cover every shipped tree** (error)
+
+`skill '<artifact>': hash omits <value>`
+
+Fix: include every shipped tree in the hash
+
 ### SST-VAL824
 
 **Deleted file survives into the next version** (error)
@@ -3819,6 +3875,38 @@ Fix: set layout to by_type
 `skill '<artifact>': '<path>' was deleted and is still published`
 
 Fix: build each version from empty, or issue explicit removals
+
+### SST-VAL825
+
+**Version name is not collision-free under parallel deploys** (error)
+
+`skill '<artifact>': version name '<value>' is not collision-free`
+
+Fix: derive the version from the content SHA
+
+### SST-VAL826
+
+**Grants issued before certification succeeded** (error)
+
+`skill '<artifact>': grants would be issued before certification`
+
+Fix: grant only after certification succeeds, and name the role TYPE explicitly
+
+### SST-VAL827
+
+**Identifier interpolated into DDL without validation** (error)
+
+`skill '<artifact>': '<value>' reaches DDL unvalidated`
+
+Fix: validate every interpolated identifier at parse time
+
+### SST-VAL828
+
+**Partial deploy reported as aggregate success** (error)
+
+`skill '<artifact>': <detail>`
+
+Fix: report per-channel status separately
 
 ### SST-VAL829
 

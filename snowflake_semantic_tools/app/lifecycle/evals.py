@@ -38,6 +38,7 @@ from snowflake_semantic_tools.domain.model.lifecycle import (
 from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
 from snowflake_semantic_tools.domain.sql import Sql, qname, sql
 from snowflake_semantic_tools.domain.state import AppliedEntry, ResourceStatus
+from snowflake_semantic_tools.domain.validate.publication import eval_publication_diagnostics
 
 _EVAL_STAGE_FILE_FORMAT = sql(
     "TYPE='CSV' FIELD_DELIMITER=NONE RECORD_DELIMITER='\\n' SKIP_HEADER=0 "
@@ -176,6 +177,8 @@ class EvalLifecycleHandler(CompositeHandler[RenderedArtifact, CompositeObservati
         Diagnostics:
             SST-VAL744: a custom metric is rendered under the name state recorded with another
                 definition, as `edited_metrics` reports.
+            SST-VAL715, SST-VAL716: as `eval_publication_diagnostics` reports them; the eval is
+                blocked.
             SST-VAL714: the change adds a dataset version whose METADATA carries no commit.
         """
         del subject
@@ -184,6 +187,9 @@ class EvalLifecycleHandler(CompositeHandler[RenderedArtifact, CompositeObservati
         edited = edited_metrics(artifact, state_entry)
         if edited:
             return CompositePlan(Action.BLOCKED, ChangeReason.VALIDATION_ERRORS, observation, DiagnosticBag(edited))
+        problems = eval_publication_diagnostics(artifact, observation)
+        if problems:
+            return CompositePlan(Action.BLOCKED, ChangeReason.VALIDATION_ERRORS, observation, DiagnosticBag(problems))
         if not mints(artifact):
             return self._decide_unminted(artifact, state_entry, observation)
         return _with_provenance(artifact, self._decide_minted(artifact, state_entry, observation))
