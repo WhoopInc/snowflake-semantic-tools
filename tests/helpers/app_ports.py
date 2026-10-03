@@ -28,7 +28,7 @@ from snowflake_semantic_tools.domain.ports.snowflake.catalog import (
 from snowflake_semantic_tools.domain.ports.snowflake.stage import StagedFileMetadata
 from snowflake_semantic_tools.domain.sql import Sql
 from snowflake_semantic_tools.domain.state import AppliedEntry, State
-from snowflake_semantic_tools.domain.state.lock import LockAcquisition, LockClaim, StateWrite
+from snowflake_semantic_tools.domain.state.lock import LockAcquisition, LockClaim, LockFence, StateWrite
 from tests.helpers.preflight import PreflightAnswers, PreflightDouble
 from tests.helpers.run_locks import InMemoryRunLocks
 
@@ -261,7 +261,10 @@ class InMemorySnowflake(PreflightDouble):
         target_name: str,
         manifest_id: str,
         write: StateWrite,
-    ) -> None:
+        fence: LockFence,
+    ) -> bool:
+        if not self.run_locks.fence_holds(state_table, target_name, fence):
+            return False
         del state_table, target_name
         current = {**(self.remote_state or {}), **write.upserts}
         for key in write.deletes:
@@ -269,6 +272,7 @@ class InMemorySnowflake(PreflightDouble):
         self.remote_state = MappingProxyType(current)
         self.state_manifest = manifest_id
         self.state_writes.append(write)
+        return True
 
     def ensure_state_table(self, state_table: QualifiedName) -> None:
         del state_table
@@ -283,11 +287,14 @@ class InMemorySnowflake(PreflightDouble):
     ) -> LockAcquisition:
         return self.run_locks.acquire_run_lock(state_table, target_name, claim, break_stale=break_stale)
 
-    def extend_run_lock(self, state_table: QualifiedName, target_name: str, claim: LockClaim) -> bool:
-        return self.run_locks.extend_run_lock(state_table, target_name, claim)
+    def extend_run_lock(self, state_table: QualifiedName, target_name: str, fence: LockFence, ttl_seconds: int) -> bool:
+        return self.run_locks.extend_run_lock(state_table, target_name, fence, ttl_seconds)
 
-    def release_run_lock(self, state_table: QualifiedName, target_name: str, run_id: str) -> None:
-        self.run_locks.release_run_lock(state_table, target_name, run_id)
+    def release_run_lock(self, state_table: QualifiedName, target_name: str, fence: LockFence) -> None:
+        self.run_locks.release_run_lock(state_table, target_name, fence)
+
+    def halt(self, reason: str) -> None:
+        self.halted = reason
 
 
 class FixedClock:

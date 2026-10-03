@@ -77,15 +77,19 @@ def test_state_round_trips_and_the_run_lock_admits_one_run(
     )
     live_connector.ensure_state_table(state_table)
     assert live_connector.read_state(state_table, "live") in (None, {})
-    live_connector.write_state(state_table, "live", "m" * 64, StateWrite(MappingProxyType({"semantic_view:v": entry})))
+    claim = LockClaim("run-a", "ROLE", "host", 60)
+    taken = live_connector.acquire_run_lock(state_table, "live", claim, break_stale=False)
+    assert taken.acquired and taken.fence is not None
+    write = StateWrite(MappingProxyType({"semantic_view:v": entry}))
+    assert live_connector.write_state(state_table, "live", "m" * 64, write, taken.fence)
     assert live_connector.read_state(state_table, "live") == {"semantic_view:v": entry}
     assert live_connector.read_state_manifest(state_table, "live") == "m" * 64
 
-    claim = LockClaim("run-a", "ROLE", "host", 60)
-    assert live_connector.acquire_run_lock(state_table, "live", claim, break_stale=False).acquired
     refused = live_connector.acquire_run_lock(state_table, "live", LockClaim("run-b"), break_stale=False)
     assert not refused.acquired and refused.holder is not None and refused.holder.run_id == "run-a"
-    assert live_connector.extend_run_lock(state_table, "live", claim)
-    live_connector.release_run_lock(state_table, "live", "run-a")
-    assert live_connector.acquire_run_lock(state_table, "live", LockClaim("run-b"), break_stale=False).acquired
-    live_connector.release_run_lock(state_table, "live", "run-b")
+    assert live_connector.extend_run_lock(state_table, "live", taken.fence, 60)
+    live_connector.release_run_lock(state_table, "live", taken.fence)
+    assert not live_connector.write_state(state_table, "live", "n" * 64, write, taken.fence)
+    second = live_connector.acquire_run_lock(state_table, "live", LockClaim("run-b"), break_stale=False)
+    assert second.acquired and second.fence is not None and second.fence.generation > taken.fence.generation
+    live_connector.release_run_lock(state_table, "live", second.fence)

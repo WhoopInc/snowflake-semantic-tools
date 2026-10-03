@@ -1,251 +1,251 @@
-"""The run lock against a driver double that implements the lock table's MERGE semantics.
+"""The run lock against a driver double with Snowflake's transactional locking.
 
-`LockDatabase` is the lock table: it answers the connector's statements by their binds, runs
-each MERGE as one atomic compare-and-set (Snowflake serialises MERGEs on a table), and judges
-expiry by its own clock, as Snowflake's CURRENT_TIMESTAMP does.
+`LockTables` runs each lock operation the connector sends as Snowflake would: statement-level
+READ COMMITTED, and UPDATE, DELETE and MERGE locks held until COMMIT or ROLLBACK, judged
+against what they read before waiting. The races are staged deterministically: one session
+is held right after a statement while a rival session is observed blocking on the table lock.
 """
 
 from __future__ import annotations
 
 import threading
-from collections.abc import Callable, Sequence
-from dataclasses import dataclass
-from datetime import UTC, datetime, timedelta
-from threading import RLock
+from types import MappingProxyType
 
-from snowflake_semantic_tools.adapters.snowflake.connector import SnowflakeConnector
+import pytest
+
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
-from snowflake_semantic_tools.domain.state.lock import LockClaim
+from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
+from snowflake_semantic_tools.domain.state import AppliedEntry
+from snowflake_semantic_tools.domain.state.lock import LockAcquisition, LockClaim, LockFence, StateWrite
+from tests.helpers.lock_tables import LockRow, LockTables, LockTablesConnector
 
 STATE_TABLE = QualifiedName.parse("DB.S.SST_STATE")
-_EPOCH = datetime(2026, 10, 1, tzinfo=UTC)
+ENTRY = AppliedEntry("f" * 64, "DB.S.V", "2026-09-29T00:00:00Z", "run", "applied", "d" * 64, "m" * 64)
+WRITE = StateWrite(MappingProxyType({"semantic_view:v": ENTRY}))
 
 
-@dataclass
-class _Row:
-    target: str
-    run_id: str
-    owner: str
-    host: str
-    acquired_at: float
-    expires_at: float
-
-
-class LockDatabase:
-    def __init__(self) -> None:
-        self.now = 0.0
-        self.rows: list[_Row] = []
-        self.statements: list[str] = []
-        self.guard = threading.Lock()
-        # Run just before and just after a connector reads the lock, to stage a race.
-        self.before_read: Callable[[], object] = lambda: None
-        self.after_read: Callable[[], object] = lambda: None
-
-    def execute(self, statement: str, params: Sequence[object]) -> tuple[list[tuple[object, ...]] | None, int]:
-        with self.guard:
-            self.statements.append(statement)
-        if statement.startswith("CREATE TABLE IF NOT EXISTS DB.S.SST_STATE_LOCK"):
-            return None, 0
-        if statement.startswith("SELECT RUN_ID, OWNER, HOST"):
-            self.before_read()
-            with self.guard:
-                held = sorted(
-                    (row for row in self.rows if row.target == params[0]), key=lambda row: (row.acquired_at, row.run_id)
-                )
-                found = [self._shown(row) for row in held]
-            self.after_read()
-            return found, len(found)
-        if statement.startswith("MERGE INTO DB.S.SST_STATE_LOCK AS held"):
-            return None, self._claim(*params)
-        if statement.startswith("UPDATE DB.S.SST_STATE_LOCK SET EXPIRES_AT"):
-            ttl, target, run_id = params
-            with self.guard:
-                held = [row for row in self.rows if row.target == target and row.run_id == run_id]
-                for row in held:
-                    row.expires_at = self.now + float(str(ttl))
-            return None, len(held)
-        if statement.startswith("DELETE FROM DB.S.SST_STATE_LOCK"):
-            target, run_id = params
-            with self.guard:
-                before = len(self.rows)
-                self.rows = [row for row in self.rows if not (row.target == target and row.run_id == run_id)]
-                return None, before - len(self.rows)
-        raise AssertionError(f"unexpected statement: {statement}")
-
-    def _claim(self, *params: object) -> int:
-        target, run_id, owner, host, ttl, expected = params
-        with self.guard:
-            matched = [row for row in self.rows if row.target == target]
-            if not matched:
-                self.rows.append(
-                    _Row(str(target), str(run_id), str(owner), str(host), self.now, self.now + float(str(ttl)))
-                )
-                return 1
-            changed = 0
-            for row in matched:
-                if row.run_id == expected and row.expires_at <= self.now:
-                    row.run_id, row.owner, row.host = str(run_id), str(owner), str(host)
-                    row.acquired_at, row.expires_at = self.now, self.now + float(str(ttl))
-                    changed += 1
-            return changed
-
-    def _shown(self, row: _Row) -> tuple[object, ...]:
-        return (
-            row.run_id,
-            row.owner,
-            row.host,
-            _EPOCH + timedelta(seconds=row.acquired_at),
-            _EPOCH + timedelta(seconds=row.expires_at),
-            row.expires_at <= self.now,
-        )
-
-
-class _Cursor:
-    def __init__(self, database: LockDatabase) -> None:
-        self._database = database
-        self.description: tuple[tuple[str], ...] | None = None
-        self.rowcount = 0
-        self.sfqid = "query-id"
-        self._rows: list[tuple[object, ...]] = []
-
-    def execute(self, statement: str, params: Sequence[object] | None = None) -> None:
-        rows, self.rowcount = self._database.execute(statement, tuple(params or ()))
-        self._rows = rows or []
-        self.description = (("RUN_ID",),) if rows is not None else None
-
-    def fetchall(self) -> list[tuple[object, ...]]:
-        return self._rows
-
-    def close(self) -> None:
-        pass
-
-
-class _Connection:
-    def __init__(self, database: LockDatabase) -> None:
-        self._database = database
-
-    def cursor(self, *args: object) -> _Cursor:
-        return _Cursor(self._database)
-
-
-class LockConnector(SnowflakeConnector):
-    def __init__(self, database: LockDatabase) -> None:
-        self._lock = RLock()
-        self._connection = _Connection(database)  # type: ignore[assignment]  # a double, not a driver connection
-
-
-def test_a_free_lock_is_claimed_and_records_the_claim() -> None:
-    database = LockDatabase()
-    acquisition = LockConnector(database).acquire_run_lock(
-        STATE_TABLE, "dev", LockClaim("run-a", "ROLE", "laptop", 60), break_stale=False
+def claim(tables: LockTables, run_id: str, *, break_stale: bool = False, ttl: int = 60) -> LockAcquisition:
+    return LockTablesConnector(tables).acquire_run_lock(
+        STATE_TABLE, "dev", LockClaim(run_id, "ROLE", "laptop", ttl), break_stale=break_stale
     )
+
+
+def fence_of(acquisition: LockAcquisition) -> LockFence:
+    assert acquisition.acquired and acquisition.fence is not None
+    return acquisition.fence
+
+
+class Race:
+    """Hold `holder`'s session just after it ran `after`, until `rival`'s session blocks on the lock table."""
+
+    def __init__(self, tables: LockTables, after: str) -> None:
+        self.tables = tables
+        self.after = after
+        self.held = threading.Event()
+        self.rival_waiting = threading.Event()
+        self.holder: int | None = None
+        tables.on = self._on
+
+    def _on(self, event: str, statement: str, connection: int) -> None:
+        if event == "waiting" and connection != self.holder:
+            self.rival_waiting.set()
+        elif event == "ran" and self.holder is None and statement.startswith(self.after):
+            self.holder = connection
+            self.held.set()
+            assert self.rival_waiting.wait(timeout=5), "the rival never blocked on the lock table"
+
+    def run(self, first: object, second: object) -> None:
+        """Run `first` on its own thread until it is held, then `second`, then let both finish."""
+        assert callable(first) and callable(second)
+        threads = [threading.Thread(target=first)]
+        threads[0].start()
+        assert self.held.wait(timeout=5)
+        threads.append(threading.Thread(target=second))
+        threads[1].start()
+        for thread in threads:
+            thread.join(timeout=10)
+            assert not thread.is_alive()
+
+
+def test_a_free_lock_is_claimed_with_the_first_generation_and_records_the_claim() -> None:
+    tables = LockTables()
+    acquisition = claim(tables, "run-a")
     assert (acquisition.acquired, acquisition.holder, acquisition.broke_stale) == (True, None, False)
-    assert [(row.run_id, row.owner, row.host, row.expires_at) for row in database.rows] == [
-        ("run-a", "ROLE", "laptop", 60.0)
+    assert acquisition.fence == LockFence("run-a", 1)
+    assert [(row.run_id, row.owner, row.host, row.expires_at, row.generation) for row in tables.rows] == [
+        ("run-a", "ROLE", "laptop", 60.0, 1)
     ]
 
 
+def test_every_lock_transaction_writes_the_mutex_row_before_it_reads_anything() -> None:
+    tables = LockTables()
+    fence = fence_of(claim(tables, "run-a"))
+    connector = LockTablesConnector(tables)
+    connector.extend_run_lock(STATE_TABLE, "dev", fence, 60)
+    connector.write_state(STATE_TABLE, "dev", "m" * 64, WRITE, fence)
+    connector.release_run_lock(STATE_TABLE, "dev", fence)
+    statements = tables.executed()
+    begins = [index for index, statement in enumerate(statements) if statement == "BEGIN"]
+    assert len(begins) == 4
+    for begin in begins:
+        assert (
+            statements[begin + 1]
+            == "UPDATE DB.S.SST_STATE_LOCK SET ACQUIRED_AT = CURRENT_TIMESTAMP() WHERE TARGET_NAME = %s"
+        )
+
+
 def test_a_live_lock_is_refused_and_names_its_holder_even_with_break_stale() -> None:
-    database = LockDatabase()
-    LockConnector(database).acquire_run_lock(STATE_TABLE, "dev", LockClaim("run-a", "ROLE", "ci"), break_stale=False)
-    refused = LockConnector(database).acquire_run_lock(STATE_TABLE, "dev", LockClaim("run-b"), break_stale=True)
-    assert not refused.acquired and refused.holder is not None
-    assert refused.holder.describe() == "run run-a (ROLE on ci), expires 2026-10-01T00:30:00Z"
-    assert [row.run_id for row in database.rows] == ["run-a"]
-    assert not any(statement.startswith("MERGE") for statement in database.statements[-1:])
+    tables = LockTables()
+    claim(tables, "run-a")
+    refused = claim(tables, "run-b", break_stale=True)
+    assert not refused.acquired and refused.fence is None and refused.holder is not None
+    assert refused.holder.describe() == "run run-a (ROLE on laptop), expires 2026-10-01T00:01:00Z"
+    assert [row.run_id for row in tables.rows] == ["run-a"]
+    assert tables.executed()[-1] == "ROLLBACK"
 
 
-def test_an_expired_lock_is_taken_over_only_with_break_stale() -> None:
-    database = LockDatabase()
-    LockConnector(database).acquire_run_lock(STATE_TABLE, "dev", LockClaim("run-a", ttl_seconds=10), break_stale=False)
-    database.now = 11.0
-    kept = LockConnector(database).acquire_run_lock(STATE_TABLE, "dev", LockClaim("run-b"), break_stale=False)
+def test_an_expired_lock_is_taken_over_only_with_break_stale_under_a_later_generation() -> None:
+    tables = LockTables()
+    claim(tables, "run-a", ttl=10)
+    tables.now = 11.0
+    kept = claim(tables, "run-b")
     assert not kept.acquired and kept.holder is not None and kept.holder.expired
-    broke = LockConnector(database).acquire_run_lock(STATE_TABLE, "dev", LockClaim("run-b"), break_stale=True)
+    broke = claim(tables, "run-b", break_stale=True)
     assert broke.acquired and broke.broke_stale and broke.holder is not None
-    assert broke.holder.run_id == "run-a"
-    assert [row.run_id for row in database.rows] == ["run-b"]
+    assert broke.holder.run_id == "run-a" and broke.fence == LockFence("run-b", 2)
+    assert [(row.run_id, row.generation) for row in tables.rows] == [("run-b", 2)]
+
+
+def test_generations_keep_rising_after_a_release() -> None:
+    tables = LockTables()
+    connector = LockTablesConnector(tables)
+    connector.release_run_lock(STATE_TABLE, "dev", fence_of(claim(tables, "run-a")))
+    assert tables.rows == [] and claim(tables, "run-b").fence == LockFence("run-b", 2)
 
 
 def test_two_runs_racing_for_a_free_lock_leave_exactly_one_holder() -> None:
-    database = LockDatabase()
-    both_read = threading.Barrier(2)
-    database.after_read = lambda: both_read.wait(timeout=5) if len(database.statements) <= 4 else None
-    results: dict[str, bool] = {}
-
-    def claim(run_id: str) -> None:
-        acquisition = LockConnector(database).acquire_run_lock(STATE_TABLE, "dev", LockClaim(run_id), break_stale=False)
-        results[run_id] = acquisition.acquired
-
-    threads = [threading.Thread(target=claim, args=(run_id,)) for run_id in ("run-a", "run-b")]
-    for thread in threads:
-        thread.start()
-    for thread in threads:
-        thread.join(timeout=10)
-    assert sorted(results.values()) == [False, True]
-    winner = next(run_id for run_id, acquired in results.items() if acquired)
-    assert [row.run_id for row in database.rows] == [winner]
+    # The first claim holds the table right after its mutex write; the second blocks behind it,
+    # so it reads the first's committed row rather than the free lock both would otherwise see.
+    tables = LockTables()
+    race = Race(tables, "UPDATE DB.S.SST_STATE_LOCK SET ACQUIRED_AT")
+    results: dict[str, LockAcquisition] = {}
+    race.run(
+        lambda: results.setdefault("run-a", claim(tables, "run-a")),
+        lambda: results.setdefault("run-b", claim(tables, "run-b")),
+    )
+    assert results["run-a"].acquired and not results["run-b"].acquired
+    assert results["run-b"].holder is not None and results["run-b"].holder.run_id == "run-a"
+    assert [row.run_id for row in tables.rows] == ["run-a"]
 
 
 def test_two_runs_racing_to_break_one_expired_lock_leave_exactly_one_holder() -> None:
-    database = LockDatabase()
-    LockConnector(database).acquire_run_lock(STATE_TABLE, "dev", LockClaim("old", ttl_seconds=1), break_stale=False)
-    database.now = 5.0
-    both_read = threading.Barrier(2)
-    database.after_read = lambda: both_read.wait(timeout=5) if len(database.statements) <= 8 else None
-    results: dict[str, bool] = {}
-
-    def claim(run_id: str) -> None:
-        results[run_id] = (
-            LockConnector(database).acquire_run_lock(STATE_TABLE, "dev", LockClaim(run_id), break_stale=True).acquired
-        )
-
-    threads = [threading.Thread(target=claim, args=(run_id,)) for run_id in ("run-a", "run-b")]
-    for thread in threads:
-        thread.start()
-    for thread in threads:
-        thread.join(timeout=10)
-    assert sorted(results.values()) == [False, True]
-    assert len(database.rows) == 1 and database.rows[0].run_id in ("run-a", "run-b")
+    tables = LockTables()
+    claim(tables, "old", ttl=1)
+    tables.now = 5.0
+    # Held after reading the expired row: the rival's claim cannot read it until this one commits.
+    race = Race(tables, "SELECT RUN_ID, OWNER, HOST")
+    results: dict[str, LockAcquisition] = {}
+    race.run(
+        lambda: results.setdefault("run-a", claim(tables, "run-a", break_stale=True)),
+        lambda: results.setdefault("run-b", claim(tables, "run-b", break_stale=True)),
+    )
+    assert results["run-a"].acquired and results["run-a"].broke_stale
+    assert not results["run-b"].acquired and results["run-b"].holder is not None
+    assert results["run-b"].holder.run_id == "run-a" and not results["run-b"].holder.expired
+    assert [row.run_id for row in tables.rows] == ["run-a"]
 
 
-def test_a_claim_that_lands_beside_a_rival_row_withdraws() -> None:
-    # A standard table does not enforce the key: if a rival's insert landed too, neither holds the lock.
-    database = LockDatabase()
-    connector = LockConnector(database)
-
-    def rival_inserts() -> None:
-        if any(row.run_id == "mine" for row in database.rows) and len(database.rows) == 1:
-            database.rows.append(_Row("dev", "rival", "", "", 0.0, 60.0))
-
-    database.before_read = rival_inserts
-    acquisition = connector.acquire_run_lock(STATE_TABLE, "dev", LockClaim("mine"), break_stale=False)
-    assert not acquisition.acquired and acquisition.holder is not None
-    assert acquisition.holder.run_id == "rival"
-    assert [row.run_id for row in database.rows] == ["rival"]
+def test_the_fenced_state_write_of_a_run_whose_lock_was_broken_is_refused() -> None:
+    tables = LockTables()
+    loser = fence_of(claim(tables, "loser", ttl=1))
+    tables.now = 5.0
+    winner = fence_of(claim(tables, "winner", break_stale=True))
+    connector = LockTablesConnector(tables)
+    assert not connector.write_state(STATE_TABLE, "dev", "l" * 64, WRITE, loser)
+    assert tables.committed.state == {} and tables.executed()[-1] == "ROLLBACK"
+    assert connector.write_state(STATE_TABLE, "dev", "w" * 64, WRITE, winner)
+    assert list(tables.committed.state) == [("dev", "semantic_view:v")]
+    assert tables.committed.manifests == {"dev": "w" * 64}
 
 
-def test_extend_and_release_touch_only_the_holders_row() -> None:
-    database = LockDatabase()
-    connector = LockConnector(database)
-    claim = LockClaim("run-a", ttl_seconds=10)
-    connector.acquire_run_lock(STATE_TABLE, "dev", claim, break_stale=False)
-    database.now = 5.0
-    assert connector.extend_run_lock(STATE_TABLE, "dev", claim)
-    assert database.rows[0].expires_at == 15.0
-    assert not connector.extend_run_lock(STATE_TABLE, "dev", LockClaim("run-b"))
-    connector.release_run_lock(STATE_TABLE, "dev", "run-b")
-    assert [row.run_id for row in database.rows] == ["run-a"]
-    connector.release_run_lock(STATE_TABLE, "dev", "run-a")
-    assert database.rows == []
-    assert not connector.extend_run_lock(STATE_TABLE, "dev", claim)
+def test_a_takeover_racing_a_state_write_lands_wholly_after_it() -> None:
+    # The write holds the table after checking its fence; the takeover waits, then refuses the
+    # loser's next write. Neither interleaves with the other.
+    tables = LockTables()
+    loser = fence_of(claim(tables, "loser", ttl=1))
+    tables.now = 5.0
+    race = Race(tables, "SELECT RUN_ID, GENERATION")
+    written: list[bool] = []
+    taken: list[LockAcquisition] = []
+    race.run(
+        lambda: written.append(LockTablesConnector(tables).write_state(STATE_TABLE, "dev", "l" * 64, WRITE, loser)),
+        lambda: taken.append(claim(tables, "winner", break_stale=True)),
+    )
+    assert written == [True] and taken[0].acquired
+    assert tables.committed.manifests == {"dev": "l" * 64}
+    assert not LockTablesConnector(tables).write_state(STATE_TABLE, "dev", "x" * 64, WRITE, loser)
+    assert tables.committed.manifests == {"dev": "l" * 64}
+
+
+def test_a_state_write_racing_a_takeover_is_refused_when_the_takeover_commits_first() -> None:
+    tables = LockTables()
+    loser = fence_of(claim(tables, "loser", ttl=1))
+    tables.now = 5.0
+    race = Race(tables, "SELECT RUN_ID, OWNER, HOST")
+    taken: list[LockAcquisition] = []
+    written: list[bool] = []
+    race.run(
+        lambda: taken.append(claim(tables, "winner", break_stale=True)),
+        lambda: written.append(LockTablesConnector(tables).write_state(STATE_TABLE, "dev", "l" * 64, WRITE, loser)),
+    )
+    assert taken[0].acquired and written == [False]
+    assert tables.committed.state == {} and tables.committed.manifests == {}
+
+
+def test_extend_and_release_touch_only_the_fenced_row() -> None:
+    tables = LockTables()
+    connector = LockTablesConnector(tables)
+    fence = fence_of(claim(tables, "run-a", ttl=10))
+    tables.now = 5.0
+    assert connector.extend_run_lock(STATE_TABLE, "dev", fence, 10)
+    assert tables.rows[0].expires_at == 15.0
+    assert not connector.extend_run_lock(STATE_TABLE, "dev", LockFence("run-a", 9), 10)
+    assert not connector.extend_run_lock(STATE_TABLE, "dev", LockFence("run-b", 1), 10)
+    connector.release_run_lock(STATE_TABLE, "dev", LockFence("run-a", 9))
+    assert [row.run_id for row in tables.rows] == ["run-a"]
+    connector.release_run_lock(STATE_TABLE, "dev", fence)
+    assert tables.rows == []
+    assert not connector.extend_run_lock(STATE_TABLE, "dev", fence, 10)
+
+
+def test_rows_from_before_fences_are_judged_and_cleared_by_a_takeover() -> None:
+    # An older table may hold two rows for one target, and no generation; both expired, both go.
+    tables = LockTables()
+    claim(tables, "seed")
+    tables.committed.locks = [row for row in tables.committed.locks if not row.target]
+    for run_id in ("old-1", "old-2"):
+        tables.committed.locks.append(LockRow("dev", run_id, None, None, 0.0, 1.0, None))
+    tables.now = 5.0
+    broke = claim(tables, "new", break_stale=True)
+    assert broke.acquired and broke.holder is not None and broke.holder.run_id == "old-1"
+    assert [row.run_id for row in tables.rows] == ["new"]
+
+
+def test_a_lock_transaction_without_a_mutex_row_refuses_and_rolls_back() -> None:
+    tables = LockTables()
+    with pytest.raises(SnowflakePortError, match="no mutex row"):
+        LockTablesConnector(tables).extend_run_lock(STATE_TABLE, "dev", LockFence("run-a", 1), 10)
+    assert tables.executed()[-1] == "ROLLBACK"
+
+
+def test_a_lock_needs_a_target_name() -> None:
+    with pytest.raises(ValueError, match="target name"):
+        LockTablesConnector(LockTables()).acquire_run_lock(STATE_TABLE, "", LockClaim("run"), break_stale=False)
 
 
 def test_every_lock_value_is_bound_and_the_table_sits_beside_the_state_table() -> None:
-    database = LockDatabase()
-    LockConnector(database).acquire_run_lock(
-        STATE_TABLE, "dev", LockClaim("run'; DROP TABLE x; --", "R", "h"), break_stale=False
-    )
-    assert all("DROP TABLE x" not in statement for statement in database.statements)
-    assert all("SST_STATE_LOCK" in statement for statement in database.statements)
-    assert database.rows[0].run_id == "run'; DROP TABLE x; --"
+    tables = LockTables()
+    acquisition = claim(tables, "run'; DROP TABLE x; --")
+    assert all("DROP TABLE x" not in statement for statement in tables.executed())
+    assert all("SST_STATE_LOCK" in statement for statement in tables.executed() if statement not in ("BEGIN", "COMMIT"))
+    assert tables.rows[0].run_id == "run'; DROP TABLE x; --" and acquisition.acquired

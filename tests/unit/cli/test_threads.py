@@ -140,7 +140,8 @@ def test_plan_reports_the_same_on_one_thread_and_on_four(monkeypatch: pytest.Mon
     assert any(message.startswith("observation of AGENT in") for message in refused)
     assert any("locks in" in message for message in refused)
     assert len(one_sessions.opened) == 1 and one_sessions.threads == {"MainThread"}
-    assert 1 < len(four_sessions.opened) <= 4
+    # The command's own session, and at most one per worker: the pool never lends the command's.
+    assert 1 < len(four_sessions.opened) <= 5
     assert any(name.startswith("sst-worker") for name in four_sessions.threads)
     assert four_sessions.still_open == 0 and one_sessions.still_open == 0
 
@@ -156,8 +157,8 @@ def test_plan_threads_come_from_the_environment_then_the_config(monkeypatch: pyt
 
     assert _comparable(one) == _comparable(from_env)
     assert _comparable(from_config) == _comparable(flag_wins)
-    assert 1 < len(env_sessions.opened) <= 3
-    assert 1 < len(config_sessions.opened) <= 2
+    assert 1 < len(env_sessions.opened) <= 4
+    assert 1 < len(config_sessions.opened) <= 3
     assert len(flag_sessions.opened) == 1
     assert env_sessions.still_open == config_sessions.still_open == flag_sessions.still_open == 0
 

@@ -17,7 +17,7 @@ from types import MappingProxyType
 from typing import Protocol
 
 from snowflake_semantic_tools.app.apply.errors import classify_error
-from snowflake_semantic_tools.app.apply.lock import LockPolicy, RunLease
+from snowflake_semantic_tools.app.apply.lock import BROKEN_BY_ANOTHER_RUN, LockPolicy, RunLease
 from snowflake_semantic_tools.app.lifecycle.ports import CatalogPublicationPort
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, DiagnosticBag
 from snowflake_semantic_tools.domain.diagnostics.signatures import signature_codes, snowflake_diagnostic
@@ -29,7 +29,7 @@ from snowflake_semantic_tools.domain.ports.snowflake.state import StatePort
 from snowflake_semantic_tools.domain.ports.state import StateStore
 from snowflake_semantic_tools.domain.sql import Sql, keyword, qname, sql
 from snowflake_semantic_tools.domain.state import AppliedEntry
-from snowflake_semantic_tools.domain.state.lock import LockClaim, StateWrite
+from snowflake_semantic_tools.domain.state.lock import LockClaim, LockFence, StateWrite
 
 DROPPED, REJECTED, ABSENT, REFUSED = "dropped", "rejected", "absent", "refused"
 _DEFAULT_LOCK_POLICY = LockPolicy()
@@ -127,7 +127,8 @@ class DropObject:
             SnowflakePortError: the lock, the catalog, or the state could not be read or written.
 
         Diagnostics:
-            SST-APL011: another run holds the lock.
+            SST-APL011: another run holds the lock, or broke it before the dropped object's
+                state entries could be deleted; they are then left as they are.
             SST-APL010: an expired lock was taken over.
             SST-PRT005: the named object does not exist.
             SST-PLN024: the object carries no SST ownership marker, so it is not SST's to drop.
@@ -142,15 +143,15 @@ class DropObject:
             self._lock_policy,
         )
         locked, reported = lease.acquire(break_stale=False)
-        if not locked:
+        if not locked or lease.fence is None:
             return DropResult(REFUSED, DiagnosticBag(reported))
         try:
-            result = self._run_locked(request)
+            result = self._run_locked(request, lease.fence)
         finally:
             lease.release()
         return replace(result, diagnostics=DiagnosticBag((*reported, *result.diagnostics)))
 
-    def _run_locked(self, request: DropRequest) -> DropResult:
+    def _run_locked(self, request: DropRequest, fence: LockFence) -> DropResult:
         name = request.qualified_name
         if not self._port.object_exists(request.object_type, name):
             detail = f"no {request.object_type} of that name"
@@ -162,21 +163,31 @@ class DropObject:
         executed = self._port.execute_script((request.drop_sql,))
         if not executed.ok:
             return DropResult(REJECTED, DiagnosticBag(_rejection(request, executed.error)))
-        return DropResult(DROPPED, DiagnosticBag(), self._forget(request))
+        forgotten = self._forget(request, fence)
+        if forgotten is None:
+            return DropResult(DROPPED, DiagnosticBag((D("SST-APL011", value=BROKEN_BY_ANOTHER_RUN),)))
+        return DropResult(DROPPED, DiagnosticBag(), forgotten)
 
-    def _forget(self, request: DropRequest) -> tuple[str, ...]:
-        """Delete every state entry that records the dropped object, remote first, then local."""
+    def _forget(self, request: DropRequest, fence: LockFence) -> tuple[str, ...] | None:
+        """Delete every state entry that records the dropped object, remote first, then local.
+
+        Returns None, with nothing forgotten, when the state table refused the write because
+        the run no longer holds the lock.
+        """
         entries = self._port.read_state(self._state_table, request.target_name) or {}
         keys = _recording(entries, request)
         if not keys:
             return ()
         manifest = self._port.read_state_manifest(self._state_table, request.target_name)
-        self._port.write_state(
+        written = self._port.write_state(
             self._state_table,
             request.target_name,
             manifest or entries[keys[0]].manifest_id,
             StateWrite(MappingProxyType({}), keys),
+            fence,
         )
+        if not written:
+            return None
         cached = self._state_store.read_local()
         if cached is not None and any(key in cached.applied for key in keys):
             kept = {key: entry for key, entry in cached.applied.items() if key not in keys}

@@ -33,7 +33,7 @@ from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePort
 from snowflake_semantic_tools.domain.ports.snowflake.stage import StagedFileMetadata
 from snowflake_semantic_tools.domain.sql import Sql
 from snowflake_semantic_tools.domain.state import AppliedEntry
-from snowflake_semantic_tools.domain.state.lock import LockAcquisition, LockClaim, StateWrite
+from snowflake_semantic_tools.domain.state.lock import LockAcquisition, LockClaim, LockFence, StateWrite
 from tests.helpers.preflight import PreflightAnswers, PreflightDouble
 from tests.helpers.run_locks import InMemoryRunLocks
 
@@ -324,13 +324,17 @@ class RecordedSnowflake(PreflightDouble):
         target_name: str,
         manifest_id: str,
         write: StateWrite,
-    ) -> None:
+        fence: LockFence,
+    ) -> bool:
+        if not self.run_locks.fence_holds(state_table, target_name, fence):
+            return False
         del state_table, target_name
         current = {**self.state, **write.upserts}
         for key in write.deletes:
             current.pop(key, None)
         self.state = MappingProxyType(current)
         self.state_manifest = manifest_id
+        return True
 
     def ensure_state_table(self, state_table: QualifiedName) -> None:
         del state_table
@@ -345,11 +349,14 @@ class RecordedSnowflake(PreflightDouble):
     ) -> LockAcquisition:
         return self.run_locks.acquire_run_lock(state_table, target_name, claim, break_stale=break_stale)
 
-    def extend_run_lock(self, state_table: QualifiedName, target_name: str, claim: LockClaim) -> bool:
-        return self.run_locks.extend_run_lock(state_table, target_name, claim)
+    def extend_run_lock(self, state_table: QualifiedName, target_name: str, fence: LockFence, ttl_seconds: int) -> bool:
+        return self.run_locks.extend_run_lock(state_table, target_name, fence, ttl_seconds)
 
-    def release_run_lock(self, state_table: QualifiedName, target_name: str, run_id: str) -> None:
-        self.run_locks.release_run_lock(state_table, target_name, run_id)
+    def release_run_lock(self, state_table: QualifiedName, target_name: str, fence: LockFence) -> None:
+        self.run_locks.release_run_lock(state_table, target_name, fence)
+
+    def halt(self, reason: str) -> None:
+        self.halted = reason
 
     def _record_successful_statements(self, statements: Sequence[str]) -> None:
         for statement in statements:
@@ -561,8 +568,9 @@ class ReadOnlySnowflake:
         target_name: str,
         manifest_id: str,
         write: StateWrite,
-    ) -> None:
-        del state_table, target_name, manifest_id, write
+        fence: LockFence,
+    ) -> bool:
+        del state_table, target_name, manifest_id, write, fence
         raise SnowflakePortError("read-only Snowflake adapter refused state write")
 
     def ensure_state_table(self, state_table: QualifiedName) -> None:

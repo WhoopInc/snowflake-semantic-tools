@@ -115,8 +115,8 @@ def _from_table(
     """
     if port is None:
         return State.empty(target, store.config_path), DiagnosticBag(diagnostics)
-    remote = port.read_state(state_table, target.name)
-    if remote is None:
+    remote_state = table_state(port, state_table, target, store.config_path)
+    if remote_state is None:
         diagnostics.append(
             D(
                 "SST-PLN001",
@@ -125,20 +125,27 @@ def _from_table(
             )
         )
         return State.empty(target, store.config_path), DiagnosticBag(diagnostics)
-
-    remote_manifest_id = port.read_state_manifest(state_table, target.name) or _entries_manifest(remote)
-    remote_state = State(
-        STATE_SCHEMA_VERSION,
-        target,
-        remote_manifest_id,
-        store.config_path,
-        None,
-        MappingProxyType(dict(remote)),
-    )
     if rewrite and cached is not None and cached.applied != remote_state.applied:
         diagnostics.append(D("SST-MAN027", value=target.name, detail=state_table.sql))
         store.write_local(remote_state)
     return remote_state, DiagnosticBag(diagnostics)
+
+
+def table_state(port: StatePort, state_table: QualifiedName, target: TargetIdentity, config_path: str) -> State | None:
+    """Read a target's state from the state table alone; None when the table cannot be read.
+
+    Its manifest is the one the last state write recorded, else the one the active entries
+    name, empty when they name none or several. An absent table reads as empty state.
+
+    Raises:
+        SnowflakePortError: checking for the state table or reading its manifest failed, or an
+            entry it holds does not decode.
+    """
+    remote = port.read_state(state_table, target.name)
+    if remote is None:
+        return None
+    manifest_id = port.read_state_manifest(state_table, target.name) or _entries_manifest(remote)
+    return State(STATE_SCHEMA_VERSION, target, manifest_id, config_path, None, MappingProxyType(dict(remote)))
 
 
 def _entries_manifest(entries: Mapping[str, AppliedEntry]) -> str:

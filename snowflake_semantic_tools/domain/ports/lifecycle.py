@@ -65,6 +65,16 @@ class CompositeLifecycleHandler(Protocol):
         """
         ...
 
+    def for_session(self, session: object) -> CompositeLifecycleHandler:
+        """Return this handler running every statement on `session`, a session leased for one change.
+
+        The returned handler shares this one's locks and what it has created, so changes on
+        different sessions still coordinate; this handler keeps its own session. `session` is
+        a connection of the same account and settings, implementing every port role the
+        handler was built with.
+        """
+        ...
+
     def merge_physical_resources(
         self,
         current: tuple[tuple[str, str], ...],

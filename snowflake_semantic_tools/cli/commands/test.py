@@ -211,7 +211,7 @@ def _run_smoke(
     profile, port = connect(paths, target_name)
     params = profile.connection_params
     try:
-        with ConnectorPool(port, threads, lambda: open_connector(params)) as pool:
+        with ConnectorPool(threads, lambda: open_connector(params)) as pool:
             smoke = SmokePublished(port, state_store(paths, profile.target_name), Fanout(port, pool, threads)).run(
                 result,
                 manifest,
@@ -256,7 +256,7 @@ def _run_evals(
     profile, port = connect(paths, target_name)
     params = profile.connection_params
     workers = suite_concurrency(evals, inputs.eval_catalog().defaults, request.threads)
-    with closed_on_error(port), ConnectorPool(port, workers, lambda: open_connector(params)) as pool:
+    with closed_on_error(port), ConnectorPool(workers, lambda: open_connector(params)) as pool:
         store = state_store(paths, profile.target_name)
         eval_store = SnowflakeEvalStateStore(port, _eval_state_table(profile.state_table))
         outcome = RunEvalGate(

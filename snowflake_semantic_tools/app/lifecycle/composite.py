@@ -12,9 +12,10 @@ from __future__ import annotations
 
 from abc import abstractmethod
 from collections.abc import Callable, Collection, Iterable, Mapping
+from copy import copy
 from dataclasses import replace
 from types import MappingProxyType
-from typing import Generic, TypeVar
+from typing import Generic, Self, TypeVar, cast
 
 from snowflake_semantic_tools.app.lifecycle.ports import PublicationPort
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, DiagnosticBag
@@ -170,6 +171,16 @@ class CompositeHandler(CompositeLifecycleHandler, Generic[SubjectT, ObservedT, P
 
     def __init__(self, port: PortT) -> None:
         self._port = port
+
+    def for_session(self, session: object) -> Self:
+        """Return a copy of this handler on `session`, sharing every lock and record of what it created.
+
+        `session` is a leased connection of the command's own settings, which implements every
+        role the handler's port does.
+        """
+        bound = copy(self)
+        bound._port = cast(PortT, session)
+        return bound
 
     def plan(
         self,

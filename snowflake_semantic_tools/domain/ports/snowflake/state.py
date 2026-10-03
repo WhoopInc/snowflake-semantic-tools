@@ -3,6 +3,11 @@
 The state table holds what apply recorded for each artifact; the lock table holds, per target,
 the one run that may apply to it. Both live in the state table's schema. Their table type is
 the connector's choice and is described where the connector creates them.
+
+The lock is mutual exclusion by construction: claiming, extending, releasing, and writing
+state each run as one transaction that serialises with every other one on the lock table
+before it reads anything, so each decides on what the previous one committed. A claim that
+wins is issued a `LockFence`; only its holder may extend or release the lock or write state.
 """
 
 from __future__ import annotations
@@ -12,7 +17,7 @@ from typing import Protocol
 
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
 from snowflake_semantic_tools.domain.state import AppliedEntry
-from snowflake_semantic_tools.domain.state.lock import LockAcquisition, LockClaim, StateWrite
+from snowflake_semantic_tools.domain.state.lock import LockAcquisition, LockClaim, LockFence, StateWrite
 
 
 class StatePort(Protocol):
@@ -53,13 +58,21 @@ class StatePort(Protocol):
         target_name: str,
         manifest_id: str,
         write: StateWrite,
-    ) -> None:
-        """Apply one run's change to a target's entries in one transaction, and record its manifest.
+        fence: LockFence,
+    ) -> bool:
+        """Apply one run's change to a target's entries in one transaction, while `fence` holds the lock.
 
-        Each upsert is one MERGE on the target and artifact key, each delete one DELETE, and
-        every row of the target then records `manifest_id`; every value is bound, never
-        spliced. Creates or migrates the table first, as `ensure_state_table` does. Rows the
-        write does not name are left as they are.
+        The transaction first serialises with every lock operation, then checks that the
+        target's lock row still records `fence`; only then does each upsert run as one MERGE
+        on the target and artifact key, each delete as one DELETE, and every row of the target
+        record `manifest_id`. A takeover therefore lands wholly before the write, which then
+        refuses, or wholly after it. Every value is bound, never spliced. Creates or migrates
+        the table first, as `ensure_state_table` does. Rows the write does not name are left
+        as they are.
+
+        Returns:
+            True when the write committed; False when `fence` no longer holds the lock, and the
+            transaction rolled back with nothing written.
 
         Raises:
             SnowflakePortError: the write failed; its transaction rolls back, so the target
@@ -85,33 +98,37 @@ class StatePort(Protocol):
         *,
         break_stale: bool,
     ) -> LockAcquisition:
-        """Take the target's run lock for `claim` unless another run holds it, without waiting.
+        """Take the target's run lock for `claim` unless another run holds it, without waiting for it.
 
-        The lock row is read, then claimed with one compare-and-set MERGE: a free lock is
-        inserted, and an expired one is replaced only when `break_stale` and the row still
-        names the run that was read, so of two runs racing for one lock exactly one wins. A
-        live lock is never taken. Expiry is judged by Snowflake's clock, never this machine's.
+        In one transaction that has serialised with every other lock operation, the target's
+        row is read and judged: a free lock is taken, an expired one only with `break_stale`,
+        and a live one never. Of any number of runs racing for one lock, exactly one wins.
+        Expiry is judged by Snowflake's clock, never this machine's. Waiting for a rival's
+        lock operation, which lasts a few statements, is not waiting for the lock.
+
+        Returns:
+            What the claim found; when it acquired the lock, the fence it was issued.
 
         Raises:
             SnowflakePortError: the lock table could not be created, read, or written.
         """
         ...
 
-    def extend_run_lock(self, state_table: QualifiedName, target_name: str, claim: LockClaim) -> bool:
-        """Push the lock's expiry `claim.ttl_seconds` past now, when `claim.run_id` still holds it.
+    def extend_run_lock(self, state_table: QualifiedName, target_name: str, fence: LockFence, ttl_seconds: int) -> bool:
+        """Push the lock's expiry `ttl_seconds` past now, when `fence` still holds it.
 
         Returns:
-            Whether the claim still holds the lock; False when another run broke it.
+            Whether the fence still holds the lock; False when another run broke it.
 
         Raises:
-            SnowflakePortError: the UPDATE failed.
+            SnowflakePortError: the extension failed; the lock is as it was.
         """
         ...
 
-    def release_run_lock(self, state_table: QualifiedName, target_name: str, run_id: str) -> None:
-        """Delete the lock row when `run_id` holds it; a lock another run holds is left alone.
+    def release_run_lock(self, state_table: QualifiedName, target_name: str, fence: LockFence) -> None:
+        """Delete the lock row when `fence` holds it; a lock another claim holds is left alone.
 
         Raises:
-            SnowflakePortError: the DELETE failed.
+            SnowflakePortError: the release failed; the lock then expires on its own.
         """
         ...

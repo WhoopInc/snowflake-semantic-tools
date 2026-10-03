@@ -40,6 +40,9 @@ class Pool:
             with self._guard:
                 self.out -= 1
 
+    def halt(self, reason: str) -> None:
+        del reason
+
 
 def _slower_first(session: Session, item: int) -> tuple[int, str]:
     # Earlier items take longer, so concurrent workers finish them last.

@@ -5,7 +5,9 @@ session lock; parallel apply workers each lease a sibling session from a pool in
 Statements arrive as `Sql` and become text only in `_execute`, the one place this adapter
 hands SQL to the driver. A driver or transport failure surfaces as `SnowflakePortError`,
 carrying the diagnostic a command reports; any other exception is an SST bug and propagates
-unwrapped. The private helpers here are shared by the role modules beside this one.
+unwrapped. A halted session starts no further statement. No statement here is a USE: a scope
+is a session's own, set when it connects. The private helpers here are shared by the role
+modules beside this one.
 """
 
 from __future__ import annotations
@@ -15,7 +17,7 @@ import json
 import re
 import sys
 from collections.abc import Iterator, Mapping, Sequence
-from threading import RLock
+from threading import Lock, RLock
 from types import MappingProxyType
 from typing import Any, Self, cast
 
@@ -29,7 +31,7 @@ from snowflake_semantic_tools.domain.model.identifier import SchemaScope
 from snowflake_semantic_tools.domain.model.lifecycle import ExecResult, ExecutionError, QueryResult
 from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
 from snowflake_semantic_tools.domain.ports.snowflake.execution import ExecutionPort
-from snowflake_semantic_tools.domain.sql import Sql, ident, scope, sql
+from snowflake_semantic_tools.domain.sql import Sql, sql
 
 # What a statement or fetch raises when Snowflake or the network fails: the driver's own
 # errors, and the OSError family (its vendored `requests` errors, socket timeouts) that it
@@ -54,19 +56,25 @@ class Session(ExecutionPort):
     runs on its own cursor while the session lock is held; statements that must run
     together, such as a transaction, share one cursor and one hold. No statement this
     session runs changes its current database or schema: `query_in_context` runs on a
-    second session, opened on first use from the same settings and closed with this one.
+    session of its scope's own, opened on first use from the same settings with that scope
+    as its database and schema, and closed with this one.
 
     Raises:
         SnowflakePortError: connecting failed; its diagnostic names the account.
     """
 
-    # The scoped session `query_in_context` opens on first use; None until then.
-    _scoped: Session | None = None
+    # The sessions `query_in_context` opened, by folded database and schema; replaced, never
+    # mutated, under `_scoped_guard`, which never blocks a statement on this session.
+    _scoped: Mapping[tuple[str, str], Session] = MappingProxyType({})
+    _scoped_guard = Lock()
     _connection_params: Mapping[str, object] = MappingProxyType({})
+    # Why the session was halted; None while it may run statements.
+    _halted: str | None = None
 
     def __init__(self, connection_params: Mapping[str, object]) -> None:
         failure: SnowflakePortError | None = None
         self._connection_params = MappingProxyType(dict(connection_params))
+        self._scoped_guard = Lock()
         try:
             # Browser SSO prints its prompts to stdout, which `--output json` reserves
             # for exactly one envelope; the prompts still reach the user on stderr.
@@ -87,20 +95,37 @@ class Session(ExecutionPort):
         Raises:
             SnowflakePortError: connecting failed.
         """
-        return type(self)(self._connection_params)
+        return self._connect(self._connection_params)
+
+    def _connect(self, settings: Mapping[str, object]) -> Self:
+        """Open a session of this class with `settings`: how siblings and scoped sessions connect."""
+        return type(self)(settings)
 
     def close(self) -> None:
-        """Close the driver connection, and the scoped session, waiting for any statement that holds a lock.
+        """Close the driver connection, and every scoped session, waiting for any statement that holds a lock.
 
-        A driver failure to close propagates as the driver raised it.
+        A driver failure to close propagates as the driver raised it, once every session is closed.
         """
+        with self._scoped_guard:
+            scoped, self._scoped = tuple(self._scoped.values()), MappingProxyType({})
         with self._lock:
-            scoped, self._scoped = self._scoped, None
             try:
-                if scoped is not None:
-                    scoped.close()
+                for session in scoped:
+                    session.close()
             finally:
                 self._connection.close()
+
+    def halt(self, reason: str) -> None:
+        """Refuse every statement from now on, here and on the scoped sessions, with `reason`.
+
+        A statement already running finishes; the next one raises `SnowflakePortError`, and a
+        script stops before its next statement. Idempotent: the first reason stands. Never
+        waits: a scoped session opened meanwhile sees the reason once it is registered.
+        """
+        if self._halted is None:
+            self._halted = reason
+        for session in tuple(self._scoped.values()):
+            session.halt(self._halted)
 
     def query(self, sql: Sql, params: Sequence[object] | Mapping[str, object] | None = None) -> QueryResult:
         with _as_port_errors(), self._cursor() as cursor:
@@ -112,67 +137,104 @@ class Session(ExecutionPort):
         sql: Sql,
         params: Sequence[object] | Mapping[str, object] | None = None,
     ) -> QueryResult:
-        # The scoped session runs nothing but these calls, and each sets its own scope under
-        # that session's lock, so the scope one call sets never reaches another statement.
-        session = self._scoped_session()
+        # The scoped session runs nothing but these calls, all in the one scope it connected
+        # with, so no statement ever changes the scope another statement runs in.
+        session = self._scoped_session(scope)
         with _as_port_errors(), session._cursor() as cursor:
-            for use in _use_statements(scope):
-                _execute(cursor, use)
             return _fetch(cursor, sql, params)
 
     def execute_script(self, statements: Sequence[Sql]) -> ExecResult:
         completed: list[str] = []
         rows = 0
+        halted = self._halted
         try:
-            with self._cursor() as cursor:
-                for statement in statements:
-                    _execute(cursor, statement)
-                    completed.append(str(cursor.sfqid or ""))
-                    rows += max(cursor.rowcount or 0, 0)
+            if halted is None:
+                with self._cursor() as cursor:
+                    for statement in statements:
+                        if (halted := self._halted) is not None:
+                            break
+                        _execute(cursor, statement)
+                        completed.append(str(cursor.sfqid or ""))
+                        rows += max(cursor.rowcount or 0, 0)
         except _DRIVER_ERRORS as exc:
             # Only the statements before the failing one completed; the result names exactly
             # those, and never counts the one that failed as written.
             error = ExecutionError(scrubbed_message(exc), getattr(exc, "sqlstate", None), getattr(exc, "errno", None))
             return ExecResult(False, tuple(completed), error, rows_affected=rows)
+        if halted is not None:
+            return ExecResult(False, tuple(completed), ExecutionError(halted), rows_affected=rows)
         return ExecResult(True, tuple(completed), rows_affected=rows)
 
     def try_execute(self, sql: Sql) -> ExecResult:
         return self.execute_script((sql,))
 
-    def _scoped_session(self) -> Session:
-        """Return the session `query_in_context` runs on, opening it on first use."""
-        with self._lock:
-            if self._scoped is None:
-                self._scoped = self.sibling()
-            return self._scoped
+    def _scoped_session(self, target: SchemaScope) -> Session:
+        """Return the session `query_in_context` runs on in `target`, opening it on first use.
 
-    def _transaction(self, steps: Sequence[tuple[Sql, Sequence[object]]]) -> tuple[int, ...]:
-        """Run `steps` between BEGIN and COMMIT on one cursor, rolling back if any raises.
+        Opening one connects while holding only `_scoped_guard`, so a slow login never blocks
+        a statement on this session.
+        """
+        key = (target.database.folded, target.schema.folded)
+        with self._scoped_guard:
+            found = self._scoped.get(key)
+            if found is None:
+                found = self._open_scoped(target)
+                self._scoped = MappingProxyType({**self._scoped, key: found})
+        # Registered before the check: a halt either sees this session or set the reason first.
+        if self._halted is not None:
+            found.halt(self._halted)
+        return found
 
-        Returns:
-            The rows each step reported, in order.
+    def _open_scoped(self, target: SchemaScope) -> Session:
+        """Connect a session whose current database and schema are `target`, and check they are.
 
         Raises:
-            SnowflakePortError: a step or the COMMIT failed; the transaction was rolled back.
-                A ROLLBACK that fails too is noted on the error rather than replacing it.
+            SnowflakePortError: connecting failed, or the session did not start in `target`,
+                as when the database or schema does not exist or the role cannot use it.
         """
-        counts: list[int] = []
+        settings = {**self._connection_params, "database": target.database.sql, "schema": target.schema.sql}
+        session = self._connect(settings)
+        try:
+            found = session.query(sql("SELECT CURRENT_DATABASE(), CURRENT_SCHEMA()")).rows
+        except BaseException:
+            session.close()
+            raise
+        current = tuple(str(value) if value is not None else "" for value in (found[0] if found else ()))
+        if current != (target.database.folded, target.schema.folded):
+            session.close()
+            shown = ".".join(current) or "no schema"
+            raise SnowflakePortError(f"a session for {target.sql} started in {shown}")
+        return session
+
+    @contextlib.contextmanager
+    def _transaction_block(self) -> Iterator[Transaction]:
+        """Hold one explicit transaction for a block, on one cursor under the session lock.
+
+        BEGIN runs first; the block's statements run through the `Transaction`, and COMMIT
+        runs when the block ends, unless it called `Transaction.rollback`. When the block
+        raises, the transaction is rolled back and the failure propagates.
+
+        Raises:
+            SnowflakePortError: a statement, the BEGIN, or the COMMIT failed; the transaction
+                was rolled back. A ROLLBACK that fails too is noted on the error rather than
+                replacing it.
+        """
         with _as_port_errors(), self._cursor() as cursor:
+            transaction = Transaction(cursor)
             try:
                 _execute(cursor, sql("BEGIN"))
-                for statement, params in steps:
-                    _execute(cursor, statement, params)
-                    counts.append(max(cursor.rowcount or 0, 0))
-                _execute(cursor, sql("COMMIT"))
+                yield transaction
+                if transaction.open:
+                    transaction.end(sql("COMMIT"))
             except Exception as failure:
-                try:
-                    _execute(cursor, sql("ROLLBACK"))
-                except Exception as rollback_failure:
-                    # The error that aborted the write is the one to report; a ROLLBACK
-                    # that fails too (the session is usually gone) is context for it.
-                    failure.add_note(f"ROLLBACK also failed: {rollback_failure}")
+                if transaction.open:
+                    try:
+                        transaction.end(sql("ROLLBACK"))
+                    except Exception as rollback_failure:
+                        # The error that aborted the write is the one to report; a ROLLBACK
+                        # that fails too (the session is usually gone) is context for it.
+                        failure.add_note(f"ROLLBACK also failed: {rollback_failure}")
                 raise
-        return tuple(counts)
 
     @contextlib.contextmanager
     def _cursor(self, *cursor_class: type[SnowflakeCursor]) -> Iterator[SnowflakeCursor]:
@@ -180,8 +242,13 @@ class Session(ExecutionPort):
 
         The cursor closes before the lock is released, however the block ends. Failures pass
         through as raised; wrap the block in `_as_port_errors` to report them as port errors.
+
+        Raises:
+            SnowflakePortError: the session was halted; no cursor is opened.
         """
         with self._lock:
+            if self._halted is not None:
+                raise SnowflakePortError(self._halted)
             cursor = self._connection.cursor(*cursor_class)
             try:
                 yield cursor
@@ -201,6 +268,41 @@ class Session(ExecutionPort):
                 raise SnowflakePortError("dictionary cursor returned a positional row")
             dictionaries = cast(tuple[dict[Any, Any], ...], rows)
             return tuple({str(key).lower(): value for key, value in row.items()} for row in dictionaries)
+
+
+class Transaction:
+    """The statements of one explicit transaction, run on the cursor that began it.
+
+    `Session._transaction_block` makes one and ends it; until then the session lock is held,
+    so no other statement of the session runs inside the transaction.
+
+    Attributes:
+        open: Whether the transaction is still open; False once it committed or rolled back.
+    """
+
+    def __init__(self, cursor: SnowflakeCursor) -> None:
+        self._cursor = cursor
+        self.open = True
+
+    def rows(
+        self, statement: Sql, params: Sequence[object] | Mapping[str, object] | None = None
+    ) -> tuple[tuple[object, ...], ...]:
+        """Run one statement with `params` bound, and return its rows."""
+        return _fetch(self._cursor, statement, params).rows
+
+    def run(self, statement: Sql, params: Sequence[object] | Mapping[str, object] | None = None) -> int:
+        """Run one statement with `params` bound, and return the rows it changed."""
+        _execute(self._cursor, statement, params)
+        return max(self._cursor.rowcount or 0, 0)
+
+    def rollback(self) -> None:
+        """Roll the transaction back now: nothing it ran is kept, and the block then commits nothing."""
+        self.end(sql("ROLLBACK"))
+
+    def end(self, statement: Sql) -> None:
+        """End the transaction with `statement`, COMMIT or ROLLBACK; it counts as ended even if that fails."""
+        self.open = False
+        _execute(self._cursor, statement)
 
 
 @contextlib.contextmanager
@@ -229,14 +331,6 @@ def _execute(
         raise TypeError(f"the connector runs only Sql, found {type(statement).__name__}")
     connector_params = cast(Sequence[Any] | dict[Any, Any] | None, params)
     cursor.execute(statement.for_driver(bound=params is not None), connector_params)
-
-
-def _use_statements(target: SchemaScope) -> tuple[Sql, Sql]:
-    """The USE DATABASE and USE SCHEMA pair that makes `target` the scoped session's current schema."""
-    return (
-        sql("USE DATABASE {database}", database=ident(target.database)),
-        sql("USE SCHEMA {schema}", schema=scope(target)),
-    )
 
 
 def _fetch(cursor: SnowflakeCursor, sql: Sql, params: Sequence[object] | Mapping[str, object] | None) -> QueryResult:
