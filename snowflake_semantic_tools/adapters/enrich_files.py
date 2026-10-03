@@ -1,7 +1,8 @@
 """The project files `sst enrich` reads and edits: dbt model YAML and semantic view YAML.
 
 Implements `domain.ports.enrich.EnrichFilesPort` by composing the dbt writer, the view writer,
-and the atomic file write, which is why it sits beside the adapter subpackages rather than in one.
+and the contained atomic file write, which is why it sits beside the adapter subpackages rather
+than in one.
 """
 
 from __future__ import annotations
@@ -11,7 +12,7 @@ from pathlib import Path
 
 from snowflake_semantic_tools.adapters.dbt.yaml_writer import write_model_updates
 from snowflake_semantic_tools.adapters.errors import ProjectError
-from snowflake_semantic_tools.adapters.fs.local import write_text_atomic
+from snowflake_semantic_tools.adapters.paths import write_within
 from snowflake_semantic_tools.adapters.yaml.view_writer import write_table_synonyms
 from snowflake_semantic_tools.domain.enrich import ColumnUpdate, TableSynonymEdit
 from snowflake_semantic_tools.domain.ports.enrich import EnrichFilesPort, WrittenFile
@@ -39,4 +40,4 @@ class ProjectFiles(EnrichFilesPort):
         return write_table_synonyms(text, path, edits)
 
     def write(self, path: str, text: str) -> None:
-        write_text_atomic(self._project_dir / path, text)
+        write_within(self._project_dir, self._project_dir / path, text)

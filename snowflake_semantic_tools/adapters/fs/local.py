@@ -3,14 +3,13 @@
 from __future__ import annotations
 
 import json
-import os
-import tempfile
 from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Generic, TypeVar
 
 from snowflake_semantic_tools.adapters.errors import ProjectError
+from snowflake_semantic_tools.adapters.paths import create_within, write_within
 from snowflake_semantic_tools.domain.diagnostics import D
 from snowflake_semantic_tools.domain.model.config_schema import CONFIG_FILE
 from snowflake_semantic_tools.domain.state import Manifest, SavedPlan, State, StoredDocumentError, canonical_json
@@ -18,55 +17,21 @@ from snowflake_semantic_tools.domain.state import Manifest, SavedPlan, State, St
 T = TypeVar("T")
 
 
-def write_bytes_atomic(path: Path, data: bytes) -> None:
-    """Replace a file with `data` in one rename, so a reader sees the old bytes or the new ones.
-
-    The bytes go to a hidden temporary file beside the target, are synced, and replace the
-    target; the directory is synced after. Missing parent directories are created.
-
-    Raises:
-        OSError: The directory or the file cannot be written; the temporary file is removed.
-    """
-    path.parent.mkdir(parents=True, exist_ok=True)
-    fd, raw_path = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent)
-    temp = Path(raw_path)
-    try:
-        with os.fdopen(fd, "wb") as stream:
-            stream.write(data)
-            stream.flush()
-            os.fsync(stream.fileno())
-        os.replace(temp, path)
-        directory_fd = os.open(path.parent, os.O_RDONLY)
-        try:
-            os.fsync(directory_fd)
-        finally:
-            os.close(directory_fd)
-    finally:
-        temp.unlink(missing_ok=True)
-
-
-def write_text_atomic(path: Path, text: str) -> None:
-    """Replace a file with `text` encoded as UTF-8, atomically, as `write_bytes_atomic` does.
-
-    Raises:
-        OSError: The directory or the file cannot be written.
-    """
-    write_bytes_atomic(path, text.encode("utf-8"))
-
-
 class JsonStore(Generic[T]):
     """One JSON document on disk, read through `parser` and replaced atomically in canonical form.
 
     A file that exists and cannot be used raises `ProjectError` with the code that names why:
     the one a `StoredDocumentError` carries, else the store's `unreadable_code`. Without such a
-    code it raises `ValueError` instead.
+    code it raises `ValueError` instead. Writes stay inside `root` (by default the file's
+    folder), as `adapters.paths.write_within` keeps them.
     """
 
     # The code for a file that exists and cannot be used, when the store has one.
     unreadable_code: str | None = None
 
-    def __init__(self, path: Path, parser: Callable[[object], T]) -> None:
+    def __init__(self, path: Path, parser: Callable[[object], T], *, root: Path | None = None) -> None:
         self.path = path
+        self.root = path.parent if root is None else root
         self._parser = parser
 
     def read(self) -> T | None:
@@ -109,12 +74,13 @@ class JsonStore(Generic[T]):
         reader sees the old document or the new one; missing parent directories are created.
 
         Raises:
+            UnsafeWrite: The file lies outside the store's root, or a link is on the way to it.
             OSError: The directory or the file cannot be written; the temporary file is removed.
             TypeError: The value holds something JSON cannot encode.
             ValueError: The value holds NaN or an infinity.
         """
         payload = value.as_dict() if hasattr(value, "as_dict") else value
-        write_bytes_atomic(self.path, canonical_json(payload) + b"\n")
+        write_within(self.root, self.path, canonical_json(payload) + b"\n")
 
 
 class ManifestFileStore(JsonStore[Manifest]):
@@ -132,8 +98,8 @@ class ManifestFileStore(JsonStore[Manifest]):
 
     unreadable_code = "SST-MAN002"
 
-    def __init__(self, path: Path) -> None:
-        super().__init__(path, Manifest.from_dict)
+    def __init__(self, path: Path, *, root: Path | None = None) -> None:
+        super().__init__(path, Manifest.from_dict, root=root)
 
 
 class PlanFileStore(JsonStore[SavedPlan]):
@@ -143,8 +109,8 @@ class PlanFileStore(JsonStore[SavedPlan]):
     exists and cannot be used, never `ProjectError`.
     """
 
-    def __init__(self, path: Path) -> None:
-        super().__init__(path, SavedPlan.from_dict)
+    def __init__(self, path: Path, *, root: Path | None = None) -> None:
+        super().__init__(path, SavedPlan.from_dict, root=root)
 
 
 STATE_FILE_GLOB = "state.*.json"
@@ -172,8 +138,9 @@ class StateFileStore(JsonStore[State]):
         *,
         config_path: str = CONFIG_FILE,
         now: Callable[[], datetime] | None = None,
+        root: Path | None = None,
     ) -> None:
-        super().__init__(path, State.from_dict)
+        super().__init__(path, State.from_dict, root=root)
         self._config_path = config_path
         self._lock_path = path.with_suffix(path.suffix + ".lock")
         self._now = now or (lambda: datetime.now(UTC))
@@ -221,24 +188,17 @@ class StateFileStore(JsonStore[State]):
             OSError: The lock file cannot be created or written, including `FileExistsError` when
                 another run takes the lock between this one deleting a stale lock and taking it.
         """
-        self._lock_path.parent.mkdir(parents=True, exist_ok=True)
         now = self._now()
         payload = canonical_json({"run_id": run_id, "created_at": now.isoformat()})
         try:
-            descriptor = os.open(self._lock_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+            create_within(self.root, self._lock_path, payload)
         except FileExistsError:
             holder, stale = self._lock_status(now)
             if stale and break_stale:
                 self._lock_path.unlink(missing_ok=True)
-                descriptor = os.open(self._lock_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
-                os.write(descriptor, payload)
-                os.fsync(descriptor)
-                os.close(descriptor)
+                create_within(self.root, self._lock_path, payload)
                 return True, holder, True
             return False, holder, False
-        os.write(descriptor, payload)
-        os.fsync(descriptor)
-        os.close(descriptor)
         return True, None, False
 
     def _lock_status(self, now: datetime) -> tuple[str | None, bool]:

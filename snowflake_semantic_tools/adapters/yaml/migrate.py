@@ -7,6 +7,7 @@ from pathlib import Path
 import yaml
 
 from snowflake_semantic_tools.adapters.errors import ProjectError
+from snowflake_semantic_tools.adapters.paths import write_within
 from snowflake_semantic_tools.adapters.yaml.discover import YAML_SUFFIXES
 from snowflake_semantic_tools.adapters.yaml.parse import _neutralize_templates, _restore_templates
 from snowflake_semantic_tools.domain.migrate.refs import FilterSite
@@ -31,10 +32,14 @@ def write_file(project_dir: Path, path: str, text: str) -> None:
 
     Files are read with universal newlines, so the codemod only ever sees `\\n`;
     a CRLF file must not come back LF with every line changed in the diff.
+
+    Raises:
+        UnsafeWrite: The file is a symbolic link, or one is on the way to it.
+        OSError: The file cannot be written.
     """
     target = project_dir / path
     crlf = target.is_file() and b"\r\n" in target.read_bytes()
-    target.write_text(text, encoding="utf-8", newline="\r\n" if crlf else "\n")
+    write_within(project_dir, target, text.replace("\n", "\r\n") if crlf else text)
 
 
 def filter_sites(text: str, path: str) -> tuple[FilterSite, ...]:

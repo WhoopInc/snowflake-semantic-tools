@@ -8,12 +8,10 @@ needs quoting inside the LIST, GET, or PUT that carries it.
 
 from __future__ import annotations
 
-import os
 import re
-import shutil
-import tempfile
 from pathlib import PurePosixPath
 
+from snowflake_semantic_tools.adapters.paths import scratch_folder, write_within
 from snowflake_semantic_tools.adapters.snowflake.connector.session import Session, _require_ok
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
 from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
@@ -65,43 +63,31 @@ class StageMethods(Session, StagePort):
             SnowflakePortError: GET failed, or reported the file as anything but downloaded.
         """
         stage_path = _validated_stage_path(stage_path)
-        temp_dir = tempfile.mkdtemp(prefix="sst-stage-read-")
-        try:
-            statement = sql("GET {source} {target}", source=literal(stage_path), target=local_file(temp_dir))
+        with scratch_folder("sst-stage-read-") as temp_dir:
+            statement = sql("GET {source} {target}", source=literal(stage_path), target=local_file(str(temp_dir)))
             downloaded = _downloaded_name(self._dict_rows(statement), stage_path)
             if downloaded is None:
                 return None
-            with open(os.path.join(temp_dir, downloaded), "rb") as handle:
-                return handle.read()
-        finally:
-            shutil.rmtree(temp_dir, ignore_errors=True)
+            return (temp_dir / downloaded).read_bytes()
 
     def upload(self, stage_path: str, content: bytes) -> None:
         stage_path = _validated_upload_target(stage_path)
         basename = PurePosixPath(stage_path).name
-        temp_dir = tempfile.mkdtemp(prefix="sst-upload-")
-        local_path = os.path.join(temp_dir, basename)
-        try:
-            with open(local_path, "wb") as handle:
-                handle.write(content)
+        with scratch_folder("sst-upload-") as temp_dir:
+            local_path = temp_dir / basename
+            write_within(temp_dir, local_path, content)
             # The PUT target is always a directory, so it ends in a separator.
             destination = _put_destination(stage_path.rsplit("/", 1)[0] + "/")
             result = self.execute_script(
                 (
                     sql(
                         "PUT {source} {destination} OVERWRITE=TRUE AUTO_COMPRESS=FALSE",
-                        source=local_file(local_path),
+                        source=local_file(str(local_path)),
                         destination=destination,
                     ),
                 )
             )
             _require_ok(result, "stage upload failed")
-        finally:
-            try:
-                os.unlink(local_path)
-                os.rmdir(temp_dir)
-            except OSError:
-                pass
 
     def list_location(self, location: str) -> tuple[str, ...]:
         """List the location and keep the names below it, extension paths compared casefolded.
