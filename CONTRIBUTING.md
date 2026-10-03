@@ -104,9 +104,16 @@ regenerated, on a machine that can reach PyPI, before CI can install.
 
 ### Running the Gates
 
-These are the checks `.github/workflows/test-and-lint.yml` runs on every pull request:
+These are the checks `.github/workflows/test-and-lint.yml` runs on every pull request. A release
+tag runs the same workflow before it builds anything (`publish-to-pypi.yml` calls it).
 
 ```bash
+# The exit-code contract, reported as its own step
+poetry run pytest tests/unit/cli/test_exit_codes.py
+
+# The reference project's semantic-layer YAML is in canonical form (exit 2 when not)
+poetry run sst --project-dir tests/fixtures/reference_project format --check
+
 # The suite, with coverage over the whole of it, then the per-layer ratchet against
 # tests/coverage_baseline.json: line and branch coverage per layer may rise, never fall
 poetry run pytest tests/ -n auto --cov=snowflake_semantic_tools --cov-branch --cov-report=json:coverage.json
@@ -126,7 +133,17 @@ poetry run ruff format --check snowflake_semantic_tools/ tests/
 poetry run ruff check snowflake_semantic_tools/ tests/
 poetry run lint-imports         # ring boundaries
 poetry run sst docs --check     # generated reference pages are current
+poetry run bandit -r snowflake_semantic_tools -ll
+
+# semgrep runs in its own job, installed outside the project's environment at the version
+# the workflow pins
+pip install semgrep==1.179.0
+semgrep scan --config p/python --config p/sql-injection --error --metrics off snowflake_semantic_tools
 ```
+
+A semgrep false positive is silenced on its line with `# nosemgrep: <rule-id>` and a comment
+saying why. Nothing yet stops a fast-gate test from opening a socket: the suite has no socket
+guard, so the offline boundary is held by the `live` marker alone.
 
 A coverage number that rises can be locked in with `coverage_ratchet raise`, which only ever moves
 a number up. Lowering one is an edit to `tests/coverage_baseline.json` in the pull request that
@@ -139,8 +156,9 @@ thread it started is still running after it returns.
 ### Tests against Snowflake
 
 Tests marked `live` connect to a real account and are deselected by default.
-`.github/workflows/slow.yml` runs them on every same-repository pull request; a fork's pull request
-gets no secrets, so the job is skipped there. To run them yourself, point them at an account with a
+`.github/workflows/slow.yml` runs them on every same-repository pull request, every push to main
+and every release tag. A fork's pull request, and a Dependabot one, gets no secrets, so the job is
+skipped there; anywhere else, missing secrets fail the gate rather than skip it. To run them yourself, point them at an account with a
 key-pair user and a role that may create schemas in one scratch database:
 
 ```bash
