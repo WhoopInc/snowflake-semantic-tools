@@ -8,7 +8,7 @@ from snowflake_semantic_tools.app.apply import ApplyArtifacts
 from snowflake_semantic_tools.app.compile.evals import CompiledEval
 from snowflake_semantic_tools.app.lifecycle.evals import EVAL_STAGE_FILE_FORMAT, EvalLifecycleHandler
 from snowflake_semantic_tools.app.manifest import build_manifest
-from snowflake_semantic_tools.app.plan import PlanArtifacts
+from snowflake_semantic_tools.app.plan_artifacts import PlanArtifacts
 from snowflake_semantic_tools.domain.diagnostics import Severity
 from snowflake_semantic_tools.domain.model.lifecycle import ApplyResult, ExecResult, ExecutionError
 from snowflake_semantic_tools.domain.sql import Sql

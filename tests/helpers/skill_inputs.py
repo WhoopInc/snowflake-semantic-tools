@@ -21,7 +21,7 @@ from snowflake_semantic_tools.app.compile.base import CompileResult
 from snowflake_semantic_tools.app.compile.skills import CatalogChannel, CompiledExtension, CompileSkills
 from snowflake_semantic_tools.app.lifecycle.extensions import ExtensionLifecycleHandler
 from snowflake_semantic_tools.app.manifest import build_manifest
-from snowflake_semantic_tools.app.plan import PlanArtifacts
+from snowflake_semantic_tools.app.plan_artifacts import PlanArtifacts
 from snowflake_semantic_tools.domain.diagnostics import DiagnosticBag, Origin
 from snowflake_semantic_tools.domain.model.agent import AgentModel, AgentSkill, AgentTool
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName

@@ -273,3 +273,13 @@ class TargetIdentity:
             role=role if isinstance(role, str) else None,
             warehouse=warehouse if isinstance(warehouse, str) else None,
         )
+
+
+# The target-name words that mark a production-like environment, matched as whole parts of
+# the name split on `_`, `-` and `.`: `prod`, `prod_us` and `eu-production` match, `product` does not.
+PRODUCTION_WORDS = frozenset({"prod", "production", "prd"})
+
+
+def production_like(target_name: str) -> bool:
+    """Report whether a target's name marks it as a production-like environment."""
+    return any(part in PRODUCTION_WORDS for part in re.split(r"[_\-.]", target_name.casefold()))

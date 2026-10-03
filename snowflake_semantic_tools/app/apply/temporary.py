@@ -8,19 +8,9 @@ it never ran.
 
 from __future__ import annotations
 
-import re
-
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic
+from snowflake_semantic_tools.domain.model.identifier import production_like
 from snowflake_semantic_tools.domain.model.lifecycle import ApplyOptions, ChangeSet
-
-# The target-name words that mark a production-like environment, matched as whole parts of
-# the name split on `_`, `-` and `.`: `prod`, `prod_us` and `eu-production` match, `product` does not.
-PRODUCTION_WORDS = frozenset({"prod", "production", "prd"})
-
-
-def production_like(target_name: str) -> bool:
-    """Report whether a target's name marks it as a production-like environment."""
-    return any(part in PRODUCTION_WORDS for part in re.split(r"[_\-.]", target_name.casefold()))
 
 
 def temporary_refusal(changeset: ChangeSet, options: ApplyOptions) -> tuple[Diagnostic, ...]:

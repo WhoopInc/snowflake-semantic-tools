@@ -137,9 +137,11 @@ Fill dbt model column metadata from the warehouse, editing the model YAML in pla
 Reads each selected model's relation for its columns and types, and fills what the
 model YAML leaves out: column types and data types by default, and sample values,
 enums, and synonyms with --include. Values already written are kept unless --force
-names their component. PATH selects the models whose SQL or YAML file is under it.
+names their component. PATH selects the models whose SQL or YAML file is under it. A
+target that is not production-like is refused unless --allow-non-prod is given.
 
-Exit 0 when done, 1 when a model failed, and 2 under --check when files would change.
+Exit 0 when done, 1 when a model failed, 2 under --check when files would change, and 3
+for a target that is not production-like.
 
 ```text
 sst enrich [OPTIONS]
@@ -154,6 +156,7 @@ sst enrich [OPTIONS]
 | `--force` | TEXT, repeatable |  | Components to derive again over values already written; forcing one includes it. |
 | `--database` | TEXT |  | Read every relation from this database instead of the manifest's. |
 | `--schema` | TEXT |  | Read every relation from this schema instead of the manifest's. |
+| `--allow-non-prod` | flag |  | Enrich from the manifest of a target that is not production-like: one whose name has no `prod`, `production` or `prd` part. Refused without it. |
 | `--check` | flag |  | Write nothing; exit 2 when a file would change. |
 | `--dry-run` | flag |  | Write nothing; print each file's change as a diff. |
 | `--no-detailed-exitcode` | flag |  | With `--check`, exit 0 when files would change, instead of 2. |
@@ -350,6 +353,9 @@ Observe live Snowflake state and compute a non-writing plan.
 Exit 0 with nothing to change, 2 with changes pending, and 1 on an error or a blocked change.
 `--threads` observes on that many sessions at once; the plan is the same for any count.
 `--names-only` prints only the name of each changed artifact, and wins over `--full`.
+What the plan read of the target is recorded beside the saved plan, as
+`observation.<target>.json`; `--use-cached-state` plans from the one `--state` holds
+instead, without connecting, and reports how old it is.
 
 ```text
 sst plan [OPTIONS]
@@ -368,6 +374,7 @@ sst plan [OPTIONS]
 | `--plan-out` | FILE |  | Write the saved plan here instead of `target/sst/plan.json`. |
 | `--no-plan-out` | flag |  | Do not write a saved plan. |
 | `--grants / --no-grants` | flag |  | Read the grants on each object an update replaces, one `SHOW GRANTS` each, to report what a replace would drop (SST-PLN013). On by default; `--no-grants` skips the reads. |
+| `--use-cached-state` | flag |  | Plan from the observation an earlier `sst plan` recorded in `--state` instead of reading the target, without connecting; the plan says what the target held then, and its age is reported. Requires `--state`; composite artifacts are blocked. |
 | `--capture-prior` | flag |  | Read the current definition of each live object a planned artifact names, one `GET_DDL` each; needs REFERENCES or OWNERSHIP. Shown by `--full` and as `prior_definition` in JSON. |
 | `--sql-out` | DIRECTORY |  | Also write the statements for each change into this directory. |
 | `--no-validate` | flag |  | Skip validation: no cycle check, connected check, or strict promotion. Only when `sst validate` already ran on the same tree; compile errors still stop the run. |

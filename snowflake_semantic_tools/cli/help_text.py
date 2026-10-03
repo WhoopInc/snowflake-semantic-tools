@@ -120,6 +120,10 @@ _COMMAND_OPTION_HELP: Mapping[tuple[str, str], str] = {
     ("sst enrich", "--force"): "Components to derive again over values already written; forcing one includes it.",
     ("sst enrich", "--database"): "Read every relation from this database instead of the manifest's.",
     ("sst enrich", "--schema"): "Read every relation from this schema instead of the manifest's.",
+    ("sst enrich", "--allow-non-prod"): (
+        "Enrich from the manifest of a target that is not production-like: one whose name has no "
+        "`prod`, `production` or `prd` part. Refused without it."
+    ),
     ("sst enrich", "--check"): "Write nothing; exit 2 when a file would change.",
     ("sst enrich", "--dry-run"): "Write nothing; print each file's change as a diff.",
     ("sst enrich", "--no-detailed-exitcode"): "With `--check`, exit 0 when files would change, instead of 2.",
@@ -133,6 +137,11 @@ _COMMAND_OPTION_HELP: Mapping[tuple[str, str], str] = {
     ("sst plan", "--capture-prior"): (
         "Read the current definition of each live object a planned artifact names, one `GET_DDL` "
         "each; needs REFERENCES or OWNERSHIP. Shown by `--full` and as `prior_definition` in JSON."
+    ),
+    ("sst plan", "--use-cached-state"): (
+        "Plan from the observation an earlier `sst plan` recorded in `--state` instead of reading "
+        "the target, without connecting; the plan says what the target held then, and its age is "
+        "reported. Requires `--state`; composite artifacts are blocked."
     ),
     ("sst plan", "--full"): "Also print, under each update, the properties it changes on the object.",
     ("sst plan", "--names-only"): "Print the name of each changed artifact, one per line, and nothing else.",

@@ -115,7 +115,7 @@ def test_enrich_writes_the_golden_yaml(monkeypatch: pytest.MonkeyPatch, tmp_path
     before = {path: (project / path).read_text(encoding="utf-8") for path in CHANGED}
     port = _Warehouse(columns=COLUMNS, values=VALUES, answer=_answer)
     monkeypatch.setattr("snowflake_semantic_tools.cli.main.SnowflakeConnector", lambda params: port)
-    args = ["enrich", "--select", "order_items", "--select", "locations", "--include", "all"]
+    args = ["enrich", "--select", "order_items", "--select", "locations", "--include", "all", "--allow-non-prod"]
     result = CliRunner().invoke(cli, [*args, "--project-dir", str(project), "--manifest", str(DBT_MANIFEST)])
     assert result.exit_code == 0, result.output
     for path in CHANGED:

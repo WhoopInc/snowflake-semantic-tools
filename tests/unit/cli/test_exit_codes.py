@@ -16,6 +16,7 @@ import pytest
 from click.testing import CliRunner, Result
 
 from snowflake_semantic_tools.cli.main import cli
+from snowflake_semantic_tools.cli.wiring.project import target_dir
 from snowflake_semantic_tools.domain.model.lifecycle import OwnershipMarker
 from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
 from tests.helpers.cli_projects import (
@@ -27,6 +28,7 @@ from tests.helpers.cli_projects import (
     project_copy,
     skills_only_project,
 )
+from tests.helpers.enrich_ports import ScriptedEnrich
 from tests.helpers.recorded_snowflake import RecordedSnowflake
 
 # Which exit codes each command may return.
@@ -184,6 +186,9 @@ FLAG_SCENARIOS: dict[str, tuple[str, int, Scenario]] = {
     "plan-no-grants": ("plan", 2, lambda tmp, mp: _plan(tmp, mp, "--no-grants")),
     "plan-grants": ("plan", 2, lambda tmp, mp: _plan(tmp, mp, "--grants")),
     "plan-capture-prior": ("plan", 2, lambda tmp, mp: _plan(tmp, mp, "--capture-prior")),
+    "plan-use-cached-state": ("plan", 2, lambda tmp, mp: _plan_cached(tmp, mp, recorded=True)),
+    "plan-use-cached-state-unrecorded": ("plan", 4, lambda tmp, mp: _plan_cached(tmp, mp, recorded=False)),
+    "plan-use-cached-state-without-state": ("plan", 3, lambda tmp, _: _run("plan", "--use-cached-state")),
     "plan-full": ("plan", 2, lambda tmp, mp: _plan(tmp, mp, "--full")),
     "plan-names-only": ("plan", 2, lambda tmp, mp: _plan(tmp, mp, "--names-only")),
     "plan-names-only-in-sync": ("plan", 0, lambda tmp, mp: _plan(tmp, mp, "--names-only", "--no-detailed-exitcode")),
@@ -208,7 +213,28 @@ FLAG_SCENARIOS: dict[str, tuple[str, int, Scenario]] = {
     "test-update-golden": ("test", 0, lambda tmp, mp: _test_update(tmp, mp, "")),
     "test-update-golden-in-ci": ("test", 3, lambda tmp, mp: _test_update(tmp, mp, "true")),
     "test-update-golden-smoke": ("test", 3, lambda tmp, _: _run("test", "--update-golden", "--suite", "smoke")),
+    "enrich-not-production": ("enrich", 3, lambda tmp, _: _run("enrich", *common(project_copy(tmp)))),
+    "enrich-allow-non-prod": ("enrich", 0, lambda tmp, mp: _enrich_allowed(tmp, mp)),
 }
+
+
+class _EnrichSession(ScriptedEnrich):
+    """A scripted warehouse that answers what connecting asks of a session."""
+
+    def current_role(self) -> str:
+        return "ANALYST"
+
+    def current_account_locator(self) -> str:
+        return "ACCOUNT"
+
+    def close(self) -> None:
+        return None
+
+
+def _enrich_allowed(tmp: Path, monkeypatch: pytest.MonkeyPatch) -> Result:
+    port = _EnrichSession(columns={"SST_REF_DEV.JAFFLE.ORDER_ITEMS": [("ORDER_ITEM_ID", "TEXT")]})
+    monkeypatch.setattr("snowflake_semantic_tools.cli.main.SnowflakeConnector", lambda params: port)
+    return _run("enrich", *common(project_copy(tmp)), "--select", "order_items", "--allow-non-prod")
 
 
 def _test_golden(tmp: Path, golden_dir: Path, *flags: str) -> Result:
@@ -247,6 +273,21 @@ def _debug_unreachable(tmp: Path, monkeypatch: pytest.MonkeyPatch) -> Result:
 def _plan(tmp: Path, monkeypatch: pytest.MonkeyPatch, *flags: str) -> Result:
     project = project_copy(tmp)
     return invoke_with_port(monkeypatch, RecordedSnowflake(state={}), ["plan", *common(project), *flags])
+
+
+def _plan_cached(tmp: Path, monkeypatch: pytest.MonkeyPatch, *, recorded: bool) -> Result:
+    """Plan one view from the observation a live plan recorded, or from a `--state` that holds none, offline."""
+    project = project_copy(tmp)
+    compile_project(project)
+    view = ("--select", "jaffle_minimal", "--no-plan-out")
+    state = target_dir(project)
+    if recorded:
+        invoke_with_port(monkeypatch, RecordedSnowflake(state={}), ["plan", *common(project), *view])
+    else:
+        state = tmp / "previous"
+        state.mkdir()
+    _unreachable(monkeypatch)
+    return _run("plan", *common(project), "--use-cached-state", "--state", str(state), *view)
 
 
 def _diff(tmp: Path, monkeypatch: pytest.MonkeyPatch, *flags: str) -> Result:

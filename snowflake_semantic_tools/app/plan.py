@@ -1,10 +1,10 @@
 """Observe live state and compute a deterministic, non-writing ChangeSet.
 
-`PlanArtifacts` plans rendered artifacts against what `app.observe` finds in Snowflake and,
-given a preflight port, what `app.preflight` reads about the target.
-`PreparePlan` is the plan and apply commands' use case around it: it decides what a plan
-covers, validates it, reads authoritative state, renders what publishes, and builds the
-composite artifacts' lifecycle handlers, returning `PlanReady` or `PlanRefused`.
+`PreparePlan` is the plan and apply commands' use case around `app.plan_artifacts`: it
+decides what a plan covers, validates it, reads authoritative state, renders what publishes,
+and builds the composite artifacts' lifecycle handlers, returning `PlanReady` or
+`PlanRefused`. `PreparePlan.run` reads the live target; `PreparePlan.run_recorded` plans
+from what an earlier plan recorded of it instead, and reads nothing.
 """
 
 from __future__ import annotations
@@ -12,7 +12,6 @@ from __future__ import annotations
 from collections.abc import Mapping
 from dataclasses import dataclass, replace
 from types import MappingProxyType
-from typing import Protocol
 
 from snowflake_semantic_tools.app.compile import CompiledArtifact, CompileResult
 from snowflake_semantic_tools.app.compile.agents import CompiledAgent, for_publication
@@ -25,9 +24,16 @@ from snowflake_semantic_tools.app.lifecycle.evals import EvalLifecycleConfig, Ev
 from snowflake_semantic_tools.app.lifecycle.extensions import ExtensionLifecycleHandler
 from snowflake_semantic_tools.app.lifecycle.profiles import ProfileLifecycleHandler, ProfilePublicationPort
 from snowflake_semantic_tools.app.manifest import manifest_for, stale_manifest, target_mismatch
-from snowflake_semantic_tools.app.observe import DEFAULT_OBSERVE_OPTIONS, ObserveOptions, observe
+from snowflake_semantic_tools.app.observation_age import duration, seconds_between
+from snowflake_semantic_tools.app.observe import DEFAULT_OBSERVE_OPTIONS, ObserveOptions
 from snowflake_semantic_tools.app.partial import PartialSplit, partial_refusal, partial_split
-from snowflake_semantic_tools.app.preflight import read_preflight
+from snowflake_semantic_tools.app.plan_artifacts import (
+    PlanArtifacts,
+    PlanReadPort,
+    TargetReading,
+    plan_changes,
+    unrecorded_composites,
+)
 from snowflake_semantic_tools.app.state import change_summary, read_state
 from snowflake_semantic_tools.app.validate import ValidateArtifacts
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, DiagnosticBag, Severity
@@ -35,243 +41,23 @@ from snowflake_semantic_tools.domain.diagnostics.policy import apply_overrides
 from snowflake_semantic_tools.domain.model.config_schema import config_block, config_text
 from snowflake_semantic_tools.domain.model.eval import DEFAULT_EVAL_CONFIG_STAGE
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName, TargetIdentity
-from snowflake_semantic_tools.domain.model.lifecycle import (
-    Change,
-    ChangeSet,
-    CompositePlan,
-    RenderedArtifact,
-    SnowflakeObservation,
-)
-from snowflake_semantic_tools.domain.model.registry import SEMANTIC_REGISTRY, Registry
-from snowflake_semantic_tools.domain.plan import build_changeset
+from snowflake_semantic_tools.domain.model.lifecycle import ChangeSet, CompositePlan, RenderedArtifact
 from snowflake_semantic_tools.domain.plan.impact import impact_scope
+from snowflake_semantic_tools.domain.plan.recorded import RecordedObservation
 from snowflake_semantic_tools.domain.plan.selectors import Selection, SelectionScope
 from snowflake_semantic_tools.domain.plan.summary import plan_notices
 from snowflake_semantic_tools.domain.ports.clock import ClockPort
 from snowflake_semantic_tools.domain.ports.lifecycle import CompositeLifecycleHandler
 from snowflake_semantic_tools.domain.ports.project import ProjectInputs
 from snowflake_semantic_tools.domain.ports.snowflake import SnowflakePort
-from snowflake_semantic_tools.domain.ports.snowflake.catalog import CatalogPort
 from snowflake_semantic_tools.domain.ports.snowflake.preflight import PreflightPort
 from snowflake_semantic_tools.domain.ports.state import StateStore
-from snowflake_semantic_tools.domain.state import DEACTIVATED, Manifest, State
+from snowflake_semantic_tools.domain.state import Manifest, State
 from snowflake_semantic_tools.domain.validate.config import severity_overrides
 
 # How long an observation stays current. A plan that takes longer to observe and decide
 # reports SST-PLN018, because what it observed first may already have changed.
 OBSERVATION_TTL_MS = 15 * 60 * 1000
-
-
-class PlanReadPort(SnowflakePort, PreflightPort, Protocol):
-    """A session a plan reads on: validation's checks, observation, and the preflight reads."""
-
-
-class PlanArtifacts:
-    """Plan the changes that bring a target to the rendered artifacts, writing nothing.
-
-    Composite artifacts are planned by their lifecycle handlers, keyed by artifact type; every
-    other artifact is planned from what `observe` finds in Snowflake.
-
-    Args:
-        readers: Sessions, opened from `port` and `preflight`, to run the observation's
-            listings and each phase of preflight reads on concurrently; None reads on `port`
-            and `preflight`, one at a time. Either way the change set is the same.
-        observe_options: Which per-object reads the observation makes, as `ObserveOptions` says.
-    """
-
-    def __init__(
-        self,
-        port: CatalogPort,
-        *,
-        registry: Registry = SEMANTIC_REGISTRY,
-        lifecycle_handlers: Mapping[str, CompositeLifecycleHandler] | None = None,
-        preflight: PreflightPort | None = None,
-        readers: Fanout[PlanReadPort] | None = None,
-        observe_options: ObserveOptions = DEFAULT_OBSERVE_OPTIONS,
-    ) -> None:
-        self._port = port
-        self._registry = registry
-        self._lifecycle_handlers = dict(lifecycle_handlers or {})
-        self._preflight = preflight
-        self._readers = readers
-        self._observe_options = observe_options
-
-    def run(
-        self,
-        rendered: Mapping[str, RenderedArtifact],
-        manifest: Manifest,
-        state: State,
-        target: TargetIdentity,
-        *,
-        fetched_at: str,
-        blocked: Mapping[str, DiagnosticBag] | None = None,
-        include_prune: bool = False,
-        full: bool = True,
-        prune_types: frozenset[str] | None = None,
-        prune_keys: frozenset[str] | None = None,
-        observation_targets: tuple[QualifiedName, ...] | None = None,
-    ) -> ChangeSet:
-        """Compute the change set for the rendered artifacts from what Snowflake shows now.
-
-        Steps, in order:
-
-        1. Composite plans: each composite artifact's handler plans it from its state entry.
-        2. Observation of every type rendered and, when pruning, every type a prune may remove,
-           in the schemas of `observation_targets`, else of the rendered artifacts.
-        3. The preflight read, when the use case was given a preflight port, as
-           `read_preflight` does.
-        4. The change set, from the observation, the preflight, the manifest and state.
-        5. Composite prunes, when pruning: a composite artifact state records, that nothing
-           rendered or planned names, is reported by its handler as a prune.
-        6. The observation's and the preflight's failures, ahead of every other diagnostic.
-
-        Args:
-            blocked: Diagnostics by artifact key that make its change BLOCKED.
-            prune_types, prune_keys: Narrow the prunes to these artifact types and keys; None
-                does not narrow.
-            observation_targets: The objects whose schemas are observed; None observes the
-                schemas of the rendered artifacts.
-
-        Diagnostics:
-            SST-PLN001: observing Snowflake, or a preflight read, failed.
-        """
-        composite_plans = self._composite_plans(rendered, manifest, state)
-        observation, diagnostics = self._observe(rendered, fetched_at, include_prune, prune_types, observation_targets)
-        preflight = None
-        if self._preflight is not None:
-            preflight, failures = read_preflight(
-                self._preflight,
-                rendered,
-                observation,
-                state,
-                target,
-                include_prune=include_prune,
-                readers=self._readers,
-            )
-            diagnostics = DiagnosticBag((*diagnostics, *failures))
-        changeset: ChangeSet = build_changeset(
-            rendered,
-            observation,
-            manifest,
-            state,
-            self._registry,
-            target,
-            blocked=blocked,
-            include_prune=include_prune,
-            full=full,
-            prune_types=prune_types,
-            prune_keys=prune_keys,
-            composite_plans=composite_plans,
-            preflight=preflight,
-        )
-        if include_prune:
-            prunes = self._composite_prunes(rendered, state, changeset, prune_types, prune_keys)
-            changeset = _with_composite_prunes(changeset, prunes)
-        return _with_observation_failures(changeset, diagnostics)
-
-    def _composite_plans(
-        self,
-        rendered: Mapping[str, RenderedArtifact],
-        manifest: Manifest,
-        state: State,
-    ) -> dict[str, CompositePlan]:
-        """Ask each composite artifact's handler to plan it, in rendered order."""
-        return {
-            key: self._lifecycle_handlers[artifact.artifact_type].plan(
-                artifact,
-                state.applied.get(key),
-                manifest,
-            )
-            for key, artifact in rendered.items()
-            if artifact.artifact_type in self._lifecycle_handlers
-        }
-
-    def _observe(
-        self,
-        rendered: Mapping[str, RenderedArtifact],
-        fetched_at: str,
-        include_prune: bool,
-        prune_types: frozenset[str] | None,
-        observation_targets: tuple[QualifiedName, ...] | None,
-    ) -> tuple[SnowflakeObservation, DiagnosticBag]:
-        """Observe the types the plan needs, in the schemas of the targets, else of the rendered artifacts."""
-        return observe(
-            self._port,
-            self._registry,
-            observation_targets or tuple(artifact.target for artifact in rendered.values()),
-            fetched_at=fetched_at,
-            artifact_types=self._observed_artifact_types(rendered, include_prune, prune_types),
-            observed_object_types=self._observed_object_types(rendered),
-            desired_artifacts=rendered,
-            readers=self._readers,
-            options=self._observe_options,
-        )
-
-    def _observed_artifact_types(
-        self,
-        rendered: Mapping[str, RenderedArtifact],
-        include_prune: bool,
-        prune_types: frozenset[str] | None,
-    ) -> frozenset[str]:
-        """Return the types to observe: those rendered and, when pruning, those a prune may remove."""
-        prunable: set[str] = set()
-        if include_prune:
-            prunable = set(prune_types) if prune_types is not None else set(self._registry.artifacts)
-        return frozenset({artifact.artifact_type for artifact in rendered.values()} | prunable)
-
-    def _observed_object_types(self, rendered: Mapping[str, RenderedArtifact]) -> dict[str, frozenset[str]]:
-        """Return, for every registered type, the object types its rendered artifacts are published as."""
-        return {
-            artifact_type: frozenset(
-                artifact.object_type
-                for artifact in rendered.values()
-                if artifact.artifact_type == artifact_type and artifact.object_type
-            )
-            for artifact_type in self._registry.artifacts
-        }
-
-    def _composite_prunes(
-        self,
-        rendered: Mapping[str, RenderedArtifact],
-        state: State,
-        changeset: ChangeSet,
-        prune_types: frozenset[str] | None,
-        prune_keys: frozenset[str] | None,
-    ) -> tuple[Change, ...]:
-        """Report, in key order, the prunes of composite artifacts that only state still records.
-
-        Observation cannot see a composite artifact, so its handler reports the prune from the
-        state entry. A deactivated entry is already retired, and the prune filters apply.
-        """
-        existing_keys = {change.key for change in changeset.changes}
-        return tuple(
-            handler.report_prune(key, entry)
-            for key, entry in sorted(state.applied.items())
-            if key not in rendered
-            and key not in existing_keys
-            and entry.outcome != DEACTIVATED
-            and (handler := self._lifecycle_handlers.get(key.split(":", 1)[0])) is not None
-            and (prune_types is None or key.split(":", 1)[0] in prune_types)
-            and (prune_keys is None or key in prune_keys)
-        )
-
-
-def _with_composite_prunes(changeset: ChangeSet, prunes: tuple[Change, ...]) -> ChangeSet:
-    """Append the composite prunes, and their diagnostics after the plan's; unchanged without any."""
-    if not prunes:
-        return changeset
-    return replace(
-        changeset,
-        changes=(*changeset.changes, *prunes),
-        diagnostics=DiagnosticBag((*changeset.diagnostics, *(item for prune in prunes for item in prune.diagnostics))),
-    )
-
-
-def _with_observation_failures(changeset: ChangeSet, diagnostics: DiagnosticBag) -> ChangeSet:
-    """Report the observation's failures ahead of the plan's own diagnostics; unchanged without any."""
-    if not diagnostics:
-        return changeset
-    return replace(changeset, diagnostics=DiagnosticBag((*diagnostics, *changeset.diagnostics)))
 
 
 @dataclass(frozen=True, slots=True)
@@ -338,6 +124,24 @@ class PlanCandidates:
 
 
 @dataclass(frozen=True, slots=True)
+class CachedObservation:
+    """The recorded observation a plan was made from, and how old it was when the plan used it.
+
+    Attributes:
+        fetched_at: When the observation was taken.
+        age_seconds: How long before the plan that was; None when the time does not parse.
+    """
+
+    fetched_at: str
+    age_seconds: float | None
+
+    @property
+    def age(self) -> str:
+        """The age as hours and minutes, such as `2h 05m`, or `unknown`."""
+        return duration(self.age_seconds) if self.age_seconds is not None else "unknown"
+
+
+@dataclass(frozen=True, slots=True)
 class PlanReady:
     """A plan ready to save or apply, with what it was made from.
 
@@ -348,6 +152,10 @@ class PlanReady:
         state: The authoritative state the plan was made from.
         changeset: The plan, with what reading state reported ahead of its own diagnostics.
         lifecycle_handlers: The composite artifact types' handlers, by type, which apply reuses.
+        recorded: What the plan read of the live target, for a later plan to reuse; None when
+            a read failed, or the plan was made from a record.
+        cached: The record the plan was made from instead of reading the target; None when
+            it read the live target.
     """
 
     result: CompileResult
@@ -355,6 +163,8 @@ class PlanReady:
     state: State
     changeset: ChangeSet
     lifecycle_handlers: Mapping[str, CompositeLifecycleHandler]
+    recorded: RecordedObservation | None = None
+    cached: CachedObservation | None = None
 
     @property
     def restamps_state(self) -> bool:
@@ -531,6 +341,93 @@ class PreparePlan:
             Those of validation, of `read_state`, and of `PlanArtifacts`, then
             `channel_divergence`'s, then the plan's `change_summary` and `plan_notices`.
         """
+        validated = self._validated_selection(candidates, port, target, readers, validate)
+        if isinstance(validated, PlanRefused):
+            return validated
+        result, manifest = validated
+        state, state_diagnostics = read_state(state_store, port, state_table=state_table, target=target)
+        apply_config = config_block(self._inputs.config().tree.get("apply"))
+        handlers = _lifecycle_handlers(port, candidates.full, apply_config)
+        scope = candidates.scope
+        rendered = self._publication(result, manifest, apply_config, target, temporary=temporary)
+        fetched_at = self._clock.now_iso()
+        started = self._clock.monotonic_ms()
+        planner = PlanArtifacts(
+            port, lifecycle_handlers=handlers, preflight=preflight, readers=readers, observe_options=observe_options
+        )
+        composite_plans = planner.composite_plans(rendered, manifest, state)
+        reading = planner.read(
+            rendered,
+            state,
+            target,
+            fetched_at=fetched_at,
+            include_prune=scope.include_prune,
+            prune_types=scope.prune_types,
+            observation_targets=_observation_targets(candidates.full, state),
+        )
+        changeset = _decided(candidates, rendered, reading, manifest, state, target, handlers, composite_plans)
+        stale = stale_observation(target, self._clock.monotonic_ms() - started)
+        # A reading with a refused read is incomplete, so no later plan may reuse it.
+        recorded = RecordedObservation(target, reading.observation, state, reading.preflight)
+        ready = _ready(
+            candidates,
+            result,
+            manifest,
+            state,
+            changeset,
+            handlers,
+            leading=(*state_diagnostics, *((stale,) if stale else ())),
+            trailing=channel_divergence(port, result),
+        )
+        return replace(ready, recorded=None if reading.failures else recorded)
+
+    def run_recorded(
+        self,
+        candidates: PlanCandidates,
+        recorded: RecordedObservation,
+        *,
+        temporary: bool = False,
+        validate: bool = True,
+    ) -> PlanReady | PlanRefused:
+        """Plan the candidates from what an earlier plan recorded of the target, reading nothing.
+
+        The steps are `run`'s, with the record in place of every read: validation runs without
+        its connected checks, the record's state stands for the authoritative state, and its
+        observation and preflight facts for the target's. Composite artifacts, whose handlers
+        observe them live and so are never recorded, are blocked; nothing reports their prunes.
+        The plan says what the target held when the record was taken, so its age is reported
+        first, however old it is.
+
+        Diagnostics:
+            SST-PLN016: when the recorded observation was taken, and how old it is.
+            SST-PLN001: a composite artifact, which the record cannot decide.
+            Those of validation, then the plan's `change_summary` and `plan_notices`.
+        """
+        offline = replace(candidates, connected=False)
+        validated = self._validated_selection(offline, None, recorded.target, None, validate)
+        if isinstance(validated, PlanRefused):
+            return validated
+        result, manifest = validated
+        target, state = recorded.target, recorded.state
+        apply_config = config_block(self._inputs.config().tree.get("apply"))
+        rendered = self._publication(result, manifest, apply_config, target, temporary=temporary)
+        reading = TargetReading(recorded.observation, recorded.preflight)
+        composites = unrecorded_composites(rendered)
+        changeset = _decided(candidates, rendered, reading, manifest, state, target, {}, composites)
+        cached = CachedObservation(recorded.fetched_at, seconds_between(recorded.fetched_at, self._clock.now_iso()))
+        age = D("SST-PLN016", value=f"planned from the observation recorded at {cached.fetched_at}, {cached.age} old")
+        ready = _ready(candidates, result, manifest, state, changeset, {}, leading=(age,), trailing=())
+        return replace(ready, cached=cached)
+
+    def _validated_selection(
+        self,
+        candidates: PlanCandidates,
+        port: SnowflakePort | None,
+        target: TargetIdentity,
+        readers: Fanout[PlanReadPort] | None,
+        validate: bool,
+    ) -> tuple[CompileResult, Manifest] | PlanRefused:
+        """Validate the selection as `run` says, and return it with the manifest of what publishes."""
         overrides = severity_overrides(self._inputs.config().tree)
         diagnostics = (
             _validation(candidates, port, target, readers, overrides)
@@ -542,32 +439,7 @@ class PreparePlan:
             return validated
         result, healthy = validated
         manifest = candidates.manifest if healthy is None else manifest_for(healthy, self._inputs.manifest_sources())
-        state, state_diagnostics = read_state(state_store, port, state_table=state_table, target=target)
-        apply_config = config_block(self._inputs.config().tree.get("apply"))
-        handlers = _lifecycle_handlers(port, candidates.full, apply_config)
-        scope = candidates.scope
-        fetched_at = self._clock.now_iso()
-        started = self._clock.monotonic_ms()
-        planner = PlanArtifacts(
-            port, lifecycle_handlers=handlers, preflight=preflight, readers=readers, observe_options=observe_options
-        )
-        changeset = planner.run(
-            self._publication(result, manifest, apply_config, target, temporary=temporary),
-            manifest,
-            state,
-            target,
-            fetched_at=fetched_at,
-            include_prune=scope.include_prune,
-            full=candidates.covers_all,
-            prune_types=scope.prune_types,
-            prune_keys=scope.prune_keys,
-            observation_targets=_observation_targets(candidates.full, state),
-        )
-        stale = stale_observation(target, self._clock.monotonic_ms() - started)
-        leading = (*candidates.notices, *state_diagnostics, *((stale,) if stale else ()))
-        trailing = (*channel_divergence(port, result), *change_summary(changeset), *plan_notices(changeset))
-        changeset = replace(changeset, diagnostics=DiagnosticBag((*leading, *changeset.diagnostics, *trailing)))
-        return PlanReady(result, manifest, state, changeset, MappingProxyType(handlers))
+        return result, manifest
 
     def _publication(
         self,
@@ -610,9 +482,54 @@ class PreparePlan:
         }
 
 
+def _decided(
+    candidates: PlanCandidates,
+    rendered: Mapping[str, RenderedArtifact],
+    reading: TargetReading,
+    manifest: Manifest,
+    state: State,
+    target: TargetIdentity,
+    handlers: Mapping[str, CompositeLifecycleHandler],
+    composite_plans: Mapping[str, CompositePlan],
+) -> ChangeSet:
+    """Decide the candidates' change set from a reading, within their scope."""
+    scope = candidates.scope
+    return plan_changes(
+        rendered,
+        reading,
+        manifest,
+        state,
+        target,
+        lifecycle_handlers=handlers,
+        composite_plans=composite_plans,
+        include_prune=scope.include_prune,
+        full=candidates.covers_all,
+        prune_types=scope.prune_types,
+        prune_keys=scope.prune_keys,
+    )
+
+
+def _ready(
+    candidates: PlanCandidates,
+    result: CompileResult,
+    manifest: Manifest,
+    state: State,
+    changeset: ChangeSet,
+    handlers: Mapping[str, CompositeLifecycleHandler],
+    *,
+    leading: tuple[Diagnostic, ...],
+    trailing: tuple[Diagnostic, ...],
+) -> PlanReady:
+    """Return the ready plan: what selecting reported and `leading` first, the plan's notices last."""
+    first = (*candidates.notices, *leading)
+    last = (*trailing, *change_summary(changeset), *plan_notices(changeset))
+    changeset = replace(changeset, diagnostics=DiagnosticBag((*first, *changeset.diagnostics, *last)))
+    return PlanReady(result, manifest, state, changeset, MappingProxyType(dict(handlers)))
+
+
 def _validation(
     candidates: PlanCandidates,
-    port: SnowflakePort,
+    port: SnowflakePort | None,
     target: TargetIdentity,
     readers: Fanout[PlanReadPort] | None,
     overrides: Mapping[str, Severity],

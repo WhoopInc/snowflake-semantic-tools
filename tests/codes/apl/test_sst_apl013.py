@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from dataclasses import replace
 
-from snowflake_semantic_tools.app.apply.temporary import production_like
 from snowflake_semantic_tools.domain.diagnostics import Severity
+from snowflake_semantic_tools.domain.model.identifier import production_like
 from snowflake_semantic_tools.domain.model.lifecycle import ApplyOptions, ChangeSet
 from tests.helpers.app_ports import InMemorySnowflake
 from tests.helpers.apply_runs import apply_plan, codes, only

@@ -4,7 +4,7 @@ from dataclasses import replace
 from types import MappingProxyType
 
 from snowflake_semantic_tools.app.observe import ObserveOptions, observe
-from snowflake_semantic_tools.app.plan import PlanArtifacts
+from snowflake_semantic_tools.app.plan_artifacts import PlanArtifacts
 from snowflake_semantic_tools.domain.model.lifecycle import (
     Action,
     ApplyOptions,
