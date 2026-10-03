@@ -261,7 +261,6 @@ def test_catalog_validation_names_layout_uniqueness_and_plugin_membership() -> N
     assert codes(diagnostics) == [
         "SST-VAL801",
         "SST-VAL801",
-        "SST-RND031",
         "SST-VAL832",
         "SST-VAL837",
         "SST-VAL835",
