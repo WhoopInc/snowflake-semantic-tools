@@ -36,7 +36,8 @@ def metric_cycles(metrics: tuple[MetricDef, ...]) -> tuple[tuple[str, ...], ...]
     cycle through it, in name order, so every metric on a cycle is in at least one.
     """
     graph = {metric.name.casefold(): metric.referenced_metrics for metric in metrics}
-    cycles: list[tuple[str, ...]] = []
+    # Insertion-ordered, so each cycle is listed once in the order the walk finds it.
+    cycles: dict[tuple[str, ...], None] = {}
     visited: set[str] = set()
     active: list[str] = []
 
@@ -64,12 +65,10 @@ def metric_cycles(metrics: tuple[MetricDef, ...]) -> tuple[tuple[str, ...], ...]
     return tuple(cycles)
 
 
-def _add_cycle(cycles: list[tuple[str, ...]], cycle: tuple[str, ...]) -> None:
-    """Append `cycle` rotated to start at its smallest name, unless that rotation is listed."""
+def _add_cycle(cycles: dict[tuple[str, ...], None], cycle: tuple[str, ...]) -> None:
+    """Record `cycle` rotated to start at its smallest name, unless that rotation is listed."""
     variants = [tuple(cycle[index:-1] + cycle[:index] + (cycle[index],)) for index in range(len(cycle) - 1)]
-    canonical = min(variants)
-    if canonical not in cycles:
-        cycles.append(canonical)
+    cycles.setdefault(min(variants))
 
 
 def _shortest_cycle(graph: Mapping[str, tuple[str, ...]], start: str) -> tuple[str, ...] | None:
