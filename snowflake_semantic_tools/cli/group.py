@@ -97,11 +97,13 @@ def usage_refusal(exc: click.UsageError) -> SstUsageError | SstConfigError:
     return SstUsageError(exc.format_message(), ctx)
 
 
-# `sst --help` lists commands in workflow order: setup, authoring, offline checks, publishing,
-# verification, housekeeping, and break-glass last. A command missing here sorts after them.
+# `sst --help` lists commands in workflow order: setup (`migrate` rewrites a 0.3 project before
+# anything else reads it), authoring, offline checks, publishing, verification, housekeeping, and
+# break-glass last. A command missing here sorts after them.
 COMMAND_ORDER = (
     "init",
     "debug",
+    "migrate",
     "enrich",
     "format",
     "compile",
@@ -115,7 +117,6 @@ COMMAND_ORDER = (
     "explain",
     "docs",
     "clean",
-    "migrate",
     "drop",
 )
 
