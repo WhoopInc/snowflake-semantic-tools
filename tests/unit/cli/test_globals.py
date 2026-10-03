@@ -83,19 +83,19 @@ def test_a_baseline_marks_and_counts_what_it_holds_and_never_drops_it(tmp_path: 
     project = project_copy(tmp_path)
     _, before = _warnings(project)
     held = [item["fingerprint"] for item in before["diagnostics"] if item["code"] == "SST-CFG018"]
-    assert len(held) == 3 and all(len(value) == 16 for value in held)
+    assert len(held) == 2 and all(len(value) == 16 for value in held)
     _baseline(project, held)
     _, after = _warnings(project)
-    assert after["summary"]["baselined"] == 3 and len(after["diagnostics"]) == len(before["diagnostics"])
-    assert [item["baselined"] for item in after["diagnostics"] if item["code"] == "SST-CFG018"] == [True] * 3
+    assert after["summary"]["baselined"] == 2 and len(after["diagnostics"]) == len(before["diagnostics"])
+    assert [item["baselined"] for item in after["diagnostics"] if item["code"] == "SST-CFG018"] == [True] * 2
     assert _warnings(project, "--no-baseline")[1]["summary"]["baselined"] == 0
     assert "no-baseline" in _warnings(project, "--no-baseline")[1]["invocation"]["overrides"][0]
     human = CliRunner().invoke(cli, ["validate", *common(project), "--no-strict"])
     assert (
-        "SST-CFG018" not in human.output and "(3 baselined)" in human.output and "3 baselined not shown" in human.output
+        "SST-CFG018" not in human.output and "(2 baselined)" in human.output and "2 baselined not shown" in human.output
     )
     shown = CliRunner().invoke(cli, ["validate", *common(project), "--no-strict", "--show-baselined", "--show-info"])
-    assert shown.output.count("warning[SST-CFG018]") == 3 and "info[SST-VAL854]" in shown.output
+    assert shown.output.count("warning[SST-CFG018]") == 2 and "info[SST-VAL854]" in shown.output
 
 
 def test_strict_does_not_block_on_what_the_baseline_holds(tmp_path: Path) -> None:
@@ -154,7 +154,7 @@ def test_four_or_more_of_one_code_collapse_to_three_and_a_count(tmp_path: Path) 
     extra = "\n".join(
         f"      - name: extra_{index}\n        type: generic\n        description: Extra.\n"
         f"        relations:\n          dev: A.B.C{index}\n          prod: D.E.F{index}"
-        for index in range(2)
+        for index in range(3)
     )
     partner.write_text(partner.read_text(encoding="utf-8").rstrip() + "\n" + extra + "\n", encoding="utf-8")
     grouped = CliRunner().invoke(cli, ["validate", *common(project), "--no-strict"])

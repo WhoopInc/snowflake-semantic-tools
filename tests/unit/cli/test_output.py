@@ -49,8 +49,8 @@ def test_validate_json_emits_one_v2_envelope() -> None:
     # SST-VAL216, SST-VAL217 (2) and SST-VAL319 (3). The warnings are SST-CFG034, as --no-strict
     # contradicts the fixture's `validation.strict: true`; SST-RND013 for the generic tool's
     # resources; SST-VAL528; SST-RND010 for the minimal agent's empty tool list; and SST-CFG018
-    # for each partner tool member no agent references. The plugin has a consumer, the operator
-    # profile.
+    # for each partner tool member nothing references (the delivery agent's toolset names the
+    # third). The plugin has a consumer, the operator profile.
     assert [item["code"] for item in envelope["diagnostics"] if item["severity"] == "warning"] == [
         "SST-CFG034",
         "SST-RND013",
@@ -58,11 +58,10 @@ def test_validate_json_emits_one_v2_envelope() -> None:
         "SST-RND010",
         "SST-CFG018",
         "SST-CFG018",
-        "SST-CFG018",
     ]
     assert envelope["summary"] == {
         "error": 0,
-        "warning": 7,
+        "warning": 6,
         "info": 58,
         "promoted": 0,
         "suppressed_cascade": 0,
