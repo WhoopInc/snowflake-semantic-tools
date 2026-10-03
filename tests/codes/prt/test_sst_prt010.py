@@ -19,7 +19,7 @@ def test_sst_prt010_fires(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> No
     def refuse(path: Path) -> None:
         raise PermissionError("read-only")
 
-    monkeypatch.setattr("snowflake_semantic_tools.cli.commands.clean.shutil.rmtree", refuse)
+    monkeypatch.setattr("snowflake_semantic_tools.adapters.paths.shutil.rmtree", refuse)
     result = CliRunner().invoke(cli, ["clean", "--project-dir", str(project), "--output", "json"])
     [diagnostic] = json.loads(result.output)["diagnostics"]
     assert (result.exit_code, diagnostic["code"], diagnostic["severity"]) == (1, "SST-PRT010", "error")

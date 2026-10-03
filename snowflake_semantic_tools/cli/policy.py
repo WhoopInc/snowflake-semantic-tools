@@ -12,6 +12,7 @@ import dataclasses
 from pathlib import Path
 
 from snowflake_semantic_tools.adapters.locations import ProjectPaths
+from snowflake_semantic_tools.adapters.paths import write_within
 from snowflake_semantic_tools.adapters.yaml.config import load_project_config
 from snowflake_semantic_tools.cli.exit_codes import ERROR, OK
 from snowflake_semantic_tools.cli.wiring.project import target_dir
@@ -64,11 +65,10 @@ def with_policy(
             count=promoted,
         )
         diagnostics = DiagnosticBag((notice, *diagnostics))
-        _remember(marker)
+        _remember(paths.project_dir, marker)
     return diagnostics, exit_code
 
 
-def _remember(marker: Path) -> None:
+def _remember(project_dir: Path, marker: Path) -> None:
     """Record that the strict-adoption notice was given, so it is given once per project."""
-    marker.parent.mkdir(parents=True, exist_ok=True)
-    marker.write_text("validation.strict is enforced; this notice is given once\n", encoding="utf-8")
+    write_within(project_dir, marker, "validation.strict is enforced; this notice is given once\n")

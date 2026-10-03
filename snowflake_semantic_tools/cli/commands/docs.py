@@ -11,6 +11,7 @@ from pathlib import Path
 import click
 
 from snowflake_semantic_tools.adapters.locations import ProjectPaths
+from snowflake_semantic_tools.adapters.paths import output_root
 from snowflake_semantic_tools.cli.exit_codes import CHANGES, EXIT_CODE_DOCS, OK
 from snowflake_semantic_tools.cli.group import cli
 from snowflake_semantic_tools.cli.help_text import command_docs, option_docs
@@ -43,7 +44,8 @@ def docs(paths: ProjectPaths, check: bool, output_dir: Path | None, no_detailed_
     ]
     if not check:
         for path in drifted:
-            write_text(root / path, pages[path])
+            target = root / path
+            write_text(output_root(root, target.parent), target, pages[path])
     exit_code = CHANGES if check and drifted and not no_detailed_exitcode else OK
     data = {
         "pages": sorted(pages),

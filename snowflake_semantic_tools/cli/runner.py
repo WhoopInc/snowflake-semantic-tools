@@ -42,6 +42,7 @@ import click
 from snowflake_semantic_tools.adapters.errors import ProjectError
 from snowflake_semantic_tools.adapters.fs.baseline import BASELINE_FILE, read_baseline
 from snowflake_semantic_tools.adapters.locations import ProjectPaths, locate_project
+from snowflake_semantic_tools.adapters.paths import write_within
 from snowflake_semantic_tools.adapters.yaml.dump import dump_yaml
 from snowflake_semantic_tools.cli.exit_codes import CHANGES, CONFIG, CONNECTION, ERROR, OK
 from snowflake_semantic_tools.cli.globals import DEFAULT_OUTPUTS, GLOBAL_NAMES, GlobalOptions, command_global_options
@@ -348,7 +349,7 @@ def _report(command: str, options: GlobalOptions, result: CommandResult) -> None
     if audited is not result.diagnostics:
         exit_code = ERROR if result.exit_code in (OK, CHANGES) else result.exit_code
         result = dataclasses.replace(result, diagnostics=audited, exit_code=exit_code)
-    append_run_log(target_dir(options.project_dir), result.diagnostics, command=command)
+    append_run_log(options.project_dir, target_dir(options.project_dir), result.diagnostics, command=command)
     if options.output in ("json", "yaml"):
         envelope = json_envelope(
             command, result.diagnostics, exit_code=result.exit_code, promoted=result.promoted, data=result.data
@@ -431,15 +432,17 @@ class WriteFailure(Exception):
         self.cause = cause
 
 
-def write_text(path: Path, text: str) -> None:
-    """Write `text` to `path`, creating its directory; a failure is a `WriteFailure`, exit 1.
+def write_text(root: Path, path: Path, text: str) -> None:
+    """Write `text` to `path` inside `root`, creating its folder; a failure is a `WriteFailure`, exit 1.
+
+    `root` is the project, or the output folder the user chose (`adapters.paths.output_root`);
+    a path outside it, or one a symbolic link is on the way to, is refused, not written.
 
     Raises:
-        WriteFailure: the directory or the file cannot be written.
+        WriteFailure: the folder or the file cannot be written, or the write is refused.
     """
     try:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(text, encoding="utf-8")
+        write_within(root, path, text)
     except OSError as exc:
         raise WriteFailure(path, exc) from exc
 

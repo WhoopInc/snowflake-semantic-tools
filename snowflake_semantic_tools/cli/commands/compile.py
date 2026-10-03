@@ -14,6 +14,7 @@ import click
 
 from snowflake_semantic_tools.adapters.fs.local import ManifestFileStore
 from snowflake_semantic_tools.adapters.locations import ProjectPaths
+from snowflake_semantic_tools.adapters.paths import output_root
 from snowflake_semantic_tools.app.compile import CompileResult
 from snowflake_semantic_tools.app.partial import partial_refusal, partial_split
 from snowflake_semantic_tools.cli.exit_codes import ERROR, OK
@@ -31,6 +32,7 @@ from snowflake_semantic_tools.cli.wiring import compile as compiling
 from snowflake_semantic_tools.cli.wiring.manifest import build_manifest
 from snowflake_semantic_tools.cli.wiring.project import target_dir
 from snowflake_semantic_tools.domain.diagnostics import D, DiagnosticBag, Severity
+from snowflake_semantic_tools.domain.file_names import file_name
 from snowflake_semantic_tools.domain.state import Manifest
 
 _DIRECTORY = click.Path(file_okay=False, path_type=Path)
@@ -80,17 +82,17 @@ def compile(
     destination = target_dir(paths.project_dir) / "manifest.json"
     manifest = build_manifest(paths, healthy, manifest_path, target_name)
     try:
-        ManifestFileStore(destination).write(manifest)
+        ManifestFileStore(destination, root=paths.project_dir).write(manifest)
     except OSError as exc:
         failed = D("SST-MAN007", path=str(exc.filename or destination.parent), detail=exc.strerror or str(exc))
         return CommandResult(ERROR, DiagnosticBag((*shown, failed)))
     result = healthy if selected is None else compiling.selected_result(paths.project_dir, healthy, (selected,))
     data = _compiled_data(result, destination, manifest, excluded)
     if emit_ddl_dir is not None:
-        files = _emit(project_path(paths, emit_ddl_dir), result, agents_only=False)
+        files = _emit(paths.project_dir, project_path(paths, emit_ddl_dir), result, agents_only=False)
         data.update(ddl_dir=str(emit_ddl_dir), ddl_files=files)
     if agent_spec_dir is not None:
-        files = _emit(project_path(paths, agent_spec_dir), result, agents_only=True)
+        files = _emit(paths.project_dir, project_path(paths, agent_spec_dir), result, agents_only=True)
         data.update(agent_spec_dir=str(agent_spec_dir), agent_spec_files=files)
     return CommandResult(
         OK if split is None else ERROR,
@@ -101,19 +103,21 @@ def compile(
     )
 
 
-def _emit(directory: Path, result: CompileResult, *, agents_only: bool) -> list[str]:
+def _emit(project_dir: Path, directory: Path, result: CompileResult, *, agents_only: bool) -> list[str]:
     """Write one payload file per compiled artifact into `directory`; return the names written.
 
-    With `agents_only`, only agents are written, each as its rendered JSON specification.
+    With `agents_only`, only agents are written, each as its rendered JSON specification. A
+    file is named by `file_name`, so no artifact name can place it outside `directory`.
     """
+    root = output_root(project_dir, directory)
     written = []
     for item in result.compiled:
         if agents_only and item.artifact_type != "agent":
             continue
         suffix = artifact_suffix(item.rendered_artifact.render_dialect)
-        name = f"{item.name.casefold()}{suffix}"
+        name = f"{file_name(item.name.casefold())}{suffix}"
         content = item.rendered_artifact.content
-        write_text(directory / name, content if suffix in (".json", ".yaml") else content.rstrip() + ";\n")
+        write_text(root, directory / name, content if suffix in (".json", ".yaml") else content.rstrip() + ";\n")
         written.append(name)
     return written
 

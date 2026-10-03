@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import difflib
 import glob
+import os
 from collections.abc import Iterable
 from pathlib import Path
 
@@ -21,6 +22,7 @@ import click
 from snowflake_semantic_tools.adapters.dbt.project import model_paths
 from snowflake_semantic_tools.adapters.errors import ProjectError
 from snowflake_semantic_tools.adapters.locations import ProjectPaths
+from snowflake_semantic_tools.adapters.paths import output_root, walk_refusal
 from snowflake_semantic_tools.adapters.yaml.config import load_project_config
 from snowflake_semantic_tools.adapters.yaml.discover import YAML_SUFFIXES, registry_roots
 from snowflake_semantic_tools.adapters.yaml.format import canonical_yaml
@@ -61,7 +63,9 @@ def format_command(
     Diagnostics:
         SST-CFG001: no PATH was given and there is no configuration file.
         SST-PRT100: a PATH names no YAML file; raised.
-        SST-PRT009: a file cannot be read.
+        SST-PRT009: a file cannot be read, or is a symbolic link or reached through one; it is
+            left as it is.
+        SST-PRT008: a file cannot be written; raised.
         SST-LOD001: a file is not YAML; it is left as it is.
         SST-INT003: a file's canonical form would change its value; it is left as it is.
     """
@@ -74,7 +78,7 @@ def format_command(
         diagnostics.extend(report.format_file(paths.project_dir, path, sanitize=sanitize))
     if not (check or dry_run):
         for path in report.would_change if not force else (*report.would_change, *report.unchanged_paths):
-            write_text(path, report.canonical[path])
+            write_text(output_root(paths.project_dir, path.parent), path, report.canonical[path])
     data = report.data(paths.project_dir, written=not (check or dry_run), force=force)
     if diagnostics and any(item.blocks for item in diagnostics):
         exit_code = ERROR
@@ -106,8 +110,15 @@ class _FormatReport:
         return tuple(path for path in self.canonical if self.canonical[path] == self.original[path])
 
     def format_file(self, project_dir: Path, path: Path, *, sanitize: bool) -> tuple[Diagnostic, ...]:
-        """Compute one file's canonical text; a file that cannot be read or parsed is reported."""
+        """Compute one file's canonical text; a file that cannot be read or parsed is reported.
+
+        A file that is a symbolic link, or that a link inside the project leads to, is refused:
+        formatting it would rewrite a file the link points at, wherever that is.
+        """
         name = _relative(project_dir, path)
+        refusal = _link_refusal(project_dir, path)
+        if refusal is not None:
+            return (D("SST-PRT009", subject="cli", path=name, detail=refusal),)
         try:
             text = path.read_bytes().decode("utf-8")
         except (OSError, UnicodeDecodeError) as exc:
@@ -191,6 +202,15 @@ def _yaml_files(roots: Iterable[Path]) -> Iterable[Path]:
                 skipped = any(part in _SKIPPED_DIRS or part.startswith(".") for part in relative)
                 if path.is_file() and path.suffix in YAML_SUFFIXES and not skipped:
                     yield path
+
+
+def _link_refusal(project_dir: Path, path: Path) -> str | None:
+    """Say why a file is not formatted because of a symbolic link; None when no link is involved."""
+    absolute = Path(os.path.abspath(path))
+    for base in (Path(os.path.abspath(project_dir)), project_dir.resolve()):
+        if absolute.is_relative_to(base):
+            return walk_refusal(base, absolute)
+    return "it is a symbolic link, which SST does not follow" if absolute.is_symlink() else None
 
 
 def _relative(project_dir: Path, path: Path) -> str:

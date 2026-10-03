@@ -12,6 +12,7 @@ import json
 from collections.abc import Iterable
 from pathlib import Path
 
+from snowflake_semantic_tools.adapters.paths import append_within
 from snowflake_semantic_tools.domain.diagnostics import Diagnostic
 from snowflake_semantic_tools.domain.diagnostics.signatures import fragile_signatures
 
@@ -19,8 +20,8 @@ RUN_LOG = "run_log.jsonl"
 _UNMATCHED = "SST-SNO001"
 
 
-def append_run_log(build_dir: Path, diagnostics: Iterable[Diagnostic], *, command: str) -> None:
-    """Append one line per `SST-SNO` diagnostic to the run log; write nothing when there is none."""
+def append_run_log(root: Path, build_dir: Path, diagnostics: Iterable[Diagnostic], *, command: str) -> None:
+    """Append one line per `SST-SNO` diagnostic to the run log, inside `root`; none when there is none."""
     lines = [
         json.dumps({"command": command, "code": item.code}, sort_keys=True)
         for item in diagnostics
@@ -28,9 +29,7 @@ def append_run_log(build_dir: Path, diagnostics: Iterable[Diagnostic], *, comman
     ]
     if not lines:
         return
-    build_dir.mkdir(parents=True, exist_ok=True)
-    with (build_dir / RUN_LOG).open("a", encoding="utf-8") as stream:
-        stream.write("".join(f"{line}\n" for line in lines))
+    append_within(root, build_dir / RUN_LOG, "".join(f"{line}\n" for line in lines))
 
 
 def signature_report(build_dir: Path) -> dict[str, object]:

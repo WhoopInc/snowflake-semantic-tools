@@ -5,11 +5,10 @@
 
 from __future__ import annotations
 
-import shutil
-
 import click
 
 from snowflake_semantic_tools.adapters.locations import ProjectPaths
+from snowflake_semantic_tools.adapters.paths import remove_tree_within
 from snowflake_semantic_tools.cli.exit_codes import ERROR
 from snowflake_semantic_tools.cli.runner import CommandResult, command_body
 from snowflake_semantic_tools.cli.wiring.project import target_dir
@@ -22,10 +21,10 @@ from snowflake_semantic_tools.domain.diagnostics import D, DiagnosticBag
 def clean(paths: ProjectPaths, dry_run: bool) -> CommandResult:
     """Remove local SST build artifacts only; never touch Snowflake.
 
-    Exit 1 when the build directory cannot be removed.
+    Exit 1 when the build directory cannot be removed, or a symbolic link is on the way to it.
 
     Diagnostics:
-        SST-PRT010: the build directory could not be removed.
+        SST-PRT010: the build directory could not be removed, or is reached through a link.
     """
     path = target_dir(paths.project_dir)
     existed = path.exists()
@@ -36,7 +35,7 @@ def clean(paths: ProjectPaths, dry_run: bool) -> CommandResult:
         )
     if existed:
         try:
-            shutil.rmtree(path)
+            remove_tree_within(paths.project_dir, path)
         except OSError as exc:
             diagnostic = D("SST-PRT010", subject="cli", path=str(path), detail=str(exc))
             return CommandResult(ERROR, DiagnosticBag((diagnostic,)), {"removed": [], "would_remove": [str(path)]})

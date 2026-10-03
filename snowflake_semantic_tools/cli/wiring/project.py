@@ -139,4 +139,6 @@ def closed_on_error(port: SnowflakeConnector) -> Iterator[None]:
 
 def state_store(files: ProjectPaths, target_name: str) -> StateFileStore:
     """Return the local state file of `target_name`, under the project's build directory."""
-    return StateFileStore(state_file(target_dir(files.project_dir), target_name), config_path=files.config_name)
+    return StateFileStore(
+        state_file(target_dir(files.project_dir), target_name), config_path=files.config_name, root=files.project_dir
+    )

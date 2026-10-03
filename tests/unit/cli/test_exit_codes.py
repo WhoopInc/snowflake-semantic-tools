@@ -271,7 +271,7 @@ def _clean_refused(tmp: Path, monkeypatch: pytest.MonkeyPatch) -> Result:
     def refuse(path: Path) -> None:
         raise PermissionError("read-only")
 
-    monkeypatch.setattr("snowflake_semantic_tools.cli.commands.clean.shutil.rmtree", refuse)
+    monkeypatch.setattr("snowflake_semantic_tools.adapters.paths.shutil.rmtree", refuse)
     return _run("clean", "--project-dir", str(project))
 
 
