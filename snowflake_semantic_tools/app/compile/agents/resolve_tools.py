@@ -281,7 +281,7 @@ def _delegate(
                 (artifact_key("agent", authored.agent_ref.casefold()),),
             )
     elif name:
-        relation = _member_relation(name, context, diagnostics)
+        relation = _member_relation(authored.member_reference, context, diagnostics)
         if relation is not None:
             resource: dict[str, object] = {"identifier": relation.sql, "type": "agent"}
             resolution = _Resolution(name, authored.description or "", resource, external=True)
@@ -358,8 +358,10 @@ def _finish(
     )
 
 
-def _member_relation(name: str, context: AgentCompileContext, diagnostics: list[Diagnostic]) -> QualifiedName | None:
-    backing, problems = context.tools.resolve(name)
+def _member_relation(
+    reference: tuple[str, ...], context: AgentCompileContext, diagnostics: list[Diagnostic]
+) -> QualifiedName | None:
+    backing, problems = context.tools.resolve(*reference)
     diagnostics.extend(problems)
     if backing is None:
         return None

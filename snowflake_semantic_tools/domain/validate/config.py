@@ -160,10 +160,12 @@ def _allowlist_problems(tree: Mapping[Any, object], positions: _Located) -> list
 
 
 def unreferenced_tool_members(catalog: ToolCatalog, referenced: Iterable[tuple[str, ...]]) -> DiagnosticBag:
-    """Report each declared tool member no agent's `{{ tool(...) }}` names.
+    """Report each declared tool member nothing references.
 
     Args:
-        referenced: Each `tool()` call's arguments: a group and a member, or a member alone.
+        referenced: Every reference to a member, as `ToolCatalog.resolve` takes it: a group and a
+            member, or a member alone. An agent tool's `{{ tool(...) }}`, an `agent` tool that
+            names a member, and a configuration value's `tool()` each count.
 
     Diagnostics:
         SST-CFG018: a declared tool member is referenced by nothing.
@@ -193,7 +195,21 @@ def config_tool_references(tree: Mapping[str, Any], catalog: ToolCatalog, *, fil
         SST-CFG017: a configuration value's `tool()` names a group or member that is not declared.
     """
     declared = {(group.name.casefold(), member.name.casefold()) for group in catalog.groups for member in group.members}
-    diagnostics: list[Diagnostic] = []
+    return DiagnosticBag(
+        D("SST-CFG017", origin=Origin(file), subject=f"config:{'.'.join(path)}", group=group, name=name)
+        for path, group, name in _config_tool_calls(tree)
+        if (group.casefold(), name.casefold()) not in declared
+    )
+
+
+def config_tool_calls(tree: Mapping[str, Any]) -> tuple[tuple[str, str], ...]:
+    """Return the group and member of each `{{ tool(...) }}` a configuration value makes, in document order."""
+    return tuple((group, name) for _, group, name in _config_tool_calls(tree))
+
+
+def _config_tool_calls(tree: Mapping[str, Any]) -> list[tuple[tuple[str, ...], str, str]]:
+    """Each configuration value's `tool()` calls, with the value's path; a list item is `key[0]`."""
+    calls: list[tuple[tuple[str, ...], str, str]] = []
 
     def walk(path: tuple[str, ...], value: object) -> None:
         if isinstance(value, Mapping):
@@ -204,13 +220,10 @@ def config_tool_references(tree: Mapping[str, Any], catalog: ToolCatalog, *, fil
             for index, item in enumerate(value):
                 walk((*path[:-1], f"{path[-1]}[{index}]"), item)
         elif isinstance(value, str):
-            for group, name in _TOOL_CALL.findall(value):
-                if (group.casefold(), name.casefold()) not in declared:
-                    subject = f"config:{'.'.join(path)}"
-                    diagnostics.append(D("SST-CFG017", origin=Origin(file), subject=subject, group=group, name=name))
+            calls.extend((path, group, name) for group, name in _TOOL_CALL.findall(value))
 
     walk((), tree)
-    return DiagnosticBag(diagnostics)
+    return calls
 
 
 @dataclass(frozen=True, slots=True)

@@ -47,6 +47,7 @@ from snowflake_semantic_tools.domain.model.skill import DEFAULT_VERSION_PREFIX, 
 from snowflake_semantic_tools.domain.model.tool import ToolCatalog, ToolGroup, ToolOwnership
 from snowflake_semantic_tools.domain.ports.project import ProjectInputs
 from snowflake_semantic_tools.domain.validate.config import (
+    config_tool_calls,
     config_tool_references,
     severity_overrides,
     unreferenced_tool_members,
@@ -221,7 +222,7 @@ class CompileProject:
 
         Diagnostics:
             SST-CFG017: a configuration value's `tool()` names no declared member.
-            SST-CFG018: a declared tool member is referenced by no agent.
+            SST-CFG018: a declared tool member is referenced by no agent and no configuration value.
         """
         semantic = CompileSemanticViews(self._inputs).run_result()
         # A view the project declares disabled is named as such, not as undeclared, by a tool.
@@ -248,7 +249,11 @@ class CompileProject:
         evals = CompileEvals(eval_catalog, agent_targets=dict(context.agents)).run_result()
         compiled = (semantic, tools, agents, evals)
         # Every agent counts as a consumer, enabled or not: disabling one does not orphan its tools.
-        calls = tuple(tool.backing for model in agent_models for tool in model.tools if tool.backing)
+        # So does a configuration value's `tool()`.
+        calls = (
+            *(tool.member_reference for model in agent_models for tool in model.tools if tool.member_reference),
+            *config_tool_calls(settings.tree),
+        )
         tool_config = CompileResult(
             (),
             DiagnosticBag(

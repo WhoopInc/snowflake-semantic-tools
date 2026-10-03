@@ -72,6 +72,19 @@ class AgentTool:
     tool_spec_passthrough: Mapping[str, object] = field(default_factory=lambda: MappingProxyType({}))
     declared_keys: tuple[str, ...] = ()
 
+    @property
+    def member_reference(self) -> tuple[str, ...]:
+        """The tool member this tool resolves to, as `ToolCatalog.resolve` takes it; () for none.
+
+        That is its `{{ tool(...) }}` backing, or, for an `agent` tool that delegates to no agent of
+        this project, its own name: such a tool resolves the member of that name.
+        """
+        if self.backing:
+            return self.backing
+        if self.type == "agent" and not self.agent_ref and self.name:
+            return (self.name,)
+        return ()
+
 
 @dataclass(frozen=True, slots=True)
 class AgentSkill:
