@@ -12,7 +12,7 @@ LEFT = "    left_table: orders\n    right_table: customers\n"
 
 def test_sst_val211_fires(tmp_path: Path) -> None:
     [diagnostic] = found(edited(tmp_path, RELATIONSHIPS, LEFT, LEFT + "    join_type: left_outer\n"), "SST-VAL211")
-    assert diagnostic.severity is Severity.WARNING
+    assert diagnostic.severity is Severity.ERROR
     assert diagnostic.message == "relationship 'orders_to_customers' declares 'join_type', which is not emitted"
     assert diagnostic.subject == "relationship:orders_to_customers"
 

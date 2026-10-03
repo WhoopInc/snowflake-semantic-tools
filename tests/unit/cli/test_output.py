@@ -43,14 +43,14 @@ def test_validate_json_emits_one_v2_envelope() -> None:
     # Infos: SST-VAL854 (the fixture's profile registry is not Desktop's), SST-VAL020 once per
     # connected rule (4), the eval notes SST-VAL711/712/725, the skill notes SST-VAL816 (3) and
     # SST-VAL831 (4), the dbt seam's notes SST-DBT016 for orders and products and SST-DBT025,
-    # SST-LOD201 (7) for the files the manifest's checksums read first, eighteen that report
+    # eighteen that report
     # what attached where (SST-MEM011 for each of the fifteen members both jaffle views hold,
     # SST-MEM103 for each of the three views), and the compiled views' shape: SST-VAL125 (9),
     # SST-VAL216, SST-VAL217 (2) and SST-VAL319 (3). The warnings are SST-CFG034, as --no-strict
     # contradicts the fixture's `validation.strict: true`; SST-RND013 for the generic tool's
     # resources; SST-VAL528; SST-RND010 for the minimal agent's empty tool list; and SST-CFG018
-    # for each partner tool member no agent references. The plugin has a consumer, the operator
-    # profile.
+    # for each partner tool member nothing references (the delivery agent's toolset names the
+    # third). The plugin has a consumer, the operator profile.
     assert [item["code"] for item in envelope["diagnostics"] if item["severity"] == "warning"] == [
         "SST-CFG034",
         "SST-RND013",
@@ -58,12 +58,11 @@ def test_validate_json_emits_one_v2_envelope() -> None:
         "SST-RND010",
         "SST-CFG018",
         "SST-CFG018",
-        "SST-CFG018",
     ]
     assert envelope["summary"] == {
         "error": 0,
-        "warning": 7,
-        "info": 58,
+        "warning": 6,
+        "info": 51,
         "promoted": 0,
         "suppressed_cascade": 0,
         "baselined": 0,

@@ -254,7 +254,7 @@ reads it, so a setting cannot look as though it takes effect when it does not.
 
 ## Deprecated keys
 
-Each is read as the key that replaced it, with a warning (`SST-CFG200`) naming it.
+Each is an error (`SST-CFG200`) naming the key that replaced it.
 
 | Key | Read as |
 |---|---|

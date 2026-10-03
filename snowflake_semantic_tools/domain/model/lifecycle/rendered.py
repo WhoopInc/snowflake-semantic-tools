@@ -160,6 +160,9 @@ class RenderedArtifact:
         required_relations: The tables and views apply checks exist before it writes anything.
         component_fingerprints, physical_resources: As `CompositeFacts` describes them.
         generic_apply_safe: False for a composite artifact, which the generic apply path refuses.
+        version_metadata: The METADATA the dataset version an eval mints carries, commit and all,
+            set only on what is published; None otherwise. It is neither a component nor in the
+            fingerprint, so the plan and the compiled manifest report the same components.
     """
 
     key: ArtifactKey
@@ -187,6 +190,7 @@ class RenderedArtifact:
     component_fingerprints: tuple[tuple[str, str], ...] = ()
     physical_resources: tuple[tuple[str, QualifiedName], ...] = ()
     generic_apply_safe: bool = True
+    version_metadata: str | None = None
 
     @classmethod
     def create(

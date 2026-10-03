@@ -411,7 +411,8 @@ def render_diagnostic(diagnostic: Diagnostic) -> str:
     """Render one diagnostic as terminal text: a located headline, then its help and docs lines.
 
     The location is ``file:line:col: ``, cut to what the origin knows and absent without
-    one; the help line is absent when the code has no suggestion.
+    one; the help line is absent when the code has no suggestion. A message whose template
+    begins with its own ``file:line:`` is not located twice: the headline drops that prefix.
 
     Example:
         views.yml:4:7: error[SST-REF001]: { ref('missing') } is not a model in the dbt manifest
@@ -419,15 +420,18 @@ def render_diagnostic(diagnostic: Diagnostic) -> str:
           docs: <the code's help URL>
     """
     location = ""
+    message = diagnostic.message
     if diagnostic.origin is not None:
-        location = diagnostic.origin.file
+        parts = [diagnostic.origin.file]
         if diagnostic.origin.line is not None:
-            location += f":{diagnostic.origin.line}"
+            parts.append(str(diagnostic.origin.line))
             if diagnostic.origin.col is not None:
-                location += f":{diagnostic.origin.col}"
-        location += ": "
+                parts.append(str(diagnostic.origin.col))
+        location = ":".join(parts) + ": "
+        prefixes = (":".join(parts[:count]) + ": " for count in range(len(parts), 0, -1))
+        message = next((message.removeprefix(prefix) for prefix in prefixes if message.startswith(prefix)), message)
     spec = ERROR_REGISTRY[diagnostic.code]
-    rendered = f"{location}{diagnostic.severity.name.lower()}[{diagnostic.code}]: {diagnostic.message}"
+    rendered = f"{location}{diagnostic.severity.name.lower()}[{diagnostic.code}]: {message}"
     if spec.suggestion:
         rendered += f"\n  help: {diagnostic.suggestion}"
     rendered += f"\n  docs: {diagnostic.help_url}"

@@ -137,8 +137,8 @@ class CompiledEval(StandaloneArtifact):
     def rendered_for_publish(self, manifest_id: str) -> RenderedArtifact:
         """Add the statements that create the source table, the dataset, then its version, when SST mints them.
 
-        The version's METADATA carries the commit, so it is recorded as the `version_metadata`
-        component here, where state keeps it, and never in what the fingerprint covers.
+        The version's METADATA carries the commit, so it rides on the published artifact alone:
+        never a component, and never in what the fingerprint covers.
         """
         del manifest_id
         artifact = self.rendered_artifact
@@ -154,7 +154,7 @@ class CompiledEval(StandaloneArtifact):
                 self.rendered.create_dataset_statement,
                 add_version,
             ),
-            component_fingerprints=(*artifact.component_fingerprints, ("version_metadata", self.version_metadata)),
+            version_metadata=self.version_metadata,
         )
 
 

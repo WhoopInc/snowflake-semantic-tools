@@ -22,7 +22,7 @@ from snowflake_semantic_tools.adapters.project_source import YamlProjectInputs
 from snowflake_semantic_tools.adapters.resolved_config import resolved_config
 from snowflake_semantic_tools.adapters.snowflake.connector import SnowflakeConnector
 from snowflake_semantic_tools.adapters.yaml.documents import LoadCache
-from snowflake_semantic_tools.cli.output import register_secrets
+from snowflake_semantic_tools.cli.output import register_secrets, verbose_run
 from snowflake_semantic_tools.domain.model.config_schema import CONFIG_KEYS, config_block, config_int
 from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
 
@@ -59,7 +59,7 @@ def project_inputs(
     The commit is asked for through this module's `git_sha`, looked up when a use case
     needs it, so replacing `git_sha` here changes the commit every use case sees. Under a click
     command, every input the command builds shares one load cache, so a file read twice in the
-    run is parsed once.
+    run is parsed once. The cache notes the reads it served only under `--verbose`.
 
     Args:
         database: Resolve refs against this database instead of the target's; None keeps it.
@@ -71,7 +71,9 @@ def project_inputs(
         manifest_path=manifest_path,
         git_sha=lambda: git_sha(files.project_dir),
         database=database,
-        load_cache=context.meta.setdefault(LOAD_CACHE, LoadCache()) if context is not None else None,
+        load_cache=context.meta.setdefault(LOAD_CACHE, LoadCache(note_hits=verbose_run()))
+        if context is not None
+        else None,
     )
 
 

@@ -87,7 +87,9 @@ def test_rendered_for_publish_emits_source_table_and_dataset_statements() -> Non
         f"  COMMENT = 'SST eval questions {version.removeprefix('SST_').lower()}'\n"
         f"  METADATA = '{compiled.version_metadata}'",
     )
-    assert dict(published.component_fingerprints)["version_metadata"] == compiled.version_metadata
+    assert published.version_metadata == compiled.version_metadata
+    # Not a component, so the plan's change and the compiled manifest's artifact agree on them.
+    assert published.component_fingerprints == compiled.rendered_artifact.component_fingerprints
     # The commit reaches only what publishes, never the artifact the fingerprint covers.
     assert published.fingerprint == compiled.rendered_artifact.fingerprint
 

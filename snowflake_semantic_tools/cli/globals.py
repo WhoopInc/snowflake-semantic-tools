@@ -1,10 +1,10 @@
 """The global options: accepted before the command, after it, or both, the later copy winning.
 
-`sst` declares each one twice: on the root group, where its environment variable is read, and,
-hidden, on every command. The group hands a value given on its command line or read from the
-environment to each command as that command's default, so a value written after the command
-wins, then one written before it, then the environment, then the built-in default. A command
-body sees the result as `GlobalOptions`.
+`sst` declares each one twice: on the root group, where its environment variable is read, and on
+every command, whose help lists it under `Global options`. The group hands a value given on its
+command line or read from the environment to each command as that command's default, so a value
+written after the command wins, then one written before it, then the environment, then the
+built-in default. A command body sees the result as `GlobalOptions`.
 
 Five short options SST 0.3 bound are reserved rather than rebound: each is refused with what to
 write instead. A boolean environment variable takes `1`, `true`, `yes`, `on` or their negations,
@@ -169,11 +169,35 @@ def group_global_options() -> Decorator:
 
 
 def command_global_options() -> Decorator:
-    """Declare every global option, hidden, on one command, so it is accepted after the command too."""
+    """Declare every global option on one command, so it is accepted after the command too.
+
+    Each is a `GlobalOption`: a command's `--help` lists them under their own heading, as
+    `SstCommand` renders it, so `sst <command> --help` names every option the command accepts.
+    """
     return stacked(
-        *(click.option(*names, hidden=True, **settings) for names, settings, _ in _declarations()),
+        *(click.option(*names, cls=GlobalOption, **settings) for names, settings, _ in _declarations()),
         reserved_short_options(),
     )
+
+
+class GlobalOption(click.Option):
+    """A global option as one command declares it: parsed by the command, listed apart in its help."""
+
+
+class SstCommand(click.Command):
+    """An `sst` command, whose help lists its own options, then the global ones under their own heading."""
+
+    def format_options(self, ctx: click.Context, formatter: click.HelpFormatter) -> None:
+        """Write the command's options, then `Global options`: each section only when it has a row."""
+        sections: dict[bool, list[tuple[str, str]]] = {False: [], True: []}
+        for param in self.get_params(ctx):
+            record = param.get_help_record(ctx)
+            if record is not None:
+                sections[isinstance(param, GlobalOption)].append(record)
+        for title, rows in (("Options", sections[False]), ("Global options", sections[True])):
+            if rows:
+                with formatter.section(title):
+                    formatter.write_dl(rows)
 
 
 def reserved_short_options() -> Decorator:

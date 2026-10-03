@@ -20,7 +20,7 @@ from snowflake_semantic_tools.adapters.yaml.documents import ParsedYaml
 from snowflake_semantic_tools.adapters.yaml.parse import parse_yaml_bytes
 from snowflake_semantic_tools.domain.diagnostics import D, DiagnosticBag, Origin
 from snowflake_semantic_tools.domain.ports.project import ProjectConfig
-from snowflake_semantic_tools.domain.validate.config import unstated_policy, validate_config
+from snowflake_semantic_tools.domain.validate.config import empty_is_block, unstated_policy, validate_config
 
 # Resolves a parsed tree's templates, returning the tree and what did not resolve.
 Render = Callable[[Mapping[str, Any]], tuple[dict[str, Any], DiagnosticBag]]
@@ -101,7 +101,8 @@ def load_project_config(files: ProjectPaths, render: Render | None = None) -> Pr
             "semantic_models_dir": files.semantic_models_dir,
         }
     if "deploy" in tree and "apply" not in tree:
-        # The deprecated spelling is read as the block it was renamed to; SST-CFG200 says so.
+        # The deprecated spelling is an error, SST-CFG200; it is read as the block it was renamed
+        # to only so a run that demotes the error behaves as the block says.
         tree["apply"] = tree["deploy"]
     project = tree.get("project")
     dbt_only_dirs: set[str] = set()
@@ -146,7 +147,7 @@ def _parse_config(files: ProjectPaths) -> ParsedYaml:
         diagnostic = D("SST-PRT009", subject=f"config:{files.config_name}", path=files.config_name, detail=str(exc))
         raise ProjectError(diagnostic.message, diagnostics=(diagnostic,)) from exc
     try:
-        return parse_yaml_bytes(raw, files.config_name)
+        return parse_yaml_bytes(raw, files.config_name, null_means=empty_is_block)
     except ProjectError as exc:
         syntax = [item for item in exc.diagnostics if item.code == "SST-LOD001"]
         if not syntax:

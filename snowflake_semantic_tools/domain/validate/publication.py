@@ -228,8 +228,8 @@ def eval_publication_diagnostics(
 ) -> tuple[Diagnostic, ...]:
     """Report what an eval would publish that its run config or dataset version must never carry.
 
-    Reads the run config, the minted version's name and METADATA from the artifact's
-    components, and whether the dataset exists from what plan observed.
+    Reads the run config, the minted version's name from the artifact's components and its
+    METADATA from the artifact, and whether the dataset exists from what plan observed.
 
     Diagnostics:
         SST-VAL716: as `run_config_diagnostics` reports it.
@@ -239,7 +239,7 @@ def eval_publication_diagnostics(
     found = list(run_config_diagnostics(artifact.key, artifact.ddl, dataset_exists=dataset_exists))
     components = dict(artifact.component_fingerprints)
     version = components.get("dataset_version")
-    metadata = components.get("version_metadata")
+    metadata = artifact.version_metadata
     if version is not None and metadata is not None:
         comment = dataset_version_comment(version)
         found.extend(dataset_metadata_diagnostics(artifact.key, metadata=metadata, comment=comment))

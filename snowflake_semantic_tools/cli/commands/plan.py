@@ -14,6 +14,7 @@ from snowflake_semantic_tools.adapters.paths import output_root
 from snowflake_semantic_tools.app.observe import ObserveOptions
 from snowflake_semantic_tools.app.plan import PlanReady, PlanRefused
 from snowflake_semantic_tools.cli.exit_codes import ERROR
+from snowflake_semantic_tools.cli.globals import SstCommand
 from snowflake_semantic_tools.cli.group import SstUsageError
 from snowflake_semantic_tools.cli.options import (
     defer_target_option,
@@ -87,7 +88,7 @@ def _refuse_invocation(
         refuse_together("--use-cached-state", "--capture-prior")
 
 
-@click.command()
+@click.command(cls=SstCommand)
 @target_option()
 @selection_options()
 @state_option()

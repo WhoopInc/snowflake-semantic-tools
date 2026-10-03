@@ -44,14 +44,14 @@ def test_add_one_code_writes_a_versioned_expiring_file_then_validate_suppresses_
     added = _run(project, "add", "sst-cfg018", "--expires-in", "30", "--note", "tracked", "--output", "json")
     assert added.exit_code == 0, added.output
     data = json.loads(added.output)["data"]
-    assert [item["code"] for item in data["added"]] == ["SST-CFG018"] * 3
-    assert data["counts"] == {"SST-CFG018": 3}
+    assert [item["code"] for item in data["added"]] == ["SST-CFG018"] * 2
+    assert data["counts"] == {"SST-CFG018": 2}
     document = _file(project)
     assert (document["version"], document["generated_by_sst"]) == (1, document["generated_by_sst"])
     assert all(entry["note"] == "tracked" for entry in document["entries"])
     validated = CliRunner().invoke(cli, ["validate", *common(project), "--output", "json"])
     summary = json.loads(validated.output)["summary"]
-    assert summary["baselined"] == 3
+    assert summary["baselined"] == 2
     again = _run(project, "add", "SST-CFG018", "--output", "json")
     assert json.loads(again.output)["data"]["added"] == []
 
@@ -69,8 +69,8 @@ def test_add_all_warnings_needs_yes_off_a_terminal_and_prompts_on_one(
     assert declined.exit_code == 130
     accepted = CliRunner().invoke(cli, ["baseline", "add", "--all-warnings", *common(project)], input="y\n")
     assert accepted.exit_code == 0, accepted.output
-    assert "baseline all 6 current warning(s)?" in accepted.output
-    assert len(_file(project)["entries"]) == 6
+    assert "baseline all 5 current warning(s)?" in accepted.output
+    assert len(_file(project)["entries"]) == 5
 
 
 def test_add_refuses_errors_unregistered_codes_and_bad_combinations(tmp_path: Path) -> None:
@@ -98,7 +98,7 @@ def test_prune_removes_what_no_longer_matches_within_the_selection(tmp_path: Pat
     pruned = _run(project, "prune", "--output", "json")
     assert pruned.exit_code == 0, pruned.output
     assert [item["artifact"] for item in json.loads(pruned.output)["data"]["pruned"]] == ["agent:gone"]
-    assert len(_file(project)["entries"]) == 6
+    assert len(_file(project)["entries"]) == 5
 
 
 def test_show_lists_entries_by_code_and_expiry(tmp_path: Path) -> None:
@@ -107,7 +107,7 @@ def test_show_lists_entries_by_code_and_expiry(tmp_path: Path) -> None:
     assert _run(project, "add", "--all-warnings", "--yes").exit_code == 0
     shown = _run(project, "show", "--code", "sst-cfg018")
     assert shown.exit_code == 0
-    assert shown.output.count("SST-CFG018 tool_group:jaffle_partner") == 3
+    assert shown.output.count("SST-CFG018 tool_group:jaffle_partner") == 2
     assert "SST-VAL528" not in shown.output
     assert json.loads(_run(project, "show", "--expired", "--output", "json").output)["data"]["entries"] == []
     document = _file(project)
@@ -115,7 +115,7 @@ def test_show_lists_entries_by_code_and_expiry(tmp_path: Path) -> None:
     (project / BASELINE).write_text(json.dumps(document), encoding="utf-8")
     lapsed = _run(project, "show", "--expired")
     assert "expired on 2020-01-01" in lapsed.output
-    assert lapsed.output.count("SST-") == 6
+    assert lapsed.output.count("SST-") == 5
 
 
 def test_renew_needs_a_reason_records_it_and_caps_the_expiry(tmp_path: Path) -> None:

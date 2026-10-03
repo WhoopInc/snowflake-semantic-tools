@@ -21,6 +21,7 @@ from snowflake_semantic_tools.adapters.fs.local import PlanFileStore
 from snowflake_semantic_tools.adapters.locations import ProjectPaths
 from snowflake_semantic_tools.app.diff import ArtifactStates, live_states, manifest_states, plan_states
 from snowflake_semantic_tools.cli.exit_codes import CHANGES, ERROR, OK
+from snowflake_semantic_tools.cli.globals import SstCommand
 from snowflake_semantic_tools.cli.options import no_detailed_exitcode_option, selection_options, target_option
 from snowflake_semantic_tools.cli.runner import CommandResult, command_body, project_path
 from snowflake_semantic_tools.cli.wiring.compile import selection_scope
@@ -42,7 +43,7 @@ class _Unreadable(Exception):
         self.diagnostics = diagnostics
 
 
-@click.command()
+@click.command(cls=SstCommand)
 @click.option("--from", "from_ref", default=LOCAL)
 @click.option("--to", "to_ref")
 @selection_options()

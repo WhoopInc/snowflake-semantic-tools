@@ -11,7 +11,7 @@ from snowflake_semantic_tools.adapters.locations import ProjectPaths
 from snowflake_semantic_tools.adapters.yaml.ownership import ownership_report
 from snowflake_semantic_tools.app.validate import ValidateArtifacts, ValidationResult
 from snowflake_semantic_tools.cli.exit_codes import ERROR, OK
-from snowflake_semantic_tools.cli.globals import GlobalOptions
+from snowflake_semantic_tools.cli.globals import GlobalOptions, SstCommand
 from snowflake_semantic_tools.cli.options import (
     database_option,
     defer_target_option,
@@ -34,7 +34,7 @@ from snowflake_semantic_tools.cli.wiring.project import connect
 from snowflake_semantic_tools.domain.diagnostics import DiagnosticBag, Severity
 
 
-@click.command()
+@click.command(cls=SstCommand)
 @target_option()
 @defer_target_option()
 @selection_options()

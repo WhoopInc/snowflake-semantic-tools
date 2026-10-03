@@ -166,7 +166,7 @@ SPECS: tuple[ErrorSpec, ...] = (
     ),
     spec(
         "SST-PRS020",
-        Severity.WARNING,
+        Severity.ERROR,
         "Deprecated field spelling",
         "{artifact}: '{field}' is deprecated; use '{expected}'",
         "rename the field",

@@ -25,6 +25,7 @@ from snowflake_semantic_tools.app.listing import (
     list_tables,
 )
 from snowflake_semantic_tools.app.manifest import read_notes
+from snowflake_semantic_tools.cli.globals import SstCommand
 from snowflake_semantic_tools.cli.options import model_path_options, selection_options, with_model_paths
 from snowflake_semantic_tools.cli.runner import CommandResult, command_body
 from snowflake_semantic_tools.cli.wiring import compile as compiling
@@ -53,7 +54,7 @@ LIST_TYPES: dict[str, tuple[str, str]] = {
 }
 
 
-@click.command(name="list")
+@click.command(cls=SstCommand, name="list")
 @click.argument("artifact_type", metavar="[TYPE]", required=False, type=click.Choice(sorted(LIST_TYPES)))
 @selection_options()
 @click.option("--long", "long_format", is_flag=True)

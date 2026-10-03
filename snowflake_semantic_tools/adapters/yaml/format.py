@@ -6,8 +6,9 @@ The canonical form is a re-layout that never changes what the file means:
 - dbt's own indentation: mappings by two spaces, a list item's dash two spaces in;
 - `name` first in every mapping that is a list item and carries no comment, the rest in the
   order written;
-- every multi-line string as a literal block scalar, `|-` (or `|` when it ends in a newline),
-  never folded, so a bulleted instruction is never reflowed into one paragraph.
+- every multi-line string that is not already a block scalar as a literal block scalar, `|-` (or
+  `|` when it ends in a newline); a block scalar keeps the style it was written in, folded or
+  literal, so the formatter never rewrites how an author chose to write a value.
 
 Comments, quoting, and the order of everything else survive the round trip. `canonical_yaml`
 checks the result against the original before returning it: both must load to the same value,
@@ -26,6 +27,7 @@ from ruamel.yaml.comments import CommentedMap, CommentedSeq
 from ruamel.yaml.error import MarkedYAMLError, YAMLError
 from ruamel.yaml.scalarstring import (
     DoubleQuotedScalarString,
+    FoldedScalarString,
     LiteralScalarString,
     ScalarString,
     SingleQuotedScalarString,
@@ -177,6 +179,7 @@ def _literal(value: object) -> object:
     A string with whitespace at the end of a line, or a tab in a line's indentation, is
     double-quoted instead, unless it is one quoted line: in a block or a plain scalar that
     whitespace would be content at the end of a line, so the file could never be canonical.
+    Otherwise a block scalar keeps the style it was written in, folded or literal.
     """
     if not isinstance(value, str):
         return value
@@ -185,7 +188,7 @@ def _literal(value: object) -> object:
     quoted = isinstance(value, SingleQuotedScalarString | DoubleQuotedScalarString)
     if awkward and ("\n" in value or not quoted):
         return DoubleQuotedScalarString(value)
-    if "\n" not in value.rstrip("\n") or isinstance(value, LiteralScalarString):
+    if "\n" not in value.rstrip("\n") or isinstance(value, LiteralScalarString | FoldedScalarString):
         return value
     return LiteralScalarString(str(value))
 

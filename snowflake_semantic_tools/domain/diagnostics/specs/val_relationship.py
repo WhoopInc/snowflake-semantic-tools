@@ -90,7 +90,7 @@ SPECS: tuple[ErrorSpec, ...] = (
     ),
     spec(
         "SST-VAL211",
-        Severity.WARNING,
+        Severity.ERROR,
         "relationship_type or join_type declared",
         "relationship '{relationship}' declares '{field}', which is not emitted",
         "remove the key",

@@ -346,16 +346,16 @@ def test_every_unread_key_is_reported_and_0_3_spellings_are_named(tmp_path: Path
             ("SST-PRS004", "WARNING", "semantic_view:catalog", "table_config.products.alias", None),
             ("SST-PRS004", "WARNING", "semantic_view:catalog", "variables[0].unit", None),
             ("SST-PRS004", "WARNING", "semantic_view:catalog", "tags[0].note", None),
-            ("SST-PRS020", "WARNING", "metric:product_count", "non_additive_by", "non_additive_dimensions"),
+            ("SST-PRS020", "ERROR", "metric:product_count", "non_additive_by", "non_additive_dimensions"),
             ("SST-PRS004", "WARNING", "metric:product_count", "non_additive_dimensions[0].grain", None),
             (
                 "SST-PRS020",
-                "WARNING",
+                "ERROR",
                 "metric:product_count",
                 "non_additive_dimensions[0].order",
                 "sort_direction",
             ),
-            ("SST-PRS020", "WARNING", "metric:product_count", "non_additive_dimensions[0].nulls", "null_order"),
+            ("SST-PRS020", "ERROR", "metric:product_count", "non_additive_dimensions[0].nulls", "null_order"),
             ("SST-PRS004", "WARNING", "metric:product_count", "default_aggregation", None),
             ("SST-PRS004", "WARNING", "custom_instruction:tone", "consumer", None),
             ("SST-VAL406", "WARNING", "filter:cheap", None, None),
@@ -369,10 +369,10 @@ def test_every_unread_key_is_reported_and_0_3_spellings_are_named(tmp_path: Path
         (item.code, item.severity.name, item.subject, item.context.get("field"))
         for item in deprecated_key_diagnostics(documents)
     ] == [
-        ("SST-VAL012", "WARNING", "custom_instruction:tone", "sql_generation"),
-        ("SST-VAL012", "WARNING", "custom_instruction:tone", "question_categorization"),
-        ("SST-VAL122", "WARNING", "metric:product_count", None),
-        ("SST-VAL211", "WARNING", "relationship:self", "join_type"),
+        ("SST-VAL012", "ERROR", "custom_instruction:tone", "sql_generation"),
+        ("SST-VAL012", "ERROR", "custom_instruction:tone", "question_categorization"),
+        ("SST-VAL122", "ERROR", "metric:product_count", None),
+        ("SST-VAL211", "ERROR", "relationship:self", "join_type"),
     ]
     visibility = next(item for item in deprecated_key_diagnostics(documents) if item.code == "SST-VAL122")
     assert visibility.message == "metric 'product_count' uses visibility; the current key is access_modifier"

@@ -184,7 +184,7 @@ SPECS: tuple[ErrorSpec, ...] = (
     ),
     spec(
         "SST-VAL122",
-        Severity.WARNING,
+        Severity.ERROR,
         "visibility used instead of access_modifier",
         "metric '{metric}' uses visibility; the current key is access_modifier",
         "rename the key",

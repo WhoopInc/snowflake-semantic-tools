@@ -28,6 +28,7 @@ from snowflake_semantic_tools.adapters.yaml.discover import YAML_SUFFIXES, regis
 from snowflake_semantic_tools.adapters.yaml.format import canonical_yaml
 from snowflake_semantic_tools.adapters.yaml.parse import read_yaml_mapping
 from snowflake_semantic_tools.cli.exit_codes import CHANGES, CONFIG, ERROR, OK
+from snowflake_semantic_tools.cli.globals import SstCommand
 from snowflake_semantic_tools.cli.group import SstUsageError
 from snowflake_semantic_tools.cli.options import no_detailed_exitcode_option
 from snowflake_semantic_tools.cli.runner import CommandResult, ConfigNeed, command_body, project_path, write_text
@@ -37,7 +38,7 @@ from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, Diagnosti
 _SKIPPED_DIRS = frozenset(("target", "dbt_packages", "dbt_modules", "node_modules", "logs"))
 
 
-@click.command(name="format")
+@click.command(cls=SstCommand, name="format")
 @click.argument("targets", metavar="[PATH]...", nargs=-1)
 @click.option("--check", is_flag=True)
 @click.option("--dry-run", is_flag=True)

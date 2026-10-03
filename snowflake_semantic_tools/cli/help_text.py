@@ -13,6 +13,7 @@ from pathlib import Path
 
 import click
 
+from snowflake_semantic_tools.cli.globals import GlobalOption
 from snowflake_semantic_tools.domain.render.reference_docs import CommandDoc, OptionDoc
 
 # One description per flag, shared by every command that takes it, so `--help`
@@ -252,7 +253,8 @@ def option_docs(command: click.Command) -> tuple[OptionDoc, ...]:
     """
     documented: list[OptionDoc] = []
     for param in command.params:
-        if not isinstance(param, click.Option) or param.hidden:
+        # The global options are documented once, in their own section, not under every command.
+        if not isinstance(param, click.Option) or param.hidden or isinstance(param, GlobalOption):
             continue
         if param.is_flag:
             value = None

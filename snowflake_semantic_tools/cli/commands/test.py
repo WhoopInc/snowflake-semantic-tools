@@ -33,6 +33,7 @@ from snowflake_semantic_tools.app.fanout import Fanout
 from snowflake_semantic_tools.app.golden import CompareGoldens, GoldenReport, UpdateGoldens
 from snowflake_semantic_tools.app.smoke import SmokePublished
 from snowflake_semantic_tools.cli.exit_codes import CONFIG, CONNECTION, ERROR, OK
+from snowflake_semantic_tools.cli.globals import SstCommand
 from snowflake_semantic_tools.cli.group import SstUsageError
 from snowflake_semantic_tools.cli.options import fail_fast_option, selection_options, target_option, threads_option
 from snowflake_semantic_tools.cli.plan_output import print_eval_results
@@ -77,7 +78,7 @@ def _refuse_invocation(suites: tuple[str, ...], update_golden: bool) -> None:
         raise SstUsageError("--update-golden is never valid in CI; regenerate golden files locally and commit them")
 
 
-@click.command(name="test")
+@click.command(cls=SstCommand, name="test")
 @click.option("--suite", "suites", type=click.Choice(SUITES), multiple=True)
 @selection_options()
 @target_option()

@@ -27,8 +27,8 @@ def test_validate_accepts_the_recorded_manifest_offline() -> None:
     )
     assert result.exit_code == 0, result.output
     # SST-VAL528, SST-RND010 for the minimal agent's empty tool list, SST-RND013 for the generic
-    # tool's resources, and SST-CFG018 for each of the three partner tool members no agent references.
-    assert "validated 14 artifact(s): 0 errors, 6 warnings" in result.output
+    # tool's resources, and SST-CFG018 for each of the two partner tool members nothing references.
+    assert "validated 14 artifact(s): 0 errors, 5 warnings" in result.output
 
 
 def test_validate_uses_config_strict_unless_cli_overrides() -> None:
@@ -111,4 +111,4 @@ def test_validate_json_data_counts_rules_artifacts_and_what_the_baseline_suppres
     assert added.exit_code == 0, added.output
     baselined = CliRunner().invoke(cli, ["validate", *args])
     envelope = json.loads(baselined.output)
-    assert envelope["data"]["suppressed_by_baseline"] == envelope["summary"]["baselined"] == 6
+    assert envelope["data"]["suppressed_by_baseline"] == envelope["summary"]["baselined"] == 5

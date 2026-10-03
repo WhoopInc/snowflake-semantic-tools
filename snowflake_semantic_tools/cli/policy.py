@@ -1,8 +1,7 @@
 """Hold a command's result to the project's policy and its baseline, as `app` decides them.
 
 The decisions are `app.policy` and `app.baseline`; this module passes them the run's resolved
-configuration and clock, maps what they decide onto exit codes, and keeps the one file the
-strict-adoption notice needs, which records that it was given.
+configuration and clock, and maps what they decide onto exit codes.
 """
 
 from __future__ import annotations
@@ -10,7 +9,6 @@ from __future__ import annotations
 from pathlib import Path
 
 from snowflake_semantic_tools.adapters.locations import ProjectPaths
-from snowflake_semantic_tools.adapters.paths import write_within
 from snowflake_semantic_tools.adapters.resolved_config import resolved_config
 from snowflake_semantic_tools.app.baseline import gate_baseline
 from snowflake_semantic_tools.app.policy import hold_to_policy
@@ -20,7 +18,14 @@ from snowflake_semantic_tools.domain.diagnostics import DiagnosticBag
 from snowflake_semantic_tools.domain.diagnostics.baseline import Baseline
 from snowflake_semantic_tools.domain.ports.clock import ClockPort
 
-_STRICT_NOTICE = "strict-enforced"
+
+def ran_under_1_0(project_dir: Path) -> bool:
+    """Report whether the project has an SST 1.0 manifest, which only a 1.0 run writes.
+
+    0.3 wrote `target/sst_manifest.json`, so this file is the recorded fact that a 1.0 run
+    happened. Read before a command runs, it says the same thing on every run until one compiles.
+    """
+    return (target_dir(project_dir) / "manifest.json").is_file()
 
 
 def with_policy(
@@ -32,6 +37,8 @@ def with_policy(
     promoted: int,
     paths: ProjectPaths,
     baselined: bool,
+    strict: bool | None = None,
+    first_run: bool = True,
 ) -> tuple[DiagnosticBag, int]:
     """Return the diagnostics and exit code once the project's severity policy is applied.
 
@@ -39,13 +46,15 @@ def with_policy(
         gated: Whether the exit code follows the diagnostics, so an override can change it.
         promoted: How many warnings `--strict` made errors, which the notice reports.
         baselined: Whether the run read a baseline; the notice is for a project without one.
+        strict: `--strict` or `--no-strict` as given; None when neither was.
+        first_run: Whether the project had not run under 1.0 when the command began, as
+            `ran_under_1_0` says.
 
     Diagnostics:
         SST-CFG037: as `app.policy.hold_to_policy` gives it.
     """
     if paths.config_file is None:
         return result_diagnostics, exit_code
-    marker = target_dir(paths.project_dir) / _STRICT_NOTICE
     held = hold_to_policy(
         command,
         result_diagnostics,
@@ -53,12 +62,11 @@ def with_policy(
         gated=gated,
         promoted=promoted,
         baselined=baselined,
-        notice_due=not marker.exists(),
+        notice_due=first_run,
+        strict=strict,
     )
     if held.blocks is not None and exit_code in (OK, ERROR):
         exit_code = ERROR if held.blocks else OK
-    if held.notice_given:
-        _remember(paths.project_dir, marker)
     return held.diagnostics, exit_code
 
 
@@ -76,8 +84,3 @@ def with_baseline(
     if exit_code == OK and gate.expired:
         exit_code = ERROR
     return gate.diagnostics, exit_code, gate.baselined
-
-
-def _remember(project_dir: Path, marker: Path) -> None:
-    """Record that the strict-adoption notice was given, so it is given once per project."""
-    write_within(project_dir, marker, "validation.strict is enforced; this notice is given once\n")

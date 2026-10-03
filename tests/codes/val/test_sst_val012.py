@@ -13,7 +13,7 @@ CURRENT = "    ai_question_categorization: |-\n"
 def test_sst_val012_fires(tmp_path: Path) -> None:
     project = edited(tmp_path, INSTRUCTIONS, CURRENT, "    question_categorization: |-\n")
     [diagnostic] = found(project, "SST-VAL012")
-    assert diagnostic.severity is Severity.WARNING
+    assert diagnostic.severity is Severity.ERROR
     assert diagnostic.message == (
         "custom_instruction 'jaffle_question_scope' uses 'question_categorization'; "
         "the current spelling is 'ai_question_categorization'"

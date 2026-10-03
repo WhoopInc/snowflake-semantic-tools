@@ -45,12 +45,8 @@ def test_sst_val715_fires() -> None:
 
 
 def test_sst_val715_blocks_the_plan_that_would_add_the_version() -> None:
-    artifact = _artifact()
-    leaked = tuple(
-        (key, '{"agent":"DB.S.AGENT","git_sha":"123-45-6789"}' if key == "version_metadata" else value)
-        for key, value in artifact.component_fingerprints
-    )
-    assert _plan(replace(artifact, component_fingerprints=leaked)) == (Action.BLOCKED, ["SST-VAL715"])
+    leaked = replace(_artifact(), version_metadata='{"agent":"DB.S.AGENT","git_sha":"123-45-6789"}')
+    assert _plan(leaked) == (Action.BLOCKED, ["SST-VAL715"])
 
 
 def test_sst_val715_silent() -> None:
