@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 
 import pytest
 from click.testing import CliRunner, Result
 
 from snowflake_semantic_tools.cli.main import cli
+from tests.helpers.cli_json import invoke_json
 from tests.helpers.file_trees import write_tree
 from tests.helpers.reference_project import DBT_MANIFEST
 from tests.helpers.snowflake_fake import FakeSnowflake
@@ -30,6 +32,11 @@ def common(project: Path) -> list[str]:
 def compile_project(project: Path) -> None:
     result = CliRunner().invoke(cli, ["compile", *common(project)])
     assert result.exit_code == 0, result.output
+
+
+def validate_json(project: Path, *flags: str) -> tuple[int, list[dict[str, Any]]]:
+    """Run `sst validate --output json` on `project` with `flags`; return its exit code and diagnostics."""
+    return invoke_json(["validate", *common(project), *flags])
 
 
 def invoke_counting_closes(

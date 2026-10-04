@@ -3,17 +3,13 @@
 from __future__ import annotations
 
 import dataclasses
-import json
 from pathlib import Path
 from typing import Any
 
-from click.testing import CliRunner
-
 from snowflake_semantic_tools.adapters.resolved_config import resolved_config
-from snowflake_semantic_tools.cli.main import cli
 from snowflake_semantic_tools.cli.settings import severity_overrides_setting, strict_disagreement, validation_settings
 from snowflake_semantic_tools.domain.diagnostics import Severity
-from tests.helpers.cli_projects import common
+from tests.helpers.cli_projects import validate_json
 from tests.helpers.projects import project_paths
 from tests.helpers.reference_project import project_copy
 
@@ -33,21 +29,16 @@ def _project(tmp_path: Path) -> Path:
     return project
 
 
-def _validate(project: Path, *flags: str) -> tuple[int, list[dict[str, Any]]]:
-    result = CliRunner().invoke(cli, ["validate", *common(project), *flags, "--output", "json"])
-    return result.exit_code, json.loads(result.output)["diagnostics"]
-
-
 def _severities(diagnostics: list[dict[str, Any]], code: str) -> set[str]:
     return {item["severity"] for item in diagnostics if item["code"] == code}
 
 
 def test_strict_and_an_override_both_follow_the_target_the_run_names(tmp_path: Path) -> None:
     project = _project(tmp_path)
-    exit_code, prod = _validate(project, "-t", "prod")
+    exit_code, prod = validate_json(project, "-t", "prod")
     assert exit_code == 1
     assert _severities(prod, "SST-CFG018") == {"error"} and _severities(prod, "SST-VAL528") == {"error"}
-    exit_code, dev = _validate(project, "-t", "dev")
+    exit_code, dev = validate_json(project, "-t", "dev")
     assert exit_code == 0
     assert _severities(dev, "SST-CFG018") == {"warning"} and _severities(dev, "SST-VAL528") == {"warning"}
     assert "SST-CFG004" not in {item["code"] for item in (*prod, *dev)}
@@ -55,11 +46,11 @@ def test_strict_and_an_override_both_follow_the_target_the_run_names(tmp_path: P
 
 def test_the_strict_flag_disagrees_with_the_key_only_where_the_key_resolves_true(tmp_path: Path) -> None:
     project = _project(tmp_path)
-    _, prod = _validate(project, "-t", "prod", "--no-strict")
+    _, prod = validate_json(project, "-t", "prod", "--no-strict")
     assert [item["message"] for item in prod if item["code"] == "SST-CFG034"] != []
     # The override is not strict: it still makes the warning an error on prod.
     assert _severities(prod, "SST-CFG018") == {"error"} and _severities(prod, "SST-VAL528") == {"warning"}
-    _, dev = _validate(project, "-t", "dev", "--no-strict")
+    _, dev = validate_json(project, "-t", "dev", "--no-strict")
     assert "SST-CFG034" not in {item["code"] for item in dev}
 
 

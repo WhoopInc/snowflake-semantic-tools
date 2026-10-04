@@ -15,11 +15,9 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
-from click.testing import CliRunner
-
-from snowflake_semantic_tools.cli.main import cli
 from snowflake_semantic_tools.domain.diagnostics import Diagnostic
 from snowflake_semantic_tools.domain.model.project import SemanticViewProject
+from tests.helpers.cli_json import invoke_json
 from tests.helpers.projects import load_project
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -113,13 +111,15 @@ def view_names(project: Path, manifest_path: Path = DBT_MANIFEST) -> list[str]:
     return [view.fqn.rsplit(".", 1)[-1] for view in load(project, manifest_path).views]
 
 
+def compile_json(project: Path) -> tuple[int, list[dict[str, Any]]]:
+    """Run `sst compile --output json` on `project` with the vendored manifest: exit code and diagnostics."""
+    return invoke_json(["compile", "--project-dir", str(project), "--manifest", str(DBT_MANIFEST)])
+
+
 def compiled_diagnostics(project: Path, code: str) -> list[dict[str, Any]]:
     """The diagnostics `sst compile --output json` reports under `code`, as JSON objects."""
-    result = CliRunner().invoke(
-        cli, ["compile", "--project-dir", str(project), "--manifest", str(DBT_MANIFEST), "--output", "json"]
-    )
-    payload = json.loads(result.output)
-    return [item for item in payload["diagnostics"] if item["code"] == code]
+    _, diagnostics = compile_json(project)
+    return [item for item in diagnostics if item["code"] == code]
 
 
 def edited_manifest(root: Path, edit: Callable[[dict[str, Any]], None]) -> Path:

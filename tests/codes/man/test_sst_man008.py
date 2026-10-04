@@ -2,20 +2,9 @@
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 
-from click.testing import CliRunner
-
-from snowflake_semantic_tools.cli.main import cli
-from tests.helpers.reference_project import DBT_MANIFEST, break_menu_view, project_copy
-
-
-def compile_json(project: Path) -> tuple[int, list[dict[str, object]]]:
-    result = CliRunner().invoke(
-        cli, ["compile", "--project-dir", str(project), "--manifest", str(DBT_MANIFEST), "--output", "json"]
-    )
-    return result.exit_code, json.loads(result.output)["diagnostics"]
+from tests.helpers.reference_project import break_menu_view, compile_json, project_copy
 
 
 def test_sst_man008_fires(tmp_path: Path) -> None:
