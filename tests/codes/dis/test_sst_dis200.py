@@ -9,14 +9,8 @@ from snowflake_semantic_tools.adapters.yaml.documents import load_documents
 from snowflake_semantic_tools.adapters.yaml.ownership import assign_owners, ownership_report
 from snowflake_semantic_tools.adapters.yaml.parse import parse_yaml_bytes
 from snowflake_semantic_tools.domain.diagnostics import Severity
+from tests.helpers.dis_codes import project
 from tests.helpers.projects import project_paths
-
-
-def project(tmp_path: Path, text: str) -> Path:
-    (tmp_path / "sst_config.yml").write_text("project: {}\n", encoding="utf-8")
-    (tmp_path / "semantic_models").mkdir()
-    (tmp_path / "semantic_models" / "a.yml").write_text(text, encoding="utf-8")
-    return tmp_path
 
 
 def test_sst_dis200_fires(tmp_path: Path) -> None:

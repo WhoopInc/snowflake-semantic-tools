@@ -5,16 +5,13 @@ from __future__ import annotations
 from pathlib import Path
 
 from snowflake_semantic_tools.domain.diagnostics import Severity
+from tests.helpers.dbt_codes import key_column
 from tests.helpers.diagnostic_filters import coded
 from tests.helpers.seam_projects import SmallProject, manifest, model_node
 
 
-def _column(**sst: str) -> dict[str, object]:
-    return {"name": "products_id", "description": "The key.", "data_type": "VARCHAR", "meta": {"sst": sst}}
-
-
 def test_sst_dbt003_fires(tmp_path: Path) -> None:
-    node = model_node("products", columns={"products_id": _column(column_type="measure")})
+    node = model_node("products", columns={"products_id": key_column(column_type="measure")})
     [diagnostic] = coded(
         SmallProject(tmp_path, document=manifest({"model.fixture.products": node})).load().diagnostics, "SST-DBT003"
     )
