@@ -112,12 +112,9 @@ takes effect when it does not:
   every `generation` key but `generation.threads`, `defer`, `validation.exclude_dirs`,
   and `apply.fail_fast` (now the `--fail-fast` flag);
 - `generation.threads` is still read: it is how many Snowflake sessions `plan`,
-  `apply` and `test` work on at once, unless `--threads` or `SST_THREADS` says;
-- a key reserved for a later release is an error until SST reads it
-  (`SST-CFG044`).
+  `apply` and `test` work on at once, unless `--threads` or `SST_THREADS` says.
 
-The [configuration reference](../reference/config.md) lists the unsupported and
-removed keys.
+The [configuration reference](../reference/config.md) lists the removed keys.
 
 ## Checks 0.3 did not make
 

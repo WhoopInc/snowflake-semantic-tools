@@ -87,13 +87,23 @@ def test_removed_keys_carry_a_reason_or_a_dedicated_code() -> None:
     ]
 
 
-def test_unsupported_keys_are_errors_and_are_not_descended() -> None:
-    diagnostics = validate_config({"agents": {"finance": {"+schema": "X", "anything": True}}})
-    assert [(item.code, item.severity) for item in diagnostics] == [("SST-CFG044", Severity.ERROR)]
-    assert diagnostics[0].message == "config key 'agents.finance' is not supported in this release"
+def test_agent_folder_routes_are_checked_as_the_agents_block_at_every_depth() -> None:
+    assert _codes({"agents": {"finance": {"+schema": "X", "restricted": {"+secure": True}}}}) == []
+    assert _codes({"agents": {"finance": {"+schema": 1}}}) == [("SST-CFG004", "config:agents.finance.+schema")]
+    assert _codes({"agents": {"finance": {"restricted": {"+bogus": 1}}}}) == [
+        ("SST-CFG003", "config:agents.finance.restricted.+bogus")
+    ]
+    assert _codes({"agents": {"finance": {"+meta": {}}}}) == [("SST-CFG043", "config:agents.finance.+meta")]
     assert _codes({"dbt": {"invoke": True, "anything": True}}) == [("SST-CFG003", "config:dbt.anything")]
-    assert _codes({"agents": {"finance": {"+schema": "X"}}}) == [("SST-CFG044", "config:agents.finance")]
     assert _codes({"tools": {"finance": {"+bogus": 1}}}) == [("SST-CFG003", "config:tools.finance.+bogus")]
+
+
+def test_routed_models_meet_the_allowlist_and_evals_and_skills_take_no_routes() -> None:
+    tree = {"agents": {"+orchestration_model": "auto", "finance": {"core": {"+orchestration_model": "claude-x"}}}}
+    assert _codes(tree) == [("SST-CFG025", "config:agents.finance.core.+orchestration_model")]
+    assert _codes({**tree, "snowflake": {"orchestration_models": ["auto", "claude-x"]}}) == []
+    assert _codes({"evals": {"finance": {"+retry": 1}}}) == [("SST-CFG042", "config:evals.finance")]
+    assert _codes({"skills": {"finance": {}, "stage": {"+stage": "S"}}}) == [("SST-CFG042", "config:skills.finance")]
     assert _codes({"semantic_views": {"+tags": [], "+max_staleness": 60}}) == [
         ("SST-CFG023", "config:semantic_views.+max_staleness"),
     ]

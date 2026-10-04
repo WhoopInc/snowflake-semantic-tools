@@ -364,12 +364,11 @@ def render_config(schema: tuple[ConfigKey, ...] = CONFIG_SCHEMA) -> str:
     """Render the configuration reference page from the configuration schema.
 
     Current keys are grouped by top-level block, in schema order, and a block's own key gives
-    its summary and notes. A table of unsupported keys follows when there are any, then one of
+    its summary and notes. A table of deprecated keys follows, then one of
     removed keys, where a key that names no code links SST-CFG043. A default that starts with
     "the " is prose and shown as written; any other default is shown as code.
     """
     current = [key for key in schema if key.status is KeyStatus.CURRENT]
-    unsupported = [key for key in schema if key.status is KeyStatus.UNSUPPORTED]
     removed = [key for key in schema if key.status is KeyStatus.REMOVED]
     lines = [
         "# Configuration reference",
@@ -381,8 +380,6 @@ def render_config(schema: tuple[ConfigKey, ...] = CONFIG_SCHEMA) -> str:
         "",
         "- an unknown key is a warning (`SST-CFG003`), or an error when it is a",
         "  misspelled top-level block (`SST-CFG007`);",
-        "- an unsupported key is reserved for a later release and is an error until SST",
-        "  reads it (`SST-CFG044`);",
         "- a removed key is an error that says what replaced it.",
         "",
         "Keys that start with `+` set a default that nested folder routes and",
@@ -407,21 +404,6 @@ def render_config(schema: tuple[ConfigKey, ...] = CONFIG_SCHEMA) -> str:
         for key in rows:
             default = f"`{key.default}`" if key.default and not key.default.startswith("the ") else (key.default or "")
             lines.append(f"| `{_cell(key.path)}` | {_type(key)} | {_cell(default)} | {_cell(_description(key))} |")
-    if unsupported:
-        lines.extend(
-            (
-                "",
-                "## Unsupported keys",
-                "",
-                "These keys are reserved for a later release. Setting one is an error until SST",
-                "reads it, so a setting cannot look as though it takes effect when it does not.",
-                "",
-                "| Key | Type | Description |",
-                "|---|---|---|",
-            )
-        )
-    for key in unsupported:
-        lines.append(f"| `{_cell(key.path)}` | {_type(key)} | {_cell(_description(key))} |")
     lines.extend(_deprecated_rows(schema))
     lines.extend(
         (

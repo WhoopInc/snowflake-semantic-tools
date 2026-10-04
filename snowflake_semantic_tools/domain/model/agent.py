@@ -122,8 +122,9 @@ class AgentEvalFiles:
 class AgentModel:
     """One agent as its `agent.yml` declares it, before its tools and skills resolve.
 
-    Compile fills what the agent leaves unset from the `agents:` defaults: the orchestration
-    model, budget, `tool_not_accessible`, `analytical_search`, alias, `secure`, and tags.
+    Compile fills what the agent leaves unset from the `agents:` defaults, as the folder routes
+    over its file override them: the orchestration model, budget, `tool_not_accessible`,
+    `analytical_search`, alias, `secure`, and tags.
 
     Attributes:
         source_files: The `agent.yml` and each instruction file it reads, relative to the
@@ -142,6 +143,8 @@ class AgentModel:
         deprecated: The agent is retired from use; no alias may still point at a version of it.
         budget_tokens_documented: A comment on or just above `budget.tokens` says it bounds
             orchestration, so the budget is not read as a spend ceiling.
+        folder: The agent file's directory below `project.agents_dir`, one segment per directory;
+            the `agents:` folder routes along it apply to the agent.
     """
 
     name: str
@@ -168,6 +171,7 @@ class AgentModel:
     evals: AgentEvalFiles | None = None
     deprecated: bool = False
     budget_tokens_documented: bool = False
+    folder: tuple[str, ...] = ()
 
     @property
     def key(self) -> str:

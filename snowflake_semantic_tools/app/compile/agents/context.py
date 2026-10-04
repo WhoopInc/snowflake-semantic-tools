@@ -14,14 +14,19 @@ from snowflake_semantic_tools.domain.model.tool import ToolCatalog
 class AgentCompileContext:
     """Everything outside the agents that compiling them reads, and the `agents:` defaults.
 
+    Compiling a project gives each agent its own context, with the defaults the folder routes
+    over its file resolve to; the rest is shared.
+
     Attributes:
         semantic_views: The views that compiled, by casefolded name; an Analyst tool over
             any other view is SST-REF011.
-        agents: Every enabled agent's published name, by casefolded name.
+        agents: Every enabled agent's published name, by casefolded name, each in the location
+            the folder routes over its file resolve to.
         extensions: `skills.extensions` entries, by casefolded name.
         variables: What `{{ var('<name>') }}` resolves to in a skill's version.
-        database, schema: Where agents publish, and where a tool an agent names from a
-            `define:` member is taken to be.
+        database, schema: The `agents:` block's own location: where an agent `agents` does not
+            name publishes, and where a tool an agent names from a `define:` member is taken
+            to be.
         warehouse, query_timeout: The execution environment a tool gets when it sets none.
         orchestration_model, budget_seconds, budget_tokens, tool_not_accessible,
             analytical_search, alias: What an agent inherits when it sets none; an
@@ -63,6 +68,10 @@ class AgentCompileContext:
     tags: tuple[tuple[str, str], ...] = ()
     # `snowflake.tool_types`: tool types this project adds to the ones SST renders (SST-RND012).
     extra_tool_types: frozenset[str] = frozenset()
+
+    def agent_target(self, name: str) -> QualifiedName:
+        """Return where the agent named `name` publishes: its entry in `agents`, else the block's location."""
+        return self.agents.get(name.casefold()) or QualifiedName.from_parts(self.database, self.schema, name)
 
 
 @dataclass(frozen=True, slots=True)

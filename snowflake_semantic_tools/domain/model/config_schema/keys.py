@@ -1,7 +1,7 @@
 """The key table of `sst_config.yml`: every key, block, and wildcard slot SST reads.
 
-One table serves two consumers. Validation (`validate.py`) turns an unknown, removed,
-mistyped, or unsupported key into a diagnostic instead of a silent no-op, and the
+One table serves two consumers. Validation (`validate.py`) turns an unknown, removed, or
+mistyped key into a diagnostic instead of a silent no-op, and the
 generated configuration reference renders the same rows, so the documentation cannot
 drift from what the engine accepts. Row order is the reference page's order.
 """
@@ -39,13 +39,11 @@ class KeyKind(Enum):
 
 
 class KeyStatus(Enum):
-    """Whether SST reads a key, reserves it, reads it under its new name, or no longer reads it."""
+    """Whether SST reads a key, reads it under its new name, or no longer reads it."""
 
     CURRENT = "current"
     # An error naming its replacement; the rest of the block is checked as that key.
     DEPRECATED = "deprecated"
-    # Reserved for a later release: setting it is an error until SST reads it.
-    UNSUPPORTED = "unsupported"
     REMOVED = "removed"
 
 
@@ -129,10 +127,6 @@ def _deprecated(path: str, replacement: str) -> ConfigKey:
         status=KeyStatus.DEPRECATED,
         replacement=replacement,
     )
-
-
-def _unsupported(path: str, kind: KeyKind, summary: str) -> ConfigKey:
-    return ConfigKey(path, kind, summary, status=KeyStatus.UNSUPPORTED)
 
 
 _S = KeyKind.STRING
@@ -357,7 +351,7 @@ CONFIG_SCHEMA: tuple[ConfigKey, ...] = (
     ),
     _removed("semantic_views.+meta", "put metadata on the view itself"),
     _key("semantic_views.<route>", _BLOCK, "Folder route: overrides for views under that directory."),
-    _key("agents", _BLOCK, "Defaults for Cortex Agents.", children=ChildPolicy.ROUTES),
+    _key("agents", _BLOCK, "Defaults for Cortex Agents, overridable per folder.", children=ChildPolicy.ROUTES),
     _key("agents.+database", _S, "Database for agents.", default="the target database"),
     _key("agents.+schema", _S, "Schema for agents.", default="the target schema"),
     _key("agents.+warehouse", _S, "Warehouse for agent tool execution.", default="the target warehouse"),
@@ -379,7 +373,7 @@ CONFIG_SCHEMA: tuple[ConfigKey, ...] = (
     _removed("agents.+copy_grants", "agents are never replaced, so there are no grants to copy"),
     _removed("agents.+meta", "put metadata on the agent itself"),
     _removed("agents.+create_mode", "agents are created once and versioned"),
-    _unsupported("agents.<route>", _BLOCK, "Folder route."),
+    _key("agents.<route>", _BLOCK, "Folder route: overrides for agents under that directory."),
     _key("evals", _BLOCK, "Defaults for agent evaluations.", children=ChildPolicy.ROUTES),
     _key("evals.+eval_tier", KeyKind.ENUM, "Whether a regression blocks.", choices=("blocking", "report")),
     _key("evals.+metrics", _L, "Default system metrics."),

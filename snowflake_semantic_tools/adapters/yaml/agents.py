@@ -19,6 +19,7 @@ from snowflake_semantic_tools.adapters.yaml.fields import (
     optional_string,
 )
 from snowflake_semantic_tools.adapters.yaml.parse import parse_yaml_bytes
+from snowflake_semantic_tools.adapters.yaml.routes import folder_route_diagnostics
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, DiagnosticBag, Origin
 from snowflake_semantic_tools.domain.model.agent import AgentEvalFiles, AgentModel, AgentProfile, AgentSkill, AgentTool
 from snowflake_semantic_tools.domain.model.artifact_key import artifact_key
@@ -30,15 +31,25 @@ from snowflake_semantic_tools.domain.resolve.calls import call_problem, malforme
 _Block = TypeVar("_Block", bound=Mapping[Any, Any])
 
 
-def load_agents(project_dir: Path, *, agents_dir: str = "agents") -> tuple[tuple[AgentModel, ...], DiagnosticBag]:
-    """Read each `agent.yml` or `agent.yaml` one folder below `agents_dir` into an agent, in path order.
+def load_agents(
+    project_dir: Path, *, agents_dir: str = "agents", config: Mapping[str, Any] | None = None
+) -> tuple[tuple[AgentModel, ...], DiagnosticBag]:
+    """Read each `agent.yml` or `agent.yaml` in a folder below `agents_dir` into an agent, in path order.
 
-    A missing `agents_dir` holds no agents. A file that cannot be read or parsed, or names no
+    An agent's folder may sit in grouping folders, `<agents_dir>/<domain>/<agent>/agent.yml`, which
+    the `agents:` folder routes name; the agent records them as its `folder`. A missing
+    `agents_dir` holds no agents. A file that cannot be read or parsed, or names no
     agent, contributes its diagnostics and no agent; any other problem is reported and the
     agent kept without what could not be read. Sidecars and eval files resolve against the
     agent's own folder.
 
+    Args:
+        config: The run's resolved configuration, whose `agents:` folder routes are checked
+            against the folders under `agents_dir`; None checks none.
+
     Diagnostics:
+        SST-CFG041: when an `agents:` folder route names no folder under `agents_dir`; reported
+            first.
         SST-LOD004: when a file cannot be read, or a template in it is malformed.
         SST-LOD006: when a file or an instruction sidecar is not UTF-8.
         SST-LOD001: when a file is not valid YAML.
@@ -61,11 +72,12 @@ def load_agents(project_dir: Path, *, agents_dir: str = "agents") -> tuple[tuple
         SST-LOD019: when a sidecar holds only whitespace.
     """
     root = project_dir / agents_dir
+    routes = folder_route_diagnostics(dict(config), "agents", root) if config is not None else ()
     if not root.is_dir():
-        return (), DiagnosticBag()
+        return (), DiagnosticBag(routes)
     agents: list[AgentModel] = []
-    diagnostics: list[Diagnostic] = []
-    for path in sorted(root.glob("*/agent.y*ml")):
+    diagnostics: list[Diagnostic] = list(routes)
+    for path in sorted(root.glob("*/**/agent.y*ml")):
         relative = path.relative_to(project_dir).as_posix()
         try:
             raw = path.read_bytes()
@@ -80,7 +92,8 @@ def load_agents(project_dir: Path, *, agents_dir: str = "agents") -> tuple[tuple
         diagnostics.extend((*parsed.diagnostics, *problems))
         if agent is not None:
             documented = _comment_mentions(raw, parsed.line_index.get(_TOKENS), "orchestration")
-            agents.append(replace(agent, budget_tokens_documented=documented))
+            folder = path.parent.relative_to(root).parts
+            agents.append(replace(agent, budget_tokens_documented=documented, folder=folder))
     return tuple(agents), DiagnosticBag(diagnostics)
 
 

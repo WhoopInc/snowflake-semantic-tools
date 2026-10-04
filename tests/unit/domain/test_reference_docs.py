@@ -138,15 +138,13 @@ def test_error_codes_refuse_a_subsystem_without_a_section() -> None:
         render_error_codes({stray.code: stray})
 
 
-def test_config_page_renders_notes_types_and_unsupported_and_removed_keys() -> None:
+def test_config_page_renders_notes_types_and_removed_keys() -> None:
     schema = (
         ConfigKey("orphan.key", KeyKind.STRING, "A key whose block has no row."),
         ConfigKey("bare", KeyKind.BLOCK, "A block with no keys."),
-        ConfigKey("spare", KeyKind.BLOCK, "A reserved block.", status=KeyStatus.UNSUPPORTED),
         ConfigKey("pick", KeyKind.BLOCK, "Pick one.", one_of=("a", "b")),
         ConfigKey("pick.mode", KeyKind.ENUM, "Mode.", default="fast", choices=("fast", "slow"), required=True),
         ConfigKey("pick.count", KeyKind.INTEGER, "How many.", default="the default", minimum=1, maximum=9),
-        ConfigKey("pick.later", KeyKind.STRING, "Later.", status=KeyStatus.UNSUPPORTED),
         ConfigKey("pick.gone", KeyKind.ANY, "no longer read", status=KeyStatus.REMOVED),
         ConfigKey("pick.named", KeyKind.ANY, "has its own code", status=KeyStatus.REMOVED, code="SST-CFG040"),
     )
@@ -156,13 +154,10 @@ def test_config_page_renders_notes_types_and_unsupported_and_removed_keys() -> N
     assert "Declare at least one of `a`, `b`." in page
     assert "| `pick.mode` | enum: `fast`, `slow`, required | `fast` | Mode. |" in page
     assert "| `pick.count` | integer, 1 to 9 | the default | How many. |" in page
-    unsupported = page.split("## Unsupported keys", 1)[1].split("## Removed keys", 1)[0]
-    assert "| `spare` | block | A reserved block. |" in unsupported
-    assert "| `pick.later` | string | Later. |" in unsupported
-    assert "`pick.later`" not in page.split("## Unsupported keys", 1)[0]
-    assert "| `pick.gone` | no longer read | [`SST-CFG043`](error-codes.md#sst-cfg043) |" in page
-    assert "| `pick.named` | has its own code | [`SST-CFG040`](error-codes.md#sst-cfg040) |" in page
-    assert "## Unsupported keys" not in render_config(schema[:2])
+    removed = page.split("## Removed keys", 1)[1]
+    assert "`pick.gone`" not in page.split("## Removed keys", 1)[0]
+    assert "| `pick.gone` | no longer read | [`SST-CFG043`](error-codes.md#sst-cfg043) |" in removed
+    assert "| `pick.named` | has its own code | [`SST-CFG040`](error-codes.md#sst-cfg040) |" in removed
 
 
 def test_fixed_keys_state_their_value_in_their_summary() -> None:
