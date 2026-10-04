@@ -9,6 +9,7 @@ from typing import Any
 
 import yaml
 
+from snowflake_semantic_tools.adapters import bounded_yaml
 from snowflake_semantic_tools.adapters.errors import ProjectError
 from snowflake_semantic_tools.adapters.paths import walk_refusal
 from snowflake_semantic_tools.adapters.yaml.fields import (
@@ -191,7 +192,7 @@ def _frontmatter(
         return None, None, text
     body = "".join(lines[closing + 1 :])
     try:
-        value: Any = yaml.safe_load("".join(lines[1:closing]))
+        value: Any = bounded_yaml.safe_load("".join(lines[1:closing]))
     except yaml.YAMLError as exc:
         mark = getattr(exc, "problem_mark", None)
         line = mark.line + 2 if mark is not None else 2

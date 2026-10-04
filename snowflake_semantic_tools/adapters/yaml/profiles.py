@@ -8,6 +8,7 @@ from typing import Any
 
 import yaml
 
+from snowflake_semantic_tools.adapters import bounded_yaml
 from snowflake_semantic_tools.adapters.errors import ProjectError
 from snowflake_semantic_tools.adapters.json_files import JsonFileError, read_json_file
 from snowflake_semantic_tools.adapters.yaml.fields import (
@@ -345,7 +346,7 @@ def _check_command(command: CommandFile, diagnostics: list[Diagnostic]) -> None:
         invalid("frontmatter opens with --- but never closes")
         return
     try:
-        value: Any = yaml.safe_load("\n".join(lines[1:closing]))
+        value: Any = bounded_yaml.safe_load("\n".join(lines[1:closing]))
     except yaml.YAMLError as exc:
         invalid(f"frontmatter is not valid YAML: {getattr(exc, 'problem', exc)}")
         return

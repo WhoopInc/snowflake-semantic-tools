@@ -6,6 +6,7 @@ from pathlib import Path
 
 import yaml
 
+from snowflake_semantic_tools.adapters import bounded_yaml
 from snowflake_semantic_tools.adapters.errors import ProjectError
 from snowflake_semantic_tools.adapters.paths import write_within
 from snowflake_semantic_tools.adapters.yaml.discover import YAML_SUFFIXES
@@ -48,7 +49,7 @@ def filter_sites(text: str, path: str) -> tuple[FilterSite, ...]:
         return ()
     try:
         neutralized, templates = _neutralize_templates(text, path)
-        root = yaml.compose(neutralized, Loader=yaml.SafeLoader)
+        root = bounded_yaml.compose(neutralized)
     except (ProjectError, yaml.YAMLError):
         return ()
     if not isinstance(root, yaml.MappingNode):

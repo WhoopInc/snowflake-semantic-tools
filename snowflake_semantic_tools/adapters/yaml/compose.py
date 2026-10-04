@@ -13,6 +13,7 @@ from typing import Any, NoReturn
 
 import yaml
 
+from snowflake_semantic_tools.adapters.bounded_yaml import BoundedSafeLoader
 from snowflake_semantic_tools.adapters.errors import ProjectError
 from snowflake_semantic_tools.adapters.yaml.text_checks import unquoted_colon
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, Origin
@@ -29,8 +30,8 @@ def _refuse(*diagnostics: Diagnostic) -> NoReturn:
     raise ProjectError("; ".join(diagnostic.message for diagnostic in diagnostics), diagnostics=diagnostics)
 
 
-class _Loader(yaml.SafeLoader):
-    """A safe loader that records where each anchor and alias is written as it composes."""
+class _Loader(BoundedSafeLoader):
+    """A safe loader, within the nesting bound, that records where each anchor and alias is written."""
 
     def __init__(self, stream: str) -> None:
         super().__init__(stream)
@@ -51,7 +52,8 @@ def compose_single(text: str, path: str) -> yaml.Node | None:
 
     Diagnostics:
         SST-LOD009: YAML stopped at an unquoted `: ` inside a value on a key's line.
-        SST-LOD001: any other YAML syntax error, at YAML's mark.
+        SST-LOD001: any other YAML syntax error, at YAML's mark, collections nested deeper than
+            `adapters.bounded_yaml` allows among them.
         SST-LOD003: the text holds no document: only whitespace or comments.
         SST-LOD008: the text holds more than one document.
         SST-LOD013: an anchor or alias is written; one diagnostic per anchor and alias.
