@@ -8,14 +8,14 @@ from types import MappingProxyType
 from snowflake_semantic_tools.app.compile import CompileResult
 from snowflake_semantic_tools.app.manifest import manifest_for
 from snowflake_semantic_tools.app.plan import PlanCandidates, PlanReady, PlanRefused, PlanScope, PreparePlan
-from snowflake_semantic_tools.domain.diagnostics import D, DiagnosticBag, Origin, Severity
+from snowflake_semantic_tools.domain.diagnostics import D, Origin, Severity
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName, SchemaScope
 from snowflake_semantic_tools.domain.model.lifecycle import ShowRow
 from snowflake_semantic_tools.domain.ports.project import ValidationDefaults
 from snowflake_semantic_tools.domain.state import AppliedEntry, State
 from tests.helpers.app_ports import InMemoryStateStore
 from tests.helpers.clocks import FixedClock
-from tests.helpers.compile_builders import compiled
+from tests.helpers.compile_builders import compiled, with_diagnostics
 from tests.helpers.project_inputs import EMPTY_SOURCES, InMemoryProjectInputs, dev_target
 from tests.helpers.snowflake_fake import FakeSnowflake
 from tests.helpers.sql_values import texts
@@ -34,10 +34,6 @@ class ScopeRecordingSnowflake(FakeSnowflake):
     def show_objects(self, object_type: str, scope: SchemaScope) -> tuple[ShowRow, ...]:
         self.scopes.append(scope.sql)
         return super().show_objects(object_type, scope)
-
-
-def with_diagnostics(result: CompileResult, *diagnostics: object) -> CompileResult:
-    return replace(result, diagnostics=DiagnosticBag(diagnostics))  # type: ignore[arg-type]
 
 
 def select(

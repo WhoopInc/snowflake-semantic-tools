@@ -5,14 +5,8 @@ from __future__ import annotations
 from dataclasses import replace
 
 from snowflake_semantic_tools.domain.diagnostics import Severity
-from snowflake_semantic_tools.domain.model.eval import EvalGroundTruth, EvalQuestion
 from snowflake_semantic_tools.domain.render.eval import eval_render_checks
-from tests.helpers.eval_builders import ORIGIN, resolved_eval
-
-
-def with_truth(truth: EvalGroundTruth):  # type: ignore[no-untyped-def]
-    value = resolved_eval()
-    return replace(value, dataset=replace(value.dataset, questions=(EvalQuestion(ORIGIN, "Question", truth),)))
+from tests.helpers.eval_builders import resolved_eval
 
 
 def test_sst_rnd021_fires() -> None:

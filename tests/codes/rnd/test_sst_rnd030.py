@@ -3,12 +3,9 @@
 from __future__ import annotations
 
 from snowflake_semantic_tools.domain.diagnostics import Origin, Severity
-from snowflake_semantic_tools.domain.model.skill import Plugin, Skill, SkillFile
+from snowflake_semantic_tools.domain.model.skill import Plugin, SkillFile
 from snowflake_semantic_tools.domain.render.skill_bundle import build_plugin_bundle, build_skill_bundle
-
-
-def skill(*files: SkillFile, body: str = "Body.\n") -> Skill:
-    return Skill("close", "skills/close", "close", "Close.", body, files, Origin("skills/close/SKILL.md"))
+from tests.helpers.rnd_codes import skill
 
 
 def test_sst_rnd030_fires() -> None:

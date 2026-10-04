@@ -25,16 +25,12 @@ from snowflake_semantic_tools.domain.state import AppliedEntry, State
 from tests.helpers.app_ports import InMemoryStateStore
 from tests.helpers.artifact_builders import change, rendered
 from tests.helpers.clocks import FixedClock
-from tests.helpers.compile_builders import compiled
+from tests.helpers.compile_builders import compiled, with_diagnostics
 from tests.helpers.plan_codes import entry, live, manifest_of, state_of, view
 from tests.helpers.project_inputs import EMPTY_SOURCES, InMemoryProjectInputs, dev_target
 from tests.helpers.snowflake_fake import FakeSnowflake
 
 EVERYTHING = PlanScope((), None, None, None, None, False)
-
-
-def with_diagnostics(result: CompileResult, *diagnostics: object) -> CompileResult:
-    return replace(result, diagnostics=DiagnosticBag(diagnostics))  # type: ignore[arg-type]
 
 
 STATE_TABLE = QualifiedName.parse("DB.SCH.SST_STATE")

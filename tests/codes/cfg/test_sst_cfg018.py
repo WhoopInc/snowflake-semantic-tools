@@ -10,30 +10,22 @@ from click.testing import CliRunner
 from snowflake_semantic_tools.cli.main import cli
 from snowflake_semantic_tools.domain.diagnostics import Origin, Severity
 from snowflake_semantic_tools.domain.model.agent import AgentTool
-from snowflake_semantic_tools.domain.model.tool import ToolCatalog, ToolGroup, ToolMember, ToolOwnership
 from snowflake_semantic_tools.domain.validate.config import config_tool_calls, unreferenced_tool_members
+from tests.helpers.agent_context import docs_catalog
 from tests.helpers.cli_projects import common
 from tests.helpers.reference_project import project_copy
 
 
-def _catalog() -> ToolCatalog:
-    member = ToolMember(
-        "platform", "docs", "cortex_search_service", ToolOwnership.DEFINE, Origin("tools/p.yml", 1), "tools/p.yml"
-    )
-    group = ToolGroup("platform", Origin("tools/p.yml", 1), "tools/p.yml", members=(member,))
-    return ToolCatalog((group,), "dev", frozenset(("dev",)))
-
-
 def test_sst_cfg018_fires() -> None:
-    [diagnostic] = unreferenced_tool_members(_catalog(), [("other", "docs")])
+    [diagnostic] = unreferenced_tool_members(docs_catalog(), [("other", "docs")])
     assert (diagnostic.code, diagnostic.severity) == ("SST-CFG018", Severity.WARNING)
     assert diagnostic.message == "tool member 'platform.docs' is referenced by nothing"
     assert (diagnostic.subject, diagnostic.origin) == ("tool_group:platform", Origin("tools/p.yml", 1))
 
 
 def test_sst_cfg018_silent() -> None:
-    assert unreferenced_tool_members(_catalog(), [("platform", "Docs")]) == ()
-    assert unreferenced_tool_members(_catalog(), [("docs",)]) == ()
+    assert unreferenced_tool_members(docs_catalog(), [("platform", "Docs")]) == ()
+    assert unreferenced_tool_members(docs_catalog(), [("docs",)]) == ()
 
 
 def test_every_way_an_agent_or_the_config_names_a_member_counts() -> None:
@@ -46,10 +38,10 @@ def test_every_way_an_agent_or_the_config_names_a_member_counts() -> None:
         ("docs",),
         (),
     )
-    assert unreferenced_tool_members(_catalog(), [by_name.member_reference]) == ()
+    assert unreferenced_tool_members(docs_catalog(), [by_name.member_reference]) == ()
     config = {"agents": {"+note": "{{ tool('platform', 'docs') }}"}}
     assert config_tool_calls(config) == (("platform", "docs"),)
-    assert unreferenced_tool_members(_catalog(), config_tool_calls(config)) == ()
+    assert unreferenced_tool_members(docs_catalog(), config_tool_calls(config)) == ()
 
 
 def test_sst_cfg018_silent_for_a_reference_member_an_agent_toolset_names(tmp_path: Path) -> None:

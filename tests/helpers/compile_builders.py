@@ -6,11 +6,12 @@ publishes through both channels, the catalog and a stage.
 
 from __future__ import annotations
 
+from dataclasses import replace
 from typing import TypeVar
 
 from snowflake_semantic_tools.app.compile import CompileResult
 from snowflake_semantic_tools.app.compile.project import CompileProject
-from snowflake_semantic_tools.domain.diagnostics import Origin
+from snowflake_semantic_tools.domain.diagnostics import DiagnosticBag, Origin
 from snowflake_semantic_tools.domain.model.agent import AgentModel, AgentSkill
 from snowflake_semantic_tools.domain.model.project import SemanticViewProject
 from snowflake_semantic_tools.domain.model.semantic_view import Column, ColumnKind, SemanticView, Table
@@ -70,3 +71,8 @@ def compiled(*views: str, tree: dict[str, object] | None = None, agents: tuple[s
         agent_models=tuple(agent(name) for name in agents),
     )
     return CompileProject(inputs).run()
+
+
+def with_diagnostics(result: CompileResult, *diagnostics: object) -> CompileResult:
+    """`result` reporting exactly `diagnostics`."""
+    return replace(result, diagnostics=DiagnosticBag(diagnostics))  # type: ignore[arg-type]

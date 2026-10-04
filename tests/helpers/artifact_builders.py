@@ -15,7 +15,14 @@ from snowflake_semantic_tools.domain.model.lifecycle import (
     OwnershipMarker,
     RenderedArtifact,
 )
-from snowflake_semantic_tools.domain.state import STATE_SCHEMA_VERSION, AppliedEntry, ImpactIndex, Manifest, State
+from snowflake_semantic_tools.domain.state import (
+    APPLIED,
+    STATE_SCHEMA_VERSION,
+    AppliedEntry,
+    ImpactIndex,
+    Manifest,
+    State,
+)
 from tests.helpers.manifests import build_minimal_manifest
 from tests.helpers.sql_values import statement
 
@@ -94,3 +101,8 @@ def manifest(artifacts: dict[str, RenderedArtifact]) -> Manifest:
         impact=ImpactIndex(),
         diagnostics_summary={},
     )
+
+
+def applied_entry(target: str, fingerprint: str, *, outcome: str = APPLIED) -> AppliedEntry:
+    """An entry applied to `target` with `fingerprint` and `outcome`."""
+    return AppliedEntry(fingerprint, target, "now", "run", outcome, fingerprint, "a" * 64)

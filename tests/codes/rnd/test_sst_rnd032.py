@@ -2,13 +2,10 @@
 
 from __future__ import annotations
 
-from snowflake_semantic_tools.domain.diagnostics import Origin, Severity
+from snowflake_semantic_tools.domain.diagnostics import Severity
 from snowflake_semantic_tools.domain.model.skill import Skill, SkillFile
 from snowflake_semantic_tools.domain.render.skill_bundle import SKILL_MD_BUDGET_BYTES, build_skill_bundle
-
-
-def skill(*files: SkillFile, body: str = "Body.\n") -> Skill:
-    return Skill("close", "skills/close", "close", "Close.", body, files, Origin("skills/close/SKILL.md"))
+from tests.helpers.rnd_codes import skill
 
 
 def skill_md(filler: int) -> Skill:

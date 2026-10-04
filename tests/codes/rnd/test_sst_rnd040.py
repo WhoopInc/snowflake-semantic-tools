@@ -2,13 +2,9 @@
 
 from __future__ import annotations
 
-from snowflake_semantic_tools.domain.diagnostics import Origin, Severity
-from snowflake_semantic_tools.domain.model.tool import ToolMember, ToolOwnership
+from snowflake_semantic_tools.domain.diagnostics import Severity
 from snowflake_semantic_tools.domain.render.tool import tool_render_checks
-
-
-def member(kind: str, **fields: object) -> ToolMember:
-    return ToolMember("platform", "lookup", kind, ToolOwnership.DEFINE, Origin("tools/t.yml"), "tools/t.yml", **fields)  # type: ignore[arg-type]
+from tests.helpers.rnd_codes import member
 
 
 def test_sst_rnd040_fires() -> None:

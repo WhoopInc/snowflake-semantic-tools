@@ -59,3 +59,12 @@ def agent_context(
         skills={"semantics": SEMANTICS},
         plugins={"toolkit": TOOLKIT},
     )
+
+
+def docs_catalog() -> ToolCatalog:
+    """A tool catalog for `dev` with one defined search service `platform.docs`."""
+    member = ToolMember(
+        "platform", "docs", "cortex_search_service", ToolOwnership.DEFINE, Origin("tools/p.yml", 1), "tools/p.yml"
+    )
+    group = ToolGroup("platform", Origin("tools/p.yml", 1), "tools/p.yml", members=(member,))
+    return ToolCatalog((group,), "dev", frozenset(("dev",)))

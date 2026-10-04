@@ -12,16 +12,13 @@ from snowflake_semantic_tools.adapters.fs.local import ManifestFileStore
 from snowflake_semantic_tools.cli.main import cli
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
 from snowflake_semantic_tools.domain.model.lifecycle import OwnershipMarker
-from snowflake_semantic_tools.domain.state import APPLIED, AppliedEntry
+from snowflake_semantic_tools.domain.state import AppliedEntry
+from tests.helpers.artifact_builders import applied_entry
 from tests.helpers.cli_projects import common, compile_project, invoke_with_port
 from tests.helpers.reference_project import project_copy
 from tests.helpers.snowflake_fake import FakeSnowflake
 
 TABLE = QualifiedName.from_parts("DB", "S", "SST_STATE")
-
-
-def _entry(target: str, fingerprint: str, *, outcome: str = APPLIED) -> AppliedEntry:
-    return AppliedEntry(fingerprint, target, "now", "run", outcome, fingerprint, "a" * 64)
 
 
 def _local(project: Path) -> dict[str, tuple[str, str]]:
@@ -38,12 +35,12 @@ def _deployed(project: Path, *, drop: str, change: str) -> FakeSnowflake:
         if key == drop or not key.startswith(("semantic_view:", "agent:")):
             continue
         live = "b" * 64 if key == change else fingerprint
-        state[key] = _entry(target, live)
+        state[key] = applied_entry(target, live)
         markers[target] = OwnershipMarker("a" * 64, live)
     # Only the target holds this one; the next is in state, but its object was dropped by hand.
-    state["semantic_view:only_live"] = _entry("DB.S.ONLY", "c" * 64)
+    state["semantic_view:only_live"] = applied_entry("DB.S.ONLY", "c" * 64)
     markers["DB.S.ONLY"] = OwnershipMarker("a" * 64, "c" * 64)
-    state["semantic_view:gone_by_hand"] = _entry("DB.S.GONE", "d" * 64)
+    state["semantic_view:gone_by_hand"] = applied_entry("DB.S.GONE", "d" * 64)
     return FakeSnowflake(state=state, markers=markers)
 
 
@@ -87,7 +84,7 @@ def test_names_only_selection_and_no_detailed_exitcode(tmp_path: Path, monkeypat
 
 def test_two_targets_agree_with_no_local_state(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     project = project_copy(tmp_path)
-    port = FakeSnowflake(state={"skill:bundle": _entry("DB.S.BUNDLE", "3" * 64)})
+    port = FakeSnowflake(state={"skill:bundle": applied_entry("DB.S.BUNDLE", "3" * 64)})
     result = _diff(monkeypatch, port, project, "--from", "dev", "--to", "prod")
     assert result.exit_code == 0, result.output
     assert "dev and prod agree" in result.output
