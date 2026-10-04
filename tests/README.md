@@ -84,7 +84,7 @@ There is no update switch. When a change to rendered output is intended, run the
 ## Writing Tests
 
 - Put a test beside the ring it exercises: `unit/domain`, `unit/app`, `unit/adapters`, or `unit/cli/test_<command>.py` for command behavior.
-- Domain tests stay pure; `unit/domain/conftest.py` refuses network access.
+- No test outside the `live` marker reaches the network: `conftest.py` installs `tests/helpers/network_guard.py` for the session, which lets only Unix sockets and loopback through. Domain tests are stricter still; `unit/domain/conftest.py` refuses loopback too.
 - Code that more than one test module uses goes in `tests/helpers/`, imported as `tests.helpers.<module>`. Never import a conftest or another test module: pytest has already imported it under a name of its own, so the import loads a second copy.
 - Application tests use real in-memory ports (`tests/helpers/app_ports.py`, `tests/helpers/recorded_snowflake.py`), not mocks. There is no mocking library; use pytest's `monkeypatch` for the rest. Test doubles live under `tests/`, never in the package, so they do not ship.
 - CLI tests run the reference project through `CliRunner` with `--manifest`, or build a small project in `tmp_path`.

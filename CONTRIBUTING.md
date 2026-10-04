@@ -142,8 +142,17 @@ semgrep scan --config p/python --config p/sql-injection --error --metrics off sn
 ```
 
 A semgrep false positive is silenced on its line with `# nosemgrep: <rule-id>` and a comment
-saying why. Nothing yet stops a fast-gate test from opening a socket: the suite has no socket
-guard, so the offline boundary is held by the `live` marker alone.
+saying why.
+
+No test outside the `live` marker may reach the network. `tests/conftest.py` installs a guard for
+the whole session (`tests/helpers/network_guard.py`) that patches `socket.socket.connect`,
+`socket.socket.connect_ex`, `socket.create_connection` and `socket.getaddrinfo`: a Unix-domain
+socket and a loopback address (`127.0.0.0/8`, `::1`, `localhost`) pass, so pytest-xdist and a
+test's own local server work, and anything else raises `NetworkAccessRefused`. A refusal the code
+under test catches and swallows still fails the test. A test that needs the network either fakes
+the call with the doubles in `tests/helpers/` or is marked `live`, which lifts the guard from the
+setup of its fixtures to its teardown. The guard holds in the pytest process only: a subprocess a
+test starts, such as the end-to-end layer's `run_sst`, is not covered.
 
 A coverage number that rises can be locked in with `coverage_ratchet raise`, which only ever moves
 a number up. Lowering one is an edit to `tests/coverage_baseline.json` in the pull request that

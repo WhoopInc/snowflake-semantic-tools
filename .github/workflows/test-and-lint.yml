@@ -5,8 +5,8 @@ name: Test and Lint
 # neither, since nothing here connects to Snowflake. publish-to-pypi.yml calls this workflow
 # (`workflow_call`), so a release passes exactly the gate a pull request does.
 #
-# Nothing yet enforces that the fast gate opens no socket: there is no socket guard in the
-# suite, so the boundary is held by the `live` marker alone.
+# tests/conftest.py refuses, for the whole session, any connection or name lookup a test outside
+# the `live` marker makes to anything but a Unix socket or loopback (tests/helpers/network_guard.py).
 on:
   push:
     branches:
