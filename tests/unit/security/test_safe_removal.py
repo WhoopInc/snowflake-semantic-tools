@@ -8,7 +8,6 @@ from pathlib import Path
 
 import pytest
 
-from snowflake_semantic_tools.adapters import paths
 from snowflake_semantic_tools.adapters.paths import UnsafeWrite, remove_tree_within, remove_within
 
 
@@ -35,7 +34,7 @@ def test_a_folder_swapped_for_a_link_after_its_check_is_refused(
         os.symlink(outside, folder)
         real_rmtree(name, dir_fd=dir_fd)
 
-    monkeypatch.setattr(paths.shutil, "rmtree", swap_then_remove)
+    monkeypatch.setattr(shutil, "rmtree", swap_then_remove)
     with pytest.raises(UnsafeWrite, match="changed into a symbolic link"):
         remove_tree_within(root, folder)
     assert (outside / "keep.txt").read_text(encoding="utf-8") == "keep"
@@ -62,7 +61,7 @@ def test_a_removal_that_fails_for_another_reason_reports_that_failure(
     def refuse(name: str, *, dir_fd: int) -> None:
         raise PermissionError(13, "Permission denied", name)
 
-    monkeypatch.setattr(paths.shutil, "rmtree", refuse)
+    monkeypatch.setattr(shutil, "rmtree", refuse)
     with pytest.raises(PermissionError):
         remove_tree_within(root, root / "target" / "sst")
 

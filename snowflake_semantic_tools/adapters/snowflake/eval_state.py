@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from collections.abc import Mapping
 
+from snowflake_semantic_tools.adapters.json_files import parse_json
 from snowflake_semantic_tools.domain.model.eval import (
     EvalBaselineMetric,
     EvalBaselineRecord,
@@ -227,7 +228,7 @@ def _gate_payload(value: EvalGateState) -> dict[str, object]:
 
 def _mapping(value: object, subject: str) -> dict[str, object]:
     if isinstance(value, str):
-        value = json.loads(value)
+        value = parse_json(value)
     if not isinstance(value, dict):
         raise SnowflakePortError(f"eval {subject} payload must be an object")
     return {str(key): item for key, item in value.items()}

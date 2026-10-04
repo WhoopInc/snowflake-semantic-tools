@@ -130,8 +130,9 @@ def test_loads_a_manifest_from_disk(tmp_path: Path) -> None:
 def test_invalid_json_is_a_project_error(tmp_path: Path) -> None:
     path = tmp_path / "manifest.json"
     path.write_text("{", encoding="utf-8")
-    with pytest.raises(ProjectError, match="not valid JSON"):
+    with pytest.raises(ProjectError, match="Expecting property name") as raised:
         load_manifest_catalog(path)
+    assert [item.code for item in raised.value.diagnostics] == ["SST-PRT009"]
 
 
 def test_forbidden_model_location_keys_are_retained_for_validation() -> None:

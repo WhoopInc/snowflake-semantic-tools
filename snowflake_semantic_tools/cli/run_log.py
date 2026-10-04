@@ -12,6 +12,7 @@ import json
 from collections.abc import Iterable
 from pathlib import Path
 
+from snowflake_semantic_tools.adapters.json_files import JsonFileError, parse_json, read_bounded
 from snowflake_semantic_tools.adapters.paths import append_within
 from snowflake_semantic_tools.domain.diagnostics import Diagnostic
 from snowflake_semantic_tools.domain.diagnostics.signatures import fragile_signatures
@@ -38,13 +39,17 @@ def signature_report(build_dir: Path) -> dict[str, object]:
     A line that does not parse is skipped. `fragile` lists the signatures matched by message text
     alone, with no SQLSTATE or error number: each is a string matcher that a reworded Snowflake
     error would silently miss, and the rate above is how often one already has.
+
+    Raises:
+        JsonFileError: the log is larger than `adapters.json_files` reads, or is not UTF-8.
+        OSError: the log exists and cannot be read.
     """
     path = build_dir / RUN_LOG
     codes: list[str] = []
     if path.is_file():
-        for line in path.read_text(encoding="utf-8").splitlines():
+        for line in _log_text(path).splitlines():
             try:
-                entry = json.loads(line)
+                entry = parse_json(line)
             except ValueError:
                 continue
             if isinstance(entry, dict) and isinstance(entry.get("code"), str):
@@ -60,3 +65,17 @@ def signature_report(build_dir: Path) -> dict[str, object]:
             for row in fragile_signatures()
         ],
     }
+
+
+def _log_text(path: Path) -> str:
+    """Return the run log's text, within the size `adapters.json_files` reads.
+
+    Raises:
+        JsonFileError: the log is larger than that, or is not UTF-8.
+        OSError: the log cannot be read.
+    """
+    raw = read_bounded(path)
+    try:
+        return raw.decode("utf-8")
+    except UnicodeDecodeError as exc:
+        raise JsonFileError(str(exc)) from exc

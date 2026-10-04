@@ -26,6 +26,7 @@ from snowflake.connector import DictCursor
 from snowflake.connector.cursor import SnowflakeCursor
 from snowflake.connector.errors import Error as DriverError
 
+from snowflake_semantic_tools.adapters.json_files import parse_json
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic
 from snowflake_semantic_tools.domain.diagnostics.signatures import SessionFailure, session_failure
 from snowflake_semantic_tools.domain.model.identifier import SchemaScope
@@ -408,5 +409,5 @@ def _variant_value(value: object, default: object) -> object:
     if value is None:
         return default
     if isinstance(value, str):
-        return json.loads(value)
+        return parse_json(value)
     return value

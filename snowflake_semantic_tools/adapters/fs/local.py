@@ -4,13 +4,13 @@ from __future__ import annotations
 
 import contextlib
 import hashlib
-import json
 from collections.abc import Callable, Iterator
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Generic, TypeVar
 
 from snowflake_semantic_tools.adapters.errors import ProjectError
+from snowflake_semantic_tools.adapters.json_files import JsonFileError, parse_json, read_json_file
 from snowflake_semantic_tools.adapters.paths import create_within, remove_within, write_within
 from snowflake_semantic_tools.domain.diagnostics import D
 from snowflake_semantic_tools.domain.model.config_schema import CONFIG_FILE
@@ -18,6 +18,9 @@ from snowflake_semantic_tools.domain.plan.recorded import RecordedObservation
 from snowflake_semantic_tools.domain.state import Manifest, SavedPlan, State, StoredDocumentError, canonical_json
 
 T = TypeVar("T")
+
+# Far more than the run id and time a lock file records.
+_LOCK_READ_BYTES = 4096
 
 
 class JsonStore(Generic[T]):
@@ -43,17 +46,23 @@ class JsonStore(Generic[T]):
         Raises:
             ProjectError: The file cannot be used and the store can name why, with one diagnostic:
                 the code of a `StoredDocumentError` the parser raised, else `unreadable_code` for
-                bytes that are not JSON or a document the parser cannot read.
+                bytes that are not JSON (or are too large or nested too deeply, as
+                `adapters.json_files` bounds them) or a document the parser cannot read.
             ValueError: The file cannot be used and the store has no code for it; a document of the
                 wrong shape is reported as `<path> has the wrong shape: <detail>`.
             OSError: The file exists and cannot be opened.
         """
         try:
-            raw = self.path.read_bytes()
+            document = read_json_file(self.path)
         except FileNotFoundError:
             return None
+        except JsonFileError as exc:
+            if self.unreadable_code is None:
+                raise ValueError(f"{self.path}: {exc}") from exc
+            diagnostic = D(self.unreadable_code, path=str(self.path), detail=str(exc))
+            raise ProjectError(diagnostic.message, diagnostics=(diagnostic,)) from exc
         try:
-            return self._parser(json.loads(raw))
+            return self._parser(document)
         except StoredDocumentError as exc:
             diagnostic = D(exc.code, path=str(self.path), **exc.context)
         except ValueError as exc:
@@ -245,9 +254,14 @@ class StateFileStore(JsonStore[State]):
         return True
 
     def _lock_bytes(self) -> bytes | None:
-        """Read the lock file's bytes; None when there is no lock file."""
+        """Read the lock file's bytes, at most `_LOCK_READ_BYTES` and one more; None when there is none.
+
+        A lock SST writes is far shorter. A longer one is cut there, so it never parses: it is held
+        by no run SST can name and is never stale, like any lock file that cannot be read.
+        """
         try:
-            return self._lock_path.read_bytes()
+            with self._lock_path.open("rb") as handle:
+                return handle.read(_LOCK_READ_BYTES + 1)
         except FileNotFoundError:
             return None
 
@@ -299,14 +313,17 @@ class StateFileStore(JsonStore[State]):
 def _lock_status(instance: bytes, now: datetime, ttl_seconds: int) -> tuple[str | None, bool]:
     """Return the holder a lock file's bytes record, and whether its claim is older than `ttl_seconds`.
 
-    Bytes that do not decode, or record no time, name no holder and are never stale.
+    Bytes that do not decode, are longer than `_LOCK_READ_BYTES`, or record no time, name no holder
+    and are never stale.
     """
+    if len(instance) > _LOCK_READ_BYTES:
+        return None, False
     try:
-        value = json.loads(instance.decode("utf-8"))
+        value = parse_json(instance)
         holder = value.get("run_id") if isinstance(value, dict) else None
         created = value.get("created_at") if isinstance(value, dict) else None
         timestamp = datetime.fromisoformat(created) if isinstance(created, str) else None
-    except (UnicodeDecodeError, json.JSONDecodeError, ValueError):
+    except ValueError:
         return None, False
     stale = timestamp is not None and (now - timestamp).total_seconds() > ttl_seconds
     return holder if isinstance(holder, str) else None, stale

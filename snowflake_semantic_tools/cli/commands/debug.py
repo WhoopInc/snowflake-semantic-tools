@@ -8,7 +8,6 @@ recognise, from the run log every command appends to.
 
 from __future__ import annotations
 
-import json
 from collections.abc import Mapping
 from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
@@ -18,6 +17,7 @@ import click
 from snowflake_semantic_tools._version import __version__ as VERSION
 from snowflake_semantic_tools.adapters.dbt.profiles import ProfileTarget, load_profile_target
 from snowflake_semantic_tools.adapters.errors import ProjectError
+from snowflake_semantic_tools.adapters.json_files import read_json_file
 from snowflake_semantic_tools.adapters.locations import ProjectPaths
 from snowflake_semantic_tools.adapters.resolved_config import resolved_config
 from snowflake_semantic_tools.cli.exit_codes import CONFIG, CONNECTION, ERROR, OK
@@ -117,9 +117,10 @@ def _manifest(paths: ProjectPaths, manifest_path: Path | None) -> dict[str, obje
     schema = None
     if path.is_file():
         try:
-            metadata = json.loads(path.read_text(encoding="utf-8")).get("metadata", {})
+            document = read_json_file(path)
+            metadata = document.get("metadata", {}) if isinstance(document, dict) else None
             schema = metadata.get("dbt_schema_version") if isinstance(metadata, dict) else None
-        except (OSError, ValueError, AttributeError):
+        except (OSError, ValueError):
             schema = None
     return {
         "source": "--manifest" if manifest_path is not None else "dbt parse",
