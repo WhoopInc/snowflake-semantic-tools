@@ -80,8 +80,9 @@ jobs:
 
       # Unit, contract, end-to-end (the offline negative corpus) and diagnostic-code guard tests,
       # measured for coverage in the same run. Tests marked `live` are deselected by default;
-      # slow.yml runs them against Snowflake. pyproject.toml's per-test timeout fails a test that
-      # hangs, with every thread's stack, instead of letting the job run until GitHub kills it.
+      # slow.yml runs them, by hand, against a maintainer's own account. pyproject.toml's
+      # per-test timeout fails a test that hangs, with every thread's stack, instead of letting
+      # the job run until GitHub kills it.
       - name: Run tests with coverage
         run: >-
           poetry run pytest tests/ -v -n auto

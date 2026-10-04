@@ -1,31 +1,58 @@
-name: Slow gate
+name: Snowflake checks (manual)
 
-# The tests that connect to Snowflake: the real connector against the port contract, apply in a
-# real account, and the CLI end to end through the smoke suite (`pytest -m live`). Each run works
-# in scratch schemas of its own, SST_IT_<UTC stamp>_<run>_<worker>, which the tests drop, which the
-# teardown step drops again even when a step failed, and which the nightly sweep drops if the job
-# was cancelled before either could run.
+# Optional checks against a real Snowflake account, for maintainers who have one. Nothing triggers
+# this workflow but a manual run (Actions > Snowflake checks (manual) > Run workflow), nothing waits
+# on it, and a pull request or a release never needs it: the fast gate in test-and-lint.yml is the
+# whole required gate, and runs offline with no secrets.
 #
-# The trigger is `pull_request`, never `pull_request_target`: a fork's pull request gets no
-# repository secrets, and neither does a Dependabot pull request, so on those two the gate job is
-# skipped and the fast gate in test-and-lint.yml is what such a change gets until it is merged.
-# Everywhere else -- a same-repository pull request, a push to main, a release tag, a manual run --
-# missing credentials fail the gate rather than skip it, and the tests run with
-# --require-snowflake, so a credential that stops working fails the job as well.
+# Supply your own account as repository (or fork) secrets:
+#
+#   SNOWFLAKE_ACCOUNT       account identifier
+#   SNOWFLAKE_USER          a key-pair user
+#   SNOWFLAKE_PRIVATE_KEY   that user's unencrypted PKCS#8 private key, PEM text
+#   SNOWFLAKE_ROLE          a role that may create and drop schemas in SNOWFLAKE_DATABASE
+#   SNOWFLAKE_WAREHOUSE     the warehouse the tests run in
+#   SNOWFLAKE_DATABASE      a database set aside for test scratch schemas
+#   SNOWFLAKE_SCHEMA        the schema the evals suite deploys to (evals only)
+#   SNOWFLAKE_GRANTEE_ROLE  optional; a role the test role may grant SELECT to, which adds the
+#                           check that replacing a view keeps its grants
+#
+# Without them the run skips with a notice and succeeds; it never fails for missing credentials.
+#
+# Suites:
+#   live       the real connector against the port contract, apply in a real account, and the CLI
+#              end to end through the smoke suite (`pytest -m live`). Each run works in scratch
+#              schemas of its own, SST_IT_<UTC stamp>_<run>_<worker>, which the tests drop and the
+#              teardown step drops again even when a step failed.
+#   sweep      drop SST_IT_* scratch schemas older than `older_than_hours`, the cleanup for a
+#              cancelled job or a killed runner
+#   recording  re-capture the recorded session and diff it against the committed recording
+#   evals      `sst test --suite evals` on the reference project; needs SNOWFLAKE_SCHEMA and a role
+#              that may create agents
 on:
-  push:
-    branches:
-      - main
-    tags:
-      - "v*.*.*"
-  pull_request:
   workflow_dispatch:
+    inputs:
+      suite:
+        description: "Which checks to run"
+        type: choice
+        options:
+          - live
+          - sweep
+          - recording
+          - evals
+        default: live
+      # A live run's budget is minutes, so a scratch schema this old belongs to a job that died.
+      # Too short would drop a schema a long run is still using; too long only costs storage.
+      older_than_hours:
+        description: "sweep: drop scratch schemas at least this many hours old"
+        type: string
+        default: "6"
 
 permissions:
   contents: read
 
 concurrency:
-  group: slow-gate-${{ github.ref }}
+  group: snowflake-checks-${{ github.ref }}-${{ inputs.suite }}
   cancel-in-progress: true
 
 jobs:
@@ -37,42 +64,52 @@ jobs:
     steps:
       - id: check
         env:
-          ACCOUNT: ${{ secrets.SST_TEST_SNOWFLAKE_ACCOUNT }}
-          EVENT: ${{ github.event_name }}
-          REPOSITORY: ${{ github.repository }}
-          HEAD_REPOSITORY: ${{ github.event.pull_request.head.repo.full_name }}
-          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
+          SUITE: ${{ inputs.suite }}
+          SNOWFLAKE_ACCOUNT: ${{ secrets.SNOWFLAKE_ACCOUNT }}
+          SNOWFLAKE_USER: ${{ secrets.SNOWFLAKE_USER }}
+          SNOWFLAKE_PRIVATE_KEY: ${{ secrets.SNOWFLAKE_PRIVATE_KEY }}
+          SNOWFLAKE_ROLE: ${{ secrets.SNOWFLAKE_ROLE }}
+          SNOWFLAKE_WAREHOUSE: ${{ secrets.SNOWFLAKE_WAREHOUSE }}
+          SNOWFLAKE_DATABASE: ${{ secrets.SNOWFLAKE_DATABASE }}
+          SNOWFLAKE_SCHEMA: ${{ secrets.SNOWFLAKE_SCHEMA }}
         run: |
-          if [ -n "$ACCOUNT" ]; then
+          required="SNOWFLAKE_ACCOUNT SNOWFLAKE_USER SNOWFLAKE_PRIVATE_KEY SNOWFLAKE_ROLE SNOWFLAKE_WAREHOUSE SNOWFLAKE_DATABASE"
+          if [ "$SUITE" = "evals" ]; then
+            required="$required SNOWFLAKE_SCHEMA"
+          fi
+          missing=""
+          for name in $required; do
+            if [ -z "${!name}" ]; then
+              missing="$missing $name"
+            fi
+          done
+          if [ -z "$missing" ]; then
             echo "present=true" >> "$GITHUB_OUTPUT"
-          elif [ "$EVENT" = "pull_request" ] && [ "$HEAD_REPOSITORY" != "$REPOSITORY" ]; then
-            echo "present=false" >> "$GITHUB_OUTPUT"
-            echo "::notice::A fork's pull request gets no secrets: the slow gate is skipped and runs once the change is merged."
-          elif [ "$EVENT" = "pull_request" ] && [ "$PR_AUTHOR" = "dependabot[bot]" ]; then
-            echo "present=false" >> "$GITHUB_OUTPUT"
-            echo "::notice::A Dependabot pull request gets no repository secrets: the slow gate is skipped and runs once the change is merged."
           else
-            echo "::error::The SST_TEST_SNOWFLAKE_* secrets are not configured, so the slow gate cannot run. Outside a fork's pull request it fails rather than skips."
-            exit 1
+            echo "present=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Snowflake checks skipped: secrets not set:${missing}. These checks are optional; see the header of .github/workflows/slow.yml."
           fi
 
-  slow:
-    name: Contract, integration, end-to-end and smoke against Snowflake
+  run:
+    name: Run the ${{ inputs.suite }} checks against Snowflake
     needs: credentials
     if: needs.credentials.outputs.present == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 90
     permissions:
       contents: read
     env:
       HYPOTHESIS_PROFILE: ci
       SST_TEST_RUN_ID: ${{ github.run_id }}-${{ github.run_attempt }}
-      SST_TEST_SNOWFLAKE_ACCOUNT: ${{ secrets.SST_TEST_SNOWFLAKE_ACCOUNT }}
-      SST_TEST_SNOWFLAKE_USER: ${{ secrets.SST_TEST_SNOWFLAKE_USER }}
-      SST_TEST_SNOWFLAKE_ROLE: ${{ secrets.SST_TEST_SNOWFLAKE_ROLE }}
-      SST_TEST_SNOWFLAKE_WAREHOUSE: ${{ secrets.SST_TEST_SNOWFLAKE_WAREHOUSE }}
-      SST_TEST_SNOWFLAKE_DATABASE: ${{ secrets.SST_TEST_SNOWFLAKE_DATABASE }}
-      SST_TEST_SNOWFLAKE_GRANTEE_ROLE: ${{ secrets.SST_TEST_SNOWFLAKE_GRANTEE_ROLE }}
+      # The test helpers read SST_TEST_SNOWFLAKE_*; the secrets keep plain names.
+      SST_TEST_SNOWFLAKE_ACCOUNT: ${{ secrets.SNOWFLAKE_ACCOUNT }}
+      SST_TEST_SNOWFLAKE_USER: ${{ secrets.SNOWFLAKE_USER }}
+      SST_TEST_SNOWFLAKE_ROLE: ${{ secrets.SNOWFLAKE_ROLE }}
+      SST_TEST_SNOWFLAKE_WAREHOUSE: ${{ secrets.SNOWFLAKE_WAREHOUSE }}
+      SST_TEST_SNOWFLAKE_DATABASE: ${{ secrets.SNOWFLAKE_DATABASE }}
+      SST_TEST_SNOWFLAKE_GRANTEE_ROLE: ${{ secrets.SNOWFLAKE_GRANTEE_ROLE }}
+      SST_EVALS_SCHEMA: ${{ secrets.SNOWFLAKE_SCHEMA }}
+      SUITE: ${{ inputs.suite }}
 
     steps:
       - name: Check out repository
@@ -106,27 +143,89 @@ jobs:
       # readable only by the runner user, and removed by the last step.
       - name: Write the Snowflake private key
         env:
-          PRIVATE_KEY: ${{ secrets.SST_TEST_SNOWFLAKE_PRIVATE_KEY }}
+          PRIVATE_KEY: ${{ secrets.SNOWFLAKE_PRIVATE_KEY }}
         run: |
           key_path="$RUNNER_TEMP/sst_test_snowflake.p8"
           umask 077
           printf '%s\n' "$PRIVATE_KEY" > "$key_path"
           echo "SST_TEST_SNOWFLAKE_PRIVATE_KEY_PATH=$key_path" >> "$GITHUB_ENV"
 
+      # Credentials are present, so a live test that cannot connect fails rather than skips.
       # Driver logging stays at WARNING: the connector at DEBUG can echo connection settings.
       - name: Run the live layers
+        if: inputs.suite == 'live'
         run: >-
           poetry run pytest -m live --require-snowflake
           -n 4 --timeout 600 --log-level WARNING
           tests/contract_live tests/integration tests/e2e
 
-      # The offline negative corpus also runs in test-and-lint.yml; it is repeated here so this
-      # job reports every end-to-end case in one place.
-      - name: Run the negative corpus
-        run: poetry run pytest -m "e2e and not live" -n auto tests/e2e
+      # Drops only schemas named SST_IT_<stamp>_... that carry SST's marker comment, so nothing
+      # a person or another pipeline created is in reach.
+      - name: Sweep stale scratch schemas
+        if: inputs.suite == 'sweep'
+        env:
+          OLDER_THAN_HOURS: ${{ inputs.older_than_hours }}
+        run: poetry run python -m tests.helpers.sweep_scratch --older-than-hours "$OLDER_THAN_HOURS"
 
+      # A difference means Snowflake's answers moved: the project and the schema it is captured
+      # in are fixed. The capture is uploaded either way, so a reviewer can commit it.
+      - name: Capture and compare the recorded session
+        if: inputs.suite == 'recording'
+        run: poetry run python -m tests.helpers.session_recorder --out recording/live_project.json
+
+      - name: Upload the capture
+        if: always() && inputs.suite == 'recording'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: recorded-session
+          path: recording/live_project.json
+          if-no-files-found: warn
+
+      # The fixture's own `verify` target signs in through a browser; this one, with the same
+      # name, signs in with the key. Every value is an env_var reference, so the file holds no
+      # credential.
+      - name: Write a key-pair profile for the verify target
+        if: inputs.suite == 'evals'
+        run: |
+          mkdir -p "$RUNNER_TEMP/profiles"
+          cat > "$RUNNER_TEMP/profiles/profiles.yml" <<'PROFILE'
+          sst_reference_impl:
+            target: verify
+            outputs:
+              verify:
+                type: snowflake
+                authenticator: snowflake_jwt
+                account: "{{ env_var('SST_TEST_SNOWFLAKE_ACCOUNT') }}"
+                user: "{{ env_var('SST_TEST_SNOWFLAKE_USER') }}"
+                private_key_path: "{{ env_var('SST_TEST_SNOWFLAKE_PRIVATE_KEY_PATH') }}"
+                role: "{{ env_var('SST_TEST_SNOWFLAKE_ROLE') }}"
+                warehouse: "{{ env_var('SST_TEST_SNOWFLAKE_WAREHOUSE') }}"
+                database: "{{ env_var('SST_TEST_SNOWFLAKE_DATABASE') }}"
+                schema: "{{ env_var('SST_EVALS_SCHEMA') }}"
+                threads: 4
+          PROFILE
+
+      - name: Run the eval suite
+        if: inputs.suite == 'evals'
+        run: >-
+          poetry run sst --output json
+          --project-dir tests/fixtures/reference_project
+          --profiles-dir "$RUNNER_TEMP/profiles"
+          --manifest tests/fixtures/reference_project_manifest.json
+          test --suite evals --target verify
+          > evals.json
+
+      - name: Upload eval results
+        if: always() && inputs.suite == 'evals'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: eval-results
+          path: evals.json
+          if-no-files-found: warn
+
+      # Runs even when the live layers failed, so a failing test leaves no schema behind.
       - name: Drop this run's scratch schemas
-        if: always()
+        if: always() && inputs.suite == 'live'
         run: poetry run python -m tests.helpers.sweep_scratch --run "$SST_TEST_RUN_ID"
 
       - name: Remove the Snowflake private key
