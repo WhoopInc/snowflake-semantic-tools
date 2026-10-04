@@ -8,13 +8,14 @@ state the run left.
 from __future__ import annotations
 
 from snowflake_semantic_tools.app.apply import ApplyArtifacts
+from snowflake_semantic_tools.app.compile import CompileResult
 from snowflake_semantic_tools.app.compile.profiles import CompiledProfile, CompileProfiles, DesktopChannel
 from snowflake_semantic_tools.app.compile.skills import CatalogChannel, CompiledExtension, CompileSkills
 from snowflake_semantic_tools.app.lifecycle.extensions import ExtensionLifecycleHandler
 from snowflake_semantic_tools.app.lifecycle.profiles import ProfileLifecycleHandler
 from snowflake_semantic_tools.app.manifest import build_manifest
 from snowflake_semantic_tools.app.plan_artifacts import PlanArtifacts
-from snowflake_semantic_tools.domain.diagnostics import Origin
+from snowflake_semantic_tools.domain.diagnostics import DiagnosticBag, Origin
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
 from snowflake_semantic_tools.domain.model.lifecycle import ApplyOptions, ApplyResult, ChangeSet
 from snowflake_semantic_tools.domain.model.profile import DesktopProfile, ProfileCatalog, SharedProfile
@@ -115,3 +116,13 @@ def publish_profile(port: FakeSnowflake, compiled: CompiledProfile) -> tuple[Cha
         {compiled.artifact_key: compiled.rendered_artifact},
         empty_state(dict(port.remote_state or {})),
     )
+
+
+def both_channels_published() -> tuple[FakeSnowflake, CompileResult]:
+    """Publish the skill and the profile carrying it; return the port and both compiled artifacts."""
+    port = FakeSnowflake(existing=())
+    extension = compiled_skill()
+    profile = compiled_profile(skill())
+    publish_skill(port, extension)
+    publish_profile(port, profile)
+    return port, CompileResult((extension, profile), DiagnosticBag())

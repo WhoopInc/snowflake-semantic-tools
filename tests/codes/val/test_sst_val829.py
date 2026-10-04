@@ -7,24 +7,15 @@ do not explain, and the next plan says so.
 
 from __future__ import annotations
 
-from snowflake_semantic_tools.app.compile import CompileResult
 from snowflake_semantic_tools.app.lifecycle.channels import channel_divergence
-from snowflake_semantic_tools.domain.diagnostics import DiagnosticBag, Severity
-from tests.helpers.publications import compiled_profile, compiled_skill, publish_profile, publish_skill, skill
-from tests.helpers.snowflake_fake import FakeSnowflake
-
-
-def _both_channels_published() -> tuple[FakeSnowflake, CompileResult]:
-    port = FakeSnowflake(existing=())
-    extension = compiled_skill()
-    profile = compiled_profile(skill())
-    publish_skill(port, extension)
-    publish_profile(port, profile)
-    return port, CompileResult((extension, profile), DiagnosticBag())
+from snowflake_semantic_tools.domain.diagnostics import Severity
+from tests.helpers.publications import (
+    both_channels_published,
+)
 
 
 def test_sst_val829_fires() -> None:
-    port, result = _both_channels_published()
+    port, result = both_channels_published()
     [stage_skill] = [path for path in port.stage_files if path.endswith("/month-close/SKILL.md") and "PROFILES" in path]
     # The stage channel holds a file the catalog never published.
     port.stage_files.add(stage_skill.replace("SKILL.md", "reference/leftover.md"))
@@ -36,5 +27,5 @@ def test_sst_val829_fires() -> None:
 
 def test_sst_val829_silent() -> None:
     # Flattening renames reference/steps.md in the catalog, which explains that difference.
-    port, result = _both_channels_published()
+    port, result = both_channels_published()
     assert channel_divergence(port, result) == ()

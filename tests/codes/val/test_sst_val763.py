@@ -5,18 +5,11 @@ A gated metric passed a question in every baseline attempt and failed it now.
 
 from __future__ import annotations
 
-from snowflake_semantic_tools.app.evals.gate import capture_baseline, evaluate_gate
+from snowflake_semantic_tools.app.evals.gate import evaluate_gate
 from snowflake_semantic_tools.domain.diagnostics import ERROR_REGISTRY, Severity
-from snowflake_semantic_tools.domain.model.eval import EvalBaselineRecord
 from tests.helpers.diagnostic_filters import codes, only
 from tests.helpers.eval_builders import attempt, gated_eval, run_result
-
-PASSING = (("q", "answer_correctness", True), ("q", "grounding", True))
-
-
-def baseline() -> EvalBaselineRecord:
-    runs = run_result(attempt("run-1", *PASSING), attempt("run-2", *PASSING))
-    return capture_baseline(gated_eval(), runs, reason="initial", captured_at="2026-09-01T00:00:00Z")
+from tests.helpers.val_codes import baseline
 
 
 def test_sst_val763_fires() -> None:
