@@ -8,6 +8,7 @@ import pytest
 from click.testing import CliRunner, Result
 
 from snowflake_semantic_tools.cli.main import cli
+from tests.helpers.file_trees import write_tree
 from tests.helpers.reference_project import DBT_MANIFEST
 from tests.helpers.snowflake_fake import FakeSnowflake
 
@@ -109,7 +110,4 @@ def profile_with_commands_and_plugin(root: Path) -> Path:
         "commands/sql/check.md": "---\ndescription: Check SQL.\n---\nCheck it.\n",
         "plugins/kit/plugin.yml": "name: kit\ndescription: Kit.\nowner_team: Data\nskills: [month-close]\n",
     }
-    for name, text in files.items():
-        (project / name).parent.mkdir(parents=True, exist_ok=True)
-        (project / name).write_text(text, encoding="utf-8")
-    return project
+    return write_tree(project, files)

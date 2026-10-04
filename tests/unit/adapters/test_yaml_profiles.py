@@ -6,14 +6,7 @@ from pathlib import Path
 
 from snowflake_semantic_tools.adapters.yaml.profiles import load_profile_catalog
 from snowflake_semantic_tools.domain.model.profile import ProfileCatalog
-
-
-def write(root: Path, files: dict[str, str]) -> Path:
-    for name, text in files.items():
-        path = root / name
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(text, encoding="utf-8")
-    return root
+from tests.helpers.file_trees import write_tree
 
 
 def load(root: Path) -> ProfileCatalog:
@@ -21,7 +14,7 @@ def load(root: Path) -> ProfileCatalog:
 
 
 def test_profiles_shared_hooks_and_mcp_configs_load(tmp_path: Path) -> None:
-    write(
+    write_tree(
         tmp_path,
         {
             "profiles/analyst/profile.yml": (
@@ -73,7 +66,7 @@ def test_profiles_shared_hooks_and_mcp_configs_load(tmp_path: Path) -> None:
 
 
 def test_pipeline_keys_and_malformed_inputs_are_diagnosed(tmp_path: Path) -> None:
-    write(
+    write_tree(
         tmp_path,
         {
             "profiles/legacy/profile.yaml": (
@@ -142,7 +135,7 @@ def test_missing_directories_are_empty(tmp_path: Path) -> None:
 
 
 def test_commands_load_like_a_desktop_command_repository(tmp_path: Path) -> None:
-    write(
+    write_tree(
         tmp_path,
         {
             "profiles/analyst/profile.yml": "name: analyst\ncommands: [review, sql/check]\nplugins: [kit]\n",
@@ -205,7 +198,7 @@ def test_commands_load_like_a_desktop_command_repository(tmp_path: Path) -> None
 
 
 def test_a_prompt_or_a_rule_that_is_not_utf8_is_reported_and_left_out(tmp_path: Path) -> None:
-    write(tmp_path, {"profiles/analyst/profile.yml": "name: analyst\n", "profiles/shared/rules/a.md": "A\n"})
+    write_tree(tmp_path, {"profiles/analyst/profile.yml": "name: analyst\n", "profiles/shared/rules/a.md": "A\n"})
     (tmp_path / "profiles/analyst/AGENTS.md").write_bytes(b"Be \xff careful.\n")
     (tmp_path / "profiles/shared/rules/b.md").write_bytes(b"\xfeB\n")
 
@@ -221,7 +214,7 @@ def test_a_prompt_or_a_rule_that_is_not_utf8_is_reported_and_left_out(tmp_path: 
 
 def test_nothing_reached_through_a_symbolic_link_is_read(tmp_path: Path) -> None:
     project = tmp_path / "project"
-    outside = write(
+    outside = write_tree(
         tmp_path / "outside",
         {
             "profile/profile.yml": "name: linked\n",
@@ -232,7 +225,7 @@ def test_nothing_reached_through_a_symbolic_link_is_read(tmp_path: Path) -> None
             "hook.yml": "name: h\nevent: PreToolUse\ncommand: bash\n",
         },
     )
-    write(
+    write_tree(
         project,
         {
             "profiles/shared/AGENTS.md": "Shared.\n",

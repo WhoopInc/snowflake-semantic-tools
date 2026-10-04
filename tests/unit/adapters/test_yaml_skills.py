@@ -6,23 +6,13 @@ from pathlib import Path
 
 from snowflake_semantic_tools.adapters.yaml.skills import load_skill_catalog
 from snowflake_semantic_tools.domain.diagnostics import Origin
+from tests.helpers.file_trees import write_tree
 
 GOOD = "---\nname: {name}\ndescription: Close the month.\n---\n# Steps\nRead reference/a.md.\n"
 
 
-def write(root: Path, files: dict[str, str | bytes]) -> Path:
-    for name, value in files.items():
-        path = root / name
-        path.parent.mkdir(parents=True, exist_ok=True)
-        if isinstance(value, bytes):
-            path.write_bytes(value)
-        else:
-            path.write_text(value, encoding="utf-8")
-    return root
-
-
 def test_discovers_grouped_skills_and_skips_hidden_caches_and_nested_folders(tmp_path: Path) -> None:
-    write(
+    write_tree(
         tmp_path,
         {
             "skills/finance/month-close/SKILL.md": GOOD.format(name="month-close"),
@@ -53,7 +43,7 @@ def test_discovers_grouped_skills_and_skips_hidden_caches_and_nested_folders(tmp
 
 
 def test_frontmatter_defects_are_located(tmp_path: Path) -> None:
-    write(
+    write_tree(
         tmp_path,
         {
             "skills/none/SKILL.md": "# No frontmatter\n",
@@ -87,7 +77,7 @@ def test_missing_directories_yield_an_empty_catalog(tmp_path: Path) -> None:
 
 
 def test_plugin_manifests_are_parsed_and_checked(tmp_path: Path) -> None:
-    write(
+    write_tree(
         tmp_path,
         {
             "plugins/finance-kit/plugin.yml": (
@@ -129,7 +119,7 @@ def test_plugin_manifests_are_parsed_and_checked(tmp_path: Path) -> None:
 
 def test_linked_skills_files_folders_and_plugins_are_refused(tmp_path: Path) -> None:
     project = tmp_path / "project"
-    outside = write(
+    outside = write_tree(
         tmp_path / "outside",
         {
             "skill/SKILL.md": GOOD.format(name="linked"),
@@ -138,7 +128,7 @@ def test_linked_skills_files_folders_and_plugins_are_refused(tmp_path: Path) -> 
             "plugin.yml": "description: Outside.\n",
         },
     )
-    write(project, {"skills/kept/SKILL.md": GOOD.format(name="kept"), "plugins/local/README.md": "x"})
+    write_tree(project, {"skills/kept/SKILL.md": GOOD.format(name="kept"), "plugins/local/README.md": "x"})
     (project / "skills/linked").symlink_to(outside / "skill")
     (project / "skills/file").mkdir()
     (project / "skills/file/SKILL.md").symlink_to(outside / "SKILL.md")
@@ -156,7 +146,7 @@ def test_linked_skills_files_folders_and_plugins_are_refused(tmp_path: Path) -> 
 
 
 def test_a_skills_root_reached_through_a_link_inside_the_project_is_refused(tmp_path: Path) -> None:
-    write(tmp_path, {"real/kept/SKILL.md": GOOD.format(name="kept")})
+    write_tree(tmp_path, {"real/kept/SKILL.md": GOOD.format(name="kept")})
     (tmp_path / "skills").symlink_to(tmp_path / "real")
     catalog = load_skill_catalog(tmp_path, skills_dir="skills", plugins_dir="plugins")
     assert catalog.skills == ()

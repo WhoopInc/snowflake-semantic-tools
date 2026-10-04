@@ -9,6 +9,7 @@ import pytest
 from snowflake_semantic_tools.adapters.dbt.profiles import load_profile_target, resolve_profile_name
 from snowflake_semantic_tools.adapters.errors import ProjectError
 from snowflake_semantic_tools.adapters.yaml.config import load_project_config
+from tests.helpers.file_trees import write_tree
 from tests.helpers.projects import project_paths
 
 PROFILES = """
@@ -24,14 +25,6 @@ sst:
 """
 
 
-def _write(root: Path, files: dict[str, str]) -> Path:
-    for name, text in files.items():
-        path = root / name
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(text, encoding="utf-8")
-    return root
-
-
 def test_missing_config_is_empty_and_clean(tmp_path: Path) -> None:
     loaded = load_project_config(project_paths(tmp_path))
     assert dict(loaded.tree) == {}
@@ -41,7 +34,7 @@ def test_missing_config_is_empty_and_clean(tmp_path: Path) -> None:
 
 def test_positions_and_the_deprecated_deploy_block(tmp_path: Path) -> None:
     config = "validation:\n  snowflake_syntax_check: false\napply: {}\ndeploy: {bogus: 1}\n"
-    _write(tmp_path, {"dbt_project.yml": "profile: sst\n", "sst_config.yml": config})
+    write_tree(tmp_path, {"dbt_project.yml": "profile: sst\n", "sst_config.yml": config})
     loaded = load_project_config(project_paths(tmp_path))
     # deploy: is the deprecated spelling of apply:, and is checked as apply: is.
     assert [item.code for item in loaded.diagnostics] == ["SST-CFG200", "SST-CFG003"]
@@ -50,7 +43,9 @@ def test_positions_and_the_deprecated_deploy_block(tmp_path: Path) -> None:
     assert origin is not None and (origin.file, origin.line) == ("sst_config.yml", 4)
     # With apply: present too, apply: is what is read.
     assert dict(loaded.tree)["apply"] == {}
-    _write(tmp_path, {"sst_config.yml": "validation:\n  snowflake_syntax_check: false\ndeploy: {fail_fast: true}\n"})
+    write_tree(
+        tmp_path, {"sst_config.yml": "validation:\n  snowflake_syntax_check: false\ndeploy: {fail_fast: true}\n"}
+    )
     assert dict(load_project_config(project_paths(tmp_path)).tree)["apply"] == {"fail_fast": True}
 
 
@@ -59,7 +54,7 @@ def test_unsupported_and_removed_0_3_keys_are_errors(tmp_path: Path) -> None:
         "dbt: {}\nvalidation:\n  exclude_dirs: []\n  snowflake_syntax_check: true\nenrichment: {}\n"
         "generation: {use_create_or_alter: true}\ndefer: {}\napply:\n  fail_fast: true\nsnowflake:\n  tool_types: []\n"
     )
-    _write(tmp_path, {"dbt_project.yml": "profile: sst\n", "sst_config.yml": config})
+    write_tree(tmp_path, {"dbt_project.yml": "profile: sst\n", "sst_config.yml": config})
     loaded = load_project_config(project_paths(tmp_path))
     # enrichment:, dbt:, defer:, exclude_dirs and tool_types are read; the removed 0.3 key is not.
     assert [(item.code, item.subject, item.severity.name) for item in loaded.diagnostics] == [
@@ -70,7 +65,7 @@ def test_unsupported_and_removed_0_3_keys_are_errors(tmp_path: Path) -> None:
 
 
 def test_dbt_only_configuration_is_refused_without_dbt_project(tmp_path: Path) -> None:
-    _write(
+    write_tree(
         tmp_path,
         {
             "sst_config.yml": (
@@ -100,22 +95,22 @@ def test_unreadable_config_raises(tmp_path: Path) -> None:
 
 
 def test_profile_name_comes_from_dbt_or_target_profile(tmp_path: Path) -> None:
-    dbt = _write(tmp_path / "dbt", {"dbt_project.yml": "profile: sst\n", "profiles.yml": PROFILES})
+    dbt = write_tree(tmp_path / "dbt", {"dbt_project.yml": "profile: sst\n", "profiles.yml": PROFILES})
     assert resolve_profile_name(project_paths(dbt)) == "sst"
-    _write(dbt, {"sst_config.yml": "project:\n  target_profile: sst\n"})
+    write_tree(dbt, {"sst_config.yml": "project:\n  target_profile: sst\n"})
     assert resolve_profile_name(project_paths(dbt)) == "sst"
-    _write(dbt, {"sst_config.yml": "project:\n  target_profile: other\n"})
+    write_tree(dbt, {"sst_config.yml": "project:\n  target_profile: other\n"})
     with pytest.raises(ValueError, match="disagrees"):
         resolve_profile_name(project_paths(dbt))
 
-    skills_only = _write(tmp_path / "skills", {"profiles.yml": PROFILES})
+    skills_only = write_tree(tmp_path / "skills", {"profiles.yml": PROFILES})
     with pytest.raises(ValueError, match="project.target_profile"):
         resolve_profile_name(project_paths(skills_only))
-    _write(skills_only, {"sst_config.yml": "project:\n  target_profile: sst\n"})
+    write_tree(skills_only, {"sst_config.yml": "project:\n  target_profile: sst\n"})
     target = load_profile_target(project_paths(skills_only))
     assert (target.profile_name, target.target_name, target.identity.database.sql) == ("sst", "dev", "DB")
 
-    unnamed = _write(tmp_path / "unnamed", {"dbt_project.yml": "name: x\n", "profiles.yml": PROFILES})
+    unnamed = write_tree(tmp_path / "unnamed", {"dbt_project.yml": "name: x\n", "profiles.yml": PROFILES})
     with pytest.raises(ValueError, match="declares no profile"):
         resolve_profile_name(project_paths(unnamed))
 
@@ -123,7 +118,7 @@ def test_profile_name_comes_from_dbt_or_target_profile(tmp_path: Path) -> None:
 def test_semantic_targets_resolve_single_quoted_env_vars(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     from snowflake_semantic_tools.adapters.dbt.project import resolve_target
 
-    project = _write(
+    project = write_tree(
         tmp_path,
         {
             "dbt_project.yml": "name: p\nprofile: p\n",

@@ -12,11 +12,11 @@ from snowflake_semantic_tools.adapters.yaml.profiles import load_profile_catalog
 from snowflake_semantic_tools.domain.diagnostics import Severity
 from snowflake_semantic_tools.domain.model.profile import ProfileCatalog
 from tests.helpers.diagnostic_filters import codes, only
-from tests.helpers.skill_inputs import write
+from tests.helpers.file_trees import write_tree
 
 
 def load(root: Path, files: Mapping[str, str | bytes]) -> ProfileCatalog:
-    write(root, files)
+    write_tree(root, files)
     return load_profile_catalog(
         root, profiles_dir="profiles", hooks_dir="hooks", mcp_servers_dir="mcp-servers", commands_dir="commands"
     )

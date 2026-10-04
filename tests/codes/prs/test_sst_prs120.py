@@ -6,15 +6,13 @@ from pathlib import Path
 
 from snowflake_semantic_tools.adapters.yaml.skills import load_skill_catalog
 from snowflake_semantic_tools.domain.diagnostics import Diagnostic, Severity
+from tests.helpers.file_trees import write_tree
 
 FRONT = "---\nname: {name}\ndescription: {name} steps.\n---\nSteps.\n"
 
 
 def _found(tmp_path: Path, code: str, files: dict[str, str]) -> list[Diagnostic]:
-    for relative, text in files.items():
-        path = tmp_path / relative
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(text, encoding="utf-8")
+    write_tree(tmp_path, files)
     catalog = load_skill_catalog(tmp_path, skills_dir="skills", plugins_dir="plugins")
     return [item for item in catalog.diagnostics if item.code == code]
 

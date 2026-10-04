@@ -10,9 +10,7 @@ applies compiled skills against a recorded Snowflake, the way `sst apply` does.
 
 from __future__ import annotations
 
-from collections.abc import Mapping
 from dataclasses import replace
-from pathlib import Path
 
 from snowflake_semantic_tools.app.apply import ApplyArtifacts
 from snowflake_semantic_tools.app.compile.agents import AgentCompileContext, CompileAgents, ExtensionPin
@@ -131,18 +129,6 @@ def command(path: str = "sql/check", content: str = "Run the check.\n") -> Comma
 def profile_catalog(*profiles: DesktopProfile, **fields: object) -> ProfileCatalog:
     value = ProfileCatalog(profiles or (profile(),))
     return replace(value, **fields)  # type: ignore[arg-type]
-
-
-def write(root: Path, files: Mapping[str, str | bytes]) -> Path:
-    """Write each file below `root`, creating its folders, and return `root`."""
-    for relative, content in files.items():
-        path = root / relative
-        path.parent.mkdir(parents=True, exist_ok=True)
-        if isinstance(content, bytes):
-            path.write_bytes(content)
-        else:
-            path.write_text(content, encoding="utf-8")
-    return root
 
 
 SKILL_PIN = ExtensionPin(
