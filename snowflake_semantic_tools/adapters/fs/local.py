@@ -13,6 +13,7 @@ from snowflake_semantic_tools.adapters.errors import ProjectError
 from snowflake_semantic_tools.adapters.json_files import JsonFileError, parse_json, read_json_file
 from snowflake_semantic_tools.adapters.paths import create_within, remove_within, write_within
 from snowflake_semantic_tools.domain.diagnostics import D
+from snowflake_semantic_tools.domain.file_names import file_name
 from snowflake_semantic_tools.domain.model.config_schema import CONFIG_FILE
 from snowflake_semantic_tools.domain.plan.recorded import RecordedObservation
 from snowflake_semantic_tools.domain.state import Manifest, SavedPlan, State, StoredDocumentError, canonical_json
@@ -129,8 +130,12 @@ STATE_FILE_GLOB = "state.*.json"
 
 
 def observation_file(directory: Path, target_name: str) -> Path:
-    """Return where a plan records what it read of one target, in a build directory."""
-    return directory / f"observation.{target_name}.json"
+    """Return where a plan records what it read of one target, in a build directory.
+
+    The target's name is written as `domain.file_names.file_name` writes it, so no name, one
+    holding a separator, `..`, a NUL, or a leading dot among them, places the file elsewhere.
+    """
+    return directory / f"observation.{file_name(target_name)}.json"
 
 
 class ObservationFileStore(JsonStore[RecordedObservation]):
@@ -151,8 +156,11 @@ class ObservationFileStore(JsonStore[RecordedObservation]):
 
 
 def state_file(target_dir: Path, target_name: str) -> Path:
-    """Return the local state file for one target, under the project's SST target directory."""
-    return target_dir / f"state.{target_name}.json"
+    """Return the local state file for one target, under the project's SST target directory.
+
+    The target's name is written as `observation_file` writes it.
+    """
+    return target_dir / f"state.{file_name(target_name)}.json"
 
 
 class StateFileStore(JsonStore[State]):
