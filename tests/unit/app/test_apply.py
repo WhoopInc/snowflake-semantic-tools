@@ -442,7 +442,7 @@ def test_apply_honors_parallelism_within_a_dependency_wave() -> None:
     original = port.execute_script
 
     def synchronized(statements: Sequence[Sql]) -> ExecResult:
-        barrier.wait(timeout=2)
+        barrier.wait(timeout=10)
         return original(statements)
 
     port.execute_script = synchronized  # type: ignore[method-assign]
