@@ -13,6 +13,11 @@ a test sees.
 A test fails when a thread it started is still running shortly after it returns: a run-lease
 heartbeat or a pool worker that outlives its test holds locks and ports across tests.
 
+No test outside the `live` marker reaches the network: for the whole session, a connection or a
+name lookup to anything but a Unix socket or a loopback address raises, and a refusal the code under
+test swallowed still fails the test (`tests/helpers/network_guard.py`). A live test, from the setup
+of the fixtures it brings in to its teardown, runs with the guard lifted.
+
 A test marked `live` connects to the Snowflake account `SST_TEST_SNOWFLAKE_*` describes. With no
 account it is skipped, and with `--require-snowflake` it fails instead, so a gate that could not
 connect is never green. Live tests share one connector per worker and work only in scratch
@@ -23,7 +28,7 @@ from __future__ import annotations
 
 import os
 import threading
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Generator, Iterator
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
@@ -31,6 +36,7 @@ import pytest
 from hypothesis import settings
 
 from snowflake_semantic_tools.domain.model.identifier import SchemaScope
+from tests.helpers import network_guard
 from tests.helpers.live_snowflake import (
     ENV_PREFIX,
     LiveAccount,
@@ -71,6 +77,32 @@ def _isolated_environment(tmp_path_factory: pytest.TempPathFactory, monkeypatch:
     for name in _SST_ENVIRONMENT:
         monkeypatch.delenv(name, raising=False)
     yield
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _no_network() -> Iterator[None]:
+    with network_guard.installed():
+        yield
+
+
+@pytest.fixture(autouse=True)
+def _no_swallowed_network_refusal(request: pytest.FixtureRequest) -> Iterator[None]:
+    if "live" in request.keywords:
+        yield
+        return
+    before = network_guard.refusal_count()
+    yield
+    refused = network_guard.refusals_since(before)
+    assert not refused, f"the test tried to reach the network: {refused}"
+
+
+@pytest.hookimpl(wrapper=True)
+def pytest_runtest_protocol(item: pytest.Item, nextitem: pytest.Item | None) -> Generator[None, object, object]:
+    # Wider-scoped fixtures a live test brings in are set up inside its protocol, so they connect too.
+    if "live" not in item.keywords:
+        return (yield)
+    with network_guard.allowed():
+        return (yield)
 
 
 @pytest.fixture(autouse=True)
@@ -126,7 +158,9 @@ def live_connector(live_account: LiveAccount) -> Iterator[SnowflakeConnector]:
     try:
         yield connector
     finally:
-        connector.close()
+        # Session teardown runs with the last test, which need not be a live one.
+        with network_guard.allowed():
+            connector.close()
 
 
 @pytest.fixture(scope="session")
@@ -148,8 +182,9 @@ def scratch_schema(
     try:
         yield schema
     finally:
-        for scope in created.values():
-            drop_scratch(live_connector, scope)
+        with network_guard.allowed():
+            for scope in created.values():
+                drop_scratch(live_connector, scope)
 
 
 settings.register_profile("ci", deadline=None, derandomize=True, database=None, print_blob=True)
