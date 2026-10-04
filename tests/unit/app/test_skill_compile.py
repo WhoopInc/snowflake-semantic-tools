@@ -5,8 +5,9 @@ from __future__ import annotations
 from snowflake_semantic_tools.app.compile.skills import CatalogChannel, CompiledExtension, CompileSkills
 from snowflake_semantic_tools.domain.diagnostics import Origin
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
-from snowflake_semantic_tools.domain.model.skill import Plugin, Skill, SkillCatalog, SkillFile
+from snowflake_semantic_tools.domain.model.skill import Skill, SkillCatalog, SkillFile
 from snowflake_semantic_tools.domain.render.skill_bundle import SCAN_MAX_FILES
+from tests.helpers.compile_builders import plugin
 
 # The byte split and publication-surface notes every compiled extension reports.
 NOTES = frozenset(("SST-VAL816", "SST-VAL831"))
@@ -22,11 +23,6 @@ def skill(name: str, references: int = 0) -> Skill:
         *(SkillFile(path, b"page\n") for path in paths),
     )
     return Skill(name, f"skills/{name}", name, "D.", body, files, Origin(f"skills/{name}/SKILL.md"))
-
-
-def plugin(name: str, *members: str) -> Plugin:
-    manifest = f"plugins/{name}/plugin.yml"
-    return Plugin(name, f"plugins/{name}", manifest, "Kit.", "Data", members, Origin(manifest))
 
 
 def test_a_plugin_over_the_scan_limits_is_blocked_while_its_members_publish() -> None:

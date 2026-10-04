@@ -2,12 +2,10 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterable
 from typing import Any
 
 import pytest
 
-from snowflake_semantic_tools.domain.diagnostics import Diagnostic
 from snowflake_semantic_tools.domain.model.semantic_view import (
     Column,
     ColumnKind,
@@ -21,13 +19,9 @@ from snowflake_semantic_tools.domain.model.semantic_view import (
 from snowflake_semantic_tools.domain.resolve.membership import invariant_diagnostics, resolve_membership
 from snowflake_semantic_tools.domain.resolve.membership_model import NO_FACTS, MemberFacts
 from snowflake_semantic_tools.domain.resolve.rendered import rendered_diagnostics
-from tests.helpers.diagnostic_filters import coded
+from tests.helpers.diagnostic_filters import coded, codes
 from tests.helpers.resolve_builders import member, membership, request
 from tests.helpers.sql_values import authored, authored_query
-
-
-def _codes(diagnostics: Iterable[Diagnostic]) -> list[str]:
-    return [item.code for item in diagnostics]
 
 
 def test_a_healthy_project_attaches_by_tables_and_reports_only_what_attached_where() -> None:
@@ -37,7 +31,7 @@ def test_a_healthy_project_attaches_by_tables_and_reports_only_what_attached_whe
     result = membership(metric, menu_only, dimension)
     assert result.attachment[metric.key] == ("semantic_view:menu", "semantic_view:sales")
     assert result.attachment[menu_only.key] == ("semantic_view:menu",)
-    assert _codes(result.diagnostics) == ["SST-MEM011", "SST-MEM103", "SST-MEM103"]
+    assert codes(result.diagnostics) == ["SST-MEM011", "SST-MEM103", "SST-MEM103"]
     # A fact or dimension's reach follows its table, so it is not reported as fan-out.
     assert coded(result.diagnostics, "SST-MEM011")[0].subject == "metric:m"
 
@@ -91,8 +85,8 @@ def test_a_derived_metric_is_neither_unlisted_nor_uninferable_nor_composed() -> 
     base = member("metric", "m", ("customers",))
     facts = {"metric:d": MemberFacts(derived=True, referenced_metrics=("m",))}
     result = membership(derived, base, facts=facts)
-    codes = _codes(result.diagnostics)
-    assert "SST-MEM002" not in codes and "SST-MEM006" not in codes and "SST-MEM007" not in codes
+    reported = codes(result.diagnostics)
+    assert "SST-MEM002" not in reported and "SST-MEM006" not in reported and "SST-MEM007" not in reported
     assert result.attachment[derived.key] == ("semantic_view:sales",)
 
 
@@ -300,7 +294,7 @@ def test_each_invariant_fires_on_an_attachment_that_breaks_it() -> None:
     first = {metric.key: ("semantic_view:menu",), query.key: ("semantic_view:menu", "semantic_view:sales")}
     placed = {metric.key: (), query.key: ("semantic_view:menu",)}
     found = invariant_diagnostics(built, first, placed, {**placed, metric.key: ("semantic_view:menu",)})
-    assert _codes(found) == ["SST-MEM013", "SST-MEM900", "SST-MEM106"]
+    assert codes(found) == ["SST-MEM013", "SST-MEM900", "SST-MEM106"]
 
 
 def test_a_view_outside_the_reported_set_holds_nothing_reported() -> None:

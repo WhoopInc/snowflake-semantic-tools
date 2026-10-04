@@ -9,7 +9,7 @@ from typing import Any
 import pytest
 
 from snowflake_semantic_tools.domain.diagnostics import DiagnosticBag
-from snowflake_semantic_tools.domain.model.identifier import Identifier, QualifiedName, TargetIdentity
+from snowflake_semantic_tools.domain.model.identifier import QualifiedName
 from snowflake_semantic_tools.domain.model.lifecycle import Action, Change, ChangeReason, ChangeSet, RenderedArtifact
 from snowflake_semantic_tools.domain.state import (
     STATE_SCHEMA_VERSION,
@@ -29,12 +29,9 @@ from snowflake_semantic_tools.domain.state import (
     migrate_state,
 )
 from snowflake_semantic_tools.domain.state.manifest import _manifest_from_dict_unchecked, _object_map
+from tests.helpers.artifact_builders import target
 from tests.helpers.manifests import build_minimal_manifest
 from tests.helpers.sql_values import statement
-
-
-def target() -> TargetIdentity:
-    return TargetIdentity("verify", "account", Identifier.parse("db"), Identifier.parse("schema"))
 
 
 def artifact() -> RenderedArtifact:

@@ -25,10 +25,10 @@ from snowflake_semantic_tools.domain.model.eval import (
     EvalResultRow,
     EvalRunAttempt,
 )
-from snowflake_semantic_tools.domain.model.identifier import Identifier, TargetIdentity
 from snowflake_semantic_tools.domain.model.lifecycle import QueryResult
 from snowflake_semantic_tools.domain.ports.snowflake.stage import StagedFileMetadata
 from snowflake_semantic_tools.domain.state import AppliedEntry, State
+from tests.helpers.artifact_builders import target
 from tests.helpers.cli_projects import common, compile_project, invoke_counting_closes, invoke_with_port
 from tests.helpers.eval_builders import EvalSnowflake
 from tests.helpers.eval_state_store import InMemoryEvalStateStore
@@ -108,10 +108,6 @@ def test_golden_suite_compares_eval_source_sql(tmp_path: Path) -> None:
     assert result.exit_code == 1
     assert "jaffle_analytics_source.sql" in result.output
     assert "GROUND_TRUTH VARCHAR" in result.output
-
-
-def target() -> TargetIdentity:
-    return TargetIdentity("verify", "account", Identifier.parse("db"), Identifier.parse("schema"))
 
 
 def test_smoke_suite_is_separate_from_apply(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
