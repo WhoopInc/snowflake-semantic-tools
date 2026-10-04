@@ -7,6 +7,7 @@ refuses it as YAML it cannot read, with the code it already gives such a file.
 
 from __future__ import annotations
 
+import ast
 import json
 from pathlib import Path
 
@@ -27,6 +28,36 @@ from tests.helpers.cli_projects import project_copy
 
 PAST_THE_BOUND = bounded_yaml.MAX_YAML_DEPTH + 50
 PAST_RECURSION = 20_000
+PACKAGE = Path(__file__).resolve().parents[3] / "snowflake_semantic_tools"
+# PyYAML's own parse entry points; `bounded_yaml` is the one module that calls them.
+_PYYAML_PARSERS = frozenset(
+    ("safe_load", "safe_load_all", "load", "load_all", "full_load", "unsafe_load", "compose", "compose_all")
+)
+
+
+def test_pyyaml_parses_only_through_the_bounded_loader() -> None:
+    """`yaml.<parser>(...)` is called nowhere else; ruamel instances are checked by `check_depth`.
+
+    A module that names ruamel's `YAML` instance `yaml` is left out: its loads are of a ruamel
+    instance, which `adapters.roundtrip.check_depth` bounds before each one.
+    """
+    found: list[str] = []
+    for path in sorted(PACKAGE.rglob("*.py")):
+        if " " in path.name or path.name == "bounded_yaml.py":
+            continue
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        if not any(isinstance(node, ast.Import) and any(a.name == "yaml" for a in node.names) for node in tree.body):
+            continue
+        found.extend(
+            f"{path.relative_to(PACKAGE)}:{node.lineno}"
+            for node in ast.walk(tree)
+            if isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Attribute)
+            and isinstance(node.func.value, ast.Name)
+            and node.func.value.id == "yaml"
+            and node.func.attr in _PYYAML_PARSERS
+        )
+    assert found == []
 
 
 def flow(depth: int) -> str:
