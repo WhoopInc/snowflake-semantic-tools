@@ -3,16 +3,13 @@
 from __future__ import annotations
 
 from snowflake_semantic_tools.app.compile.agents.resolve_tools import resolve_tool
-from snowflake_semantic_tools.domain.diagnostics import Diagnostic, Origin, Severity
+from snowflake_semantic_tools.domain.diagnostics import Origin, Severity
 from snowflake_semantic_tools.domain.model.agent import AgentModel, AgentTool
 from tests.helpers.agent_context import agent_context
+from tests.helpers.diagnostic_filters import coded
 
 ORIGIN = Origin("agents/router/agent.yml", 4, 5)
 ROUTER = AgentModel("router", ORIGIN, ("agents/router/agent.yml",))
-
-
-def _codes(diagnostics: tuple[Diagnostic, ...], code: str) -> list[Diagnostic]:
-    return [item for item in diagnostics if item.code == code]
 
 
 def test_sst_ref011_fires() -> None:
@@ -21,7 +18,7 @@ def test_sst_ref011_fires() -> None:
         AgentTool("cortex_analyst_text_to_sql", ORIGIN, description="Sales.", semantic_view="nope"),
         agent_context(),
     )
-    [diagnostic] = _codes(diagnostics, "SST-REF011")
+    [diagnostic] = coded(diagnostics, "SST-REF011")
     assert diagnostic.severity is Severity.ERROR
     assert diagnostic.message == "{ semantic_view('nope') } does not resolve"
     assert diagnostic.subject == "agent:router"
@@ -34,4 +31,4 @@ def test_sst_ref011_silent() -> None:
         agent_context(),
     )
     assert resolved is not None
-    assert _codes(diagnostics, "SST-REF011") == []
+    assert coded(diagnostics, "SST-REF011") == []
