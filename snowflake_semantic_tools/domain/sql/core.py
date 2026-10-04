@@ -148,10 +148,12 @@ def canonical(statement: Sql, *, keep_indent: bool = False) -> Sql:
     """Right-strip every line of a statement and strip the whole, as rendered artifacts store it.
 
     Only whitespace goes, so the statement keeps its tokens: a quote, bracket, or comment
-    marker is never removed.
+    marker is never removed. Lines end only at `\n`, so a `\r` or Unicode separator inside a
+    literal stays as written; authored SQL is already in this form (see `guard_expression`),
+    so canonicalising never changes what a guard checked.
 
     Args:
         keep_indent: Strip only the end of the whole, for a fragment that continues a line.
     """
-    text = "\n".join(line.rstrip() for line in statement.text.splitlines())
+    text = "\n".join(line.rstrip() for line in statement.text.split("\n"))
     return _compose(text.rstrip() if keep_indent else text.strip())

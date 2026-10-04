@@ -48,9 +48,11 @@ from snowflake_semantic_tools.cli.exit_codes import CHANGES, CONFIG, CONNECTION,
 from snowflake_semantic_tools.cli.globals import DEFAULT_OUTPUTS, GLOBAL_NAMES, GlobalOptions, command_global_options
 from snowflake_semantic_tools.cli.output import (
     RenderPolicy,
+    captured,
     emit_json,
     interrupted,
     json_envelope,
+    print_report,
     render_diagnostics,
     resolve_invocation,
     use_render_policy,
@@ -339,7 +341,8 @@ def _report(command: str, options: GlobalOptions, result: CommandResult) -> None
     """Print `result` as one envelope, YAML, CSV, or human text, and exit with its code when it is not 0.
 
     YAML is the envelope serialized as YAML; CSV is the result's rows with a header, and its
-    diagnostics go to stderr. `plain` is `table` without colour.
+    diagnostics go to stderr. `plain` is `table` without colour. Output of any form that would
+    carry a credential the run resolved is withheld for SST-PRT012, and the run exits 1.
     """
     audited = audit(result.diagnostics)
     if audited is not result.diagnostics:
@@ -352,22 +355,24 @@ def _report(command: str, options: GlobalOptions, result: CommandResult) -> None
         )
         if options.output == "json":
             emit_json(envelope, result.exit_code)
-        click.echo(dump_yaml(envelope), nl=False)
-        raise click.exceptions.Exit(result.exit_code)
+        _exit(result.exit_code, withheld=print_report(dump_yaml(envelope), "YAML report"))
     if options.output == "csv":
         render_diagnostics(result.diagnostics)
-        _print_csv(result.rows or [])
-        raise click.exceptions.Exit(result.exit_code)
+        _exit(result.exit_code, withheld=print_report(_csv(result.rows or []), "CSV report"))
     if result.show_diagnostics:
         render_diagnostics(result.diagnostics)
-    if result.human is not None:
-        result.human()
-    if result.exit_code:
-        raise click.exceptions.Exit(result.exit_code)
+    withheld = result.human is not None and print_report(captured(result.human), "human report")
+    if result.exit_code or withheld:
+        _exit(result.exit_code, withheld=withheld)
 
 
-def _print_csv(rows: list[dict[str, object]]) -> None:
-    """Print `rows` as CSV with a header row; a list or mapping value is written as JSON."""
+def _exit(exit_code: int, *, withheld: bool) -> NoReturn:
+    """End the run with `exit_code`, or with 1 when its output was withheld for carrying a credential."""
+    raise click.exceptions.Exit(ERROR if withheld else exit_code)
+
+
+def _csv(rows: list[dict[str, object]]) -> str:
+    """Return `rows` as CSV with a header row; a list or mapping value is written as JSON."""
     columns = list(dict.fromkeys(key for row in rows for key in row))
     buffer = io.StringIO()
     writer = csv.writer(buffer, lineterminator="\n")
@@ -379,7 +384,7 @@ def _print_csv(rows: list[dict[str, object]]) -> None:
                 for key in columns
             ]
         )
-    click.echo(buffer.getvalue(), nl=False)
+    return buffer.getvalue()
 
 
 def guarded(action: Callable[[], None], *, command: str, output: str) -> None:

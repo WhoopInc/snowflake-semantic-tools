@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import NoReturn
 
 from snowflake_semantic_tools.adapters.errors import ProjectError
+from snowflake_semantic_tools.adapters.json_files import JsonFileError, read_json_file
 from snowflake_semantic_tools.domain.diagnostics import D
 from snowflake_semantic_tools.domain.diagnostics.baseline import Baseline, BaselineEntry, Renewal
 
@@ -30,8 +31,8 @@ def read_baseline(path: Path, name: str) -> Baseline:
         SST-PRT009: the baseline file cannot be read or does not hold a baseline; raised.
     """
     try:
-        document = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        document = read_json_file(path)
+    except (OSError, JsonFileError) as exc:
         _refuse(name, str(exc))
     if not isinstance(document, dict) or document.get("version") != 1:
         _refuse(name, "it is not a version 1 baseline")

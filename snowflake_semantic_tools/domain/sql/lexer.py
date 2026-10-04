@@ -4,12 +4,20 @@ It does not parse. It splits text into tokens so a guard can ask what lies outsi
 string and quoted identifier: single-quoted strings (with `''` and backslash escapes),
 double-quoted identifiers (with `""`), `$$` bodies, `--`, `//`, and `/* */` comments, words,
 numbers, whitespace, and one-character punctuation.
+
+A `--` or `//` comment ends at `\n` or `\r\n`. Readers disagree on whether any other line break
+ends one, so a comment holding one does not lex: SST never guesses where Snowflake resumes.
 """
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from enum import Enum
+
+# Every character some SQL or Unicode reader takes as a line break (those `str.splitlines`
+# splits on). A line comment ends at the first one; it must be `\n` or begin `\r\n`.
+_LINE_BREAK = re.compile("[\n\r\x0b\x0c\x1c\x1d\x1e\x85\u2028\u2029]")
 
 
 class TokenKind(Enum):
@@ -93,11 +101,27 @@ def _delimited_end(text: str, start: int, opener: str, closer: str, what: str) -
     return close + len(closer)
 
 
+def _line_comment_end(text: str, start: int) -> int:
+    """The index of the line break ending the `--` or `//` comment at `start`, or the text's end.
+
+    Raises:
+        LexError: the comment is ended by a line break other than `\n` or `\r\n`.
+    """
+    found = _LINE_BREAK.search(text, start)
+    if found is None:
+        return len(text)
+    end = found.start()
+    if text[end] != "\n" and not text.startswith("\r\n", end):
+        raise LexError(end, f"line break {text[end]!r} in a comment")
+    return end
+
+
 def _token_end(text: str, index: int) -> tuple[TokenKind, int]:
     """Classify the token starting at `index`, and find where it ends.
 
     Raises:
-        LexError: the token is a string, identifier, or comment that never closes, or a NUL.
+        LexError: the token is a string, identifier, or comment that never closes, a line
+            comment ended by an ambiguous line break, or a NUL.
     """
     character = text[index]
     two = text[index : index + 2]
@@ -110,8 +134,7 @@ def _token_end(text: str, index: int) -> tuple[TokenKind, int]:
     if two == "$$":
         return TokenKind.DOLLAR_STRING, _delimited_end(text, index, "$$", "$$", "dollar-quoted string")
     if two in ("--", "//"):
-        newline = text.find("\n", index)
-        return TokenKind.COMMENT, len(text) if newline < 0 else newline
+        return TokenKind.COMMENT, _line_comment_end(text, index)
     if two == "/*":
         return TokenKind.COMMENT, _delimited_end(text, index, "/*", "*/", "block comment")
     end = index + 1
@@ -135,8 +158,9 @@ def tokenize(text: str) -> tuple[Token, ...]:
     """Split text into tokens, in order; concatenating their text gives the text back.
 
     Raises:
-        LexError: a string, quoted identifier, `$$` body, or block comment is never closed, or
-            the text holds a NUL.
+        LexError: a string, quoted identifier, `$$` body, or block comment is never closed, a
+            line comment is ended by a line break other than `\n` or `\r\n`, or the text holds
+            a NUL.
     """
     tokens: list[Token] = []
     index = 0

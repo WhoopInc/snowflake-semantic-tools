@@ -11,9 +11,10 @@ conflict copies, whose names hold a space, are never read.
 from __future__ import annotations
 
 import ast
-import json
 import re
 from pathlib import Path
+
+from snowflake_semantic_tools.adapters.json_files import read_json_file
 
 _CODE = re.compile(r"SST-[A-Z]{3}\d{3}\Z")
 
@@ -64,10 +65,11 @@ def prechecks(catalog: Path) -> dict[str, str]:
     """Return, by code, where the catalog says its condition can first be detected; empty without one.
 
     `local` needs no connection, `observe` needs a read of Snowflake, and `runtime` is seen only
-    while a statement runs. A file that is absent or not a JSON list of rows reads as empty.
+    while a statement runs. A file that is absent, not a JSON list of rows, or beyond the size and
+    nesting `adapters.json_files` bounds reads as empty.
     """
     try:
-        rows = json.loads(catalog.read_text(encoding="utf-8"))
+        rows = read_json_file(catalog)
     except (OSError, ValueError):
         return {}
     if not isinstance(rows, list):

@@ -34,6 +34,7 @@ from ruamel.yaml.scalarstring import (
 )
 
 from snowflake_semantic_tools.adapters.errors import ProjectError
+from snowflake_semantic_tools.adapters.roundtrip import check_depth
 from snowflake_semantic_tools.domain.diagnostics import D, Origin
 
 # dbt's layout, which enrich also writes new files in.
@@ -76,10 +77,16 @@ def canonical_yaml(text: str, path: str, *, sanitize: bool = False) -> str:
             different value, so it is left as it is (SST-INT003).
 
     Diagnostics:
-        SST-LOD001: the text does not parse; raised.
+        SST-LOD001: the text does not parse, or nests collections deeper than
+            `adapters.roundtrip.check_depth` allows; raised.
         SST-INT003: the canonical form would change the file's value; raised.
     """
-    source = _without_trailing_space(text.replace("\r\n", "\n").replace("\r", "\n"))
+    source = text.replace("\r\n", "\n").replace("\r", "\n")
+    try:
+        check_depth(source)
+    except YAMLError as exc:
+        raise _unparseable(path, exc) from exc
+    source = _without_trailing_space(source)
     if not source.strip():
         return ""
     yaml = _layout()

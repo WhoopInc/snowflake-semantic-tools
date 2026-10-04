@@ -118,3 +118,8 @@ def test_a_data_type_must_be_text() -> None:
     with pytest.raises(TypeError, match="takes str"):
         datatype(3)  # type: ignore[arg-type]
     assert not is_datatype(3)  # type: ignore[arg-type]
+
+
+def test_an_unquoted_name_holding_dollar_dollar_is_quoted_upper_cased() -> None:
+    assert ident(Identifier.parse("t$$x")).text == '"T$$X"'
+    assert ident(Identifier("a$$", quoted=True)).text == '"a$$"'

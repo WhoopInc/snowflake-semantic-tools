@@ -13,10 +13,12 @@ from dataclasses import dataclass
 
 from ruamel.yaml import YAML
 from ruamel.yaml.comments import CommentedMap, CommentedSeq
-from ruamel.yaml.error import YAMLError
+from ruamel.yaml.error import MarkedYAMLError, YAMLError
+from ruamel.yaml.events import CollectionEndEvent, CollectionStartEvent
 from ruamel.yaml.scalarstring import SingleQuotedScalarString
 from ruamel.yaml.util import load_yaml_guess_indent
 
+from snowflake_semantic_tools.adapters.bounded_yaml import MAX_YAML_DEPTH
 from snowflake_semantic_tools.adapters.errors import ProjectError
 from snowflake_semantic_tools.domain.ports.enrich import WrittenFile
 
@@ -26,6 +28,7 @@ __all__ = [
     "EditableYaml",
     "WrittenFile",
     "block_list",
+    "check_depth",
     "insert_key",
     "load_editable",
     "new_editable",
@@ -102,14 +105,49 @@ def load_editable(text: str, path: str) -> EditableYaml:
     """Load one YAML document for editing, keeping its layout.
 
     Raises:
-        ProjectError: The text is not YAML.
+        ProjectError: The text is not YAML, or nests collections deeper than `check_depth` allows.
     """
+    try:
+        check_depth(text)
+    except YAMLError as exc:
+        raise ProjectError(f"{path}: cannot parse YAML to edit it: {exc}") from exc
     yaml = _yaml(_guess_indent(text, path), explicit_start=text.lstrip().startswith("---"))
     try:
         root = yaml.load(text)
     except YAMLError as exc:
         raise ProjectError(f"{path}: cannot parse YAML to edit it: {exc}") from exc
     return EditableYaml(root, text, yaml)
+
+
+def check_depth(text: str) -> None:
+    """Refuse YAML whose collections nest deeper than `adapters.bounded_yaml.MAX_YAML_DEPTH`.
+
+    ruamel builds nodes by recursion, so a file nesting a few thousand levels would end a load
+    in `RecursionError`. Its event parser does not recurse, so the depth is counted there,
+    before any load, and refused as YAML that cannot be read, at the mark that goes too deep.
+    Text that is not YAML is left to the load that follows to report.
+
+    Raises:
+        MarkedYAMLError: a collection opens deeper than the bound.
+    """
+    depth = 0
+    events = iter(YAML(typ="safe", pure=True).parse(text))
+    while True:
+        try:
+            event = next(events)
+        except StopIteration:
+            return
+        except YAMLError:
+            # Not YAML: the load that follows reports it with its own diagnostic.
+            return
+        if isinstance(event, CollectionStartEvent):
+            depth += 1
+            if depth > MAX_YAML_DEPTH:
+                raise MarkedYAMLError(
+                    problem=f"collections nest deeper than {MAX_YAML_DEPTH} levels", problem_mark=event.start_mark
+                )
+        elif isinstance(event, CollectionEndEvent):
+            depth -= 1
 
 
 def new_editable(root: CommentedMap) -> EditableYaml:

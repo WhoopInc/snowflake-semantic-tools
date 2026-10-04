@@ -22,6 +22,7 @@ from typing import Any
 
 import yaml
 
+from snowflake_semantic_tools.adapters import bounded_yaml
 from snowflake_semantic_tools.adapters.errors import ProjectError
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, Origin
 
@@ -58,7 +59,7 @@ def _refuse(diagnostic: Diagnostic, cause: Exception | None = None) -> ProjectEr
 def _yaml_mapping(path: Path) -> Mapping[str, Any]:
     """Read a dbt-owned YAML file as plain YAML; an absent, unreadable or non-mapping one is empty."""
     try:
-        value = yaml.safe_load(path.read_text(encoding="utf-8"))
+        value = bounded_yaml.safe_load(path.read_text(encoding="utf-8"))
     except (OSError, yaml.YAMLError):
         return {}
     return value if isinstance(value, dict) else {}

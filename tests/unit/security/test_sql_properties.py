@@ -49,6 +49,9 @@ FIXTURES = Path(__file__).resolve().parents[2] / "fixtures"
 _CHARACTERS = st.characters(blacklist_characters="\x00", blacklist_categories=["Cs"])
 TEXT = st.text(alphabet=_CHARACTERS, max_size=60)
 NAMES = st.text(alphabet=_CHARACTERS, min_size=1, max_size=40)
+# Names an authored expression can quote: the guards refuse control characters and Unicode
+# line separators anywhere, since readers disagree on where such a character ends a comment.
+AUTHORED_NAMES = st.text(alphabet=st.characters(blacklist_categories=["Cs", "Cc", "Zl", "Zp"]), min_size=1, max_size=40)
 UNQUOTED = st.from_regex(r"[A-Za-z_][A-Za-z0-9_$]{0,20}", fullmatch=True)
 
 
@@ -95,7 +98,7 @@ def test_a_literal_lexes_as_one_string_snowflake_reads_back_exactly(value: str) 
 
 
 @settings(max_examples=60, deadline=None)
-@given(NAMES, TEXT, st.lists(TEXT, max_size=3), st.lists(TEXT, max_size=3), TEXT)
+@given(AUTHORED_NAMES, TEXT, st.lists(TEXT, max_size=3), st.lists(TEXT, max_size=3), TEXT)
 def test_ddl_built_from_any_names_and_prose_is_one_statement(
     name: str, comment: str, synonyms: list[str], samples: list[str], question: str
 ) -> None:

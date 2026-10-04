@@ -12,8 +12,7 @@ from collections.abc import Callable, Mapping
 from types import MappingProxyType
 from typing import Any
 
-import yaml
-
+from snowflake_semantic_tools.adapters import bounded_yaml
 from snowflake_semantic_tools.adapters.errors import ProjectError
 from snowflake_semantic_tools.adapters.locations import ProjectPaths
 from snowflake_semantic_tools.adapters.yaml.documents import ParsedYaml
@@ -172,4 +171,4 @@ def read_config_document(files: ProjectPaths) -> object | None:
     """
     if files.config_file is None:
         return None
-    return yaml.safe_load(files.config_file.read_text(encoding="utf-8")) or {}
+    return bounded_yaml.safe_load(files.config_file.read_text(encoding="utf-8")) or {}

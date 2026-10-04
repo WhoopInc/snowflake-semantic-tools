@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import re
 from collections.abc import Mapping
 from pathlib import Path
@@ -10,6 +9,7 @@ from types import MappingProxyType
 from typing import Any
 
 from snowflake_semantic_tools.adapters.errors import ProjectError
+from snowflake_semantic_tools.adapters.json_files import read_json_file
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic
 from snowflake_semantic_tools.domain.model.dbt import DbtCatalog, DbtColumn, DbtModel, DbtSource
 
@@ -443,23 +443,22 @@ def load_manifest_catalog(
         allow_unsupported_schema, supported_versions: As `catalog_from_document` takes them.
 
     Raises:
-        ProjectError: the manifest is absent (SST-PRT006), cannot be read (SST-PRT009), is not
-            JSON, or is refused as `catalog_from_document` says.
+        ProjectError: the manifest is absent (SST-PRT006), cannot be read or is not JSON
+            (SST-PRT009), or is refused as `catalog_from_document` says.
 
     Diagnostics:
         SST-PRT006: no manifest exists at the path; raised.
-        SST-PRT009: the manifest exists and cannot be read; raised.
+        SST-PRT009: the manifest exists and cannot be read, or is not UTF-8 JSON within the
+            size and nesting `adapters.json_files` bounds; raised.
     """
     try:
-        document = json.loads(path.read_text(encoding="utf-8"))
+        document = read_json_file(path)
     except FileNotFoundError as exc:
         diagnostic = D("SST-PRT006", path=str(path))
         raise ProjectError(diagnostic.message, diagnostics=(diagnostic,)) from exc
-    except OSError as exc:
+    except (OSError, ValueError) as exc:
         diagnostic = D("SST-PRT009", path=str(path), detail=str(exc))
         raise ProjectError(diagnostic.message, diagnostics=(diagnostic,)) from exc
-    except json.JSONDecodeError as exc:
-        raise ProjectError(f"dbt manifest {path} is not valid JSON: {exc}") from exc
     return catalog_from_document(
         document, allow_unsupported_schema=allow_unsupported_schema, supported_versions=supported_versions
     )

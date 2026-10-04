@@ -16,6 +16,7 @@ from typing import Any, NoReturn
 
 import yaml
 
+from snowflake_semantic_tools.adapters import bounded_yaml
 from snowflake_semantic_tools.adapters.errors import ProjectError
 from snowflake_semantic_tools.adapters.locations import ProjectPaths
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, Origin
@@ -100,7 +101,11 @@ def _resolve_env(value: object) -> object:
         return _ENV_VAR.sub(substitute, value)
     text = substitute(whole)
     if whole.group(3) in ("as_number", "as_bool", "as_native"):
-        typed = yaml.safe_load(text) if text.strip() else text
+        try:
+            typed = bounded_yaml.safe_load(text) if text.strip() else text
+        except yaml.YAMLError:
+            # Not a YAML scalar at all, so it stays the text, as any value that is not one does.
+            return text
         return typed if isinstance(typed, (bool, int, float)) else text
     return text
 
@@ -116,7 +121,7 @@ def _read_yaml(path: Path) -> dict[str, Any]:
         SST-CFG002: the file is not valid YAML; raised.
     """
     try:
-        value = yaml.safe_load(path.read_text(encoding="utf-8"))
+        value = bounded_yaml.safe_load(path.read_text(encoding="utf-8"))
     except yaml.YAMLError as exc:
         diagnostic = D(
             "SST-CFG002", origin=Origin(path.name), subject=f"config:{path.name}", path=str(path), detail=str(exc)
@@ -139,7 +144,7 @@ def _read_profiles(path: Path) -> dict[str, Any]:
     """
     text = path.read_text(encoding="utf-8")
     try:
-        value = yaml.safe_load(text)
+        value = bounded_yaml.safe_load(text)
     except yaml.YAMLError as exc:
         mark = getattr(exc, "problem_mark", None)
         where = f"line {mark.line + 1}: " if mark is not None else ""

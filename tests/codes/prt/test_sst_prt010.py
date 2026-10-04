@@ -16,7 +16,7 @@ def test_sst_prt010_fires(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> No
     project = project_copy(tmp_path)
     (project / "target" / "sst").mkdir(parents=True)
 
-    def refuse(path: Path) -> None:
+    def refuse(name: str, *, dir_fd: int) -> None:
         raise PermissionError("read-only")
 
     monkeypatch.setattr("snowflake_semantic_tools.adapters.paths.shutil.rmtree", refuse)

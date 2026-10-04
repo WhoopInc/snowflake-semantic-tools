@@ -2,14 +2,15 @@
 
 from __future__ import annotations
 
-import json
 from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
 import yaml
 
+from snowflake_semantic_tools.adapters import bounded_yaml
 from snowflake_semantic_tools.adapters.errors import ProjectError
+from snowflake_semantic_tools.adapters.json_files import JsonFileError, read_json_file
 from snowflake_semantic_tools.adapters.yaml.fields import (
     checked_strings,
     checked_text,
@@ -345,7 +346,7 @@ def _check_command(command: CommandFile, diagnostics: list[Diagnostic]) -> None:
         invalid("frontmatter opens with --- but never closes")
         return
     try:
-        value: Any = yaml.safe_load("\n".join(lines[1:closing]))
+        value: Any = bounded_yaml.safe_load("\n".join(lines[1:closing]))
     except yaml.YAMLError as exc:
         invalid(f"frontmatter is not valid YAML: {getattr(exc, 'problem', exc)}")
         return
@@ -471,8 +472,8 @@ def _load_mcp(project_dir: Path, folder: Path, diagnostics: list[Diagnostic]) ->
         OSError: `mcp.json` exists and cannot be read.
 
     Diagnostics:
-        SST-VAL853: when the folder has no `mcp.json`, it is not UTF-8 JSON, or it is not one
-            `mcpServers` object.
+        SST-VAL853: when the folder has no `mcp.json`, it is not UTF-8 JSON within the size and
+            nesting `adapters.json_files` bounds, or it is not one `mcpServers` object.
         SST-PRT009: when `mcp.json` is a symbolic link; the config is left out.
     """
     name = folder.name
@@ -494,14 +495,14 @@ def _load_mcp(project_dir: Path, folder: Path, diagnostics: list[Diagnostic]) ->
     if refused(project_dir, path, diagnostics, subject=subject):
         return None
     try:
-        document = json.loads(path.read_text(encoding="utf-8"))
-    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        document = read_json_file(path)
+    except JsonFileError as exc:
         diagnostics.append(
-            D("SST-VAL853", origin=origin, subject=subject, artifact=name, detail=f"is not valid JSON: {exc}")
+            D("SST-VAL853", origin=origin, subject=subject, artifact=name, detail=f"mcp.json cannot be used: {exc}")
         )
         return None
     servers = document.get("mcpServers") if isinstance(document, dict) else None
-    if not isinstance(servers, dict) or set(document) != {"mcpServers"}:
+    if not isinstance(document, dict) or not isinstance(servers, dict) or set(document) != {"mcpServers"}:
         diagnostics.append(
             D(
                 "SST-VAL853",

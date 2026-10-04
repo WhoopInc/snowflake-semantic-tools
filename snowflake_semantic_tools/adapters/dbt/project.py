@@ -13,8 +13,7 @@ from hashlib import sha256
 from pathlib import Path
 from typing import Any
 
-import yaml
-
+from snowflake_semantic_tools.adapters import bounded_yaml
 from snowflake_semantic_tools.adapters.dbt.profiles import profile_output
 from snowflake_semantic_tools.adapters.errors import ProjectError
 from snowflake_semantic_tools.adapters.locations import ProjectPaths
@@ -138,5 +137,5 @@ def stale_models(project_dir: Path, catalog: DbtCatalog, paths: tuple[str, ...])
 
 def dbt_project_name(project_dir: Path) -> str:
     """Return the `name:` of `dbt_project.yml`, or "" when the file names none or is not a mapping."""
-    value = yaml.safe_load((project_dir / "dbt_project.yml").read_text(encoding="utf-8")) or {}
+    value = bounded_yaml.safe_load((project_dir / "dbt_project.yml").read_text(encoding="utf-8")) or {}
     return str(value.get("name") or "") if isinstance(value, dict) else ""

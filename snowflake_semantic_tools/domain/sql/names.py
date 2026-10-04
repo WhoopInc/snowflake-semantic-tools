@@ -76,11 +76,18 @@ def _identifier_text(identifier: Identifier) -> str:
         raise ValueError(f"{value!r} is not a Snowflake identifier")
     if not identifier.quoted and not _UNQUOTED.fullmatch(value):
         raise ValueError(f"{value!r} must be quoted to be an identifier")
+    # A reader may take `$$` inside a word as opening a dollar-quoted string, so such a name
+    # is quoted in the upper case its unquoted form resolves to, naming the same object.
+    if not identifier.quoted and "$$" in value:
+        return Identifier(value.upper(), quoted=True).sql
     return identifier.sql
 
 
 def ident(identifier: Identifier) -> Sql:
     """Return one identifier: double-quoted with inner quotes doubled when quoted, else upper-cased.
+
+    An unquoted name holding `$$` is written quoted and upper-cased, so no reader can take it
+    as opening a dollar-quoted string.
 
     Raises:
         TypeError: `identifier` is not an `Identifier`.

@@ -43,7 +43,9 @@ class _Driver:
             raise self.failures["cursor"]
         return self
 
-    def execute(self, statement: str, params: Sequence[object] | None = None) -> None:
+    def execute(
+        self, statement: str, params: Sequence[object] | None = None, *, num_statements: int | None = None
+    ) -> None:
         self.executed.append((statement, tuple(params or ())))
         failure = next((error for prefix, error in self.failures.items() if statement.startswith(prefix)), None)
         if failure is not None:
@@ -291,7 +293,7 @@ def test_a_script_halted_part_way_stops_before_its_next_statement() -> None:
     connector = DriverConnector(driver)
     halting = driver.execute
 
-    def execute(statement: str, params: Sequence[object] | None = None) -> None:
+    def execute(statement: str, params: Sequence[object] | None = None, *, num_statements: int | None = None) -> None:
         halting(statement, params)
         connector.halt("lost")
 

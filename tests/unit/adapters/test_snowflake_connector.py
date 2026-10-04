@@ -3,13 +3,16 @@ from __future__ import annotations
 from collections.abc import Callable, Mapping, Sequence
 from datetime import datetime, timedelta, timezone
 from threading import RLock
+from typing import cast
 
 import pytest
+from snowflake.connector.cursor import SnowflakeCursor
 from snowflake.connector.errors import Error as DriverError
 from snowflake.connector.errors import OperationalError, ProgrammingError
 
 from snowflake_semantic_tools.adapters.clock import SystemClock
 from snowflake_semantic_tools.adapters.snowflake.connector import SnowflakeConnector
+from snowflake_semantic_tools.adapters.snowflake.connector import session as session_module
 from snowflake_semantic_tools.domain.model.identifier import Identifier, QualifiedName, SchemaScope
 from snowflake_semantic_tools.domain.model.lifecycle import ExecResult, QueryResult
 from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
@@ -423,6 +426,7 @@ class _Session:
             "SELECT RUN_ID, GENERATION": [(FENCE.run_id, FENCE.generation)],
         }
         self.executed: list[str] = []
+        self.num_statements: list[int | None] = []
         self.description: tuple[tuple[str], ...] | None = None
         self.sfqid = "query-id"
         self.rowcount = 1
@@ -431,8 +435,9 @@ class _Session:
     def cursor(self, *args: object) -> _Session:
         return self
 
-    def execute(self, sql: str, params: object = None) -> None:
+    def execute(self, sql: str, params: object = None, *, num_statements: int | None = None) -> None:
         self.executed.append(sql)
+        self.num_statements.append(num_statements)
         failure = next((error for prefix, error in self.failures.items() if sql.startswith(prefix)), None)
         if failure is not None:
             raise failure
@@ -518,6 +523,30 @@ def test_a_driver_or_transport_failure_is_still_reported_as_a_port_error(
     with pytest.raises(SnowflakePortError) as raised:
         call(SessionConnector(_Session({prefix: error})))
     assert str(raised.value) == str(error) and raised.value.__cause__ is error
+
+
+def test_every_statement_reaches_the_driver_as_exactly_one_statement() -> None:
+    """Snowflake refuses text it reads as several statements, whatever SST's lexer made of it."""
+    session = _Session()
+    connector = SessionConnector(session)
+    # The double answers no generation read, which acquiring a run lock needs.
+    calls = [call for name, _, call in DRIVER_CALLS if name != "acquire_run_lock"]
+    for call in calls:
+        call(connector)
+    connector.execute_script((sql("CREATE VIEW V AS SELECT 1"), sql("DROP VIEW V")))
+    assert "BEGIN" in session.executed and "COMMIT" in session.executed
+    assert len(session.num_statements) == len(session.executed) > len(calls)
+    assert set(session.num_statements) == {1}
+
+
+def test_an_empty_parameter_sequence_binds_nothing() -> None:
+    """The driver formats nothing for empty parameters, so the text must go undoubled."""
+    session = _Session()
+    cursor = cast(SnowflakeCursor, session)
+    session_module._execute(cursor, sql("SELECT '100%'"), ())
+    assert session.executed[-1] == "SELECT '100%'"
+    with pytest.raises(ValueError, match="no parameters are bound"):
+        session_module._execute(cursor, sql("SELECT %s"), {})
 
 
 def test_a_programming_error_mid_state_write_still_rolls_the_transaction_back() -> None:
@@ -615,8 +644,8 @@ class _GetSession(_Session):
         self.status = status
         self.rows: list[dict[str, object]] = []
 
-    def execute(self, sql: str, params: object = None) -> None:
-        super().execute(sql, params)
+    def execute(self, sql: str, params: object = None, *, num_statements: int | None = None) -> None:
+        super().execute(sql, params, num_statements=num_statements)
         source, target = (part.strip("'") for part in sql.removeprefix("GET ").split(" ", 1))
         directory = target.removeprefix("file://")
         self.rows = []

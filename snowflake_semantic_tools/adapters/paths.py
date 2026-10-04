@@ -153,19 +153,53 @@ def make_folders_within(root: Path, path: Path) -> None:
 def remove_tree_within(root: Path, path: Path) -> None:
     """Remove the folder at `path`, inside `root`, and everything below it; nothing when absent.
 
-    The folder is reached without following a link, and the removal never follows one below it.
+    The folder is removed through its parent's descriptor, reached without following a link,
+    and the removal never follows one below it: a folder swapped for a link after it was
+    checked is refused, not followed.
 
     Raises:
         UnsafeWrite: `path` lies outside `root`, or a link or a file is at it or on the way.
         OSError: Something below the folder cannot be removed.
     """
     folders, name = _split(root, path)
+    with contextlib.ExitStack() as opened:
+        try:
+            parent = opened.enter_context(_folder(root, folders, path, create=False))
+            found = os.stat(name, dir_fd=parent, follow_symlinks=False)
+        except FileNotFoundError:
+            return
+        if stat.S_ISLNK(found.st_mode):
+            raise UnsafeWrite(path, "it is a symbolic link, which SST does not remove through")
+        if not stat.S_ISDIR(found.st_mode):
+            raise UnsafeWrite(path, "it is not a folder")
+        try:
+            shutil.rmtree(name, dir_fd=parent)
+        except OSError as exc:
+            # rmtree refuses a folder swapped for a link after the check above.
+            if stat.S_ISLNK(os.stat(name, dir_fd=parent, follow_symlinks=False).st_mode):
+                raise UnsafeWrite(path, "it changed into a symbolic link while SST was removing it") from exc
+            raise
+
+
+def remove_within(root: Path, path: Path) -> None:
+    """Remove the file at `path`, inside `root`; nothing when absent.
+
+    It is unlinked by name in its folder's descriptor, reached without following a link, so a
+    folder on the way swapped for a link cannot redirect the removal outside `root`.
+
+    Raises:
+        UnsafeWrite: `path` lies outside `root`, names `root` itself, or a link or a file is on
+            the way to it, or it is a folder.
+        OSError: The file cannot be removed.
+    """
+    folders, name = _split(root, path)
     try:
-        with _folder(root, (*folders, name), path, create=False):
-            pass
+        with _folder(root, folders, path, create=False) as parent:
+            if stat.S_ISDIR(os.stat(name, dir_fd=parent, follow_symlinks=False).st_mode):
+                raise UnsafeWrite(path, "it is a folder, not a file")
+            os.unlink(name, dir_fd=parent)
     except FileNotFoundError:
         return
-    shutil.rmtree(path)
 
 
 @contextmanager

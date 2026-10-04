@@ -274,7 +274,9 @@ class _Cursor:
         self.sfqid = "query-id"
         self._rows: list[tuple[object, ...]] = []
 
-    def execute(self, statement: str, params: Sequence[object] | None = None) -> None:
+    def execute(
+        self, statement: str, params: Sequence[object] | None = None, *, num_statements: int | None = None
+    ) -> None:
         rows, self.rowcount = self._tables.execute(self._connection, statement, tuple(params or ()))
         self._rows = rows or []
         self.description = (("RUN_ID",),) if rows is not None else None
