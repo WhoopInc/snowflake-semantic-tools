@@ -105,7 +105,10 @@ regenerated, on a machine that can reach PyPI, before CI can install.
 ### Running the Gates
 
 These are the checks `.github/workflows/test-and-lint.yml` runs on every pull request. A release
-tag runs the same workflow before it builds anything (`publish-to-pypi.yml` calls it).
+tag runs the same workflow before it builds anything (`publish-to-pypi.yml` calls it). None of them
+needs a secret or a Snowflake account. `.github/workflows/nightly.yml` adds mutation testing over
+`domain/` and the property tests under the deeper `nightly` Hypothesis profile, both offline and
+report-only.
 
 ```bash
 # The exit-code contract, reported as its own step
@@ -155,11 +158,11 @@ thread it started is still running after it returns.
 
 ### Tests against Snowflake
 
-Tests marked `live` connect to a real account and are deselected by default.
-`.github/workflows/slow.yml` runs them on every same-repository pull request, every push to main
-and every release tag. A fork's pull request, and a Dependabot one, gets no secrets, so the job is
-skipped there; anywhere else, missing secrets fail the gate rather than skip it. To run them yourself, point them at an account with a
-key-pair user and a role that may create schemas in one scratch database:
+Optional. Tests marked `live` connect to a real account and are deselected by default, and no
+contribution needs them: the fast gate above is the whole required gate, and it runs offline with no
+secrets. They are for maintainers who have a Snowflake account of their own. To run them locally,
+point them at an account with a key-pair user and a role that may create schemas in one scratch
+database:
 
 ```bash
 export SST_TEST_SNOWFLAKE_ACCOUNT=... SST_TEST_SNOWFLAKE_USER=... SST_TEST_SNOWFLAKE_ROLE=...
@@ -171,9 +174,27 @@ poetry run pytest -m live tests/contract_live tests/integration tests/e2e
 Each run creates its own `SST_IT_<UTC timestamp>_<run>_<worker>` schemas and drops them when it
 ends; `python -m tests.helpers.sweep_scratch --older-than-hours 6` drops any a killed run left
 behind, and never touches a schema without SST's marker comment. Without an account the tests skip;
-with `--require-snowflake` they fail instead, which is how CI runs them. Setting
-`SST_TEST_SNOWFLAKE_GRANTEE_ROLE` to a role the CI role may grant to adds the check that replacing
-a view keeps its grants.
+with `--require-snowflake` they fail instead. Setting `SST_TEST_SNOWFLAKE_GRANTEE_ROLE` to a role
+the test role may grant to adds the check that replacing a view keeps its grants.
+
+The same checks can run in GitHub Actions, in this repository or a fork, through
+`.github/workflows/slow.yml`. Nothing triggers it automatically and nothing waits on it: start it by
+hand (Actions, "Snowflake checks (manual)", Run workflow) and pick a suite -- `live`, `sweep`,
+`recording` or `evals`. It reads your account from these repository secrets, which you supply:
+
+| Secret | Value |
+|--------|-------|
+| `SNOWFLAKE_ACCOUNT` | account identifier |
+| `SNOWFLAKE_USER` | a key-pair user |
+| `SNOWFLAKE_PRIVATE_KEY` | that user's unencrypted PKCS#8 private key, as PEM text |
+| `SNOWFLAKE_ROLE` | a role that may create and drop schemas in `SNOWFLAKE_DATABASE` |
+| `SNOWFLAKE_WAREHOUSE` | the warehouse the tests run in |
+| `SNOWFLAKE_DATABASE` | a database set aside for test scratch schemas |
+| `SNOWFLAKE_SCHEMA` | the schema the `evals` suite deploys to (`evals` only) |
+| `SNOWFLAKE_GRANTEE_ROLE` | optional; enables the grant-preservation check |
+
+When the secrets are not set the run skips with a notice and succeeds; it never fails for missing
+credentials.
 
 [tests/README.md](tests/README.md) describes the suite, the reference project, and the goldens.
 
