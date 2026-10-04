@@ -105,9 +105,9 @@ class _Settings:
             target_text(block.get("+schema"), self.target, schema) or schema,
         )
 
-    def agent_block(self, model: AgentModel) -> dict[str, object]:
-        """Return the `agents:` `+` keys that apply to `model`, folded down the routes over its folder."""
-        return routed_block(self.tree.get("agents"), model.folder)
+    def agent_block(self, folder: tuple[str, ...]) -> dict[str, object]:
+        """Return the `agents:` `+` keys that apply to an agent in `folder`, folded down its routes."""
+        return routed_block(self.tree.get("agents"), folder)
 
 
 class CompileProject:
@@ -243,10 +243,10 @@ class CompileProject:
         enabled = tuple(
             model
             for model in agent_models
-            if model.enabled and settings.agent_block(model).get("+enabled", True) is not False
+            if model.enabled and settings.agent_block(model.folder).get("+enabled", True) is not False
         )
         context = self._agent_context(settings, enabled, semantic, tool_catalog, consumed, publishing, unpublished)
-        routed = {model.origin.file: _routed_context(settings, context, model) for model in enabled}
+        routed = {model.folder: _routed_context(settings, context, model.folder) for model in enabled}
         agents = CompileAgents(enabled, agent_diagnostics, context, routed=routed).run_result()
         resolved_tools = {
             item.resolved.model.name.casefold(): tuple(sorted(item.resolved.agent_facing_tool_names))
@@ -299,7 +299,7 @@ class CompileProject:
         database, schema = settings.location(defaults)
         agent_targets: dict[str, QualifiedName] = {}
         for model in enabled:
-            location = settings.location(settings.agent_block(model))
+            location = settings.location(settings.agent_block(model.folder))
             agent_targets.setdefault(model.name.casefold(), QualifiedName.from_parts(*location, model.name))
         return AgentCompileContext(
             semantic_targets,
@@ -338,9 +338,9 @@ def _agent_defaults(settings: _Settings, block: Mapping[str, object]) -> dict[st
     }
 
 
-def _routed_context(settings: _Settings, context: AgentCompileContext, model: AgentModel) -> AgentCompileContext:
-    """Return the context `model` compiles against, with the defaults its folder routes resolve to."""
-    return replace(context, **_agent_defaults(settings, settings.agent_block(model)))
+def _routed_context(settings: _Settings, context: AgentCompileContext, folder: tuple[str, ...]) -> AgentCompileContext:
+    """Return the context an agent in `folder` compiles against, with the defaults its routes resolve to."""
+    return replace(context, **_agent_defaults(settings, settings.agent_block(folder)))
 
 
 def _tag_pairs(value: object) -> tuple[tuple[str, str], ...]:

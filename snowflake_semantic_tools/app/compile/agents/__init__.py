@@ -58,8 +58,8 @@ class CompileAgents:
 
     `diagnostics` are the loader's; they come first, and an error among them that names an
     agent keeps that agent back like one found here. `routed` holds the context an agent
-    compiles against instead of `context`, by its file: the one whose defaults the folder
-    routes over that file resolve to.
+    compiles against instead of `context`, by the agent's folder: the one whose defaults the
+    folder routes over it resolve to.
     """
 
     def __init__(
@@ -68,12 +68,12 @@ class CompileAgents:
         diagnostics: DiagnosticBag,
         context: AgentCompileContext,
         *,
-        routed: Mapping[str, AgentCompileContext] | None = None,
+        routed: Mapping[tuple[str, ...], AgentCompileContext] | None = None,
     ) -> None:
         self._models = models
         self._diagnostics = diagnostics
         self._context = context
-        self._routed: Mapping[str, AgentCompileContext] = routed or {}
+        self._routed: Mapping[tuple[str, ...], AgentCompileContext] = routed or {}
 
     def run_result(self) -> CompileResult:
         """Compile the agents in authored order, then check what spans all of them.
@@ -143,7 +143,7 @@ class CompileAgents:
         return CompileResult(tuple(compiled), DiagnosticBag(diagnostics))
 
     def _context_of(self, model: AgentModel) -> AgentCompileContext:
-        return self._routed.get(model.origin.file, self._context)
+        return self._routed.get(model.folder, self._context)
 
     def _resolve(self, model: AgentModel) -> tuple[ResolvedAgent, str, tuple[Diagnostic, ...]]:
         """Resolve the agent with its inherited defaults, then render its spec and check it whole.

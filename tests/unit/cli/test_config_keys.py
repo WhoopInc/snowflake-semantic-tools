@@ -132,7 +132,7 @@ def _minimal_agent(project: Path) -> AgentModel:
 
 def test_tool_types_extend_the_types_an_agent_tool_may_take(tmp_path: Path) -> None:
     project = project_copy(tmp_path)
-    agent = project / "agents" / "jaffle_minimal" / "agent.yml"
+    agent = project / "agents" / "ops" / "jaffle_minimal" / "agent.yml"
     agent.write_text(
         "name: jaffle_minimal_agent\nspec:\n  tools:\n"
         "    - type: future_tool\n      name: future\n      description: A tool type Snowflake shipped later.\n",
@@ -148,7 +148,7 @@ def test_agents_inherit_secure_and_tags_they_do_not_set(tmp_path: Path) -> None:
     assert (_minimal_agent(project).secure, _minimal_agent(project).tags) == (False, ())
     _replace(project / "sst_config.yml", "\nagents:\n", "\nagents:\n  +secure: true\n")
     assert _minimal_agent(project).secure is True
-    agent = project / "agents" / "jaffle_minimal" / "agent.yml"
+    agent = project / "agents" / "ops" / "jaffle_minimal" / "agent.yml"
     agent.write_text(agent.read_text(encoding="utf-8") + "secure: false\n", encoding="utf-8")
     assert _minimal_agent(project).secure is False
     _replace(
