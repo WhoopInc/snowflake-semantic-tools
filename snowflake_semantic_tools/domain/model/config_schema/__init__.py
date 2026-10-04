@@ -30,6 +30,7 @@ from snowflake_semantic_tools.domain.model.config_schema.values import (
     configured_dir,
     dbt_settings,
     enrichment_config,
+    routed_block,
     skills_configured,
     target_text,
 )
@@ -54,6 +55,7 @@ __all__ = [
     "configured_dir",
     "dbt_settings",
     "enrichment_config",
+    "routed_block",
     "skills_configured",
     "target_text",
 ]
