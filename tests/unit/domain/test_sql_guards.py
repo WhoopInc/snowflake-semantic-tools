@@ -171,3 +171,25 @@ def test_guarded_values_are_built_only_by_their_guards() -> None:
         expr("1")  # type: ignore[arg-type]
     with pytest.raises(TypeError, match="AuthoredQuery"):
         query_text("SELECT 1")  # type: ignore[arg-type]
+
+
+def test_an_ambiguous_line_break_or_system_function_is_refused() -> None:
+    with pytest.raises(UnsafeSqlError, match="control character"):
+        guard_query("SELECT 1\rFROM t")
+    with pytest.raises(LexError, match="line break"):
+        tokenize("-- c\x0bx")
+    with pytest.raises(UnsafeSqlError, match="is a system function"):
+        guard_expression("SYSTEM$CANCEL_QUERY(1)")
+    with pytest.raises(UnsafeSqlError, match="names a system function"):
+        guard_query('SELECT "system$cancel_query"(1)')
+
+
+def test_a_wrapper_altered_after_its_guard_is_refused_as_sql() -> None:
+    expression = guard_expression("a")
+    object.__setattr__(expression, "text", "a  ")
+    with pytest.raises(UnsafeSqlError, match="not the text its guard checked"):
+        expr(expression)
+    query = guard_query("SELECT 1")
+    object.__setattr__(query, "statement", "SELECT 1 ")
+    with pytest.raises(UnsafeSqlError, match="not the text its guard checked"):
+        query_text(query)
