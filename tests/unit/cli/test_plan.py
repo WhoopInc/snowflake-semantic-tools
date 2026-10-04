@@ -22,17 +22,18 @@ from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePort
 from snowflake_semantic_tools.domain.ports.snowflake.stage import StagedFileMetadata
 from snowflake_semantic_tools.domain.state import AppliedEntry
 from tests.helpers.cli_projects import common, compile_project, invoke_counting_closes, invoke_with_port, skill_project
-from tests.helpers.reference_project import DBT_MANIFEST, FIXTURE, project_copy
+from tests.helpers.reference_project import DBT_MANIFEST, project_copy
 from tests.helpers.snowflake_fake import PROFILE_REGISTRY_SHAPE, FakeSnowflake
 
 
-def test_plan_requires_live_snowflake_observation() -> None:
+def test_plan_requires_live_snowflake_observation(tmp_path: Path) -> None:
+    project = project_copy(tmp_path, offline=False)
     compiled = CliRunner().invoke(
         cli,
         [
             "compile",
             "--project-dir",
-            str(FIXTURE),
+            str(project),
             "--manifest",
             str(DBT_MANIFEST),
         ],
@@ -43,7 +44,7 @@ def test_plan_requires_live_snowflake_observation() -> None:
         [
             "plan",
             "--project-dir",
-            str(FIXTURE),
+            str(project),
             "--manifest",
             str(DBT_MANIFEST),
             "--output",

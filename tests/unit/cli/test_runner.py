@@ -17,7 +17,7 @@ from snowflake_semantic_tools.cli.runner import CommandResult, ConfigNeed, comma
 from snowflake_semantic_tools.domain.diagnostics import D, DiagnosticBag
 from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
 from tests.helpers.cli_projects import common, invoke_with_port
-from tests.helpers.reference_project import DBT_MANIFEST, FIXTURE, REPO_ROOT, project_copy
+from tests.helpers.reference_project import DBT_MANIFEST, REPO_ROOT, project_copy
 from tests.helpers.snowflake_fake import FakeSnowflake
 
 # INT902 means SST broke an invariant; every user-caused condition has its own code.
@@ -45,7 +45,9 @@ def test_int902_and_int001_are_emitted_only_at_their_allowlists() -> None:
     assert _emit_sites("SST-INT001") == INT001_ALLOWLIST
 
 
-def test_unexpected_json_failure_emits_one_error_document(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_unexpected_json_failure_emits_one_error_document(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    project = project_copy(tmp_path, offline=False)
+
     def fail(*args: object, **kwargs: object) -> None:
         del args, kwargs
         raise RuntimeError("unexpected failure")
@@ -53,7 +55,7 @@ def test_unexpected_json_failure_emits_one_error_document(monkeypatch: pytest.Mo
     monkeypatch.setattr("snowflake_semantic_tools.cli.wiring.compile.compile_result", fail)
     result = CliRunner().invoke(
         cli,
-        ["compile", "--project-dir", str(FIXTURE), "--manifest", str(DBT_MANIFEST), "--output", "json"],
+        ["compile", "--project-dir", str(project), "--manifest", str(DBT_MANIFEST), "--output", "json"],
     )
 
     assert result.exit_code == 1
@@ -63,12 +65,16 @@ def test_unexpected_json_failure_emits_one_error_document(monkeypatch: pytest.Mo
     assert payload["diagnostics"][0]["message"] == "internal error: RuntimeError: unexpected failure"
 
 
-def test_a_recognised_snowflake_failure_is_reported_as_its_diagnostic(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_a_recognised_snowflake_failure_is_reported_as_its_diagnostic(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    project = project_copy(tmp_path, offline=False)
+
     def fail(*args: object, **kwargs: object) -> None:
         raise SnowflakePortError("refused", diagnostic=D("SST-PRT001", value="acme", detail="refused"))
 
     monkeypatch.setattr("snowflake_semantic_tools.cli.wiring.compile.compile_result", fail)
-    args = ["compile", "--project-dir", str(FIXTURE), "--manifest", str(DBT_MANIFEST)]
+    args = ["compile", "--project-dir", str(project), "--manifest", str(DBT_MANIFEST)]
     as_json = CliRunner().invoke(cli, [*args, "--output", "json"])
     assert as_json.exit_code == 5
     assert [item["code"] for item in json.loads(as_json.output)["diagnostics"]] == ["SST-PRT001"]

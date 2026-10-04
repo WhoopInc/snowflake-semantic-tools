@@ -40,7 +40,8 @@ def project_copy(root: Path, *, offline: bool = True) -> Path:
     `sst_config.yml`; an end-to-end test that runs the project as committed passes False.
     """
     project = root / "project"
-    # Other tests compile the fixture in place, so its target/ may change while this copies.
+    # Tests never compile the shared fixture in place; a target/ a developer compiled there by hand
+    # stays out of the copy.
     shutil.copytree(FIXTURE, project, ignore=shutil.ignore_patterns("target"))
     if offline:
         config = project / CONFIG

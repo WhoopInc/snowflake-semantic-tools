@@ -10,16 +10,17 @@ from click.testing import CliRunner
 
 from snowflake_semantic_tools.cli.main import cli
 from tests.helpers.cli_projects import common, profile_with_commands_and_plugin, skills_only_project
-from tests.helpers.reference_project import DBT_MANIFEST, FIXTURE, break_menu_view, project_copy
+from tests.helpers.reference_project import DBT_MANIFEST, break_menu_view, project_copy
 
 
 def test_compile_accepts_an_explicit_manifest_without_invoking_dbt(tmp_path: Path) -> None:
+    project = project_copy(tmp_path, offline=False)
     result = CliRunner().invoke(
         cli,
         [
             "compile",
             "--project-dir",
-            str(FIXTURE),
+            str(project),
             "--manifest",
             str(DBT_MANIFEST),
             "--select",
@@ -37,13 +38,14 @@ def test_compile_accepts_an_explicit_manifest_without_invoking_dbt(tmp_path: Pat
     assert "CREATE OR REPLACE SEMANTIC VIEW SST_REF_DEV.JAFFLE.JAFFLE_MINIMAL" in ddl
 
 
-def test_compile_rejects_an_unknown_target_before_rendering() -> None:
+def test_compile_rejects_an_unknown_target_before_rendering(tmp_path: Path) -> None:
+    project = project_copy(tmp_path, offline=False)
     result = CliRunner().invoke(
         cli,
         [
             "compile",
             "--project-dir",
-            str(FIXTURE),
+            str(project),
             "--manifest",
             str(DBT_MANIFEST),
             "--target",
@@ -55,13 +57,14 @@ def test_compile_rejects_an_unknown_target_before_rendering() -> None:
 
 
 def test_compile_writes_one_deterministic_file_per_view(tmp_path: Path) -> None:
+    project = project_copy(tmp_path, offline=False)
     output_dir = tmp_path / "ddl"
     result = CliRunner().invoke(
         cli,
         [
             "compile",
             "--project-dir",
-            str(FIXTURE),
+            str(project),
             "--manifest",
             str(DBT_MANIFEST),
             "--select",
@@ -102,13 +105,14 @@ def test_compile_writes_deterministic_manifest(tmp_path: Path) -> None:
     assert "generated_at" not in document
 
 
-def test_compile_json_emits_artifact_fingerprints() -> None:
+def test_compile_json_emits_artifact_fingerprints(tmp_path: Path) -> None:
+    project = project_copy(tmp_path, offline=False)
     result = CliRunner().invoke(
         cli,
         [
             "compile",
             "--project-dir",
-            str(FIXTURE),
+            str(project),
             "--manifest",
             str(DBT_MANIFEST),
             "--output",
@@ -121,13 +125,14 @@ def test_compile_json_emits_artifact_fingerprints() -> None:
     assert all(len(artifact["fingerprint"]) == 64 for artifact in envelope["data"]["artifacts"])
 
 
-def test_compile_json_honors_selection() -> None:
+def test_compile_json_honors_selection(tmp_path: Path) -> None:
+    project = project_copy(tmp_path, offline=False)
     result = CliRunner().invoke(
         cli,
         [
             "compile",
             "--project-dir",
-            str(FIXTURE),
+            str(project),
             "--manifest",
             str(DBT_MANIFEST),
             "--select",
@@ -158,10 +163,7 @@ def test_compile_emits_each_agent_specification_and_nothing_else(tmp_path: Path)
 
 
 def test_compile_selection_keeps_the_canonical_manifest_full(tmp_path: Path) -> None:
-    import shutil
-
-    project = tmp_path / "project"
-    shutil.copytree(FIXTURE, project, ignore=shutil.ignore_patterns("target"))
+    project = project_copy(tmp_path, offline=False)
     result = CliRunner().invoke(
         cli,
         [

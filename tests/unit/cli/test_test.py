@@ -33,17 +33,18 @@ from tests.helpers.cli_projects import common, compile_project, invoke_counting_
 from tests.helpers.eval_builders import EvalSnowflake
 from tests.helpers.eval_state_store import InMemoryEvalStateStore
 from tests.helpers.projects import project_paths
-from tests.helpers.reference_project import DBT_MANIFEST, FIXTURE, REPO_ROOT, project_copy
+from tests.helpers.reference_project import DBT_MANIFEST, REPO_ROOT, project_copy
 from tests.helpers.snowflake_fake import FakeSnowflake
 
 
-def test_golden_suite_compares_every_compiled_view() -> None:
+def test_golden_suite_compares_every_compiled_view(tmp_path: Path) -> None:
+    project = project_copy(tmp_path, offline=False)
     result = CliRunner().invoke(
         cli,
         [
             "test",
             "--project-dir",
-            str(FIXTURE),
+            str(project),
             "--manifest",
             str(DBT_MANIFEST),
             "--suite",
@@ -57,6 +58,7 @@ def test_golden_suite_compares_every_compiled_view() -> None:
 
 
 def test_golden_suite_reports_a_diff(tmp_path: Path) -> None:
+    project = project_copy(tmp_path, offline=False)
     expected_root = tmp_path / "expected"
     shutil.copytree(REPO_ROOT / "tests" / "golden" / "expected", expected_root)
     golden_dir = expected_root / "ddl"
@@ -67,7 +69,7 @@ def test_golden_suite_reports_a_diff(tmp_path: Path) -> None:
         [
             "test",
             "--project-dir",
-            str(FIXTURE),
+            str(project),
             "--manifest",
             str(DBT_MANIFEST),
             "--suite",
@@ -82,6 +84,7 @@ def test_golden_suite_reports_a_diff(tmp_path: Path) -> None:
 
 
 def test_golden_suite_compares_eval_source_sql(tmp_path: Path) -> None:
+    project = project_copy(tmp_path, offline=False)
     expected_root = tmp_path / "expected"
     shutil.copytree(REPO_ROOT / "tests" / "golden" / "expected", expected_root)
     source = expected_root / "eval" / "jaffle_analytics_source.sql"
@@ -95,7 +98,7 @@ def test_golden_suite_compares_eval_source_sql(tmp_path: Path) -> None:
         [
             "test",
             "--project-dir",
-            str(FIXTURE),
+            str(project),
             "--manifest",
             str(DBT_MANIFEST),
             "--suite",
