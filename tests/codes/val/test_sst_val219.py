@@ -5,14 +5,14 @@ from __future__ import annotations
 from pathlib import Path
 
 from snowflake_semantic_tools.domain.diagnostics import Severity
-from tests.helpers.semantic_projects import edited, found
+from tests.helpers.reference_project import edited, reported
 
 MENU = "semantic_models/semantic_views/core/semantic_views.yml"
 END = "          end: effective_end_at\n"
 
 
 def test_sst_val219_fires(tmp_path: Path) -> None:
-    [diagnostic] = found(edited(tmp_path, MENU, END, "          end: closes_at\n"), "SST-VAL219")
+    [diagnostic] = reported(edited(tmp_path, MENU, END, "          end: closes_at\n"), "SST-VAL219")
     assert diagnostic.severity is Severity.ERROR
     assert diagnostic.message == (
         "semantic_view:jaffle_menu: table_config.pricing_periods.distinct_range.end names column 'closes_at', "
@@ -22,4 +22,4 @@ def test_sst_val219_fires(tmp_path: Path) -> None:
 
 
 def test_sst_val219_silent(tmp_path: Path) -> None:
-    assert found(edited(tmp_path, MENU, END, END), "SST-VAL219") == []
+    assert reported(edited(tmp_path, MENU, END, END), "SST-VAL219") == []

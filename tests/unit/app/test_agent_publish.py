@@ -69,9 +69,9 @@ def test_permanent_agent_update_commits_live_before_add_version_alias_and_tags()
 
 
 def test_recorded_port_reports_live_agent_versions() -> None:
-    from tests.helpers.recorded_snowflake import RecordedSnowflake
+    from tests.helpers.snowflake_fake import FakeSnowflake
 
-    port = RecordedSnowflake()
+    port = FakeSnowflake()
     name = QualifiedName.parse("DB.S.AGENT")
     assert not port.agent_has_live_version(name)
     port.live_agents.add(name.sql)

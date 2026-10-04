@@ -9,7 +9,7 @@ import pytest
 from snowflake_semantic_tools.adapters.dbt.manifest import load_manifest_catalog
 from snowflake_semantic_tools.adapters.errors import ProjectError
 from snowflake_semantic_tools.domain.diagnostics import Severity
-from tests.helpers.cli_projects import DBT_MANIFEST
+from tests.helpers.reference_project import DBT_MANIFEST
 
 
 def test_sst_prt006_fires(tmp_path: Path) -> None:

@@ -6,13 +6,8 @@ Fires when an eval file sets its own location; the nearest legitimate input stay
 from __future__ import annotations
 
 from snowflake_semantic_tools.domain.diagnostics import Severity
-from tests.helpers.eval_inputs import (
-    codes,
-    dataset,
-    only,
-    sales_eval,
-    validate,
-)
+from tests.helpers.diagnostic_filters import codes, only
+from tests.helpers.eval_inputs import dataset, sales_eval, validate
 
 
 def test_sst_val703_fires() -> None:

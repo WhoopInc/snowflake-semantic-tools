@@ -11,7 +11,8 @@ from click.testing import CliRunner, Result
 
 from snowflake_semantic_tools.cli.main import cli
 from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
-from tests.helpers.cli_projects import REPO_ROOT, common, compile_project, project_copy
+from tests.helpers.cli_projects import common, compile_project
+from tests.helpers.reference_project import REPO_ROOT, project_copy
 
 GOLDEN = REPO_ROOT / "tests" / "golden" / "expected" / "ddl"
 

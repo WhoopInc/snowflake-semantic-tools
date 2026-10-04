@@ -12,9 +12,9 @@ from snowflake_semantic_tools.app.evals.run import EvalRunOptions, RunEvalSuite
 from snowflake_semantic_tools.domain.diagnostics import Severity
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
 from snowflake_semantic_tools.domain.ports.snowflake.errors import AgentVersionNotFound
-from tests.helpers.app_ports import FixedClock
+from tests.helpers.clocks import FixedClock
+from tests.helpers.diagnostic_filters import codes, only
 from tests.helpers.eval_builders import EvalSnowflake, compiled_eval_of, result_rows, status_result
-from tests.helpers.eval_inputs import codes, only
 
 
 class DroppedAliasSnowflake(EvalSnowflake):
@@ -41,7 +41,9 @@ def test_sst_val720_fires() -> None:
 
 
 def test_sst_val720_silent() -> None:
-    port = EvalSnowflake([status_result("COMPLETED"), result_rows()])
+    port = EvalSnowflake(
+        [status_result("COMPLETED"), result_rows()], agent_versions={("DB.S.SALES_AGENT", "alias:prod"): "VERSION$2"}
+    )
     result = RunEvalSuite(port, FixedClock()).run(
         (pinned("alias:prod"),), options=EvalRunOptions("abcdef0", timestamp="20260928T010203Z")
     )

@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from collections.abc import Callable, Mapping, Sequence
 from datetime import datetime, timedelta, timezone
-from threading import RLock
 from typing import cast
 
 import pytest
@@ -20,20 +19,17 @@ from snowflake_semantic_tools.domain.ports.snowflake.stage import StagedFileMeta
 from snowflake_semantic_tools.domain.sql import Sql, sql
 from snowflake_semantic_tools.domain.state import AppliedEntry
 from snowflake_semantic_tools.domain.state.lock import LockClaim, LockFence, StateWrite
+from tests.helpers.snowflake_fake.driver import FakeDriverConnector, FakeDriverSession, Rows
 from tests.helpers.sql_values import texts
 
 FENCE = LockFence("run", 1)
 
 
-class StubSnowflakeConnector(SnowflakeConnector):
-    def __init__(self, rows_by_prefix: dict[str, tuple[dict[str, object], ...]]) -> None:
-        self._rows_by_prefix = rows_by_prefix
+class StubSnowflakeConnector(FakeDriverConnector):
+    """The connector on a driver session that answers each statement with the rows of its prefix."""
 
-    def _dict_rows(self, sql: Sql) -> tuple[dict[str, object], ...]:
-        for prefix, rows in self._rows_by_prefix.items():
-            if str(sql).startswith(prefix):
-                return rows
-        return ()
+    def __init__(self, rows_by_prefix: dict[str, tuple[dict[str, object], ...]]) -> None:
+        super().__init__(FakeDriverSession(rows=rows_by_prefix))
 
 
 class RecordingUploadConnector(SnowflakeConnector):
@@ -394,68 +390,30 @@ def test_a_failed_connection_names_the_account(monkeypatch: pytest.MonkeyPatch) 
 def test_query_failures_carry_the_diagnostic_a_command_reports(
     message: str, sqlstate: str | None, code: str | None
 ) -> None:
-    class FailingConnector(SnowflakeConnector):
-        def __init__(self) -> None:
-            self._lock = RLock()
-
-            class Connection:
-                def cursor(self, *args: object) -> object:
-                    raise _ConnectorFailure(message, sqlstate)
-
-            self._connection = Connection()  # type: ignore[assignment]  # a double, not a driver connection
-
+    failing = FakeDriverConnector(FakeDriverSession({"cursor": _ConnectorFailure(message, sqlstate)}))
     with pytest.raises(SnowflakePortError) as raised:
-        FailingConnector().query(sql("SELECT 1"))
+        failing.query(sql("SELECT 1"))
     diagnostic = raised.value.diagnostic
     assert (diagnostic.code if diagnostic is not None else None) == code
 
 
-class _Session:
-    """A driver session double: its own single cursor, recording statements, failing where scripted.
+def _session(
+    failures: Mapping[str, BaseException] | None = None, scope: tuple[str, str] = ("DB", "S")
+) -> FakeDriverSession:
+    """A driver session that answers the scope check with `scope` and the fence read with `FENCE`.
 
-    It answers the scope check a scoped session runs with `scope`, and the lock table's fence
-    read with `FENCE`, so a fenced write reaches its state statements.
+    So a scoped session accepts its scope, and a fenced write reaches its state statements.
     """
-
-    def __init__(
-        self, failures: Mapping[str, BaseException] | None = None, scope: tuple[str, str] = ("DB", "S")
-    ) -> None:
-        self.failures = dict(failures or {})
-        self.answers: dict[str, list[tuple[object, ...]]] = {
-            "SELECT CURRENT_DATABASE()": [scope],
-            "SELECT RUN_ID, GENERATION": [(FENCE.run_id, FENCE.generation)],
-        }
-        self.executed: list[str] = []
-        self.num_statements: list[int | None] = []
-        self.description: tuple[tuple[str], ...] | None = None
-        self.sfqid = "query-id"
-        self.rowcount = 1
-        self._result: list[object] = []
-
-    def cursor(self, *args: object) -> _Session:
-        return self
-
-    def execute(self, sql: str, params: object = None, *, num_statements: int | None = None) -> None:
-        self.executed.append(sql)
-        self.num_statements.append(num_statements)
-        failure = next((error for prefix, error in self.failures.items() if sql.startswith(prefix)), None)
-        if failure is not None:
-            raise failure
-        found = next((rows for prefix, rows in self.answers.items() if sql.startswith(prefix)), None)
-        self._result = list(found or [])
-        self.description = (("C",),) if found is not None else None
-
-    def fetchall(self) -> list[object]:
-        return self._result
-
-    def close(self) -> None:
-        pass
+    rows: dict[str, Rows] = {
+        "SELECT CURRENT_DATABASE()": [scope],
+        "SELECT RUN_ID, GENERATION": [(FENCE.run_id, FENCE.generation)],
+    }
+    return FakeDriverSession(failures, rows, rowcount=1)
 
 
-class SessionConnector(SnowflakeConnector):
-    def __init__(self, session: _Session, scoped: _Session | None = None) -> None:
-        self._lock = RLock()
-        self._connection = session  # type: ignore[assignment]  # a double, not a driver connection
+class SessionConnector(FakeDriverConnector):
+    def __init__(self, session: FakeDriverSession, scoped: FakeDriverSession | None = None) -> None:
+        super().__init__(session)
         self._scoped_double = scoped or session
         self.siblings: list[SessionConnector] = []
         self.connected_with: list[dict[str, object]] = []
@@ -499,7 +457,7 @@ DRIVER_CALLS: tuple[tuple[str, str, Callable[[SnowflakeConnector], object]], ...
 def test_a_programming_error_in_a_driver_call_propagates_rather_than_passing_as_a_snowflake_failure(
     prefix: str, call: Callable[[SnowflakeConnector], object]
 ) -> None:
-    session = _Session({prefix: TypeError("unsupported parameter type: Decimal")})
+    session = _session({prefix: TypeError("unsupported parameter type: Decimal")})
     with pytest.raises(TypeError, match="unsupported parameter type"):
         call(SessionConnector(session))
 
@@ -521,64 +479,64 @@ def test_a_driver_or_transport_failure_is_still_reported_as_a_port_error(
     prefix: str, call: Callable[[SnowflakeConnector], object], error: Exception
 ) -> None:
     with pytest.raises(SnowflakePortError) as raised:
-        call(SessionConnector(_Session({prefix: error})))
+        call(SessionConnector(_session({prefix: error})))
     assert str(raised.value) == str(error) and raised.value.__cause__ is error
 
 
 def test_every_statement_reaches_the_driver_as_exactly_one_statement() -> None:
     """Snowflake refuses text it reads as several statements, whatever SST's lexer made of it."""
-    session = _Session()
+    session = _session()
     connector = SessionConnector(session)
     # The double answers no generation read, which acquiring a run lock needs.
     calls = [call for name, _, call in DRIVER_CALLS if name != "acquire_run_lock"]
     for call in calls:
         call(connector)
     connector.execute_script((sql("CREATE VIEW V AS SELECT 1"), sql("DROP VIEW V")))
-    assert "BEGIN" in session.executed and "COMMIT" in session.executed
+    assert "BEGIN" in session.statements and "COMMIT" in session.statements
     assert len(session.num_statements) == len(session.executed) > len(calls)
     assert set(session.num_statements) == {1}
 
 
 def test_an_empty_parameter_sequence_binds_nothing() -> None:
     """The driver formats nothing for empty parameters, so the text must go undoubled."""
-    session = _Session()
+    session = _session()
     cursor = cast(SnowflakeCursor, session)
     session_module._execute(cursor, sql("SELECT '100%'"), ())
-    assert session.executed[-1] == "SELECT '100%'"
+    assert session.statements[-1] == "SELECT '100%'"
     with pytest.raises(ValueError, match="no parameters are bound"):
         session_module._execute(cursor, sql("SELECT %s"), {})
 
 
 def test_a_programming_error_mid_state_write_still_rolls_the_transaction_back() -> None:
-    session = _Session({"MERGE INTO": TypeError("unsupported parameter type: Decimal")})
+    session = _session({"MERGE INTO": TypeError("unsupported parameter type: Decimal")})
     with pytest.raises(TypeError):
         SessionConnector(session).write_state(STATE_TABLE, "dev", "m" * 64, WRITE, FENCE)
-    assert session.executed[-3:] == [session.executed[-3], session.executed[-2], "ROLLBACK"]
-    assert session.executed[-3].startswith("SELECT RUN_ID, GENERATION FROM DB.S.SST_STATE_LOCK")
-    assert session.executed[-2].startswith("MERGE INTO DB.S.SST_STATE AS target")
+    assert session.statements[-3:] == [session.statements[-3], session.statements[-2], "ROLLBACK"]
+    assert session.statements[-3].startswith("SELECT RUN_ID, GENERATION FROM DB.S.SST_STATE_LOCK")
+    assert session.statements[-2].startswith("MERGE INTO DB.S.SST_STATE AS target")
 
 
 def test_a_failed_rollback_keeps_the_error_that_aborted_the_state_write() -> None:
     aborted = ProgrammingError(msg="Numeric value 'x' is not recognized", errno=100038, sqlstate="22018")
-    session = _Session({"MERGE INTO": aborted, "ROLLBACK": OperationalError(msg="Connection is closed")})
+    session = _session({"MERGE INTO": aborted, "ROLLBACK": OperationalError(msg="Connection is closed")})
     with pytest.raises(SnowflakePortError) as raised:
         SessionConnector(session).write_state(STATE_TABLE, "dev", "m" * 64, WRITE, FENCE)
     assert str(raised.value) == str(aborted) == "100038 (22018): Numeric value 'x' is not recognized"
     assert (raised.value.sqlstate, raised.value.errno) == ("22018", 100038)
     assert raised.value.__cause__ is aborted
-    assert session.executed[-1] == "ROLLBACK"
+    assert session.statements[-1] == "ROLLBACK"
     assert getattr(aborted, "__notes__", []) == ["ROLLBACK also failed: Connection is closed"]
 
 
 def test_query_in_context_runs_on_a_session_connected_in_its_scope_and_never_changes_the_main_one() -> None:
-    main, scoped = _Session(), _Session(scope=("AGENTS", "EVALS"))
+    main, scoped = _session(), _session(scope=("AGENTS", "EVALS"))
     connector = SessionConnector(main, scoped)
     agents = SchemaScope(Identifier.parse("AGENTS"), Identifier.parse("EVALS"))
     connector.query_in_context(agents, sql("SELECT 1"))
     connector.query(sql("SELECT 2"))
     connector.query_in_context(agents, sql("SELECT 3"))
-    assert main.executed == ["SELECT 2"]
-    assert scoped.executed == ["SELECT CURRENT_DATABASE(), CURRENT_SCHEMA()", "SELECT 1", "SELECT 3"]
+    assert main.statements == ["SELECT 2"]
+    assert scoped.statements == ["SELECT CURRENT_DATABASE(), CURRENT_SCHEMA()", "SELECT 1", "SELECT 3"]
     assert len(connector.siblings) == 1
     assert connector.connected_with == [{"database": "AGENTS", "schema": "EVALS"}]
 
@@ -616,10 +574,10 @@ def test_a_failed_connection_reports_no_credential_and_chains_no_driver_error(
 def test_a_failed_statement_reports_no_credential() -> None:
     leaky = ProgrammingError(msg=_LEAKY, errno=1003, sqlstate="42000")
     with pytest.raises(SnowflakePortError) as raised:
-        SessionConnector(_Session({"SELECT": leaky})).query(sql("SELECT 1"))
+        SessionConnector(_session({"SELECT": leaky})).query(sql("SELECT 1"))
     assert not [secret for secret in _SECRETS if secret in str(raised.value)]
     assert (raised.value.errno, raised.value.sqlstate) == (1003, "42000")
-    result = SessionConnector(_Session({"CREATE": leaky})).execute_script((sql("CREATE VIEW V AS SELECT 1"),))
+    result = SessionConnector(_session({"CREATE": leaky})).execute_script((sql("CREATE VIEW V AS SELECT 1"),))
     assert result.error is not None and not [secret for secret in _SECRETS if secret in result.error.message]
     assert (result.error.errno, result.error.sqlstate) == (1003, "42000")
 
@@ -627,52 +585,46 @@ def test_a_failed_statement_reports_no_credential() -> None:
 def test_a_message_without_credentials_is_kept_as_written() -> None:
     plain = ProgrammingError(msg="Object 'DB.S.V' does not exist or not authorized.", errno=2003, sqlstate="02000")
     with pytest.raises(SnowflakePortError) as raised:
-        SessionConnector(_Session({"SELECT": plain})).query(sql("SELECT 1"))
+        SessionConnector(_session({"SELECT": plain})).query(sql("SELECT 1"))
     assert str(raised.value) == str(plain)
 
 
-class _GetSession(_Session):
-    """The driver's GET, recorded: a prefix match that downloads every staged file it matches.
+def _get_session(staged: Mapping[str, bytes], status: str = "DOWNLOADED") -> FakeDriverSession:
+    """A driver session whose GET downloads every staged file its source prefixes.
 
     Each match is written into the `file://` target and reported as one row of the shape the
     connector's dictionary cursor returns for GET: `file`, `size`, `status`, `message`.
     """
 
-    def __init__(self, staged: Mapping[str, bytes], status: str = "DOWNLOADED") -> None:
-        super().__init__()
-        self.staged = dict(staged)
-        self.status = status
-        self.rows: list[dict[str, object]] = []
-
-    def execute(self, sql: str, params: object = None, *, num_statements: int | None = None) -> None:
-        super().execute(sql, params, num_statements=num_statements)
-        source, target = (part.strip("'") for part in sql.removeprefix("GET ").split(" ", 1))
+    def get(statement: str, binds: tuple[object, ...]) -> tuple[Rows | None, int]:
+        del binds
+        source, target = (part.strip("'") for part in statement.removeprefix("GET ").split(" ", 1))
         directory = target.removeprefix("file://")
-        self.rows = []
-        for path, content in sorted(self.staged.items()):
+        rows: list[dict[str, object]] = []
+        for path, content in sorted(staged.items()):
             if path.startswith(source):
                 name = path.rsplit("/", 1)[-1]
                 with open(f"{directory}/{name}", "wb") as handle:
                     handle.write(content)
-                self.rows.append({"file": name, "size": len(content), "status": self.status, "message": ""})
+                rows.append({"file": name, "size": len(content), "status": status, "message": ""})
+        return rows, len(rows)
 
-    def fetchall(self) -> list[object]:
-        return list(self.rows)
+    return FakeDriverSession(respond=get)
 
 
 def test_a_staged_eval_config_is_read_from_the_file_get_reports_not_a_prefix_sibling() -> None:
     config = "@DB.S.EVAL_CONFIGS/sales/abcdef0.yaml"
-    session = _GetSession({config: b"evaluation: {}\n", f"{config}.bak": b"stale\n"})
+    session = _get_session({config: b"evaluation: {}\n", f"{config}.bak": b"stale\n"})
     assert SessionConnector(session).read_staged_file(config) == b"evaluation: {}\n"
-    assert session.executed[0].startswith(f"GET '{config}' 'file://")
+    assert session.statements[0].startswith(f"GET '{config}' 'file://")
 
-    only_sibling = _GetSession({f"{config}.bak": b"stale\n"})
+    only_sibling = _get_session({f"{config}.bak": b"stale\n"})
     assert SessionConnector(only_sibling).read_staged_file(config) is None
 
 
 def test_a_staged_file_get_does_not_report_downloaded_fails_closed() -> None:
     config = "@DB.S.EVAL_CONFIGS/sales/abcdef0.yaml"
-    session = _GetSession({config: b"evaluation: {}\n"}, status="FAILED")
+    session = _get_session({config: b"evaluation: {}\n"}, status="FAILED")
     with pytest.raises(SnowflakePortError, match="reported FAILED"):
         SessionConnector(session).read_staged_file(config)
 

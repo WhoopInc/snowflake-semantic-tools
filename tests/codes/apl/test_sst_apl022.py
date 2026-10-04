@@ -12,14 +12,16 @@ from snowflake_semantic_tools.app.plan_artifacts import PlanArtifacts
 from snowflake_semantic_tools.domain.diagnostics import Severity
 from snowflake_semantic_tools.domain.model.lifecycle import ApplyResult, ExecResult, ExecutionError
 from snowflake_semantic_tools.domain.sql import Sql
-from tests.helpers.app_ports import FixedClock, InMemorySnowflake, InMemoryStateStore
+from tests.helpers.app_ports import InMemoryStateStore
 from tests.helpers.apply_runs import STATE_TABLE
 from tests.helpers.artifact_builders import state, target
+from tests.helpers.clocks import FixedClock
 from tests.helpers.compile_builders import compiled_as
 from tests.helpers.eval_builders import compile_eval
+from tests.helpers.snowflake_fake import FakeSnowflake
 
 
-def publish(port: InMemorySnowflake) -> ApplyResult:
+def publish(port: FakeSnowflake) -> ApplyResult:
     result = compile_eval()
     manifest = build_manifest(result)
     artifact = compiled_as(result, CompiledEval).rendered_for_publish(manifest.manifest_id)
@@ -35,7 +37,7 @@ def publish(port: InMemorySnowflake) -> ApplyResult:
     return use_case.run(plan, state())
 
 
-class DatasetRefused(InMemorySnowflake):
+class DatasetRefused(FakeSnowflake):
     def execute_script(self, statements: Sequence[Sql]) -> ExecResult:
         if "SYSTEM$CREATE_EVALUATION_DATASET" in " ".join(str(item) for item in statements):
             return ExecResult(False, error=ExecutionError("Insufficient privileges to operate on dataset", "42501"))
@@ -51,4 +53,4 @@ def test_sst_apl022_fires() -> None:
 
 
 def test_sst_apl022_silent() -> None:
-    assert "SST-APL022" not in [item.code for item in publish(InMemorySnowflake()).diagnostics]
+    assert "SST-APL022" not in [item.code for item in publish(FakeSnowflake()).diagnostics]

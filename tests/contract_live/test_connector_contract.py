@@ -1,6 +1,6 @@
 """The real connector against the port contract the offline doubles satisfy, in a scratch schema.
 
-`tests/contract/test_snowflake_port.py` holds `RecordedSnowflake` and `ScriptedSnowflake` to these
+`tests/contract/test_snowflake_port.py` holds `FakeSnowflake` and `FakeSnowflake` to these
 same observable results. Run here against Snowflake, a divergence means the doubles promise
 something the real connector does not, and every offline test that leans on them is suspect.
 """

@@ -23,8 +23,9 @@ from snowflake_semantic_tools.domain.model.identifier import Identifier, Qualifi
 from snowflake_semantic_tools.domain.model.lifecycle import QueryResult, ShowRow
 from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
 from snowflake_semantic_tools.domain.sql import Sql
-from tests.helpers.cli_projects import common, compile_project, project_copy
+from tests.helpers.cli_projects import common, compile_project
 from tests.helpers.projects import project_paths
+from tests.helpers.reference_project import project_copy
 
 
 class JitteredSnowflake:
@@ -61,11 +62,11 @@ class _Session:
 
     def __init__(self, owner: JitteredSnowflake) -> None:
         # Imported here: the recorded double's module is large, and only these tests subclass it.
-        from tests.helpers.recorded_snowflake import RecordedSnowflake
+        from tests.helpers.snowflake_fake import FakeSnowflake
 
         self._owner = owner
-        self._recorded = RecordedSnowflake()
-        self._recorded.preflight.refused = {"locked_objects"}
+        self._recorded = FakeSnowflake()
+        self._recorded.refuse("locked_objects")
         self.closed = False
 
     def close(self) -> None:

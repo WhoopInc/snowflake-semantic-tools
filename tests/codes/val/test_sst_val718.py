@@ -6,14 +6,8 @@ Fires when a run name carries no commit SHA; the nearest legitimate input stays 
 from __future__ import annotations
 
 from snowflake_semantic_tools.domain.diagnostics import Severity
-from tests.helpers.eval_inputs import (
-    codes,
-    config,
-    only,
-    run_config,
-    sales_eval,
-    validate,
-)
+from tests.helpers.diagnostic_filters import codes, only
+from tests.helpers.eval_inputs import config, run_config, sales_eval, validate
 
 
 def test_sst_val718_fires() -> None:

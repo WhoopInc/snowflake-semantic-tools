@@ -10,8 +10,9 @@ from snowflake_semantic_tools.app.manifest import build_manifest
 from snowflake_semantic_tools.domain.diagnostics import DiagnosticBag, Severity
 from snowflake_semantic_tools.domain.model.eval import EvalCatalog, EvalDefaults
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
-from tests.helpers.app_ports import FixedClock, InMemoryStateStore
+from tests.helpers.app_ports import InMemoryStateStore
 from tests.helpers.artifact_builders import target
+from tests.helpers.clocks import FixedClock
 from tests.helpers.eval_builders import EvalSnowflake, compile_eval
 from tests.helpers.eval_state_store import InMemoryEvalStateStore
 from tests.helpers.project_inputs import InMemoryProjectInputs

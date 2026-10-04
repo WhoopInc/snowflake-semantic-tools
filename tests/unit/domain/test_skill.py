@@ -34,6 +34,7 @@ from snowflake_semantic_tools.domain.validate.skill import (
     unrunnable_scripts,
     validate_skill_catalog,
 )
+from tests.helpers.diagnostic_filters import codes
 
 SKILL_MD = "---\nname: {name}\ndescription: Does things.\n---\n{body}"
 
@@ -63,10 +64,6 @@ def skill(name: str = "month-close", files: dict[str, bytes | str] | None = None
     }
     values.update(fields)
     return Skill(**values)  # type: ignore[arg-type]
-
-
-def codes(diagnostics: object) -> list[str]:
-    return [item.code for item in diagnostics]  # type: ignore[attr-defined]
 
 
 def test_records_expose_identity_digests_and_text() -> None:

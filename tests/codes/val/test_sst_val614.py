@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 from snowflake_semantic_tools.domain.diagnostics import Diagnostic, Severity
-from tests.helpers.agent_builders import agent, compile_agents, compile_tools, cross, found, search_member
+from tests.helpers.agent_builders import agent, compile_agents, compile_tools, cross, search_member
+from tests.helpers.diagnostic_filters import coded
 
 
 def _beside(schema: str) -> list[Diagnostic]:
     agents = compile_agents(agent("product_docs"), database="DB", schema=schema)
-    return found(cross(compile_tools((search_member(),)), agents), "SST-VAL614")
+    return coded(cross(compile_tools((search_member(),)), agents), "SST-VAL614")
 
 
 def test_sst_val614_fires() -> None:

@@ -13,7 +13,7 @@ from snowflake_semantic_tools import __version__
 from snowflake_semantic_tools.cli.group import SstGroup
 from snowflake_semantic_tools.cli.main import cli
 from snowflake_semantic_tools.domain.state import SST_VERSION
-from tests.helpers.cli_projects import FIXTURE, MANIFEST, REPO_ROOT
+from tests.helpers.reference_project import DBT_MANIFEST, REPO_ROOT, project_copy
 
 
 def test_sst_console_script_targets_the_one_point_zero_cli() -> None:
@@ -30,17 +30,18 @@ def test_one_version_string_feeds_the_package_the_cli_and_the_manifest() -> None
     assert CliRunner().invoke(cli, ["--version"]).output == f"sst, version {__version__}\n"
 
 
-def test_global_output_and_project_dir_are_forwarded_to_command_defaults() -> None:
+def test_global_output_and_project_dir_are_forwarded_to_command_defaults(tmp_path: Path) -> None:
+    project = project_copy(tmp_path, offline=False)
     result = CliRunner().invoke(
         cli,
         [
             "--output",
             "json",
             "--project-dir",
-            str(FIXTURE),
+            str(project),
             "validate",
             "--manifest",
-            str(MANIFEST),
+            str(DBT_MANIFEST),
             "--no-strict",
             "--no-snowflake-syntax-check",
         ],

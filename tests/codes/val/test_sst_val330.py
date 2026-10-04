@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 
 from snowflake_semantic_tools.domain.diagnostics import Severity
-from tests.helpers.semantic_projects import found, view_names, with_view
+from tests.helpers.reference_project import reported, view_names, with_view
 
 VIEW = """  - name: v
     description: |-
@@ -48,7 +48,7 @@ VIEW = """  - name: v
 )
 def test_sst_val330_fires(tmp_path: Path, key: str, entry: str, message: str) -> None:
     project = with_view(tmp_path, VIEW.format(key=key, entry=entry))
-    [diagnostic] = found(project, "SST-VAL330")
+    [diagnostic] = reported(project, "SST-VAL330")
     assert diagnostic.severity is Severity.ERROR
     assert diagnostic.message == f"semantic_view:v: {message}"
     assert diagnostic.subject == "semantic_view:v"
@@ -57,5 +57,5 @@ def test_sst_val330_fires(tmp_path: Path, key: str, entry: str, message: str) ->
 
 def test_sst_val330_silent(tmp_path: Path) -> None:
     project = with_view(tmp_path, VIEW.format(key="exclude_columns", entry="{{ ref('customers', 'customer_name') }}"))
-    assert found(project, "SST-VAL330") == []
+    assert reported(project, "SST-VAL330") == []
     assert "V" in view_names(project)

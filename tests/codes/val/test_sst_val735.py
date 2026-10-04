@@ -6,14 +6,8 @@ Fires when a threshold is set with no baseline runs; the nearest legitimate inpu
 from __future__ import annotations
 
 from snowflake_semantic_tools.domain.diagnostics import Severity
-from tests.helpers.eval_inputs import (
-    codes,
-    config,
-    only,
-    run_config,
-    sales_eval,
-    validate,
-)
+from tests.helpers.diagnostic_filters import codes, only
+from tests.helpers.eval_inputs import config, run_config, sales_eval, validate
 
 
 def test_sst_val735_fires() -> None:

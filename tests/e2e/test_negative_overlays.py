@@ -14,15 +14,15 @@ from pathlib import Path
 
 import pytest
 
-from tests.helpers.cli_projects import DBT_MANIFEST
-from tests.helpers.e2e_cli import Key, expected_cases, overlaid, overlay_files, reference_copy, strict_validate
+from tests.helpers.e2e_cli import Key, expected_cases, overlaid, overlay_files, strict_validate
+from tests.helpers.reference_project import DBT_MANIFEST, project_copy
 
 pytestmark = pytest.mark.e2e
 
 
 @pytest.fixture(scope="module")
 def clean(tmp_path_factory: pytest.TempPathFactory) -> Counter[Key]:
-    run = strict_validate(reference_copy(tmp_path_factory.mktemp("clean")), DBT_MANIFEST)
+    run = strict_validate(project_copy(tmp_path_factory.mktemp("clean"), offline=False), DBT_MANIFEST)
     assert run.stderr == ""
     return run.blocking()
 

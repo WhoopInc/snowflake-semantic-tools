@@ -1,38 +1,21 @@
-"""What the CLI tests share: the reference fixture, a copy of it, and `sst` against a recorded Snowflake."""
+"""What the CLI tests share: `sst` against the fake Snowflake, and small projects of one artifact type."""
 
 from __future__ import annotations
 
-import shutil
 from pathlib import Path
+from typing import Any
 
 import pytest
 from click.testing import CliRunner, Result
 
 from snowflake_semantic_tools.cli.main import cli
-from tests.helpers.recorded_snowflake import RecordedSnowflake
-
-REPO_ROOT = Path(__file__).resolve().parents[2]
-FIXTURE = REPO_ROOT / "tests" / "fixtures" / "reference_project"
-DBT_MANIFEST = REPO_ROOT / "tests" / "fixtures" / "reference_project_manifest.json"
-# The command-level checks call the same recorded dbt manifest by its shorter name.
-MANIFEST = DBT_MANIFEST
+from tests.helpers.cli_json import invoke_json
+from tests.helpers.file_trees import write_tree
+from tests.helpers.reference_project import DBT_MANIFEST
+from tests.helpers.snowflake_fake import FakeSnowflake
 
 
-def project_copy(tmp_path: Path) -> Path:
-    project = tmp_path / "project"
-    # Other tests compile the fixture in place, so its target/ may change while this copies.
-    shutil.copytree(FIXTURE, project, ignore=shutil.ignore_patterns("target"))
-    config = project / "sst_config.yml"
-    config.write_text(
-        config.read_text(encoding="utf-8")
-        .replace("snowflake_syntax_check: true", "snowflake_syntax_check: false")
-        .replace("strict: true", "strict: false"),
-        encoding="utf-8",
-    )
-    return project
-
-
-def invoke_with_port(monkeypatch: pytest.MonkeyPatch, port: RecordedSnowflake, args: list[str]) -> Result:
+def invoke_with_port(monkeypatch: pytest.MonkeyPatch, port: FakeSnowflake, args: list[str]) -> Result:
     if "--project-dir" in args and args[0] in ("plan", "apply"):
         project = Path(args[args.index("--project-dir") + 1])
         if not (project / "target" / "sst" / "manifest.json").is_file():
@@ -51,16 +34,13 @@ def compile_project(project: Path) -> None:
     assert result.exit_code == 0, result.output
 
 
-def break_menu_view(project: Path) -> None:
-    path = project / "semantic_models" / "semantic_views" / "core" / "semantic_views.yml"
-    text = path.read_text(encoding="utf-8")
-    entry = "- \"{{ ref('products') }}\""
-    assert entry in text
-    path.write_text(text.replace(entry, '- "products"', 1), encoding="utf-8")
+def validate_json(project: Path, *flags: str) -> tuple[int, list[dict[str, Any]]]:
+    """Run `sst validate --output json` on `project` with `flags`; return its exit code and diagnostics."""
+    return invoke_json(["validate", *common(project), *flags])
 
 
 def invoke_counting_closes(
-    monkeypatch: pytest.MonkeyPatch, port: RecordedSnowflake, args: list[str]
+    monkeypatch: pytest.MonkeyPatch, port: FakeSnowflake, args: list[str]
 ) -> tuple[Result, list[str]]:
     """Run `sst` against `port`, recording every close() so a test can prove the connection was released."""
     closes: list[str] = []
@@ -137,7 +117,4 @@ def profile_with_commands_and_plugin(root: Path) -> Path:
         "commands/sql/check.md": "---\ndescription: Check SQL.\n---\nCheck it.\n",
         "plugins/kit/plugin.yml": "name: kit\ndescription: Kit.\nowner_team: Data\nskills: [month-close]\n",
     }
-    for name, text in files.items():
-        (project / name).parent.mkdir(parents=True, exist_ok=True)
-        (project / name).write_text(text, encoding="utf-8")
-    return project
+    return write_tree(project, files)

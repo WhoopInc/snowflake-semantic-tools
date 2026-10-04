@@ -15,13 +15,10 @@ from snowflake_semantic_tools.domain.diagnostics import (
     resolve_severities,
     unstable_fingerprints,
 )
+from tests.helpers.diagnostic_filters import codes
 
 WARNING = D("SST-LOD003", file="a.yml")
 ERROR = D("SST-REF001", model="orders", subject="metric:m")
-
-
-def codes(bag: DiagnosticBag) -> list[str]:
-    return [item.code for item in bag]
 
 
 def test_d_points_a_located_code_at_the_file_line_and_column_its_context_names() -> None:

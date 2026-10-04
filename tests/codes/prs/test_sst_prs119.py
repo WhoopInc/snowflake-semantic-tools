@@ -4,19 +4,10 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from snowflake_semantic_tools.adapters.yaml.skills import load_skill_catalog
-from snowflake_semantic_tools.domain.diagnostics import Diagnostic, Severity
+from snowflake_semantic_tools.domain.diagnostics import Severity
+from tests.helpers.prs_codes import skill_tree_findings
 
 FRONT = "---\nname: {name}\ndescription: {name} steps.\n---\nSteps.\n"
-
-
-def _found(tmp_path: Path, code: str, files: dict[str, str]) -> list[Diagnostic]:
-    for relative, text in files.items():
-        path = tmp_path / relative
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(text, encoding="utf-8")
-    catalog = load_skill_catalog(tmp_path, skills_dir="skills", plugins_dir="plugins")
-    return [item for item in catalog.diagnostics if item.code == code]
 
 
 def test_sst_prs119_fires(tmp_path: Path) -> None:
@@ -24,7 +15,7 @@ def test_sst_prs119_fires(tmp_path: Path) -> None:
         "skills/close/SKILL.md": FRONT.format(name="close"),
         "skills/close/inner/SKILL.md": FRONT.format(name="inner"),
     }
-    [diagnostic] = _found(tmp_path, "SST-PRS119", files)
+    [diagnostic] = skill_tree_findings(tmp_path, "SST-PRS119", files)
     assert diagnostic.severity is Severity.ERROR
     assert diagnostic.message == "skill:close: nested skill folder at skills/close/inner/SKILL.md"
     assert diagnostic.subject == "skill:close"
@@ -32,4 +23,4 @@ def test_sst_prs119_fires(tmp_path: Path) -> None:
 
 def test_sst_prs119_silent(tmp_path: Path) -> None:
     files = {"skills/close/SKILL.md": FRONT.format(name="close"), "skills/open/SKILL.md": FRONT.format(name="open")}
-    assert _found(tmp_path, "SST-PRS119", files) == []
+    assert skill_tree_findings(tmp_path, "SST-PRS119", files) == []

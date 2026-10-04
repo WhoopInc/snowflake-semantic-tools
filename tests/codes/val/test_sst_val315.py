@@ -2,18 +2,13 @@
 
 from __future__ import annotations
 
-from snowflake_semantic_tools.domain.diagnostics import Diagnostic, Severity
-from snowflake_semantic_tools.domain.model.dbt import DbtColumn, DbtModel
-from snowflake_semantic_tools.domain.validate.semantic.dbt import dbt_column_diagnostics
-
-
-def _found(column: DbtColumn, code: str) -> list[Diagnostic]:
-    model = DbtModel("model.t.m", "m", "DB.S.M", ("id",), (), (DbtColumn("id", "Key.", "NUMBER", "dimension"), column))
-    return [item for item in dbt_column_diagnostics({"m": model}) if item.code == code]
+from snowflake_semantic_tools.domain.diagnostics import Severity
+from snowflake_semantic_tools.domain.model.dbt import DbtColumn
+from tests.helpers.val_codes import dbt_column_findings
 
 
 def test_sst_val315_fires() -> None:
-    [found] = _found(
+    [found] = dbt_column_findings(
         DbtColumn("c", "C.", "VARCHAR", "dimension", sample_values=("a", "b", "c", "d", "e")), "SST-VAL315"
     )
     assert found.severity is Severity.WARNING
@@ -23,7 +18,7 @@ def test_sst_val315_fires() -> None:
 
 def test_sst_val315_silent() -> None:
     assert (
-        _found(
+        dbt_column_findings(
             DbtColumn("c", "C.", "VARCHAR", "dimension", sample_values=("a", "b", "c", "d", "e"), is_enum=False),
             "SST-VAL315",
         )

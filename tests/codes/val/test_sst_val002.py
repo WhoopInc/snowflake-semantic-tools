@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from tests.helpers.semantic_projects import CONFIG, compiled_diagnostics, edited
+from tests.helpers.reference_project import CONFIG, compiled_diagnostics, edited
 
 CONSUMED = "    partner-glossary: {}\n"
 

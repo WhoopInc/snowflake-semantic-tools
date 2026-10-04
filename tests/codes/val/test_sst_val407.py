@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from snowflake_semantic_tools.domain.diagnostics import Severity
-from tests.helpers.semantic_edits import INSTRUCTIONS, appended, reported
+from tests.helpers.reference_project import INSTRUCTIONS, appended, reported
 
 
 def test_sst_val407_fires(tmp_path: Path) -> None:

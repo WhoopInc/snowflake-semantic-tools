@@ -5,11 +5,14 @@ from __future__ import annotations
 from pathlib import Path
 
 from snowflake_semantic_tools.domain.diagnostics import Severity
-from tests.helpers.seam_projects import SmallProject, found, view_file
+from tests.helpers.diagnostic_filters import coded
+from tests.helpers.seam_projects import SmallProject, view_file
 
 
 def test_sst_prs027_fires(tmp_path: Path) -> None:
-    [diagnostic] = found(SmallProject(tmp_path, files=view_file("    tags: {tier: gold}\n")).load(), "SST-PRS027")
+    [diagnostic] = coded(
+        SmallProject(tmp_path, files=view_file("    tags: {tier: gold}\n")).load().diagnostics, "SST-PRS027"
+    )
     assert diagnostic.severity is Severity.ERROR
     assert diagnostic.message == "semantic_view:catalog: tags must be a list of name and value entries, found dict"
     assert diagnostic.subject == "semantic_view:catalog"
@@ -17,7 +20,7 @@ def test_sst_prs027_fires(tmp_path: Path) -> None:
 
 def test_sst_prs027_fires_for_a_tag_name_that_is_not_a_call(tmp_path: Path) -> None:
     files = view_file("    tags:\n      - name: tier\n        value: gold\n")
-    [diagnostic] = found(SmallProject(tmp_path, files=files).load(), "SST-PRS027")
+    [diagnostic] = coded(SmallProject(tmp_path, files=files).load().diagnostics, "SST-PRS027")
     assert diagnostic.message == (
         "semantic_view:catalog: tags must be a list of name and value entries, "
         "found the name 'tier', which is not one tag() call"
@@ -25,4 +28,4 @@ def test_sst_prs027_fires_for_a_tag_name_that_is_not_a_call(tmp_path: Path) -> N
 
 
 def test_sst_prs027_silent(tmp_path: Path) -> None:
-    assert found(SmallProject(tmp_path, files=view_file("")).load(), "SST-PRS027") == []
+    assert coded(SmallProject(tmp_path, files=view_file("")).load().diagnostics, "SST-PRS027") == []

@@ -9,15 +9,15 @@ from tests.helpers.agent_builders import (
     catalog,
     compile_agents,
     compile_tools,
-    found,
     observe,
     search_member,
     search_tool,
 )
-from tests.helpers.app_ports import InMemorySnowflake
+from tests.helpers.diagnostic_filters import coded
+from tests.helpers.snowflake_fake import FakeSnowflake
 
 
-class _Columns(InMemorySnowflake):
+class _Columns(FakeSnowflake):
     def __init__(self, kind: str) -> None:
         super().__init__()
         self.kind = kind
@@ -30,7 +30,7 @@ class _Columns(InMemorySnowflake):
 def _searched(kind: str) -> list[Diagnostic]:
     tools = catalog(search_member())
     results = (compile_tools(tools.members), compile_agents(agent("sales_agent", search_tool()), tools=tools))
-    return found(observe(_Columns(kind), *results), "SST-VAL525")
+    return coded(observe(_Columns(kind), *results), "SST-VAL525")
 
 
 def test_sst_val525_fires() -> None:

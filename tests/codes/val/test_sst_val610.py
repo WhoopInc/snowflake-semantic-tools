@@ -9,16 +9,16 @@ from tests.helpers.agent_builders import (
     compile_agents,
     compile_tools,
     cross,
-    found,
     generic_tool,
     procedure_member,
 )
+from tests.helpers.diagnostic_filters import coded
 
 
 def _reached(execute_as: str) -> list[Diagnostic]:
     tools = catalog(procedure_member(reference=False, execute_as=execute_as))
     results = (compile_tools(tools.members), compile_agents(agent("sales_agent", generic_tool()), tools=tools))
-    return found(cross(*results), "SST-VAL610")
+    return coded(cross(*results), "SST-VAL610")
 
 
 def test_sst_val610_fires() -> None:

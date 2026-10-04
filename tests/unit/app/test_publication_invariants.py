@@ -22,17 +22,11 @@ from snowflake_semantic_tools.domain.model.skill import Skill, SkillCatalog, Ski
 from snowflake_semantic_tools.domain.ports.lifecycle import CompositeLifecycleHandler
 from snowflake_semantic_tools.domain.sql import sql
 from snowflake_semantic_tools.domain.validate.config import validate_config
-from tests.helpers.app_ports import FixedClock, InMemoryStateStore
-from tests.helpers.artifact_builders import target
-from tests.helpers.publications import (
-    SKILL_STAGE,
-    compiled_profile,
-    compiled_skill,
-    empty_state,
-    publish_skill,
-    skill,
-)
-from tests.helpers.recorded_snowflake import RecordedSnowflake
+from tests.helpers.app_ports import InMemoryStateStore
+from tests.helpers.artifact_builders import empty_state, target
+from tests.helpers.clocks import FixedClock
+from tests.helpers.publications import SKILL_STAGE, compiled_profile, compiled_skill, publish_skill, skill
+from tests.helpers.snowflake_fake import FakeSnowflake
 
 
 def _skill_in(folder: str, name: str, body: bytes = b"Do it.\n") -> Skill:
@@ -64,7 +58,7 @@ def test_every_extension_publishes_into_the_one_catalog_schema_whatever_its_fold
 
 
 def test_a_certified_publish_tags_the_version_and_issues_no_grant() -> None:
-    port = RecordedSnowflake(existing=())
+    port = FakeSnowflake(existing=())
     _, result, _ = publish_skill(port, compiled_skill(certified=True))
     assert result.success, result.outcomes
     statements = [statement.upper() for script in port.scripts for statement in script]
@@ -80,7 +74,7 @@ def test_no_raw_text_reaches_ddl_through_the_statement_builder() -> None:
 
 
 def test_each_channel_reports_its_own_outcome_and_one_failure_fails_the_deploy() -> None:
-    port = RecordedSnowflake(existing=())
+    port = FakeSnowflake(existing=())
     extension = compiled_skill()
     profile = compiled_profile(skill())
     # The stage channel's registry write is refused; the catalog channel publishes.

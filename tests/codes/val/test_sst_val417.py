@@ -5,7 +5,8 @@ from __future__ import annotations
 from snowflake_semantic_tools.app.compile import CompiledView, CompileResult
 from snowflake_semantic_tools.domain.diagnostics import Diagnostic, Severity
 from snowflake_semantic_tools.domain.model.semantic_view import Metric, SemanticView, Table, VerifiedQuery
-from tests.helpers.agent_builders import agent, compile_agents, cross, evaluation, found
+from tests.helpers.agent_builders import agent, compile_agents, cross, evaluation
+from tests.helpers.diagnostic_filters import coded
 from tests.helpers.sql_values import authored, authored_query, statement
 
 QUESTION = "How many orders are there in each state?"
@@ -21,7 +22,7 @@ def _asked(eval_question: str) -> list[Diagnostic]:
     )
     views = CompileResult((CompiledView(view, statement("CREATE SEMANTIC VIEW DB.S.SALES")),))
     model = agent("sales_agent", sample_questions=(QUESTION,))
-    return found(cross(views, compile_agents(model), evals=(evaluation(model, eval_question),)), "SST-VAL417")
+    return coded(cross(views, compile_agents(model), evals=(evaluation(model, eval_question),)), "SST-VAL417")
 
 
 def test_sst_val417_fires() -> None:

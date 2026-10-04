@@ -5,8 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from snowflake_semantic_tools.domain.diagnostics import Severity
-from tests.helpers.cli_projects import project_copy
-from tests.helpers.semantic_edits import VIEWS, edited, reported
+from tests.helpers.reference_project import VIEWS, edited, project_copy, reported
 
 LIST = (
     "    custom_instructions:\n"

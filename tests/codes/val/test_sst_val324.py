@@ -6,12 +6,11 @@ from pathlib import Path
 from typing import Any
 
 from snowflake_semantic_tools.domain.diagnostics import Severity
-from tests.helpers.cli_projects import project_copy
-from tests.helpers.semantic_projects import found, manifest, model_node
+from tests.helpers.reference_project import edited_manifest, project_copy, reference_node, reported
 
 
 def _uncontracted(document: dict[str, Any]) -> None:
-    model_node(document, "products")["config"].pop("contract")
+    reference_node(document, "products")["config"].pop("contract")
     # And untested: drop every test attached to products.
     document["nodes"] = {
         key: node
@@ -23,7 +22,7 @@ def _uncontracted(document: dict[str, Any]) -> None:
 
 
 def test_sst_val324_fires(tmp_path: Path) -> None:
-    diagnostics = found(project_copy(tmp_path), "SST-VAL324", manifest(tmp_path, _uncontracted))
+    diagnostics = reported(project_copy(tmp_path), "SST-VAL324", edited_manifest(tmp_path, _uncontracted))
     diagnostic = next(item for item in diagnostics if item.subject == "semantic_view:jaffle_minimal")
     assert diagnostic.severity is Severity.WARNING
     assert diagnostic.message == "semantic_view:jaffle_minimal: 'products' has no contract and no tests"
@@ -31,4 +30,4 @@ def test_sst_val324_fires(tmp_path: Path) -> None:
 
 def test_sst_val324_silent(tmp_path: Path) -> None:
     # supplies has no contract, but its test is enough.
-    assert found(project_copy(tmp_path), "SST-VAL324") == []
+    assert reported(project_copy(tmp_path), "SST-VAL324") == []

@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 from snowflake_semantic_tools.domain.diagnostics import Severity
-from tests.helpers.agent_builders import agent, compile_agents, found
+from tests.helpers.agent_builders import agent, compile_agents
+from tests.helpers.diagnostic_filters import coded
 
 
 def test_sst_val511_fires() -> None:
     model = agent("sales_agent", orchestration_instructions="x" * 100_000)
-    [diagnostic] = found(compile_agents(model).diagnostics, "SST-VAL511")
+    [diagnostic] = coded(compile_agents(model).diagnostics, "SST-VAL511")
     assert diagnostic.severity is Severity.ERROR
     assert diagnostic.message.startswith("agent 'sales_agent': rendered spec is 100")
     assert diagnostic.message.endswith(" bytes, over the 100,000 limit")
@@ -17,4 +18,4 @@ def test_sst_val511_fires() -> None:
 
 def test_sst_val511_silent() -> None:
     model = agent("sales_agent", orchestration_instructions="x" * 90_000)
-    assert found(compile_agents(model).diagnostics, "SST-VAL511") == []
+    assert coded(compile_agents(model).diagnostics, "SST-VAL511") == []

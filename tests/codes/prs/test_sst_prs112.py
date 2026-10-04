@@ -5,12 +5,14 @@ from __future__ import annotations
 from pathlib import Path
 
 from snowflake_semantic_tools.domain.diagnostics import Severity
-from tests.helpers.seam_projects import KEY, SmallProject, found, relationship_file
+from tests.helpers.diagnostic_filters import coded
+from tests.helpers.seam_projects import KEY, SmallProject, relationship_file
 
 
 def test_sst_prs112_fires(tmp_path: Path) -> None:
-    [diagnostic] = found(
-        SmallProject(tmp_path, files=relationship_file(f"{KEY} >= {KEY}", f"{KEY} >= {KEY}")).load(), "SST-PRS112"
+    [diagnostic] = coded(
+        SmallProject(tmp_path, files=relationship_file(f"{KEY} >= {KEY}", f"{KEY} >= {KEY}")).load().diagnostics,
+        "SST-PRS112",
     )
     assert diagnostic.severity is Severity.ERROR
     assert diagnostic.message == "relationship:self_join: 2 asof conditions declared"
@@ -19,6 +21,9 @@ def test_sst_prs112_fires(tmp_path: Path) -> None:
 
 def test_sst_prs112_silent(tmp_path: Path) -> None:
     assert (
-        found(SmallProject(tmp_path, files=relationship_file(f"{KEY} = {KEY}", f"{KEY} >= {KEY}")).load(), "SST-PRS112")
+        coded(
+            SmallProject(tmp_path, files=relationship_file(f"{KEY} = {KEY}", f"{KEY} >= {KEY}")).load().diagnostics,
+            "SST-PRS112",
+        )
         == []
     )

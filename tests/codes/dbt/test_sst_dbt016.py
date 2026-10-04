@@ -5,7 +5,8 @@ from __future__ import annotations
 from pathlib import Path
 
 from snowflake_semantic_tools.domain.diagnostics import Severity
-from tests.helpers.seam_projects import SmallProject, found
+from tests.helpers.diagnostic_filters import coded
+from tests.helpers.seam_projects import SmallProject
 
 OTHER = (
     "semantic_views:\n  - name: other\n"
@@ -16,11 +17,11 @@ OTHER = (
 
 def test_sst_dbt016_fires(tmp_path: Path) -> None:
     project = SmallProject(tmp_path, files={"semantic_models/semantic_views/other.yml": OTHER}).load()
-    [diagnostic] = found(project, "SST-DBT016")
+    [diagnostic] = coded(project.diagnostics, "SST-DBT016")
     assert diagnostic.severity is Severity.INFO
     assert diagnostic.message == "model 'products' feeds 2 artifacts"
     assert diagnostic.subject == "dbt_model:products"
 
 
 def test_sst_dbt016_silent(tmp_path: Path) -> None:
-    assert found(SmallProject(tmp_path).load(), "SST-DBT016") == []
+    assert coded(SmallProject(tmp_path).load().diagnostics, "SST-DBT016") == []

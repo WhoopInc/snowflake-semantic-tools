@@ -12,7 +12,7 @@ Each violation is keyed `<rule> <path>:<line>`:
   importing one by its full name loads a second copy. Code that tests share belongs in
   `tests/helpers/` and is imported as `tests.helpers.<module>`.
 
-The `run_recorded_*` scripts import their siblings by bare name (`from recorded_snowflake
+The `run_recorded_*` scripts import their siblings by bare name (`from snowflake_fake
 import ...`); that is an absolute import, and it is how a script run as a file finds them.
 """
 

@@ -121,15 +121,6 @@ def plan(
     )
 
 
-def codes(changeset: ChangeSet) -> list[str]:
-    return [item.code for item in changeset.diagnostics]
-
-
-def only(changeset: ChangeSet, code: str) -> list[Diagnostic]:
-    """The diagnostics of `changeset` carrying `code`."""
-    return [item for item in changeset.diagnostics if item.code == code]
-
-
 @dataclass(frozen=True)
 class _Rendered:
     depends_on: tuple[str, ...]

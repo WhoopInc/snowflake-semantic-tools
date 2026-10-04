@@ -10,14 +10,15 @@ from snowflake_semantic_tools.app.smoke import SmokePublished
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
 from snowflake_semantic_tools.domain.model.lifecycle import OwnershipMarker
 from snowflake_semantic_tools.domain.state import AppliedEntry, Manifest, State
-from tests.helpers.app_ports import InMemorySnowflake, InMemoryStateStore
+from tests.helpers.app_ports import InMemoryStateStore
 from tests.helpers.compile_builders import compiled
 from tests.helpers.project_inputs import EMPTY_SOURCES, dev_target
+from tests.helpers.snowflake_fake import FakeSnowflake
 
 STATE_TABLE = QualifiedName.parse("DB.SCH.SST_STATE")
 
 
-class MarkerCountingSnowflake(InMemorySnowflake):
+class MarkerCountingSnowflake(FakeSnowflake):
     def __init__(self) -> None:
         super().__init__()
         self.described: list[str] = []
@@ -53,7 +54,7 @@ def published(result: CompileResult) -> tuple[Manifest, MarkerCountingSnowflake]
     return manifest, port
 
 
-def smoke(result: CompileResult, manifest: Manifest, port: InMemorySnowflake, store: InMemoryStateStore | None = None):  # type: ignore[no-untyped-def]
+def smoke(result: CompileResult, manifest: Manifest, port: FakeSnowflake, store: InMemoryStateStore | None = None):  # type: ignore[no-untyped-def]
     """Run the suite against `port`; without `store`, no local state is cached, so state reads clean."""
     cache = store or InMemoryStateStore()
     return SmokePublished(port, cache).run(

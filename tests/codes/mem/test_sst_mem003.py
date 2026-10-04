@@ -5,14 +5,15 @@ from __future__ import annotations
 from pathlib import Path
 
 from snowflake_semantic_tools.domain.diagnostics import Severity
-from tests.helpers.resolve_builders import coded, edited_fixture, reference_fixture
+from tests.helpers.diagnostic_filters import coded
+from tests.helpers.reference_project import edited, load, project_copy
 
 METRICS = "semantic_models/metrics/metrics.yml"
 ORDER_COUNT = "  - name: order_count\n    tables:\n      - orders"
 
 
 def test_sst_mem003_fires(tmp_path: Path) -> None:
-    project = edited_fixture(tmp_path, METRICS, ORDER_COUNT, ORDER_COUNT.removesuffix("s"))
+    project = load(edited(tmp_path, METRICS, ORDER_COUNT, ORDER_COUNT.removesuffix("s")))
     [diagnostic] = coded(project.diagnostics, "SST-MEM003")
     assert diagnostic.severity is Severity.ERROR
     assert diagnostic.message == "metric:order_count declares table 'order', which is not a known dbt model"
@@ -20,4 +21,4 @@ def test_sst_mem003_fires(tmp_path: Path) -> None:
 
 
 def test_sst_mem003_silent(tmp_path: Path) -> None:
-    assert coded(reference_fixture(tmp_path).diagnostics, "SST-MEM003") == []
+    assert coded(load(project_copy(tmp_path)).diagnostics, "SST-MEM003") == []

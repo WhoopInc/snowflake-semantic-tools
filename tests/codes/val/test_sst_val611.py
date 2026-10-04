@@ -10,17 +10,17 @@ from tests.helpers.agent_builders import (
     compile_tools,
     cross,
     evaluation,
-    found,
     search_member,
     search_tool,
 )
+from tests.helpers.diagnostic_filters import coded
 
 
 def _gated(embedding_model: str | None) -> list[Diagnostic]:
     tools = catalog(search_member(embedding_model=embedding_model))
     model = agent("sales_agent", search_tool())
     results = (compile_tools(tools.members), compile_agents(model, tools=tools))
-    return found(cross(*results, evals=(evaluation(model, "Which item is vegan?"),)), "SST-VAL611")
+    return coded(cross(*results, evals=(evaluation(model, "Which item is vegan?"),)), "SST-VAL611")
 
 
 def test_sst_val611_fires() -> None:

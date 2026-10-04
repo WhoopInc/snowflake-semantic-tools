@@ -3,13 +3,14 @@
 from __future__ import annotations
 
 from snowflake_semantic_tools.domain.diagnostics import Diagnostic, Severity
-from tests.helpers.agent_builders import agent, compile_agents, cross, evaluation, found
+from tests.helpers.agent_builders import agent, compile_agents, cross, evaluation
+from tests.helpers.diagnostic_filters import coded
 
 
 def _tiered(tier: str) -> list[Diagnostic]:
     model = agent("sales_agent", orchestration_model="auto")
     result = compile_agents(model, orchestration_model="auto")
-    return found(cross(result, evals=(evaluation(model, "How many orders?", tier=tier),)), "SST-VAL544")
+    return coded(cross(result, evals=(evaluation(model, "How many orders?", tier=tier),)), "SST-VAL544")
 
 
 def test_sst_val544_fires() -> None:

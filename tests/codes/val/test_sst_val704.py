@@ -11,8 +11,8 @@ from dataclasses import replace
 from snowflake_semantic_tools.app.compile.evals import CompiledEval
 from snowflake_semantic_tools.domain.diagnostics import Severity
 from snowflake_semantic_tools.domain.model.eval import EvalDatasetConfig, ResolvedEval
+from tests.helpers.diagnostic_filters import codes, only
 from tests.helpers.eval_builders import compile_eval, resolved_eval
-from tests.helpers.eval_inputs import codes, only
 
 
 def with_dataset_template(template: str) -> ResolvedEval:

@@ -12,7 +12,8 @@ from click.testing import CliRunner
 
 from snowflake_semantic_tools.cli.globals import SstCommand
 from snowflake_semantic_tools.cli.main import cli
-from tests.helpers.cli_projects import common, project_copy
+from tests.helpers.cli_projects import common
+from tests.helpers.reference_project import project_copy
 
 
 def _json(args: list[str], env: dict[str, str] | None = None) -> tuple[int, dict[str, Any]]:

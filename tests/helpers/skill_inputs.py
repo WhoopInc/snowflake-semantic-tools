@@ -10,10 +10,7 @@ applies compiled skills against a recorded Snowflake, the way `sst apply` does.
 
 from __future__ import annotations
 
-from collections.abc import Mapping
 from dataclasses import replace
-from pathlib import Path
-from types import MappingProxyType
 
 from snowflake_semantic_tools.app.apply import ApplyArtifacts
 from snowflake_semantic_tools.app.compile.agents import AgentCompileContext, CompileAgents, ExtensionPin
@@ -36,10 +33,11 @@ from snowflake_semantic_tools.domain.model.profile import (
 )
 from snowflake_semantic_tools.domain.model.skill import Plugin, Skill, SkillCatalog, SkillFile
 from snowflake_semantic_tools.domain.model.tool import ToolCatalog
-from snowflake_semantic_tools.domain.state import STATE_SCHEMA_VERSION, State
-from tests.helpers.app_ports import FixedClock, InMemoryStateStore
+from snowflake_semantic_tools.domain.state import State
+from tests.helpers.app_ports import InMemoryStateStore
 from tests.helpers.artifact_builders import target
-from tests.helpers.recorded_snowflake import RecordedSnowflake
+from tests.helpers.clocks import FixedClock
+from tests.helpers.snowflake_fake import FakeSnowflake
 
 SKILL_MD = "---\nname: {name}\ndescription: Does things.\n---\n# Close\nRead reference/steps.md.\n"
 
@@ -133,18 +131,6 @@ def profile_catalog(*profiles: DesktopProfile, **fields: object) -> ProfileCatal
     return replace(value, **fields)  # type: ignore[arg-type]
 
 
-def write(root: Path, files: Mapping[str, str | bytes]) -> Path:
-    """Write each file below `root`, creating its folders, and return `root`."""
-    for relative, content in files.items():
-        path = root / relative
-        path.parent.mkdir(parents=True, exist_ok=True)
-        if isinstance(content, bytes):
-            path.write_bytes(content)
-        else:
-            path.write_text(content, encoding="utf-8")
-    return root
-
-
 SKILL_PIN = ExtensionPin(
     "skill:month-close", QualifiedName.parse("DB.S.MONTH_CLOSE"), "SST_ABCDEF012345", ("month-close",)
 )
@@ -202,12 +188,8 @@ def compile_extensions(catalog: SkillCatalog) -> dict[str, CompiledExtension]:
     return {item.artifact_key: item for item in result.compiled if isinstance(item, CompiledExtension)}
 
 
-def empty_state() -> State:
-    return State(STATE_SCHEMA_VERSION, target(), "", "cfg", None, MappingProxyType({}))
-
-
 def publish_extensions(
-    port: RecordedSnowflake, compiled: dict[str, CompiledExtension], previous: State, *, include_prune: bool = False
+    port: FakeSnowflake, compiled: dict[str, CompiledExtension], previous: State, *, include_prune: bool = False
 ) -> tuple[ChangeSet, State]:
     """Plan and apply the compiled extensions; return the plan and the state apply left."""
     releases = {key: item.release for key, item in compiled.items()}

@@ -5,10 +5,10 @@ from __future__ import annotations
 from snowflake_semantic_tools.domain.diagnostics import Severity
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
 from tests.helpers.publications import compiled_profile, publish_profile
-from tests.helpers.recorded_snowflake import RecordedSnowflake
+from tests.helpers.snowflake_fake import FakeSnowflake
 
 
-class NarrowRegistry(RecordedSnowflake):
+class NarrowRegistry(FakeSnowflake):
     """Creating the registry leaves a table with only its key column."""
 
     def ensure_profile_registry(self, qualified_name: QualifiedName) -> None:
@@ -25,5 +25,5 @@ def test_sst_apl027_fires() -> None:
 
 
 def test_sst_apl027_silent() -> None:
-    _, result, _ = publish_profile(RecordedSnowflake(existing=()), compiled_profile())
+    _, result, _ = publish_profile(FakeSnowflake(existing=()), compiled_profile())
     assert "SST-APL027" not in [item.code for item in result.diagnostics]

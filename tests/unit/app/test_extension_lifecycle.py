@@ -5,7 +5,6 @@ from __future__ import annotations
 import json
 from collections.abc import Sequence
 from dataclasses import replace
-from types import MappingProxyType
 
 from snowflake_semantic_tools.app.apply import ApplyArtifacts
 from snowflake_semantic_tools.app.compile.skills import CatalogChannel, CompiledExtension, CompileSkills
@@ -33,10 +32,11 @@ from snowflake_semantic_tools.domain.model.skill import Plugin, Skill, SkillCata
 from snowflake_semantic_tools.domain.ports.snowflake.catalog import ExtensionObservation, ExtensionVersion
 from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
 from snowflake_semantic_tools.domain.sql import Sql
-from snowflake_semantic_tools.domain.state import FAILED_AFTER_WRITE, STATE_SCHEMA_VERSION, AppliedEntry, State
-from tests.helpers.app_ports import FixedClock, InMemoryStateStore
-from tests.helpers.artifact_builders import target
-from tests.helpers.recorded_snowflake import RecordedSnowflake
+from snowflake_semantic_tools.domain.state import FAILED_AFTER_WRITE, AppliedEntry, State
+from tests.helpers.app_ports import InMemoryStateStore
+from tests.helpers.artifact_builders import empty_state, target
+from tests.helpers.clocks import FixedClock
+from tests.helpers.snowflake_fake import FakeSnowflake
 from tests.helpers.sql_values import statement, texts
 
 STAGE = QualifiedName.parse("DB.S.SKILL_BUNDLES")
@@ -60,12 +60,8 @@ def compile_catalog(catalog: SkillCatalog, channel: CatalogChannel = CHANNEL) ->
     return {item.artifact_key: item for item in result.compiled if isinstance(item, CompiledExtension)}
 
 
-def state(applied: dict[str, AppliedEntry] | None = None) -> State:
-    return State(STATE_SCHEMA_VERSION, target(), "", "cfg", None, MappingProxyType(dict(applied or {})))
-
-
 def publish(
-    port: RecordedSnowflake, compiled: dict[str, CompiledExtension], previous: State
+    port: FakeSnowflake, compiled: dict[str, CompiledExtension], previous: State
 ) -> tuple[ChangeSet, ApplyResult, State]:
     releases = {key: item.release for key, item in compiled.items()}
     handlers = {kind: ExtensionLifecycleHandler(port, releases, kind) for kind in ("skill", "plugin")}
@@ -141,9 +137,9 @@ def test_catalog_channel_absent_or_invalid_prefix_compiles_nothing() -> None:
 
 
 def test_first_publish_then_noop_then_revert_is_a_state_only_update() -> None:
-    port = RecordedSnowflake(existing=())
+    port = FakeSnowflake(existing=())
     compiled = compile_catalog(SkillCatalog((skill(),)))
-    changeset, result, after = publish(port, compiled, state())
+    changeset, result, after = publish(port, compiled, empty_state())
     assert [change.action for change in changeset.changes] == [Action.CREATE]
     assert result.success, result.diagnostics
     statements = [statement for script in port.scripts for statement in script]
@@ -184,14 +180,13 @@ def test_first_publish_then_noop_then_revert_is_a_state_only_update() -> None:
 
 
 def test_resume_after_partial_upload_uploads_only_missing_files() -> None:
-    port = RecordedSnowflake(existing=())
+    port = FakeSnowflake(existing=())
     compiled = compile_catalog(SkillCatalog((skill(),)))
     release = compiled["skill:month-close"].release
     port.stage_types[STAGE.sql] = "INTERNAL NO CSE"
     first = release.bundle.entries[0]
-    port.upload(f"{release.prefix}{first.path}", first.content)
-    port.uploads.clear()
-    _, result, _ = publish(port, compiled, state())
+    port.stage_file(f"{release.prefix}{first.path}", first.content)
+    _, result, _ = publish(port, compiled, empty_state())
     assert result.success
     assert [path for path, _ in port.uploads] == [
         f"{release.prefix}{entry.path}" for entry in release.bundle.entries[1:]
@@ -203,29 +198,29 @@ def test_unmanaged_type_mismatch_stage_and_damaged_alias_block() -> None:
     release = compiled["skill:month-close"].release
     owned = AppliedEntry("f", release.target.sql, "now", "run", "applied", "f", "m")
 
-    unmanaged = RecordedSnowflake(existing=())
+    unmanaged = FakeSnowflake(existing=())
     unmanaged.execute_script(
         (statement("CREATE CORTEX EXTENSION IF NOT EXISTS DB.S.MONTH_CLOSE TYPE = 'SKILL' COMMENT = 'x'"),)
     )
-    changeset, _, _ = publish(unmanaged, compiled, state())
+    changeset, _, _ = publish(unmanaged, compiled, empty_state())
     assert [(change.action, change.reason) for change in changeset.changes] == [
         (Action.BLOCKED, ChangeReason.UNMANAGED_OBJECT)
     ]
     assert [item.code for item in changeset.diagnostics] == ["SST-PLN024"]
 
-    mismatch = RecordedSnowflake(existing=())
+    mismatch = FakeSnowflake(existing=())
     mismatch.execute_script(
         (statement("CREATE CORTEX EXTENSION IF NOT EXISTS DB.S.MONTH_CLOSE TYPE = 'PLUGIN' COMMENT = 'x'"),)
     )
-    changeset, _, _ = publish(mismatch, compiled, state({"skill:month-close": owned}))
+    changeset, _, _ = publish(mismatch, compiled, empty_state({"skill:month-close": owned}))
     assert [item.code for item in changeset.diagnostics] == ["SST-PLN002"]
 
-    client_side = RecordedSnowflake(existing=())
+    client_side = FakeSnowflake(existing=())
     client_side.stage_types[STAGE.sql] = "INTERNAL"
-    changeset, _, _ = publish(client_side, compiled, state())
+    changeset, _, _ = publish(client_side, compiled, empty_state())
     assert [item.code for item in changeset.diagnostics] == ["SST-PLN026"]
 
-    damaged = RecordedSnowflake(existing=())
+    damaged = FakeSnowflake(existing=())
     damaged.execute_script(
         (
             statement(
@@ -236,38 +231,38 @@ def test_unmanaged_type_mismatch_stage_and_damaged_alias_block() -> None:
     damaged.execute_script(
         (statement(f"ALTER CORTEX EXTENSION DB.S.MONTH_CLOSE ADD VERSION {release.alias} FROM @DB.S.EMPTY/"),)
     )
-    changeset, _, _ = publish(damaged, compiled, state({"skill:month-close": owned}))
+    changeset, _, _ = publish(damaged, compiled, empty_state({"skill:month-close": owned}))
     assert [item.code for item in changeset.diagnostics] == ["SST-PLN027"]
     assert "missing" in changeset.diagnostics[0].message
 
 
 def test_empty_version_and_upload_failures_are_partial_writes() -> None:
     compiled = compile_catalog(SkillCatalog((skill(),)))
-    empty = RecordedSnowflake(existing=())
-    record = empty._record_extension_statement
+    empty = FakeSnowflake(existing=())
+    record = empty._take_effect
 
-    def swallow_files(normalized: str, original: str | None = None) -> None:
+    def swallow_files(statement: str) -> None:
         # Reproduce the measured defect: ADD VERSION accepts a wrong path and
         # creates an empty version.
-        record(normalized.replace("FROM @DB.S.SKILL_BUNDLES/", "FROM @DB.S.NOWHERE/"), original)
+        record(statement.replace("FROM @DB.S.SKILL_BUNDLES/", "FROM @DB.S.NOWHERE/"))
 
-    empty._record_extension_statement = swallow_files  # type: ignore[method-assign]
-    _, result, after = publish(empty, compiled, state())
+    empty._take_effect = swallow_files  # type: ignore[method-assign]
+    _, result, after = publish(empty, compiled, empty_state())
     assert not result.success
     assert result.outcomes[0].error is not None and result.outcomes[0].error.code == "SST-APL016"
     assert result.outcomes[0].write_succeeded is True
     assert after.applied["skill:month-close"].outcome == "failed_after_write"
 
-    unreadable = RecordedSnowflake(existing=())
+    unreadable = FakeSnowflake(existing=())
     unreadable.read_staged_file = lambda stage_path: b"tampered"  # type: ignore[method-assign]
-    _, result, _ = publish(unreadable, compiled, state())
+    _, result, _ = publish(unreadable, compiled, empty_state())
     assert result.outcomes[0].error is not None and "byte for byte" in result.outcomes[0].error.message
 
 
 def test_comment_drift_and_certification_with_readback() -> None:
-    port = RecordedSnowflake(existing=())
+    port = FakeSnowflake(existing=())
     compiled = compile_catalog(SkillCatalog((skill(),)))
-    _, _, after = publish(port, compiled, state())
+    _, _, after = publish(port, compiled, empty_state())
     port.execute_script((statement("ALTER CORTEX EXTENSION DB.S.MONTH_CLOSE SET COMMENT = 'drifted'"),))
     certified = compile_catalog(SkillCatalog((skill(),)), replace(CHANNEL, certified=True))
     changeset, result, _ = publish(port, certified, after)
@@ -278,25 +273,25 @@ def test_comment_drift_and_certification_with_readback() -> None:
     alias = compiled["skill:month-close"].release.alias
     assert statements[-1].startswith(f"ALTER CORTEX EXTENSION DB.S.MONTH_CLOSE VERSION {alias} SET TAG")
 
-    refusing = RecordedSnowflake(existing=())
+    refusing = FakeSnowflake(existing=())
     refusing.refused = ("SET TAG",)
-    _, result, _ = publish(refusing, certified, state())
+    _, result, _ = publish(refusing, certified, empty_state())
     assert result.outcomes[0].error is not None and result.outcomes[0].error.code == "SST-APL007"
 
-    silent = RecordedSnowflake(existing=())
+    silent = FakeSnowflake(existing=())
     silent.refused = ()
-    record = silent._record_extension_statement
+    record = silent._take_effect
 
-    def ignore_tags(normalized: str, original: str | None = None) -> None:
-        if "SET TAG" not in normalized:
-            record(normalized, original)
+    def ignore_tags(statement: str) -> None:
+        if "SET TAG" not in statement:
+            record(statement)
 
-    silent._record_extension_statement = ignore_tags  # type: ignore[method-assign]
-    _, result, _ = publish(silent, certified, state())
+    silent._take_effect = ignore_tags  # type: ignore[method-assign]
+    _, result, _ = publish(silent, certified, empty_state())
     assert result.outcomes[0].error is not None and "reports certification" in result.outcomes[0].error.message
 
 
-def observation(port: RecordedSnowflake, name: QualifiedName) -> ExtensionObservation:
+def observation(port: FakeSnowflake, name: QualifiedName) -> ExtensionObservation:
     """Return what `port` reports for the extension `name`, which the test has published."""
     observed = port.observe_extension(name)
     assert observed is not None
@@ -308,10 +303,10 @@ def served_warnings(changeset: ChangeSet) -> list[str]:
 
 
 def test_the_catalog_keeps_serving_a_certified_version_over_an_uncertified_one() -> None:
-    port = RecordedSnowflake(existing=())
+    port = FakeSnowflake(existing=())
     certified_channel = replace(CHANNEL, certified=True)
     first = compile_catalog(SkillCatalog((skill(),)), certified_channel)
-    changeset, result, after = publish(port, first, state())
+    changeset, result, after = publish(port, first, empty_state())
     assert result.success and served_warnings(changeset) == []
     target = QualifiedName.parse("DB.S.MONTH_CLOSE")
     assert observation(port, target).latest_certified_version == "VERSION$2"
@@ -342,7 +337,7 @@ def test_the_catalog_keeps_serving_a_certified_version_over_an_uncertified_one()
     ]
 
 
-class LaggingCertification(RecordedSnowflake):
+class LaggingCertification(FakeSnowflake):
     """Some pipeline-tagged versions report an empty status while the extension names them."""
 
     def extension_versions(self, qualified_name: QualifiedName) -> tuple[ExtensionVersion, ...]:
@@ -352,7 +347,7 @@ class LaggingCertification(RecordedSnowflake):
 def test_the_extension_latest_certified_version_counts_as_certified() -> None:
     port = LaggingCertification(existing=())
     certified = compile_catalog(SkillCatalog((skill(),)), replace(CHANNEL, certified=True))
-    changeset, result, after = publish(port, certified, state())
+    changeset, result, after = publish(port, certified, empty_state())
     assert result.success, result.outcomes[0].error
     tags = [statement for script in port.scripts for statement in script if "SET TAG" in statement]
     assert len(tags) == 1
@@ -375,7 +370,7 @@ class AliasCertification(LaggingCertification):
 def test_a_latest_certified_version_reported_by_alias_is_not_tagged_again() -> None:
     port = AliasCertification(existing=())
     certified = compile_catalog(SkillCatalog((skill(),)), replace(CHANNEL, certified=True))
-    _, result, after = publish(port, certified, state())
+    _, result, after = publish(port, certified, empty_state())
     assert result.success, result.outcomes[0].error
     changeset, _, _ = publish(port, certified, after)
     assert [change.action for change in changeset.changes] == [Action.NOOP]
@@ -383,9 +378,9 @@ def test_a_latest_certified_version_reported_by_alias_is_not_tagged_again() -> N
 
 
 def test_served_version_prediction_edges() -> None:
-    port = RecordedSnowflake(existing=())
+    port = FakeSnowflake(existing=())
     compiled = compile_catalog(SkillCatalog((skill(),)))
-    _, _, after = publish(port, compiled, state())
+    _, _, after = publish(port, compiled, empty_state())
     changed = compile_catalog(SkillCatalog((skill(body="Read reference/steps.md twice.\n"),)))
     _, _, after_change = publish(port, changed, after)
     # Nothing is certified, so a revert is served only if it is the default.
@@ -415,9 +410,9 @@ def test_plugin_falls_back_to_a_live_version_built_from_empty() -> None:
         ),
     )
     compiled = {key: item for key, item in compile_catalog(catalog).items() if key.startswith("plugin:")}
-    port = RecordedSnowflake(existing=())
+    port = FakeSnowflake(existing=())
     port.refused = ("ADD VERSION SST_",)
-    _, result, _ = publish(port, compiled, state())
+    _, result, _ = publish(port, compiled, empty_state())
     assert result.success, result.outcomes
     statements = [statement for script in port.scripts for statement in script]
     alias = compiled["plugin:finance-kit"].release.alias
@@ -427,15 +422,15 @@ def test_plugin_falls_back_to_a_live_version_built_from_empty() -> None:
     assert any(path.startswith("snow://cortex_extension/DB.S.FINANCE_KIT/versions/live/") for path, _ in port.uploads)
 
     skills_only = compile_catalog(SkillCatalog((skill(),)))
-    refused = RecordedSnowflake(existing=())
+    refused = FakeSnowflake(existing=())
     refused.refused = ("ADD VERSION SST_",)
-    _, result, _ = publish(refused, skills_only, state())
+    _, result, _ = publish(refused, skills_only, empty_state())
     assert result.outcomes[0].error is not None and "ADD VERSION failed" in result.outcomes[0].error.message
 
 
 def test_stale_plan_prune_report_and_resource_merge() -> None:
     compiled = compile_catalog(SkillCatalog((skill(),)))
-    port = RecordedSnowflake(existing=())
+    port = FakeSnowflake(existing=())
     releases = {key: item.release for key, item in compiled.items()}
     handler = ExtensionLifecycleHandler(port, releases, "skill")
     artifact = compiled["skill:month-close"].rendered_artifact
@@ -472,7 +467,7 @@ def test_stale_plan_prune_report_and_resource_merge() -> None:
 
 def test_prunes_and_changes_without_an_artifact_are_skipped() -> None:
     compiled = compile_catalog(SkillCatalog((skill(),)))
-    port = RecordedSnowflake(existing=())
+    port = FakeSnowflake(existing=())
     handler = ExtensionLifecycleHandler(port, {key: item.release for key, item in compiled.items()}, "skill")
     artifact = compiled["skill:month-close"].rendered_artifact
     prune = handler.report_prune(
@@ -489,7 +484,7 @@ def test_prunes_and_changes_without_an_artifact_are_skipped() -> None:
     assert port.scripts == [] and port.uploads == []
 
 
-class SiblingStage(RecordedSnowflake):
+class SiblingStage(FakeSnowflake):
     """A sibling artifact creates the shared bundle stage just after this one's apply observes it.
 
     The first two stage reads are the plan's observation and the apply's; the third is
@@ -509,7 +504,7 @@ class SiblingStage(RecordedSnowflake):
 
 def test_a_bundle_stage_a_sibling_creates_during_apply_is_not_created_again() -> None:
     port = SiblingStage()
-    _, result, after = publish(port, compile_catalog(SkillCatalog((skill(),))), state())
+    _, result, after = publish(port, compile_catalog(SkillCatalog((skill(),))), empty_state())
     assert result.success, result.outcomes
     assert [statement for script in port.scripts for statement in script if "CREATE STAGE" in statement] == []
     entry = after.applied["skill:month-close"]
@@ -517,8 +512,8 @@ def test_a_bundle_stage_a_sibling_creates_during_apply_is_not_created_again() ->
 
 
 def test_a_certified_release_not_yet_published_predicts_no_other_served_version() -> None:
-    port = RecordedSnowflake(existing=())
-    _, _, after = publish(port, compile_catalog(SkillCatalog((skill(),))), state())
+    port = FakeSnowflake(existing=())
+    _, _, after = publish(port, compile_catalog(SkillCatalog((skill(),))), empty_state())
     certified = compile_catalog(
         SkillCatalog((skill(body="Read reference/steps.md twice.\n"),)), replace(CHANNEL, certified=True)
     )
@@ -548,13 +543,13 @@ def _failure(result: object) -> str:
 
 def test_observation_failure_blocks_the_plan() -> None:
     compiled = compile_catalog(SkillCatalog((skill(),)))
-    port = RecordedSnowflake(existing=())
+    port = FakeSnowflake(existing=())
 
     def unreachable(qualified_name: QualifiedName) -> None:
         raise SnowflakePortError("SHOW failed")
 
     port.observe_extension = unreachable  # type: ignore[method-assign]
-    changeset, _, _ = publish(port, compiled, state())
+    changeset, _, _ = publish(port, compiled, empty_state())
     assert changeset.changes[0].action is Action.BLOCKED
     assert [item.code for item in changeset.changes[0].diagnostics] == ["SST-PLN001"]
 
@@ -563,11 +558,11 @@ def test_each_publish_step_fails_closed() -> None:
     compiled = compile_catalog(SkillCatalog((skill(),)))
     alias = compiled["skill:month-close"].release.alias
 
-    stage_refused = RecordedSnowflake(existing=())
+    stage_refused = FakeSnowflake(existing=())
     stage_refused.refused = ("CREATE STAGE",)
-    assert "CREATE STAGE" in _failure(publish(stage_refused, compiled, state())[1])
+    assert "CREATE STAGE" in _failure(publish(stage_refused, compiled, empty_state())[1])
 
-    client_side = RecordedSnowflake(existing=())
+    client_side = FakeSnowflake(existing=())
     created: list[str] = []
     execute = client_side.execute_script
 
@@ -577,33 +572,33 @@ def test_each_publish_step_fails_closed() -> None:
 
     client_side.execute_script = create_client_side  # type: ignore[method-assign]
     client_side.stage_type = lambda qualified_name: "INTERNAL" if created else None  # type: ignore[method-assign]
-    assert "is INTERNAL after creation" in _failure(publish(client_side, compiled, state())[1])
+    assert "is INTERNAL after creation" in _failure(publish(client_side, compiled, empty_state())[1])
 
-    upload_refused = RecordedSnowflake(existing=())
+    upload_refused = FakeSnowflake(existing=())
 
     def refuse_upload(stage_path: str, content: bytes) -> None:
         raise SnowflakePortError("PUT refused")
 
     upload_refused.upload = refuse_upload  # type: ignore[method-assign]
-    assert "upload of" in _failure(publish(upload_refused, compiled, state())[1])
+    assert "upload of" in _failure(publish(upload_refused, compiled, empty_state())[1])
 
-    extra_file = RecordedSnowflake(existing=())
+    extra_file = FakeSnowflake(existing=())
     listing = extra_file.list_location
     extra_file.list_location = lambda location: (  # type: ignore[method-assign]
         (*listing(location), "stray.txt") if location.startswith("@") else listing(location)
     )
-    assert "unexpected stray.txt" in _failure(publish(extra_file, compiled, state())[1])
+    assert "unexpected stray.txt" in _failure(publish(extra_file, compiled, empty_state())[1])
 
-    create_refused = RecordedSnowflake(existing=())
+    create_refused = FakeSnowflake(existing=())
     create_refused.refused = ("CREATE CORTEX EXTENSION",)
-    assert "CREATE CORTEX EXTENSION" in _failure(publish(create_refused, compiled, state())[1])
+    assert "CREATE CORTEX EXTENSION" in _failure(publish(create_refused, compiled, empty_state())[1])
 
-    lost_alias = RecordedSnowflake(existing=())
+    lost_alias = FakeSnowflake(existing=())
     lost_alias.extension_versions = lambda qualified_name: ()  # type: ignore[method-assign]
-    assert f"alias {alias} is absent" in _failure(publish(lost_alias, compiled, state())[1])
+    assert f"alias {alias} is absent" in _failure(publish(lost_alias, compiled, empty_state())[1])
 
-    drifted = RecordedSnowflake(existing=())
-    _, _, after = publish(drifted, compiled, state())
+    drifted = FakeSnowflake(existing=())
+    _, _, after = publish(drifted, compiled, empty_state())
     drifted.execute_script((statement("ALTER CORTEX EXTENSION DB.S.MONTH_CLOSE SET COMMENT = 'drifted'"),))
     drifted.refused = ("SET COMMENT = 'Close",)
     assert "SET COMMENT" in _failure(publish(drifted, compiled, after)[1])
@@ -612,11 +607,11 @@ def test_each_publish_step_fails_closed() -> None:
 def test_plugin_fallback_aborts_on_every_failure() -> None:
     compiled = {key: item for key, item in compile_catalog(_plugin_catalog()).items() if key.startswith("plugin:")}
 
-    live_refused = RecordedSnowflake(existing=())
+    live_refused = FakeSnowflake(existing=())
     live_refused.refused = ("ADD VERSION SST_", "ADD LIVE VERSION")
-    assert "ADD LIVE VERSION" in _failure(publish(live_refused, compiled, state())[1])
+    assert "ADD LIVE VERSION" in _failure(publish(live_refused, compiled, empty_state())[1])
 
-    live_upload = RecordedSnowflake(existing=())
+    live_upload = FakeSnowflake(existing=())
     live_upload.refused = ("ADD VERSION SST_",)
     upload = live_upload.upload
 
@@ -626,12 +621,12 @@ def test_plugin_fallback_aborts_on_every_failure() -> None:
         upload(stage_path, content)
 
     live_upload.upload = refuse_live  # type: ignore[method-assign]
-    assert "into the live version failed" in _failure(publish(live_upload, compiled, state())[1])
+    assert "into the live version failed" in _failure(publish(live_upload, compiled, empty_state())[1])
     assert live_upload.scripts[-1] == ("ALTER CORTEX EXTENSION DB.S.FINANCE_KIT ABORT",)
 
-    commit_refused = RecordedSnowflake(existing=())
+    commit_refused = FakeSnowflake(existing=())
     commit_refused.refused = ("ADD VERSION SST_", "COMMIT")
-    assert "COMMIT" in _failure(publish(commit_refused, compiled, state())[1])
+    assert "COMMIT" in _failure(publish(commit_refused, compiled, empty_state())[1])
     assert commit_refused.scripts[-1] == ("ALTER CORTEX EXTENSION DB.S.FINANCE_KIT ABORT",)
 
 
@@ -644,7 +639,7 @@ def test_recorded_target_and_difference_helpers() -> None:
     assert _difference((), ("a", "b")) == "missing a, b"
 
 
-class FlakyVersions(RecordedSnowflake):
+class FlakyVersions(FakeSnowflake):
     """SHOW VERSIONS fails once, after CREATE CORTEX EXTENSION already succeeded."""
 
     def __init__(self) -> None:
@@ -662,7 +657,7 @@ def test_a_read_back_failure_after_create_keeps_ownership_and_the_retry_converge
     port = FlakyVersions()
     compiled = compile_catalog(SkillCatalog((skill(),)))
     port.fail_next = True
-    _, failed, after = publish(port, compiled, state())
+    _, failed, after = publish(port, compiled, empty_state())
     outcome = failed.outcomes[0]
     assert outcome.status is OutcomeStatus.FAILED and outcome.write_succeeded
     assert "DB.S.MONTH_CLOSE" in port.extensions
@@ -677,7 +672,7 @@ def test_a_read_back_failure_after_create_keeps_ownership_and_the_retry_converge
     assert [change.action for change in final.changes] == [Action.NOOP]
 
 
-class FlakyUploads(RecordedSnowflake):
+class FlakyUploads(FakeSnowflake):
     """The second upload fails once, before any extension exists."""
 
     def __init__(self) -> None:
@@ -694,7 +689,7 @@ class FlakyUploads(RecordedSnowflake):
 def test_uploads_alone_never_make_state_claim_an_extension() -> None:
     port = FlakyUploads()
     compiled = compile_catalog(SkillCatalog((skill(),)))
-    _, failed, after = publish(port, compiled, state())
+    _, failed, after = publish(port, compiled, empty_state())
     assert failed.outcomes[0].status is OutcomeStatus.FAILED and not failed.outcomes[0].write_succeeded
     assert port.extensions == {} and after.applied == {}
     retry, retried, converged = publish(port, compiled, after)

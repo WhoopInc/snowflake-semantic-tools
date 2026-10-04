@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 from snowflake_semantic_tools.domain.diagnostics import Diagnostic, Severity
-from tests.helpers.resolve_builders import coded, member, membership
+from tests.helpers.diagnostic_filters import coded
+from tests.helpers.resolve_builders import member, membership
 
 SQL = frozenset(("ai_sql_generation",))
 CHANNELS = {"conventions": SQL, "menu_rules": SQL, "sales_rules": SQL}

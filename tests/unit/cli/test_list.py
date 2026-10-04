@@ -9,7 +9,8 @@ from click.testing import CliRunner
 
 from snowflake_semantic_tools.cli.commands.list import LIST_TYPES, type_name
 from snowflake_semantic_tools.cli.main import cli
-from tests.helpers.cli_projects import common, compile_project, project_copy
+from tests.helpers.cli_projects import common, compile_project
+from tests.helpers.reference_project import project_copy
 
 
 def test_type_names_are_the_registered_types_in_the_plural_and_hyphenated() -> None:

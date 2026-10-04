@@ -35,9 +35,10 @@ from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePort
 from snowflake_semantic_tools.domain.sql import Sql
 from snowflake_semantic_tools.domain.state import APPLIED, AppliedEntry, State
 from snowflake_semantic_tools.domain.state.lock import LockClaim, LockFence
-from tests.helpers.app_ports import FixedClock, InMemorySnowflake, InMemoryStateStore
+from tests.helpers.app_ports import InMemoryStateStore
 from tests.helpers.artifact_builders import change, changeset, manifest, rendered, state, target
-from tests.helpers.run_locks import SteppedTicker
+from tests.helpers.clocks import FixedClock, SteppedTicker
+from tests.helpers.snowflake_fake import FakeSnowflake
 
 STATE_TABLE = rendered("SST_STATE").target
 LOST = "another run, which broke this run's lock holds the apply lock"
@@ -58,7 +59,7 @@ class RunClock(FixedClock):
         return self.run_id
 
 
-class SlowSnowflake(InMemorySnowflake):
+class SlowSnowflake(FakeSnowflake):
     """Holds each script until `release` is set, and records how many ran on it at once."""
 
     def __init__(self, release: threading.Event | None = None) -> None:
@@ -86,7 +87,7 @@ class SlowSnowflake(InMemorySnowflake):
 class ListPool:
     """A session pool over fixed ports, recording which change ran on which port, and its halt."""
 
-    def __init__(self, ports: Sequence[InMemorySnowflake]) -> None:
+    def __init__(self, ports: Sequence[FakeSnowflake]) -> None:
         self.idle = list(ports)
         self.guard = threading.Lock()
         self.leases = 0
@@ -108,12 +109,12 @@ class ListPool:
 
 
 def apply_with(
-    port: InMemorySnowflake,
+    port: FakeSnowflake,
     run_id: str,
     *,
     store: InMemoryStateStore | None = None,
     sessions: object = None,
-    heartbeat: InMemorySnowflake | None = None,
+    heartbeat: FakeSnowflake | None = None,
     policy: LockPolicy | None = None,
 ) -> ApplyArtifacts:
     return ApplyArtifacts(
@@ -146,7 +147,7 @@ class Background:
         return self.result
 
 
-def break_lock(port: InMemorySnowflake, run_id: str = "rival") -> None:
+def break_lock(port: FakeSnowflake, run_id: str = "rival") -> None:
     """Let the run's lock expire, and another run take it over."""
     port.run_locks.now = 1_000_000.0
     assert port.run_locks.acquire_run_lock(STATE_TABLE, "verify", LockClaim(run_id), break_stale=True).acquired
@@ -172,7 +173,7 @@ def test_two_concurrent_applies_of_one_target_never_both_run() -> None:
 def test_many_runs_contending_for_one_lock_leave_exactly_one_holder_at_a_time() -> None:
     # Each claim is one critical section, as the lock transaction is: whatever the interleaving,
     # the fences issued are unique, and a claim that won was never refused a live lock it held.
-    port = InMemorySnowflake()
+    port = FakeSnowflake()
     start = threading.Barrier(8)
     won: list[LockFence] = []
     guard = threading.Lock()
@@ -193,7 +194,7 @@ def test_many_runs_contending_for_one_lock_leave_exactly_one_holder_at_a_time() 
 
 
 def test_a_remote_lock_refusal_releases_the_local_lock() -> None:
-    port, store = InMemorySnowflake(), InMemoryStateStore()
+    port, store = FakeSnowflake(), InMemoryStateStore()
     port.run_locks.acquire_run_lock(STATE_TABLE, "verify", LockClaim("other"), break_stale=False)
     result = apply_with(port, "run-a", store=store).run(changeset(change(rendered())), state())
     assert [item.code for item in result.diagnostics] == ["SST-APL011"]
@@ -201,7 +202,7 @@ def test_a_remote_lock_refusal_releases_the_local_lock() -> None:
 
 
 def test_an_expired_remote_lock_is_broken_only_with_break_stale_lock() -> None:
-    port = InMemorySnowflake()
+    port = FakeSnowflake()
     port.run_locks.acquire_run_lock(STATE_TABLE, "verify", LockClaim("crashed", "ROLE", "", 10), break_stale=False)
     port.run_locks.now = 20.0
     kept = apply_with(port, "run-a").run(changeset(change(rendered())), state())
@@ -216,7 +217,7 @@ def test_an_expired_remote_lock_is_broken_only_with_break_stale_lock() -> None:
 
 def test_a_long_apply_extends_its_lock_once_per_beat_on_its_own_heartbeat_session() -> None:
     release, ticker = threading.Event(), SteppedTicker()
-    port, heartbeat = SlowSnowflake(release), InMemorySnowflake()
+    port, heartbeat = SlowSnowflake(release), FakeSnowflake()
     heartbeat.run_locks = port.run_locks
     port.extend_run_lock = None  # type: ignore[assignment, method-assign]  # never on the run's own session
     running = Background(
@@ -260,7 +261,7 @@ def test_a_lock_broken_mid_wave_starts_no_further_change_and_writes_no_state() -
 
 def test_losing_the_lock_halts_every_worker_session_at_once() -> None:
     release, ticker = threading.Event(), SteppedTicker()
-    main, worker = InMemorySnowflake(), SlowSnowflake(release)
+    main, worker = FakeSnowflake(), SlowSnowflake(release)
     worker.run_locks = main.run_locks
     pool = ListPool([worker])
     running = Background(
@@ -279,7 +280,7 @@ def test_losing_the_lock_halts_every_worker_session_at_once() -> None:
 
 
 def test_a_run_whose_state_changed_since_the_plan_is_refused_under_the_lock() -> None:
-    port, store = InMemorySnowflake(), InMemoryStateStore()
+    port, store = FakeSnowflake(), InMemoryStateStore()
     artifact = rendered()
     entry = AppliedEntry(
         artifact.fingerprint, artifact.target.sql, "then", "other", APPLIED, artifact.fingerprint, "m" * 64
@@ -295,14 +296,14 @@ def test_a_run_whose_state_changed_since_the_plan_is_refused_under_the_lock() ->
 
 
 def test_a_state_table_that_cannot_be_read_under_the_lock_refuses_the_run() -> None:
-    port = InMemorySnowflake()
+    port = FakeSnowflake()
     port.remote_state = None
     result = apply_with(port, "run-a").run(changeset(change(rendered())), state())
     assert [item.code for item in result.diagnostics] == ["SST-APL012"] and port.scripts == []
 
 
 def test_a_state_write_the_fence_no_longer_allows_is_reported_once() -> None:
-    port, store = InMemorySnowflake(), InMemoryStateStore()
+    port, store = FakeSnowflake(), InMemoryStateStore()
 
     def broken_meanwhile(*args: object) -> ExecResult:
         break_lock(port)
@@ -317,7 +318,7 @@ def test_a_state_write_the_fence_no_longer_allows_is_reported_once() -> None:
 
 def test_parallel_changes_run_on_their_own_sessions_never_on_the_shared_one() -> None:
     release = threading.Event()
-    main = InMemorySnowflake()
+    main = FakeSnowflake()
     workers = [SlowSnowflake(release) for _ in range(3)]
     pool = ListPool(workers)
     artifacts = [rendered(name) for name in ("A", "B", "C")]
@@ -369,7 +370,7 @@ class _RecordingHandler:
 
 
 def test_a_composite_change_runs_on_the_session_its_worker_leased() -> None:
-    main, worker = InMemorySnowflake(), InMemorySnowflake()
+    main, worker = FakeSnowflake(), FakeSnowflake()
     ran_on: list[object] = []
     use_case = ApplyArtifacts(
         main,
@@ -399,14 +400,14 @@ class FailingPool:
     @contextmanager
     def lease(self) -> Iterator[CatalogPublicationPort]:
         raise SnowflakePortError("could not open another session")
-        yield InMemorySnowflake()  # pragma: no cover - never reached
+        yield FakeSnowflake()  # pragma: no cover - never reached
 
     def halt(self, reason: str) -> None:  # pragma: no cover - the lock is never lost here
         del reason
 
 
 def test_a_session_that_cannot_open_fails_its_change_with_nothing_written() -> None:
-    main = InMemorySnowflake()
+    main = FakeSnowflake()
     result = apply_with(main, "run-a", sessions=FailingPool()).run(
         changeset(change(rendered())), state(), ApplyOptions(parallelism=2, on_failure=FailurePolicy.CONTINUE)
     )
@@ -421,7 +422,7 @@ def test_state_writes_only_the_entries_the_run_changed_and_retires() -> None:
     previous = State(
         2, target(), "m" * 64, "sst_config.yml", None, MappingProxyType({kept.key: entry, retired.key: entry})
     )
-    port = InMemorySnowflake()
+    port = FakeSnowflake()
     port.remote_state = previous.applied
     prune = replace(change(retired, Action.PRUNE), prune_executable=True)
     result = apply_with(port, "run-a").run(changeset(change(new), prune), previous, ApplyOptions(allow_prune=True))
@@ -437,24 +438,24 @@ def test_a_script_that_stopped_part_way_is_updated_by_the_next_plan() -> None:
     published = manifest({base.key: base})
     ownership = OwnershipMarker(published.manifest_id, base.fingerprint)
     artifact = replace(base, expected_marker=ownership)
-    port = InMemorySnowflake()
+    port = FakeSnowflake()
     port.markers[artifact.target.sql] = ownership
     port.execute_results = [ExecResult(False, ("q1",), ExecutionError("second statement failed"))]
     store = InMemoryStateStore()
     use_case = apply_with(port, "run-a", store=store)
     result = use_case.run(replace(changeset(change(artifact)), manifest_id=published.manifest_id), state())
     assert result.outcomes[0].partial_write and store.state is not None
-    port.rows = (ShowRow("V", "DB", "SCHEMA", "OWNER", "now", f"published {ownership.text}"),)
+    port.show(ShowRow("V", "DB", "SCHEMA", "OWNER", "now", f"published {ownership.text}"))
     replanned = PlanArtifacts(port).run({artifact.key: artifact}, published, store.state, target(), fetched_at="later")
     assert replanned.changes[0].action is Action.UPDATE
 
 
-def lease_for(port: InMemorySnowflake, store: InMemoryStateStore, policy: LockPolicy, **kwargs: object) -> RunLease:
+def lease_for(port: FakeSnowflake, store: InMemoryStateStore, policy: LockPolicy, **kwargs: object) -> RunLease:
     return RunLease(store, port, STATE_TABLE, "verify", LockClaim("run-a"), policy, **kwargs)  # type: ignore[arg-type]
 
 
 def test_releasing_the_lease_frees_the_local_lock_even_when_the_remote_release_fails() -> None:
-    port, store = InMemorySnowflake(), InMemoryStateStore()
+    port, store = FakeSnowflake(), InMemoryStateStore()
 
     def refuse(*args: object) -> None:
         raise SnowflakePortError("connection reset")
@@ -468,7 +469,7 @@ def test_releasing_the_lease_frees_the_local_lock_even_when_the_remote_release_f
 
 
 def test_a_remote_lock_that_cannot_be_read_releases_the_local_lock() -> None:
-    port, store = InMemorySnowflake(), InMemoryStateStore()
+    port, store = FakeSnowflake(), InMemoryStateStore()
 
     def unreachable(*args: object, **kwargs: object) -> None:
         raise SnowflakePortError("network down")
@@ -481,7 +482,7 @@ def test_a_remote_lock_that_cannot_be_read_releases_the_local_lock() -> None:
 
 
 def test_a_heartbeat_that_cannot_reach_snowflake_keeps_trying_while_the_lock_outlives_the_next_beat() -> None:
-    port, ticker = InMemorySnowflake(), SteppedTicker()
+    port, ticker = FakeSnowflake(), SteppedTicker()
     calls: list[int] = []
     extend = port.extend_run_lock
 
@@ -500,7 +501,7 @@ def test_a_heartbeat_that_cannot_reach_snowflake_keeps_trying_while_the_lock_out
 
 
 def test_a_heartbeat_whose_failures_could_let_the_lock_expire_loses_the_lease() -> None:
-    port, ticker = InMemorySnowflake(), SteppedTicker()
+    port, ticker = FakeSnowflake(), SteppedTicker()
     lost: list[str] = []
 
     def unreachable(*args: object) -> bool:
@@ -519,7 +520,7 @@ def test_a_heartbeat_whose_failures_could_let_the_lock_expire_loses_the_lease() 
 
 
 def test_a_heartbeat_that_fails_any_other_way_loses_the_lease_and_never_dies_silently() -> None:
-    port, ticker = InMemorySnowflake(), SteppedTicker()
+    port, ticker = FakeSnowflake(), SteppedTicker()
 
     def bug(*args: object) -> bool:
         raise KeyError("fence")
@@ -538,7 +539,7 @@ def test_a_heartbeat_that_fails_any_other_way_loses_the_lease_and_never_dies_sil
 
 
 def test_a_lease_without_a_callback_is_still_marked_lost() -> None:
-    port, ticker = InMemorySnowflake(), SteppedTicker()
+    port, ticker = FakeSnowflake(), SteppedTicker()
     lease = lease_for(port, InMemoryStateStore(), stepped(ticker))
     lease.acquire(break_stale=False)
     break_lock(port)
@@ -549,7 +550,7 @@ def test_a_lease_without_a_callback_is_still_marked_lost() -> None:
 
 
 def test_release_stops_and_joins_the_heartbeat_before_releasing_the_lock() -> None:
-    port, ticker = InMemorySnowflake(), SteppedTicker()
+    port, ticker = FakeSnowflake(), SteppedTicker()
     lease = lease_for(port, InMemoryStateStore(), stepped(ticker))
     lease.acquire(break_stale=False)
     ticker.step()
@@ -570,7 +571,7 @@ def test_the_real_ticker_stops_every_wait_once_stopped() -> None:
 
 
 def test_a_stale_local_lock_broken_is_reported_with_its_holder() -> None:
-    port, store = InMemorySnowflake(), InMemoryStateStore()
+    port, store = FakeSnowflake(), InMemoryStateStore()
     store.locked, store.holder, store.stale = True, "old-run", True
     lease = lease_for(port, store, stepped())
     acquired, reported = lease.acquire(break_stale=True)

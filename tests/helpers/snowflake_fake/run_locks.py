@@ -1,13 +1,10 @@
-"""An in-memory run lock table with the connector's semantics, and a ticker a test steps by hand.
+"""An in-memory run lock table with the connector's semantics.
 
 `InMemoryRunLocks` keeps one row per (state table, target). Each operation, a claim, an
 extension, a release, or a fence check, is one critical section that reads and then decides,
 as each runs in the connector as one transaction that serialises on the lock table's mutex row
 before it reads; every claim that wins is issued the next generation. Time is a number of
 seconds the test controls through `now`.
-
-`SteppedTicker` is a heartbeat `Ticker` that never waits on the wall clock: each `step` lets
-exactly one beat run and returns once the heartbeat waits again or has stopped.
 """
 
 from __future__ import annotations
@@ -99,59 +96,3 @@ class InMemoryRunLocks:
 
 def _fenced(row: _Row | None, fence: LockFence) -> bool:
     return row is not None and (row.run_id, row.generation) == (fence.run_id, fence.generation)
-
-
-class SteppedTicker:
-    """A `Ticker` whose waits end only when the test steps it, or it is stopped.
-
-    `now` advances by each granted wait's seconds, so the heartbeat's clock moves one interval
-    per beat. Every hand-off has a 5-second safety bound that a passing test never reaches.
-    """
-
-    def __init__(self) -> None:
-        self.now = 0.0
-        self.beats = 0
-        self._condition = threading.Condition()
-        self._granted = 0
-        self._waiting = False
-        self._stopped = False
-
-    def wait(self, seconds: float) -> bool:
-        with self._condition:
-            self._waiting = True
-            self._condition.notify_all()
-            while not self._granted and not self._stopped:
-                self._condition.wait()
-            self._waiting = False
-            if self._stopped:
-                return True
-            self._granted -= 1
-            self.now += seconds
-            self.beats += 1
-            return False
-
-    def stop(self) -> None:
-        with self._condition:
-            self._stopped = True
-            self._condition.notify_all()
-
-    def monotonic(self) -> float:
-        return self.now
-
-    def step(self, beats: int = 1) -> None:
-        """Let `beats` beats run, one at a time, returning once the last has been handled."""
-        for _ in range(beats):
-            with self._condition:
-                assert self._condition.wait_for(lambda: self._waiting or self._stopped, timeout=5)
-                if self._stopped:
-                    return
-                self._granted += 1
-                self._condition.notify_all()
-                # Handled once the heartbeat waits again, having taken this grant, or has stopped.
-                assert self._condition.wait_for(
-                    lambda: (self._waiting and not self._granted) or self._stopped, timeout=5
-                )
-
-    @property
-    def stopped(self) -> bool:
-        return self._stopped

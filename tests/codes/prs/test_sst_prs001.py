@@ -5,14 +5,15 @@ from __future__ import annotations
 from pathlib import Path
 
 from snowflake_semantic_tools.domain.diagnostics import Severity
-from tests.helpers.seam_projects import SmallProject, found
+from tests.helpers.diagnostic_filters import coded
+from tests.helpers.seam_projects import SmallProject
 
 FILE = "semantic_models/metrics/m.yml"
 
 
 def test_sst_prs001_fires(tmp_path: Path) -> None:
-    [diagnostic] = found(
-        SmallProject(tmp_path, files={FILE: "snowflake_metrics: []\nextras: 1\n"}).load(), "SST-PRS001"
+    [diagnostic] = coded(
+        SmallProject(tmp_path, files={FILE: "snowflake_metrics: []\nextras: 1\n"}).load().diagnostics, "SST-PRS001"
     )
     assert diagnostic.severity is Severity.WARNING
     assert diagnostic.message == "no registered type owns root key 'extras'"
@@ -20,4 +21,4 @@ def test_sst_prs001_fires(tmp_path: Path) -> None:
 
 
 def test_sst_prs001_silent(tmp_path: Path) -> None:
-    assert found(SmallProject(tmp_path, files={FILE: "snowflake_metrics: []\n"}).load(), "SST-PRS001") == []
+    assert coded(SmallProject(tmp_path, files={FILE: "snowflake_metrics: []\n"}).load().diagnostics, "SST-PRS001") == []

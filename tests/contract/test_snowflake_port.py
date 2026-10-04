@@ -21,7 +21,7 @@ from snowflake_semantic_tools.domain.ports.snowflake.stage import StagedFileMeta
 from snowflake_semantic_tools.domain.sql import sql
 from snowflake_semantic_tools.domain.state import AppliedEntry
 from snowflake_semantic_tools.domain.state.lock import LockClaim, LockFence, StateWrite
-from tests.helpers.recorded_snowflake import ReadOnlySnowflake, RecordedSnowflake, ScriptedSnowflake
+from tests.helpers.snowflake_fake import FakeSnowflake, ReadOnlySnowflake
 from tests.helpers.sql_values import statement, statements
 
 
@@ -35,10 +35,9 @@ def values() -> tuple[QualifiedName, SchemaScope, OwnershipMarker, ShowRow, Gran
     return name, scope, marker, row, grant, entry
 
 
-@pytest.mark.parametrize("adapter_type", [RecordedSnowflake, ScriptedSnowflake])
-def test_offline_adapters_implement_the_full_read_write_contract(adapter_type: type[RecordedSnowflake]) -> None:
+def test_the_fake_implements_the_full_read_write_contract() -> None:
     name, scope, marker, row, grant, entry = values()
-    port = adapter_type(
+    port = FakeSnowflake(
         objects={("SEMANTIC VIEW", scope.sql): (row,)},
         grants={name.sql: (grant,)},
         markers={name.sql: marker},
@@ -93,15 +92,15 @@ def test_offline_adapters_implement_the_full_read_write_contract(adapter_type: t
 
 def test_scripted_and_read_only_behavior() -> None:
     failure = ExecResult(False, error=ExecutionError("bad"))
-    scripted = ScriptedSnowflake((failure,), (QueryResult(("value",), ((1,),)),))
+    scripted = FakeSnowflake(execute_results=(failure,), query_results=(QueryResult(("value",), ((1,),)),))
     assert not scripted.execute_script(statements("bad")).ok
-    scripted.query_failures.append(SnowflakePortError("offline"))
+    scripted.fail("query", SnowflakePortError("offline"), times=1)
     with pytest.raises(SnowflakePortError):
         scripted.query(sql("select 1"))
     assert scripted.query(sql("select 1")).rows == ((1,),)
     assert scripted.query(sql("select 2")).rows == ()
 
-    readonly = ReadOnlySnowflake(RecordedSnowflake(role="R"))
+    readonly = ReadOnlySnowflake(FakeSnowflake(role="R"))
     assert readonly.current_role() == "R"
     with pytest.raises(SnowflakePortError):
         readonly.execute_script(statements("write"))

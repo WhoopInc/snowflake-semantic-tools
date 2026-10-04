@@ -21,6 +21,7 @@ from snowflake_semantic_tools.domain.diagnostics import Diagnostic, Origin
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
 from snowflake_semantic_tools.domain.model.project import SemanticViewProject
 from snowflake_semantic_tools.domain.model.tool import ToolCatalog, ToolGroup, ToolMember, ToolOwnership
+from tests.helpers.file_trees import write_tree
 from tests.helpers.projects import project_paths
 
 SCHEMA = "https://schemas.getdbt.com/dbt/manifest/v12.json"
@@ -121,10 +122,7 @@ class SmallProject:
             "semantic_models/semantic_views/views.yml": VIEW,
             **self.files,
         }
-        for relative, text in files.items():
-            path = self.root / relative
-            path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_text(text, encoding="utf-8")
+        write_tree(self.root, files)
         # dbt_project.yml names `models`; a model-paths entry must exist (SST-DIS009).
         (self.root / "models").mkdir(exist_ok=True)
         manifest_path = self.root / "manifest.json"
@@ -135,11 +133,6 @@ class SmallProject:
         """Load the project the way `sst` loads it from a given manifest."""
         manifest_path = self.write()
         return YamlProjectSource(project_paths(self.root), manifest_path=manifest_path, invoke_dbt=False).load_project()
-
-
-def found(project: SemanticViewProject, code: str) -> list[Diagnostic]:
-    """The project's diagnostics of one code, in report order."""
-    return [item for item in project.diagnostics if item.code == code]
 
 
 @dataclass

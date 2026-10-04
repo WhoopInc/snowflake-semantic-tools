@@ -1,6 +1,6 @@
 """Capture what Snowflake shows of a published project, and compare it with the committed recording.
 
-The offline tests trust `RecordedSnowflake` to answer the way Snowflake does; a recording is only
+The offline tests trust `FakeSnowflake` to answer the way Snowflake does; a recording is only
 honest if it was captured. `python -m tests.helpers.session_recorder` publishes the live project
 (`tests/helpers/live_project.py`) into `RECORDING_SCHEMA`, a schema nothing but this script
 writes, observes it through the real connector -- SHOW, the ownership marker, the table it reads,
@@ -32,10 +32,10 @@ from typing import Any
 from snowflake_semantic_tools.domain.model.identifier import Identifier, QualifiedName, SchemaScope
 from snowflake_semantic_tools.domain.ports.snowflake import SnowflakePort
 from snowflake_semantic_tools.domain.sql import literal, scope, sql
-from tests.helpers.cli_projects import REPO_ROOT
 from tests.helpers.e2e_cli import run_sst
 from tests.helpers.live_project import TARGET, live_view, orders_table, project_args, published_project
 from tests.helpers.live_snowflake import SCRATCH_MARKER, LiveAccount, scratch_scope
+from tests.helpers.reference_project import REPO_ROOT
 
 RECORDING = REPO_ROOT / "tests" / "fixtures" / "recordings" / "live_project.json"
 RECORDING_SCHEMA = "SST_IT_RECORDING"

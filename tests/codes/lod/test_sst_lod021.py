@@ -5,13 +5,16 @@ from __future__ import annotations
 from pathlib import Path
 
 from snowflake_semantic_tools.domain.diagnostics import Origin, Severity
-from tests.helpers.seam_projects import SmallProject, found
+from tests.helpers.diagnostic_filters import coded
+from tests.helpers.seam_projects import SmallProject
 
 FILE = "semantic_models/metrics/m.yml"
 
 
 def test_sst_lod021_fires(tmp_path: Path) -> None:
-    [diagnostic] = found(SmallProject(tmp_path, files={FILE: "models:\n  - name: x\n"}).load(), "SST-LOD021")
+    [diagnostic] = coded(
+        SmallProject(tmp_path, files={FILE: "models:\n  - name: x\n"}).load().diagnostics, "SST-LOD021"
+    )
     assert diagnostic.severity is Severity.ERROR
     assert diagnostic.message == f"{FILE} declares no recognised root key"
     assert diagnostic.origin == Origin(FILE)
@@ -20,4 +23,4 @@ def test_sst_lod021_fires(tmp_path: Path) -> None:
 def test_sst_lod021_silent(tmp_path: Path) -> None:
     # A document with one recognised root key is not refused; its other keys warn instead.
     project = SmallProject(tmp_path, files={FILE: "snowflake_metrics: []\nextras: 1\n"}).load()
-    assert found(project, "SST-LOD021") == []
+    assert coded(project.diagnostics, "SST-LOD021") == []

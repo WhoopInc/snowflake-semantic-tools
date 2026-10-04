@@ -12,14 +12,15 @@ from snowflake_semantic_tools.domain.diagnostics import Severity
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
 from snowflake_semantic_tools.domain.model.lifecycle import Action
 from snowflake_semantic_tools.domain.ports.snowflake.catalog import ExtensionObservation
-from tests.helpers.eval_inputs import codes, only
-from tests.helpers.recorded_snowflake import RecordedSnowflake
-from tests.helpers.skill_inputs import compile_extensions, empty_state, publish_extensions, skill_catalog
+from tests.helpers.artifact_builders import empty_state
+from tests.helpers.diagnostic_filters import codes, only
+from tests.helpers.skill_inputs import compile_extensions, publish_extensions, skill_catalog
+from tests.helpers.snowflake_fake import FakeSnowflake
 
 COMPILED = compile_extensions(skill_catalog())
 
 
-class UntypedSnowflake(RecordedSnowflake):
+class UntypedSnowflake(FakeSnowflake):
     """Reports every extension without a TYPE once `untyped` is set."""
 
     untyped = False
@@ -42,7 +43,7 @@ def test_sst_val802_fires() -> None:
 
 
 def test_sst_val802_silent() -> None:
-    port = RecordedSnowflake(existing=())
+    port = FakeSnowflake(existing=())
     _, published = publish_extensions(port, COMPILED, empty_state())
     changeset, _ = publish_extensions(port, COMPILED, published)
     assert "SST-VAL802" not in codes(changeset.diagnostics)

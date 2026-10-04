@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import threading
 from collections.abc import Mapping, Sequence
-from threading import RLock
 
 import pytest
 from snowflake.connector.errors import OperationalError, ProgrammingError
@@ -15,62 +14,23 @@ from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePort
 from snowflake_semantic_tools.domain.sql import sql
 from snowflake_semantic_tools.domain.state import AppliedEntry
 from snowflake_semantic_tools.domain.state.lock import LockFence, StateWrite
+from tests.helpers.snowflake_fake.driver import FakeDriverConnector, FakeDriverSession, Rows
 
 STATE_TABLE = QualifiedName.parse("DB.S.SST_STATE")
 ENTRY = AppliedEntry("f" * 64, "DB.S.V", "2026-09-29T00:00:00Z", "run", "applied", "d" * 64, "m" * 64)
 FENCE = LockFence("run", 3)
 
 
-class _Driver:
-    """A driver connection double: one cursor, every statement and its binds recorded, failures by prefix."""
-
-    def __init__(
-        self,
-        failures: Mapping[str, BaseException] | None = None,
-        rows: Mapping[str, list[tuple[object, ...]]] | None = None,
-    ) -> None:
-        self.failures = dict(failures or {})
-        self.rows = dict(rows or {})
-        self.executed: list[tuple[str, tuple[object, ...]]] = []
-        self.description: tuple[tuple[str], ...] | None = None
-        self.sfqid = ""
-        self.rowcount = 0
-        self.closed = False
-        self._result: list[tuple[object, ...]] = []
-
-    def cursor(self, *args: object) -> _Driver:
-        if "cursor" in self.failures:
-            raise self.failures["cursor"]
-        return self
-
-    def execute(
-        self, statement: str, params: Sequence[object] | None = None, *, num_statements: int | None = None
-    ) -> None:
-        self.executed.append((statement, tuple(params or ())))
-        failure = next((error for prefix, error in self.failures.items() if statement.startswith(prefix)), None)
-        if failure is not None:
-            raise failure
-        self.sfqid = f"q{len(self.executed)}"
-        self.rowcount = 2
-        found = next((rows for prefix, rows in self.rows.items() if statement.startswith(prefix)), None)
-        self._result = list(found or [])
-        self.description = (("C",),) if found is not None else None
-
-    def fetchall(self) -> list[tuple[object, ...]]:
-        return self._result
-
-    def close(self) -> None:
-        self.closed = True
-
-    @property
-    def statements(self) -> list[str]:
-        return [statement for statement, _ in self.executed]
+def _driver(
+    failures: Mapping[str, BaseException] | None = None, rows: Mapping[str, Rows] | None = None
+) -> FakeDriverSession:
+    """A driver connection every statement of which reports two rows affected."""
+    return FakeDriverSession(failures, rows, rowcount=2)
 
 
-class DriverConnector(SnowflakeConnector):
-    def __init__(self, driver: _Driver, *, exists: bool = True, columns: tuple[str, ...] = ()) -> None:
-        self._lock = RLock()
-        self._connection = driver  # type: ignore[assignment]  # a double, not a driver connection
+class DriverConnector(FakeDriverConnector):
+    def __init__(self, driver: FakeDriverSession, *, exists: bool = True, columns: tuple[str, ...] = ()) -> None:
+        super().__init__(driver)
         self._exists = exists
         self._columns = columns
 
@@ -83,7 +43,7 @@ class DriverConnector(SnowflakeConnector):
 
 def test_a_script_reports_exactly_the_statements_that_completed_before_its_failure() -> None:
     failure = ProgrammingError(msg="Object does not exist", errno=2003, sqlstate="02000")
-    driver = _Driver({"CREATE VIEW B": failure})
+    driver = _driver({"CREATE VIEW B": failure})
     result = DriverConnector(driver).execute_script(
         (sql("CREATE VIEW A AS SELECT 1"), sql("CREATE VIEW B AS SELECT 1"), sql("CREATE VIEW C AS SELECT 1"))
     )
@@ -95,12 +55,12 @@ def test_a_script_reports_exactly_the_statements_that_completed_before_its_failu
 
 
 def test_a_script_that_completes_reports_every_statement_and_its_rows() -> None:
-    result = DriverConnector(_Driver()).execute_script((sql("SELECT 1"), sql("SELECT 2")))
+    result = DriverConnector(_driver()).execute_script((sql("SELECT 1"), sql("SELECT 2")))
     assert (result.ok, result.query_ids, result.rows_affected) == (True, ("q1", "q2"), 4)
 
 
 def test_a_script_whose_cursor_cannot_open_ran_nothing() -> None:
-    result = DriverConnector(_Driver({"cursor": OperationalError(msg="Connection is closed")})).execute_script(
+    result = DriverConnector(_driver({"cursor": OperationalError(msg="Connection is closed")})).execute_script(
         (sql("SELECT 1"),)
     )
     assert (result.ok, result.query_ids, result.rows_affected) == (False, (), 0)
@@ -108,13 +68,13 @@ def test_a_script_whose_cursor_cannot_open_ran_nothing() -> None:
 
 def test_a_programming_error_inside_a_script_is_never_reported_as_a_snowflake_failure() -> None:
     with pytest.raises(TypeError, match="Decimal"):
-        DriverConnector(_Driver({"SELECT": TypeError("unsupported parameter type: Decimal")})).execute_script(
+        DriverConnector(_driver({"SELECT": TypeError("unsupported parameter type: Decimal")})).execute_script(
             (sql("SELECT 1"),)
         )
 
 
 def test_a_state_write_merges_each_change_in_one_fenced_transaction_with_every_value_bound() -> None:
-    driver = _Driver(rows={"SELECT RUN_ID, GENERATION": [("run", 3)]})
+    driver = _driver(rows={"SELECT RUN_ID, GENERATION": [("run", 3)]})
     hostile = "semantic_view:v'; DROP TABLE x; --"
     assert DriverConnector(driver).write_state(
         STATE_TABLE, "dev", "m" * 64, StateWrite({"skill:b": ENTRY, hostile: ENTRY}, ("agent:gone",)), FENCE
@@ -155,14 +115,14 @@ def test_a_state_write_merges_each_change_in_one_fenced_transaction_with_every_v
 
 
 def test_a_state_write_whose_fence_no_longer_holds_rolls_back_having_written_nothing() -> None:
-    driver = _Driver(rows={"SELECT RUN_ID, GENERATION": [("run", 4)]})
+    driver = _driver(rows={"SELECT RUN_ID, GENERATION": [("run", 4)]})
     assert not DriverConnector(driver).write_state(STATE_TABLE, "dev", "m", StateWrite({"k": ENTRY}), FENCE)
     assert driver.statements[-1] == "ROLLBACK"
     assert not any(statement.startswith(("MERGE", "DELETE")) for statement in driver.statements)
 
 
 def test_a_state_write_that_fails_part_way_rolls_back_and_records_nothing() -> None:
-    driver = _Driver(
+    driver = _driver(
         {"DELETE FROM": ProgrammingError(msg="lock timeout", errno=625, sqlstate="57014")},
         rows={"SELECT RUN_ID, GENERATION": [("run", 3)]},
     )
@@ -173,7 +133,7 @@ def test_a_state_write_that_fails_part_way_rolls_back_and_records_nothing() -> N
 
 
 def test_ensure_state_table_migrates_an_older_table_idempotently() -> None:
-    driver = _Driver()
+    driver = _driver()
     DriverConnector(driver).ensure_state_table(STATE_TABLE)
     create, *alters = driver.statements
     assert "STATE_MANIFEST_ID VARCHAR(64)" in create and ", PRIMARY KEY (TARGET_NAME, ARTIFACT_KEY))" in create
@@ -198,7 +158,7 @@ def test_ensure_state_table_migrates_an_older_table_idempotently() -> None:
 def test_the_state_manifest_is_read_back_only_when_one_is_recorded(
     exists: bool, columns: tuple[str, ...], recorded: list[tuple[object, ...]], expected: str | None
 ) -> None:
-    driver = _Driver(rows={"SELECT DISTINCT STATE_MANIFEST_ID": recorded})
+    driver = _driver(rows={"SELECT DISTINCT STATE_MANIFEST_ID": recorded})
     connector = DriverConnector(driver, exists=exists, columns=columns)
     assert connector.read_state_manifest(STATE_TABLE, "dev") == expected
     assert all(not statement.startswith(("CREATE", "ALTER")) for statement in driver.statements)
@@ -207,9 +167,9 @@ def test_the_state_manifest_is_read_back_only_when_one_is_recorded(
 def test_a_sibling_connects_with_the_same_settings_and_shares_no_connection(monkeypatch: pytest.MonkeyPatch) -> None:
     opened: list[dict[str, object]] = []
 
-    def connect(**params: object) -> _Driver:
+    def connect(**params: object) -> FakeDriverSession:
         opened.append(params)
-        return _Driver()
+        return _driver()
 
     monkeypatch.setattr(
         "snowflake_semantic_tools.adapters.snowflake.connector.session.snowflake.connector.connect", connect
@@ -223,12 +183,12 @@ def test_a_sibling_connects_with_the_same_settings_and_shares_no_connection(monk
 
 def _connecting(
     monkeypatch: pytest.MonkeyPatch, current: tuple[object, object] = ("DB", "S")
-) -> list[tuple[dict[str, object], _Driver]]:
+) -> list[tuple[dict[str, object], FakeDriverSession]]:
     """Make every connect open a recorded driver whose session starts in `current`."""
-    opened: list[tuple[dict[str, object], _Driver]] = []
+    opened: list[tuple[dict[str, object], FakeDriverSession]] = []
 
-    def connect(**params: object) -> _Driver:
-        driver = _Driver(rows={"SELECT CURRENT_DATABASE": [current], "SELECT 1": [(1,)]})
+    def connect(**params: object) -> FakeDriverSession:
+        driver = _driver(rows={"SELECT CURRENT_DATABASE": [current], "SELECT 1": [(1,)]})
         opened.append((params, driver))
         return driver
 
@@ -289,12 +249,12 @@ def test_a_halted_session_starts_no_statement_and_halts_its_scoped_sessions(monk
 
 
 def test_a_script_halted_part_way_stops_before_its_next_statement() -> None:
-    driver = _Driver()
+    driver = _driver()
     connector = DriverConnector(driver)
     halting = driver.execute
 
     def execute(statement: str, params: Sequence[object] | None = None, *, num_statements: int | None = None) -> None:
-        halting(statement, params)
+        halting(statement, params, num_statements=num_statements)
         connector.halt("lost")
 
     driver.execute = execute  # type: ignore[method-assign]

@@ -15,8 +15,9 @@ from snowflake_semantic_tools.domain.model.identifier import QualifiedName, Targ
 from snowflake_semantic_tools.domain.model.lifecycle import OwnershipMarker
 from snowflake_semantic_tools.domain.state import APPLIED, AppliedEntry, State
 from snowflake_semantic_tools.domain.state.lock import LockClaim
-from tests.helpers.cli_projects import FIXTURE, invoke_with_port
-from tests.helpers.recorded_snowflake import RecordedSnowflake
+from tests.helpers.cli_projects import invoke_with_port
+from tests.helpers.reference_project import FIXTURE
+from tests.helpers.snowflake_fake import FakeSnowflake
 
 VIEW = "SST_REF_DEV.JAFFLE.ORDERS"
 STATE_TABLE = QualifiedName.parse("SST_REF_DEV.JAFFLE.SST_STATE")
@@ -40,8 +41,9 @@ def _entry(target: str) -> AppliedEntry:
     return AppliedEntry("b" * 64, target, "then", "run", APPLIED, "b" * 64, "a" * 64)
 
 
-def _port(*, exists: bool = True, marked: bool = True) -> RecordedSnowflake:
-    port = RecordedSnowflake(
+def _port(*, exists: bool = True, marked: bool = True) -> FakeSnowflake:
+    port = FakeSnowflake(
+        role="RECORDED_ROLE",
         existing=(VIEW,) if exists else (),
         markers={VIEW: MARKER} if marked else {},
         state={"semantic_view:orders": _entry(VIEW), "semantic_view:other": _entry("SST_REF_DEV.JAFFLE.OTHER")},
@@ -50,7 +52,7 @@ def _port(*, exists: bool = True, marked: bool = True) -> RecordedSnowflake:
     return port
 
 
-def _drop(monkeypatch: pytest.MonkeyPatch, port: RecordedSnowflake, project: Path, *extra: str) -> Result:
+def _drop(monkeypatch: pytest.MonkeyPatch, port: FakeSnowflake, project: Path, *extra: str) -> Result:
     args = ["drop", VIEW, "--type", "semantic_view", "--target", "dev", "--yes", "--project-dir", str(project)]
     return invoke_with_port(monkeypatch, port, [*args, *extra])
 
@@ -81,7 +83,7 @@ def test_drop_removes_an_owned_object_and_forgets_it_remote_and_local(
         "forgotten": ["semantic_view:orders"],
     }
     assert port.scripts == [(f"DROP SEMANTIC VIEW {VIEW}",)]
-    assert set(port.state) == {"semantic_view:other"}
+    assert set(port.remote_state or {}) == {"semantic_view:other"}
     cached = cache.read_local()
     assert cached is not None and "semantic_view:orders" not in cached.applied
     assert port.run_locks.holder("dev") is None
@@ -104,7 +106,7 @@ def test_an_object_without_sst_marker_is_refused_and_left_alone(
     assert envelope["data"]["outcome"] == "refused"
     assert _codes(envelope) == ["SST-PLN024"]
     assert port.scripts == []
-    assert set(port.state) == {"semantic_view:orders", "semantic_view:other"}
+    assert set(port.remote_state or {}) == {"semantic_view:orders", "semantic_view:other"}
 
 
 def test_an_absent_object_is_exit_1_not_a_silent_success(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -121,7 +123,7 @@ def test_a_refused_statement_is_reported_and_state_kept(tmp_path: Path, monkeypa
     envelope = json.loads(result.stdout)
     assert (result.exit_code, envelope["data"]["outcome"]) == (1, "rejected")
     assert _codes(envelope) == ["SST-APL001", "SST-SNO001"]
-    assert "semantic_view:orders" in port.state
+    assert "semantic_view:orders" in (port.remote_state or {})
 
 
 def test_a_held_run_lock_refuses_the_drop(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -138,7 +140,7 @@ def test_an_object_state_does_not_record_is_dropped_with_nothing_forgotten(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     port = _port()
-    port.state = {}  # type: ignore[assignment]
+    port.remote_state = {}
     result = _drop(monkeypatch, port, _project(tmp_path), "--output", "json")
     assert result.exit_code == 0, result.output
     assert json.loads(result.stdout)["data"]["forgotten"] == []

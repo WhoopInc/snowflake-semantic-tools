@@ -8,21 +8,23 @@ from types import MappingProxyType
 from snowflake_semantic_tools.app.compile import CompileResult
 from snowflake_semantic_tools.app.manifest import manifest_for
 from snowflake_semantic_tools.app.plan import PlanCandidates, PlanReady, PlanRefused, PlanScope, PreparePlan
-from snowflake_semantic_tools.domain.diagnostics import D, DiagnosticBag, Origin, Severity
+from snowflake_semantic_tools.domain.diagnostics import D, Origin, Severity
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName, SchemaScope
 from snowflake_semantic_tools.domain.model.lifecycle import ShowRow
 from snowflake_semantic_tools.domain.ports.project import ValidationDefaults
 from snowflake_semantic_tools.domain.state import AppliedEntry, State
-from tests.helpers.app_ports import FixedClock, InMemorySnowflake, InMemoryStateStore
-from tests.helpers.compile_builders import compiled
+from tests.helpers.app_ports import InMemoryStateStore
+from tests.helpers.clocks import FixedClock
+from tests.helpers.compile_builders import compiled, with_diagnostics
 from tests.helpers.project_inputs import EMPTY_SOURCES, InMemoryProjectInputs, dev_target
+from tests.helpers.snowflake_fake import FakeSnowflake
 from tests.helpers.sql_values import texts
 
 EVERYTHING = PlanScope((), None, None, None, None, False)
 STATE_TABLE = QualifiedName.parse("DB.SCH.SST_STATE")
 
 
-class ScopeRecordingSnowflake(InMemorySnowflake):
+class ScopeRecordingSnowflake(FakeSnowflake):
     """Records every schema a plan lists objects in."""
 
     def __init__(self) -> None:
@@ -32,10 +34,6 @@ class ScopeRecordingSnowflake(InMemorySnowflake):
     def show_objects(self, object_type: str, scope: SchemaScope) -> tuple[ShowRow, ...]:
         self.scopes.append(scope.sql)
         return super().show_objects(object_type, scope)
-
-
-def with_diagnostics(result: CompileResult, *diagnostics: object) -> CompileResult:
-    return replace(result, diagnostics=DiagnosticBag(diagnostics))  # type: ignore[arg-type]
 
 
 def select(
@@ -169,7 +167,7 @@ def test_run_plans_from_state_with_agents_staged_and_every_composite_type_handle
 def test_run_refuses_what_validation_promotes_to_an_error_without_reading_state() -> None:
     warned = with_diagnostics(compiled(), D("SST-LOD003", file="warning.yml"))
     candidates, use_case, _ = select(warned, strict=True)
-    port = InMemorySnowflake()
+    port = FakeSnowflake()
     store = InMemoryStateStore()
     assert isinstance(candidates, PlanCandidates)
 
@@ -199,7 +197,7 @@ def test_partial_run_leaves_out_what_validation_excludes_and_names_everything_le
     assert isinstance(candidates, PlanCandidates)
 
     ready = use_case.run(
-        candidates, InMemorySnowflake(), InMemoryStateStore(), target=dev_target(), state_table=STATE_TABLE
+        candidates, FakeSnowflake(), InMemoryStateStore(), target=dev_target(), state_table=STATE_TABLE
     )
 
     assert isinstance(ready, PlanReady)
@@ -215,7 +213,7 @@ def test_partial_run_refuses_a_validation_error_that_names_no_artifact() -> None
     assert isinstance(candidates, PlanCandidates)
 
     refused = use_case.run(
-        candidates, InMemorySnowflake(), InMemoryStateStore(), target=dev_target(), state_table=STATE_TABLE
+        candidates, FakeSnowflake(), InMemoryStateStore(), target=dev_target(), state_table=STATE_TABLE
     )
 
     assert isinstance(refused, PlanRefused)
@@ -231,7 +229,7 @@ def test_partial_run_refuses_a_validation_error_that_names_no_artifact() -> None
 
 def test_run_validates_against_snowflake_when_connected() -> None:
     candidates, use_case, _ = select(compiled(), connected=True)
-    port = InMemorySnowflake()
+    port = FakeSnowflake()
     assert isinstance(candidates, PlanCandidates)
 
     ready = use_case.run(candidates, port, InMemoryStateStore(), target=dev_target(), state_table=STATE_TABLE)

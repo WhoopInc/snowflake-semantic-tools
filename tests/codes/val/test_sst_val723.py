@@ -6,14 +6,8 @@ Fires when a system metric pins a legacy version; the nearest legitimate input s
 from __future__ import annotations
 
 from snowflake_semantic_tools.domain.diagnostics import Severity
-from tests.helpers.eval_inputs import (
-    codes,
-    config,
-    only,
-    sales_eval,
-    system_metric,
-    validate,
-)
+from tests.helpers.diagnostic_filters import codes, only
+from tests.helpers.eval_inputs import config, sales_eval, system_metric, validate
 
 
 def test_sst_val723_fires() -> None:

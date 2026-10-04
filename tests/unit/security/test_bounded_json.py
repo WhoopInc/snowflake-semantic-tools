@@ -34,7 +34,7 @@ from snowflake_semantic_tools.adapters.yaml.profiles import load_profile_catalog
 from snowflake_semantic_tools.cli.commands.debug import _manifest
 from snowflake_semantic_tools.cli.main import cli
 from snowflake_semantic_tools.cli.run_log import RUN_LOG, signature_report
-from tests.helpers.cli_projects import project_copy
+from tests.helpers.reference_project import project_copy
 
 CRAFTED = ("nested-past-the-bound", "nested-past-recursion", "oversized")
 _LIMIT = 256

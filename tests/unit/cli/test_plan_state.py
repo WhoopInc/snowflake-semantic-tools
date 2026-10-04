@@ -8,14 +8,15 @@ from pathlib import Path
 
 import pytest
 
-from tests.helpers.cli_projects import common, compile_project, invoke_with_port, project_copy
-from tests.helpers.recorded_snowflake import RecordedSnowflake
+from tests.helpers.cli_projects import common, compile_project, invoke_with_port
+from tests.helpers.reference_project import project_copy
+from tests.helpers.snowflake_fake import FakeSnowflake
 
 
 def _plan(monkeypatch: pytest.MonkeyPatch, project: Path, *extra: str) -> dict[str, object]:
     result = invoke_with_port(
         monkeypatch,
-        RecordedSnowflake(state={}),
+        FakeSnowflake(state={}),
         ["plan", *common(project), "--target", "dev", "--select", "state:modified", "--output", "json", *extra],
     )
     assert result.exit_code in (0, 2), result.output
@@ -52,7 +53,7 @@ def test_state_modified_without_state_is_refused(tmp_path: Path, monkeypatch: py
     compile_project(project)
     result = invoke_with_port(
         monkeypatch,
-        RecordedSnowflake(state={}),
+        FakeSnowflake(state={}),
         ["plan", *common(project), "--target", "dev", "--select", "state:modified", "--output", "json"],
     )
     assert result.exit_code == 3

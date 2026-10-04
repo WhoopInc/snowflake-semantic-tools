@@ -10,14 +10,15 @@ from snowflake_semantic_tools.app.compile import CompiledView, CompileResult
 from snowflake_semantic_tools.app.validate import ValidateArtifacts
 from snowflake_semantic_tools.domain.diagnostics import Diagnostic, Severity
 from snowflake_semantic_tools.domain.model.semantic_view import Metric, SemanticView, Table, VerifiedQuery
-from tests.helpers.agent_builders import found
-from tests.helpers.app_ports import FixedClock, InMemorySnowflake
+from tests.helpers.clocks import FixedClock
+from tests.helpers.diagnostic_filters import coded
+from tests.helpers.snowflake_fake import FakeSnowflake
 from tests.helpers.sql_values import authored, authored_query, statement
 
 COUNTED = "(SELECT COUNT(*) FROM DB.S.ORDERS) AS SST_VQ"
 
 
-def _validated(port: InMemorySnowflake) -> list[Diagnostic]:
+def _validated(port: FakeSnowflake) -> list[Diagnostic]:
     query = VerifiedQuery("order_total", "How many orders?", authored_query("SELECT COUNT(*) FROM DB.S.ORDERS"))
     view = SemanticView(
         "DB.S.SALES",
@@ -27,17 +28,17 @@ def _validated(port: InMemorySnowflake) -> list[Diagnostic]:
     )
     compiled = CompileResult((CompiledView(view, statement("CREATE SEMANTIC VIEW DB.S.SALES")),))
     result = ValidateArtifacts(port, clock=FixedClock()).run(compiled, strict=False, connected=True)
-    return found(result.diagnostics, "SST-VAL415")
+    return coded(result.diagnostics, "SST-VAL415")
 
 
 def test_sst_val415_fires() -> None:
-    [diagnostic] = _validated(InMemorySnowflake())
+    [diagnostic] = _validated(FakeSnowflake())
     assert diagnostic.severity is Severity.WARNING
     assert diagnostic.message == "verified_query 'order_total' executed and returned 0 rows in 1ms"
     assert diagnostic.subject == "semantic_view:sales"
 
 
 def test_sst_val415_silent() -> None:
-    port = InMemorySnowflake()
+    port = FakeSnowflake()
     port.table_row_counts[COUNTED] = 12
     assert _validated(port) == []

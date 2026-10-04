@@ -5,15 +5,16 @@ from types import MappingProxyType
 
 from snowflake_semantic_tools.app.state import read_state
 from snowflake_semantic_tools.domain.state import AppliedEntry, AppliedResource, ResourceStatus, State
-from tests.helpers.app_ports import InMemorySnowflake, InMemoryStateStore
+from tests.helpers.app_ports import InMemoryStateStore
 from tests.helpers.artifact_builders import rendered, target
+from tests.helpers.snowflake_fake import FakeSnowflake
 
 
 def test_state_reconciliation_uses_remote_and_warns_on_cache_drift() -> None:
     artifact = rendered()
     local = State.empty(target())
     store = InMemoryStateStore(local)
-    port = InMemorySnowflake()
+    port = FakeSnowflake()
     entry = AppliedEntry("a" * 64, artifact.target.sql, "now", "r", "applied", "a" * 64, "m")
     port.remote_state = MappingProxyType({artifact.key: entry})
     result, diagnostics = read_state(
@@ -34,7 +35,7 @@ def test_state_reconciliation_handles_offline_and_unreadable_remote() -> None:
     assert offline.applied == {} and diagnostics[0].code == "SST-MAN020"
     cached = State.empty(target())
     store.state = cached
-    port = InMemorySnowflake()
+    port = FakeSnowflake()
     port.remote_state = None
     fallback, remote_diagnostics = read_state(store, port, state_table=artifact.target, target=target())
     assert fallback.applied == {} and remote_diagnostics[0].code == "SST-PLN001"
@@ -73,7 +74,7 @@ def test_state_reconciliation_compares_complete_applied_entries() -> None:
         store = InMemoryStateStore(
             replace(State.empty(target()), applied=MappingProxyType({artifact.key: cached_entry}))
         )
-        port = InMemorySnowflake()
+        port = FakeSnowflake()
         port.remote_state = MappingProxyType({artifact.key: remote})
 
         result, diagnostics = read_state(
@@ -102,7 +103,7 @@ def test_state_reconciliation_does_not_rewrite_equal_complete_entries() -> None:
     )
     cached = replace(State.empty(target()), applied=MappingProxyType({artifact.key: entry}))
     store = InMemoryStateStore(cached)
-    port = InMemorySnowflake()
+    port = FakeSnowflake()
     port.remote_state = MappingProxyType({artifact.key: entry})
 
     result, diagnostics = read_state(store, port, state_table=artifact.target, target=target())

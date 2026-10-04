@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from snowflake_semantic_tools.domain.diagnostics import Severity
 from snowflake_semantic_tools.domain.render.skill_bundle import build_skill_bundle
-from tests.helpers.eval_inputs import codes, only
+from tests.helpers.diagnostic_filters import codes, only
 from tests.helpers.skill_inputs import SKILL_MD, skill
 
 

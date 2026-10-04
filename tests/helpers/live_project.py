@@ -21,8 +21,9 @@ import yaml
 from snowflake_semantic_tools.domain.model.identifier import Identifier, QualifiedName, SchemaScope
 from snowflake_semantic_tools.domain.ports.snowflake.execution import ExecutionPort
 from snowflake_semantic_tools.domain.sql import Sql, datatype, ident, join, literal, qname, sql
-from tests.helpers.cli_projects import DBT_MANIFEST
+from tests.helpers.file_trees import write_tree
 from tests.helpers.live_snowflake import profile_target
+from tests.helpers.reference_project import DBT_MANIFEST
 
 PROFILE = "sst_live"
 TARGET = "live"
@@ -83,10 +84,7 @@ def live_project(root: Path, schema: SchemaScope) -> tuple[Path, Path]:
         "semantic_models/semantic_views/live.yml": _VIEWS,
         "semantic_models/metrics/live.yml": _METRICS,
     }
-    for relative, text in files.items():
-        path = project / relative
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(text, encoding="utf-8")
+    write_tree(project, files)
     manifest = root / "live_manifest.json"
     manifest.write_text(json.dumps(_manifest(schema)), encoding="utf-8")
     return project, manifest

@@ -10,19 +10,21 @@ from click.testing import CliRunner
 
 from snowflake_semantic_tools import __version__
 from snowflake_semantic_tools.cli.main import cli
-from tests.helpers.cli_projects import FIXTURE, MANIFEST, common, invoke_with_port, project_copy
-from tests.helpers.recorded_snowflake import RecordedSnowflake
+from tests.helpers.cli_projects import common, invoke_with_port
+from tests.helpers.reference_project import DBT_MANIFEST, project_copy
+from tests.helpers.snowflake_fake import FakeSnowflake
 
 
-def test_validate_json_emits_one_v2_envelope() -> None:
+def test_validate_json_emits_one_v2_envelope(tmp_path: Path) -> None:
+    project = project_copy(tmp_path, offline=False)
     result = CliRunner().invoke(
         cli,
         [
             "validate",
             "--project-dir",
-            str(FIXTURE),
+            str(project),
             "--manifest",
-            str(MANIFEST),
+            str(DBT_MANIFEST),
             "--output",
             "json",
             "--no-strict",
@@ -35,8 +37,8 @@ def test_validate_json_emits_one_v2_envelope() -> None:
     assert envelope["schema_version"] == 2
     assert envelope["sst_version"] == __version__
     assert envelope["invocation"]["argv"][1] == "validate"
-    assert envelope["invocation"]["project_dir"] == str(FIXTURE.resolve())
-    assert envelope["invocation"]["config_file"] == str((FIXTURE / "sst_config.yml").resolve())
+    assert envelope["invocation"]["project_dir"] == str(project.resolve())
+    assert envelope["invocation"]["config_file"] == str((project / "sst_config.yml").resolve())
     assert envelope["invocation"]["started_at"]
     assert envelope["invocation"]["duration_s"] >= 0
     assert envelope["status"] == "ok"
@@ -89,7 +91,7 @@ def test_human_output_and_usage_branches(tmp_path: Path, monkeypatch: pytest.Mon
     prune = CliRunner().invoke(cli, ["apply", *common(project), "--prune"])
     assert prune.exit_code == 3
 
-    port = RecordedSnowflake(state={})
+    port = FakeSnowflake(state={})
     planned = invoke_with_port(monkeypatch, port, ["plan", *common(project), "--target", "dev"])
     assert planned.exit_code == 2 and "Plan:" in planned.output
     cleaned = CliRunner().invoke(cli, ["clean", "--project-dir", str(project)])

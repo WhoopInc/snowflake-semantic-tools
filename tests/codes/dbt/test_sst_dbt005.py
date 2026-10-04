@@ -6,7 +6,8 @@ from hashlib import sha256
 from pathlib import Path
 
 from snowflake_semantic_tools.domain.diagnostics import Origin, Severity
-from tests.helpers.seam_projects import SmallProject, found, manifest, model_node
+from tests.helpers.diagnostic_filters import coded
+from tests.helpers.seam_projects import SmallProject, manifest, model_node
 
 SQL = "select 1 as products_id\n"
 
@@ -20,7 +21,7 @@ def _project(tmp_path: Path, on_disk: str) -> SmallProject:
 
 
 def test_sst_dbt005_fires(tmp_path: Path) -> None:
-    [diagnostic] = found(_project(tmp_path, "select 2 as products_id\n").load(), "SST-DBT005")
+    [diagnostic] = coded(_project(tmp_path, "select 2 as products_id\n").load().diagnostics, "SST-DBT005")
     assert diagnostic.severity is Severity.ERROR
     assert diagnostic.message == "manifest is older than models/products.sql"
     assert diagnostic.subject == "dbt_model:products"
@@ -28,4 +29,4 @@ def test_sst_dbt005_fires(tmp_path: Path) -> None:
 
 
 def test_sst_dbt005_silent(tmp_path: Path) -> None:
-    assert found(_project(tmp_path, SQL).load(), "SST-DBT005") == []
+    assert coded(_project(tmp_path, SQL).load().diagnostics, "SST-DBT005") == []

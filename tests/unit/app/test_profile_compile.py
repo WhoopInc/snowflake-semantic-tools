@@ -6,7 +6,8 @@ from snowflake_semantic_tools.app.compile.profiles import CompileProfiles, Deskt
 from snowflake_semantic_tools.domain.diagnostics import Origin
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
 from snowflake_semantic_tools.domain.model.profile import DesktopProfile, ProfileCatalog
-from snowflake_semantic_tools.domain.model.skill import Plugin, Skill, SkillCatalog, SkillFile
+from snowflake_semantic_tools.domain.model.skill import Skill, SkillCatalog, SkillFile
+from tests.helpers.compile_builders import plugin
 
 CHANNEL = DesktopChannel(QualifiedName.parse("DB.S.PROFILES"), QualifiedName.parse("DB.S.PROFILE_REGISTRY"))
 
@@ -17,11 +18,6 @@ def skill(name: str, *unreferenced: str) -> Skill:
         *(SkillFile(path, b"x\n") for path in unreferenced),
     )
     return Skill(name, f"skills/{name}", name, "d", "Body.\n", files, Origin(f"skills/{name}/SKILL.md"))
-
-
-def plugin(name: str, *members: str) -> Plugin:
-    manifest = f"plugins/{name}/plugin.yml"
-    return Plugin(name, f"plugins/{name}", manifest, "Kit.", "Data", members, Origin(manifest))
 
 
 def profile(name: str, *plugins: str) -> DesktopProfile:

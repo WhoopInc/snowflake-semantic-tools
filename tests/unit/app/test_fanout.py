@@ -25,6 +25,7 @@ class Pool:
         self.leased: list[str] = []
         self.out = 0
         self.most_out = 0
+        self.overlapped = threading.Event()
         self._guard = threading.Lock()
 
     @contextmanager
@@ -32,6 +33,8 @@ class Pool:
         with self._guard:
             self.out += 1
             self.most_out = max(self.most_out, self.out)
+            if self.out > 1:
+                self.overlapped.set()
             session = Session(f"session-{len(self.leased)}")
             self.leased.append(session.name)
         try:
@@ -63,7 +66,14 @@ def test_concurrent_items_lease_a_session_each_and_keep_item_order() -> None:
     pool = Pool()
     fanout = Fanout(Session("port"), pool, 3)
 
-    results = fanout.map(_slower_first, tuple(range(8)))
+    def work(session: Session, item: int) -> tuple[int, str]:
+        if item == 0:
+            # Hold the first item until a second is leased, so the items overlap however slowly
+            # the workers are scheduled.
+            assert pool.overlapped.wait(timeout=5)
+        return _slower_first(session, item)
+
+    results = fanout.map(work, tuple(range(8)))
 
     assert [item for item, _ in results] == list(range(8))
     assert all(name.startswith("session-") for _, name in results)

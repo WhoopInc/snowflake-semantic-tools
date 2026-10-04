@@ -5,12 +5,13 @@ from __future__ import annotations
 from pathlib import Path
 
 from snowflake_semantic_tools.domain.diagnostics import Origin, Severity
-from tests.helpers.seam_projects import SmallProject, found
+from tests.helpers.diagnostic_filters import coded
+from tests.helpers.seam_projects import SmallProject
 
 
 def test_sst_lod020_fires(tmp_path: Path) -> None:
     project = SmallProject(tmp_path, files={"semantic_models/metrics/m.YML": "snowflake_metrics: []\n"}).load()
-    [diagnostic] = found(project, "SST-LOD020")
+    [diagnostic] = coded(project.diagnostics, "SST-LOD020")
     assert diagnostic.severity is Severity.WARNING
     assert diagnostic.message == "semantic_models/metrics/m.YML uses '.YML'"
     assert diagnostic.origin == Origin("semantic_models/metrics/m.YML")
@@ -18,4 +19,4 @@ def test_sst_lod020_fires(tmp_path: Path) -> None:
 
 def test_sst_lod020_silent(tmp_path: Path) -> None:
     files = {"semantic_models/metrics/m.yml": "snowflake_metrics: []\n"}
-    assert found(SmallProject(tmp_path, files=files).load(), "SST-LOD020") == []
+    assert coded(SmallProject(tmp_path, files=files).load().diagnostics, "SST-LOD020") == []

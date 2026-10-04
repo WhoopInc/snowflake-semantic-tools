@@ -6,8 +6,8 @@ from snowflake_semantic_tools.app.smoke import RunSmokeSuite
 from snowflake_semantic_tools.domain.diagnostics import Severity
 from snowflake_semantic_tools.domain.model.lifecycle import ProbeKind, RenderedArtifact, SmokeProbe
 from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
-from tests.helpers.app_ports import InMemorySnowflake
 from tests.helpers.artifact_builders import rendered
+from tests.helpers.snowflake_fake import FakeSnowflake
 from tests.helpers.sql_values import statement
 
 
@@ -22,9 +22,9 @@ def _view(name: str) -> RenderedArtifact:
     )
 
 
-def _failing() -> InMemorySnowflake:
-    port = InMemorySnowflake()
-    port.query_error = SnowflakePortError("broken")
+def _failing() -> FakeSnowflake:
+    port = FakeSnowflake()
+    port.fail("query", SnowflakePortError("broken"))
     return port
 
 

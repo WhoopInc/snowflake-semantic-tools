@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 import shutil
-from collections.abc import Mapping, Sequence
 from hashlib import md5
 from pathlib import Path
 
@@ -26,36 +25,28 @@ from snowflake_semantic_tools.domain.model.eval import (
     EvalResultRow,
     EvalRunAttempt,
 )
-from snowflake_semantic_tools.domain.model.identifier import Identifier, SchemaScope, TargetIdentity
 from snowflake_semantic_tools.domain.model.lifecycle import QueryResult
 from snowflake_semantic_tools.domain.ports.snowflake.stage import StagedFileMetadata
-from snowflake_semantic_tools.domain.sql import Sql
 from snowflake_semantic_tools.domain.state import AppliedEntry, State
-from tests.helpers.cli_projects import (
-    DBT_MANIFEST,
-    FIXTURE,
-    MANIFEST,
-    REPO_ROOT,
-    common,
-    compile_project,
-    invoke_counting_closes,
-    invoke_with_port,
-    project_copy,
-)
+from tests.helpers.artifact_builders import target
+from tests.helpers.cli_projects import common, compile_project, invoke_counting_closes, invoke_with_port
+from tests.helpers.eval_builders import EvalSnowflake
 from tests.helpers.eval_state_store import InMemoryEvalStateStore
 from tests.helpers.projects import project_paths
-from tests.helpers.recorded_snowflake import RecordedSnowflake
+from tests.helpers.reference_project import DBT_MANIFEST, REPO_ROOT, project_copy
+from tests.helpers.snowflake_fake import FakeSnowflake
 
 
-def test_golden_suite_compares_every_compiled_view() -> None:
+def test_golden_suite_compares_every_compiled_view(tmp_path: Path) -> None:
+    project = project_copy(tmp_path, offline=False)
     result = CliRunner().invoke(
         cli,
         [
             "test",
             "--project-dir",
-            str(FIXTURE),
+            str(project),
             "--manifest",
-            str(MANIFEST),
+            str(DBT_MANIFEST),
             "--suite",
             "golden",
             "--golden-dir",
@@ -67,6 +58,7 @@ def test_golden_suite_compares_every_compiled_view() -> None:
 
 
 def test_golden_suite_reports_a_diff(tmp_path: Path) -> None:
+    project = project_copy(tmp_path, offline=False)
     expected_root = tmp_path / "expected"
     shutil.copytree(REPO_ROOT / "tests" / "golden" / "expected", expected_root)
     golden_dir = expected_root / "ddl"
@@ -77,9 +69,9 @@ def test_golden_suite_reports_a_diff(tmp_path: Path) -> None:
         [
             "test",
             "--project-dir",
-            str(FIXTURE),
+            str(project),
             "--manifest",
-            str(MANIFEST),
+            str(DBT_MANIFEST),
             "--suite",
             "golden",
             "--golden-dir",
@@ -92,6 +84,7 @@ def test_golden_suite_reports_a_diff(tmp_path: Path) -> None:
 
 
 def test_golden_suite_compares_eval_source_sql(tmp_path: Path) -> None:
+    project = project_copy(tmp_path, offline=False)
     expected_root = tmp_path / "expected"
     shutil.copytree(REPO_ROOT / "tests" / "golden" / "expected", expected_root)
     source = expected_root / "eval" / "jaffle_analytics_source.sql"
@@ -105,9 +98,9 @@ def test_golden_suite_compares_eval_source_sql(tmp_path: Path) -> None:
         [
             "test",
             "--project-dir",
-            str(FIXTURE),
+            str(project),
             "--manifest",
-            str(MANIFEST),
+            str(DBT_MANIFEST),
             "--suite",
             "golden",
             "--golden-dir",
@@ -118,10 +111,6 @@ def test_golden_suite_compares_eval_source_sql(tmp_path: Path) -> None:
     assert result.exit_code == 1
     assert "jaffle_analytics_source.sql" in result.output
     assert "GROUND_TRUTH VARCHAR" in result.output
-
-
-def target() -> TargetIdentity:
-    return TargetIdentity("verify", "account", Identifier.parse("db"), Identifier.parse("schema"))
 
 
 def test_smoke_suite_is_separate_from_apply(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -151,7 +140,7 @@ def test_smoke_suite_is_separate_from_apply(tmp_path: Path, monkeypatch: pytest.
         )
         for value in manifest["artifacts"].values()
     }
-    port = RecordedSnowflake(state=applied_state, markers=markers)
+    port = FakeSnowflake(state=applied_state, markers=markers)
     result = invoke_with_port(
         monkeypatch,
         port,
@@ -164,7 +153,7 @@ def test_smoke_suite_is_separate_from_apply(tmp_path: Path, monkeypatch: pytest.
 
     unapplied = invoke_with_port(
         monkeypatch,
-        RecordedSnowflake(state={}),
+        FakeSnowflake(state={}),
         ["test", *common(project), "--target", "dev", "--suite", "smoke", "--output", "json"],
     )
     assert unapplied.exit_code == 1
@@ -177,7 +166,7 @@ def test_smoke_suite_is_separate_from_apply(tmp_path: Path, monkeypatch: pytest.
     )
     stale = invoke_with_port(
         monkeypatch,
-        RecordedSnowflake(),
+        FakeSnowflake(),
         ["test", *common(project), "--target", "dev", "--suite", "smoke", "--output", "json"],
     )
     assert stale.exit_code == 4
@@ -216,7 +205,8 @@ def test_eval_suite_uses_common_json_envelope(tmp_path: Path, monkeypatch: pytes
         ),
     )
     existing = tuple(resource["qualified_name"] for resource in eval_manifest["physical_resources"])
-    port = RecordedSnowflake(
+    port = EvalSnowflake(
+        [],
         role="RECORDED_ROLE",
         account_locator="RECORDED_ACCOUNT",
         state={compiled_eval.artifact_key: entry},
@@ -300,23 +290,7 @@ def test_eval_suite_uses_common_json_envelope(tmp_path: Path, monkeypatch: pytes
                 QueryResult(result_columns, result_rows),
             )
         )
-    responses = iter(response_values)
-
-    def query(sql: Sql, params: Sequence[object] | Mapping[str, object] | None = None) -> QueryResult:
-        port.queries.append((str(sql), params))
-        return next(responses)
-
-    def query_in_context(
-        scope: SchemaScope, sql: Sql, params: Sequence[object] | Mapping[str, object] | None = None
-    ) -> QueryResult:
-        # A START runs scoped to the agent's schema and returns nothing the run reads.
-        if "EXECUTE_AI_EVALUATION('START'" in str(sql):
-            port.scripts.append((f"IN {scope.sql}", str(sql)))
-            return QueryResult()
-        return query(sql, params)
-
-    port.query = query  # type: ignore[method-assign]
-    port.query_in_context = query_in_context  # type: ignore[method-assign]
+    port.query_results.extend(response_values)
     store = InMemoryEvalStateStore()
     monkeypatch.setattr("snowflake_semantic_tools.cli.commands.test.SnowflakeEvalStateStore", lambda *args: store)
     monkeypatch.setattr(
@@ -369,7 +343,7 @@ def test_eval_suite_refuses_unpublished_eval_before_start(
 ) -> None:
     project = project_copy(tmp_path)
     compile_project(project)
-    port = RecordedSnowflake(state={})
+    port = FakeSnowflake(state={})
 
     result = invoke_with_port(
         monkeypatch,
@@ -438,7 +412,7 @@ def test_eval_suite_reports_every_attempt_in_human_output(
 
     result = invoke_with_port(
         monkeypatch,
-        RecordedSnowflake(),
+        FakeSnowflake(),
         [
             "test",
             *common(project),
@@ -467,7 +441,7 @@ def test_eval_suite_preflight_failure_keeps_json_schema_stable(
 
     result = invoke_with_port(
         monkeypatch,
-        RecordedSnowflake(state={}),
+        FakeSnowflake(state={}),
         ["test", *common(project), "--target", "dev", "--suite", "evals", "--output", "json"],
     )
 
@@ -505,7 +479,7 @@ def test_the_eval_suite_closes_its_connection_when_it_fails_before_running(
     compile_project(project)
     evals = ["test", *common(project), "--target", "dev", "--suite", "evals", "--output", "json"]
     StateFileStore(project / "target" / "sst" / "state.dev.json").acquire_lock("apply-run", break_stale=False)
-    locked, closes = invoke_counting_closes(monkeypatch, RecordedSnowflake(state={}), evals)
+    locked, closes = invoke_counting_closes(monkeypatch, FakeSnowflake(state={}), evals)
     assert locked.exit_code == 4 and "apply-run holds the target lock" in json.loads(locked.output)["data"]["error"]
     assert closes == ["closed"]
 
@@ -513,7 +487,7 @@ def test_the_eval_suite_closes_its_connection_when_it_fails_before_running(
         raise PermissionError("target/sst is read-only")
 
     monkeypatch.setattr("snowflake_semantic_tools.cli.wiring.project.StateFileStore.acquire_lock", unwritable)
-    failed, closes = invoke_counting_closes(monkeypatch, RecordedSnowflake(state={}), evals)
+    failed, closes = invoke_counting_closes(monkeypatch, FakeSnowflake(state={}), evals)
     assert failed.exit_code == 4 and json.loads(failed.output)["data"]["error"] == "target/sst is read-only"
     assert closes == ["closed"]
 
@@ -556,7 +530,7 @@ def test_golden_json_failure_missing_file_and_smoke_failure(tmp_path: Path, monk
         )
         for value in manifest["artifacts"].values()
     }
-    port = RecordedSnowflake(state=state, markers=markers)
+    port = FakeSnowflake(state=state, markers=markers)
     port.query = lambda sql, params=None: (_ for _ in ()).throw(SnowflakePortError("broken"))  # type: ignore[method-assign]
     smoke = invoke_with_port(
         monkeypatch,

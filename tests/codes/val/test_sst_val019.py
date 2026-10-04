@@ -5,14 +5,14 @@ from __future__ import annotations
 from pathlib import Path
 
 from snowflake_semantic_tools.domain.diagnostics import Severity
-from tests.helpers.semantic_projects import INSTRUCTIONS, edited, found
+from tests.helpers.reference_project import INSTRUCTIONS, edited, reported
 
 LINE = "      Round every monetary amount to two decimal places.\n"
 
 
 def test_sst_val019_fires(tmp_path: Path) -> None:
     project = edited(tmp_path, INSTRUCTIONS, LINE, LINE + "      Prefer the gross_profit metric for margin.\n")
-    [diagnostic] = found(project, "SST-VAL019")
+    [diagnostic] = reported(project, "SST-VAL019")
     assert diagnostic.severity is Severity.WARNING
     assert (
         diagnostic.message
@@ -23,4 +23,4 @@ def test_sst_val019_fires(tmp_path: Path) -> None:
 
 def test_sst_val019_silent(tmp_path: Path) -> None:
     project = edited(tmp_path, INSTRUCTIONS, LINE, LINE + "      Prefer the gross_margin metric for margin.\n")
-    assert found(project, "SST-VAL019") == []
+    assert reported(project, "SST-VAL019") == []

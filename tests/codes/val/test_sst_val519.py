@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 from snowflake_semantic_tools.domain.diagnostics import Severity
-from tests.helpers.agent_builders import agent, builtin_tool, compile_agents, found
+from tests.helpers.agent_builders import agent, builtin_tool, compile_agents
+from tests.helpers.diagnostic_filters import coded
 
 
 def test_sst_val519_fires() -> None:
@@ -12,7 +13,7 @@ def test_sst_val519_fires() -> None:
         builtin_tool(description="Draws a chart of the rows another tool returned."),
         builtin_tool("code_execution", description="Draws a chart of the rows another tool returns."),
     )
-    [diagnostic] = found(compile_agents(model).diagnostics, "SST-VAL519")
+    [diagnostic] = coded(compile_agents(model).diagnostics, "SST-VAL519")
     assert diagnostic.severity is Severity.WARNING
     assert (
         diagnostic.message
@@ -27,4 +28,4 @@ def test_sst_val519_silent() -> None:
         builtin_tool(description="Draws a chart of the rows another tool returned."),
         builtin_tool("code_execution", description="Runs Python for arithmetic the views cannot express."),
     )
-    assert found(compile_agents(model).diagnostics, "SST-VAL519") == []
+    assert coded(compile_agents(model).diagnostics, "SST-VAL519") == []

@@ -6,10 +6,8 @@ import pytest
 
 from snowflake_semantic_tools.app.compile.evals import CompiledEval
 from snowflake_semantic_tools.app.evals.gate import capture_baseline, evaluate_gate, persist_gate
-from snowflake_semantic_tools.app.evals.run import EvalRunResult
-from snowflake_semantic_tools.domain.diagnostics import DiagnosticBag
 from snowflake_semantic_tools.domain.model.eval import EvalMetricResult, EvalResultRow, EvalRunAttempt, ThresholdRange
-from tests.helpers.eval_builders import compiled_eval_of
+from tests.helpers.eval_builders import compiled_eval_of, run_result
 from tests.helpers.eval_state_store import InMemoryEvalStateStore
 
 
@@ -43,22 +41,18 @@ def compiled_eval() -> CompiledEval:
     )
 
 
-def result(*attempts: EvalRunAttempt) -> EvalRunResult:
-    return EvalRunResult("eval:sales_agent", attempts, DiagnosticBag(), True)
-
-
 def test_capture_baseline_requires_reason_and_configured_attempts() -> None:
     compiled = compiled_eval()
     first = attempt("run-1", (("q", "answer_correctness", True), ("q", "grounding", True)))
     with pytest.raises(ValueError, match="reason"):
-        capture_baseline(compiled, result(first), reason="", captured_at="2026-09-01T00:00:00Z")
+        capture_baseline(compiled, run_result(first), reason="", captured_at="2026-09-01T00:00:00Z")
     with pytest.raises(ValueError, match="2 completed attempts"):
-        capture_baseline(compiled, result(first), reason="initial", captured_at="2026-09-01T00:00:00Z")
+        capture_baseline(compiled, run_result(first), reason="initial", captured_at="2026-09-01T00:00:00Z")
     partial = replace(first, terminal_status="PARTIALLY_COMPLETED")
     with pytest.raises(ValueError, match="refuses partial"):
         capture_baseline(
             compiled,
-            result(partial, first),
+            run_result(partial, first),
             reason="initial",
             captured_at="2026-09-01T00:00:00Z",
         )
@@ -72,7 +66,7 @@ def test_capture_baseline_stores_metadata_only_vectors() -> None:
     )
     baseline = capture_baseline(
         compiled,
-        result(*attempts),
+        run_result(*attempts),
         reason="initial calibration",
         captured_at="2026-09-01T00:00:00Z",
     )
@@ -90,14 +84,14 @@ def test_gate_counts_only_all_pass_baseline_to_any_fail_current() -> None:
     compiled = compiled_eval()
     baseline = capture_baseline(
         compiled,
-        result(
+        run_result(
             attempt("base-1", (("q", "answer_correctness", True), ("q", "grounding", True))),
             attempt("base-2", (("q", "answer_correctness", True), ("q", "grounding", False))),
         ),
         reason="initial",
         captured_at="2026-09-01T00:00:00Z",
     )
-    current = result(
+    current = run_result(
         attempt("current-1", (("q", "answer_correctness", False), ("q", "grounding", False))),
         attempt("current-2", (("q", "answer_correctness", True), ("q", "grounding", True))),
     )
@@ -117,14 +111,14 @@ def test_ungated_metric_failure_is_not_a_regression() -> None:
     compiled = compiled_eval()
     baseline = capture_baseline(
         compiled,
-        result(
+        run_result(
             attempt("base-1", (("q", "answer_correctness", True), ("q", "grounding", True))),
             attempt("base-2", (("q", "answer_correctness", True), ("q", "grounding", True))),
         ),
         reason="initial",
         captured_at="2026-09-01T00:00:00Z",
     )
-    current = result(
+    current = run_result(
         attempt("current-1", (("q", "answer_correctness", True), ("q", "grounding", False))),
         attempt("current-2", (("q", "answer_correctness", True), ("q", "grounding", False))),
     )
@@ -137,7 +131,7 @@ def test_ungated_metric_failure_is_not_a_regression() -> None:
 
 def test_gate_absent_incompatible_expired_and_near_expiry() -> None:
     compiled = compiled_eval()
-    current = result(
+    current = run_result(
         attempt("run-1", (("q", "answer_correctness", True), ("q", "grounding", True))),
         attempt("run-2", (("q", "answer_correctness", True), ("q", "grounding", True))),
     )
@@ -164,7 +158,7 @@ def test_gate_absent_incompatible_expired_and_near_expiry() -> None:
 
 def test_a_fresh_baseline_warns_only_in_its_last_week() -> None:
     compiled = compiled_eval()
-    current = result(
+    current = run_result(
         attempt("run-1", (("q", "answer_correctness", True), ("q", "grounding", True))),
         attempt("run-2", (("q", "answer_correctness", True), ("q", "grounding", True))),
     )
@@ -181,7 +175,7 @@ def test_a_fresh_baseline_warns_only_in_its_last_week() -> None:
 
 def test_report_tier_does_not_block_and_gate_state_is_retrospective() -> None:
     compiled = compiled_eval()
-    baseline_result = result(
+    baseline_result = run_result(
         attempt("base-1", (("q", "answer_correctness", True), ("q", "grounding", True))),
         attempt("base-2", (("q", "answer_correctness", True), ("q", "grounding", True))),
     )
@@ -191,7 +185,7 @@ def test_report_tier_does_not_block_and_gate_state_is_retrospective() -> None:
         reason="initial",
         captured_at="2026-09-01T00:00:00Z",
     )
-    current = result(
+    current = run_result(
         attempt("current-1", (("q", "answer_correctness", False), ("q", "grounding", True))),
         attempt("current-2", (("q", "answer_correctness", False), ("q", "grounding", True))),
     )
@@ -230,7 +224,7 @@ def test_default_tier_and_default_baseline_runs_are_honored() -> None:
             compiled.resolved, config=replace(compiled.resolved.config, run=replace(run, tier=None, baseline_runs=None))
         ),
     )
-    attempts = result(
+    attempts = run_result(
         attempt("base-1", (("q", "answer_correctness", True), ("q", "grounding", True))),
         attempt("base-2", (("q", "answer_correctness", True), ("q", "grounding", True))),
     )
@@ -255,7 +249,7 @@ def test_default_tier_and_default_baseline_runs_are_honored() -> None:
 
 def test_local_baseline_run_count_overrides_global_default() -> None:
     compiled = compiled_eval()
-    baseline_result = result(
+    baseline_result = run_result(
         attempt("base-1", (("q", "answer_correctness", True), ("q", "grounding", True))),
         attempt("base-2", (("q", "answer_correctness", True), ("q", "grounding", True))),
     )
@@ -277,7 +271,7 @@ def test_local_baseline_run_count_overrides_global_default() -> None:
 
 def test_partial_current_attempt_is_no_signal_even_with_a_completed_retry() -> None:
     compiled = compiled_eval()
-    baseline_result = result(
+    baseline_result = run_result(
         attempt("base-1", (("q", "answer_correctness", True), ("q", "grounding", True))),
         attempt("base-2", (("q", "answer_correctness", True), ("q", "grounding", True))),
     )
@@ -288,7 +282,7 @@ def test_partial_current_attempt_is_no_signal_even_with_a_completed_retry() -> N
         captured_at="2026-09-01T00:00:00Z",
     )
     partial = replace(baseline_result.attempts[0], terminal_status="PARTIALLY_COMPLETED")
-    current = result(partial, baseline_result.attempts[1])
+    current = run_result(partial, baseline_result.attempts[1])
 
     verdict, diagnostics = evaluate_gate(compiled, current, baseline, now="2026-09-10T00:00:00Z")
 
@@ -298,7 +292,7 @@ def test_partial_current_attempt_is_no_signal_even_with_a_completed_retry() -> N
 
 def test_threshold_or_gate_policy_change_invalidates_baseline() -> None:
     compiled = compiled_eval()
-    baseline_result = result(
+    baseline_result = run_result(
         attempt("base-1", (("q", "answer_correctness", True), ("q", "grounding", True))),
         attempt("base-2", (("q", "answer_correctness", True), ("q", "grounding", True))),
     )
@@ -329,7 +323,7 @@ def test_threshold_or_gate_policy_change_invalidates_baseline() -> None:
 
 def test_changed_resolved_agent_version_invalidates_baseline() -> None:
     compiled = compiled_eval()
-    baseline_result = result(
+    baseline_result = run_result(
         attempt("base-1", (("q", "answer_correctness", True), ("q", "grounding", True))),
         attempt("base-2", (("q", "answer_correctness", True), ("q", "grounding", True))),
     )
@@ -339,7 +333,7 @@ def test_changed_resolved_agent_version_invalidates_baseline() -> None:
         reason="initial",
         captured_at="2026-09-01T00:00:00Z",
     )
-    current = result(
+    current = run_result(
         replace(baseline_result.attempts[0], agent_version="VERSION$2"),
         replace(baseline_result.attempts[1], agent_version="VERSION$2"),
     )
@@ -358,7 +352,7 @@ def test_multi_question_baseline_policy_is_compared_once_per_metric() -> None:
         ("q2", "answer_correctness", True),
         ("q2", "grounding", True),
     )
-    baseline_result = result(attempt("base-1", values), attempt("base-2", values))
+    baseline_result = run_result(attempt("base-1", values), attempt("base-2", values))
     baseline = capture_baseline(
         compiled,
         baseline_result,
@@ -397,7 +391,7 @@ def test_capture_baseline_requires_one_concrete_agent_version(
     with pytest.raises(ValueError, match=message):
         capture_baseline(
             compiled_eval(),
-            result(*attempts),
+            run_result(*attempts),
             reason="initial",
             captured_at="2026-09-01T00:00:00Z",
             required_attempts=len(attempts),
@@ -406,12 +400,12 @@ def test_capture_baseline_requires_one_concrete_agent_version(
 
 def test_gate_without_completed_attempt_has_no_current_signal() -> None:
     compiled = compiled_eval()
-    baseline_result = result(
+    baseline_result = run_result(
         attempt("base-1", (("q", "answer_correctness", True),)),
         attempt("base-2", (("q", "answer_correctness", True),)),
     )
     baseline = capture_baseline(compiled, baseline_result, reason="initial", captured_at="2026-09-01T00:00:00Z")
-    current = result(replace(baseline_result.attempts[0], terminal_status="CANCELLED"))
+    current = run_result(replace(baseline_result.attempts[0], terminal_status="CANCELLED"))
 
     verdict, diagnostics = evaluate_gate(compiled, current, baseline, now="2026-09-10T00:00:00Z")
 
@@ -424,7 +418,7 @@ def test_gate_without_attempts_has_no_retrieval_signal_after_version_resolution(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     compiled = compiled_eval()
-    baseline_result = result(
+    baseline_result = run_result(
         attempt("base-1", (("q", "answer_correctness", True),)),
         attempt("base-2", (("q", "answer_correctness", True),)),
     )
@@ -432,7 +426,7 @@ def test_gate_without_attempts_has_no_retrieval_signal_after_version_resolution(
     monkeypatch.setattr("snowflake_semantic_tools.app.evals.gate._result_agent_version", lambda _: "VERSION$1")
     monkeypatch.setattr("snowflake_semantic_tools.app.evals.gate._incompatibility", lambda *args: None)
 
-    verdict, diagnostics = evaluate_gate(compiled, result(), baseline, now="2026-09-10T00:00:00Z")
+    verdict, diagnostics = evaluate_gate(compiled, run_result(), baseline, now="2026-09-10T00:00:00Z")
 
     assert verdict.reason == "retrieval_no_signal"
     assert diagnostics[-1].code == "SST-SNO001"
@@ -441,7 +435,7 @@ def test_gate_without_attempts_has_no_retrieval_signal_after_version_resolution(
 
 def test_gate_rejects_changed_question_metric_vector(monkeypatch: pytest.MonkeyPatch) -> None:
     compiled = compiled_eval()
-    baseline_result = result(
+    baseline_result = run_result(
         attempt("base-1", (("q", "answer_correctness", True),)),
         attempt("base-2", (("q", "answer_correctness", True),)),
     )
@@ -450,7 +444,7 @@ def test_gate_rejects_changed_question_metric_vector(monkeypatch: pytest.MonkeyP
         baseline,
         metrics=tuple(replace(item, question_key="different") for item in baseline.metrics),
     )
-    current = result(
+    current = run_result(
         attempt("current-1", (("q", "answer_correctness", True),)),
         attempt("current-2", (("q", "answer_correctness", True),)),
     )
@@ -476,7 +470,7 @@ def test_capture_baseline_rejects_duplicate_incomplete_and_empty_metric_vectors(
     with pytest.raises(ValueError, match="duplicates"):
         capture_baseline(
             compiled,
-            result(duplicate),
+            run_result(duplicate),
             reason="initial",
             captured_at="2026-09-01T00:00:00Z",
             required_attempts=1,
@@ -490,7 +484,7 @@ def test_capture_baseline_rejects_duplicate_incomplete_and_empty_metric_vectors(
     with pytest.raises(ValueError, match="incomplete question/metric vector"):
         capture_baseline(
             compiled,
-            result(complete, incomplete),
+            run_result(complete, incomplete),
             reason="initial",
             captured_at="2026-09-01T00:00:00Z",
         )
@@ -499,7 +493,7 @@ def test_capture_baseline_rejects_duplicate_incomplete_and_empty_metric_vectors(
     with pytest.raises(ValueError, match="no metric vectors"):
         capture_baseline(
             compiled,
-            result(empty),
+            run_result(empty),
             reason="initial",
             captured_at="2026-09-01T00:00:00Z",
             required_attempts=1,
@@ -521,7 +515,7 @@ def test_invalid_tier_is_rejected() -> None:
     with pytest.raises(ValueError, match="invalid eval tier 'advisory'"):
         capture_baseline(
             invalid,
-            result(
+            run_result(
                 attempt("base-1", (("q", "answer_correctness", True),)),
                 attempt("base-2", (("q", "answer_correctness", True),)),
             ),
@@ -534,7 +528,7 @@ def test_naive_capture_timestamp_is_normalized_to_utc() -> None:
     compiled = compiled_eval()
     baseline = capture_baseline(
         compiled,
-        result(
+        run_result(
             attempt("base-1", (("q", "answer_correctness", True),)),
             attempt("base-2", (("q", "answer_correctness", True),)),
         ),

@@ -10,8 +10,8 @@ from snowflake_semantic_tools.cli.wiring import compile as compiling
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
 from snowflake_semantic_tools.domain.model.semantic_view import Column, ColumnKind
 from snowflake_semantic_tools.domain.sql.authored import guard_expression
-from tests.helpers.cli_projects import DBT_MANIFEST, project_copy
-from tests.helpers.recorded_snowflake import RecordedSnowflake
+from tests.helpers.reference_project import DBT_MANIFEST, project_copy
+from tests.helpers.snowflake_fake import FakeSnowflake
 
 
 def _column(expr: str, kind: ColumnKind = ColumnKind.DIMENSION) -> Column:
@@ -40,7 +40,7 @@ def _tables(project: Path) -> tuple[CompileResult, dict[str, tuple[tuple[str, st
 
 def test_verify_columns_reports_absent_tables_and_columns_only(tmp_path: Path) -> None:
     compiled, tables = _tables(project_copy(tmp_path))
-    port = RecordedSnowflake()
+    port = FakeSnowflake()
     port.tables = {QualifiedName.parse(fqn).sql: columns for fqn, columns in tables.items()}
     assert verify_columns(port, compiled) == ()
     first = sorted(tables)[0]

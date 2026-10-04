@@ -9,18 +9,19 @@ from click.testing import CliRunner
 
 from snowflake_semantic_tools.app.validate import CONNECTED_RULES, VALIDATION_RULES
 from snowflake_semantic_tools.cli.main import cli
-from tests.helpers.cli_projects import FIXTURE, MANIFEST, project_copy
+from tests.helpers.reference_project import DBT_MANIFEST, project_copy
 
 
-def test_validate_accepts_the_recorded_manifest_offline() -> None:
+def test_validate_accepts_the_recorded_manifest_offline(tmp_path: Path) -> None:
+    project = project_copy(tmp_path, offline=False)
     result = CliRunner().invoke(
         cli,
         [
             "validate",
             "--project-dir",
-            str(FIXTURE),
+            str(project),
             "--manifest",
-            str(MANIFEST),
+            str(DBT_MANIFEST),
             "--no-strict",
             "--no-snowflake-syntax-check",
         ],
@@ -31,15 +32,16 @@ def test_validate_accepts_the_recorded_manifest_offline() -> None:
     assert "validated 14 artifact(s): 0 errors, 5 warnings" in result.output
 
 
-def test_validate_uses_config_strict_unless_cli_overrides() -> None:
+def test_validate_uses_config_strict_unless_cli_overrides(tmp_path: Path) -> None:
+    project = project_copy(tmp_path, offline=False)
     result = CliRunner().invoke(
         cli,
         [
             "validate",
             "--project-dir",
-            str(FIXTURE),
+            str(project),
             "--manifest",
-            str(MANIFEST),
+            str(DBT_MANIFEST),
             "--no-strict",
             "--no-snowflake-syntax-check",
         ],
@@ -47,15 +49,16 @@ def test_validate_uses_config_strict_unless_cli_overrides() -> None:
     assert result.exit_code == 0
 
 
-def test_validate_connected_syntax_check_requires_a_connection() -> None:
+def test_validate_connected_syntax_check_requires_a_connection(tmp_path: Path) -> None:
+    project = project_copy(tmp_path, offline=False)
     result = CliRunner().invoke(
         cli,
         [
             "validate",
             "--project-dir",
-            str(FIXTURE),
+            str(project),
             "--manifest",
-            str(MANIFEST),
+            str(DBT_MANIFEST),
             "--snowflake-syntax-check",
         ],
     )
@@ -64,16 +67,13 @@ def test_validate_connected_syntax_check_requires_a_connection() -> None:
 
 
 def test_validate_reports_view_error_but_compile_fails_closed(tmp_path: Path) -> None:
-    import shutil
-
-    project = tmp_path / "project"
-    shutil.copytree(FIXTURE, project, ignore=shutil.ignore_patterns("target"))
+    project = project_copy(tmp_path, offline=False)
     views_path = project / "semantic_models" / "semantic_views" / "semantic_views.yml"
     text = views_path.read_text(encoding="utf-8")
     text = text.replace("{{ ref('products') }}", "{{ ref('missing') }}", 1)
     views_path.write_text(text, encoding="utf-8")
 
-    common = ["--project-dir", str(project), "--manifest", str(MANIFEST)]
+    common = ["--project-dir", str(project), "--manifest", str(DBT_MANIFEST)]
     validated = CliRunner().invoke(cli, ["validate", *common, "--no-snowflake-syntax-check"])
     assert validated.exit_code != 0
     assert "error[SST-REF001]" in validated.output
@@ -90,7 +90,7 @@ def test_validate_reports_an_agent_loader_error_once(tmp_path: Path) -> None:
     broken.mkdir(parents=True)
     (broken / "agent.yml").write_text("name: broken_agent\nmeta: text\n", encoding="utf-8")
 
-    result = CliRunner().invoke(cli, ["validate", "--project-dir", str(project), "--manifest", str(MANIFEST)])
+    result = CliRunner().invoke(cli, ["validate", "--project-dir", str(project), "--manifest", str(DBT_MANIFEST)])
 
     assert result.exit_code == 1, result.output
     # The eval catalog once carried the agent loader's diagnostics too, so each was reported twice.
@@ -99,7 +99,7 @@ def test_validate_reports_an_agent_loader_error_once(tmp_path: Path) -> None:
 
 def test_validate_json_data_counts_rules_artifacts_and_what_the_baseline_suppresses(tmp_path: Path) -> None:
     project = project_copy(tmp_path)
-    args = ["--project-dir", str(project), "--manifest", str(MANIFEST), "--no-strict", "-o", "json"]
+    args = ["--project-dir", str(project), "--manifest", str(DBT_MANIFEST), "--no-strict", "-o", "json"]
     plain = CliRunner().invoke(cli, ["validate", *args])
     data = json.loads(plain.output)["data"]
     assert data == {

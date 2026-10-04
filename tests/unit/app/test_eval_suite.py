@@ -30,8 +30,9 @@ from snowflake_semantic_tools.domain.model.lifecycle import QueryResult
 from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
 from snowflake_semantic_tools.domain.state import AppliedEntry
 from snowflake_semantic_tools.domain.state.lock import LockClaim
-from tests.helpers.app_ports import FixedClock, InMemoryStateStore
+from tests.helpers.app_ports import InMemoryStateStore
 from tests.helpers.artifact_builders import target
+from tests.helpers.clocks import FixedClock
 from tests.helpers.eval_builders import EvalSnowflake, compile_eval, resolved_eval, result_rows, status_result
 from tests.helpers.eval_state_store import InMemoryEvalStateStore
 from tests.helpers.project_inputs import InMemoryProjectInputs
@@ -212,9 +213,8 @@ def test_a_staged_config_whose_digest_state_trusts_is_not_staged_again() -> None
     config_path = (
         "@DB.S.EVAL_CONFIGS/sales_agent/" + dict(item.rendered_artifact.component_fingerprints)["config"] + ".yaml"
     )
-    port.upload(config_path, content)
-    port.uploads.clear()
-    digest = port.staged_file_md5s[config_path]
+    port.stage_file(config_path, content)
+    digest = port.staged_file_metadata[config_path].md5
     assert digest is not None
     entry = AppliedEntry(
         "f", "DB.S.X", "now", "run", "applied", "f", "m", component_fingerprints=(("config_stage_md5", digest),)

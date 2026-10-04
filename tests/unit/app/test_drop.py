@@ -9,8 +9,9 @@ from snowflake_semantic_tools.domain.model.identifier import QualifiedName, Targ
 from snowflake_semantic_tools.domain.model.lifecycle import OwnershipMarker
 from snowflake_semantic_tools.domain.state import APPLIED, AppliedEntry, State
 from snowflake_semantic_tools.domain.state.lock import LockClaim
-from tests.helpers.app_ports import FixedClock, InMemoryStateStore
-from tests.helpers.recorded_snowflake import RecordedSnowflake
+from tests.helpers.app_ports import InMemoryStateStore
+from tests.helpers.clocks import FixedClock
+from tests.helpers.snowflake_fake import FakeSnowflake
 
 VIEW = QualifiedName.parse("DB.S.ORDERS")
 TABLE = QualifiedName.parse("DB.S.SST_STATE")
@@ -21,8 +22,8 @@ def _entry(target: str, manifest: str = "a" * 64) -> AppliedEntry:
     return AppliedEntry("b" * 64, target, "then", "run", APPLIED, "b" * 64, manifest)
 
 
-def _port(**state: AppliedEntry) -> RecordedSnowflake:
-    return RecordedSnowflake(existing=(VIEW.sql,), markers={VIEW.sql: OwnershipMarker("a" * 64, "b" * 64)}, state=state)
+def _port(**state: AppliedEntry) -> FakeSnowflake:
+    return FakeSnowflake(existing=(VIEW.sql,), markers={VIEW.sql: OwnershipMarker("a" * 64, "b" * 64)}, state=state)
 
 
 def _cache(*keys: str) -> InMemoryStateStore:
@@ -31,7 +32,7 @@ def _cache(*keys: str) -> InMemoryStateStore:
     return InMemoryStateStore(State(1, identity, "a" * 64, "sst_config.yml", None, applied))
 
 
-def _drop(port: RecordedSnowflake, store: InMemoryStateStore | None = None) -> object:
+def _drop(port: FakeSnowflake, store: InMemoryStateStore | None = None) -> object:
     return DropObject(port, store or InMemoryStateStore(), FixedClock(), state_table=TABLE, actor="R", host="h").run(
         REQUEST
     )
@@ -53,7 +54,7 @@ def test_a_drop_whose_lock_was_broken_before_it_forgets_leaves_state_to_the_new_
     assert [(item.code, item.message) for item in result.diagnostics] == [
         ("SST-APL011", "another run, which broke this run's lock holds the apply lock")
     ]
-    assert set(port.state) == {"semantic_view:orders"} and store.writes == []
+    assert set(port.remote_state or {}) == {"semantic_view:orders"} and store.writes == []
 
 
 def test_a_drop_runs_one_statement_and_forgets_every_entry_naming_the_object() -> None:
@@ -62,7 +63,7 @@ def test_a_drop_runs_one_statement_and_forgets_every_entry_naming_the_object() -
     result = DropObject(port, store, FixedClock(), state_table=TABLE).run(REQUEST)
     assert (result.outcome, result.forgotten, result.dropped) == ("dropped", ("semantic_view:orders",), True)
     assert port.scripts == [("DROP SEMANTIC VIEW DB.S.ORDERS",)]
-    assert set(port.state) == {"agent:orders"}
+    assert set(port.remote_state or {}) == {"agent:orders"}
     assert port.state_manifest == "a" * 64
     assert store.state is not None and set(store.state.applied) == {"agent:orders"}
     assert REQUEST.artifact == "semantic_view:orders"

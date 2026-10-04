@@ -4,11 +4,11 @@ from __future__ import annotations
 
 from snowflake_semantic_tools.domain.diagnostics import Severity
 from tests.helpers.publications import compiled_skill, publish_skill
-from tests.helpers.recorded_snowflake import RecordedSnowflake
+from tests.helpers.snowflake_fake import FakeSnowflake
 
 
 def test_sst_apl007_fires() -> None:
-    port = RecordedSnowflake(existing=())
+    port = FakeSnowflake(existing=())
     port.refused = ("SET TAG",)
     _, result, _ = publish_skill(port, compiled_skill(certified=True))
     [diagnostic] = [item for item in result.diagnostics if item.code == "SST-APL007"]
@@ -21,5 +21,5 @@ def test_sst_apl007_fires() -> None:
 
 
 def test_sst_apl007_silent() -> None:
-    _, result, _ = publish_skill(RecordedSnowflake(existing=()), compiled_skill(certified=True))
+    _, result, _ = publish_skill(FakeSnowflake(existing=()), compiled_skill(certified=True))
     assert [item.code for item in result.diagnostics] == [] and result.success

@@ -5,7 +5,7 @@ from __future__ import annotations
 from snowflake_semantic_tools.app.apply import ApplyArtifacts
 from snowflake_semantic_tools.app.evals.run import EvalRunOptions, RunEvalSuite
 from snowflake_semantic_tools.domain.diagnostics import Severity
-from tests.helpers.app_ports import FixedClock
+from tests.helpers.clocks import FixedClock
 from tests.helpers.eval_builders import EvalSnowflake, compiled_eval_of, result_rows, status_result
 
 OPTIONS = EvalRunOptions("abcdef0", timestamp="20260928T010203Z")

@@ -6,8 +6,8 @@ from snowflake_semantic_tools.app.smoke import RunSmokeSuite
 from snowflake_semantic_tools.domain.diagnostics import Severity
 from snowflake_semantic_tools.domain.model.lifecycle import ProbeKind, RenderedArtifact, SmokeProbe
 from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
-from tests.helpers.app_ports import InMemorySnowflake
 from tests.helpers.artifact_builders import rendered
+from tests.helpers.snowflake_fake import FakeSnowflake
 from tests.helpers.sql_values import statement
 
 
@@ -23,8 +23,8 @@ def _view() -> RenderedArtifact:
 
 
 def test_sst_pln100_fires() -> None:
-    port = InMemorySnowflake()
-    port.query_error = SnowflakePortError("SQL execution internal error")
+    port = FakeSnowflake()
+    port.fail("query", SnowflakePortError("SQL execution internal error"))
     failure, _ = RunSmokeSuite(port).run((_view(),)).diagnostics
     assert (failure.code, failure.severity) == ("SST-PLN100", Severity.ERROR)
     assert failure.message == (
@@ -34,4 +34,4 @@ def test_sst_pln100_fires() -> None:
 
 
 def test_sst_pln100_silent() -> None:
-    assert RunSmokeSuite(InMemorySnowflake()).run((_view(),)).diagnostics == ()
+    assert RunSmokeSuite(FakeSnowflake()).run((_view(),)).diagnostics == ()

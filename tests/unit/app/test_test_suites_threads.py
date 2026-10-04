@@ -25,10 +25,12 @@ from snowflake_semantic_tools.domain.model.lifecycle import OwnershipMarker, Que
 from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
 from snowflake_semantic_tools.domain.sql import Sql
 from snowflake_semantic_tools.domain.state import AppliedEntry, Manifest
-from tests.helpers.app_ports import FixedClock, InMemorySnowflake, InMemoryStateStore
+from tests.helpers.app_ports import InMemoryStateStore
+from tests.helpers.clocks import FixedClock
 from tests.helpers.compile_builders import compiled
 from tests.helpers.eval_builders import STATUS_COLUMNS, compiled_eval_of, result_rows
 from tests.helpers.project_inputs import EMPTY_SOURCES, dev_target
+from tests.helpers.snowflake_fake import FakeSnowflake
 
 STATE_TABLE = QualifiedName.parse("DB.SCH.SST_STATE")
 VIEWS = ("MENU", "SALES", "ORDERS", "STORES", "ITEMS", "SUPPLIES")
@@ -51,7 +53,7 @@ class Opened:
             self.threads.add(threading.current_thread().name)
 
 
-class TrackedSession(InMemorySnowflake):
+class TrackedSession(FakeSnowflake):
     """A session that registers itself with the run that opened it, and records its close."""
 
     def __init__(self, opened: Opened) -> None:
@@ -162,6 +164,11 @@ OUTCOMES = {"alpha": "COMPLETED", "beta": "FAILED", "gamma": "unreadable", "delt
 
 class EvalSession(TrackedSession):
     """Answers each run's status and results by the agent its run name carries."""
+
+    def __init__(self, opened: Opened) -> None:
+        super().__init__(opened)
+        for agent in OUTCOMES:
+            self.agent_versions[(f"DB.S.{agent.upper()}", "committed")] = "VERSION$1"
 
     def query_in_context(self, scope: SchemaScope, sql: Sql, params: object = None) -> QueryResult:
         del scope

@@ -15,9 +15,10 @@ from snowflake_semantic_tools.domain.model.project import SemanticViewProject
 from snowflake_semantic_tools.domain.model.semantic_view import Metric, Window
 from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
 from snowflake_semantic_tools.domain.state import AppliedEntry
-from tests.helpers.app_ports import InMemorySnowflake, InMemoryStateStore
+from tests.helpers.app_ports import InMemoryStateStore
 from tests.helpers.compile_builders import view
 from tests.helpers.project_inputs import EMPTY_SOURCES, InMemoryProjectInputs, dev_target
+from tests.helpers.snowflake_fake import FakeSnowflake
 from tests.helpers.sql_values import authored
 
 
@@ -40,7 +41,7 @@ def test_a_published_view_with_an_unbuildable_metric_probe_runs_no_probe() -> No
     result = _with_metric(Metric("RUNNING", authored("SUM(T.C)"), table="T", window=window))
     assert isinstance(result.compiled[0], CompiledView)
     manifest = manifest_for(result, EMPTY_SOURCES)
-    port = InMemorySnowflake()
+    port = FakeSnowflake()
     port.remote_state = MappingProxyType(
         {
             artifact.key: AppliedEntry(
@@ -68,8 +69,8 @@ def test_fail_fast_reports_every_later_artifact_with_probes_as_skipped() -> None
     first = _with_metric(Metric("A", authored("SUM(T.C)"), table="T")).rendered[0]
     other = replace(first, key="semantic_view:other")
     unprobed = replace(first, key="semantic_view:bare", smoke=())
-    port = InMemorySnowflake()
-    port.query_error = SnowflakePortError("broken")
+    port = FakeSnowflake()
+    port.fail("query", SnowflakePortError("broken"))
     result = RunSmokeSuite(port).run((first, unprobed, other), fail_fast=True)
     assert [(item.code, item.subject) for item in result.diagnostics] == [
         ("SST-APL100", first.key),

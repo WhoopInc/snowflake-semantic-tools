@@ -24,7 +24,7 @@ from snowflake_semantic_tools.adapters.yaml.compose import compose_single
 from snowflake_semantic_tools.adapters.yaml.format import canonical_yaml
 from snowflake_semantic_tools.adapters.yaml.migrate import filter_sites
 from snowflake_semantic_tools.cli.main import cli
-from tests.helpers.cli_projects import project_copy
+from tests.helpers.reference_project import project_copy
 
 PAST_THE_BOUND = bounded_yaml.MAX_YAML_DEPTH + 50
 PAST_RECURSION = 20_000

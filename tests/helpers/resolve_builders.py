@@ -3,12 +3,11 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from pathlib import Path
 from typing import Any
 
-from snowflake_semantic_tools.domain.diagnostics import Diagnostic, DiagnosticBag, Origin
+from snowflake_semantic_tools.domain.diagnostics import Diagnostic, Origin
 from snowflake_semantic_tools.domain.model.dbt import DbtCatalog, DbtColumn, DbtModel
-from snowflake_semantic_tools.domain.model.project import ParsedMember, SemanticViewProject
+from snowflake_semantic_tools.domain.model.project import ParsedMember
 from snowflake_semantic_tools.domain.model.registry import SEMANTIC_REGISTRY
 from snowflake_semantic_tools.domain.parse.template import scan_template_calls
 from snowflake_semantic_tools.domain.resolve.membership import MembershipResult, resolve_membership
@@ -20,8 +19,6 @@ from snowflake_semantic_tools.domain.resolve.template import (
     Resolved,
     resolve_scalar,
 )
-from tests.helpers.cli_projects import MANIFEST, project_copy
-from tests.helpers.projects import load_project
 
 ORIGIN = Origin("semantic_models/metrics/metrics.yml", 3, 5)
 
@@ -104,30 +101,3 @@ def request(
 def membership(*members: ParsedMember, **fields: Any) -> MembershipResult:
     """Resolve the membership of `members`; see `request` for the fields."""
     return resolve_membership(request(*members, **fields))
-
-
-def coded(diagnostics: DiagnosticBag | tuple[Diagnostic, ...], code: str) -> list[Diagnostic]:
-    """The diagnostics of one code, in order."""
-    return [item for item in diagnostics if item.code == code]
-
-
-def edited_fixture(tmp_path: Path, file: str, before: str, after: str) -> SemanticViewProject:
-    """Load the reference project with one edit to one of its files: the first `before` becomes `after`."""
-    project = project_copy(tmp_path)
-    path = project / file
-    text = path.read_text(encoding="utf-8")
-    assert before in text, before
-    path.write_text(text.replace(before, after, 1), encoding="utf-8")
-    return load_project(project, manifest_path=MANIFEST)
-
-
-def fixture_with(tmp_path: Path, file: str, text: str) -> SemanticViewProject:
-    """Load the reference project with one more file in it."""
-    project = project_copy(tmp_path)
-    (project / file).write_text(text, encoding="utf-8")
-    return load_project(project, manifest_path=MANIFEST)
-
-
-def reference_fixture(tmp_path: Path) -> SemanticViewProject:
-    """Load the reference project as committed."""
-    return load_project(project_copy(tmp_path), manifest_path=MANIFEST)

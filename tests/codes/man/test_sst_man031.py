@@ -11,8 +11,8 @@ import pytest
 from snowflake_semantic_tools.app.compile import CompileResult
 from snowflake_semantic_tools.cli.wiring import compile as compiling
 from snowflake_semantic_tools.domain.diagnostics import Severity
-from tests.helpers.cli_projects import DBT_MANIFEST, project_copy
 from tests.helpers.projects import project_paths
+from tests.helpers.reference_project import DBT_MANIFEST, project_copy
 
 
 class RewritesManifest:

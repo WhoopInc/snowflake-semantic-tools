@@ -13,8 +13,9 @@ from click.testing import Result
 from snowflake_semantic_tools.domain.diagnostics import D, DiagnosticBag
 from snowflake_semantic_tools.domain.model.lifecycle import GrantRow, ShowRow
 from snowflake_semantic_tools.domain.state import AppliedEntry
-from tests.helpers.cli_projects import common, invoke_with_port, project_copy
-from tests.helpers.recorded_snowflake import RecordedSnowflake
+from tests.helpers.cli_projects import common, invoke_with_port
+from tests.helpers.reference_project import project_copy
+from tests.helpers.snowflake_fake import FakeSnowflake
 
 VIEW = "jaffle_minimal"
 RECORDED = "c" * 64
@@ -25,17 +26,17 @@ DEFINITION = "create or replace semantic view JAFFLE_MINIMAL\n  tables (orders)"
 def _target(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[Path, str]:
     """A project, and the target the view it plans is published to."""
     project = project_copy(tmp_path)
-    first = invoke_with_port(monkeypatch, RecordedSnowflake(state={}), ["plan", *common(project), "-o", "json"])
+    first = invoke_with_port(monkeypatch, FakeSnowflake(state={}), ["plan", *common(project), "-o", "json"])
     change = next(item for item in json.loads(first.stdout)["data"]["changes"] if item["name"] == VIEW)
     return project, str(change["target"])
 
 
-def _published(target: str) -> RecordedSnowflake:
+def _published(target: str) -> FakeSnowflake:
     """Snowflake holding the view as an earlier manifest published it, with one explicit grant."""
     database, schema, name = target.split(".")
     row = ShowRow(name, database, schema, "OWNER", "now", f"[sst:{OTHER_MANIFEST}:{RECORDED}]")
     entry = AppliedEntry(RECORDED, target, "now", "run", "applied", RECORDED, OTHER_MANIFEST)
-    return RecordedSnowflake(
+    return FakeSnowflake(
         objects={("SEMANTIC VIEW", f"{database}.{schema}"): (row,)},
         grants={target: (GrantRow("SELECT", "ROLE", "ANALYST"),)},
         definitions={target: DEFINITION},
@@ -43,7 +44,7 @@ def _published(target: str) -> RecordedSnowflake:
     )
 
 
-def _plan(project: Path, port: RecordedSnowflake, monkeypatch: pytest.MonkeyPatch, *flags: str) -> Result:
+def _plan(project: Path, port: FakeSnowflake, monkeypatch: pytest.MonkeyPatch, *flags: str) -> Result:
     return invoke_with_port(monkeypatch, port, ["plan", *common(project), "--select", VIEW, "--no-plan-out", *flags])
 
 
@@ -99,10 +100,10 @@ def test_names_only_prints_each_changed_name_and_nothing_else(tmp_path: Path, mo
     assert result.exit_code == 2
     assert result.stdout.splitlines() == [VIEW]
     every = invoke_with_port(
-        monkeypatch, RecordedSnowflake(state={}), ["plan", *common(project), "--names-only", "--no-plan-out"]
+        monkeypatch, FakeSnowflake(state={}), ["plan", *common(project), "--names-only", "--no-plan-out"]
     )
     data = invoke_with_port(
-        monkeypatch, RecordedSnowflake(state={}), ["plan", *common(project), "--no-plan-out", "-o", "json"]
+        monkeypatch, FakeSnowflake(state={}), ["plan", *common(project), "--no-plan-out", "-o", "json"]
     )
     changes = json.loads(data.stdout)["data"]
     assert every.stdout.splitlines() == [item["name"] for item in changes["changes"]]
@@ -121,12 +122,12 @@ def test_no_validate_skips_strict_promotion_and_refuses_a_syntax_check(
 
     monkeypatch.setattr("snowflake_semantic_tools.cli.wiring.compile.compile_result", with_warning)
     args = ["plan", *common(project), "--strict", "--no-plan-out"]
-    assert invoke_with_port(monkeypatch, RecordedSnowflake(state={}), args).exit_code == 1
-    unvalidated = invoke_with_port(monkeypatch, RecordedSnowflake(state={}), [*args, "--no-validate", "-o", "json"])
+    assert invoke_with_port(monkeypatch, FakeSnowflake(state={}), args).exit_code == 1
+    unvalidated = invoke_with_port(monkeypatch, FakeSnowflake(state={}), [*args, "--no-validate", "-o", "json"])
     assert unvalidated.exit_code == 2, unvalidated.output
     assert "SST-VAL020" not in _codes(unvalidated)
     refused = invoke_with_port(
-        monkeypatch, RecordedSnowflake(state={}), [*args, "--no-validate", "--snowflake-syntax-check"]
+        monkeypatch, FakeSnowflake(state={}), [*args, "--no-validate", "--snowflake-syntax-check"]
     )
     assert refused.exit_code == 3
     assert "SST-PRT104" in refused.output

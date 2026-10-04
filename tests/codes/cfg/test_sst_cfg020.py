@@ -9,7 +9,8 @@ from typing import Any
 from click.testing import CliRunner
 
 from snowflake_semantic_tools.cli.main import cli
-from tests.helpers.cli_projects import common, project_copy
+from tests.helpers.cli_projects import common
+from tests.helpers.reference_project import project_copy
 
 
 def _compile(project: Path, tools: str) -> dict[str, Any]:

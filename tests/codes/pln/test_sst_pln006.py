@@ -6,7 +6,7 @@ from snowflake_semantic_tools.app.manifest import manifest_for
 from snowflake_semantic_tools.app.plan import PlanCandidates, PlanScope, PreparePlan
 from snowflake_semantic_tools.domain.diagnostics import Severity
 from snowflake_semantic_tools.domain.state import Manifest
-from tests.helpers.app_ports import FixedClock
+from tests.helpers.clocks import FixedClock
 from tests.helpers.compile_builders import compiled
 from tests.helpers.project_inputs import EMPTY_SOURCES, InMemoryProjectInputs
 

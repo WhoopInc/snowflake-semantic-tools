@@ -22,8 +22,8 @@ from snowflake_semantic_tools.domain.model.semantic_view import (
 from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
 from snowflake_semantic_tools.domain.sql import datatype
 from snowflake_semantic_tools.domain.state import STATE_SCHEMA_VERSION, AppliedEntry, State
-from tests.helpers.app_ports import InMemorySnowflake
 from tests.helpers.artifact_builders import rendered, target
+from tests.helpers.snowflake_fake import FakeSnowflake
 from tests.helpers.sql_values import authored, authored_query, statement
 
 
@@ -48,8 +48,8 @@ def test_validation_promotes_warnings_and_reports_connected_skip_or_failure() ->
     ]
     skipped = ValidateArtifacts().run(compile_result(), strict=False, connected=True)
     assert skipped.success and skipped.diagnostics[0].code == "SST-VAL020"
-    port = InMemorySnowflake()
-    port.query_error = SnowflakePortError("bad yaml")
+    port = FakeSnowflake()
+    port.fail("query", SnowflakePortError("bad yaml"))
     invalid_view = SemanticView(
         "DB.S.V",
         (Table("T", "DB.S.T"),),
@@ -60,7 +60,7 @@ def test_validation_promotes_warnings_and_reports_connected_skip_or_failure() ->
     )
     failed = ValidateArtifacts(port).run(invalid_result, strict=False, connected=True)
     assert not failed.success and failed.diagnostics[0].code == "SST-VAL418"
-    healthy = ValidateArtifacts(InMemorySnowflake()).run(compile_result(), strict=False, connected=True)
+    healthy = ValidateArtifacts(FakeSnowflake()).run(compile_result(), strict=False, connected=True)
     assert healthy.success
 
 
@@ -72,7 +72,7 @@ def test_connected_validation_compiles_expressions_and_verified_queries() -> Non
         verified_queries=(VerifiedQuery("Q", "q?", authored_query("SELECT 1;")),),
     )
     result = CompileResult((CompiledView(view, statement("CREATE OR REPLACE SEMANTIC VIEW DB.S.V COPY GRANTS")),))
-    port = InMemorySnowflake()
+    port = FakeSnowflake()
     validated = ValidateArtifacts(port).run(result, strict=False, connected=True)
     assert validated.success
     assert [query for query, _params in port.queries] == [
@@ -99,7 +99,7 @@ def test_connected_validation_skips_non_views_and_projects_columns() -> None:
             CompiledView(view, statement("CREATE OR REPLACE SEMANTIC VIEW DB.S.V COPY GRANTS")),
         )
     )
-    port = InMemorySnowflake()
+    port = FakeSnowflake()
     validated = ValidateArtifacts(port).run(result, strict=False, connected=True)
     assert validated.success
     assert [query for query, _params in port.queries] == [
@@ -121,12 +121,12 @@ def test_smoke_suite_runs_each_probe_and_supports_fail_fast() -> None:
             SmokeProbe("metric", ProbeKind.METRIC, statement("select 2")),
         ),
     )
-    good_port = InMemorySnowflake()
+    good_port = FakeSnowflake()
     good = RunSmokeSuite(good_port).run((artifact,))
     assert good.success and len(good.attempted) == 2
 
-    bad_port = InMemorySnowflake()
-    bad_port.query_error = SnowflakePortError("broken")
+    bad_port = FakeSnowflake()
+    bad_port.fail("query", SnowflakePortError("broken"))
     bad = RunSmokeSuite(bad_port).run((artifact,), fail_fast=True)
     assert not bad.success and len(bad.attempted) == 1
     assert [item.code for item in bad.diagnostics] == ["SST-APL100", "SST-APL006"]

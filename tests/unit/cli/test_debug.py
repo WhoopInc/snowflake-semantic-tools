@@ -7,13 +7,14 @@ from pathlib import Path
 
 import pytest
 
-from tests.helpers.cli_projects import common, invoke_with_port, project_copy
-from tests.helpers.recorded_snowflake import RecordedSnowflake
+from tests.helpers.cli_projects import common, invoke_with_port
+from tests.helpers.reference_project import project_copy
+from tests.helpers.snowflake_fake import FakeSnowflake
 
 
 def test_debug_connection_and_human_apply_prompt(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     project = project_copy(tmp_path)
-    debug_port = RecordedSnowflake(role="R", account_locator="A")
+    debug_port = FakeSnowflake(role="R", account_locator="A")
     debugged = invoke_with_port(
         monkeypatch,
         debug_port,
@@ -27,7 +28,7 @@ def test_debug_connection_and_human_apply_prompt(tmp_path: Path, monkeypatch: py
         "account": "A",
     }
 
-    apply_port = RecordedSnowflake(state={})
+    apply_port = FakeSnowflake(state={})
     applied = invoke_with_port(
         monkeypatch,
         apply_port,
@@ -65,7 +66,7 @@ def test_debug_reports_a_refused_connection_and_the_signature_rate(
 
     project = project_copy(tmp_path)
 
-    def refuse(params: object) -> RecordedSnowflake:
+    def refuse(params: object) -> FakeSnowflake:
         raise SnowflakePortError("refused")
 
     monkeypatch.setattr("snowflake_semantic_tools.cli.main.SnowflakeConnector", refuse)
@@ -107,7 +108,7 @@ def test_debug_never_prints_a_credential_a_failed_connection_echoes(
     profiles.write_text(text.replace("user: sst_reference\n", "user: sst_reference\n      password: hunter2-x\n", 1))
     monkeypatch.setattr(output, "_SECRETS", set())
 
-    def refuse(params: object) -> RecordedSnowflake:
+    def refuse(params: object) -> FakeSnowflake:
         raise SnowflakePortError("login as hunter2-x refused")
 
     monkeypatch.setattr("snowflake_semantic_tools.cli.main.SnowflakeConnector", refuse)

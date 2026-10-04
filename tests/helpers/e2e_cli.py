@@ -20,8 +20,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from tests.helpers.cli_projects import DBT_MANIFEST, FIXTURE, REPO_ROOT
-from tests.helpers.semantic_projects import set_column_meta
+from tests.helpers.reference_project import DBT_MANIFEST, REPO_ROOT, project_copy, set_column_meta
 
 OVERLAYS = REPO_ROOT / "tests" / "fixtures" / "negative_overlays"
 _MANIFEST_PATCH = ".manifest.json"
@@ -68,13 +67,6 @@ def run_sst(*args: str, environ: Mapping[str, str] | None = None, timeout: float
     return SstRun(done.returncode, done.stdout, done.stderr)
 
 
-def reference_copy(root: Path) -> Path:
-    """A fresh copy of the reference project under `root`, without a compiled target."""
-    project = root / "project"
-    shutil.copytree(FIXTURE, project, ignore=shutil.ignore_patterns("target"))
-    return project
-
-
 def expected_cases() -> dict[str, dict[str, Any]]:
     """The negative corpus's expectations, by overlay file name."""
     value: dict[str, dict[str, Any]] = json.loads((OVERLAYS / "expected.json").read_text(encoding="utf-8"))
@@ -93,7 +85,7 @@ def overlaid(root: Path, overlay: str, into: str) -> tuple[Path, Path]:
     where a dbt model's YAML arrives once dbt has parsed it; any other overlay is copied into
     `into` under the project.
     """
-    project = reference_copy(root)
+    project = project_copy(root, offline=False)
     if not overlay.endswith(_MANIFEST_PATCH):
         shutil.copy(OVERLAYS / overlay, project / into / overlay)
         return project, DBT_MANIFEST

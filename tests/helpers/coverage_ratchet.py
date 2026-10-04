@@ -24,7 +24,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from tests.helpers.cli_projects import REPO_ROOT
+from tests.helpers.reference_project import REPO_ROOT
 
 BASELINE = REPO_ROOT / "tests" / "coverage_baseline.json"
 PACKAGE = "snowflake_semantic_tools"

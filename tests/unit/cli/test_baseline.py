@@ -12,7 +12,8 @@ from click.testing import CliRunner, Result
 from snowflake_semantic_tools.adapters.fs.baseline import baseline_text, read_baseline
 from snowflake_semantic_tools.cli.main import cli
 from snowflake_semantic_tools.domain.diagnostics.baseline import Baseline, BaselineEntry, Renewal
-from tests.helpers.cli_projects import common, project_copy
+from tests.helpers.cli_projects import common
+from tests.helpers.reference_project import project_copy
 
 BASELINE = Path(".sst") / "baseline.json"
 

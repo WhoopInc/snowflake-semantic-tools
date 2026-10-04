@@ -32,7 +32,7 @@ from tests.helpers.live_snowflake import (
     scratch_scope,
     sweepable,
 )
-from tests.helpers.recorded_snowflake import RecordedSnowflake
+from tests.helpers.snowflake_fake import FakeSnowflake
 
 NOW = datetime(2026, 1, 1, 12, 0, tzinfo=UTC)
 ACCOUNT = LiveAccount("acct", "ci_user", "/keys/ci.p8", "CI_ROLE", "CI_WH", "SCRATCH_DB")
@@ -93,7 +93,7 @@ def test_the_sweep_drops_only_old_marked_scratch_schemas_or_one_runs_own() -> No
 
 
 def test_scratch_statements_mark_the_schema_and_refuse_to_drop_any_other() -> None:
-    port = RecordedSnowflake()
+    port = FakeSnowflake()
     scope = scratch_scope(ACCOUNT, scratch_schema_name("R1", "MAIN", NOW))
     create_scratch(port, scope)
     assert drop_scratch(port, scope)
@@ -121,11 +121,11 @@ def test_the_live_project_validates_compiles_and_plans_one_view(
     assert validated.exit_code == 0, validated.output
     assert CliRunner().invoke(cli, ["compile", *args]).exit_code == 0
 
-    port = RecordedSnowflake(existing=(orders_table(schema).sql,), role=ACCOUNT.role)
+    port = FakeSnowflake(existing=(orders_table(schema).sql,), role=ACCOUNT.role)
     port.close = lambda: None  # type: ignore[attr-defined]
     connected: list[dict[str, object]] = []
 
-    def connect(params: dict[str, object]) -> RecordedSnowflake:
+    def connect(params: dict[str, object]) -> FakeSnowflake:
         connected.append(dict(params))
         return port
 

@@ -4,7 +4,8 @@ from __future__ import annotations
 
 from snowflake_semantic_tools.domain.diagnostics import Severity
 from snowflake_semantic_tools.domain.resolve.membership_model import MemberFacts
-from tests.helpers.resolve_builders import coded, member, membership
+from tests.helpers.diagnostic_filters import coded
+from tests.helpers.resolve_builders import member, membership
 
 JOINED = MemberFacts(using_relationships=("orders_to_customers",))
 RELATIONSHIP = member("relationship", "orders_to_customers", ("orders", "customers"))

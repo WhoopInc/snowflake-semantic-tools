@@ -11,7 +11,7 @@ from snowflake_semantic_tools.domain.render.skill_bundle import (
     BUNDLE_BUDGET_BYTES,
     build_skill_bundle,
 )
-from tests.helpers.eval_inputs import codes, only
+from tests.helpers.diagnostic_filters import codes, only
 from tests.helpers.skill_inputs import (
     skill,
 )

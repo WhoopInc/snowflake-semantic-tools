@@ -9,9 +9,9 @@ from __future__ import annotations
 from snowflake_semantic_tools.app.evals.run import EvalRunOptions, RunEvalSuite
 from snowflake_semantic_tools.app.lifecycle.evals import EVAL_STAGE_FILE_FORMAT
 from snowflake_semantic_tools.domain.diagnostics import Severity
-from tests.helpers.app_ports import FixedClock
+from tests.helpers.clocks import FixedClock
+from tests.helpers.diagnostic_filters import codes, only
 from tests.helpers.eval_builders import EvalSnowflake, compiled_eval_of, result_rows, status_result
-from tests.helpers.eval_inputs import codes, only
 
 STAGE = "DB.S.EVAL_CONFIGS"
 

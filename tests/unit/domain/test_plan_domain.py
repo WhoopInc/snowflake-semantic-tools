@@ -24,6 +24,7 @@ from snowflake_semantic_tools.domain.model.registry import SEMANTIC_REGISTRY
 from snowflake_semantic_tools.domain.plan import build_changeset, dependency_waves, topological_order
 from snowflake_semantic_tools.domain.state import STATE_SCHEMA_VERSION, AppliedEntry, ImpactIndex, Manifest, State
 from tests.helpers.manifests import build_minimal_manifest
+from tests.helpers.plan_codes import live
 from tests.helpers.sql_values import statement
 
 
@@ -38,27 +39,6 @@ def rendered(name: str, ddl: str | None = None, depends_on: tuple[str, ...] = ()
         target=QualifiedName.from_parts("db", "sch", name),
         ddl=statement(ddl or f"create semantic view {name}"),
         depends_on=depends_on,
-    )
-
-
-def observed(
-    artifact: RenderedArtifact,
-    *,
-    marker: OwnershipMarker | None = None,
-    object_type: str = "SEMANTIC VIEW",
-    raw_name: str | None = None,
-    grants: tuple[GrantRow, ...] = (),
-) -> ObservedArtifact:
-    return ObservedArtifact(
-        artifact.key,
-        raw_name or artifact.target.name.folded,
-        artifact.target,
-        object_type,
-        "OWNER",
-        "now",
-        marker.text if marker else None,
-        marker,
-        grants,
     )
 
 
@@ -113,7 +93,7 @@ def test_plan_classifies_create_update_noop_and_reports_grants_and_case() -> Non
     observation = SnowflakeObservation(
         MappingProxyType(
             {
-                update.key: observed(
+                update.key: live(
                     update,
                     marker=OwnershipMarker(
                         manifest.manifest_id,
@@ -121,7 +101,7 @@ def test_plan_classifies_create_update_noop_and_reports_grants_and_case() -> Non
                     ),
                     grants=(GrantRow("SELECT", "ROLE", "R"),),
                 ),
-                noop.key: observed(
+                noop.key: live(
                     noop,
                     raw_name="NoOp",
                     marker=OwnershipMarker(manifest.manifest_id, noop.fingerprint),
@@ -143,7 +123,7 @@ def test_plan_classifies_create_update_noop_and_reports_grants_and_case() -> Non
 def test_plan_conservatively_updates_without_trusted_state_and_blocks_errors() -> None:
     value = rendered("v")
     manifest, state = context({value.key: value}, {}, manifest_id="old")
-    observation = SnowflakeObservation(MappingProxyType({value.key: observed(value)}), "now")
+    observation = SnowflakeObservation(MappingProxyType({value.key: live(value)}), "now")
     mismatch = build_changeset({value.key: value}, observation, manifest, state, SEMANTIC_REGISTRY, target())
     assert mismatch.changes[0].reason is ChangeReason.UNMANAGED_OBJECT
     assert [item.code for item in mismatch.diagnostics] == ["SST-MAN021", "SST-PLN024"]
@@ -161,7 +141,7 @@ def test_plan_conservatively_updates_without_trusted_state_and_blocks_errors() -
     marked_observation = SnowflakeObservation(
         MappingProxyType(
             {
-                value.key: observed(
+                value.key: live(
                     value,
                     marker=OwnershipMarker(old_manifest, value.fingerprint),
                 )
@@ -192,7 +172,7 @@ def test_plan_conservatively_updates_without_trusted_state_and_blocks_errors() -
     current_observation = SnowflakeObservation(
         MappingProxyType(
             {
-                value.key: observed(
+                value.key: live(
                     value,
                     marker=OwnershipMarker(manifest.manifest_id, value.fingerprint),
                 )
@@ -274,7 +254,7 @@ def test_plan_conservatively_updates_without_trusted_state_and_blocks_errors() -
         SnowflakeObservation(
             MappingProxyType(
                 {
-                    moved.key: observed(
+                    moved.key: live(
                         value,
                         marker=OwnershipMarker(moved_manifest.manifest_id, value.fingerprint),
                     )
@@ -303,7 +283,7 @@ def test_plan_conservatively_updates_without_trusted_state_and_blocks_errors() -
     assert blocked.changes[0].action is Action.BLOCKED
     wrong_type = build_changeset(
         {value.key: value},
-        SnowflakeObservation(MappingProxyType({value.key: observed(value, object_type="VIEW")}), "now"),
+        SnowflakeObservation(MappingProxyType({value.key: live(value, object_type="VIEW")}), "now"),
         manifest,
         state,
         SEMANTIC_REGISTRY,
@@ -319,7 +299,7 @@ def test_prune_requires_marker_and_matching_authoritative_state() -> None:
     empty_manifest, empty_state = context({}, {})
     no_marker = build_changeset(
         {},
-        SnowflakeObservation(MappingProxyType({orphan.key: observed(orphan)}), "now"),
+        SnowflakeObservation(MappingProxyType({orphan.key: live(orphan)}), "now"),
         empty_manifest,
         empty_state,
         SEMANTIC_REGISTRY,
@@ -331,7 +311,7 @@ def test_prune_requires_marker_and_matching_authoritative_state() -> None:
     marker = OwnershipMarker("a" * 64, orphan.fingerprint)
     absent_state = build_changeset(
         {},
-        SnowflakeObservation(MappingProxyType({orphan.key: observed(orphan, marker=marker)}), "now"),
+        SnowflakeObservation(MappingProxyType({orphan.key: live(orphan, marker=marker)}), "now"),
         empty_manifest,
         empty_state,
         SEMANTIC_REGISTRY,
@@ -350,7 +330,7 @@ def test_prune_requires_marker_and_matching_authoritative_state() -> None:
     )
     prune = build_changeset(
         {},
-        SnowflakeObservation(MappingProxyType({orphan.key: observed(orphan, marker=marker)}), "now"),
+        SnowflakeObservation(MappingProxyType({orphan.key: live(orphan, marker=marker)}), "now"),
         empty_manifest,
         owned_state,
         SEMANTIC_REGISTRY,
@@ -445,7 +425,7 @@ def test_plan_returns_cycle_diagnostic_and_skips_declared_or_unknown_prunes() ->
     clean = build_changeset(
         {first.key: first},
         SnowflakeObservation(
-            MappingProxyType({first.key: observed(first), "unknown:x": unknown}),
+            MappingProxyType({first.key: live(first), "unknown:x": unknown}),
             "now",
         ),
         manifest,
@@ -459,7 +439,7 @@ def test_plan_returns_cycle_diagnostic_and_skips_declared_or_unknown_prunes() ->
     scoped_out = build_changeset(
         {},
         SnowflakeObservation(
-            MappingProxyType({first.key: observed(first, marker=OwnershipMarker("a" * 64, first.fingerprint))}), "now"
+            MappingProxyType({first.key: live(first, marker=OwnershipMarker("a" * 64, first.fingerprint))}), "now"
         ),
         manifest,
         state,
@@ -475,7 +455,7 @@ def test_plan_returns_cycle_diagnostic_and_skips_declared_or_unknown_prunes() ->
         SnowflakeObservation(
             MappingProxyType(
                 {
-                    first.key: observed(
+                    first.key: live(
                         first,
                         marker=OwnershipMarker("a" * 64, first.fingerprint),
                     )
@@ -602,7 +582,7 @@ def test_an_unchanged_agent_is_not_blocked_by_an_unplanned_pinned_version() -> N
     observation = SnowflakeObservation(
         MappingProxyType(
             {
-                agent.key: observed(
+                agent.key: live(
                     agent,
                     marker=OwnershipMarker(manifest.manifest_id, agent.fingerprint),
                     object_type="AGENT",

@@ -7,11 +7,12 @@ from pathlib import Path
 from snowflake_semantic_tools.domain.diagnostics import Severity
 from snowflake_semantic_tools.domain.model.dbt import DbtCatalog
 from snowflake_semantic_tools.domain.validate.dbt_seam import seam_summary
-from tests.helpers.seam_projects import SmallProject, found
+from tests.helpers.diagnostic_filters import coded
+from tests.helpers.seam_projects import SmallProject
 
 
 def test_sst_dbt025_fires(tmp_path: Path) -> None:
-    [diagnostic] = found(SmallProject(tmp_path).load(), "SST-DBT025")
+    [diagnostic] = coded(SmallProject(tmp_path).load().diagnostics, "SST-DBT025")
     assert diagnostic.severity is Severity.INFO
     assert diagnostic.message == "1 models read, 0 sources read, 1 refs resolved, 1 columns checked"
     assert diagnostic.subject is None

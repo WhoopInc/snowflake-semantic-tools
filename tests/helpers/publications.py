@@ -7,25 +7,25 @@ state the run left.
 
 from __future__ import annotations
 
-from types import MappingProxyType
-
 from snowflake_semantic_tools.app.apply import ApplyArtifacts
+from snowflake_semantic_tools.app.compile import CompileResult
 from snowflake_semantic_tools.app.compile.profiles import CompiledProfile, CompileProfiles, DesktopChannel
 from snowflake_semantic_tools.app.compile.skills import CatalogChannel, CompiledExtension, CompileSkills
 from snowflake_semantic_tools.app.lifecycle.extensions import ExtensionLifecycleHandler
 from snowflake_semantic_tools.app.lifecycle.profiles import ProfileLifecycleHandler
 from snowflake_semantic_tools.app.manifest import build_manifest
 from snowflake_semantic_tools.app.plan_artifacts import PlanArtifacts
-from snowflake_semantic_tools.domain.diagnostics import Origin
+from snowflake_semantic_tools.domain.diagnostics import DiagnosticBag, Origin
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
 from snowflake_semantic_tools.domain.model.lifecycle import ApplyOptions, ApplyResult, ChangeSet
 from snowflake_semantic_tools.domain.model.profile import DesktopProfile, ProfileCatalog, SharedProfile
 from snowflake_semantic_tools.domain.model.skill import Skill, SkillCatalog, SkillFile
 from snowflake_semantic_tools.domain.ports.lifecycle import CompositeLifecycleHandler
-from snowflake_semantic_tools.domain.state import STATE_SCHEMA_VERSION, AppliedEntry, State
-from tests.helpers.app_ports import FixedClock, InMemoryStateStore
-from tests.helpers.artifact_builders import target
-from tests.helpers.recorded_snowflake import RecordedSnowflake
+from snowflake_semantic_tools.domain.state import State
+from tests.helpers.app_ports import InMemoryStateStore
+from tests.helpers.artifact_builders import empty_state, target
+from tests.helpers.clocks import FixedClock
+from tests.helpers.snowflake_fake import FakeSnowflake
 
 SKILL_STAGE = QualifiedName.parse("DB.S.SKILL_BUNDLES")
 PROFILE_STAGE = QualifiedName.parse("DB.S.PROFILES")
@@ -47,12 +47,8 @@ def compiled_skill(*, certified: bool = False, steps: bytes = b"steps\n") -> Com
     return compiled
 
 
-def empty_state(applied: dict[str, AppliedEntry] | None = None) -> State:
-    return State(STATE_SCHEMA_VERSION, target(), "", "cfg", None, MappingProxyType(dict(applied or {})))
-
-
 def _run(
-    port: RecordedSnowflake,
+    port: FakeSnowflake,
     handlers: dict[str, CompositeLifecycleHandler],
     rendered: dict[str, object],
     previous: State,
@@ -73,14 +69,14 @@ def _run(
 
 
 def publish_skill(
-    port: RecordedSnowflake, compiled: CompiledExtension, previous: State | None = None
+    port: FakeSnowflake, compiled: CompiledExtension, previous: State | None = None
 ) -> tuple[ChangeSet, ApplyResult, State]:
     handler = ExtensionLifecycleHandler(port, {compiled.artifact_key: compiled.release}, "skill")
     return _run(
         port,
         {"skill": handler},
         {compiled.artifact_key: compiled.rendered_artifact},
-        previous or empty_state(dict(port.state)),
+        previous or empty_state(dict(port.remote_state or {})),
     )
 
 
@@ -112,8 +108,21 @@ def compiled_profile(*shipped: Skill) -> CompiledProfile:
     return compiled
 
 
-def publish_profile(port: RecordedSnowflake, compiled: CompiledProfile) -> tuple[ChangeSet, ApplyResult, State]:
+def publish_profile(port: FakeSnowflake, compiled: CompiledProfile) -> tuple[ChangeSet, ApplyResult, State]:
     handler = ProfileLifecycleHandler(port, {compiled.artifact_key: compiled})
     return _run(
-        port, {"profile": handler}, {compiled.artifact_key: compiled.rendered_artifact}, empty_state(dict(port.state))
+        port,
+        {"profile": handler},
+        {compiled.artifact_key: compiled.rendered_artifact},
+        empty_state(dict(port.remote_state or {})),
     )
+
+
+def both_channels_published() -> tuple[FakeSnowflake, CompileResult]:
+    """Publish the skill and the profile carrying it; return the port and both compiled artifacts."""
+    port = FakeSnowflake(existing=())
+    extension = compiled_skill()
+    profile = compiled_profile(skill())
+    publish_skill(port, extension)
+    publish_profile(port, profile)
+    return port, CompileResult((extension, profile), DiagnosticBag())

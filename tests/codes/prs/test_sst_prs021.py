@@ -5,7 +5,8 @@ from __future__ import annotations
 from pathlib import Path
 
 from snowflake_semantic_tools.domain.diagnostics import Severity
-from tests.helpers.seam_projects import KEY, RELATIONSHIPS, SmallProject, found, relationship_file
+from tests.helpers.diagnostic_filters import coded
+from tests.helpers.seam_projects import KEY, RELATIONSHIPS, SmallProject, relationship_file
 
 LEGACY = (
     "snowflake_relationships:\n  - name: self_join\n    left_table: products\n    right_table: products\n"
@@ -14,7 +15,7 @@ LEGACY = (
 
 
 def test_sst_prs021_fires(tmp_path: Path) -> None:
-    [diagnostic] = found(SmallProject(tmp_path, files={RELATIONSHIPS: LEGACY}).load(), "SST-PRS021")
+    [diagnostic] = coded(SmallProject(tmp_path, files={RELATIONSHIPS: LEGACY}).load().diagnostics, "SST-PRS021")
     assert diagnostic.severity is Severity.ERROR
     assert diagnostic.message == (
         "relationship:self_join: relationship_columns / left_column / right_column is not supported"
@@ -24,4 +25,4 @@ def test_sst_prs021_fires(tmp_path: Path) -> None:
 
 def test_sst_prs021_silent(tmp_path: Path) -> None:
     files = relationship_file(f"{KEY} = {KEY}")
-    assert found(SmallProject(tmp_path, files=files).load(), "SST-PRS021") == []
+    assert coded(SmallProject(tmp_path, files=files).load().diagnostics, "SST-PRS021") == []

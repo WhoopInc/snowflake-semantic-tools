@@ -17,7 +17,7 @@ from snowflake_semantic_tools.domain.plan.summary import plan_notices, plan_summ
 from snowflake_semantic_tools.domain.ports.snowflake.preflight import PreflightPort
 from tests.helpers.artifact_builders import change, rendered
 from tests.helpers.plan_codes import entry, live, manifest_of, plan, view
-from tests.helpers.preflight import PreflightAnswers, PreflightDouble
+from tests.helpers.snowflake_fake import FakeSnowflake
 
 
 def _codes(diagnostics: tuple[Diagnostic, ...]) -> list[str]:
@@ -127,19 +127,8 @@ def test_an_order_that_violates_a_dependency_is_refused(monkeypatch: pytest.Monk
 
 
 def test_the_preflight_double_satisfies_the_port() -> None:
-    port: PreflightPort = _Port()
+    port: PreflightPort = FakeSnowflake(role="R")
     assert port.database_exists(rendered().target.database)
-
-
-class _Port(PreflightDouble):
-    def __init__(self) -> None:
-        self.preflight = PreflightAnswers()
-
-    def object_exists(self, object_type: str, qualified_name: QualifiedName) -> bool:
-        return False
-
-    def current_role(self) -> str:
-        return "R"
 
 
 def test_each_preflight_finding_reports_its_code() -> None:

@@ -9,15 +9,7 @@ import pytest
 
 from snowflake_semantic_tools.adapters.yaml.discover import discover_yaml
 from snowflake_semantic_tools.domain.diagnostics import Severity
-
-
-def models(project: Path, *files: str) -> Path:
-    root = project / "semantic_models"
-    root.mkdir()
-    for name in files:
-        (root / name).parent.mkdir(parents=True, exist_ok=True)
-        (root / name).write_text("snowflake_metrics: []\n", encoding="utf-8")
-    return root
+from tests.helpers.dis_codes import models
 
 
 @pytest.mark.skipif(os.name != "posix" or os.geteuid() == 0, reason="needs POSIX permissions and a non-root user")

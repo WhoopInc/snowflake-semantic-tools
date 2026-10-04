@@ -7,7 +7,7 @@ from pathlib import Path
 from snowflake_semantic_tools.adapters.yaml.agents import load_agents
 from snowflake_semantic_tools.adapters.yaml.evals.catalog import load_eval_catalog
 from snowflake_semantic_tools.domain.diagnostics import Diagnostic, Severity
-from tests.helpers.cli_projects import project_copy
+from tests.helpers.reference_project import project_copy
 
 CONFIG = "agents/jaffle_analytics/evals/config.yml"
 

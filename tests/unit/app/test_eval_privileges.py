@@ -44,5 +44,5 @@ def test_each_schema_is_read_once_and_each_eval_in_it_is_reported() -> None:
 
 def test_a_primary_role_that_holds_everything_needs_no_session_read() -> None:
     port = EvalSnowflake([])
-    port.preflight.refused.add("missing_privileges")
+    port.refuse("missing_privileges")
     assert eval_role_diagnostics(port, _two_evals_in_one_schema()) == ()

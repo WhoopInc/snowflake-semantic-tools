@@ -8,23 +8,20 @@ from snowflake_semantic_tools.app.diff import live_states, manifest_states, plan
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
 from snowflake_semantic_tools.domain.model.lifecycle import OwnershipMarker
 from snowflake_semantic_tools.domain.plan.diff import ArtifactState
-from snowflake_semantic_tools.domain.state import APPLIED, DEACTIVATED, AppliedEntry
-from tests.helpers.recorded_snowflake import RecordedSnowflake
+from snowflake_semantic_tools.domain.state import DEACTIVATED
+from tests.helpers.artifact_builders import applied_entry
+from tests.helpers.snowflake_fake import FakeSnowflake
 
 TABLE = QualifiedName.from_parts("DB", "S", "SST_STATE")
 
 
-def _entry(target: str, fingerprint: str, *, outcome: str = APPLIED) -> AppliedEntry:
-    return AppliedEntry(fingerprint, target, "now", "run", outcome, fingerprint, "a" * 64)
-
-
 def test_live_states_read_markers_and_trust_state_for_composites() -> None:
-    port = RecordedSnowflake(
+    port = FakeSnowflake(
         state={
-            "semantic_view:kept": _entry("DB.S.KEPT", "1" * 64),
-            "semantic_view:unmarked": _entry("DB.S.UNMARKED", "2" * 64),
-            "skill:bundle": _entry("DB.S.BUNDLE", "3" * 64),
-            "agent:retired": _entry("DB.S.RETIRED", "4" * 64, outcome=DEACTIVATED),
+            "semantic_view:kept": applied_entry("DB.S.KEPT", "1" * 64),
+            "semantic_view:unmarked": applied_entry("DB.S.UNMARKED", "2" * 64),
+            "skill:bundle": applied_entry("DB.S.BUNDLE", "3" * 64),
+            "agent:retired": applied_entry("DB.S.RETIRED", "4" * 64, outcome=DEACTIVATED),
         },
         markers={"DB.S.KEPT": OwnershipMarker("a" * 64, "5" * 64)},
     )
@@ -37,7 +34,7 @@ def test_live_states_read_markers_and_trust_state_for_composites() -> None:
 
 
 def test_live_states_report_an_unreadable_state_table(monkeypatch: pytest.MonkeyPatch) -> None:
-    port = RecordedSnowflake()
+    port = FakeSnowflake()
     monkeypatch.setattr(port, "read_state", lambda table, target: None)
     held, [problem] = live_states(port, TABLE, "dev")
     assert held is None

@@ -17,6 +17,7 @@ from snowflake_semantic_tools.domain.validate.agent import (
     tool_name_clashes,
     unreferenced_extensions,
 )
+from tests.helpers.diagnostic_filters import codes
 
 MODELS = frozenset(("auto",))
 
@@ -27,11 +28,6 @@ def agent(name: str = "a", **fields: Any) -> AgentModel:
 
 def tool(name: str, type_: str = "data_to_chart", **resources: object) -> ResolvedAgentTool:
     return ResolvedAgentTool(type_, name, "d", resources=resources)
-
-
-def codes(diagnostics: object) -> list[str]:
-    assert isinstance(diagnostics, (list, tuple))
-    return [diagnostic.code for diagnostic in diagnostics]
 
 
 def test_identities_report_a_repeated_name_and_display_name_ignoring_case() -> None:

@@ -15,8 +15,9 @@ from snowflake_semantic_tools.adapters.errors import ProjectError
 from snowflake_semantic_tools.adapters.locations import ProjectPaths
 from snowflake_semantic_tools.adapters.project_source import YamlProjectInputs, YamlProjectSource
 from snowflake_semantic_tools.cli.main import cli
-from tests.helpers.cli_projects import DBT_MANIFEST, common, project_copy
+from tests.helpers.cli_projects import common
 from tests.helpers.projects import project_paths
+from tests.helpers.reference_project import DBT_MANIFEST, project_copy
 from tests.helpers.seam_projects import FakeDbt, SmallProject, manifest, model_node
 
 PROFILES = (

@@ -8,7 +8,7 @@ import pathlib
 import sys
 from typing import Any
 
-from recorded_snowflake import RecordedSnowflake
+from snowflake_fake import FakeSnowflake
 
 from snowflake_semantic_tools.cli import main as cli_module
 from snowflake_semantic_tools.domain.model.lifecycle import OwnershipMarker, ShowRow
@@ -16,7 +16,7 @@ from snowflake_semantic_tools.domain.ports.snowflake.stage import StagedFileMeta
 from snowflake_semantic_tools.domain.state import AppliedEntry
 
 
-def recorded(path: pathlib.Path) -> RecordedSnowflake:
+def recorded(path: pathlib.Path) -> FakeSnowflake:
     value: dict[str, Any] = json.loads(path.read_text(encoding="utf-8"))
     objects = {
         tuple(raw_key.split("|", 1)): tuple(ShowRow(**row) for row in rows)
@@ -27,7 +27,7 @@ def recorded(path: pathlib.Path) -> RecordedSnowflake:
         for key, raw in value.get("markers", {}).items()
     }
     state = {key: AppliedEntry.from_dict(raw) for key, raw in value.get("state", {}).items()}
-    return RecordedSnowflake(
+    return FakeSnowflake(
         objects=objects,
         markers=markers,
         state=state,

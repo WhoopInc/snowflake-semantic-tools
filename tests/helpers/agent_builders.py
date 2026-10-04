@@ -30,8 +30,8 @@ from snowflake_semantic_tools.domain.model.tool import (
     ToolOwnership,
     ToolParameter,
 )
-from tests.helpers.app_ports import InMemorySnowflake
 from tests.helpers.eval_builders import resolved_eval
+from tests.helpers.snowflake_fake import FakeSnowflake
 
 ORIGIN = Origin("agents/sales/agent.yml", 1, 1)
 TOOLS_FILE = "tools/platform.yml"
@@ -187,11 +187,6 @@ def compiled_tools(result: CompileResult) -> tuple[CompiledTool, ...]:
     return tuple(item for item in result.compiled if isinstance(item, CompiledTool))
 
 
-def found(diagnostics: Iterable[Diagnostic], code: str) -> list[Diagnostic]:
-    """Return the diagnostics carrying `code`, in order."""
-    return [item for item in diagnostics if item.code == code]
-
-
 def evaluation(model: AgentModel, *questions: str, tier: str | None = "blocking") -> ResolvedEval:
     """Return an eval of `model` asking `questions`, run at `tier`."""
     base = resolved_eval()
@@ -209,7 +204,7 @@ def cross(*results: CompileResult, evals: tuple[ResolvedEval, ...] = ()) -> tupl
     return tuple(cross_artifact_result(results, EvalCatalog(evals, ()), POSITIONS).diagnostics)
 
 
-def observe(port: InMemorySnowflake, *results: CompileResult) -> tuple[Diagnostic, ...]:
+def observe(port: FakeSnowflake, *results: CompileResult) -> tuple[Diagnostic, ...]:
     """Run the connected agent and tool checks over compiled `results` against `port`, target `dev`."""
     merged = CompileResult(tuple(item for result in results for item in result.compiled))
     return ObserveLiveObjects(port, target="dev").run(merged)
