@@ -135,11 +135,14 @@ poetry run lint-imports         # ring boundaries
 poetry run sst docs --check     # generated reference pages are current
 poetry run bandit -r snowflake_semantic_tools -ll
 
-# semgrep runs in its own job, installed outside the project's environment at the version
-# the workflow pins
-pip install semgrep==1.179.0
-semgrep scan --config p/python --config p/sql-injection --error --metrics off snowflake_semantic_tools
+# semgrep runs in its own job, installed outside the project's environment from a hash-locked
+# requirements file, with the rules vendored in .semgrep/ (its README says how to refresh them)
+pip install --require-hashes --only-binary :all: -r .github/requirements/semgrep.txt  # linux x86_64
+semgrep scan --config .semgrep/ --error --metrics off snowflake_semantic_tools
 ```
+
+The requirements file pins wheels for the CI runner (linux x86_64, CPython 3.11); elsewhere,
+`pip install semgrep==1.179.0` gives the same scanner.
 
 A semgrep false positive is silenced on its line with `# nosemgrep: <rule-id>` and a comment
 saying why.

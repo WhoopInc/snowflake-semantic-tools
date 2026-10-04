@@ -151,8 +151,6 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-    env:
-      SEMGREP_VERSION: "1.179.0"
 
     steps:
       - name: Check out repository
@@ -165,15 +163,19 @@ jobs:
         with:
           python-version: "3.11"
 
-      # Pinned, and kept out of the project's environment: semgrep's own dependencies are
-      # not the package's, and poetry.lock should not have to resolve them.
+      # Kept out of the project's environment: semgrep's own dependencies are not the package's,
+      # and poetry.lock should not have to resolve them. Every package is pinned by version and
+      # wheel hash for this runner, so a changed or added distribution fails the install.
       - name: Install semgrep
-        run: python -m pip install --disable-pip-version-check "semgrep==${SEMGREP_VERSION}"
+        run: >-
+          python -m pip install --disable-pip-version-check --no-input
+          --require-hashes --only-binary :all: -r .github/requirements/semgrep.txt
 
-      # The Python and SQL-injection rulesets over the package; any finding fails the job.
-      # A false positive is silenced at its line with `# nosemgrep: <rule-id>` and a reason.
+      # The Python and SQL-injection rulesets, vendored in .semgrep/ so the scan does not change
+      # with what the registry serves; any finding fails the job. A false positive is silenced at
+      # its line with `# nosemgrep: <rule-id>` and a reason.
       - name: Run semgrep
         run: >-
-          semgrep scan --config p/python --config p/sql-injection
+          semgrep scan --config .semgrep/
           --error --metrics off --disable-version-check
           snowflake_semantic_tools
