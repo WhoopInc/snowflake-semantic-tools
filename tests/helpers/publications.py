@@ -7,8 +7,6 @@ state the run left.
 
 from __future__ import annotations
 
-from types import MappingProxyType
-
 from snowflake_semantic_tools.app.apply import ApplyArtifacts
 from snowflake_semantic_tools.app.compile.profiles import CompiledProfile, CompileProfiles, DesktopChannel
 from snowflake_semantic_tools.app.compile.skills import CatalogChannel, CompiledExtension, CompileSkills
@@ -22,9 +20,9 @@ from snowflake_semantic_tools.domain.model.lifecycle import ApplyOptions, ApplyR
 from snowflake_semantic_tools.domain.model.profile import DesktopProfile, ProfileCatalog, SharedProfile
 from snowflake_semantic_tools.domain.model.skill import Skill, SkillCatalog, SkillFile
 from snowflake_semantic_tools.domain.ports.lifecycle import CompositeLifecycleHandler
-from snowflake_semantic_tools.domain.state import STATE_SCHEMA_VERSION, AppliedEntry, State
+from snowflake_semantic_tools.domain.state import State
 from tests.helpers.app_ports import InMemoryStateStore
-from tests.helpers.artifact_builders import target
+from tests.helpers.artifact_builders import empty_state, target
 from tests.helpers.clocks import FixedClock
 from tests.helpers.snowflake_fake import FakeSnowflake
 
@@ -46,10 +44,6 @@ def compiled_skill(*, certified: bool = False, steps: bytes = b"steps\n") -> Com
     result = CompileSkills(SkillCatalog((skill(steps=steps),)), channel).run_result()
     [compiled] = [item for item in result.compiled if isinstance(item, CompiledExtension)]
     return compiled
-
-
-def empty_state(applied: dict[str, AppliedEntry] | None = None) -> State:
-    return State(STATE_SCHEMA_VERSION, target(), "", "cfg", None, MappingProxyType(dict(applied or {})))
 
 
 def _run(

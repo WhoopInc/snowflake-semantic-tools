@@ -6,8 +6,6 @@ Snowflake through their lifecycle handlers, then apply the plan, as the lifecycl
 
 from __future__ import annotations
 
-from types import MappingProxyType
-
 from snowflake_semantic_tools.app.apply import ApplyArtifacts
 from snowflake_semantic_tools.app.compile.profiles import CompiledProfile, CompileProfiles, DesktopChannel
 from snowflake_semantic_tools.app.compile.skills import CatalogChannel, CompiledExtension, CompileSkills
@@ -26,7 +24,7 @@ from snowflake_semantic_tools.domain.model.profile import (
     SharedProfile,
 )
 from snowflake_semantic_tools.domain.model.skill import Skill, SkillCatalog, SkillFile
-from snowflake_semantic_tools.domain.state import STATE_SCHEMA_VERSION, AppliedEntry, State
+from snowflake_semantic_tools.domain.state import State
 from tests.helpers.app_ports import InMemoryStateStore
 from tests.helpers.artifact_builders import target
 from tests.helpers.clocks import FixedClock
@@ -36,10 +34,6 @@ BUNDLE_STAGE = QualifiedName.parse("DB.S.SKILL_BUNDLES")
 PROFILE_STAGE = QualifiedName.parse("DB.S.PROFILES")
 REGISTRY = QualifiedName.parse("DB.S.PROFILE_REGISTRY")
 STATE_TABLE = QualifiedName.parse("DB.S.SST_STATE")
-
-
-def lifecycle_state(applied: dict[str, AppliedEntry] | None = None) -> State:
-    return State(STATE_SCHEMA_VERSION, target(), "", "cfg", None, MappingProxyType(dict(applied or {})))
 
 
 def month_close() -> dict[str, CompiledExtension]:

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from types import MappingProxyType
+
 from snowflake_semantic_tools.domain.diagnostics import DiagnosticBag
 from snowflake_semantic_tools.domain.model.identifier import Identifier, QualifiedName, TargetIdentity
 from snowflake_semantic_tools.domain.model.lifecycle import (
@@ -13,13 +15,18 @@ from snowflake_semantic_tools.domain.model.lifecycle import (
     OwnershipMarker,
     RenderedArtifact,
 )
-from snowflake_semantic_tools.domain.state import ImpactIndex, Manifest, State
+from snowflake_semantic_tools.domain.state import STATE_SCHEMA_VERSION, AppliedEntry, ImpactIndex, Manifest, State
 from tests.helpers.manifests import build_minimal_manifest
 from tests.helpers.sql_values import statement
 
 
 def target() -> TargetIdentity:
     return TargetIdentity("verify", "account", Identifier.parse("db"), Identifier.parse("schema"))
+
+
+def empty_state(applied: dict[str, AppliedEntry] | None = None) -> State:
+    """A state for `target()` that records `applied`, and nothing when it is not given."""
+    return State(STATE_SCHEMA_VERSION, target(), "", "cfg", None, MappingProxyType(dict(applied or {})))
 
 
 def rendered(name: str = "V", *, depends_on: tuple[str, ...] = ()) -> RenderedArtifact:

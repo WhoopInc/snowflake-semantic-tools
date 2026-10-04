@@ -4,14 +4,15 @@ from __future__ import annotations
 
 from snowflake_semantic_tools.domain.diagnostics import Diagnostic, Severity
 from snowflake_semantic_tools.domain.model.lifecycle import Action
-from tests.helpers.lifecycle_codes import lifecycle_state, month_close, plan_skills, publish_skills
+from tests.helpers.artifact_builders import empty_state
+from tests.helpers.lifecycle_codes import month_close, plan_skills, publish_skills
 from tests.helpers.snowflake_fake import FakeSnowflake
 
 
 def _planned(*, declared: bool) -> list[Diagnostic]:
     compiled = month_close()
     port = FakeSnowflake(existing=())
-    published = publish_skills(port, compiled, lifecycle_state())
+    published = publish_skills(port, compiled, empty_state())
     changeset = plan_skills(port, compiled if declared else {}, published, prune=True)
     if not declared:
         assert [(change.action, change.prune_executable) for change in changeset.changes] == [(Action.PRUNE, False)]

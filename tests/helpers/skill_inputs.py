@@ -13,7 +13,6 @@ from __future__ import annotations
 from collections.abc import Mapping
 from dataclasses import replace
 from pathlib import Path
-from types import MappingProxyType
 
 from snowflake_semantic_tools.app.apply import ApplyArtifacts
 from snowflake_semantic_tools.app.compile.agents import AgentCompileContext, CompileAgents, ExtensionPin
@@ -36,7 +35,7 @@ from snowflake_semantic_tools.domain.model.profile import (
 )
 from snowflake_semantic_tools.domain.model.skill import Plugin, Skill, SkillCatalog, SkillFile
 from snowflake_semantic_tools.domain.model.tool import ToolCatalog
-from snowflake_semantic_tools.domain.state import STATE_SCHEMA_VERSION, State
+from snowflake_semantic_tools.domain.state import State
 from tests.helpers.app_ports import InMemoryStateStore
 from tests.helpers.artifact_builders import target
 from tests.helpers.clocks import FixedClock
@@ -201,10 +200,6 @@ def compile_extensions(catalog: SkillCatalog) -> dict[str, CompiledExtension]:
     result = CompileSkills(catalog, CATALOG_CHANNEL).run_result()
     assert not result.diagnostics.has_errors, result.diagnostics
     return {item.artifact_key: item for item in result.compiled if isinstance(item, CompiledExtension)}
-
-
-def empty_state() -> State:
-    return State(STATE_SCHEMA_VERSION, target(), "", "cfg", None, MappingProxyType({}))
 
 
 def publish_extensions(

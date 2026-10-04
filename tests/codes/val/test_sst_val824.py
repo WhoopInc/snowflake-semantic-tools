@@ -8,8 +8,9 @@ from __future__ import annotations
 
 from snowflake_semantic_tools.domain.diagnostics import Severity
 from snowflake_semantic_tools.domain.model.lifecycle import Action
+from tests.helpers.artifact_builders import empty_state
 from tests.helpers.diagnostic_filters import codes, only
-from tests.helpers.skill_inputs import compile_extensions, empty_state, publish_extensions, skill_catalog
+from tests.helpers.skill_inputs import compile_extensions, publish_extensions, skill_catalog
 from tests.helpers.snowflake_fake import FakeSnowflake
 
 COMPILED = compile_extensions(skill_catalog())
