@@ -4,13 +4,14 @@ from __future__ import annotations
 
 from snowflake_semantic_tools.domain.diagnostics import Severity
 from snowflake_semantic_tools.domain.model.lifecycle import Action, OwnershipMarker
-from tests.helpers.plan_codes import entry, live, manifest_of, only, plan, view
+from tests.helpers.diagnostic_filters import coded
+from tests.helpers.plan_codes import entry, live, manifest_of, plan, view
 
 
 def test_sst_pln003_fires() -> None:
     orphan = view("orphan")
     planned = plan((), observed=(live(orphan),), include_prune=True)
-    [diagnostic] = only(planned, "SST-PLN003")
+    [diagnostic] = coded(planned.diagnostics, "SST-PLN003")
     assert diagnostic.severity is Severity.WARNING
     assert diagnostic.message == "DB.SCH.ORPHAN has no SST ownership marker; skipped"
     assert planned.changes == ()
@@ -27,5 +28,5 @@ def test_sst_pln003_silent() -> None:
         include_prune=True,
         manifest=planned_manifest,
     )
-    assert only(planned, "SST-PLN003") == []
+    assert coded(planned.diagnostics, "SST-PLN003") == []
     assert [change.action for change in planned.changes] == [Action.PRUNE]

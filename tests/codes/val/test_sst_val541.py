@@ -6,7 +6,8 @@ from snowflake_semantic_tools.app.compile.agents import ExtensionPin
 from snowflake_semantic_tools.domain.diagnostics import Diagnostic, Severity
 from snowflake_semantic_tools.domain.model.agent import AgentSkill
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
-from tests.helpers.agent_builders import agent, compile_agents, found
+from tests.helpers.agent_builders import agent, compile_agents
+from tests.helpers.diagnostic_filters import coded
 
 SKILLS = {"semantics": ExtensionPin("skill:semantics", QualifiedName.parse("DB.S.SEMANTICS"), "SST_A", ("semantics",))}
 
@@ -18,7 +19,7 @@ def _plugged(*members: str) -> list[Diagnostic]:
         AgentSkill("", "CORTEX_EXTENSION", "toolkit", "", ref="plugin"),
     )
     result = compile_agents(agent("sales_agent", skills=skills), skills=SKILLS, plugins=plugins)
-    return found(result.diagnostics, "SST-VAL541")
+    return coded(result.diagnostics, "SST-VAL541")
 
 
 def test_sst_val541_fires() -> None:

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from tests.helpers.semantic_projects import VIEWS, compiled_diagnostics, edited
+from tests.helpers.reference_project import VIEWS, compiled_diagnostics, edited
 
 ENABLED = "  - name: jaffle_sales\n"
 

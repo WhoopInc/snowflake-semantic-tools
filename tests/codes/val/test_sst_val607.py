@@ -3,20 +3,13 @@
 from __future__ import annotations
 
 from snowflake_semantic_tools.domain.diagnostics import Diagnostic, Severity
-from tests.helpers.agent_builders import (
-    agent,
-    catalog,
-    compile_agents,
-    found,
-    generic_tool,
-    parameter,
-    procedure_member,
-)
+from tests.helpers.agent_builders import agent, catalog, compile_agents, generic_tool, parameter, procedure_member
+from tests.helpers.diagnostic_filters import coded
 
 
 def _signed(sql_type: str) -> list[Diagnostic]:
     member = procedure_member(signature=(parameter("ORDER_ID", sql_type),))
-    return found(compile_agents(agent("sales_agent", generic_tool()), tools=catalog(member)).diagnostics, "SST-VAL607")
+    return coded(compile_agents(agent("sales_agent", generic_tool()), tools=catalog(member)).diagnostics, "SST-VAL607")
 
 
 def test_sst_val607_fires() -> None:

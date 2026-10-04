@@ -17,15 +17,14 @@ from snowflake_semantic_tools.domain.state import content_hash
 from tests.helpers.cli_projects import (
     OFFLINE_VALIDATION,
     PROFILE_CONFIG,
-    break_menu_view,
     common,
     compile_project,
     invoke_counting_closes,
     invoke_with_port,
     profile_with_commands_and_plugin,
-    project_copy,
     skill_project,
 )
+from tests.helpers.reference_project import break_menu_view, project_copy
 from tests.helpers.snowflake_fake import FakeSnowflake
 from tests.helpers.sql_values import texts
 

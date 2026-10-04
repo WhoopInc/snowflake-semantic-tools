@@ -14,8 +14,8 @@ import pytest
 from click.testing import CliRunner
 
 from snowflake_semantic_tools.cli.main import cli
-from tests.helpers.cli_projects import DBT_MANIFEST, REPO_ROOT, project_copy
 from tests.helpers.enrich_ports import ScriptedEnrich
+from tests.helpers.reference_project import DBT_MANIFEST, REPO_ROOT, project_copy
 
 GOLDEN = REPO_ROOT / "tests" / "golden" / "expected" / "enrich"
 CHANGED = (

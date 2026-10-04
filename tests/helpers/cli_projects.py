@@ -1,35 +1,15 @@
-"""What the CLI tests share: the reference fixture, a copy of it, and `sst` against a recorded Snowflake."""
+"""What the CLI tests share: `sst` against the fake Snowflake, and small projects of one artifact type."""
 
 from __future__ import annotations
 
-import shutil
 from pathlib import Path
 
 import pytest
 from click.testing import CliRunner, Result
 
 from snowflake_semantic_tools.cli.main import cli
+from tests.helpers.reference_project import DBT_MANIFEST
 from tests.helpers.snowflake_fake import FakeSnowflake
-
-REPO_ROOT = Path(__file__).resolve().parents[2]
-FIXTURE = REPO_ROOT / "tests" / "fixtures" / "reference_project"
-DBT_MANIFEST = REPO_ROOT / "tests" / "fixtures" / "reference_project_manifest.json"
-# The command-level checks call the same recorded dbt manifest by its shorter name.
-MANIFEST = DBT_MANIFEST
-
-
-def project_copy(tmp_path: Path) -> Path:
-    project = tmp_path / "project"
-    # Other tests compile the fixture in place, so its target/ may change while this copies.
-    shutil.copytree(FIXTURE, project, ignore=shutil.ignore_patterns("target"))
-    config = project / "sst_config.yml"
-    config.write_text(
-        config.read_text(encoding="utf-8")
-        .replace("snowflake_syntax_check: true", "snowflake_syntax_check: false")
-        .replace("strict: true", "strict: false"),
-        encoding="utf-8",
-    )
-    return project
 
 
 def invoke_with_port(monkeypatch: pytest.MonkeyPatch, port: FakeSnowflake, args: list[str]) -> Result:
@@ -49,14 +29,6 @@ def common(project: Path) -> list[str]:
 def compile_project(project: Path) -> None:
     result = CliRunner().invoke(cli, ["compile", *common(project)])
     assert result.exit_code == 0, result.output
-
-
-def break_menu_view(project: Path) -> None:
-    path = project / "semantic_models" / "semantic_views" / "core" / "semantic_views.yml"
-    text = path.read_text(encoding="utf-8")
-    entry = "- \"{{ ref('products') }}\""
-    assert entry in text
-    path.write_text(text.replace(entry, '- "products"', 1), encoding="utf-8")
 
 
 def invoke_counting_closes(

@@ -137,11 +137,6 @@ class SmallProject:
         return YamlProjectSource(project_paths(self.root), manifest_path=manifest_path, invoke_dbt=False).load_project()
 
 
-def found(project: SemanticViewProject, code: str) -> list[Diagnostic]:
-    """The project's diagnostics of one code, in report order."""
-    return [item for item in project.diagnostics if item.code == code]
-
-
 @dataclass
 class FakeDbt:
     """A dbt that answers each argument list from a script and records what it was asked to run.

@@ -13,8 +13,8 @@ from snowflake_semantic_tools.domain.diagnostics import Severity
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
 from snowflake_semantic_tools.domain.ports.snowflake.errors import AgentVersionNotFound
 from tests.helpers.clocks import FixedClock
+from tests.helpers.diagnostic_filters import codes, only
 from tests.helpers.eval_builders import EvalSnowflake, compiled_eval_of, result_rows, status_result
-from tests.helpers.eval_inputs import codes, only
 
 
 class DroppedAliasSnowflake(EvalSnowflake):

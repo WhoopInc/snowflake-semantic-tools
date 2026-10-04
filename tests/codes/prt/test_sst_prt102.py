@@ -8,7 +8,8 @@ from pathlib import Path
 from click.testing import CliRunner
 
 from snowflake_semantic_tools.cli.main import cli
-from tests.helpers.cli_projects import common, project_copy
+from tests.helpers.cli_projects import common
+from tests.helpers.reference_project import project_copy
 
 
 def _refusal(args: list[str]) -> tuple[int, list[dict[str, object]]]:

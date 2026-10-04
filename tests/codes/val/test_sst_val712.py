@@ -11,13 +11,8 @@ from snowflake_semantic_tools.domain.model.eval import (
     EvalCatalog,
 )
 from snowflake_semantic_tools.domain.validate.eval import validate_eval_catalog
-from tests.helpers.eval_inputs import (
-    JUDGE,
-    codes,
-    judge,
-    only,
-    validate,
-)
+from tests.helpers.diagnostic_filters import codes, only
+from tests.helpers.eval_inputs import JUDGE, judge, validate
 
 
 def test_sst_val712_fires() -> None:

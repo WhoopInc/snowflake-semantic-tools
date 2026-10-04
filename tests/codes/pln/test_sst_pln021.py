@@ -4,12 +4,13 @@ from __future__ import annotations
 
 from snowflake_semantic_tools.domain.diagnostics import Severity
 from snowflake_semantic_tools.domain.model.lifecycle import OwnershipMarker
-from tests.helpers.plan_codes import entry, live, manifest_of, only, plan, view
+from tests.helpers.diagnostic_filters import coded
+from tests.helpers.plan_codes import entry, live, manifest_of, plan, view
 
 
 def test_sst_pln021_fires() -> None:
     planned = plan((), observed=(live(view("legacy")), live(view("old"))), include_prune=True)
-    [diagnostic] = only(planned, "SST-PLN021")
+    [diagnostic] = coded(planned.diagnostics, "SST-PLN021")
     assert diagnostic.severity is Severity.WARNING
     assert diagnostic.message == "2 objects in DB.SCH are not declared here"
 
@@ -28,4 +29,4 @@ def test_sst_pln021_silent() -> None:
         include_prune=True,
         manifest=planned_manifest,
     )
-    assert only(planned, "SST-PLN021") == []
+    assert coded(planned.diagnostics, "SST-PLN021") == []

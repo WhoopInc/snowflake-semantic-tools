@@ -4,7 +4,8 @@ from __future__ import annotations
 
 from snowflake_semantic_tools.domain.diagnostics import Diagnostic, Severity
 from snowflake_semantic_tools.domain.model.lifecycle import GrantRow
-from tests.helpers.agent_builders import compile_tools, found, observe, search_member
+from tests.helpers.agent_builders import compile_tools, observe, search_member
+from tests.helpers.diagnostic_filters import coded
 from tests.helpers.snowflake_fake import FakeSnowflake
 
 
@@ -12,7 +13,7 @@ def _granted(*grants: GrantRow) -> list[Diagnostic]:
     port = FakeSnowflake()
     port.descriptions["CORTEX SEARCH SERVICE DB.S.DOCS_SEARCH"] = {"name": "DOCS_SEARCH"}
     port.grants["DB.S.DOCS_SEARCH"] = grants
-    return found(observe(port, compile_tools((search_member(),))), "SST-VAL619")
+    return coded(observe(port, compile_tools((search_member(),))), "SST-VAL619")
 
 
 def test_sst_val619_fires() -> None:

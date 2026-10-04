@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 from snowflake_semantic_tools.domain.diagnostics import Diagnostic, Severity
-from tests.helpers.agent_builders import agent, catalog, compile_agents, found, generic_tool, observe, procedure_member
+from tests.helpers.agent_builders import agent, catalog, compile_agents, generic_tool, observe, procedure_member
+from tests.helpers.diagnostic_filters import coded
 from tests.helpers.snowflake_fake import FakeSnowflake
 
 
@@ -12,7 +13,7 @@ def _signed(arguments: str) -> list[Diagnostic]:
     port.existing = {"DB.DEV.LOOKUP"}
     port.show_rows["PROCEDURE DB.DEV.LOOKUP"] = {"arguments": arguments}
     result = compile_agents(agent("sales_agent", generic_tool()), tools=catalog(procedure_member()))
-    return found(observe(port, result), "SST-VAL532")
+    return coded(observe(port, result), "SST-VAL532")
 
 
 def test_sst_val532_fires() -> None:

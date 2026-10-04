@@ -10,7 +10,8 @@ from click.testing import CliRunner
 
 from snowflake_semantic_tools import __version__
 from snowflake_semantic_tools.cli.main import cli
-from tests.helpers.cli_projects import FIXTURE, MANIFEST, common, invoke_with_port, project_copy
+from tests.helpers.cli_projects import common, invoke_with_port
+from tests.helpers.reference_project import DBT_MANIFEST, FIXTURE, project_copy
 from tests.helpers.snowflake_fake import FakeSnowflake
 
 
@@ -22,7 +23,7 @@ def test_validate_json_emits_one_v2_envelope() -> None:
             "--project-dir",
             str(FIXTURE),
             "--manifest",
-            str(MANIFEST),
+            str(DBT_MANIFEST),
             "--output",
             "json",
             "--no-strict",

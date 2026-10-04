@@ -21,7 +21,8 @@ from snowflake_semantic_tools.domain.model.semantic_view import (
 from snowflake_semantic_tools.domain.resolve.membership import invariant_diagnostics, resolve_membership
 from snowflake_semantic_tools.domain.resolve.membership_model import NO_FACTS, MemberFacts
 from snowflake_semantic_tools.domain.resolve.rendered import rendered_diagnostics
-from tests.helpers.resolve_builders import coded, member, membership, request
+from tests.helpers.diagnostic_filters import coded
+from tests.helpers.resolve_builders import member, membership, request
 from tests.helpers.sql_values import authored, authored_query
 
 

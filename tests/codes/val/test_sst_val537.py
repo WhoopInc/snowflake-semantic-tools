@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 from snowflake_semantic_tools.domain.diagnostics import Diagnostic, Severity
-from tests.helpers.agent_builders import agent, compile_agents, cross, evaluation, found
+from tests.helpers.agent_builders import agent, compile_agents, cross, evaluation
+from tests.helpers.diagnostic_filters import coded
 
 
 def _sampled(question: str) -> list[Diagnostic]:
     model = agent("sales_agent", sample_questions=(question,))
-    return found(cross(compile_agents(model), evals=(evaluation(model, question),)), "SST-VAL537")
+    return coded(cross(compile_agents(model), evals=(evaluation(model, question),)), "SST-VAL537")
 
 
 def test_sst_val537_fires() -> None:

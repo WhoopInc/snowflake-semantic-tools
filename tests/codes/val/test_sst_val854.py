@@ -12,7 +12,7 @@ from snowflake_semantic_tools.domain.model.profile import DESKTOP_REGISTRY
 from snowflake_semantic_tools.domain.validate.profile import (
     desktop_registry_diagnostics,
 )
-from tests.helpers.eval_inputs import codes, only
+from tests.helpers.diagnostic_filters import codes, only
 from tests.helpers.skill_inputs import (
     skill,
 )

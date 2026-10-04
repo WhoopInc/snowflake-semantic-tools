@@ -32,10 +32,10 @@ from typing import Any
 from snowflake_semantic_tools.domain.model.identifier import Identifier, QualifiedName, SchemaScope
 from snowflake_semantic_tools.domain.ports.snowflake import SnowflakePort
 from snowflake_semantic_tools.domain.sql import literal, scope, sql
-from tests.helpers.cli_projects import REPO_ROOT
 from tests.helpers.e2e_cli import run_sst
 from tests.helpers.live_project import TARGET, live_view, orders_table, project_args, published_project
 from tests.helpers.live_snowflake import SCRATCH_MARKER, LiveAccount, scratch_scope
+from tests.helpers.reference_project import REPO_ROOT
 
 RECORDING = REPO_ROOT / "tests" / "fixtures" / "recordings" / "live_project.json"
 RECORDING_SCHEMA = "SST_IT_RECORDING"

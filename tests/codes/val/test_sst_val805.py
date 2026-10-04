@@ -7,7 +7,7 @@ and a skill that still has its source is not reported.
 from __future__ import annotations
 
 from snowflake_semantic_tools.domain.diagnostics import Severity
-from tests.helpers.eval_inputs import codes, only
+from tests.helpers.diagnostic_filters import codes, only
 from tests.helpers.skill_inputs import compile_extensions, empty_state, publish_extensions, skill, skill_catalog
 from tests.helpers.snowflake_fake import FakeSnowflake
 

@@ -13,7 +13,8 @@ from snowflake_semantic_tools.cli.main import cli
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
 from snowflake_semantic_tools.domain.model.lifecycle import OwnershipMarker
 from snowflake_semantic_tools.domain.state import APPLIED, AppliedEntry
-from tests.helpers.cli_projects import common, compile_project, invoke_with_port, project_copy
+from tests.helpers.cli_projects import common, compile_project, invoke_with_port
+from tests.helpers.reference_project import project_copy
 from tests.helpers.snowflake_fake import FakeSnowflake
 
 TABLE = QualifiedName.from_parts("DB", "S", "SST_STATE")

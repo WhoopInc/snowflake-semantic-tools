@@ -11,14 +11,16 @@ from pathlib import Path
 
 from snowflake_semantic_tools.domain.diagnostics import Diagnostic, Severity
 from snowflake_semantic_tools.domain.resolve.rendered import rendered_diagnostics
-from tests.helpers.resolve_builders import coded, member, reference_fixture
+from tests.helpers.diagnostic_filters import coded
+from tests.helpers.reference_project import load, project_copy
+from tests.helpers.resolve_builders import member
 
 SALES = "semantic_view:jaffle_sales"
 
 
 def _dropped(tmp_path: Path, metric: str) -> list[Diagnostic]:
     """The SST-MEM014 findings when `metric` is attached to the built jaffle_sales view."""
-    view = next(view for view in reference_fixture(tmp_path).views if view.fqn.endswith(".JAFFLE_SALES"))
+    view = next(view for view in load(project_copy(tmp_path)).views if view.fqn.endswith(".JAFFLE_SALES"))
     attached = member("metric", metric, ("orders",))
     return coded(rendered_diagnostics({SALES: view}, (attached,), {attached.key: (SALES,)}), "SST-MEM014")
 

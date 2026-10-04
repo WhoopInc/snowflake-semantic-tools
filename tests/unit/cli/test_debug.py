@@ -7,7 +7,8 @@ from pathlib import Path
 
 import pytest
 
-from tests.helpers.cli_projects import common, invoke_with_port, project_copy
+from tests.helpers.cli_projects import common, invoke_with_port
+from tests.helpers.reference_project import project_copy
 from tests.helpers.snowflake_fake import FakeSnowflake
 
 

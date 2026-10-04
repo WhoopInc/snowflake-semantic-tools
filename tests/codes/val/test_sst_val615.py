@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 from snowflake_semantic_tools.domain.diagnostics import Diagnostic, Severity
-from tests.helpers.agent_builders import agent, catalog, compile_agents, found, generic_tool, procedure_member
+from tests.helpers.agent_builders import agent, catalog, compile_agents, generic_tool, procedure_member
+from tests.helpers.diagnostic_filters import coded
 
 
 def _warehoused(warehouse: str) -> list[Diagnostic]:
     tool = generic_tool(warehouse=warehouse)
-    return found(
+    return coded(
         compile_agents(agent("sales_agent", tool), tools=catalog(procedure_member())).diagnostics, "SST-VAL615"
     )
 

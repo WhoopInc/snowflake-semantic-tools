@@ -9,8 +9,8 @@ from __future__ import annotations
 from pathlib import Path
 
 from snowflake_semantic_tools.domain.diagnostics import Severity
-from tests.helpers.cli_projects import project_copy
 from tests.helpers.projects import load_project
+from tests.helpers.reference_project import project_copy
 
 MANIFEST = Path(__file__).resolve().parents[2] / "fixtures" / "reference_project_manifest.json"
 METRICS = "semantic_models/metrics/metrics.yml"

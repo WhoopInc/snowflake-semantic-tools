@@ -5,7 +5,8 @@ from __future__ import annotations
 from pathlib import Path
 
 from snowflake_semantic_tools.domain.diagnostics import Severity
-from tests.helpers.seam_projects import SmallProject, found, manifest, model_node
+from tests.helpers.diagnostic_filters import coded
+from tests.helpers.seam_projects import SmallProject, manifest, model_node
 
 
 def _column(**sst: str) -> dict[str, object]:
@@ -14,8 +15,8 @@ def _column(**sst: str) -> dict[str, object]:
 
 def test_sst_dbt004_fires(tmp_path: Path) -> None:
     node = model_node("products", columns={"products_id": _column(column_type="dimension", data_type="NUMBER")})
-    [diagnostic] = found(
-        SmallProject(tmp_path, document=manifest({"model.fixture.products": node})).load(), "SST-DBT004"
+    [diagnostic] = coded(
+        SmallProject(tmp_path, document=manifest({"model.fixture.products": node})).load().diagnostics, "SST-DBT004"
     )
     assert diagnostic.severity is Severity.WARNING
     assert diagnostic.message == (
@@ -27,4 +28,9 @@ def test_sst_dbt004_fires(tmp_path: Path) -> None:
 def test_sst_dbt004_silent(tmp_path: Path) -> None:
     # The same type written another way agrees.
     node = model_node("products", columns={"products_id": _column(column_type="dimension", data_type="varchar")})
-    assert found(SmallProject(tmp_path, document=manifest({"model.fixture.products": node})).load(), "SST-DBT004") == []
+    assert (
+        coded(
+            SmallProject(tmp_path, document=manifest({"model.fixture.products": node})).load().diagnostics, "SST-DBT004"
+        )
+        == []
+    )

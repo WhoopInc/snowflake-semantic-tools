@@ -6,7 +6,8 @@ from pathlib import Path
 
 from snowflake_semantic_tools.domain.diagnostics import Severity
 from snowflake_semantic_tools.domain.resolve.depth import MAX_METRIC_DEPTH
-from tests.helpers.resolve_builders import coded, fixture_with
+from tests.helpers.diagnostic_filters import coded
+from tests.helpers.reference_project import added, load
 
 FILE = "semantic_models/metrics/chain.yml"
 
@@ -26,7 +27,7 @@ def _chain(hops: int) -> str:
 
 
 def test_sst_ref900_fires(tmp_path: Path) -> None:
-    project = fixture_with(tmp_path, FILE, _chain(MAX_METRIC_DEPTH + 1))
+    project = load(added(tmp_path, FILE, _chain(MAX_METRIC_DEPTH + 1)))
     [diagnostic] = coded(project.diagnostics, "SST-REF900")
     assert diagnostic.severity is Severity.ERROR
     assert diagnostic.message == "resolution depth 33 exceeded the limit 32"
@@ -35,5 +36,5 @@ def test_sst_ref900_fires(tmp_path: Path) -> None:
 
 
 def test_sst_ref900_silent(tmp_path: Path) -> None:
-    project = fixture_with(tmp_path, FILE, _chain(MAX_METRIC_DEPTH))
+    project = load(added(tmp_path, FILE, _chain(MAX_METRIC_DEPTH)))
     assert coded(project.diagnostics, "SST-REF900") == []

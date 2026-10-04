@@ -11,7 +11,8 @@ from click.testing import CliRunner
 
 from snowflake_semantic_tools.cli.main import cli
 from snowflake_semantic_tools.cli.wiring.project import target_dir
-from tests.helpers.cli_projects import REPO_ROOT, common, compile_project, invoke_with_port, project_copy
+from tests.helpers.cli_projects import common, compile_project, invoke_with_port
+from tests.helpers.reference_project import REPO_ROOT, project_copy
 from tests.helpers.snowflake_fake import FakeSnowflake
 
 GOLDEN = REPO_ROOT / "tests" / "golden" / "expected" / "ddl"

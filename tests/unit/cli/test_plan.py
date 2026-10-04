@@ -21,16 +21,8 @@ from snowflake_semantic_tools.domain.model.lifecycle import ShowRow
 from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
 from snowflake_semantic_tools.domain.ports.snowflake.stage import StagedFileMetadata
 from snowflake_semantic_tools.domain.state import AppliedEntry
-from tests.helpers.cli_projects import (
-    FIXTURE,
-    MANIFEST,
-    common,
-    compile_project,
-    invoke_counting_closes,
-    invoke_with_port,
-    project_copy,
-    skill_project,
-)
+from tests.helpers.cli_projects import common, compile_project, invoke_counting_closes, invoke_with_port, skill_project
+from tests.helpers.reference_project import DBT_MANIFEST, FIXTURE, project_copy
 from tests.helpers.snowflake_fake import PROFILE_REGISTRY_SHAPE, FakeSnowflake
 
 
@@ -42,7 +34,7 @@ def test_plan_requires_live_snowflake_observation() -> None:
             "--project-dir",
             str(FIXTURE),
             "--manifest",
-            str(MANIFEST),
+            str(DBT_MANIFEST),
         ],
     )
     assert compiled.exit_code == 0
@@ -53,7 +45,7 @@ def test_plan_requires_live_snowflake_observation() -> None:
             "--project-dir",
             str(FIXTURE),
             "--manifest",
-            str(MANIFEST),
+            str(DBT_MANIFEST),
             "--output",
             "json",
         ],

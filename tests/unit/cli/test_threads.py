@@ -23,8 +23,9 @@ from snowflake_semantic_tools.domain.model.identifier import Identifier, Qualifi
 from snowflake_semantic_tools.domain.model.lifecycle import QueryResult, ShowRow
 from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
 from snowflake_semantic_tools.domain.sql import Sql
-from tests.helpers.cli_projects import common, compile_project, project_copy
+from tests.helpers.cli_projects import common, compile_project
 from tests.helpers.projects import project_paths
+from tests.helpers.reference_project import project_copy
 
 
 class JitteredSnowflake:

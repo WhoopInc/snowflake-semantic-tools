@@ -6,7 +6,7 @@ Fires when a published plugin is referenced by no agent; the nearest legitimate 
 from __future__ import annotations
 
 from snowflake_semantic_tools.domain.diagnostics import Severity
-from tests.helpers.eval_inputs import codes, only
+from tests.helpers.diagnostic_filters import codes, only
 from tests.helpers.skill_inputs import agent, compile_agents, skill_ref
 
 

@@ -5,8 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from snowflake_semantic_tools.domain.diagnostics import Severity
-from tests.helpers.cli_projects import project_copy
-from tests.helpers.semantic_edits import INSTRUCTIONS, reported
+from tests.helpers.reference_project import INSTRUCTIONS, project_copy, reported
 
 
 def _directives(tmp_path: Path, scope_rule: str) -> Path:

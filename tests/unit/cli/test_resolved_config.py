@@ -13,8 +13,9 @@ from snowflake_semantic_tools.adapters.resolved_config import resolved_config
 from snowflake_semantic_tools.cli.main import cli
 from snowflake_semantic_tools.cli.settings import severity_overrides_setting, strict_disagreement, validation_settings
 from snowflake_semantic_tools.domain.diagnostics import Severity
-from tests.helpers.cli_projects import common, project_copy
+from tests.helpers.cli_projects import common
 from tests.helpers.projects import project_paths
+from tests.helpers.reference_project import project_copy
 
 STRICT = "\"{{ 'true' if target.name == 'prod' else 'false' }}\""
 OVERRIDE = "\"{{ 'error' if target.name == 'prod' else 'warning' }}\""

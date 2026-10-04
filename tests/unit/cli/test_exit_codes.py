@@ -19,16 +19,9 @@ from snowflake_semantic_tools.cli.main import cli
 from snowflake_semantic_tools.cli.wiring.project import target_dir
 from snowflake_semantic_tools.domain.model.lifecycle import OwnershipMarker
 from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
-from tests.helpers.cli_projects import (
-    REPO_ROOT,
-    break_menu_view,
-    common,
-    compile_project,
-    invoke_with_port,
-    project_copy,
-    skills_only_project,
-)
+from tests.helpers.cli_projects import common, compile_project, invoke_with_port, skills_only_project
 from tests.helpers.enrich_ports import ScriptedEnrich
+from tests.helpers.reference_project import REPO_ROOT, break_menu_view, project_copy
 from tests.helpers.snowflake_fake import FakeSnowflake
 
 # Which exit codes each command may return.

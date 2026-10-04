@@ -8,7 +8,8 @@ from pathlib import Path
 from click.testing import CliRunner
 
 from snowflake_semantic_tools.cli.main import cli
-from tests.helpers.cli_projects import common, project_copy
+from tests.helpers.cli_projects import common
+from tests.helpers.reference_project import project_copy
 
 
 def test_sst_prt008_fires(tmp_path: Path) -> None:

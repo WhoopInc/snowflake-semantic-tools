@@ -5,14 +5,14 @@ from __future__ import annotations
 from pathlib import Path
 
 from snowflake_semantic_tools.domain.diagnostics import Severity
-from tests.helpers.semantic_projects import METRICS, edited, found, load
+from tests.helpers.reference_project import METRICS, edited, load, reported
 
 ANCHOR = "    expr: \"COUNT(DISTINCT {{ ref('orders', 'order_id') }})\"\n"
 
 
 def test_sst_val122_fires(tmp_path: Path) -> None:
     project = edited(tmp_path, METRICS, ANCHOR, ANCHOR + "    visibility: private\n")
-    [diagnostic] = found(project, "SST-VAL122")
+    [diagnostic] = reported(project, "SST-VAL122")
     assert diagnostic.severity is Severity.ERROR
     assert diagnostic.message == "metric 'order_count' uses visibility; the current key is access_modifier"
     assert diagnostic.subject == "metric:order_count"
@@ -23,4 +23,4 @@ def test_sst_val122_fires(tmp_path: Path) -> None:
 
 def test_sst_val122_silent(tmp_path: Path) -> None:
     project = edited(tmp_path, METRICS, ANCHOR, ANCHOR + "    access_modifier: private_access\n")
-    assert found(project, "SST-VAL122") == []
+    assert reported(project, "SST-VAL122") == []

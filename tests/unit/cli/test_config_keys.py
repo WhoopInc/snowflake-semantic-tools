@@ -22,8 +22,9 @@ from snowflake_semantic_tools.cli.main import cli
 from snowflake_semantic_tools.cli.wiring.compile import compile_result
 from snowflake_semantic_tools.cli.wiring.project import view_timeout
 from snowflake_semantic_tools.domain.model.agent import AgentModel
-from tests.helpers.cli_projects import MANIFEST, common, project_copy
+from tests.helpers.cli_projects import common
 from tests.helpers.projects import project_paths
+from tests.helpers.reference_project import DBT_MANIFEST, project_copy
 from tests.helpers.seam_projects import FakeDbt, SmallProject, manifest
 from tests.helpers.snowflake_fake import FakeSnowflake
 
@@ -122,7 +123,7 @@ def _replace(path: Path, old: str, new: str) -> None:
 
 
 def _minimal_agent(project: Path) -> AgentModel:
-    compiled = compile_result(project_paths(project), None, MANIFEST)
+    compiled = compile_result(project_paths(project), None, DBT_MANIFEST)
     [agent] = [
         item for item in compiled.compiled if isinstance(item, CompiledAgent) and item.name == "jaffle_minimal_agent"
     ]

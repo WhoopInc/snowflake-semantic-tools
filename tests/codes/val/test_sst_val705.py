@@ -10,15 +10,8 @@ from snowflake_semantic_tools.domain.model.eval import (
     EvalGroundTruth,
     EvalQuestion,
 )
-from tests.helpers.eval_inputs import (
-    DATASET_FILE,
-    codes,
-    dataset,
-    only,
-    question,
-    sales_eval,
-    validate,
-)
+from tests.helpers.diagnostic_filters import codes, only
+from tests.helpers.eval_inputs import DATASET_FILE, dataset, question, sales_eval, validate
 
 
 def test_sst_val705_fires() -> None:

@@ -187,11 +187,6 @@ def compiled_tools(result: CompileResult) -> tuple[CompiledTool, ...]:
     return tuple(item for item in result.compiled if isinstance(item, CompiledTool))
 
 
-def found(diagnostics: Iterable[Diagnostic], code: str) -> list[Diagnostic]:
-    """Return the diagnostics carrying `code`, in order."""
-    return [item for item in diagnostics if item.code == code]
-
-
 def evaluation(model: AgentModel, *questions: str, tier: str | None = "blocking") -> ResolvedEval:
     """Return an eval of `model` asking `questions`, run at `tier`."""
     base = resolved_eval()

@@ -8,7 +8,8 @@ from snowflake_semantic_tools.domain.diagnostics import Diagnostic, Severity
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
 from snowflake_semantic_tools.domain.model.lifecycle import Action, OwnershipMarker
 from snowflake_semantic_tools.domain.plan.preflight import Preflight
-from tests.helpers.plan_codes import entry, live, only, plan, view
+from tests.helpers.diagnostic_filters import coded
+from tests.helpers.plan_codes import entry, live, plan, view
 
 
 def _pruned(referrers: tuple[QualifiedName, ...]) -> list[Diagnostic]:
@@ -19,7 +20,7 @@ def _pruned(referrers: tuple[QualifiedName, ...]) -> list[Diagnostic]:
         (), observed=(marked,), applied={orphan.key: entry(orphan, "a" * 64)}, include_prune=True, preflight=preflight
     )
     assert [change.action for change in planned.changes] == [Action.PRUNE]
-    return only(planned, "SST-PLN017")
+    return coded(planned.diagnostics, "SST-PLN017")
 
 
 def test_sst_pln017_fires() -> None:

@@ -15,7 +15,8 @@ from snowflake_semantic_tools.domain.model.identifier import QualifiedName, Targ
 from snowflake_semantic_tools.domain.model.lifecycle import OwnershipMarker
 from snowflake_semantic_tools.domain.state import APPLIED, AppliedEntry, State
 from snowflake_semantic_tools.domain.state.lock import LockClaim
-from tests.helpers.cli_projects import FIXTURE, invoke_with_port
+from tests.helpers.cli_projects import invoke_with_port
+from tests.helpers.reference_project import FIXTURE
 from tests.helpers.snowflake_fake import FakeSnowflake
 
 VIEW = "SST_REF_DEV.JAFFLE.ORDERS"

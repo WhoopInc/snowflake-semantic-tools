@@ -9,7 +9,8 @@ import pytest
 from click.testing import CliRunner
 
 from snowflake_semantic_tools.cli.main import cli
-from tests.helpers.cli_projects import common, project_copy
+from tests.helpers.cli_projects import common
+from tests.helpers.reference_project import project_copy
 
 
 def test_sst_prt107_fires(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

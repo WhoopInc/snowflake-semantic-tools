@@ -8,7 +8,8 @@ from __future__ import annotations
 
 from snowflake_semantic_tools.domain.diagnostics import Severity
 from snowflake_semantic_tools.domain.resolve.membership import invariant_diagnostics
-from tests.helpers.resolve_builders import coded, member, membership, request
+from tests.helpers.diagnostic_filters import coded
+from tests.helpers.resolve_builders import member, membership, request
 
 MEMBER = member("metric", "m", ("orders",))
 

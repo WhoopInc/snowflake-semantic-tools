@@ -4,8 +4,9 @@ from __future__ import annotations
 
 from snowflake_semantic_tools.domain.diagnostics import Severity
 from snowflake_semantic_tools.domain.model.lifecycle import RenderedArtifact
-from tests.helpers.apply_runs import apply_plan, codes, only
+from tests.helpers.apply_runs import apply_plan
 from tests.helpers.artifact_builders import change, changeset, rendered
+from tests.helpers.diagnostic_filters import codes, only
 from tests.helpers.snowflake_fake import FakeSnowflake, failed
 
 
@@ -18,7 +19,7 @@ def test_sst_apl002_fires() -> None:
     first, second = plan_of_two()
     port = FakeSnowflake()
     port.execute_results = [failed("denied")]
-    diagnostic = only(apply_plan(changeset(change(first), change(second)), port), "SST-APL002")
+    diagnostic = only(apply_plan(changeset(change(first), change(second)), port).diagnostics, "SST-APL002")
     assert diagnostic.severity is Severity.WARNING
     assert diagnostic.message == "semantic_view:b skipped: semantic_view:a failed"
     assert diagnostic.context["artifact"] == "semantic_view:b"
@@ -26,4 +27,4 @@ def test_sst_apl002_fires() -> None:
 
 def test_sst_apl002_silent() -> None:
     first, second = plan_of_two()
-    assert "SST-APL002" not in codes(apply_plan(changeset(change(first), change(second))))
+    assert "SST-APL002" not in codes(apply_plan(changeset(change(first), change(second))).diagnostics)

@@ -9,7 +9,7 @@ import click
 from click.testing import CliRunner
 
 from snowflake_semantic_tools.cli.main import cli
-from tests.helpers.cli_projects import REPO_ROOT
+from tests.helpers.reference_project import REPO_ROOT
 
 
 def test_docs_writes_checks_and_reports_drift(tmp_path: Path) -> None:

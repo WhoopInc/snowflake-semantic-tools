@@ -15,8 +15,9 @@ from snowflake_semantic_tools.app.apply.run import _unaccounted
 from snowflake_semantic_tools.domain.diagnostics import Severity
 from snowflake_semantic_tools.domain.model.lifecycle import ApplyOptions, ExecResult, ExecutionError, FailurePolicy
 from snowflake_semantic_tools.domain.sql import Sql
-from tests.helpers.apply_runs import apply_plan, codes
+from tests.helpers.apply_runs import apply_plan
 from tests.helpers.artifact_builders import change, changeset, rendered
+from tests.helpers.diagnostic_filters import codes
 from tests.helpers.snowflake_fake import FakeSnowflake
 
 
@@ -52,7 +53,7 @@ def test_sst_apl900_fires() -> None:
 
 
 def test_sst_apl900_silent() -> None:
-    assert "SST-APL900" not in codes(apply_plan(changeset(change(rendered()))))
+    assert "SST-APL900" not in codes(apply_plan(changeset(change(rendered()))).diagnostics)
 
 
 @settings(max_examples=60, deadline=None)
@@ -67,5 +68,5 @@ def test_sst_apl900_never_fires_for_any_plan_policy_or_failure(
     }
     plan = changeset(*(change(artifact) for artifact in artifacts.values()))
     result = apply_plan(plan, FailingNames(failing), options=ApplyOptions(on_failure=policy, parallelism=3))
-    assert "SST-APL900" not in codes(result)
+    assert "SST-APL900" not in codes(result.diagnostics)
     assert sorted(outcome.key for outcome in result.outcomes) == sorted(item.key for item in plan.changes)

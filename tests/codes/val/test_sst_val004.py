@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from snowflake_semantic_tools.domain.diagnostics import Severity
-from tests.helpers.semantic_projects import found, with_view
+from tests.helpers.reference_project import reported, with_view
 
 VIEW = """  - name: v
     description: |-
@@ -26,11 +26,13 @@ def _with_floor(tmp_path: Path, floor: int) -> Path:
 
 def test_sst_val004_fires(tmp_path: Path) -> None:
     [diagnostic] = [
-        item for item in found(_with_floor(tmp_path, 30), "SST-VAL004") if item.subject == "semantic_view:v"
+        item for item in reported(_with_floor(tmp_path, 30), "SST-VAL004") if item.subject == "semantic_view:v"
     ]
     assert diagnostic.severity is Severity.WARNING
     assert diagnostic.message == "semantic_view 'v' description is 20 chars, under 30"
 
 
 def test_sst_val004_silent(tmp_path: Path) -> None:
-    assert [item for item in found(_with_floor(tmp_path, 20), "SST-VAL004") if item.subject == "semantic_view:v"] == []
+    assert [
+        item for item in reported(_with_floor(tmp_path, 20), "SST-VAL004") if item.subject == "semantic_view:v"
+    ] == []

@@ -13,7 +13,8 @@ from click.testing import Result
 from snowflake_semantic_tools.domain.diagnostics import D, DiagnosticBag
 from snowflake_semantic_tools.domain.model.lifecycle import GrantRow, ShowRow
 from snowflake_semantic_tools.domain.state import AppliedEntry
-from tests.helpers.cli_projects import common, invoke_with_port, project_copy
+from tests.helpers.cli_projects import common, invoke_with_port
+from tests.helpers.reference_project import project_copy
 from tests.helpers.snowflake_fake import FakeSnowflake
 
 VIEW = "jaffle_minimal"

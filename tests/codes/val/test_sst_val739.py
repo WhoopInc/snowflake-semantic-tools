@@ -6,13 +6,8 @@ Fires when a judge model is outside the allowlist; the nearest legitimate input 
 from __future__ import annotations
 
 from snowflake_semantic_tools.domain.diagnostics import Severity
-from tests.helpers.eval_inputs import (
-    codes,
-    judge,
-    only,
-    sales_eval,
-    validate,
-)
+from tests.helpers.diagnostic_filters import codes, only
+from tests.helpers.eval_inputs import judge, sales_eval, validate
 
 
 def test_sst_val739_fires() -> None:

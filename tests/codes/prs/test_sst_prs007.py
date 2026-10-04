@@ -5,14 +5,17 @@ from __future__ import annotations
 from pathlib import Path
 
 from snowflake_semantic_tools.domain.diagnostics import Severity
-from tests.helpers.seam_projects import FILTERS, SmallProject, filter_entry, found
+from tests.helpers.diagnostic_filters import coded
+from tests.helpers.seam_projects import FILTERS, SmallProject, filter_entry
 
 
 def test_sst_prs007_fires(tmp_path: Path) -> None:
-    [diagnostic] = found(
+    [diagnostic] = coded(
         SmallProject(
             tmp_path, files={FILTERS: filter_entry("cheap"), "semantic_models/filters/g.yml": filter_entry("cheap")}
-        ).load(),
+        )
+        .load()
+        .diagnostics,
         "SST-PRS007",
     )
     assert diagnostic.severity is Severity.ERROR
@@ -22,10 +25,12 @@ def test_sst_prs007_fires(tmp_path: Path) -> None:
 
 def test_sst_prs007_silent(tmp_path: Path) -> None:
     assert (
-        found(
+        coded(
             SmallProject(
                 tmp_path, files={FILTERS: filter_entry("cheap"), "semantic_models/filters/g.yml": filter_entry("dear")}
-            ).load(),
+            )
+            .load()
+            .diagnostics,
             "SST-PRS007",
         )
         == []

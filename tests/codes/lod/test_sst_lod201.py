@@ -12,7 +12,8 @@ from snowflake_semantic_tools.adapters.yaml.documents import LoadCache, load_doc
 from snowflake_semantic_tools.adapters.yaml.parse import parse_yaml_bytes
 from snowflake_semantic_tools.cli.main import cli
 from snowflake_semantic_tools.domain.diagnostics import Origin, Severity
-from tests.helpers.cli_projects import common, project_copy
+from tests.helpers.cli_projects import common
+from tests.helpers.reference_project import project_copy
 from tests.helpers.seam_projects import SmallProject
 
 VIEWS = "semantic_models/semantic_views/views.yml"

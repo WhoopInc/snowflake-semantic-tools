@@ -8,8 +8,8 @@ from __future__ import annotations
 from snowflake_semantic_tools.app.evals.gate import capture_baseline, evaluate_gate
 from snowflake_semantic_tools.domain.diagnostics import Severity
 from snowflake_semantic_tools.domain.model.eval import EvalBaselineRecord
+from tests.helpers.diagnostic_filters import codes, only
 from tests.helpers.eval_builders import attempt, gated_eval, run_result
-from tests.helpers.eval_inputs import codes, only
 
 PASSING = (("q", "answer_correctness", True), ("q", "grounding", True))
 

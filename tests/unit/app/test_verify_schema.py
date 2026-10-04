@@ -10,7 +10,7 @@ from snowflake_semantic_tools.cli.wiring import compile as compiling
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
 from snowflake_semantic_tools.domain.model.semantic_view import Column, ColumnKind
 from snowflake_semantic_tools.domain.sql.authored import guard_expression
-from tests.helpers.cli_projects import DBT_MANIFEST, project_copy
+from tests.helpers.reference_project import DBT_MANIFEST, project_copy
 from tests.helpers.snowflake_fake import FakeSnowflake
 
 

@@ -5,12 +5,14 @@ from __future__ import annotations
 from pathlib import Path
 
 from snowflake_semantic_tools.domain.diagnostics import Severity
-from tests.helpers.seam_projects import FILTERS, SmallProject, filter_entry, found
+from tests.helpers.diagnostic_filters import coded
+from tests.helpers.seam_projects import FILTERS, SmallProject, filter_entry
 
 
 def test_sst_prs107_fires(tmp_path: Path) -> None:
-    [diagnostic] = found(
-        SmallProject(tmp_path, files={FILTERS: "snowflake_filters:\n  - expr: 'TRUE'\n"}).load(), "SST-PRS107"
+    [diagnostic] = coded(
+        SmallProject(tmp_path, files={FILTERS: "snowflake_filters:\n  - expr: 'TRUE'\n"}).load().diagnostics,
+        "SST-PRS107",
     )
     assert diagnostic.severity is Severity.ERROR
     assert diagnostic.message == "semantic_models/filters/f.yml: filter entry 0 has no name"
@@ -18,4 +20,4 @@ def test_sst_prs107_fires(tmp_path: Path) -> None:
 
 
 def test_sst_prs107_silent(tmp_path: Path) -> None:
-    assert found(SmallProject(tmp_path, files={FILTERS: filter_entry("cheap")}).load(), "SST-PRS107") == []
+    assert coded(SmallProject(tmp_path, files={FILTERS: filter_entry("cheap")}).load().diagnostics, "SST-PRS107") == []

@@ -9,15 +9,8 @@ from snowflake_semantic_tools.domain.diagnostics import Severity
 from snowflake_semantic_tools.domain.model.eval import (
     EvalDatasetConfig,
 )
-from tests.helpers.eval_inputs import (
-    codes,
-    config,
-    dataset,
-    only,
-    run_config,
-    sales_eval,
-    validate,
-)
+from tests.helpers.diagnostic_filters import codes, only
+from tests.helpers.eval_inputs import config, dataset, run_config, sales_eval, validate
 
 
 def test_sst_val717_fires() -> None:

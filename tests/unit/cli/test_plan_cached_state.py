@@ -14,14 +14,8 @@ from snowflake_semantic_tools.cli.main import cli
 from snowflake_semantic_tools.cli.wiring.project import target_dir
 from snowflake_semantic_tools.domain.model.lifecycle import GrantRow, ShowRow
 from snowflake_semantic_tools.domain.state import AppliedEntry
-from tests.helpers.cli_projects import (
-    break_menu_view,
-    common,
-    compile_project,
-    invoke_with_port,
-    project_copy,
-    skill_project,
-)
+from tests.helpers.cli_projects import common, compile_project, invoke_with_port, skill_project
+from tests.helpers.reference_project import break_menu_view, project_copy
 from tests.helpers.snowflake_fake import FakeSnowflake
 
 VIEW = "jaffle_minimal"

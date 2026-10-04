@@ -12,7 +12,7 @@ from __future__ import annotations
 from collections.abc import Iterable
 from dataclasses import replace
 
-from snowflake_semantic_tools.domain.diagnostics import Diagnostic, DiagnosticBag, Origin
+from snowflake_semantic_tools.domain.diagnostics import DiagnosticBag, Origin
 from snowflake_semantic_tools.domain.model.agent import AgentModel, AgentTool
 from snowflake_semantic_tools.domain.model.eval import (
     CustomEvalMetric,
@@ -147,13 +147,3 @@ def validate(
         agent_tool_names={"sales": tuple(tool_names)},
         allowed_models=(JUDGE,),
     )
-
-
-def only(diagnostics: Iterable[Diagnostic], code: str) -> Diagnostic:
-    found = [item for item in diagnostics if item.code == code]
-    assert len(found) == 1, f"expected one {code}, found {[item.message for item in found]}"
-    return found[0]
-
-
-def codes(diagnostics: Iterable[Diagnostic]) -> list[str]:
-    return [item.code for item in diagnostics]

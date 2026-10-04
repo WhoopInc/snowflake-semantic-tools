@@ -4,7 +4,8 @@ from __future__ import annotations
 
 from snowflake_semantic_tools.domain.diagnostics import Diagnostic, Severity
 from snowflake_semantic_tools.domain.model.lifecycle import GrantRow
-from tests.helpers.agent_builders import agent, catalog, compile_agents, found, generic_tool, observe, procedure_member
+from tests.helpers.agent_builders import agent, catalog, compile_agents, generic_tool, observe, procedure_member
+from tests.helpers.diagnostic_filters import coded
 from tests.helpers.snowflake_fake import FakeSnowflake
 
 
@@ -13,7 +14,7 @@ def _granted(*grants: GrantRow) -> list[Diagnostic]:
     port.existing = {"DB.DEV.LOOKUP"}
     port.grants["DB.DEV.LOOKUP"] = grants
     result = compile_agents(agent("sales_agent", generic_tool()), tools=catalog(procedure_member()))
-    return found(observe(port, result), "SST-VAL616")
+    return coded(observe(port, result), "SST-VAL616")
 
 
 def test_sst_val616_fires() -> None:

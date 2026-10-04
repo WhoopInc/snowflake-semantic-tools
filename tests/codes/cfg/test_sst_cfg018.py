@@ -12,7 +12,8 @@ from snowflake_semantic_tools.domain.diagnostics import Origin, Severity
 from snowflake_semantic_tools.domain.model.agent import AgentTool
 from snowflake_semantic_tools.domain.model.tool import ToolCatalog, ToolGroup, ToolMember, ToolOwnership
 from snowflake_semantic_tools.domain.validate.config import config_tool_calls, unreferenced_tool_members
-from tests.helpers.cli_projects import common, project_copy
+from tests.helpers.cli_projects import common
+from tests.helpers.reference_project import project_copy
 
 
 def _catalog() -> ToolCatalog:

@@ -4,7 +4,8 @@ from __future__ import annotations
 
 from snowflake_semantic_tools.domain.diagnostics import Diagnostic, Severity
 from snowflake_semantic_tools.domain.model.lifecycle import Action, GrantRow, OwnershipMarker
-from tests.helpers.plan_codes import entry, live, manifest_of, only, plan, view
+from tests.helpers.diagnostic_filters import coded
+from tests.helpers.plan_codes import entry, live, manifest_of, plan, view
 
 
 def _update(grants: tuple[GrantRow, ...]) -> list[Diagnostic]:
@@ -15,7 +16,7 @@ def _update(grants: tuple[GrantRow, ...]) -> list[Diagnostic]:
     seen = live(current, marker=OwnershipMarker(planned_manifest.manifest_id, before.fingerprint), grants=grants)
     planned = plan((current,), observed=(seen,), applied={current.key: recorded}, manifest=planned_manifest)
     assert planned.changes[0].action is Action.UPDATE
-    return only(planned, "SST-PLN013")
+    return coded(planned.diagnostics, "SST-PLN013")
 
 
 def test_sst_pln013_fires() -> None:

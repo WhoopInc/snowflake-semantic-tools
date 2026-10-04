@@ -4,7 +4,8 @@ from __future__ import annotations
 
 from snowflake_semantic_tools.domain.diagnostics import Diagnostic, Severity
 from snowflake_semantic_tools.domain.model.lifecycle import ChangeReason, OwnershipMarker
-from tests.helpers.plan_codes import entry, live, manifest_of, only, plan, view
+from tests.helpers.diagnostic_filters import coded
+from tests.helpers.plan_codes import entry, live, manifest_of, plan, view
 
 
 def _planned(recorded_at: str) -> list[Diagnostic]:
@@ -13,9 +14,9 @@ def _planned(recorded_at: str) -> list[Diagnostic]:
     marked = live(sales, marker=OwnershipMarker(planned_manifest.manifest_id, sales.fingerprint))
     recorded = entry(sales, planned_manifest.manifest_id, qualified_name=recorded_at)
     planned = plan((sales,), observed=(marked,), applied={sales.key: recorded}, manifest=planned_manifest)
-    if only(planned, "SST-PLN025"):
+    if coded(planned.diagnostics, "SST-PLN025"):
         assert planned.changes[0].reason is ChangeReason.TARGET_MOVED
-    return only(planned, "SST-PLN025")
+    return coded(planned.diagnostics, "SST-PLN025")
 
 
 def test_sst_pln025_fires() -> None:

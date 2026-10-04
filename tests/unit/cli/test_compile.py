@@ -9,15 +9,8 @@ import pytest
 from click.testing import CliRunner
 
 from snowflake_semantic_tools.cli.main import cli
-from tests.helpers.cli_projects import (
-    FIXTURE,
-    MANIFEST,
-    break_menu_view,
-    common,
-    profile_with_commands_and_plugin,
-    project_copy,
-    skills_only_project,
-)
+from tests.helpers.cli_projects import common, profile_with_commands_and_plugin, skills_only_project
+from tests.helpers.reference_project import DBT_MANIFEST, FIXTURE, break_menu_view, project_copy
 
 
 def test_compile_accepts_an_explicit_manifest_without_invoking_dbt(tmp_path: Path) -> None:
@@ -28,7 +21,7 @@ def test_compile_accepts_an_explicit_manifest_without_invoking_dbt(tmp_path: Pat
             "--project-dir",
             str(FIXTURE),
             "--manifest",
-            str(MANIFEST),
+            str(DBT_MANIFEST),
             "--select",
             "jaffle_minimal",
             "--emit-ddl",
@@ -52,7 +45,7 @@ def test_compile_rejects_an_unknown_target_before_rendering() -> None:
             "--project-dir",
             str(FIXTURE),
             "--manifest",
-            str(MANIFEST),
+            str(DBT_MANIFEST),
             "--target",
             "does_not_exist",
         ],
@@ -70,7 +63,7 @@ def test_compile_writes_one_deterministic_file_per_view(tmp_path: Path) -> None:
             "--project-dir",
             str(FIXTURE),
             "--manifest",
-            str(MANIFEST),
+            str(DBT_MANIFEST),
             "--select",
             "jaffle_minimal",
             "--emit-ddl",
@@ -117,7 +110,7 @@ def test_compile_json_emits_artifact_fingerprints() -> None:
             "--project-dir",
             str(FIXTURE),
             "--manifest",
-            str(MANIFEST),
+            str(DBT_MANIFEST),
             "--output",
             "json",
         ],
@@ -136,7 +129,7 @@ def test_compile_json_honors_selection() -> None:
             "--project-dir",
             str(FIXTURE),
             "--manifest",
-            str(MANIFEST),
+            str(DBT_MANIFEST),
             "--select",
             "jaffle_minimal",
             "--output",
@@ -176,7 +169,7 @@ def test_compile_selection_keeps_the_canonical_manifest_full(tmp_path: Path) -> 
             "--project-dir",
             str(project),
             "--manifest",
-            str(MANIFEST),
+            str(DBT_MANIFEST),
             "--select",
             "jaffle_minimal",
         ],

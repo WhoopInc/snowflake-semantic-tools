@@ -11,8 +11,8 @@ from click.testing import CliRunner, Result
 from snowflake_semantic_tools.cli.main import cli
 from snowflake_semantic_tools.domain.diagnostics import D
 from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
-from tests.helpers.cli_projects import DBT_MANIFEST, project_copy
 from tests.helpers.enrich_ports import ScriptedEnrich
+from tests.helpers.reference_project import DBT_MANIFEST, project_copy
 
 ORDER_ITEMS = "SST_REF_DEV.JAFFLE.ORDER_ITEMS"
 ORDER_ITEMS_COLUMNS = [

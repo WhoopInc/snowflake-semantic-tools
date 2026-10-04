@@ -29,20 +29,11 @@ from snowflake_semantic_tools.domain.model.identifier import Identifier, TargetI
 from snowflake_semantic_tools.domain.model.lifecycle import QueryResult
 from snowflake_semantic_tools.domain.ports.snowflake.stage import StagedFileMetadata
 from snowflake_semantic_tools.domain.state import AppliedEntry, State
-from tests.helpers.cli_projects import (
-    DBT_MANIFEST,
-    FIXTURE,
-    MANIFEST,
-    REPO_ROOT,
-    common,
-    compile_project,
-    invoke_counting_closes,
-    invoke_with_port,
-    project_copy,
-)
+from tests.helpers.cli_projects import common, compile_project, invoke_counting_closes, invoke_with_port
 from tests.helpers.eval_builders import EvalSnowflake
 from tests.helpers.eval_state_store import InMemoryEvalStateStore
 from tests.helpers.projects import project_paths
+from tests.helpers.reference_project import DBT_MANIFEST, FIXTURE, REPO_ROOT, project_copy
 from tests.helpers.snowflake_fake import FakeSnowflake
 
 
@@ -54,7 +45,7 @@ def test_golden_suite_compares_every_compiled_view() -> None:
             "--project-dir",
             str(FIXTURE),
             "--manifest",
-            str(MANIFEST),
+            str(DBT_MANIFEST),
             "--suite",
             "golden",
             "--golden-dir",
@@ -78,7 +69,7 @@ def test_golden_suite_reports_a_diff(tmp_path: Path) -> None:
             "--project-dir",
             str(FIXTURE),
             "--manifest",
-            str(MANIFEST),
+            str(DBT_MANIFEST),
             "--suite",
             "golden",
             "--golden-dir",
@@ -106,7 +97,7 @@ def test_golden_suite_compares_eval_source_sql(tmp_path: Path) -> None:
             "--project-dir",
             str(FIXTURE),
             "--manifest",
-            str(MANIFEST),
+            str(DBT_MANIFEST),
             "--suite",
             "golden",
             "--golden-dir",

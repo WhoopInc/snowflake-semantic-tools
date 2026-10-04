@@ -7,14 +7,8 @@ from __future__ import annotations
 
 from snowflake_semantic_tools.domain.diagnostics import Origin, Severity
 from snowflake_semantic_tools.domain.model.agent import AgentTool
-from tests.helpers.eval_inputs import (
-    AGENT_FILE,
-    codes,
-    only,
-    sales_agent,
-    sales_eval,
-    validate,
-)
+from tests.helpers.diagnostic_filters import codes, only
+from tests.helpers.eval_inputs import AGENT_FILE, sales_agent, sales_eval, validate
 
 
 def test_sst_val732_fires() -> None:

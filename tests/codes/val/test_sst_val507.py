@@ -4,7 +4,8 @@ from __future__ import annotations
 
 from snowflake_semantic_tools.domain.diagnostics import Diagnostic, Severity
 from snowflake_semantic_tools.domain.model.lifecycle import GrantRow
-from tests.helpers.agent_builders import agent, compile_agents, found, observe
+from tests.helpers.agent_builders import agent, compile_agents, observe
+from tests.helpers.diagnostic_filters import coded
 from tests.helpers.snowflake_fake import FakeSnowflake
 
 
@@ -12,7 +13,7 @@ def _granted_to(kind: str) -> list[Diagnostic]:
     port = FakeSnowflake()
     port.show_rows["AGENT DB.S.SALES_AGENT"] = {"owner": "TEST_ROLE", "is_secure": "true"}
     port.grants["DB.S.SALES_AGENT"] = (GrantRow("USAGE", kind, "PARTNER"),)
-    return found(observe(port, compile_agents(agent("sales_agent"))), "SST-VAL507")
+    return coded(observe(port, compile_agents(agent("sales_agent"))), "SST-VAL507")
 
 
 def test_sst_val507_fires() -> None:

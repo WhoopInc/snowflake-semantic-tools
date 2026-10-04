@@ -4,7 +4,8 @@ from __future__ import annotations
 
 from snowflake_semantic_tools.domain.diagnostics import Diagnostic, Severity
 from snowflake_semantic_tools.domain.model.lifecycle import Action, OwnershipMarker
-from tests.helpers.plan_codes import entry, live, manifest_of, only, plan, view
+from tests.helpers.diagnostic_filters import coded
+from tests.helpers.plan_codes import entry, live, manifest_of, plan, view
 
 
 def _planned(raw_name: str) -> list[Diagnostic]:
@@ -18,7 +19,7 @@ def _planned(raw_name: str) -> list[Diagnostic]:
         manifest=planned_manifest,
     )
     assert planned.changes[0].action is Action.NOOP
-    return only(planned, "SST-PLN023")
+    return coded(planned.diagnostics, "SST-PLN023")
 
 
 def test_sst_pln023_fires() -> None:

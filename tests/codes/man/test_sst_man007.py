@@ -8,7 +8,7 @@ from pathlib import Path
 from click.testing import CliRunner
 
 from snowflake_semantic_tools.cli.main import cli
-from tests.helpers.cli_projects import DBT_MANIFEST, project_copy
+from tests.helpers.reference_project import DBT_MANIFEST, project_copy
 
 
 def compile_json(project: Path) -> tuple[int, list[dict[str, object]]]:

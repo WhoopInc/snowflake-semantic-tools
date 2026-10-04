@@ -10,8 +10,8 @@ from snowflake_semantic_tools.app.compile import CompiledView, CompileResult
 from snowflake_semantic_tools.app.validate import ValidateArtifacts
 from snowflake_semantic_tools.domain.diagnostics import Diagnostic, Severity
 from snowflake_semantic_tools.domain.model.semantic_view import Metric, SemanticView, Table, VerifiedQuery
-from tests.helpers.agent_builders import found
 from tests.helpers.clocks import FixedClock
+from tests.helpers.diagnostic_filters import coded
 from tests.helpers.snowflake_fake import FakeSnowflake
 from tests.helpers.sql_values import authored, authored_query, statement
 
@@ -28,7 +28,7 @@ def _validated(port: FakeSnowflake) -> list[Diagnostic]:
     )
     compiled = CompileResult((CompiledView(view, statement("CREATE SEMANTIC VIEW DB.S.SALES")),))
     result = ValidateArtifacts(port, clock=FixedClock()).run(compiled, strict=False, connected=True)
-    return found(result.diagnostics, "SST-VAL415")
+    return coded(result.diagnostics, "SST-VAL415")
 
 
 def test_sst_val415_fires() -> None:

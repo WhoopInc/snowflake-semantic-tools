@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 from snowflake_semantic_tools.domain.diagnostics import Severity
-from tests.helpers.agent_builders import agent, catalog, compile_agents, found, generic_tool, procedure_member
+from tests.helpers.agent_builders import agent, catalog, compile_agents, generic_tool, procedure_member
+from tests.helpers.diagnostic_filters import coded
 
 
 def test_sst_val527_fires() -> None:
     tools = catalog(procedure_member(warehouse=None))
-    [diagnostic] = found(
+    [diagnostic] = coded(
         compile_agents(agent("sales_agent", generic_tool()), tools=tools, warehouse=None).diagnostics, "SST-VAL527"
     )
     assert diagnostic.severity is Severity.ERROR
@@ -18,4 +19,4 @@ def test_sst_val527_fires() -> None:
 
 def test_sst_val527_silent() -> None:
     tools = catalog(procedure_member(warehouse=None))
-    assert found(compile_agents(agent("sales_agent", generic_tool()), tools=tools).diagnostics, "SST-VAL527") == []
+    assert coded(compile_agents(agent("sales_agent", generic_tool()), tools=tools).diagnostics, "SST-VAL527") == []

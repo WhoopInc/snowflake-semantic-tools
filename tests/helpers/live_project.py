@@ -21,8 +21,8 @@ import yaml
 from snowflake_semantic_tools.domain.model.identifier import Identifier, QualifiedName, SchemaScope
 from snowflake_semantic_tools.domain.ports.snowflake.execution import ExecutionPort
 from snowflake_semantic_tools.domain.sql import Sql, datatype, ident, join, literal, qname, sql
-from tests.helpers.cli_projects import DBT_MANIFEST
 from tests.helpers.live_snowflake import profile_target
+from tests.helpers.reference_project import DBT_MANIFEST
 
 PROFILE = "sst_live"
 TARGET = "live"
