@@ -100,6 +100,8 @@ poetry run pytest -m live tests/contract_live tests/integration tests/e2e
 ```
 
 - Without any configuration the tests are skipped with a message naming what to set.
+- They run only when selected with `-m live`: a run that clears `addopts`, or names a live file
+  without the marker, skips them even when an account is configured.
 - `--require-snowflake` fails them instead, so a gate that could not connect is never green.
 - `-n 4` runs them in parallel; each worker works in schemas of its own.
 - `pytest -m live --collect-only -q` lists them without connecting.

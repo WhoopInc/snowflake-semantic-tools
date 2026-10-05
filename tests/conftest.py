@@ -23,8 +23,10 @@ A test marked `live` connects to the Snowflake account the live configuration de
 `SST_TEST_SNOWFLAKE_*` environment, the git-ignored `tests/live.local.env`, or a named connection
 (`tests/helpers/live_config.py`). It keeps the real home directory, where the driver finds its
 connection files and cached credentials, and its `sst` subprocesses see the resolved values as
-`SST_TEST_SNOWFLAKE_*`. With no account it is skipped, and with `--require-snowflake` it fails
-instead, so a gate that could not connect is never green. Live tests share one connector per
+`SST_TEST_SNOWFLAKE_*`. It runs only when the marker expression selects live tests (`-m live`), so a
+run that clears `addopts` never connects. With no account it is skipped, and with
+`--require-snowflake` it fails instead, so a gate that could not connect is never green. Live tests
+share one connector per
 worker and work only in scratch schemas that `scratch_schema` creates and drops
 (`tests/helpers/live_snowflake.py`).
 """
@@ -152,6 +154,10 @@ def _configured_account() -> LiveAccount | None:
 def pytest_runtest_setup(item: pytest.Item) -> None:
     if "live" not in item.keywords:
         return
+    # A configured account must not turn an ordinary run, such as one that clears `addopts`, into
+    # a connected one: a live test runs only when the marker expression asks for live tests.
+    if "live" not in (item.config.getoption("markexpr") or ""):
+        pytest.skip("live tests run only when selected with -m live")
     try:
         account = _configured_account()
     except LiveConfigurationError as error:
