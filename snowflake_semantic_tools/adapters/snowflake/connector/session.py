@@ -23,7 +23,7 @@ from typing import Any, Self, cast
 
 import snowflake.connector
 from snowflake.connector import DictCursor
-from snowflake.connector.cursor import SnowflakeCursor
+from snowflake.connector.cursor import SnowflakeCursorBase
 from snowflake.connector.errors import Error as DriverError
 
 from snowflake_semantic_tools.adapters.json_files import parse_json
@@ -239,7 +239,7 @@ class Session(ExecutionPort):
                 raise
 
     @contextlib.contextmanager
-    def _cursor(self, *cursor_class: type[SnowflakeCursor]) -> Iterator[SnowflakeCursor]:
+    def _cursor(self, *cursor_class: type[SnowflakeCursorBase[Any]]) -> Iterator[SnowflakeCursorBase[Any]]:
         """Hold the session lock and one cursor for a block: the driver's default, or `cursor_class`.
 
         The cursor closes before the lock is released, however the block ends. Failures pass
@@ -282,7 +282,7 @@ class Transaction:
         open: Whether the transaction is still open; False once it committed or rolled back.
     """
 
-    def __init__(self, cursor: SnowflakeCursor) -> None:
+    def __init__(self, cursor: SnowflakeCursorBase[Any]) -> None:
         self._cursor = cursor
         self.open = True
 
@@ -320,7 +320,7 @@ def _as_port_errors() -> Iterator[None]:
 
 
 def _execute(
-    cursor: SnowflakeCursor,
+    cursor: SnowflakeCursorBase[Any],
     statement: Sql,
     params: Sequence[object] | Mapping[str, object] | None = None,
 ) -> None:
@@ -341,7 +341,9 @@ def _execute(
     cursor.execute(statement.for_driver(bound=bound), connector_params, num_statements=1)
 
 
-def _fetch(cursor: SnowflakeCursor, sql: Sql, params: Sequence[object] | Mapping[str, object] | None) -> QueryResult:
+def _fetch(
+    cursor: SnowflakeCursorBase[Any], sql: Sql, params: Sequence[object] | Mapping[str, object] | None
+) -> QueryResult:
     """Run one statement on `cursor` with `params` bound, and return its columns and rows."""
     _execute(cursor, sql, params)
     columns = tuple(item[0] for item in (cursor.description or ()))
