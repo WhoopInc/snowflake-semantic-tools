@@ -87,21 +87,24 @@ def test_a_single_item_runs_on_the_port() -> None:
     assert pool.leased == []
 
 
-def test_an_item_error_propagates_once_every_worker_has_stopped() -> None:
+def test_an_item_error_propagates_once_every_item_has_run() -> None:
     pool = Pool()
     finished: list[int] = []
+    guard = threading.Lock()
 
     def work(session: Session, item: int) -> int:
         del session
-        if item == 1:
-            raise SnowflakePortError("refused")
-        time.sleep(0.003)
-        finished.append(item)
+        if item in (1, 4):
+            raise SnowflakePortError(f"item {item} refused")
+        with guard:
+            finished.append(item)
         return item
 
-    with pytest.raises(SnowflakePortError, match="refused"):
-        Fanout(Session("port"), pool, 4).map(work, (0, 1, 2, 3))
+    # Two workers and six items: most items are still queued when item 1 raises, and each
+    # runs all the same, however the workers are scheduled. The first error in item order
+    # is the one that propagates.
+    with pytest.raises(SnowflakePortError, match="item 1 refused"):
+        Fanout(Session("port"), pool, 2).map(work, tuple(range(6)))
 
-    # Every other item ran to the end before the error surfaced, and no session is still out.
-    assert sorted(finished) == [0, 2, 3]
-    assert pool.out == 0
+    assert sorted(finished) == [0, 2, 3, 5]
+    assert len(pool.leased) == 6 and pool.out == 0
