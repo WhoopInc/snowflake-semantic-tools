@@ -92,5 +92,5 @@ tools:
         # one object for both is SST-REF023. `ci` is left unmapped, so
         # `--target ci` reports SST-REF018 here.
         relations:
-          dev: SCRATCH.SST_1_REFERENCE_IMPL.ORDER_TIER_LOOKUP
+          dev: SST_TEST.REFERENCE.ORDER_TIER_LOOKUP
           prod: SST_REF_PROD.JAFFLE.ORDER_TIER_LOOKUP

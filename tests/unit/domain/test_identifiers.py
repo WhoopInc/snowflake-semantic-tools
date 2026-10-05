@@ -59,17 +59,17 @@ def test_target_identity_round_trips_with_optional_fields() -> None:
     target = TargetIdentity(
         "verify",
         "EXAMPLE-ACCOUNT",
-        Identifier.parse("scratch"),
-        Identifier.parse("sst_1_reference_impl"),
+        Identifier.parse("sst_test"),
+        Identifier.parse("reference"),
         "SST_ROLE",
         "SST_WH",
     )
-    assert target.scope.sql == "SCRATCH.SST_1_REFERENCE_IMPL"
+    assert target.scope.sql == "SST_TEST.REFERENCE"
     assert target.key == (
         "verify",
         "EXAMPLE-ACCOUNT",
-        "SCRATCH",
-        "SST_1_REFERENCE_IMPL",
+        "SST_TEST",
+        "REFERENCE",
         "SST_ROLE",
         "SST_WH",
     )

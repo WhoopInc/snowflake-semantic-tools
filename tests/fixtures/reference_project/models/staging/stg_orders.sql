@@ -9,7 +9,7 @@
 -- IT IS THE ONE MODEL NO GOLDEN ASSERTS. Its output reaches the goldens only
 -- through marts/orders.sql, so it is here to show the shape.
 --
--- WHOOP SQL conventions, applied so the fixture does not teach a house style it
+-- The house SQL conventions, applied so the fixture does not teach a style it
 -- does not follow: import CTEs first, one per source() or ref(); UPPERCASE
 -- keywords, functions and types; leading commas; tables always aliased; columns
 -- always prefixed with the alias; explicit JOIN syntax; GROUP BY ALL; QUALIFY

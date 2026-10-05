@@ -14,8 +14,8 @@ def test_profile_target_resolves_env_and_fixed_state_location(tmp_path: Path, mo
     (tmp_path / "dbt_project.yml").write_text("profile: test\n", encoding="utf-8")
     (tmp_path / "profiles.yml").write_text(
         "test:\n  target: verify\n  outputs:\n    verify:\n      type: snowflake\n"
-        "      account: \"{{ env_var('ACCOUNT') }}\"\n      user: user\n      database: SCRATCH\n"
-        "      schema: SST_1_REFERENCE_IMPL\n      query_tag: SST_1_REFERENCE_IMPL\n",
+        "      account: \"{{ env_var('ACCOUNT') }}\"\n      user: user\n      database: SST_TEST\n"
+        "      schema: REFERENCE\n      query_tag: REFERENCE\n",
         encoding="utf-8",
     )
     (tmp_path / "sst_config.yml").write_text(
@@ -24,9 +24,9 @@ def test_profile_target_resolves_env_and_fixed_state_location(tmp_path: Path, mo
     )
     monkeypatch.setenv("ACCOUNT", "acct")
     value = load_profile_target(project_paths(tmp_path))
-    assert value.identity.scope.sql == "SCRATCH.SST_1_REFERENCE_IMPL"
-    assert value.state_table.sql == "SCRATCH.SST_1_REFERENCE_IMPL.SST_STATE"
-    assert value.connection_params["session_parameters"] == {"QUERY_TAG": "SST_1_REFERENCE_IMPL"}
+    assert value.identity.scope.sql == "SST_TEST.REFERENCE"
+    assert value.state_table.sql == "SST_TEST.REFERENCE.SST_STATE"
+    assert value.connection_params["session_parameters"] == {"QUERY_TAG": "REFERENCE"}
 
 
 def test_profile_target_fails_closed_on_missing_env(tmp_path: Path) -> None:
