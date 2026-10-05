@@ -16,7 +16,7 @@ that is present. `policy` applies a project's severity overrides.
 from __future__ import annotations
 
 from collections import Counter
-from collections.abc import Iterable, Mapping
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, field, replace
 from hashlib import sha256
 from types import MappingProxyType
@@ -325,15 +325,24 @@ def override_refusal(code: str, wanted: Severity) -> str | None:
     return None
 
 
-def resolve_severities(diagnostics: DiagnosticBag, *, strict: bool) -> tuple[DiagnosticBag, int]:
+def resolve_severities(
+    diagnostics: DiagnosticBag, *, strict: bool, reaches: Callable[[str | None], bool] | None = None
+) -> tuple[DiagnosticBag, int]:
     """Apply strict-mode promotion once: every warning, an overridden one included, becomes an error.
 
     `policy.apply_policy` applies a project's overrides first, as the resolution order requires.
+
+    Args:
+        reaches: Whether promotion reaches a diagnostic about a subject: a run restricted to
+            some artifacts promotes no warning about an artifact it leaves out. None reaches
+            every subject.
     """
     if not strict:
         return diagnostics, 0
     promoted = tuple(
-        replace(diagnostic, severity=Severity.ERROR) if diagnostic.severity is Severity.WARNING else diagnostic
+        replace(diagnostic, severity=Severity.ERROR)
+        if diagnostic.severity is Severity.WARNING and (reaches is None or reaches(diagnostic.subject))
+        else diagnostic
         for diagnostic in diagnostics
     )
     return DiagnosticBag(promoted), sum(

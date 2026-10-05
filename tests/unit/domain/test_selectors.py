@@ -100,3 +100,16 @@ def test_one_scope_covers_selected_less_excluded_and_nothing_named_selects_nothi
     named_nothing = _resolve("nothing*")
     assert isinstance(named_nothing, Selection)
     assert not SelectionScope(named_nothing).covers("tool", "tool:docs")
+
+
+def test_a_scope_reaches_what_it_chooses_and_every_subject_that_names_no_artifact() -> None:
+    views = SelectionScope(Selection(frozenset(("semantic_view",)), None))
+    assert views.reaches("semantic_view:orders", artifact_types=TYPES)
+    assert not views.reaches("agent:orders", artifact_types=TYPES)
+    assert not views.reaches("tool:docs", artifact_types=TYPES)
+    for project_wide in (None, "", "cli", "config:validation.strict", "tool_group:partner", "metric:orders.m"):
+        assert views.reaches(project_wide, artifact_types=TYPES)
+    excluding = SelectionScope(excluded=Selection(None, frozenset(("agent:orders",))))
+    assert not excluding.reaches("agent:orders", artifact_types=TYPES)
+    assert excluding.reaches("agent:other", artifact_types=TYPES)
+    assert SelectionScope().reaches("agent:orders", artifact_types=TYPES)

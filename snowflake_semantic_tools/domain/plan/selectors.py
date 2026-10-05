@@ -11,7 +11,7 @@ compiled from.
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Mapping
+from collections.abc import Collection, Iterable, Mapping
 from dataclasses import dataclass
 from fnmatch import fnmatchcase
 
@@ -79,6 +79,22 @@ class SelectionScope:
         """Report whether an artifact is chosen: selected, or nothing was, and not excluded."""
         chosen = self.selected is None or self.selected.names(artifact_type, key)
         return chosen and not (self.excluded is not None and self.excluded.names(artifact_type, key))
+
+    def reaches(self, subject: str | None, *, artifact_types: Collection[str]) -> bool:
+        """Report whether a diagnostic about `subject` belongs to the run this scope chooses.
+
+        Only a subject that is an artifact key, `<type>:<name>` of a registered type, can be
+        left out, and only when the scope does not choose that artifact. Any other subject --
+        the configuration, a tool group, a semantic view member, none -- cannot be pinned to
+        the artifacts it would change, as `--partial` cannot pin it, so it concerns every run.
+
+        Args:
+            artifact_types: Every registered artifact type.
+        """
+        kind = subject.partition(":")[0] if subject and ":" in subject else None
+        if kind is None or kind not in artifact_types:
+            return True
+        return self.covers(kind, str(subject))
 
 
 def resolve_selectors(

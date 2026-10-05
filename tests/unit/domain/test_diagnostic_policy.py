@@ -87,6 +87,20 @@ def test_the_audit_refuses_a_false_declaration_or_a_forbidden_override() -> None
     assert _codes(found)[4:] == ["SST-INT007"] * 4
 
 
+def test_strict_promotes_only_the_warnings_its_reach_covers() -> None:
+    chosen = D("SST-LOD003", file="a.yml", subject="semantic_view:menu")
+    left_out = D("SST-LOD003", file="a.yml", subject="agent:helper")
+    policy = SeverityPolicy(strict=True, reaches=lambda subject: subject != "agent:helper")
+    (raised, kept, project_wide), promoted = apply_policy(DiagnosticBag((chosen, left_out, WARNING)), policy)
+    assert (raised.severity, kept.severity, project_wide.severity, promoted) == (
+        Severity.ERROR,
+        Severity.WARNING,
+        Severity.ERROR,
+        2,
+    )
+    assert audit(DiagnosticBag((raised, kept, project_wide))) == (raised, kept, project_wide)
+
+
 def test_a_diagnostic_built_without_d_reads_its_declared_severity_off_the_registry() -> None:
     built = replace(ERROR, declared=None, severity=Severity.WARNING)
     assert (built.demoted_from, built.promoted_from) == (Severity.ERROR, None)

@@ -62,6 +62,18 @@ def selected_result(
         SstUsageError: a selector is refused, as `selection` says.
         ProjectError: the selectors matched no artifact (SST-DIS010).
     """
+    return selected_within(project_dir, result, selected, excluded)[0]
+
+
+def selected_within(
+    project_dir: Path, result: CompileResult, selected: tuple[str, ...], excluded: tuple[str, ...] = ()
+) -> tuple[CompileResult, SelectionScope]:
+    """Return `selected_result`'s narrowing of `result`, with the scope it narrowed to.
+
+    Raises:
+        SstUsageError: a selector is refused, as `selection` says.
+        ProjectError: the selectors matched no artifact (SST-DIS010).
+    """
     universe = compiled_universe(result.compiled)
     scope = selection_scope(selected, excluded, universe)
     compiled = tuple(item for item in result.compiled if scope.covers(item.artifact_type, item.artifact_key))
@@ -70,7 +82,7 @@ def selected_result(
             f"selector {' '.join(selected)!r} matched no artifact in {project_dir}",
             diagnostics=tuple(D("SST-DIS010", selector=value) for value in selected),
         )
-    return dataclasses.replace(result, compiled=compiled)
+    return dataclasses.replace(result, compiled=compiled), scope
 
 
 def compiled_universe(compiled: Iterable[CompiledArtifact]) -> tuple[Selectable, ...]:

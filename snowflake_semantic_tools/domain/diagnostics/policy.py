@@ -10,11 +10,16 @@ Effective severity resolves in one order, in this module, before any command rea
 An applied override is recorded on the diagnostic, so `audit` can tell a legal override from a
 severity changed anywhere else. An override the demotion floor forbids is never applied; the
 configuration check reports it (SST-CFG033). Applying a policy twice changes nothing more.
+
+Strict promotion is uniform over rules -- no code is exempt -- and follows the run's selection:
+a run `--select` or `--exclude` restricts promotes no warning about an artifact it leaves out,
+as it plans and publishes none of them. A warning that names no artifact concerns the whole
+project and is promoted whatever the selection.
 """
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field, replace
 from types import MappingProxyType
 
@@ -34,10 +39,13 @@ class SeverityPolicy:
     Attributes:
         overrides: The severity each overridden code reports at, by code.
         strict: Whether every warning, after its override, is promoted to an error.
+        reaches: Whether strict promotion reaches a diagnostic about a subject, as the run's
+            selection decides; None reaches every subject.
     """
 
     overrides: Mapping[str, Severity] = field(default_factory=lambda: MappingProxyType({}))
     strict: bool = False
+    reaches: Callable[[str | None], bool] | None = None
 
 
 def apply_overrides(diagnostics: DiagnosticBag, overrides: Mapping[str, Severity]) -> DiagnosticBag:
@@ -68,4 +76,6 @@ def apply_policy(diagnostics: DiagnosticBag, policy: SeverityPolicy) -> tuple[Di
     Returns:
         The diagnostics, and how many warnings strict mode made errors.
     """
-    return resolve_severities(apply_overrides(diagnostics, policy.overrides), strict=policy.strict)
+    return resolve_severities(
+        apply_overrides(diagnostics, policy.overrides), strict=policy.strict, reaches=policy.reaches
+    )

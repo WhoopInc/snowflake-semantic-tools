@@ -12,7 +12,7 @@ findings are merged in compile order.
 from __future__ import annotations
 
 import re
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, replace
 from types import MappingProxyType
 
@@ -106,6 +106,7 @@ class ValidateArtifacts:
         connected: bool,
         verify_schema: bool = False,
         overrides: Mapping[str, Severity] | None = None,
+        reaches: Callable[[str | None], bool] | None = None,
     ) -> ValidationResult:
         """Validate a compile result, asking Snowflake to check each semantic view when connected.
 
@@ -120,11 +121,14 @@ class ValidateArtifacts:
         apply, and strict mode promotes every warning to an error.
 
         Args:
-            strict: Promote every warning, the compile's included, to an error.
+            strict: Promote every warning, the compile's included, to an error; with `reaches`,
+                every warning it reaches.
             connected: Run the Snowflake checks; False skips them even with a port.
             verify_schema: With a catalog, also look each column a view reads up in the
                 warehouse, as `verify_columns` does.
             overrides: The severity each code the project overrides reports at; None for none.
+            reaches: Whether strict mode reaches a diagnostic about a subject, as the run's
+                selection decides; None reaches every one.
 
         Diagnostics:
             SST-VAL010: the compiled artifacts depend on one another in a cycle.
@@ -153,7 +157,7 @@ class ValidateArtifacts:
                 found.extend(ObserveLiveObjects(self._catalog, target=self._target).run(compiled))
         if verify_schema and self._catalog is not None:
             found.extend(verify_columns(self._catalog, compiled))
-        policy = SeverityPolicy(MappingProxyType(dict(overrides or {})), strict)
+        policy = SeverityPolicy(MappingProxyType(dict(overrides or {})), strict, reaches)
         resolved, promoted = apply_policy(DiagnosticBag(found), policy)
         return ValidationResult(
             compiled.rendered,

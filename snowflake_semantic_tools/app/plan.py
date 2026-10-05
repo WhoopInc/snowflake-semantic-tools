@@ -34,6 +34,7 @@ from snowflake_semantic_tools.app.plan_artifacts import (
     plan_changes,
     unrecorded_composites,
 )
+from snowflake_semantic_tools.app.policy import strict_reach
 from snowflake_semantic_tools.app.state import change_summary, read_state
 from snowflake_semantic_tools.app.validate import ValidateArtifacts
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, DiagnosticBag, Severity
@@ -86,12 +87,16 @@ class PlanScope:
 
     def covers(self, item: CompiledArtifact) -> bool:
         """Report whether the plan covers an artifact: selected by type or key, and not excluded."""
+        return self.selection.covers(item.artifact_type, item.artifact_key)
+
+    @property
+    def selection(self) -> SelectionScope:
+        """Return what `--select` and `--exclude` choose, as every command applies it."""
         named = self.prune_types is not None or self.prune_keys is not None
-        scope = SelectionScope(
+        return SelectionScope(
             Selection(self.prune_types, self.prune_keys) if named else None,
             Selection(self.excluded_types, self.excluded_keys),
         )
-        return scope.covers(item.artifact_type, item.artifact_key)
 
 
 @dataclass(frozen=True, slots=True)
@@ -544,6 +549,7 @@ def _validation(
             strict=candidates.strict,
             connected=candidates.connected,
             overrides=overrides,
+            reaches=strict_reach(candidates.scope.selection),
         )
         .diagnostics
     )
