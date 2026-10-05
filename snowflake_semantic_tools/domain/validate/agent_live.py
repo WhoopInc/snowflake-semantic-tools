@@ -10,6 +10,7 @@ import json
 import re
 from collections.abc import Mapping, Sequence
 
+from snowflake_semantic_tools.domain.model.identifier import QualifiedName
 from snowflake_semantic_tools.domain.validate.agent_tool import input_type_matches, schema_type
 
 _ARGUMENTS = re.compile(r"\((?P<types>[^)]*)\)")
@@ -49,6 +50,25 @@ def live_spec(text: str) -> Mapping[str, object] | None:
     except ValueError:
         return None
     return value if isinstance(value, Mapping) else None
+
+
+def names_object(spec: object, qualified_name: QualifiedName) -> bool:
+    """Report whether any text value of a live agent specification is the object's three-part name.
+
+    An agent names the semantic views, search services, and routines its tools reach by their
+    qualified names, under `tool_resources`; every value is compared, so a new place that names
+    an object is still seen. Names compare as Snowflake resolves them, quoted parts as written.
+    """
+    if isinstance(spec, Mapping):
+        return any(names_object(value, qualified_name) for value in spec.values())
+    if isinstance(spec, list):
+        return any(names_object(value, qualified_name) for value in spec)
+    if not isinstance(spec, str) or spec.count(".") < 2:
+        return False
+    try:
+        return QualifiedName.parse(spec).folded == qualified_name.folded
+    except ValueError:
+        return False
 
 
 def live_signature(arguments: str) -> tuple[str, ...] | None:

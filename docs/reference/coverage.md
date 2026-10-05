@@ -225,7 +225,7 @@ detected: `local` needs no connection, `observe` needs a read of Snowflake, and
 | [`SST-PLN014`](error-codes.md#sst-pln014) | PLN | warning | observe | `snowflake_semantic_tools.domain.plan.classify` | `tests/codes/pln/test_sst_pln014.py` |
 | [`SST-PLN015`](error-codes.md#sst-pln015) | PLN | info | observe | `snowflake_semantic_tools.domain.plan.summary` | `tests/codes/pln/test_sst_pln015.py` |
 | [`SST-PLN016`](error-codes.md#sst-pln016) | PLN | info | local | `snowflake_semantic_tools.app.plan`<br>`snowflake_semantic_tools.domain.plan.summary` | `tests/codes/pln/test_sst_pln016.py` |
-| [`SST-PLN017`](error-codes.md#sst-pln017) | PLN | warning | observe | `snowflake_semantic_tools.app.preflight`<br>`snowflake_semantic_tools.domain.plan.preflight` | `tests/codes/pln/test_sst_pln017.py` |
+| [`SST-PLN017`](error-codes.md#sst-pln017) | PLN | warning | observe | `snowflake_semantic_tools.app.drop`<br>`snowflake_semantic_tools.app.preflight`<br>`snowflake_semantic_tools.domain.plan.preflight` | `tests/codes/pln/test_sst_pln017.py` |
 | [`SST-PLN018`](error-codes.md#sst-pln018) | PLN | error | observe | `snowflake_semantic_tools.app.plan` | `tests/codes/pln/test_sst_pln018.py` |
 | [`SST-PLN019`](error-codes.md#sst-pln019) | PLN | warning | observe | `snowflake_semantic_tools.app.preflight`<br>`snowflake_semantic_tools.domain.plan.preflight` | `tests/codes/pln/test_sst_pln019.py` |
 | [`SST-PLN020`](error-codes.md#sst-pln020) | PLN | error | local | `snowflake_semantic_tools.app.smoke` | `tests/codes/pln/test_sst_pln020.py` |
