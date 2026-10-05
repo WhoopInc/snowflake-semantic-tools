@@ -44,10 +44,12 @@ class FakeCatalog(SnowflakeWorld):
     def describe_marker(
         self,
         qualified_name: QualifiedName,
-        object_type: str = "SEMANTIC VIEW",
+        object_type: str,
     ) -> OwnershipMarker | None:
-        del object_type
         self._check("describe_marker")
+        recorded = self.object_types.get(qualified_name.sql)
+        if recorded is not None and recorded.upper() != " ".join(object_type.upper().split()):
+            return None
         return self.markers.get(qualified_name.sql)
 
     def get_ddl(self, object_type: str, qualified_name: QualifiedName) -> str:

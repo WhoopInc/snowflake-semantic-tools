@@ -101,6 +101,9 @@ class SnowflakeWorld:
         self.objects: dict[tuple[str, str], tuple[ShowRow, ...]] = dict(objects or {})
         self.grants: dict[str, tuple[GrantRow, ...]] = dict(grants or {})
         self.markers: dict[str, OwnershipMarker | None] = dict(markers or {})
+        # The type of each object named here, by qualified name: a marker read under another
+        # type finds nothing, as SHOW <type> LIKE lists no object of a different type.
+        self.object_types: dict[str, str] = {}
         # GET_DDL's answer by qualified name; an object missing here has no readable definition.
         self.definitions: dict[str, str] = dict(definitions or {})
         # The qualified names that exist; None models an account where every TABLE OR VIEW does.

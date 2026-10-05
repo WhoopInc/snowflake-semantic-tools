@@ -45,7 +45,7 @@ def test_an_empty_schema_lists_nothing_and_an_absent_object_has_no_marker(
     listed = live_connector.show_objects("SEMANTIC VIEW", schema)
     assert listed == () and all(isinstance(row, ShowRow) for row in listed)
     absent = _name(schema, "SST_ABSENT_VIEW")
-    assert live_connector.describe_marker(absent) is None
+    assert live_connector.describe_marker(absent, "SEMANTIC VIEW") is None
     assert not live_connector.object_exists("TABLE", absent)
 
 

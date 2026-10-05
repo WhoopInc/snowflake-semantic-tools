@@ -74,7 +74,7 @@ class CatalogPort(Protocol):
     def describe_marker(
         self,
         qualified_name: QualifiedName,
-        object_type: str = "SEMANTIC VIEW",
+        object_type: str,
     ) -> OwnershipMarker | None:
         """Return the SST ownership marker in the comment of one object of `object_type`.
 

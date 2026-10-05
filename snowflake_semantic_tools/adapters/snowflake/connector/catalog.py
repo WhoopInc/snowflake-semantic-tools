@@ -106,7 +106,7 @@ class CatalogMethods(Session, CatalogPort):
     def describe_marker(
         self,
         qualified_name: QualifiedName,
-        object_type: str = "SEMANTIC VIEW",
+        object_type: str,
     ) -> OwnershipMarker | None:
         rows = self._show_like(object_type, qualified_name, str.upper)
         return extract_marker(_show_comment(rows[0])) if rows else None

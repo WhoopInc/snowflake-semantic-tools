@@ -209,7 +209,7 @@ class SmokePublished:
             zip(
                 (artifact.key for artifact in recorded),
                 (self._readers or Fanout(self._port)).map(
-                    lambda port, artifact: port.describe_marker(artifact.target), recorded
+                    lambda port, artifact: port.describe_marker(artifact.target, artifact.object_type), recorded
                 ),
                 strict=True,
             )
