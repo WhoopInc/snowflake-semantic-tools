@@ -24,7 +24,6 @@ from snowflake_semantic_tools.domain.model.lifecycle import (
     CompositeObservation,
     ExecResult,
     ExecutionError,
-    GrantRow,
     OutcomeStatus,
     QueryResult,
     RenderedArtifact,
@@ -45,6 +44,7 @@ from tests.helpers.clocks import FixedClock
 from tests.helpers.compile_builders import compiled_as
 from tests.helpers.eval_builders import GIT_SHA, compile_eval, resolved_eval, seed_dataset_version
 from tests.helpers.snowflake_fake import FakeSnowflake, Sent
+from tests.helpers.snowflake_fake.world import SYSTEM_DATASET_VERSION
 from tests.helpers.sql_values import statement, texts
 
 ORIGIN = Origin("dataset.yml", 1, 1)
@@ -1093,7 +1093,7 @@ def _versionless_update(port: FakeSnowflake) -> tuple[Change, RenderedArtifact, 
     port.stage_formats["DB.S.EVAL_CONFIGS"] = EVAL_STAGE_FILE_FORMAT
     port.table_row_counts[artifact.physical_resources[0][1].sql] = 1
     dataset = dict(artifact.physical_resources)["DATASET"]
-    port.grants[dataset.sql] = (GrantRow("OWNERSHIP", "ROLE", "TEST_ROLE"),)
+    port.dataset_owners[dataset.sql] = "TEST_ROLE"
     entry = replace(applied_entry(artifact, manifest.manifest_id), outcome="failed_after_write")
     change = planned_change(artifact, manifest, port, handler, state_with(entry, manifest.manifest_id))
     assert (change.action, change.reason) == (Action.UPDATE, ChangeReason.NOT_PRESENT)
@@ -1109,6 +1109,21 @@ def test_a_dataset_minted_without_its_version_gets_it_on_the_next_apply() -> Non
     assert len(added) == 1 and dict(artifact.component_fingerprints)["dataset_version"] in added[0]
 
 
+def test_the_system_version_evaluation_adds_is_never_taken_for_sst_s() -> None:
+    port = FakeSnowflake()
+    _, artifact, _, _ = setup_eval()
+    dataset = dict(artifact.physical_resources)["DATASET"]
+    port.dataset_version_names[dataset.sql] = [SYSTEM_DATASET_VERSION]
+    # The plan still reads SST's version as absent (`_versionless_update` asserts it).
+    change, _, handler = _versionless_update(port)
+    outcome = handler.apply(change, ApplyOptions())
+    assert outcome.status is OutcomeStatus.APPLIED
+    # SST adds its own version beside the system one and never drops it.
+    assert port.dataset_version_names[dataset.sql][0] == SYSTEM_DATASET_VERSION
+    assert len(port.dataset_version_names[dataset.sql]) == 2
+    assert not [script for script in port.scripts if "DROP" in " ".join(script).upper()]
+
+
 def test_a_version_another_run_added_after_the_plan_is_not_added_again() -> None:
     port = FakeSnowflake()
     change, artifact, handler = _versionless_update(port)
@@ -1121,12 +1136,12 @@ def test_a_dataset_whose_owner_changed_after_the_plan_fails_before_any_version_i
     port = FakeSnowflake()
     change, artifact, handler = _versionless_update(port)
     dataset = dict(artifact.physical_resources)["DATASET"]
-    port.grants[dataset.sql] = (GrantRow("OWNERSHIP", "ROLE", "ADMIN"),)
+    port.dataset_owners[dataset.sql] = "ADMIN"
     outcome = handler.apply(change, ApplyOptions())
     assert outcome.status is OutcomeStatus.FAILED and outcome.error is not None
     assert (outcome.error.code, outcome.error.message) == (
         "SST-VAL713",
-        "dataset 'eval:sales_agent': TEST_ROLE holds no privilege, not OWNERSHIP",
+        "dataset 'eval:sales_agent': TEST_ROLE holds no ownership (ADMIN owns it), not OWNERSHIP",
     )
     assert not [script for script in port.scripts if script[0].startswith("ALTER DATASET")]
 
