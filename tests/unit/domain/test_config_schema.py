@@ -12,6 +12,7 @@ from snowflake_semantic_tools.domain.model.config_schema import (
     ChildPolicy,
     KeyKind,
     KeyStatus,
+    routed_block,
 )
 from snowflake_semantic_tools.domain.validate.config import validate_config
 
@@ -96,6 +97,15 @@ def test_agent_folder_routes_are_checked_as_the_agents_block_at_every_depth() ->
     assert _codes({"agents": {"finance": {"+meta": {}}}}) == [("SST-CFG043", "config:agents.finance.+meta")]
     assert _codes({"dbt": {"invoke": True, "anything": True}}) == [("SST-CFG003", "config:dbt.anything")]
     assert _codes({"tools": {"finance": {"+bogus": 1}}}) == [("SST-CFG003", "config:tools.finance.+bogus")]
+
+
+def test_routed_block_folds_per_key_and_stops_at_the_first_folder_without_a_route() -> None:
+    block = {"+schema": "A", "+database": "D", "x": {"+schema": "B", "y": {"+schema": "C"}}, "z": "not a route"}
+    assert routed_block(block, ()) == {"+schema": "A", "+database": "D"}
+    assert routed_block(block, ("x", "y")) == {"+schema": "C", "+database": "D"}
+    assert routed_block(block, ("x", "other", "y")) == {"+schema": "B", "+database": "D"}
+    assert routed_block(block, ("z",)) == {"+schema": "A", "+database": "D"}
+    assert routed_block(None, ("x",)) == {}
 
 
 def test_routed_models_meet_the_allowlist_and_evals_and_skills_take_no_routes() -> None:
