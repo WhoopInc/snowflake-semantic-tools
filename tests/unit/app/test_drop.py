@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from types import MappingProxyType
 
-from snowflake_semantic_tools.app.drop import DropObject, DropRequest
+from snowflake_semantic_tools.app.drop import DropObject, DropRequest, DropResult
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName, TargetIdentity
 from snowflake_semantic_tools.domain.model.lifecycle import OwnershipMarker
 from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
@@ -120,6 +120,10 @@ def test_a_refusal_with_no_driver_text_or_a_recognised_one_is_reported() -> None
 AGENT = QualifiedName.parse("DB.S.ANALYST")
 
 
+def _run(port: FakeSnowflake) -> DropResult:
+    return DropObject(port, InMemoryStateStore(), FixedClock(), state_table=TABLE).run(REQUEST)
+
+
 def _agent_spec(*names: str) -> dict[str, str]:
     """DESCRIBE AGENT's properties for an agent whose tools name `names`."""
     resources = {f"tool_{index}": {"semantic_view": name} for index, name in enumerate(names)}
@@ -129,9 +133,9 @@ def _agent_spec(*names: str) -> dict[str, str]:
 def test_an_object_another_project_published_and_state_does_not_record_is_refused() -> None:
     foreign = _port(**{"agent:other": _entry("DB.S.OTHER")})
     foreign.markers = {VIEW.sql: OwnershipMarker("f" * 64, "b" * 64)}
-    refused = _drop(foreign)
-    assert refused.outcome == "refused"  # type: ignore[attr-defined]
-    assert [(item.code, item.message) for item in refused.diagnostics] == [  # type: ignore[attr-defined]
+    refused = _run(foreign)
+    assert refused.outcome == "refused"
+    assert [(item.code, item.message) for item in refused.diagnostics] == [
         ("SST-PLN024", "semantic_view:orders: DB.S.ORDERS exists without trusted SST ownership")
     ]
     assert foreign.scripts == []
@@ -139,7 +143,7 @@ def test_an_object_another_project_published_and_state_does_not_record_is_refuse
     tabled = _port(**{"agent:other": _entry("DB.S.OTHER", "c" * 64)})
     tabled.state_manifest = "c" * 64
     tabled.markers = {VIEW.sql: OwnershipMarker("f" * 64, "b" * 64)}
-    assert _drop(tabled).outcome == "refused"  # type: ignore[attr-defined]
+    assert _run(tabled).outcome == "refused"
 
 
 def test_a_marker_state_vouches_for_or_cannot_contradict_is_dropped() -> None:
@@ -149,7 +153,7 @@ def test_a_marker_state_vouches_for_or_cannot_contradict_is_dropped() -> None:
     no_state = _port()
     no_state.markers = {VIEW.sql: OwnershipMarker("f" * 64, "b" * 64)}
     for port in (same_manifest, recorded, no_state):
-        assert _drop(port).outcome == "dropped"  # type: ignore[attr-defined]
+        assert _run(port).outcome == "dropped"
 
 
 def test_an_agent_state_records_that_names_the_object_is_warned_of_and_the_drop_goes_ahead() -> None:
@@ -177,9 +181,9 @@ def test_an_agent_state_records_that_names_the_object_is_warned_of_and_the_drop_
         return describe(object_type, qualified_name)
 
     port.describe_properties = refuse_one  # type: ignore[assignment, method-assign]
-    result = _drop(port)
-    assert result.outcome == "dropped"  # type: ignore[attr-defined]
-    assert [(item.code, item.severity.name, item.message) for item in result.diagnostics] == [  # type: ignore[attr-defined]
+    result = _run(port)
+    assert result.outcome == "dropped"
+    assert [(item.code, item.severity.name, item.message) for item in result.diagnostics] == [
         (
             "SST-PLN017",
             "WARNING",
@@ -193,9 +197,9 @@ def test_the_warning_is_kept_when_the_drop_is_rejected_or_its_lock_was_broken() 
     rejected = _port(**{"agent:analyst": _entry(AGENT.sql)})
     rejected.descriptions = {f"AGENT {AGENT.sql}": _agent_spec(VIEW.sql)}
     rejected.refused = ("DROP",)
-    codes = [item.code for item in _drop(rejected).diagnostics]  # type: ignore[attr-defined]
+    codes = [item.code for item in _run(rejected).diagnostics]
     assert codes == ["SST-PLN017", "SST-APL001", "SST-SNO001"]
     broken = _port(**{"agent:analyst": _entry(AGENT.sql), "semantic_view:orders": _entry(VIEW.sql)})
     broken.descriptions = {f"AGENT {AGENT.sql}": _agent_spec(VIEW.sql)}
-    broken.write_state = lambda *args: False  # type: ignore[assignment, method-assign]
-    assert [item.code for item in _drop(broken).diagnostics] == ["SST-PLN017", "SST-APL011"]  # type: ignore[attr-defined]
+    broken.write_state = lambda *args: False  # type: ignore[method-assign]
+    assert [item.code for item in _run(broken).diagnostics] == ["SST-PLN017", "SST-APL011"]
