@@ -402,6 +402,17 @@ def test_attachment_handles_inference_poisoning_view_names_and_metric_dependenci
     assert effective_tables(metric) == frozenset(("orders",))
 
 
+def test_a_poisoned_derived_metric_stays_unattached_although_what_it_is_built_on_attaches() -> None:
+    base = ParsedMember("metric", "base", Origin("metrics.yml"), object(), ("orders",))
+    rejected = ParsedMember("metric", "windowed", Origin("metrics.yml"), object(), None, poisoned=True)
+    views = {"semantic_view:orders": frozenset(("orders",)), "semantic_view:sales": frozenset(("orders",))}
+    result = attach_view_members(
+        views, (base, rejected), SEMANTIC_REGISTRY, metric_dependencies={rejected.key: (base.key,)}
+    )
+    assert result[base.key] == ("semantic_view:orders", "semantic_view:sales")
+    assert result[rejected.key] == ()
+
+
 def test_metric_dependencies_do_not_widen_declared_table_attachment() -> None:
     base = ParsedMember("metric", "base", Origin("metrics.yml"), object(), ("orders",))
     constrained = ParsedMember("metric", "constrained", Origin("metrics.yml"), object(), ("customers",))
