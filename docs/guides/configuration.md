@@ -20,9 +20,7 @@ starts:
   under it would otherwise be ignored;
 - a value of the wrong type or outside its range is an error (`SST-CFG004`,
   `SST-CFG008`), and so is a missing required key (`SST-CFG006`);
-- a removed key is an error that says what replaced it;
-- an *inert* key, one SST 0.3 read and 1.0 does not, is accepted with an info
-  diagnostic (`SST-CFG044`) so an existing file keeps loading.
+- a removed key is an error that says what replaced it.
 
 ## Locations and targets
 
@@ -43,10 +41,23 @@ tools:
 to development and production from the same authored files. A key that is not
 set falls back to the target's own database, schema, or warehouse.
 
-Keys that start with `+` set defaults. Under `semantic_views:`, an unprefixed
-key names a folder under `semantic_models_dir/semantic_views/`, and its `+` keys
-apply to the views in that folder. A route to a folder that does not exist is
-an error (`SST-CFG041`), so a mistyped route cannot quietly route nothing.
+Keys that start with `+` set defaults. Under `semantic_views:` and `agents:`, an
+unprefixed key names a folder -- under `semantic_models_dir/semantic_views/` and
+`agents_dir/` -- and its `+` keys apply to the views or agents in that folder
+and below. Routes nest as folders do, and each `+` key folds separately, so the
+closest folder that sets it wins; an artifact's own setting, such as an agent's
+`secure:`, still wins over every route. A route to a folder that does not exist
+is an error (`SST-CFG041`), so a mistyped route cannot quietly route nothing.
+`evals:` and `skills:` take no routes (`SST-CFG042`).
+
+```yaml
+agents:
+  +schema: AGENTS
+  finance:              # agents/finance/<agent>/agent.yml
+    +schema: FINANCE_AGENTS
+    restricted:         # agents/finance/restricted/<agent>/agent.yml
+      +secure: true     # still FINANCE_AGENTS
+```
 
 ## Blocks
 

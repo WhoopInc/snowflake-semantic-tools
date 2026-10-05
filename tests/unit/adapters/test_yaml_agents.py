@@ -224,3 +224,25 @@ def test_a_token_budget_documented_beside_it_is_marked_so(tmp_path: Path) -> Non
     bare = text.replace("      # Bounds orchestration tokens only,\n      # not what the tools spend.\n", "")
     [undocumented], _ = load_agents(_agent_file(tmp_path / "c", bare))
     assert not undocumented.budget_tokens_documented
+
+
+def test_agents_in_grouping_folders_load_with_their_folder_and_routes_are_checked(tmp_path: Path) -> None:
+    for folder in ("top", "finance/fin", "finance/restricted/sec"):
+        (tmp_path / "agents" / folder).mkdir(parents=True)
+        (tmp_path / "agents" / folder / "agent.yml").write_text(f"name: {folder.rsplit('/')[-1]}\n", encoding="utf-8")
+    # A file directly in agents/ names no agent folder, as before.
+    (tmp_path / "agents" / "agent.yml").write_text("name: stray\n", encoding="utf-8")
+    config = {"agents": {"+schema": "A", "finance": {"restricted": {"+secure": True}, "missing": {}}}}
+
+    agents, diagnostics = load_agents(tmp_path, config=config)
+
+    assert [(agent.name, agent.folder) for agent in agents] == [
+        ("fin", ("finance", "fin")),
+        ("sec", ("finance", "restricted", "sec")),
+        ("top", ("top",)),
+    ]
+    assert [(item.code, item.subject) for item in diagnostics] == [("SST-CFG041", "config_route:finance.missing")]
+    assert load_agents(tmp_path)[1] == ()
+    # Without an agents folder there are no agents, and every route names a missing folder.
+    [missing] = load_agents(tmp_path, agents_dir="bots", config=config)[1]
+    assert (missing.code, missing.subject) == ("SST-CFG041", "config_route:finance")

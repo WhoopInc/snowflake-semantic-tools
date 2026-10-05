@@ -8,7 +8,7 @@ the same keys through these functions, so they agree on what a configuration mea
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 
 from snowflake_semantic_tools.domain.model.config_schema.keys import CONFIG_KEYS
@@ -24,6 +24,32 @@ def configured_dir(config: Mapping[str, object], key: str, default: str) -> str:
     """Return `project.<key>` as text; `default` when the block or the value is absent or empty."""
     project = config.get("project")
     return str(project.get(key) or default) if isinstance(project, dict) else default
+
+
+def routed_block(block: object, folder: Sequence[str]) -> dict[str, object]:
+    """Return the `+` keys that apply to an artifact in `folder`, folded down a block's folder routes.
+
+    A folder route is an unprefixed key whose value is a mapping, naming a directory below the
+    block's root; routes nest as directories do. The fold is per key: the block's own `+` keys come
+    first, and each route along `folder` overrides only the keys it sets, so the closest folder
+    wins. The fold stops at the first directory with no route.
+
+    Args:
+        block: The routed block as parsed; anything but a mapping reads as empty.
+        folder: The artifact file's directory below the block's root, one segment per directory.
+
+    Returns:
+        Each applying `+` key, with its prefix, and its value.
+    """
+    cursor = config_block(block)
+    resolved = {key: value for key, value in cursor.items() if key.startswith("+")}
+    for part in folder:
+        child = cursor.get(part)
+        if not isinstance(child, dict):
+            break
+        cursor = config_block(child)
+        resolved.update({key: value for key, value in cursor.items() if key.startswith("+")})
+    return resolved
 
 
 def skills_configured(config: Mapping[str, object]) -> bool:

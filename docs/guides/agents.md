@@ -20,6 +20,10 @@ tools/
 
 Each agent is a folder under `project.agents_dir`; its name comes from `name:`
 in `agent.yml`, and it publishes into `agents.+database` / `agents.+schema`.
+Agent folders may sit in grouping folders, `agents/<domain>/<agent>/agent.yml`,
+and an `agents.<domain>:` folder route overrides any `agents:` `+` key for the
+agents below it, so `agents: {finance: {+schema: FINANCE_AGENTS}}` publishes
+every agent under `agents/finance/` into that schema.
 
 ## The agent file
 

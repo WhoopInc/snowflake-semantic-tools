@@ -75,10 +75,10 @@ detected: `local` needs no connection, `observe` needs a read of Snowflake, and
 | [`SST-CFG038`](error-codes.md#sst-cfg038) | CFG | error | local | `snowflake_semantic_tools.domain.enrich.components` | `tests/codes/cfg/test_sst_cfg038.py` |
 | [`SST-CFG039`](error-codes.md#sst-cfg039) | CFG | error | local | `snowflake_semantic_tools.domain.diagnostics.baseline` | `tests/codes/cfg/test_sst_cfg039.py` |
 | [`SST-CFG040`](error-codes.md#sst-cfg040) | CFG | error | local | `snowflake_semantic_tools.domain.model.config_schema.keys`<br>`snowflake_semantic_tools.domain.validate.config` | `tests/codes/cfg/test_sst_cfg040.py` |
-| [`SST-CFG041`](error-codes.md#sst-cfg041) | CFG | error | local | `snowflake_semantic_tools.adapters.yaml.semantic.target` | `tests/codes/cfg/test_sst_cfg041.py` |
+| [`SST-CFG041`](error-codes.md#sst-cfg041) | CFG | error | local | `snowflake_semantic_tools.adapters.yaml.routes` | `tests/codes/cfg/test_sst_cfg041.py` |
 | [`SST-CFG042`](error-codes.md#sst-cfg042) | CFG | error | local | `snowflake_semantic_tools.domain.model.config_schema.keys`<br>`snowflake_semantic_tools.domain.validate.config` | `tests/codes/cfg/test_sst_cfg042.py` |
 | [`SST-CFG043`](error-codes.md#sst-cfg043) | CFG | error | local | `snowflake_semantic_tools.domain.render.reference_docs`<br>`snowflake_semantic_tools.domain.validate.config` | `tests/codes/cfg/test_sst_cfg043.py` |
-| [`SST-CFG044`](error-codes.md#sst-cfg044) | CFG | error | local | `snowflake_semantic_tools.adapters.yaml.evals.config`<br>`snowflake_semantic_tools.domain.validate.config` | `tests/codes/cfg/test_sst_cfg044.py` |
+| [`SST-CFG044`](error-codes.md#sst-cfg044) | CFG | error | local | `snowflake_semantic_tools.adapters.yaml.evals.config` | `tests/codes/cfg/test_sst_cfg044.py` |
 | [`SST-CFG046`](error-codes.md#sst-cfg046) | CFG | error | local | `snowflake_semantic_tools.adapters.yaml.config`<br>`snowflake_semantic_tools.cli.commands.init` | `tests/codes/cfg/test_sst_cfg046.py` |
 | [`SST-CFG047`](error-codes.md#sst-cfg047) | CFG | error | local | `snowflake_semantic_tools.adapters.yaml.config` | `tests/codes/cfg/test_sst_cfg047.py` |
 | [`SST-CFG048`](error-codes.md#sst-cfg048) | CFG | warning | local | `snowflake_semantic_tools.adapters.dbt.profiles` | `tests/codes/cfg/test_sst_cfg048.py` |

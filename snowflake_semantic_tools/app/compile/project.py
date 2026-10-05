@@ -11,6 +11,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from dataclasses import dataclass, replace
 from types import MappingProxyType
+from typing import Any
 
 from snowflake_semantic_tools.app.compile import CompileArtifacts, CompileSemanticViews
 from snowflake_semantic_tools.app.compile.agents import AgentCompileContext, CompileAgents, CompiledAgent
@@ -36,6 +37,7 @@ from snowflake_semantic_tools.domain.model.config_schema import (
     config_int,
     config_text,
     configured_dir,
+    routed_block,
     skills_configured,
     target_text,
 )
@@ -102,6 +104,10 @@ class _Settings:
             target_text(block.get("+database"), self.target, database) or database,
             target_text(block.get("+schema"), self.target, schema) or schema,
         )
+
+    def agent_block(self, folder: tuple[str, ...]) -> dict[str, object]:
+        """Return the `agents:` `+` keys that apply to an agent in `folder`, folded down its routes."""
+        return routed_block(self.tree.get("agents"), folder)
 
 
 class CompileProject:
@@ -234,12 +240,14 @@ class CompileProject:
         tool_catalog = self._inputs.tool_catalog()
         tools = _compile_tools(settings, tool_catalog, dbt)
         agent_models, agent_diagnostics = self._inputs.agents(agents_dir=settings.directory("agents_dir", "agents"))
-        defaults = settings.block("agents")
         enabled = tuple(
-            model for model in agent_models if model.enabled and defaults.get("+enabled", True) is not False
+            model
+            for model in agent_models
+            if model.enabled and settings.agent_block(model.folder).get("+enabled", True) is not False
         )
         context = self._agent_context(settings, enabled, semantic, tool_catalog, consumed, publishing, unpublished)
-        agents = CompileAgents(enabled, agent_diagnostics, context).run_result()
+        routed = {model.folder: _routed_context(settings, context, model.folder) for model in enabled}
+        agents = CompileAgents(enabled, agent_diagnostics, context, routed=routed).run_result()
         resolved_tools = {
             item.resolved.model.name.casefold(): tuple(sorted(item.resolved.agent_facing_tool_names))
             for item in agents.compiled
@@ -275,9 +283,11 @@ class CompileProject:
         publishing: Publishing,
         unpublished: Mapping[str, str],
     ) -> AgentCompileContext:
-        """Gather what compiling the agents resolves against, with the `agents:` defaults.
+        """Gather what compiling the agents resolves against, with the `agents:` block's own defaults.
 
-        The commit is read last, once everything else resolved: it becomes `sha_version`.
+        Each agent's published name is in the location the folder routes over its file resolve
+        to; the first of two agents with one name keeps it. The commit is read last, once
+        everything else resolved: it becomes `sha_version`.
         """
         defaults = settings.block("agents")
         raw_models = settings.block("snowflake").get("orchestration_models")
@@ -287,10 +297,10 @@ class CompileProject:
         skill_pins, plugin_pins, plugin_members = extension_pins(publishing.skills)
         semantic_targets = {item.name.casefold(): item.rendered_artifact.target for item in semantic.compiled}
         database, schema = settings.location(defaults)
-        agent_targets = {
-            model.name.casefold(): QualifiedName.from_parts(database, schema, model.name) for model in enabled
-        }
-        target = settings.target
+        agent_targets: dict[str, QualifiedName] = {}
+        for model in enabled:
+            location = settings.location(settings.agent_block(model.folder))
+            agent_targets.setdefault(model.name.casefold(), QualifiedName.from_parts(*location, model.name))
         return AgentCompileContext(
             semantic_targets,
             tool_catalog,
@@ -299,25 +309,38 @@ class CompileProject:
             {"sha_version": self._inputs.git_sha()},
             database,
             schema,
-            target_text(defaults.get("+warehouse"), target, target.warehouse),
-            config_int(defaults.get("+query_timeout")),
-            config_text(defaults.get("+orchestration_model"), "auto") or "auto",
-            config_int(defaults.get("+budget_seconds")),
-            config_int(defaults.get("+budget_tokens")),
-            config_text(defaults.get("+tool_not_accessible"), None),
-            config_bool(defaults.get("+analytical_search")),
-            config_text(defaults.get("+alias"), None),
-            allowed_models,
+            allowed_models=allowed_models,
             skills=skill_pins,
             plugins=plugin_pins,
             consumed=plugin_members | publishing.desktop_consumed,
             unpublished=MappingProxyType(dict(unpublished)),
             allow_unknown_keys=settings.block("snowflake").get("allow_unknown_keys") is not False,
             avatar_allowlist=_avatar_allowlist(settings.block("snowflake")),
-            secure=config_bool(defaults.get("+secure")) is True,
-            tags=_tag_pairs(defaults.get("+tags")),
             extra_tool_types=_extra_tool_types(settings.block("snowflake")),
+            **_agent_defaults(settings, defaults),
         )
+
+
+def _agent_defaults(settings: _Settings, block: Mapping[str, object]) -> dict[str, Any]:
+    """Read what an agent inherits when it sets none from one `agents:` block, routed or not."""
+    target = settings.target
+    return {
+        "warehouse": target_text(block.get("+warehouse"), target, target.warehouse),
+        "query_timeout": config_int(block.get("+query_timeout")),
+        "orchestration_model": config_text(block.get("+orchestration_model"), "auto") or "auto",
+        "budget_seconds": config_int(block.get("+budget_seconds")),
+        "budget_tokens": config_int(block.get("+budget_tokens")),
+        "tool_not_accessible": config_text(block.get("+tool_not_accessible"), None),
+        "analytical_search": config_bool(block.get("+analytical_search")),
+        "alias": config_text(block.get("+alias"), None),
+        "secure": config_bool(block.get("+secure")) is True,
+        "tags": _tag_pairs(block.get("+tags")),
+    }
+
+
+def _routed_context(settings: _Settings, context: AgentCompileContext, folder: tuple[str, ...]) -> AgentCompileContext:
+    """Return the context an agent in `folder` compiles against, with the defaults its routes resolve to."""
+    return replace(context, **_agent_defaults(settings, settings.agent_block(folder)))
 
 
 def _tag_pairs(value: object) -> tuple[tuple[str, str], ...]:

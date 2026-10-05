@@ -78,10 +78,10 @@ def validate_config(
         SST-CFG040: `vars` declares `sha_version`, which SST supplies.
         SST-CFG042: `evals` or `skills` declares a folder route.
         SST-CFG043: a removed key is set; the message says what replaced it.
-        SST-CFG044: a key reserved for a later release is set.
         SST-CFG023: `semantic_views.+max_staleness` is below 120 seconds.
         SST-CFG200: a deprecated key is set; it is checked as the key it is read as.
-        SST-CFG025: `agents.+orchestration_model` is not in `snowflake.orchestration_models`.
+        SST-CFG025: `agents.+orchestration_model`, or a folder route's, is not in
+            `snowflake.orchestration_models`.
         SST-CFG033: a severity override demotes a non-demotable code, an error below warning, or
             promotes an info code to error.
         SST-VAL817: `skills` configures neither the catalog nor the stage channel.
@@ -138,25 +138,33 @@ def severity_overrides(tree: Mapping[Any, object]) -> dict[str, Severity]:
 
 
 def _allowlist_problems(tree: Mapping[Any, object], positions: _Located) -> list[Diagnostic]:
-    """Report the agents' default orchestration model when `snowflake.orchestration_models` omits it."""
-    agents = tree.get("agents")
-    model = agents.get("+orchestration_model") if isinstance(agents, Mapping) else None
+    """Report each `agents:` default orchestration model, routed or not, that the allowlist omits."""
     snowflake = tree.get("snowflake")
     allowed = snowflake.get("orchestration_models") if isinstance(snowflake, Mapping) else None
     names = [str(item) for item in allowed] if isinstance(allowed, list) else ["auto"]
-    if not isinstance(model, str) or model in names:
-        return []
-    path = ("agents", "+orchestration_model")
     return [
         _diagnostic(
             "SST-CFG025",
-            path,
+            (*path, "+orchestration_model"),
             positions,
             kind="orchestration model",
             found=model,
             key="snowflake.orchestration_models",
         )
+        for path, block in _route_blocks(tree.get("agents"), ("agents",))
+        if isinstance(model := block.get("+orchestration_model"), str) and model not in names
     ]
+
+
+def _route_blocks(block: object, path: tuple[str, ...]) -> list[tuple[tuple[str, ...], Mapping[Any, object]]]:
+    """Return a routed block and each folder route below it, with its path, depth first."""
+    if not isinstance(block, Mapping):
+        return []
+    found: list[tuple[tuple[str, ...], Mapping[Any, object]]] = [(path, block)]
+    for key, child in block.items():
+        if not str(key).startswith("+"):
+            found.extend(_route_blocks(child, (*path, str(key))))
+    return found
 
 
 def unreferenced_tool_members(catalog: ToolCatalog, referenced: Iterable[tuple[str, ...]]) -> DiagnosticBag:
@@ -411,7 +419,7 @@ def _check(
 ) -> None:
     """Check one entry against its declared key, then walk into it when it is a block.
 
-    A removed or unsupported key is reported without looking at its value, and a value
+    A removed key is reported without looking at its value, and a value
     that fails a check is not descended into. `route_of` names the routed block when the
     entry matched a folder route: the route's children are that block's own keys.
     """
@@ -442,9 +450,7 @@ def _check(
 
 
 def _status_problem(spec: ConfigKey, path: tuple[str, ...], positions: _Located) -> Diagnostic:
-    """Diagnose a key that is set although SST no longer reads it or does not read it yet."""
-    if spec.status is KeyStatus.UNSUPPORTED:
-        return _diagnostic("SST-CFG044", path, positions, key=".".join(path))
+    """Diagnose a key that is set although SST no longer reads it."""
     if spec.code == "SST-CFG042":
         return _diagnostic(spec.code, path, positions, block=path[0], key=path[-1])
     if spec.code == "SST-CFG015":

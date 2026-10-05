@@ -10,7 +10,7 @@ them and decides which agents compile.
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import replace
 from hashlib import sha256
 
@@ -25,7 +25,6 @@ from snowflake_semantic_tools.domain.model.agent import (
     ResolvedAgent,
     ResolvedAgentTool,
 )
-from snowflake_semantic_tools.domain.model.identifier import QualifiedName
 from snowflake_semantic_tools.domain.render.agent import (
     agent_render_checks,
     desired_agent_definition,
@@ -58,15 +57,23 @@ class CompileAgents:
     """Compile each agent: inherit the `agents:` defaults, resolve it, check it, render its spec.
 
     `diagnostics` are the loader's; they come first, and an error among them that names an
-    agent keeps that agent back like one found here.
+    agent keeps that agent back like one found here. `routed` holds the context an agent
+    compiles against instead of `context`, by the agent's folder: the one whose defaults the
+    folder routes over it resolve to.
     """
 
     def __init__(
-        self, models: tuple[AgentModel, ...], diagnostics: DiagnosticBag, context: AgentCompileContext
+        self,
+        models: tuple[AgentModel, ...],
+        diagnostics: DiagnosticBag,
+        context: AgentCompileContext,
+        *,
+        routed: Mapping[tuple[str, ...], AgentCompileContext] | None = None,
     ) -> None:
         self._models = models
         self._diagnostics = diagnostics
         self._context = context
+        self._routed: Mapping[tuple[str, ...], AgentCompileContext] = routed or {}
 
     def run_result(self) -> CompileResult:
         """Compile the agents in authored order, then check what spans all of them.
@@ -135,13 +142,17 @@ class CompileAgents:
             diagnostics.extend(unrunnable_scripts(resolved_agents, ((pin.key, pin.scripts) for pin in pins)))
         return CompileResult(tuple(compiled), DiagnosticBag(diagnostics))
 
+    def _context_of(self, model: AgentModel) -> AgentCompileContext:
+        return self._routed.get(model.folder, self._context)
+
     def _resolve(self, model: AgentModel) -> tuple[ResolvedAgent, str, tuple[Diagnostic, ...]]:
         """Resolve the agent with its inherited defaults, then render its spec and check it whole.
 
         The authored token budget is read before the defaults fill it; the rendered spec is
         checked for completeness, its resource keys, and its size, in that order.
         """
-        resolved, problems = _resolve_agent(_inherit(model, self._context), self._context)
+        context = self._context_of(model)
+        resolved, problems = _resolve_agent(_inherit(model, context), context)
         document = render_agent_spec(resolved.model, resolved.tools)
         payload = render_agent_json(resolved.model, resolved.tools)
         checks = agent_render_checks(resolved.model, resolved.tools, payload)
@@ -166,7 +177,7 @@ class CompileAgents:
     def _compile(self, model: AgentModel, resolved: ResolvedAgent, payload: str) -> CompiledAgent:
         spec = render_agent_spec(resolved.model, resolved.tools)
         definition_fingerprint = sha256(desired_agent_definition(resolved.model, spec)).hexdigest()
-        target = QualifiedName.from_parts(self._context.database, self._context.schema, model.name)
+        target = self._context_of(model).agent_target(model.name)
         return CompiledAgent(resolved, target, payload, definition_fingerprint)
 
 

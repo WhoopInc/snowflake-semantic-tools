@@ -1,12 +1,13 @@
 ---
 # =============================================================================
-# agents/jaffle_minimal/agent.yml -- reference project
+# agents/ops/jaffle_minimal/agent.yml -- reference project
 # =============================================================================
 # The minimal agent: `name:` is the only required key and the only one authored.
 # Its golden, tests/golden/expected/agent/jaffle_minimal_agent.json, holds only
 # what the `agents:` defaults in sst_config.yml supply (model, budget,
 # tool_not_accessible, analytical_search), so a renderer that emits any other
-# key unconditionally, or invents a default, fails against it.
+# key unconditionally, or invents a default, fails against it. It sits under
+# agents/ops/, so the `agents.ops` folder route publishes it to <db>.OPS.
 #
 # Do not add keys to this file.
 # =============================================================================

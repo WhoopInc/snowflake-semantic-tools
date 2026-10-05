@@ -7,8 +7,6 @@ and nothing else is read:
 
 - an unknown key is a warning (`SST-CFG003`), or an error when it is a
   misspelled top-level block (`SST-CFG007`);
-- an unsupported key is reserved for a later release and is an error until SST
-  reads it (`SST-CFG044`);
 - a removed key is an error that says what replaced it.
 
 Keys that start with `+` set a default that nested folder routes and
@@ -152,7 +150,7 @@ Defaults for semantic views, overridable per folder.
 
 ## agents
 
-Defaults for Cortex Agents.
+Defaults for Cortex Agents, overridable per folder.
 
 | Key | Type | Default | Description |
 |---|---|---|---|
@@ -169,6 +167,7 @@ Defaults for Cortex Agents.
 | `agents.+enabled` | boolean | `true` | Default for agents that do not set `enabled` themselves. |
 | `agents.+secure` | boolean | `false` | Default for agents that do not set `secure` themselves. |
 | `agents.+tags` | list |  | Tags, as an agent's own `tags:` lists them, for agents that set none. |
+| `agents.<route>` | block |  | Folder route: overrides for agents under that directory. |
 
 ## evals
 
@@ -242,15 +241,6 @@ Allowlists for Snowflake surfaces the renderer accepts.
 | `snowflake.allow_unknown_keys` | boolean | `true` | Render agent spec keys SST does not model with a warning; false makes each an error. |
 | `snowflake.profile` | block |  | Agent profile allowlists. |
 | `snowflake.profile.avatar_allowlist` | list |  | Avatars an agent profile may name; unset allows any. |
-
-## Unsupported keys
-
-These keys are reserved for a later release. Setting one is an error until SST
-reads it, so a setting cannot look as though it takes effect when it does not.
-
-| Key | Type | Description |
-|---|---|---|
-| `agents.<route>` | block | Folder route. |
 
 ## Deprecated keys
 

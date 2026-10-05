@@ -11,8 +11,7 @@
 # A `+` key sets a default that folder routes and individual artifacts inherit.
 #
 # An unknown key is a warning (SST-CFG003) and a misspelled top-level block an
-# error (SST-CFG007). Removed keys are SST-CFG043; keys reserved for a later
-# release are SST-CFG044.
+# error (SST-CFG007). Removed keys are SST-CFG043.
 # =============================================================================
 
 snowflake:
@@ -175,6 +174,12 @@ agents:
   # Moved to each newly published version. LIVE, FIRST, LAST and DEFAULT are
   # reserved (SST-PRS025); SST writes this one unquoted, as PROMOTED.
   +alias: promoted
+
+  # A folder route, as under semantic_views: the agents under agents/ops/
+  # publish to <db>.OPS and inherit every other key above (SST-CFG041 if the
+  # folder is missing). An agent's own setting still wins over any route.
+  ops:
+    +schema: OPS
 
 evals:
   # No +database or +schema: eval objects live in their agent's schema, and

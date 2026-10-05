@@ -6,7 +6,9 @@ from pathlib import Path
 from typing import Any
 
 from snowflake_semantic_tools.adapters.yaml.documents import RawDocuments
+from snowflake_semantic_tools.adapters.yaml.routes import folder_route_diagnostics
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, Origin
+from snowflake_semantic_tools.domain.model.config_schema import routed_block
 from snowflake_semantic_tools.domain.model.dbt import DbtTarget
 from snowflake_semantic_tools.domain.validate.semantic.nodes import node_root
 
@@ -16,22 +18,9 @@ def _render_target_value(value: object, target: DbtTarget) -> str:
 
 
 def _semantic_view_defaults(config: dict[str, Any], path: Path, views_dir: Path) -> dict[str, object]:
-    """Merge `semantic_views` `+` keys along the folder routes above one file."""
-    block = config.get("semantic_views") or {}
-    if not isinstance(block, dict):
-        return {}
-    resolved: dict[str, object] = {key[1:]: value for key, value in block.items() if str(key).startswith("+")}
-    relative_parent = path.resolve().relative_to(views_dir.resolve()).parent
-    cursor: object = block
-    for part in relative_parent.parts:
-        if not isinstance(cursor, dict):
-            break
-        child = cursor.get(part)
-        if not isinstance(child, dict):
-            break
-        resolved.update({key[1:]: value for key, value in child.items() if str(key).startswith("+")})
-        cursor = child
-    return resolved
+    """Merge `semantic_views` `+` keys along the folder routes above one file, without their prefix."""
+    folder = path.resolve().relative_to(views_dir.resolve()).parent.parts
+    return {key[1:]: value for key, value in routed_block(config.get("semantic_views"), folder).items()}
 
 
 def _semantic_view_target(config: dict[str, Any], path: Path, views_dir: Path, target: DbtTarget) -> DbtTarget:
@@ -44,40 +33,10 @@ def _semantic_view_target(config: dict[str, Any], path: Path, views_dir: Path, t
 def _folder_route_diagnostics(config: dict[str, Any], views_dir: Path) -> tuple[Diagnostic, ...]:
     """Report each folder route under `semantic_views:` that names no directory under `views_dir`.
 
-    A route is a key whose value is a mapping; a `+` key is a setting, not a route. Routes nest
-    as folders do and are walked depth first, and none below a missing directory is checked.
-    Nothing is reported when the block is not a mapping.
-
     Diagnostics:
-        SST-CFG041: when a route names no directory; the subject is `config_route:<dotted route>`.
+        SST-CFG041: as `folder_route_diagnostics` reports it.
     """
-    block = config.get("semantic_views") or {}
-    if not isinstance(block, dict):
-        return ()
-    diagnostics: list[Diagnostic] = []
-
-    def walk(node: dict[str, Any], directory: Path, route: str) -> None:
-        for key, value in node.items():
-            key_text = str(key)
-            if key_text.startswith("+") or not isinstance(value, dict):
-                continue
-            child = directory / key_text
-            child_route = f"{route}.{key_text}" if route else key_text
-            if not child.is_dir():
-                diagnostics.append(
-                    D(
-                        "SST-CFG041",
-                        key=key_text,
-                        block="semantic_views",
-                        root=str(views_dir),
-                        subject=f"config_route:{child_route}",
-                    )
-                )
-                continue
-            walk(value, child, child_route)
-
-    walk(block, views_dir, "")
-    return tuple(diagnostics)
+    return folder_route_diagnostics(config, "semantic_views", views_dir)
 
 
 def _stray_view_diagnostics(documents: RawDocuments, views_dir: Path) -> tuple[Diagnostic, ...]:

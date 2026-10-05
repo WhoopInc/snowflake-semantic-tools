@@ -291,7 +291,7 @@ class YamlProjectSource:
         metrics_dir = configured_dir(config, "eval_metrics_dir", "eval_metrics")
         agent_diagnostics = DiagnosticBag()
         if agents is None:
-            agents, agent_diagnostics = load_agents(self._project_dir, agents_dir=agents_dir)
+            agents, agent_diagnostics = load_agents(self._project_dir, agents_dir=agents_dir, config=config)
         defaults, default_diagnostics = parse_eval_defaults(config.get("evals"), file=self._files.config_name)
         snowflake = config.get("snowflake")
         raw_models = snowflake.get("orchestration_models") if isinstance(snowflake, dict) else None
@@ -376,7 +376,7 @@ class YamlProjectInputs(ProjectInputs):
         return self._source.load_tools()
 
     def agents(self, *, agents_dir: str) -> tuple[tuple[AgentModel, ...], DiagnosticBag]:
-        return load_agents(self._project_dir, agents_dir=agents_dir)
+        return load_agents(self._project_dir, agents_dir=agents_dir, config=self.config().tree)
 
     def eval_catalog(
         self,

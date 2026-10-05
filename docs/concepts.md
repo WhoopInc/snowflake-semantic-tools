@@ -87,8 +87,8 @@ semantic_views:
 ```
 
 Keys that start with `+` set a default for everything below them. Under
-`semantic_views:`, an unprefixed key names a folder of view files, and its `+`
-keys apply to the views in that folder:
+`semantic_views:` and `agents:`, an unprefixed key names a folder of view files
+or agent folders, and its `+` keys apply to what is in that folder:
 
 ```yaml
 semantic_views:
