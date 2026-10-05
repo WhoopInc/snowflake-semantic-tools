@@ -131,15 +131,6 @@ class _Reader:
         """Return what a yes-or-no read answers of each item; `refused` where Snowflake refuses it."""
         return tuple(refused if answer is None else answer for answer in self.read_each(items, read, what))
 
-    def names_each(
-        self,
-        items: Sequence[ItemT],
-        read: Callable[[PreflightPort, ItemT], tuple[QualifiedName, ...]],
-        what: Callable[[ItemT], str],
-    ) -> tuple[tuple[QualifiedName, ...], ...]:
-        """Return the names a read lists of each item; none where Snowflake refuses it."""
-        return tuple(answer or () for answer in self.read_each(items, read, what))
-
 
 def read_preflight(
     port: PreflightPort,
