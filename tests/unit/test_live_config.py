@@ -6,6 +6,7 @@ None of this connects. Every account, path and connection here is synthetic.
 from __future__ import annotations
 
 import os
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -153,5 +154,11 @@ def test_the_committed_example_parses_documents_every_key_and_is_ignored_once_co
         ("DATABASE", "SCHEMA", "ACCOUNT", "USER", "ROLE", "WAREHOUSE", "PRIVATE_KEY_PATH")
     )
     assert [key for key in live_config.KEYS if f"{ENV_PREFIX}{key}=" not in text] == []
-    ignored = (REPO_ROOT / ".gitignore").read_text(encoding="utf-8").splitlines()
-    assert "tests/live.local.env" in ignored
+    try:
+        ignored = {
+            path: subprocess.run(["git", "check-ignore", "-q", path], cwd=REPO_ROOT, check=False).returncode == 0
+            for path in ("tests/live.example.env", "tests/live.local.env")
+        }
+    except OSError as error:
+        pytest.skip(f"needs git: {error}")
+    assert ignored == {"tests/live.example.env": False, "tests/live.local.env": True}

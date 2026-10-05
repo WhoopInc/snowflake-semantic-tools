@@ -145,6 +145,8 @@ dmypy.json
 # Secrets and configuration
 .env*
 *.env
+# The live-test template is committed; your copy, tests/live.local.env, stays ignored
+!tests/live.example.env
 secrets/
 config/secrets/
 
