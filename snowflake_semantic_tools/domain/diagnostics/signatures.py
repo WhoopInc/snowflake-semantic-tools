@@ -11,7 +11,9 @@ so the set stays visible and can shrink as numbers are observed.
 
 `session_failure` reads a classified error as the session sees it -- a rejected credential,
 a missed deadline, a missing privilege -- so the connector's own errors are classified by
-the same table.
+the same table. Snowflake reports an object the role may not see as one that does not
+exist, so the reading is a privilege when the object is in the `SNOWFLAKE` database, which
+every account has.
 
 `snowflake_diagnostic` reports a classified error, filling the code's placeholders from the
 message: the first quoted name for `{value}`, the message without its number and heading
@@ -185,6 +187,12 @@ class SessionFailure(Enum):
 
 # The codes of an object the session's role cannot see: it is absent or not granted.
 _NOT_VISIBLE = frozenset(("SST-SNO003", "SST-SNO005", "SST-SNO006"))
+# The numbers and SQLSTATEs that identify those failures, rather than their wording alone.
+_NOT_VISIBLE_ERRNOS = frozenset(row.errno for row in SIGNATURES if row.code in _NOT_VISIBLE and row.errno)
+_NOT_VISIBLE_SQLSTATES = frozenset(row.sqlstate for row in SIGNATURES if row.code in _NOT_VISIBLE and row.sqlstate)
+# The database Snowflake shares into every account, such as `SNOWFLAKE.ACCOUNT_USAGE`: it is
+# never absent, so failing to see it, or anything in it, is a privilege the role lacks.
+_SYSTEM_DATABASE = "SNOWFLAKE"
 
 
 def session_failure(message: str, *, errno: int | None = None, sqlstate: str | None = None) -> SessionFailure | None:
@@ -193,19 +201,29 @@ def session_failure(message: str, *, errno: int | None = None, sqlstate: str | N
     Returns:
         AUTHENTICATION for a rejected credential (SST-SNO013); NOT_VISIBLE for a database,
         schema or object that does not exist or is not granted; DEADLINE for a transient
-        failure or a statement timeout; PRIVILEGE for any other refused privilege; None for
-        anything else.
+        failure or a statement timeout; PRIVILEGE for any other refused privilege, and for a
+        not-visible failure its number or SQLSTATE identifies on the `SNOWFLAKE` database or
+        anything in it; None for anything else.
     """
     signature = match_signature(message, errno=errno, sqlstate=sqlstate)
     if signature.code == "SST-SNO013":
         return SessionFailure.AUTHENTICATION
     if signature.code in _NOT_VISIBLE:
+        identified = errno in _NOT_VISIBLE_ERRNOS or sqlstate in _NOT_VISIBLE_SQLSTATES
+        if identified and _names_system_database(message):
+            return SessionFailure.PRIVILEGE
         return SessionFailure.NOT_VISIBLE
     if signature.kind is ErrorKind.TRANSIENT or signature.code == "SST-SNO011":
         return SessionFailure.DEADLINE
     if signature.kind is ErrorKind.PRIVILEGE:
         return SessionFailure.PRIVILEGE
     return None
+
+
+def _names_system_database(message: str) -> bool:
+    """Report whether the first name a message quotes is the `SNOWFLAKE` database or is in it."""
+    quoted = _QUOTED.search(message)
+    return quoted is not None and quoted.group(1).split(".", 1)[0] == _SYSTEM_DATABASE
 
 
 def fragile_signatures() -> tuple[Signature, ...]:

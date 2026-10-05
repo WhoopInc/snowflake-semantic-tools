@@ -9,6 +9,11 @@ another user's locks needs MONITOR on the account, which a role that owns its sc
 not hold. A role refused it skips that warning (SST-VAL020) rather than failing the plan;
 any other failure of the read is SST-PLN001, as for every other read.
 
+The reference read is advisory the same way: it only warns that a prune removes an object
+something outside the project names (SST-PLN017), and it reads `SNOWFLAKE.ACCOUNT_USAGE`,
+which a schema owner need not be granted. A role refused it skips that warning for each
+prune candidate (SST-VAL020) and the prune goes ahead; it was never what stopped a prune.
+
 The reads run in phases -- databases, schemas, the role, relations, privileges, occupied
 names, locks, references, the warehouse -- and the reads of one phase are independent, so a
 `Fanout` may run them on sessions of their own. Their answers and refusals are taken in the
@@ -40,8 +45,9 @@ _Answer = tuple[ValueT | None, SnowflakePortError | None]
 
 # The verb of the schema privilege a create needs, such as CREATE SEMANTIC VIEW.
 _CREATE = "CREATE"
-# The check the lock read serves, which a role refused the read skips.
+# The checks the advisory reads serve, which a role refused the read skips.
 _LOCK_CHECK = "SST-PLN019"
+_REFERENCE_CHECK = "SST-PLN017"
 
 
 class _Reader:
@@ -125,15 +131,6 @@ class _Reader:
         """Return what a yes-or-no read answers of each item; `refused` where Snowflake refuses it."""
         return tuple(refused if answer is None else answer for answer in self.read_each(items, read, what))
 
-    def names_each(
-        self,
-        items: Sequence[ItemT],
-        read: Callable[[PreflightPort, ItemT], tuple[QualifiedName, ...]],
-        what: Callable[[ItemT], str],
-    ) -> tuple[tuple[QualifiedName, ...], ...]:
-        """Return the names a read lists of each item; none where Snowflake refuses it."""
-        return tuple(answer or () for answer in self.read_each(items, read, what))
-
 
 def read_preflight(
     port: PreflightPort,
@@ -160,7 +157,8 @@ def read_preflight(
 
     Diagnostics:
         SST-PLN001: a preflight read failed.
-        SST-VAL020: the role may not read the target's locks, so SST-PLN019 is skipped.
+        SST-VAL020: the role may not read the target's locks, so SST-PLN019 is skipped; or
+            what references a prune candidate, so SST-PLN017 is skipped for it.
     """
     reader = _Reader(readers or Fanout(port))
     created = {key: artifact for key, artifact in rendered.items() if key not in observation.artifacts}
@@ -314,10 +312,11 @@ def _referenced(
         for key, observed in sorted(observation.artifacts.items())
         if key not in rendered and observed.marker is not None
     )
-    listed = reader.names_each(
+    listed = reader.advise_each(
         candidates,
         lambda port, item: port.external_references(item[1]),
         lambda item: f"references to {item[1].sql}",
+        check=_REFERENCE_CHECK,
     )
     found: dict[str, tuple[QualifiedName, ...]] = {}
     for (key, _), referrers in zip(candidates, listed, strict=True):

@@ -9,7 +9,7 @@ from snowflake_semantic_tools.app.compile import CompileResult
 from snowflake_semantic_tools.app.manifest import manifest_for
 from snowflake_semantic_tools.app.plan import PlanCandidates, PlanReady, PlanScope, PreparePlan
 from snowflake_semantic_tools.app.preflight import read_preflight
-from snowflake_semantic_tools.domain.diagnostics import D, DiagnosticBag, Severity
+from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, DiagnosticBag, Severity
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
 from snowflake_semantic_tools.domain.model.lifecycle import (
     Action,
@@ -20,6 +20,7 @@ from snowflake_semantic_tools.domain.model.lifecycle import (
     ShowRow,
     SnowflakeObservation,
 )
+from snowflake_semantic_tools.domain.plan.preflight import Preflight
 from snowflake_semantic_tools.domain.ports.project import ValidationDefaults
 from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
 from snowflake_semantic_tools.domain.state import AppliedEntry, State
@@ -27,7 +28,7 @@ from tests.helpers.app_ports import InMemoryStateStore
 from tests.helpers.artifact_builders import change, rendered
 from tests.helpers.clocks import FixedClock
 from tests.helpers.compile_builders import compiled, with_diagnostics
-from tests.helpers.plan_codes import entry, live, manifest_of, state_of, view
+from tests.helpers.plan_codes import entry, live, manifest_of, plan, state_of, view
 from tests.helpers.project_inputs import EMPTY_SOURCES, InMemoryProjectInputs, dev_target
 from tests.helpers.snowflake_fake import FakeSnowflake
 
@@ -151,6 +152,56 @@ def test_a_plan_by_a_role_without_monitor_goes_ahead_and_may_be_reused() -> None
     assert "SST-VAL020" in codes and "SST-PLN001" not in codes
     assert not ready.changeset.diagnostics.has_errors
     assert ready.recorded is not None
+
+
+# How Snowflake refuses SNOWFLAKE.ACCOUNT_USAGE to a role it is not shared with.
+_NO_ACCOUNT_USAGE = SnowflakePortError(
+    "002003 (02000): SQL compilation error:\nSchema 'SNOWFLAKE.ACCOUNT_USAGE' does not exist or not authorized.",
+    errno=2003,
+    sqlstate="02000",
+)
+
+
+def _prune_preflight(error: SnowflakePortError) -> tuple[Preflight, tuple[Diagnostic, ...], ChangeSet]:
+    """Read preflight for one marked prune candidate whose reference read fails with `error`, then plan it."""
+    port = FakeSnowflake()
+    port.fail("external_references", error)
+    orphan = view("orphan")
+    marked = live(orphan, marker=OwnershipMarker("a" * 64, orphan.fingerprint))
+    applied = {orphan.key: entry(orphan, "a" * 64)}
+    preflight, failures = read_preflight(
+        port, {}, _observation(marked), state_of(manifest_of(), applied), dev_target(), include_prune=True
+    )
+    planned = plan((), observed=(marked,), applied=applied, include_prune=True, preflight=preflight)
+    return preflight, failures, planned
+
+
+def test_a_reference_read_the_role_may_not_make_skips_the_check_for_that_prune_candidate() -> None:
+    preflight, failures, _ = _prune_preflight(_NO_ACCOUNT_USAGE)
+    [skipped] = failures
+    assert (skipped.code, skipped.severity) == ("SST-VAL020", Severity.INFO)
+    assert skipped.message == (
+        "SST-PLN017 skipped: the role may not read references to DB.SCH.ORPHAN: "
+        "Schema 'SNOWFLAKE.ACCOUNT_USAGE' does not exist or not authorized."
+    )
+    assert preflight.referenced == {}
+
+
+def test_a_prune_by_a_role_without_account_usage_goes_ahead_with_the_skip_reported() -> None:
+    _, failures, planned = _prune_preflight(_NO_ACCOUNT_USAGE)
+    assert [(item.action, item.prune_executable) for item in planned.changes] == [(Action.PRUNE, True)]
+    assert "SST-PLN017" not in [item.code for item in planned.diagnostics]
+    assert not DiagnosticBag(failures).has_errors
+
+
+def test_a_reference_read_that_fails_for_another_reason_is_still_a_failed_read() -> None:
+    reset = SnowflakePortError("251005: connection reset", errno=251005, sqlstate="08006")
+    _, failures, _ = _prune_preflight(reset)
+    assert [(item.code, item.severity) for item in failures] == [("SST-PLN001", Severity.ERROR)]
+    assert failures[0].message == "observation of references to DB.SCH.ORPHAN failed: 251005: connection reset"
+    unseen = SnowflakePortError("Object 'BI.S.T' does not exist or not authorized.", errno=2003, sqlstate="02000")
+    _, failures, _ = _prune_preflight(unseen)
+    assert [item.code for item in failures] == ["SST-PLN001"]
 
 
 def test_a_schema_or_privilege_read_refused_leaves_the_write_unblocked() -> None:

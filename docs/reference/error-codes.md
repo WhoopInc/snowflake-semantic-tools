@@ -6082,6 +6082,8 @@ Raised when a prune candidate is named by something SST does not manage.
 
 Fix: exclude it from prune, or migrate the consumer
 
+Note: What names an object is read from `SNOWFLAKE.ACCOUNT_USAGE.OBJECT_DEPENDENCIES`, which needs IMPORTED PRIVILEGES on the `SNOWFLAKE` database and lags by up to three hours. A role without it skips this check for each prune candidate, reported as `SST-VAL020`, and the prune goes ahead: this is a warning, never what stops a prune.
+
 ### SST-PLN018
 
 **Plan computed against a stale observation** (error)

@@ -16,6 +16,13 @@ from snowflake_semantic_tools.domain.diagnostics.signatures import (
     snowflake_diagnostic,
 )
 
+# How Snowflake refuses SNOWFLAKE.ACCOUNT_USAGE to a role it is not shared with.
+_NO_ACCOUNT_USAGE = (
+    "002003 (02000): SQL compilation error:\nSchema 'SNOWFLAKE.ACCOUNT_USAGE' does not exist or not authorized."
+)
+_DEPENDENCIES = "Object 'SNOWFLAKE.ACCOUNT_USAGE.OBJECT_DEPENDENCIES' does not exist or not authorized."
+_SAMPLE_DATA = "Schema 'SNOWFLAKE_SAMPLE_DATA.TPCH' does not exist or not authorized."
+
 
 def test_a_number_beats_a_sqlstate_and_a_sqlstate_beats_the_wording() -> None:
     assert match_signature("Schema 'A.B' does not exist", errno=2002).code == "SST-SNO002"
@@ -66,6 +73,12 @@ def test_a_shared_number_matches_only_with_its_wording() -> None:
         ("Object 'DB.S.T' does not exist or not authorized.", 2003, "02000", SessionFailure.NOT_VISIBLE),
         ("Schema 'DB.S' does not exist or not authorized.", None, None, SessionFailure.NOT_VISIBLE),
         ("Database 'DB' does not exist or not authorized.", None, None, SessionFailure.NOT_VISIBLE),
+        (_NO_ACCOUNT_USAGE, 2003, "02000", SessionFailure.PRIVILEGE),
+        (_DEPENDENCIES, 2003, None, SessionFailure.PRIVILEGE),
+        ("Database 'SNOWFLAKE' does not exist or not authorized.", None, "02000", SessionFailure.PRIVILEGE),
+        (_NO_ACCOUNT_USAGE, None, None, SessionFailure.NOT_VISIBLE),
+        (_SAMPLE_DATA, 2003, "02000", SessionFailure.NOT_VISIBLE),
+        ("The object does not exist or not authorized.", 2003, "02000", SessionFailure.NOT_VISIBLE),
         ("Warehouse 'WH' does not exist or not authorized.", None, None, None),
         ("Statement reached its statement or warehouse timeout of 10 seconds", None, None, SessionFailure.DEADLINE),
         ("Connection is closed", 250002, "08003", SessionFailure.DEADLINE),
