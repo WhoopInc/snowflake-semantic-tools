@@ -162,12 +162,22 @@ one place in the connector. From Snowflake's documented semantics:
 A standard table cannot enforce the lock row's key, and `SELECT ... FOR UPDATE`
 is for hybrid tables only, so SST relies on neither: its lock transactions
 serialise on the table lock that an `UPDATE` of the mutex row takes and holds
-until `COMMIT`, and each then reads what the previous one committed. A hybrid
-table would reject a second insert outright and let state writes to different
-targets proceed without waiting on each other, at the cost of availability. How
-a hybrid table behaves under SST's write pattern has not yet been measured; a
-spike against a scratch
-schema is pending.
+until `COMMIT`, and each then reads what the previous one committed.
+
+**Contention is per lock table, not per target.** Every lock transaction writes
+the same mutex row, so a claim, extend, release or state write for one target
+waits for any such transaction for another target that shares the lock table.
+Measured on a standard table, the wait does not depend on the mutex: an `UPDATE`
+of one existing row waits for an uncommitted `UPDATE` of a different row until
+that transaction commits (an `INSERT` does not wait). Each transaction is only a
+few bound statements, committed as soon as they finish, so the wait is short; a
+state write lasts longer the more entries the run changed.
+
+A hybrid table would reject a second insert outright and let state writes to
+different targets proceed without waiting on each other, at the cost of
+availability: Snowflake also refuses to create one in a transient database or
+schema. How a hybrid table behaves under SST's write pattern has not yet been
+measured.
 
 SST changes only objects it published. An object that already exists and that
 SST did not publish is reported as **unmanaged** (`SST-PLN024`) and left alone;
