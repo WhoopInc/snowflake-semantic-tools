@@ -79,7 +79,11 @@ poetry run sst test --suite golden --project-dir $P --manifest $M --golden-dir "
 
 `golden/expected/` holds the exact expected output of the reference project under `dev`, one directory per artifact type. The `test_golden_*.py` tests and `sst test --suite golden` compare bytes. A DDL golden starts with a `--` provenance header that is not compared; see [golden/README.md](golden/README.md).
 
-There is no update switch. When a change to rendered output is intended, run the golden suite to see the diff, edit the golden by hand (keeping a DDL golden's header), and say why in the pull request. An unexplained golden change is a regression.
+When a change to rendered output is intended, run the golden suite to see the diff, then rewrite the goldens with the same command plus `--update-golden` (refused when `$CI` is set; a DDL golden keeps its header), review the diff, and say why in the pull request. Never edit a golden by hand. An unexplained golden change is a regression.
+
+## Live Tests
+
+Tests marked `live` connect to a Snowflake account that only configuration names: `SST_TEST_SNOWFLAKE_*`, the git-ignored `live.local.env` (template: `live.example.env`), or a named connection. [docs/guides/testing-live.md](../docs/guides/testing-live.md) explains how to configure and run them.
 
 ## Writing Tests
 

@@ -26,6 +26,7 @@ a reviewed plan.
 | [CI/CD](guides/ci-cd.md) | pull-request and merge jobs, JSON output, and exit codes |
 | [Security](guides/security.md) | the trust model, what SST checks, and running it with least privilege |
 | [Troubleshooting](guides/troubleshooting.md) | symptoms and their causes |
+| [Testing SST](guides/testing-live.md) | for contributors: the offline suite, and configuring and running the live tests |
 
 ## Reference
 

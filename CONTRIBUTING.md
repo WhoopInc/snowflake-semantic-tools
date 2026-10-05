@@ -168,45 +168,30 @@ Every test has a 120-second timeout (`pytest-timeout`, configured in `pyproject.
 that deadlocks fails with every thread's stack rather than hanging the run. A test also fails if a
 thread it started is still running after it returns.
 
-### Tests against Snowflake
+### Testing
 
-Optional. Tests marked `live` connect to a real account and are deselected by default, and no
-contribution needs them: the fast gate above is the whole required gate, and it runs offline with no
-secrets. They are for maintainers who have a Snowflake account of their own. To run them locally,
-point them at an account with a key-pair user and a role that may create schemas in one scratch
-database:
+The offline suite is the whole required gate: `poetry run pytest tests/ -n auto` runs it with no
+account and no secrets, and no test in it can reach the network or read your own Snowflake or dbt
+configuration. Goldens are rewritten with `sst test --suite golden --update-golden`, never by hand.
+
+Tests marked `live` connect to a real account and are deselected by default. No contribution needs
+them; they are for maintainers with an account of their own. Their account comes only from
+configuration -- `SST_TEST_SNOWFLAKE_*` variables, a git-ignored `tests/live.local.env` (copy
+`tests/live.example.env`), or a named connection in `~/.snowflake` -- and they sign in by key pair
+or by an authenticator such as `externalbrowser`:
 
 ```bash
-export SST_TEST_SNOWFLAKE_ACCOUNT=... SST_TEST_SNOWFLAKE_USER=... SST_TEST_SNOWFLAKE_ROLE=...
-export SST_TEST_SNOWFLAKE_WAREHOUSE=... SST_TEST_SNOWFLAKE_DATABASE=...
-export SST_TEST_SNOWFLAKE_PRIVATE_KEY_PATH=~/.ssh/sst_test.p8
+cp tests/live.example.env tests/live.local.env   # then fill in your own account
 poetry run pytest -m live tests/contract_live tests/integration tests/e2e
 ```
 
-Each run creates its own `SST_IT_<UTC timestamp>_<run>_<worker>` schemas and drops them when it
-ends; `python -m tests.helpers.sweep_scratch --older-than-hours 6` drops any a killed run left
-behind, and never touches a schema without SST's marker comment. Without an account the tests skip;
-with `--require-snowflake` they fail instead. Setting `SST_TEST_SNOWFLAKE_GRANTEE_ROLE` to a role
-the test role may grant to adds the check that replacing a view keeps its grants.
+Each run writes only in `SST_IT_<UTC timestamp>_<run>_<worker>` schemas it creates in the
+configured database, and drops them when it ends. Without an account the tests skip with a message
+naming what to set; with `--require-snowflake` they fail instead. The same checks run by hand in
+GitHub Actions through `.github/workflows/slow.yml`, from repository secrets you supply.
 
-The same checks can run in GitHub Actions, in this repository or a fork, through
-`.github/workflows/slow.yml`. Nothing triggers it automatically and nothing waits on it: start it by
-hand (Actions, "Snowflake checks (manual)", Run workflow) and pick a suite -- `live`, `sweep`,
-`recording` or `evals`. It reads your account from these repository secrets, which you supply:
-
-| Secret | Value |
-|--------|-------|
-| `SNOWFLAKE_ACCOUNT` | account identifier |
-| `SNOWFLAKE_USER` | a key-pair user |
-| `SNOWFLAKE_PRIVATE_KEY` | that user's unencrypted PKCS#8 private key, as PEM text |
-| `SNOWFLAKE_ROLE` | a role that may create and drop schemas in `SNOWFLAKE_DATABASE` |
-| `SNOWFLAKE_WAREHOUSE` | the warehouse the tests run in |
-| `SNOWFLAKE_DATABASE` | a database set aside for test scratch schemas |
-| `SNOWFLAKE_SCHEMA` | the schema the `evals` suite deploys to (`evals` only) |
-| `SNOWFLAKE_GRANTEE_ROLE` | optional; enables the grant-preservation check |
-
-When the secrets are not set the run skips with a notice and succeeds; it never fails for missing
-credentials.
+[Testing SST](docs/guides/testing-live.md) explains every key, the privileges the test role needs,
+the safety guarantees, and the manual workflow's secrets.
 
 [tests/README.md](tests/README.md) describes the suite, the reference project, and the goldens.
 
