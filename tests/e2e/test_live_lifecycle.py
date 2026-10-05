@@ -16,16 +16,20 @@ from snowflake_semantic_tools.adapters.snowflake.connector import SnowflakeConne
 from snowflake_semantic_tools.domain.model.identifier import SchemaScope
 from tests.helpers.e2e_cli import run_sst
 from tests.helpers.live_project import project_args, published_project
+from tests.helpers.live_snowflake import LiveAccount
 
 pytestmark = [pytest.mark.live, pytest.mark.e2e]
 
 
 def test_validate_plan_apply_replan_and_smoke_each_exit_as_documented(
+    live_account: LiveAccount,
     live_connector: SnowflakeConnector,
     scratch_schema: Callable[[str], SchemaScope],
     tmp_path_factory: pytest.TempPathFactory,
 ) -> None:
-    project, manifest = published_project(tmp_path_factory.mktemp("e2e"), live_connector, scratch_schema("e2e"))
+    project, manifest = published_project(
+        tmp_path_factory.mktemp("e2e"), live_connector, scratch_schema("e2e"), key_pair=live_account.key_pair
+    )
     args = project_args(project, manifest)
     steps = (
         (("validate", *args, "--strict", "--snowflake-syntax-check"), 0),

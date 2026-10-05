@@ -26,6 +26,8 @@ from tests.helpers.live_snowflake import (
     SCRATCH_PREFIX,
     LiveAccount,
     drop_scratch,
+    load_live_account,
+    not_configured_reason,
     run_token,
     scratch_scope,
     sweepable,
@@ -67,16 +69,16 @@ def sweep(
 
 
 def main(argv: Sequence[str] | None = None, now: datetime | None = None) -> int:
-    """Sweep the account `SST_TEST_SNOWFLAKE_*` names, by run or by age."""
+    """Sweep the configured live account, by run or by age."""
     parser = argparse.ArgumentParser(prog="python -m tests.helpers.sweep_scratch", description=__doc__)
     chosen = parser.add_mutually_exclusive_group(required=True)
     chosen.add_argument("--run", help="Drop this run's schemas whatever their age (the raw SST_TEST_RUN_ID).")
     chosen.add_argument("--older-than-hours", type=float, help="Drop every scratch schema at least this old.")
     parser.add_argument("--dry-run", action="store_true", help="Report what would be dropped; drop nothing.")
     options = parser.parse_args(argv)
-    account = LiveAccount.from_environment(os.environ)
+    account = load_live_account(os.environ)
     if account is None:
-        print("sweep_scratch: SST_TEST_SNOWFLAKE_ACCOUNT is not set; nothing to sweep", file=sys.stderr)
+        print(f"sweep_scratch: {not_configured_reason()}; nothing to sweep", file=sys.stderr)
         return 1
     from snowflake_semantic_tools.adapters.snowflake.connector import SnowflakeConnector
 

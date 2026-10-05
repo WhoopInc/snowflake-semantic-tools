@@ -9,6 +9,7 @@ runs against Snowflake.
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -16,6 +17,7 @@ import pytest
 from click.testing import CliRunner
 
 from snowflake_semantic_tools.cli.main import cli
+from snowflake_semantic_tools.domain.model.identifier import Identifier, SchemaScope
 from snowflake_semantic_tools.domain.sql import Sql
 from tests.helpers.live_project import live_project, live_view, orders_table, orders_table_statements, project_args
 from tests.helpers.live_snowflake import (
@@ -35,7 +37,7 @@ from tests.helpers.live_snowflake import (
 from tests.helpers.snowflake_fake import FakeSnowflake
 
 NOW = datetime(2026, 1, 1, 12, 0, tzinfo=UTC)
-ACCOUNT = LiveAccount("acct", "ci_user", "/keys/ci.p8", "CI_ROLE", "CI_WH", "SCRATCH_DB")
+ACCOUNT = LiveAccount("acct", "ci_user", "CI_ROLE", "CI_WH", "SCRATCH_DB", private_key_path="/keys/ci.p8")
 ENVIRONMENT = {
     ENV_PREFIX + name: value
     for name, value in zip(
@@ -58,8 +60,12 @@ def test_an_account_is_read_from_the_environment_or_absent_but_never_half_set() 
 def test_a_profile_target_names_the_credentials_without_holding_them() -> None:
     target = profile_target("SST_IT_X")
     assert target["schema"] == "SST_IT_X"
+    assert target["authenticator"] == "snowflake_jwt"
     assert target["private_key_path"] == "{{ env_var('SST_TEST_SNOWFLAKE_PRIVATE_KEY_PATH') }}"
     assert not any(value in str(target.values()) for value in ("acct", "ci_user", "/keys/ci.p8"))
+    browser = profile_target("SST_IT_X", key_pair=False)
+    assert browser["authenticator"] == "{{ env_var('SST_TEST_SNOWFLAKE_AUTHENTICATOR') }}"
+    assert "private_key_path" not in browser
 
 
 def test_a_scratch_name_carries_its_creation_time_run_and_worker() -> None:
@@ -100,8 +106,20 @@ def test_scratch_statements_mark_the_schema_and_refuse_to_drop_any_other() -> No
     [created], [dropped] = port.scripts
     assert created == f"CREATE SCHEMA SCRATCH_DB.{scope.schema.value} COMMENT = '{SCRATCH_MARKER}'"
     assert dropped == f"DROP SCHEMA IF EXISTS SCRATCH_DB.{scope.schema.value} CASCADE"
+    other = SchemaScope(Identifier.parse("SCRATCH_DB"), Identifier.parse("ANALYTICS"))
     with pytest.raises(ValueError, match="not an SST_IT_ scratch schema"):
-        drop_scratch(port, scratch_scope(ACCOUNT, "ANALYTICS"))
+        drop_scratch(port, other)
+    with pytest.raises(ValueError, match="refusing to create"):
+        create_scratch(port, other)
+    assert len(port.scripts) == 2
+
+
+def test_a_live_helper_names_only_prefixed_schemas_in_the_configured_database() -> None:
+    account = replace(ACCOUNT, schema="SST_IT_REFERENCE")
+    assert scratch_scope(account, "SST_IT_RECORDING").sql == "SCRATCH_DB.SST_IT_RECORDING"
+    for name in ("ANALYTICS", "sst_it_reference", "PUBLIC"):
+        with pytest.raises(ValueError, match="refusing to write to SCRATCH_DB"):
+            scratch_scope(account, name)
 
 
 def test_the_live_project_validates_compiles_and_plans_one_view(

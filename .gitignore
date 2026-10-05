@@ -1,5 +1,7 @@
 # Sensitive Configuration - NEVER COMMIT
 .env
+# Your own live-test account (docs/guides/testing-live.md); tests/live.example.env is the template
+tests/live.local.env
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

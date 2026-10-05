@@ -70,15 +70,19 @@ snowflake_metrics:
 """
 
 
-def live_project(root: Path, schema: SchemaScope) -> tuple[Path, Path]:
-    """Write the live project under `root` for `schema`; return the project and its dbt manifest."""
+def live_project(root: Path, schema: SchemaScope, *, key_pair: bool = True) -> tuple[Path, Path]:
+    """Write the live project under `root` for `schema`; return the project and its dbt manifest.
+
+    `key_pair` chooses how the profile's `live` target signs in (`live_snowflake.profile_target`).
+    """
     project = root / "live_project"
     files = {
         "dbt_project.yml": yaml.safe_dump(
             {"name": "sst_reference_impl", "version": "1.0.0", "config-version": 2, "profile": PROFILE}
         ),
         "profiles.yml": yaml.safe_dump(
-            {PROFILE: {"target": TARGET, "outputs": {TARGET: profile_target(schema.schema.value)}}}, sort_keys=False
+            {PROFILE: {"target": TARGET, "outputs": {TARGET: profile_target(schema.schema.value, key_pair=key_pair)}}},
+            sort_keys=False,
         ),
         "sst_config.yml": _CONFIG,
         "semantic_models/semantic_views/live.yml": _VIEWS,
@@ -105,7 +109,9 @@ def project_args(project: Path, manifest: Path) -> list[str]:
     return ["--project-dir", str(project), "--profiles-dir", str(project), "--manifest", str(manifest)]
 
 
-def published_project(root: Path, port: ExecutionPort, schema: SchemaScope) -> tuple[Path, Path]:
+def published_project(
+    root: Path, port: ExecutionPort, schema: SchemaScope, *, key_pair: bool = True
+) -> tuple[Path, Path]:
     """Create and fill `ORDERS` in `schema` through `port`, then write the live project over it.
 
     Raises:
@@ -114,7 +120,7 @@ def published_project(root: Path, port: ExecutionPort, schema: SchemaScope) -> t
     made = port.execute_script(orders_table_statements(schema))
     if not made.ok:
         raise RuntimeError(f"could not create {orders_table(schema).sql}: {made.error}")
-    return live_project(root, schema)
+    return live_project(root, schema, key_pair=key_pair)
 
 
 def orders_table_statements(schema: SchemaScope) -> tuple[Sql, ...]:

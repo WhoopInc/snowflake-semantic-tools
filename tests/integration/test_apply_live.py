@@ -8,7 +8,6 @@ outcomes read back through the connector, never on DDL text.
 
 from __future__ import annotations
 
-import os
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
@@ -20,10 +19,11 @@ from snowflake_semantic_tools.domain.model.identifier import Identifier, SchemaS
 from snowflake_semantic_tools.domain.sql import ident, qname, sql
 from tests.helpers.e2e_cli import SstRun, run_sst
 from tests.helpers.live_project import live_view, project_args, published_project
+from tests.helpers.live_snowflake import LiveAccount
 
 pytestmark = pytest.mark.live
 
-# A role the CI role may grant SELECT to; the grant test is skipped without one.
+# A role the test role may grant SELECT to; the grant test is skipped without one.
 GRANTEE_ROLE = "SST_TEST_SNOWFLAKE_GRANTEE_ROLE"
 
 
@@ -38,11 +38,14 @@ class Applied:
 @pytest.fixture(scope="module")
 def applied(
     tmp_path_factory: pytest.TempPathFactory,
+    live_account: LiveAccount,
     live_connector: SnowflakeConnector,
     scratch_schema: Callable[[str], SchemaScope],
 ) -> Applied:
     schema = scratch_schema("apply")
-    project, manifest = published_project(tmp_path_factory.mktemp("apply"), live_connector, schema)
+    project, manifest = published_project(
+        tmp_path_factory.mktemp("apply"), live_connector, schema, key_pair=live_account.key_pair
+    )
     args = project_args(project, manifest)
     compiled = run_sst("compile", *args)
     assert compiled.exit_code == 0, compiled.stdout + compiled.stderr
@@ -67,8 +70,10 @@ def test_a_plan_after_apply_has_nothing_left_to_do(applied: Applied) -> None:
     assert replanned.exit_code == 0, replanned.stdout
 
 
-def test_replacing_the_view_keeps_the_grants_on_it(applied: Applied, live_connector: SnowflakeConnector) -> None:
-    grantee = os.environ.get(GRANTEE_ROLE)
+def test_replacing_the_view_keeps_the_grants_on_it(
+    applied: Applied, live_account: LiveAccount, live_connector: SnowflakeConnector
+) -> None:
+    grantee = live_account.grantee_role
     if not grantee:
         pytest.skip(f"{GRANTEE_ROLE} names no role to grant SELECT to")
     view = live_view(applied.schema)

@@ -34,7 +34,13 @@ from snowflake_semantic_tools.domain.ports.snowflake import SnowflakePort
 from snowflake_semantic_tools.domain.sql import literal, scope, sql
 from tests.helpers.e2e_cli import run_sst
 from tests.helpers.live_project import TARGET, live_view, orders_table, project_args, published_project
-from tests.helpers.live_snowflake import SCRATCH_MARKER, LiveAccount, scratch_scope
+from tests.helpers.live_snowflake import (
+    SCRATCH_MARKER,
+    LiveAccount,
+    load_live_account,
+    not_configured_reason,
+    scratch_scope,
+)
 from tests.helpers.reference_project import REPO_ROOT
 
 RECORDING = REPO_ROOT / "tests" / "fixtures" / "recordings" / "live_project.json"
@@ -111,7 +117,7 @@ def capture(port: SnowflakePort, account: LiveAccount, root: Path) -> str:
     if not made.ok:
         raise RuntimeError(f"could not create {schema.sql}: {made.error}")
     try:
-        project, manifest = published_project(root, port, schema)
+        project, manifest = published_project(root, port, schema, key_pair=account.key_pair)
         for command in (("compile",), ("apply", "--yes")):
             run = run_sst(command[0], *project_args(project, manifest), *command[1:])
             if run.exit_code != 0:
@@ -122,14 +128,14 @@ def capture(port: SnowflakePort, account: LiveAccount, root: Path) -> str:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    """Capture against the account `SST_TEST_SNOWFLAKE_*` names and compare with the recording."""
+    """Capture against the configured live account and compare with the recording."""
     parser = argparse.ArgumentParser(prog="python -m tests.helpers.session_recorder", description=__doc__)
     parser.add_argument("--out", type=Path, required=True, help="Where to write the capture.")
     parser.add_argument("--recording", type=Path, default=RECORDING, help="The committed recording.")
     options = parser.parse_args(argv)
-    account = LiveAccount.from_environment(os.environ)
+    account = load_live_account(os.environ)
     if account is None:
-        print("session_recorder: SST_TEST_SNOWFLAKE_ACCOUNT is not set; nothing can be captured", file=sys.stderr)
+        print(f"session_recorder: {not_configured_reason()}; nothing can be captured", file=sys.stderr)
         return 1
     from snowflake_semantic_tools.adapters.snowflake.connector import SnowflakeConnector
 

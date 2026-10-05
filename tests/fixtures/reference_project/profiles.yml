@@ -49,22 +49,24 @@ sst_reference_impl:
       warehouse: SST_REF_WH
       threads: 4
 
-    # Runs the fixture in a real account; every value comes from the
-    # environment. Account, user, role, schema and warehouse have no default, so
-    # an unset one stops at profile load with the variable named. The database
-    # defaults to SCRATCH and the authenticator to externalbrowser (SSO). Like
-    # `ci`, it is absent from `relations:`, and no golden resolves against it.
-    # Build the dbt models there with:
+    # Runs the fixture in a real account; every value comes from the same
+    # SST_TEST_SNOWFLAKE_* variables the live tests read (docs/guides/testing-live.md).
+    # Account, user, role, database, schema and warehouse have no default, so an
+    # unset one stops at profile load with the variable named. The authenticator
+    # defaults to externalbrowser (SSO). Like `ci`, it is absent from
+    # `relations:`, and no golden resolves against it. With the variables
+    # exported (`set -a; . tests/live.local.env; set +a` from the repository
+    # root), build the dbt models there with:
     #
     #   dbt deps
     #   dbt build --target verify
     verify:
       type: snowflake
-      account: "{{ env_var('SST_VERIFY_ACCOUNT') }}"
-      user: "{{ env_var('SST_VERIFY_USER') }}"
-      authenticator: "{{ env_var('SST_VERIFY_AUTHENTICATOR', 'externalbrowser') }}"
-      role: "{{ env_var('SST_VERIFY_ROLE') }}"
-      database: "{{ env_var('SST_VERIFY_DATABASE', 'SCRATCH') }}"
-      schema: "{{ env_var('SST_VERIFY_SCHEMA') }}"
-      warehouse: "{{ env_var('SST_VERIFY_WAREHOUSE') }}"
+      account: "{{ env_var('SST_TEST_SNOWFLAKE_ACCOUNT') }}"
+      user: "{{ env_var('SST_TEST_SNOWFLAKE_USER') }}"
+      authenticator: "{{ env_var('SST_TEST_SNOWFLAKE_AUTHENTICATOR', 'externalbrowser') }}"
+      role: "{{ env_var('SST_TEST_SNOWFLAKE_ROLE') }}"
+      database: "{{ env_var('SST_TEST_SNOWFLAKE_DATABASE') }}"
+      schema: "{{ env_var('SST_TEST_SNOWFLAKE_SCHEMA') }}"
+      warehouse: "{{ env_var('SST_TEST_SNOWFLAKE_WAREHOUSE') }}"
       threads: 4
